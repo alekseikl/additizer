@@ -1,8 +1,13 @@
 use crate::{
-    VOLUME_POLY_MOD_ID, oscillator::AdditiveOscillator, phase::Phase, stereo_sample::StereoSample,
+    VOLUME_POLY_MOD_ID,
+    envelope::{Envelope, adsr::ADSR, fade_out::FadeOutEnvelope},
+    oscillator::AdditiveOscillator,
+    phase::Phase,
+    stereo_sample::StereoSample,
+    utils::GlobalParamValues,
 };
 use nih_plug::prelude::*;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 #[derive(Debug, Clone, Copy)]
 pub struct VoiceId {
@@ -39,29 +44,27 @@ impl VoiceId {
     }
 }
 
-pub struct VoiceParamValues {
-    pub volume: f32,
-}
-
 pub struct Voice {
     oscillator: AdditiveOscillator,
     id: VoiceId,
     running: bool,
     releasing: bool,
-    gain_mod: f32,
-    samples_after_release: u32,
+    amp_envelope: Box<dyn Envelope + Send>,
     poly_modulations: HashMap<u32, (f32, Smoother<f32>)>,
 }
 
 impl Voice {
-    pub fn new(initial_phase: f32, id: VoiceId) -> Self {
+    pub fn new(initial_phase: f32, id: VoiceId, sine_table: &Arc<Vec<f32>>) -> Self {
         Self {
-            oscillator: AdditiveOscillator::new(initial_phase, util::midi_note_to_freq(id.note)),
+            oscillator: AdditiveOscillator::new(
+                initial_phase,
+                util::midi_note_to_freq(id.note),
+                sine_table,
+            ),
             id,
             running: false,
             releasing: false,
-            gain_mod: 1.0,
-            samples_after_release: 0,
+            amp_envelope: Box::new(ADSR::new(8.0, 560.0, 0.5, 500.0)),
             poly_modulations: HashMap::with_capacity(1),
         }
     }
@@ -74,12 +77,14 @@ impl Voice {
         self.id.match_voice(id) && self.releasing == releasing
     }
 
-    pub fn set_releasing(&mut self) {
+    pub fn release(&mut self) {
         self.releasing = true;
+        self.amp_envelope.release();
     }
 
-    pub fn set_gain_mod(&mut self, gain: f32) {
-        self.gain_mod = gain;
+    pub fn fade_out(&mut self) {
+        self.releasing = true;
+        self.amp_envelope = Box::new(FadeOutEnvelope::new(self.amp_envelope.value()))
     }
 
     pub fn current_phase(&self) -> Phase {
@@ -87,7 +92,7 @@ impl Voice {
     }
 
     pub fn is_done(&self) -> bool {
-        self.releasing && (self.gain_mod < f32::EPSILON || self.samples_after_release > 80_000)
+        self.releasing && self.amp_envelope.is_done()
     }
 
     pub fn apply_poly_modulation(
@@ -98,10 +103,12 @@ impl Voice {
         normalized_offset: f32,
     ) {
         let target_plain_value = param.preview_modulated(normalized_offset);
-        let (_, smoother) = self
+        let (offset, smoother) = self
             .poly_modulations
             .entry(modulation_id)
             .or_insert_with(|| (normalized_offset, param.smoothed.clone()));
+
+        *offset = normalized_offset;
 
         if self.running {
             smoother.set_target(sample_rate, target_plain_value);
@@ -123,21 +130,22 @@ impl Voice {
         }
     }
 
-    fn next_poly_modulation_value(&mut self, modulation_id: u32, fallback_value: f32) -> f32 {
+    fn next_modulation_value(&mut self, poly_modulation_id: u32, fallback_value: f32) -> f32 {
         self.poly_modulations
-            .get(&modulation_id)
+            .get(&poly_modulation_id)
             .map(|(_, smoother)| smoother.next())
             .unwrap_or(fallback_value)
     }
 
-    pub fn tick(&mut self, sample_rate: f32, param_values: &VoiceParamValues) -> StereoSample {
+    pub fn tick(&mut self, sample_rate: f32, global_params: &GlobalParamValues) -> StereoSample {
         self.running = true;
-        if self.releasing {
-            self.samples_after_release += 1;
-        }
 
-        let volume = self.next_poly_modulation_value(VOLUME_POLY_MOD_ID, param_values.volume);
+        let volume = self.next_modulation_value(VOLUME_POLY_MOD_ID, global_params.volume);
+        let gain = self.amp_envelope.value();
+        let result =
+            self.oscillator.tick(sample_rate, 0.0, global_params) * gain * util::db_to_gain(volume);
 
-        self.oscillator.tick(sample_rate, 0.0) * util::db_to_gain(volume)
+        self.amp_envelope.advance(sample_rate);
+        result
     }
 }

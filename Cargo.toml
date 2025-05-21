@@ -8,5 +8,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
-log = "0.4"
-ftail = "0.2"
+rand = "0.9"
+rand_pcg = "0.9"

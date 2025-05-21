@@ -1,3 +1,4 @@
+pub mod envelope;
 pub mod oscillator;
 pub mod phase;
 pub mod stereo_sample;
@@ -5,9 +6,13 @@ pub mod utils;
 pub mod voice;
 
 use nih_plug::prelude::*;
+use rand::Rng;
+use rand_pcg::Pcg32;
+use std::f32::consts;
 use std::sync::Arc;
 use stereo_sample::StereoSample;
-use voice::{Voice, VoiceId, VoiceParamValues};
+use utils::GlobalParamValues;
+use voice::{Voice, VoiceId};
 
 const VOLUME_POLY_MOD_ID: u32 = 0;
 
@@ -15,12 +20,17 @@ pub struct Additizer {
     params: Arc<AdditizerParams>,
     sample_rate: f32,
     voices: Vec<Voice>,
+    random: Pcg32,
+    sine_table: Option<Arc<Vec<f32>>>,
 }
 
 #[derive(Params)]
 struct AdditizerParams {
     #[id = "volume"]
     pub volume: FloatParam,
+
+    #[id = "subharmonics"]
+    pub subharmonics: IntParam,
 }
 
 impl Default for Additizer {
@@ -29,6 +39,8 @@ impl Default for Additizer {
             params: Arc::new(AdditizerParams::default()),
             sample_rate: 1.0,
             voices: Vec::new(),
+            random: Pcg32::new(142, 997),
+            sine_table: None,
         }
     }
 }
@@ -50,6 +62,7 @@ impl Default for AdditizerParams {
             .with_smoother(SmoothingStyle::Linear(3.0))
             .with_step_size(0.01)
             .with_unit(" dB"),
+            subharmonics: IntParam::new("Subharmonics", 0, IntRange::Linear { min: 0, max: 3 }),
         }
     }
 }
@@ -64,22 +77,26 @@ macro_rules! param_for_modulation_id {
 }
 
 impl Additizer {
-    fn handle_note_on(&mut self, id: VoiceId, mut terminate: impl FnMut(&VoiceId)) {
-        if let Some(idx) = self.voices.iter().position(|v| v.id().match_by_note(id)) {
-            let voice = &self.voices[idx];
+    fn handle_note_on(&mut self, id: VoiceId, mut _terminate: impl FnMut(&VoiceId)) {
+        let mut initial_phase: f32 = self.random.random();
 
-            terminate(voice.id());
-            self.voices.remove(idx);
+        if let Some(voice) = self.voices.iter_mut().find(|v| v.id().match_by_note(id)) {
+            initial_phase = voice.current_phase().value();
+            voice.fade_out();
         }
 
-        self.voices.push(Voice::new(0.0, id));
+        self.voices.push(Voice::new(
+            initial_phase,
+            id,
+            self.sine_table.as_ref().unwrap(),
+        ));
     }
 
     fn handle_note_off(&mut self, id: VoiceId) {
         self.voices
             .iter_mut()
             .filter(|v| v.match_releasing(id, false))
-            .for_each(|v| v.set_releasing());
+            .for_each(|v| v.release());
     }
 
     fn handle_choke(&mut self, id: VoiceId, mut terminate: impl FnMut(&VoiceId)) {
@@ -157,7 +174,17 @@ impl Plugin for Additizer {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        self.sample_rate = buffer_config.sample_rate;
+        let sample_rate = buffer_config.sample_rate;
+        self.sample_rate = sample_rate;
+
+        let mut sine_table: Vec<f32> = vec![0.0; sample_rate as usize];
+        let step = 1.0 / sample_rate;
+
+        for (idx, value) in sine_table.iter_mut().enumerate() {
+            *value = (step * idx as f32 * consts::TAU).sin();
+        }
+
+        self.sine_table = Some(Arc::new(sine_table));
 
         true
     }
@@ -243,8 +270,9 @@ impl Plugin for Additizer {
                 next_event = context.next_event();
             }
 
-            let param_values = VoiceParamValues {
+            let param_values = GlobalParamValues {
                 volume: self.params.volume.smoothed.next(),
+                subharmonics: self.params.subharmonics.value(),
             };
 
             let mut result = StereoSample(0.0, 0.0);
@@ -253,7 +281,7 @@ impl Plugin for Additizer {
                 result += voice.tick(sample_rate, &param_values);
 
                 if voice.is_done() {
-                    nih_log!("VoiceTerminated: {:?}", voice.id());
+                    // nih_log!("VoiceTerminated: {:?}", voice.id());
                     context.send_event(NoteEvent::VoiceTerminated {
                         timing: sample_idx as u32,
                         voice_id: voice.id().voice_id,
