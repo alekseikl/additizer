@@ -1,10 +1,12 @@
 pub mod envelope;
+pub mod gui;
 pub mod oscillator;
 pub mod phase;
 pub mod stereo_sample;
 pub mod utils;
 pub mod voice;
 
+use gui::{CreateUIParams, IcedState, NihEditorWrapper};
 use nih_plug::prelude::*;
 use rand::Rng;
 use rand_pcg::Pcg32;
@@ -25,7 +27,10 @@ pub struct Additizer {
 }
 
 #[derive(Params)]
-struct AdditizerParams {
+pub struct AdditizerParams {
+    #[persist = "editor-state"]
+    editor_state: Arc<IcedState>,
+
     #[id = "volume"]
     pub volume: FloatParam,
 
@@ -48,6 +53,7 @@ impl Default for Additizer {
 impl Default for AdditizerParams {
     fn default() -> Self {
         Self {
+            editor_state: IcedState::from_size(800, 600),
             volume: FloatParam::new(
                 "Volume",
                 0.0,
@@ -166,6 +172,13 @@ impl Plugin for Additizer {
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
+    }
+
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        Some(Box::new(NihEditorWrapper::new(CreateUIParams {
+            params: self.params.clone(),
+            editor_state: self.params.editor_state.clone(),
+        })))
     }
 
     fn initialize(
@@ -316,4 +329,14 @@ impl ClapPlugin for Additizer {
     ];
 }
 
+impl Vst3Plugin for Additizer {
+    const VST3_CLASS_ID: [u8; 16] = *b"Additizer1111337";
+    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
+        Vst3SubCategory::Instrument,
+        Vst3SubCategory::Synth,
+        Vst3SubCategory::Stereo,
+    ];
+}
+
 nih_export_clap!(Additizer);
+nih_export_vst3!(Additizer);
