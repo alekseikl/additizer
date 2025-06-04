@@ -4,12 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]
 
 [dependencies]
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
-iced_baseview = { path = "/Users/alexeyklyotzin/Documents/tmp/iced_baseview", default-features = true }
-raw-window-handle = "0.5"
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = [
+    "standalone",
+] }
+vizia_plug = { path = "/Users/alexeyklyotzin/Documents/tmp/vizia-plug" }
+
 crossbeam = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

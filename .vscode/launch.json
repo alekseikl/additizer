@@ -6,6 +6,17 @@
     "configurations": [
         {
             "type": "lldb",
+            "request": "launch",
+            "name": "Debug",
+            "program": "${workspaceFolder}/target/debug/additizer",
+            "args": [
+                "--midi-input",
+                "Keystation Mini 32 MK3"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
             "request": "attach",
             "name": "Attach Additizer to Bitwig process",
             "pid": "${command:pickProcess}",
