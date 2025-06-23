@@ -1,6 +1,7 @@
 pub mod editor;
 pub mod envelope;
 pub mod oscillator;
+pub mod params;
 pub mod phase;
 pub mod stereo_sample;
 pub mod utils;
@@ -13,8 +14,10 @@ use std::f32::consts;
 use std::sync::Arc;
 use stereo_sample::StereoSample;
 use utils::GlobalParamValues;
-use vizia_plug::ViziaState;
 use voice::{Voice, VoiceId};
+
+use crate::params::AdditizerParams;
+use crate::phase::Phase;
 
 const VOLUME_POLY_MOD_ID: u32 = 0;
 
@@ -26,18 +29,6 @@ pub struct Additizer {
     sine_table: Option<Arc<Vec<f32>>>,
 }
 
-#[derive(Params)]
-pub struct AdditizerParams {
-    #[persist = "editor-state"]
-    editor_state: Arc<ViziaState>,
-
-    #[id = "volume"]
-    pub volume: FloatParam,
-
-    #[id = "subharmonics"]
-    pub subharmonics: IntParam,
-}
-
 impl Default for Additizer {
     fn default() -> Self {
         Self {
@@ -46,29 +37,6 @@ impl Default for Additizer {
             voices: Vec::new(),
             random: Pcg32::new(142, 997),
             sine_table: None,
-        }
-    }
-}
-
-impl Default for AdditizerParams {
-    fn default() -> Self {
-        Self {
-            editor_state: editor::default_state(),
-            volume: FloatParam::new(
-                "Volume",
-                0.0,
-                FloatRange::SymmetricalSkewed {
-                    min: util::MINUS_INFINITY_DB,
-                    max: 6.0,
-                    factor: FloatRange::skew_factor(-1.0),
-                    center: 0.0,
-                },
-            )
-            .with_poly_modulation_id(VOLUME_POLY_MOD_ID)
-            .with_smoother(SmoothingStyle::Linear(3.0))
-            .with_step_size(0.01)
-            .with_unit(" dB"),
-            subharmonics: IntParam::new("Subharmonics", 0, IntRange::Linear { min: 0, max: 3 }),
         }
     }
 }
@@ -84,10 +52,10 @@ macro_rules! param_for_modulation_id {
 
 impl Additizer {
     fn handle_note_on(&mut self, id: VoiceId, mut _terminate: impl FnMut(&VoiceId)) {
-        let mut initial_phase: f32 = self.random.random();
+        let mut initial_phase = Phase::new(self.random.random());
 
         if let Some(voice) = self.voices.iter_mut().find(|v| v.id().match_by_note(id)) {
-            initial_phase = voice.current_phase().value();
+            initial_phase = *voice.current_phase();
             voice.fade_out();
         }
 
@@ -209,6 +177,20 @@ impl Plugin for Additizer {
     ) -> ProcessStatus {
         let sample_rate = context.transport().sample_rate;
         let mut next_event = context.next_event();
+        let harmonics = self.params.harmonics.lock().unwrap().clone();
+        let subharmonics = self
+            .params
+            .subharmonics
+            .lock()
+            .unwrap()
+            .clone()
+            .into_iter()
+            .rev()
+            .collect();
+        let tail_harmonics = self
+            .params
+            .tail_harmonics
+            .load(std::sync::atomic::Ordering::Relaxed);
 
         for (sample_idx, channel_samples) in buffer.iter_samples().enumerate() {
             while let Some(event) = next_event {
@@ -282,7 +264,9 @@ impl Plugin for Additizer {
 
             let param_values = GlobalParamValues {
                 volume: self.params.volume.smoothed.next(),
-                subharmonics: self.params.subharmonics.value(),
+                harmonics: &harmonics,
+                subharmonics: &subharmonics,
+                tail_harmonics,
             };
 
             let mut result = StereoSample(0.0, 0.0);

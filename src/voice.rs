@@ -54,7 +54,7 @@ pub struct Voice {
 }
 
 impl Voice {
-    pub fn new(initial_phase: f32, id: VoiceId, sine_table: &Arc<Vec<f32>>) -> Self {
+    pub fn new(initial_phase: Phase, id: VoiceId, sine_table: &Arc<Vec<f32>>) -> Self {
         Self {
             oscillator: AdditiveOscillator::new(
                 initial_phase,
@@ -87,8 +87,8 @@ impl Voice {
         self.amp_envelope = Box::new(FadeOutEnvelope::new(self.amp_envelope.value()))
     }
 
-    pub fn current_phase(&self) -> Phase {
-        self.oscillator.phasor().current()
+    pub fn current_phase(&self) -> &Phase {
+        self.oscillator.phase()
     }
 
     pub fn is_done(&self) -> bool {

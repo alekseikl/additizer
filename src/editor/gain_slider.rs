@@ -1,4 +1,3 @@
-use nih_plug::nih_dbg;
 use nih_plug::{self, util::MINUS_INFINITY_DB};
 use vizia_plug::vizia::{prelude::*, vg};
 
@@ -33,7 +32,7 @@ pub struct GainSlider<L: Lens<Target = f32>> {
 impl Default for GainSliderParams {
     fn default() -> Self {
         Self {
-            max_dbs: 24.0,
+            max_dbs: 34.0,
             mid_point: 0.75,
             skew_factor: 1.4,
         }
@@ -228,6 +227,12 @@ where
             WindowEvent::MouseDoubleClick(MouseButton::Left) => {
                 if let Some(on_change) = &self.on_change {
                     on_change(cx, 1.0);
+                }
+                meta.consume();
+            }
+            WindowEvent::MouseDoubleClick(MouseButton::Right) => {
+                if let Some(on_change) = &self.on_change {
+                    on_change(cx, 0.0);
                 }
                 meta.consume();
             }

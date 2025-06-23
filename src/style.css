@@ -50,3 +50,7 @@ gain-slider .dbs-label {
 gain-slider.subharmonic .gain-bar {
     color: #0f5a8c;
 }
+
+gain-slider.tail-harmonics .gain-bar {
+    color: #4d0f8c;
+}

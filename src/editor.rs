@@ -4,7 +4,6 @@ use gain_slider::{GainSlider, GainSliderModifiers};
 use nih_plug::prelude::Editor;
 use std::sync::Arc;
 use vizia_plug::vizia::prelude::*;
-use vizia_plug::widgets::*;
 use vizia_plug::{ViziaState, ViziaTheming, create_vizia_editor};
 
 use crate::AdditizerParams;
@@ -20,8 +19,9 @@ struct Data {
 }
 
 enum EditorEvent {
-    SubharmonicChanged(f32, usize),
-    HarmonicChanged(f32, usize),
+    Subharmonic(f32, usize),
+    Harmonic(f32, usize),
+    TailHarmonic(f32),
 }
 
 // Makes sense to also define this here, makes it a bit easier to keep track of
@@ -32,11 +32,18 @@ pub(crate) fn default_state() -> Arc<ViziaState> {
 impl Model for Data {
     fn event(&mut self, _cx: &mut EventContext, event: &mut Event) {
         event.map(|editor_event, _meta| match editor_event {
-            EditorEvent::SubharmonicChanged(value, idx) => {
+            EditorEvent::Subharmonic(value, idx) => {
                 self.subharmonics[*idx] = *value;
+                *self.params.subharmonics.lock().unwrap() = self.subharmonics.clone();
             }
-            EditorEvent::HarmonicChanged(value, idx) => {
+            EditorEvent::Harmonic(value, idx) => {
                 self.harmonics[*idx] = *value;
+                *self.params.harmonics.lock().unwrap() = self.harmonics.clone();
+            }
+            EditorEvent::TailHarmonic(value) => {
+                self.params
+                    .tail_harmonics
+                    .store(*value, std::sync::atomic::Ordering::Relaxed);
             }
         });
     }
@@ -54,10 +61,10 @@ pub(crate) fn create(
         let harmonics_count: usize = 30;
 
         Data {
-            params: params.clone(),
+            params: Arc::clone(&params),
             gain: 1.0,
-            subharmonics: vec![1.0; subharmonics_count],
-            harmonics: vec![1.0; harmonics_count],
+            subharmonics: params.subharmonics.lock().unwrap().clone(),
+            harmonics: params.harmonics.lock().unwrap().clone(),
         }
         .build(cx);
 
@@ -69,13 +76,22 @@ pub(crate) fn create(
                     Data::subharmonics.map(move |list| list[i]),
                 )
                 .class("subharmonic")
-                .on_change(move |ex, value| ex.emit(EditorEvent::SubharmonicChanged(value, i)));
+                .on_change(move |ex, value| ex.emit(EditorEvent::Subharmonic(value, i)));
             }
 
             for i in 0..harmonics_count {
                 GainSlider::new(cx, i as i32 + 1, Data::harmonics.map(move |list| list[i]))
-                    .on_change(move |ex, value| ex.emit(EditorEvent::HarmonicChanged(value, i)));
+                    .on_change(move |ex, value| ex.emit(EditorEvent::Harmonic(value, i)));
             }
+
+            GainSlider::new(
+                cx,
+                99,
+                Data::params
+                    .map(move |p| p.tail_harmonics.load(std::sync::atomic::Ordering::Relaxed)),
+            )
+            .class("tail-harmonics")
+            .on_change(move |ex, value| ex.emit(EditorEvent::TailHarmonic(value)));
         })
         .class("harmonics-container");
     })
