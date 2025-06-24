@@ -32,7 +32,7 @@ pub struct GainSlider<L: Lens<Target = f32>> {
 impl Default for GainSliderParams {
     fn default() -> Self {
         Self {
-            max_dbs: 34.0,
+            max_dbs: 48.0,
             mid_point: 0.75,
             skew_factor: 1.4,
         }

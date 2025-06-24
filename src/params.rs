@@ -26,7 +26,7 @@ impl Default for AdditizerParams {
     fn default() -> Self {
         Self {
             editor_state: editor::default_state(),
-            harmonics: Arc::new(Mutex::new(vec![1.0; 32])),
+            harmonics: Arc::new(Mutex::new(vec![1.0; 40])),
             subharmonics: Arc::new(Mutex::new(vec![0.0; 3])),
             tail_harmonics: Arc::new(AtomicF32::new(1.0)),
             volume: FloatParam::new(

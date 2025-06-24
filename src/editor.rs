@@ -26,7 +26,7 @@ enum EditorEvent {
 
 // Makes sense to also define this here, makes it a bit easier to keep track of
 pub(crate) fn default_state() -> Arc<ViziaState> {
-    ViziaState::new(|| (800, 400))
+    ViziaState::new(|| (824, 400))
 }
 
 impl Model for Data {
@@ -57,8 +57,8 @@ pub(crate) fn create(
         cx.add_stylesheet(include_style!("src/style.css"))
             .expect("Failed to load styles.");
 
-        let subharmonics_count: usize = 3;
-        let harmonics_count: usize = 30;
+        let subharmonics_count: usize = params.subharmonics.lock().unwrap().len();
+        let harmonics_count: usize = params.harmonics.lock().unwrap().len();
 
         Data {
             params: Arc::clone(&params),
