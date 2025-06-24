@@ -33,12 +33,11 @@ impl AdditiveOscillator {
         _phase_shift: f32,
         global_params: &GlobalParamValues,
     ) -> StereoSample {
-        let table_size = self.sine_table.len();
         let max_harmonic = (0.5 * sample_rate / self.frequency).floor() as usize;
         let mut sum: f32 = 0.0;
 
         for i in 1..max_harmonic {
-            sum += 0.5 * self.sine_table[self.phase.for_harmonic(i, table_size)] / i as f32
+            sum += 0.5 * self.sine_table[self.phase.for_harmonic(i)] / i as f32
                 * global_params
                     .harmonics
                     .get(i - 1)
@@ -46,7 +45,7 @@ impl AdditiveOscillator {
         }
 
         for i in 2..5 {
-            sum += 0.5 * self.sine_table[self.phase.for_subharmonic(i, table_size)] / i as f32
+            sum += 0.5 * self.sine_table[self.phase.for_subharmonic(i)] / i as f32
                 * global_params.subharmonics.get(i - 2).unwrap_or(&0.0);
         }
 

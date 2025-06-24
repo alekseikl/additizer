@@ -1,3 +1,5 @@
+pub const SINE_TABLE_BITS: usize = 16;
+const SINE_TABLE_SHIFT: usize = 32 - SINE_TABLE_BITS;
 const PHASE_PERIOD_MASK: u64 = u32::MAX as u64;
 const PHASE_PERIOD: u64 = u32::MAX as u64 + 1;
 const PHASE_PERIOD_F64: f64 = PHASE_PERIOD as f64;
@@ -11,15 +13,13 @@ impl Phase {
     }
 
     #[inline]
-    pub fn for_harmonic(&self, harmonic: usize, table_size: usize) -> usize {
-        ((self.0.wrapping_mul(harmonic as u64) & PHASE_PERIOD_MASK) * table_size as u64
-            / PHASE_PERIOD) as usize
+    pub fn for_harmonic(&self, harmonic: usize) -> usize {
+        ((self.0.wrapping_mul(harmonic as u64) & PHASE_PERIOD_MASK) >> SINE_TABLE_SHIFT) as usize
     }
 
     #[inline]
-    pub fn for_subharmonic(&self, subharmonic: usize, table_size: usize) -> usize {
-        ((self.0.wrapping_div(subharmonic as u64) & PHASE_PERIOD_MASK) * table_size as u64
-            / PHASE_PERIOD) as usize
+    pub fn for_subharmonic(&self, subharmonic: usize) -> usize {
+        ((self.0.wrapping_div(subharmonic as u64) & PHASE_PERIOD_MASK) >> SINE_TABLE_SHIFT) as usize
     }
 
     #[inline]

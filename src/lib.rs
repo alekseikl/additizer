@@ -17,7 +17,7 @@ use utils::GlobalParamValues;
 use voice::{Voice, VoiceId};
 
 use crate::params::AdditizerParams;
-use crate::phase::Phase;
+use crate::phase::{Phase, SINE_TABLE_BITS};
 
 const VOLUME_POLY_MOD_ID: u32 = 0;
 
@@ -152,11 +152,11 @@ impl Plugin for Additizer {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        let sample_rate = buffer_config.sample_rate;
-        self.sample_rate = sample_rate;
+        self.sample_rate = buffer_config.sample_rate;
 
-        let mut sine_table: Vec<f32> = vec![0.0; sample_rate as usize];
-        let step = 1.0 / sample_rate;
+        let table_size = 1 << SINE_TABLE_BITS;
+        let mut sine_table: Vec<f32> = vec![0.0; table_size];
+        let step = 1.0 / table_size as f32;
 
         for (idx, value) in sine_table.iter_mut().enumerate() {
             *value = (step * idx as f32 * consts::TAU).sin();
