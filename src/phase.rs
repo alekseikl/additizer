@@ -12,6 +12,13 @@ impl Phase {
         Self((PHASE_PERIOD as f64 * initial_phase as f64) as u64 & PHASE_PERIOD_MASK)
     }
 
+    pub fn shifted(&self, shift: f32) -> Self {
+        Self(
+            self.0
+                .wrapping_add((PHASE_PERIOD_F64 * shift as f64) as u64),
+        )
+    }
+
     #[inline]
     pub fn for_harmonic(&self, harmonic: usize) -> usize {
         ((self.0.wrapping_mul(harmonic as u64) & PHASE_PERIOD_MASK) >> SINE_TABLE_SHIFT) as usize

@@ -6,7 +6,9 @@ use crate::{
     stereo_sample::StereoSample,
     utils::GlobalParamValues,
 };
-use nih_plug::prelude::*;
+use nih_plug::{prelude::*, util::f32_midi_note_to_freq};
+use rand::Rng;
+use rand_pcg::Pcg32;
 use std::{collections::HashMap, sync::Arc};
 
 #[derive(Debug, Clone, Copy)]
@@ -45,7 +47,7 @@ impl VoiceId {
 }
 
 pub struct Voice {
-    oscillator: AdditiveOscillator,
+    oscillators: Vec<AdditiveOscillator>,
     id: VoiceId,
     running: bool,
     releasing: bool,
@@ -54,13 +56,18 @@ pub struct Voice {
 }
 
 impl Voice {
-    pub fn new(initial_phase: Phase, id: VoiceId, sine_table: &Arc<Vec<f32>>) -> Self {
+    pub fn new(random: &mut Pcg32, id: VoiceId, unison: usize, sine_table: &Arc<Vec<f32>>) -> Self {
+        let mut oscillators: Vec<AdditiveOscillator> = Vec::with_capacity(unison);
+        let mut phases: Vec<f32> = vec![0.0; unison];
+
+        random.fill(&mut phases[..]);
+
+        for phase in &phases {
+            oscillators.push(AdditiveOscillator::new(Phase::new(*phase), sine_table));
+        }
+
         Self {
-            oscillator: AdditiveOscillator::new(
-                initial_phase,
-                util::midi_note_to_freq(id.note),
-                sine_table,
-            ),
+            oscillators,
             id,
             running: false,
             releasing: false,
@@ -88,7 +95,7 @@ impl Voice {
     }
 
     pub fn current_phase(&self) -> &Phase {
-        self.oscillator.phase()
+        self.oscillators[0].phase()
     }
 
     pub fn is_done(&self) -> bool {
@@ -141,11 +148,23 @@ impl Voice {
         self.running = true;
 
         let volume = self.next_modulation_value(VOLUME_POLY_MOD_ID, global_params.volume);
-        let gain = self.amp_envelope.value();
-        let result =
-            self.oscillator.tick(sample_rate, 0.0, global_params) * gain * util::db_to_gain(volume);
+        let gain = self.amp_envelope.value() * util::db_to_gain(volume);
+        let mut result = StereoSample(0.0, 0.0);
+        let note_range = 0.01 * global_params.detune;
+        let note_step = note_range / self.oscillators.len() as f32;
+        let start_note = self.id.note as f32 - 0.5 * note_range + 0.5 * note_step;
+        let attenuate = (self.oscillators.len() as f32).recip();
+
+        for (i, osc) in self.oscillators.iter_mut().enumerate() {
+            result += osc.tick(
+                sample_rate,
+                f32_midi_note_to_freq(start_note + note_step * i as f32),
+                0.0,
+                global_params,
+            ) * attenuate;
+        }
 
         self.amp_envelope.advance(sample_rate);
-        result
+        result * gain
     }
 }

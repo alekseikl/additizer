@@ -8,7 +8,6 @@ pub mod utils;
 pub mod voice;
 
 use nih_plug::prelude::*;
-use rand::Rng;
 use rand_pcg::Pcg32;
 use std::f32::consts;
 use std::sync::Arc;
@@ -17,7 +16,7 @@ use utils::GlobalParamValues;
 use voice::{Voice, VoiceId};
 
 use crate::params::AdditizerParams;
-use crate::phase::{Phase, SINE_TABLE_BITS};
+use crate::phase::SINE_TABLE_BITS;
 
 const VOLUME_POLY_MOD_ID: u32 = 0;
 
@@ -52,16 +51,14 @@ macro_rules! param_for_modulation_id {
 
 impl Additizer {
     fn handle_note_on(&mut self, id: VoiceId, mut _terminate: impl FnMut(&VoiceId)) {
-        let mut initial_phase = Phase::new(self.random.random());
-
         if let Some(voice) = self.voices.iter_mut().find(|v| v.id().match_by_note(id)) {
-            initial_phase = *voice.current_phase();
             voice.fade_out();
         }
 
         self.voices.push(Voice::new(
-            initial_phase,
+            &mut self.random,
             id,
+            self.params.unison.value() as usize,
             self.sine_table.as_ref().unwrap(),
         ));
     }
@@ -267,6 +264,7 @@ impl Plugin for Additizer {
                 harmonics: &harmonics,
                 subharmonics: &subharmonics,
                 tail_harmonics,
+                detune: self.params.detune.smoothed.next(),
             };
 
             let mut result = StereoSample(0.0, 0.0);

@@ -13,7 +13,6 @@ pub const NOTO_SANS: &str = "Noto Sans";
 #[derive(Lens)]
 struct Data {
     params: Arc<AdditizerParams>,
-    gain: f32,
     subharmonics: Vec<f32>,
     harmonics: Vec<f32>,
 }
@@ -62,7 +61,6 @@ pub(crate) fn create(
 
         Data {
             params: Arc::clone(&params),
-            gain: 1.0,
             subharmonics: params.subharmonics.lock().unwrap().clone(),
             harmonics: params.harmonics.lock().unwrap().clone(),
         }

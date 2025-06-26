@@ -3,4 +3,5 @@ pub struct GlobalParamValues<'a> {
     pub harmonics: &'a Vec<f32>,
     pub subharmonics: &'a Vec<f32>,
     pub tail_harmonics: f32,
+    pub detune: f32,
 }
