@@ -166,6 +166,16 @@ where
             self.params.skew_factor,
         )
     }
+
+    fn update_gain(&self, cx: &mut EventContext, gain: f32) {
+        if let Some(on_change) = &self.on_change {
+            on_change(cx, gain);
+        }
+    }
+
+    fn update_param(&self, cx: &mut EventContext, param: f32) {
+        self.update_gain(cx, self.param_to_gain(param));
+    }
 }
 
 impl<L> View for GainSlider<L>
@@ -180,10 +190,12 @@ where
         event.map(|window_event, meta| match window_event {
             WindowEvent::MouseDown(MouseButton::Left) => {
                 if let Some(container) = cx.get_entities_by_class(FILL_CONTAINER_CLASS).first() {
-                    if cx
-                        .cache
-                        .get_bounds(*container)
-                        .contains_point(cx.mouse().cursor_x, cx.mouse().cursor_y)
+                    if !cx.modifiers().alt()
+                        && !cx.modifiers().ctrl()
+                        && cx
+                            .cache
+                            .get_bounds(*container)
+                            .contains_point(cx.mouse().cursor_x, cx.mouse().cursor_y)
                     {
                         self.dragging = true;
                         self.param_before_drag = self.gain_to_param(self.gain_lense.get(cx));
@@ -197,21 +209,28 @@ where
                 cx.release();
                 meta.consume();
             }
-            WindowEvent::MouseMove(_x, _y) => {
-                if self.dragging {
-                    if let Some(container) = cx.get_entities_by_class(FILL_CONTAINER_CLASS).first()
-                    {
+            WindowEvent::MouseMove(_x, y) => {
+                if let Some(container) = cx.get_entities_by_class(FILL_CONTAINER_CLASS).first() {
+                    if self.dragging {
                         let shift = -cx.mouse().button_delta(MouseButton::Left).1
                             / cx.cache.get_height(*container);
 
                         let new_param = (self.param_before_drag + shift).clamp(0.0, 1.0);
-                        let new_gain = self.param_to_gain(new_param);
+                        self.update_param(cx, new_param);
+                        meta.consume();
+                    } else if cx.mouse().left.state == MouseButtonState::Pressed {
+                        if cx.modifiers().alt() {
+                            let rect = cx.cache.get_bounds(*container);
+                            let new_param =
+                                1.0 - ((y - rect.top()) / rect.height()).clamp(0.0, 1.0);
 
-                        if let Some(on_change) = &self.on_change {
-                            on_change(cx, new_gain);
+                            self.update_param(cx, new_param);
+                            meta.consume();
+                        } else if cx.modifiers().ctrl() {
+                            self.update_gain(cx, 1.0);
+                            meta.consume();
                         }
                     }
-                    meta.consume();
                 }
             }
             WindowEvent::MouseDown(MouseButton::Right) => {
@@ -225,15 +244,11 @@ where
                 meta.consume();
             }
             WindowEvent::MouseDoubleClick(MouseButton::Left) => {
-                if let Some(on_change) = &self.on_change {
-                    on_change(cx, 1.0);
-                }
+                self.update_gain(cx, 1.0);
                 meta.consume();
             }
             WindowEvent::MouseDoubleClick(MouseButton::Right) => {
-                if let Some(on_change) = &self.on_change {
-                    on_change(cx, 0.0);
-                }
+                self.update_gain(cx, 0.0);
                 meta.consume();
             }
 

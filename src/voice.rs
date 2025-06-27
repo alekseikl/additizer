@@ -153,7 +153,7 @@ impl Voice {
         let note_range = 0.01 * global_params.detune;
         let note_step = note_range / self.oscillators.len() as f32;
         let start_note = self.id.note as f32 - 0.5 * note_range + 0.5 * note_step;
-        let attenuate = (self.oscillators.len() as f32).recip();
+        let attenuate = ((self.oscillators.len() as f32).sqrt()).recip();
 
         for (i, osc) in self.oscillators.iter_mut().enumerate() {
             result += osc.tick(
