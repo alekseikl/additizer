@@ -1,22 +1,23 @@
+pub mod buffer;
 pub mod editor;
 pub mod envelope;
 pub mod oscillator;
 pub mod params;
 pub mod phase;
 pub mod stereo_sample;
+pub mod synth_engine;
 pub mod utils;
 pub mod voice;
 
 use nih_plug::prelude::*;
 use rand_pcg::Pcg32;
-use std::f32::consts;
 use std::sync::Arc;
-use stereo_sample::StereoSample;
-use utils::GlobalParamValues;
-use voice::{Voice, VoiceId};
 
+use voice::Voice;
+
+use crate::buffer::BUFFER_SIZE;
 use crate::params::AdditizerParams;
-use crate::phase::SINE_TABLE_BITS;
+use crate::synth_engine::{SynthEngine, VoiceIdentifier};
 
 const VOLUME_POLY_MOD_ID: u32 = 0;
 
@@ -25,7 +26,7 @@ pub struct Additizer {
     sample_rate: f32,
     voices: Vec<Voice>,
     random: Pcg32,
-    sine_table: Option<Arc<Vec<f32>>>,
+    synth_engine: SynthEngine,
 }
 
 impl Default for Additizer {
@@ -35,82 +36,54 @@ impl Default for Additizer {
             sample_rate: 1.0,
             voices: Vec::new(),
             random: Pcg32::new(142, 997),
-            sine_table: None,
+            synth_engine: SynthEngine::new(),
         }
     }
 }
 
-macro_rules! param_for_modulation_id {
-    ($self:ident, $poly_modulation_id:expr) => {
-        match $poly_modulation_id {
-            VOLUME_POLY_MOD_ID => Some(&$self.params.volume),
-            _ => None,
+impl VoiceIdentifier {
+    fn to_terminated_event(&self, timing: u32) -> NoteEvent<()> {
+        NoteEvent::VoiceTerminated {
+            timing,
+            voice_id: self.voice_id,
+            channel: self.channel,
+            note: self.note,
         }
-    };
+    }
 }
 
 impl Additizer {
-    fn handle_note_on(&mut self, id: VoiceId, mut _terminate: impl FnMut(&VoiceId)) {
-        if let Some(voice) = self.voices.iter_mut().find(|v| v.id().match_by_note(id)) {
-            voice.fade_out();
-        }
-
-        self.voices.push(Voice::new(
-            &mut self.random,
-            id,
-            self.params.unison.value() as usize,
-            self.sine_table.as_ref().unwrap(),
-        ));
-    }
-
-    fn handle_note_off(&mut self, id: VoiceId) {
-        self.voices
-            .iter_mut()
-            .filter(|v| v.match_releasing(id, false))
-            .for_each(|v| v.release());
-    }
-
-    fn handle_choke(&mut self, id: VoiceId, mut terminate: impl FnMut(&VoiceId)) {
-        self.voices
-            .iter()
-            .filter(|v| v.id().match_voice(id))
-            .for_each(|v| terminate(v.id()));
-
-        self.voices.retain(|v| !v.id().match_voice(id));
-    }
-
-    fn handle_poly_modulation(
+    fn process_event(
         &mut self,
-        sample_rate: f32,
-        voice_id: i32,
-        poly_modulation_id: u32,
-        normalized_offset: f32,
+        context: &mut impl ProcessContext<Self>,
+        event: NoteEvent<()>,
+        timing: u32,
     ) {
-        if let (Some(voice), Some(param)) = (
-            self.voices
-                .iter_mut()
-                .find(|v| v.id().match_by_voice_id(voice_id)),
-            param_for_modulation_id!(self, poly_modulation_id),
-        ) {
-            voice.apply_poly_modulation(sample_rate, poly_modulation_id, param, normalized_offset);
-        }
-    }
-
-    fn handle_mono_automation(
-        &mut self,
-        sample_rate: f32,
-        poly_modulation_id: u32,
-        normalized_value: f32,
-    ) {
-        if let Some(param) = param_for_modulation_id!(self, poly_modulation_id) {
-            for voice in self.voices.iter_mut() {
-                voice.apply_mono_automation(
-                    sample_rate,
-                    poly_modulation_id,
-                    param,
-                    normalized_value,
-                );
+        let mut terminate_voice = |voice: Option<VoiceIdentifier>| {
+            if let Some(voice) = voice {
+                context.send_event(voice.to_terminated_event(timing))
             }
+        };
+
+        match event {
+            NoteEvent::NoteOn {
+                channel,
+                note,
+                voice_id,
+                velocity,
+                ..
+            } => {
+                let terminated = self.synth_engine.note_on(voice_id, channel, note, velocity);
+                terminate_voice(terminated);
+            }
+            NoteEvent::NoteOff { note, .. } => {
+                self.synth_engine.note_off(note);
+            }
+            NoteEvent::Choke { note, .. } => {
+                let terminated = self.synth_engine.choke(note);
+                terminate_voice(terminated);
+            }
+            _ => (),
         }
     }
 }
@@ -150,16 +123,7 @@ impl Plugin for Additizer {
         _context: &mut impl InitContext<Self>,
     ) -> bool {
         self.sample_rate = buffer_config.sample_rate;
-
-        let table_size = 1 << SINE_TABLE_BITS;
-        let mut sine_table: Vec<f32> = vec![0.0; table_size];
-        let step = 1.0 / table_size as f32;
-
-        for (idx, value) in sine_table.iter_mut().enumerate() {
-            *value = (step * idx as f32 * consts::TAU).sin();
-        }
-
-        self.sine_table = Some(Arc::new(sine_table));
+        self.synth_engine.init(buffer_config.sample_rate);
 
         true
     }
@@ -172,122 +136,32 @@ impl Plugin for Additizer {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        let sample_rate = context.transport().sample_rate;
         let mut next_event = context.next_event();
-        let harmonics = self.params.harmonics.lock().unwrap().clone();
-        let subharmonics = self
-            .params
-            .subharmonics
-            .lock()
-            .unwrap()
-            .clone()
-            .into_iter()
-            .rev()
-            .collect();
-        let tail_harmonics = self
-            .params
-            .tail_harmonics
-            .load(std::sync::atomic::Ordering::Relaxed);
 
-        for (sample_idx, channel_samples) in buffer.iter_samples().enumerate() {
+        for (block_idx, mut block) in buffer.iter_blocks(BUFFER_SIZE) {
+            let sample_idx = block_idx * BUFFER_SIZE;
+            let block_size = block.samples();
+
             while let Some(event) = next_event {
-                if event.timing() > sample_idx as u32 {
+                if event.timing() > (sample_idx + block_size) as u32 {
                     break;
                 }
 
-                let terminate = |id: &VoiceId| {
-                    context.send_event(NoteEvent::VoiceTerminated {
-                        timing: sample_idx as u32,
-                        voice_id: id.voice_id,
-                        channel: id.channel,
-                        note: id.note,
-                    })
-                };
-
-                match event {
-                    NoteEvent::NoteOn {
-                        channel,
-                        note,
-                        voice_id,
-                        ..
-                    } => {
-                        self.handle_note_on(VoiceId::new(channel, note, voice_id), terminate);
-                    }
-                    NoteEvent::NoteOff {
-                        channel,
-                        note,
-                        voice_id,
-                        ..
-                    } => {
-                        self.handle_note_off(VoiceId::new(channel, note, voice_id));
-                    }
-                    NoteEvent::Choke {
-                        timing: _,
-                        voice_id,
-                        channel,
-                        note,
-                    } => {
-                        self.handle_choke(VoiceId::new(channel, note, voice_id), terminate);
-                    }
-                    NoteEvent::PolyModulation {
-                        timing: _,
-                        voice_id,
-                        poly_modulation_id,
-                        normalized_offset,
-                    } => {
-                        self.handle_poly_modulation(
-                            sample_rate,
-                            voice_id,
-                            poly_modulation_id,
-                            normalized_offset,
-                        );
-                    }
-                    NoteEvent::MonoAutomation {
-                        timing: _,
-                        poly_modulation_id,
-                        normalized_value,
-                    } => {
-                        self.handle_mono_automation(
-                            sample_rate,
-                            poly_modulation_id,
-                            normalized_value,
-                        );
-                    }
-                    _ => (),
-                }
-
+                self.process_event(context, event, sample_idx as u32);
                 next_event = context.next_event();
             }
 
-            let param_values = GlobalParamValues {
-                volume: self.params.volume.smoothed.next(),
-                harmonics: &harmonics,
-                subharmonics: &subharmonics,
-                tail_harmonics,
-                detune: self.params.detune.smoothed.next(),
-            };
+            let terminated = self.synth_engine.process(block_size);
 
-            let mut result = StereoSample(0.0, 0.0);
-
-            for voice in self.voices.iter_mut() {
-                result += voice.tick(sample_rate, &param_values);
-
-                if voice.is_done() {
-                    // nih_log!("VoiceTerminated: {:?}", voice.id());
-                    context.send_event(NoteEvent::VoiceTerminated {
-                        timing: sample_idx as u32,
-                        voice_id: voice.id().voice_id,
-                        channel: voice.id().channel,
-                        note: voice.id().note,
-                    });
-                }
+            for voice in terminated {
+                context.send_event(voice.to_terminated_event(sample_idx as u32));
             }
 
-            self.voices.retain(|v| !v.is_done());
+            let output = self.synth_engine.get_output();
+            let output = &output[..block_size];
 
-            for (out_sample, result_sample) in channel_samples.into_iter().zip(result.iter()) {
-                *out_sample = result_sample;
-            }
+            block.get_mut(0).unwrap().copy_from_slice(output);
+            block.get_mut(1).unwrap().copy_from_slice(output);
         }
 
         ProcessStatus::KeepAlive

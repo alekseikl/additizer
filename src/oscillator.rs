@@ -1,6 +1,5 @@
-use std::sync::Arc;
-
 use crate::{phase::Phase, stereo_sample::StereoSample, utils::GlobalParamValues};
+use std::sync::Arc;
 
 pub struct AdditiveOscillator {
     phase: Phase,
