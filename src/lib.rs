@@ -1,31 +1,18 @@
 pub mod buffer;
 pub mod editor;
-pub mod envelope;
-pub mod oscillator;
 pub mod params;
 pub mod phase;
-pub mod stereo_sample;
 pub mod synth_engine;
 pub mod utils;
-pub mod voice;
-
-use nih_plug::prelude::*;
-use rand_pcg::Pcg32;
-use std::sync::Arc;
-
-use voice::Voice;
 
 use crate::buffer::BUFFER_SIZE;
 use crate::params::AdditizerParams;
 use crate::synth_engine::{SynthEngine, VoiceIdentifier};
-
-const VOLUME_POLY_MOD_ID: u32 = 0;
+use nih_plug::prelude::*;
+use std::sync::Arc;
 
 pub struct Additizer {
     params: Arc<AdditizerParams>,
-    sample_rate: f32,
-    voices: Vec<Voice>,
-    random: Pcg32,
     synth_engine: SynthEngine,
 }
 
@@ -33,9 +20,6 @@ impl Default for Additizer {
     fn default() -> Self {
         Self {
             params: Arc::new(AdditizerParams::default()),
-            sample_rate: 1.0,
-            voices: Vec::new(),
-            random: Pcg32::new(142, 997),
             synth_engine: SynthEngine::new(),
         }
     }
@@ -122,9 +106,7 @@ impl Plugin for Additizer {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        self.sample_rate = buffer_config.sample_rate;
         self.synth_engine.init(buffer_config.sample_rate);
-
         true
     }
 

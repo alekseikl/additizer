@@ -2,7 +2,7 @@ use nih_plug::prelude::*;
 use std::sync::{Arc, Mutex};
 use vizia_plug::ViziaState;
 
-use crate::{VOLUME_POLY_MOD_ID, editor};
+use crate::editor;
 
 #[derive(Params)]
 pub struct AdditizerParams {
@@ -45,7 +45,6 @@ impl Default for AdditizerParams {
                     center: 0.0,
                 },
             )
-            .with_poly_modulation_id(VOLUME_POLY_MOD_ID)
             .with_smoother(SmoothingStyle::Linear(3.0))
             .with_step_size(0.01)
             .with_unit(" dB"),

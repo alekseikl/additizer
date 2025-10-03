@@ -56,7 +56,7 @@ impl<L> GainSlider<L>
 where
     L: Lens<Target = f32>,
 {
-    pub fn new(cx: &mut Context, index: i32, gain: L) -> Handle<Self>
+    pub fn new(cx: &mut Context, index: i32, gain: L) -> Handle<'_, Self>
     where
         L: Lens<Target = f32>,
     {
@@ -263,7 +263,7 @@ struct GainBar<L: Lens<Target = f32>> {
 }
 
 impl<L: Lens<Target = f32>> GainBar<L> {
-    fn new(cx: &mut Context, mid_point: f32, value: L) -> Handle<Self> {
+    fn new(cx: &mut Context, mid_point: f32, value: L) -> Handle<'_, Self> {
         Self { mid_point, value }
             .build(cx, |_| ())
             .class("gain-bar")
