@@ -3,19 +3,22 @@ use std::{f32, sync::Arc};
 use itertools::izip;
 use nih_plug::util::f32_midi_note_to_freq;
 use realfft::{ComplexToReal, RealFftPlanner};
+use uniform_cubic_splines::{CatmullRom, spline};
 
 use crate::synth_engine::{
     buffer::{
-        Buffer, ComplexSample, ONES_BUFFER, Sample, SpectralBuffer, WAVE_BITS, WAVE_SIZE,
-        WaveBuffer, ZEROES_BUFFER, get_wave_slice_mut, make_zero_buffer, make_zero_spectral_buffer,
-        make_zero_wave_buffer, wrap_wave_buffer,
+        Buffer, ComplexSample, ONES_BUFFER, Sample, SpectralBuffer, WAVE_BITS, WAVE_PAD_LEFT,
+        WAVE_PAD_RIGHT, WAVE_SIZE, WaveBuffer, ZEROES_BUFFER, get_wave_slice_mut, make_zero_buffer,
+        make_zero_spectral_buffer, make_zero_wave_buffer, wrap_wave_buffer,
     },
     routing::{MAX_VOICES, ModuleId, ModuleInput, Router},
     synth_module::{NoteOnParams, ProcessParams, SynthModule},
 };
 
 const FULL_PHASE: f32 = ((u32::MAX as u64) + 1) as f32;
-const PHASE_SHIFT_BITS: usize = 32 - WAVE_BITS;
+const INTERMEDIATE_BITS: usize = 32 - WAVE_BITS;
+const INTERMEDIATE_MASK: u32 = (1 << INTERMEDIATE_BITS) - 1;
+const INTERMEDIATE_MULT: f32 = ((1 << INTERMEDIATE_BITS) as f32).recip();
 const PITCH_SHIFT_MOD_RANGE: f32 = 48.0;
 
 struct OscillatorVoice {
@@ -81,11 +84,11 @@ impl OscillatorModule {
         scratch_buff: &mut SpectralBuffer,
         out_wave_buff: &mut WaveBuffer,
     ) {
-        let harmonics_num =
-            ((0.5 * sample_rate / frequency).floor() as usize).min(spectral_buff.len());
+        let cutoff_index =
+            ((0.5 * sample_rate / frequency).floor() as usize + 1).min(spectral_buff.len());
 
         *tmp_spectral_buff = *spectral_buff;
-        tmp_spectral_buff[harmonics_num..].fill(ComplexSample::ZERO);
+        tmp_spectral_buff[cutoff_index..].fill(ComplexSample::ZERO);
 
         inverse_fft
             .process_with_scratch(
@@ -139,10 +142,13 @@ impl OscillatorModule {
             0..params.samples
         ) {
             let frequency = Self::calc_frequency(voice.note, self.pitch_shift, *pitch_shift_mod);
-            let buff = get_wave_slice_mut(&mut voice.wave_buffers.0);
-            let idx = (voice.phase >> PHASE_SHIFT_BITS) as usize;
+            // let buff = get_wave_slice_mut(&mut voice.wave_buffers.0);
+            let idx = (voice.phase >> INTERMEDIATE_BITS) as usize + WAVE_PAD_LEFT;
+            let t = (voice.phase & INTERMEDIATE_MASK) as f32 * INTERMEDIATE_MULT;
+            let knots = &voice.wave_buffers.0[(idx - WAVE_PAD_LEFT)..(idx + WAVE_PAD_RIGHT + 1)];
+            let sample = spline::<CatmullRom, _, _>(t, knots).unwrap();
 
-            *out = buff[idx] * self.level * level_mod;
+            *out = sample * self.level * level_mod;
             voice.phase = voice
                 .phase
                 .wrapping_add((frequency / sample_rate * FULL_PHASE) as u32);
