@@ -1,11 +1,9 @@
 use itertools::izip;
 
-use crate::{
+use crate::synth_engine::{
     buffer::{Buffer, ZEROES_BUFFER, make_zero_buffer},
-    synth_engine::{
-        routing::{ModuleId, ModuleInput, Router},
-        synth_module::{ProcessParams, SynthModule},
-    },
+    routing::{ModuleId, ModuleInput, Router},
+    synth_module::{ProcessParams, SynthModule},
 };
 
 pub struct OutputModule {

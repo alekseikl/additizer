@@ -1,6 +1,6 @@
-use crate::{
+use crate::synth_engine::{
     buffer::Buffer,
-    synth_engine::routing::{ModuleId, Router},
+    routing::{ModuleId, Router},
 };
 
 pub struct NoteOnParams {

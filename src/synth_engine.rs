@@ -1,30 +1,32 @@
+use core::f32;
 use std::{
     array,
     collections::{HashMap, HashSet},
 };
 
-use itertools::Itertools;
+use itertools::{Itertools, izip};
 use rand::RngCore;
 use rand_pcg::Pcg32;
 use topo_sort::{SortResults, TopoSort};
 
-use crate::{
-    buffer::Buffer,
-    synth_engine::{
-        amplifier::AmplifierModule,
-        envelope::{EnvelopeActivityState, EnvelopeModule},
-        modules_container::ModulesContainer,
-        oscillator::OscillatorModule,
-        output::OutputModule,
-        routing::{
-            MAX_VOICES, ModuleId, ModuleInput, ModuleInputSource, ModuleLink, ModuleOutput, Router,
-            RoutingNode,
-        },
-        synth_module::{NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
+use crate::synth_engine::{
+    amplifier::AmplifierModule,
+    buffer::{
+        Buffer, ComplexSample, HARMONIC_SERIES_BUFFER, SpectralBuffer, make_zero_spectral_buffer,
     },
+    envelope::{EnvelopeActivityState, EnvelopeModule},
+    modules_container::ModulesContainer,
+    oscillator::OscillatorModule,
+    output::OutputModule,
+    routing::{
+        MAX_VOICES, ModuleId, ModuleInput, ModuleInputSource, ModuleLink, ModuleOutput, Router,
+        RoutingNode,
+    },
+    synth_module::{NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
 };
 
 pub mod amplifier;
+pub mod buffer;
 pub mod context;
 pub mod envelope;
 pub mod modules_container;
@@ -34,7 +36,7 @@ pub mod routing;
 pub mod synth_module;
 
 #[derive(Debug, Clone, Copy)]
-pub struct VoiceIdentifier {
+pub struct VoiceId {
     pub voice_id: Option<i32>,
     pub channel: u8,
     pub note: u8,
@@ -50,8 +52,8 @@ struct Voice {
 }
 
 impl Voice {
-    fn get_id(&self) -> VoiceIdentifier {
-        VoiceIdentifier {
+    fn get_id(&self) -> VoiceId {
+        VoiceId {
             voice_id: self.external_voice_id,
             channel: self.channel,
             note: self.note,
@@ -128,6 +130,7 @@ pub struct SynthEngine {
     execution_order: Vec<RoutingNode>,
     voices: [Voice; MAX_VOICES],
     random: Pcg32,
+    spectral_buffer: SpectralBuffer,
 }
 
 impl SynthEngine {
@@ -141,6 +144,7 @@ impl SynthEngine {
             execution_order: Vec::new(),
             voices: array::from_fn(|_| Voice::default()),
             random: Pcg32::new(3537, 9573),
+            spectral_buffer: make_zero_spectral_buffer(),
         }
     }
 
@@ -203,7 +207,7 @@ impl SynthEngine {
         channel: u8,
         note: u8,
         velocity: f32,
-    ) -> Option<VoiceIdentifier> {
+    ) -> Option<VoiceId> {
         let new_voice = Voice {
             id: self.next_voice_id,
             external_voice_id: voice_id,
@@ -211,7 +215,7 @@ impl SynthEngine {
             note,
             active: true,
         };
-        let mut terminated_voice: Option<VoiceIdentifier> = None;
+        let mut terminated_voice: Option<VoiceId> = None;
 
         self.next_voice_id = self.next_voice_id.wrapping_add(1);
 
@@ -274,14 +278,11 @@ impl SynthEngine {
         }
     }
 
-    pub fn choke(&mut self, note: u8) -> Option<VoiceIdentifier> {
-        let Some(voice_idx) = self
+    pub fn choke(&mut self, note: u8) -> Option<VoiceId> {
+        let voice_idx = self
             .voices
             .iter()
-            .position(|voice| voice.active && voice.note == note)
-        else {
-            return None;
-        };
+            .position(|voice| voice.active && voice.note == note)?;
 
         let voice = &mut self.voices[voice_idx];
 
@@ -289,8 +290,8 @@ impl SynthEngine {
         Some(voice.get_id())
     }
 
-    pub fn process(&mut self, samples: usize) -> Vec<VoiceIdentifier> {
-        let mut terminated_voices: Vec<VoiceIdentifier> = Vec::new();
+    pub fn process(&mut self, samples: usize) -> Vec<VoiceId> {
+        let mut terminated_voices: Vec<VoiceId> = Vec::new();
         let mut env_activity: Vec<_> = self
             .voices
             .iter()
@@ -361,9 +362,32 @@ impl SynthEngine {
         self.modules.output_module.as_deref().unwrap().get_output(0)
     }
 
+    pub fn update_harmonics(&mut self, harmonics: &Vec<f32>, tail: f32) {
+        let range = 1..(harmonics.len() + 1);
+
+        for (out, series_factor, harmonic) in izip!(
+            &mut self.spectral_buffer[range.clone()],
+            &HARMONIC_SERIES_BUFFER[range],
+            harmonics
+        ) {
+            *out = series_factor * harmonic;
+        }
+
+        let range = (harmonics.len() + 1)..self.spectral_buffer.len();
+
+        for (out, series_factor) in self.spectral_buffer[range.clone()]
+            .iter_mut()
+            .zip(HARMONIC_SERIES_BUFFER[range].iter())
+        {
+            *out = *series_factor * tail;
+        }
+
+        self.spectral_buffer[0] = ComplexSample::ZERO;
+    }
+
     fn build_scheme(&mut self) {
         let osc_id = self.add_oscillator();
-        let pitch_shift_env_id = self.add_envelope();
+        // let pitch_shift_env_id = self.add_envelope();
         let amp_id = self.add_amplifier();
         let amp_env_id = self.add_envelope();
 
@@ -373,11 +397,11 @@ impl SynthEngine {
                 ModuleOutput::Oscillator(osc_id),
                 ModuleInput::AmplifierInput(amp_id),
             ),
-            ModuleLink::modulation(
-                ModuleOutput::Envelope(pitch_shift_env_id),
-                ModuleInput::OscillatorPitchShift(osc_id),
-                0.25,
-            ),
+            // ModuleLink::modulation(
+            //     ModuleOutput::Envelope(pitch_shift_env_id),
+            //     ModuleInput::OscillatorPitchShift(osc_id),
+            //     0.25,
+            // ),
             ModuleLink::link(
                 ModuleOutput::Envelope(amp_env_id),
                 ModuleInput::AmplifierLevel(amp_id),
@@ -448,5 +472,9 @@ impl Router for SynthEngine {
         }
 
         Some(input_buffer)
+    }
+
+    fn get_spectral_input(&self, _: usize) -> Option<&SpectralBuffer> {
+        Some(&self.spectral_buffer)
     }
 }

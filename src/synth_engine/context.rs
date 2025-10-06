@@ -1,4 +1,4 @@
-use crate::{buffer::Buffer, synth_engine::routing::ModuleInput};
+use crate::synth_engine::{buffer::Buffer, routing::ModuleInput};
 
 pub trait Context {
     fn get_sample_rate(&self) -> f32;

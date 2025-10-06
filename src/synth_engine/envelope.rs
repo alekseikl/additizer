@@ -1,6 +1,6 @@
 use crate::{
-    buffer::{Buffer, make_zero_buffer},
     synth_engine::{
+        buffer::{Buffer, make_zero_buffer},
         routing::{MAX_VOICES, ModuleId, Router},
         synth_module::{NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
     },
@@ -78,7 +78,7 @@ impl EnvelopeModule {
             module_id,
             attack_time: from_ms(10.0),
             decay_time: from_ms(200.0),
-            sustain_level: 0.5,
+            sustain_level: 1.0,
             release_time: from_ms(300.0),
             voices: Default::default(),
         }

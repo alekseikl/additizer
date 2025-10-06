@@ -3,6 +3,9 @@ name = "additizer"
 version = "0.1.0"
 edition = "2024"
 
+[package.metadata.clippy]
+allow = ["new_without_default"]
+
 [lib]
 crate-type = ["cdylib", "lib"]
 
@@ -19,3 +22,4 @@ rand = "0.9"
 rand_pcg = "0.9"
 itertools = "0.14"
 topo_sort = "0.4"
+realfft = "3.5"

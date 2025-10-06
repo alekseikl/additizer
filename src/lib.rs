@@ -1,13 +1,14 @@
-pub mod buffer;
+#![allow(clippy::new_without_default)]
+
 pub mod editor;
 pub mod params;
 pub mod phase;
 pub mod synth_engine;
 pub mod utils;
 
-use crate::buffer::BUFFER_SIZE;
 use crate::params::AdditizerParams;
-use crate::synth_engine::{SynthEngine, VoiceIdentifier};
+use crate::synth_engine::buffer::BUFFER_SIZE;
+use crate::synth_engine::{SynthEngine, VoiceId};
 use nih_plug::prelude::*;
 use std::sync::Arc;
 
@@ -25,8 +26,8 @@ impl Default for Additizer {
     }
 }
 
-impl VoiceIdentifier {
-    fn to_terminated_event(&self, timing: u32) -> NoteEvent<()> {
+impl VoiceId {
+    fn terminated_event(&self, timing: u32) -> NoteEvent<()> {
         NoteEvent::VoiceTerminated {
             timing,
             voice_id: self.voice_id,
@@ -43,9 +44,9 @@ impl Additizer {
         event: NoteEvent<()>,
         timing: u32,
     ) {
-        let mut terminate_voice = |voice: Option<VoiceIdentifier>| {
+        let mut terminate_voice = |voice: Option<VoiceId>| {
             if let Some(voice) = voice {
-                context.send_event(voice.to_terminated_event(timing))
+                context.send_event(voice.terminated_event(timing))
             }
         };
 
@@ -120,6 +121,13 @@ impl Plugin for Additizer {
     ) -> ProcessStatus {
         let mut next_event = context.next_event();
 
+        self.synth_engine.update_harmonics(
+            self.params.harmonics.lock().as_deref().unwrap(),
+            self.params
+                .tail_harmonics
+                .load(std::sync::atomic::Ordering::Relaxed),
+        );
+
         for (block_idx, mut block) in buffer.iter_blocks(BUFFER_SIZE) {
             let sample_idx = block_idx * BUFFER_SIZE;
             let block_size = block.samples();
@@ -136,7 +144,7 @@ impl Plugin for Additizer {
             let terminated = self.synth_engine.process(block_size);
 
             for voice in terminated {
-                context.send_event(voice.to_terminated_event(sample_idx as u32));
+                context.send_event(voice.terminated_event(sample_idx as u32));
             }
 
             let output = self.synth_engine.get_output();

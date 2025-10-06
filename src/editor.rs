@@ -13,12 +13,10 @@ pub const NOTO_SANS: &str = "Noto Sans";
 #[derive(Lens)]
 struct Data {
     params: Arc<AdditizerParams>,
-    subharmonics: Vec<f32>,
     harmonics: Vec<f32>,
 }
 
 enum EditorEvent {
-    Subharmonic(f32, usize),
     Harmonic(f32, usize),
     TailHarmonic(f32),
 }
@@ -31,10 +29,6 @@ pub(crate) fn default_state() -> Arc<ViziaState> {
 impl Model for Data {
     fn event(&mut self, _cx: &mut EventContext, event: &mut Event) {
         event.map(|editor_event, _meta| match editor_event {
-            EditorEvent::Subharmonic(value, idx) => {
-                self.subharmonics[*idx] = *value;
-                *self.params.subharmonics.lock().unwrap() = self.subharmonics.clone();
-            }
             EditorEvent::Harmonic(value, idx) => {
                 self.harmonics[*idx] = *value;
                 *self.params.harmonics.lock().unwrap() = self.harmonics.clone();
@@ -56,27 +50,15 @@ pub(crate) fn create(
         cx.add_stylesheet(include_style!("src/style.css"))
             .expect("Failed to load styles.");
 
-        let subharmonics_count: usize = params.subharmonics.lock().unwrap().len();
         let harmonics_count: usize = params.harmonics.lock().unwrap().len();
 
         Data {
             params: Arc::clone(&params),
-            subharmonics: params.subharmonics.lock().unwrap().clone(),
             harmonics: params.harmonics.lock().unwrap().clone(),
         }
         .build(cx);
 
         HStack::new(cx, |cx| {
-            for i in 0..subharmonics_count {
-                GainSlider::new(
-                    cx,
-                    i as i32 - 3,
-                    Data::subharmonics.map(move |list| list[i]),
-                )
-                .class("subharmonic")
-                .on_change(move |ex, value| ex.emit(EditorEvent::Subharmonic(value, i)));
-            }
-
             for i in 0..harmonics_count {
                 GainSlider::new(cx, i as i32 + 1, Data::harmonics.map(move |list| list[i]))
                     .on_change(move |ex, value| ex.emit(EditorEvent::Harmonic(value, i)));

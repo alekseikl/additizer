@@ -12,9 +12,6 @@ pub struct AdditizerParams {
     #[persist = "harmonics"]
     pub harmonics: Arc<Mutex<Vec<f32>>>,
 
-    #[persist = "subharmonics"]
-    pub subharmonics: Arc<Mutex<Vec<f32>>>,
-
     #[persist = "tail-harmonics"]
     pub tail_harmonics: Arc<AtomicF32>,
 
@@ -33,7 +30,6 @@ impl Default for AdditizerParams {
         Self {
             editor_state: editor::default_state(),
             harmonics: Arc::new(Mutex::new(vec![1.0; 40])),
-            subharmonics: Arc::new(Mutex::new(vec![0.0; 3])),
             tail_harmonics: Arc::new(AtomicF32::new(1.0)),
             volume: FloatParam::new(
                 "Volume",

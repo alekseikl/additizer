@@ -1,9 +1,7 @@
-use crate::{
+use crate::synth_engine::{
     buffer::{Buffer, ONES_BUFFER, ZEROES_BUFFER, make_zero_buffer},
-    synth_engine::{
-        routing::{MAX_VOICES, ModuleId, ModuleInput, Router},
-        synth_module::{ProcessParams, SynthModule},
-    },
+    routing::{MAX_VOICES, ModuleId, ModuleInput, Router},
+    synth_module::{ProcessParams, SynthModule},
 };
 use itertools::izip;
 

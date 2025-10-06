@@ -1,4 +1,6 @@
-use crate::buffer::Buffer;
+use crate::synth_engine::buffer::SpectralBuffer;
+
+use super::buffer::Buffer;
 
 pub const MAX_VOICES: usize = 8;
 pub type ModuleId = u64;
@@ -93,4 +95,6 @@ pub trait Router {
         voice_idx: usize,
         input_buffer: &'a mut Buffer,
     ) -> Option<&'a Buffer>;
+
+    fn get_spectral_input(&self, voice_idx: usize) -> Option<&SpectralBuffer>;
 }
