@@ -1,12 +1,13 @@
 use core::f32;
 
 use realfft::num_complex::Complex;
+use uniform_cubic_splines::{CatmullRom, spline_segment};
 
 pub const BUFFER_SIZE: usize = 128;
 pub const WAVE_BITS: usize = 11;
 pub const WAVE_SIZE: usize = 1 << WAVE_BITS;
-pub const WAVE_PAD_LEFT: usize = 2;
-pub const WAVE_PAD_RIGHT: usize = 1;
+pub const WAVE_PAD_LEFT: usize = 1;
+pub const WAVE_PAD_RIGHT: usize = 2;
 pub const WAVE_BUFFER_SIZE: usize = WAVE_SIZE + WAVE_PAD_LEFT + WAVE_PAD_RIGHT;
 pub const SPECTRAL_BUFFER_SIZE: usize = (1 << (WAVE_BITS - 1)) + 1;
 
@@ -38,6 +39,11 @@ pub const fn make_harmonic_series_buffer() -> SpectralBuffer {
 
     while i < SPECTRAL_BUFFER_SIZE {
         buff[i].im = -1.0 / (i as f32 * f32::consts::PI);
+
+        if i % 2 == 0 {
+            buff[i].im = -buff[i].im;
+        }
+
         i += 1;
     }
 
@@ -50,8 +56,16 @@ pub fn get_wave_slice_mut(wave_buff: &mut WaveBuffer) -> &mut [Sample] {
 }
 
 #[inline(always)]
+pub fn get_interpolated_sample(wave_buff: &WaveBuffer, idx: usize, t: Sample) -> Sample {
+    spline_segment::<CatmullRom, _, _>(
+        t,
+        &wave_buff[(idx - WAVE_PAD_LEFT)..(idx + WAVE_PAD_RIGHT + 1)],
+    )
+}
+
+#[inline(always)]
 pub fn wrap_wave_buffer(wave_buff: &mut WaveBuffer) {
-    wave_buff[0] = wave_buff[WAVE_BUFFER_SIZE - WAVE_PAD_RIGHT - 2];
-    wave_buff[1] = wave_buff[WAVE_BUFFER_SIZE - WAVE_PAD_RIGHT - 1];
-    wave_buff[WAVE_BUFFER_SIZE - 1] = wave_buff[WAVE_PAD_LEFT];
+    wave_buff[0] = wave_buff[WAVE_BUFFER_SIZE - WAVE_PAD_RIGHT - 1];
+    wave_buff[WAVE_BUFFER_SIZE - WAVE_PAD_RIGHT] = wave_buff[WAVE_PAD_LEFT];
+    wave_buff[WAVE_BUFFER_SIZE - WAVE_PAD_RIGHT + 1] = wave_buff[WAVE_PAD_LEFT + 1];
 }

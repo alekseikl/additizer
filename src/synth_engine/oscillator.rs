@@ -3,13 +3,13 @@ use std::{f32, sync::Arc};
 use itertools::izip;
 use nih_plug::util::f32_midi_note_to_freq;
 use realfft::{ComplexToReal, RealFftPlanner};
-use uniform_cubic_splines::{CatmullRom, spline};
 
 use crate::synth_engine::{
     buffer::{
-        Buffer, ComplexSample, ONES_BUFFER, Sample, SpectralBuffer, WAVE_BITS, WAVE_PAD_LEFT,
-        WAVE_PAD_RIGHT, WAVE_SIZE, WaveBuffer, ZEROES_BUFFER, get_wave_slice_mut, make_zero_buffer,
-        make_zero_spectral_buffer, make_zero_wave_buffer, wrap_wave_buffer,
+        BUFFER_SIZE, Buffer, ComplexSample, ONES_BUFFER, Sample, SpectralBuffer, WAVE_BITS,
+        WAVE_PAD_LEFT, WAVE_SIZE, WaveBuffer, ZEROES_BUFFER, get_interpolated_sample,
+        get_wave_slice_mut, make_zero_buffer, make_zero_spectral_buffer, make_zero_wave_buffer,
+        wrap_wave_buffer,
     },
     routing::{MAX_VOICES, ModuleId, ModuleInput, Router},
     synth_module::{NoteOnParams, ProcessParams, SynthModule},
@@ -61,7 +61,7 @@ impl OscillatorModule {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            level: 1.0,
+            level: 0.5,
             pitch_shift: 0.0,
             inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVE_SIZE),
             tmp_spectral_buff: make_zero_spectral_buffer(),
@@ -85,7 +85,7 @@ impl OscillatorModule {
         out_wave_buff: &mut WaveBuffer,
     ) {
         let cutoff_index =
-            ((0.5 * sample_rate / frequency).floor() as usize + 1).min(spectral_buff.len());
+            ((0.5 * sample_rate / frequency).floor() as usize + 1).min(spectral_buff.len() - 1);
 
         *tmp_spectral_buff = *spectral_buff;
         tmp_spectral_buff[cutoff_index..].fill(ComplexSample::ZERO);
@@ -118,40 +118,80 @@ impl OscillatorModule {
             )
             .unwrap_or(&ZEROES_BUFFER);
 
-        if !voice.wave_buffers_initialized {
-            let spectral_buff = router.get_spectral_input(voice_idx).unwrap();
-            let frequency = Self::calc_frequency(voice.note, self.pitch_shift, pitch_shift_mod[0]);
+        let frequency = Self::calc_frequency(voice.note, self.pitch_shift, pitch_shift_mod[0]);
+        let (spectral_buff_from, spectral_buff_to) = router.get_spectral_input(voice_idx).unwrap();
+        let ifft = self.inverse_fft.as_ref();
+
+        if voice.wave_buffers_initialized {
+            let next_wave_buff = if voice.wave_buffers_swapped {
+                &mut voice.wave_buffers.1
+            } else {
+                &mut voice.wave_buffers.0
+            };
 
             Self::build_wave(
-                self.inverse_fft.as_ref(),
+                ifft,
                 frequency,
                 sample_rate,
-                spectral_buff,
+                spectral_buff_to,
+                &mut self.tmp_spectral_buff,
+                &mut self.scratch_buff,
+                next_wave_buff,
+            );
+
+            voice.wave_buffers_swapped = !voice.wave_buffers_swapped;
+        } else {
+            Self::build_wave(
+                ifft,
+                frequency,
+                sample_rate,
+                spectral_buff_from,
                 &mut self.tmp_spectral_buff,
                 &mut self.scratch_buff,
                 &mut voice.wave_buffers.0,
             );
 
+            Self::build_wave(
+                ifft,
+                frequency,
+                sample_rate,
+                spectral_buff_to,
+                &mut self.tmp_spectral_buff,
+                &mut self.scratch_buff,
+                &mut voice.wave_buffers.1,
+            );
+
+            voice.wave_buffers_swapped = false;
             voice.wave_buffers_initialized = true;
         }
 
-        for (out, level_mod, pitch_shift_mod, _) in izip!(
+        let (wave_from, wave_to) = if voice.wave_buffers_swapped {
+            (&voice.wave_buffers.1, &voice.wave_buffers.0)
+        } else {
+            (&voice.wave_buffers.0, &voice.wave_buffers.1)
+        };
+
+        let freq_phase_mult = FULL_PHASE / sample_rate;
+        let buff_t_mult = (BUFFER_SIZE as f32).recip();
+
+        for (out, level_mod, pitch_shift_mod, sample_idx) in izip!(
             &mut voice.output,
             level_mod,
             pitch_shift_mod,
             0..params.samples
         ) {
             let frequency = Self::calc_frequency(voice.note, self.pitch_shift, *pitch_shift_mod);
-            // let buff = get_wave_slice_mut(&mut voice.wave_buffers.0);
+            let buff_t = sample_idx as f32 * buff_t_mult;
             let idx = (voice.phase >> INTERMEDIATE_BITS) as usize + WAVE_PAD_LEFT;
             let t = (voice.phase & INTERMEDIATE_MASK) as f32 * INTERMEDIATE_MULT;
-            let knots = &voice.wave_buffers.0[(idx - WAVE_PAD_LEFT)..(idx + WAVE_PAD_RIGHT + 1)];
-            let sample = spline::<CatmullRom, _, _>(t, knots).unwrap();
+            let sample_from = get_interpolated_sample(wave_from, idx, t);
+            let sample_to = get_interpolated_sample(wave_to, idx, t);
+            let sample = sample_from * (1.0 - buff_t) + sample_to * buff_t;
 
             *out = sample * self.level * level_mod;
             voice.phase = voice
                 .phase
-                .wrapping_add((frequency / sample_rate * FULL_PHASE) as u32);
+                .wrapping_add((frequency * freq_phase_mult) as u32);
         }
     }
 }

@@ -96,5 +96,5 @@ pub trait Router {
         input_buffer: &'a mut Buffer,
     ) -> Option<&'a Buffer>;
 
-    fn get_spectral_input(&self, voice_idx: usize) -> Option<&SpectralBuffer>;
+    fn get_spectral_input(&self, voice_idx: usize) -> Option<(&SpectralBuffer, &SpectralBuffer)>;
 }

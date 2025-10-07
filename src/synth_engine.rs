@@ -216,9 +216,6 @@ impl SynthEngine {
             active: true,
         };
         let mut terminated_voice: Option<VoiceId> = None;
-
-        self.next_voice_id = self.next_voice_id.wrapping_add(1);
-
         let (voice_idx, same_note) = if let Some(voice_idx) = self
             .voices
             .iter()
@@ -240,6 +237,7 @@ impl SynthEngine {
         };
 
         self.voices[voice_idx] = new_voice;
+        self.next_voice_id = self.next_voice_id.wrapping_add(1);
 
         let params = NoteOnParams {
             note: note as f32,
@@ -474,7 +472,7 @@ impl Router for SynthEngine {
         Some(input_buffer)
     }
 
-    fn get_spectral_input(&self, _: usize) -> Option<&SpectralBuffer> {
-        Some(&self.spectral_buffer)
+    fn get_spectral_input(&self, _: usize) -> Option<(&SpectralBuffer, &SpectralBuffer)> {
+        Some((&self.spectral_buffer, &self.spectral_buffer))
     }
 }
