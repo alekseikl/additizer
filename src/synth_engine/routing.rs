@@ -19,6 +19,7 @@ pub enum ModuleInput {
     AmplifierLevel(ModuleId),
     OscillatorLevel(ModuleId),
     OscillatorPitchShift(ModuleId),
+    OscillatorDetune(ModuleId),
     Output,
 }
 
@@ -29,6 +30,7 @@ impl ModuleInput {
             Self::AmplifierLevel(module_id) => RoutingNode::Amplifier(*module_id),
             Self::OscillatorLevel(module_id) => RoutingNode::Oscillator(*module_id),
             Self::OscillatorPitchShift(module_id) => RoutingNode::Oscillator(*module_id),
+            Self::OscillatorDetune(id) => RoutingNode::Oscillator(*id),
             Self::Output => RoutingNode::Output,
         }
     }
