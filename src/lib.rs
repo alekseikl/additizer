@@ -2,7 +2,6 @@
 
 pub mod editor;
 pub mod params;
-pub mod phase;
 pub mod synth_engine;
 pub mod utils;
 

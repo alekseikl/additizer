@@ -144,7 +144,7 @@ impl SynthModule for EnvelopeModule {
     }
 
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
-        for voice_idx in &params.active_voices {
+        for voice_idx in params.active_voices {
             self.process_voice(params, router, *voice_idx);
         }
     }

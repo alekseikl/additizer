@@ -317,11 +317,11 @@ impl SynthEngine {
         let params = ProcessParams {
             samples,
             sample_rate: self.sample_rate,
-            active_voices: env_activity
+            active_voices: &env_activity
                 .iter()
                 .filter(|activity| activity.active)
                 .map(|activity| activity.voice_idx)
-                .collect(),
+                .collect_vec(),
         };
 
         for node in &self.execution_order {

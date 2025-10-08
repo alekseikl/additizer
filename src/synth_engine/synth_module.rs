@@ -16,10 +16,10 @@ pub struct NoteOffParams {
     pub voice_idx: usize,
 }
 
-pub struct ProcessParams {
+pub struct ProcessParams<'a> {
     pub samples: usize,
     pub sample_rate: f32,
-    pub active_voices: Vec<usize>,
+    pub active_voices: &'a [usize],
 }
 
 pub trait SynthModule {

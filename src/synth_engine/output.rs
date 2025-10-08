@@ -36,7 +36,7 @@ impl SynthModule for OutputModule {
     fn process(&mut self, ctx: &ProcessParams, router: &dyn Router) {
         self.output.fill(0.0);
 
-        for voice_idx in &ctx.active_voices {
+        for voice_idx in ctx.active_voices {
             let input = router
                 .get_input(
                     ModuleInput::Output,
