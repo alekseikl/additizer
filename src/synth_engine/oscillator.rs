@@ -59,13 +59,14 @@ pub struct OscillatorModule {
     scratch_buff: SpectralBuffer,
     level_mod_input: Buffer,
     pitch_shift_input: Buffer,
+    detune_mod_input: Buffer,
     voices: [OscillatorVoice; MAX_VOICES],
 }
 
 impl OscillatorModule {
-    pub fn new(module_id: ModuleId) -> Self {
+    pub fn new() -> Self {
         Self {
-            module_id,
+            module_id: 0,
             level: 0.5,
             pitch_shift: 0.0,
             unison: 1,
@@ -76,12 +77,23 @@ impl OscillatorModule {
             scratch_buff: make_zero_spectral_buffer(),
             level_mod_input: make_zero_buffer(),
             pitch_shift_input: make_zero_buffer(),
+            detune_mod_input: make_zero_buffer(),
             voices: Default::default(),
         }
     }
 
-    pub fn set_unison(&mut self, unison: usize) {
+    pub(super) fn set_id(&mut self, module_id: ModuleId) {
+        self.module_id = module_id;
+    }
+
+    pub fn set_unison(&mut self, unison: usize) -> &mut Self {
         self.unison = unison.clamp(1, MAX_UNISON_VOICES);
+        self
+    }
+
+    pub fn set_detune(&mut self, detune: f32) -> &mut Self {
+        self.detune = detune;
+        self
     }
 
     #[inline(always)]
@@ -225,19 +237,30 @@ impl OscillatorModule {
         let fixed_note = voice.note + self.pitch_shift;
 
         if self.unison > 1 {
-            let unison_pitch_step = self.detune / (self.unison - 1) as Sample;
-            let unison_pitch_from = -0.5 * self.detune;
+            let detune_mod = router
+                .get_input(
+                    ModuleInput::OscillatorDetune(self.module_id),
+                    voice_idx,
+                    &mut self.detune_mod_input,
+                )
+                .unwrap_or(&ZEROES_BUFFER);
+
+            let unison_mult = ((self.unison - 1) as Sample).recip();
             let unison_scale = 1.0 / (self.unison as Sample).sqrt();
 
-            for (out, level_mod, pitch_shift_mod, sample_idx) in izip!(
+            for (out, level_mod, pitch_shift_mod, detune_mod, sample_idx) in izip!(
                 &mut voice.output,
                 level_mod,
                 pitch_shift_mod,
+                detune_mod,
                 0..params.samples
             ) {
                 let mut sample: Sample = 0.0;
                 let buff_t = sample_idx as f32 * buff_t_mult;
                 let note = fixed_note + *pitch_shift_mod * PITCH_MOD_RANGE;
+                let detune = self.detune + *detune_mod * DETUNE_MOD_RANGE;
+                let unison_pitch_step = detune * unison_mult;
+                let unison_pitch_from = -0.5 * detune;
 
                 for unison_idx in 0..self.unison {
                     let unison_idx_float = unison_idx as f32;

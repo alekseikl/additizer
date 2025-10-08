@@ -37,16 +37,15 @@ impl EnvelopeVoice {
         }
     }
 
-    fn reset(&mut self, same_note_retrigger: bool) {
+    fn reset(&mut self, same_note_retrigger: bool, sustain: f32) {
         self.t = 0.0;
         self.release = None;
-
-        if same_note_retrigger {
-            self.attack_from = self.last_level;
+        self.attack_from = if same_note_retrigger {
+            self.last_level
         } else {
-            self.attack_from = 0.0;
-            self.last_level = 0.0;
-        }
+            0.0
+        };
+        self.last_level = sustain;
     }
 
     fn release(&mut self) {
@@ -73,15 +72,39 @@ pub struct EnvelopeModule {
 }
 
 impl EnvelopeModule {
-    pub fn new(module_id: ModuleId) -> Self {
+    pub fn new() -> Self {
         Self {
-            module_id,
+            module_id: 0,
             attack_time: from_ms(10.0),
             decay_time: from_ms(200.0),
             sustain_level: 1.0,
             release_time: from_ms(300.0),
             voices: Default::default(),
         }
+    }
+
+    pub(super) fn set_id(&mut self, module_id: ModuleId) {
+        self.module_id = module_id;
+    }
+
+    pub fn set_attack(&mut self, attack: f32) -> &mut Self {
+        self.attack_time = from_ms(attack);
+        self
+    }
+
+    pub fn set_decay(&mut self, decay: f32) -> &mut Self {
+        self.decay_time = from_ms(decay);
+        self
+    }
+
+    pub fn set_sustain(&mut self, sustain: f32) -> &mut Self {
+        self.sustain_level = sustain;
+        self
+    }
+
+    pub fn set_release(&mut self, release: f32) -> &mut Self {
+        self.release_time = from_ms(release);
+        self
     }
 
     pub fn check_activity(&self, activity: &mut [EnvelopeActivityState]) {
@@ -136,7 +159,7 @@ impl SynthModule for EnvelopeModule {
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
-        self.voices[params.voice_idx].reset(params.same_note_retrigger);
+        self.voices[params.voice_idx].reset(params.same_note_retrigger, self.sustain_level);
     }
 
     fn note_off(&mut self, params: &NoteOffParams) {

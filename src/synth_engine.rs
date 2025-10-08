@@ -155,24 +155,27 @@ impl SynthEngine {
         module_id
     }
 
-    pub fn add_oscillator(&mut self) -> ModuleId {
+    pub fn add_oscillator(&mut self, mut osc: OscillatorModule) -> ModuleId {
         let id = self.alloc_next_id();
 
-        self.modules.oscillators.add(OscillatorModule::new(id));
+        osc.set_id(id);
+        self.modules.oscillators.add(osc);
         id
     }
 
-    pub fn add_envelope(&mut self) -> ModuleId {
+    pub fn add_envelope(&mut self, mut env: EnvelopeModule) -> ModuleId {
         let id = self.alloc_next_id();
 
-        self.modules.envelopes.add(EnvelopeModule::new(id));
+        env.set_id(id);
+        self.modules.envelopes.add(env);
         id
     }
 
-    pub fn add_amplifier(&mut self) -> ModuleId {
+    pub fn add_amplifier(&mut self, mut amp: AmplifierModule) -> ModuleId {
         let id = self.alloc_next_id();
 
-        self.modules.amplifiers.add(AmplifierModule::new(id));
+        amp.set_id(id);
+        self.modules.amplifiers.add(amp);
         id
     }
 
@@ -384,10 +387,34 @@ impl SynthEngine {
     }
 
     fn build_scheme(&mut self) {
-        let osc_id = self.add_oscillator();
-        // let pitch_shift_env_id = self.add_envelope();
-        let amp_id = self.add_amplifier();
-        let amp_env_id = self.add_envelope();
+        let mut osc = OscillatorModule::new();
+        let mut detune_env = EnvelopeModule::new();
+        let mut pitch_env = EnvelopeModule::new();
+        let mut amp_env = EnvelopeModule::new();
+        let amp = AmplifierModule::new();
+
+        osc.set_unison(15).set_detune(0.01);
+        pitch_env
+            .set_attack(100.0)
+            .set_decay(0.0)
+            .set_sustain(1.0)
+            .set_release(500.0);
+        detune_env
+            .set_attack(3000.0)
+            .set_decay(0.0)
+            .set_sustain(1.0)
+            .set_release(10.0);
+        amp_env
+            .set_attack(4.0)
+            .set_decay(20.0)
+            .set_sustain(0.8)
+            .set_release(300.0);
+
+        let osc_id = self.add_oscillator(osc);
+        let detune_env_id = self.add_envelope(detune_env);
+        let pitch_shift_env_id = self.add_envelope(pitch_env);
+        let amp_id = self.add_amplifier(amp);
+        let amp_env_id = self.add_envelope(amp_env);
 
         self.set_links(&[
             ModuleLink::link(ModuleOutput::Amplifier(amp_id), ModuleInput::Output),
@@ -395,11 +422,16 @@ impl SynthEngine {
                 ModuleOutput::Oscillator(osc_id),
                 ModuleInput::AmplifierInput(amp_id),
             ),
-            // ModuleLink::modulation(
-            //     ModuleOutput::Envelope(pitch_shift_env_id),
-            //     ModuleInput::OscillatorPitchShift(osc_id),
-            //     0.25,
-            // ),
+            ModuleLink::modulation(
+                ModuleOutput::Envelope(pitch_shift_env_id),
+                ModuleInput::OscillatorPitchShift(osc_id),
+                0.125,
+            ),
+            ModuleLink::modulation(
+                ModuleOutput::Envelope(detune_env_id),
+                ModuleInput::OscillatorDetune(osc_id),
+                0.9,
+            ),
             ModuleLink::link(
                 ModuleOutput::Envelope(amp_env_id),
                 ModuleInput::AmplifierLevel(amp_id),

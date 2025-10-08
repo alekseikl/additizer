@@ -34,12 +34,16 @@ pub struct AmplifierModule {
 }
 
 impl AmplifierModule {
-    pub fn new(module_id: ModuleId) -> Self {
+    pub fn new() -> Self {
         Self {
-            module_id,
+            module_id: 0,
             level: 0.8,
             voices: Default::default(),
         }
+    }
+
+    pub(super) fn set_id(&mut self, module_id: ModuleId) {
+        self.module_id = module_id;
     }
 
     fn process_voice(&mut self, params: &ProcessParams, router: &dyn Router, voice_idx: usize) {
