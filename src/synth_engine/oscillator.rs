@@ -13,7 +13,7 @@ use crate::synth_engine::{
         get_wave_slice_mut, make_zero_buffer, make_zero_spectral_buffer, make_zero_wave_buffer,
         wrap_wave_buffer,
     },
-    routing::{MAX_VOICES, ModuleId, ModuleInput, Router},
+    routing::{MAX_VOICES, ModuleId, ModuleInput, NUM_CHANNELS, Router},
     synth_module::{NoteOnParams, ProcessParams, SynthModule},
 };
 
@@ -25,7 +25,7 @@ const PITCH_MOD_RANGE: f32 = 48.0;
 const DETUNE_MOD_RANGE: f32 = 1.0;
 const MAX_UNISON_VOICES: usize = 16;
 
-struct OscillatorVoice {
+struct Voice {
     note: f32,
     wave_buffers_initialized: bool,
     wave_buffers_swapped: bool,
@@ -34,7 +34,7 @@ struct OscillatorVoice {
     wave_buffers: (WaveformBuffer, WaveformBuffer),
 }
 
-impl Default for OscillatorVoice {
+impl Default for Voice {
     fn default() -> Self {
         Self {
             note: 0.0,
@@ -47,12 +47,27 @@ impl Default for OscillatorVoice {
     }
 }
 
-pub struct OscillatorModule {
-    module_id: ModuleId,
+struct Channel {
     level: f32,
     pitch_shift: f32,
-    unison: usize,
     detune: f32,
+    voices: [Voice; MAX_VOICES],
+}
+
+impl Default for Channel {
+    fn default() -> Self {
+        Self {
+            level: 0.5,
+            pitch_shift: 0.0,
+            detune: 0.3,
+            voices: Default::default(),
+        }
+    }
+}
+
+struct Common {
+    module_id: ModuleId,
+    unison: usize,
     random: Pcg32,
     inverse_fft: Arc<dyn ComplexToReal<Sample>>,
     tmp_spectral_buff: SpectralBuffer,
@@ -60,17 +75,13 @@ pub struct OscillatorModule {
     level_mod_input: Buffer,
     pitch_shift_input: Buffer,
     detune_mod_input: Buffer,
-    voices: [OscillatorVoice; MAX_VOICES],
 }
 
-impl OscillatorModule {
-    pub fn new() -> Self {
+impl Default for Common {
+    fn default() -> Self {
         Self {
             module_id: 0,
-            level: 0.5,
-            pitch_shift: 0.0,
             unison: 1,
-            detune: 0.3,
             random: Pcg32::new(3537, 9573),
             inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE),
             tmp_spectral_buff: make_zero_spectral_buffer(),
@@ -78,21 +89,36 @@ impl OscillatorModule {
             level_mod_input: make_zero_buffer(),
             pitch_shift_input: make_zero_buffer(),
             detune_mod_input: make_zero_buffer(),
-            voices: Default::default(),
+        }
+    }
+}
+
+pub struct OscillatorModule {
+    common: Common,
+    channels: [Channel; NUM_CHANNELS],
+}
+
+impl OscillatorModule {
+    pub fn new() -> Self {
+        Self {
+            common: Common::default(),
+            channels: Default::default(),
         }
     }
 
     pub(super) fn set_id(&mut self, module_id: ModuleId) {
-        self.module_id = module_id;
+        self.common.module_id = module_id;
     }
 
     pub fn set_unison(&mut self, unison: usize) -> &mut Self {
-        self.unison = unison.clamp(1, MAX_UNISON_VOICES);
+        self.common.unison = unison.clamp(1, MAX_UNISON_VOICES);
         self
     }
 
     pub fn set_detune(&mut self, detune: f32) -> &mut Self {
-        self.detune = detune;
+        for channel in &mut self.channels {
+            channel.detune = detune;
+        }
         self
     }
 
@@ -133,7 +159,7 @@ impl OscillatorModule {
         (spectral_buff_from, spectral_buff_to): (&SpectralBuffer, &SpectralBuffer),
         tmp_spectral_buff: &mut SpectralBuffer,
         scratch_buff: &mut SpectralBuffer,
-        voice: &mut OscillatorVoice,
+        voice: &mut Voice,
     ) {
         if voice.wave_buffers_initialized {
             let next_wave_buff = if voice.wave_buffers_swapped {
@@ -198,31 +224,40 @@ impl OscillatorModule {
         sample_from * (1.0 - buff_t) + sample_to * buff_t
     }
 
-    fn process_voice(&mut self, params: &ProcessParams, router: &dyn Router, voice_idx: usize) {
+    fn process_channel_voice(
+        common: &mut Common,
+        channel: &mut Channel,
+        params: &ProcessParams,
+        router: &dyn Router,
+        voice_idx: usize,
+        channel_idx: usize,
+    ) {
         let sample_rate = params.sample_rate;
-        let voice = &mut self.voices[voice_idx];
+        let voice = &mut channel.voices[voice_idx];
         let level_mod = router
             .get_input(
-                ModuleInput::OscillatorLevel(self.module_id),
+                ModuleInput::OscillatorLevel(common.module_id),
                 voice_idx,
-                &mut self.level_mod_input,
+                channel_idx,
+                &mut common.level_mod_input,
             )
             .unwrap_or(&ONES_BUFFER);
         let pitch_shift_mod = router
             .get_input(
-                ModuleInput::OscillatorPitchShift(self.module_id),
+                ModuleInput::OscillatorPitchShift(common.module_id),
                 voice_idx,
-                &mut self.pitch_shift_input,
+                channel_idx,
+                &mut common.pitch_shift_input,
             )
             .unwrap_or(&ZEROES_BUFFER);
 
         Self::prepare_wave_buffers(
-            self.inverse_fft.as_ref(),
-            Self::calc_frequency(voice.note, self.pitch_shift, pitch_shift_mod[0]),
+            common.inverse_fft.as_ref(),
+            Self::calc_frequency(voice.note, channel.pitch_shift, pitch_shift_mod[0]),
             sample_rate,
-            router.get_spectral_input(voice_idx).unwrap(),
-            &mut self.tmp_spectral_buff,
-            &mut self.scratch_buff,
+            router.get_spectral_input(voice_idx, 0).unwrap(),
+            &mut common.tmp_spectral_buff,
+            &mut common.scratch_buff,
             voice,
         );
 
@@ -234,19 +269,20 @@ impl OscillatorModule {
 
         let freq_phase_mult = FULL_PHASE / sample_rate;
         let buff_t_mult = (BUFFER_SIZE as f32).recip();
-        let fixed_note = voice.note + self.pitch_shift;
+        let fixed_note = voice.note + channel.pitch_shift;
 
-        if self.unison > 1 {
+        if common.unison > 1 {
             let detune_mod = router
                 .get_input(
-                    ModuleInput::OscillatorDetune(self.module_id),
+                    ModuleInput::OscillatorDetune(common.module_id),
                     voice_idx,
-                    &mut self.detune_mod_input,
+                    channel_idx,
+                    &mut common.detune_mod_input,
                 )
                 .unwrap_or(&ZEROES_BUFFER);
 
-            let unison_mult = ((self.unison - 1) as Sample).recip();
-            let unison_scale = 1.0 / (self.unison as Sample).sqrt();
+            let unison_mult = ((common.unison - 1) as Sample).recip();
+            let unison_scale = 1.0 / (common.unison as Sample).sqrt();
 
             for (out, level_mod, pitch_shift_mod, detune_mod, sample_idx) in izip!(
                 &mut voice.output,
@@ -258,11 +294,11 @@ impl OscillatorModule {
                 let mut sample: Sample = 0.0;
                 let buff_t = sample_idx as f32 * buff_t_mult;
                 let note = fixed_note + *pitch_shift_mod * PITCH_MOD_RANGE;
-                let detune = self.detune + *detune_mod * DETUNE_MOD_RANGE;
+                let detune = channel.detune + *detune_mod * DETUNE_MOD_RANGE;
                 let unison_pitch_step = detune * unison_mult;
                 let unison_pitch_from = -0.5 * detune;
 
-                for unison_idx in 0..self.unison {
+                for unison_idx in 0..common.unison {
                     let unison_idx_float = unison_idx as f32;
                     let unison_pitch_shift =
                         unison_pitch_from + unison_pitch_step * unison_idx_float;
@@ -278,7 +314,7 @@ impl OscillatorModule {
                     );
                 }
 
-                *out = sample * unison_scale * self.level * level_mod;
+                *out = sample * unison_scale * channel.level * level_mod;
             }
         } else {
             let phase = &mut voice.phases[0];
@@ -296,7 +332,7 @@ impl OscillatorModule {
                     wave_to,
                     freq_phase_mult,
                     phase,
-                ) * self.level
+                ) * channel.level
                     * level_mod;
             }
         }
@@ -305,30 +341,43 @@ impl OscillatorModule {
 
 impl SynthModule for OscillatorModule {
     fn get_id(&self) -> ModuleId {
-        self.module_id
+        self.common.module_id
     }
 
-    fn get_output(&self, voice_idx: usize) -> &Buffer {
-        &self.voices[voice_idx].output
+    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
+        &self.channels[channel].voices[voice_idx].output
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
-        let voice = &mut self.voices[params.voice_idx];
+        for channel in &mut self.channels {
+            let voice = &mut channel.voices[params.voice_idx];
 
-        voice.note = params.note;
-        voice.wave_buffers_initialized = false;
-        voice.wave_buffers_swapped = false;
+            voice.note = params.note;
+            voice.wave_buffers_initialized = false;
+            voice.wave_buffers_swapped = false;
 
-        if !params.same_note_retrigger {
-            self.random.fill(&mut voice.phases[..self.unison]);
+            if !params.same_note_retrigger {
+                self.common
+                    .random
+                    .fill(&mut voice.phases[..self.common.unison]);
+            }
         }
     }
 
     fn note_off(&mut self, _: &super::synth_module::NoteOffParams) {}
 
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
-        for voice_idx in params.active_voices {
-            self.process_voice(params, router, *voice_idx);
+        for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
+            for voice_idx in params.active_voices {
+                Self::process_channel_voice(
+                    &mut self.common,
+                    channel,
+                    params,
+                    router,
+                    *voice_idx,
+                    channel_idx,
+                );
+            }
         }
     }
 }

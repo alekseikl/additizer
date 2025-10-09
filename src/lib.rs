@@ -140,17 +140,11 @@ impl Plugin for Additizer {
                 next_event = context.next_event();
             }
 
-            let terminated = self.synth_engine.process(block_size);
+            let terminated = self.synth_engine.process(block_size, block.iter_mut());
 
             for voice in terminated {
                 context.send_event(voice.terminated_event(sample_idx as u32));
             }
-
-            let output = self.synth_engine.get_output();
-            let output = &output[..block_size];
-
-            block.get_mut(0).unwrap().copy_from_slice(output);
-            block.get_mut(1).unwrap().copy_from_slice(output);
         }
 
         ProcessStatus::KeepAlive

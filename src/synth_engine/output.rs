@@ -8,15 +8,38 @@ use crate::synth_engine::{
 
 pub struct OutputModule {
     voice_input_buffer: Buffer,
-    output: Buffer,
 }
 
 impl OutputModule {
-    #![allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             voice_input_buffer: make_zero_buffer(),
-            output: make_zero_buffer(),
+        }
+    }
+
+    pub fn read_output<'a>(
+        &mut self,
+        params: &ProcessParams,
+        router: &dyn Router,
+        outputs: impl Iterator<Item = &'a mut [f32]>,
+    ) {
+        for (channel, output) in outputs.enumerate() {
+            output.fill(0.0);
+
+            for voice_idx in params.active_voices {
+                let input = router
+                    .get_input(
+                        ModuleInput::Output,
+                        *voice_idx,
+                        channel,
+                        &mut self.voice_input_buffer,
+                    )
+                    .unwrap_or(&ZEROES_BUFFER);
+
+                for (out, input, _) in izip!(output.iter_mut(), input, 0..params.samples) {
+                    *out += input;
+                }
+            }
         }
     }
 }
@@ -26,28 +49,14 @@ impl SynthModule for OutputModule {
         0
     }
 
-    fn get_output(&self, _: usize) -> &Buffer {
-        &self.output
+    fn get_output(&self, _: usize, _channel: usize) -> &Buffer {
+        panic!("OutputModule::get_output() not implemented.")
     }
 
     fn note_on(&mut self, _: &super::synth_module::NoteOnParams) {}
     fn note_off(&mut self, _: &super::synth_module::NoteOffParams) {}
 
-    fn process(&mut self, ctx: &ProcessParams, router: &dyn Router) {
-        self.output.fill(0.0);
-
-        for voice_idx in ctx.active_voices {
-            let input = router
-                .get_input(
-                    ModuleInput::Output,
-                    *voice_idx,
-                    &mut self.voice_input_buffer,
-                )
-                .unwrap_or(&ZEROES_BUFFER);
-
-            for (out, input, _) in izip!(&mut self.output, input, 0..ctx.samples) {
-                *out += input;
-            }
-        }
+    fn process(&mut self, _ctx: &ProcessParams, _router: &dyn Router) {
+        panic!("OutputModule::process() not implemented.")
     }
 }

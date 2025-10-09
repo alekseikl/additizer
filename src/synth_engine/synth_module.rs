@@ -24,7 +24,7 @@ pub struct ProcessParams<'a> {
 
 pub trait SynthModule {
     fn get_id(&self) -> ModuleId;
-    fn get_output(&self, voice_idx: usize) -> &Buffer;
+    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer;
     fn note_on(&mut self, params: &NoteOnParams);
     fn note_off(&mut self, params: &NoteOffParams);
     fn process(&mut self, params: &ProcessParams, router: &dyn Router);

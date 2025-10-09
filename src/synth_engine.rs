@@ -291,7 +291,11 @@ impl SynthEngine {
         Some(voice.get_id())
     }
 
-    pub fn process(&mut self, samples: usize) -> Vec<VoiceId> {
+    pub fn process<'a>(
+        &mut self,
+        samples: usize,
+        outputs: impl Iterator<Item = &'a mut [f32]>,
+    ) -> Vec<VoiceId> {
         let mut terminated_voices: Vec<VoiceId> = Vec::new();
         let mut env_activity: Vec<_> = self
             .voices
@@ -347,20 +351,16 @@ impl SynthEngine {
                     amp.process(&params, self);
                     self.modules.amplifiers.return_back(amp);
                 }
-                RoutingNode::Output => {
-                    let mut output = self.modules.output_module.take().unwrap();
-
-                    output.process(&params, self);
-                    self.modules.output_module.replace(output);
-                }
+                RoutingNode::Output => (),
             }
         }
 
-        terminated_voices
-    }
+        let mut output = self.modules.output_module.take().unwrap();
 
-    pub fn get_output(&self) -> &Buffer {
-        self.modules.output_module.as_deref().unwrap().get_output(0)
+        output.read_output(&params, self, outputs);
+        self.modules.output_module.replace(output);
+
+        terminated_voices
     }
 
     pub fn update_harmonics(&mut self, harmonics: &Vec<f32>, tail: f32) {
@@ -393,21 +393,23 @@ impl SynthEngine {
         let mut amp_env = EnvelopeModule::new();
         let amp = AmplifierModule::new();
 
-        osc.set_unison(15).set_detune(0.01);
+        osc.set_unison(16).set_detune(0.01);
         pitch_env
-            .set_attack(100.0)
-            .set_decay(0.0)
+            .set_attack(50.0)
+            .set_decay(50.0)
             .set_sustain(1.0)
-            .set_release(500.0);
+            .set_release(500.0)
+            .set_channel_sustain(1, 0.5);
         detune_env
             .set_attack(3000.0)
             .set_decay(0.0)
             .set_sustain(1.0)
+            .set_channel_sustain(1, 0.5)
             .set_release(10.0);
         amp_env
-            .set_attack(4.0)
+            .set_attack(10.0)
             .set_decay(20.0)
-            .set_sustain(0.8)
+            .set_sustain(1.0)
             .set_release(300.0);
 
         let osc_id = self.add_oscillator(osc);
@@ -440,11 +442,11 @@ impl SynthEngine {
         .unwrap();
     }
 
-    fn resolve_buffer(&self, output: ModuleOutput, voice_idx: usize) -> &Buffer {
+    fn resolve_buffer(&self, output: ModuleOutput, voice_idx: usize, channel: usize) -> &Buffer {
         self.modules
             .resolve_node(output.routing_node())
             .unwrap()
-            .get_output(voice_idx)
+            .get_output(voice_idx, channel)
     }
 
     fn calc_execution_order(links: &[ModuleLink]) -> Result<Vec<RoutingNode>, String> {
@@ -472,6 +474,7 @@ impl Router for SynthEngine {
         &'a self,
         input: ModuleInput,
         voice_idx: usize,
+        channel: usize,
         input_buffer: &'a mut Buffer,
     ) -> Option<&'a Buffer> {
         let sources = self.input_sources.get(&input)?;
@@ -481,14 +484,14 @@ impl Router for SynthEngine {
         }
 
         if sources.len() == 1 && sources[0].modulation_amount.is_none() {
-            return Some(self.resolve_buffer(sources[0].src, voice_idx));
+            return Some(self.resolve_buffer(sources[0].src, voice_idx, channel));
         }
 
         input_buffer.fill(0.0);
 
         let buffs = sources.iter().map(|source| {
             (
-                self.resolve_buffer(source.src, voice_idx),
+                self.resolve_buffer(source.src, voice_idx, channel),
                 source.modulation_amount,
             )
         });
@@ -504,7 +507,11 @@ impl Router for SynthEngine {
         Some(input_buffer)
     }
 
-    fn get_spectral_input(&self, _: usize) -> Option<(&SpectralBuffer, &SpectralBuffer)> {
+    fn get_spectral_input(
+        &self,
+        _voice_idx: usize,
+        _channel: usize,
+    ) -> Option<(&SpectralBuffer, &SpectralBuffer)> {
         Some((&self.spectral_buffer, &self.spectral_buffer))
     }
 }

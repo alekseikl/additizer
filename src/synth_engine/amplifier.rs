@@ -1,91 +1,133 @@
 use crate::synth_engine::{
     buffer::{Buffer, ONES_BUFFER, ZEROES_BUFFER, make_zero_buffer},
-    routing::{MAX_VOICES, ModuleId, ModuleInput, Router},
+    routing::{MAX_VOICES, ModuleId, ModuleInput, NUM_CHANNELS, Router},
     synth_module::{ProcessParams, SynthModule},
 };
 use itertools::izip;
 
-pub struct AmplifierVoice {
-    input: Buffer,
-    level_mod_input: Buffer,
+struct Voice {
     output: Buffer,
 }
 
-impl AmplifierVoice {
+impl Voice {
     pub fn new() -> Self {
         Self {
-            input: make_zero_buffer(),
-            level_mod_input: make_zero_buffer(),
             output: make_zero_buffer(),
         }
     }
 }
 
-impl Default for AmplifierVoice {
+impl Default for Voice {
     fn default() -> Self {
         Self::new()
     }
 }
 
-pub struct AmplifierModule {
-    module_id: ModuleId,
+struct Channel {
     level: f32,
-    voices: [AmplifierVoice; MAX_VOICES],
+    voices: [Voice; MAX_VOICES],
+}
+
+impl Default for Channel {
+    fn default() -> Self {
+        Self {
+            level: 1.0,
+            voices: Default::default(),
+        }
+    }
+}
+
+struct Common {
+    module_id: ModuleId,
+    input: Buffer,
+    level_mod_input: Buffer,
+}
+
+impl Default for Common {
+    fn default() -> Self {
+        Self {
+            module_id: 0,
+            input: make_zero_buffer(),
+            level_mod_input: make_zero_buffer(),
+        }
+    }
+}
+
+pub struct AmplifierModule {
+    common: Common,
+    channels: [Channel; NUM_CHANNELS],
 }
 
 impl AmplifierModule {
     pub fn new() -> Self {
         Self {
-            module_id: 0,
-            level: 0.8,
-            voices: Default::default(),
+            common: Default::default(),
+            channels: Default::default(),
         }
     }
 
     pub(super) fn set_id(&mut self, module_id: ModuleId) {
-        self.module_id = module_id;
+        self.common.module_id = module_id;
     }
 
-    fn process_voice(&mut self, params: &ProcessParams, router: &dyn Router, voice_idx: usize) {
-        let voice = &mut self.voices[voice_idx];
+    fn process_channel_voice(
+        common: &mut Common,
+        channel: &mut Channel,
+        params: &ProcessParams,
+        router: &dyn Router,
+        voice_idx: usize,
+        channel_idx: usize,
+    ) {
+        let voice = &mut channel.voices[voice_idx];
         let input = router
             .get_input(
-                ModuleInput::AmplifierInput(self.module_id),
+                ModuleInput::AmplifierInput(common.module_id),
                 voice_idx,
-                &mut voice.input,
+                channel_idx,
+                &mut common.input,
             )
             .unwrap_or(&ZEROES_BUFFER);
         let level_mod = router
             .get_input(
-                ModuleInput::AmplifierLevel(self.module_id),
+                ModuleInput::AmplifierLevel(common.module_id),
                 voice_idx,
-                &mut voice.level_mod_input,
+                channel_idx,
+                &mut common.level_mod_input,
             )
             .unwrap_or(&ONES_BUFFER);
 
         for (out, input, modulation, _) in
             izip!(&mut voice.output, input, level_mod, 0..params.samples)
         {
-            *out = input * self.level * modulation;
+            *out = input * channel.level * modulation;
         }
     }
 }
 
 impl SynthModule for AmplifierModule {
     fn get_id(&self) -> ModuleId {
-        self.module_id
+        self.common.module_id
     }
 
-    fn get_output(&self, voice_idx: usize) -> &Buffer {
-        &self.voices[voice_idx].output
+    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
+        &self.channels[channel].voices[voice_idx].output
     }
 
     fn note_on(&mut self, _: &super::synth_module::NoteOnParams) {}
     fn note_off(&mut self, _: &super::synth_module::NoteOffParams) {}
 
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
-        for voice_idx in params.active_voices {
-            self.process_voice(params, router, *voice_idx);
+        for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
+            for voice_idx in params.active_voices {
+                Self::process_channel_voice(
+                    &mut self.common,
+                    channel,
+                    params,
+                    router,
+                    *voice_idx,
+                    channel_idx,
+                );
+            }
         }
     }
 }
