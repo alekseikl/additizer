@@ -3041,6 +3041,7 @@ dependencies = [
 [[package]]
 name = "vizia"
 version = "0.3.0"
+source = "git+https://github.com/vizia/vizia?rev=364f825e82df253669f111539540959d0799cd16#364f825e82df253669f111539540959d0799cd16"
 dependencies = [
  "vizia_baseview",
  "vizia_core",
@@ -3050,6 +3051,7 @@ dependencies = [
 [[package]]
 name = "vizia_baseview"
 version = "0.3.0"
+source = "git+https://github.com/vizia/vizia?rev=364f825e82df253669f111539540959d0799cd16#364f825e82df253669f111539540959d0799cd16"
 dependencies = [
  "baseview 0.1.0 (git+https://github.com/vizia/baseview.git?rev=bd7774294ebd6a4ea497e9c02655a4abd0408137)",
  "gl",
@@ -3063,6 +3065,7 @@ dependencies = [
 [[package]]
 name = "vizia_core"
 version = "0.3.0"
+source = "git+https://github.com/vizia/vizia?rev=364f825e82df253669f111539540959d0799cd16#364f825e82df253669f111539540959d0799cd16"
 dependencies = [
  "accesskit",
  "bitflags 2.9.0",
@@ -3093,6 +3096,7 @@ dependencies = [
 [[package]]
 name = "vizia_derive"
 version = "0.3.0"
+source = "git+https://github.com/vizia/vizia?rev=364f825e82df253669f111539540959d0799cd16#364f825e82df253669f111539540959d0799cd16"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3102,10 +3106,12 @@ dependencies = [
 [[package]]
 name = "vizia_id"
 version = "0.3.0"
+source = "git+https://github.com/vizia/vizia?rev=364f825e82df253669f111539540959d0799cd16#364f825e82df253669f111539540959d0799cd16"
 
 [[package]]
 name = "vizia_input"
 version = "0.3.0"
+source = "git+https://github.com/vizia/vizia?rev=364f825e82df253669f111539540959d0799cd16#364f825e82df253669f111539540959d0799cd16"
 dependencies = [
  "bitflags 2.9.0",
  "keyboard-types 0.7.0",
@@ -3115,6 +3121,7 @@ dependencies = [
 [[package]]
 name = "vizia_plug"
 version = "0.1.0"
+source = "git+https://github.com/vizia/vizia-plug.git#8b62ec22544500e1aa04ca401b7e0be4a847726e"
 dependencies = [
  "crossbeam",
  "nih_plug",
@@ -3125,6 +3132,7 @@ dependencies = [
 [[package]]
 name = "vizia_storage"
 version = "0.3.0"
+source = "git+https://github.com/vizia/vizia?rev=364f825e82df253669f111539540959d0799cd16#364f825e82df253669f111539540959d0799cd16"
 dependencies = [
  "vizia_id",
 ]
@@ -3132,6 +3140,7 @@ dependencies = [
 [[package]]
 name = "vizia_style"
 version = "0.3.0"
+source = "git+https://github.com/vizia/vizia?rev=364f825e82df253669f111539540959d0799cd16#364f825e82df253669f111539540959d0799cd16"
 dependencies = [
  "bitflags 2.9.0",
  "cssparser",
@@ -3146,6 +3155,7 @@ dependencies = [
 [[package]]
 name = "vizia_window"
 version = "0.3.0"
+source = "git+https://github.com/vizia/vizia?rev=364f825e82df253669f111539540959d0799cd16#364f825e82df253669f111539540959d0799cd16"
 dependencies = [
  "bitflags 2.9.0",
  "vizia_input",
@@ -3154,6 +3164,7 @@ dependencies = [
 [[package]]
 name = "vizia_winit"
 version = "0.3.0"
+source = "git+https://github.com/vizia/vizia?rev=364f825e82df253669f111539540959d0799cd16#364f825e82df253669f111539540959d0799cd16"
 dependencies = [
  "copypasta",
  "gl",

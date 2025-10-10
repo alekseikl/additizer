@@ -1,8 +1,5 @@
 use core::f32;
-use std::{
-    array,
-    collections::{HashMap, HashSet},
-};
+use std::collections::{HashMap, HashSet};
 
 use itertools::{Itertools, izip};
 use rand::RngCore;
@@ -142,7 +139,7 @@ impl SynthEngine {
             modules: Modules::new(),
             input_sources: HashMap::new(),
             execution_order: Vec::new(),
-            voices: array::from_fn(|_| Voice::default()),
+            voices: Default::default(),
             random: Pcg32::new(3537, 9573),
             spectral_buffer: make_zero_spectral_buffer(),
         }
@@ -389,19 +386,19 @@ impl SynthEngine {
     fn build_scheme(&mut self) {
         let mut osc = OscillatorModule::new();
         let mut detune_env = EnvelopeModule::new();
-        let mut pitch_env = EnvelopeModule::new();
+        // let mut pitch_env = EnvelopeModule::new();
         let mut amp_env = EnvelopeModule::new();
         let amp = AmplifierModule::new();
 
         osc.set_unison(16).set_detune(0.01);
-        pitch_env
-            .set_attack(50.0)
-            .set_decay(50.0)
-            .set_sustain(1.0)
-            .set_release(500.0)
-            .set_channel_sustain(1, 0.5);
+        // pitch_env
+        //     .set_attack(50.0)
+        //     .set_decay(50.0)
+        //     .set_sustain(1.0)
+        //     .set_release(500.0)
+        //     .set_channel_sustain(1, 0.5);
         detune_env
-            .set_attack(3000.0)
+            .set_attack(1000.0)
             .set_decay(0.0)
             .set_sustain(1.0)
             .set_channel_sustain(1, 0.5)
@@ -414,7 +411,7 @@ impl SynthEngine {
 
         let osc_id = self.add_oscillator(osc);
         let detune_env_id = self.add_envelope(detune_env);
-        let pitch_shift_env_id = self.add_envelope(pitch_env);
+        // let pitch_shift_env_id = self.add_envelope(pitch_env);
         let amp_id = self.add_amplifier(amp);
         let amp_env_id = self.add_envelope(amp_env);
 
@@ -424,15 +421,15 @@ impl SynthEngine {
                 ModuleOutput::Oscillator(osc_id),
                 ModuleInput::AmplifierInput(amp_id),
             ),
-            ModuleLink::modulation(
-                ModuleOutput::Envelope(pitch_shift_env_id),
-                ModuleInput::OscillatorPitchShift(osc_id),
-                0.125,
-            ),
+            // ModuleLink::modulation(
+            //     ModuleOutput::Envelope(pitch_shift_env_id),
+            //     ModuleInput::OscillatorPitchShift(osc_id),
+            //     0.125,
+            // ),
             ModuleLink::modulation(
                 ModuleOutput::Envelope(detune_env_id),
                 ModuleInput::OscillatorDetune(osc_id),
-                0.9,
+                0.6,
             ),
             ModuleLink::link(
                 ModuleOutput::Envelope(amp_env_id),
