@@ -1,5 +1,6 @@
 use nih_plug::prelude::*;
-use std::sync::{Arc, Mutex};
+use parking_lot::Mutex;
+use std::sync::Arc;
 use vizia_plug::ViziaState;
 
 use crate::editor;

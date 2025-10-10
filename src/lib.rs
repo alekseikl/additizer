@@ -121,7 +121,7 @@ impl Plugin for Additizer {
         let mut next_event = context.next_event();
 
         self.synth_engine.update_harmonics(
-            self.params.harmonics.lock().as_deref().unwrap(),
+            &self.params.harmonics.lock(),
             self.params
                 .tail_harmonics
                 .load(std::sync::atomic::Ordering::Relaxed),
@@ -140,11 +140,10 @@ impl Plugin for Additizer {
                 next_event = context.next_event();
             }
 
-            let terminated = self.synth_engine.process(block_size, block.iter_mut());
-
-            for voice in terminated {
-                context.send_event(voice.terminated_event(sample_idx as u32));
-            }
+            self.synth_engine
+                .process(block_size, block.iter_mut(), |voice: VoiceId| {
+                    context.send_event(voice.terminated_event(sample_idx as u32))
+                });
         }
 
         ProcessStatus::KeepAlive

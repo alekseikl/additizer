@@ -31,7 +31,7 @@ impl Model for Data {
         event.map(|editor_event, _meta| match editor_event {
             EditorEvent::Harmonic(value, idx) => {
                 self.harmonics[*idx] = *value;
-                *self.params.harmonics.lock().unwrap() = self.harmonics.clone();
+                *self.params.harmonics.lock() = self.harmonics.clone();
             }
             EditorEvent::TailHarmonic(value) => {
                 self.params
@@ -50,11 +50,11 @@ pub(crate) fn create(
         cx.add_stylesheet(include_style!("src/style.css"))
             .expect("Failed to load styles.");
 
-        let harmonics_count: usize = params.harmonics.lock().unwrap().len();
+        let harmonics_count: usize = params.harmonics.lock().len();
 
         Data {
             params: Arc::clone(&params),
-            harmonics: params.harmonics.lock().unwrap().clone(),
+            harmonics: params.harmonics.lock().clone(),
         }
         .build(cx);
 

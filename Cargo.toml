@@ -12,6 +12,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = [
     "standalone",
+    "assert_process_allocs",
 ] }
 vizia_plug = { git = "https://github.com/vizia/vizia-plug.git" }
 
@@ -24,3 +25,4 @@ itertools = "0.14"
 topo_sort = "0.4"
 realfft = "3.5"
 uniform-cubic-splines = "0.5"
+parking_lot = "0.12.5"

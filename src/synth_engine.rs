@@ -8,9 +8,7 @@ use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
     amplifier::AmplifierModule,
-    buffer::{
-        Buffer, ComplexSample, HARMONIC_SERIES_BUFFER, SpectralBuffer, make_zero_spectral_buffer,
-    },
+    buffer::{Buffer, ComplexSample, HARMONIC_SERIES_BUFFER, SpectralBuffer},
     envelope::{EnvelopeActivityState, EnvelopeModule},
     modules_container::ModulesContainer,
     oscillator::OscillatorModule,
@@ -118,6 +116,13 @@ impl Modules {
     }
 }
 
+// Data needed by process function to avoid heap allocations
+#[derive(Default)]
+struct ProcessData {
+    env_activity: [EnvelopeActivityState; MAX_VOICES],
+    voice_indices_to_process: [usize; MAX_VOICES],
+}
+
 pub struct SynthEngine {
     next_id: u64,
     next_voice_id: u64,
@@ -128,6 +133,7 @@ pub struct SynthEngine {
     voices: [Voice; MAX_VOICES],
     random: Pcg32,
     spectral_buffer: SpectralBuffer,
+    process_data: ProcessData,
 }
 
 impl SynthEngine {
@@ -141,7 +147,8 @@ impl SynthEngine {
             execution_order: Vec::new(),
             voices: Default::default(),
             random: Pcg32::new(3537, 9573),
-            spectral_buffer: make_zero_spectral_buffer(),
+            spectral_buffer: HARMONIC_SERIES_BUFFER,
+            process_data: ProcessData::default(),
         }
     }
 
@@ -292,40 +299,56 @@ impl SynthEngine {
         &mut self,
         samples: usize,
         outputs: impl Iterator<Item = &'a mut [f32]>,
-    ) -> Vec<VoiceId> {
-        let mut terminated_voices: Vec<VoiceId> = Vec::new();
-        let mut env_activity: Vec<_> = self
+        mut on_terminate_voice: impl FnMut(VoiceId),
+    ) {
+        // Store intermediate data in the preallocated arrays to avoid heap allocation during process() call
+        let env_activity = self
             .voices
             .iter()
             .enumerate()
             .filter(|(_, voice)| voice.active)
-            .map(|(voice_idx, _)| EnvelopeActivityState {
-                voice_idx,
-                active: false,
-            })
-            .collect();
+            .zip(self.process_data.env_activity.iter_mut());
 
-        for env in self.modules.envelopes.modules.values() {
-            env.as_ref().unwrap().check_activity(&mut env_activity);
+        let mut num_voices_to_check = 0_usize;
+
+        for ((voice_idx, _), activity) in env_activity {
+            activity.voice_idx = voice_idx;
+            activity.active = false;
+            num_voices_to_check += 1;
         }
 
-        for activity in &env_activity {
+        let voices_to_check = &mut self.process_data.env_activity[..num_voices_to_check];
+
+        for env in self.modules.envelopes.modules.values() {
+            env.as_ref().unwrap().check_activity(voices_to_check);
+        }
+
+        for activity in voices_to_check.iter() {
             if !activity.active {
                 let voice = &mut self.voices[activity.voice_idx];
 
-                terminated_voices.push(voice.get_id());
+                on_terminate_voice(voice.get_id());
                 voice.active = false;
             }
+        }
+
+        let process_idx_iter = self
+            .process_data
+            .voice_indices_to_process
+            .iter_mut()
+            .zip(voices_to_check.iter().filter(|activity| activity.active));
+
+        let mut num_voices_to_process = 0_usize;
+
+        for (voice_idx, activity) in process_idx_iter {
+            *voice_idx = activity.voice_idx;
+            num_voices_to_process += 1;
         }
 
         let params = ProcessParams {
             samples,
             sample_rate: self.sample_rate,
-            active_voices: &env_activity
-                .iter()
-                .filter(|activity| activity.active)
-                .map(|activity| activity.voice_idx)
-                .collect_vec(),
+            active_voices: &self.process_data.voice_indices_to_process[..num_voices_to_process],
         };
 
         for node in &self.execution_order {
@@ -356,8 +379,6 @@ impl SynthEngine {
 
         output.read_output(&params, self, outputs);
         self.modules.output_module.replace(output);
-
-        terminated_voices
     }
 
     pub fn update_harmonics(&mut self, harmonics: &Vec<f32>, tail: f32) {
@@ -402,7 +423,8 @@ impl SynthEngine {
             .set_decay(0.0)
             .set_sustain(1.0)
             .set_channel_sustain(1, 0.5)
-            .set_release(10.0);
+            .set_release(10000.0)
+            .set_keep_voice_alive(false);
         amp_env
             .set_attack(10.0)
             .set_decay(20.0)

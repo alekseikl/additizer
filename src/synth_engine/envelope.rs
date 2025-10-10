@@ -7,6 +7,7 @@ use crate::{
     utils::from_ms,
 };
 
+#[derive(Default, Clone, Copy)]
 pub struct EnvelopeActivityState {
     pub voice_idx: usize,
     pub active: bool,
@@ -84,6 +85,7 @@ impl Default for Channel {
 
 pub struct EnvelopeModule {
     module_id: ModuleId,
+    keep_voice_alive: bool,
     channels: [Channel; NUM_CHANNELS],
 }
 
@@ -91,12 +93,18 @@ impl EnvelopeModule {
     pub fn new() -> Self {
         Self {
             module_id: 0,
+            keep_voice_alive: true,
             channels: Default::default(),
         }
     }
 
     pub(super) fn set_id(&mut self, module_id: ModuleId) {
         self.module_id = module_id;
+    }
+
+    pub fn set_keep_voice_alive(&mut self, keep_alive: bool) -> &mut Self {
+        self.keep_voice_alive = keep_alive;
+        self
     }
 
     pub fn set_attack(&mut self, attack: f32) -> &mut Self {
@@ -148,17 +156,19 @@ impl EnvelopeModule {
     }
 
     pub fn check_activity(&self, activity: &mut [EnvelopeActivityState]) {
-        for channel in &self.channels {
-            for voice_activity in activity.iter_mut() {
-                let voice = &channel.voices[voice_activity.voice_idx];
-                let is_active = if let Some(release) = &voice.release
-                    && voice.t - release.start_t >= channel.release_time
-                {
-                    false
-                } else {
-                    true
-                };
-                voice_activity.active = voice_activity.active || is_active;
+        if self.keep_voice_alive {
+            for channel in &self.channels {
+                for voice_activity in activity.iter_mut() {
+                    let voice = &channel.voices[voice_activity.voice_idx];
+                    let is_active = if let Some(release) = &voice.release
+                        && voice.t - release.start_t >= channel.release_time
+                    {
+                        false
+                    } else {
+                        true
+                    };
+                    voice_activity.active = voice_activity.active || is_active;
+                }
             }
         }
     }
