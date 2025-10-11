@@ -189,19 +189,18 @@ where
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
         event.map(|window_event, meta| match window_event {
             WindowEvent::MouseDown(MouseButton::Left) => {
-                if let Some(container) = cx.get_entities_by_class(FILL_CONTAINER_CLASS).first() {
-                    if !cx.modifiers().alt()
-                        && !cx.modifiers().ctrl()
-                        && cx
-                            .cache
-                            .get_bounds(*container)
-                            .contains_point(cx.mouse().cursor_x, cx.mouse().cursor_y)
-                    {
-                        self.dragging = true;
-                        self.param_before_drag = self.gain_to_param(self.gain_lense.get(cx));
-                        cx.capture();
-                        meta.consume();
-                    }
+                if let Some(container) = cx.get_entities_by_class(FILL_CONTAINER_CLASS).first()
+                    && !cx.modifiers().alt()
+                    && !cx.modifiers().ctrl()
+                    && cx
+                        .cache
+                        .get_bounds(*container)
+                        .contains_point(cx.mouse().cursor_x, cx.mouse().cursor_y)
+                {
+                    self.dragging = true;
+                    self.param_before_drag = self.gain_to_param(self.gain_lense.get(cx));
+                    cx.capture();
+                    meta.consume();
                 }
             }
             WindowEvent::MouseUp(MouseButton::Left) => {

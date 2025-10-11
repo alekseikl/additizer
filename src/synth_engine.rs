@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use itertools::{Itertools, izip};
 use rand::RngCore;
 use rand_pcg::Pcg32;
+use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
@@ -116,13 +117,6 @@ impl Modules {
     }
 }
 
-// Data needed by process function to avoid heap allocations
-#[derive(Default)]
-struct ProcessData {
-    env_activity: [EnvelopeActivityState; MAX_VOICES],
-    voice_indices_to_process: [usize; MAX_VOICES],
-}
-
 pub struct SynthEngine {
     next_id: u64,
     next_voice_id: u64,
@@ -133,7 +127,6 @@ pub struct SynthEngine {
     voices: [Voice; MAX_VOICES],
     random: Pcg32,
     spectral_buffer: SpectralBuffer,
-    process_data: ProcessData,
 }
 
 impl SynthEngine {
@@ -148,7 +141,6 @@ impl SynthEngine {
             voices: Default::default(),
             random: Pcg32::new(3537, 9573),
             spectral_buffer: HARMONIC_SERIES_BUFFER,
-            process_data: ProcessData::default(),
         }
     }
 
@@ -301,29 +293,22 @@ impl SynthEngine {
         outputs: impl Iterator<Item = &'a mut [f32]>,
         mut on_terminate_voice: impl FnMut(VoiceId),
     ) {
-        // Store intermediate data in the preallocated arrays to avoid heap allocation during process() call
-        let env_activity = self
+        let mut env_activity: SmallVec<[EnvelopeActivityState; MAX_VOICES]> = self
             .voices
             .iter()
             .enumerate()
             .filter(|(_, voice)| voice.active)
-            .zip(self.process_data.env_activity.iter_mut());
-
-        let mut num_voices_to_check = 0_usize;
-
-        for ((voice_idx, _), activity) in env_activity {
-            activity.voice_idx = voice_idx;
-            activity.active = false;
-            num_voices_to_check += 1;
-        }
-
-        let voices_to_check = &mut self.process_data.env_activity[..num_voices_to_check];
+            .map(|(voice_idx, _)| EnvelopeActivityState {
+                voice_idx,
+                active: false,
+            })
+            .collect();
 
         for env in self.modules.envelopes.modules.values() {
-            env.as_ref().unwrap().check_activity(voices_to_check);
+            env.as_ref().unwrap().check_activity(&mut env_activity);
         }
 
-        for activity in voices_to_check.iter() {
+        for activity in &env_activity {
             if !activity.active {
                 let voice = &mut self.voices[activity.voice_idx];
 
@@ -332,23 +317,16 @@ impl SynthEngine {
             }
         }
 
-        let process_idx_iter = self
-            .process_data
-            .voice_indices_to_process
-            .iter_mut()
-            .zip(voices_to_check.iter().filter(|activity| activity.active));
-
-        let mut num_voices_to_process = 0_usize;
-
-        for (voice_idx, activity) in process_idx_iter {
-            *voice_idx = activity.voice_idx;
-            num_voices_to_process += 1;
-        }
+        let active_voices: SmallVec<[usize; MAX_VOICES]> = env_activity
+            .iter()
+            .filter(|activity| activity.active)
+            .map(|activity| activity.voice_idx)
+            .collect();
 
         let params = ProcessParams {
             samples,
             sample_rate: self.sample_rate,
-            active_voices: &self.process_data.voice_indices_to_process[..num_voices_to_process],
+            active_voices: &active_voices,
         };
 
         for node in &self.execution_order {
@@ -411,7 +389,7 @@ impl SynthEngine {
         let mut amp_env = EnvelopeModule::new();
         let amp = AmplifierModule::new();
 
-        osc.set_unison(16).set_detune(0.01);
+        osc.set_unison(3).set_detune(0.01);
         // pitch_env
         //     .set_attack(50.0)
         //     .set_decay(50.0)
