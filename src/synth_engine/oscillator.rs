@@ -8,13 +8,13 @@ use realfft::{ComplexToReal, RealFftPlanner};
 
 use crate::synth_engine::{
     buffer::{
-        BUFFER_SIZE, Buffer, ComplexSample, ONES_BUFFER, Phase, Sample, SpectralBuffer,
-        WAVEFORM_BITS, WAVEFORM_SIZE, WaveformBuffer, ZEROES_BUFFER, get_interpolated_sample,
-        get_wave_slice_mut, make_zero_buffer, make_zero_spectral_buffer, make_zero_wave_buffer,
-        wrap_wave_buffer,
+        BUFFER_SIZE, Buffer, HARMONIC_SERIES_BUFFER, ONES_BUFFER, SpectralBuffer, WAVEFORM_BITS,
+        WAVEFORM_SIZE, WaveformBuffer, ZEROES_BUFFER, get_interpolated_sample, get_wave_slice_mut,
+        make_zero_buffer, make_zero_spectral_buffer, make_zero_wave_buffer, wrap_wave_buffer,
     },
     routing::{MAX_VOICES, ModuleId, ModuleInput, NUM_CHANNELS, Router},
     synth_module::{NoteOnParams, ProcessParams, SynthModule},
+    types::{ComplexSample, Phase, Sample, StereoValue},
 };
 
 const FULL_PHASE: f32 = ((u32::MAX as u64) + 1) as f32;
@@ -115,8 +115,8 @@ impl OscillatorModule {
         self
     }
 
-    pub fn set_detune(&mut self, detune: f32) -> &mut Self {
-        for channel in &mut self.channels {
+    pub fn set_detune(&mut self, detune: StereoValue) -> &mut Self {
+        for (channel, detune) in self.channels.iter_mut().zip(detune.iter()) {
             channel.detune = detune;
         }
         self
@@ -255,7 +255,9 @@ impl OscillatorModule {
             common.inverse_fft.as_ref(),
             Self::calc_frequency(voice.note, channel.pitch_shift, pitch_shift_mod[0]),
             sample_rate,
-            router.get_spectral_input(voice_idx, 0).unwrap(),
+            router
+                .get_spectral_input(voice_idx, 0)
+                .unwrap_or((&HARMONIC_SERIES_BUFFER, &HARMONIC_SERIES_BUFFER)),
             &mut common.tmp_spectral_buff,
             &mut common.scratch_buff,
             voice,

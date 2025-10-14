@@ -2,6 +2,7 @@ use crate::synth_engine::{
     buffer::{Buffer, ONES_BUFFER, ZEROES_BUFFER, make_zero_buffer},
     routing::{MAX_VOICES, ModuleId, ModuleInput, NUM_CHANNELS, Router},
     synth_module::{ProcessParams, SynthModule},
+    types::StereoValue,
 };
 use itertools::izip;
 
@@ -68,6 +69,12 @@ impl AmplifierModule {
 
     pub(super) fn set_id(&mut self, module_id: ModuleId) {
         self.common.module_id = module_id;
+    }
+
+    pub fn set_level(&mut self, level: StereoValue) {
+        for (chan, value) in self.channels.iter_mut().zip(level.iter()) {
+            chan.level = value;
+        }
     }
 
     fn process_channel_voice(

@@ -9,18 +9,19 @@ use crate::params::AdditizerParams;
 use crate::synth_engine::buffer::BUFFER_SIZE;
 use crate::synth_engine::{SynthEngine, VoiceId};
 use nih_plug::prelude::*;
+use parking_lot::Mutex;
 use std::sync::Arc;
 
 pub struct Additizer {
     params: Arc<AdditizerParams>,
-    synth_engine: SynthEngine,
+    synth_engine: Arc<Mutex<SynthEngine>>,
 }
 
 impl Default for Additizer {
     fn default() -> Self {
         Self {
             params: Arc::new(AdditizerParams::default()),
-            synth_engine: SynthEngine::new(),
+            synth_engine: Arc::new(Mutex::new(SynthEngine::new())),
         }
     }
 }
@@ -38,7 +39,7 @@ impl VoiceId {
 
 impl Additizer {
     fn process_event(
-        &mut self,
+        synth: &mut SynthEngine,
         context: &mut impl ProcessContext<Self>,
         event: NoteEvent<()>,
         timing: u32,
@@ -57,14 +58,14 @@ impl Additizer {
                 velocity,
                 ..
             } => {
-                let terminated = self.synth_engine.note_on(voice_id, channel, note, velocity);
+                let terminated = synth.note_on(voice_id, channel, note, velocity);
                 terminate_voice(terminated);
             }
             NoteEvent::NoteOff { note, .. } => {
-                self.synth_engine.note_off(note);
+                synth.note_off(note);
             }
             NoteEvent::Choke { note, .. } => {
-                let terminated = self.synth_engine.choke(note);
+                let terminated = synth.choke(note);
                 terminate_voice(terminated);
             }
             _ => (),
@@ -97,7 +98,11 @@ impl Plugin for Additizer {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
-        editor::create(self.params.clone(), self.params.editor_state.clone())
+        editor::create(
+            Arc::clone(&self.params),
+            Arc::clone(&self.params.editor_state),
+            Arc::clone(&self.synth_engine),
+        )
     }
 
     fn initialize(
@@ -106,7 +111,10 @@ impl Plugin for Additizer {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        self.synth_engine.init(buffer_config.sample_rate);
+        let mut synth = self.synth_engine.lock();
+
+        synth.init(buffer_config.sample_rate);
+
         true
     }
 
@@ -118,33 +126,33 @@ impl Plugin for Additizer {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        let mut next_event = context.next_event();
+        let mut synth = self.synth_engine.lock();
 
-        self.synth_engine.update_harmonics(
-            &self.params.harmonics.lock(),
-            self.params
-                .tail_harmonics
-                .load(std::sync::atomic::Ordering::Relaxed),
-        );
+        assert_no_alloc::assert_no_alloc(|| {
+            synth.set_volume(self.params.volume.value());
+            synth.set_unison(self.params.unison.value() as usize);
+            synth.set_detune(self.params.detune.value());
 
-        for (block_idx, mut block) in buffer.iter_blocks(BUFFER_SIZE) {
-            let sample_idx = block_idx * BUFFER_SIZE;
-            let block_size = block.samples();
+            let mut next_event = context.next_event();
 
-            while let Some(event) = next_event {
-                if event.timing() > (sample_idx + block_size) as u32 {
-                    break;
+            for (block_idx, mut block) in buffer.iter_blocks(BUFFER_SIZE) {
+                let sample_idx = block_idx * BUFFER_SIZE;
+                let block_size = block.samples();
+
+                while let Some(event) = next_event {
+                    if event.timing() > (sample_idx + block_size) as u32 {
+                        break;
+                    }
+
+                    Self::process_event(&mut synth, context, event, sample_idx as u32);
+                    next_event = context.next_event();
                 }
 
-                self.process_event(context, event, sample_idx as u32);
-                next_event = context.next_event();
-            }
-
-            self.synth_engine
-                .process(block_size, block.iter_mut(), |voice: VoiceId| {
+                synth.process(block_size, block.iter_mut(), |voice: VoiceId| {
                     context.send_event(voice.terminated_event(sample_idx as u32))
                 });
-        }
+            }
+        });
 
         ProcessStatus::KeepAlive
     }

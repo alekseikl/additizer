@@ -2,6 +2,7 @@ use core::f32;
 use std::collections::{HashMap, HashSet};
 
 use itertools::{Itertools, izip};
+use nih_plug::util::db_to_gain_fast;
 use rand::RngCore;
 use rand_pcg::Pcg32;
 use smallvec::SmallVec;
@@ -9,8 +10,8 @@ use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
     amplifier::AmplifierModule,
-    buffer::{Buffer, ComplexSample, HARMONIC_SERIES_BUFFER, SpectralBuffer},
-    envelope::{EnvelopeActivityState, EnvelopeModule},
+    buffer::{Buffer, HARMONIC_SERIES_BUFFER, SpectralBuffer},
+    envelope_module::EnvelopeModule,
     modules_container::ModulesContainer,
     oscillator::OscillatorModule,
     output::OutputModule,
@@ -19,17 +20,20 @@ use crate::synth_engine::{
         RoutingNode,
     },
     synth_module::{NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
+    types::{ComplexSample, StereoValue},
 };
 
 pub mod amplifier;
 pub mod buffer;
 pub mod context;
 pub mod envelope;
+pub mod envelope_module;
 pub mod modules_container;
 pub mod oscillator;
 pub mod output;
 pub mod routing;
 pub mod synth_module;
+pub mod types;
 
 #[derive(Debug, Clone, Copy)]
 pub struct VoiceId {
@@ -293,12 +297,12 @@ impl SynthEngine {
         outputs: impl Iterator<Item = &'a mut [f32]>,
         mut on_terminate_voice: impl FnMut(VoiceId),
     ) {
-        let mut env_activity: SmallVec<[EnvelopeActivityState; MAX_VOICES]> = self
+        let mut env_activity: SmallVec<[envelope::EnvelopeActivityState; MAX_VOICES]> = self
             .voices
             .iter()
             .enumerate()
             .filter(|(_, voice)| voice.active)
-            .map(|(voice_idx, _)| EnvelopeActivityState {
+            .map(|(voice_idx, _)| envelope::EnvelopeActivityState {
                 voice_idx,
                 active: false,
             })
@@ -382,35 +386,57 @@ impl SynthEngine {
         self.spectral_buffer[0] = ComplexSample::ZERO;
     }
 
+    pub fn set_volume(&mut self, volume: f32) {
+        let level = db_to_gain_fast(volume);
+
+        for amp in self.modules.amplifiers.modules.values_mut() {
+            amp.as_mut().unwrap().set_level(StereoValue::mono(level));
+        }
+    }
+
+    pub fn set_unison(&mut self, unison: usize) {
+        for osc in self.modules.oscillators.modules.values_mut() {
+            osc.as_mut().unwrap().set_unison(unison);
+        }
+    }
+
+    pub fn set_detune(&mut self, detune: f32) {
+        let detune = 0.01 * detune;
+
+        for osc in self.modules.oscillators.modules.values_mut() {
+            osc.as_mut().unwrap().set_detune(detune.into());
+        }
+    }
+
     fn build_scheme(&mut self) {
         let mut osc = OscillatorModule::new();
-        let mut detune_env = EnvelopeModule::new();
+        // let mut detune_env = EnvelopeModule::new();
         // let mut pitch_env = EnvelopeModule::new();
         let mut amp_env = EnvelopeModule::new();
         let amp = AmplifierModule::new();
 
-        osc.set_unison(3).set_detune(0.01);
+        osc.set_unison(3).set_detune(0.01.into());
         // pitch_env
         //     .set_attack(50.0)
         //     .set_decay(50.0)
         //     .set_sustain(1.0)
         //     .set_release(500.0)
         //     .set_channel_sustain(1, 0.5);
-        detune_env
-            .set_attack(1000.0)
-            .set_decay(0.0)
-            .set_sustain(1.0)
-            .set_channel_sustain(1, 0.5)
-            .set_release(10000.0)
-            .set_keep_voice_alive(false);
+        // detune_env
+        //     .set_attack(1000.0)
+        //     .set_decay(0.0)
+        //     .set_sustain(1.0)
+        //     .set_channel_sustain(1, 0.5)
+        //     .set_release(10000.0)
+        //     .set_keep_voice_alive(false);
         amp_env
-            .set_attack(10.0)
-            .set_decay(20.0)
-            .set_sustain(1.0)
-            .set_release(300.0);
+            .set_attack(StereoValue::mono(10.0))
+            .set_decay(20.0.into())
+            .set_sustain(1.0.into())
+            .set_release(300.0.into());
 
         let osc_id = self.add_oscillator(osc);
-        let detune_env_id = self.add_envelope(detune_env);
+        // let detune_env_id = self.add_envelope(detune_env);
         // let pitch_shift_env_id = self.add_envelope(pitch_env);
         let amp_id = self.add_amplifier(amp);
         let amp_env_id = self.add_envelope(amp_env);
@@ -426,11 +452,11 @@ impl SynthEngine {
             //     ModuleInput::OscillatorPitchShift(osc_id),
             //     0.125,
             // ),
-            ModuleLink::modulation(
-                ModuleOutput::Envelope(detune_env_id),
-                ModuleInput::OscillatorDetune(osc_id),
-                0.6,
-            ),
+            // ModuleLink::modulation(
+            //     ModuleOutput::Envelope(detune_env_id),
+            //     ModuleInput::OscillatorDetune(osc_id),
+            //     0.6,
+            // ),
             ModuleLink::link(
                 ModuleOutput::Envelope(amp_env_id),
                 ModuleInput::AmplifierLevel(amp_id),

@@ -1,7 +1,8 @@
 use core::f32;
 
-use realfft::num_complex::Complex;
 use uniform_cubic_splines::{CatmullRom, spline_segment};
+
+use crate::synth_engine::types::{ComplexSample, Sample};
 
 pub const BUFFER_SIZE: usize = 128;
 pub const WAVEFORM_BITS: usize = 11;
@@ -11,9 +12,6 @@ pub const WAVEFORM_PAD_RIGHT: usize = 2;
 pub const WAVEFORM_BUFFER_SIZE: usize = WAVEFORM_SIZE + WAVEFORM_PAD_LEFT + WAVEFORM_PAD_RIGHT;
 pub const SPECTRAL_BUFFER_SIZE: usize = (1 << (WAVEFORM_BITS - 1)) + 1;
 
-pub type Sample = f32;
-pub type Phase = u32;
-pub type ComplexSample = Complex<Sample>;
 pub type Buffer = [Sample; BUFFER_SIZE];
 pub type WaveformBuffer = [Sample; WAVEFORM_BUFFER_SIZE];
 pub type SpectralBuffer = [ComplexSample; SPECTRAL_BUFFER_SIZE];

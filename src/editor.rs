@@ -2,17 +2,21 @@ pub mod gain_slider;
 
 use gain_slider::{GainSlider, GainSliderModifiers};
 use nih_plug::prelude::Editor;
+use parking_lot::Mutex;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use vizia_plug::vizia::prelude::*;
 use vizia_plug::{ViziaState, ViziaTheming, create_vizia_editor};
 
 use crate::AdditizerParams;
+use crate::synth_engine::SynthEngine;
 
 pub const NOTO_SANS: &str = "Noto Sans";
 
 #[derive(Lens)]
 struct Data {
     params: Arc<AdditizerParams>,
+    synth_engine: Arc<Mutex<SynthEngine>>,
     harmonics: Vec<f32>,
 }
 
@@ -32,11 +36,16 @@ impl Model for Data {
             EditorEvent::Harmonic(value, idx) => {
                 self.harmonics[*idx] = *value;
                 *self.params.harmonics.lock() = self.harmonics.clone();
+                self.synth_engine.lock().update_harmonics(
+                    &self.harmonics,
+                    self.params.tail_harmonics.load(Ordering::Relaxed),
+                );
             }
             EditorEvent::TailHarmonic(value) => {
-                self.params
-                    .tail_harmonics
-                    .store(*value, std::sync::atomic::Ordering::Relaxed);
+                self.params.tail_harmonics.store(*value, Ordering::Relaxed);
+                self.synth_engine
+                    .lock()
+                    .update_harmonics(&self.harmonics, *value);
             }
         });
     }
@@ -45,6 +54,7 @@ impl Model for Data {
 pub(crate) fn create(
     params: Arc<AdditizerParams>,
     editor_state: Arc<ViziaState>,
+    synth_engine: Arc<Mutex<SynthEngine>>,
 ) -> Option<Box<dyn Editor>> {
     create_vizia_editor(editor_state, ViziaTheming::None, move |cx, _| {
         cx.add_stylesheet(include_style!("src/style.css"))
@@ -54,6 +64,7 @@ pub(crate) fn create(
 
         Data {
             params: Arc::clone(&params),
+            synth_engine: Arc::clone(&synth_engine),
             harmonics: params.harmonics.lock().clone(),
         }
         .build(cx);
