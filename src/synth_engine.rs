@@ -7,14 +7,17 @@ use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
-    buffer::{Buffer, HARMONIC_SERIES_BUFFER, SpectralBuffer, ZEROES_BUFFER, make_zero_buffer},
+    buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER, make_zero_buffer},
     modules_container::ModulesContainer,
     routing::{
         MAX_VOICES, ModuleId, ModuleInput, ModuleInputSource, ModuleLink, ModuleOutput, Router,
         RoutingNode,
     },
-    synth_module::{BufferOutputModule, NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
-    types::{ComplexSample, StereoValue},
+    synth_module::{
+        BufferOutputModule, NoteOffParams, NoteOnParams, ProcessParams, SpectralOutputModule,
+        SynthModule,
+    },
+    types::{Sample, StereoValue},
 };
 
 pub mod buffer;
@@ -56,6 +59,7 @@ struct Modules {
     oscillators: ModulesContainer<modules::Oscillator>,
     envelopes: ModulesContainer<modules::Envelope>,
     amplifiers: ModulesContainer<modules::Amplifier>,
+    spectral_filters: ModulesContainer<modules::SpectralFilter>,
 }
 
 impl Modules {
@@ -64,10 +68,11 @@ impl Modules {
             oscillators: ModulesContainer::new(),
             envelopes: ModulesContainer::new(),
             amplifiers: ModulesContainer::new(),
+            spectral_filters: ModulesContainer::new(),
         }
     }
 
-    fn resolve_node(&self, node: RoutingNode) -> Option<&dyn BufferOutputModule> {
+    fn resolve_buffer_output_node(&self, node: RoutingNode) -> Option<&dyn BufferOutputModule> {
         match node {
             RoutingNode::Oscillator(id) => self
                 .oscillators
@@ -81,6 +86,28 @@ impl Modules {
                 .amplifiers
                 .get(id)
                 .map(|module| module as &dyn BufferOutputModule),
+            RoutingNode::SpectralFilter(_) => {
+                panic!("RoutingNode::SpectralFilter don't have buffer output.")
+            }
+            RoutingNode::Output => panic!("RoutingNode::Output don't have corresponding module."),
+        }
+    }
+
+    fn resolve_spectral_output_node(&self, node: RoutingNode) -> Option<&dyn SpectralOutputModule> {
+        match node {
+            RoutingNode::SpectralFilter(id) => self
+                .spectral_filters
+                .get(id)
+                .map(|module| module as &dyn SpectralOutputModule),
+            RoutingNode::Oscillator(_) => {
+                panic!("RoutingNode::Oscillator don't have spectral output.")
+            }
+            RoutingNode::Envelope(_) => {
+                panic!("RoutingNode::Envelope don't have spectral output.")
+            }
+            RoutingNode::Amplifier(_) => {
+                panic!("RoutingNode::Amplifier don't have spectral output.")
+            }
             RoutingNode::Output => panic!("RoutingNode::Output don't have corresponding module."),
         }
     }
@@ -99,6 +126,10 @@ impl Modules {
                 .amplifiers
                 .get_mut(id)
                 .map(|module| module as &mut dyn SynthModule),
+            RoutingNode::SpectralFilter(id) => self
+                .spectral_filters
+                .get_mut(id)
+                .map(|module| module as &mut dyn SynthModule),
             RoutingNode::Output => panic!("RoutingNode::Output don't have corresponding module."),
         }
     }
@@ -112,7 +143,6 @@ pub struct SynthEngine {
     input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>>,
     execution_order: Vec<RoutingNode>,
     voices: [Voice; MAX_VOICES],
-    spectral_buffer: SpectralBuffer,
     tmp_output_buffer: Option<Box<Buffer>>,
 }
 
@@ -126,7 +156,6 @@ impl SynthEngine {
             input_sources: HashMap::new(),
             execution_order: Vec::new(),
             voices: Default::default(),
-            spectral_buffer: HARMONIC_SERIES_BUFFER,
             tmp_output_buffer: Some(Box::new(make_zero_buffer())),
         }
     }
@@ -159,6 +188,14 @@ impl SynthEngine {
 
         amp.set_id(id);
         self.modules.amplifiers.add(amp);
+        id
+    }
+
+    pub fn add_spectral_filter(&mut self, mut filter: modules::SpectralFilter) -> ModuleId {
+        let id = self.alloc_next_id();
+
+        filter.set_id(id);
+        self.modules.spectral_filters.add(filter);
         id
     }
 
@@ -335,14 +372,20 @@ impl SynthEngine {
                     amp.process(&params, self);
                     self.modules.amplifiers.return_back(amp);
                 }
+                RoutingNode::SpectralFilter(id) => {
+                    let mut filter = self.modules.spectral_filters.take(*id);
+
+                    filter.process(&params, self);
+                    self.modules.spectral_filters.return_back(filter);
+                }
                 RoutingNode::Output => (),
             }
         }
 
-        self.read_output(&params, outputs);
+        self.write_output(&params, outputs);
     }
 
-    fn read_output<'a>(
+    fn write_output<'a>(
         &mut self,
         params: &ProcessParams,
         outputs: impl Iterator<Item = &'a mut [f32]>,
@@ -366,27 +409,10 @@ impl SynthEngine {
         self.tmp_output_buffer.replace(tmp_buffer);
     }
 
-    pub fn update_harmonics(&mut self, harmonics: &Vec<f32>, tail: f32) {
-        let range = 1..(harmonics.len() + 1);
-
-        for (out, series_factor, harmonic) in izip!(
-            &mut self.spectral_buffer[range.clone()],
-            &HARMONIC_SERIES_BUFFER[range],
-            harmonics
-        ) {
-            *out = series_factor * harmonic;
+    pub fn update_harmonics(&mut self, harmonics: &[Sample], tail: Sample) {
+        for filter in &mut self.modules.spectral_filters.modules.values_mut() {
+            filter.as_mut().unwrap().set_harmonics(harmonics, tail);
         }
-
-        let range = (harmonics.len() + 1)..self.spectral_buffer.len();
-
-        for (out, series_factor) in self.spectral_buffer[range.clone()]
-            .iter_mut()
-            .zip(HARMONIC_SERIES_BUFFER[range].iter())
-        {
-            *out = *series_factor * tail;
-        }
-
-        self.spectral_buffer[0] = ComplexSample::ZERO;
     }
 
     pub fn set_volume(&mut self, volume: f32) {
@@ -411,13 +437,21 @@ impl SynthEngine {
         }
     }
 
+    pub fn set_cutoff(&mut self, cutoff: Sample) {
+        for filter in self.modules.spectral_filters.modules.values_mut() {
+            filter.as_mut().unwrap().set_cutoff_harmonic(cutoff.into());
+        }
+    }
+
     fn build_scheme(&mut self) {
+        let mut filter = modules::SpectralFilter::new();
         let mut osc = modules::Oscillator::new();
         // let mut detune_env = EnvelopeModule::new();
         // let mut pitch_env = EnvelopeModule::new();
         let mut amp_env = modules::Envelope::new();
         let amp = modules::Amplifier::new();
 
+        filter.set_cutoff_harmonic(1000.0.into());
         osc.set_unison(3).set_detune(0.01.into());
         // pitch_env
         //     .set_attack(50.0)
@@ -438,6 +472,7 @@ impl SynthEngine {
             .set_sustain(1.0.into())
             .set_release(300.0.into());
 
+        let filter_id = self.add_spectral_filter(filter);
         let osc_id = self.add_oscillator(osc);
         // let detune_env_id = self.add_envelope(detune_env);
         // let pitch_shift_env_id = self.add_envelope(pitch_env);
@@ -446,6 +481,10 @@ impl SynthEngine {
 
         self.set_links(&[
             ModuleLink::link(ModuleOutput::Amplifier(amp_id), ModuleInput::Output),
+            ModuleLink::link(
+                ModuleOutput::SpectralFilter(filter_id),
+                ModuleInput::OscillatorSpectrum(osc_id),
+            ),
             ModuleLink::link(
                 ModuleOutput::Oscillator(osc_id),
                 ModuleInput::AmplifierInput(amp_id),
@@ -470,7 +509,7 @@ impl SynthEngine {
 
     fn resolve_buffer(&self, output: ModuleOutput, voice_idx: usize, channel: usize) -> &Buffer {
         self.modules
-            .resolve_node(output.routing_node())
+            .resolve_buffer_output_node(output.routing_node())
             .unwrap()
             .get_output(voice_idx, channel)
     }
@@ -538,9 +577,20 @@ impl Router for SynthEngine {
 
     fn get_spectral_input(
         &self,
-        _voice_idx: usize,
-        _channel: usize,
-    ) -> Option<(&SpectralBuffer, &SpectralBuffer)> {
-        Some((&self.spectral_buffer, &self.spectral_buffer))
+        input: ModuleInput,
+        voice_idx: usize,
+        channel: usize,
+    ) -> Option<&SpectralBuffer> {
+        let sources = self.input_sources.get(&input)?;
+
+        if sources.is_empty() {
+            return None;
+        }
+
+        let module = self
+            .modules
+            .resolve_spectral_output_node(sources[0].src.routing_node());
+
+        Some(module.unwrap().get_output(voice_idx, channel))
     }
 }

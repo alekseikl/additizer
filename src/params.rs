@@ -24,6 +24,9 @@ pub struct AdditizerParams {
 
     #[id = "detune"]
     pub detune: Arc<FloatParam>,
+
+    #[id = "cutoff"]
+    pub cutoff: FloatParam,
 }
 
 impl Default for AdditizerParams {
@@ -46,14 +49,27 @@ impl Default for AdditizerParams {
             .with_step_size(0.01)
             .with_unit(" dB"),
             unison: IntParam::new("Unison", 3, IntRange::Linear { min: 1, max: 16 }),
-            detune: Arc::new(FloatParam::new(
-                "Detune",
-                20.0,
-                FloatRange::Linear {
+            detune: Arc::new(
+                FloatParam::new(
+                    "Detune",
+                    20.0,
+                    FloatRange::Linear {
+                        min: 0.0,
+                        max: 100.0,
+                    },
+                )
+                .with_step_size(0.01),
+            ),
+            cutoff: FloatParam::new(
+                "Cutoff harmonic",
+                1023.0,
+                FloatRange::Skewed {
                     min: 0.0,
-                    max: 100.0,
+                    max: 1023.0,
+                    factor: 0.2,
                 },
-            )),
+            )
+            .with_step_size(0.01),
         }
     }
 }

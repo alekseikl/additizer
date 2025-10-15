@@ -132,6 +132,7 @@ impl Plugin for Additizer {
             synth.set_volume(self.params.volume.value());
             synth.set_unison(self.params.unison.value() as usize);
             synth.set_detune(self.params.detune.value());
+            synth.set_cutoff(self.params.cutoff.value());
 
             let mut next_event = context.next_event();
 

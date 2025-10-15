@@ -11,6 +11,7 @@ pub enum RoutingNode {
     Envelope(ModuleId),
     Amplifier(ModuleId),
     Oscillator(ModuleId),
+    SpectralFilter(ModuleId),
     Output,
 }
 
@@ -18,6 +19,7 @@ pub enum RoutingNode {
 pub enum ModuleInput {
     AmplifierInput(ModuleId),
     AmplifierLevel(ModuleId),
+    OscillatorSpectrum(ModuleId),
     OscillatorLevel(ModuleId),
     OscillatorPitchShift(ModuleId),
     OscillatorDetune(ModuleId),
@@ -30,6 +32,7 @@ impl ModuleInput {
             Self::AmplifierInput(module_id) => RoutingNode::Amplifier(*module_id),
             Self::AmplifierLevel(module_id) => RoutingNode::Amplifier(*module_id),
             Self::OscillatorLevel(module_id) => RoutingNode::Oscillator(*module_id),
+            Self::OscillatorSpectrum(id) => RoutingNode::Oscillator(*id),
             Self::OscillatorPitchShift(module_id) => RoutingNode::Oscillator(*module_id),
             Self::OscillatorDetune(id) => RoutingNode::Oscillator(*id),
             Self::Output => RoutingNode::Output,
@@ -42,6 +45,7 @@ pub enum ModuleOutput {
     Envelope(ModuleId),
     Amplifier(ModuleId),
     Oscillator(ModuleId),
+    SpectralFilter(ModuleId),
 }
 
 impl ModuleOutput {
@@ -50,6 +54,7 @@ impl ModuleOutput {
             Self::Envelope(module_id) => RoutingNode::Envelope(*module_id),
             Self::Amplifier(module_id) => RoutingNode::Amplifier(*module_id),
             Self::Oscillator(module_id) => RoutingNode::Oscillator(*module_id),
+            Self::SpectralFilter(id) => RoutingNode::SpectralFilter(*id),
         }
     }
 }
@@ -102,7 +107,8 @@ pub trait Router {
 
     fn get_spectral_input(
         &self,
+        input: ModuleInput,
         voice_idx: usize,
         channel: usize,
-    ) -> Option<(&SpectralBuffer, &SpectralBuffer)>;
+    ) -> Option<&SpectralBuffer>;
 }
