@@ -1,7 +1,7 @@
 use crate::synth_engine::{
     buffer::{Buffer, ONES_BUFFER, ZEROES_BUFFER, make_zero_buffer},
     routing::{MAX_VOICES, ModuleId, ModuleInput, NUM_CHANNELS, Router},
-    synth_module::{ProcessParams, SynthModule},
+    synth_module::{BufferOutputModule, NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
     types::StereoValue,
 };
 use itertools::izip;
@@ -54,12 +54,12 @@ impl Default for Common {
     }
 }
 
-pub struct AmplifierModule {
+pub struct Amplifier {
     common: Common,
     channels: [Channel; NUM_CHANNELS],
 }
 
-impl AmplifierModule {
+impl Amplifier {
     pub fn new() -> Self {
         Self {
             common: Default::default(),
@@ -67,7 +67,7 @@ impl AmplifierModule {
         }
     }
 
-    pub(super) fn set_id(&mut self, module_id: ModuleId) {
+    pub fn set_id(&mut self, module_id: ModuleId) {
         self.common.module_id = module_id;
     }
 
@@ -111,17 +111,13 @@ impl AmplifierModule {
     }
 }
 
-impl SynthModule for AmplifierModule {
+impl SynthModule for Amplifier {
     fn get_id(&self) -> ModuleId {
         self.common.module_id
     }
 
-    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
-        &self.channels[channel].voices[voice_idx].output
-    }
-
-    fn note_on(&mut self, _: &super::synth_module::NoteOnParams) {}
-    fn note_off(&mut self, _: &super::synth_module::NoteOffParams) {}
+    fn note_on(&mut self, _: &NoteOnParams) {}
+    fn note_off(&mut self, _: &NoteOffParams) {}
 
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
@@ -136,5 +132,11 @@ impl SynthModule for AmplifierModule {
                 );
             }
         }
+    }
+}
+
+impl BufferOutputModule for Amplifier {
+    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
+        &self.channels[channel].voices[voice_idx].output
     }
 }

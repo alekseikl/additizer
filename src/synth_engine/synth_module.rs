@@ -1,6 +1,7 @@
 use crate::synth_engine::{
-    buffer::Buffer,
+    buffer::{Buffer, SpectralBuffer},
     routing::{ModuleId, Router},
+    types::Sample,
 };
 
 pub struct NoteOnParams {
@@ -8,7 +9,6 @@ pub struct NoteOnParams {
     pub velocity: f32,
     pub voice_idx: usize,
     pub same_note_retrigger: bool,
-    pub initial_phase: u32,
 }
 
 pub struct NoteOffParams {
@@ -24,8 +24,19 @@ pub struct ProcessParams<'a> {
 
 pub trait SynthModule {
     fn get_id(&self) -> ModuleId;
-    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer;
     fn note_on(&mut self, params: &NoteOnParams);
     fn note_off(&mut self, params: &NoteOffParams);
     fn process(&mut self, params: &ProcessParams, router: &dyn Router);
+}
+
+pub trait BufferOutputModule: SynthModule {
+    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer;
+}
+
+pub trait SpectralOutputModule: SynthModule {
+    fn get_output(&self, voice_idx: usize, channel: usize) -> &SpectralBuffer;
+}
+
+pub trait ScalarOutputModule: SynthModule {
+    fn get_output(&self, voice_idx: usize, channel: usize) -> &Sample;
 }

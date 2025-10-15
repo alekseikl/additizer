@@ -3,34 +3,25 @@ use std::collections::{HashMap, HashSet};
 
 use itertools::{Itertools, izip};
 use nih_plug::util::db_to_gain_fast;
-use rand::RngCore;
-use rand_pcg::Pcg32;
 use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
-    amplifier::AmplifierModule,
-    buffer::{Buffer, HARMONIC_SERIES_BUFFER, SpectralBuffer},
-    envelope_module::EnvelopeModule,
+    buffer::{Buffer, HARMONIC_SERIES_BUFFER, SpectralBuffer, ZEROES_BUFFER, make_zero_buffer},
     modules_container::ModulesContainer,
-    oscillator::OscillatorModule,
-    output::OutputModule,
     routing::{
         MAX_VOICES, ModuleId, ModuleInput, ModuleInputSource, ModuleLink, ModuleOutput, Router,
         RoutingNode,
     },
-    synth_module::{NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
+    synth_module::{BufferOutputModule, NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
     types::{ComplexSample, StereoValue},
 };
 
-pub mod amplifier;
 pub mod buffer;
 pub mod context;
 pub mod envelope;
-pub mod envelope_module;
+pub mod modules;
 pub mod modules_container;
-pub mod oscillator;
-pub mod output;
 pub mod routing;
 pub mod synth_module;
 pub mod types;
@@ -62,10 +53,9 @@ impl Voice {
 }
 
 struct Modules {
-    oscillators: ModulesContainer<OscillatorModule>,
-    envelopes: ModulesContainer<EnvelopeModule>,
-    amplifiers: ModulesContainer<AmplifierModule>,
-    output_module: Option<Box<OutputModule>>,
+    oscillators: ModulesContainer<modules::Oscillator>,
+    envelopes: ModulesContainer<modules::Envelope>,
+    amplifiers: ModulesContainer<modules::Amplifier>,
 }
 
 impl Modules {
@@ -74,28 +64,24 @@ impl Modules {
             oscillators: ModulesContainer::new(),
             envelopes: ModulesContainer::new(),
             amplifiers: ModulesContainer::new(),
-            output_module: Some(Box::new(OutputModule::new())),
         }
     }
 
-    fn resolve_node(&self, node: RoutingNode) -> Option<&dyn SynthModule> {
+    fn resolve_node(&self, node: RoutingNode) -> Option<&dyn BufferOutputModule> {
         match node {
             RoutingNode::Oscillator(id) => self
                 .oscillators
                 .get(id)
-                .map(|module| module as &dyn SynthModule),
+                .map(|module| module as &dyn BufferOutputModule),
             RoutingNode::Envelope(id) => self
                 .envelopes
                 .get(id)
-                .map(|module| module as &dyn SynthModule),
+                .map(|module| module as &dyn BufferOutputModule),
             RoutingNode::Amplifier(id) => self
                 .amplifiers
                 .get(id)
-                .map(|module| module as &dyn SynthModule),
-            RoutingNode::Output => self
-                .output_module
-                .as_deref()
-                .map(|module| module as &dyn SynthModule),
+                .map(|module| module as &dyn BufferOutputModule),
+            RoutingNode::Output => panic!("RoutingNode::Output don't have corresponding module."),
         }
     }
 
@@ -113,10 +99,7 @@ impl Modules {
                 .amplifiers
                 .get_mut(id)
                 .map(|module| module as &mut dyn SynthModule),
-            RoutingNode::Output => self
-                .output_module
-                .as_deref_mut()
-                .map(|module| module as &mut dyn SynthModule),
+            RoutingNode::Output => panic!("RoutingNode::Output don't have corresponding module."),
         }
     }
 }
@@ -129,8 +112,8 @@ pub struct SynthEngine {
     input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>>,
     execution_order: Vec<RoutingNode>,
     voices: [Voice; MAX_VOICES],
-    random: Pcg32,
     spectral_buffer: SpectralBuffer,
+    tmp_output_buffer: Option<Box<Buffer>>,
 }
 
 impl SynthEngine {
@@ -143,8 +126,8 @@ impl SynthEngine {
             input_sources: HashMap::new(),
             execution_order: Vec::new(),
             voices: Default::default(),
-            random: Pcg32::new(3537, 9573),
             spectral_buffer: HARMONIC_SERIES_BUFFER,
+            tmp_output_buffer: Some(Box::new(make_zero_buffer())),
         }
     }
 
@@ -155,7 +138,7 @@ impl SynthEngine {
         module_id
     }
 
-    pub fn add_oscillator(&mut self, mut osc: OscillatorModule) -> ModuleId {
+    pub fn add_oscillator(&mut self, mut osc: modules::Oscillator) -> ModuleId {
         let id = self.alloc_next_id();
 
         osc.set_id(id);
@@ -163,7 +146,7 @@ impl SynthEngine {
         id
     }
 
-    pub fn add_envelope(&mut self, mut env: EnvelopeModule) -> ModuleId {
+    pub fn add_envelope(&mut self, mut env: modules::Envelope) -> ModuleId {
         let id = self.alloc_next_id();
 
         env.set_id(id);
@@ -171,7 +154,7 @@ impl SynthEngine {
         id
     }
 
-    pub fn add_amplifier(&mut self, mut amp: AmplifierModule) -> ModuleId {
+    pub fn add_amplifier(&mut self, mut amp: modules::Amplifier) -> ModuleId {
         let id = self.alloc_next_id();
 
         amp.set_id(id);
@@ -247,7 +230,6 @@ impl SynthEngine {
             velocity,
             voice_idx,
             same_note_retrigger: same_note,
-            initial_phase: self.random.next_u32(),
         };
 
         for node in &self.execution_order {
@@ -357,10 +339,31 @@ impl SynthEngine {
             }
         }
 
-        let mut output = self.modules.output_module.take().unwrap();
+        self.read_output(&params, outputs);
+    }
 
-        output.read_output(&params, self, outputs);
-        self.modules.output_module.replace(output);
+    fn read_output<'a>(
+        &mut self,
+        params: &ProcessParams,
+        outputs: impl Iterator<Item = &'a mut [f32]>,
+    ) {
+        let mut tmp_buffer = self.tmp_output_buffer.take().unwrap();
+
+        for (channel, output) in outputs.enumerate() {
+            output.fill(0.0);
+
+            for voice_idx in params.active_voices {
+                let input = self
+                    .get_input(ModuleInput::Output, *voice_idx, channel, &mut tmp_buffer)
+                    .unwrap_or(&ZEROES_BUFFER);
+
+                for (out, input, _) in izip!(output.iter_mut(), input, 0..params.samples) {
+                    *out += input;
+                }
+            }
+        }
+
+        self.tmp_output_buffer.replace(tmp_buffer);
     }
 
     pub fn update_harmonics(&mut self, harmonics: &Vec<f32>, tail: f32) {
@@ -409,11 +412,11 @@ impl SynthEngine {
     }
 
     fn build_scheme(&mut self) {
-        let mut osc = OscillatorModule::new();
+        let mut osc = modules::Oscillator::new();
         // let mut detune_env = EnvelopeModule::new();
         // let mut pitch_env = EnvelopeModule::new();
-        let mut amp_env = EnvelopeModule::new();
-        let amp = AmplifierModule::new();
+        let mut amp_env = modules::Envelope::new();
+        let amp = modules::Amplifier::new();
 
         osc.set_unison(3).set_detune(0.01.into());
         // pitch_env
@@ -486,7 +489,10 @@ impl SynthEngine {
         let topo_sort = TopoSort::from_map(dependents);
 
         match topo_sort.into_vec_nodes() {
-            SortResults::Full(nodes) => Ok(nodes),
+            SortResults::Full(nodes) => Ok(nodes
+                .into_iter()
+                .filter(|node| *node != RoutingNode::Output)
+                .collect()),
             SortResults::Partial(_) => Err("Cycles detected!".to_string()),
         }
     }

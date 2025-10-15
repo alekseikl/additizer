@@ -3,7 +3,9 @@ use crate::{
         buffer::{Buffer, make_zero_buffer},
         envelope::{self, EnvelopeActivityState, EnvelopeChannel, EnvelopeVoice},
         routing::{MAX_VOICES, ModuleId, NUM_CHANNELS, Router},
-        synth_module::{NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
+        synth_module::{
+            BufferOutputModule, NoteOffParams, NoteOnParams, ProcessParams, SynthModule,
+        },
         types::StereoValue,
     },
     utils::from_ms,
@@ -29,13 +31,13 @@ struct Channel {
     voices: [Voice; MAX_VOICES],
 }
 
-pub struct EnvelopeModule {
+pub struct Envelope {
     module_id: ModuleId,
     keep_voice_alive: bool,
     channels: [Channel; NUM_CHANNELS],
 }
 
-impl EnvelopeModule {
+impl Envelope {
     pub fn new() -> Self {
         Self {
             module_id: 0,
@@ -44,7 +46,7 @@ impl EnvelopeModule {
         }
     }
 
-    pub(super) fn set_id(&mut self, module_id: ModuleId) {
+    pub fn set_id(&mut self, module_id: ModuleId) {
         self.module_id = module_id;
     }
 
@@ -109,13 +111,9 @@ impl EnvelopeModule {
     }
 }
 
-impl SynthModule for EnvelopeModule {
+impl SynthModule for Envelope {
     fn get_id(&self) -> ModuleId {
         self.module_id
-    }
-
-    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
-        &self.channels[channel].voices[voice_idx].output
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
@@ -140,5 +138,11 @@ impl SynthModule for EnvelopeModule {
                 Self::process_channel_voice(channel, params, *voice_idx);
             }
         }
+    }
+}
+
+impl BufferOutputModule for Envelope {
+    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
+        &self.channels[channel].voices[voice_idx].output
     }
 }

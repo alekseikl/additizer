@@ -13,7 +13,7 @@ use crate::synth_engine::{
         make_zero_buffer, make_zero_spectral_buffer, make_zero_wave_buffer, wrap_wave_buffer,
     },
     routing::{MAX_VOICES, ModuleId, ModuleInput, NUM_CHANNELS, Router},
-    synth_module::{NoteOnParams, ProcessParams, SynthModule},
+    synth_module::{BufferOutputModule, NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
     types::{ComplexSample, Phase, Sample, StereoValue},
 };
 
@@ -93,12 +93,12 @@ impl Default for Common {
     }
 }
 
-pub struct OscillatorModule {
+pub struct Oscillator {
     common: Common,
     channels: [Channel; NUM_CHANNELS],
 }
 
-impl OscillatorModule {
+impl Oscillator {
     pub fn new() -> Self {
         Self {
             common: Common::default(),
@@ -106,7 +106,7 @@ impl OscillatorModule {
         }
     }
 
-    pub(super) fn set_id(&mut self, module_id: ModuleId) {
+    pub fn set_id(&mut self, module_id: ModuleId) {
         self.common.module_id = module_id;
     }
 
@@ -341,13 +341,9 @@ impl OscillatorModule {
     }
 }
 
-impl SynthModule for OscillatorModule {
+impl SynthModule for Oscillator {
     fn get_id(&self) -> ModuleId {
         self.common.module_id
-    }
-
-    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
-        &self.channels[channel].voices[voice_idx].output
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
@@ -366,7 +362,7 @@ impl SynthModule for OscillatorModule {
         }
     }
 
-    fn note_off(&mut self, _: &super::synth_module::NoteOffParams) {}
+    fn note_off(&mut self, _: &NoteOffParams) {}
 
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
@@ -381,5 +377,11 @@ impl SynthModule for OscillatorModule {
                 );
             }
         }
+    }
+}
+
+impl BufferOutputModule for Oscillator {
+    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
+        &self.channels[channel].voices[voice_idx].output
     }
 }
