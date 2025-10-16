@@ -8,12 +8,15 @@ use realfft::{ComplexToReal, RealFftPlanner};
 
 use crate::synth_engine::{
     buffer::{
-        BUFFER_SIZE, Buffer, HARMONIC_SERIES_BUFFER, ONES_BUFFER, SpectralBuffer, WAVEFORM_BITS,
-        WAVEFORM_SIZE, WaveformBuffer, ZEROES_BUFFER, get_interpolated_sample, get_wave_slice_mut,
+        BUFFER_SIZE, Buffer, ONES_BUFFER, SpectralBuffer, WAVEFORM_BITS, WAVEFORM_SIZE,
+        WaveformBuffer, ZEROES_BUFFER, get_interpolated_sample, get_wave_slice_mut,
         make_zero_buffer, make_zero_spectral_buffer, make_zero_wave_buffer, wrap_wave_buffer,
     },
     routing::{MAX_VOICES, ModuleId, ModuleInput, NUM_CHANNELS, Router},
-    synth_module::{BufferOutputModule, NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
+    synth_module::{
+        BufferOutputModule, NoteOffParams, NoteOnParams, ProcessParams, SpectralOutputs,
+        SynthModule,
+    },
     types::{ComplexSample, Phase, Sample, StereoValue},
 };
 
@@ -29,6 +32,7 @@ struct Voice {
     note: f32,
     wave_buffers_initialized: bool,
     wave_buffers_swapped: bool,
+    needs_reset: bool,
     phases: [Phase; MAX_UNISON_VOICES],
     output: Buffer,
     wave_buffers: (WaveformBuffer, WaveformBuffer),
@@ -40,6 +44,7 @@ impl Default for Voice {
             note: 0.0,
             wave_buffers_initialized: false,
             wave_buffers_swapped: false,
+            needs_reset: true,
             phases: Default::default(),
             output: make_zero_buffer(),
             wave_buffers: (make_zero_wave_buffer(), make_zero_wave_buffer()),
@@ -156,12 +161,35 @@ impl Oscillator {
         ifft: &dyn ComplexToReal<Sample>,
         frequency: f32,
         sample_rate: f32,
-        spectral_buff: &SpectralBuffer,
+        spectral_inputs: SpectralOutputs,
         tmp_spectral_buff: &mut SpectralBuffer,
         scratch_buff: &mut SpectralBuffer,
         voice: &mut Voice,
     ) {
-        if voice.wave_buffers_initialized {
+        if voice.needs_reset {
+            Self::build_wave(
+                ifft,
+                frequency,
+                sample_rate,
+                spectral_inputs.first,
+                tmp_spectral_buff,
+                scratch_buff,
+                &mut voice.wave_buffers.0,
+            );
+
+            Self::build_wave(
+                ifft,
+                frequency,
+                sample_rate,
+                spectral_inputs.current,
+                tmp_spectral_buff,
+                scratch_buff,
+                &mut voice.wave_buffers.1,
+            );
+
+            voice.needs_reset = false;
+            voice.wave_buffers_swapped = false;
+        } else {
             let next_wave_buff = if voice.wave_buffers_swapped {
                 &mut voice.wave_buffers.1
             } else {
@@ -172,36 +200,13 @@ impl Oscillator {
                 ifft,
                 frequency,
                 sample_rate,
-                spectral_buff,
+                spectral_inputs.current,
                 tmp_spectral_buff,
                 scratch_buff,
                 next_wave_buff,
             );
 
             voice.wave_buffers_swapped = !voice.wave_buffers_swapped;
-        } else {
-            Self::build_wave(
-                ifft,
-                frequency,
-                sample_rate,
-                spectral_buff,
-                tmp_spectral_buff,
-                scratch_buff,
-                &mut voice.wave_buffers.0,
-            );
-
-            Self::build_wave(
-                ifft,
-                frequency,
-                sample_rate,
-                spectral_buff,
-                tmp_spectral_buff,
-                scratch_buff,
-                &mut voice.wave_buffers.1,
-            );
-
-            voice.wave_buffers_swapped = false;
-            voice.wave_buffers_initialized = true;
         }
     }
 
@@ -261,7 +266,7 @@ impl Oscillator {
                     voice_idx,
                     channel_idx,
                 )
-                .unwrap_or(&HARMONIC_SERIES_BUFFER),
+                .unwrap_or(SpectralOutputs::harmonic()),
             &mut common.tmp_spectral_buff,
             &mut common.scratch_buff,
             voice,
@@ -362,6 +367,7 @@ impl SynthModule for Oscillator {
                 self.common
                     .random
                     .fill(&mut voice.phases[..self.common.unison]);
+                voice.needs_reset = true;
             }
         }
     }

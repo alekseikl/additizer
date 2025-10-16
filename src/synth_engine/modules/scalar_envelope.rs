@@ -1,26 +1,30 @@
 use crate::{
     synth_engine::{
-        buffer::{Buffer, make_zero_buffer},
         envelope::{self, EnvelopeActivityState, EnvelopeChannel, EnvelopeVoice},
         routing::{MAX_VOICES, ModuleId, NUM_CHANNELS, Router},
         synth_module::{
-            BufferOutputModule, NoteOffParams, NoteOnParams, ProcessParams, SynthModule,
+            NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputModule, ScalarOutputs,
+            SynthModule,
         },
-        types::StereoValue,
+        types::{Sample, StereoValue},
     },
     utils::from_ms,
 };
 
 struct Voice {
     env: EnvelopeVoice,
-    output: Buffer,
+    needs_reset: bool,
+    first_output: Sample,
+    output: Sample,
 }
 
 impl Default for Voice {
     fn default() -> Self {
         Self {
             env: EnvelopeVoice::default(),
-            output: make_zero_buffer(),
+            needs_reset: true,
+            first_output: 0.0,
+            output: 0.0,
         }
     }
 }
@@ -31,17 +35,17 @@ struct Channel {
     voices: [Voice; MAX_VOICES],
 }
 
-pub struct Envelope {
+pub struct ScalarEnvelope {
     module_id: ModuleId,
     keep_voice_alive: bool,
     channels: [Channel; NUM_CHANNELS],
 }
 
-impl Envelope {
+impl ScalarEnvelope {
     pub fn new() -> Self {
         Self {
             module_id: 0,
-            keep_voice_alive: true,
+            keep_voice_alive: false,
             channels: Default::default(),
         }
     }
@@ -100,28 +104,22 @@ impl Envelope {
             }
         }
     }
-
-    fn process_channel_voice(channel: &mut Channel, params: &ProcessParams, voice_idx: usize) {
-        let voice = &mut channel.voices[voice_idx];
-
-        for (out, _) in voice.output.iter_mut().zip(0..params.samples) {
-            *out = envelope::process_voice(&channel.env, &mut voice.env, params.t_step);
-        }
-    }
 }
 
-impl SynthModule for Envelope {
+impl SynthModule for ScalarEnvelope {
     fn get_id(&self) -> ModuleId {
         self.module_id
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
         for channel in &mut self.channels {
-            envelope::reset_voice(
-                &channel.env,
-                &mut channel.voices[params.voice_idx].env,
-                params.same_note_retrigger,
-            );
+            let voice = &mut channel.voices[params.voice_idx];
+
+            envelope::reset_voice(&channel.env, &mut voice.env, params.same_note_retrigger);
+
+            if !params.same_note_retrigger {
+                voice.needs_reset = true;
+            }
         }
     }
 
@@ -134,14 +132,28 @@ impl SynthModule for Envelope {
     fn process(&mut self, params: &ProcessParams, _router: &dyn Router) {
         for channel in &mut self.channels {
             for voice_idx in params.active_voices {
-                Self::process_channel_voice(channel, params, *voice_idx);
+                let voice = &mut channel.voices[*voice_idx];
+
+                if voice.needs_reset {
+                    voice.first_output =
+                        envelope::process_voice(&channel.env, &mut voice.env, params.buffer_t_step);
+                    voice.needs_reset = false;
+                }
+
+                voice.output =
+                    envelope::process_voice(&channel.env, &mut voice.env, params.buffer_t_step);
             }
         }
     }
 }
 
-impl BufferOutputModule for Envelope {
-    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
-        &self.channels[channel].voices[voice_idx].output
+impl ScalarOutputModule for ScalarEnvelope {
+    fn get_output(&self, voice_idx: usize, channel: usize) -> ScalarOutputs {
+        let voice = &self.channels[channel].voices[voice_idx];
+
+        ScalarOutputs {
+            first: voice.first_output,
+            current: voice.output,
+        }
     }
 }

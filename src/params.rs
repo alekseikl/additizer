@@ -62,7 +62,7 @@ impl Default for AdditizerParams {
             ),
             cutoff: FloatParam::new(
                 "Cutoff harmonic",
-                1023.0,
+                1.0,
                 FloatRange::Skewed {
                     min: 0.0,
                     max: 1023.0,

@@ -1,4 +1,4 @@
-use crate::synth_engine::buffer::SpectralBuffer;
+use crate::synth_engine::synth_module::{ScalarOutputs, SpectralOutputs};
 
 use super::buffer::Buffer;
 
@@ -9,6 +9,7 @@ pub type ModuleId = u64;
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum RoutingNode {
     Envelope(ModuleId),
+    ScalarEnvelope(ModuleId),
     Amplifier(ModuleId),
     Oscillator(ModuleId),
     SpectralFilter(ModuleId),
@@ -23,6 +24,7 @@ pub enum ModuleInput {
     OscillatorLevel(ModuleId),
     OscillatorPitchShift(ModuleId),
     OscillatorDetune(ModuleId),
+    SpectralFilterCutoff(ModuleId),
     Output,
 }
 
@@ -35,6 +37,7 @@ impl ModuleInput {
             Self::OscillatorSpectrum(id) => RoutingNode::Oscillator(*id),
             Self::OscillatorPitchShift(module_id) => RoutingNode::Oscillator(*module_id),
             Self::OscillatorDetune(id) => RoutingNode::Oscillator(*id),
+            Self::SpectralFilterCutoff(id) => RoutingNode::SpectralFilter(*id),
             Self::Output => RoutingNode::Output,
         }
     }
@@ -43,6 +46,7 @@ impl ModuleInput {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum ModuleOutput {
     Envelope(ModuleId),
+    ScalarEnvelope(ModuleId),
     Amplifier(ModuleId),
     Oscillator(ModuleId),
     SpectralFilter(ModuleId),
@@ -52,6 +56,7 @@ impl ModuleOutput {
     pub fn routing_node(&self) -> RoutingNode {
         match self {
             Self::Envelope(module_id) => RoutingNode::Envelope(*module_id),
+            Self::ScalarEnvelope(id) => RoutingNode::ScalarEnvelope(*id),
             Self::Amplifier(module_id) => RoutingNode::Amplifier(*module_id),
             Self::Oscillator(module_id) => RoutingNode::Oscillator(*module_id),
             Self::SpectralFilter(id) => RoutingNode::SpectralFilter(*id),
@@ -110,5 +115,12 @@ pub trait Router {
         input: ModuleInput,
         voice_idx: usize,
         channel: usize,
-    ) -> Option<&SpectralBuffer>;
+    ) -> Option<SpectralOutputs<'_>>;
+
+    fn get_scalar_input(
+        &self,
+        input: ModuleInput,
+        voice_idx: usize,
+        channel: usize,
+    ) -> Option<ScalarOutputs>;
 }
