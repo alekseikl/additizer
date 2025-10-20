@@ -3,18 +3,22 @@ name = "additizer"
 version = "0.1.0"
 edition = "2024"
 
-[package.metadata.clippy]
-allow = ["new_without_default"]
-
 [lib]
 crate-type = ["cdylib", "lib"]
 
-[dependencies]
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = [
-    "standalone",
+[features]
+default = ["opengl", "default_fonts"]
+opengl = ["egui-baseview/opengl"]
+default_fonts = ["egui-baseview/default_fonts"]
+rayon = ["egui-baseview/rayon"]
 
+[dependencies]
+nih_plug = { git = "https://github.com/alekseikl/nih-plug.git", branch = "my_fixes", features = [
+    "standalone",
 ] }
-vizia_plug = { git = "https://github.com/vizia/vizia-plug.git" }
+egui-baseview = { git = "https://github.com/alekseikl/egui-baseview.git", branch = "my_fixes" }
+baseview = { git = "https://github.com/blepfx/baseview.git", rev = "3724a00c970a9cd10a3494fa3c37bca66d631bb7" }
+raw-window-handle = "0.5"
 
 crossbeam = "0.8"
 serde = { version = "1.0", features = ["derive"] }

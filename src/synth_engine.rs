@@ -459,7 +459,7 @@ impl SynthEngine {
         self.tmp_output_buffer.replace(tmp_buffer);
     }
 
-    pub fn update_harmonics(&mut self, harmonics: &[Sample], tail: Sample) {
+    pub fn update_harmonics(&mut self, harmonics: &[StereoValue], tail: StereoValue) {
         for filter in &mut self.modules.spectral_filters.modules.values_mut() {
             filter.as_mut().unwrap().set_harmonics(harmonics, tail);
         }
@@ -504,7 +504,7 @@ impl SynthEngine {
 
         filter_env
             .set_attack(0.0.into())
-            .set_decay(StereoValue::new(100.0, 150.0))
+            .set_decay(500.0.into())
             .set_sustain(0.0.into())
             .set_release(100.0.into());
         filter.set_cutoff_harmonic(2.0.into());

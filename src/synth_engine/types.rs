@@ -1,9 +1,11 @@
 use realfft::num_complex::Complex;
+use serde::{Deserialize, Serialize};
 
 pub type Sample = f32;
 pub type Phase = u32;
 pub type ComplexSample = Complex<Sample>;
 
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct StereoValue {
     pub left: Sample,
     pub right: Sample,

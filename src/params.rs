@@ -1,20 +1,22 @@
 use nih_plug::prelude::*;
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use vizia_plug::ViziaState;
 
-use crate::editor;
+use crate::{editor::egui_integration::EguiState, synth_engine::types::StereoValue};
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct HarmonicsState {
+    pub harmonics: Vec<StereoValue>,
+    pub tail_harmonics: StereoValue,
+}
 #[derive(Params)]
 pub struct AdditizerParams {
     #[persist = "editor-state"]
-    pub editor_state: Arc<ViziaState>,
+    pub editor_state: Arc<EguiState>,
 
-    #[persist = "harmonics"]
-    pub harmonics: Arc<Mutex<Vec<f32>>>,
-
-    #[persist = "tail-harmonics"]
-    pub tail_harmonics: Arc<AtomicF32>,
+    #[persist = "harmonics-state"]
+    pub harmonics_state: Arc<Mutex<HarmonicsState>>,
 
     #[id = "volume"]
     pub volume: FloatParam,
@@ -32,9 +34,11 @@ pub struct AdditizerParams {
 impl Default for AdditizerParams {
     fn default() -> Self {
         Self {
-            editor_state: editor::default_state(),
-            harmonics: Arc::new(Mutex::new(vec![1.0; 40])),
-            tail_harmonics: Arc::new(AtomicF32::new(1.0)),
+            editor_state: EguiState::from_size(900, 500),
+            harmonics_state: Arc::new(Mutex::new(HarmonicsState {
+                harmonics: vec![StereoValue::mono(1.0); 40],
+                tail_harmonics: StereoValue::mono(1.0),
+            })),
             volume: FloatParam::new(
                 "Volume",
                 0.0,

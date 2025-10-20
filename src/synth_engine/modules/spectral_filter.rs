@@ -74,29 +74,36 @@ impl SpectralFilter {
         }
     }
 
-    pub fn set_harmonics(&mut self, harmonics: &[Sample], tail: Sample) {
-        let buff = &mut self.channels[0].params.input_spectrum;
+    pub fn set_harmonics(&mut self, harmonics: &[StereoValue], tail: StereoValue) {
+        let (channel_l, channel_r) = self.channels.split_at_mut(1);
+        let buff_l = &mut channel_l[0].params.input_spectrum;
+        let buff_r = &mut channel_r[0].params.input_spectrum;
         let range = 1..(harmonics.len() + 1);
 
-        for (out, series_factor, harmonic) in izip!(
-            &mut buff[range.clone()],
+        for ((out_l, out_r), series_factor, harmonic) in izip!(
+            buff_l[range.clone()]
+                .iter_mut()
+                .zip(buff_r[range.clone()].iter_mut()),
             &HARMONIC_SERIES_BUFFER[range],
             harmonics
         ) {
-            *out = series_factor * harmonic;
+            *out_l = series_factor * harmonic.left;
+            *out_r = series_factor * harmonic.right
         }
 
-        let range = (harmonics.len() + 1)..buff.len();
+        let range = (harmonics.len() + 1)..buff_l.len();
 
-        for (out, series_factor) in buff[range.clone()]
+        for ((out_l, out_r), series_factor) in buff_l[range.clone()]
             .iter_mut()
+            .zip(buff_r[range.clone()].iter_mut())
             .zip(HARMONIC_SERIES_BUFFER[range].iter())
         {
-            *out = *series_factor * tail;
+            *out_l = series_factor * tail.left;
+            *out_r = series_factor * tail.right;
         }
 
-        buff[0] = ComplexSample::ZERO;
-        self.channels[1].params.input_spectrum = *buff;
+        buff_l[0] = ComplexSample::ZERO;
+        buff_r[0] = ComplexSample::ZERO;
     }
 
     fn process_buffer(

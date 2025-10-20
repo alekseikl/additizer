@@ -1,13 +1,18 @@
 #![allow(clippy::new_without_default)]
 
+// pub mod editor;
 pub mod editor;
 pub mod params;
 pub mod synth_engine;
 pub mod utils;
 
+use crate::editor::egui_integration::{ResizableWindow, create_egui_editor};
+use crate::editor::gain_slider::GainSlider;
 use crate::params::AdditizerParams;
 use crate::synth_engine::buffer::BUFFER_SIZE;
 use crate::synth_engine::{SynthEngine, VoiceId};
+pub use egui_baseview::egui;
+use egui_baseview::egui::{Color32, Frame, Vec2};
 use nih_plug::prelude::*;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -98,10 +103,59 @@ impl Plugin for Additizer {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
-        editor::create(
-            Arc::clone(&self.params),
-            Arc::clone(&self.params.editor_state),
-            Arc::clone(&self.synth_engine),
+        let egui_state = self.params.editor_state.clone();
+        let user_state = self.params.harmonics_state.lock().clone();
+        let synth_engine = Arc::clone(&self.synth_engine);
+
+        create_egui_editor(
+            self.params.editor_state.clone(),
+            (user_state, Arc::clone(&self.params)),
+            |_, _| {},
+            move |egui_ctx, _setter, (state, params)| {
+                ResizableWindow::new("res-wind")
+                    .min_size(egui::Vec2::new(900.0, 500.0))
+                    .show(egui_ctx, egui_state.as_ref(), |ui| {
+                        let mut need_update = false;
+
+                        Frame::default().inner_margin(8.0).show(ui, |ui| {
+                            ui.horizontal_top(|ui| {
+                                ui.style_mut().spacing.item_spacing = Vec2::splat(4.0);
+
+                                for (idx, harmonic) in state.harmonics.iter_mut().enumerate() {
+                                    if ui
+                                        .add(
+                                            GainSlider::new(harmonic)
+                                                .label(&format!("{}", idx + 1))
+                                                .height(300.0),
+                                        )
+                                        .changed()
+                                    {
+                                        need_update = true;
+                                    }
+                                }
+
+                                if ui
+                                    .add(
+                                        GainSlider::new(&mut state.tail_harmonics)
+                                            .label("Tail")
+                                            .color(Color32::from_rgb(0x4d, 0x0f, 0x8c))
+                                            .height(300.0),
+                                    )
+                                    .changed()
+                                {
+                                    need_update = true;
+                                }
+                            });
+                        });
+
+                        if need_update {
+                            synth_engine
+                                .lock()
+                                .update_harmonics(&state.harmonics, state.tail_harmonics);
+                            *params.harmonics_state.lock() = state.clone();
+                        }
+                    });
+            },
         )
     }
 
