@@ -9,6 +9,7 @@ use crate::{editor::egui_integration::EguiState, synth_engine::types::StereoValu
 pub struct HarmonicsState {
     pub harmonics: Vec<StereoValue>,
     pub tail_harmonics: StereoValue,
+    pub val1: f32,
 }
 #[derive(Params)]
 pub struct AdditizerParams {
@@ -38,6 +39,7 @@ impl Default for AdditizerParams {
             harmonics_state: Arc::new(Mutex::new(HarmonicsState {
                 harmonics: vec![StereoValue::mono(1.0); 40],
                 tail_harmonics: StereoValue::mono(1.0),
+                val1: 1.0,
             })),
             volume: FloatParam::new(
                 "Volume",

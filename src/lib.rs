@@ -1,6 +1,5 @@
 #![allow(clippy::new_without_default)]
 
-// pub mod editor;
 pub mod editor;
 pub mod params;
 pub mod synth_engine;
@@ -104,18 +103,19 @@ impl Plugin for Additizer {
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         let egui_state = self.params.editor_state.clone();
-        let user_state = self.params.harmonics_state.lock().clone();
         let synth_engine = Arc::clone(&self.synth_engine);
+        let params = Arc::clone(&self.params);
 
         create_egui_editor(
             self.params.editor_state.clone(),
-            (user_state, Arc::clone(&self.params)),
+            (),
             |_, _| {},
-            move |egui_ctx, _setter, (state, params)| {
+            move |egui_ctx, _setter, _| {
                 ResizableWindow::new("res-wind")
                     .min_size(egui::Vec2::new(900.0, 500.0))
                     .show(egui_ctx, egui_state.as_ref(), |ui| {
                         let mut need_update = false;
+                        let state = &mut *params.harmonics_state.lock();
 
                         Frame::default().inner_margin(8.0).show(ui, |ui| {
                             ui.horizontal_top(|ui| {
@@ -152,7 +152,6 @@ impl Plugin for Additizer {
                             synth_engine
                                 .lock()
                                 .update_harmonics(&state.harmonics, state.tail_harmonics);
-                            *params.harmonics_state.lock() = state.clone();
                         }
                     });
             },
