@@ -242,7 +242,7 @@ impl<'a> GainSlider<'a> {
                 let window_width = ui.input(|i| i.content_rect()).width();
 
                 let label_padding = vec2(3.0, 2.0);
-                let font = FontId::new(9.0, FontFamily::Monospace);
+                let font = FontId::new(10.0, FontFamily::default());
                 let text_galley = ui.painter().layout_no_wrap(label_text, font, BORDER_COLOR);
                 let mut text_rect = text_galley.rect;
 

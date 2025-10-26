@@ -1,5 +1,8 @@
 use core::f32;
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use itertools::{Itertools, izip};
 use nih_plug::util::db_to_gain_fast;
@@ -8,19 +11,22 @@ use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
     buffer::{BUFFER_SIZE, Buffer, ZEROES_BUFFER, make_zero_buffer},
+    config::Config,
+    modules::{Amplifier, Envelope, Oscillator, SpectralFilter},
     modules_container::ModulesContainer,
     routing::{
         MAX_VOICES, ModuleId, ModuleInput, ModuleInputSource, ModuleLink, ModuleOutput, Router,
         RoutingNode,
     },
     synth_module::{
-        BufferOutputModule, NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputModule,
-        ScalarOutputs, SpectralOutputModule, SpectralOutputs, SynthModule,
+        BufferOutputModule, ModuleConfig, NoteOffParams, NoteOnParams, ProcessParams,
+        ScalarOutputModule, ScalarOutputs, SpectralOutputModule, SpectralOutputs, SynthModule,
     },
     types::{Sample, StereoValue},
 };
 
 pub mod buffer;
+pub mod config;
 pub mod context;
 pub mod envelope;
 pub mod modules;
@@ -58,7 +64,6 @@ impl Voice {
 struct Modules {
     oscillators: ModulesContainer<modules::Oscillator>,
     envelopes: ModulesContainer<modules::Envelope>,
-    scalar_envelopes: ModulesContainer<modules::ScalarEnvelope>,
     amplifiers: ModulesContainer<modules::Amplifier>,
     spectral_filters: ModulesContainer<modules::SpectralFilter>,
 }
@@ -68,7 +73,6 @@ impl Modules {
         Self {
             oscillators: ModulesContainer::new(),
             envelopes: ModulesContainer::new(),
-            scalar_envelopes: ModulesContainer::new(),
             amplifiers: ModulesContainer::new(),
             spectral_filters: ModulesContainer::new(),
         }
@@ -88,9 +92,6 @@ impl Modules {
                 .amplifiers
                 .get(id)
                 .map(|module| module as &dyn BufferOutputModule),
-            RoutingNode::ScalarEnvelope(_) => {
-                panic!("RoutingNode::ScalarEnvelope don't have buffer output.")
-            }
             RoutingNode::SpectralFilter(_) => {
                 panic!("RoutingNode::SpectralFilter don't have buffer output.")
             }
@@ -100,15 +101,12 @@ impl Modules {
 
     fn resolve_scalar_output_node(&self, node: RoutingNode) -> Option<&dyn ScalarOutputModule> {
         match node {
-            RoutingNode::ScalarEnvelope(id) => self
-                .scalar_envelopes
+            RoutingNode::Envelope(id) => self
+                .envelopes
                 .get(id)
                 .map(|module| module as &dyn ScalarOutputModule),
             RoutingNode::Oscillator(_) => {
                 panic!("RoutingNode::Oscillator don't have scalar output.")
-            }
-            RoutingNode::Envelope(_) => {
-                panic!("RoutingNode::Envelope don't have scalar output.")
             }
             RoutingNode::Amplifier(_) => {
                 panic!("RoutingNode::Amplifier don't have scalar output.")
@@ -132,9 +130,6 @@ impl Modules {
             RoutingNode::Envelope(_) => {
                 panic!("RoutingNode::Envelope don't have spectral output.")
             }
-            RoutingNode::ScalarEnvelope(_) => {
-                panic!("RoutingNode::ScalarEnvelope don't have spectral output.")
-            }
             RoutingNode::Amplifier(_) => {
                 panic!("RoutingNode::Amplifier don't have spectral output.")
             }
@@ -150,10 +145,6 @@ impl Modules {
                 .map(|module| module as &mut dyn SynthModule),
             RoutingNode::Envelope(id) => self
                 .envelopes
-                .get_mut(id)
-                .map(|module| module as &mut dyn SynthModule),
-            RoutingNode::ScalarEnvelope(id) => self
-                .scalar_envelopes
                 .get_mut(id)
                 .map(|module| module as &mut dyn SynthModule),
             RoutingNode::Amplifier(id) => self
@@ -173,6 +164,7 @@ pub struct SynthEngine {
     next_id: u64,
     next_voice_id: u64,
     sample_rate: f32,
+    config: Arc<Config>,
     modules: Modules,
     input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>>,
     execution_order: Vec<RoutingNode>,
@@ -181,11 +173,12 @@ pub struct SynthEngine {
 }
 
 impl SynthEngine {
-    pub fn new() -> Self {
+    pub fn new(config: Arc<Config>) -> Self {
         Self {
             next_id: 1,
             next_voice_id: 1,
             sample_rate: 1000.0,
+            config,
             modules: Modules::new(),
             input_sources: HashMap::new(),
             execution_order: Vec::new(),
@@ -198,46 +191,42 @@ impl SynthEngine {
         let module_id = self.next_id;
 
         self.next_id += 1;
+        self.config.routing.lock().last_module_id = self.next_id;
         module_id
     }
 
-    pub fn add_oscillator(&mut self, mut osc: modules::Oscillator) -> ModuleId {
+    pub fn add_oscillator(&mut self) -> ModuleId {
         let id = self.alloc_next_id();
+        let osc = Oscillator::new(ModuleConfig::new(id, Arc::clone(&self.config.oscillators)));
 
-        osc.set_id(id);
         self.modules.oscillators.add(osc);
         id
     }
 
-    pub fn add_envelope(&mut self, mut env: modules::Envelope) -> ModuleId {
+    pub fn add_envelope(&mut self) -> ModuleId {
         let id = self.alloc_next_id();
+        let env = Envelope::new(ModuleConfig::new(id, Arc::clone(&self.config.envelopes)));
 
-        env.set_id(id);
         self.modules.envelopes.add(env);
         id
     }
 
-    pub fn add_amplifier(&mut self, mut amp: modules::Amplifier) -> ModuleId {
+    pub fn add_amplifier(&mut self) -> ModuleId {
         let id = self.alloc_next_id();
+        let amp = Amplifier::new(ModuleConfig::new(id, Arc::clone(&self.config.amplifiers)));
 
-        amp.set_id(id);
         self.modules.amplifiers.add(amp);
         id
     }
 
-    pub fn add_spectral_filter(&mut self, mut filter: modules::SpectralFilter) -> ModuleId {
+    pub fn add_spectral_filter(&mut self) -> ModuleId {
         let id = self.alloc_next_id();
+        let filter = SpectralFilter::new(ModuleConfig::new(
+            id,
+            Arc::clone(&self.config.spectral_filters),
+        ));
 
-        filter.set_id(id);
         self.modules.spectral_filters.add(filter);
-        id
-    }
-
-    pub fn add_scalar_envelope(&mut self, mut env: modules::ScalarEnvelope) -> ModuleId {
-        let id = self.alloc_next_id();
-
-        env.set_id(id);
-        self.modules.scalar_envelopes.add(env);
         id
     }
 
@@ -263,6 +252,7 @@ impl SynthEngine {
 
     pub fn init(&mut self, sample_rate: f32) {
         self.sample_rate = sample_rate;
+        self.next_id = self.config.routing.lock().last_module_id + 1;
         self.build_scheme();
     }
 
@@ -410,12 +400,6 @@ impl SynthEngine {
                     env.process(&params, self);
                     self.modules.envelopes.return_back(env);
                 }
-                RoutingNode::ScalarEnvelope(id) => {
-                    let mut env = self.modules.scalar_envelopes.take(*id);
-
-                    env.process(&params, self);
-                    self.modules.scalar_envelopes.return_back(env);
-                }
                 RoutingNode::Amplifier(id) => {
                     let mut amp = self.modules.amplifiers.take(*id);
 
@@ -494,52 +478,47 @@ impl SynthEngine {
     }
 
     fn build_scheme(&mut self) {
-        let mut filter_env = modules::ScalarEnvelope::new();
-        let mut filter = modules::SpectralFilter::new();
-        let mut osc = modules::Oscillator::new();
-        // let mut detune_env = EnvelopeModule::new();
-        // let mut pitch_env = EnvelopeModule::new();
-        let mut amp_env = modules::Envelope::new();
-        let amp = modules::Amplifier::new();
+        let filter_env_id = self.add_envelope();
+        let filter_id = self.add_spectral_filter();
+        let osc_id = self.add_oscillator();
+        let amp_id = self.add_amplifier();
+        let amp_env_id = self.add_envelope();
 
-        filter_env
+        self.modules
+            .envelopes
+            .get_mut(filter_env_id)
+            .unwrap()
             .set_attack(0.0.into())
             .set_decay(500.0.into())
             .set_sustain(0.0.into())
             .set_release(100.0.into());
-        filter.set_cutoff_harmonic(2.0.into());
-        osc.set_unison(3).set_detune(0.01.into());
-        // pitch_env
-        //     .set_attack(50.0)
-        //     .set_decay(50.0)
-        //     .set_sustain(1.0)
-        //     .set_release(500.0)
-        //     .set_channel_sustain(1, 0.5);
-        // detune_env
-        //     .set_attack(1000.0)
-        //     .set_decay(0.0)
-        //     .set_sustain(1.0)
-        //     .set_channel_sustain(1, 0.5)
-        //     .set_release(10000.0)
-        //     .set_keep_voice_alive(false);
-        amp_env
+
+        self.modules
+            .spectral_filters
+            .get_mut(filter_id)
+            .unwrap()
+            .set_cutoff_harmonic(2.0.into());
+
+        self.modules
+            .oscillators
+            .get_mut(osc_id)
+            .unwrap()
+            .set_unison(3)
+            .set_detune(0.01.into());
+
+        self.modules
+            .envelopes
+            .get_mut(amp_env_id)
+            .unwrap()
             .set_attack(StereoValue::mono(10.0))
             .set_decay(20.0.into())
             .set_sustain(1.0.into())
             .set_release(300.0.into());
 
-        let filter_env_id = self.add_scalar_envelope(filter_env);
-        let filter_id = self.add_spectral_filter(filter);
-        let osc_id = self.add_oscillator(osc);
-        // let detune_env_id = self.add_envelope(detune_env);
-        // let pitch_shift_env_id = self.add_envelope(pitch_env);
-        let amp_id = self.add_amplifier(amp);
-        let amp_env_id = self.add_envelope(amp_env);
-
         self.set_links(&[
             ModuleLink::link(ModuleOutput::Amplifier(amp_id), ModuleInput::Output),
             ModuleLink::modulation(
-                ModuleOutput::ScalarEnvelope(filter_env_id),
+                ModuleOutput::Envelope(filter_env_id),
                 ModuleInput::SpectralFilterCutoff(filter_id),
                 50.0,
             ),

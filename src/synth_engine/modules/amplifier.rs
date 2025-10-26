@@ -1,10 +1,29 @@
 use crate::synth_engine::{
     buffer::{Buffer, ONES_BUFFER, ZEROES_BUFFER, make_zero_buffer},
     routing::{MAX_VOICES, ModuleId, ModuleInput, NUM_CHANNELS, Router},
-    synth_module::{BufferOutputModule, NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
-    types::StereoValue,
+    synth_module::{
+        BufferOutputModule, ModuleConfig, NoteOffParams, NoteOnParams, ProcessParams, SynthModule,
+    },
+    types::{Sample, StereoValue},
 };
 use itertools::izip;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct AmplifierConfigChannel {
+    level: Sample,
+}
+
+impl Default for AmplifierConfigChannel {
+    fn default() -> Self {
+        Self { level: 1.0 }
+    }
+}
+
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct AmplifierConfig {
+    channels: [AmplifierConfigChannel; NUM_CHANNELS],
+}
 
 struct Voice {
     output: Buffer,
@@ -39,19 +58,9 @@ impl Default for Channel {
 }
 
 struct Common {
-    module_id: ModuleId,
+    config: ModuleConfig<AmplifierConfig>,
     input: Buffer,
     level_mod_input: Buffer,
-}
-
-impl Default for Common {
-    fn default() -> Self {
-        Self {
-            module_id: 0,
-            input: make_zero_buffer(),
-            level_mod_input: make_zero_buffer(),
-        }
-    }
 }
 
 pub struct Amplifier {
@@ -60,21 +69,35 @@ pub struct Amplifier {
 }
 
 impl Amplifier {
-    pub fn new() -> Self {
-        Self {
-            common: Default::default(),
+    pub fn new(config: ModuleConfig<AmplifierConfig>) -> Self {
+        let mut amp = Self {
+            common: Common {
+                config,
+                input: make_zero_buffer(),
+                level_mod_input: make_zero_buffer(),
+            },
             channels: Default::default(),
-        }
-    }
+        };
 
-    pub fn set_id(&mut self, module_id: ModuleId) {
-        self.common.module_id = module_id;
+        amp.common.config.access(|cfg| {
+            for (channel, cfg) in amp.channels.iter_mut().zip(cfg.channels.iter()) {
+                channel.level = cfg.level;
+            }
+        });
+
+        amp
     }
 
     pub fn set_level(&mut self, level: StereoValue) {
         for (chan, value) in self.channels.iter_mut().zip(level.iter()) {
             chan.level = value;
         }
+
+        self.common.config.access(|cfg| {
+            for (chan, value) in cfg.channels.iter_mut().zip(level.iter()) {
+                chan.level = value;
+            }
+        });
     }
 
     fn process_channel_voice(
@@ -88,7 +111,7 @@ impl Amplifier {
         let voice = &mut channel.voices[voice_idx];
         let input = router
             .get_input(
-                ModuleInput::AmplifierInput(common.module_id),
+                ModuleInput::AmplifierInput(common.config.id()),
                 voice_idx,
                 channel_idx,
                 &mut common.input,
@@ -96,7 +119,7 @@ impl Amplifier {
             .unwrap_or(&ZEROES_BUFFER);
         let level_mod = router
             .get_input(
-                ModuleInput::AmplifierLevel(common.module_id),
+                ModuleInput::AmplifierLevel(common.config.id()),
                 voice_idx,
                 channel_idx,
                 &mut common.level_mod_input,
@@ -113,7 +136,7 @@ impl Amplifier {
 
 impl SynthModule for Amplifier {
     fn get_id(&self) -> ModuleId {
-        self.common.module_id
+        self.common.config.id()
     }
 
     fn note_on(&mut self, _: &NoteOnParams) {}

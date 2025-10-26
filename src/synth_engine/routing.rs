@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::synth_engine::synth_module::{ScalarOutputs, SpectralOutputs};
 
 use super::buffer::Buffer;
@@ -6,17 +8,16 @@ pub const MAX_VOICES: usize = 16;
 pub const NUM_CHANNELS: usize = 2;
 pub type ModuleId = u64;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 pub enum RoutingNode {
     Envelope(ModuleId),
-    ScalarEnvelope(ModuleId),
     Amplifier(ModuleId),
     Oscillator(ModuleId),
     SpectralFilter(ModuleId),
     Output,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 pub enum ModuleInput {
     AmplifierInput(ModuleId),
     AmplifierLevel(ModuleId),
@@ -43,10 +44,9 @@ impl ModuleInput {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 pub enum ModuleOutput {
     Envelope(ModuleId),
-    ScalarEnvelope(ModuleId),
     Amplifier(ModuleId),
     Oscillator(ModuleId),
     SpectralFilter(ModuleId),
@@ -56,7 +56,6 @@ impl ModuleOutput {
     pub fn routing_node(&self) -> RoutingNode {
         match self {
             Self::Envelope(module_id) => RoutingNode::Envelope(*module_id),
-            Self::ScalarEnvelope(id) => RoutingNode::ScalarEnvelope(*id),
             Self::Amplifier(module_id) => RoutingNode::Amplifier(*module_id),
             Self::Oscillator(module_id) => RoutingNode::Oscillator(*module_id),
             Self::SpectralFilter(id) => RoutingNode::SpectralFilter(*id),
@@ -76,7 +75,7 @@ pub struct ModuleLinkPair {
     pub dst: ModuleInput,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ModuleLink {
     pub src: ModuleOutput,
     pub dst: ModuleInput,

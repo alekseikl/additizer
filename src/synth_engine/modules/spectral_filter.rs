@@ -1,4 +1,5 @@
 use itertools::izip;
+use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
     buffer::{
@@ -7,13 +8,31 @@ use crate::synth_engine::{
     },
     routing::{MAX_VOICES, ModuleId, ModuleInput, NUM_CHANNELS, Router},
     synth_module::{
-        NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs, SpectralOutputModule,
-        SpectralOutputs, SynthModule,
+        ModuleConfig, NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs,
+        SpectralOutputModule, SpectralOutputs, SynthModule,
     },
     types::{ComplexSample, Sample, StereoValue},
 };
 
 pub const MAX_CUTOFF_HARMONIC: Sample = 1023.0;
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SpectralFilterConfigChannel {
+    cutoff: Sample,
+}
+
+impl Default for SpectralFilterConfigChannel {
+    fn default() -> Self {
+        Self {
+            cutoff: MAX_CUTOFF_HARMONIC,
+        }
+    }
+}
+
+#[derive(Default, Clone, Serialize, Deserialize)]
+pub struct SpectralFilterConfig {
+    channels: [SpectralFilterConfigChannel; NUM_CHANNELS],
+}
 
 struct Voice {
     needs_reset: bool,
@@ -52,26 +71,36 @@ struct Channel {
 }
 
 pub struct SpectralFilter {
-    module_id: ModuleId,
+    config: ModuleConfig<SpectralFilterConfig>,
     channels: [Channel; NUM_CHANNELS],
 }
 
 impl SpectralFilter {
-    pub fn new() -> Self {
-        Self {
-            module_id: 0,
+    pub fn new(config: ModuleConfig<SpectralFilterConfig>) -> Self {
+        let mut filter = Self {
+            config,
             channels: Default::default(),
-        }
-    }
+        };
 
-    pub fn set_id(&mut self, module_id: ModuleId) {
-        self.module_id = module_id;
+        filter.config.access(|cfg| {
+            for (channel, cfg_channel) in filter.channels.iter_mut().zip(cfg.channels.iter()) {
+                channel.params.cutoff = cfg_channel.cutoff;
+            }
+        });
+
+        filter
     }
 
     pub fn set_cutoff_harmonic(&mut self, cutoff: StereoValue) {
         for (channel, cutoff) in self.channels.iter_mut().zip(cutoff.iter()) {
             channel.params.cutoff = cutoff.clamp(0.0, MAX_CUTOFF_HARMONIC);
         }
+
+        self.config.access(|cfg| {
+            for (config_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
+                config_channel.cutoff = channel.params.cutoff;
+            }
+        });
     }
 
     pub fn set_harmonics(&mut self, harmonics: &[StereoValue], tail: StereoValue) {
@@ -155,7 +184,7 @@ impl SpectralFilter {
 
 impl SynthModule for SpectralFilter {
     fn get_id(&self) -> ModuleId {
-        self.module_id
+        self.config.id()
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
@@ -172,7 +201,7 @@ impl SynthModule for SpectralFilter {
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for voice_idx in params.active_voices {
                 Self::process_channel_voice(
-                    self.module_id,
+                    self.config.id(),
                     channel,
                     router,
                     *voice_idx,

@@ -5,6 +5,7 @@ use nih_plug::util::f32_midi_note_to_freq;
 use rand::Rng;
 use rand_pcg::Pcg32;
 use realfft::{ComplexToReal, RealFftPlanner};
+use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
     buffer::{
@@ -14,8 +15,8 @@ use crate::synth_engine::{
     },
     routing::{MAX_VOICES, ModuleId, ModuleInput, NUM_CHANNELS, Router},
     synth_module::{
-        BufferOutputModule, NoteOffParams, NoteOnParams, ProcessParams, SpectralOutputs,
-        SynthModule,
+        BufferOutputModule, ModuleConfig, NoteOffParams, NoteOnParams, ProcessParams,
+        SpectralOutputs, SynthModule,
     },
     types::{ComplexSample, Phase, Sample, StereoValue},
 };
@@ -27,6 +28,38 @@ const INTERMEDIATE_MULT: f32 = ((1 << INTERMEDIATE_BITS) as f32).recip();
 const PITCH_MOD_RANGE: f32 = 48.0;
 const DETUNE_MOD_RANGE: f32 = 1.0;
 const MAX_UNISON_VOICES: usize = 16;
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct OscillatorConfigChannel {
+    level: f32,
+    pitch_shift: f32,
+    detune: f32,
+}
+
+impl Default for OscillatorConfigChannel {
+    fn default() -> Self {
+        Self {
+            level: 1.0,
+            pitch_shift: 0.0,
+            detune: 0.2,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct OscillatorConfig {
+    unison: usize,
+    channels: [OscillatorConfigChannel; NUM_CHANNELS],
+}
+
+impl Default for OscillatorConfig {
+    fn default() -> Self {
+        Self {
+            unison: 1,
+            channels: Default::default(),
+        }
+    }
+}
 
 struct Voice {
     note: f32,
@@ -71,7 +104,7 @@ impl Default for Channel {
 }
 
 struct Common {
-    module_id: ModuleId,
+    config: ModuleConfig<OscillatorConfig>,
     unison: usize,
     random: Pcg32,
     inverse_fft: Arc<dyn ComplexToReal<Sample>>,
@@ -81,42 +114,75 @@ struct Common {
     pitch_shift_input: Buffer,
     detune_mod_input: Buffer,
 }
-
-impl Default for Common {
-    fn default() -> Self {
-        Self {
-            module_id: 0,
-            unison: 1,
-            random: Pcg32::new(3537, 9573),
-            inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE),
-            tmp_spectral_buff: make_zero_spectral_buffer(),
-            scratch_buff: make_zero_spectral_buffer(),
-            level_mod_input: make_zero_buffer(),
-            pitch_shift_input: make_zero_buffer(),
-            detune_mod_input: make_zero_buffer(),
-        }
-    }
-}
-
 pub struct Oscillator {
     common: Common,
     channels: [Channel; NUM_CHANNELS],
 }
 
 impl Oscillator {
-    pub fn new() -> Self {
-        Self {
-            common: Common::default(),
+    pub fn new(config: ModuleConfig<OscillatorConfig>) -> Self {
+        let mut osc = Self {
+            common: Common {
+                config,
+                unison: 1,
+                random: Pcg32::new(3537, 9573),
+                inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE),
+                tmp_spectral_buff: make_zero_spectral_buffer(),
+                scratch_buff: make_zero_spectral_buffer(),
+                level_mod_input: make_zero_buffer(),
+                pitch_shift_input: make_zero_buffer(),
+                detune_mod_input: make_zero_buffer(),
+            },
             channels: Default::default(),
-        }
-    }
+        };
 
-    pub fn set_id(&mut self, module_id: ModuleId) {
-        self.common.module_id = module_id;
+        osc.common.config.access(|cfg| {
+            for (channel, cfg_channel) in osc.channels.iter_mut().zip(cfg.channels.iter()) {
+                channel.level = cfg_channel.level;
+                channel.pitch_shift = cfg_channel.pitch_shift;
+                channel.detune = cfg_channel.detune;
+            }
+            osc.common.unison = cfg.unison;
+        });
+
+        osc
     }
 
     pub fn set_unison(&mut self, unison: usize) -> &mut Self {
         self.common.unison = unison.clamp(1, MAX_UNISON_VOICES);
+
+        self.common.config.access(|cfg| {
+            cfg.unison = self.common.unison;
+        });
+
+        self
+    }
+
+    pub fn set_level(&mut self, level: StereoValue) -> &mut Self {
+        for (channel, level) in self.channels.iter_mut().zip(level.iter()) {
+            channel.level = level;
+        }
+
+        self.common.config.access(|cfg| {
+            for (channel_cfg, level) in cfg.channels.iter_mut().zip(level.iter()) {
+                channel_cfg.level = level;
+            }
+        });
+
+        self
+    }
+
+    pub fn set_pitch_shift(&mut self, pitch_shift: StereoValue) -> &mut Self {
+        for (channel, pitch_shift) in self.channels.iter_mut().zip(pitch_shift.iter()) {
+            channel.pitch_shift = pitch_shift;
+        }
+
+        self.common.config.access(|cfg| {
+            for (channel_cfg, pitch_shift) in cfg.channels.iter_mut().zip(pitch_shift.iter()) {
+                channel_cfg.pitch_shift = pitch_shift;
+            }
+        });
+
         self
     }
 
@@ -124,6 +190,13 @@ impl Oscillator {
         for (channel, detune) in self.channels.iter_mut().zip(detune.iter()) {
             channel.detune = detune;
         }
+
+        self.common.config.access(|cfg| {
+            for (channel_cfg, detune) in cfg.channels.iter_mut().zip(detune.iter()) {
+                channel_cfg.detune = detune;
+            }
+        });
+
         self
     }
 
@@ -241,7 +314,7 @@ impl Oscillator {
         let voice = &mut channel.voices[voice_idx];
         let level_mod = router
             .get_input(
-                ModuleInput::OscillatorLevel(common.module_id),
+                ModuleInput::OscillatorLevel(common.config.id()),
                 voice_idx,
                 channel_idx,
                 &mut common.level_mod_input,
@@ -249,7 +322,7 @@ impl Oscillator {
             .unwrap_or(&ONES_BUFFER);
         let pitch_shift_mod = router
             .get_input(
-                ModuleInput::OscillatorPitchShift(common.module_id),
+                ModuleInput::OscillatorPitchShift(common.config.id()),
                 voice_idx,
                 channel_idx,
                 &mut common.pitch_shift_input,
@@ -262,7 +335,7 @@ impl Oscillator {
             sample_rate,
             router
                 .get_spectral_input(
-                    ModuleInput::OscillatorSpectrum(common.module_id),
+                    ModuleInput::OscillatorSpectrum(common.config.id()),
                     voice_idx,
                     channel_idx,
                 )
@@ -285,7 +358,7 @@ impl Oscillator {
         if common.unison > 1 {
             let detune_mod = router
                 .get_input(
-                    ModuleInput::OscillatorDetune(common.module_id),
+                    ModuleInput::OscillatorDetune(common.config.id()),
                     voice_idx,
                     channel_idx,
                     &mut common.detune_mod_input,
@@ -352,7 +425,7 @@ impl Oscillator {
 
 impl SynthModule for Oscillator {
     fn get_id(&self) -> ModuleId {
-        self.common.module_id
+        self.common.config.id()
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {

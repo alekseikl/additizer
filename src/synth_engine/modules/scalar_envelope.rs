@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{
     synth_engine::{
         envelope::{self, EnvelopeActivityState, EnvelopeChannel, EnvelopeVoice},
@@ -10,6 +12,21 @@ use crate::{
     },
     utils::from_ms,
 };
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ScalarEnvelopeConfig {
+    keep_voice_alive: bool,
+    channels: [EnvelopeChannel; NUM_CHANNELS],
+}
+
+impl Default for ScalarEnvelopeConfig {
+    fn default() -> Self {
+        Self {
+            keep_voice_alive: false,
+            channels: Default::default(),
+        }
+    }
+}
 
 struct Voice {
     env: EnvelopeVoice,

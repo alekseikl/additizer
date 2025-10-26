@@ -23,9 +23,12 @@ pub struct Additizer {
 
 impl Default for Additizer {
     fn default() -> Self {
+        let params = Arc::new(AdditizerParams::default());
+        let config = Arc::clone(&params.config);
+
         Self {
             params: Arc::new(AdditizerParams::default()),
-            synth_engine: Arc::new(Mutex::new(SynthEngine::new())),
+            synth_engine: Arc::new(Mutex::new(SynthEngine::new(config))),
         }
     }
 }
@@ -109,7 +112,9 @@ impl Plugin for Additizer {
         create_egui_editor(
             self.params.editor_state.clone(),
             (),
-            |_, _| {},
+            |_, _| {
+                println!("Build");
+            },
             move |egui_ctx, _setter, _| {
                 ResizableWindow::new("res-wind")
                     .min_size(egui::Vec2::new(900.0, 500.0))

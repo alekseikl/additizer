@@ -1,3 +1,7 @@
+use std::{collections::HashMap, sync::Arc};
+
+use parking_lot::Mutex;
+
 use crate::synth_engine::{
     buffer::{Buffer, HARMONIC_SERIES_BUFFER, SpectralBuffer, ZEROES_SPECTRAL_BUFFER},
     routing::{ModuleId, Router},
@@ -83,4 +87,25 @@ impl ScalarOutputs {
 
 pub trait ScalarOutputModule: SynthModule {
     fn get_output(&self, voice_idx: usize, channel: usize) -> ScalarOutputs;
+}
+
+pub struct ModuleConfig<T: Default + Clone> {
+    module_id: ModuleId,
+    configs: Arc<Mutex<HashMap<ModuleId, T>>>,
+}
+
+impl<T: Default + Clone> ModuleConfig<T> {
+    pub fn new(module_id: ModuleId, configs: Arc<Mutex<HashMap<ModuleId, T>>>) -> Self {
+        Self { module_id, configs }
+    }
+
+    pub fn id(&self) -> ModuleId {
+        self.module_id
+    }
+
+    pub fn access(&self, cb: impl FnOnce(&mut T)) {
+        let mut cfg_map = self.configs.lock();
+
+        cb(cfg_map.entry(self.module_id).or_default());
+    }
 }

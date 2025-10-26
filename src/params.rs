@@ -1,20 +1,27 @@
-use nih_plug::prelude::*;
+use nih_plug::{params::persist::PersistentField, prelude::*};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::{editor::egui_integration::EguiState, synth_engine::types::StereoValue};
+use crate::{
+    editor::egui_integration::EguiState,
+    synth_engine::{config::Config, types::StereoValue},
+};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct HarmonicsState {
     pub harmonics: Vec<StereoValue>,
     pub tail_harmonics: StereoValue,
     pub val1: f32,
 }
+
 #[derive(Params)]
 pub struct AdditizerParams {
     #[persist = "editor-state"]
     pub editor_state: Arc<EguiState>,
+
+    #[persist = "plugin-config"]
+    pub config: Arc<Config>,
 
     #[persist = "harmonics-state"]
     pub harmonics_state: Arc<Mutex<HarmonicsState>>,
@@ -41,6 +48,7 @@ impl Default for AdditizerParams {
                 tail_harmonics: StereoValue::mono(1.0),
                 val1: 1.0,
             })),
+            config: Default::default(),
             volume: FloatParam::new(
                 "Volume",
                 0.0,
@@ -77,5 +85,22 @@ impl Default for AdditizerParams {
             )
             .with_step_size(0.01),
         }
+    }
+}
+
+impl<'a> PersistentField<'a, Config> for Arc<Config> {
+    fn set(&self, new_value: Config) {
+        *self.routing.lock() = new_value.routing.lock().clone();
+        *self.envelopes.lock() = new_value.envelopes.lock().clone();
+        *self.amplifiers.lock() = new_value.amplifiers.lock().clone();
+        *self.oscillators.lock() = new_value.oscillators.lock().clone();
+        *self.spectral_filters.lock() = new_value.spectral_filters.lock().clone();
+    }
+
+    fn map<F, R>(&self, f: F) -> R
+    where
+        F: Fn(&Config) -> R,
+    {
+        f(self)
     }
 }

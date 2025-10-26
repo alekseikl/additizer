@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{synth_engine::types::Sample, utils::from_ms};
 
 #[derive(Debug)]
@@ -31,7 +33,7 @@ impl Default for EnvelopeVoice {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnvelopeChannel {
     pub attack_time: Sample,
     pub decay_time: Sample,
@@ -85,13 +87,9 @@ pub fn is_voice_active(channel: &EnvelopeChannel, voice: &EnvelopeVoice) -> bool
     }
 }
 
-#[inline]
-pub fn process_voice(
-    channel: &EnvelopeChannel,
-    voice: &mut EnvelopeVoice,
-    t_step: Sample,
-) -> Sample {
-    let out = if let Some(release) = &voice.release {
+#[inline(always)]
+pub fn process_voice_sample(channel: &EnvelopeChannel, voice: &mut EnvelopeVoice) -> Sample {
+    if let Some(release) = &voice.release {
         let release_t = voice.t - release.release_t;
 
         if release_t <= channel.release_time {
@@ -105,9 +103,23 @@ pub fn process_voice(
         1.0 - (1.0 - channel.sustain_level) * ((voice.t - channel.attack_time) / channel.decay_time)
     } else {
         voice.last_level
-    };
+    }
+}
 
-    voice.last_level = out;
+#[inline(always)]
+pub fn advance_voice(voice: &mut EnvelopeVoice, t_step: Sample, last_level: Sample) {
+    voice.last_level = last_level;
     voice.t += t_step;
+}
+
+#[inline(always)]
+pub fn process_voice(
+    channel: &EnvelopeChannel,
+    voice: &mut EnvelopeVoice,
+    t_step: Sample,
+) -> Sample {
+    let out = process_voice_sample(channel, voice);
+
+    advance_voice(voice, t_step, out);
     out
 }
