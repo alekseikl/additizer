@@ -9,7 +9,7 @@ use crate::{
             BufferOutputModule, ModuleConfig, NoteOffParams, NoteOnParams, ProcessParams,
             ScalarOutputModule, ScalarOutputs, SynthModule,
         },
-        types::{Sample, StereoValue},
+        types::{Sample, StereoSample},
     },
     utils::from_ms,
 };
@@ -85,9 +85,9 @@ impl Envelope {
         self
     }
 
-    pub fn set_attack(&mut self, attack: StereoValue) -> &mut Self {
+    pub fn set_attack(&mut self, attack: StereoSample) -> &mut Self {
         for (channel, attack) in self.channels.iter_mut().zip(attack.iter()) {
-            channel.env.attack_time = from_ms(attack);
+            channel.env.attack_time = from_ms(*attack);
         }
 
         self.config.access(|cfg| {
@@ -99,9 +99,9 @@ impl Envelope {
         self
     }
 
-    pub fn set_decay(&mut self, decay: StereoValue) -> &mut Self {
+    pub fn set_decay(&mut self, decay: StereoSample) -> &mut Self {
         for (channel, decay) in self.channels.iter_mut().zip(decay.iter()) {
-            channel.env.decay_time = from_ms(decay);
+            channel.env.decay_time = from_ms(*decay);
         }
 
         self.config.access(|cfg| {
@@ -113,9 +113,9 @@ impl Envelope {
         self
     }
 
-    pub fn set_sustain(&mut self, sustain: StereoValue) -> &mut Self {
+    pub fn set_sustain(&mut self, sustain: StereoSample) -> &mut Self {
         for (channel, sustain) in self.channels.iter_mut().zip(sustain.iter()) {
-            channel.env.sustain_level = sustain;
+            channel.env.sustain_level = *sustain;
         }
 
         self.config.access(|cfg| {
@@ -127,9 +127,9 @@ impl Envelope {
         self
     }
 
-    pub fn set_release(&mut self, release: StereoValue) -> &mut Self {
+    pub fn set_release(&mut self, release: StereoSample) -> &mut Self {
         for (channel, release) in self.channels.iter_mut().zip(release.iter()) {
-            channel.env.release_time = from_ms(release);
+            channel.env.release_time = from_ms(*release);
         }
 
         self.config.access(|cfg| {

@@ -4,7 +4,7 @@ use egui_baseview::egui::{
 };
 use nih_plug::util::MINUS_INFINITY_DB;
 
-use crate::synth_engine::types::{Sample, StereoValue};
+use crate::synth_engine::{Sample, StereoSample};
 
 const BG_COLOR: Color32 = Color32::from_rgb(0, 0, 0);
 const BORDER_COLOR: Color32 = Color32::from_rgb(0x7f, 0x7f, 0x7f);
@@ -21,7 +21,7 @@ enum LabelType {
 
 pub struct GainSlider<'a> {
     label: Option<&'a str>,
-    value: &'a mut StereoValue,
+    value: &'a mut StereoSample,
     max_dbs: Sample,
     mid_point: Sample,
     skew_factor: Sample,
@@ -30,7 +30,7 @@ pub struct GainSlider<'a> {
 }
 
 impl<'a> GainSlider<'a> {
-    pub fn new(value: &'a mut StereoValue) -> Self {
+    pub fn new(value: &'a mut StereoSample) -> Self {
         Self {
             max_dbs: 48.0,
             mid_point: 0.75,
@@ -161,8 +161,10 @@ impl<'a> GainSlider<'a> {
             let normalized_delta = -response.drag_delta().y / response.rect.height();
 
             if response.dragged_by(PointerButton::Primary) {
-                self.value.left = self.updated_gain(normalized_delta, self.value.left);
-                self.value.right = self.updated_gain(normalized_delta, self.value.right);
+                self.value
+                    .set_left(self.updated_gain(normalized_delta, self.value.left()));
+                self.value
+                    .set_right(self.updated_gain(normalized_delta, self.value.right()));
                 label_type = Some(LabelType::BothChannels);
                 response.mark_changed();
             } else if response.dragged_by(PointerButton::Secondary) {
@@ -170,23 +172,25 @@ impl<'a> GainSlider<'a> {
                     ui.memory(|mem| mem.data.get_temp(response.id).unwrap_or(false));
 
                 if is_right_channel {
-                    self.value.right = self.updated_gain(normalized_delta, self.value.right);
+                    self.value
+                        .set_right(self.updated_gain(normalized_delta, self.value.right()));
                     label_type = Some(LabelType::RightChannel);
                 } else {
-                    self.value.left = self.updated_gain(normalized_delta, self.value.left);
+                    self.value
+                        .set_left(self.updated_gain(normalized_delta, self.value.left()));
                     label_type = Some(LabelType::LeftChannel);
                 }
                 response.mark_changed();
             }
         } else if response.double_clicked_by(PointerButton::Primary) {
-            *self.value = StereoValue::mono(1.0);
+            *self.value = StereoSample::mono(1.0);
             response.mark_changed();
         } else if response.double_clicked_by(PointerButton::Secondary) {
-            *self.value = StereoValue::mono(0.0);
+            *self.value = StereoSample::mono(0.0);
             response.mark_changed();
         } else if let Some(hover_pos) = response.hover_pos() {
             if modifiers.ctrl {
-                *self.value = StereoValue::mono(1.0);
+                *self.value = StereoSample::mono(1.0);
                 response.mark_changed();
             } else if modifiers.alt {
                 let gain = self.normalized_to_gain(
@@ -194,7 +198,7 @@ impl<'a> GainSlider<'a> {
                         .clamp(0.0, 1.0),
                 );
 
-                *self.value = StereoValue::mono(gain);
+                *self.value = StereoSample::mono(gain);
                 response.mark_changed();
             }
 
@@ -207,8 +211,8 @@ impl<'a> GainSlider<'a> {
             let lr_rect = response.rect.split_left_right_at_fraction(0.5);
 
             ui.painter().rect_filled(response.rect, 0.0, BG_COLOR);
-            self.fill_gain_rect(ui, self.value.left, lr_rect.0);
-            self.fill_gain_rect(ui, self.value.right, lr_rect.1);
+            self.fill_gain_rect(ui, self.value.left(), lr_rect.0);
+            self.fill_gain_rect(ui, self.value.right(), lr_rect.1);
 
             ui.painter().rect_stroke(
                 response.rect,
@@ -220,19 +224,19 @@ impl<'a> GainSlider<'a> {
             if let Some(label_type) = label_type {
                 let label_text = match label_type {
                     LabelType::LeftChannel => {
-                        format!("L:{}", Self::gain_to_db_string(self.value.left))
+                        format!("L:{}", Self::gain_to_db_string(self.value.left()))
                     }
                     LabelType::RightChannel => {
-                        format!("R:{}", Self::gain_to_db_string(self.value.right))
+                        format!("R:{}", Self::gain_to_db_string(self.value.right()))
                     }
                     LabelType::BothChannels => {
-                        if self.value.left == self.value.right {
-                            Self::gain_to_db_string(self.value.left)
+                        if self.value.left() == self.value.right() {
+                            Self::gain_to_db_string(self.value.left())
                         } else {
                             format!(
                                 "L:{}\nR:{}",
-                                Self::gain_to_db_string(self.value.left),
-                                Self::gain_to_db_string(self.value.right)
+                                Self::gain_to_db_string(self.value.left()),
+                                Self::gain_to_db_string(self.value.right())
                             )
                         }
                     }

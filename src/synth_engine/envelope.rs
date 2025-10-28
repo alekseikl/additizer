@@ -111,15 +111,3 @@ pub fn advance_voice(voice: &mut EnvelopeVoice, t_step: Sample, last_level: Samp
     voice.last_level = last_level;
     voice.t += t_step;
 }
-
-#[inline(always)]
-pub fn process_voice(
-    channel: &EnvelopeChannel,
-    voice: &mut EnvelopeVoice,
-    t_step: Sample,
-) -> Sample {
-    let out = process_voice_sample(channel, voice);
-
-    advance_voice(voice, t_step, out);
-    out
-}

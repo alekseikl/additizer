@@ -1,22 +1,22 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{any::Any, collections::HashMap, sync::Arc};
 
 use parking_lot::Mutex;
 
 use crate::synth_engine::{
-    buffer::{Buffer, HARMONIC_SERIES_BUFFER, SpectralBuffer, ZEROES_SPECTRAL_BUFFER},
+    buffer::{Buffer, HARMONIC_SERIES_BUFFER, SpectralBuffer},
     routing::{ModuleId, Router},
     types::Sample,
 };
 
 pub struct NoteOnParams {
     pub note: f32,
-    pub velocity: f32,
+    // pub velocity: f32,
     pub voice_idx: usize,
     pub same_note_retrigger: bool,
 }
 
 pub struct NoteOffParams {
-    pub note: u8,
+    // pub note: u8,
     pub voice_idx: usize,
 }
 
@@ -24,11 +24,11 @@ pub struct ProcessParams<'a> {
     pub samples: usize,
     pub sample_rate: Sample,
     pub t_step: Sample,
-    pub buffer_t_step: Sample,
+    // pub buffer_t_step: Sample,
     pub active_voices: &'a [usize],
 }
 
-pub trait SynthModule {
+pub trait SynthModule: Any {
     fn get_id(&self) -> ModuleId;
     fn note_on(&mut self, params: &NoteOnParams);
     fn note_off(&mut self, params: &NoteOffParams);
@@ -45,12 +45,12 @@ pub struct SpectralOutputs<'a> {
 }
 
 impl SpectralOutputs<'_> {
-    pub fn zero() -> Self {
-        Self {
-            first: &ZEROES_SPECTRAL_BUFFER,
-            current: &ZEROES_SPECTRAL_BUFFER,
-        }
-    }
+    // pub fn zero() -> Self {
+    //     Self {
+    //         first: &ZEROES_SPECTRAL_BUFFER,
+    //         current: &ZEROES_SPECTRAL_BUFFER,
+    //     }
+    // }
 
     pub fn harmonic() -> Self {
         Self {
@@ -77,12 +77,12 @@ impl ScalarOutputs {
         }
     }
 
-    pub fn one() -> Self {
-        Self {
-            first: 1.0,
-            current: 1.0,
-        }
-    }
+    // pub fn one() -> Self {
+    //     Self {
+    //         first: 1.0,
+    //         current: 1.0,
+    //     }
+    // }
 }
 
 pub trait ScalarOutputModule: SynthModule {

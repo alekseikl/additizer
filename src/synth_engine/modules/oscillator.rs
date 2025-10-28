@@ -18,7 +18,7 @@ use crate::synth_engine::{
         BufferOutputModule, ModuleConfig, NoteOffParams, NoteOnParams, ProcessParams,
         SpectralOutputs, SynthModule,
     },
-    types::{ComplexSample, Phase, Sample, StereoValue},
+    types::{ComplexSample, Phase, Sample, StereoSample},
 };
 
 const FULL_PHASE: f32 = ((u32::MAX as u64) + 1) as f32;
@@ -158,42 +158,42 @@ impl Oscillator {
         self
     }
 
-    pub fn set_level(&mut self, level: StereoValue) -> &mut Self {
+    pub fn set_level(&mut self, level: StereoSample) -> &mut Self {
         for (channel, level) in self.channels.iter_mut().zip(level.iter()) {
-            channel.level = level;
+            channel.level = *level;
         }
 
         self.common.config.access(|cfg| {
             for (channel_cfg, level) in cfg.channels.iter_mut().zip(level.iter()) {
-                channel_cfg.level = level;
+                channel_cfg.level = *level;
             }
         });
 
         self
     }
 
-    pub fn set_pitch_shift(&mut self, pitch_shift: StereoValue) -> &mut Self {
+    pub fn set_pitch_shift(&mut self, pitch_shift: StereoSample) -> &mut Self {
         for (channel, pitch_shift) in self.channels.iter_mut().zip(pitch_shift.iter()) {
-            channel.pitch_shift = pitch_shift;
+            channel.pitch_shift = *pitch_shift;
         }
 
         self.common.config.access(|cfg| {
             for (channel_cfg, pitch_shift) in cfg.channels.iter_mut().zip(pitch_shift.iter()) {
-                channel_cfg.pitch_shift = pitch_shift;
+                channel_cfg.pitch_shift = *pitch_shift;
             }
         });
 
         self
     }
 
-    pub fn set_detune(&mut self, detune: StereoValue) -> &mut Self {
+    pub fn set_detune(&mut self, detune: StereoSample) -> &mut Self {
         for (channel, detune) in self.channels.iter_mut().zip(detune.iter()) {
-            channel.detune = detune;
+            channel.detune = *detune;
         }
 
         self.common.config.access(|cfg| {
             for (channel_cfg, detune) in cfg.channels.iter_mut().zip(detune.iter()) {
-                channel_cfg.detune = detune;
+                channel_cfg.detune = *detune;
             }
         });
 

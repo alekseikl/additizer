@@ -11,7 +11,7 @@ use crate::synth_engine::{
         ModuleConfig, NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs,
         SpectralOutputModule, SpectralOutputs, SynthModule,
     },
-    types::{ComplexSample, Sample, StereoValue},
+    types::{ComplexSample, Sample, StereoSample},
 };
 
 pub const MAX_CUTOFF_HARMONIC: Sample = 1023.0;
@@ -91,7 +91,7 @@ impl SpectralFilter {
         filter
     }
 
-    pub fn set_cutoff_harmonic(&mut self, cutoff: StereoValue) {
+    pub fn set_cutoff_harmonic(&mut self, cutoff: StereoSample) {
         for (channel, cutoff) in self.channels.iter_mut().zip(cutoff.iter()) {
             channel.params.cutoff = cutoff.clamp(0.0, MAX_CUTOFF_HARMONIC);
         }
@@ -103,7 +103,7 @@ impl SpectralFilter {
         });
     }
 
-    pub fn set_harmonics(&mut self, harmonics: &[StereoValue], tail: StereoValue) {
+    pub fn set_harmonics(&mut self, harmonics: &[StereoSample], tail: StereoSample) {
         let (channel_l, channel_r) = self.channels.split_at_mut(1);
         let buff_l = &mut channel_l[0].params.input_spectrum;
         let buff_r = &mut channel_r[0].params.input_spectrum;
@@ -116,8 +116,8 @@ impl SpectralFilter {
             &HARMONIC_SERIES_BUFFER[range],
             harmonics
         ) {
-            *out_l = series_factor * harmonic.left;
-            *out_r = series_factor * harmonic.right
+            *out_l = series_factor * harmonic.left();
+            *out_r = series_factor * harmonic.right();
         }
 
         let range = (harmonics.len() + 1)..buff_l.len();
@@ -127,8 +127,8 @@ impl SpectralFilter {
             .zip(buff_r[range.clone()].iter_mut())
             .zip(HARMONIC_SERIES_BUFFER[range].iter())
         {
-            *out_l = series_factor * tail.left;
-            *out_r = series_factor * tail.right;
+            *out_l = series_factor * tail.left();
+            *out_r = series_factor * tail.right();
         }
 
         buff_l[0] = ComplexSample::ZERO;

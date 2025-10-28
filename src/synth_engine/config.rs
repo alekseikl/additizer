@@ -11,7 +11,7 @@ use crate::synth_engine::{
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct RoutingConfig {
     pub last_module_id: ModuleId,
-    pub modules: Vec<RoutingNode>,
+    pub nodes: Vec<RoutingNode>,
     pub links: Vec<ModuleLink>,
 }
 

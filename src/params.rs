@@ -5,13 +5,13 @@ use std::sync::Arc;
 
 use crate::{
     editor::egui_integration::EguiState,
-    synth_engine::{config::Config, types::StereoValue},
+    synth_engine::{Config, StereoSample},
 };
 
 #[derive(Serialize, Deserialize)]
 pub struct HarmonicsState {
-    pub harmonics: Vec<StereoValue>,
-    pub tail_harmonics: StereoValue,
+    pub harmonics: Vec<StereoSample>,
+    pub tail_harmonics: StereoSample,
     pub val1: f32,
 }
 
@@ -44,8 +44,8 @@ impl Default for AdditizerParams {
         Self {
             editor_state: EguiState::from_size(900, 500),
             harmonics_state: Arc::new(Mutex::new(HarmonicsState {
-                harmonics: vec![StereoValue::mono(1.0); 40],
-                tail_harmonics: StereoValue::mono(1.0),
+                harmonics: vec![StereoSample::mono(1.0); 40],
+                tail_harmonics: StereoSample::mono(1.0),
                 val1: 1.0,
             })),
             config: Default::default(),

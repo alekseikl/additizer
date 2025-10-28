@@ -8,7 +8,7 @@ pub mod utils;
 use crate::editor::egui_integration::{ResizableWindow, create_egui_editor};
 use crate::editor::gain_slider::GainSlider;
 use crate::params::AdditizerParams;
-use crate::synth_engine::buffer::BUFFER_SIZE;
+use crate::synth_engine::BUFFER_SIZE;
 use crate::synth_engine::{SynthEngine, VoiceId};
 pub use egui_baseview::egui;
 use egui_baseview::egui::{Color32, Frame, Vec2};

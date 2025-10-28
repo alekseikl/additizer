@@ -10,30 +10,30 @@ use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
-    buffer::{BUFFER_SIZE, Buffer, ZEROES_BUFFER, make_zero_buffer},
-    config::Config,
-    modules::{Amplifier, Envelope, Oscillator, SpectralFilter},
+    buffer::{Buffer, ZEROES_BUFFER, make_zero_buffer},
     modules_container::ModulesContainer,
     routing::{
         MAX_VOICES, ModuleId, ModuleInput, ModuleInputSource, ModuleLink, ModuleOutput, Router,
         RoutingNode,
     },
     synth_module::{
-        BufferOutputModule, ModuleConfig, NoteOffParams, NoteOnParams, ProcessParams,
-        ScalarOutputModule, ScalarOutputs, SpectralOutputModule, SpectralOutputs, SynthModule,
+        NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs, SpectralOutputs, SynthModule,
     },
-    types::{Sample, StereoValue},
 };
 
-pub mod buffer;
-pub mod config;
-pub mod context;
-pub mod envelope;
-pub mod modules;
-pub mod modules_container;
-pub mod routing;
-pub mod synth_module;
-pub mod types;
+pub use buffer::BUFFER_SIZE;
+pub use config::Config;
+pub use modules::{Amplifier, Envelope, Oscillator, SpectralFilter};
+pub use types::{Sample, StereoSample};
+
+mod buffer;
+mod config;
+mod envelope;
+mod modules;
+mod modules_container;
+mod routing;
+mod synth_module;
+mod types;
 
 #[derive(Debug, Clone, Copy)]
 pub struct VoiceId {
@@ -61,115 +61,30 @@ impl Voice {
     }
 }
 
-struct Modules {
-    oscillators: ModulesContainer<modules::Oscillator>,
-    envelopes: ModulesContainer<modules::Envelope>,
-    amplifiers: ModulesContainer<modules::Amplifier>,
-    spectral_filters: ModulesContainer<modules::SpectralFilter>,
-}
-
-impl Modules {
-    fn new() -> Self {
-        Self {
-            oscillators: ModulesContainer::new(),
-            envelopes: ModulesContainer::new(),
-            amplifiers: ModulesContainer::new(),
-            spectral_filters: ModulesContainer::new(),
-        }
-    }
-
-    fn resolve_buffer_output_node(&self, node: RoutingNode) -> Option<&dyn BufferOutputModule> {
-        match node {
-            RoutingNode::Oscillator(id) => self
-                .oscillators
-                .get(id)
-                .map(|module| module as &dyn BufferOutputModule),
-            RoutingNode::Envelope(id) => self
-                .envelopes
-                .get(id)
-                .map(|module| module as &dyn BufferOutputModule),
-            RoutingNode::Amplifier(id) => self
-                .amplifiers
-                .get(id)
-                .map(|module| module as &dyn BufferOutputModule),
-            RoutingNode::SpectralFilter(_) => {
-                panic!("RoutingNode::SpectralFilter don't have buffer output.")
-            }
-            RoutingNode::Output => panic!("RoutingNode::Output don't have corresponding module."),
-        }
-    }
-
-    fn resolve_scalar_output_node(&self, node: RoutingNode) -> Option<&dyn ScalarOutputModule> {
-        match node {
-            RoutingNode::Envelope(id) => self
-                .envelopes
-                .get(id)
-                .map(|module| module as &dyn ScalarOutputModule),
-            RoutingNode::Oscillator(_) => {
-                panic!("RoutingNode::Oscillator don't have scalar output.")
-            }
-            RoutingNode::Amplifier(_) => {
-                panic!("RoutingNode::Amplifier don't have scalar output.")
-            }
-            RoutingNode::SpectralFilter(_) => {
-                panic!("RoutingNode::SpectralFilter don't have scalar output.")
-            }
-            RoutingNode::Output => panic!("RoutingNode::Output don't have corresponding module."),
-        }
-    }
-
-    fn resolve_spectral_output_node(&self, node: RoutingNode) -> Option<&dyn SpectralOutputModule> {
-        match node {
-            RoutingNode::SpectralFilter(id) => self
-                .spectral_filters
-                .get(id)
-                .map(|module| module as &dyn SpectralOutputModule),
-            RoutingNode::Oscillator(_) => {
-                panic!("RoutingNode::Oscillator don't have spectral output.")
-            }
-            RoutingNode::Envelope(_) => {
-                panic!("RoutingNode::Envelope don't have spectral output.")
-            }
-            RoutingNode::Amplifier(_) => {
-                panic!("RoutingNode::Amplifier don't have spectral output.")
-            }
-            RoutingNode::Output => panic!("RoutingNode::Output don't have corresponding module."),
-        }
-    }
-
-    fn resolve_node_mut(&mut self, node: RoutingNode) -> Option<&mut dyn SynthModule> {
-        match node {
-            RoutingNode::Oscillator(id) => self
-                .oscillators
-                .get_mut(id)
-                .map(|module| module as &mut dyn SynthModule),
-            RoutingNode::Envelope(id) => self
-                .envelopes
-                .get_mut(id)
-                .map(|module| module as &mut dyn SynthModule),
-            RoutingNode::Amplifier(id) => self
-                .amplifiers
-                .get_mut(id)
-                .map(|module| module as &mut dyn SynthModule),
-            RoutingNode::SpectralFilter(id) => self
-                .spectral_filters
-                .get_mut(id)
-                .map(|module| module as &mut dyn SynthModule),
-            RoutingNode::Output => panic!("RoutingNode::Output don't have corresponding module."),
-        }
-    }
-}
-
 pub struct SynthEngine {
     next_id: u64,
     next_voice_id: u64,
     sample_rate: f32,
     config: Arc<Config>,
-    modules: Modules,
+    modules: ModulesContainer,
     input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>>,
     execution_order: Vec<RoutingNode>,
     voices: [Voice; MAX_VOICES],
     tmp_output_buffer: Option<Box<Buffer>>,
+}
+
+macro_rules! create_node_method {
+    ($func_name:ident, $node_type:ident) => {
+        pub fn $func_name(&mut self) -> Result<ModuleId, String> {
+            let id = self.alloc_next_id();
+            let node = RoutingNode::$node_type(id);
+            let module = self.modules.add_node(&node, &self.config)?;
+
+            Self::trigger_active_notes(&self.voices, module);
+            self.save_config();
+            Ok(id)
+        }
+    };
 }
 
 impl SynthEngine {
@@ -179,7 +94,7 @@ impl SynthEngine {
             next_voice_id: 1,
             sample_rate: 1000.0,
             config,
-            modules: Modules::new(),
+            modules: ModulesContainer::new(),
             input_sources: HashMap::new(),
             execution_order: Vec::new(),
             voices: Default::default(),
@@ -187,73 +102,44 @@ impl SynthEngine {
         }
     }
 
-    fn alloc_next_id(&mut self) -> ModuleId {
-        let module_id = self.next_id;
-
-        self.next_id += 1;
-        self.config.routing.lock().last_module_id = self.next_id;
-        module_id
-    }
-
-    pub fn add_oscillator(&mut self) -> ModuleId {
-        let id = self.alloc_next_id();
-        let osc = Oscillator::new(ModuleConfig::new(id, Arc::clone(&self.config.oscillators)));
-
-        self.modules.oscillators.add(osc);
-        id
-    }
-
-    pub fn add_envelope(&mut self) -> ModuleId {
-        let id = self.alloc_next_id();
-        let env = Envelope::new(ModuleConfig::new(id, Arc::clone(&self.config.envelopes)));
-
-        self.modules.envelopes.add(env);
-        id
-    }
-
-    pub fn add_amplifier(&mut self) -> ModuleId {
-        let id = self.alloc_next_id();
-        let amp = Amplifier::new(ModuleConfig::new(id, Arc::clone(&self.config.amplifiers)));
-
-        self.modules.amplifiers.add(amp);
-        id
-    }
-
-    pub fn add_spectral_filter(&mut self) -> ModuleId {
-        let id = self.alloc_next_id();
-        let filter = SpectralFilter::new(ModuleConfig::new(
-            id,
-            Arc::clone(&self.config.spectral_filters),
-        ));
-
-        self.modules.spectral_filters.add(filter);
-        id
-    }
-
-    pub fn set_links(&mut self, links: &[ModuleLink]) -> Result<(), String> {
-        let execution_order = Self::calc_execution_order(links)?;
-        let mut input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>> = HashMap::new();
-
-        for link in links {
-            input_sources
-                .entry(link.dst)
-                .or_default()
-                .push(ModuleInputSource {
-                    src: link.src,
-                    modulation_amount: link.modulation_amount,
-                });
-        }
-
-        self.input_sources = input_sources;
-        self.execution_order = execution_order;
-
-        Ok(())
-    }
-
     pub fn init(&mut self, sample_rate: f32) {
         self.sample_rate = sample_rate;
-        self.next_id = self.config.routing.lock().last_module_id + 1;
-        self.build_scheme();
+
+        if !self.load_config() {
+            self.clear();
+            self.build_scheme();
+        }
+    }
+
+    create_node_method!(add_oscillator, Oscillator);
+    create_node_method!(add_envelope, Envelope);
+    create_node_method!(add_amplifier, Amplifier);
+    create_node_method!(add_spectral_filter, SpectralFilter);
+
+    pub fn set_link(&mut self, link: ModuleLink) -> Result<(), String> {
+        if let Some(inputs) = self.input_sources.get_mut(&link.dst)
+            && let Some(input) = inputs.iter_mut().find(|input| input.src == link.src)
+        {
+            input.modulation = link.modulation;
+            return Ok(());
+        }
+
+        if link.src.data_type() != link.dst.data_type() {
+            return Err("Data types mismatch.".to_string());
+        }
+
+        if !self.modules.is_node_exists(link.src.routing_node())
+            || !self.modules.is_node_exists(link.dst.routing_node())
+        {
+            return Err("Invalid node.".to_string());
+        }
+
+        let mut new_links = self.get_links();
+
+        new_links.push(link);
+        self.setup_routing(&new_links)?;
+        self.save_config();
+        Ok(())
     }
 
     pub fn note_on(
@@ -261,7 +147,7 @@ impl SynthEngine {
         voice_id: Option<i32>,
         channel: u8,
         note: u8,
-        velocity: f32,
+        _velocity: f32,
     ) -> Option<VoiceId> {
         let new_voice = Voice {
             id: self.next_voice_id,
@@ -296,7 +182,7 @@ impl SynthEngine {
 
         let params = NoteOnParams {
             note: note as f32,
-            velocity,
+            // velocity,
             voice_idx,
             same_note_retrigger: same_note,
         };
@@ -320,7 +206,10 @@ impl SynthEngine {
             return;
         };
 
-        let params = NoteOffParams { note, voice_idx };
+        let params = NoteOffParams {
+            //note,
+            voice_idx,
+        };
 
         for node in &self.execution_order {
             self.modules
@@ -382,41 +271,87 @@ impl SynthEngine {
             samples,
             sample_rate: self.sample_rate,
             t_step: self.sample_rate.recip(),
-            buffer_t_step: BUFFER_SIZE as Sample / self.sample_rate,
+            // buffer_t_step: samples as Sample / self.sample_rate,
             active_voices: &active_voices,
         };
 
+        macro_rules! process_node {
+            ($id:ident, $container:ident) => {{
+                let mut module = self.modules.$container.take(*$id);
+
+                module.process(&params, self);
+                self.modules.$container.return_back(module);
+            }};
+        }
+
         for node in &self.execution_order {
             match node {
-                RoutingNode::Oscillator(id) => {
-                    let mut osc = self.modules.oscillators.take(*id);
-
-                    osc.process(&params, self);
-                    self.modules.oscillators.return_back(osc);
-                }
-                RoutingNode::Envelope(id) => {
-                    let mut env = self.modules.envelopes.take(*id);
-
-                    env.process(&params, self);
-                    self.modules.envelopes.return_back(env);
-                }
-                RoutingNode::Amplifier(id) => {
-                    let mut amp = self.modules.amplifiers.take(*id);
-
-                    amp.process(&params, self);
-                    self.modules.amplifiers.return_back(amp);
-                }
+                RoutingNode::Oscillator(id) => process_node!(id, oscillators),
+                RoutingNode::Envelope(id) => process_node!(id, envelopes),
+                RoutingNode::Amplifier(id) => process_node!(id, amplifiers),
                 RoutingNode::SpectralFilter(id) => {
-                    let mut filter = self.modules.spectral_filters.take(*id);
-
-                    filter.process(&params, self);
-                    self.modules.spectral_filters.return_back(filter);
+                    process_node!(id, spectral_filters)
                 }
                 RoutingNode::Output => (),
             }
         }
 
         self.write_output(&params, outputs);
+    }
+
+    fn alloc_next_id(&mut self) -> ModuleId {
+        let module_id = self.next_id;
+
+        self.next_id += 1;
+        module_id
+    }
+
+    fn trigger_active_notes(voices: &[Voice], module: &mut dyn SynthModule) {
+        let active_voices = voices
+            .iter()
+            .enumerate()
+            .filter(|(_, voice)| voice.active)
+            .map(|(voice_idx, voice)| NoteOnParams {
+                note: voice.note as f32,
+                voice_idx,
+                same_note_retrigger: false,
+            });
+
+        for params in active_voices {
+            module.note_on(&params);
+        }
+    }
+
+    fn get_links(&self) -> Vec<ModuleLink> {
+        self.input_sources
+            .iter()
+            .flat_map(|(dst, sources)| {
+                sources.iter().map(|src| ModuleLink {
+                    dst: *dst,
+                    src: src.src,
+                    modulation: src.modulation,
+                })
+            })
+            .collect()
+    }
+
+    fn setup_routing(&mut self, links: &[ModuleLink]) -> Result<(), String> {
+        let execution_order = Self::calc_execution_order(links)?;
+        let mut input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>> = HashMap::new();
+
+        for link in links {
+            input_sources
+                .entry(link.dst)
+                .or_default()
+                .push(ModuleInputSource {
+                    src: link.src,
+                    modulation: link.modulation,
+                });
+        }
+
+        self.input_sources = input_sources;
+        self.execution_order = execution_order;
+        Ok(())
     }
 
     fn write_output<'a>(
@@ -443,7 +378,7 @@ impl SynthEngine {
         self.tmp_output_buffer.replace(tmp_buffer);
     }
 
-    pub fn update_harmonics(&mut self, harmonics: &[StereoValue], tail: StereoValue) {
+    pub fn update_harmonics(&mut self, harmonics: &[StereoSample], tail: StereoSample) {
         for filter in &mut self.modules.spectral_filters.modules.values_mut() {
             filter.as_mut().unwrap().set_harmonics(harmonics, tail);
         }
@@ -453,7 +388,7 @@ impl SynthEngine {
         let level = db_to_gain_fast(volume);
 
         for amp in self.modules.amplifiers.modules.values_mut() {
-            amp.as_mut().unwrap().set_level(StereoValue::mono(level));
+            amp.as_mut().unwrap().set_level(StereoSample::mono(level));
         }
     }
 
@@ -478,11 +413,11 @@ impl SynthEngine {
     }
 
     fn build_scheme(&mut self) {
-        let filter_env_id = self.add_envelope();
-        let filter_id = self.add_spectral_filter();
-        let osc_id = self.add_oscillator();
-        let amp_id = self.add_amplifier();
-        let amp_env_id = self.add_envelope();
+        let filter_env_id = self.add_envelope().unwrap();
+        let filter_id = self.add_spectral_filter().unwrap();
+        let osc_id = self.add_oscillator().unwrap();
+        let amp_id = self.add_amplifier().unwrap();
+        let amp_env_id = self.add_envelope().unwrap();
 
         self.modules
             .envelopes
@@ -510,41 +445,36 @@ impl SynthEngine {
             .envelopes
             .get_mut(amp_env_id)
             .unwrap()
-            .set_attack(StereoValue::mono(10.0))
+            .set_attack(StereoSample::mono(10.0))
             .set_decay(20.0.into())
             .set_sustain(1.0.into())
             .set_release(300.0.into());
 
-        self.set_links(&[
-            ModuleLink::link(ModuleOutput::Amplifier(amp_id), ModuleInput::Output),
-            ModuleLink::modulation(
-                ModuleOutput::Envelope(filter_env_id),
-                ModuleInput::SpectralFilterCutoff(filter_id),
-                50.0,
-            ),
-            ModuleLink::link(
-                ModuleOutput::SpectralFilter(filter_id),
-                ModuleInput::OscillatorSpectrum(osc_id),
-            ),
-            ModuleLink::link(
-                ModuleOutput::Oscillator(osc_id),
-                ModuleInput::AmplifierInput(amp_id),
-            ),
-            // ModuleLink::modulation(
-            //     ModuleOutput::Envelope(pitch_shift_env_id),
-            //     ModuleInput::OscillatorPitchShift(osc_id),
-            //     0.125,
-            // ),
-            // ModuleLink::modulation(
-            //     ModuleOutput::Envelope(detune_env_id),
-            //     ModuleInput::OscillatorDetune(osc_id),
-            //     0.6,
-            // ),
-            ModuleLink::link(
-                ModuleOutput::Envelope(amp_env_id),
-                ModuleInput::AmplifierLevel(amp_id),
-            ),
-        ])
+        self.set_link(ModuleLink::link(
+            ModuleOutput::Amplifier(amp_id),
+            ModuleInput::Output,
+        ))
+        .unwrap();
+        self.set_link(ModuleLink::modulation(
+            ModuleOutput::EnvelopeScalar(filter_env_id),
+            ModuleInput::SpectralFilterCutoff(filter_id),
+            50.0,
+        ))
+        .unwrap();
+        self.set_link(ModuleLink::link(
+            ModuleOutput::SpectralFilter(filter_id),
+            ModuleInput::OscillatorSpectrum(osc_id),
+        ))
+        .unwrap();
+        self.set_link(ModuleLink::link(
+            ModuleOutput::Oscillator(osc_id),
+            ModuleInput::AmplifierInput(amp_id),
+        ))
+        .unwrap();
+        self.set_link(ModuleLink::link(
+            ModuleOutput::Envelope(amp_env_id),
+            ModuleInput::AmplifierLevel(amp_id),
+        ))
         .unwrap();
     }
 
@@ -576,6 +506,42 @@ impl SynthEngine {
             SortResults::Partial(_) => Err("Cycles detected!".to_string()),
         }
     }
+
+    fn clear(&mut self) {
+        self.execution_order.clear();
+        self.input_sources.clear();
+        self.modules.clear();
+        self.next_id = 1;
+    }
+
+    fn load_config(&mut self) -> bool {
+        let config = self.config.routing.lock();
+        let nodes = config.nodes.clone();
+        let links = config.links.clone();
+
+        self.next_id = config.last_module_id + 1;
+        drop(config);
+
+        if nodes.is_empty() {
+            return false;
+        }
+
+        for node in &nodes {
+            if self.modules.add_node(node, &self.config).is_err() {
+                return false;
+            }
+        }
+
+        self.setup_routing(&links).is_ok()
+    }
+
+    fn save_config(&self) {
+        let mut config = self.config.routing.lock();
+
+        config.last_module_id = self.next_id;
+        config.nodes = self.modules.get_routing_nodes();
+        config.links = self.get_links();
+    }
 }
 
 impl Router for SynthEngine {
@@ -592,24 +558,28 @@ impl Router for SynthEngine {
             return None;
         }
 
-        if sources.len() == 1 && sources[0].modulation_amount.is_none() {
+        if sources.len() == 1 && sources[0].modulation.is_none() {
             return Some(self.resolve_buffer(sources[0].src, voice_idx, channel));
         }
-
-        input_buffer.fill(0.0);
 
         let buffs = sources.iter().map(|source| {
             (
                 self.resolve_buffer(source.src, voice_idx, channel),
-                source.modulation_amount,
+                source.modulation,
             )
         });
 
-        for (buff, mod_amount) in buffs {
-            let mod_amount = mod_amount.unwrap_or(1.0);
+        for (idx, (buff, mod_amount)) in buffs.enumerate() {
+            let mod_amount = mod_amount.map_or(1.0, |stereo_amount| stereo_amount[channel]);
 
-            for (input, buff) in input_buffer.iter_mut().zip(buff) {
-                *input += buff * mod_amount;
+            if idx == 0 {
+                for (input, buff) in input_buffer.iter_mut().zip(buff) {
+                    *input = buff * mod_amount;
+                }
+            } else {
+                for (input, buff) in input_buffer.iter_mut().zip(buff) {
+                    *input += buff * mod_amount;
+                }
             }
         }
 
@@ -655,12 +625,12 @@ impl Router for SynthEngine {
                     .resolve_scalar_output_node(source.src.routing_node())
                     .unwrap()
                     .get_output(voice_idx, channel),
-                source.modulation_amount,
+                source.modulation,
             )
         });
 
         for (value, mod_amount) in values {
-            let mod_amount = mod_amount.unwrap_or(1.0);
+            let mod_amount = mod_amount.map_or(1.0, |stereo_amount| stereo_amount[channel]);
 
             outputs.first += value.first * mod_amount;
             outputs.current += value.current * mod_amount;

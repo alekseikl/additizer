@@ -4,7 +4,7 @@ use crate::synth_engine::{
     synth_module::{
         BufferOutputModule, ModuleConfig, NoteOffParams, NoteOnParams, ProcessParams, SynthModule,
     },
-    types::{Sample, StereoValue},
+    types::{Sample, StereoSample},
 };
 use itertools::izip;
 use serde::{Deserialize, Serialize};
@@ -88,14 +88,14 @@ impl Amplifier {
         amp
     }
 
-    pub fn set_level(&mut self, level: StereoValue) {
+    pub fn set_level(&mut self, level: StereoSample) {
         for (chan, value) in self.channels.iter_mut().zip(level.iter()) {
-            chan.level = value;
+            chan.level = *value;
         }
 
         self.common.config.access(|cfg| {
             for (chan, value) in cfg.channels.iter_mut().zip(level.iter()) {
-                chan.level = value;
+                chan.level = *value;
             }
         });
     }
