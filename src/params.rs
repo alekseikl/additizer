@@ -91,10 +91,7 @@ impl Default for AdditizerParams {
 impl<'a> PersistentField<'a, Config> for Arc<Config> {
     fn set(&self, new_value: Config) {
         *self.routing.lock() = new_value.routing.lock().clone();
-        *self.envelopes.lock() = new_value.envelopes.lock().clone();
-        *self.amplifiers.lock() = new_value.amplifiers.lock().clone();
-        *self.oscillators.lock() = new_value.oscillators.lock().clone();
-        *self.spectral_filters.lock() = new_value.spectral_filters.lock().clone();
+        *self.modules.lock() = new_value.modules.lock().clone();
     }
 
     fn map<F, R>(&self, f: F) -> R

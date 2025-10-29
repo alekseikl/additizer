@@ -1,10 +1,10 @@
-use std::{any::Any, collections::HashMap, sync::Arc};
+use std::{any::Any, sync::Arc};
 
 use parking_lot::Mutex;
 
 use crate::synth_engine::{
     buffer::{Buffer, HARMONIC_SERIES_BUFFER, SpectralBuffer},
-    routing::{ModuleId, Router},
+    routing::{InputType, ModuleId, ModuleType, OutputType, Router},
     types::Sample,
 };
 
@@ -28,17 +28,6 @@ pub struct ProcessParams<'a> {
     pub active_voices: &'a [usize],
 }
 
-pub trait SynthModule: Any {
-    fn get_id(&self) -> ModuleId;
-    fn note_on(&mut self, params: &NoteOnParams);
-    fn note_off(&mut self, params: &NoteOffParams);
-    fn process(&mut self, params: &ProcessParams, router: &dyn Router);
-}
-
-pub trait BufferOutputModule: SynthModule {
-    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer;
-}
-
 pub struct SpectralOutputs<'a> {
     pub first: &'a SpectralBuffer,
     pub current: &'a SpectralBuffer,
@@ -58,10 +47,6 @@ impl SpectralOutputs<'_> {
             current: &HARMONIC_SERIES_BUFFER,
         }
     }
-}
-
-pub trait SpectralOutputModule: SynthModule {
-    fn get_output(&self, voice_idx: usize, channel: usize) -> SpectralOutputs<'_>;
 }
 
 pub struct ScalarOutputs {
@@ -85,27 +70,17 @@ impl ScalarOutputs {
     // }
 }
 
-pub trait ScalarOutputModule: SynthModule {
-    fn get_output(&self, voice_idx: usize, channel: usize) -> ScalarOutputs;
+pub trait SynthModule: Any + Send {
+    fn id(&self) -> ModuleId;
+    fn module_type(&self) -> ModuleType;
+    fn inputs(&self) -> &'static [InputType];
+    fn outputs(&self) -> &'static [OutputType];
+    fn note_on(&mut self, params: &NoteOnParams);
+    fn note_off(&mut self, params: &NoteOffParams);
+    fn process(&mut self, params: &ProcessParams, router: &dyn Router);
+    fn get_buffer_output(&self, voice_idx: usize, channel: usize) -> &Buffer;
+    fn get_spectral_output(&self, voice_idx: usize, channel: usize) -> SpectralOutputs<'_>;
+    fn get_scalar_output(&self, voice_idx: usize, channel: usize) -> ScalarOutputs;
 }
 
-pub struct ModuleConfig<T: Default + Clone> {
-    module_id: ModuleId,
-    configs: Arc<Mutex<HashMap<ModuleId, T>>>,
-}
-
-impl<T: Default + Clone> ModuleConfig<T> {
-    pub fn new(module_id: ModuleId, configs: Arc<Mutex<HashMap<ModuleId, T>>>) -> Self {
-        Self { module_id, configs }
-    }
-
-    pub fn id(&self) -> ModuleId {
-        self.module_id
-    }
-
-    pub fn access(&self, cb: impl FnOnce(&mut T)) {
-        let mut cfg_map = self.configs.lock();
-
-        cb(cfg_map.entry(self.module_id).or_default());
-    }
-}
+pub type ModuleConfigBox<T> = Arc<Mutex<T>>;

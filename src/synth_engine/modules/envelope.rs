@@ -1,13 +1,14 @@
+use std::any::Any;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::{
         buffer::{Buffer, make_zero_buffer},
         envelope::{self, EnvelopeActivityState, EnvelopeChannel, EnvelopeVoice},
-        routing::{MAX_VOICES, ModuleId, NUM_CHANNELS, Router},
+        routing::{InputType, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, OutputType, Router},
         synth_module::{
-            BufferOutputModule, ModuleConfig, NoteOffParams, NoteOnParams, ProcessParams,
-            ScalarOutputModule, ScalarOutputs, SynthModule,
+            ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs, SynthModule,
         },
         types::{Sample, StereoSample},
     },
@@ -52,35 +53,47 @@ struct Channel {
 }
 
 pub struct Envelope {
-    config: ModuleConfig<EnvelopeConfig>,
+    id: ModuleId,
+    config: ModuleConfigBox<EnvelopeConfig>,
     keep_voice_alive: bool,
     channels: [Channel; NUM_CHANNELS],
 }
 
 impl Envelope {
-    pub fn new(config: ModuleConfig<EnvelopeConfig>) -> Self {
+    pub fn new(id: ModuleId, config: ModuleConfigBox<EnvelopeConfig>) -> Self {
         let mut env = Self {
+            id,
             config,
             keep_voice_alive: true,
             channels: Default::default(),
         };
 
-        env.config.access(|cfg| {
+        {
+            let cfg = env.config.lock();
             for (channel, cfg_channel) in env.channels.iter_mut().zip(cfg.channels.iter()) {
                 channel.env = cfg_channel.clone();
             }
             env.keep_voice_alive = cfg.keep_voice_alive;
-        });
+        }
 
         env
+    }
+
+    pub fn downcast(module: &dyn SynthModule) -> Option<&Envelope> {
+        (module as &dyn Any).downcast_ref()
+    }
+
+    pub fn downcast_mut(module: &mut dyn SynthModule) -> Option<&mut Envelope> {
+        (module as &mut dyn Any).downcast_mut()
     }
 
     pub fn set_keep_voice_alive(&mut self, keep_alive: bool) -> &mut Self {
         self.keep_voice_alive = keep_alive;
 
-        self.config.access(|cfg| {
+        {
+            let mut cfg = self.config.lock();
             cfg.keep_voice_alive = keep_alive;
-        });
+        }
 
         self
     }
@@ -90,11 +103,12 @@ impl Envelope {
             channel.env.attack_time = from_ms(*attack);
         }
 
-        self.config.access(|cfg| {
+        {
+            let mut cfg = self.config.lock();
             for (cfg_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
                 cfg_channel.attack_time = channel.env.attack_time;
             }
-        });
+        }
 
         self
     }
@@ -104,11 +118,12 @@ impl Envelope {
             channel.env.decay_time = from_ms(*decay);
         }
 
-        self.config.access(|cfg| {
+        {
+            let mut cfg = self.config.lock();
             for (cfg_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
                 cfg_channel.decay_time = channel.env.decay_time;
             }
-        });
+        }
 
         self
     }
@@ -118,11 +133,12 @@ impl Envelope {
             channel.env.sustain_level = *sustain;
         }
 
-        self.config.access(|cfg| {
+        {
+            let mut cfg = self.config.lock();
             for (cfg_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
                 cfg_channel.sustain_level = channel.env.sustain_level;
             }
-        });
+        }
 
         self
     }
@@ -132,11 +148,12 @@ impl Envelope {
             channel.env.release_time = from_ms(*release);
         }
 
-        self.config.access(|cfg| {
+        {
+            let mut cfg = self.config.lock();
             for (cfg_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
                 cfg_channel.release_time = channel.env.release_time;
             }
-        });
+        }
 
         self
     }
@@ -169,8 +186,20 @@ impl Envelope {
 }
 
 impl SynthModule for Envelope {
-    fn get_id(&self) -> ModuleId {
-        self.config.id()
+    fn id(&self) -> ModuleId {
+        self.id
+    }
+
+    fn module_type(&self) -> ModuleType {
+        ModuleType::Envelope
+    }
+
+    fn inputs(&self) -> &'static [InputType] {
+        &[]
+    }
+
+    fn outputs(&self) -> &'static [OutputType] {
+        &[OutputType::Output, OutputType::Scalar]
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
@@ -196,21 +225,25 @@ impl SynthModule for Envelope {
             }
         }
     }
-}
 
-impl BufferOutputModule for Envelope {
-    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
+    fn get_buffer_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
         &self.channels[channel].voices[voice_idx].output
     }
-}
 
-impl ScalarOutputModule for Envelope {
-    fn get_output(&self, voice_idx: usize, channel: usize) -> ScalarOutputs {
+    fn get_scalar_output(&self, voice_idx: usize, channel: usize) -> ScalarOutputs {
         let voice = &self.channels[channel].voices[voice_idx];
 
         ScalarOutputs {
             first: voice.output[0],
             current: voice.next_output_sample,
         }
+    }
+
+    fn get_spectral_output(
+        &self,
+        _voice_idx: usize,
+        _channel: usize,
+    ) -> crate::synth_engine::synth_module::SpectralOutputs<'_> {
+        panic!("Envelope don't have spectral output.")
     }
 }

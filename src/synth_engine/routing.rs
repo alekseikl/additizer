@@ -7,95 +7,131 @@ use crate::synth_engine::{
 
 use super::buffer::Buffer;
 
+pub type ModuleId = i64;
+
 pub const MAX_VOICES: usize = 16;
 pub const NUM_CHANNELS: usize = 2;
-pub type ModuleId = u64;
+pub const OUTPUT_MODULE_ID: ModuleId = 0;
+pub const MIN_MODULE_ID: ModuleId = 1;
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+pub enum ModuleType {
+    Envelope,
+    Amplifier,
+    Oscillator,
+    SpectralFilter,
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum LinkDataType {
+pub enum DataType {
     Buffer,
     Scalar,
     Spectral,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
-pub enum RoutingNode {
-    Envelope(ModuleId),
-    Amplifier(ModuleId),
-    Oscillator(ModuleId),
-    SpectralFilter(ModuleId),
-    Output,
+pub enum InputType {
+    Input,
+    Level,
+    PitchShift,
+    Detune,
+    Spectrum,
+    CutoffScalar,
+}
+
+impl InputType {
+    pub fn data_type(&self) -> DataType {
+        match self {
+            Self::Input => DataType::Buffer,
+            Self::Level => DataType::Buffer,
+            Self::PitchShift => DataType::Buffer,
+            Self::Detune => DataType::Buffer,
+            Self::Spectrum => DataType::Spectral,
+            Self::CutoffScalar => DataType::Scalar,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
-pub enum ModuleInput {
-    AmplifierInput(ModuleId),
-    AmplifierLevel(ModuleId),
-    OscillatorSpectrum(ModuleId),
-    OscillatorLevel(ModuleId),
-    OscillatorPitchShift(ModuleId),
-    OscillatorDetune(ModuleId),
-    SpectralFilterCutoff(ModuleId),
+pub enum OutputType {
     Output,
+    Spectrum,
+    Scalar,
+}
+
+impl OutputType {
+    pub fn data_type(&self) -> DataType {
+        match self {
+            Self::Output => DataType::Buffer,
+            Self::Spectrum => DataType::Spectral,
+            Self::Scalar => DataType::Scalar,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
+pub struct ModuleInput {
+    pub input_type: InputType,
+    pub module_id: ModuleId,
+}
+
+macro_rules! input_ctor {
+    ($ctor_name:ident, $input_type:ident) => {
+        pub fn $ctor_name(id: ModuleId) -> Self {
+            Self::new(InputType::$input_type, id)
+        }
+    };
 }
 
 impl ModuleInput {
-    pub fn routing_node(&self) -> RoutingNode {
-        match self {
-            Self::AmplifierInput(module_id) => RoutingNode::Amplifier(*module_id),
-            Self::AmplifierLevel(module_id) => RoutingNode::Amplifier(*module_id),
-            Self::OscillatorLevel(module_id) => RoutingNode::Oscillator(*module_id),
-            Self::OscillatorSpectrum(id) => RoutingNode::Oscillator(*id),
-            Self::OscillatorPitchShift(module_id) => RoutingNode::Oscillator(*module_id),
-            Self::OscillatorDetune(id) => RoutingNode::Oscillator(*id),
-            Self::SpectralFilterCutoff(id) => RoutingNode::SpectralFilter(*id),
-            Self::Output => RoutingNode::Output,
+    pub fn new(input: InputType, id: ModuleId) -> Self {
+        Self {
+            input_type: input,
+            module_id: id,
         }
     }
 
-    pub fn data_type(&self) -> LinkDataType {
-        match self {
-            Self::AmplifierInput(_) => LinkDataType::Buffer,
-            Self::AmplifierLevel(_) => LinkDataType::Buffer,
-            Self::OscillatorLevel(_) => LinkDataType::Buffer,
-            Self::OscillatorSpectrum(_) => LinkDataType::Spectral,
-            Self::OscillatorPitchShift(_) => LinkDataType::Buffer,
-            Self::OscillatorDetune(_) => LinkDataType::Buffer,
-            Self::SpectralFilterCutoff(_) => LinkDataType::Scalar,
-            Self::Output => LinkDataType::Buffer,
-        }
+    pub fn data_type(&self) -> DataType {
+        self.input_type.data_type()
     }
+
+    input_ctor!(input, Input);
+    input_ctor!(level, Level);
+    input_ctor!(pitch_shift, PitchShift);
+    input_ctor!(detune, Detune);
+    input_ctor!(spectrum, Spectrum);
+    input_ctor!(cutoff_scalar, CutoffScalar);
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
-pub enum ModuleOutput {
-    Envelope(ModuleId),
-    EnvelopeScalar(ModuleId),
-    Amplifier(ModuleId),
-    Oscillator(ModuleId),
-    SpectralFilter(ModuleId),
+pub struct ModuleOutput {
+    pub output_type: OutputType,
+    pub module_id: ModuleId,
+}
+
+macro_rules! output_ctor {
+    ($ctor_name:ident, $input_type:ident) => {
+        pub fn $ctor_name(id: ModuleId) -> Self {
+            Self::new(OutputType::$input_type, id)
+        }
+    };
 }
 
 impl ModuleOutput {
-    pub fn routing_node(&self) -> RoutingNode {
-        match self {
-            Self::Envelope(module_id) => RoutingNode::Envelope(*module_id),
-            Self::EnvelopeScalar(module_id) => RoutingNode::Envelope(*module_id),
-            Self::Amplifier(module_id) => RoutingNode::Amplifier(*module_id),
-            Self::Oscillator(module_id) => RoutingNode::Oscillator(*module_id),
-            Self::SpectralFilter(id) => RoutingNode::SpectralFilter(*id),
+    pub fn new(output: OutputType, id: ModuleId) -> Self {
+        Self {
+            output_type: output,
+            module_id: id,
         }
     }
 
-    pub fn data_type(&self) -> LinkDataType {
-        match self {
-            Self::Envelope(_) => LinkDataType::Buffer,
-            Self::EnvelopeScalar(_) => LinkDataType::Scalar,
-            Self::Amplifier(_) => LinkDataType::Buffer,
-            Self::Oscillator(_) => LinkDataType::Buffer,
-            Self::SpectralFilter(_) => LinkDataType::Spectral,
-        }
+    pub fn data_type(&self) -> DataType {
+        self.output_type.data_type()
     }
+
+    output_ctor!(output, Output);
+    output_ctor!(spectrum, Spectrum);
+    output_ctor!(scalar, Scalar);
 }
 
 #[derive(Debug, Clone, Copy)]

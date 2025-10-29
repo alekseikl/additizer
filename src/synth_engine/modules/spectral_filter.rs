@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use itertools::izip;
 use serde::{Deserialize, Serialize};
 
@@ -6,15 +8,20 @@ use crate::synth_engine::{
         HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer, make_harmonic_series_buffer,
         make_zero_spectral_buffer,
     },
-    routing::{MAX_VOICES, ModuleId, ModuleInput, NUM_CHANNELS, Router},
+    routing::{
+        InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, OutputType, Router,
+    },
     synth_module::{
-        ModuleConfig, NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs,
-        SpectralOutputModule, SpectralOutputs, SynthModule,
+        ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs,
+        SpectralOutputs, SynthModule,
     },
     types::{ComplexSample, Sample, StereoSample},
 };
 
 pub const MAX_CUTOFF_HARMONIC: Sample = 1023.0;
+
+static MODULE_INPUTS: &[InputType] = &[InputType::CutoffScalar];
+static MODULE_OUTPUTS: &[OutputType] = &[OutputType::Spectrum];
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SpectralFilterConfigChannel {
@@ -71,24 +78,35 @@ struct Channel {
 }
 
 pub struct SpectralFilter {
-    config: ModuleConfig<SpectralFilterConfig>,
+    id: ModuleId,
+    config: ModuleConfigBox<SpectralFilterConfig>,
     channels: [Channel; NUM_CHANNELS],
 }
 
 impl SpectralFilter {
-    pub fn new(config: ModuleConfig<SpectralFilterConfig>) -> Self {
+    pub fn new(id: ModuleId, config: ModuleConfigBox<SpectralFilterConfig>) -> Self {
         let mut filter = Self {
+            id,
             config,
             channels: Default::default(),
         };
 
-        filter.config.access(|cfg| {
+        {
+            let cfg = filter.config.lock();
             for (channel, cfg_channel) in filter.channels.iter_mut().zip(cfg.channels.iter()) {
                 channel.params.cutoff = cfg_channel.cutoff;
             }
-        });
+        }
 
         filter
+    }
+
+    pub fn downcast(module: &dyn SynthModule) -> Option<&SpectralFilter> {
+        (module as &dyn Any).downcast_ref()
+    }
+
+    pub fn downcast_mut(module: &mut dyn SynthModule) -> Option<&mut SpectralFilter> {
+        (module as &mut dyn Any).downcast_mut()
     }
 
     pub fn set_cutoff_harmonic(&mut self, cutoff: StereoSample) {
@@ -96,11 +114,12 @@ impl SpectralFilter {
             channel.params.cutoff = cutoff.clamp(0.0, MAX_CUTOFF_HARMONIC);
         }
 
-        self.config.access(|cfg| {
+        {
+            let mut cfg = self.config.lock();
             for (config_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
                 config_channel.cutoff = channel.params.cutoff;
             }
-        });
+        }
     }
 
     pub fn set_harmonics(&mut self, harmonics: &[StereoSample], tail: StereoSample) {
@@ -167,7 +186,7 @@ impl SpectralFilter {
         let voice = &mut channel.voices[voice_idx];
         let cutoff_mod = router
             .get_scalar_input(
-                ModuleInput::SpectralFilterCutoff(module_id),
+                ModuleInput::cutoff_scalar(module_id),
                 voice_idx,
                 channel_idx,
             )
@@ -183,8 +202,20 @@ impl SpectralFilter {
 }
 
 impl SynthModule for SpectralFilter {
-    fn get_id(&self) -> ModuleId {
-        self.config.id()
+    fn id(&self) -> ModuleId {
+        self.id
+    }
+
+    fn module_type(&self) -> ModuleType {
+        ModuleType::SpectralFilter
+    }
+
+    fn inputs(&self) -> &'static [InputType] {
+        MODULE_INPUTS
+    }
+
+    fn outputs(&self) -> &'static [OutputType] {
+        MODULE_OUTPUTS
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
@@ -200,25 +231,29 @@ impl SynthModule for SpectralFilter {
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for voice_idx in params.active_voices {
-                Self::process_channel_voice(
-                    self.config.id(),
-                    channel,
-                    router,
-                    *voice_idx,
-                    channel_idx,
-                );
+                Self::process_channel_voice(self.id, channel, router, *voice_idx, channel_idx);
             }
         }
     }
-}
 
-impl SpectralOutputModule for SpectralFilter {
-    fn get_output(&self, voice_idx: usize, channel: usize) -> SpectralOutputs<'_> {
+    fn get_spectral_output(&self, voice_idx: usize, channel: usize) -> SpectralOutputs<'_> {
         let voice = &self.channels[channel].voices[voice_idx];
 
         SpectralOutputs {
             first: &voice.first_output,
             current: &voice.output,
         }
+    }
+
+    fn get_buffer_output(
+        &self,
+        _voice_idx: usize,
+        _channel: usize,
+    ) -> &crate::synth_engine::buffer::Buffer {
+        panic!("SpectralFilter don't have buffer output.")
+    }
+
+    fn get_scalar_output(&self, _voice_idx: usize, _channel: usize) -> ScalarOutputs {
+        panic!("SpectralFilter don't have scalar output.")
     }
 }

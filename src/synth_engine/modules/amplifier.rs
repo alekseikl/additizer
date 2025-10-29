@@ -1,9 +1,11 @@
+use std::any::Any;
+
 use crate::synth_engine::{
     buffer::{Buffer, ONES_BUFFER, ZEROES_BUFFER, make_zero_buffer},
-    routing::{MAX_VOICES, ModuleId, ModuleInput, NUM_CHANNELS, Router},
-    synth_module::{
-        BufferOutputModule, ModuleConfig, NoteOffParams, NoteOnParams, ProcessParams, SynthModule,
+    routing::{
+        InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, OutputType, Router,
     },
+    synth_module::{ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
     types::{Sample, StereoSample},
 };
 use itertools::izip;
@@ -58,7 +60,8 @@ impl Default for Channel {
 }
 
 struct Common {
-    config: ModuleConfig<AmplifierConfig>,
+    id: ModuleId,
+    config: ModuleConfigBox<AmplifierConfig>,
     input: Buffer,
     level_mod_input: Buffer,
 }
@@ -69,9 +72,10 @@ pub struct Amplifier {
 }
 
 impl Amplifier {
-    pub fn new(config: ModuleConfig<AmplifierConfig>) -> Self {
+    pub fn new(id: ModuleId, config: ModuleConfigBox<AmplifierConfig>) -> Self {
         let mut amp = Self {
             common: Common {
+                id,
                 config,
                 input: make_zero_buffer(),
                 level_mod_input: make_zero_buffer(),
@@ -79,13 +83,23 @@ impl Amplifier {
             channels: Default::default(),
         };
 
-        amp.common.config.access(|cfg| {
+        {
+            let cfg = amp.common.config.lock();
+
             for (channel, cfg) in amp.channels.iter_mut().zip(cfg.channels.iter()) {
                 channel.level = cfg.level;
             }
-        });
+        }
 
         amp
+    }
+
+    pub fn downcast(module: &dyn SynthModule) -> Option<&Amplifier> {
+        (module as &dyn Any).downcast_ref()
+    }
+
+    pub fn downcast_mut(module: &mut dyn SynthModule) -> Option<&mut Amplifier> {
+        (module as &mut dyn Any).downcast_mut()
     }
 
     pub fn set_level(&mut self, level: StereoSample) {
@@ -93,11 +107,13 @@ impl Amplifier {
             chan.level = *value;
         }
 
-        self.common.config.access(|cfg| {
+        {
+            let mut cfg = self.common.config.lock();
+
             for (chan, value) in cfg.channels.iter_mut().zip(level.iter()) {
                 chan.level = *value;
             }
-        });
+        }
     }
 
     fn process_channel_voice(
@@ -108,10 +124,11 @@ impl Amplifier {
         voice_idx: usize,
         channel_idx: usize,
     ) {
+        let id = common.id;
         let voice = &mut channel.voices[voice_idx];
         let input = router
             .get_input(
-                ModuleInput::AmplifierInput(common.config.id()),
+                ModuleInput::input(id),
                 voice_idx,
                 channel_idx,
                 &mut common.input,
@@ -119,7 +136,7 @@ impl Amplifier {
             .unwrap_or(&ZEROES_BUFFER);
         let level_mod = router
             .get_input(
-                ModuleInput::AmplifierLevel(common.config.id()),
+                ModuleInput::level(id),
                 voice_idx,
                 channel_idx,
                 &mut common.level_mod_input,
@@ -135,8 +152,20 @@ impl Amplifier {
 }
 
 impl SynthModule for Amplifier {
-    fn get_id(&self) -> ModuleId {
-        self.common.config.id()
+    fn id(&self) -> ModuleId {
+        self.common.id
+    }
+
+    fn module_type(&self) -> ModuleType {
+        ModuleType::Amplifier
+    }
+
+    fn inputs(&self) -> &'static [InputType] {
+        &[InputType::Input, InputType::Level]
+    }
+
+    fn outputs(&self) -> &'static [OutputType] {
+        &[OutputType::Output]
     }
 
     fn note_on(&mut self, _: &NoteOnParams) {}
@@ -156,10 +185,24 @@ impl SynthModule for Amplifier {
             }
         }
     }
-}
 
-impl BufferOutputModule for Amplifier {
-    fn get_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
+    fn get_buffer_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
         &self.channels[channel].voices[voice_idx].output
+    }
+
+    fn get_spectral_output(
+        &self,
+        _voice_idx: usize,
+        _channel: usize,
+    ) -> crate::synth_engine::synth_module::SpectralOutputs<'_> {
+        panic!("Amplifier don't have spectral output.")
+    }
+
+    fn get_scalar_output(
+        &self,
+        _voice_idx: usize,
+        _channel: usize,
+    ) -> crate::synth_engine::synth_module::ScalarOutputs {
+        panic!("Amplifier don't have scalar output.")
     }
 }
