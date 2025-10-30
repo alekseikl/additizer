@@ -6,14 +6,17 @@ use std::{
 
 use itertools::{Itertools, izip};
 use nih_plug::util::db_to_gain_fast;
-use parking_lot::lock_api::Mutex;
+use parking_lot::Mutex;
 use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
     buffer::{Buffer, ZEROES_BUFFER, make_zero_buffer},
     config::ModuleConfig,
-    modules::{AmplifierConfig, EnvelopeConfig, OscillatorConfig, SpectralFilterConfig},
+    modules::{
+        AmplifierConfig, EnvelopeConfig, HarmonicEditorConfig, OscillatorConfig,
+        SpectralFilterConfig,
+    },
     routing::{
         InputType, MAX_VOICES, MIN_MODULE_ID, ModuleId, ModuleInput, ModuleInputSource, ModuleLink,
         ModuleOutput, ModuleType, OUTPUT_MODULE_ID, Router,
@@ -25,7 +28,7 @@ use crate::synth_engine::{
 
 pub use buffer::BUFFER_SIZE;
 pub use config::Config;
-pub use modules::{Amplifier, Envelope, Oscillator, SpectralFilter};
+pub use modules::{Amplifier, Envelope, HarmonicEditor, Oscillator, SpectralFilter};
 pub use types::{Sample, StereoSample};
 
 mod buffer;
@@ -138,12 +141,12 @@ macro_rules! add_module_method {
 }
 
 impl SynthEngine {
-    pub fn new(config: Arc<Config>) -> Self {
+    pub fn new() -> Self {
         Self {
             next_id: MIN_MODULE_ID,
             next_voice_id: 1,
             sample_rate: 1000.0,
-            config,
+            config: Default::default(),
             modules: HashMap::new(),
             input_sources: HashMap::new(),
             execution_order: Vec::new(),
@@ -152,7 +155,8 @@ impl SynthEngine {
         }
     }
 
-    pub fn init(&mut self, sample_rate: f32) {
+    pub fn init(&mut self, config: Arc<Config>, sample_rate: f32) {
+        self.config = config;
         self.sample_rate = sample_rate;
 
         if !self.load_config() {
@@ -165,6 +169,24 @@ impl SynthEngine {
     add_module_method!(add_envelope, Envelope, EnvelopeConfig);
     add_module_method!(add_amplifier, Amplifier, AmplifierConfig);
     add_module_method!(add_spectral_filter, SpectralFilter, SpectralFilterConfig);
+    add_module_method!(add_harmonic_editor, HarmonicEditor, HarmonicEditorConfig);
+
+    pub fn remove_module(&mut self, id: ModuleId) {
+        if !self.modules.contains_key(&id) {
+            return;
+        };
+
+        self.modules.remove(&id);
+        self.config.modules.lock().remove(&id);
+
+        let new_links: Vec<_> = self
+            .get_links()
+            .into_iter()
+            .filter(|link| link.src.module_id == id || link.dst.module_id == id)
+            .collect();
+
+        self.setup_routing(&new_links).unwrap();
+    }
 
     pub fn set_link(&mut self, link: ModuleLink) -> Result<(), String> {
         if let Some(inputs) = self.input_sources.get_mut(&link.dst)
@@ -186,8 +208,19 @@ impl SynthEngine {
 
         new_links.push(link);
         self.setup_routing(&new_links)?;
-        self.save_config();
+        self.save_links();
         Ok(())
+    }
+
+    pub fn remove_link(&mut self, src: ModuleOutput, dst: ModuleInput) {
+        let new_links: Vec<_> = self
+            .get_links()
+            .into_iter()
+            .filter(|link| !(link.src == src && link.dst == dst))
+            .collect();
+
+        self.setup_routing(&new_links).unwrap();
+        self.save_links();
     }
 
     pub fn note_on(
@@ -436,8 +469,14 @@ impl SynthEngine {
         self.tmp_output_buffer.replace(tmp_buffer);
     }
 
+    pub fn get_harmonic_editor(&mut self) -> &mut HarmonicEditor {
+        let item = typed_modules_mut!(self, HarmonicEditor).next();
+
+        item.unwrap()
+    }
+
     pub fn update_harmonics(&mut self, harmonics: &[StereoSample], tail: StereoSample) {
-        for filter in typed_modules_mut!(self, SpectralFilter) {
+        for filter in typed_modules_mut!(self, HarmonicEditor) {
             filter.set_harmonics(harmonics, tail);
         }
     }
@@ -471,6 +510,7 @@ impl SynthEngine {
     }
 
     fn build_scheme(&mut self) {
+        let harmonic_editor_id = self.add_harmonic_editor();
         let filter_env_id = self.add_envelope();
         let filter_id = self.add_spectral_filter();
         let osc_id = self.add_oscillator();
@@ -510,8 +550,8 @@ impl SynthEngine {
             .set_release(300.0.into());
 
         self.set_link(ModuleLink::link(
-            ModuleOutput::output(amp_id),
-            ModuleInput::input(OUTPUT_MODULE_ID),
+            ModuleOutput::spectrum(harmonic_editor_id),
+            ModuleInput::spectrum(filter_id),
         ))
         .unwrap();
         self.set_link(ModuleLink::modulation(
@@ -533,6 +573,11 @@ impl SynthEngine {
         self.set_link(ModuleLink::link(
             ModuleOutput::output(amp_env_id),
             ModuleInput::level(amp_id),
+        ))
+        .unwrap();
+        self.set_link(ModuleLink::link(
+            ModuleOutput::output(amp_id),
+            ModuleInput::input(OUTPUT_MODULE_ID),
         ))
         .unwrap();
     }
@@ -563,7 +608,11 @@ impl SynthEngine {
         self.execution_order.clear();
         self.input_sources.clear();
         self.modules.clear();
-        self.next_id = 1;
+        self.next_id = MIN_MODULE_ID;
+
+        self.config.routing.lock().last_module_id = MIN_MODULE_ID;
+        self.config.routing.lock().links.clear();
+        self.config.modules.lock().clear();
     }
 
     fn load_config(&mut self) -> bool {
@@ -591,6 +640,7 @@ impl SynthEngine {
                 ModuleConfig::Envelope(cfg) => restore_module!(Envelope, id, cfg),
                 ModuleConfig::Oscillator(cfg) => restore_module!(Oscillator, id, cfg),
                 ModuleConfig::SpectralFilter(cfg) => restore_module!(SpectralFilter, id, cfg),
+                ModuleConfig::HarmonicEditor(cfg) => restore_module!(HarmonicEditor, id, cfg),
             }
         }
 
@@ -598,11 +648,10 @@ impl SynthEngine {
         self.setup_routing(&routing.links).is_ok()
     }
 
-    fn save_config(&self) {
-        let mut config = self.config.routing.lock();
+    fn save_links(&self) {
+        let mut routing = self.config.routing.lock();
 
-        config.last_module_id = self.next_id;
-        config.links = self.get_links();
+        routing.links = self.get_links();
     }
 }
 
@@ -637,14 +686,18 @@ impl Router for SynthEngine {
         for (idx, (buff, mod_amount)) in buffs.enumerate() {
             let mod_amount = mod_amount.map_or(1.0, |stereo_amount| stereo_amount[channel]);
 
+            macro_rules! merge_buff {
+                ($op:tt) => {
+                    for (input, buff) in input_buffer.iter_mut().zip(buff) {
+                        *input $op buff * mod_amount;
+                    }
+                };
+            }
+
             if idx == 0 {
-                for (input, buff) in input_buffer.iter_mut().zip(buff) {
-                    *input = buff * mod_amount;
-                }
+                merge_buff!(=);
             } else {
-                for (input, buff) in input_buffer.iter_mut().zip(buff) {
-                    *input += buff * mod_amount;
-                }
+                merge_buff!(+=);
             }
         }
 

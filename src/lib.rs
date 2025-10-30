@@ -23,12 +23,9 @@ pub struct Additizer {
 
 impl Default for Additizer {
     fn default() -> Self {
-        let params = Arc::new(AdditizerParams::default());
-        let config = Arc::clone(&params.config);
-
         Self {
             params: Arc::new(AdditizerParams::default()),
-            synth_engine: Arc::new(Mutex::new(SynthEngine::new(config))),
+            synth_engine: Arc::new(Mutex::new(SynthEngine::new())),
         }
     }
 }
@@ -107,7 +104,6 @@ impl Plugin for Additizer {
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         let egui_state = self.params.editor_state.clone();
         let synth_engine = Arc::clone(&self.synth_engine);
-        let params = Arc::clone(&self.params);
 
         create_egui_editor(
             self.params.editor_state.clone(),
@@ -119,14 +115,16 @@ impl Plugin for Additizer {
                 ResizableWindow::new("res-wind")
                     .min_size(egui::Vec2::new(900.0, 500.0))
                     .show(egui_ctx, egui_state.as_ref(), |ui| {
+                        let mut synth = synth_engine.lock();
                         let mut need_update = false;
-                        let state = &mut *params.harmonics_state.lock();
+                        let harmonic_editor = synth.get_harmonic_editor();
 
                         Frame::default().inner_margin(8.0).show(ui, |ui| {
                             ui.horizontal_top(|ui| {
-                                ui.style_mut().spacing.item_spacing = Vec2::splat(4.0);
+                                let harmonics = harmonic_editor.harmonics_ref_mut();
 
-                                for (idx, harmonic) in state.harmonics.iter_mut().enumerate() {
+                                ui.style_mut().spacing.item_spacing = Vec2::splat(4.0);
+                                for (idx, harmonic) in harmonics.iter_mut().enumerate() {
                                     if ui
                                         .add(
                                             GainSlider::new(harmonic)
@@ -139,9 +137,11 @@ impl Plugin for Additizer {
                                     }
                                 }
 
+                                let tail = harmonic_editor.tail_ref_mut();
+
                                 if ui
                                     .add(
-                                        GainSlider::new(&mut state.tail_harmonics)
+                                        GainSlider::new(tail)
                                             .label("Tail")
                                             .color(Color32::from_rgb(0x4d, 0x0f, 0x8c))
                                             .height(300.0),
@@ -154,9 +154,7 @@ impl Plugin for Additizer {
                         });
 
                         if need_update {
-                            synth_engine
-                                .lock()
-                                .update_harmonics(&state.harmonics, state.tail_harmonics);
+                            harmonic_editor.apply_harmonics();
                         }
                     });
             },
@@ -171,7 +169,7 @@ impl Plugin for Additizer {
     ) -> bool {
         let mut synth = self.synth_engine.lock();
 
-        synth.init(buffer_config.sample_rate);
+        synth.init(Arc::clone(&self.params.config), buffer_config.sample_rate);
 
         true
     }

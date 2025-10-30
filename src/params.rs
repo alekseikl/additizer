@@ -1,5 +1,4 @@
 use nih_plug::{params::persist::PersistentField, prelude::*};
-use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -23,9 +22,6 @@ pub struct AdditizerParams {
     #[persist = "plugin-config"]
     pub config: Arc<Config>,
 
-    #[persist = "harmonics-state"]
-    pub harmonics_state: Arc<Mutex<HarmonicsState>>,
-
     #[id = "volume"]
     pub volume: FloatParam,
 
@@ -43,11 +39,6 @@ impl Default for AdditizerParams {
     fn default() -> Self {
         Self {
             editor_state: EguiState::from_size(900, 500),
-            harmonics_state: Arc::new(Mutex::new(HarmonicsState {
-                harmonics: vec![StereoSample::mono(1.0); 40],
-                tail_harmonics: StereoSample::mono(1.0),
-                val1: 1.0,
-            })),
             config: Default::default(),
             volume: FloatParam::new(
                 "Volume",

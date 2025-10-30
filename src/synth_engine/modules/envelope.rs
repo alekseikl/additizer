@@ -238,12 +238,4 @@ impl SynthModule for Envelope {
             current: voice.next_output_sample,
         }
     }
-
-    fn get_spectral_output(
-        &self,
-        _voice_idx: usize,
-        _channel: usize,
-    ) -> crate::synth_engine::synth_module::SpectralOutputs<'_> {
-        panic!("Envelope don't have spectral output.")
-    }
 }

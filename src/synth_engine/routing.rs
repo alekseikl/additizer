@@ -20,6 +20,7 @@ pub enum ModuleType {
     Amplifier,
     Oscillator,
     SpectralFilter,
+    HarmonicEditor,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

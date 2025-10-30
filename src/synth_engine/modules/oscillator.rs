@@ -496,16 +496,4 @@ impl SynthModule for Oscillator {
     fn get_buffer_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
         &self.channels[channel].voices[voice_idx].output
     }
-
-    fn get_spectral_output(&self, _voice_idx: usize, _channel: usize) -> SpectralOutputs<'_> {
-        panic!("Oscillator don't have spectral output.")
-    }
-
-    fn get_scalar_output(
-        &self,
-        _voice_idx: usize,
-        _channel: usize,
-    ) -> crate::synth_engine::synth_module::ScalarOutputs {
-        panic!("Oscillator don't have scalar output.")
-    }
 }

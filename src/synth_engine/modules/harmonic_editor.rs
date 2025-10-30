@@ -1,0 +1,144 @@
+use std::any::Any;
+
+use itertools::izip;
+use serde::{Deserialize, Serialize};
+
+use crate::synth_engine::{
+    StereoSample,
+    buffer::{HARMONIC_SERIES_BUFFER, SpectralBuffer, ZEROES_SPECTRAL_BUFFER},
+    routing::{InputType, ModuleId, ModuleType, NUM_CHANNELS, OutputType, Router},
+    synth_module::{ModuleConfigBox, ProcessParams, SpectralOutputs, SynthModule},
+};
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct HarmonicEditorConfig {
+    harmonics: Vec<StereoSample>,
+    tail: StereoSample,
+}
+
+impl Default for HarmonicEditorConfig {
+    fn default() -> Self {
+        Self {
+            harmonics: vec![StereoSample::mono(1.0); 40],
+            tail: StereoSample::mono(1.0),
+        }
+    }
+}
+
+pub struct HarmonicEditor {
+    id: ModuleId,
+    config: ModuleConfigBox<HarmonicEditorConfig>,
+    harmonics: Vec<StereoSample>,
+    tail: StereoSample,
+    outputs: [SpectralBuffer; NUM_CHANNELS],
+}
+
+impl HarmonicEditor {
+    pub fn new(id: ModuleId, config: ModuleConfigBox<HarmonicEditorConfig>) -> Self {
+        let mut editor = Self {
+            id,
+            config,
+            harmonics: vec![StereoSample::mono(1.0); 40],
+            tail: StereoSample::mono(1.0),
+            outputs: [ZEROES_SPECTRAL_BUFFER; NUM_CHANNELS],
+        };
+
+        {
+            let config = editor.config.lock();
+            editor.harmonics = config.harmonics.clone();
+            editor.tail = config.tail;
+        }
+
+        editor.update_buffers();
+        editor
+    }
+
+    pub fn downcast(module: &dyn SynthModule) -> Option<&HarmonicEditor> {
+        (module as &dyn Any).downcast_ref()
+    }
+
+    pub fn downcast_mut(module: &mut dyn SynthModule) -> Option<&mut HarmonicEditor> {
+        (module as &mut dyn Any).downcast_mut()
+    }
+
+    pub fn set_harmonics(&mut self, harmonics: &[StereoSample], tail: StereoSample) {
+        self.harmonics = harmonics.to_vec();
+        self.tail = tail;
+
+        self.apply_harmonics();
+    }
+
+    pub fn apply_harmonics(&mut self) {
+        self.update_buffers();
+
+        {
+            let mut config = self.config.lock();
+            config.harmonics = self.harmonics.clone();
+            config.tail = self.tail;
+        }
+    }
+
+    fn update_buffers(&mut self) {
+        let (channel_l, channel_r) = self.outputs.split_at_mut(1);
+        let buff_l = &mut channel_l[0];
+        let buff_r = &mut channel_r[0];
+        let range = 1..(self.harmonics.len() + 1);
+
+        for ((out_l, out_r), series_factor, harmonic) in izip!(
+            buff_l[range.clone()]
+                .iter_mut()
+                .zip(buff_r[range.clone()].iter_mut()),
+            &HARMONIC_SERIES_BUFFER[range],
+            &self.harmonics
+        ) {
+            *out_l = series_factor * harmonic.left();
+            *out_r = series_factor * harmonic.right();
+        }
+
+        let range = (self.harmonics.len() + 1)..buff_l.len();
+
+        for ((out_l, out_r), series_factor) in buff_l[range.clone()]
+            .iter_mut()
+            .zip(buff_r[range.clone()].iter_mut())
+            .zip(HARMONIC_SERIES_BUFFER[range].iter())
+        {
+            *out_l = series_factor * self.tail.left();
+            *out_r = series_factor * self.tail.right();
+        }
+    }
+
+    pub fn harmonics_ref_mut(&mut self) -> &mut [StereoSample] {
+        &mut self.harmonics
+    }
+
+    pub fn tail_ref_mut(&mut self) -> &mut StereoSample {
+        &mut self.tail
+    }
+}
+
+impl SynthModule for HarmonicEditor {
+    fn id(&self) -> ModuleId {
+        self.id
+    }
+
+    fn module_type(&self) -> ModuleType {
+        ModuleType::HarmonicEditor
+    }
+
+    fn inputs(&self) -> &'static [InputType] {
+        &[]
+    }
+
+    fn outputs(&self) -> &'static [OutputType] {
+        &[OutputType::Spectrum]
+    }
+
+    fn process(&mut self, _params: &ProcessParams, _router: &dyn Router) {}
+
+    fn get_spectral_output(&self, _voice_idx: usize, channel: usize) -> SpectralOutputs<'_> {
+        SpectralOutputs {
+            first: &self.outputs[channel],
+            current: &self.outputs[channel],
+        }
+    }
+}

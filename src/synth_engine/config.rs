@@ -4,7 +4,10 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
-    modules::{AmplifierConfig, EnvelopeConfig, OscillatorConfig, SpectralFilterConfig},
+    modules::{
+        AmplifierConfig, EnvelopeConfig, HarmonicEditorConfig, OscillatorConfig,
+        SpectralFilterConfig,
+    },
     routing::{ModuleId, ModuleLink},
 };
 
@@ -20,9 +23,10 @@ pub enum ModuleConfig {
     Amplifier(Arc<Mutex<AmplifierConfig>>),
     Oscillator(Arc<Mutex<OscillatorConfig>>),
     SpectralFilter(Arc<Mutex<SpectralFilterConfig>>),
+    HarmonicEditor(Arc<Mutex<HarmonicEditorConfig>>),
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub routing: Arc<Mutex<RoutingConfig>>,
     pub modules: Arc<Mutex<HashMap<ModuleId, ModuleConfig>>>,

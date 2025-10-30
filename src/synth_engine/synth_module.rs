@@ -3,7 +3,7 @@ use std::{any::Any, sync::Arc};
 use parking_lot::Mutex;
 
 use crate::synth_engine::{
-    buffer::{Buffer, HARMONIC_SERIES_BUFFER, SpectralBuffer},
+    buffer::{Buffer, HARMONIC_SERIES_BUFFER, SpectralBuffer, ZEROES_SPECTRAL_BUFFER},
     routing::{InputType, ModuleId, ModuleType, OutputType, Router},
     types::Sample,
 };
@@ -34,12 +34,12 @@ pub struct SpectralOutputs<'a> {
 }
 
 impl SpectralOutputs<'_> {
-    // pub fn zero() -> Self {
-    //     Self {
-    //         first: &ZEROES_SPECTRAL_BUFFER,
-    //         current: &ZEROES_SPECTRAL_BUFFER,
-    //     }
-    // }
+    pub fn zero() -> Self {
+        Self {
+            first: &ZEROES_SPECTRAL_BUFFER,
+            current: &ZEROES_SPECTRAL_BUFFER,
+        }
+    }
 
     pub fn harmonic() -> Self {
         Self {
@@ -70,17 +70,27 @@ impl ScalarOutputs {
     // }
 }
 
+#[allow(unused_variables)]
 pub trait SynthModule: Any + Send {
     fn id(&self) -> ModuleId;
     fn module_type(&self) -> ModuleType;
     fn inputs(&self) -> &'static [InputType];
     fn outputs(&self) -> &'static [OutputType];
-    fn note_on(&mut self, params: &NoteOnParams);
-    fn note_off(&mut self, params: &NoteOffParams);
+    fn note_on(&mut self, params: &NoteOnParams) {}
+    fn note_off(&mut self, params: &NoteOffParams) {}
     fn process(&mut self, params: &ProcessParams, router: &dyn Router);
-    fn get_buffer_output(&self, voice_idx: usize, channel: usize) -> &Buffer;
-    fn get_spectral_output(&self, voice_idx: usize, channel: usize) -> SpectralOutputs<'_>;
-    fn get_scalar_output(&self, voice_idx: usize, channel: usize) -> ScalarOutputs;
+
+    fn get_buffer_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
+        panic!("{:?} don't have buffer output.", self.module_type())
+    }
+
+    fn get_spectral_output(&self, voice_idx: usize, channel: usize) -> SpectralOutputs<'_> {
+        panic!("{:?} don't have spectral output.", self.module_type())
+    }
+
+    fn get_scalar_output(&self, voice_idx: usize, channel: usize) -> ScalarOutputs {
+        panic!("{:?} don't have scalar output.", self.module_type())
+    }
 }
 
 pub type ModuleConfigBox<T> = Arc<Mutex<T>>;
