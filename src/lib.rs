@@ -5,13 +5,12 @@ pub mod params;
 pub mod synth_engine;
 pub mod utils;
 
+use crate::editor::EditorState;
 use crate::editor::egui_integration::{ResizableWindow, create_egui_editor};
-use crate::editor::gain_slider::GainSlider;
 use crate::params::AdditizerParams;
 use crate::synth_engine::BUFFER_SIZE;
 use crate::synth_engine::{SynthEngine, VoiceId};
 pub use egui_baseview::egui;
-use egui_baseview::egui::{Color32, Frame, Vec2};
 use nih_plug::prelude::*;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -107,55 +106,13 @@ impl Plugin for Additizer {
 
         create_egui_editor(
             self.params.editor_state.clone(),
-            (),
-            |_, _| {
-                println!("Build");
-            },
-            move |egui_ctx, _setter, _| {
+            EditorState::new(),
+            |_, _| {},
+            move |egui_ctx, _setter, editor_state| {
                 ResizableWindow::new("res-wind")
-                    .min_size(egui::Vec2::new(900.0, 500.0))
+                    .min_size(egui::Vec2::new(640.0, 480.0))
                     .show(egui_ctx, egui_state.as_ref(), |ui| {
-                        let mut synth = synth_engine.lock();
-                        let mut need_update = false;
-                        let harmonic_editor = synth.get_harmonic_editor();
-
-                        Frame::default().inner_margin(8.0).show(ui, |ui| {
-                            ui.horizontal_top(|ui| {
-                                let harmonics = harmonic_editor.harmonics_ref_mut();
-
-                                ui.style_mut().spacing.item_spacing = Vec2::splat(4.0);
-                                for (idx, harmonic) in harmonics.iter_mut().enumerate() {
-                                    if ui
-                                        .add(
-                                            GainSlider::new(harmonic)
-                                                .label(&format!("{}", idx + 1))
-                                                .height(300.0),
-                                        )
-                                        .changed()
-                                    {
-                                        need_update = true;
-                                    }
-                                }
-
-                                let tail = harmonic_editor.tail_ref_mut();
-
-                                if ui
-                                    .add(
-                                        GainSlider::new(tail)
-                                            .label("Tail")
-                                            .color(Color32::from_rgb(0x4d, 0x0f, 0x8c))
-                                            .height(300.0),
-                                    )
-                                    .changed()
-                                {
-                                    need_update = true;
-                                }
-                            });
-                        });
-
-                        if need_update {
-                            harmonic_editor.apply_harmonics();
-                        }
+                        editor::show_editor(ui, editor_state, &mut synth_engine.lock());
                     });
             },
         )

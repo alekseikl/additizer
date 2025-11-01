@@ -18,17 +18,17 @@ use crate::synth_engine::{
         SpectralFilterConfig,
     },
     routing::{
-        InputType, MAX_VOICES, MIN_MODULE_ID, ModuleId, ModuleInput, ModuleInputSource, ModuleLink,
-        ModuleOutput, ModuleType, OUTPUT_MODULE_ID, Router,
+        InputType, MAX_VOICES, MIN_MODULE_ID, ModuleInput, ModuleInputSource, ModuleLink,
+        ModuleOutput, OUTPUT_MODULE_ID, Router,
     },
-    synth_module::{
-        NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs, SpectralOutputs, SynthModule,
-    },
+    synth_module::{NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs, SpectralOutputs},
 };
 
 pub use buffer::BUFFER_SIZE;
 pub use config::Config;
 pub use modules::{Amplifier, Envelope, HarmonicEditor, Oscillator, SpectralFilter};
+pub use routing::{ModuleId, ModuleType};
+pub use synth_module::SynthModule;
 pub use types::{Sample, StereoSample};
 
 mod buffer;
@@ -75,6 +75,7 @@ pub struct SynthEngine {
     input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>>,
     execution_order: Vec<ModuleId>,
     voices: [Voice; MAX_VOICES],
+    output_level: StereoSample,
     tmp_output_buffer: Option<Box<Buffer>>,
 }
 
@@ -151,6 +152,7 @@ impl SynthEngine {
             input_sources: HashMap::new(),
             execution_order: Vec::new(),
             voices: Default::default(),
+            output_level: StereoSample::mono(1.0),
             tmp_output_buffer: Some(Box::new(make_zero_buffer())),
         }
     }
@@ -221,6 +223,11 @@ impl SynthEngine {
 
         self.setup_routing(&new_links).unwrap();
         self.save_links();
+    }
+
+    pub fn set_output_level(&mut self, level: StereoSample) {
+        self.output_level = level;
+        self.config.routing.lock().output_level = level;
     }
 
     pub fn note_on(
@@ -447,7 +454,7 @@ impl SynthEngine {
     ) {
         let mut tmp_buffer = self.tmp_output_buffer.take().unwrap();
 
-        for (channel, output) in outputs.enumerate() {
+        for (channel, (output, level)) in outputs.zip(self.output_level.iter()).enumerate() {
             output.fill(0.0);
 
             for voice_idx in params.active_voices {
@@ -461,12 +468,27 @@ impl SynthEngine {
                     .unwrap_or(&ZEROES_BUFFER);
 
                 for (out, input, _) in izip!(output.iter_mut(), input, 0..params.samples) {
-                    *out += input;
+                    *out += input * level;
                 }
             }
         }
 
         self.tmp_output_buffer.replace(tmp_buffer);
+    }
+
+    pub fn get_modules(&self) -> Vec<&dyn SynthModule> {
+        self.modules
+            .values()
+            .filter_map(|val| val.as_deref())
+            .collect()
+    }
+
+    pub fn get_module(&mut self, id: ModuleId) -> Option<&dyn SynthModule> {
+        get_module!(self, &id)
+    }
+
+    pub fn get_module_mut(&mut self, id: ModuleId) -> Option<&mut dyn SynthModule> {
+        get_module_mut!(self, &id)
     }
 
     pub fn get_harmonic_editor(&mut self) -> &mut HarmonicEditor {
@@ -645,6 +667,7 @@ impl SynthEngine {
         }
 
         self.next_id = routing.last_module_id;
+        self.output_level = routing.output_level;
         self.setup_routing(&routing.links).is_ok()
     }
 

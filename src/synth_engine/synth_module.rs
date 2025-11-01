@@ -74,8 +74,14 @@ impl ScalarOutputs {
 pub trait SynthModule: Any + Send {
     fn id(&self) -> ModuleId;
     fn module_type(&self) -> ModuleType;
+
+    fn label(&self) -> String {
+        format!("{:?}", self.module_type())
+    }
+
     fn inputs(&self) -> &'static [InputType];
     fn outputs(&self) -> &'static [OutputType];
+
     fn note_on(&mut self, params: &NoteOnParams) {}
     fn note_off(&mut self, params: &NoteOffParams) {}
     fn process(&mut self, params: &ProcessParams, router: &dyn Router);

@@ -5,10 +5,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
     StereoSample,
-    buffer::{HARMONIC_SERIES_BUFFER, SpectralBuffer, ZEROES_SPECTRAL_BUFFER},
+    buffer::{
+        HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer, ZEROES_SPECTRAL_BUFFER,
+    },
     routing::{InputType, ModuleId, ModuleType, NUM_CHANNELS, OutputType, Router},
     synth_module::{ModuleConfigBox, ProcessParams, SpectralOutputs, SynthModule},
 };
+
+const NUM_EDITABLE_HARMONICS: usize = SPECTRAL_BUFFER_SIZE - 2;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct HarmonicEditorConfig {
@@ -19,7 +23,7 @@ pub struct HarmonicEditorConfig {
 impl Default for HarmonicEditorConfig {
     fn default() -> Self {
         Self {
-            harmonics: vec![StereoSample::mono(1.0); 40],
+            harmonics: vec![StereoSample::mono(1.0); NUM_EDITABLE_HARMONICS],
             tail: StereoSample::mono(1.0),
         }
     }
@@ -38,14 +42,17 @@ impl HarmonicEditor {
         let mut editor = Self {
             id,
             config,
-            harmonics: vec![StereoSample::mono(1.0); 40],
+            harmonics: vec![StereoSample::mono(1.0); NUM_EDITABLE_HARMONICS],
             tail: StereoSample::mono(1.0),
             outputs: [ZEROES_SPECTRAL_BUFFER; NUM_CHANNELS],
         };
 
         {
             let config = editor.config.lock();
-            editor.harmonics = config.harmonics.clone();
+
+            if config.harmonics.len() == NUM_EDITABLE_HARMONICS {
+                editor.harmonics = config.harmonics.clone();
+            }
             editor.tail = config.tail;
         }
 
@@ -109,10 +116,6 @@ impl HarmonicEditor {
 
     pub fn harmonics_ref_mut(&mut self) -> &mut [StereoSample] {
         &mut self.harmonics
-    }
-
-    pub fn tail_ref_mut(&mut self) -> &mut StereoSample {
-        &mut self.tail
     }
 }
 

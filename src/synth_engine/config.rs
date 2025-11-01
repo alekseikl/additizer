@@ -4,6 +4,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
+    StereoSample,
     modules::{
         AmplifierConfig, EnvelopeConfig, HarmonicEditorConfig, OscillatorConfig,
         SpectralFilterConfig,
@@ -11,10 +12,21 @@ use crate::synth_engine::{
     routing::{ModuleId, ModuleLink},
 };
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RoutingConfig {
     pub last_module_id: ModuleId,
     pub links: Vec<ModuleLink>,
+    pub output_level: StereoSample,
+}
+
+impl Default for RoutingConfig {
+    fn default() -> Self {
+        Self {
+            last_module_id: 0,
+            links: Default::default(),
+            output_level: StereoSample::mono(1.0),
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]

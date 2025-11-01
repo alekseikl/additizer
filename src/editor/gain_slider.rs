@@ -1,23 +1,12 @@
-use egui_baseview::egui::{
-    Color32, FontFamily, FontId, PointerButton, Pos2, Rect, Response, Sense, Stroke, StrokeKind,
-    Ui, Widget, vec2,
-};
+use egui_baseview::egui::{Color32, PointerButton, Rect, Response, Sense, Ui, Widget, vec2};
 use nih_plug::util::MINUS_INFINITY_DB;
 
 use crate::synth_engine::{Sample, StereoSample};
 
 const BG_COLOR: Color32 = Color32::from_rgb(0, 0, 0);
-const BORDER_COLOR: Color32 = Color32::from_rgb(0x7f, 0x7f, 0x7f);
 const ATTENUATED_COLOR: Color32 = Color32::from_rgb(0x0b, 0x42, 0x67);
 const AMPLIFIED_COLOR: Color32 = Color32::from_rgb(0x72, 0x12, 0x12);
-const SLIDER_WIDTH: f32 = 16.0;
-
-enum LabelType {
-    LeftChannel,
-    RightChannel,
-    BothChannels,
-    Label(String),
-}
+const SLIDER_WIDTH: f32 = 12.0;
 
 pub struct GainSlider<'a> {
     label: Option<&'a str>,
@@ -25,7 +14,7 @@ pub struct GainSlider<'a> {
     max_dbs: Sample,
     mid_point: Sample,
     skew_factor: Sample,
-    height: f32,
+    height: Option<f32>,
     color: Color32,
 }
 
@@ -34,8 +23,8 @@ impl<'a> GainSlider<'a> {
         Self {
             max_dbs: 48.0,
             mid_point: 0.75,
-            skew_factor: 1.4,
-            height: 100.0,
+            skew_factor: 1.6,
+            height: None,
             color: ATTENUATED_COLOR,
             label: None,
             value,
@@ -48,7 +37,7 @@ impl<'a> GainSlider<'a> {
     }
 
     pub fn height(mut self, height: f32) -> Self {
-        self.height = height;
+        self.height = Some(height);
         self
     }
 
@@ -142,10 +131,9 @@ impl<'a> GainSlider<'a> {
 
     fn add_contents(&mut self, ui: &mut Ui) -> Response {
         let mut response = ui.allocate_response(
-            vec2(SLIDER_WIDTH, self.height),
-            Sense::click_and_drag() | Sense::hover(),
+            vec2(SLIDER_WIDTH, self.height.unwrap_or(ui.available_size().y)),
+            Sense::click_and_drag(),
         );
-        let mut label_type: Option<LabelType> = None;
 
         if let Some(pos) = response.interact_pointer_pos()
             && response.drag_started_by(PointerButton::Secondary)
@@ -165,7 +153,6 @@ impl<'a> GainSlider<'a> {
                     .set_left(self.updated_gain(normalized_delta, self.value.left()));
                 self.value
                     .set_right(self.updated_gain(normalized_delta, self.value.right()));
-                label_type = Some(LabelType::BothChannels);
                 response.mark_changed();
             } else if response.dragged_by(PointerButton::Secondary) {
                 let is_right_channel =
@@ -174,11 +161,9 @@ impl<'a> GainSlider<'a> {
                 if is_right_channel {
                     self.value
                         .set_right(self.updated_gain(normalized_delta, self.value.right()));
-                    label_type = Some(LabelType::RightChannel);
                 } else {
                     self.value
                         .set_left(self.updated_gain(normalized_delta, self.value.left()));
-                    label_type = Some(LabelType::LeftChannel);
                 }
                 response.mark_changed();
             }
@@ -201,10 +186,6 @@ impl<'a> GainSlider<'a> {
                 *self.value = StereoSample::mono(gain);
                 response.mark_changed();
             }
-
-            if let Some(label) = self.label {
-                label_type = Some(LabelType::Label(label.to_string()));
-            }
         }
 
         if ui.is_rect_visible(response.rect) {
@@ -214,68 +195,23 @@ impl<'a> GainSlider<'a> {
             self.fill_gain_rect(ui, self.value.left(), lr_rect.0);
             self.fill_gain_rect(ui, self.value.right(), lr_rect.1);
 
-            ui.painter().rect_stroke(
-                response.rect,
-                0.0,
-                Stroke::new(1.0, BORDER_COLOR),
-                StrokeKind::Inside,
-            );
+            let mut parts: Vec<String> = Vec::with_capacity(2);
 
-            if let Some(label_type) = label_type {
-                let label_text = match label_type {
-                    LabelType::LeftChannel => {
-                        format!("L:{}", Self::gain_to_db_string(self.value.left()))
-                    }
-                    LabelType::RightChannel => {
-                        format!("R:{}", Self::gain_to_db_string(self.value.right()))
-                    }
-                    LabelType::BothChannels => {
-                        if self.value.left() == self.value.right() {
-                            Self::gain_to_db_string(self.value.left())
-                        } else {
-                            format!(
-                                "L:{}\nR:{}",
-                                Self::gain_to_db_string(self.value.left()),
-                                Self::gain_to_db_string(self.value.right())
-                            )
-                        }
-                    }
-                    LabelType::Label(label) => label,
-                };
-
-                let window_width = ui.input(|i| i.content_rect()).width();
-
-                let label_padding = vec2(3.0, 2.0);
-                let font = FontId::new(10.0, FontFamily::default());
-                let text_galley = ui.painter().layout_no_wrap(label_text, font, BORDER_COLOR);
-                let mut text_rect = text_galley.rect;
-
-                let mut label_box = Rect::from_min_max(
-                    Pos2::ZERO,
-                    Pos2::new(
-                        (text_rect.width() + 2.0 * label_padding.x).max(response.rect.width()),
-                        text_rect.height() + 2.0 * label_padding.y - 1.0,
-                    ),
-                );
-
-                label_box = label_box.translate(vec2(
-                    (response.rect.center().x - 0.5 * label_box.width())
-                        .clamp(0.0, window_width - label_box.width()),
-                    response.rect.bottom(),
-                ));
-
-                text_rect.set_center(label_box.center());
-
-                ui.painter().rect(
-                    label_box,
-                    0.0,
-                    BG_COLOR,
-                    Stroke::new(1.0, BORDER_COLOR),
-                    StrokeKind::Inside,
-                );
-                ui.painter()
-                    .galley(text_rect.min, text_galley, Color32::WHITE);
+            if let Some(label) = self.label {
+                parts.push(label.to_string());
             }
+
+            if self.value.left() != self.value.right() {
+                parts.push(format!(
+                    "L: {}\nR: {}",
+                    Self::gain_to_db_string(self.value.left()),
+                    Self::gain_to_db_string(self.value.right())
+                ));
+            } else if self.value.left() != 1.0 {
+                parts.push(Self::gain_to_db_string(self.value.left()));
+            }
+
+            response = response.on_hover_text_at_pointer(parts.join("\n"));
         }
 
         response
