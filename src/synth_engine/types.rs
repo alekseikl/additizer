@@ -1,4 +1,4 @@
-use std::ops::Index;
+use std::ops::{Add, Div, Index, Mul, Sub};
 
 use realfft::num_complex::Complex;
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,7 @@ impl StereoSample {
         Self { channels: [l, r] }
     }
 
-    pub fn mono(lr: Sample) -> Self {
+    pub fn splat(lr: Sample) -> Self {
         Self { channels: [lr, lr] }
     }
 
@@ -47,6 +47,30 @@ impl StereoSample {
     pub fn iter(&self) -> impl Iterator<Item = &Sample> {
         self.channels.iter()
     }
+
+    pub fn clamp(&self, min: Sample, max: Sample) -> Self {
+        Self {
+            channels: self.channels.map(|channel| channel.clamp(min, max)),
+        }
+    }
+
+    pub fn powf(&self, n: Sample) -> Self {
+        Self {
+            channels: self.channels.map(|channel| channel.powf(n)),
+        }
+    }
+
+    pub fn signum(&self) -> Self {
+        Self {
+            channels: self.channels.map(|channel| channel.signum()),
+        }
+    }
+
+    pub fn abs(&self) -> Self {
+        Self {
+            channels: self.channels.map(|channel| channel.abs()),
+        }
+    }
 }
 
 impl Index<usize> for StereoSample {
@@ -58,8 +82,52 @@ impl Index<usize> for StereoSample {
     }
 }
 
+macro_rules! stereo_op {
+    ($trait:ident, $func:ident, $op:tt) => {
+        impl $trait for StereoSample {
+            type Output = Self;
+
+            #[allow(clippy::assign_op_pattern)]
+            fn $func(mut self, rhs: Self) -> Self::Output {
+                for (lhs, rhs) in self.channels.iter_mut().zip(rhs.channels) {
+                    *lhs = *lhs $op rhs;
+                }
+                self
+            }
+        }
+
+        impl $trait<Sample> for StereoSample {
+            type Output = Self;
+
+            #[allow(clippy::assign_op_pattern)]
+            fn $func(mut self, rhs: Sample) -> Self::Output {
+                for lhs in &mut self.channels {
+                    *lhs = *lhs $op rhs;
+                }
+                self
+            }
+        }
+    };
+}
+
+stereo_op! {Add, add, +}
+stereo_op! {Sub, sub, -}
+stereo_op! {Mul, mul, *}
+stereo_op! {Div, div, /}
+
 impl From<f32> for StereoSample {
     fn from(value: f32) -> Self {
-        Self::mono(value)
+        Self::splat(value)
+    }
+}
+
+impl FromIterator<Sample> for StereoSample {
+    fn from_iter<T: IntoIterator<Item = Sample>>(iter: T) -> Self {
+        let mut value = Self::splat(0.0);
+
+        for (lhs, rhs) in value.channels.iter_mut().zip(iter) {
+            *lhs = rhs;
+        }
+        value
     }
 }

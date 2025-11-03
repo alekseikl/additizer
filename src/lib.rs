@@ -5,8 +5,7 @@ pub mod params;
 pub mod synth_engine;
 pub mod utils;
 
-use crate::editor::EditorState;
-use crate::editor::egui_integration::{ResizableWindow, create_egui_editor};
+use crate::editor::create_editor;
 use crate::params::AdditizerParams;
 use crate::synth_engine::BUFFER_SIZE;
 use crate::synth_engine::{SynthEngine, VoiceId};
@@ -101,20 +100,9 @@ impl Plugin for Additizer {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
-        let egui_state = self.params.editor_state.clone();
-        let synth_engine = Arc::clone(&self.synth_engine);
-
-        create_egui_editor(
-            self.params.editor_state.clone(),
-            EditorState::new(),
-            |_, _| {},
-            move |egui_ctx, _setter, editor_state| {
-                ResizableWindow::new("res-wind")
-                    .min_size(egui::Vec2::new(640.0, 480.0))
-                    .show(egui_ctx, egui_state.as_ref(), |ui| {
-                        editor::show_editor(ui, editor_state, &mut synth_engine.lock());
-                    });
-            },
+        create_editor(
+            Arc::clone(&self.params.editor_state),
+            Arc::clone(&self.synth_engine),
         )
     }
 
@@ -126,7 +114,11 @@ impl Plugin for Additizer {
     ) -> bool {
         let mut synth = self.synth_engine.lock();
 
-        synth.init(Arc::clone(&self.params.config), buffer_config.sample_rate);
+        synth.init(
+            Arc::clone(&self.params.config),
+            Arc::clone(&self.params.volume),
+            buffer_config.sample_rate,
+        );
 
         true
     }
@@ -142,10 +134,8 @@ impl Plugin for Additizer {
         let mut synth = self.synth_engine.lock();
 
         assert_no_alloc::assert_no_alloc(|| {
-            synth.set_volume(self.params.volume.value());
             synth.set_unison(self.params.unison.value() as usize);
             synth.set_detune(self.params.detune.value());
-            synth.set_cutoff(self.params.cutoff.value());
 
             let mut next_event = context.next_event();
 

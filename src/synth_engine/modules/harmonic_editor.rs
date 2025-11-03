@@ -23,8 +23,8 @@ pub struct HarmonicEditorConfig {
 impl Default for HarmonicEditorConfig {
     fn default() -> Self {
         Self {
-            harmonics: vec![StereoSample::mono(1.0); NUM_EDITABLE_HARMONICS],
-            tail: StereoSample::mono(1.0),
+            harmonics: vec![StereoSample::splat(1.0); NUM_EDITABLE_HARMONICS],
+            tail: StereoSample::splat(1.0),
         }
     }
 }
@@ -42,8 +42,8 @@ impl HarmonicEditor {
         let mut editor = Self {
             id,
             config,
-            harmonics: vec![StereoSample::mono(1.0); NUM_EDITABLE_HARMONICS],
-            tail: StereoSample::mono(1.0),
+            harmonics: vec![StereoSample::splat(1.0); NUM_EDITABLE_HARMONICS],
+            tail: StereoSample::splat(1.0),
             outputs: [ZEROES_SPECTRAL_BUFFER; NUM_CHANNELS],
         };
 

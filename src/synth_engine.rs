@@ -5,7 +5,7 @@ use std::{
 };
 
 use itertools::{Itertools, izip};
-use nih_plug::util::db_to_gain_fast;
+use nih_plug::{params::FloatParam, prelude::FloatRange, util::db_to_gain_fast};
 use parking_lot::Mutex;
 use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
@@ -35,7 +35,6 @@ mod buffer;
 mod config;
 mod envelope;
 mod modules;
-// mod modules_container;
 mod routing;
 mod synth_module;
 mod types;
@@ -76,7 +75,8 @@ pub struct SynthEngine {
     execution_order: Vec<ModuleId>,
     voices: [Voice; MAX_VOICES],
     output_level: StereoSample,
-    tmp_output_buffer: Option<Box<Buffer>>,
+    output_level_param: Arc<FloatParam>,
+    tmp_output_buffer: Option<Box<(Buffer, Buffer)>>,
 }
 
 macro_rules! get_module {
@@ -152,14 +152,25 @@ impl SynthEngine {
             input_sources: HashMap::new(),
             execution_order: Vec::new(),
             voices: Default::default(),
-            output_level: StereoSample::mono(1.0),
-            tmp_output_buffer: Some(Box::new(make_zero_buffer())),
+            output_level: StereoSample::splat(1.0),
+            output_level_param: Arc::new(FloatParam::new(
+                "",
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            )),
+            tmp_output_buffer: Some(Box::new((make_zero_buffer(), make_zero_buffer()))),
         }
     }
 
-    pub fn init(&mut self, config: Arc<Config>, sample_rate: f32) {
+    pub fn init(
+        &mut self,
+        config: Arc<Config>,
+        output_level_param: Arc<FloatParam>,
+        sample_rate: f32,
+    ) {
         self.config = config;
         self.sample_rate = sample_rate;
+        self.output_level_param = output_level_param;
 
         if !self.load_config() {
             self.clear();
@@ -223,6 +234,10 @@ impl SynthEngine {
 
         self.setup_routing(&new_links).unwrap();
         self.save_links();
+    }
+
+    pub fn get_output_level(&self) -> StereoSample {
+        self.output_level
     }
 
     pub fn set_output_level(&mut self, level: StereoSample) {
@@ -452,7 +467,13 @@ impl SynthEngine {
         params: &ProcessParams,
         outputs: impl Iterator<Item = &'a mut [f32]>,
     ) {
-        let mut tmp_buffer = self.tmp_output_buffer.take().unwrap();
+        let mut tmp_buffers = self.tmp_output_buffer.take().unwrap();
+
+        self.output_level_param.smoothed.next_block_mapped(
+            &mut tmp_buffers.0,
+            params.samples,
+            |_, dbs| db_to_gain_fast(dbs),
+        );
 
         for (channel, (output, level)) in outputs.zip(self.output_level.iter()).enumerate() {
             output.fill(0.0);
@@ -463,17 +484,19 @@ impl SynthEngine {
                         ModuleInput::input(OUTPUT_MODULE_ID),
                         *voice_idx,
                         channel,
-                        &mut tmp_buffer,
+                        &mut tmp_buffers.1,
                     )
                     .unwrap_or(&ZEROES_BUFFER);
 
-                for (out, input, _) in izip!(output.iter_mut(), input, 0..params.samples) {
-                    *out += input * level;
+                for (out, input, level_mod, _) in
+                    izip!(output.iter_mut(), input, &tmp_buffers.0, 0..params.samples)
+                {
+                    *out += input * level * level_mod;
                 }
             }
         }
 
-        self.tmp_output_buffer.replace(tmp_buffer);
+        self.tmp_output_buffer.replace(tmp_buffers);
     }
 
     pub fn get_modules(&self) -> Vec<&dyn SynthModule> {
@@ -503,14 +526,6 @@ impl SynthEngine {
         }
     }
 
-    pub fn set_volume(&mut self, volume: f32) {
-        let level = db_to_gain_fast(volume);
-
-        for amp in typed_modules_mut!(self, Amplifier) {
-            amp.set_level(StereoSample::mono(level));
-        }
-    }
-
     pub fn set_unison(&mut self, unison: usize) {
         for osc in typed_modules_mut!(self, Oscillator) {
             osc.set_unison(unison);
@@ -522,12 +537,6 @@ impl SynthEngine {
 
         for osc in typed_modules_mut!(self, Oscillator) {
             osc.set_detune(detune.into());
-        }
-    }
-
-    pub fn set_cutoff(&mut self, cutoff: Sample) {
-        for filter in typed_modules_mut!(self, SpectralFilter) {
-            filter.set_cutoff_harmonic(cutoff.into());
         }
     }
 
@@ -557,7 +566,7 @@ impl SynthEngine {
 
         typed_module_mut!(&filter_id, SpectralFilter)
             .unwrap()
-            .set_cutoff_harmonic(2.0.into());
+            .set_cutoff(2.0.into());
 
         typed_module_mut!(&osc_id, Oscillator)
             .unwrap()
@@ -566,7 +575,7 @@ impl SynthEngine {
 
         typed_module_mut!(&amp_env_id, Envelope)
             .unwrap()
-            .set_attack(StereoSample::mono(10.0))
+            .set_attack(StereoSample::splat(10.0))
             .set_decay(20.0.into())
             .set_sustain(1.0.into())
             .set_release(300.0.into());
@@ -579,7 +588,7 @@ impl SynthEngine {
         self.set_link(ModuleLink::modulation(
             ModuleOutput::scalar(filter_env_id),
             ModuleInput::cutoff_scalar(filter_id),
-            50.0,
+            8.0,
         ))
         .unwrap();
         self.set_link(ModuleLink::link(

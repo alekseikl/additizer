@@ -14,8 +14,6 @@ use crate::synth_engine::{
     types::{ComplexSample, Sample, StereoSample},
 };
 
-pub const MAX_CUTOFF_HARMONIC: Sample = 1023.0;
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SpectralFilterConfigChannel {
     cutoff: Sample,
@@ -23,15 +21,17 @@ pub struct SpectralFilterConfigChannel {
 
 impl Default for SpectralFilterConfigChannel {
     fn default() -> Self {
-        Self {
-            cutoff: MAX_CUTOFF_HARMONIC,
-        }
+        Self { cutoff: 1.0 }
     }
 }
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct SpectralFilterConfig {
     channels: [SpectralFilterConfigChannel; NUM_CHANNELS],
+}
+
+pub struct SpectralFilterUI {
+    pub cutoff: StereoSample,
 }
 
 struct Voice {
@@ -51,12 +51,12 @@ impl Default for Voice {
 }
 
 struct ChannelParams {
-    cutoff: Sample,
+    cutoff: Sample, //Cutoff octave
 }
 
 impl Default for ChannelParams {
     fn default() -> Self {
-        Self { cutoff: 10.0 }
+        Self { cutoff: 1.0 }
     }
 }
 
@@ -98,9 +98,17 @@ impl SpectralFilter {
         (module as &mut dyn Any).downcast_mut()
     }
 
-    pub fn set_cutoff_harmonic(&mut self, cutoff: StereoSample) {
+    pub fn get_ui(&self) -> SpectralFilterUI {
+        SpectralFilterUI {
+            cutoff: StereoSample::from_iter(
+                self.channels.iter().map(|channel| channel.params.cutoff),
+            ),
+        }
+    }
+
+    pub fn set_cutoff(&mut self, cutoff: StereoSample) {
         for (channel, cutoff) in self.channels.iter_mut().zip(cutoff.iter()) {
-            channel.params.cutoff = cutoff.clamp(0.0, MAX_CUTOFF_HARMONIC);
+            channel.params.cutoff = cutoff.clamp(-4.0, 10.0);
         }
 
         {
@@ -120,15 +128,15 @@ impl SpectralFilter {
         let range = 1..SPECTRAL_BUFFER_SIZE - 1;
         let input_buff = &input_spectrum[range.clone()];
         let output_buff = &mut output_buff[range];
-        let cutoff = channel.cutoff + cutoff_mod;
-        let cutoff_squared = cutoff * cutoff;
+        let cutoff_freq = (channel.cutoff + cutoff_mod).exp2();
+        let cutoff_squared = cutoff_freq * cutoff_freq;
         let numerator = ComplexSample::new(cutoff_squared, 0.0);
         let q_mult: Sample = (0.7_f32).recip();
 
         for (idx, (out_freq, in_freq)) in output_buff.iter_mut().zip(input_buff).enumerate() {
             let freq = (idx + 1) as Sample;
             let filter_response = numerator
-                / ComplexSample::new(cutoff_squared - (freq * freq), cutoff * freq * q_mult);
+                / ComplexSample::new(cutoff_squared - (freq * freq), cutoff_freq * freq * q_mult);
 
             *out_freq = filter_response * in_freq;
         }

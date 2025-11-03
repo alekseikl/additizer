@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::{
-    editor::egui_integration::EguiState,
+    editor::EguiState,
     synth_engine::{Config, StereoSample},
 };
 
@@ -23,16 +23,13 @@ pub struct AdditizerParams {
     pub config: Arc<Config>,
 
     #[id = "volume"]
-    pub volume: FloatParam,
+    pub volume: Arc<FloatParam>,
 
     #[id = "unison"]
     pub unison: IntParam,
 
     #[id = "detune"]
     pub detune: Arc<FloatParam>,
-
-    #[id = "cutoff"]
-    pub cutoff: FloatParam,
 }
 
 impl Default for AdditizerParams {
@@ -40,19 +37,21 @@ impl Default for AdditizerParams {
         Self {
             editor_state: EguiState::from_size(800, 600),
             config: Default::default(),
-            volume: FloatParam::new(
-                "Volume",
-                0.0,
-                FloatRange::SymmetricalSkewed {
-                    min: util::MINUS_INFINITY_DB,
-                    max: 6.0,
-                    factor: FloatRange::skew_factor(-1.0),
-                    center: 0.0,
-                },
-            )
-            .with_smoother(SmoothingStyle::Linear(3.0))
-            .with_step_size(0.01)
-            .with_unit(" dB"),
+            volume: Arc::new(
+                FloatParam::new(
+                    "Volume",
+                    0.0,
+                    FloatRange::SymmetricalSkewed {
+                        min: util::MINUS_INFINITY_DB,
+                        max: 6.0,
+                        factor: FloatRange::skew_factor(-1.0),
+                        center: 0.0,
+                    },
+                )
+                .with_smoother(SmoothingStyle::Linear(3.0))
+                .with_step_size(0.01)
+                .with_unit(" dB"),
+            ),
             unison: IntParam::new("Unison", 3, IntRange::Linear { min: 1, max: 16 }),
             detune: Arc::new(
                 FloatParam::new(
@@ -65,16 +64,6 @@ impl Default for AdditizerParams {
                 )
                 .with_step_size(0.01),
             ),
-            cutoff: FloatParam::new(
-                "Cutoff harmonic",
-                1.0,
-                FloatRange::Skewed {
-                    min: 0.0,
-                    max: 1023.0,
-                    factor: 0.2,
-                },
-            )
-            .with_step_size(0.01),
         }
     }
 }

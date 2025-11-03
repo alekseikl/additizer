@@ -14,6 +14,7 @@ pub struct GainSlider<'a> {
     max_dbs: Sample,
     mid_point: Sample,
     skew_factor: Sample,
+    width: f32,
     height: Option<f32>,
     color: Color32,
 }
@@ -24,6 +25,7 @@ impl<'a> GainSlider<'a> {
             max_dbs: 48.0,
             mid_point: 0.75,
             skew_factor: 1.6,
+            width: SLIDER_WIDTH,
             height: None,
             color: ATTENUATED_COLOR,
             label: None,
@@ -41,21 +43,30 @@ impl<'a> GainSlider<'a> {
         self
     }
 
+    pub fn width(mut self, width: f32) -> Self {
+        self.width = width;
+        self
+    }
+
+    #[allow(unused)]
     pub fn color(mut self, color: Color32) -> Self {
         self.color = color;
         self
     }
 
+    #[allow(unused)]
     pub fn max_dbs(mut self, max_dbs: Sample) -> Self {
         self.max_dbs = max_dbs;
         self
     }
 
+    #[allow(unused)]
     pub fn mid_point(mut self, mid_point: Sample) -> Self {
         self.mid_point = mid_point;
         self
     }
 
+    #[allow(unused)]
     pub fn skew(mut self, skew_factor: Sample) -> Self {
         self.skew_factor = skew_factor;
         self
@@ -123,15 +134,15 @@ impl<'a> GainSlider<'a> {
     fn gain_to_db_string(gain: f32) -> String {
         let dbs = nih_plug::util::gain_to_db(gain);
         if dbs <= MINUS_INFINITY_DB {
-            "-Inf".to_string()
+            "-Inf dB".to_string()
         } else {
-            format!("{:+.1}", nih_plug::util::gain_to_db(gain))
+            format!("{:+.1} dB", nih_plug::util::gain_to_db(gain))
         }
     }
 
     fn add_contents(&mut self, ui: &mut Ui) -> Response {
         let mut response = ui.allocate_response(
-            vec2(SLIDER_WIDTH, self.height.unwrap_or(ui.available_size().y)),
+            vec2(self.width, self.height.unwrap_or(ui.available_size().y)),
             Sense::click_and_drag(),
         );
 
@@ -168,14 +179,14 @@ impl<'a> GainSlider<'a> {
                 response.mark_changed();
             }
         } else if response.double_clicked_by(PointerButton::Primary) {
-            *self.value = StereoSample::mono(1.0);
+            *self.value = StereoSample::splat(1.0);
             response.mark_changed();
         } else if response.double_clicked_by(PointerButton::Secondary) {
-            *self.value = StereoSample::mono(0.0);
+            *self.value = StereoSample::splat(0.0);
             response.mark_changed();
         } else if let Some(hover_pos) = response.hover_pos() {
             if modifiers.ctrl {
-                *self.value = StereoSample::mono(1.0);
+                *self.value = StereoSample::splat(1.0);
                 response.mark_changed();
             } else if modifiers.alt {
                 let gain = self.normalized_to_gain(
@@ -183,7 +194,7 @@ impl<'a> GainSlider<'a> {
                         .clamp(0.0, 1.0),
                 );
 
-                *self.value = StereoSample::mono(gain);
+                *self.value = StereoSample::splat(gain);
                 response.mark_changed();
             }
         }

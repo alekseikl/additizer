@@ -24,7 +24,7 @@ impl Default for RoutingConfig {
         Self {
             last_module_id: 0,
             links: Default::default(),
-            output_level: StereoSample::mono(1.0),
+            output_level: StereoSample::splat(1.0),
         }
     }
 }

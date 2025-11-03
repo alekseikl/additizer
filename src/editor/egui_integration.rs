@@ -6,8 +6,7 @@ use baseview::{Size, WindowHandle, WindowOpenOptions, WindowScalePolicy};
 use crossbeam::atomic::AtomicCell;
 use egui_baseview::EguiWindow;
 use egui_baseview::egui::ViewportCommand;
-use egui_baseview::egui::emath::GuiRounding;
-use egui_baseview::egui::{CentralPanel, Context, Id, Rect, Response, Sense, Ui, Vec2, pos2};
+use egui_baseview::egui::{CentralPanel, Context, Id, Rect, Sense, Ui, Vec2};
 use egui_baseview::egui::{InnerResponse, UiBuilder};
 use nih_plug::params::persist::PersistentField;
 use nih_plug::prelude::{Editor, GuiContext, ParamSetter, ParentWindowHandle};
@@ -335,24 +334,7 @@ impl ResizableWindow {
                 }
             }
 
-            paint_resize_corner(&content_ui, &corner_response);
-
             ret
         })
-    }
-}
-
-pub fn paint_resize_corner(ui: &Ui, response: &Response) {
-    let stroke = ui.style().interact(response).fg_stroke;
-
-    let painter = ui.painter();
-    let rect = response.rect.translate(-Vec2::splat(2.0)); // move away from the corner
-    let cp = rect.max.round_to_pixels(painter.pixels_per_point());
-
-    let mut w = 2.0;
-
-    while w <= rect.width() && w <= rect.height() {
-        painter.line_segment([pos2(cp.x - w, cp.y), pos2(cp.x, cp.y - w)], stroke);
-        w += 4.0;
     }
 }
