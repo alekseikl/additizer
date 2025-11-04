@@ -60,13 +60,7 @@ impl HarmonicEditor {
         editor
     }
 
-    pub fn downcast(module: &dyn SynthModule) -> Option<&HarmonicEditor> {
-        (module as &dyn Any).downcast_ref()
-    }
-
-    pub fn downcast_mut(module: &mut dyn SynthModule) -> Option<&mut HarmonicEditor> {
-        (module as &mut dyn Any).downcast_mut()
-    }
+    gen_downcast_methods!(HarmonicEditor);
 
     pub fn set_harmonics(&mut self, harmonics: &[StereoSample], tail: StereoSample) {
         self.harmonics = harmonics.to_vec();

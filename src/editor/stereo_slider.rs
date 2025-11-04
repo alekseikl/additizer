@@ -27,7 +27,7 @@ impl<'a> StereoSlider<'a> {
         Self {
             skew_factor: 1.0,
             display_scale_factor: 1.0,
-            width: 150.0,
+            width: 200.0,
             color: LEVEL_COLOR,
             units: None,
             default: None,
@@ -42,9 +42,9 @@ impl<'a> StereoSlider<'a> {
         Self::new(value).default_value(1.0).precision(2)
     }
 
-    pub fn level_mod(value: &'a mut StereoSample) -> Self {
-        Self::level(value).default_value(0.0).allow_inverse()
-    }
+    // pub fn level_mod(value: &'a mut StereoSample) -> Self {
+    //     Self::level(value).default_value(0.0).allow_inverse()
+    // }
 
     pub fn octave(value: &'a mut StereoSample) -> Self {
         Self::new(value)
@@ -55,8 +55,22 @@ impl<'a> StereoSlider<'a> {
             .units("st")
     }
 
-    pub fn octave_mod(value: &'a mut StereoSample) -> Self {
-        Self::octave(value).allow_inverse()
+    pub fn q(value: &'a mut StereoSample) -> Self {
+        Self::new(value)
+            .range(0.1..=10.0)
+            .default_value(0.7)
+            .skew(1.8)
+            .precision(2)
+    }
+
+    pub fn envelope_time(value: &'a mut StereoSample) -> Self {
+        Self::new(value)
+            .range(0.0..=8.0)
+            .display_scale(1000.0)
+            .default_value(0.0)
+            .skew(3.0)
+            .precision(1)
+            .units("ms")
     }
 
     pub fn range(mut self, range: RangeInclusive<Sample>) -> Self {

@@ -100,3 +100,19 @@ pub trait SynthModule: Any + Send {
 }
 
 pub type ModuleConfigBox<T> = Arc<Mutex<T>>;
+
+macro_rules! gen_downcast_methods {
+    ($mod_type:ident) => {
+        pub fn downcast(module: &dyn SynthModule) -> Option<&$mod_type> {
+            (module as &dyn Any).downcast_ref()
+        }
+
+        pub fn downcast_mut(module: &mut dyn SynthModule) -> Option<&mut $mod_type> {
+            (module as &mut dyn Any).downcast_mut()
+        }
+
+        pub fn downcast_mut_unwrap(module: Option<&mut dyn SynthModule>) -> &mut $mod_type {
+            Self::downcast_mut(module.unwrap()).unwrap()
+        }
+    };
+}

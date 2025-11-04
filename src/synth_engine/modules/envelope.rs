@@ -2,17 +2,14 @@ use std::any::Any;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    synth_engine::{
-        buffer::{Buffer, make_zero_buffer},
-        envelope::{self, EnvelopeActivityState, EnvelopeChannel, EnvelopeVoice},
-        routing::{InputType, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, OutputType, Router},
-        synth_module::{
-            ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs, SynthModule,
-        },
-        types::{Sample, StereoSample},
+use crate::synth_engine::{
+    buffer::{Buffer, make_zero_buffer},
+    envelope::{self, EnvelopeActivityState, EnvelopeChannel, EnvelopeVoice},
+    routing::{InputType, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, OutputType, Router},
+    synth_module::{
+        ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs, SynthModule,
     },
-    utils::from_ms,
+    types::{Sample, StereoSample},
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -28,6 +25,14 @@ impl Default for EnvelopeConfig {
             channels: Default::default(),
         }
     }
+}
+
+pub struct EnvelopeUI {
+    pub attack: StereoSample,
+    pub decay: StereoSample,
+    pub sustain: StereoSample,
+    pub release: StereoSample,
+    pub keep_voice_alive: bool,
 }
 
 struct Voice {
@@ -59,6 +64,32 @@ pub struct Envelope {
     channels: [Channel; NUM_CHANNELS],
 }
 
+macro_rules! set_param_method {
+    ($fn_name:ident, $param:ident, $transform:expr) => {
+        pub fn $fn_name(&mut self, $param: StereoSample) -> &mut Self {
+            for (channel, $param) in self.channels.iter_mut().zip($param.iter()) {
+                channel.env.$param = $transform;
+            }
+
+            {
+                let mut cfg = self.config.lock();
+
+                for (cfg_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
+                    cfg_channel.$param = channel.env.$param;
+                }
+            }
+
+            self
+        }
+    };
+}
+
+macro_rules! extract_param {
+    ($self:ident, $param:ident) => {
+        StereoSample::from_iter($self.channels.iter().map(|channel| channel.env.$param))
+    };
+}
+
 impl Envelope {
     pub fn new(id: ModuleId, config: ModuleConfigBox<EnvelopeConfig>) -> Self {
         let mut env = Self {
@@ -79,12 +110,16 @@ impl Envelope {
         env
     }
 
-    pub fn downcast(module: &dyn SynthModule) -> Option<&Envelope> {
-        (module as &dyn Any).downcast_ref()
-    }
+    gen_downcast_methods!(Envelope);
 
-    pub fn downcast_mut(module: &mut dyn SynthModule) -> Option<&mut Envelope> {
-        (module as &mut dyn Any).downcast_mut()
+    pub fn get_ui(&self) -> EnvelopeUI {
+        EnvelopeUI {
+            attack: extract_param!(self, attack),
+            decay: extract_param!(self, decay),
+            sustain: extract_param!(self, sustain),
+            release: extract_param!(self, release),
+            keep_voice_alive: self.keep_voice_alive,
+        }
     }
 
     pub fn set_keep_voice_alive(&mut self, keep_alive: bool) -> &mut Self {
@@ -98,65 +133,10 @@ impl Envelope {
         self
     }
 
-    pub fn set_attack(&mut self, attack: StereoSample) -> &mut Self {
-        for (channel, attack) in self.channels.iter_mut().zip(attack.iter()) {
-            channel.env.attack_time = from_ms(*attack);
-        }
-
-        {
-            let mut cfg = self.config.lock();
-            for (cfg_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-                cfg_channel.attack_time = channel.env.attack_time;
-            }
-        }
-
-        self
-    }
-
-    pub fn set_decay(&mut self, decay: StereoSample) -> &mut Self {
-        for (channel, decay) in self.channels.iter_mut().zip(decay.iter()) {
-            channel.env.decay_time = from_ms(*decay);
-        }
-
-        {
-            let mut cfg = self.config.lock();
-            for (cfg_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-                cfg_channel.decay_time = channel.env.decay_time;
-            }
-        }
-
-        self
-    }
-
-    pub fn set_sustain(&mut self, sustain: StereoSample) -> &mut Self {
-        for (channel, sustain) in self.channels.iter_mut().zip(sustain.iter()) {
-            channel.env.sustain_level = *sustain;
-        }
-
-        {
-            let mut cfg = self.config.lock();
-            for (cfg_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-                cfg_channel.sustain_level = channel.env.sustain_level;
-            }
-        }
-
-        self
-    }
-
-    pub fn set_release(&mut self, release: StereoSample) -> &mut Self {
-        for (channel, release) in self.channels.iter_mut().zip(release.iter()) {
-            channel.env.release_time = from_ms(*release);
-        }
-
-        {
-            let mut cfg = self.config.lock();
-            for (cfg_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-                cfg_channel.release_time = channel.env.release_time;
-            }
-        }
-
-        self
-    }
+    set_param_method!(set_attack, attack, *attack);
+    set_param_method!(set_decay, decay, *decay);
+    set_param_method!(set_sustain, sustain, *sustain);
+    set_param_method!(set_release, release, *release);
 
     pub fn check_activity(&self, activity: &mut [EnvelopeActivityState]) {
         if self.keep_voice_alive {

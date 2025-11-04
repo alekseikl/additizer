@@ -24,12 +24,6 @@ pub struct AdditizerParams {
 
     #[id = "volume"]
     pub volume: Arc<FloatParam>,
-
-    #[id = "unison"]
-    pub unison: IntParam,
-
-    #[id = "detune"]
-    pub detune: Arc<FloatParam>,
 }
 
 impl Default for AdditizerParams {
@@ -51,18 +45,6 @@ impl Default for AdditizerParams {
                 .with_smoother(SmoothingStyle::Linear(3.0))
                 .with_step_size(0.01)
                 .with_unit(" dB"),
-            ),
-            unison: IntParam::new("Unison", 3, IntRange::Linear { min: 1, max: 16 }),
-            detune: Arc::new(
-                FloatParam::new(
-                    "Detune",
-                    20.0,
-                    FloatRange::Linear {
-                        min: 0.0,
-                        max: 100.0,
-                    },
-                )
-                .with_step_size(0.01),
             ),
         }
     }

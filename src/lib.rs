@@ -134,9 +134,6 @@ impl Plugin for Additizer {
         let mut synth = self.synth_engine.lock();
 
         assert_no_alloc::assert_no_alloc(|| {
-            synth.set_unison(self.params.unison.value() as usize);
-            synth.set_detune(self.params.detune.value());
-
             let mut next_event = context.next_event();
 
             for (block_idx, mut block) in buffer.iter_blocks(BUFFER_SIZE) {

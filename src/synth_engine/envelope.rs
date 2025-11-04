@@ -35,19 +35,19 @@ impl Default for EnvelopeVoice {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnvelopeChannel {
-    pub attack_time: Sample,
-    pub decay_time: Sample,
-    pub sustain_level: Sample,
-    pub release_time: Sample,
+    pub attack: Sample,
+    pub decay: Sample,
+    pub sustain: Sample,
+    pub release: Sample,
 }
 
 impl Default for EnvelopeChannel {
     fn default() -> Self {
         Self {
-            attack_time: from_ms(10.0),
-            decay_time: from_ms(200.0),
-            sustain_level: 1.0,
-            release_time: from_ms(300.0),
+            attack: from_ms(10.0),
+            decay: from_ms(200.0),
+            sustain: 1.0,
+            release: from_ms(300.0),
         }
     }
 }
@@ -65,7 +65,7 @@ pub fn reset_voice(
     } else {
         0.0
     };
-    voice.last_level = channel.sustain_level;
+    voice.last_level = channel.sustain;
 }
 
 #[inline]
@@ -79,7 +79,7 @@ pub fn release_voice(voice: &mut EnvelopeVoice) {
 #[inline]
 pub fn is_voice_active(channel: &EnvelopeChannel, voice: &EnvelopeVoice) -> bool {
     if let Some(release) = &voice.release
-        && voice.t - release.release_t >= channel.release_time
+        && voice.t - release.release_t >= channel.release
     {
         false
     } else {
@@ -92,15 +92,15 @@ pub fn process_voice_sample(channel: &EnvelopeChannel, voice: &mut EnvelopeVoice
     if let Some(release) = &voice.release {
         let release_t = voice.t - release.release_t;
 
-        if release_t <= channel.release_time {
-            release.from_level * (1.0 - release_t / channel.release_time)
+        if release_t <= channel.release {
+            release.from_level * (1.0 - release_t / channel.release)
         } else {
             0.0
         }
-    } else if voice.t < channel.attack_time {
-        voice.attack_from + (1.0 - voice.attack_from) * (voice.t / channel.attack_time)
-    } else if (voice.t - channel.attack_time) < channel.decay_time {
-        1.0 - (1.0 - channel.sustain_level) * ((voice.t - channel.attack_time) / channel.decay_time)
+    } else if voice.t < channel.attack {
+        voice.attack_from + (1.0 - voice.attack_from) * (voice.t / channel.attack)
+    } else if (voice.t - channel.attack) < channel.decay {
+        1.0 - (1.0 - channel.sustain) * ((voice.t - channel.attack) / channel.decay)
     } else {
         voice.last_level
     }

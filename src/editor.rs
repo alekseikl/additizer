@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use egui_baseview::egui::{
-    CentralPanel, Color32, Frame, Margin, Response, ScrollArea, Sense, Separator, SidePanel,
-    TopBottomPanel, Ui, Vec2, style::ScrollStyle, vec2,
+    CentralPanel, Checkbox, Color32, DragValue, Frame, Grid, Margin, Response, ScrollArea, Sense,
+    Separator, SidePanel, TopBottomPanel, Ui, Vec2, style::ScrollStyle, vec2,
 };
 use nih_plug::editor::Editor;
 use parking_lot::Mutex;
@@ -10,9 +10,10 @@ use parking_lot::Mutex;
 use crate::{
     editor::{gain_slider::GainSlider, stereo_slider::StereoSlider},
     synth_engine::{
-        HarmonicEditor, ModuleId, ModuleType, SpectralFilter, StereoSample, SynthEngine,
-        SynthModule,
+        Amplifier, Envelope, HarmonicEditor, ModuleId, ModuleType, Oscillator, SpectralFilter,
+        StereoSample, SynthEngine, SynthModule,
     },
+    utils::{from_ms, st_to_octave},
 };
 
 use egui_integration::{ResizableWindow, create_egui_editor};
@@ -105,7 +106,7 @@ fn show_side_bar(
 fn harmonic_editor_ui(
     ui: &mut Ui,
     synth_engine: &mut SynthEngine,
-    state: &mut HarmonicEditorState,
+    _state: &mut HarmonicEditorState,
     module_id: ModuleId,
 ) {
     let harmonic_editor =
@@ -152,8 +153,6 @@ fn harmonic_editor_ui(
 
     CentralPanel::default().show_inside(ui, |ui| {
         ui.label("Harmonics editor");
-        ui.add(StereoSlider::level(&mut state.level));
-        ui.add(StereoSlider::level_mod(&mut state.level).skew(1.8));
     });
 
     if need_update {
@@ -163,16 +162,190 @@ fn harmonic_editor_ui(
 
 fn spectral_filter_ui(ui: &mut Ui, synth_engine: &mut SynthEngine, module_id: ModuleId) {
     let spectral_filter =
-        SpectralFilter::downcast_mut(synth_engine.get_module_mut(module_id).unwrap()).unwrap();
+        SpectralFilter::downcast_mut_unwrap(synth_engine.get_module_mut(module_id));
 
     let mut filter_ui = spectral_filter.get_ui();
 
-    if ui
-        .add(StereoSlider::octave(&mut filter_ui.cutoff).width(200.0))
-        .changed()
-    {
-        spectral_filter.set_cutoff(filter_ui.cutoff);
-    }
+    ui.heading("Spectral filter");
+
+    Grid::new("sf_grid")
+        .num_columns(2)
+        .spacing([40.0, 4.0])
+        .striped(true)
+        .show(ui, |ui| {
+            ui.label("Cutoff");
+            if ui
+                .add(StereoSlider::octave(&mut filter_ui.cutoff).width(200.0))
+                .changed()
+            {
+                spectral_filter.set_cutoff(filter_ui.cutoff);
+            }
+            ui.end_row();
+
+            ui.label("Q");
+            if ui
+                .add(StereoSlider::q(&mut filter_ui.q).width(200.0))
+                .changed()
+            {
+                spectral_filter.set_q(filter_ui.q);
+            }
+            ui.end_row();
+
+            ui.label("Four pole");
+            if ui
+                .add(Checkbox::without_text(&mut filter_ui.four_pole))
+                .changed()
+            {
+                spectral_filter.set_four_pole(filter_ui.four_pole);
+            }
+            ui.end_row();
+        });
+}
+
+fn amplifier_ui(ui: &mut Ui, synth_engine: &mut SynthEngine, module_id: ModuleId) {
+    let amp = Amplifier::downcast_mut_unwrap(synth_engine.get_module_mut(module_id));
+    let mut amp_ui = amp.get_ui();
+
+    ui.heading("Amplifier");
+
+    Grid::new("amp_grid")
+        .num_columns(2)
+        .spacing([40.0, 4.0])
+        .striped(true)
+        .show(ui, |ui| {
+            ui.label("Level");
+            if ui
+                .add(StereoSlider::level(&mut amp_ui.level).width(200.0))
+                .changed()
+            {
+                amp.set_level(amp_ui.level);
+            }
+            ui.end_row();
+        });
+}
+
+fn oscillator_ui(ui: &mut Ui, synth_engine: &mut SynthEngine, module_id: ModuleId) {
+    let osc = Oscillator::downcast_mut_unwrap(synth_engine.get_module_mut(module_id));
+    let mut osc_ui = osc.get_ui();
+
+    ui.heading("Oscillator");
+
+    Grid::new("osc_grid")
+        .num_columns(2)
+        .spacing([40.0, 4.0])
+        .striped(true)
+        .show(ui, |ui| {
+            ui.label("Level");
+            if ui.add(StereoSlider::level(&mut osc_ui.level)).changed() {
+                osc.set_level(osc_ui.level);
+            }
+            ui.end_row();
+
+            ui.label("Pitch shift");
+            if ui
+                .add(
+                    StereoSlider::octave(&mut osc_ui.pitch_shift)
+                        .range(0.0..=st_to_octave(60.0))
+                        .skew(1.6)
+                        .allow_inverse(),
+                )
+                .changed()
+            {
+                osc.set_pitch_shift(osc_ui.pitch_shift);
+            }
+            ui.end_row();
+
+            ui.label("Detune");
+            if ui
+                .add(
+                    StereoSlider::new(&mut osc_ui.detune)
+                        .range(0.0..=st_to_octave(1.0))
+                        .display_scale(1200.0)
+                        .default_value(st_to_octave(0.2))
+                        .units("cents"),
+                )
+                .changed()
+            {
+                osc.set_detune(osc_ui.detune);
+            }
+            ui.end_row();
+
+            ui.label("Unison");
+            if ui
+                .add(DragValue::new(&mut osc_ui.unison).range(1..=16))
+                .changed()
+            {
+                osc.set_unison(osc_ui.unison);
+            }
+            ui.end_row();
+
+            ui.label("Same note phases");
+            if ui
+                .add(Checkbox::without_text(&mut osc_ui.same_channel_phases))
+                .changed()
+            {
+                osc.set_same_channels_phases(osc_ui.same_channel_phases);
+            }
+            ui.end_row();
+        });
+}
+
+fn envelope_ui(ui: &mut Ui, synth_engine: &mut SynthEngine, module_id: ModuleId) {
+    let env = Envelope::downcast_mut_unwrap(synth_engine.get_module_mut(module_id));
+    let mut env_ui = env.get_ui();
+
+    ui.heading("Envelope");
+
+    Grid::new("env_grid")
+        .num_columns(2)
+        .spacing([40.0, 4.0])
+        .striped(true)
+        .show(ui, |ui| {
+            ui.label("Attack");
+            if ui
+                .add(StereoSlider::envelope_time(&mut env_ui.attack).default_value(from_ms(1.0)))
+                .changed()
+            {
+                env.set_attack(env_ui.attack);
+            }
+            ui.end_row();
+
+            ui.label("Decay");
+            if ui
+                .add(StereoSlider::envelope_time(&mut env_ui.decay).default_value(from_ms(100.0)))
+                .changed()
+            {
+                env.set_decay(env_ui.decay);
+            }
+            ui.end_row();
+
+            ui.label("Sustain");
+            if ui
+                .add(StereoSlider::level(&mut env_ui.sustain).default_value(0.5))
+                .changed()
+            {
+                env.set_sustain(env_ui.sustain);
+            }
+            ui.end_row();
+
+            ui.label("Release");
+            if ui
+                .add(StereoSlider::envelope_time(&mut env_ui.release).default_value(from_ms(100.0)))
+                .changed()
+            {
+                env.set_release(env_ui.release);
+            }
+            ui.end_row();
+
+            ui.label("Keep voice alive");
+            if ui
+                .add(Checkbox::without_text(&mut env_ui.keep_voice_alive))
+                .changed()
+            {
+                env.set_keep_voice_alive(env_ui.keep_voice_alive);
+            }
+            ui.end_row();
+        });
 }
 
 fn show_right_bar(ui: &mut Ui, synth_engine: &mut SynthEngine) {
@@ -215,7 +388,9 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState, synth_engine: &mut S
                         module_id,
                     ),
                     ModuleType::SpectralFilter => spectral_filter_ui(ui, synth_engine, module_id),
-                    _ => (),
+                    ModuleType::Amplifier => amplifier_ui(ui, synth_engine, module_id),
+                    ModuleType::Oscillator => oscillator_ui(ui, synth_engine, module_id),
+                    ModuleType::Envelope => envelope_ui(ui, synth_engine, module_id),
                 }
             }
         });

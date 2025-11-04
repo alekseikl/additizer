@@ -27,6 +27,10 @@ pub struct AmplifierConfig {
     channels: [AmplifierConfigChannel; NUM_CHANNELS],
 }
 
+pub struct AmplifierUI {
+    pub level: StereoSample,
+}
+
 struct Voice {
     output: Buffer,
 }
@@ -94,12 +98,12 @@ impl Amplifier {
         amp
     }
 
-    pub fn downcast(module: &dyn SynthModule) -> Option<&Amplifier> {
-        (module as &dyn Any).downcast_ref()
-    }
+    gen_downcast_methods!(Amplifier);
 
-    pub fn downcast_mut(module: &mut dyn SynthModule) -> Option<&mut Amplifier> {
-        (module as &mut dyn Any).downcast_mut()
+    pub fn get_ui(&self) -> AmplifierUI {
+        AmplifierUI {
+            level: StereoSample::from_iter(self.channels.iter().map(|channel| channel.level)),
+        }
     }
 
     pub fn set_level(&mut self, level: StereoSample) {

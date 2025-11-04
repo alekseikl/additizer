@@ -10,18 +10,23 @@ use parking_lot::Mutex;
 use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
-use crate::synth_engine::{
-    buffer::{Buffer, ZEROES_BUFFER, make_zero_buffer},
-    config::ModuleConfig,
-    modules::{
-        AmplifierConfig, EnvelopeConfig, HarmonicEditorConfig, OscillatorConfig,
-        SpectralFilterConfig,
+use crate::{
+    synth_engine::{
+        buffer::{Buffer, ZEROES_BUFFER, make_zero_buffer},
+        config::ModuleConfig,
+        modules::{
+            AmplifierConfig, EnvelopeConfig, HarmonicEditorConfig, OscillatorConfig,
+            SpectralFilterConfig,
+        },
+        routing::{
+            InputType, MAX_VOICES, MIN_MODULE_ID, ModuleInput, ModuleInputSource, ModuleLink,
+            ModuleOutput, OUTPUT_MODULE_ID, Router,
+        },
+        synth_module::{
+            NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs, SpectralOutputs,
+        },
     },
-    routing::{
-        InputType, MAX_VOICES, MIN_MODULE_ID, ModuleInput, ModuleInputSource, ModuleLink,
-        ModuleOutput, OUTPUT_MODULE_ID, Router,
-    },
-    synth_module::{NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs, SpectralOutputs},
+    utils::{from_ms, st_to_octave},
 };
 
 pub use buffer::BUFFER_SIZE;
@@ -34,9 +39,10 @@ pub use types::{Sample, StereoSample};
 mod buffer;
 mod config;
 mod envelope;
+#[macro_use]
+mod synth_module;
 mod modules;
 mod routing;
-mod synth_module;
 mod types;
 
 #[derive(Debug, Clone, Copy)]
@@ -110,18 +116,18 @@ macro_rules! typed_modules {
     };
 }
 
-macro_rules! typed_modules_mut {
-    ($self:ident, $module_type:ident) => {
-        $self
-            .modules
-            .values_mut()
-            .filter_map(|item| {
-                item.as_deref_mut()
-                    .filter(|mod_box| mod_box.module_type() == ModuleType::$module_type)
-            })
-            .filter_map($module_type::downcast_mut)
-    };
-}
+// macro_rules! typed_modules_mut {
+//     ($self:ident, $module_type:ident) => {
+//         $self
+//             .modules
+//             .values_mut()
+//             .filter_map(|item| {
+//                 item.as_deref_mut()
+//                     .filter(|mod_box| mod_box.module_type() == ModuleType::$module_type)
+//             })
+//             .filter_map($module_type::downcast_mut)
+//     };
+// }
 
 macro_rules! add_module_method {
     ($func_name:ident, $module_type:ident, $module_cfg:ident) => {
@@ -514,32 +520,6 @@ impl SynthEngine {
         get_module_mut!(self, &id)
     }
 
-    pub fn get_harmonic_editor(&mut self) -> &mut HarmonicEditor {
-        let item = typed_modules_mut!(self, HarmonicEditor).next();
-
-        item.unwrap()
-    }
-
-    pub fn update_harmonics(&mut self, harmonics: &[StereoSample], tail: StereoSample) {
-        for filter in typed_modules_mut!(self, HarmonicEditor) {
-            filter.set_harmonics(harmonics, tail);
-        }
-    }
-
-    pub fn set_unison(&mut self, unison: usize) {
-        for osc in typed_modules_mut!(self, Oscillator) {
-            osc.set_unison(unison);
-        }
-    }
-
-    pub fn set_detune(&mut self, detune: f32) {
-        let detune = 0.01 * detune;
-
-        for osc in typed_modules_mut!(self, Oscillator) {
-            osc.set_detune(detune.into());
-        }
-    }
-
     fn build_scheme(&mut self) {
         let harmonic_editor_id = self.add_harmonic_editor();
         let filter_env_id = self.add_envelope();
@@ -560,9 +540,9 @@ impl SynthEngine {
         typed_module_mut!(&filter_env_id, Envelope)
             .unwrap()
             .set_attack(0.0.into())
-            .set_decay(500.0.into())
+            .set_decay(from_ms(500.0).into())
             .set_sustain(0.0.into())
-            .set_release(100.0.into());
+            .set_release(from_ms(100.0).into());
 
         typed_module_mut!(&filter_id, SpectralFilter)
             .unwrap()
@@ -571,14 +551,14 @@ impl SynthEngine {
         typed_module_mut!(&osc_id, Oscillator)
             .unwrap()
             .set_unison(3)
-            .set_detune(0.01.into());
+            .set_detune(st_to_octave(0.01).into());
 
         typed_module_mut!(&amp_env_id, Envelope)
             .unwrap()
-            .set_attack(StereoSample::splat(10.0))
-            .set_decay(20.0.into())
+            .set_attack(StereoSample::splat(from_ms(10.0)))
+            .set_decay(from_ms(20.0).into())
             .set_sustain(1.0.into())
-            .set_release(300.0.into());
+            .set_release(from_ms(300.0).into());
 
         self.set_link(ModuleLink::link(
             ModuleOutput::spectrum(harmonic_editor_id),
@@ -588,7 +568,7 @@ impl SynthEngine {
         self.set_link(ModuleLink::modulation(
             ModuleOutput::scalar(filter_env_id),
             ModuleInput::cutoff_scalar(filter_id),
-            8.0,
+            st_to_octave(64.0),
         ))
         .unwrap();
         self.set_link(ModuleLink::link(
