@@ -8,10 +8,10 @@ use nih_plug::editor::Editor;
 use parking_lot::Mutex;
 
 use crate::{
-    editor::{gain_slider::GainSlider, stereo_slider::StereoSlider},
+    editor::{direct_input::DirectInput, gain_slider::GainSlider, stereo_slider::StereoSlider},
     synth_engine::{
-        Amplifier, Envelope, HarmonicEditor, ModuleId, ModuleType, Oscillator, SpectralFilter,
-        StereoSample, SynthEngine, SynthModule,
+        Amplifier, Envelope, HarmonicEditor, ModuleId, ModuleInput, ModuleType, Oscillator,
+        SpectralFilter, StereoSample, SynthEngine, SynthModule,
     },
     utils::{from_ms, st_to_octave},
 };
@@ -20,8 +20,10 @@ use egui_integration::{ResizableWindow, create_egui_editor};
 
 pub use egui_integration::EguiState;
 
+mod direct_input;
 mod egui_integration;
 mod gain_slider;
+mod modulation_input;
 mod stereo_slider;
 
 struct HarmonicEditorState {
@@ -213,12 +215,20 @@ fn amplifier_ui(ui: &mut Ui, synth_engine: &mut SynthEngine, module_id: ModuleId
         .spacing([40.0, 4.0])
         .striped(true)
         .show(ui, |ui| {
+            ui.label("Input");
+            ui.add(DirectInput::new(
+                synth_engine,
+                ModuleInput::input(module_id),
+            ));
+            ui.end_row();
+
             ui.label("Level");
             if ui
                 .add(StereoSlider::level(&mut amp_ui.level).width(200.0))
                 .changed()
             {
-                amp.set_level(amp_ui.level);
+                Amplifier::downcast_mut_unwrap(synth_engine.get_module_mut(module_id))
+                    .set_level(amp_ui.level);
             }
             ui.end_row();
         });

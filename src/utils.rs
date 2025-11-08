@@ -17,6 +17,7 @@ pub fn octave_to_freq(octave: Sample) -> Sample {
     octave.exp2() * 440.0
 }
 
+#[inline(always)]
 pub const fn st_to_octave(st: Sample) -> Sample {
     st * ST_TO_OCTAVE_MULT
 }

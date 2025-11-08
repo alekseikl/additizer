@@ -135,12 +135,6 @@ impl ModuleOutput {
     output_ctor!(scalar, Scalar);
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ModuleInputSource {
-    pub src: ModuleOutput,
-    pub modulation: Option<StereoSample>,
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ModuleLink {
     pub src: ModuleOutput,
@@ -168,6 +162,17 @@ impl ModuleLink {
             modulation: Some(amount.into()),
         }
     }
+}
+
+pub struct AvailableInputSourceUI {
+    pub output: ModuleOutput,
+    pub label: String,
+}
+
+pub struct ConnectedInputSourceUI {
+    pub output: ModuleOutput,
+    pub modulation: Option<StereoSample>,
+    pub label: String,
 }
 
 pub trait Router {

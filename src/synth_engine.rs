@@ -19,8 +19,8 @@ use crate::{
             SpectralFilterConfig,
         },
         routing::{
-            InputType, MAX_VOICES, MIN_MODULE_ID, ModuleInput, ModuleInputSource, ModuleLink,
-            ModuleOutput, OUTPUT_MODULE_ID, Router,
+            AvailableInputSourceUI, ConnectedInputSourceUI, MAX_VOICES, MIN_MODULE_ID,
+            OUTPUT_MODULE_ID, Router,
         },
         synth_module::{
             NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs, SpectralOutputs,
@@ -32,7 +32,7 @@ use crate::{
 pub use buffer::BUFFER_SIZE;
 pub use config::Config;
 pub use modules::{Amplifier, Envelope, HarmonicEditor, Oscillator, SpectralFilter};
-pub use routing::{ModuleId, ModuleType};
+pub use routing::{InputType, ModuleId, ModuleInput, ModuleLink, ModuleOutput, ModuleType};
 pub use synth_module::SynthModule;
 pub use types::{Sample, StereoSample};
 
@@ -69,6 +69,12 @@ impl Voice {
             note: self.note,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ModuleInputSource {
+    src: ModuleOutput,
+    modulation: Option<StereoSample>,
 }
 
 pub struct SynthEngine {
@@ -205,6 +211,22 @@ impl SynthEngine {
             .collect();
 
         self.setup_routing(&new_links).unwrap();
+    }
+
+    pub fn set_direct_link(&mut self, src: ModuleOutput, dst: ModuleInput) -> Result<(), String> {
+        self.can_be_linked(&src, &dst)?;
+
+        let mut new_links: Vec<_> = self
+            .get_links()
+            .iter()
+            .filter(|link| link.dst != dst)
+            .copied()
+            .collect();
+
+        new_links.push(ModuleLink::link(src, dst));
+        self.setup_routing(&new_links)?;
+        self.save_links();
+        Ok(())
     }
 
     pub fn set_link(&mut self, link: ModuleLink) -> Result<(), String> {
@@ -436,6 +458,18 @@ impl SynthEngine {
         }
     }
 
+    fn can_be_linked(&self, src: &ModuleOutput, dst: &ModuleInput) -> Result<(), String> {
+        if src.data_type() != dst.data_type() {
+            return Err("Data types mismatch.".to_string());
+        }
+
+        if !self.input_exists(dst) || !self.output_exists(src) {
+            return Err("Invalid node.".to_string());
+        }
+
+        Ok(())
+    }
+
     fn get_links(&self) -> Vec<ModuleLink> {
         self.input_sources
             .iter()
@@ -518,6 +552,67 @@ impl SynthEngine {
 
     pub fn get_module_mut(&mut self, id: ModuleId) -> Option<&mut dyn SynthModule> {
         get_module_mut!(self, &id)
+    }
+
+    pub fn get_available_input_sources(&self, input: ModuleInput) -> Vec<AvailableInputSourceUI> {
+        let input_data_type = input.data_type();
+
+        self.modules
+            .values()
+            .filter_map(|module| module.as_deref())
+            .filter(|module| {
+                module.id() != input.module_id
+                    && module
+                        .outputs()
+                        .iter()
+                        .any(|output| output.data_type() == input_data_type)
+                    && !self.is_connected_to_source(module.id(), input.module_id)
+            })
+            .flat_map(|module| {
+                module
+                    .outputs()
+                    .iter()
+                    .filter(|output| output.data_type() == input_data_type)
+                    .map(|output| AvailableInputSourceUI {
+                        output: ModuleOutput::new(*output, module.id()),
+                        label: module.label(),
+                    })
+            })
+            .collect()
+    }
+
+    pub fn get_connected_input_sources(&self, input: ModuleInput) -> Vec<ConnectedInputSourceUI> {
+        let Some(sources) = self.input_sources.get(&input) else {
+            return Vec::new();
+        };
+
+        sources
+            .iter()
+            .filter_map(|source| {
+                get_module!(self, &source.src.module_id).map(|module| (module, source))
+            })
+            .map(|(module, source)| ConnectedInputSourceUI {
+                output: source.src,
+                modulation: source.modulation,
+                label: module.label(),
+            })
+            .collect()
+    }
+
+    fn is_connected_to_source(&self, dst_id: ModuleId, src_id: ModuleId) -> bool {
+        for (input, sources) in &self.input_sources {
+            if input.module_id == dst_id {
+                for source in sources {
+                    if source.src.module_id == src_id
+                        || self.is_connected_to_source(source.src.module_id, src_id)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
     }
 
     fn build_scheme(&mut self) {

@@ -76,7 +76,7 @@ pub trait SynthModule: Any + Send {
     fn module_type(&self) -> ModuleType;
 
     fn label(&self) -> String {
-        format!("{:?}", self.module_type())
+        format!("{:?} {}", self.module_type(), self.id())
     }
 
     fn inputs(&self) -> &'static [InputType];
