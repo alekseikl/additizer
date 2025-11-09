@@ -5,7 +5,7 @@ use crate::synth_engine::{
     routing::{
         InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, OutputType, Router,
     },
-    synth_module::{ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
+    synth_module::{ModuleConfigBox, ProcessParams, SynthModule},
     types::{Sample, StereoSample},
 };
 use itertools::izip;
@@ -133,6 +133,7 @@ impl Amplifier {
         let input = router
             .get_input(
                 ModuleInput::input(id),
+                params.samples,
                 voice_idx,
                 channel_idx,
                 &mut common.input,
@@ -141,6 +142,7 @@ impl Amplifier {
         let level_mod = router
             .get_input(
                 ModuleInput::level(id),
+                params.samples,
                 voice_idx,
                 channel_idx,
                 &mut common.level_mod_input,
@@ -164,16 +166,17 @@ impl SynthModule for Amplifier {
         ModuleType::Amplifier
     }
 
+    fn is_spectral_rate(&self) -> bool {
+        false
+    }
+
     fn inputs(&self) -> &'static [InputType] {
         &[InputType::Input, InputType::Level]
     }
 
-    fn outputs(&self) -> &'static [OutputType] {
-        &[OutputType::Output]
+    fn output_type(&self) -> OutputType {
+        OutputType::Output
     }
-
-    fn note_on(&mut self, _: &NoteOnParams) {}
-    fn note_off(&mut self, _: &NoteOffParams) {}
 
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {

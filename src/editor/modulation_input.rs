@@ -28,7 +28,7 @@ impl<'a> ModulationInput<'a> {
     fn setup_value_slider(mut slider: StereoSlider<'a>, input_type: InputType) -> StereoSlider<'a> {
         match input_type {
             InputType::Level => slider.default_value(1.0).precision(2),
-            InputType::CutoffScalar => slider
+            InputType::Cutoff => slider
                 .range(-4.0..=10.0)
                 .display_scale(12.0)
                 .default_value(0.0)
@@ -47,7 +47,7 @@ impl<'a> ModulationInput<'a> {
                 .precision(2)
                 .allow_inverse()
                 .units("st"),
-            InputType::Input | InputType::Spectrum => slider,
+            InputType::Input | InputType::Spectrum | InputType::ScalarInput => slider,
         }
     }
 }

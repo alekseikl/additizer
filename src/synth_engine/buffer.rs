@@ -50,6 +50,30 @@ pub const fn make_harmonic_series_buffer() -> SpectralBuffer {
     buff
 }
 
+pub fn fill_buffer_slice(buff: &mut [Sample], iter: impl Iterator<Item = Sample>) {
+    buff.iter_mut()
+        .zip(iter)
+        .for_each(|(buff, value)| *buff = value);
+}
+
+pub fn append_buffer_slice(buff: &mut [Sample], iter: impl Iterator<Item = Sample>) {
+    buff.iter_mut()
+        .zip(iter)
+        .for_each(|(buff, value)| *buff += value);
+}
+
+pub fn fill_or_append_buffer_slice(
+    fill: bool,
+    buff: &mut [Sample],
+    iter: impl Iterator<Item = Sample>,
+) {
+    if fill {
+        fill_buffer_slice(buff, iter);
+    } else {
+        append_buffer_slice(buff, iter);
+    }
+}
+
 #[inline(always)]
 pub fn get_wave_slice_mut(wave_buff: &mut WaveformBuffer) -> &mut [Sample] {
     &mut wave_buff[WAVEFORM_PAD_LEFT..(WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT)]

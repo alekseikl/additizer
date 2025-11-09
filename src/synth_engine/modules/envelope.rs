@@ -3,12 +3,9 @@ use std::any::Any;
 use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
-    buffer::{Buffer, make_zero_buffer},
     envelope::{self, EnvelopeActivityState, EnvelopeChannel, EnvelopeVoice},
     routing::{InputType, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, OutputType, Router},
-    synth_module::{
-        ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs, SynthModule,
-    },
+    synth_module::{ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
     types::{Sample, StereoSample},
 };
 
@@ -37,16 +34,16 @@ pub struct EnvelopeUI {
 
 struct Voice {
     env: EnvelopeVoice,
-    next_output_sample: Sample,
-    output: Buffer,
+    prev_output: Sample,
+    output: Sample,
 }
 
 impl Default for Voice {
     fn default() -> Self {
         Self {
             env: EnvelopeVoice::default(),
-            next_output_sample: 0.0,
-            output: make_zero_buffer(),
+            prev_output: 0.0,
+            output: 0.0,
         }
     }
 }
@@ -154,14 +151,9 @@ impl Envelope {
     fn process_channel_voice(channel: &mut Channel, params: &ProcessParams, voice_idx: usize) {
         let voice = &mut channel.voices[voice_idx];
 
-        for (out, _) in voice.output.iter_mut().zip(0..params.samples) {
-            let value = envelope::process_voice_sample(&channel.env, &mut voice.env);
-
-            *out = value;
-            envelope::advance_voice(&mut voice.env, params.t_step, value);
-        }
-
-        voice.next_output_sample = envelope::process_voice_sample(&channel.env, &mut voice.env);
+        voice.prev_output = voice.output;
+        voice.output = envelope::process_voice_sample(&channel.env, &mut voice.env);
+        envelope::advance_voice(&mut voice.env, params.buffer_t_step, voice.output);
     }
 }
 
@@ -174,15 +166,19 @@ impl SynthModule for Envelope {
         ModuleType::Envelope
     }
 
+    fn is_spectral_rate(&self) -> bool {
+        true
+    }
+
     fn inputs(&self) -> &'static [InputType] {
         &[]
     }
 
-    fn outputs(&self) -> &'static [OutputType] {
-        &[OutputType::Output, OutputType::Scalar]
+    fn output_type(&self) -> OutputType {
+        OutputType::Scalar
     }
 
-    fn note_on(&mut self, params: &NoteOnParams) {
+    fn note_on(&mut self, params: &NoteOnParams, _router: &dyn Router) {
         for channel in &mut self.channels {
             envelope::reset_voice(
                 &channel.env,
@@ -206,16 +202,9 @@ impl SynthModule for Envelope {
         }
     }
 
-    fn get_buffer_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
-        &self.channels[channel].voices[voice_idx].output
-    }
-
-    fn get_scalar_output(&self, voice_idx: usize, channel: usize) -> ScalarOutputs {
+    fn get_scalar_output(&self, voice_idx: usize, channel: usize) -> (Sample, Sample) {
         let voice = &self.channels[channel].voices[voice_idx];
 
-        ScalarOutputs {
-            first: voice.output[0],
-            current: voice.next_output_sample,
-        }
+        (voice.prev_output, voice.output)
     }
 }

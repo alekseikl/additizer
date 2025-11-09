@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::{
-    synth_module::{ScalarOutputs, SpectralOutputs},
-    types::StereoSample,
-};
+use crate::synth_engine::{Sample, buffer::SpectralBuffer, types::StereoSample};
 
 use super::buffer::Buffer;
 
@@ -33,22 +30,24 @@ pub enum DataType {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 pub enum InputType {
     Input,
+    ScalarInput,
     Level,
     PitchShift,
     Detune,
     Spectrum,
-    CutoffScalar,
+    Cutoff,
 }
 
 impl InputType {
     pub fn data_type(&self) -> DataType {
         match self {
             Self::Input => DataType::Buffer,
+            Self::ScalarInput => DataType::Scalar,
             Self::Level => DataType::Buffer,
             Self::PitchShift => DataType::Buffer,
             Self::Detune => DataType::Buffer,
             Self::Spectrum => DataType::Spectral,
-            Self::CutoffScalar => DataType::Scalar,
+            Self::Cutoff => DataType::Scalar,
         }
     }
 }
@@ -97,11 +96,12 @@ impl ModuleInput {
     }
 
     input_ctor!(input, Input);
+    input_ctor!(scalar_input, ScalarInput);
     input_ctor!(level, Level);
     input_ctor!(pitch_shift, PitchShift);
     input_ctor!(detune, Detune);
     input_ctor!(spectrum, Spectrum);
-    input_ctor!(cutoff_scalar, CutoffScalar);
+    input_ctor!(cutoff_scalar, Cutoff);
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
@@ -179,8 +179,9 @@ pub trait Router {
     fn get_input<'a>(
         &'a self,
         input: ModuleInput,
+        samples: usize,
         voice_idx: usize,
-        channel: usize,
+        channel_idx: usize,
         input_buffer: &'a mut Buffer,
     ) -> Option<&'a Buffer>;
 
@@ -188,13 +189,13 @@ pub trait Router {
         &self,
         input: ModuleInput,
         voice_idx: usize,
-        channel: usize,
-    ) -> Option<SpectralOutputs<'_>>;
+        channel_idx: usize,
+    ) -> Option<&SpectralBuffer>;
 
     fn get_scalar_input(
         &self,
         input: ModuleInput,
         voice_idx: usize,
-        channel: usize,
-    ) -> Option<ScalarOutputs>;
+        channel_idx: usize,
+    ) -> Option<Sample>;
 }

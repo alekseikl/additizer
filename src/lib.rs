@@ -44,6 +44,7 @@ impl Additizer {
         synth: &mut SynthEngine,
         context: &mut impl ProcessContext<Self>,
         event: NoteEvent<()>,
+        samples: usize,
         timing: u32,
     ) {
         let mut terminate_voice = |voice: Option<VoiceId>| {
@@ -60,7 +61,7 @@ impl Additizer {
                 velocity,
                 ..
             } => {
-                let terminated = synth.note_on(voice_id, channel, note, velocity);
+                let terminated = synth.note_on(samples, voice_id, channel, note, velocity);
                 terminate_voice(terminated);
             }
             NoteEvent::NoteOff { note, .. } => {
@@ -145,7 +146,7 @@ impl Plugin for Additizer {
                         break;
                     }
 
-                    Self::process_event(&mut synth, context, event, sample_idx as u32);
+                    Self::process_event(&mut synth, context, event, block_size, sample_idx as u32);
                     next_event = context.next_event();
                 }
 

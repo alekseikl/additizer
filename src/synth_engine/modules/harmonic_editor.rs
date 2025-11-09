@@ -9,7 +9,7 @@ use crate::synth_engine::{
         HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer, ZEROES_SPECTRAL_BUFFER,
     },
     routing::{InputType, ModuleId, ModuleType, NUM_CHANNELS, OutputType, Router},
-    synth_module::{ModuleConfigBox, ProcessParams, SpectralOutputs, SynthModule},
+    synth_module::{ModuleConfigBox, ProcessParams, SynthModule},
 };
 
 const NUM_EDITABLE_HARMONICS: usize = SPECTRAL_BUFFER_SIZE - 2;
@@ -122,20 +122,21 @@ impl SynthModule for HarmonicEditor {
         ModuleType::HarmonicEditor
     }
 
+    fn is_spectral_rate(&self) -> bool {
+        true
+    }
+
     fn inputs(&self) -> &'static [InputType] {
         &[]
     }
 
-    fn outputs(&self) -> &'static [OutputType] {
-        &[OutputType::Spectrum]
+    fn output_type(&self) -> OutputType {
+        OutputType::Spectrum
     }
 
     fn process(&mut self, _params: &ProcessParams, _router: &dyn Router) {}
 
-    fn get_spectral_output(&self, _voice_idx: usize, channel: usize) -> SpectralOutputs<'_> {
-        SpectralOutputs {
-            first: &self.outputs[channel],
-            current: &self.outputs[channel],
-        }
+    fn get_spectral_output(&self, _voice_idx: usize, channel: usize) -> &SpectralBuffer {
+        &self.outputs[channel]
     }
 }

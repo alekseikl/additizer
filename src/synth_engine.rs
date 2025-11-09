@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use itertools::{Itertools, izip};
+use itertools::Itertools;
 use nih_plug::{params::FloatParam, prelude::FloatRange, util::db_to_gain_fast};
 use parking_lot::Mutex;
 use smallvec::SmallVec;
@@ -12,19 +12,19 @@ use topo_sort::{SortResults, TopoSort};
 
 use crate::{
     synth_engine::{
-        buffer::{Buffer, ZEROES_BUFFER, make_zero_buffer},
+        buffer::{
+            Buffer, SpectralBuffer, ZEROES_BUFFER, fill_or_append_buffer_slice, make_zero_buffer,
+        },
         config::ModuleConfig,
         modules::{
             AmplifierConfig, EnvelopeConfig, HarmonicEditorConfig, OscillatorConfig,
             SpectralFilterConfig,
         },
         routing::{
-            AvailableInputSourceUI, ConnectedInputSourceUI, MAX_VOICES, MIN_MODULE_ID,
-            OUTPUT_MODULE_ID, Router,
+            AvailableInputSourceUI, ConnectedInputSourceUI, DataType, MAX_VOICES, MIN_MODULE_ID,
+            OUTPUT_MODULE_ID, OutputType, Router,
         },
-        synth_module::{
-            NoteOffParams, NoteOnParams, ProcessParams, ScalarOutputs, SpectralOutputs,
-        },
+        synth_module::{NoteOffParams, NoteOnParams, ProcessParams},
     },
     utils::{from_ms, st_to_octave},
 };
@@ -142,7 +142,7 @@ macro_rules! add_module_method {
             let config = Arc::new(Mutex::new($module_cfg::default()));
             let mut module = $module_type::new(id, Arc::clone(&config));
 
-            Self::trigger_active_notes(&self.voices, &mut module);
+            Self::trigger_active_notes(self.sample_rate, &self.voices, &mut module, self);
             self.modules.insert(id, Some(Box::new(module)));
             self.config
                 .modules
@@ -237,13 +237,7 @@ impl SynthEngine {
             return Ok(());
         }
 
-        if link.src.data_type() != link.dst.data_type() {
-            return Err("Data types mismatch.".to_string());
-        }
-
-        if !self.input_exists(&link.dst) || !self.output_exists(&link.src) {
-            return Err("Invalid node.".to_string());
-        }
+        self.can_be_linked(&link.src, &link.dst)?;
 
         let mut new_links = self.get_links();
 
@@ -275,6 +269,7 @@ impl SynthEngine {
 
     pub fn note_on(
         &mut self,
+        samples: usize,
         voice_id: Option<i32>,
         channel: u8,
         note: u8,
@@ -312,15 +307,26 @@ impl SynthEngine {
         self.next_voice_id = self.next_voice_id.wrapping_add(1);
 
         let params = NoteOnParams {
+            sample_rate: self.sample_rate,
             note: note as f32,
-            // velocity,
             voice_idx,
             same_note_retrigger: same_note,
         };
 
+        let active_voices = [voice_idx];
+        let process_params = self.make_process_params(samples, &active_voices);
+
         for module_id in &self.execution_order {
-            if let Some(module) = get_module_mut!(self, &module_id) {
-                module.note_on(&params);
+            if let Some(module_box) = self.modules.get_mut(module_id)
+                && let Some(mut module) = module_box.take()
+            {
+                module.note_on(&params, self);
+
+                if module.is_spectral_rate() {
+                    module.process(&process_params, self);
+                }
+
+                self.modules.get_mut(module_id).unwrap().replace(module);
             }
         }
 
@@ -360,6 +366,22 @@ impl SynthEngine {
         Some(voice.get_id())
     }
 
+    fn make_process_params<'a>(
+        &self,
+        samples: usize,
+        active_voices: &'a [usize],
+    ) -> ProcessParams<'a> {
+        let t_step = self.sample_rate.recip();
+
+        ProcessParams {
+            samples,
+            sample_rate: self.sample_rate,
+            t_step,
+            buffer_t_step: samples as Sample * t_step,
+            active_voices,
+        }
+    }
+
     pub fn process<'a>(
         &mut self,
         samples: usize,
@@ -396,13 +418,7 @@ impl SynthEngine {
             .map(|activity| activity.voice_idx)
             .collect();
 
-        let params = ProcessParams {
-            samples,
-            sample_rate: self.sample_rate,
-            t_step: self.sample_rate.recip(),
-            // buffer_t_step: samples as Sample / self.sample_rate,
-            active_voices: &active_voices,
-        };
+        let params = self.make_process_params(samples, &active_voices);
 
         for module_id in &self.execution_order {
             if let Some(module_box) = self.modules.get_mut(module_id)
@@ -424,19 +440,25 @@ impl SynthEngine {
         module_id
     }
 
-    fn trigger_active_notes(voices: &[Voice], module: &mut dyn SynthModule) {
+    fn trigger_active_notes(
+        sample_rate: Sample,
+        voices: &[Voice],
+        module: &mut dyn SynthModule,
+        router: &dyn Router,
+    ) {
         let active_voices = voices
             .iter()
             .enumerate()
             .filter(|(_, voice)| voice.active)
             .map(|(voice_idx, voice)| NoteOnParams {
+                sample_rate,
                 note: voice.note as f32,
                 voice_idx,
                 same_note_retrigger: false,
             });
 
         for params in active_voices {
-            module.note_on(&params);
+            module.note_on(&params, router);
         }
     }
 
@@ -452,14 +474,22 @@ impl SynthEngine {
 
     fn output_exists(&self, output: &ModuleOutput) -> bool {
         if let Some(module) = get_module!(self, &output.module_id) {
-            module.outputs().contains(&output.output_type)
+            module.output_type() == output.output_type
         } else {
             false
         }
     }
 
+    fn is_compatible(&self, src: &OutputType, dst: &InputType) -> bool {
+        let src_data_type = src.data_type();
+        let dst_data_type = dst.data_type();
+
+        src_data_type == dst_data_type
+            || (src_data_type == DataType::Scalar && dst_data_type == DataType::Buffer)
+    }
+
     fn can_be_linked(&self, src: &ModuleOutput, dst: &ModuleInput) -> Result<(), String> {
-        if src.data_type() != dst.data_type() {
+        if !self.is_compatible(&src.output_type, &dst.input_type) {
             return Err("Data types mismatch.".to_string());
         }
 
@@ -516,23 +546,27 @@ impl SynthEngine {
         );
 
         for (channel, (output, level)) in outputs.zip(self.output_level.iter()).enumerate() {
-            output.fill(0.0);
+            let output = &mut output[..params.samples];
 
-            for voice_idx in params.active_voices {
+            for (idx, voice_idx) in params.active_voices.iter().enumerate() {
                 let input = self
                     .get_input(
                         ModuleInput::input(OUTPUT_MODULE_ID),
+                        params.samples,
                         *voice_idx,
                         channel,
                         &mut tmp_buffers.1,
                     )
                     .unwrap_or(&ZEROES_BUFFER);
 
-                for (out, input, level_mod, _) in
-                    izip!(output.iter_mut(), input, &tmp_buffers.0, 0..params.samples)
-                {
-                    *out += input * level * level_mod;
-                }
+                fill_or_append_buffer_slice(
+                    idx == 0,
+                    output,
+                    input
+                        .iter()
+                        .zip(&tmp_buffers.0)
+                        .map(|(input, level_mod)| input * level * level_mod),
+                );
             }
         }
 
@@ -555,28 +589,17 @@ impl SynthEngine {
     }
 
     pub fn get_available_input_sources(&self, input: ModuleInput) -> Vec<AvailableInputSourceUI> {
-        let input_data_type = input.data_type();
-
         self.modules
             .values()
             .filter_map(|module| module.as_deref())
             .filter(|module| {
                 module.id() != input.module_id
-                    && module
-                        .outputs()
-                        .iter()
-                        .any(|output| output.data_type() == input_data_type)
+                    && self.is_compatible(&module.output_type(), &input.input_type)
                     && !self.is_connected_to_source(module.id(), input.module_id)
             })
-            .flat_map(|module| {
-                module
-                    .outputs()
-                    .iter()
-                    .filter(|output| output.data_type() == input_data_type)
-                    .map(|output| AvailableInputSourceUI {
-                        output: ModuleOutput::new(*output, module.id()),
-                        label: module.label(),
-                    })
+            .map(|module| AvailableInputSourceUI {
+                output: ModuleOutput::new(module.output_type(), module.id()),
+                label: module.label(),
             })
             .collect()
     }
@@ -677,7 +700,7 @@ impl SynthEngine {
         ))
         .unwrap();
         self.set_link(ModuleLink::link(
-            ModuleOutput::output(amp_env_id),
+            ModuleOutput::scalar(amp_env_id),
             ModuleInput::level(amp_id),
         ))
         .unwrap();
@@ -734,6 +757,10 @@ impl SynthEngine {
                     Some(Box::new($module_type::new(*$module_id, Arc::clone($cfg)))),
                 );
             }};
+            ($module_type:ident, $module_id:ident) => {{
+                self.modules
+                    .insert(*$module_id, Some(Box::new($module_type::new(*$module_id))));
+            }};
         }
 
         if modules_cfg.is_empty() {
@@ -766,8 +793,9 @@ impl Router for SynthEngine {
     fn get_input<'a>(
         &'a self,
         input: ModuleInput,
+        samples: usize,
         voice_idx: usize,
-        channel: usize,
+        channel_idx: usize,
         input_buffer: &'a mut Buffer,
     ) -> Option<&'a Buffer> {
         let sources = self.input_sources.get(&input)?;
@@ -776,36 +804,43 @@ impl Router for SynthEngine {
             return None;
         }
 
-        if sources.len() == 1 && sources[0].modulation.is_none() {
-            return get_module!(self, &sources[0].src.module_id)
-                .map(|module| module.get_buffer_output(voice_idx, channel));
+        if sources.len() == 1
+            && let Some(first) = sources.first()
+            && first.modulation.is_none()
+            && first.src.data_type() == DataType::Buffer
+        {
+            return get_module!(self, &first.src.module_id)
+                .map(|module| module.get_buffer_output(voice_idx, channel_idx));
         }
 
-        let buffs = sources.iter().filter_map(|source| {
-            get_module!(self, &source.src.module_id).map(|module| {
-                (
-                    module.get_buffer_output(voice_idx, channel),
-                    source.modulation,
-                )
-            })
+        let result = &mut input_buffer[..samples];
+
+        let modules = sources.iter().filter_map(|source| {
+            get_module!(self, &source.src.module_id)
+                .map(|module| (module, source.modulation, source.src.data_type()))
         });
 
-        for (idx, (buff, mod_amount)) in buffs.enumerate() {
-            let mod_amount = mod_amount.map_or(1.0, |stereo_amount| stereo_amount[channel]);
+        for (mod_idx, (module, modulation, data_type)) in modules.enumerate() {
+            let mod_amount = modulation.map_or(1.0, |stereo_amount| stereo_amount[channel_idx]);
 
-            macro_rules! merge_buff {
-                ($op:tt) => {
-                    for (input, buff) in input_buffer.iter_mut().zip(buff) {
-                        *input $op buff * mod_amount;
-                    }
-                };
-            }
+            if data_type == DataType::Buffer {
+                let buff = module.get_buffer_output(voice_idx, channel_idx);
 
-            if idx == 0 {
-                merge_buff!(=);
+                fill_or_append_buffer_slice(
+                    mod_idx == 0,
+                    result,
+                    buff.iter().map(|sample| sample * mod_amount),
+                );
             } else {
-                merge_buff!(+=);
-            }
+                let (from_value, to_value) = module.get_scalar_output(voice_idx, channel_idx);
+                let step = (to_value - from_value) * (samples as Sample).recip();
+
+                fill_or_append_buffer_slice(
+                    mod_idx == 0,
+                    result,
+                    (0..samples).map(|idx| (from_value + step * idx as Sample) * mod_amount),
+                );
+            };
         }
 
         Some(input_buffer)
@@ -816,7 +851,7 @@ impl Router for SynthEngine {
         input: ModuleInput,
         voice_idx: usize,
         channel: usize,
-    ) -> Option<SpectralOutputs<'_>> {
+    ) -> Option<&SpectralBuffer> {
         let sources = self.input_sources.get(&input)?;
 
         if sources.is_empty() {
@@ -832,14 +867,14 @@ impl Router for SynthEngine {
         input: ModuleInput,
         voice_idx: usize,
         channel: usize,
-    ) -> Option<ScalarOutputs> {
+    ) -> Option<Sample> {
         let sources = self.input_sources.get(&input)?;
 
         if sources.is_empty() {
             return None;
         }
 
-        let mut outputs = ScalarOutputs::zero();
+        let mut output: Sample = 0.0;
 
         let values = sources.iter().filter_map(|source| {
             get_module!(self, &source.src.module_id).map(|module| {
@@ -850,13 +885,10 @@ impl Router for SynthEngine {
             })
         });
 
-        for (value, mod_amount) in values {
-            let mod_amount = mod_amount.map_or(1.0, |stereo_amount| stereo_amount[channel]);
-
-            outputs.first += value.first * mod_amount;
-            outputs.current += value.current * mod_amount;
+        for ((_, value), mod_amount) in values {
+            output += value * mod_amount.map_or(1.0, |stereo_amount| stereo_amount[channel]);
         }
 
-        Some(outputs)
+        Some(output)
     }
 }
