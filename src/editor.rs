@@ -8,10 +8,14 @@ use nih_plug::editor::Editor;
 use parking_lot::Mutex;
 
 use crate::{
-    editor::{direct_input::DirectInput, gain_slider::GainSlider, stereo_slider::StereoSlider},
+    editor::{
+        gain_slider::GainSlider,
+        modules_ui::{AmplifierUI, SpectralFilterUI},
+        stereo_slider::StereoSlider,
+    },
     synth_engine::{
-        Amplifier, Envelope, HarmonicEditor, ModuleId, ModuleInput, ModuleType, Oscillator,
-        SpectralFilter, StereoSample, SynthEngine, SynthModule,
+        Envelope, HarmonicEditor, ModuleId, ModuleType, Oscillator, StereoSample, SynthEngine,
+        SynthModule,
     },
     utils::{from_ms, st_to_octave},
 };
@@ -24,6 +28,7 @@ mod direct_input;
 mod egui_integration;
 mod gain_slider;
 mod modulation_input;
+mod modules_ui;
 mod stereo_slider;
 
 struct HarmonicEditorState {
@@ -160,78 +165,6 @@ fn harmonic_editor_ui(
     if need_update {
         harmonic_editor.apply_harmonics();
     }
-}
-
-fn spectral_filter_ui(ui: &mut Ui, synth_engine: &mut SynthEngine, module_id: ModuleId) {
-    let spectral_filter =
-        SpectralFilter::downcast_mut_unwrap(synth_engine.get_module_mut(module_id));
-
-    let mut filter_ui = spectral_filter.get_ui();
-
-    ui.heading("Spectral filter");
-
-    Grid::new("sf_grid")
-        .num_columns(2)
-        .spacing([40.0, 4.0])
-        .striped(true)
-        .show(ui, |ui| {
-            ui.label("Cutoff");
-            if ui
-                .add(StereoSlider::octave(&mut filter_ui.cutoff).width(200.0))
-                .changed()
-            {
-                spectral_filter.set_cutoff(filter_ui.cutoff);
-            }
-            ui.end_row();
-
-            ui.label("Q");
-            if ui
-                .add(StereoSlider::q(&mut filter_ui.q).width(200.0))
-                .changed()
-            {
-                spectral_filter.set_q(filter_ui.q);
-            }
-            ui.end_row();
-
-            ui.label("Four pole");
-            if ui
-                .add(Checkbox::without_text(&mut filter_ui.four_pole))
-                .changed()
-            {
-                spectral_filter.set_four_pole(filter_ui.four_pole);
-            }
-            ui.end_row();
-        });
-}
-
-fn amplifier_ui(ui: &mut Ui, synth_engine: &mut SynthEngine, module_id: ModuleId) {
-    let amp = Amplifier::downcast_mut_unwrap(synth_engine.get_module_mut(module_id));
-    let mut amp_ui = amp.get_ui();
-
-    ui.heading("Amplifier");
-
-    Grid::new("amp_grid")
-        .num_columns(2)
-        .spacing([40.0, 4.0])
-        .striped(true)
-        .show(ui, |ui| {
-            ui.label("Input");
-            ui.add(DirectInput::new(
-                synth_engine,
-                ModuleInput::input(module_id),
-            ));
-            ui.end_row();
-
-            ui.label("Level");
-            if ui
-                .add(StereoSlider::level(&mut amp_ui.level).width(200.0))
-                .changed()
-            {
-                Amplifier::downcast_mut_unwrap(synth_engine.get_module_mut(module_id))
-                    .set_level(amp_ui.level);
-            }
-            ui.end_row();
-        });
 }
 
 fn oscillator_ui(ui: &mut Ui, synth_engine: &mut SynthEngine, module_id: ModuleId) {
@@ -397,8 +330,12 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState, synth_engine: &mut S
                         &mut editor_state.harmonic_editor,
                         module_id,
                     ),
-                    ModuleType::SpectralFilter => spectral_filter_ui(ui, synth_engine, module_id),
-                    ModuleType::Amplifier => amplifier_ui(ui, synth_engine, module_id),
+                    ModuleType::SpectralFilter => {
+                        ui.add(SpectralFilterUI::new(module_id, synth_engine));
+                    }
+                    ModuleType::Amplifier => {
+                        ui.add(AmplifierUI::new(module_id, synth_engine));
+                    }
                     ModuleType::Oscillator => oscillator_ui(ui, synth_engine, module_id),
                     ModuleType::Envelope => envelope_ui(ui, synth_engine, module_id),
                 }

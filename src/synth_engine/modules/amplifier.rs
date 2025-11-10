@@ -27,7 +27,7 @@ pub struct AmplifierConfig {
     channels: [AmplifierConfigChannel; NUM_CHANNELS],
 }
 
-pub struct AmplifierUI {
+pub struct AmplifierUIData {
     pub level: StereoSample,
 }
 
@@ -100,8 +100,8 @@ impl Amplifier {
 
     gen_downcast_methods!(Amplifier);
 
-    pub fn get_ui(&self) -> AmplifierUI {
-        AmplifierUI {
+    pub fn get_ui(&self) -> AmplifierUIData {
+        AmplifierUIData {
             level: StereoSample::from_iter(self.channels.iter().map(|channel| channel.level)),
         }
     }
@@ -132,7 +132,7 @@ impl Amplifier {
         let voice = &mut channel.voices[voice_idx];
         let input = router
             .get_input(
-                ModuleInput::input(id),
+                ModuleInput::audio(id),
                 params.samples,
                 voice_idx,
                 channel_idx,
@@ -171,11 +171,11 @@ impl SynthModule for Amplifier {
     }
 
     fn inputs(&self) -> &'static [InputType] {
-        &[InputType::Input, InputType::Level]
+        &[InputType::Audio, InputType::Level]
     }
 
     fn output_type(&self) -> OutputType {
-        OutputType::Output
+        OutputType::Audio
     }
 
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {

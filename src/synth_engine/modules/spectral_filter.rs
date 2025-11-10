@@ -34,7 +34,7 @@ pub struct SpectralFilterConfig {
     four_pole: bool,
 }
 
-pub struct SpectralFilterUI {
+pub struct SpectralFilterUIData {
     pub cutoff: StereoSample,
     pub q: StereoSample,
     pub four_pole: bool,
@@ -126,8 +126,8 @@ impl SpectralFilter {
 
     gen_downcast_methods!(SpectralFilter);
 
-    pub fn get_ui(&self) -> SpectralFilterUI {
-        SpectralFilterUI {
+    pub fn get_ui(&self) -> SpectralFilterUIData {
+        SpectralFilterUIData {
             cutoff: extract_param!(self, cutoff),
             q: extract_param!(self, q),
             four_pole: self.four_pole,
@@ -142,34 +142,6 @@ impl SpectralFilter {
     set_param_method!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
     set_param_method!(set_q, q, q.clamp(0.1, 10.0));
 
-    fn process_buffer(
-        channel: &ChannelParams,
-        four_pole: bool,
-        input_spectrum: &SpectralBuffer,
-        output_buff: &mut SpectralBuffer,
-        cutoff_mod: Sample,
-    ) {
-        let range = 1..SPECTRAL_BUFFER_SIZE - 1;
-        let input_buff = &input_spectrum[range.clone()];
-        let output_buff = &mut output_buff[range];
-        let cutoff_freq = (channel.cutoff + cutoff_mod).exp2();
-        let cutoff_squared = cutoff_freq * cutoff_freq;
-        let numerator = ComplexSample::new(cutoff_squared, 0.0);
-        let q_mult = channel.q.recip();
-
-        for (idx, (out_freq, in_freq)) in output_buff.iter_mut().zip(input_buff).enumerate() {
-            let freq = (idx + 1) as Sample;
-            let mut filter_response = numerator
-                / ComplexSample::new(cutoff_squared - (freq * freq), cutoff_freq * freq * q_mult);
-
-            if four_pole {
-                filter_response *= filter_response;
-            }
-
-            *out_freq = filter_response * in_freq;
-        }
-    }
-
     fn process_channel_voice(
         module_id: ModuleId,
         four_pole: bool,
@@ -183,20 +155,31 @@ impl SpectralFilter {
             .get_spectral_input(ModuleInput::spectrum(module_id), voice_idx, channel_idx)
             .unwrap_or(&ZEROES_SPECTRAL_BUFFER);
         let cutoff_mod = router
-            .get_scalar_input(
-                ModuleInput::cutoff_scalar(module_id),
-                voice_idx,
-                channel_idx,
-            )
+            .get_scalar_input(ModuleInput::cutoff(module_id), voice_idx, channel_idx)
+            .unwrap_or(0.0);
+        let q_mod = router
+            .get_scalar_input(ModuleInput::q(module_id), voice_idx, channel_idx)
             .unwrap_or(0.0);
 
-        Self::process_buffer(
-            &channel.params,
-            four_pole,
-            spectrum,
-            &mut voice.output,
-            cutoff_mod,
-        );
+        let range = 1..SPECTRAL_BUFFER_SIZE - 1;
+        let input_buff = &spectrum[range.clone()];
+        let output_buff = &mut voice.output[range];
+        let cutoff_freq = (channel.params.cutoff + cutoff_mod).exp2();
+        let cutoff_squared = cutoff_freq * cutoff_freq;
+        let numerator = ComplexSample::new(cutoff_squared, 0.0);
+        let q_mult = (channel.params.q + q_mod).clamp(0.1, 10.0).recip();
+
+        for (idx, (out_freq, in_freq)) in output_buff.iter_mut().zip(input_buff).enumerate() {
+            let freq = (idx + 1) as Sample;
+            let mut filter_response = numerator
+                / ComplexSample::new(cutoff_squared - (freq * freq), cutoff_freq * freq * q_mult);
+
+            if four_pole {
+                filter_response *= filter_response;
+            }
+
+            *out_freq = filter_response * in_freq;
+        }
     }
 }
 
@@ -214,7 +197,7 @@ impl SynthModule for SpectralFilter {
     }
 
     fn inputs(&self) -> &'static [InputType] {
-        &[InputType::Spectrum, InputType::Cutoff]
+        &[InputType::Spectrum, InputType::Cutoff, InputType::Q]
     }
 
     fn output_type(&self) -> OutputType {

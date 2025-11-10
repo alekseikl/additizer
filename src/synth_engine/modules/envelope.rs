@@ -2,11 +2,14 @@ use std::any::Any;
 
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::{
-    envelope::{self, EnvelopeActivityState, EnvelopeChannel, EnvelopeVoice},
-    routing::{InputType, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, OutputType, Router},
-    synth_module::{ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
-    types::{Sample, StereoSample},
+use crate::{
+    synth_engine::{
+        envelope::{self, EnvelopeActivityState, EnvelopeChannel, EnvelopeVoice},
+        routing::{InputType, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, OutputType, Router},
+        synth_module::{ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
+        types::{Sample, StereoSample},
+    },
+    utils::from_ms,
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -24,7 +27,7 @@ impl Default for EnvelopeConfig {
     }
 }
 
-pub struct EnvelopeUI {
+pub struct EnvelopeUIData {
     pub attack: StereoSample,
     pub decay: StereoSample,
     pub sustain: StereoSample,
@@ -109,8 +112,8 @@ impl Envelope {
 
     gen_downcast_methods!(Envelope);
 
-    pub fn get_ui(&self) -> EnvelopeUI {
-        EnvelopeUI {
+    pub fn get_ui(&self) -> EnvelopeUIData {
+        EnvelopeUIData {
             attack: extract_param!(self, attack),
             decay: extract_param!(self, decay),
             sustain: extract_param!(self, sustain),
@@ -133,7 +136,7 @@ impl Envelope {
     set_param_method!(set_attack, attack, *attack);
     set_param_method!(set_decay, decay, *decay);
     set_param_method!(set_sustain, sustain, *sustain);
-    set_param_method!(set_release, release, *release);
+    set_param_method!(set_release, release, release.max(from_ms(2.0)));
 
     pub fn check_activity(&self, activity: &mut [EnvelopeActivityState]) {
         if self.keep_voice_alive {

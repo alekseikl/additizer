@@ -64,7 +64,7 @@ impl Default for OscillatorConfig {
     }
 }
 
-pub struct OscillatorUI {
+pub struct OscillatorUIData {
     pub level: StereoSample,
     pub pitch_shift: StereoSample,
     pub detune: StereoSample,
@@ -189,8 +189,8 @@ impl Oscillator {
 
     gen_downcast_methods!(Oscillator);
 
-    pub fn get_ui(&self) -> OscillatorUI {
-        OscillatorUI {
+    pub fn get_ui(&self) -> OscillatorUIData {
+        OscillatorUIData {
             level: extract_param!(self, level),
             pitch_shift: extract_param!(self, pitch_shift),
             detune: extract_param!(self, detune),
@@ -416,7 +416,7 @@ impl SynthModule for Oscillator {
     }
 
     fn output_type(&self) -> OutputType {
-        OutputType::Output
+        OutputType::Audio
     }
 
     fn note_on(&mut self, params: &NoteOnParams, router: &dyn Router) {

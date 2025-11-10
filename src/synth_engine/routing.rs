@@ -29,32 +29,34 @@ pub enum DataType {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 pub enum InputType {
-    Input,
+    Audio,
     ScalarInput,
     Level,
     PitchShift,
     Detune,
     Spectrum,
     Cutoff,
+    Q,
 }
 
 impl InputType {
     pub fn data_type(&self) -> DataType {
         match self {
-            Self::Input => DataType::Buffer,
+            Self::Audio => DataType::Buffer,
             Self::ScalarInput => DataType::Scalar,
             Self::Level => DataType::Buffer,
             Self::PitchShift => DataType::Buffer,
             Self::Detune => DataType::Buffer,
             Self::Spectrum => DataType::Spectral,
             Self::Cutoff => DataType::Scalar,
+            Self::Q => DataType::Scalar,
         }
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 pub enum OutputType {
-    Output,
+    Audio,
     Spectrum,
     Scalar,
 }
@@ -62,7 +64,7 @@ pub enum OutputType {
 impl OutputType {
     pub fn data_type(&self) -> DataType {
         match self {
-            Self::Output => DataType::Buffer,
+            Self::Audio => DataType::Buffer,
             Self::Spectrum => DataType::Spectral,
             Self::Scalar => DataType::Scalar,
         }
@@ -95,13 +97,14 @@ impl ModuleInput {
         self.input_type.data_type()
     }
 
-    input_ctor!(input, Input);
+    input_ctor!(audio, Audio);
     input_ctor!(scalar_input, ScalarInput);
     input_ctor!(level, Level);
     input_ctor!(pitch_shift, PitchShift);
     input_ctor!(detune, Detune);
     input_ctor!(spectrum, Spectrum);
-    input_ctor!(cutoff_scalar, Cutoff);
+    input_ctor!(cutoff, Cutoff);
+    input_ctor!(q, Q);
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
@@ -130,7 +133,7 @@ impl ModuleOutput {
         self.output_type.data_type()
     }
 
-    output_ctor!(output, Output);
+    output_ctor!(audio, Audio);
     output_ctor!(spectrum, Spectrum);
     output_ctor!(scalar, Scalar);
 }
@@ -139,7 +142,7 @@ impl ModuleOutput {
 pub struct ModuleLink {
     pub src: ModuleOutput,
     pub dst: ModuleInput,
-    pub modulation: Option<StereoSample>,
+    pub modulation: StereoSample,
 }
 
 impl ModuleLink {
@@ -147,7 +150,7 @@ impl ModuleLink {
         Self {
             src,
             dst,
-            modulation: None,
+            modulation: StereoSample::ONE,
         }
     }
 
@@ -159,7 +162,7 @@ impl ModuleLink {
         Self {
             src,
             dst,
-            modulation: Some(amount.into()),
+            modulation: amount.into(),
         }
     }
 }
@@ -171,7 +174,7 @@ pub struct AvailableInputSourceUI {
 
 pub struct ConnectedInputSourceUI {
     pub output: ModuleOutput,
-    pub modulation: Option<StereoSample>,
+    pub modulation: StereoSample,
     pub label: String,
 }
 

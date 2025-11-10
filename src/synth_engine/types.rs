@@ -9,17 +9,20 @@ pub type Sample = f32;
 pub type Phase = u32;
 pub type ComplexSample = Complex<Sample>;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct StereoSample {
     channels: [Sample; NUM_CHANNELS],
 }
 
 impl StereoSample {
-    pub fn new(l: Sample, r: Sample) -> Self {
+    pub const ZERO: StereoSample = StereoSample::splat(0.0);
+    pub const ONE: StereoSample = StereoSample::splat(1.0);
+
+    pub const fn new(l: Sample, r: Sample) -> Self {
         Self { channels: [l, r] }
     }
 
-    pub fn splat(lr: Sample) -> Self {
+    pub const fn splat(lr: Sample) -> Self {
         Self { channels: [lr, lr] }
     }
 
