@@ -42,15 +42,6 @@ impl<'a> StereoSlider<'a> {
         Self::new(value).default_value(1.0).precision(2)
     }
 
-    pub fn octave(value: &'a mut StereoSample) -> Self {
-        Self::new(value)
-            .range(-4.0..=10.0)
-            .display_scale(12.0)
-            .default_value(0.0)
-            .precision(2)
-            .units("st")
-    }
-
     pub fn envelope_time(value: &'a mut StereoSample) -> Self {
         Self::new(value)
             .range(0.0..=8.0)

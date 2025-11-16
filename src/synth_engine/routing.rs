@@ -37,6 +37,11 @@ pub enum InputType {
     Spectrum,
     Cutoff,
     Q,
+    Attack,
+    Hold,
+    Decay,
+    Sustain,
+    Release,
 }
 
 impl InputType {
@@ -50,6 +55,11 @@ impl InputType {
             Self::Spectrum => DataType::Spectral,
             Self::Cutoff => DataType::Scalar,
             Self::Q => DataType::Scalar,
+            Self::Attack => DataType::Scalar,
+            Self::Hold => DataType::Scalar,
+            Self::Decay => DataType::Scalar,
+            Self::Sustain => DataType::Scalar,
+            Self::Release => DataType::Scalar,
         }
     }
 }
@@ -105,6 +115,11 @@ impl ModuleInput {
     input_ctor!(spectrum, Spectrum);
     input_ctor!(cutoff, Cutoff);
     input_ctor!(q, Q);
+    input_ctor!(attack, Attack);
+    input_ctor!(hold, Hold);
+    input_ctor!(decay, Decay);
+    input_ctor!(sustain, Sustain);
+    input_ctor!(release, Release);
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]

@@ -31,7 +31,7 @@ impl Widget for AmplifierUI<'_> {
 
         Grid::new("amp_grid")
             .num_columns(2)
-            .spacing([40.0, 4.0])
+            .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Input");

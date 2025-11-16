@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use egui_baseview::egui::{
-    CentralPanel, Checkbox, Color32, DragValue, Frame, Grid, Margin, Response, ScrollArea, Sense,
-    Separator, SidePanel, TopBottomPanel, Ui, Vec2, style::ScrollStyle, vec2,
+    CentralPanel, Checkbox, Color32, Frame, Grid, Margin, Response, ScrollArea, Sense, Separator,
+    SidePanel, Ui, Vec2, vec2,
 };
 use nih_plug::editor::Editor;
 use parking_lot::Mutex;
@@ -10,14 +10,11 @@ use parking_lot::Mutex;
 use crate::{
     editor::{
         gain_slider::GainSlider,
-        modules_ui::{AmplifierUI, SpectralFilterUI},
+        modules_ui::{AmplifierUI, HarmonicEditorUI, OscillatorUI, SpectralFilterUI},
         stereo_slider::StereoSlider,
     },
-    synth_engine::{
-        Envelope, HarmonicEditor, ModuleId, ModuleType, Oscillator, StereoSample, SynthEngine,
-        SynthModule,
-    },
-    utils::{from_ms, st_to_octave},
+    synth_engine::{Envelope, ModuleId, ModuleType, SynthEngine, SynthModule},
+    utils::from_ms,
 };
 
 use egui_integration::{ResizableWindow, create_egui_editor};
@@ -31,28 +28,14 @@ mod modulation_input;
 mod modules_ui;
 mod stereo_slider;
 
-struct HarmonicEditorState {
-    level: StereoSample,
-}
-
-impl Default for HarmonicEditorState {
-    fn default() -> Self {
-        Self {
-            level: StereoSample::splat(-0.1),
-        }
-    }
-}
-
 struct EditorState {
     selected_module_id: Option<ModuleId>,
-    harmonic_editor: HarmonicEditorState,
 }
 
 impl EditorState {
     pub fn new() -> Self {
         Self {
             selected_module_id: None,
-            harmonic_editor: HarmonicEditorState::default(),
         }
     }
 }
@@ -107,129 +90,6 @@ fn show_side_bar(
                     }
                 })
             });
-        });
-}
-
-fn harmonic_editor_ui(
-    ui: &mut Ui,
-    synth_engine: &mut SynthEngine,
-    _state: &mut HarmonicEditorState,
-    module_id: ModuleId,
-) {
-    let harmonic_editor =
-        HarmonicEditor::downcast_mut(synth_engine.get_module_mut(module_id).unwrap()).unwrap();
-    let mut need_update = false;
-
-    ui.style_mut().spacing.scroll = ScrollStyle::solid();
-
-    TopBottomPanel::top("harmonics-list")
-        .resizable(true)
-        .height_range(150.0..=400.0)
-        .default_height(200.0)
-        .frame(Frame::NONE.inner_margin(Margin {
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 8,
-        }))
-        .show_inside(ui, |ui| {
-            ScrollArea::horizontal().show(ui, |ui| {
-                ui.horizontal_top(|ui| {
-                    let harmonics = harmonic_editor.harmonics_ref_mut();
-                    let height = ui.available_height();
-
-                    ui.style_mut().spacing.item_spacing = Vec2::splat(2.0);
-                    ui.style_mut().interaction.tooltip_delay = 0.1;
-                    ui.style_mut().interaction.show_tooltips_only_when_still = false;
-
-                    for (idx, harmonic) in harmonics.iter_mut().enumerate() {
-                        if ui
-                            .add(
-                                GainSlider::new(harmonic)
-                                    .label(&format!("{}", idx + 1))
-                                    .height(height),
-                            )
-                            .changed()
-                        {
-                            need_update = true;
-                        }
-                    }
-                });
-            });
-        });
-
-    CentralPanel::default().show_inside(ui, |ui| {
-        ui.label("Harmonics editor");
-    });
-
-    if need_update {
-        harmonic_editor.apply_harmonics();
-    }
-}
-
-fn oscillator_ui(ui: &mut Ui, synth_engine: &mut SynthEngine, module_id: ModuleId) {
-    let osc = Oscillator::downcast_mut_unwrap(synth_engine.get_module_mut(module_id));
-    let mut osc_ui = osc.get_ui();
-
-    ui.heading("Oscillator");
-
-    Grid::new("osc_grid")
-        .num_columns(2)
-        .spacing([40.0, 4.0])
-        .striped(true)
-        .show(ui, |ui| {
-            ui.label("Level");
-            if ui.add(StereoSlider::level(&mut osc_ui.level)).changed() {
-                osc.set_level(osc_ui.level);
-            }
-            ui.end_row();
-
-            ui.label("Pitch shift");
-            if ui
-                .add(
-                    StereoSlider::octave(&mut osc_ui.pitch_shift)
-                        .range(0.0..=st_to_octave(60.0))
-                        .skew(1.6)
-                        .allow_inverse(),
-                )
-                .changed()
-            {
-                osc.set_pitch_shift(osc_ui.pitch_shift);
-            }
-            ui.end_row();
-
-            ui.label("Detune");
-            if ui
-                .add(
-                    StereoSlider::new(&mut osc_ui.detune)
-                        .range(0.0..=st_to_octave(1.0))
-                        .display_scale(1200.0)
-                        .default_value(st_to_octave(0.2))
-                        .units("cents"),
-                )
-                .changed()
-            {
-                osc.set_detune(osc_ui.detune);
-            }
-            ui.end_row();
-
-            ui.label("Unison");
-            if ui
-                .add(DragValue::new(&mut osc_ui.unison).range(1..=16))
-                .changed()
-            {
-                osc.set_unison(osc_ui.unison);
-            }
-            ui.end_row();
-
-            ui.label("Same note phases");
-            if ui
-                .add(Checkbox::without_text(&mut osc_ui.same_channel_phases))
-                .changed()
-            {
-                osc.set_same_channels_phases(osc_ui.same_channel_phases);
-            }
-            ui.end_row();
         });
 }
 
@@ -324,19 +184,18 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState, synth_engine: &mut S
                 && let Some(module) = synth_engine.get_module(module_id)
             {
                 match module.module_type() {
-                    ModuleType::HarmonicEditor => harmonic_editor_ui(
-                        ui,
-                        synth_engine,
-                        &mut editor_state.harmonic_editor,
-                        module_id,
-                    ),
+                    ModuleType::HarmonicEditor => {
+                        ui.add(HarmonicEditorUI::new(module_id, synth_engine));
+                    }
                     ModuleType::SpectralFilter => {
                         ui.add(SpectralFilterUI::new(module_id, synth_engine));
                     }
                     ModuleType::Amplifier => {
                         ui.add(AmplifierUI::new(module_id, synth_engine));
                     }
-                    ModuleType::Oscillator => oscillator_ui(ui, synth_engine, module_id),
+                    ModuleType::Oscillator => {
+                        ui.add(OscillatorUI::new(module_id, synth_engine));
+                    }
                     ModuleType::Envelope => envelope_ui(ui, synth_engine, module_id),
                 }
             }

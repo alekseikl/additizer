@@ -17,8 +17,8 @@ use crate::{
         },
         config::ModuleConfig,
         modules::{
-            AmplifierConfig, EnvelopeConfig, HarmonicEditorConfig, OscillatorConfig,
-            SpectralFilterConfig,
+            AmplifierConfig, EnvelopeActivityState, EnvelopeConfig, EnvelopeCurve,
+            HarmonicEditorConfig, OscillatorConfig, SpectralFilterConfig,
         },
         routing::{
             AvailableInputSourceUI, DataType, MAX_VOICES, MIN_MODULE_ID, OUTPUT_MODULE_ID,
@@ -40,7 +40,6 @@ pub use types::{Sample, StereoSample};
 
 mod buffer;
 mod config;
-mod envelope;
 #[macro_use]
 mod synth_module;
 mod modules;
@@ -168,7 +167,7 @@ impl SynthEngine {
             modules_to_execute: HashSet::new(),
             execution_order: Vec::new(),
             voices: Default::default(),
-            output_level: StereoSample::splat(1.0),
+            output_level: StereoSample::splat(0.25),
             output_level_param: Arc::new(FloatParam::new(
                 "",
                 0.0,
@@ -425,12 +424,12 @@ impl SynthEngine {
         outputs: impl Iterator<Item = &'a mut [f32]>,
         mut on_terminate_voice: impl FnMut(VoiceId),
     ) {
-        let mut env_activity: SmallVec<[envelope::EnvelopeActivityState; MAX_VOICES]> = self
+        let mut env_activity: SmallVec<[EnvelopeActivityState; MAX_VOICES]> = self
             .voices
             .iter()
             .enumerate()
             .filter(|(_, voice)| voice.active)
-            .map(|(voice_idx, _)| envelope::EnvelopeActivityState {
+            .map(|(voice_idx, _)| EnvelopeActivityState {
                 voice_idx,
                 active: false,
             })
@@ -596,6 +595,8 @@ impl SynthEngine {
         for (channel, (output, level)) in outputs.zip(self.output_level.iter()).enumerate() {
             let output = &mut output[..params.samples];
 
+            output.fill(0.0);
+
             for (idx, voice_idx) in params.active_voices.iter().enumerate() {
                 let input = self
                     .get_input(
@@ -710,6 +711,14 @@ impl SynthEngine {
             .set_sustain(0.0.into())
             .set_release(from_ms(100.0).into());
 
+        typed_module_mut!(&filter_env_id, Envelope)
+            .unwrap()
+            .set_decay_curve(EnvelopeCurve::ExponentialOut(0.2));
+
+        typed_module_mut!(&filter_env_id, Envelope)
+            .unwrap()
+            .set_attack_curve(EnvelopeCurve::ExponentialIn(0.2));
+
         typed_module_mut!(&filter_id, SpectralFilter)
             .unwrap()
             .set_cutoff(2.0.into());
@@ -725,6 +734,10 @@ impl SynthEngine {
             .set_decay(from_ms(20.0).into())
             .set_sustain(1.0.into())
             .set_release(from_ms(300.0).into());
+
+        typed_module_mut!(&amp_env_id, Envelope)
+            .unwrap()
+            .set_decay_curve(EnvelopeCurve::ExponentialOut(0.1));
 
         self.set_link(ModuleLink::link(
             ModuleOutput::spectrum(harmonic_editor_id),

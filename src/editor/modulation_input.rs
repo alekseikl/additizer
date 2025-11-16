@@ -64,6 +64,8 @@ impl<'a> ModulationInput<'a> {
                 .precision(2)
                 .allow_inverse()
                 .units("st"),
+            InputType::Sustain => slider,
+            InputType::Attack | InputType::Hold | InputType::Decay | InputType::Release => slider,
             InputType::Audio | InputType::Spectrum | InputType::ScalarInput => slider,
         }
     }
@@ -98,6 +100,8 @@ impl<'a> ModulationInput<'a> {
                 .precision(2)
                 .allow_inverse()
                 .units("st"),
+            InputType::Sustain => slider,
+            InputType::Attack | InputType::Hold | InputType::Decay | InputType::Release => slider,
             InputType::Audio | InputType::Spectrum | InputType::ScalarInput => slider,
         };
 
