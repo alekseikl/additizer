@@ -9,10 +9,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     synth_engine::{
         buffer::{
-            BUFFER_SIZE, Buffer, ONES_BUFFER, SpectralBuffer, WAVEFORM_BITS, WAVEFORM_SIZE,
-            WaveformBuffer, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER, get_interpolated_sample,
-            get_wave_slice_mut, make_zero_buffer, make_zero_spectral_buffer, make_zero_wave_buffer,
-            wrap_wave_buffer,
+            Buffer, ONES_BUFFER, SpectralBuffer, WAVEFORM_BITS, WAVEFORM_SIZE, WaveformBuffer,
+            ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER, get_interpolated_sample, get_wave_slice_mut,
+            make_zero_buffer, make_zero_spectral_buffer, make_zero_wave_buffer, wrap_wave_buffer,
         },
         routing::{
             InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, OutputType,
@@ -321,7 +320,7 @@ impl Oscillator {
         voice.wave_buffers_swapped = !voice.wave_buffers_swapped;
 
         let freq_phase_mult = FULL_PHASE / sample_rate;
-        let buff_t_mult = (BUFFER_SIZE as f32).recip();
+        let buff_t_mult = (params.samples as f32).recip();
         let fixed_octave = voice.octave + channel.pitch_shift;
 
         if common.unison > 1 {

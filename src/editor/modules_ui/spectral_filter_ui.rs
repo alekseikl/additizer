@@ -28,6 +28,7 @@ impl Widget for SpectralFilterUI<'_> {
         let mut ui_data = self.filter().get_ui();
 
         ui.heading("Spectral filter");
+        ui.add_space(20.0);
 
         Grid::new("sf_grid")
             .num_columns(2)

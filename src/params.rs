@@ -24,6 +24,9 @@ pub struct AdditizerParams {
 
     #[id = "volume"]
     pub volume: Arc<FloatParam>,
+
+    #[id = "buffer-size"]
+    pub buffer_size: IntParam,
 }
 
 impl Default for AdditizerParams {
@@ -46,6 +49,7 @@ impl Default for AdditizerParams {
                 .with_step_size(0.01)
                 .with_unit(" dB"),
             ),
+            buffer_size: IntParam::new("Buffer size", 128, IntRange::Linear { min: 32, max: 128 }),
         }
     }
 }

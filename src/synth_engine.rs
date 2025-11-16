@@ -17,8 +17,8 @@ use crate::{
         },
         config::ModuleConfig,
         modules::{
-            AmplifierConfig, EnvelopeActivityState, EnvelopeConfig, EnvelopeCurve,
-            HarmonicEditorConfig, OscillatorConfig, SpectralFilterConfig,
+            AmplifierConfig, EnvelopeActivityState, EnvelopeConfig, HarmonicEditorConfig,
+            OscillatorConfig, SpectralFilterConfig,
         },
         routing::{
             AvailableInputSourceUI, DataType, MAX_VOICES, MIN_MODULE_ID, OUTPUT_MODULE_ID,
@@ -31,7 +31,7 @@ use crate::{
 
 pub use buffer::BUFFER_SIZE;
 pub use config::Config;
-pub use modules::{Amplifier, Envelope, HarmonicEditor, Oscillator, SpectralFilter};
+pub use modules::{Amplifier, Envelope, EnvelopeCurve, HarmonicEditor, Oscillator, SpectralFilter};
 pub use routing::{
     ConnectedInputSourceUI, InputType, ModuleId, ModuleInput, ModuleLink, ModuleOutput, ModuleType,
 };

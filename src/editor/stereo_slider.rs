@@ -38,20 +38,6 @@ impl<'a> StereoSlider<'a> {
         }
     }
 
-    pub fn level(value: &'a mut StereoSample) -> Self {
-        Self::new(value).default_value(1.0).precision(2)
-    }
-
-    pub fn envelope_time(value: &'a mut StereoSample) -> Self {
-        Self::new(value)
-            .range(0.0..=8.0)
-            .display_scale(1000.0)
-            .default_value(0.0)
-            .skew(3.0)
-            .precision(1)
-            .units("ms")
-    }
-
     pub fn range(mut self, range: RangeInclusive<Sample>) -> Self {
         self.range = range;
         self
@@ -198,11 +184,8 @@ impl<'a> StereoSlider<'a> {
                 parts.push(self.format_value(self.value.left()));
             }
 
-            if let Some(units) = self.units {
-                parts.push(units.to_string());
-            }
-
-            response = response.on_hover_text_at_pointer(parts.join(" "));
+            response =
+                response.on_hover_text_at_pointer(parts.join(" ") + self.units.unwrap_or_default());
         }
 
         response

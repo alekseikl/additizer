@@ -15,6 +15,7 @@ pub struct ModulationInput<'a> {
     value: &'a mut StereoSample,
     synth_engine: &'a mut SynthEngine,
     input: ModuleInput,
+    default: Option<Sample>,
     modulation_default: Option<Sample>,
 }
 
@@ -28,8 +29,14 @@ impl<'a> ModulationInput<'a> {
             value,
             synth_engine,
             input,
+            default: None,
             modulation_default: None,
         }
+    }
+
+    pub fn default(mut self, default: Sample) -> Self {
+        self.default = Some(default);
+        self
     }
 
     pub fn modulation_default(mut self, default: Sample) -> Self {
@@ -37,15 +44,19 @@ impl<'a> ModulationInput<'a> {
         self
     }
 
-    fn setup_value_slider(slider: StereoSlider<'_>, input_type: InputType) -> StereoSlider<'_> {
-        match input_type {
+    fn setup_value_slider(
+        slider: StereoSlider<'_>,
+        input_type: InputType,
+        default: Option<Sample>,
+    ) -> StereoSlider<'_> {
+        let mut updated = match input_type {
             InputType::Level => slider.default_value(1.0).precision(2),
             InputType::Cutoff => slider
                 .range(-4.0..=10.0)
                 .display_scale(12.0)
                 .default_value(0.0)
                 .precision(2)
-                .units("st"),
+                .units(" st"),
             InputType::Q => slider
                 .range(0.1..=10.0)
                 .default_value(0.7)
@@ -55,7 +66,7 @@ impl<'a> ModulationInput<'a> {
                 .range(0.0..=st_to_octave(1.0))
                 .display_scale(1200.0)
                 .default_value(st_to_octave(0.2))
-                .units("cents"),
+                .units(" cents"),
             InputType::PitchShift => slider
                 .range(0.0..=st_to_octave(60.0))
                 .skew(1.6)
@@ -63,11 +74,27 @@ impl<'a> ModulationInput<'a> {
                 .default_value(0.0)
                 .precision(2)
                 .allow_inverse()
-                .units("st"),
-            InputType::Sustain => slider,
-            InputType::Attack | InputType::Hold | InputType::Decay | InputType::Release => slider,
+                .units(" st"),
+            InputType::Sustain => slider
+                .default_value(0.5)
+                .display_scale(100.0)
+                .precision(2)
+                .units("%"),
+            InputType::Attack | InputType::Hold | InputType::Decay | InputType::Release => slider
+                .range(0.0..=8.0)
+                .display_scale(1000.0)
+                .default_value(0.0)
+                .skew(2.0)
+                .precision(1)
+                .units(" ms"),
             InputType::Audio | InputType::Spectrum | InputType::ScalarInput => slider,
+        };
+
+        if let Some(default) = default {
+            updated = updated.default_value(default);
         }
+
+        updated
     }
 
     fn setup_modulation_slider(&self, slider: StereoSlider<'a>) -> StereoSlider<'a> {
@@ -79,7 +106,7 @@ impl<'a> ModulationInput<'a> {
                 .default_value(0.0)
                 .precision(2)
                 .allow_inverse()
-                .units("st"),
+                .units(" st"),
             InputType::Q => slider
                 .range(0.0..=10.0)
                 .default_value(0.0)
@@ -91,7 +118,7 @@ impl<'a> ModulationInput<'a> {
                 .display_scale(1200.0)
                 .default_value(st_to_octave(0.2))
                 .allow_inverse()
-                .units("cents"),
+                .units(" cents"),
             InputType::PitchShift => slider
                 .range(0.0..=st_to_octave(60.0))
                 .skew(1.8)
@@ -99,9 +126,20 @@ impl<'a> ModulationInput<'a> {
                 .default_value(0.0)
                 .precision(2)
                 .allow_inverse()
-                .units("st"),
-            InputType::Sustain => slider,
-            InputType::Attack | InputType::Hold | InputType::Decay | InputType::Release => slider,
+                .units(" st"),
+            InputType::Sustain => slider
+                .default_value(0.5)
+                .display_scale(100.0)
+                .precision(2)
+                .units("%"),
+            InputType::Attack | InputType::Hold | InputType::Decay | InputType::Release => slider
+                .range(0.0..=8.0)
+                .display_scale(1000.0)
+                .default_value(0.0)
+                .skew(2.0)
+                .precision(1)
+                .allow_inverse()
+                .units(" ms"),
             InputType::Audio | InputType::Spectrum | InputType::ScalarInput => slider,
         };
 
@@ -114,8 +152,12 @@ impl<'a> ModulationInput<'a> {
 
     fn add_slider(&mut self, ui: &mut Ui) -> Response {
         ui.add(
-            Self::setup_value_slider(StereoSlider::new(self.value), self.input.input_type)
-                .width(200.0),
+            Self::setup_value_slider(
+                StereoSlider::new(self.value),
+                self.input.input_type,
+                self.default,
+            )
+            .width(200.0),
         )
     }
 

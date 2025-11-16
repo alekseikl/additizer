@@ -7,7 +7,6 @@ pub mod utils;
 
 use crate::editor::create_editor;
 use crate::params::AdditizerParams;
-use crate::synth_engine::BUFFER_SIZE;
 use crate::synth_engine::{SynthEngine, VoiceId};
 pub use egui_baseview::egui;
 use nih_plug::prelude::*;
@@ -135,10 +134,11 @@ impl Plugin for Additizer {
         let mut synth = self.synth_engine.lock();
 
         assert_no_alloc::assert_no_alloc(|| {
+            let buffer_size = self.params.buffer_size.value() as usize;
             let mut next_event = context.next_event();
 
-            for (block_idx, mut block) in buffer.iter_blocks(BUFFER_SIZE) {
-                let sample_idx = block_idx * BUFFER_SIZE;
+            for (block_idx, mut block) in buffer.iter_blocks(buffer_size) {
+                let sample_idx = block_idx * buffer_size;
                 let block_size = block.samples();
 
                 while let Some(event) = next_event {

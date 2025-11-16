@@ -49,7 +49,7 @@ impl PowerIn {
 
         assert!(value_from <= value_to);
 
-        let power = 1.0 + curvature.clamp(0.0, 1.0) * 9.0;
+        let power = 1.0 + curvature.clamp(0.0, 1.0) * 10.0;
         let inverse_power = power.recip();
 
         Self {
@@ -85,7 +85,7 @@ impl PowerOut {
 
         assert!(value_from <= value_to);
 
-        let power = 1.0 + curvature.clamp(0.0, 1.0) * 9.0;
+        let power = 1.0 + curvature.clamp(0.0, 1.0) * 10.0;
         let inverse_power = power.recip();
 
         Self {
@@ -130,7 +130,7 @@ impl ExponentialIn {
 
         assert!(value_from <= value_to);
 
-        let power = 1.0 + curvature.clamp(0.0, 1.0) * 9.0;
+        let power = 1.0 + curvature.clamp(0.0, 1.0) * 10.0;
         let inverse_power = power.recip();
         let exp_from_arg = Self::inverse(Self::LINEAR_THRESHOLD, inverse_power);
         let arg = Self::calc_arg(value_from, exp_from_arg, inverse_power);
@@ -190,7 +190,7 @@ impl ExponentialOut {
 
         assert!(value_from <= value_to);
 
-        let power = 1.0 + curvature.clamp(0.0, 1.0) * 9.0;
+        let power = 1.0 + curvature.clamp(0.0, 1.0) * 10.0;
         let inverse_power = power.recip();
         let linear_from_arg = Self::inverse(Self::LINEAR_THRESHOLD, inverse_power);
         let arg = Self::calc_arg(value_from, linear_from_arg, inverse_power);

@@ -70,7 +70,7 @@ impl Widget for HarmonicEditorUI<'_> {
             .response;
 
         CentralPanel::default().show_inside(ui, |ui| {
-            ui.label("Harmonics editor");
+            ui.heading("Harmonics editor");
         });
 
         if need_update {

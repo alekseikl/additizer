@@ -4,7 +4,7 @@ use uniform_cubic_splines::{CatmullRom, spline_segment};
 
 use crate::synth_engine::types::{ComplexSample, Sample};
 
-pub const BUFFER_SIZE: usize = 64;
+pub const BUFFER_SIZE: usize = 128;
 pub const WAVEFORM_BITS: usize = 11;
 pub const WAVEFORM_SIZE: usize = 1 << WAVEFORM_BITS;
 pub const WAVEFORM_PAD_LEFT: usize = 1;

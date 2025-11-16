@@ -28,6 +28,7 @@ impl Widget for AmplifierUI<'_> {
         let mut ui_data = self.amp().get_ui();
 
         ui.heading("Amplifier");
+        ui.add_space(20.0);
 
         Grid::new("amp_grid")
             .num_columns(2)

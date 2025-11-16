@@ -28,6 +28,7 @@ impl Widget for OscillatorUI<'_> {
         let mut ui_data = self.osc().get_ui();
 
         ui.heading("Oscillator");
+        ui.add_space(20.0);
 
         Grid::new("osc_grid")
             .num_columns(2)

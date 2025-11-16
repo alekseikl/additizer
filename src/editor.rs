@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use egui_baseview::egui::{
-    CentralPanel, Checkbox, Color32, Frame, Grid, Margin, Response, ScrollArea, Sense, Separator,
-    SidePanel, Ui, Vec2, vec2,
+    CentralPanel, Color32, Frame, Margin, Response, ScrollArea, Sense, Separator, SidePanel, Ui,
+    Vec2, vec2,
 };
 use nih_plug::editor::Editor;
 use parking_lot::Mutex;
@@ -10,11 +10,9 @@ use parking_lot::Mutex;
 use crate::{
     editor::{
         gain_slider::GainSlider,
-        modules_ui::{AmplifierUI, HarmonicEditorUI, OscillatorUI, SpectralFilterUI},
-        stereo_slider::StereoSlider,
+        modules_ui::{AmplifierUI, EnvelopeUI, HarmonicEditorUI, OscillatorUI, SpectralFilterUI},
     },
-    synth_engine::{Envelope, ModuleId, ModuleType, SynthEngine, SynthModule},
-    utils::from_ms,
+    synth_engine::{ModuleId, ModuleType, SynthEngine, SynthModule},
 };
 
 use egui_integration::{ResizableWindow, create_egui_editor};
@@ -93,64 +91,6 @@ fn show_side_bar(
         });
 }
 
-fn envelope_ui(ui: &mut Ui, synth_engine: &mut SynthEngine, module_id: ModuleId) {
-    let env = Envelope::downcast_mut_unwrap(synth_engine.get_module_mut(module_id));
-    let mut env_ui = env.get_ui();
-
-    ui.heading("Envelope");
-
-    Grid::new("env_grid")
-        .num_columns(2)
-        .spacing([40.0, 4.0])
-        .striped(true)
-        .show(ui, |ui| {
-            ui.label("Attack");
-            if ui
-                .add(StereoSlider::envelope_time(&mut env_ui.attack).default_value(from_ms(1.0)))
-                .changed()
-            {
-                env.set_attack(env_ui.attack);
-            }
-            ui.end_row();
-
-            ui.label("Decay");
-            if ui
-                .add(StereoSlider::envelope_time(&mut env_ui.decay).default_value(from_ms(100.0)))
-                .changed()
-            {
-                env.set_decay(env_ui.decay);
-            }
-            ui.end_row();
-
-            ui.label("Sustain");
-            if ui
-                .add(StereoSlider::level(&mut env_ui.sustain).default_value(0.5))
-                .changed()
-            {
-                env.set_sustain(env_ui.sustain);
-            }
-            ui.end_row();
-
-            ui.label("Release");
-            if ui
-                .add(StereoSlider::envelope_time(&mut env_ui.release).default_value(from_ms(100.0)))
-                .changed()
-            {
-                env.set_release(env_ui.release);
-            }
-            ui.end_row();
-
-            ui.label("Keep voice alive");
-            if ui
-                .add(Checkbox::without_text(&mut env_ui.keep_voice_alive))
-                .changed()
-            {
-                env.set_keep_voice_alive(env_ui.keep_voice_alive);
-            }
-            ui.end_row();
-        });
-}
-
 fn show_right_bar(ui: &mut Ui, synth_engine: &mut SynthEngine) {
     let mut level = synth_engine.get_output_level();
 
@@ -196,7 +136,9 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState, synth_engine: &mut S
                     ModuleType::Oscillator => {
                         ui.add(OscillatorUI::new(module_id, synth_engine));
                     }
-                    ModuleType::Envelope => envelope_ui(ui, synth_engine, module_id),
+                    ModuleType::Envelope => {
+                        ui.add(EnvelopeUI::new(module_id, synth_engine));
+                    }
                 }
             }
         });
