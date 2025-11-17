@@ -33,7 +33,7 @@ impl Widget for DirectInput<'_> {
                 connected
                     .first()
                     .map(|src| src.label.as_str())
-                    .unwrap_or("Select Input"),
+                    .unwrap_or("Select Source"),
             )
             .show_ui(ui, |ui| {
                 for src in &available {

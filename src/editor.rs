@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use egui_baseview::egui::{
-    CentralPanel, Color32, Frame, Margin, Response, ScrollArea, Sense, Separator, SidePanel, Ui,
-    Vec2, vec2,
+    CentralPanel, Color32, ComboBox, Frame, Margin, Response, ScrollArea, Sense, Separator,
+    SidePanel, TopBottomPanel, Ui, Vec2, vec2,
 };
 use nih_plug::editor::Editor;
 use parking_lot::Mutex;
@@ -12,7 +12,9 @@ use crate::{
         gain_slider::GainSlider,
         modules_ui::{AmplifierUI, EnvelopeUI, HarmonicEditorUI, OscillatorUI, SpectralFilterUI},
     },
-    synth_engine::{ModuleId, ModuleType, SynthEngine, SynthModule},
+    synth_engine::{
+        ModuleId, ModuleInput, ModuleOutput, ModuleType, OUTPUT_MODULE_ID, SynthEngine, SynthModule,
+    },
 };
 
 use egui_integration::{ResizableWindow, create_egui_editor};
@@ -24,16 +26,25 @@ mod egui_integration;
 mod gain_slider;
 mod modulation_input;
 mod modules_ui;
+mod multi_input;
 mod stereo_slider;
+mod utils;
+
+pub trait ModuleUI {
+    fn module_id(&self) -> ModuleId;
+    fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui);
+}
+
+type ModuleUIBox = Box<dyn ModuleUI + Send + Sync>;
 
 struct EditorState {
-    selected_module_id: Option<ModuleId>,
+    selected_module_ui: Option<ModuleUIBox>,
 }
 
 impl EditorState {
     pub fn new() -> Self {
         Self {
-            selected_module_id: None,
+            selected_module_ui: None,
         }
     }
 }
@@ -56,38 +67,93 @@ fn show_menu_item(ui: &mut Ui, module: &dyn SynthModule, selected: bool) -> Resp
     response.response.interact(Sense::click())
 }
 
+fn ui_for_module(module: &dyn SynthModule) -> ModuleUIBox {
+    match module.module_type() {
+        ModuleType::HarmonicEditor => Box::new(HarmonicEditorUI::new(module.id())),
+        ModuleType::SpectralFilter => Box::new(SpectralFilterUI::new(module.id())),
+        ModuleType::Amplifier => Box::new(AmplifierUI::new(module.id())),
+        ModuleType::Oscillator => Box::new(OscillatorUI::new(module.id())),
+        ModuleType::Envelope => Box::new(EnvelopeUI::new(module.id())),
+    }
+}
+
 fn show_side_bar(
     ui: &mut Ui,
-    selected_module_id: &mut Option<ModuleId>,
+    selected_module_ui: &mut Option<ModuleUIBox>,
     synth_engine: &mut SynthEngine,
 ) {
-    let mut modules = synth_engine.get_modules();
-
-    modules.sort_by_key(|module| module.id());
-
-    if selected_module_id.is_none() && !modules.is_empty() {
-        *selected_module_id = Some(modules[0].id());
-    }
-
     SidePanel::left("side-bar")
         .resizable(true)
         .width_range(100.0..=200.0)
         .default_width(150.0)
         .frame(Frame::NONE)
         .show_inside(ui, |ui| {
-            ScrollArea::vertical().show(ui, |ui| {
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+            let mut modules = synth_engine.get_modules();
 
-                    for module in modules {
-                        if show_menu_item(ui, module, *selected_module_id == Some(module.id()))
-                            .clicked()
-                        {
-                            *selected_module_id = Some(module.id());
-                        }
-                    }
-                })
-            });
+            modules.sort_by_key(|module| module.id());
+
+            if selected_module_ui.is_none() && !modules.is_empty() {
+                *selected_module_ui = Some(ui_for_module(modules[0]));
+            }
+
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show_inside(ui, |ui| {
+                    ScrollArea::vertical().show(ui, |ui| {
+                        ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+
+                            for module in modules {
+                                if show_menu_item(
+                                    ui,
+                                    module,
+                                    selected_module_ui
+                                        .as_ref()
+                                        .is_some_and(|mod_ui| mod_ui.module_id() == module.id()),
+                                )
+                                .clicked()
+                                {
+                                    *selected_module_ui = Some(ui_for_module(module));
+                                }
+                            }
+                        })
+                    });
+                });
+
+            TopBottomPanel::bottom("side-bar-bottom")
+                .resizable(false)
+                .frame(Frame::new().inner_margin(8.0))
+                .show_inside(ui, |ui| {
+                    ui.vertical_centered_justified(|ui| {
+                        ComboBox::from_id_salt("add-module-dropdown")
+                            .selected_text("Add Module")
+                            .width(ui.available_width())
+                            .show_ui(ui, |ui| {
+                                if ui.selectable_label(false, "Harmonic Editor").clicked() {
+                                    synth_engine.add_harmonic_editor();
+                                }
+                                if ui.selectable_label(false, "Oscillator").clicked() {
+                                    synth_engine.add_oscillator();
+                                }
+                                if ui.selectable_label(false, "Envelope").clicked() {
+                                    synth_engine.add_envelope();
+                                }
+                                if ui.selectable_label(false, "Spectral Filter").clicked() {
+                                    synth_engine.add_spectral_filter();
+                                }
+                                if ui.selectable_label(false, "Amplifier").clicked() {
+                                    let amp_id = synth_engine.add_amplifier();
+
+                                    synth_engine
+                                        .add_link(
+                                            ModuleOutput::audio(amp_id),
+                                            ModuleInput::audio(OUTPUT_MODULE_ID),
+                                        )
+                                        .unwrap();
+                                }
+                            });
+                    });
+                });
         });
 }
 
@@ -114,32 +180,20 @@ fn show_right_bar(ui: &mut Ui, synth_engine: &mut SynthEngine) {
 }
 
 fn show_editor(ui: &mut Ui, editor_state: &mut EditorState, synth_engine: &mut SynthEngine) {
-    show_side_bar(ui, &mut editor_state.selected_module_id, synth_engine);
+    if let Some(module_ui) = &editor_state.selected_module_ui
+        && !synth_engine.has_module_id(module_ui.module_id())
+    {
+        editor_state.selected_module_ui = None;
+    }
+
+    show_side_bar(ui, &mut editor_state.selected_module_ui, synth_engine);
     show_right_bar(ui, synth_engine);
 
     CentralPanel::default()
         .frame(Frame::default().inner_margin(8.0))
         .show_inside(ui, |ui| {
-            if let Some(module_id) = editor_state.selected_module_id
-                && let Some(module) = synth_engine.get_module(module_id)
-            {
-                match module.module_type() {
-                    ModuleType::HarmonicEditor => {
-                        ui.add(HarmonicEditorUI::new(module_id, synth_engine));
-                    }
-                    ModuleType::SpectralFilter => {
-                        ui.add(SpectralFilterUI::new(module_id, synth_engine));
-                    }
-                    ModuleType::Amplifier => {
-                        ui.add(AmplifierUI::new(module_id, synth_engine));
-                    }
-                    ModuleType::Oscillator => {
-                        ui.add(OscillatorUI::new(module_id, synth_engine));
-                    }
-                    ModuleType::Envelope => {
-                        ui.add(EnvelopeUI::new(module_id, synth_engine));
-                    }
-                }
+            if let Some(module_ui) = &mut editor_state.selected_module_ui {
+                module_ui.ui(synth_engine, ui);
             }
         });
 }

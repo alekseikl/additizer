@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use egui_baseview::egui::{ComboBox, Grid, Response, Ui, Widget};
+use egui_baseview::egui::{ComboBox, Frame, Grid, Margin, Response, Ui, Widget};
 
 use crate::{
     editor::stereo_slider::StereoSlider,
@@ -240,7 +240,16 @@ impl Widget for ModulationInput<'_> {
                 .inner;
 
             if !connected.is_empty() {
-                self.add_connected_modulations(ui, &connected);
+                Frame::default()
+                    .outer_margin(Margin {
+                        left: 8,
+                        top: 8,
+                        right: 0,
+                        bottom: 0,
+                    })
+                    .show(ui, |ui| {
+                        self.add_connected_modulations(ui, &connected);
+                    });
             }
 
             result_response

@@ -16,10 +16,10 @@ pub type Buffer = [Sample; BUFFER_SIZE];
 pub type WaveformBuffer = [Sample; WAVEFORM_BUFFER_SIZE];
 pub type SpectralBuffer = [ComplexSample; SPECTRAL_BUFFER_SIZE];
 
-pub const ZEROES_BUFFER: Buffer = [0.0; BUFFER_SIZE];
-pub const ONES_BUFFER: Buffer = [1.0; BUFFER_SIZE];
-pub const ZEROES_SPECTRAL_BUFFER: SpectralBuffer = make_zero_spectral_buffer();
-pub const HARMONIC_SERIES_BUFFER: SpectralBuffer = make_harmonic_series_buffer();
+pub static ZEROES_BUFFER: Buffer = [0.0; BUFFER_SIZE];
+pub static ONES_BUFFER: Buffer = [1.0; BUFFER_SIZE];
+pub static ZEROES_SPECTRAL_BUFFER: SpectralBuffer = make_zero_spectral_buffer();
+pub static HARMONIC_SERIES_BUFFER: SpectralBuffer = make_harmonic_series_buffer();
 
 pub const fn make_zero_buffer() -> Buffer {
     [0.0; BUFFER_SIZE]

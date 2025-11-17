@@ -1,31 +1,38 @@
-use egui_baseview::egui::{Checkbox, DragValue, Grid, Response, Ui, Widget};
+use egui_baseview::egui::{Checkbox, DragValue, Grid, Ui};
 
 use crate::{
-    editor::{direct_input::DirectInput, modulation_input::ModulationInput},
+    editor::{
+        ModuleUI, direct_input::DirectInput, modulation_input::ModulationInput,
+        utils::confirm_module_removal,
+    },
     synth_engine::{ModuleId, ModuleInput, Oscillator, SynthEngine},
 };
 
-pub struct OscillatorUI<'a> {
+pub struct OscillatorUI {
     module_id: ModuleId,
-    synth_engine: &'a mut SynthEngine,
+    remove_confirmation: bool,
 }
 
-impl<'a> OscillatorUI<'a> {
-    pub fn new(module_id: ModuleId, synth_engine: &'a mut SynthEngine) -> Self {
+impl OscillatorUI {
+    pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            synth_engine,
+            remove_confirmation: false,
         }
     }
 
-    fn osc(&mut self) -> &mut Oscillator {
-        Oscillator::downcast_mut_unwrap(self.synth_engine.get_module_mut(self.module_id))
+    fn osc<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut Oscillator {
+        Oscillator::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
     }
 }
 
-impl Widget for OscillatorUI<'_> {
-    fn ui(mut self, ui: &mut Ui) -> Response {
-        let mut ui_data = self.osc().get_ui();
+impl ModuleUI for OscillatorUI {
+    fn module_id(&self) -> ModuleId {
+        self.module_id
+    }
+
+    fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
+        let mut ui_data = self.osc(synth).get_ui();
 
         ui.heading("Oscillator");
         ui.add_space(20.0);
@@ -37,7 +44,7 @@ impl Widget for OscillatorUI<'_> {
             .show(ui, |ui| {
                 ui.label("Input");
                 ui.add(DirectInput::new(
-                    self.synth_engine,
+                    synth,
                     ModuleInput::spectrum(self.module_id),
                 ));
                 ui.end_row();
@@ -46,12 +53,12 @@ impl Widget for OscillatorUI<'_> {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.level,
-                        self.synth_engine,
+                        synth,
                         ModuleInput::level(self.module_id),
                     ))
                     .changed()
                 {
-                    self.osc().set_level(ui_data.level);
+                    self.osc(synth).set_level(ui_data.level);
                 }
                 ui.end_row();
 
@@ -59,12 +66,12 @@ impl Widget for OscillatorUI<'_> {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.pitch_shift,
-                        self.synth_engine,
+                        synth,
                         ModuleInput::pitch_shift(self.module_id),
                     ))
                     .changed()
                 {
-                    self.osc().set_pitch_shift(ui_data.pitch_shift);
+                    self.osc(synth).set_pitch_shift(ui_data.pitch_shift);
                 }
                 ui.end_row();
 
@@ -72,12 +79,12 @@ impl Widget for OscillatorUI<'_> {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.detune,
-                        self.synth_engine,
+                        synth,
                         ModuleInput::detune(self.module_id),
                     ))
                     .changed()
                 {
-                    self.osc().set_detune(ui_data.detune);
+                    self.osc(synth).set_detune(ui_data.detune);
                 }
                 ui.end_row();
 
@@ -86,7 +93,7 @@ impl Widget for OscillatorUI<'_> {
                     .add(DragValue::new(&mut ui_data.unison).range(1..=16))
                     .changed()
                 {
-                    self.osc().set_unison(ui_data.unison);
+                    self.osc(synth).set_unison(ui_data.unison);
                 }
                 ui.end_row();
 
@@ -95,11 +102,16 @@ impl Widget for OscillatorUI<'_> {
                     .add(Checkbox::without_text(&mut ui_data.same_channel_phases))
                     .changed()
                 {
-                    self.osc()
+                    self.osc(synth)
                         .set_same_channels_phases(ui_data.same_channel_phases);
                 }
                 ui.end_row();
-            })
-            .response
+            });
+
+        ui.add_space(40.0);
+
+        if confirm_module_removal(ui, &mut self.remove_confirmation) {
+            synth.remove_module(self.module_id);
+        }
     }
 }

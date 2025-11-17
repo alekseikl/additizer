@@ -123,7 +123,7 @@ struct ExponentialIn {
 }
 
 impl ExponentialIn {
-    const LINEAR_THRESHOLD: Sample = 0.005;
+    const LINEAR_THRESHOLD: Sample = 0.001;
 
     pub fn new(curvature: Sample, value_from: Sample, value_to: Sample) -> Self {
         let value_from = value_from.max(0.0);
@@ -183,7 +183,7 @@ struct ExponentialOut {
 }
 
 impl ExponentialOut {
-    const LINEAR_THRESHOLD: Sample = 0.995;
+    const LINEAR_THRESHOLD: Sample = 0.999;
 
     pub fn new(curvature: Sample, value_from: Sample, value_to: Sample) -> Self {
         let value_to = value_to.min(1.0);
@@ -479,7 +479,7 @@ impl Envelope {
     set_param_method!(set_attack, attack, *attack);
     set_param_method!(set_decay, decay, *decay);
     set_param_method!(set_sustain, sustain, *sustain);
-    set_param_method!(set_release, release, release.max(from_ms(2.0)));
+    set_param_method!(set_release, release, *release);
 
     pub fn check_activity(&self, activity: &mut [EnvelopeActivityState]) {
         if self.keep_voice_alive {

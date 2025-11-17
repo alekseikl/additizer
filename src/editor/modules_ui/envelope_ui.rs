@@ -1,14 +1,14 @@
-use egui_baseview::egui::{Checkbox, ComboBox, Grid, Response, Slider, Ui, Widget};
+use egui_baseview::egui::{Checkbox, ComboBox, Grid, Slider, Ui};
 
 use crate::{
-    editor::modulation_input::ModulationInput,
+    editor::{ModuleUI, modulation_input::ModulationInput, utils::confirm_module_removal},
     synth_engine::{Envelope, EnvelopeCurve, ModuleId, ModuleInput, Sample, SynthEngine},
     utils::from_ms,
 };
 
-pub struct EnvelopeUI<'a> {
+pub struct EnvelopeUI {
     module_id: ModuleId,
-    synth_engine: &'a mut SynthEngine,
+    remove_confirmation: bool,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -72,16 +72,16 @@ impl EnvelopeCurve {
     }
 }
 
-impl<'a> EnvelopeUI<'a> {
-    pub fn new(module_id: ModuleId, synth_engine: &'a mut SynthEngine) -> Self {
+impl EnvelopeUI {
+    pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            synth_engine,
+            remove_confirmation: false,
         }
     }
 
-    fn env(&mut self) -> &mut Envelope {
-        Envelope::downcast_mut_unwrap(self.synth_engine.get_module_mut(self.module_id))
+    fn env<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut Envelope {
+        Envelope::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
     }
 
     fn add_curve(&self, ui: &mut Ui, label: &str, env_curve: &mut EnvelopeCurve) -> bool {
@@ -121,10 +121,14 @@ impl<'a> EnvelopeUI<'a> {
     }
 }
 
-impl Widget for EnvelopeUI<'_> {
-    fn ui(mut self, ui: &mut Ui) -> Response {
+impl ModuleUI for EnvelopeUI {
+    fn module_id(&self) -> ModuleId {
+        self.module_id
+    }
+
+    fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
         let id = self.module_id;
-        let mut ui_data = self.env().get_ui();
+        let mut ui_data = self.env(synth).get_ui();
 
         ui.heading("Envelope");
         ui.add_space(20.0);
@@ -137,74 +141,62 @@ impl Widget for EnvelopeUI<'_> {
                 ui.label("Attack");
                 if ui
                     .add(
-                        ModulationInput::new(
-                            &mut ui_data.attack,
-                            self.synth_engine,
-                            ModuleInput::attack(id),
-                        )
-                        .default(from_ms(4.0)),
+                        ModulationInput::new(&mut ui_data.attack, synth, ModuleInput::attack(id))
+                            .default(from_ms(4.0)),
                     )
                     .changed()
                 {
-                    self.env().set_attack(ui_data.attack);
+                    self.env(synth).set_attack(ui_data.attack);
                 }
                 ui.end_row();
 
                 if self.add_curve(ui, "Attack Curve", &mut ui_data.attack_curve) {
-                    self.env().set_attack_curve(ui_data.attack_curve);
+                    self.env(synth).set_attack_curve(ui_data.attack_curve);
                 }
 
                 ui.label("Decay");
                 if ui
                     .add(
-                        ModulationInput::new(
-                            &mut ui_data.decay,
-                            self.synth_engine,
-                            ModuleInput::decay(id),
-                        )
-                        .default(from_ms(150.0)),
+                        ModulationInput::new(&mut ui_data.decay, synth, ModuleInput::decay(id))
+                            .default(from_ms(150.0)),
                     )
                     .changed()
                 {
-                    self.env().set_decay(ui_data.decay);
+                    self.env(synth).set_decay(ui_data.decay);
                 }
                 ui.end_row();
 
                 if self.add_curve(ui, "Decay Curve", &mut ui_data.decay_curve) {
-                    self.env().set_decay_curve(ui_data.decay_curve);
+                    self.env(synth).set_decay_curve(ui_data.decay_curve);
                 }
 
                 ui.label("Sustain");
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.sustain,
-                        self.synth_engine,
+                        synth,
                         ModuleInput::sustain(id),
                     ))
                     .changed()
                 {
-                    self.env().set_sustain(ui_data.sustain);
+                    self.env(synth).set_sustain(ui_data.sustain);
                 }
                 ui.end_row();
 
                 ui.label("Release");
                 if ui
                     .add(
-                        ModulationInput::new(
-                            &mut ui_data.release,
-                            self.synth_engine,
-                            ModuleInput::release(id),
-                        )
-                        .default(from_ms(250.0)),
+                        ModulationInput::new(&mut ui_data.release, synth, ModuleInput::release(id))
+                            .default(from_ms(250.0)),
                     )
                     .changed()
                 {
-                    self.env().set_release(ui_data.release);
+                    self.env(synth).set_release(ui_data.release);
                 }
                 ui.end_row();
 
                 if self.add_curve(ui, "Release Curve", &mut ui_data.release_curve) {
-                    self.env().set_release_curve(ui_data.release_curve);
+                    self.env(synth).set_release_curve(ui_data.release_curve);
                 }
 
                 ui.label("Keep voice alive");
@@ -212,10 +204,16 @@ impl Widget for EnvelopeUI<'_> {
                     .add(Checkbox::without_text(&mut ui_data.keep_voice_alive))
                     .changed()
                 {
-                    self.env().set_keep_voice_alive(ui_data.keep_voice_alive);
+                    self.env(synth)
+                        .set_keep_voice_alive(ui_data.keep_voice_alive);
                 }
                 ui.end_row();
-            })
-            .response
+            });
+
+        ui.add_space(40.0);
+
+        if confirm_module_removal(ui, &mut self.remove_confirmation) {
+            synth.remove_module(self.module_id);
+        }
     }
 }

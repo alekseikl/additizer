@@ -21,8 +21,7 @@ use crate::{
             OscillatorConfig, SpectralFilterConfig,
         },
         routing::{
-            AvailableInputSourceUI, DataType, MAX_VOICES, MIN_MODULE_ID, OUTPUT_MODULE_ID,
-            OutputType, Router,
+            AvailableInputSourceUI, DataType, MAX_VOICES, MIN_MODULE_ID, OutputType, Router,
         },
         synth_module::{NoteOffParams, NoteOnParams, ProcessParams},
     },
@@ -34,6 +33,7 @@ pub use config::Config;
 pub use modules::{Amplifier, Envelope, EnvelopeCurve, HarmonicEditor, Oscillator, SpectralFilter};
 pub use routing::{
     ConnectedInputSourceUI, InputType, ModuleId, ModuleInput, ModuleLink, ModuleOutput, ModuleType,
+    OUTPUT_MODULE_ID,
 };
 pub use synth_module::SynthModule;
 pub use types::{Sample, StereoSample};
@@ -210,10 +210,14 @@ impl SynthEngine {
         let new_links: Vec<_> = self
             .get_links()
             .into_iter()
-            .filter(|link| link.src.module_id == id || link.dst.module_id == id)
+            .filter(|link| !(link.src.module_id == id || link.dst.module_id == id))
             .collect();
 
         self.setup_routing(&new_links).unwrap();
+    }
+
+    pub fn has_module_id(&self, module_id: ModuleId) -> bool {
+        self.modules.contains_key(&module_id)
     }
 
     pub fn set_direct_link(&mut self, src: ModuleOutput, dst: ModuleInput) -> Result<(), String> {
@@ -278,6 +282,17 @@ impl SynthEngine {
         let mut new_links = self.get_links();
 
         new_links.push(link);
+        self.setup_routing(&new_links)?;
+        self.save_links();
+        Ok(())
+    }
+
+    pub fn add_link(&mut self, src: ModuleOutput, dst: ModuleInput) -> Result<(), String> {
+        self.can_be_linked(&src, &dst)?;
+
+        let mut new_links: Vec<_> = self.get_links();
+
+        new_links.push(ModuleLink::link(src, dst));
         self.setup_routing(&new_links)?;
         self.save_links();
         Ok(())

@@ -7,7 +7,7 @@ use crate::synth_engine::{Sample, StereoSample};
 const BG_COLOR: Color32 = Color32::from_rgb(0, 0, 0);
 const LEVEL_COLOR: Color32 = Color32::from_rgb(0x0b, 0x42, 0x67);
 const NEGATIVE_LEVEL_COLOR: Color32 = Color32::from_rgb(0x72, 0x72, 0x12);
-const SLIDER_HEIGHT: f32 = 12.0;
+const SLIDER_HEIGHT: f32 = 16.0;
 
 pub struct StereoSlider<'a> {
     units: Option<&'a str>,
@@ -155,38 +155,38 @@ impl<'a> StereoSlider<'a> {
             response.mark_changed();
         }
 
-        if ui.is_rect_visible(response.rect) {
-            ui.painter().rect_filled(response.rect, 0.0, BG_COLOR);
+        ui.painter().rect_filled(response.rect, 0.0, BG_COLOR);
 
-            let lr_rect = response.rect.split_top_bottom_at_fraction(0.5);
-            let paint_bar = |mut rect: Rect, norm_value: Sample| {
-                if norm_value < 0.0 {
-                    *rect.left_mut() += (1.0 + norm_value) * response.rect.width();
-                    ui.painter().rect_filled(rect, 0.0, NEGATIVE_LEVEL_COLOR);
-                } else {
-                    *rect.right_mut() -= (1.0 - norm_value) * response.rect.width();
-                    ui.painter().rect_filled(rect, 0.0, self.color);
-                }
-            };
-
-            paint_bar(lr_rect.0, normalized_value.left());
-            paint_bar(lr_rect.1, normalized_value.right());
-
-            let mut parts: Vec<String> = Vec::with_capacity(4);
-
-            if self.value.left() != self.value.right() {
-                parts.push(format!(
-                    "(L: {}, R: {})",
-                    self.format_value(self.value.left()),
-                    self.format_value(self.value.right())
-                ));
+        let lr_rect = response.rect.split_top_bottom_at_fraction(0.5);
+        let paint_bar = |mut rect: Rect, norm_value: Sample| {
+            if norm_value < 0.0 {
+                *rect.left_mut() += (1.0 + norm_value) * response.rect.width();
+                ui.painter().rect_filled(rect, 0.0, NEGATIVE_LEVEL_COLOR);
             } else {
-                parts.push(self.format_value(self.value.left()));
+                *rect.right_mut() -= (1.0 - norm_value) * response.rect.width();
+                ui.painter().rect_filled(rect, 0.0, self.color);
             }
+        };
 
-            response =
-                response.on_hover_text_at_pointer(parts.join(" ") + self.units.unwrap_or_default());
+        paint_bar(lr_rect.0, normalized_value.left());
+        paint_bar(lr_rect.1, normalized_value.right());
+
+        let mut parts: Vec<String> = Vec::with_capacity(4);
+
+        if self.value.left() != self.value.right() {
+            parts.push(format!(
+                "(L: {}, R: {})",
+                self.format_value(self.value.left()),
+                self.format_value(self.value.right())
+            ));
+        } else {
+            parts.push(self.format_value(self.value.left()));
         }
+
+        let label = parts.join(" ") + self.units.unwrap_or_default();
+
+        ui.label(&label);
+        response = response.on_hover_text_at_pointer(label);
 
         response
     }
@@ -194,6 +194,6 @@ impl<'a> StereoSlider<'a> {
 
 impl Widget for StereoSlider<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        self.add_contents(ui)
+        ui.horizontal_centered(|ui| self.add_contents(ui)).inner
     }
 }

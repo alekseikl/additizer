@@ -1,31 +1,38 @@
-use egui_baseview::egui::{Grid, Response, Ui, Widget};
+use egui_baseview::egui::{Grid, Ui};
 
 use crate::{
-    editor::{direct_input::DirectInput, modulation_input::ModulationInput},
+    editor::{
+        ModuleUI, modulation_input::ModulationInput, multi_input::MultiInput,
+        utils::confirm_module_removal,
+    },
     synth_engine::{Amplifier, ModuleId, ModuleInput, SynthEngine},
 };
 
-pub struct AmplifierUI<'a> {
+pub struct AmplifierUI {
     module_id: ModuleId,
-    synth_engine: &'a mut SynthEngine,
+    remove_confirmation: bool,
 }
 
-impl<'a> AmplifierUI<'a> {
-    pub fn new(module_id: ModuleId, synth_engine: &'a mut SynthEngine) -> Self {
+impl AmplifierUI {
+    pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            synth_engine,
+            remove_confirmation: false,
         }
     }
 
-    fn amp(&mut self) -> &mut Amplifier {
-        Amplifier::downcast_mut_unwrap(self.synth_engine.get_module_mut(self.module_id))
+    fn amp<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut Amplifier {
+        Amplifier::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
     }
 }
 
-impl Widget for AmplifierUI<'_> {
-    fn ui(mut self, ui: &mut Ui) -> Response {
-        let mut ui_data = self.amp().get_ui();
+impl ModuleUI for AmplifierUI {
+    fn module_id(&self) -> ModuleId {
+        self.module_id
+    }
+
+    fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
+        let mut ui_data = self.amp(synth).get_ui();
 
         ui.heading("Amplifier");
         ui.add_space(20.0);
@@ -35,11 +42,8 @@ impl Widget for AmplifierUI<'_> {
             .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
-                ui.label("Input");
-                ui.add(DirectInput::new(
-                    self.synth_engine,
-                    ModuleInput::audio(self.module_id),
-                ));
+                ui.label("Inputs");
+                ui.add(MultiInput::new(synth, ModuleInput::audio(self.module_id)));
                 ui.end_row();
 
                 ui.label("Level");
@@ -47,17 +51,22 @@ impl Widget for AmplifierUI<'_> {
                     .add(
                         ModulationInput::new(
                             &mut ui_data.level,
-                            self.synth_engine,
+                            synth,
                             ModuleInput::level(self.module_id),
                         )
                         .modulation_default(1.0),
                     )
                     .changed()
                 {
-                    self.amp().set_level(ui_data.level);
+                    self.amp(synth).set_level(ui_data.level);
                 }
                 ui.end_row();
-            })
-            .response
+            });
+
+        ui.add_space(40.0);
+
+        if confirm_module_removal(ui, &mut self.remove_confirmation) {
+            synth.remove_module(self.module_id);
+        }
     }
 }

@@ -1,38 +1,41 @@
 use egui_baseview::egui::{
-    CentralPanel, Frame, Margin, Response, ScrollArea, TopBottomPanel, Ui, Vec2, Widget,
-    style::ScrollStyle,
+    CentralPanel, Frame, Margin, ScrollArea, TopBottomPanel, Ui, Vec2, style::ScrollStyle,
 };
 
 use crate::{
-    editor::gain_slider::GainSlider,
+    editor::{ModuleUI, gain_slider::GainSlider, utils::confirm_module_removal},
     synth_engine::{HarmonicEditor, ModuleId, SynthEngine},
 };
 
-pub struct HarmonicEditorUI<'a> {
+pub struct HarmonicEditorUI {
     module_id: ModuleId,
-    synth_engine: &'a mut SynthEngine,
+    remove_confirmation: bool,
 }
 
-impl<'a> HarmonicEditorUI<'a> {
-    pub fn new(module_id: ModuleId, synth_engine: &'a mut SynthEngine) -> Self {
+impl HarmonicEditorUI {
+    pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            synth_engine,
+            remove_confirmation: false,
         }
     }
 
-    fn editor(&mut self) -> &mut HarmonicEditor {
-        HarmonicEditor::downcast_mut_unwrap(self.synth_engine.get_module_mut(self.module_id))
+    fn editor<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut HarmonicEditor {
+        HarmonicEditor::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
     }
 }
 
-impl Widget for HarmonicEditorUI<'_> {
-    fn ui(mut self, ui: &mut Ui) -> Response {
+impl ModuleUI for HarmonicEditorUI {
+    fn module_id(&self) -> ModuleId {
+        self.module_id
+    }
+
+    fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
         let mut need_update = false;
 
         ui.style_mut().spacing.scroll = ScrollStyle::solid();
 
-        let response = TopBottomPanel::top("harmonics-list")
+        TopBottomPanel::top("harmonics-list")
             .resizable(true)
             .height_range(150.0..=400.0)
             .default_height(200.0)
@@ -45,7 +48,7 @@ impl Widget for HarmonicEditorUI<'_> {
             .show_inside(ui, |ui| {
                 ScrollArea::horizontal().show(ui, |ui| {
                     ui.horizontal_top(|ui| {
-                        let harmonics = self.editor().harmonics_ref_mut();
+                        let harmonics = self.editor(synth).harmonics_ref_mut();
                         let height = ui.available_height();
 
                         ui.style_mut().spacing.item_spacing = Vec2::splat(2.0);
@@ -66,17 +69,20 @@ impl Widget for HarmonicEditorUI<'_> {
                         }
                     });
                 });
-            })
-            .response;
+            });
 
         CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("Harmonics editor");
         });
 
         if need_update {
-            self.editor().apply_harmonics();
+            self.editor(synth).apply_harmonics();
         }
 
-        response
+        ui.add_space(40.0);
+
+        if confirm_module_removal(ui, &mut self.remove_confirmation) {
+            synth.remove_module(self.module_id);
+        }
     }
 }
