@@ -48,6 +48,7 @@ impl Default for OscillatorConfigChannel {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OscillatorConfig {
+    label: Option<String>,
     unison: usize,
     same_channel_phases: bool,
     channels: [OscillatorConfigChannel; NUM_CHANNELS],
@@ -56,6 +57,7 @@ pub struct OscillatorConfig {
 impl Default for OscillatorConfig {
     fn default() -> Self {
         Self {
+            label: None,
             unison: 1,
             same_channel_phases: false,
             channels: Default::default(),
@@ -64,6 +66,7 @@ impl Default for OscillatorConfig {
 }
 
 pub struct OscillatorUIData {
+    pub label: String,
     pub level: StereoSample,
     pub pitch_shift: StereoSample,
     pub detune: StereoSample,
@@ -111,6 +114,7 @@ impl Default for Channel {
 
 struct Common {
     id: ModuleId,
+    label: String,
     config: ModuleConfigBox<OscillatorConfig>,
     unison: usize,
     same_channel_phases: bool,
@@ -157,6 +161,7 @@ impl Oscillator {
         let mut osc = Self {
             common: Common {
                 id,
+                label: format!("Oscillator {id}"),
                 config,
                 unison: 1,
                 same_channel_phases: false,
@@ -174,6 +179,10 @@ impl Oscillator {
         {
             let cfg = osc.common.config.lock();
 
+            if let Some(label) = cfg.label.as_ref() {
+                osc.common.label = label.clone();
+            }
+
             for (channel, cfg_channel) in osc.channels.iter_mut().zip(cfg.channels.iter()) {
                 channel.level = cfg_channel.level;
                 channel.pitch_shift = cfg_channel.pitch_shift;
@@ -190,6 +199,7 @@ impl Oscillator {
 
     pub fn get_ui(&self) -> OscillatorUIData {
         OscillatorUIData {
+            label: self.common.label.clone(),
             level: extract_param!(self, level),
             pitch_shift: extract_param!(self, pitch_shift),
             detune: extract_param!(self, detune),
@@ -395,6 +405,15 @@ impl Oscillator {
 impl SynthModule for Oscillator {
     fn id(&self) -> ModuleId {
         self.common.id
+    }
+
+    fn label(&self) -> String {
+        self.common.label.clone()
+    }
+
+    fn set_label(&mut self, label: String) {
+        self.common.label = label.clone();
+        self.common.config.lock().label = Some(label);
     }
 
     fn module_type(&self) -> ModuleType {

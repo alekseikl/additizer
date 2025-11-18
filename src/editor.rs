@@ -25,6 +25,7 @@ mod direct_input;
 mod egui_integration;
 mod gain_slider;
 mod modulation_input;
+mod module_label;
 mod modules_ui;
 mod multi_input;
 mod stereo_slider;

@@ -30,11 +30,13 @@ impl Default for SpectralFilterConfigChannel {
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct SpectralFilterConfig {
+    label: Option<String>,
     channels: [SpectralFilterConfigChannel; NUM_CHANNELS],
     four_pole: bool,
 }
 
 pub struct SpectralFilterUIData {
+    pub label: String,
     pub cutoff: StereoSample,
     pub q: StereoSample,
     pub four_pole: bool,
@@ -74,6 +76,7 @@ struct Channel {
 
 pub struct SpectralFilter {
     id: ModuleId,
+    label: String,
     config: ModuleConfigBox<SpectralFilterConfig>,
     four_pole: bool,
     channels: [Channel; NUM_CHANNELS],
@@ -106,6 +109,7 @@ impl SpectralFilter {
     pub fn new(id: ModuleId, config: ModuleConfigBox<SpectralFilterConfig>) -> Self {
         let mut filter = Self {
             id,
+            label: format!("Filter {id}"),
             config,
             four_pole: false,
             channels: Default::default(),
@@ -113,6 +117,11 @@ impl SpectralFilter {
 
         {
             let cfg = filter.config.lock();
+
+            if let Some(label) = cfg.label.as_ref() {
+                filter.label = label.clone();
+            }
+
             for (channel, cfg_channel) in filter.channels.iter_mut().zip(cfg.channels.iter()) {
                 channel.params.cutoff = cfg_channel.cutoff;
                 channel.params.q = cfg_channel.q;
@@ -128,6 +137,7 @@ impl SpectralFilter {
 
     pub fn get_ui(&self) -> SpectralFilterUIData {
         SpectralFilterUIData {
+            label: self.label.clone(),
             cutoff: extract_param!(self, cutoff),
             q: extract_param!(self, q),
             four_pole: self.four_pole,
@@ -186,6 +196,15 @@ impl SpectralFilter {
 impl SynthModule for SpectralFilter {
     fn id(&self) -> ModuleId {
         self.id
+    }
+
+    fn label(&self) -> String {
+        self.label.clone()
+    }
+
+    fn set_label(&mut self, label: String) {
+        self.label = label.clone();
+        self.config.lock().label = Some(label);
     }
 
     fn module_type(&self) -> ModuleType {

@@ -2,8 +2,8 @@ use egui_baseview::egui::{Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUI, modulation_input::ModulationInput, multi_input::MultiInput,
-        utils::confirm_module_removal,
+        ModuleUI, modulation_input::ModulationInput, module_label::ModuleLabel,
+        multi_input::MultiInput, utils::confirm_module_removal,
     },
     synth_engine::{Amplifier, ModuleId, ModuleInput, SynthEngine},
 };
@@ -11,6 +11,7 @@ use crate::{
 pub struct AmplifierUI {
     module_id: ModuleId,
     remove_confirmation: bool,
+    module_label: Option<String>,
 }
 
 impl AmplifierUI {
@@ -18,6 +19,7 @@ impl AmplifierUI {
         Self {
             module_id,
             remove_confirmation: false,
+            module_label: None,
         }
     }
 
@@ -34,7 +36,12 @@ impl ModuleUI for AmplifierUI {
     fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
         let mut ui_data = self.amp(synth).get_ui();
 
-        ui.heading("Amplifier");
+        ui.add(ModuleLabel::new(
+            &ui_data.label,
+            &mut self.module_label,
+            synth.get_module_mut(self.module_id).unwrap(),
+        ));
+
         ui.add_space(20.0);
 
         Grid::new("amp_grid")

@@ -33,12 +33,10 @@ pub struct ProcessParams<'a> {
 pub trait SynthModule: Any + Send {
     fn id(&self) -> ModuleId;
     fn module_type(&self) -> ModuleType;
-
     fn is_spectral_rate(&self) -> bool;
 
-    fn label(&self) -> String {
-        format!("{:?} {}", self.module_type(), self.id())
-    }
+    fn label(&self) -> String;
+    fn set_label(&mut self, label: String);
 
     fn inputs(&self) -> &'static [InputType];
     fn output_type(&self) -> OutputType;

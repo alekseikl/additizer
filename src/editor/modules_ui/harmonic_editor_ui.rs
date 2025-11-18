@@ -3,13 +3,16 @@ use egui_baseview::egui::{
 };
 
 use crate::{
-    editor::{ModuleUI, gain_slider::GainSlider, utils::confirm_module_removal},
+    editor::{
+        ModuleUI, gain_slider::GainSlider, module_label::ModuleLabel, utils::confirm_module_removal,
+    },
     synth_engine::{HarmonicEditor, ModuleId, SynthEngine},
 };
 
 pub struct HarmonicEditorUI {
     module_id: ModuleId,
     remove_confirmation: bool,
+    label_state: Option<String>,
 }
 
 impl HarmonicEditorUI {
@@ -17,6 +20,7 @@ impl HarmonicEditorUI {
         Self {
             module_id,
             remove_confirmation: false,
+            label_state: None,
         }
     }
 
@@ -72,7 +76,13 @@ impl ModuleUI for HarmonicEditorUI {
             });
 
         CentralPanel::default().show_inside(ui, |ui| {
-            ui.heading("Harmonics editor");
+            let module = synth.get_module_mut(self.module_id).unwrap();
+
+            ui.add(ModuleLabel::new(
+                &module.label(),
+                &mut self.label_state,
+                module,
+            ));
         });
 
         if need_update {

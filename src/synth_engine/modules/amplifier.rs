@@ -24,10 +24,12 @@ impl Default for AmplifierConfigChannel {
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct AmplifierConfig {
+    label: Option<String>,
     channels: [AmplifierConfigChannel; NUM_CHANNELS],
 }
 
 pub struct AmplifierUIData {
+    pub label: String,
     pub level: StereoSample,
 }
 
@@ -65,6 +67,7 @@ impl Default for Channel {
 
 struct Common {
     id: ModuleId,
+    label: String,
     config: ModuleConfigBox<AmplifierConfig>,
     input: Buffer,
     level_mod_input: Buffer,
@@ -80,6 +83,7 @@ impl Amplifier {
         let mut amp = Self {
             common: Common {
                 id,
+                label: format!("Amplifier {id}"),
                 config,
                 input: make_zero_buffer(),
                 level_mod_input: make_zero_buffer(),
@@ -89,6 +93,10 @@ impl Amplifier {
 
         {
             let cfg = amp.common.config.lock();
+
+            if let Some(label) = cfg.label.as_ref() {
+                amp.common.label = label.clone();
+            }
 
             for (channel, cfg) in amp.channels.iter_mut().zip(cfg.channels.iter()) {
                 channel.level = cfg.level;
@@ -102,6 +110,7 @@ impl Amplifier {
 
     pub fn get_ui(&self) -> AmplifierUIData {
         AmplifierUIData {
+            label: self.common.label.clone(),
             level: StereoSample::from_iter(self.channels.iter().map(|channel| channel.level)),
         }
     }
@@ -160,6 +169,15 @@ impl Amplifier {
 impl SynthModule for Amplifier {
     fn id(&self) -> ModuleId {
         self.common.id
+    }
+
+    fn label(&self) -> String {
+        self.common.label.clone()
+    }
+
+    fn set_label(&mut self, label: String) {
+        self.common.label = label.clone();
+        self.common.config.lock().label = Some(label);
     }
 
     fn module_type(&self) -> ModuleType {

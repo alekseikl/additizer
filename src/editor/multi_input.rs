@@ -42,7 +42,7 @@ impl Widget for MultiInput<'_> {
                 ui.horizontal(|ui| {
                     ui.label(&src.label);
 
-                    if ui.button("X").clicked() {
+                    if ui.button("❌").clicked() {
                         self.synth_engine.remove_link(&src.output, &self.input);
                     }
                 });

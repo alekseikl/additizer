@@ -3,7 +3,7 @@ use egui_baseview::egui::{Checkbox, DragValue, Grid, Ui};
 use crate::{
     editor::{
         ModuleUI, direct_input::DirectInput, modulation_input::ModulationInput,
-        utils::confirm_module_removal,
+        module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{ModuleId, ModuleInput, Oscillator, SynthEngine},
 };
@@ -11,6 +11,7 @@ use crate::{
 pub struct OscillatorUI {
     module_id: ModuleId,
     remove_confirmation: bool,
+    label_state: Option<String>,
 }
 
 impl OscillatorUI {
@@ -18,6 +19,7 @@ impl OscillatorUI {
         Self {
             module_id,
             remove_confirmation: false,
+            label_state: None,
         }
     }
 
@@ -34,7 +36,12 @@ impl ModuleUI for OscillatorUI {
     fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
         let mut ui_data = self.osc(synth).get_ui();
 
-        ui.heading("Oscillator");
+        ui.add(ModuleLabel::new(
+            &ui_data.label,
+            &mut self.label_state,
+            synth.get_module_mut(self.module_id).unwrap(),
+        ));
+
         ui.add_space(20.0);
 
         Grid::new("osc_grid")

@@ -1,7 +1,10 @@
 use egui_baseview::egui::{Checkbox, ComboBox, Grid, Slider, Ui};
 
 use crate::{
-    editor::{ModuleUI, modulation_input::ModulationInput, utils::confirm_module_removal},
+    editor::{
+        ModuleUI, modulation_input::ModulationInput, module_label::ModuleLabel,
+        utils::confirm_module_removal,
+    },
     synth_engine::{Envelope, EnvelopeCurve, ModuleId, ModuleInput, Sample, SynthEngine},
     utils::from_ms,
 };
@@ -9,6 +12,7 @@ use crate::{
 pub struct EnvelopeUI {
     module_id: ModuleId,
     remove_confirmation: bool,
+    label_state: Option<String>,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -77,6 +81,7 @@ impl EnvelopeUI {
         Self {
             module_id,
             remove_confirmation: false,
+            label_state: None,
         }
     }
 
@@ -130,7 +135,12 @@ impl ModuleUI for EnvelopeUI {
         let id = self.module_id;
         let mut ui_data = self.env(synth).get_ui();
 
-        ui.heading("Envelope");
+        ui.add(ModuleLabel::new(
+            &ui_data.label,
+            &mut self.label_state,
+            synth.get_module_mut(self.module_id).unwrap(),
+        ));
+
         ui.add_space(20.0);
 
         Grid::new("env_grid")

@@ -185,14 +185,17 @@ impl<'a> ModulationInput<'a> {
         }
 
         ComboBox::from_id_salt(format!("mod-select-{:?}", self.input.input_type))
-            .selected_text("Add Modulation")
+            .selected_text("➕")
+            .width(0.0)
             .show_ui(ui, |ui| {
                 for src in &filtered {
                     if ui.selectable_label(false, &src.label).clicked() {
                         self.add_modulation(src.output);
                     }
                 }
-            });
+            })
+            .response
+            .on_hover_text("Add Modulation Source");
     }
 
     fn add_connected_modulations(&mut self, ui: &mut Ui, connected: &[ConnectedInputSourceUI]) {
@@ -216,7 +219,7 @@ impl<'a> ModulationInput<'a> {
                             .update_modulation(&src.output, &self.input, modulation);
                     }
 
-                    if ui.button("X").clicked() {
+                    if ui.button("❌").on_hover_text("Remove Modulation").clicked() {
                         self.synth_engine.remove_link(&src.output, &self.input);
                     }
 

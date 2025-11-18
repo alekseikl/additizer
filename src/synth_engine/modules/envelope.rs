@@ -20,6 +20,7 @@ pub struct EnvelopeActivityState {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct EnvelopeConfig {
+    label: Option<String>,
     keep_voice_alive: bool,
     channels: [ChannelParams; NUM_CHANNELS],
 }
@@ -27,6 +28,7 @@ pub struct EnvelopeConfig {
 impl Default for EnvelopeConfig {
     fn default() -> Self {
         Self {
+            label: None,
             keep_voice_alive: true,
             channels: Default::default(),
         }
@@ -294,6 +296,7 @@ impl EnvelopeCurve {
 }
 
 pub struct EnvelopeUIData {
+    pub label: String,
     pub attack: StereoSample,
     pub attack_curve: EnvelopeCurve,
     pub decay: StereoSample,
@@ -377,6 +380,7 @@ struct Channel {
 
 pub struct Envelope {
     id: ModuleId,
+    label: String,
     config: ModuleConfigBox<EnvelopeConfig>,
     keep_voice_alive: bool,
     channels: [Channel; NUM_CHANNELS],
@@ -430,6 +434,7 @@ impl Envelope {
     pub fn new(id: ModuleId, config: ModuleConfigBox<EnvelopeConfig>) -> Self {
         let mut env = Self {
             id,
+            label: format!("Envelope {id}"),
             config,
             keep_voice_alive: true,
             channels: Default::default(),
@@ -437,9 +442,15 @@ impl Envelope {
 
         {
             let cfg = env.config.lock();
+
+            if let Some(label) = cfg.label.as_ref() {
+                env.label = label.clone();
+            }
+
             for (channel, cfg_channel) in env.channels.iter_mut().zip(cfg.channels.iter()) {
                 channel.params = cfg_channel.clone();
             }
+
             env.keep_voice_alive = cfg.keep_voice_alive;
         }
 
@@ -450,6 +461,7 @@ impl Envelope {
 
     pub fn get_ui(&self) -> EnvelopeUIData {
         EnvelopeUIData {
+            label: self.label.clone(),
             attack: extract_param!(self, attack),
             attack_curve: self.channels[0].params.attack_curve,
             decay: extract_param!(self, decay),
@@ -605,6 +617,15 @@ impl Envelope {
 impl SynthModule for Envelope {
     fn id(&self) -> ModuleId {
         self.id
+    }
+
+    fn label(&self) -> String {
+        self.label.clone()
+    }
+
+    fn set_label(&mut self, label: String) {
+        self.label = label.clone();
+        self.config.lock().label = Some(label);
     }
 
     fn module_type(&self) -> ModuleType {

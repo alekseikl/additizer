@@ -16,6 +16,7 @@ const NUM_EDITABLE_HARMONICS: usize = SPECTRAL_BUFFER_SIZE - 2;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct HarmonicEditorConfig {
+    label: Option<String>,
     harmonics: Vec<StereoSample>,
     tail: StereoSample,
 }
@@ -23,6 +24,7 @@ pub struct HarmonicEditorConfig {
 impl Default for HarmonicEditorConfig {
     fn default() -> Self {
         Self {
+            label: None,
             harmonics: vec![StereoSample::splat(1.0); NUM_EDITABLE_HARMONICS],
             tail: StereoSample::splat(1.0),
         }
@@ -31,6 +33,7 @@ impl Default for HarmonicEditorConfig {
 
 pub struct HarmonicEditor {
     id: ModuleId,
+    label: String,
     config: ModuleConfigBox<HarmonicEditorConfig>,
     harmonics: Vec<StereoSample>,
     tail: StereoSample,
@@ -41,6 +44,7 @@ impl HarmonicEditor {
     pub fn new(id: ModuleId, config: ModuleConfigBox<HarmonicEditorConfig>) -> Self {
         let mut editor = Self {
             id,
+            label: format!("Harmonic Editor {id}"),
             config,
             harmonics: vec![StereoSample::splat(1.0); NUM_EDITABLE_HARMONICS],
             tail: StereoSample::splat(1.0),
@@ -50,9 +54,14 @@ impl HarmonicEditor {
         {
             let config = editor.config.lock();
 
+            if let Some(label) = config.label.as_ref() {
+                editor.label = label.clone();
+            }
+
             if config.harmonics.len() == NUM_EDITABLE_HARMONICS {
                 editor.harmonics = config.harmonics.clone();
             }
+
             editor.tail = config.tail;
         }
 
@@ -116,6 +125,15 @@ impl HarmonicEditor {
 impl SynthModule for HarmonicEditor {
     fn id(&self) -> ModuleId {
         self.id
+    }
+
+    fn label(&self) -> String {
+        self.label.clone()
+    }
+
+    fn set_label(&mut self, label: String) {
+        self.label = label.clone();
+        self.config.lock().label = Some(label);
     }
 
     fn module_type(&self) -> ModuleType {
