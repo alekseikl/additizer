@@ -133,7 +133,7 @@ pub struct Oscillator {
 
 macro_rules! set_param_method {
     ($fn_name:ident, $param:ident, $transform:expr) => {
-        pub fn $fn_name(&mut self, $param: StereoSample) -> &mut Self {
+        pub fn $fn_name(&mut self, $param: StereoSample) {
             for (channel, $param) in self.channels.iter_mut().zip($param.iter()) {
                 channel.$param = $transform;
             }
@@ -144,8 +144,6 @@ macro_rules! set_param_method {
                     channel_cfg.$param = channel.$param;
                 }
             }
-
-            self
         }
     };
 }
@@ -208,15 +206,13 @@ impl Oscillator {
         }
     }
 
-    pub fn set_unison(&mut self, unison: usize) -> &mut Self {
+    pub fn set_unison(&mut self, unison: usize) {
         self.common.unison = unison.clamp(1, MAX_UNISON_VOICES);
 
         {
             let mut cfg = self.common.config.lock();
             cfg.unison = self.common.unison;
         }
-
-        self
     }
 
     pub fn set_same_channels_phases(&mut self, same: bool) {

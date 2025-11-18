@@ -388,7 +388,7 @@ pub struct Envelope {
 
 macro_rules! set_param_method {
     ($fn_name:ident, $param:ident, $transform:expr) => {
-        pub fn $fn_name(&mut self, $param: StereoSample) -> &mut Self {
+        pub fn $fn_name(&mut self, $param: StereoSample) {
             for (channel, $param) in self.channels.iter_mut().zip($param.iter()) {
                 channel.params.$param = $transform;
             }
@@ -400,8 +400,6 @@ macro_rules! set_param_method {
                     cfg_channel.$param = channel.params.$param;
                 }
             }
-
-            self
         }
     };
 }
@@ -473,15 +471,13 @@ impl Envelope {
         }
     }
 
-    pub fn set_keep_voice_alive(&mut self, keep_alive: bool) -> &mut Self {
+    pub fn set_keep_voice_alive(&mut self, keep_alive: bool) {
         self.keep_voice_alive = keep_alive;
 
         {
             let mut cfg = self.config.lock();
             cfg.keep_voice_alive = keep_alive;
         }
-
-        self
     }
 
     set_curve_method!(set_attack_curve, attack_curve);

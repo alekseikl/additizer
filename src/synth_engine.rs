@@ -269,24 +269,6 @@ impl SynthEngine {
         }
     }
 
-    fn set_link(&mut self, link: ModuleLink) -> Result<(), String> {
-        if let Some(inputs) = self.input_sources.get_mut(&link.dst)
-            && let Some(input) = inputs.iter_mut().find(|input| input.src == link.src)
-        {
-            input.modulation = link.modulation;
-            return Ok(());
-        }
-
-        self.can_be_linked(&link.src, &link.dst)?;
-
-        let mut new_links = self.get_links();
-
-        new_links.push(link);
-        self.setup_routing(&new_links)?;
-        self.save_links();
-        Ok(())
-    }
-
     pub fn add_link(&mut self, src: ModuleOutput, dst: ModuleInput) -> Result<(), String> {
         self.can_be_linked(&src, &dst)?;
 
@@ -719,12 +701,12 @@ impl SynthEngine {
             };
         }
 
-        typed_module_mut!(&filter_env_id, Envelope)
-            .unwrap()
-            .set_attack(0.0.into())
-            .set_decay(from_ms(500.0).into())
-            .set_sustain(0.0.into())
-            .set_release(from_ms(100.0).into());
+        let filter_env = typed_module_mut!(&filter_env_id, Envelope).unwrap();
+
+        filter_env.set_attack(0.0.into());
+        filter_env.set_decay(from_ms(500.0).into());
+        filter_env.set_sustain(0.0.into());
+        filter_env.set_release(from_ms(100.0).into());
 
         typed_module_mut!(&filter_env_id, Envelope)
             .unwrap()
@@ -738,52 +720,51 @@ impl SynthEngine {
             .unwrap()
             .set_cutoff(2.0.into());
 
-        typed_module_mut!(&osc_id, Oscillator)
-            .unwrap()
-            .set_unison(3)
-            .set_detune(st_to_octave(0.01).into());
+        let osc = typed_module_mut!(&osc_id, Oscillator).unwrap();
 
-        typed_module_mut!(&amp_env_id, Envelope)
-            .unwrap()
-            .set_attack(StereoSample::splat(from_ms(10.0)))
-            .set_decay(from_ms(20.0).into())
-            .set_sustain(1.0.into())
-            .set_release(from_ms(300.0).into());
+        osc.set_unison(3);
+        osc.set_detune(st_to_octave(0.01).into());
+
+        let amp_env = typed_module_mut!(&amp_env_id, Envelope).unwrap();
+
+        amp_env.set_attack(StereoSample::splat(from_ms(10.0)));
+        amp_env.set_decay(from_ms(20.0).into());
+        amp_env.set_sustain(1.0.into());
+        amp_env.set_release(from_ms(300.0).into());
 
         typed_module_mut!(&amp_env_id, Envelope)
             .unwrap()
             .set_decay_curve(EnvelopeCurve::ExponentialOut(0.1));
 
-        self.set_link(ModuleLink::link(
+        self.add_link(
             ModuleOutput::spectrum(harmonic_editor_id),
             ModuleInput::spectrum(filter_id),
-        ))
+        )
         .unwrap();
-        self.set_link(ModuleLink::modulation(
+
+        self.add_modulation(
             ModuleOutput::scalar(filter_env_id),
             ModuleInput::cutoff(filter_id),
-            st_to_octave(64.0),
-        ))
+            st_to_octave(64.0).into(),
+        )
         .unwrap();
-        self.set_link(ModuleLink::link(
+
+        self.add_link(
             ModuleOutput::spectrum(filter_id),
             ModuleInput::spectrum(osc_id),
-        ))
+        )
         .unwrap();
-        self.set_link(ModuleLink::link(
-            ModuleOutput::audio(osc_id),
-            ModuleInput::audio(amp_id),
-        ))
-        .unwrap();
-        self.set_link(ModuleLink::link(
-            ModuleOutput::scalar(amp_env_id),
-            ModuleInput::level(amp_id),
-        ))
-        .unwrap();
-        self.set_link(ModuleLink::link(
+
+        self.add_link(ModuleOutput::audio(osc_id), ModuleInput::audio(amp_id))
+            .unwrap();
+
+        self.add_link(ModuleOutput::scalar(amp_env_id), ModuleInput::level(amp_id))
+            .unwrap();
+
+        self.add_link(
             ModuleOutput::audio(amp_id),
             ModuleInput::audio(OUTPUT_MODULE_ID),
-        ))
+        )
         .unwrap();
     }
 
