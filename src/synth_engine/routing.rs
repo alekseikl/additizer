@@ -34,6 +34,7 @@ pub enum InputType {
     Level,
     PitchShift,
     Detune,
+    PhaseShift,
     Spectrum,
     Cutoff,
     Q,
@@ -52,6 +53,7 @@ impl InputType {
             Self::Level => DataType::Buffer,
             Self::PitchShift => DataType::Buffer,
             Self::Detune => DataType::Buffer,
+            Self::PhaseShift => DataType::Buffer,
             Self::Spectrum => DataType::Spectral,
             Self::Cutoff => DataType::Scalar,
             Self::Q => DataType::Scalar,
@@ -112,6 +114,7 @@ impl ModuleInput {
     input_ctor!(level, Level);
     input_ctor!(pitch_shift, PitchShift);
     input_ctor!(detune, Detune);
+    input_ctor!(phase_shift, PhaseShift);
     input_ctor!(spectrum, Spectrum);
     input_ctor!(cutoff, Cutoff);
     input_ctor!(q, Q);

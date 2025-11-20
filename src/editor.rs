@@ -194,7 +194,11 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState, synth_engine: &mut S
         .frame(Frame::default().inner_margin(8.0))
         .show_inside(ui, |ui| {
             if let Some(module_ui) = &mut editor_state.selected_module_ui {
-                module_ui.ui(synth_engine, ui);
+                ScrollArea::vertical()
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        module_ui.ui(synth_engine, ui);
+                    });
             }
         });
 }

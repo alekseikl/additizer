@@ -164,6 +164,19 @@ impl ModuleUI for EnvelopeUI {
                     self.env(synth).set_attack_curve(ui_data.attack_curve);
                 }
 
+                ui.label("Hold");
+                if ui
+                    .add(ModulationInput::new(
+                        &mut ui_data.hold,
+                        synth,
+                        ModuleInput::hold(id),
+                    ))
+                    .changed()
+                {
+                    self.env(synth).set_hold(ui_data.hold);
+                }
+                ui.end_row();
+
                 ui.label("Decay");
                 if ui
                     .add(

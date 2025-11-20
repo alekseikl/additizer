@@ -1,9 +1,9 @@
-use egui_baseview::egui::{Checkbox, DragValue, Grid, Ui};
+use egui_baseview::egui::{DragValue, Grid, Ui};
 
 use crate::{
     editor::{
         ModuleUI, direct_input::DirectInput, modulation_input::ModulationInput,
-        module_label::ModuleLabel, utils::confirm_module_removal,
+        module_label::ModuleLabel, stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
     synth_engine::{ModuleId, ModuleInput, Oscillator, SynthEngine},
 };
@@ -82,6 +82,19 @@ impl ModuleUI for OscillatorUI {
                 }
                 ui.end_row();
 
+                ui.label("Phase shift");
+                if ui
+                    .add(ModulationInput::new(
+                        &mut ui_data.phase_shift,
+                        synth,
+                        ModuleInput::phase_shift(self.module_id),
+                    ))
+                    .changed()
+                {
+                    self.osc(synth).set_phase_shift(ui_data.phase_shift);
+                }
+                ui.end_row();
+
                 ui.label("Detune");
                 if ui
                     .add(ModulationInput::new(
@@ -104,14 +117,35 @@ impl ModuleUI for OscillatorUI {
                 }
                 ui.end_row();
 
-                ui.label("Same note phases");
-                if ui
-                    .add(Checkbox::without_text(&mut ui_data.same_channel_phases))
-                    .changed()
-                {
-                    self.osc(synth)
-                        .set_same_channels_phases(ui_data.same_channel_phases);
-                }
+                ui.label("Initial Phases");
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        let phase = &mut ui_data.initial_phases[0];
+
+                        ui.label("#1");
+                        if ui
+                            .add(StereoSlider::new(phase).default_value(0.0).precision(2))
+                            .changed()
+                        {
+                            self.osc(synth).set_initial_phase(0, *phase);
+                        }
+                    });
+                    ui.add_space(8.0);
+
+                    ui.collapsing("Unison Phases", |ui| {
+                        for (idx, phase) in ui_data.initial_phases[1..].iter_mut().enumerate() {
+                            ui.horizontal(|ui| {
+                                ui.label(format!("#{}", idx + 2));
+                                if ui
+                                    .add(StereoSlider::new(phase).default_value(0.0).precision(2))
+                                    .changed()
+                                {
+                                    self.osc(synth).set_initial_phase(idx + 1, *phase);
+                                }
+                            });
+                        }
+                    });
+                });
                 ui.end_row();
             });
 

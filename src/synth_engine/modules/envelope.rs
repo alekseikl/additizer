@@ -299,6 +299,7 @@ pub struct EnvelopeUIData {
     pub label: String,
     pub attack: StereoSample,
     pub attack_curve: EnvelopeCurve,
+    pub hold: StereoSample,
     pub decay: StereoSample,
     pub decay_curve: EnvelopeCurve,
     pub sustain: StereoSample,
@@ -462,6 +463,7 @@ impl Envelope {
             label: self.label.clone(),
             attack: extract_param!(self, attack),
             attack_curve: self.channels[0].params.attack_curve,
+            hold: extract_param!(self, hold),
             decay: extract_param!(self, decay),
             decay_curve: self.channels[0].params.decay_curve,
             sustain: extract_param!(self, sustain),
@@ -485,6 +487,7 @@ impl Envelope {
     set_curve_method!(set_release_curve, release_curve);
 
     set_param_method!(set_attack, attack, *attack);
+    set_param_method!(set_hold, hold, *hold);
     set_param_method!(set_decay, decay, *decay);
     set_param_method!(set_sustain, sustain, *sustain);
     set_param_method!(set_release, release, *release);
