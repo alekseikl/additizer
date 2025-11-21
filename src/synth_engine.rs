@@ -17,8 +17,8 @@ use crate::{
         },
         config::ModuleConfig,
         modules::{
-            AmplifierConfig, EnvelopeActivityState, EnvelopeConfig, HarmonicEditorConfig,
-            OscillatorConfig, SpectralFilterConfig,
+            AmplifierConfig, EnvelopeActivityState, EnvelopeConfig, ExternalParamConfig,
+            HarmonicEditorConfig, OscillatorConfig, SpectralFilterConfig,
         },
         routing::{
             AvailableInputSourceUI, DataType, MAX_VOICES, MIN_MODULE_ID, OutputType, Router,
@@ -30,7 +30,10 @@ use crate::{
 
 pub use buffer::BUFFER_SIZE;
 pub use config::Config;
-pub use modules::{Amplifier, Envelope, EnvelopeCurve, HarmonicEditor, Oscillator, SpectralFilter};
+pub use modules::{
+    Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, HarmonicEditor,
+    Oscillator, SpectralFilter,
+};
 pub use routing::{
     ConnectedInputSourceUI, InputType, ModuleId, ModuleInput, ModuleLink, ModuleOutput, ModuleType,
     OUTPUT_MODULE_ID,
@@ -88,6 +91,7 @@ pub struct SynthEngine {
     modules_to_execute: HashSet<ModuleId>,
     execution_order: Vec<ModuleId>,
     voices: [Voice; MAX_VOICES],
+    external_params: Option<Arc<ExternalParamsBlock>>,
     output_level: StereoSample,
     output_level_param: Arc<FloatParam>,
     tmp_output_buffer: Option<Box<(Buffer, Buffer)>>,
@@ -124,25 +128,12 @@ macro_rules! typed_modules {
     };
 }
 
-// macro_rules! typed_modules_mut {
-//     ($self:ident, $module_type:ident) => {
-//         $self
-//             .modules
-//             .values_mut()
-//             .filter_map(|item| {
-//                 item.as_deref_mut()
-//                     .filter(|mod_box| mod_box.module_type() == ModuleType::$module_type)
-//             })
-//             .filter_map($module_type::downcast_mut)
-//     };
-// }
-
 macro_rules! add_module_method {
-    ($func_name:ident, $module_type:ident, $module_cfg:ident) => {
+    ($func_name:ident, $module_type:ident, $module_cfg:ident $(, $arg:ident )*) => {
         pub fn $func_name(&mut self) -> ModuleId {
             let id = self.alloc_next_id();
             let config = Arc::new(Mutex::new($module_cfg::default()));
-            let mut module = $module_type::new(id, Arc::clone(&config));
+            let mut module = $module_type::new(id, Arc::clone(&config) $(, self.$arg() )*);
 
             Self::trigger_active_notes(self.sample_rate, &self.voices, &mut module, self);
             self.modules.insert(id, Some(Box::new(module)));
@@ -167,6 +158,7 @@ impl SynthEngine {
             modules_to_execute: HashSet::new(),
             execution_order: Vec::new(),
             voices: Default::default(),
+            external_params: None,
             output_level: StereoSample::splat(0.25),
             output_level_param: Arc::new(FloatParam::new(
                 "",
@@ -181,11 +173,13 @@ impl SynthEngine {
         &mut self,
         config: Arc<Config>,
         output_level_param: Arc<FloatParam>,
-        sample_rate: f32,
+        external_params: ExternalParamsBlock,
+        sample_rate: Sample,
     ) {
         self.config = config;
         self.sample_rate = sample_rate;
         self.output_level_param = output_level_param;
+        self.external_params = Some(Arc::new(external_params));
 
         if !self.load_config() {
             self.clear();
@@ -198,6 +192,16 @@ impl SynthEngine {
     add_module_method!(add_amplifier, Amplifier, AmplifierConfig);
     add_module_method!(add_spectral_filter, SpectralFilter, SpectralFilterConfig);
     add_module_method!(add_harmonic_editor, HarmonicEditor, HarmonicEditorConfig);
+    add_module_method!(
+        add_external_param,
+        ExternalParam,
+        ExternalParamConfig,
+        get_external_params
+    );
+
+    fn get_external_params(&self) -> Arc<ExternalParamsBlock> {
+        Arc::clone(self.external_params.as_ref().unwrap())
+    }
 
     pub fn remove_module(&mut self, id: ModuleId) {
         if !self.modules.contains_key(&id) {
@@ -808,10 +812,10 @@ impl SynthEngine {
         let modules_cfg = modules_arc.lock();
 
         macro_rules! restore_module {
-            ($module_type:ident, $module_id:ident, $cfg:ident) => {{
+            ($module_type:ident, $module_id:ident, $cfg:ident $(, $arg:ident )*) => {{
                 self.modules.insert(
                     *$module_id,
-                    Some(Box::new($module_type::new(*$module_id, Arc::clone($cfg)))),
+                    Some(Box::new($module_type::new(*$module_id, Arc::clone($cfg) $(, self.$arg() )*))),
                 );
             }};
             ($module_type:ident, $module_id:ident) => {{
@@ -831,6 +835,9 @@ impl SynthEngine {
                 ModuleConfig::Oscillator(cfg) => restore_module!(Oscillator, id, cfg),
                 ModuleConfig::SpectralFilter(cfg) => restore_module!(SpectralFilter, id, cfg),
                 ModuleConfig::HarmonicEditor(cfg) => restore_module!(HarmonicEditor, id, cfg),
+                ModuleConfig::ExternalParam(cfg) => {
+                    restore_module!(ExternalParam, id, cfg, get_external_params)
+                }
             }
         }
 

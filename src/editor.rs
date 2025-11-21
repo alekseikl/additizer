@@ -10,7 +10,10 @@ use parking_lot::Mutex;
 use crate::{
     editor::{
         gain_slider::GainSlider,
-        modules_ui::{AmplifierUI, EnvelopeUI, HarmonicEditorUI, OscillatorUI, SpectralFilterUI},
+        modules_ui::{
+            AmplifierUI, EnvelopeUI, ExternalParamUI, HarmonicEditorUI, OscillatorUI,
+            SpectralFilterUI,
+        },
     },
     synth_engine::{
         ModuleId, ModuleInput, ModuleOutput, ModuleType, OUTPUT_MODULE_ID, SynthEngine, SynthModule,
@@ -75,6 +78,7 @@ fn ui_for_module(module: &dyn SynthModule) -> ModuleUIBox {
         ModuleType::Amplifier => Box::new(AmplifierUI::new(module.id())),
         ModuleType::Oscillator => Box::new(OscillatorUI::new(module.id())),
         ModuleType::Envelope => Box::new(EnvelopeUI::new(module.id())),
+        ModuleType::ExternalParam => Box::new(ExternalParamUI::new(module.id())),
     }
 }
 
@@ -141,6 +145,9 @@ fn show_side_bar(
                                 }
                                 if ui.selectable_label(false, "Spectral Filter").clicked() {
                                     synth_engine.add_spectral_filter();
+                                }
+                                if ui.selectable_label(false, "External Parameter").clicked() {
+                                    synth_engine.add_external_param();
                                 }
                                 if ui.selectable_label(false, "Amplifier").clicked() {
                                     let amp_id = synth_engine.add_amplifier();

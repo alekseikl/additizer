@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use crate::synth_engine::{
     StereoSample,
     modules::{
-        AmplifierConfig, EnvelopeConfig, HarmonicEditorConfig, OscillatorConfig,
-        SpectralFilterConfig,
+        AmplifierConfig, EnvelopeConfig, ExternalParamConfig, HarmonicEditorConfig,
+        OscillatorConfig, SpectralFilterConfig,
     },
     routing::{ModuleId, ModuleLink},
 };
@@ -36,6 +36,7 @@ pub enum ModuleConfig {
     Oscillator(Arc<Mutex<OscillatorConfig>>),
     SpectralFilter(Arc<Mutex<SpectralFilterConfig>>),
     HarmonicEditor(Arc<Mutex<HarmonicEditorConfig>>),
+    ExternalParam(Arc<Mutex<ExternalParamConfig>>),
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]

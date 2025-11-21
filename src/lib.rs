@@ -7,7 +7,7 @@ pub mod utils;
 
 use crate::editor::create_editor;
 use crate::params::AdditizerParams;
-use crate::synth_engine::{SynthEngine, VoiceId};
+use crate::synth_engine::{ExternalParamsBlock, SynthEngine, VoiceId};
 pub use egui_baseview::egui;
 use nih_plug::prelude::*;
 use parking_lot::Mutex;
@@ -114,9 +114,19 @@ impl Plugin for Additizer {
     ) -> bool {
         let mut synth = self.synth_engine.lock();
 
+        let external_params = ExternalParamsBlock {
+            float_params: [
+                Arc::clone(&self.params.float_param_1),
+                Arc::clone(&self.params.float_param_2),
+                Arc::clone(&self.params.float_param_3),
+                Arc::clone(&self.params.float_param_4),
+            ],
+        };
+
         synth.init(
             Arc::clone(&self.params.config),
             Arc::clone(&self.params.volume),
+            external_params,
             buffer_config.sample_rate,
         );
 

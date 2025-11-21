@@ -287,12 +287,12 @@ impl Oscillator {
         freq_phase_mult: Sample,
         phase: &mut Phase,
     ) -> Sample {
-        let frequency = octave_to_freq(octave);
         let shifted_phase = phase.wrapping_add(phase_shift);
         let idx = (shifted_phase >> INTERMEDIATE_BITS) as usize;
         let t = (shifted_phase & INTERMEDIATE_MASK) as Sample * INTERMEDIATE_MULT;
         let sample_from = get_interpolated_sample(wave_from, idx, t);
         let sample_to = get_interpolated_sample(wave_to, idx, t);
+        let frequency = octave_to_freq(octave);
 
         *phase = phase.wrapping_add((frequency * freq_phase_mult) as u32);
         sample_from * (1.0 - buff_t) + sample_to * buff_t

@@ -18,6 +18,7 @@ pub enum ModuleType {
     Oscillator,
     SpectralFilter,
     HarmonicEditor,
+    ExternalParam,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

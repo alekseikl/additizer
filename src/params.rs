@@ -27,6 +27,18 @@ pub struct AdditizerParams {
 
     #[id = "buffer-size"]
     pub buffer_size: IntParam,
+
+    #[id = "float-param-1"]
+    pub float_param_1: Arc<FloatParam>,
+
+    #[id = "float-param-2"]
+    pub float_param_2: Arc<FloatParam>,
+
+    #[id = "float-param-3"]
+    pub float_param_3: Arc<FloatParam>,
+
+    #[id = "float-param-4"]
+    pub float_param_4: Arc<FloatParam>,
 }
 
 impl Default for AdditizerParams {
@@ -50,6 +62,26 @@ impl Default for AdditizerParams {
                 .with_unit(" dB"),
             ),
             buffer_size: IntParam::new("Buffer size", 128, IntRange::Linear { min: 32, max: 128 }),
+            float_param_1: Arc::new(FloatParam::new(
+                "Float Param 1",
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            )),
+            float_param_2: Arc::new(FloatParam::new(
+                "Float Param 2",
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            )),
+            float_param_3: Arc::new(FloatParam::new(
+                "Float Param 3",
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            )),
+            float_param_4: Arc::new(FloatParam::new(
+                "Float Param 4",
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            )),
         }
     }
 }
