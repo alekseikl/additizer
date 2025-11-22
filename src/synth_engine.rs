@@ -298,6 +298,8 @@ impl SynthEngine {
         {
             input.modulation = amount;
         }
+
+        self.save_links();
     }
 
     pub fn add_link(&mut self, src: ModuleOutput, dst: ModuleInput) -> Result<(), String> {
@@ -871,8 +873,8 @@ impl SynthEngine {
 
         self.next_id = routing.next_module_id;
         self.output_level = routing.output_level;
-        self.set_num_voices(routing.num_voices);
-        self.set_buffer_size(routing.buffer_size);
+        self.num_voices = routing.num_voices.clamp(1, MAX_VOICES);
+        self.buffer_size = routing.buffer_size.clamp(BUFFER_SIZE / 4, BUFFER_SIZE);
         self.setup_routing(&routing.links).is_ok()
     }
 
