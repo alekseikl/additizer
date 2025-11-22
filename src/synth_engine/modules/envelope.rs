@@ -317,21 +317,9 @@ enum Stage {
     Done,
 }
 
-impl Stage {
-    fn next_level(&mut self, sustain: Sample) -> Option<Sample> {
-        match self {
-            Self::Attack(curve) => curve.next(0.0),
-            Self::Hold { t: _ } => None,
-            Self::Decay(curve) => curve.next(0.0),
-            Self::Sustain => Some(sustain),
-            Self::Release(curve) => curve.next(0.0),
-            Self::Done => None,
-        }
-    }
-}
-
 struct Voice {
     stage: Stage,
+    advance_twice: bool,
     prev_output: Sample,
     output: Sample,
 }
@@ -340,6 +328,7 @@ impl Default for Voice {
     fn default() -> Self {
         Self {
             stage: Stage::Done,
+            advance_twice: false,
             prev_output: 0.0,
             output: 0.0,
         }
@@ -589,27 +578,18 @@ impl Envelope {
         };
     }
 
-    fn reset_voice(channel: &ChannelParams, voice: &mut Voice, same_note_retrigger: bool) {
-        let value_from = if same_note_retrigger {
-            voice.stage.next_level(channel.sustain).unwrap_or(0.0)
+    fn trigger_voice(channel: &ChannelParams, voice: &mut Voice, reset: bool) {
+        if reset {
+            voice.stage = Stage::Attack(channel.attack_curve.curve_iter(0.0, 1.0));
+            voice.output = 0.0;
         } else {
-            0.0
-        };
-
-        voice.stage = Stage::Attack(channel.attack_curve.curve_iter(value_from, 1.0));
-        voice.output = 0.0;
+            voice.stage = Stage::Attack(channel.attack_curve.curve_iter(voice.output, 1.0));
+        }
     }
 
     fn release_voice(params: &ChannelParams, voice: &mut Voice) {
-        voice.stage = Stage::Release(
-            params.release_curve.curve_iter(
-                voice
-                    .stage
-                    .next_level(params.sustain)
-                    .unwrap_or(params.sustain),
-                0.0,
-            ),
-        );
+        voice.advance_twice = true;
+        voice.stage = Stage::Release(params.release_curve.curve_iter(voice.output, 0.0));
     }
 }
 
@@ -651,10 +631,10 @@ impl SynthModule for Envelope {
 
     fn note_on(&mut self, params: &NoteOnParams, _router: &dyn Router) {
         for channel in &mut self.channels {
-            Self::reset_voice(
+            Self::trigger_voice(
                 &channel.params,
                 &mut channel.voices[params.voice_idx],
-                params.same_note_retrigger,
+                params.reset,
             );
         }
     }
@@ -676,6 +656,21 @@ impl SynthModule for Envelope {
                     channel_idx,
                     router,
                 );
+
+                let voice = &mut channel.voices[*voice_idx];
+
+                if voice.advance_twice {
+                    voice.advance_twice = false;
+
+                    Self::process_channel_voice(
+                        self.id,
+                        channel,
+                        params,
+                        *voice_idx,
+                        channel_idx,
+                        router,
+                    );
+                }
             }
         }
     }

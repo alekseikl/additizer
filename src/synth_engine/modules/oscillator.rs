@@ -203,6 +203,7 @@ impl Oscillator {
             for (channel, cfg_channel) in osc.channels.iter_mut().zip(cfg.channels.iter()) {
                 channel.level = cfg_channel.level;
                 channel.pitch_shift = cfg_channel.pitch_shift;
+                channel.phase_shift = cfg_channel.phase_shift;
                 channel.detune = cfg_channel.detune;
                 channel.initial_phases = cfg_channel.initial_phases;
             }
@@ -309,6 +310,7 @@ impl Oscillator {
     }
 
     #[inline(always)]
+    // #[unsafe(no_mangle)]
     fn process_sample(
         octave: Sample,
         phase_shift: Phase,
@@ -323,10 +325,10 @@ impl Oscillator {
         let t = (shifted_phase & INTERMEDIATE_MASK) as Sample * INTERMEDIATE_MULT;
         let sample_from = Self::get_interpolated_sample(wave_from, idx, t);
         let sample_to = Self::get_interpolated_sample(wave_to, idx, t);
-        let frequency = octave_to_freq(octave);
+        let result = sample_from + (sample_to - sample_from) * buff_t;
 
-        *phase = phase.wrapping_add((frequency * freq_phase_mult) as i64 as u32);
-        sample_from * (1.0 - buff_t) + sample_to * buff_t
+        *phase = phase.wrapping_add((octave_to_freq(octave) * freq_phase_mult) as i64 as u32);
+        result
     }
 
     fn process_channel_voice(
@@ -507,14 +509,12 @@ impl SynthModule for Oscillator {
     }
 
     fn note_on(&mut self, params: &NoteOnParams, router: &dyn Router) {
-        let trigger = !params.same_note_retrigger;
-
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             let voice = &mut channel.voices[params.voice_idx];
 
             voice.octave = note_to_octave(params.note);
 
-            if trigger {
+            if params.reset {
                 for (phase, initial_phase) in voice.phases.iter_mut().zip(channel.initial_phases) {
                     *phase = Self::to_int_phase(initial_phase);
                 }

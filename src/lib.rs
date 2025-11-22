@@ -144,7 +144,7 @@ impl Plugin for Additizer {
         let mut synth = self.synth_engine.lock();
 
         assert_no_alloc::assert_no_alloc(|| {
-            let buffer_size = self.params.buffer_size.value() as usize;
+            let buffer_size = synth.get_buffer_size();
             let mut next_event = context.next_event();
 
             for (block_idx, mut block) in buffer.iter_blocks(buffer_size) {

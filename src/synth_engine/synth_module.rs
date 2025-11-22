@@ -13,11 +13,10 @@ pub struct NoteOnParams {
     pub note: f32,
     // pub velocity: f32,
     pub voice_idx: usize,
-    pub same_note_retrigger: bool,
+    pub reset: bool,
 }
 
 pub struct NoteOffParams {
-    // pub note: u8,
     pub voice_idx: usize,
 }
 

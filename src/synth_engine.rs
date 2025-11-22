@@ -15,14 +15,12 @@ use crate::{
         buffer::{
             Buffer, SpectralBuffer, ZEROES_BUFFER, fill_or_append_buffer_slice, make_zero_buffer,
         },
-        config::ModuleConfig,
+        config::{ModuleConfig, RoutingConfig},
         modules::{
             AmplifierConfig, EnvelopeActivityState, EnvelopeConfig, ExternalParamConfig,
             HarmonicEditorConfig, OscillatorConfig, SpectralFilterConfig,
         },
-        routing::{
-            AvailableInputSourceUI, DataType, MAX_VOICES, MIN_MODULE_ID, OutputType, Router,
-        },
+        routing::{AvailableInputSourceUI, DataType, MAX_VOICES, OutputType, Router},
         synth_module::{NoteOffParams, NoteOnParams, ProcessParams},
     },
     utils::{from_ms, st_to_octave},
@@ -85,6 +83,8 @@ pub struct SynthEngine {
     next_id: ModuleId,
     next_voice_id: u64,
     sample_rate: f32,
+    buffer_size: usize,
+    num_voices: usize,
     config: Arc<Config>,
     modules: HashMap<ModuleId, Option<Box<dyn SynthModule>>>,
     input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>>,
@@ -148,10 +148,14 @@ macro_rules! add_module_method {
 
 impl SynthEngine {
     pub fn new() -> Self {
+        let default_cfg = RoutingConfig::default();
+
         Self {
-            next_id: MIN_MODULE_ID,
+            next_id: default_cfg.next_module_id,
             next_voice_id: 1,
             sample_rate: 1000.0,
+            buffer_size: default_cfg.buffer_size,
+            num_voices: default_cfg.num_voices,
             config: Default::default(),
             modules: HashMap::new(),
             input_sources: HashMap::new(),
@@ -185,6 +189,29 @@ impl SynthEngine {
             self.clear();
             self.build_scheme();
         }
+    }
+
+    pub fn get_voices_num(&self) -> usize {
+        self.num_voices
+    }
+
+    pub fn set_num_voices(&mut self, num_voices: usize) {
+        self.num_voices = num_voices.clamp(1, MAX_VOICES);
+
+        for voice in &mut self.voices[self.num_voices..] {
+            voice.active = false;
+        }
+
+        self.config.routing.lock().num_voices = self.num_voices;
+    }
+
+    pub fn get_buffer_size(&self) -> usize {
+        self.buffer_size
+    }
+
+    pub fn set_buffer_size(&mut self, buffer_size: usize) {
+        self.buffer_size = (buffer_size).clamp(BUFFER_SIZE / 4, BUFFER_SIZE);
+        self.config.routing.lock().buffer_size = self.buffer_size;
     }
 
     add_module_method!(add_oscillator, Oscillator, OscillatorConfig);
@@ -304,6 +331,10 @@ impl SynthEngine {
         self.config.routing.lock().output_level = level;
     }
 
+    fn voices_iter(&self) -> impl Iterator<Item = &Voice> {
+        self.voices.iter().take(self.num_voices)
+    }
+
     pub fn note_on(
         &mut self,
         samples: usize,
@@ -319,20 +350,20 @@ impl SynthEngine {
             note,
             active: true,
         };
+
         let mut terminated_voice: Option<VoiceId> = None;
-        let (voice_idx, same_note) = if let Some(voice_idx) = self
-            .voices
-            .iter()
+
+        let (voice_idx, reset) = if let Some(voice_idx) = self
+            .voices_iter()
             .position(|voice| voice.active && voice.note == note)
         {
             terminated_voice = Some(self.voices[voice_idx].get_id());
-            (voice_idx, true)
-        } else if let Some(voice_idx) = self.voices.iter().position(|voice| !voice.active) {
             (voice_idx, false)
+        } else if let Some(voice_idx) = self.voices_iter().position(|voice| !voice.active) {
+            (voice_idx, true)
         } else {
             let voice_idx = self
-                .voices
-                .iter()
+                .voices_iter()
                 .position_min_by_key(|voice| voice.id)
                 .unwrap();
 
@@ -347,7 +378,7 @@ impl SynthEngine {
             sample_rate: self.sample_rate,
             note: note as f32,
             voice_idx,
-            same_note_retrigger: same_note,
+            reset,
         };
 
         let active_voices = [voice_idx];
@@ -372,17 +403,13 @@ impl SynthEngine {
 
     pub fn note_off(&mut self, note: u8) {
         let Some(voice_idx) = self
-            .voices
-            .iter()
+            .voices_iter()
             .position(|voice| voice.active && voice.note == note)
         else {
             return;
         };
 
-        let params = NoteOffParams {
-            //note,
-            voice_idx,
-        };
+        let params = NoteOffParams { voice_idx };
 
         for module_id in &self.execution_order {
             if let Some(module) = get_module_mut!(self, &module_id) {
@@ -393,8 +420,7 @@ impl SynthEngine {
 
     pub fn choke(&mut self, note: u8) -> Option<VoiceId> {
         let voice_idx = self
-            .voices
-            .iter()
+            .voices_iter()
             .position(|voice| voice.active && voice.note == note)?;
 
         let voice = &mut self.voices[voice_idx];
@@ -426,8 +452,7 @@ impl SynthEngine {
         mut on_terminate_voice: impl FnMut(VoiceId),
     ) {
         let mut env_activity: SmallVec<[EnvelopeActivityState; MAX_VOICES]> = self
-            .voices
-            .iter()
+            .voices_iter()
             .enumerate()
             .filter(|(_, voice)| voice.active)
             .map(|(voice_idx, _)| EnvelopeActivityState {
@@ -475,7 +500,7 @@ impl SynthEngine {
         let module_id = self.next_id;
 
         self.next_id += 1;
-        self.config.routing.lock().last_module_id = self.next_id;
+        self.config.routing.lock().next_module_id = self.next_id;
         module_id
     }
 
@@ -493,7 +518,7 @@ impl SynthEngine {
                 sample_rate,
                 note: voice.note as f32,
                 voice_idx,
-                same_note_retrigger: false,
+                reset: true,
             });
 
         for params in active_voices {
@@ -795,13 +820,16 @@ impl SynthEngine {
     }
 
     fn clear(&mut self) {
+        let default_cfg = RoutingConfig::default();
+
         self.execution_order.clear();
         self.input_sources.clear();
         self.modules.clear();
-        self.next_id = MIN_MODULE_ID;
+        self.next_id = default_cfg.next_module_id;
+        self.num_voices = default_cfg.num_voices;
+        self.buffer_size = default_cfg.buffer_size;
 
-        self.config.routing.lock().last_module_id = MIN_MODULE_ID;
-        self.config.routing.lock().links.clear();
+        *self.config.routing.lock() = default_cfg;
         self.config.modules.lock().clear();
     }
 
@@ -841,8 +869,10 @@ impl SynthEngine {
             }
         }
 
-        self.next_id = routing.last_module_id;
+        self.next_id = routing.next_module_id;
         self.output_level = routing.output_level;
+        self.set_num_voices(routing.num_voices);
+        self.set_buffer_size(routing.buffer_size);
         self.setup_routing(&routing.links).is_ok()
     }
 

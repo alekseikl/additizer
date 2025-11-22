@@ -4,17 +4,19 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
-    StereoSample,
+    BUFFER_SIZE, StereoSample,
     modules::{
         AmplifierConfig, EnvelopeConfig, ExternalParamConfig, HarmonicEditorConfig,
         OscillatorConfig, SpectralFilterConfig,
     },
-    routing::{ModuleId, ModuleLink},
+    routing::{MAX_VOICES, MIN_MODULE_ID, ModuleId, ModuleLink},
 };
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct RoutingConfig {
-    pub last_module_id: ModuleId,
+    pub next_module_id: ModuleId,
+    pub num_voices: usize,
+    pub buffer_size: usize,
     pub links: Vec<ModuleLink>,
     pub output_level: StereoSample,
 }
@@ -22,7 +24,9 @@ pub struct RoutingConfig {
 impl Default for RoutingConfig {
     fn default() -> Self {
         Self {
-            last_module_id: 0,
+            next_module_id: MIN_MODULE_ID,
+            num_voices: MAX_VOICES / 2,
+            buffer_size: BUFFER_SIZE,
             links: Default::default(),
             output_level: StereoSample::splat(0.25),
         }

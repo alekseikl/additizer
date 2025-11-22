@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use egui_baseview::egui::{
-    CentralPanel, Color32, ComboBox, Frame, Margin, Response, ScrollArea, Sense, Separator,
-    SidePanel, TopBottomPanel, Ui, Vec2, vec2,
+    CentralPanel, Color32, ComboBox, Frame, Grid, Margin, Response, ScrollArea, Sense, Separator,
+    SidePanel, Slider, TopBottomPanel, Ui, Vec2, vec2,
 };
 use nih_plug::editor::Editor;
 use parking_lot::Mutex;
@@ -53,8 +53,7 @@ impl EditorState {
     }
 }
 
-fn show_menu_item(ui: &mut Ui, module: &dyn SynthModule, selected: bool) -> Response {
-    let label = module.label();
+fn show_menu_item(ui: &mut Ui, label: &str, selected: bool) -> Response {
     let mut frame = Frame::NONE.inner_margin(Margin::symmetric(8, 4));
 
     if selected {
@@ -97,10 +96,6 @@ fn show_side_bar(
 
             modules.sort_by_key(|module| module.id());
 
-            if selected_module_ui.is_none() && !modules.is_empty() {
-                *selected_module_ui = Some(ui_for_module(modules[0]));
-            }
-
             CentralPanel::default()
                 .frame(Frame::NONE)
                 .show_inside(ui, |ui| {
@@ -108,10 +103,16 @@ fn show_side_bar(
                         ui.vertical(|ui| {
                             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
 
+                            if show_menu_item(ui, "Parameters", selected_module_ui.is_none())
+                                .clicked()
+                            {
+                                *selected_module_ui = None;
+                            }
+
                             for module in modules {
                                 if show_menu_item(
                                     ui,
-                                    module,
+                                    &module.label(),
                                     selected_module_ui
                                         .as_ref()
                                         .is_some_and(|mod_ui| mod_ui.module_id() == module.id()),
@@ -187,6 +188,43 @@ fn show_right_bar(ui: &mut Ui, synth_engine: &mut SynthEngine) {
         });
 }
 
+fn show_params_ui(ui: &mut Ui, synth_engine: &mut SynthEngine) {
+    ui.heading("Parameters");
+    ui.add_space(20.0);
+
+    Grid::new("params_grid")
+        .num_columns(2)
+        .spacing([40.0, 24.0])
+        .striped(true)
+        .show(ui, |ui| {
+            let buffer_sizes = [32usize, 64, 128];
+            let mut voices = synth_engine.get_voices_num();
+            let mut buffer_size = synth_engine.get_buffer_size();
+
+            ui.label("Voices");
+            if ui.add(Slider::new(&mut voices, 1..=16)).changed() {
+                synth_engine.set_num_voices(voices);
+            }
+            ui.end_row();
+
+            ui.label("Buffer Size");
+
+            ComboBox::from_id_salt("buff-size-select")
+                .selected_text(format!("{} samples", buffer_size))
+                .show_ui(ui, |ui| {
+                    for sz in &buffer_sizes {
+                        if ui
+                            .selectable_value(&mut buffer_size, *sz, format!("{} samples", sz))
+                            .clicked()
+                        {
+                            synth_engine.set_buffer_size(*sz);
+                        }
+                    }
+                });
+            ui.end_row();
+        });
+}
+
 fn show_editor(ui: &mut Ui, editor_state: &mut EditorState, synth_engine: &mut SynthEngine) {
     if let Some(module_ui) = &editor_state.selected_module_ui
         && !synth_engine.has_module_id(module_ui.module_id())
@@ -206,6 +244,8 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState, synth_engine: &mut S
                     .show(ui, |ui| {
                         module_ui.ui(synth_engine, ui);
                     });
+            } else {
+                show_params_ui(ui, synth_engine);
             }
         });
 }
