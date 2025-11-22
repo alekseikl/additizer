@@ -7,9 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     synth_engine::{
         buffer::{
-            Buffer, ONES_BUFFER, SpectralBuffer, WAVEFORM_BITS, WAVEFORM_SIZE, WaveformBuffer,
-            ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER, get_interpolated_sample, get_wave_slice_mut,
-            make_zero_buffer, make_zero_spectral_buffer, make_zero_wave_buffer, wrap_wave_buffer,
+            Buffer, ONES_BUFFER, SpectralBuffer, WAVEFORM_BITS, ZEROES_BUFFER,
+            ZEROES_SPECTRAL_BUFFER, make_zero_buffer, make_zero_spectral_buffer,
         },
         routing::{
             InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, OutputType,
@@ -20,6 +19,12 @@ use crate::{
     },
     utils::{note_to_octave, octave_to_freq, st_to_octave},
 };
+use uniform_cubic_splines::{CatmullRom, spline_segment};
+
+const WAVEFORM_SIZE: usize = 1 << WAVEFORM_BITS;
+const WAVEFORM_PAD_LEFT: usize = 1;
+const WAVEFORM_PAD_RIGHT: usize = 2;
+const WAVEFORM_BUFFER_SIZE: usize = WAVEFORM_SIZE + WAVEFORM_PAD_LEFT + WAVEFORM_PAD_RIGHT;
 
 const FULL_PHASE: Sample = ((u32::MAX as u64) + 1) as Sample;
 const INTERMEDIATE_BITS: usize = 32 - WAVEFORM_BITS;
@@ -31,6 +36,12 @@ const INITIAL_PHASES: [Sample; MAX_UNISON_VOICES] = [
     0.46912605, 0.9068176, 0.6544455, 0.26577616, 0.24667478, 0.12834072, 0.5805929, 0.55541587,
     0.58291245, 0.03298676, 0.8845756, 0.96093744, 0.42001683, 0.63606197, 0.28810132, 0.5167134,
 ];
+
+type WaveformBuffer = [Sample; WAVEFORM_BUFFER_SIZE];
+
+const fn make_zero_wave_buffer() -> WaveformBuffer {
+    [0.0; WAVEFORM_BUFFER_SIZE]
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OscillatorConfigChannel {
@@ -248,6 +259,26 @@ impl Oscillator {
     }
 
     #[inline(always)]
+    fn get_wave_slice_mut(wave_buff: &mut WaveformBuffer) -> &mut [Sample] {
+        &mut wave_buff[WAVEFORM_PAD_LEFT..(WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT)]
+    }
+
+    #[inline(always)]
+    fn get_interpolated_sample(wave_buff: &WaveformBuffer, idx: usize, t: Sample) -> Sample {
+        spline_segment::<CatmullRom, _, _>(
+            t,
+            &wave_buff[idx..(idx + WAVEFORM_PAD_LEFT + WAVEFORM_PAD_RIGHT + 1)],
+        )
+    }
+
+    #[inline(always)]
+    fn wrap_wave_buffer(wave_buff: &mut WaveformBuffer) {
+        wave_buff[0] = wave_buff[WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT - 1];
+        wave_buff[WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT] = wave_buff[WAVEFORM_PAD_LEFT];
+        wave_buff[WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT + 1] = wave_buff[WAVEFORM_PAD_LEFT + 1];
+    }
+
+    #[inline(always)]
     fn to_int_phase(phase: Sample) -> Phase {
         (phase * FULL_PHASE) as i64 as Phase
     }
@@ -270,11 +301,11 @@ impl Oscillator {
         inverse_fft
             .process_with_scratch(
                 tmp_spectral_buff,
-                get_wave_slice_mut(out_wave_buff),
+                Self::get_wave_slice_mut(out_wave_buff),
                 scratch_buff,
             )
             .unwrap();
-        wrap_wave_buffer(out_wave_buff);
+        Self::wrap_wave_buffer(out_wave_buff);
     }
 
     #[inline(always)]
@@ -290,11 +321,11 @@ impl Oscillator {
         let shifted_phase = phase.wrapping_add(phase_shift);
         let idx = (shifted_phase >> INTERMEDIATE_BITS) as usize;
         let t = (shifted_phase & INTERMEDIATE_MASK) as Sample * INTERMEDIATE_MULT;
-        let sample_from = get_interpolated_sample(wave_from, idx, t);
-        let sample_to = get_interpolated_sample(wave_to, idx, t);
+        let sample_from = Self::get_interpolated_sample(wave_from, idx, t);
+        let sample_to = Self::get_interpolated_sample(wave_to, idx, t);
         let frequency = octave_to_freq(octave);
 
-        *phase = phase.wrapping_add((frequency * freq_phase_mult) as u32);
+        *phase = phase.wrapping_add((frequency * freq_phase_mult) as i64 as u32);
         sample_from * (1.0 - buff_t) + sample_to * buff_t
     }
 
