@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     synth_engine::{
         buffer::{
-            Buffer, ONES_BUFFER, SpectralBuffer, WAVEFORM_BITS, ZEROES_BUFFER,
-            ZEROES_SPECTRAL_BUFFER, make_zero_buffer, make_zero_spectral_buffer,
+            Buffer, SpectralBuffer, WAVEFORM_BITS, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER,
+            make_zero_buffer, make_zero_spectral_buffer,
         },
         routing::{
             InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, OutputType,
@@ -351,7 +351,7 @@ impl Oscillator {
                 channel_idx,
                 &mut common.level_mod_input,
             )
-            .unwrap_or(&ONES_BUFFER);
+            .unwrap_or(&ZEROES_BUFFER);
 
         let pitch_shift_mod = router
             .get_input(
@@ -445,7 +445,7 @@ impl Oscillator {
                     );
                 }
 
-                *out = sample * unison_scale * channel.level * level_mod;
+                *out = sample * unison_scale * (channel.level + level_mod);
             }
         } else {
             let phase = &mut voice.phases[0];
@@ -465,8 +465,7 @@ impl Oscillator {
                     wave_to,
                     freq_phase_mult,
                     phase,
-                ) * channel.level
-                    * level_mod;
+                ) * (channel.level + level_mod);
             }
         }
     }
