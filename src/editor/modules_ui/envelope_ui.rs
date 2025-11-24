@@ -22,6 +22,7 @@ enum DisplayCurve {
     PowerOut,
     ExponentialIn,
     ExponentialOut,
+    ExponentialTail,
 }
 
 impl DisplayCurve {
@@ -32,16 +33,24 @@ impl DisplayCurve {
             Self::PowerOut => "Power Out",
             Self::ExponentialIn => "Exponential In",
             Self::ExponentialOut => "Exponential Out",
+            Self::ExponentialTail => "Exponential Tail",
         }
     }
 
-    fn env_curve(&self, curvature: Sample) -> EnvelopeCurve {
+    fn env_curve(&self) -> EnvelopeCurve {
         match self {
-            Self::Linear => EnvelopeCurve::Linear,
-            Self::PowerIn => EnvelopeCurve::PowerIn(curvature),
-            Self::PowerOut => EnvelopeCurve::PowerOut(curvature),
-            Self::ExponentialIn => EnvelopeCurve::ExponentialIn(curvature),
-            Self::ExponentialOut => EnvelopeCurve::ExponentialOut(curvature),
+            Self::Linear => EnvelopeCurve::Linear { full_range: true },
+            Self::PowerIn => EnvelopeCurve::PowerIn {
+                full_range: true,
+                curvature: 0.2,
+            },
+            Self::PowerOut => EnvelopeCurve::PowerOut {
+                full_range: true,
+                curvature: 0.2,
+            },
+            Self::ExponentialIn => EnvelopeCurve::ExponentialIn { full_range: true },
+            Self::ExponentialOut => EnvelopeCurve::ExponentialOut { full_range: true },
+            Self::ExponentialTail => EnvelopeCurve::ExponentialTail { full_range: true },
         }
     }
 }
@@ -52,26 +61,18 @@ const CURVE_OPTIONS: &[DisplayCurve] = &[
     DisplayCurve::PowerOut,
     DisplayCurve::ExponentialIn,
     DisplayCurve::ExponentialOut,
+    DisplayCurve::ExponentialTail,
 ];
 
 impl EnvelopeCurve {
-    fn curvature(&self) -> Sample {
-        match *self {
-            Self::Linear => 0.0,
-            Self::PowerIn(c) => c,
-            Self::PowerOut(c) => c,
-            Self::ExponentialIn(c) => c,
-            Self::ExponentialOut(c) => c,
-        }
-    }
-
     fn display_curve(&self) -> DisplayCurve {
         match self {
-            Self::Linear => DisplayCurve::Linear,
-            Self::PowerIn(_) => DisplayCurve::PowerIn,
-            Self::PowerOut(_) => DisplayCurve::PowerOut,
-            Self::ExponentialIn(_) => DisplayCurve::ExponentialIn,
-            Self::ExponentialOut(_) => DisplayCurve::ExponentialOut,
+            Self::Linear { .. } => DisplayCurve::Linear,
+            Self::PowerIn { .. } => DisplayCurve::PowerIn,
+            Self::PowerOut { .. } => DisplayCurve::PowerOut,
+            Self::ExponentialIn { .. } => DisplayCurve::ExponentialIn,
+            Self::ExponentialOut { .. } => DisplayCurve::ExponentialOut,
+            Self::ExponentialTail { .. } => DisplayCurve::ExponentialTail,
         }
     }
 }
@@ -90,13 +91,13 @@ impl EnvelopeUI {
     }
 
     fn add_curve(&self, ui: &mut Ui, label: &str, env_curve: &mut EnvelopeCurve) -> bool {
-        let mut display_curve = env_curve.display_curve();
-        let mut curvature = env_curve.curvature();
         let mut changed = false;
 
         ui.label(label);
 
         ui.horizontal(|ui| {
+            let display_curve = env_curve.display_curve();
+
             ComboBox::from_id_salt(format!("curve-select-{}", label))
                 .selected_text(display_curve.label())
                 .show_ui(ui, |ui| {
@@ -105,22 +106,53 @@ impl EnvelopeUI {
                             .selectable_label(*curve == display_curve, curve.label())
                             .clicked()
                         {
-                            display_curve = *curve;
+                            *env_curve = curve.env_curve();
                             changed = true;
                         }
                     }
                 });
 
-            if display_curve != DisplayCurve::Linear {
-                changed = changed || ui.add(Slider::new(&mut curvature, 0.0..=1.0)).changed();
+            let mut add_curvature_slider = |curvature: &mut Sample| {
+                changed = changed || ui.add(Slider::new(curvature, 0.0..=1.0)).changed();
+            };
+
+            match env_curve {
+                EnvelopeCurve::PowerIn { curvature, .. } => {
+                    add_curvature_slider(curvature);
+                }
+                EnvelopeCurve::PowerOut { curvature, .. } => {
+                    add_curvature_slider(curvature);
+                }
+                _ => (),
+            }
+
+            let mut add_full_range_checkbox = |full_range: &mut bool| {
+                changed = changed || ui.add(Checkbox::new(full_range, "Full range")).changed();
+            };
+
+            match env_curve {
+                EnvelopeCurve::Linear { full_range, .. } => {
+                    add_full_range_checkbox(full_range);
+                }
+                EnvelopeCurve::PowerIn { full_range, .. } => {
+                    add_full_range_checkbox(full_range);
+                }
+                EnvelopeCurve::PowerOut { full_range, .. } => {
+                    add_full_range_checkbox(full_range);
+                }
+                EnvelopeCurve::ExponentialIn { full_range, .. } => {
+                    add_full_range_checkbox(full_range);
+                }
+                EnvelopeCurve::ExponentialOut { full_range, .. } => {
+                    add_full_range_checkbox(full_range);
+                }
+                EnvelopeCurve::ExponentialTail { full_range, .. } => {
+                    add_full_range_checkbox(full_range);
+                }
             }
         });
 
         ui.end_row();
-
-        if changed {
-            *env_curve = display_curve.env_curve(curvature);
-        }
 
         changed
     }

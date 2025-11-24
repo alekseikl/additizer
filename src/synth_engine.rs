@@ -741,11 +741,11 @@ impl SynthEngine {
 
         typed_module_mut!(&filter_env_id, Envelope)
             .unwrap()
-            .set_decay_curve(EnvelopeCurve::ExponentialOut(0.2));
+            .set_decay_curve(EnvelopeCurve::ExponentialOut { full_range: true });
 
         typed_module_mut!(&filter_env_id, Envelope)
             .unwrap()
-            .set_attack_curve(EnvelopeCurve::ExponentialIn(0.2));
+            .set_attack_curve(EnvelopeCurve::ExponentialIn { full_range: true });
 
         typed_module_mut!(&filter_id, SpectralFilter)
             .unwrap()
@@ -765,7 +765,7 @@ impl SynthEngine {
 
         typed_module_mut!(&amp_env_id, Envelope)
             .unwrap()
-            .set_decay_curve(EnvelopeCurve::ExponentialOut(0.1));
+            .set_decay_curve(EnvelopeCurve::ExponentialOut { full_range: true });
 
         self.add_link(
             ModuleOutput::spectrum(harmonic_editor_id),

@@ -46,7 +46,7 @@ struct PowerIn {
 }
 
 impl PowerIn {
-    pub fn new(curvature: Sample, value_from: Sample, value_to: Sample) -> Self {
+    pub fn new(curvature: Sample, (value_from, value_to): (Sample, Sample)) -> Self {
         let value_from = value_from.max(0.0);
 
         assert!(value_from <= value_to);
@@ -82,7 +82,7 @@ struct PowerOut {
 }
 
 impl PowerOut {
-    pub fn new(curvature: Sample, value_from: Sample, value_to: Sample) -> Self {
+    pub fn new(curvature: Sample, (value_from, value_to): (Sample, Sample)) -> Self {
         let value_to = value_to.min(1.0);
 
         assert!(value_from <= value_to);
@@ -117,45 +117,41 @@ impl CurveIterator for PowerOut {
 }
 
 struct ExponentialIn {
-    power: Sample,
+    linear_rate: Sample,
     arg: Sample,
-    exp_from_arg: Sample,
-    arg_from: Sample,
     arg_to: Sample,
 }
 
 impl ExponentialIn {
-    const LINEAR_THRESHOLD: Sample = 0.001;
+    const RATE: Sample = 5.0;
+    const LINEAR_THRESHOLD_ARG: Sample = 0.05;
 
-    pub fn new(curvature: Sample, value_from: Sample, value_to: Sample) -> Self {
+    pub fn new((value_from, value_to): (Sample, Sample)) -> Self {
         let value_from = value_from.max(0.0);
 
         assert!(value_from <= value_to);
 
-        let power = 1.0 + curvature.clamp(0.0, 1.0) * 10.0;
-        let inverse_power = power.recip();
-        let exp_from_arg = Self::inverse(Self::LINEAR_THRESHOLD, inverse_power);
-        let arg = Self::calc_arg(value_from, exp_from_arg, inverse_power);
-        let arg_to = Self::calc_arg(value_to, exp_from_arg, inverse_power);
+        let exp_from_value = Self::calc_exp(Self::LINEAR_THRESHOLD_ARG);
+        let linear_rate = exp_from_value / Self::LINEAR_THRESHOLD_ARG;
+        let arg = Self::calc_arg(linear_rate, exp_from_value, value_from);
+        let arg_to = Self::calc_arg(linear_rate, exp_from_value, value_to);
 
         Self {
-            power,
+            linear_rate,
             arg,
-            exp_from_arg,
-            arg_from: arg,
             arg_to,
         }
     }
 
-    fn inverse(value: Sample, inverse_power: Sample) -> Sample {
-        inverse_power * value.ln()
+    fn calc_exp(arg: Sample) -> Sample {
+        (Self::RATE * (arg - 1.0)).exp()
     }
 
-    fn calc_arg(value: Sample, exp_from_arg: Sample, inverse_power: Sample) -> Sample {
-        if value < Self::LINEAR_THRESHOLD {
-            exp_from_arg - (Self::LINEAR_THRESHOLD - value)
+    fn calc_arg(linear_rate: Sample, exp_from_value: Sample, value: Sample) -> Sample {
+        if value < exp_from_value {
+            value / linear_rate
         } else {
-            Self::inverse(value, inverse_power)
+            value.ln() / Self::RATE + 1.0
         }
     }
 }
@@ -163,10 +159,10 @@ impl ExponentialIn {
 impl CurveIterator for ExponentialIn {
     fn next(&mut self, arg_step: Sample) -> Option<Sample> {
         if self.arg < self.arg_to {
-            let result = if self.arg < self.exp_from_arg {
-                self.arg - self.arg_from
+            let result = if self.arg < Self::LINEAR_THRESHOLD_ARG {
+                self.linear_rate * self.arg
             } else {
-                (self.power * self.arg).exp()
+                Self::calc_exp(self.arg)
             };
 
             self.arg += arg_step;
@@ -178,43 +174,43 @@ impl CurveIterator for ExponentialIn {
 }
 
 struct ExponentialOut {
-    power: Sample,
+    linear_from_value: Sample,
+    linear_rate: Sample,
     arg: Sample,
-    linear_from_arg: Sample,
     arg_to: Sample,
 }
 
 impl ExponentialOut {
-    const LINEAR_THRESHOLD: Sample = 0.999;
+    const RATE: Sample = 5.0;
+    const LINEAR_THRESHOLD_ARG: Sample = 0.95;
 
-    pub fn new(curvature: Sample, value_from: Sample, value_to: Sample) -> Self {
+    pub fn new((value_from, value_to): (Sample, Sample)) -> Self {
         let value_to = value_to.min(1.0);
 
         assert!(value_from <= value_to);
 
-        let power = 1.0 + curvature.clamp(0.0, 1.0) * 10.0;
-        let inverse_power = power.recip();
-        let linear_from_arg = Self::inverse(Self::LINEAR_THRESHOLD, inverse_power);
-        let arg = Self::calc_arg(value_from, linear_from_arg, inverse_power);
-        let arg_to = Self::calc_arg(value_to, linear_from_arg, inverse_power);
+        let linear_from_value = Self::calc_exp(Self::LINEAR_THRESHOLD_ARG);
+        let linear_rate = (1.0 - linear_from_value) / (1.0 - Self::LINEAR_THRESHOLD_ARG);
+        let arg = Self::calc_arg(linear_rate, linear_from_value, value_from);
+        let arg_to = Self::calc_arg(linear_rate, linear_from_value, value_to);
 
         Self {
-            power,
+            linear_from_value,
+            linear_rate,
             arg,
-            linear_from_arg,
             arg_to,
         }
     }
 
-    fn inverse(value: Sample, inverse_power: Sample) -> Sample {
-        -inverse_power * (1.0 - value).ln()
+    fn calc_exp(arg: Sample) -> Sample {
+        1.0 - (-Self::RATE * arg).exp()
     }
 
-    fn calc_arg(value: Sample, linear_from_arg: Sample, inverse_power: Sample) -> Sample {
-        if value < Self::LINEAR_THRESHOLD {
-            Self::inverse(value, inverse_power)
+    fn calc_arg(linear_rate: Sample, linear_from_value: Sample, value: Sample) -> Sample {
+        if value < linear_from_value {
+            -(1.0 - value).ln() / Self::RATE
         } else {
-            linear_from_arg + (value - Self::LINEAR_THRESHOLD)
+            Self::LINEAR_THRESHOLD_ARG + (value - linear_from_value) / linear_rate
         }
     }
 }
@@ -222,10 +218,10 @@ impl ExponentialOut {
 impl CurveIterator for ExponentialOut {
     fn next(&mut self, arg_step: Sample) -> Option<Sample> {
         if self.arg < self.arg_to {
-            let result = if self.arg < self.linear_from_arg {
-                1.0 - (-self.power * self.arg).exp()
+            let result = if self.arg < Self::LINEAR_THRESHOLD_ARG {
+                Self::calc_exp(self.arg)
             } else {
-                Self::LINEAR_THRESHOLD + (self.arg - self.linear_from_arg)
+                self.linear_from_value + (self.arg - Self::LINEAR_THRESHOLD_ARG) * self.linear_rate
             };
 
             self.arg += arg_step;
@@ -236,60 +232,141 @@ impl CurveIterator for ExponentialOut {
     }
 }
 
-type CurveBox = Box<dyn CurveIterator + Send>;
-
-struct CurveInvertor<T: CurveIterator + Send> {
-    curve: T,
+struct ExponentialTail {
+    arg: Sample,
 }
 
-impl<T: CurveIterator + Send + 'static> CurveInvertor<T> {
-    fn wrap(curve: T, inverted: bool) -> CurveBox {
-        if inverted {
-            Box::new(Self { curve })
+impl ExponentialTail {
+    const RATE: Sample = 5.0;
+    const END_AT: Sample = 1.0 - 0.00001; //-100dB
+
+    pub fn new(value_from: Sample) -> Self {
+        let value_from = value_from.min(1.0);
+
+        Self {
+            arg: -(1.0 - value_from).ln() / Self::RATE,
+        }
+    }
+
+    fn calc_exp(arg: Sample) -> Sample {
+        1.0 - (-Self::RATE * arg).exp()
+    }
+}
+
+impl CurveIterator for ExponentialTail {
+    fn next(&mut self, arg_step: Sample) -> Option<Sample> {
+        let result = Self::calc_exp(self.arg);
+
+        if result < Self::END_AT {
+            self.arg += arg_step;
+            Some(result)
         } else {
-            Box::new(curve)
+            None
         }
     }
 }
 
-impl<T: CurveIterator + Send> CurveIterator for CurveInvertor<T> {
+type CurveBox = Box<dyn CurveIterator + Send>;
+
+struct CurveTransform<T: CurveIterator + Send> {
+    curve: T,
+    value_from: Sample,
+    interval: Sample,
+}
+
+impl<T: CurveIterator + Send + 'static> CurveTransform<T> {
+    fn wrap(curve: T, from: Sample, to: Sample, full_range: bool) -> CurveBox {
+        if full_range {
+            Box::new(Self {
+                curve,
+                value_from: from,
+                interval: to - from,
+            })
+        } else {
+            Box::new(Self {
+                curve,
+                value_from: if from > to { 1.0 } else { 0.0 },
+                interval: (to - from).signum(),
+            })
+        }
+    }
+}
+
+impl<T: CurveIterator + Send> CurveIterator for CurveTransform<T> {
     fn next(&mut self, arg_step: Sample) -> Option<Sample> {
-        self.curve.next(arg_step).map(|value| 1.0 - value)
+        self.curve
+            .next(arg_step)
+            .map(|v| self.value_from + self.interval * v)
     }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum EnvelopeCurve {
-    Linear,
-    PowerIn(Sample),
-    PowerOut(Sample),
-    ExponentialIn(Sample),
-    ExponentialOut(Sample),
+    Linear { full_range: bool },
+    PowerIn { full_range: bool, curvature: Sample },
+    PowerOut { full_range: bool, curvature: Sample },
+    ExponentialIn { full_range: bool },
+    ExponentialOut { full_range: bool },
+    ExponentialTail { full_range: bool },
 }
 
 impl EnvelopeCurve {
-    fn curve_iter(&self, from: Sample, to: Sample) -> CurveBox {
-        let (value_from, value_to, inverted) = if from > to {
-            (1.0 - from, 1.0 - to, true)
+    fn adjust_curve_range(from: Sample, to: Sample, full_range: bool) -> (Sample, Sample) {
+        if full_range {
+            (0.0, 1.0)
+        } else if from > to {
+            (1.0 - from, 1.0 - to)
         } else {
-            (from, to, false)
-        };
+            (from, to)
+        }
+    }
+
+    fn curve_iter(&self, from: Sample, to: Sample) -> CurveBox {
+        let from = from.clamp(0.0, 1.0);
+        let to = to.clamp(0.0, 1.0);
 
         match *self {
-            Self::Linear => CurveInvertor::wrap(PowerIn::new(0.0, value_from, value_to), inverted),
-            Self::PowerIn(curvature) => {
-                CurveInvertor::wrap(PowerIn::new(curvature, value_from, value_to), inverted)
-            }
-            Self::PowerOut(curvature) => {
-                CurveInvertor::wrap(PowerOut::new(curvature, value_from, value_to), inverted)
-            }
-            Self::ExponentialIn(curvature) => CurveInvertor::wrap(
-                ExponentialIn::new(curvature, value_from, value_to),
-                inverted,
+            Self::Linear { full_range } => CurveTransform::wrap(
+                PowerIn::new(0.0, Self::adjust_curve_range(from, to, full_range)),
+                from,
+                to,
+                full_range,
             ),
-            Self::ExponentialOut(curvature) => CurveInvertor::wrap(
-                ExponentialOut::new(curvature, value_from, value_to),
-                inverted,
+            Self::PowerIn {
+                curvature,
+                full_range,
+            } => CurveTransform::wrap(
+                PowerIn::new(curvature, Self::adjust_curve_range(from, to, full_range)),
+                from,
+                to,
+                full_range,
+            ),
+            Self::PowerOut {
+                full_range,
+                curvature,
+            } => CurveTransform::wrap(
+                PowerOut::new(curvature, Self::adjust_curve_range(from, to, full_range)),
+                from,
+                to,
+                full_range,
+            ),
+            Self::ExponentialIn { full_range } => CurveTransform::wrap(
+                ExponentialIn::new(Self::adjust_curve_range(from, to, full_range)),
+                from,
+                to,
+                full_range,
+            ),
+            Self::ExponentialOut { full_range } => CurveTransform::wrap(
+                ExponentialOut::new(Self::adjust_curve_range(from, to, full_range)),
+                from,
+                to,
+                full_range,
+            ),
+            Self::ExponentialTail { full_range } => CurveTransform::wrap(
+                ExponentialTail::new(Self::adjust_curve_range(from, to, full_range).0),
+                from,
+                to,
+                full_range,
             ),
         }
     }
@@ -351,13 +428,22 @@ impl Default for ChannelParams {
     fn default() -> Self {
         Self {
             attack: from_ms(10.0),
-            attack_curve: EnvelopeCurve::PowerIn(0.3),
+            attack_curve: EnvelopeCurve::PowerIn {
+                full_range: true,
+                curvature: 0.3,
+            },
             hold: 0.0,
             decay: from_ms(200.0),
-            decay_curve: EnvelopeCurve::PowerOut(0.2),
+            decay_curve: EnvelopeCurve::PowerOut {
+                full_range: true,
+                curvature: 0.2,
+            },
             sustain: 1.0,
             release: from_ms(300.0),
-            release_curve: EnvelopeCurve::PowerOut(0.2),
+            release_curve: EnvelopeCurve::PowerOut {
+                full_range: true,
+                curvature: 0.2,
+            },
         }
     }
 }
