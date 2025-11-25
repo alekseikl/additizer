@@ -18,7 +18,7 @@ use crate::{
         config::{ModuleConfig, RoutingConfig},
         modules::{
             AmplifierConfig, EnvelopeActivityState, EnvelopeConfig, ExternalParamConfig,
-            HarmonicEditorConfig, OscillatorConfig, SpectralFilterConfig,
+            HarmonicEditorConfig, ModulationFilterConfig, OscillatorConfig, SpectralFilterConfig,
         },
         routing::{AvailableInputSourceUI, DataType, MAX_VOICES, OutputType, Router},
         synth_module::{NoteOffParams, NoteOnParams, ProcessParams},
@@ -30,7 +30,7 @@ pub use buffer::BUFFER_SIZE;
 pub use config::Config;
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, HarmonicEditor,
-    Oscillator, SpectralFilter,
+    ModulationFilter, Oscillator, SpectralFilter,
 };
 pub use routing::{
     ConnectedInputSourceUI, InputType, ModuleId, ModuleInput, ModuleLink, ModuleOutput, ModuleType,
@@ -224,6 +224,11 @@ impl SynthEngine {
         ExternalParam,
         ExternalParamConfig,
         get_external_params
+    );
+    add_module_method!(
+        add_modulation_filter,
+        ModulationFilter,
+        ModulationFilterConfig
     );
 
     fn get_external_params(&self) -> Arc<ExternalParamsBlock> {
@@ -868,6 +873,7 @@ impl SynthEngine {
                 ModuleConfig::ExternalParam(cfg) => {
                     restore_module!(ExternalParam, id, cfg, get_external_params)
                 }
+                ModuleConfig::ModulationFilter(cfg) => restore_module!(ModulationFilter, id, cfg),
             }
         }
 

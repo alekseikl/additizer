@@ -7,7 +7,7 @@ use crate::synth_engine::{
     BUFFER_SIZE, StereoSample,
     modules::{
         AmplifierConfig, EnvelopeConfig, ExternalParamConfig, HarmonicEditorConfig,
-        OscillatorConfig, SpectralFilterConfig,
+        ModulationFilterConfig, OscillatorConfig, SpectralFilterConfig,
     },
     routing::{MAX_VOICES, MIN_MODULE_ID, ModuleId, ModuleLink},
 };
@@ -33,18 +33,21 @@ impl Default for RoutingConfig {
     }
 }
 
+type CfgBox<T> = Arc<Mutex<T>>;
+
 #[derive(Clone, Serialize, Deserialize)]
 pub enum ModuleConfig {
-    Envelope(Arc<Mutex<EnvelopeConfig>>),
-    Amplifier(Arc<Mutex<AmplifierConfig>>),
-    Oscillator(Arc<Mutex<OscillatorConfig>>),
-    SpectralFilter(Arc<Mutex<SpectralFilterConfig>>),
-    HarmonicEditor(Arc<Mutex<HarmonicEditorConfig>>),
-    ExternalParam(Arc<Mutex<ExternalParamConfig>>),
+    Envelope(CfgBox<EnvelopeConfig>),
+    Amplifier(CfgBox<AmplifierConfig>),
+    Oscillator(CfgBox<OscillatorConfig>),
+    SpectralFilter(CfgBox<SpectralFilterConfig>),
+    HarmonicEditor(CfgBox<HarmonicEditorConfig>),
+    ExternalParam(CfgBox<ExternalParamConfig>),
+    ModulationFilter(CfgBox<ModulationFilterConfig>),
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Config {
-    pub routing: Arc<Mutex<RoutingConfig>>,
-    pub modules: Arc<Mutex<HashMap<ModuleId, ModuleConfig>>>,
+    pub routing: CfgBox<RoutingConfig>,
+    pub modules: CfgBox<HashMap<ModuleId, ModuleConfig>>,
 }

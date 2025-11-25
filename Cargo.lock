@@ -24,6 +24,7 @@ version = "0.1.0"
 dependencies = [
  "assert_no_alloc",
  "baseview 0.1.0 (git+https://github.com/blepfx/baseview.git?rev=3724a00c970a9cd10a3494fa3c37bca66d631bb7)",
+ "biquad",
  "crossbeam",
  "egui-baseview",
  "itertools 0.14.0",
@@ -311,6 +312,15 @@ dependencies = [
  "rustc-hash",
  "shlex",
  "syn 2.0.107",
+]
+
+[[package]]
+name = "biquad"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8580925877eb35ab50f987a1c2c193eb46000c8827c871bc3425070f086408cc"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]
@@ -1221,6 +1231,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "libm"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9fbbcab51052fe104eb5e5d351cf728d30a5be1fe14d9be8a3b097481fb97de"
+
+[[package]]
 name = "libredox"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1539,6 +1555,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
+ "libm",
 ]
 
 [[package]]

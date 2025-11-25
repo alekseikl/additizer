@@ -11,8 +11,8 @@ use crate::{
     editor::{
         gain_slider::GainSlider,
         modules_ui::{
-            AmplifierUI, EnvelopeUI, ExternalParamUI, HarmonicEditorUI, OscillatorUI,
-            SpectralFilterUI,
+            AmplifierUI, EnvelopeUI, ExternalParamUI, HarmonicEditorUI, ModulationFilterUI,
+            OscillatorUI, SpectralFilterUI,
         },
     },
     synth_engine::{
@@ -78,6 +78,7 @@ fn ui_for_module(module: &dyn SynthModule) -> ModuleUIBox {
         ModuleType::Oscillator => Box::new(OscillatorUI::new(module.id())),
         ModuleType::Envelope => Box::new(EnvelopeUI::new(module.id())),
         ModuleType::ExternalParam => Box::new(ExternalParamUI::new(module.id())),
+        ModuleType::ModulationFilter => Box::new(ModulationFilterUI::new(module.id())),
     }
 }
 
@@ -149,6 +150,9 @@ fn show_side_bar(
                                 }
                                 if ui.selectable_label(false, "External Parameter").clicked() {
                                     synth_engine.add_external_param();
+                                }
+                                if ui.selectable_label(false, "Modulation Filter").clicked() {
+                                    synth_engine.add_modulation_filter();
                                 }
                                 if ui.selectable_label(false, "Amplifier").clicked() {
                                     let amp_id = synth_engine.add_amplifier();

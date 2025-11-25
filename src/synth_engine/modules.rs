@@ -2,6 +2,7 @@ mod amplifier;
 mod envelope;
 mod external_param;
 mod harmonic_editor;
+mod modulation_filter;
 mod oscillator;
 mod spectral_filter;
 
@@ -14,6 +15,7 @@ pub use envelope::EnvelopeCurve;
 pub use external_param::{ExternalParam, ExternalParamConfig, ExternalParamsBlock};
 pub use harmonic_editor::HarmonicEditor;
 pub use harmonic_editor::HarmonicEditorConfig;
+pub use modulation_filter::{ModulationFilter, ModulationFilterConfig};
 pub use oscillator::Oscillator;
 pub use oscillator::OscillatorConfig;
 pub use spectral_filter::SpectralFilter;
