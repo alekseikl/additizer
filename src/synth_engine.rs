@@ -135,7 +135,7 @@ macro_rules! add_module_method {
             let config = Arc::new(Mutex::new($module_cfg::default()));
             let mut module = $module_type::new(id, Arc::clone(&config) $(, self.$arg() )*);
 
-            Self::trigger_active_notes(self.sample_rate, &self.voices, &mut module, self);
+            Self::trigger_active_notes(self.sample_rate, &self.voices, &mut module);
             self.modules.insert(id, Some(Box::new(module)));
             self.config
                 .modules
@@ -344,7 +344,6 @@ impl SynthEngine {
 
     pub fn note_on(
         &mut self,
-        samples: usize,
         voice_id: Option<i32>,
         channel: u8,
         note: u8,
@@ -388,20 +387,9 @@ impl SynthEngine {
             reset,
         };
 
-        let active_voices = [voice_idx];
-        let process_params = self.make_process_params(samples, &active_voices);
-
         for module_id in &self.execution_order {
-            if let Some(module_box) = self.modules.get_mut(module_id)
-                && let Some(mut module) = module_box.take()
-            {
-                module.note_on(&params, self);
-
-                if module.is_spectral_rate() {
-                    module.process(&process_params, self);
-                }
-
-                self.modules.get_mut(module_id).unwrap().replace(module);
+            if let Some(module) = get_module_mut!(self, &module_id) {
+                module.note_on(&params);
             }
         }
 
@@ -456,7 +444,7 @@ impl SynthEngine {
         &mut self,
         samples: usize,
         outputs: impl Iterator<Item = &'a mut [f32]>,
-        mut on_terminate_voice: impl FnMut(VoiceId),
+        on_terminate_voice: &mut dyn FnMut(VoiceId),
     ) {
         let mut env_activity: SmallVec<[EnvelopeActivityState; MAX_VOICES]> = self
             .voices_iter()
@@ -511,12 +499,7 @@ impl SynthEngine {
         module_id
     }
 
-    fn trigger_active_notes(
-        sample_rate: Sample,
-        voices: &[Voice],
-        module: &mut dyn SynthModule,
-        router: &dyn Router,
-    ) {
+    fn trigger_active_notes(sample_rate: Sample, voices: &[Voice], module: &mut dyn SynthModule) {
         let active_voices = voices
             .iter()
             .enumerate()
@@ -529,7 +512,7 @@ impl SynthEngine {
             });
 
         for params in active_voices {
-            module.note_on(&params, router);
+            module.note_on(&params);
         }
     }
 
@@ -934,7 +917,8 @@ impl Router for SynthEngine {
                     buff.iter().map(|sample| sample * mod_amount),
                 );
             } else {
-                let (from_value, to_value) = module.get_scalar_output(voice_idx, channel_idx);
+                let from_value = module.get_scalar_output(false, voice_idx, channel_idx);
+                let to_value = module.get_scalar_output(true, voice_idx, channel_idx);
                 let step = (to_value - from_value) * (samples as Sample).recip();
 
                 fill_or_append_buffer_slice(
@@ -951,6 +935,7 @@ impl Router for SynthEngine {
     fn get_spectral_input(
         &self,
         input: ModuleInput,
+        current: bool,
         voice_idx: usize,
         channel: usize,
     ) -> Option<&SpectralBuffer> {
@@ -961,12 +946,13 @@ impl Router for SynthEngine {
         }
 
         get_module!(self, &sources[0].src.module_id)
-            .map(|module| module.get_spectral_output(voice_idx, channel))
+            .map(|module| module.get_spectral_output(current, voice_idx, channel))
     }
 
     fn get_scalar_input(
         &self,
         input: ModuleInput,
+        current: bool,
         voice_idx: usize,
         channel: usize,
     ) -> Option<Sample> {
@@ -981,13 +967,13 @@ impl Router for SynthEngine {
         let values = sources.iter().filter_map(|source| {
             get_module!(self, &source.src.module_id).map(|module| {
                 (
-                    module.get_scalar_output(voice_idx, channel),
+                    module.get_scalar_output(current, voice_idx, channel),
                     source.modulation,
                 )
             })
         });
 
-        for ((_, value), mod_amount) in values {
+        for (value, mod_amount) in values {
             output += value * mod_amount[channel];
         }
 

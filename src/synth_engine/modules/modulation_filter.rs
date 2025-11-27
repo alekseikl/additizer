@@ -177,7 +177,7 @@ impl SynthModule for ModulationFilter {
         OutputType::Audio
     }
 
-    fn note_on(&mut self, params: &NoteOnParams, _router: &dyn Router) {
+    fn note_on(&mut self, params: &NoteOnParams) {
         if params.reset {
             for channel in &mut self.channels {
                 channel.voices[params.voice_idx].filter.reset_state();

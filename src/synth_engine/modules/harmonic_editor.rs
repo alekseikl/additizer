@@ -154,7 +154,12 @@ impl SynthModule for HarmonicEditor {
 
     fn process(&mut self, _params: &ProcessParams, _router: &dyn Router) {}
 
-    fn get_spectral_output(&self, _voice_idx: usize, channel: usize) -> &SpectralBuffer {
-        &self.outputs[channel]
+    fn get_spectral_output(
+        &self,
+        _current: bool,
+        _voice_idx: usize,
+        channel_idx: usize,
+    ) -> &SpectralBuffer {
+        &self.outputs[channel_idx]
     }
 }

@@ -3,14 +3,12 @@ use std::any::Any;
 use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
-    buffer::{
-        SPECTRAL_BUFFER_SIZE, SpectralBuffer, ZEROES_SPECTRAL_BUFFER, make_zero_spectral_buffer,
-    },
+    buffer::{SPECTRAL_BUFFER_SIZE, SpectralBuffer, ZEROES_SPECTRAL_BUFFER},
     routing::{
         InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, OutputType, Router,
     },
-    synth_module::{ModuleConfigBox, ProcessParams, SynthModule},
-    types::{ComplexSample, Sample, StereoSample},
+    synth_module::{ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
+    types::{ComplexSample, Sample, SpectralOutput, StereoSample},
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -42,16 +40,10 @@ pub struct SpectralFilterUIData {
     pub four_pole: bool,
 }
 
+#[derive(Default)]
 struct Voice {
-    output: SpectralBuffer,
-}
-
-impl Default for Voice {
-    fn default() -> Self {
-        Self {
-            output: make_zero_spectral_buffer(),
-        }
-    }
+    triggered: bool,
+    output: SpectralOutput,
 }
 
 struct ChannelParams {
@@ -152,32 +144,31 @@ impl SpectralFilter {
     set_param_method!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
     set_param_method!(set_q, q, q.clamp(0.1, 10.0));
 
-    fn process_channel_voice(
-        module_id: ModuleId,
+    fn process_voice(
+        id: ModuleId,
         four_pole: bool,
-        channel: &mut Channel,
-        router: &dyn Router,
-        voice_idx: usize,
-        channel_idx: usize,
+        current: bool,
+        params: &ChannelParams,
+        voice: &mut Voice,
+        router: &VoiceRouter,
     ) {
-        let voice = &mut channel.voices[voice_idx];
         let spectrum = router
-            .get_spectral_input(ModuleInput::spectrum(module_id), voice_idx, channel_idx)
+            .get_spectral_input(ModuleInput::spectrum(id), current)
             .unwrap_or(&ZEROES_SPECTRAL_BUFFER);
         let cutoff_mod = router
-            .get_scalar_input(ModuleInput::cutoff(module_id), voice_idx, channel_idx)
+            .get_scalar_input(ModuleInput::cutoff(id), current)
             .unwrap_or(0.0);
         let q_mod = router
-            .get_scalar_input(ModuleInput::q(module_id), voice_idx, channel_idx)
+            .get_scalar_input(ModuleInput::q(id), current)
             .unwrap_or(0.0);
 
         let range = 1..SPECTRAL_BUFFER_SIZE - 1;
         let input_buff = &spectrum[range.clone()];
-        let output_buff = &mut voice.output[range];
-        let cutoff_freq = (channel.params.cutoff + cutoff_mod).exp2();
+        let output_buff = &mut voice.output.advance()[range];
+        let cutoff_freq = (params.cutoff + cutoff_mod).exp2();
         let cutoff_squared = cutoff_freq * cutoff_freq;
         let numerator = ComplexSample::new(cutoff_squared, 0.0);
-        let q_mult = (channel.params.q + q_mod).clamp(0.1, 10.0).recip();
+        let q_mult = (params.q + q_mod).clamp(0.1, 10.0).recip();
 
         for (idx, (out_freq, in_freq)) in output_buff.iter_mut().zip(input_buff).enumerate() {
             let freq = (idx + 1) as Sample;
@@ -223,24 +214,36 @@ impl SynthModule for SpectralFilter {
         OutputType::Spectrum
     }
 
-    fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
+    fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
-            for voice_idx in params.active_voices {
-                Self::process_channel_voice(
-                    self.id,
-                    self.four_pole,
-                    channel,
+            let params = &channel.params;
+
+            for voice_idx in process_params.active_voices {
+                let voice = &mut channel.voices[*voice_idx];
+                let router = VoiceRouter {
                     router,
-                    *voice_idx,
+                    samples: process_params.samples,
+                    voice_idx: *voice_idx,
                     channel_idx,
-                );
+                };
+
+                if voice.triggered {
+                    Self::process_voice(self.id, self.four_pole, false, params, voice, &router);
+                    voice.triggered = false;
+                }
+                Self::process_voice(self.id, self.four_pole, true, params, voice, &router);
             }
         }
     }
 
-    fn get_spectral_output(&self, voice_idx: usize, channel: usize) -> &SpectralBuffer {
-        let voice = &self.channels[channel].voices[voice_idx];
-
-        &voice.output
+    fn get_spectral_output(
+        &self,
+        current: bool,
+        voice_idx: usize,
+        channel_idx: usize,
+    ) -> &SpectralBuffer {
+        self.channels[channel_idx].voices[voice_idx]
+            .output
+            .get(current)
     }
 }

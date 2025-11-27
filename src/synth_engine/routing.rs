@@ -211,6 +211,7 @@ pub trait Router {
     fn get_spectral_input(
         &self,
         input: ModuleInput,
+        current: bool,
         voice_idx: usize,
         channel_idx: usize,
     ) -> Option<&SpectralBuffer>;
@@ -218,6 +219,7 @@ pub trait Router {
     fn get_scalar_input(
         &self,
         input: ModuleInput,
+        current: bool,
         voice_idx: usize,
         channel_idx: usize,
     ) -> Option<Sample>;

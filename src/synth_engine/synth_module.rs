@@ -3,6 +3,7 @@ use std::{any::Any, sync::Arc};
 use parking_lot::Mutex;
 
 use crate::synth_engine::{
+    ModuleInput,
     buffer::{Buffer, SpectralBuffer},
     routing::{InputType, ModuleId, ModuleType, OutputType, Router},
     types::Sample,
@@ -40,7 +41,7 @@ pub trait SynthModule: Any + Send {
     fn inputs(&self) -> &'static [InputType];
     fn output_type(&self) -> OutputType;
 
-    fn note_on(&mut self, params: &NoteOnParams, router: &dyn Router) {}
+    fn note_on(&mut self, params: &NoteOnParams) {}
     fn note_off(&mut self, params: &NoteOffParams) {}
     fn process(&mut self, params: &ProcessParams, router: &dyn Router);
 
@@ -48,12 +49,50 @@ pub trait SynthModule: Any + Send {
         panic!("{:?} don't have buffer output.", self.module_type())
     }
 
-    fn get_spectral_output(&self, voice_idx: usize, channel_idx: usize) -> &SpectralBuffer {
+    fn get_spectral_output(
+        &self,
+        current: bool,
+        voice_idx: usize,
+        channel_idx: usize,
+    ) -> &SpectralBuffer {
         panic!("{:?} don't have spectral output.", self.module_type())
     }
 
-    fn get_scalar_output(&self, voice_idx: usize, channel_idx: usize) -> (Sample, Sample) {
+    fn get_scalar_output(&self, current: bool, voice_idx: usize, channel_idx: usize) -> Sample {
         panic!("{:?} don't have scalar output.", self.module_type())
+    }
+}
+
+pub struct VoiceRouter<'a> {
+    pub router: &'a dyn Router,
+    pub samples: usize,
+    pub voice_idx: usize,
+    pub channel_idx: usize,
+}
+
+impl<'a> VoiceRouter<'a> {
+    pub fn get_input(
+        &'a self,
+        input: ModuleInput,
+        input_buffer: &'a mut Buffer,
+    ) -> Option<&'a Buffer> {
+        self.router.get_input(
+            input,
+            self.samples,
+            self.voice_idx,
+            self.channel_idx,
+            input_buffer,
+        )
+    }
+
+    pub fn get_spectral_input(&self, input: ModuleInput, current: bool) -> Option<&SpectralBuffer> {
+        self.router
+            .get_spectral_input(input, current, self.voice_idx, self.channel_idx)
+    }
+
+    pub fn get_scalar_input(&self, input: ModuleInput, current: bool) -> Option<Sample> {
+        self.router
+            .get_scalar_input(input, current, self.voice_idx, self.channel_idx)
     }
 }
 

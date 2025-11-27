@@ -8,6 +8,7 @@ use crate::synth_engine::{
     InputType, ModuleId, ModuleType, Sample, SynthModule,
     routing::{OutputType, Router},
     synth_module::{ModuleConfigBox, ProcessParams},
+    types::ScalarOutput,
 };
 
 pub const NUM_FLOAT_PARAMS: usize = 4;
@@ -35,8 +36,8 @@ pub struct ExternalParam {
     params_block: Arc<ExternalParamsBlock>,
     selected_param: Option<Arc<FloatParam>>,
     selected_param_index: usize,
-    prev_output: Sample,
-    output: Sample,
+    need_reset: bool,
+    output: ScalarOutput,
 }
 
 impl ExternalParam {
@@ -52,8 +53,8 @@ impl ExternalParam {
             params_block,
             selected_param: None,
             selected_param_index: 0,
-            prev_output: 0.0,
-            output: 0.0,
+            need_reset: true,
+            output: ScalarOutput::default(),
         };
 
         {
@@ -87,9 +88,12 @@ impl ExternalParam {
     pub fn select_param(&mut self, param_idx: usize) {
         let param_idx = param_idx.min(self.params_block.float_params.len() - 1);
 
-        self.selected_param_index = param_idx;
-        self.selected_param = Some(Arc::clone(&self.params_block.float_params[param_idx]));
-        self.config.lock().selected_param_index = param_idx;
+        if param_idx != self.selected_param_index {
+            self.selected_param_index = param_idx;
+            self.selected_param = Some(Arc::clone(&self.params_block.float_params[param_idx]));
+            self.need_reset = true;
+            self.config.lock().selected_param_index = param_idx;
+        }
     }
 }
 
@@ -124,15 +128,20 @@ impl SynthModule for ExternalParam {
     }
 
     fn process(&mut self, _params: &ProcessParams, _router: &dyn Router) {
-        self.prev_output = self.output;
-        self.output = self
-            .selected_param
-            .as_ref()
-            .map(|param| param.value())
-            .unwrap_or_default();
+        self.output.advance(
+            self.selected_param
+                .as_ref()
+                .map(|param| param.value())
+                .unwrap_or_default(),
+        );
+
+        if self.need_reset {
+            self.output.advance(self.output.current());
+            self.need_reset = false;
+        }
     }
 
-    fn get_scalar_output(&self, _voice_idx: usize, _channel: usize) -> (Sample, Sample) {
-        (self.prev_output, self.output)
+    fn get_scalar_output(&self, current: bool, _voice_idx: usize, _channel: usize) -> Sample {
+        self.output.get(current)
     }
 }

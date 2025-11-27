@@ -28,9 +28,9 @@ impl Default for Additizer {
 }
 
 impl VoiceId {
-    fn terminated_event(&self, timing: u32) -> NoteEvent<()> {
+    fn terminated_event(&self, timing: usize) -> NoteEvent<()> {
         NoteEvent::VoiceTerminated {
-            timing,
+            timing: timing as u32,
             voice_id: self.voice_id,
             channel: self.channel,
             note: self.note,
@@ -43,8 +43,7 @@ impl Additizer {
         synth: &mut SynthEngine,
         context: &mut impl ProcessContext<Self>,
         event: NoteEvent<()>,
-        samples: usize,
-        timing: u32,
+        timing: usize,
     ) {
         let mut terminate_voice = |voice: Option<VoiceId>| {
             if let Some(voice) = voice {
@@ -60,7 +59,7 @@ impl Additizer {
                 velocity,
                 ..
             } => {
-                let terminated = synth.note_on(samples, voice_id, channel, note, velocity);
+                let terminated = synth.note_on(voice_id, channel, note, velocity);
                 terminate_voice(terminated);
             }
             NoteEvent::NoteOff { note, .. } => {
@@ -144,26 +143,46 @@ impl Plugin for Additizer {
         let mut synth = self.synth_engine.lock();
 
         assert_no_alloc::assert_no_alloc(|| {
-            let buffer_size = synth.get_buffer_size();
-            let mut next_event = context.next_event();
+            let total_samples = buffer.samples();
+            let desired_buffer_size = synth.get_buffer_size();
 
-            for (block_idx, mut block) in buffer.iter_blocks(buffer_size) {
-                let sample_idx = block_idx * buffer_size;
-                let block_size = block.samples();
+            let mut process =
+                |synth: &mut SynthEngine,
+                 mut sample_idx: usize,
+                 sample_idx_to: usize,
+                 context: &mut dyn ProcessContext<Self>| {
+                    while sample_idx < sample_idx_to {
+                        let samples = desired_buffer_size.min(sample_idx_to - sample_idx);
 
-                while let Some(event) = next_event {
-                    if event.timing() > (sample_idx + block_size) as u32 {
-                        break;
+                        synth.process(
+                            samples,
+                            buffer
+                                .as_slice()
+                                .iter_mut()
+                                .map(|buff| &mut buff[sample_idx..sample_idx + samples]),
+                            &mut |voice| context.send_event(voice.terminated_event(sample_idx)),
+                        );
+
+                        sample_idx += samples;
                     }
+                };
 
-                    Self::process_event(&mut synth, context, event, block_size, sample_idx as u32);
-                    next_event = context.next_event();
+            let mut next_event = context.next_event();
+            let mut sample_idx = 0usize;
+
+            while let Some(event) = next_event {
+                let sample_idx_to = event.timing() as usize;
+
+                if sample_idx_to > sample_idx {
+                    process(&mut synth, sample_idx, sample_idx_to, context);
+                    sample_idx = sample_idx_to;
                 }
 
-                synth.process(block_size, block.iter_mut(), |voice: VoiceId| {
-                    context.send_event(voice.terminated_event(sample_idx as u32))
-                });
+                Self::process_event(&mut synth, context, event, sample_idx);
+                next_event = context.next_event();
             }
+
+            process(&mut synth, sample_idx, total_samples, context);
         });
 
         ProcessStatus::KeepAlive

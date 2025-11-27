@@ -6,8 +6,10 @@ use crate::{
     synth_engine::{
         ModuleInput,
         routing::{InputType, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, OutputType, Router},
-        synth_module::{ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule},
-        types::{Sample, StereoSample},
+        synth_module::{
+            ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule, VoiceRouter,
+        },
+        types::{Sample, ScalarOutput, StereoSample},
     },
     utils::from_ms,
 };
@@ -64,11 +66,10 @@ impl PowerIn {
 
 impl CurveIterator for PowerIn {
     fn next(&mut self, arg_step: Sample) -> Option<Sample> {
-        if self.arg < self.arg_to {
-            let result = Some(self.arg.powf(self.power));
+        self.arg += arg_step;
 
-            self.arg += arg_step;
-            result
+        if self.arg < self.arg_to {
+            Some(self.arg.powf(self.power))
         } else {
             None
         }
@@ -105,11 +106,10 @@ impl PowerOut {
 
 impl CurveIterator for PowerOut {
     fn next(&mut self, arg_step: Sample) -> Option<Sample> {
-        if self.arg < self.arg_to {
-            let result = Some(Self::calc(self.arg, self.power));
+        self.arg += arg_step;
 
-            self.arg += arg_step;
-            result
+        if self.arg < self.arg_to {
+            Some(Self::calc(self.arg, self.power))
         } else {
             None
         }
@@ -158,15 +158,14 @@ impl ExponentialIn {
 
 impl CurveIterator for ExponentialIn {
     fn next(&mut self, arg_step: Sample) -> Option<Sample> {
+        self.arg += arg_step;
+
         if self.arg < self.arg_to {
-            let result = if self.arg < Self::LINEAR_THRESHOLD_ARG {
+            Some(if self.arg < Self::LINEAR_THRESHOLD_ARG {
                 self.linear_rate * self.arg
             } else {
                 Self::calc_exp(self.arg)
-            };
-
-            self.arg += arg_step;
-            Some(result)
+            })
         } else {
             None
         }
@@ -217,15 +216,14 @@ impl ExponentialOut {
 
 impl CurveIterator for ExponentialOut {
     fn next(&mut self, arg_step: Sample) -> Option<Sample> {
+        self.arg += arg_step;
+
         if self.arg < self.arg_to {
-            let result = if self.arg < Self::LINEAR_THRESHOLD_ARG {
+            Some(if self.arg < Self::LINEAR_THRESHOLD_ARG {
                 Self::calc_exp(self.arg)
             } else {
                 self.linear_from_value + (self.arg - Self::LINEAR_THRESHOLD_ARG) * self.linear_rate
-            };
-
-            self.arg += arg_step;
-            Some(result)
+            })
         } else {
             None
         }
@@ -255,10 +253,11 @@ impl ExponentialTail {
 
 impl CurveIterator for ExponentialTail {
     fn next(&mut self, arg_step: Sample) -> Option<Sample> {
+        self.arg += arg_step;
+
         let result = Self::calc_exp(self.arg);
 
         if result < Self::END_AT {
-            self.arg += arg_step;
             Some(result)
         } else {
             None
@@ -396,18 +395,16 @@ enum Stage {
 
 struct Voice {
     stage: Stage,
-    advance_twice: bool,
-    prev_output: Sample,
-    output: Sample,
+    triggered: bool,
+    output: ScalarOutput,
 }
 
 impl Default for Voice {
     fn default() -> Self {
         Self {
             stage: Stage::Done,
-            advance_twice: false,
-            prev_output: 0.0,
-            output: 0.0,
+            triggered: false,
+            output: ScalarOutput::default(),
         }
     }
 }
@@ -580,26 +577,20 @@ impl Envelope {
         }
     }
 
-    fn process_channel_voice(
+    fn process_voice(
         id: ModuleId,
-        channel: &mut Channel,
-        params: &ProcessParams,
-        voice_idx: usize,
-        channel_idx: usize,
-        router: &dyn Router,
+        env: &ChannelParams,
+        voice: &mut Voice,
+        current: bool,
+        t_step: Sample,
+        router: &VoiceRouter,
     ) {
-        let voice = &mut channel.voices[voice_idx];
-        let env = &channel.params;
-        let t_step = params.buffer_t_step;
-
-        voice.prev_output = voice.output;
-
-        voice.output = loop {
+        voice.output.advance(loop {
             voice.stage = match &mut voice.stage {
                 Stage::Attack(curve) => {
                     let attack = env.attack
                         + router
-                            .get_scalar_input(ModuleInput::attack(id), voice_idx, channel_idx)
+                            .get_scalar_input(ModuleInput::attack(id), current)
                             .unwrap_or(0.0);
 
                     if attack > 0.0
@@ -613,11 +604,12 @@ impl Envelope {
                 Stage::Hold { t } => {
                     let hold = env.hold
                         + router
-                            .get_scalar_input(ModuleInput::hold(id), voice_idx, channel_idx)
+                            .get_scalar_input(ModuleInput::hold(id), current)
                             .unwrap_or(0.0);
 
+                    *t += t_step;
+
                     if *t < hold {
-                        *t += t_step;
                         break 1.0;
                     }
 
@@ -626,7 +618,7 @@ impl Envelope {
                 Stage::Decay(curve) => {
                     let decay = env.decay
                         + router
-                            .get_scalar_input(ModuleInput::decay(id), voice_idx, channel_idx)
+                            .get_scalar_input(ModuleInput::decay(id), current)
                             .unwrap_or(0.0);
 
                     if decay > 0.0
@@ -640,13 +632,13 @@ impl Envelope {
                 Stage::Sustain => {
                     break env.sustain
                         + router
-                            .get_scalar_input(ModuleInput::sustain(id), voice_idx, channel_idx)
+                            .get_scalar_input(ModuleInput::sustain(id), current)
                             .unwrap_or(0.0);
                 }
                 Stage::Release(curve) => {
                     let release = env.release
                         + router
-                            .get_scalar_input(ModuleInput::release(id), voice_idx, channel_idx)
+                            .get_scalar_input(ModuleInput::release(id), current)
                             .unwrap_or(0.0);
 
                     if release > 0.0
@@ -661,21 +653,24 @@ impl Envelope {
                     break 0.0;
                 }
             };
-        };
+        });
     }
 
     fn trigger_voice(channel: &ChannelParams, voice: &mut Voice, reset: bool) {
         if reset {
             voice.stage = Stage::Attack(channel.attack_curve.curve_iter(0.0, 1.0));
-            voice.output = 0.0;
+            voice.output = ScalarOutput::default();
         } else {
-            voice.stage = Stage::Attack(channel.attack_curve.curve_iter(voice.output, 1.0));
+            voice.stage =
+                Stage::Attack(channel.attack_curve.curve_iter(voice.output.current(), 1.0));
         }
+
+        voice.triggered = true;
     }
 
     fn release_voice(params: &ChannelParams, voice: &mut Voice) {
-        voice.advance_twice = true;
-        voice.stage = Stage::Release(params.release_curve.curve_iter(voice.output, 0.0));
+        voice.stage = Stage::Release(params.release_curve.curve_iter(voice.output.current(), 0.0));
+        voice.triggered = true;
     }
 }
 
@@ -715,7 +710,7 @@ impl SynthModule for Envelope {
         OutputType::Scalar
     }
 
-    fn note_on(&mut self, params: &NoteOnParams, _router: &dyn Router) {
+    fn note_on(&mut self, params: &NoteOnParams) {
         for channel in &mut self.channels {
             Self::trigger_voice(
                 &channel.params,
@@ -732,38 +727,30 @@ impl SynthModule for Envelope {
     }
 
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
+        let t_step = params.buffer_t_step;
+
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
+            let env = &channel.params;
+
             for voice_idx in params.active_voices {
-                Self::process_channel_voice(
-                    self.id,
-                    channel,
-                    params,
-                    *voice_idx,
-                    channel_idx,
-                    router,
-                );
-
                 let voice = &mut channel.voices[*voice_idx];
+                let router = VoiceRouter {
+                    router,
+                    samples: params.samples,
+                    voice_idx: *voice_idx,
+                    channel_idx,
+                };
 
-                if voice.advance_twice {
-                    voice.advance_twice = false;
-
-                    Self::process_channel_voice(
-                        self.id,
-                        channel,
-                        params,
-                        *voice_idx,
-                        channel_idx,
-                        router,
-                    );
+                if voice.triggered {
+                    Self::process_voice(self.id, env, voice, false, 0.0, &router);
+                    voice.triggered = false;
                 }
+                Self::process_voice(self.id, env, voice, true, t_step, &router);
             }
         }
     }
 
-    fn get_scalar_output(&self, voice_idx: usize, channel: usize) -> (Sample, Sample) {
-        let voice = &self.channels[channel].voices[voice_idx];
-
-        (voice.prev_output, voice.output)
+    fn get_scalar_output(&self, current: bool, voice_idx: usize, channel: usize) -> Sample {
+        self.channels[channel].voices[voice_idx].output.get(current)
     }
 }
