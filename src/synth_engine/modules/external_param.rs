@@ -115,10 +115,6 @@ impl SynthModule for ExternalParam {
         ModuleType::ExternalParam
     }
 
-    fn is_spectral_rate(&self) -> bool {
-        true
-    }
-
     fn inputs(&self) -> &'static [InputType] {
         &[]
     }

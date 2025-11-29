@@ -165,10 +165,6 @@ impl SynthModule for ModulationFilter {
         ModuleType::ModulationFilter
     }
 
-    fn is_spectral_rate(&self) -> bool {
-        false
-    }
-
     fn inputs(&self) -> &'static [InputType] {
         &[InputType::Audio]
     }

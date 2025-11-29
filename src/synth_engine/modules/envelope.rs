@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     synth_engine::{
         ModuleInput,
+        curves::{CurveFunction, ExponentialIn, ExponentialOut, PowerIn, PowerOut},
         routing::{InputType, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, OutputType, Router},
         synth_module::{
             ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule, VoiceRouter,
@@ -37,265 +38,100 @@ impl Default for EnvelopeConfig {
     }
 }
 
+enum CurveResult {
+    Value(Sample),
+    TimeRemainder(Sample),
+}
+
 trait CurveIterator {
-    fn next(&mut self, arg_step: Sample) -> Option<Sample>;
-}
-
-struct PowerIn {
-    power: Sample,
-    arg: Sample,
-    arg_to: Sample,
-}
-
-impl PowerIn {
-    pub fn new(curvature: Sample, (value_from, value_to): (Sample, Sample)) -> Self {
-        let value_from = value_from.max(0.0);
-
-        assert!(value_from <= value_to);
-
-        let power = 1.0 + curvature.clamp(0.0, 1.0) * 10.0;
-        let inverse_power = power.recip();
-
-        Self {
-            power,
-            arg: value_from.powf(inverse_power),
-            arg_to: value_to.powf(inverse_power),
-        }
-    }
-}
-
-impl CurveIterator for PowerIn {
-    fn next(&mut self, arg_step: Sample) -> Option<Sample> {
-        self.arg += arg_step;
-
-        if self.arg < self.arg_to {
-            Some(self.arg.powf(self.power))
-        } else {
-            None
-        }
-    }
-}
-
-struct PowerOut {
-    power: Sample,
-    arg: Sample,
-    arg_to: Sample,
-}
-
-impl PowerOut {
-    pub fn new(curvature: Sample, (value_from, value_to): (Sample, Sample)) -> Self {
-        let value_to = value_to.min(1.0);
-
-        assert!(value_from <= value_to);
-
-        let power = 1.0 + curvature.clamp(0.0, 1.0) * 10.0;
-        let inverse_power = power.recip();
-
-        Self {
-            power,
-            arg: Self::calc(value_from, inverse_power),
-            arg_to: Self::calc(value_to, inverse_power),
-        }
-    }
-
-    #[inline]
-    fn calc(x: Sample, power: Sample) -> Sample {
-        1.0 - (1.0 - x).powf(power)
-    }
-}
-
-impl CurveIterator for PowerOut {
-    fn next(&mut self, arg_step: Sample) -> Option<Sample> {
-        self.arg += arg_step;
-
-        if self.arg < self.arg_to {
-            Some(Self::calc(self.arg, self.power))
-        } else {
-            None
-        }
-    }
-}
-
-struct ExponentialIn {
-    linear_rate: Sample,
-    arg: Sample,
-    arg_to: Sample,
-}
-
-impl ExponentialIn {
-    const RATE: Sample = 5.0;
-    const LINEAR_THRESHOLD_ARG: Sample = 0.05;
-
-    pub fn new((value_from, value_to): (Sample, Sample)) -> Self {
-        let value_from = value_from.max(0.0);
-
-        assert!(value_from <= value_to);
-
-        let exp_from_value = Self::calc_exp(Self::LINEAR_THRESHOLD_ARG);
-        let linear_rate = exp_from_value / Self::LINEAR_THRESHOLD_ARG;
-        let arg = Self::calc_arg(linear_rate, exp_from_value, value_from);
-        let arg_to = Self::calc_arg(linear_rate, exp_from_value, value_to);
-
-        Self {
-            linear_rate,
-            arg,
-            arg_to,
-        }
-    }
-
-    fn calc_exp(arg: Sample) -> Sample {
-        (Self::RATE * (arg - 1.0)).exp()
-    }
-
-    fn calc_arg(linear_rate: Sample, exp_from_value: Sample, value: Sample) -> Sample {
-        if value < exp_from_value {
-            value / linear_rate
-        } else {
-            value.ln() / Self::RATE + 1.0
-        }
-    }
-}
-
-impl CurveIterator for ExponentialIn {
-    fn next(&mut self, arg_step: Sample) -> Option<Sample> {
-        self.arg += arg_step;
-
-        if self.arg < self.arg_to {
-            Some(if self.arg < Self::LINEAR_THRESHOLD_ARG {
-                self.linear_rate * self.arg
-            } else {
-                Self::calc_exp(self.arg)
-            })
-        } else {
-            None
-        }
-    }
-}
-
-struct ExponentialOut {
-    linear_from_value: Sample,
-    linear_rate: Sample,
-    arg: Sample,
-    arg_to: Sample,
-}
-
-impl ExponentialOut {
-    const RATE: Sample = 5.0;
-    const LINEAR_THRESHOLD_ARG: Sample = 0.95;
-
-    pub fn new((value_from, value_to): (Sample, Sample)) -> Self {
-        let value_to = value_to.min(1.0);
-
-        assert!(value_from <= value_to);
-
-        let linear_from_value = Self::calc_exp(Self::LINEAR_THRESHOLD_ARG);
-        let linear_rate = (1.0 - linear_from_value) / (1.0 - Self::LINEAR_THRESHOLD_ARG);
-        let arg = Self::calc_arg(linear_rate, linear_from_value, value_from);
-        let arg_to = Self::calc_arg(linear_rate, linear_from_value, value_to);
-
-        Self {
-            linear_from_value,
-            linear_rate,
-            arg,
-            arg_to,
-        }
-    }
-
-    fn calc_exp(arg: Sample) -> Sample {
-        1.0 - (-Self::RATE * arg).exp()
-    }
-
-    fn calc_arg(linear_rate: Sample, linear_from_value: Sample, value: Sample) -> Sample {
-        if value < linear_from_value {
-            -(1.0 - value).ln() / Self::RATE
-        } else {
-            Self::LINEAR_THRESHOLD_ARG + (value - linear_from_value) / linear_rate
-        }
-    }
-}
-
-impl CurveIterator for ExponentialOut {
-    fn next(&mut self, arg_step: Sample) -> Option<Sample> {
-        self.arg += arg_step;
-
-        if self.arg < self.arg_to {
-            Some(if self.arg < Self::LINEAR_THRESHOLD_ARG {
-                Self::calc_exp(self.arg)
-            } else {
-                self.linear_from_value + (self.arg - Self::LINEAR_THRESHOLD_ARG) * self.linear_rate
-            })
-        } else {
-            None
-        }
-    }
-}
-
-struct ExponentialTail {
-    arg: Sample,
-}
-
-impl ExponentialTail {
-    const RATE: Sample = 5.0;
-    const END_AT: Sample = 1.0 - 0.00001; //-100dB
-
-    pub fn new(value_from: Sample) -> Self {
-        let value_from = value_from.min(1.0);
-
-        Self {
-            arg: -(1.0 - value_from).ln() / Self::RATE,
-        }
-    }
-
-    fn calc_exp(arg: Sample) -> Sample {
-        1.0 - (-Self::RATE * arg).exp()
-    }
-}
-
-impl CurveIterator for ExponentialTail {
-    fn next(&mut self, arg_step: Sample) -> Option<Sample> {
-        self.arg += arg_step;
-
-        let result = Self::calc_exp(self.arg);
-
-        if result < Self::END_AT {
-            Some(result)
-        } else {
-            None
-        }
-    }
+    fn next(&mut self, t_step: Sample, time: Sample) -> CurveResult;
 }
 
 type CurveBox = Box<dyn CurveIterator + Send>;
 
-struct CurveTransform<T: CurveIterator + Send> {
-    curve: T,
+struct CurveIterParams {
+    from: Sample,
+    to: Sample,
+    time: Sample,
+    t_from: Sample,
+}
+struct CurveIter<T: CurveFunction + Send> {
+    curve_fn: T,
+    t_from: Sample,
+    t: Sample,
+    arg_to: Sample,
     value_from: Sample,
     interval: Sample,
 }
 
-impl<T: CurveIterator + Send + 'static> CurveTransform<T> {
-    fn wrap(curve: T, from: Sample, to: Sample, full_range: bool) -> CurveBox {
-        if full_range {
-            Box::new(Self {
-                curve,
+impl<T: CurveFunction + Send + 'static> CurveIter<T> {
+    fn iter(
+        curve_fn: T,
+        CurveIterParams {
+            from,
+            to,
+            time,
+            t_from,
+        }: CurveIterParams,
+        full_range: bool,
+    ) -> CurveBox {
+        let from = from.clamp(0.0, 1.0);
+        let to = to.clamp(0.0, 1.0);
+
+        let (arg_from, arg_to) = if full_range {
+            (0.0, 1.0)
+        } else if from > to {
+            (
+                curve_fn.calc_inverse(1.0 - from),
+                curve_fn.calc_inverse(1.0 - to),
+            )
+        } else {
+            (curve_fn.calc_inverse(from), curve_fn.calc_inverse(to))
+        };
+
+        let t = t_from + arg_from * time;
+
+        let iter = if full_range {
+            Self {
+                curve_fn,
+                t_from,
+                t,
+                arg_to,
                 value_from: from,
                 interval: to - from,
-            })
+            }
         } else {
-            Box::new(Self {
-                curve,
+            Self {
+                curve_fn,
+                t_from,
+                t,
+                arg_to,
                 value_from: if from > to { 1.0 } else { 0.0 },
                 interval: (to - from).signum(),
-            })
-        }
+            }
+        };
+
+        Box::new(iter)
     }
 }
 
-impl<T: CurveIterator + Send> CurveIterator for CurveTransform<T> {
-    fn next(&mut self, arg_step: Sample) -> Option<Sample> {
-        self.curve
-            .next(arg_step)
-            .map(|v| self.value_from + self.interval * v)
+impl<T: CurveFunction + Send + 'static> CurveIterator for CurveIter<T> {
+    fn next(&mut self, t_step: Sample, time: Sample) -> CurveResult {
+        let t_to = self.arg_to * time;
+
+        self.t = (self.t + t_step).max(0.0);
+
+        if self.t < t_to {
+            CurveResult::Value(
+                self.value_from + self.interval * self.curve_fn.calc(self.t * time.recip()),
+            )
+        } else {
+            CurveResult::TimeRemainder(if time > 0.0 {
+                (self.t - t_to).clamp(0.0, t_step)
+            } else {
+                self.t_from + t_step
+            })
+        }
     }
 }
 
@@ -306,68 +142,47 @@ pub enum EnvelopeCurve {
     PowerOut { full_range: bool, curvature: Sample },
     ExponentialIn { full_range: bool },
     ExponentialOut { full_range: bool },
-    ExponentialTail { full_range: bool },
 }
 
 impl EnvelopeCurve {
-    fn adjust_curve_range(from: Sample, to: Sample, full_range: bool) -> (Sample, Sample) {
-        if full_range {
-            (0.0, 1.0)
-        } else if from > to {
-            (1.0 - from, 1.0 - to)
-        } else {
-            (from, to)
-        }
-    }
-
-    fn curve_iter(&self, from: Sample, to: Sample) -> CurveBox {
-        let from = from.clamp(0.0, 1.0);
-        let to = to.clamp(0.0, 1.0);
+    fn curve_iter(&self, from: Sample, to: Sample, time: Sample, t_from: Sample) -> CurveBox {
+        let params = CurveIterParams {
+            from,
+            to,
+            time,
+            t_from,
+        };
 
         match *self {
-            Self::Linear { full_range } => CurveTransform::wrap(
-                PowerIn::new(0.0, Self::adjust_curve_range(from, to, full_range)),
-                from,
-                to,
-                full_range,
-            ),
+            Self::Linear { full_range } => CurveIter::iter(PowerIn::new(0.0), params, full_range),
             Self::PowerIn {
                 curvature,
                 full_range,
-            } => CurveTransform::wrap(
-                PowerIn::new(curvature, Self::adjust_curve_range(from, to, full_range)),
-                from,
-                to,
-                full_range,
-            ),
+            } => CurveIter::iter(PowerIn::new(curvature), params, full_range),
             Self::PowerOut {
                 full_range,
                 curvature,
-            } => CurveTransform::wrap(
-                PowerOut::new(curvature, Self::adjust_curve_range(from, to, full_range)),
-                from,
-                to,
-                full_range,
-            ),
-            Self::ExponentialIn { full_range } => CurveTransform::wrap(
-                ExponentialIn::new(Self::adjust_curve_range(from, to, full_range)),
-                from,
-                to,
-                full_range,
-            ),
-            Self::ExponentialOut { full_range } => CurveTransform::wrap(
-                ExponentialOut::new(Self::adjust_curve_range(from, to, full_range)),
-                from,
-                to,
-                full_range,
-            ),
-            Self::ExponentialTail { full_range } => CurveTransform::wrap(
-                ExponentialTail::new(Self::adjust_curve_range(from, to, full_range).0),
-                from,
-                to,
-                full_range,
-            ),
+            } => CurveIter::iter(PowerOut::new(curvature), params, full_range),
+            Self::ExponentialIn { full_range } => {
+                CurveIter::iter(ExponentialIn::new(), params, full_range)
+            }
+            Self::ExponentialOut { full_range } => {
+                CurveIter::iter(ExponentialOut::new(), params, full_range)
+            }
         }
+    }
+
+    fn hold_iter(time: Sample, t_from: Sample) -> CurveBox {
+        CurveIter::iter(
+            PowerIn::new(0.0),
+            CurveIterParams {
+                from: 1.0,
+                to: 1.0,
+                time,
+                t_from,
+            },
+            true,
+        )
     }
 }
 
@@ -386,7 +201,7 @@ pub struct EnvelopeUIData {
 
 enum Stage {
     Attack(CurveBox),
-    Hold { t: Sample },
+    Hold(CurveBox),
     Decay(CurveBox),
     Sustain,
     Release(CurveBox),
@@ -396,6 +211,7 @@ enum Stage {
 struct Voice {
     stage: Stage,
     triggered: bool,
+    released: bool,
     output: ScalarOutput,
 }
 
@@ -404,6 +220,7 @@ impl Default for Voice {
         Self {
             stage: Stage::Done,
             triggered: false,
+            released: false,
             output: ScalarOutput::default(),
         }
     }
@@ -570,8 +387,8 @@ impl Envelope {
                 for voice_activity in activity.iter_mut() {
                     let voice = &channel.voices[voice_activity.voice_idx];
 
-                    voice_activity.active =
-                        voice_activity.active || !matches!(voice.stage, Stage::Done);
+                    voice_activity.active = voice_activity.active
+                        || (!matches!(voice.stage, Stage::Done) || voice.triggered);
                 }
             }
         }
@@ -585,70 +402,92 @@ impl Envelope {
         t_step: Sample,
         router: &VoiceRouter,
     ) {
+        let attack_time = || {
+            let attack = env.attack
+                + router
+                    .get_scalar_input(ModuleInput::attack(id), current)
+                    .unwrap_or(0.0);
+
+            attack.max(0.0)
+        };
+
+        let hold_time = || {
+            let hold = env.hold
+                + router
+                    .get_scalar_input(ModuleInput::hold(id), current)
+                    .unwrap_or(0.0);
+
+            hold.max(0.0)
+        };
+
+        let decay_time = || {
+            let decay = env.decay
+                + router
+                    .get_scalar_input(ModuleInput::decay(id), current)
+                    .unwrap_or(0.0);
+
+            decay.max(0.0)
+        };
+
+        let release_time = || {
+            let release = env.release
+                + router
+                    .get_scalar_input(ModuleInput::release(id), current)
+                    .unwrap_or(0.0);
+
+            release.max(0.0)
+        };
+
+        if voice.released {
+            voice.stage = Stage::Release(env.release_curve.curve_iter(
+                voice.output.current(),
+                0.0,
+                release_time(),
+                0.0,
+            ));
+            voice.released = false;
+        }
+
+        if voice.triggered {
+            voice.stage = Stage::Attack(env.attack_curve.curve_iter(
+                voice.output.current(),
+                1.0,
+                attack_time(),
+                0.0,
+            ));
+        }
+
         voice.output.advance(loop {
             voice.stage = match &mut voice.stage {
-                Stage::Attack(curve) => {
-                    let attack = env.attack
-                        + router
-                            .get_scalar_input(ModuleInput::attack(id), current)
-                            .unwrap_or(0.0);
-
-                    if attack > 0.0
-                        && let Some(value) = curve.next(t_step / attack)
-                    {
-                        break value;
+                Stage::Attack(curve) => match curve.next(t_step, attack_time()) {
+                    CurveResult::Value(value) => break value,
+                    CurveResult::TimeRemainder(t_rem) => {
+                        Stage::Hold(EnvelopeCurve::hold_iter(hold_time(), t_rem - t_step))
                     }
-
-                    Stage::Hold { t: 0.0 }
-                }
-                Stage::Hold { t } => {
-                    let hold = env.hold
-                        + router
-                            .get_scalar_input(ModuleInput::hold(id), current)
-                            .unwrap_or(0.0);
-
-                    *t += t_step;
-
-                    if *t < hold {
-                        break 1.0;
-                    }
-
-                    Stage::Decay(env.decay_curve.curve_iter(1.0, env.sustain))
-                }
-                Stage::Decay(curve) => {
-                    let decay = env.decay
-                        + router
-                            .get_scalar_input(ModuleInput::decay(id), current)
-                            .unwrap_or(0.0);
-
-                    if decay > 0.0
-                        && let Some(value) = curve.next(t_step / decay)
-                    {
-                        break value;
-                    }
-
-                    Stage::Sustain
-                }
+                },
+                Stage::Hold(curve) => match curve.next(t_step, hold_time()) {
+                    CurveResult::Value(value) => break value,
+                    CurveResult::TimeRemainder(t_rem) => Stage::Decay(env.decay_curve.curve_iter(
+                        1.0,
+                        env.sustain,
+                        decay_time(),
+                        t_rem - t_step,
+                    )),
+                },
+                Stage::Decay(curve) => match curve.next(t_step, decay_time()) {
+                    CurveResult::Value(value) => break value,
+                    CurveResult::TimeRemainder(_) => Stage::Sustain,
+                },
                 Stage::Sustain => {
                     break env.sustain
                         + router
                             .get_scalar_input(ModuleInput::sustain(id), current)
                             .unwrap_or(0.0);
                 }
-                Stage::Release(curve) => {
-                    let release = env.release
-                        + router
-                            .get_scalar_input(ModuleInput::release(id), current)
-                            .unwrap_or(0.0);
-
-                    if release > 0.0
-                        && let Some(value) = curve.next(t_step / release)
-                    {
-                        break value;
-                    }
-
-                    Stage::Done
-                }
+                Stage::Release(curve) => match curve.next(t_step, release_time()) {
+                    CurveResult::Value(value) => break value,
+                    CurveResult::TimeRemainder(_) => Stage::Done,
+                },
                 Stage::Done => {
                     break 0.0;
                 }
@@ -656,21 +495,16 @@ impl Envelope {
         });
     }
 
-    fn trigger_voice(channel: &ChannelParams, voice: &mut Voice, reset: bool) {
+    fn trigger_voice(voice: &mut Voice, reset: bool) {
         if reset {
-            voice.stage = Stage::Attack(channel.attack_curve.curve_iter(0.0, 1.0));
             voice.output = ScalarOutput::default();
-        } else {
-            voice.stage =
-                Stage::Attack(channel.attack_curve.curve_iter(voice.output.current(), 1.0));
         }
 
         voice.triggered = true;
     }
 
-    fn release_voice(params: &ChannelParams, voice: &mut Voice) {
-        voice.stage = Stage::Release(params.release_curve.curve_iter(voice.output.current(), 0.0));
-        voice.triggered = true;
+    fn release_voice(voice: &mut Voice) {
+        voice.released = true;
     }
 }
 
@@ -692,10 +526,6 @@ impl SynthModule for Envelope {
         ModuleType::Envelope
     }
 
-    fn is_spectral_rate(&self) -> bool {
-        true
-    }
-
     fn inputs(&self) -> &'static [InputType] {
         &[
             InputType::Attack,
@@ -712,17 +542,13 @@ impl SynthModule for Envelope {
 
     fn note_on(&mut self, params: &NoteOnParams) {
         for channel in &mut self.channels {
-            Self::trigger_voice(
-                &channel.params,
-                &mut channel.voices[params.voice_idx],
-                params.reset,
-            );
+            Self::trigger_voice(&mut channel.voices[params.voice_idx], params.reset);
         }
     }
 
     fn note_off(&mut self, params: &NoteOffParams) {
         for channel in &mut self.channels {
-            Self::release_voice(&channel.params, &mut channel.voices[params.voice_idx]);
+            Self::release_voice(&mut channel.voices[params.voice_idx]);
         }
     }
 

@@ -140,10 +140,6 @@ impl SynthModule for HarmonicEditor {
         ModuleType::HarmonicEditor
     }
 
-    fn is_spectral_rate(&self) -> bool {
-        true
-    }
-
     fn inputs(&self) -> &'static [InputType] {
         &[]
     }

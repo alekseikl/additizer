@@ -184,10 +184,6 @@ impl SynthModule for Amplifier {
         ModuleType::Amplifier
     }
 
-    fn is_spectral_rate(&self) -> bool {
-        false
-    }
-
     fn inputs(&self) -> &'static [InputType] {
         &[InputType::Audio, InputType::Level]
     }

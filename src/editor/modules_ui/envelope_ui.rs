@@ -22,7 +22,6 @@ enum DisplayCurve {
     PowerOut,
     ExponentialIn,
     ExponentialOut,
-    ExponentialTail,
 }
 
 impl DisplayCurve {
@@ -33,7 +32,6 @@ impl DisplayCurve {
             Self::PowerOut => "Power Out",
             Self::ExponentialIn => "Exponential In",
             Self::ExponentialOut => "Exponential Out",
-            Self::ExponentialTail => "Exponential Tail",
         }
     }
 
@@ -50,7 +48,6 @@ impl DisplayCurve {
             },
             Self::ExponentialIn => EnvelopeCurve::ExponentialIn { full_range: true },
             Self::ExponentialOut => EnvelopeCurve::ExponentialOut { full_range: true },
-            Self::ExponentialTail => EnvelopeCurve::ExponentialTail { full_range: true },
         }
     }
 }
@@ -61,7 +58,6 @@ const CURVE_OPTIONS: &[DisplayCurve] = &[
     DisplayCurve::PowerOut,
     DisplayCurve::ExponentialIn,
     DisplayCurve::ExponentialOut,
-    DisplayCurve::ExponentialTail,
 ];
 
 impl EnvelopeCurve {
@@ -72,7 +68,6 @@ impl EnvelopeCurve {
             Self::PowerOut { .. } => DisplayCurve::PowerOut,
             Self::ExponentialIn { .. } => DisplayCurve::ExponentialIn,
             Self::ExponentialOut { .. } => DisplayCurve::ExponentialOut,
-            Self::ExponentialTail { .. } => DisplayCurve::ExponentialTail,
         }
     }
 }
@@ -144,9 +139,6 @@ impl EnvelopeUI {
                     add_full_range_checkbox(full_range);
                 }
                 EnvelopeCurve::ExponentialOut { full_range, .. } => {
-                    add_full_range_checkbox(full_range);
-                }
-                EnvelopeCurve::ExponentialTail { full_range, .. } => {
                     add_full_range_checkbox(full_range);
                 }
             }

@@ -490,10 +490,6 @@ impl SynthModule for Oscillator {
         ModuleType::Oscillator
     }
 
-    fn is_spectral_rate(&self) -> bool {
-        false
-    }
-
     fn inputs(&self) -> &'static [InputType] {
         &[
             InputType::Level,

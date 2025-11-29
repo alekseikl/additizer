@@ -202,10 +202,6 @@ impl SynthModule for SpectralFilter {
         ModuleType::SpectralFilter
     }
 
-    fn is_spectral_rate(&self) -> bool {
-        true
-    }
-
     fn inputs(&self) -> &'static [InputType] {
         &[InputType::Spectrum, InputType::Cutoff, InputType::Q]
     }

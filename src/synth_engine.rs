@@ -43,6 +43,7 @@ mod buffer;
 mod config;
 #[macro_use]
 mod synth_module;
+mod curves;
 mod modules;
 mod routing;
 mod types;
