@@ -1,4 +1,4 @@
-use egui_baseview::egui::{DragValue, Grid, Ui};
+use egui_baseview::egui::{Checkbox, DragValue, Grid, Ui};
 
 use crate::{
     editor::{
@@ -114,6 +114,15 @@ impl ModuleUI for OscillatorUI {
                     .changed()
                 {
                     self.osc(synth).set_unison(ui_data.unison);
+                }
+                ui.end_row();
+
+                ui.label("Reset phase");
+                if ui
+                    .add(Checkbox::without_text(&mut ui_data.reset_phase))
+                    .changed()
+                {
+                    self.osc(synth).set_reset_phase(ui_data.reset_phase);
                 }
                 ui.end_row();
 

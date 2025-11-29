@@ -68,6 +68,7 @@ impl Default for OscillatorConfigChannel {
 pub struct OscillatorConfig {
     label: Option<String>,
     unison: usize,
+    reset_phase: bool,
     channels: [OscillatorConfigChannel; NUM_CHANNELS],
 }
 
@@ -76,6 +77,7 @@ impl Default for OscillatorConfig {
         Self {
             label: None,
             unison: 1,
+            reset_phase: false,
             channels: Default::default(),
         }
     }
@@ -88,6 +90,7 @@ pub struct OscillatorUIData {
     pub detune: StereoSample,
     pub phase_shift: StereoSample,
     pub unison: usize,
+    pub reset_phase: bool,
     pub initial_phases: [StereoSample; MAX_UNISON_VOICES],
 }
 
@@ -144,6 +147,7 @@ struct Common {
     label: String,
     config: ModuleConfigBox<OscillatorConfig>,
     unison: usize,
+    reset_phase: bool,
     inverse_fft: Arc<dyn ComplexToReal<Sample>>,
     tmp_spectral_buff: SpectralBuffer,
     scratch_buff: SpectralBuffer,
@@ -188,6 +192,7 @@ impl Oscillator {
                 label: format!("Oscillator {id}"),
                 config,
                 unison: 1,
+                reset_phase: false,
                 inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE),
                 tmp_spectral_buff: make_zero_spectral_buffer(),
                 scratch_buff: make_zero_spectral_buffer(),
@@ -214,6 +219,7 @@ impl Oscillator {
                 channel.params.initial_phases = cfg_channel.initial_phases;
             }
             osc.common.unison = cfg.unison;
+            osc.common.reset_phase = cfg.reset_phase;
         }
 
         osc
@@ -229,6 +235,7 @@ impl Oscillator {
             detune: extract_param!(self, detune),
             phase_shift: extract_param!(self, phase_shift),
             unison: self.common.unison,
+            reset_phase: self.common.reset_phase,
             initial_phases: std::array::from_fn(|i| {
                 StereoSample::from_iter(
                     self.channels
@@ -252,6 +259,11 @@ impl Oscillator {
     );
     set_param_method!(set_detune, detune, detune.clamp(0.0, st_to_octave(1.0)));
     set_param_method!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
+
+    pub fn set_reset_phase(&mut self, reset_phase: bool) {
+        self.common.reset_phase = reset_phase;
+        self.common.config.lock().reset_phase = reset_phase;
+    }
 
     pub fn set_initial_phase(&mut self, voice_idx: usize, phase: StereoSample) {
         for (channel, phase) in self.channels.iter_mut().zip(phase.iter()) {
@@ -511,7 +523,7 @@ impl SynthModule for Oscillator {
             voice.octave = note_to_octave(params.note);
             voice.triggered = true;
 
-            if params.reset {
+            if params.reset || self.common.reset_phase {
                 for (phase, initial_phase) in
                     voice.phases.iter_mut().zip(channel.params.initial_phases)
                 {
