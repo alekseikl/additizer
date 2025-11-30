@@ -13,6 +13,7 @@ pub struct HarmonicEditorUI {
     module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
+    // show_keep_selected: bool,
 }
 
 impl HarmonicEditorUI {
@@ -21,12 +22,17 @@ impl HarmonicEditorUI {
             module_id,
             remove_confirmation: false,
             label_state: None,
+            // show_keep_selected: false,
         }
     }
 
     fn editor<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut HarmonicEditor {
         HarmonicEditor::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
     }
+
+    // fn show_keep_selected_modal(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
+
+    // }
 }
 
 impl ModuleUI for HarmonicEditorUI {
@@ -88,6 +94,34 @@ impl ModuleUI for HarmonicEditorUI {
         if need_update {
             self.editor(synth).apply_harmonics();
         }
+
+        ui.add_space(60.0);
+
+        ui.horizontal(|ui| {
+            if ui.button("All to Zero").clicked() {
+                self.editor(synth).set_all_to_zero();
+            }
+
+            if ui.button("All to One").clicked() {
+                self.editor(synth).set_all_to_one();
+            }
+
+            if ui.button("Keep Even").clicked() {
+                self.editor(synth).keep_selected(2, 0);
+            }
+
+            if ui.button("Keep Odd").clicked() {
+                self.editor(synth).keep_selected(2, 1);
+            }
+
+            // if ui.button("Keep Selected").clicked() {
+            //     self.show_keep_selected = true;
+            // }
+        });
+
+        // if self.show_keep_selected {
+        //     self.show_keep_selected_modal(synth, ui);
+        // }
 
         ui.add_space(40.0);
 

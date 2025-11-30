@@ -54,10 +54,13 @@ impl ModuleUI for ModulationFilterUI {
                 ui.end_row();
 
                 ui.label("Cutoff Frequency");
-                ui.spacing_mut().slider_width = 300.0;
+                ui.spacing_mut().slider_width = 200.0;
 
                 if ui
-                    .add(Slider::new(&mut ui_data.cutoff_frequency, 25.0..=1_500.0))
+                    .add(
+                        Slider::new(&mut ui_data.cutoff_frequency, 50.0..=2_500.0)
+                            .logarithmic(true),
+                    )
                     .changed()
                 {
                     self.filter(synth)

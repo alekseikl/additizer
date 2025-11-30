@@ -1,4 +1,4 @@
-use std::any::Any;
+use std::{any::Any, f64};
 
 use itertools::izip;
 use serde::{Deserialize, Serialize};
@@ -18,7 +18,6 @@ const NUM_EDITABLE_HARMONICS: usize = SPECTRAL_BUFFER_SIZE - 2;
 pub struct HarmonicEditorConfig {
     label: Option<String>,
     harmonics: Vec<StereoSample>,
-    tail: StereoSample,
 }
 
 impl Default for HarmonicEditorConfig {
@@ -26,7 +25,6 @@ impl Default for HarmonicEditorConfig {
         Self {
             label: None,
             harmonics: vec![StereoSample::splat(1.0); NUM_EDITABLE_HARMONICS],
-            tail: StereoSample::splat(1.0),
         }
     }
 }
@@ -36,7 +34,6 @@ pub struct HarmonicEditor {
     label: String,
     config: ModuleConfigBox<HarmonicEditorConfig>,
     harmonics: Vec<StereoSample>,
-    tail: StereoSample,
     outputs: [SpectralBuffer; NUM_CHANNELS],
 }
 
@@ -47,7 +44,6 @@ impl HarmonicEditor {
             label: format!("Harmonic Editor {id}"),
             config,
             harmonics: vec![StereoSample::splat(1.0); NUM_EDITABLE_HARMONICS],
-            tail: StereoSample::splat(1.0),
             outputs: [ZEROES_SPECTRAL_BUFFER; NUM_CHANNELS],
         };
 
@@ -61,8 +57,6 @@ impl HarmonicEditor {
             if config.harmonics.len() == NUM_EDITABLE_HARMONICS {
                 editor.harmonics = config.harmonics.clone();
             }
-
-            editor.tail = config.tail;
         }
 
         editor.update_buffers();
@@ -71,21 +65,41 @@ impl HarmonicEditor {
 
     gen_downcast_methods!(HarmonicEditor);
 
-    pub fn set_harmonics(&mut self, harmonics: &[StereoSample], tail: StereoSample) {
-        self.harmonics = harmonics.to_vec();
-        self.tail = tail;
+    pub fn set_all_to_zero(&mut self) {
+        self.harmonics.fill(StereoSample::splat(0.0));
+        self.apply_harmonics();
+    }
+
+    pub fn set_all_to_one(&mut self) {
+        self.harmonics.fill(StereoSample::splat(1.0));
+        self.apply_harmonics();
+    }
+
+    pub fn keep_selected(&mut self, a: isize, b: isize) {
+        let matches = |idx: usize| -> bool {
+            let i = idx as isize + 1;
+
+            if a == 0 {
+                i == b
+            } else {
+                let result = (i - b) as f64 / a as f64;
+
+                result >= 0.0 && result.fract().abs() < f32::EPSILON as f64
+            }
+        };
+
+        for (idx, harmonic) in self.harmonics.iter_mut().enumerate() {
+            if !matches(idx) {
+                *harmonic = StereoSample::splat(0.0);
+            }
+        }
 
         self.apply_harmonics();
     }
 
     pub fn apply_harmonics(&mut self) {
         self.update_buffers();
-
-        {
-            let mut config = self.config.lock();
-            config.harmonics = self.harmonics.clone();
-            config.tail = self.tail;
-        }
+        self.config.lock().harmonics = self.harmonics.clone();
     }
 
     fn update_buffers(&mut self) {
@@ -103,17 +117,6 @@ impl HarmonicEditor {
         ) {
             *out_l = series_factor * harmonic.left();
             *out_r = series_factor * harmonic.right();
-        }
-
-        let range = (self.harmonics.len() + 1)..buff_l.len();
-
-        for ((out_l, out_r), series_factor) in buff_l[range.clone()]
-            .iter_mut()
-            .zip(buff_r[range.clone()].iter_mut())
-            .zip(HARMONIC_SERIES_BUFFER[range].iter())
-        {
-            *out_l = series_factor * self.tail.left();
-            *out_r = series_factor * self.tail.right();
         }
     }
 

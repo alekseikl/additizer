@@ -133,7 +133,11 @@ impl<'a> StereoSlider<'a> {
         }
 
         if response.dragged() {
-            let normalized_delta = response.drag_delta().x / response.rect.width();
+            let mut normalized_delta = response.drag_delta().x / response.rect.width();
+
+            if ui.input(|state| state.modifiers.shift) {
+                normalized_delta *= 0.01;
+            }
 
             if response.dragged_by(PointerButton::Primary) {
                 self.update_normalized_value(&mut response, normalized_value + normalized_delta);

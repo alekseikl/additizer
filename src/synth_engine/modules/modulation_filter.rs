@@ -101,7 +101,7 @@ impl ModulationFilter {
     }
 
     pub fn set_cutoff_frequency(&mut self, cutoff: Sample) {
-        self.cutoff_frequency = cutoff.clamp(25.0, 1_500.0);
+        self.cutoff_frequency = cutoff.clamp(50.0, 2_500.0);
         self.config.lock().cutoff_frequency = self.cutoff_frequency;
     }
 
