@@ -10,20 +10,18 @@ use parking_lot::Mutex;
 use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
-use crate::{
-    synth_engine::{
-        buffer::{
-            Buffer, SpectralBuffer, ZEROES_BUFFER, fill_or_append_buffer_slice, make_zero_buffer,
-        },
-        config::{ModuleConfig, RoutingConfig},
-        modules::{
-            AmplifierConfig, EnvelopeActivityState, EnvelopeConfig, ExternalParamConfig,
-            HarmonicEditorConfig, ModulationFilterConfig, OscillatorConfig, SpectralFilterConfig,
-        },
-        routing::{AvailableInputSourceUI, DataType, MAX_VOICES, OutputType, Router},
-        synth_module::{NoteOffParams, NoteOnParams, ProcessParams},
+use crate::synth_engine::{
+    buffer::{
+        Buffer, SpectralBuffer, ZEROES_BUFFER, append_buffer_slice, fill_or_append_buffer_slice,
+        make_zero_buffer,
     },
-    utils::{from_ms, st_to_octave},
+    config::{ModuleConfig, RoutingConfig},
+    modules::{
+        AmplifierConfig, EnvelopeActivityState, EnvelopeConfig, ExternalParamConfig,
+        HarmonicEditorConfig, ModulationFilterConfig, OscillatorConfig, SpectralFilterConfig,
+    },
+    routing::{AvailableInputSourceUI, DataType, MAX_VOICES, OutputType, Router},
+    synth_module::{NoteOffParams, NoteOnParams, ProcessParams},
 };
 
 pub use buffer::BUFFER_SIZE;
@@ -36,8 +34,9 @@ pub use routing::{
     ConnectedInputSourceUI, InputType, ModuleId, ModuleInput, ModuleLink, ModuleOutput, ModuleType,
     OUTPUT_MODULE_ID,
 };
+pub use stereo_sample::StereoSample;
 pub use synth_module::SynthModule;
-pub use types::{Sample, StereoSample};
+pub use types::Sample;
 
 mod buffer;
 mod config;
@@ -45,7 +44,9 @@ mod config;
 mod synth_module;
 mod curves;
 mod modules;
+mod phase;
 mod routing;
+mod stereo_sample;
 mod types;
 
 #[derive(Debug, Clone, Copy)]
@@ -136,7 +137,7 @@ macro_rules! add_module_method {
             let config = Arc::new(Mutex::new($module_cfg::default()));
             let mut module = $module_type::new(id, Arc::clone(&config) $(, self.$arg() )*);
 
-            Self::trigger_active_notes(self.sample_rate, &self.voices, &mut module);
+            Self::trigger_active_notes(&self.voices, &mut module);
             self.modules.insert(id, Some(Box::new(module)));
             self.config
                 .modules
@@ -188,8 +189,11 @@ impl SynthEngine {
 
         if !self.load_config() {
             self.clear();
-            self.build_scheme();
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.modules.is_empty()
     }
 
     pub fn get_voices_num(&self) -> usize {
@@ -382,7 +386,6 @@ impl SynthEngine {
         self.next_voice_id = self.next_voice_id.wrapping_add(1);
 
         let params = NoteOnParams {
-            sample_rate: self.sample_rate,
             note: note as f32,
             voice_idx,
             reset,
@@ -430,13 +433,10 @@ impl SynthEngine {
         samples: usize,
         active_voices: &'a [usize],
     ) -> ProcessParams<'a> {
-        let t_step = self.sample_rate.recip();
-
         ProcessParams {
             samples,
             sample_rate: self.sample_rate,
-            t_step,
-            buffer_t_step: samples as Sample * t_step,
+            buffer_t_step: samples as Sample / self.sample_rate,
             active_voices,
         }
     }
@@ -500,13 +500,12 @@ impl SynthEngine {
         module_id
     }
 
-    fn trigger_active_notes(sample_rate: Sample, voices: &[Voice], module: &mut dyn SynthModule) {
+    fn trigger_active_notes(voices: &[Voice], module: &mut dyn SynthModule) {
         let active_voices = voices
             .iter()
             .enumerate()
             .filter(|(_, voice)| voice.active)
             .map(|(voice_idx, voice)| NoteOnParams {
-                sample_rate,
                 note: voice.note as f32,
                 voice_idx,
                 reset: true,
@@ -610,11 +609,9 @@ impl SynthEngine {
         );
 
         for (channel, (output, level)) in outputs.zip(self.output_level.iter()).enumerate() {
-            let output = &mut output[..params.samples];
-
             output.fill(0.0);
 
-            for (idx, voice_idx) in params.active_voices.iter().enumerate() {
+            for voice_idx in params.active_voices.iter() {
                 let input = self
                     .get_input(
                         ModuleInput::audio(OUTPUT_MODULE_ID),
@@ -625,8 +622,7 @@ impl SynthEngine {
                     )
                     .unwrap_or(&ZEROES_BUFFER);
 
-                fill_or_append_buffer_slice(
-                    idx == 0,
+                append_buffer_slice(
                     output,
                     input
                         .iter()
@@ -644,10 +640,6 @@ impl SynthEngine {
             .values()
             .filter_map(|val| val.as_deref())
             .collect()
-    }
-
-    pub fn get_module(&mut self, id: ModuleId) -> Option<&dyn SynthModule> {
-        get_module!(self, &id)
     }
 
     pub fn get_module_mut(&mut self, id: ModuleId) -> Option<&mut dyn SynthModule> {
@@ -702,90 +694,6 @@ impl SynthEngine {
         }
 
         false
-    }
-
-    fn build_scheme(&mut self) {
-        let harmonic_editor_id = self.add_harmonic_editor();
-        let filter_env_id = self.add_envelope();
-        let filter_id = self.add_spectral_filter();
-        let osc_id = self.add_oscillator();
-        let amp_id = self.add_amplifier();
-        let amp_env_id = self.add_envelope();
-
-        macro_rules! typed_module_mut {
-            ($module_id:expr, $module_type:ident) => {
-                self.modules
-                    .get_mut($module_id)
-                    .and_then(|result| result.as_deref_mut())
-                    .and_then(|module| $module_type::downcast_mut(module))
-            };
-        }
-
-        let filter_env = typed_module_mut!(&filter_env_id, Envelope).unwrap();
-
-        filter_env.set_attack(0.0.into());
-        filter_env.set_decay(from_ms(500.0).into());
-        filter_env.set_sustain(0.0.into());
-        filter_env.set_release(from_ms(100.0).into());
-
-        typed_module_mut!(&filter_env_id, Envelope)
-            .unwrap()
-            .set_decay_curve(EnvelopeCurve::ExponentialOut { full_range: true });
-
-        typed_module_mut!(&filter_env_id, Envelope)
-            .unwrap()
-            .set_attack_curve(EnvelopeCurve::ExponentialIn { full_range: true });
-
-        typed_module_mut!(&filter_id, SpectralFilter)
-            .unwrap()
-            .set_cutoff(2.0.into());
-
-        let osc = typed_module_mut!(&osc_id, Oscillator).unwrap();
-
-        osc.set_unison(3);
-        osc.set_detune(st_to_octave(0.01).into());
-
-        let amp_env = typed_module_mut!(&amp_env_id, Envelope).unwrap();
-
-        amp_env.set_attack(StereoSample::splat(from_ms(10.0)));
-        amp_env.set_decay(from_ms(20.0).into());
-        amp_env.set_sustain(1.0.into());
-        amp_env.set_release(from_ms(300.0).into());
-
-        typed_module_mut!(&amp_env_id, Envelope)
-            .unwrap()
-            .set_decay_curve(EnvelopeCurve::ExponentialOut { full_range: true });
-
-        self.add_link(
-            ModuleOutput::spectrum(harmonic_editor_id),
-            ModuleInput::spectrum(filter_id),
-        )
-        .unwrap();
-
-        self.add_modulation(
-            ModuleOutput::scalar(filter_env_id),
-            ModuleInput::cutoff(filter_id),
-            st_to_octave(64.0).into(),
-        )
-        .unwrap();
-
-        self.add_link(
-            ModuleOutput::spectrum(filter_id),
-            ModuleInput::spectrum(osc_id),
-        )
-        .unwrap();
-
-        self.add_link(ModuleOutput::audio(osc_id), ModuleInput::audio(amp_id))
-            .unwrap();
-
-        self.add_link(ModuleOutput::scalar(amp_env_id), ModuleInput::level(amp_id))
-            .unwrap();
-
-        self.add_link(
-            ModuleOutput::audio(amp_id),
-            ModuleInput::audio(OUTPUT_MODULE_ID),
-        )
-        .unwrap();
     }
 
     fn calc_execution_order(links: &[ModuleLink]) -> Result<Vec<ModuleId>, String> {

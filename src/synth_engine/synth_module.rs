@@ -10,9 +10,7 @@ use crate::synth_engine::{
 };
 
 pub struct NoteOnParams {
-    pub sample_rate: Sample,
     pub note: f32,
-    // pub velocity: f32,
     pub voice_idx: usize,
     pub reset: bool,
 }
@@ -24,7 +22,6 @@ pub struct NoteOffParams {
 pub struct ProcessParams<'a> {
     pub samples: usize,
     pub sample_rate: Sample,
-    pub t_step: Sample,
     pub buffer_t_step: Sample,
     pub active_voices: &'a [usize],
 }
@@ -98,6 +95,7 @@ pub type ModuleConfigBox<T> = Arc<Mutex<T>>;
 
 macro_rules! gen_downcast_methods {
     ($mod_type:ident) => {
+        #[allow(dead_code)]
         pub fn downcast(module: &dyn SynthModule) -> Option<&$mod_type> {
             (module as &dyn Any).downcast_ref()
         }

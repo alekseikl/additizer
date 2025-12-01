@@ -1,12 +1,13 @@
 use std::any::Any;
 
 use crate::synth_engine::{
+    StereoSample,
     buffer::{Buffer, ONES_BUFFER, ZEROES_BUFFER, make_zero_buffer},
     routing::{
         InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, OutputType, Router,
     },
     synth_module::{ModuleConfigBox, ProcessParams, SynthModule},
-    types::{Sample, StereoSample},
+    types::Sample,
 };
 use itertools::izip;
 use serde::{Deserialize, Serialize};

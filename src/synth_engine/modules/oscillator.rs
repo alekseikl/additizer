@@ -6,16 +6,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::{
+        StereoSample,
         buffer::{
             Buffer, SpectralBuffer, WAVEFORM_BITS, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER,
             make_zero_buffer, make_zero_spectral_buffer,
         },
+        phase::Phase,
         routing::{
             InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, OutputType,
             Router,
         },
         synth_module::{ModuleConfigBox, NoteOnParams, ProcessParams, SynthModule, VoiceRouter},
-        types::{ComplexSample, Phase, Sample, StereoSample},
+        types::{ComplexSample, Sample},
     },
     utils::{note_to_octave, octave_to_freq, st_to_octave},
 };
@@ -25,11 +27,6 @@ const WAVEFORM_SIZE: usize = 1 << WAVEFORM_BITS;
 const WAVEFORM_PAD_LEFT: usize = 1;
 const WAVEFORM_PAD_RIGHT: usize = 2;
 const WAVEFORM_BUFFER_SIZE: usize = WAVEFORM_SIZE + WAVEFORM_PAD_LEFT + WAVEFORM_PAD_RIGHT;
-
-const FULL_PHASE: Sample = ((u32::MAX as u64) + 1) as Sample;
-const INTERMEDIATE_BITS: usize = 32 - WAVEFORM_BITS;
-const INTERMEDIATE_MASK: u32 = (1 << INTERMEDIATE_BITS) - 1;
-const INTERMEDIATE_MULT: Sample = ((1 << INTERMEDIATE_BITS) as Sample).recip();
 const MAX_UNISON_VOICES: usize = 16;
 
 const INITIAL_PHASES: [Sample; MAX_UNISON_VOICES] = [
@@ -297,11 +294,6 @@ impl Oscillator {
         wave_buff[WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT + 1] = wave_buff[WAVEFORM_PAD_LEFT + 1];
     }
 
-    #[inline(always)]
-    fn to_int_phase(phase: Sample) -> Phase {
-        (phase * FULL_PHASE) as i64 as Phase
-    }
-
     fn build_wave(
         inverse_fft: &dyn ComplexToReal<Sample>,
         frequency: f32,
@@ -338,14 +330,15 @@ impl Oscillator {
         freq_phase_mult: Sample,
         phase: &mut Phase,
     ) -> Sample {
-        let shifted_phase = phase.wrapping_add(phase_shift);
-        let idx = (shifted_phase >> INTERMEDIATE_BITS) as usize;
-        let t = (shifted_phase & INTERMEDIATE_MASK) as Sample * INTERMEDIATE_MULT;
+        let shifted_phase = *phase + phase_shift;
+        let idx = shifted_phase.wave_index();
+        let t = shifted_phase.wave_index_fraction();
         let sample_from = Self::get_interpolated_sample(wave_from, idx, t);
         let sample_to = Self::get_interpolated_sample(wave_to, idx, t);
         let result = sample_from + (sample_to - sample_from) * buff_t;
 
-        *phase = phase.wrapping_add((octave_to_freq(octave) * freq_phase_mult) as i64 as u32);
+        *phase += octave_to_freq(octave) * freq_phase_mult;
+
         result
     }
 
@@ -413,7 +406,7 @@ impl Oscillator {
         );
         voice.wave_buffers_swapped = !voice.wave_buffers_swapped;
 
-        let freq_phase_mult = FULL_PHASE / sample_rate;
+        let freq_phase_mult = Phase::freq_phase_mult(sample_rate);
         let buff_t_mult = (params.samples as f32).recip();
         let fixed_octave = voice.octave + channel.pitch_shift;
 
@@ -439,7 +432,7 @@ impl Oscillator {
                 let detune = channel.detune + *detune_mod;
                 let unison_pitch_step = detune * unison_mult;
                 let unison_pitch_from = -0.5 * detune;
-                let phase_shift = Self::to_int_phase(channel.phase_shift + *phase_shift_mod);
+                let phase_shift = Phase::from_normalized(channel.phase_shift + *phase_shift_mod);
 
                 for unison_idx in 0..common.unison {
                     let unison_idx_float = unison_idx as Sample;
@@ -472,7 +465,7 @@ impl Oscillator {
             ) {
                 *out = Self::process_sample(
                     fixed_octave + *pitch_shift_mod,
-                    Self::to_int_phase(channel.phase_shift + *phase_shift_mod),
+                    Phase::from_normalized(channel.phase_shift + *phase_shift_mod),
                     sample_idx as Sample * buff_t_mult,
                     wave_from,
                     wave_to,
@@ -527,7 +520,7 @@ impl SynthModule for Oscillator {
                 for (phase, initial_phase) in
                     voice.phases.iter_mut().zip(channel.params.initial_phases)
                 {
-                    *phase = Self::to_int_phase(initial_phase);
+                    *phase = Phase::from_normalized(initial_phase);
                 }
             }
         }

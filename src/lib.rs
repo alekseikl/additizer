@@ -1,10 +1,12 @@
 #![allow(clippy::new_without_default)]
 
-pub mod editor;
-pub mod params;
-pub mod synth_engine;
-pub mod utils;
+mod default_scheme;
+mod editor;
+mod params;
+mod synth_engine;
+mod utils;
 
+use crate::default_scheme::build_default_scheme;
 use crate::editor::create_editor;
 use crate::params::AdditizerParams;
 use crate::synth_engine::{ExternalParamsBlock, SynthEngine, VoiceId};
@@ -128,6 +130,10 @@ impl Plugin for Additizer {
             external_params,
             buffer_config.sample_rate,
         );
+
+        if synth.is_empty() {
+            build_default_scheme(&mut synth);
+        }
 
         true
     }

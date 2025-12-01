@@ -4,13 +4,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::{
-        ModuleInput,
+        ModuleInput, StereoSample,
         curves::{CurveFunction, ExponentialIn, ExponentialOut, PowerIn, PowerOut},
         routing::{InputType, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, OutputType, Router},
         synth_module::{
             ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule, VoiceRouter,
         },
-        types::{Sample, ScalarOutput, StereoSample},
+        types::{Sample, ScalarOutput},
     },
     utils::from_ms,
 };
@@ -122,9 +122,7 @@ impl<T: CurveFunction + Send + 'static> CurveIterator for CurveIter<T> {
         self.t = (self.t + t_step).max(0.0);
 
         if self.t < t_to {
-            CurveResult::Value(
-                self.value_from + self.interval * self.curve_fn.calc(self.t * time.recip()),
-            )
+            CurveResult::Value(self.value_from + self.interval * self.curve_fn.calc(self.t / time))
         } else {
             CurveResult::TimeRemainder(if time > 0.0 {
                 (self.t - t_to).clamp(0.0, t_step)
@@ -403,39 +401,35 @@ impl Envelope {
         router: &VoiceRouter,
     ) {
         let attack_time = || {
-            let attack = env.attack
+            (env.attack
                 + router
                     .get_scalar_input(ModuleInput::attack(id), current)
-                    .unwrap_or(0.0);
-
-            attack.max(0.0)
+                    .unwrap_or(0.0))
+            .max(0.0)
         };
 
         let hold_time = || {
-            let hold = env.hold
+            (env.hold
                 + router
                     .get_scalar_input(ModuleInput::hold(id), current)
-                    .unwrap_or(0.0);
-
-            hold.max(0.0)
+                    .unwrap_or(0.0))
+            .max(0.0)
         };
 
         let decay_time = || {
-            let decay = env.decay
+            (env.decay
                 + router
                     .get_scalar_input(ModuleInput::decay(id), current)
-                    .unwrap_or(0.0);
-
-            decay.max(0.0)
+                    .unwrap_or(0.0))
+            .max(0.0)
         };
 
         let release_time = || {
-            let release = env.release
+            (env.release
                 + router
                     .get_scalar_input(ModuleInput::release(id), current)
-                    .unwrap_or(0.0);
-
-            release.max(0.0)
+                    .unwrap_or(0.0))
+            .max(0.0)
         };
 
         if voice.released {
@@ -479,10 +473,11 @@ impl Envelope {
                     CurveResult::TimeRemainder(_) => Stage::Sustain,
                 },
                 Stage::Sustain => {
-                    break env.sustain
+                    break (env.sustain
                         + router
                             .get_scalar_input(ModuleInput::sustain(id), current)
-                            .unwrap_or(0.0);
+                            .unwrap_or(0.0))
+                    .clamp(0.0, 1.0);
                 }
                 Stage::Release(curve) => match curve.next(t_step, release_time()) {
                     CurveResult::Value(value) => break value,

@@ -3,12 +3,13 @@ use std::any::Any;
 use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
+    StereoSample,
     buffer::{SPECTRAL_BUFFER_SIZE, SpectralBuffer, ZEROES_SPECTRAL_BUFFER},
     routing::{
         InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, OutputType, Router,
     },
     synth_module::{ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
-    types::{ComplexSample, Sample, SpectralOutput, StereoSample},
+    types::{ComplexSample, Sample, SpectralOutput},
 };
 
 #[derive(Clone, Serialize, Deserialize)]

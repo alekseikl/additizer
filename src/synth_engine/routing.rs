@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::{Sample, buffer::SpectralBuffer, types::StereoSample};
+use crate::synth_engine::{Sample, StereoSample, buffer::SpectralBuffer};
 
 use super::buffer::Buffer;
 

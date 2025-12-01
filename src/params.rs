@@ -1,18 +1,7 @@
 use nih_plug::{params::persist::PersistentField, prelude::*};
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::{
-    editor::EguiState,
-    synth_engine::{Config, StereoSample},
-};
-
-#[derive(Serialize, Deserialize)]
-pub struct HarmonicsState {
-    pub harmonics: Vec<StereoSample>,
-    pub tail_harmonics: StereoSample,
-    pub val1: f32,
-}
+use crate::{editor::EguiState, synth_engine::Config};
 
 #[derive(Params)]
 pub struct AdditizerParams {
