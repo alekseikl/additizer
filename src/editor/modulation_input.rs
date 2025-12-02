@@ -5,8 +5,7 @@ use egui_baseview::egui::{ComboBox, Frame, Grid, Margin, Response, Ui, Widget};
 use crate::{
     editor::stereo_slider::StereoSlider,
     synth_engine::{
-        ConnectedInputSourceUI, InputType, ModuleInput, ModuleOutput, Sample, StereoSample,
-        SynthEngine,
+        ConnectedInputSourceUI, InputType, ModuleId, ModuleInput, Sample, StereoSample, SynthEngine,
     },
     utils::st_to_octave,
 };
@@ -183,7 +182,7 @@ impl<'a> ModulationInput<'a> {
         )
     }
 
-    fn add_modulation(&mut self, src: ModuleOutput) {
+    fn add_modulation(&mut self, src: ModuleId) {
         self.synth_engine
             .add_modulation(
                 src,
@@ -195,11 +194,10 @@ impl<'a> ModulationInput<'a> {
 
     fn add_modulation_select(&mut self, ui: &mut Ui, connected: &[ConnectedInputSourceUI]) {
         let available = self.synth_engine.get_available_input_sources(self.input);
-        let connected_ids: HashSet<_> =
-            HashSet::from_iter(connected.iter().map(|src| src.output.module_id));
+        let connected_ids: HashSet<_> = HashSet::from_iter(connected.iter().map(|src| src.output));
         let filtered: Vec<_> = available
             .iter()
-            .filter(|src| !connected_ids.contains(&src.output.module_id))
+            .filter(|src| !connected_ids.contains(&src.output))
             .collect();
 
         if filtered.is_empty() {

@@ -21,7 +21,7 @@ use crate::synth_engine::{
         HarmonicEditorConfig, LfoConfig, ModulationFilterConfig, OscillatorConfig,
         SpectralFilterConfig,
     },
-    routing::{AvailableInputSourceUI, DataType, MAX_VOICES, OutputType, Router},
+    routing::{AvailableInputSourceUI, DataType, MAX_VOICES, Router},
     synth_module::{NoteOffParams, NoteOnParams, ProcessParams},
 };
 
@@ -32,7 +32,7 @@ pub use modules::{
     LfoShape, ModulationFilter, Oscillator, SpectralFilter,
 };
 pub use routing::{
-    ConnectedInputSourceUI, InputType, ModuleId, ModuleInput, ModuleLink, ModuleOutput, ModuleType,
+    ConnectedInputSourceUI, InputType, ModuleId, ModuleInput, ModuleLink, ModuleType,
     OUTPUT_MODULE_ID,
 };
 pub use stereo_sample::StereoSample;
@@ -78,7 +78,7 @@ impl Voice {
 
 #[derive(Debug, Clone, Copy)]
 struct ModuleInputSource {
-    src: ModuleOutput,
+    src: ModuleId,
     modulation: StereoSample,
 }
 
@@ -253,7 +253,7 @@ impl SynthEngine {
         let new_links: Vec<_> = self
             .get_links()
             .into_iter()
-            .filter(|link| !(link.src.module_id == id || link.dst.module_id == id))
+            .filter(|link| !(link.src == id || link.dst.module_id == id))
             .collect();
 
         self.setup_routing(&new_links).unwrap();
@@ -263,7 +263,7 @@ impl SynthEngine {
         self.modules.contains_key(&module_id)
     }
 
-    pub fn set_direct_link(&mut self, src: ModuleOutput, dst: ModuleInput) -> Result<(), String> {
+    pub fn set_direct_link(&mut self, src: ModuleId, dst: ModuleInput) -> Result<(), String> {
         self.can_be_linked(&src, &dst)?;
 
         let mut new_links: Vec<_> = self
@@ -281,7 +281,7 @@ impl SynthEngine {
 
     pub fn add_modulation(
         &mut self,
-        src: ModuleOutput,
+        src: ModuleId,
         dst: ModuleInput,
         amount: StereoSample,
     ) -> Result<(), String> {
@@ -299,12 +299,7 @@ impl SynthEngine {
         Ok(())
     }
 
-    pub fn update_modulation(
-        &mut self,
-        src: &ModuleOutput,
-        dst: &ModuleInput,
-        amount: StereoSample,
-    ) {
+    pub fn update_modulation(&mut self, src: &ModuleId, dst: &ModuleInput, amount: StereoSample) {
         if let Some(inputs) = self.input_sources.get_mut(dst)
             && let Some(input) = inputs.iter_mut().find(|input| input.src == *src)
         {
@@ -314,7 +309,7 @@ impl SynthEngine {
         self.save_links();
     }
 
-    pub fn add_link(&mut self, src: ModuleOutput, dst: ModuleInput) -> Result<(), String> {
+    pub fn add_link(&mut self, src: ModuleId, dst: ModuleInput) -> Result<(), String> {
         self.can_be_linked(&src, &dst)?;
 
         let mut new_links: Vec<_> = self.get_links();
@@ -325,7 +320,7 @@ impl SynthEngine {
         Ok(())
     }
 
-    pub fn remove_link(&mut self, src: &ModuleOutput, dst: &ModuleInput) {
+    pub fn remove_link(&mut self, src: &ModuleId, dst: &ModuleInput) {
         let new_links: Vec<_> = self
             .get_links()
             .into_iter()
@@ -518,45 +513,51 @@ impl SynthEngine {
         }
     }
 
-    fn input_exists(&self, input: &ModuleInput) -> bool {
-        if input.module_id == OUTPUT_MODULE_ID {
-            input.input_type == InputType::Audio
-        } else if let Some(module) = get_module!(self, &input.module_id) {
-            module.inputs().contains(&input.input_type)
-        } else {
-            false
-        }
+    fn data_types_compatible(src: DataType, dst: DataType) -> bool {
+        (src == dst) || (src == DataType::Scalar && dst == DataType::Buffer)
     }
 
-    fn output_exists(&self, output: &ModuleOutput) -> bool {
-        if let Some(module) = get_module!(self, &output.module_id) {
-            module.output_type() == output.output_type
-        } else {
-            false
-        }
-    }
-
-    fn is_compatible(&self, src: &OutputType, dst: &InputType) -> bool {
-        let src_data_type = src.data_type();
-        let dst_data_type = dst.data_type();
-
-        src_data_type == dst_data_type
-            || (src_data_type == DataType::Scalar && dst_data_type == DataType::Buffer)
-    }
-
-    fn can_be_linked(&self, src: &ModuleOutput, dst: &ModuleInput) -> Result<(), String> {
-        if !self.is_compatible(&src.output_type, &dst.input_type) {
-            return Err("Data types mismatch.".to_string());
-        }
-
-        if !self.input_exists(dst) || !self.output_exists(src) {
+    fn can_be_linked_with_output(&self, src: &ModuleId, dst: &ModuleInput) -> Result<(), String> {
+        let Some(src_module) = get_module!(self, src) else {
             return Err("Invalid node.".to_string());
+        };
+
+        let is_compatible = dst.input_type == InputType::Audio
+            && Self::data_types_compatible(src_module.output_type(), DataType::Buffer);
+
+        if !is_compatible {
+            return Err("Data types mismatch.".to_string());
         }
 
         Ok(())
     }
 
-    fn already_linked(&self, src: &ModuleOutput, dst: &ModuleInput) -> bool {
+    fn can_be_linked(&self, src: &ModuleId, dst: &ModuleInput) -> Result<(), String> {
+        if dst.module_id == OUTPUT_MODULE_ID {
+            return self.can_be_linked_with_output(src, dst);
+        }
+
+        let (Some(src_module), Some(dst_module)) =
+            (get_module!(self, src), get_module!(self, &dst.module_id))
+        else {
+            return Err("Invalid node.".to_string());
+        };
+
+        let src_data_type = src_module.output_type();
+
+        let is_compatible = dst_module.inputs().iter().any(|input_info| {
+            input_info.input == dst.input_type
+                && Self::data_types_compatible(src_data_type, input_info.data_type)
+        });
+
+        if !is_compatible {
+            return Err("Data types mismatch.".to_string());
+        }
+
+        Ok(())
+    }
+
+    fn already_linked(&self, src: &ModuleId, dst: &ModuleInput) -> bool {
         if let Some(inputs) = self.input_sources.get(dst) {
             inputs.iter().any(|input| input.src == *src)
         } else {
@@ -649,16 +650,28 @@ impl SynthEngine {
     }
 
     pub fn get_available_input_sources(&self, input: ModuleInput) -> Vec<AvailableInputSourceUI> {
+        let Some(input_module) = get_module!(self, &input.module_id) else {
+            return Vec::new();
+        };
+
+        let Some(input_info) = input_module
+            .inputs()
+            .iter()
+            .find(|input_info| input_info.input == input.input_type)
+        else {
+            return Vec::new();
+        };
+
         self.modules
             .values()
             .filter_map(|module| module.as_deref())
             .filter(|module| {
                 module.id() != input.module_id
-                    && self.is_compatible(&module.output_type(), &input.input_type)
+                    && Self::data_types_compatible(module.output_type(), input_info.data_type)
                     && !self.is_connected_to_source(module.id(), input.module_id)
             })
             .map(|module| AvailableInputSourceUI {
-                output: ModuleOutput::new(module.output_type(), module.id()),
+                output: module.id(),
                 label: module.label(),
             })
             .collect()
@@ -671,9 +684,7 @@ impl SynthEngine {
 
         sources
             .iter()
-            .filter_map(|source| {
-                get_module!(self, &source.src.module_id).map(|module| (module, source))
-            })
+            .filter_map(|source| get_module!(self, &source.src).map(|module| (module, source)))
             .map(|(module, source)| ConnectedInputSourceUI {
                 output: source.src,
                 modulation: source.modulation,
@@ -686,9 +697,7 @@ impl SynthEngine {
         for (input, sources) in &self.input_sources {
             if input.module_id == dst_id {
                 for source in sources {
-                    if source.src.module_id == src_id
-                        || self.is_connected_to_source(source.src.module_id, src_id)
-                    {
+                    if source.src == src_id || self.is_connected_to_source(source.src, src_id) {
                         return true;
                     }
                 }
@@ -702,7 +711,7 @@ impl SynthEngine {
         let mut dependents: HashMap<ModuleId, HashSet<ModuleId>> = HashMap::new();
 
         for link in links {
-            let src_node = link.src.module_id;
+            let src_node = link.src;
             let dst_node = link.dst.module_id;
 
             dependents.entry(dst_node).or_default().insert(src_node);
@@ -804,17 +813,17 @@ impl Router for SynthEngine {
         if sources.len() == 1
             && let Some(first) = sources.first()
             && first.modulation == StereoSample::ONE
-            && first.src.data_type() == DataType::Buffer
+            && let Some(module) = get_module!(self, &first.src)
+            && module.output_type() == DataType::Buffer
         {
-            return get_module!(self, &first.src.module_id)
-                .map(|module| module.get_buffer_output(voice_idx, channel_idx));
+            return Some(module.get_buffer_output(voice_idx, channel_idx));
         }
 
         let result = &mut input_buffer[..samples];
 
         let modules = sources.iter().filter_map(|source| {
-            get_module!(self, &source.src.module_id)
-                .map(|module| (module, source.modulation, source.src.data_type()))
+            get_module!(self, &source.src)
+                .map(|module| (module, source.modulation, module.output_type()))
         });
 
         for (mod_idx, (module, modulation, data_type)) in modules.enumerate() {
@@ -857,7 +866,7 @@ impl Router for SynthEngine {
             return None;
         }
 
-        get_module!(self, &sources[0].src.module_id)
+        get_module!(self, &sources[0].src)
             .map(|module| module.get_spectral_output(current, voice_idx, channel))
     }
 
@@ -877,7 +886,7 @@ impl Router for SynthEngine {
         let mut output: Sample = 0.0;
 
         let values = sources.iter().filter_map(|source| {
-            get_module!(self, &source.src.module_id).map(|module| {
+            get_module!(self, &source.src).map(|module| {
                 (
                     module.get_scalar_output(current, voice_idx, channel),
                     source.modulation,

@@ -1,6 +1,6 @@
 use egui_baseview::egui::{ComboBox, Response, Ui, Widget};
 
-use crate::synth_engine::{ModuleInput, ModuleOutput, SynthEngine};
+use crate::synth_engine::{ModuleId, ModuleInput, SynthEngine};
 
 pub struct DirectInput<'a> {
     synth_engine: &'a mut SynthEngine,
@@ -15,7 +15,7 @@ impl<'a> DirectInput<'a> {
         }
     }
 
-    fn select_output(&mut self, output: ModuleOutput) {
+    fn select_output(&mut self, output: ModuleId) {
         self.synth_engine
             .set_direct_link(output, self.input)
             .unwrap_or_else(|_| println!("Failed to select output"))

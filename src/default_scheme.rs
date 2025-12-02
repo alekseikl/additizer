@@ -1,7 +1,7 @@
 use crate::{
     synth_engine::{
-        Envelope, EnvelopeCurve, ModuleInput, ModuleOutput, OUTPUT_MODULE_ID, Oscillator,
-        SpectralFilter, StereoSample, SynthEngine,
+        Envelope, EnvelopeCurve, ModuleInput, OUTPUT_MODULE_ID, Oscillator, SpectralFilter,
+        StereoSample, SynthEngine,
     },
     utils::{from_ms, st_to_octave},
 };
@@ -58,39 +58,28 @@ pub fn build_default_scheme(synth: &mut SynthEngine) {
         .set_decay_curve(EnvelopeCurve::ExponentialOut { full_range: true });
 
     synth
-        .add_link(
-            ModuleOutput::spectrum(harmonic_editor_id),
-            ModuleInput::spectrum(filter_id),
-        )
+        .add_link(harmonic_editor_id, ModuleInput::spectrum(filter_id))
         .unwrap();
 
     synth
         .add_modulation(
-            ModuleOutput::scalar(filter_env_id),
+            filter_env_id,
             ModuleInput::cutoff(filter_id),
             st_to_octave(64.0).into(),
         )
         .unwrap();
 
     synth
-        .add_link(
-            ModuleOutput::spectrum(filter_id),
-            ModuleInput::spectrum(osc_id),
-        )
+        .add_link(filter_id, ModuleInput::spectrum(osc_id))
+        .unwrap();
+
+    synth.add_link(osc_id, ModuleInput::audio(amp_id)).unwrap();
+
+    synth
+        .add_link(amp_env_id, ModuleInput::level(amp_id))
         .unwrap();
 
     synth
-        .add_link(ModuleOutput::audio(osc_id), ModuleInput::audio(amp_id))
-        .unwrap();
-
-    synth
-        .add_link(ModuleOutput::scalar(amp_env_id), ModuleInput::level(amp_id))
-        .unwrap();
-
-    synth
-        .add_link(
-            ModuleOutput::audio(amp_id),
-            ModuleInput::audio(OUTPUT_MODULE_ID),
-        )
+        .add_link(amp_id, ModuleInput::audio(OUTPUT_MODULE_ID))
         .unwrap();
 }

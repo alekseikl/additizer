@@ -51,47 +51,6 @@ pub enum InputType {
     Release,
 }
 
-impl InputType {
-    pub fn data_type(&self) -> DataType {
-        match self {
-            Self::Audio => DataType::Buffer,
-            Self::ScalarInput => DataType::Scalar,
-            Self::Level => DataType::Buffer,
-            Self::PitchShift => DataType::Buffer,
-            Self::Detune => DataType::Buffer,
-            Self::PhaseShift => DataType::Buffer,
-            Self::Spectrum => DataType::Spectral,
-            Self::PhaseShiftScalar => DataType::Scalar,
-            Self::LowFrequency => DataType::Scalar,
-            Self::Cutoff => DataType::Scalar,
-            Self::Q => DataType::Scalar,
-            Self::Skew => DataType::Scalar,
-            Self::Attack => DataType::Scalar,
-            Self::Hold => DataType::Scalar,
-            Self::Decay => DataType::Scalar,
-            Self::Sustain => DataType::Scalar,
-            Self::Release => DataType::Scalar,
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
-pub enum OutputType {
-    Audio,
-    Spectrum,
-    Scalar,
-}
-
-impl OutputType {
-    pub fn data_type(&self) -> DataType {
-        match self {
-            Self::Audio => DataType::Buffer,
-            Self::Spectrum => DataType::Spectral,
-            Self::Scalar => DataType::Scalar,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 pub struct ModuleInput {
     pub input_type: InputType,
@@ -114,10 +73,6 @@ impl ModuleInput {
         }
     }
 
-    pub fn data_type(&self) -> DataType {
-        self.input_type.data_type()
-    }
-
     input_ctor!(audio, Audio);
     input_ctor!(scalar_input, ScalarInput);
     input_ctor!(level, Level);
@@ -137,46 +92,15 @@ impl ModuleInput {
     input_ctor!(release, Release);
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
-pub struct ModuleOutput {
-    pub output_type: OutputType,
-    pub module_id: ModuleId,
-}
-
-macro_rules! output_ctor {
-    ($ctor_name:ident, $input_type:ident) => {
-        pub fn $ctor_name(id: ModuleId) -> Self {
-            Self::new(OutputType::$input_type, id)
-        }
-    };
-}
-
-impl ModuleOutput {
-    pub fn new(output: OutputType, id: ModuleId) -> Self {
-        Self {
-            output_type: output,
-            module_id: id,
-        }
-    }
-
-    pub fn data_type(&self) -> DataType {
-        self.output_type.data_type()
-    }
-
-    output_ctor!(audio, Audio);
-    output_ctor!(spectrum, Spectrum);
-    output_ctor!(scalar, Scalar);
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ModuleLink {
-    pub src: ModuleOutput,
+    pub src: ModuleId,
     pub dst: ModuleInput,
     pub modulation: StereoSample,
 }
 
 impl ModuleLink {
-    pub fn link(src: ModuleOutput, dst: ModuleInput) -> Self {
+    pub fn link(src: ModuleId, dst: ModuleInput) -> Self {
         Self {
             src,
             dst,
@@ -184,11 +108,7 @@ impl ModuleLink {
         }
     }
 
-    pub fn modulation(
-        src: ModuleOutput,
-        dst: ModuleInput,
-        amount: impl Into<StereoSample>,
-    ) -> Self {
+    pub fn modulation(src: ModuleId, dst: ModuleInput, amount: impl Into<StereoSample>) -> Self {
         Self {
             src,
             dst,
@@ -198,12 +118,12 @@ impl ModuleLink {
 }
 
 pub struct AvailableInputSourceUI {
-    pub output: ModuleOutput,
+    pub output: ModuleId,
     pub label: String,
 }
 
 pub struct ConnectedInputSourceUI {
-    pub output: ModuleOutput,
+    pub output: ModuleId,
     pub modulation: StereoSample,
     pub label: String,
 }

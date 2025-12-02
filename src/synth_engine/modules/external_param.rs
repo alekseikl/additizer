@@ -5,9 +5,9 @@ use nih_plug::params::FloatParam;
 use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
-    InputType, ModuleId, ModuleType, Sample, SynthModule,
-    routing::{OutputType, Router},
-    synth_module::{ModuleConfigBox, ProcessParams},
+    ModuleId, ModuleType, Sample, SynthModule,
+    routing::{DataType, Router},
+    synth_module::{InputInfo, ModuleConfigBox, ProcessParams},
     types::ScalarOutput,
 };
 
@@ -115,12 +115,12 @@ impl SynthModule for ExternalParam {
         ModuleType::ExternalParam
     }
 
-    fn inputs(&self) -> &'static [InputType] {
+    fn inputs(&self) -> &'static [InputInfo] {
         &[]
     }
 
-    fn output_type(&self) -> OutputType {
-        OutputType::Scalar
+    fn output_type(&self) -> DataType {
+        DataType::Scalar
     }
 
     fn process(&mut self, _params: &ProcessParams, _router: &dyn Router) {

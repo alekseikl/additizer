@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 use crate::synth_engine::{
     ModuleInput,
     buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER},
-    routing::{InputType, ModuleId, ModuleType, OutputType, Router},
+    routing::{DataType, InputType, ModuleId, ModuleType, Router},
     types::Sample,
 };
 
@@ -26,6 +26,34 @@ pub struct ProcessParams<'a> {
     pub active_voices: &'a [usize],
 }
 
+pub struct InputInfo {
+    pub input: InputType,
+    pub data_type: DataType,
+}
+
+impl InputInfo {
+    pub const fn buffer(input: InputType) -> Self {
+        Self {
+            input,
+            data_type: DataType::Buffer,
+        }
+    }
+
+    pub const fn scalar(input: InputType) -> Self {
+        Self {
+            input,
+            data_type: DataType::Scalar,
+        }
+    }
+
+    pub const fn spectral(input: InputType) -> Self {
+        Self {
+            input,
+            data_type: DataType::Spectral,
+        }
+    }
+}
+
 #[allow(unused_variables)]
 pub trait SynthModule: Any + Send {
     fn id(&self) -> ModuleId;
@@ -33,8 +61,8 @@ pub trait SynthModule: Any + Send {
     fn label(&self) -> String;
     fn set_label(&mut self, label: String);
 
-    fn inputs(&self) -> &'static [InputType];
-    fn output_type(&self) -> OutputType;
+    fn inputs(&self) -> &'static [InputInfo];
+    fn output_type(&self) -> DataType;
 
     fn note_on(&mut self, params: &NoteOnParams) {}
     fn note_off(&mut self, params: &NoteOffParams) {}

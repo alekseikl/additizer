@@ -4,8 +4,8 @@ use std::{any::Any, f32};
 use crate::synth_engine::{
     InputType, ModuleId, ModuleInput, ModuleType, Sample, StereoSample, SynthModule,
     phase::Phase,
-    routing::{MAX_VOICES, NUM_CHANNELS, OutputType, Router},
-    synth_module::{ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
+    routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
+    synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
     types::ScalarOutput,
 };
 
@@ -248,16 +248,18 @@ impl SynthModule for Lfo {
         ModuleType::Lfo
     }
 
-    fn inputs(&self) -> &'static [InputType] {
-        &[
-            InputType::LowFrequency,
-            InputType::PhaseShiftScalar,
-            InputType::Skew,
-        ]
+    fn inputs(&self) -> &'static [InputInfo] {
+        static INPUTS: &[InputInfo] = &[
+            InputInfo::scalar(InputType::LowFrequency),
+            InputInfo::scalar(InputType::PhaseShiftScalar),
+            InputInfo::scalar(InputType::Skew),
+        ];
+
+        INPUTS
     }
 
-    fn output_type(&self) -> OutputType {
-        OutputType::Scalar
+    fn output_type(&self) -> DataType {
+        DataType::Scalar
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {

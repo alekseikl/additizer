@@ -6,9 +6,10 @@ use crate::{
     synth_engine::{
         ModuleInput, StereoSample,
         curves::{CurveFunction, ExponentialIn, ExponentialOut, PowerIn, PowerOut},
-        routing::{InputType, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, OutputType, Router},
+        routing::{DataType, InputType, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
         synth_module::{
-            ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule, VoiceRouter,
+            InputInfo, ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule,
+            VoiceRouter,
         },
         types::{Sample, ScalarOutput},
     },
@@ -499,18 +500,20 @@ impl SynthModule for Envelope {
         ModuleType::Envelope
     }
 
-    fn inputs(&self) -> &'static [InputType] {
-        &[
-            InputType::Attack,
-            InputType::Hold,
-            InputType::Decay,
-            InputType::Sustain,
-            InputType::Release,
-        ]
+    fn inputs(&self) -> &'static [InputInfo] {
+        static INPUTS: &[InputInfo] = &[
+            InputInfo::scalar(InputType::Attack),
+            InputInfo::scalar(InputType::Hold),
+            InputInfo::scalar(InputType::Decay),
+            InputInfo::scalar(InputType::Sustain),
+            InputInfo::scalar(InputType::Release),
+        ];
+
+        INPUTS
     }
 
-    fn output_type(&self) -> OutputType {
-        OutputType::Scalar
+    fn output_type(&self) -> DataType {
+        DataType::Scalar
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {

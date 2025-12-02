@@ -12,10 +12,12 @@ use crate::{
         },
         phase::Phase,
         routing::{
-            InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, OutputType,
+            DataType, InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS,
             Router,
         },
-        synth_module::{ModuleConfigBox, NoteOnParams, ProcessParams, SynthModule, VoiceRouter},
+        synth_module::{
+            InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, SynthModule, VoiceRouter,
+        },
         types::{ComplexSample, Sample},
     },
     utils::{note_to_octave, octave_to_freq, st_to_octave},
@@ -485,18 +487,20 @@ impl SynthModule for Oscillator {
         ModuleType::Oscillator
     }
 
-    fn inputs(&self) -> &'static [InputType] {
-        &[
-            InputType::Level,
-            InputType::PitchShift,
-            InputType::PhaseShift,
-            InputType::Detune,
-            InputType::Spectrum,
-        ]
+    fn inputs(&self) -> &'static [InputInfo] {
+        static INPUTS: &[InputInfo] = &[
+            InputInfo::spectral(InputType::Spectrum),
+            InputInfo::buffer(InputType::Level),
+            InputInfo::buffer(InputType::PitchShift),
+            InputInfo::buffer(InputType::PhaseShift),
+            InputInfo::buffer(InputType::Detune),
+        ];
+
+        INPUTS
     }
 
-    fn output_type(&self) -> OutputType {
-        OutputType::Audio
+    fn output_type(&self) -> DataType {
+        DataType::Buffer
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {

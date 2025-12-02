@@ -5,8 +5,8 @@ use std::any::Any;
 use crate::synth_engine::{
     InputType, ModuleId, ModuleInput, ModuleType, Sample, SynthModule,
     buffer::{Buffer, ZEROES_BUFFER, make_zero_buffer},
-    routing::{MAX_VOICES, NUM_CHANNELS, OutputType, Router},
-    synth_module::{ModuleConfigBox, NoteOnParams, ProcessParams},
+    routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
+    synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams},
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -165,12 +165,14 @@ impl SynthModule for ModulationFilter {
         ModuleType::ModulationFilter
     }
 
-    fn inputs(&self) -> &'static [InputType] {
-        &[InputType::Audio]
+    fn inputs(&self) -> &'static [InputInfo] {
+        static INPUTS: &[InputInfo] = &[InputInfo::buffer(InputType::Audio)];
+
+        INPUTS
     }
 
-    fn output_type(&self) -> OutputType {
-        OutputType::Audio
+    fn output_type(&self) -> DataType {
+        DataType::Buffer
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
