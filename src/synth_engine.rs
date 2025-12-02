@@ -18,7 +18,8 @@ use crate::synth_engine::{
     config::{ModuleConfig, RoutingConfig},
     modules::{
         AmplifierConfig, EnvelopeActivityState, EnvelopeConfig, ExternalParamConfig,
-        HarmonicEditorConfig, ModulationFilterConfig, OscillatorConfig, SpectralFilterConfig,
+        HarmonicEditorConfig, LfoConfig, ModulationFilterConfig, OscillatorConfig,
+        SpectralFilterConfig,
     },
     routing::{AvailableInputSourceUI, DataType, MAX_VOICES, OutputType, Router},
     synth_module::{NoteOffParams, NoteOnParams, ProcessParams},
@@ -27,8 +28,8 @@ use crate::synth_engine::{
 pub use buffer::BUFFER_SIZE;
 pub use config::Config;
 pub use modules::{
-    Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, HarmonicEditor,
-    ModulationFilter, Oscillator, SpectralFilter,
+    Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, HarmonicEditor, Lfo,
+    LfoShape, ModulationFilter, Oscillator, SpectralFilter,
 };
 pub use routing::{
     ConnectedInputSourceUI, InputType, ModuleId, ModuleInput, ModuleLink, ModuleOutput, ModuleType,
@@ -221,6 +222,7 @@ impl SynthEngine {
 
     add_module_method!(add_oscillator, Oscillator, OscillatorConfig);
     add_module_method!(add_envelope, Envelope, EnvelopeConfig);
+    add_module_method!(add_lfo, Lfo, LfoConfig);
     add_module_method!(add_amplifier, Amplifier, AmplifierConfig);
     add_module_method!(add_spectral_filter, SpectralFilter, SpectralFilterConfig);
     add_module_method!(add_harmonic_editor, HarmonicEditor, HarmonicEditorConfig);
@@ -766,6 +768,7 @@ impl SynthEngine {
                     restore_module!(ExternalParam, id, cfg, get_external_params)
                 }
                 ModuleConfig::ModulationFilter(cfg) => restore_module!(ModulationFilter, id, cfg),
+                ModuleConfig::Lfo(cfg) => restore_module!(Lfo, id, cfg),
             }
         }
 

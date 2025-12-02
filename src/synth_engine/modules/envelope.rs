@@ -400,37 +400,17 @@ impl Envelope {
         t_step: Sample,
         router: &VoiceRouter,
     ) {
-        let attack_time = || {
-            (env.attack
-                + router
-                    .get_scalar_input(ModuleInput::attack(id), current)
-                    .unwrap_or(0.0))
-            .max(0.0)
-        };
+        let attack_time =
+            || (env.attack + router.get_scalar_input(ModuleInput::attack(id), current)).max(0.0);
 
-        let hold_time = || {
-            (env.hold
-                + router
-                    .get_scalar_input(ModuleInput::hold(id), current)
-                    .unwrap_or(0.0))
-            .max(0.0)
-        };
+        let hold_time =
+            || (env.hold + router.get_scalar_input(ModuleInput::hold(id), current)).max(0.0);
 
-        let decay_time = || {
-            (env.decay
-                + router
-                    .get_scalar_input(ModuleInput::decay(id), current)
-                    .unwrap_or(0.0))
-            .max(0.0)
-        };
+        let decay_time =
+            || (env.decay + router.get_scalar_input(ModuleInput::decay(id), current)).max(0.0);
 
-        let release_time = || {
-            (env.release
-                + router
-                    .get_scalar_input(ModuleInput::release(id), current)
-                    .unwrap_or(0.0))
-            .max(0.0)
-        };
+        let release_time =
+            || (env.release + router.get_scalar_input(ModuleInput::release(id), current)).max(0.0);
 
         if voice.released {
             voice.stage = Stage::Release(env.release_curve.curve_iter(
@@ -474,9 +454,7 @@ impl Envelope {
                 },
                 Stage::Sustain => {
                     break (env.sustain
-                        + router
-                            .get_scalar_input(ModuleInput::sustain(id), current)
-                            .unwrap_or(0.0))
+                        + router.get_scalar_input(ModuleInput::sustain(id), current))
                     .clamp(0.0, 1.0);
                 }
                 Stage::Release(curve) => match curve.next(t_step, release_time()) {

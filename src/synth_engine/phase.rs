@@ -8,6 +8,8 @@ use crate::synth_engine::{Sample, buffer::WAVEFORM_BITS};
 pub struct Phase(u32);
 
 impl Phase {
+    pub const ZERO: Self = Self(0);
+
     const FULL_PHASE: Sample = ((u32::MAX as u64) + 1) as Sample;
     const INTERMEDIATE_BITS: usize = 32 - WAVEFORM_BITS;
     const INTERMEDIATE_MASK: u32 = (1 << Self::INTERMEDIATE_BITS) - 1;
@@ -32,6 +34,18 @@ impl Phase {
     pub fn wave_index_fraction(&self) -> Sample {
         (self.0 & Self::INTERMEDIATE_MASK) as Sample * Self::INTERMEDIATE_MULT
     }
+
+    pub fn normalized(&self) -> Sample {
+        self.0 as Sample / Self::FULL_PHASE
+    }
+
+    pub fn add_normalized(self, norm: Sample) -> Self {
+        self + Self::from_normalized(norm)
+    }
+
+    pub fn advance_normalized(&mut self, norm: Sample) {
+        *self += Self::from_normalized(norm);
+    }
 }
 
 impl Add for Phase {
@@ -49,6 +63,13 @@ impl Add<Sample> for Phase {
     #[inline(always)]
     fn add(self, rhs: Sample) -> Self::Output {
         self + Self(rhs as i64 as u32)
+    }
+}
+
+impl AddAssign for Phase {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
     }
 }
 

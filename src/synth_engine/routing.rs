@@ -20,6 +20,7 @@ pub enum ModuleType {
     HarmonicEditor,
     ExternalParam,
     ModulationFilter,
+    Lfo,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -38,8 +39,11 @@ pub enum InputType {
     Detune,
     PhaseShift,
     Spectrum,
+    PhaseShiftScalar,
+    LowFrequency,
     Cutoff,
     Q,
+    Skew,
     Attack,
     Hold,
     Decay,
@@ -57,8 +61,11 @@ impl InputType {
             Self::Detune => DataType::Buffer,
             Self::PhaseShift => DataType::Buffer,
             Self::Spectrum => DataType::Spectral,
+            Self::PhaseShiftScalar => DataType::Scalar,
+            Self::LowFrequency => DataType::Scalar,
             Self::Cutoff => DataType::Scalar,
             Self::Q => DataType::Scalar,
+            Self::Skew => DataType::Scalar,
             Self::Attack => DataType::Scalar,
             Self::Hold => DataType::Scalar,
             Self::Decay => DataType::Scalar,
@@ -118,8 +125,11 @@ impl ModuleInput {
     input_ctor!(detune, Detune);
     input_ctor!(phase_shift, PhaseShift);
     input_ctor!(spectrum, Spectrum);
+    input_ctor!(phase_shift_scalar, PhaseShiftScalar);
+    input_ctor!(low_frequency, LowFrequency);
     input_ctor!(cutoff, Cutoff);
     input_ctor!(q, Q);
+    input_ctor!(skew, Skew);
     input_ctor!(attack, Attack);
     input_ctor!(hold, Hold);
     input_ctor!(decay, Decay);

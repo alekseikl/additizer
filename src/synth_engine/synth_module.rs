@@ -4,7 +4,7 @@ use parking_lot::Mutex;
 
 use crate::synth_engine::{
     ModuleInput,
-    buffer::{Buffer, SpectralBuffer},
+    buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER},
     routing::{InputType, ModuleId, ModuleType, OutputType, Router},
     types::Sample,
 };
@@ -66,28 +66,28 @@ pub struct VoiceRouter<'a> {
 }
 
 impl<'a> VoiceRouter<'a> {
-    pub fn get_input(
-        &'a self,
-        input: ModuleInput,
-        input_buffer: &'a mut Buffer,
-    ) -> Option<&'a Buffer> {
-        self.router.get_input(
-            input,
-            self.samples,
-            self.voice_idx,
-            self.channel_idx,
-            input_buffer,
-        )
+    pub fn get_input(&'a self, input: ModuleInput, input_buffer: &'a mut Buffer) -> &'a Buffer {
+        self.router
+            .get_input(
+                input,
+                self.samples,
+                self.voice_idx,
+                self.channel_idx,
+                input_buffer,
+            )
+            .unwrap_or(&ZEROES_BUFFER)
     }
 
-    pub fn get_spectral_input(&self, input: ModuleInput, current: bool) -> Option<&SpectralBuffer> {
+    pub fn get_spectral_input(&self, input: ModuleInput, current: bool) -> &SpectralBuffer {
         self.router
             .get_spectral_input(input, current, self.voice_idx, self.channel_idx)
+            .unwrap_or(&ZEROES_SPECTRAL_BUFFER)
     }
 
-    pub fn get_scalar_input(&self, input: ModuleInput, current: bool) -> Option<Sample> {
+    pub fn get_scalar_input(&self, input: ModuleInput, current: bool) -> Sample {
         self.router
             .get_scalar_input(input, current, self.voice_idx, self.channel_idx)
+            .unwrap_or(0.0)
     }
 }
 

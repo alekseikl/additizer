@@ -52,7 +52,7 @@ impl DisplayCurve {
     }
 }
 
-const CURVE_OPTIONS: &[DisplayCurve] = &[
+static CURVE_OPTIONS: &[DisplayCurve] = &[
     DisplayCurve::Linear,
     DisplayCurve::PowerIn,
     DisplayCurve::PowerOut,

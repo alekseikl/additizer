@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
     StereoSample,
-    buffer::{SPECTRAL_BUFFER_SIZE, SpectralBuffer, ZEROES_SPECTRAL_BUFFER},
+    buffer::{SPECTRAL_BUFFER_SIZE, SpectralBuffer},
     routing::{
         InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, OutputType, Router,
     },
@@ -153,15 +153,9 @@ impl SpectralFilter {
         voice: &mut Voice,
         router: &VoiceRouter,
     ) {
-        let spectrum = router
-            .get_spectral_input(ModuleInput::spectrum(id), current)
-            .unwrap_or(&ZEROES_SPECTRAL_BUFFER);
-        let cutoff_mod = router
-            .get_scalar_input(ModuleInput::cutoff(id), current)
-            .unwrap_or(0.0);
-        let q_mod = router
-            .get_scalar_input(ModuleInput::q(id), current)
-            .unwrap_or(0.0);
+        let spectrum = router.get_spectral_input(ModuleInput::spectrum(id), current);
+        let cutoff_mod = router.get_scalar_input(ModuleInput::cutoff(id), current);
+        let q_mod = router.get_scalar_input(ModuleInput::q(id), current);
 
         let range = 1..SPECTRAL_BUFFER_SIZE - 1;
         let input_buff = &spectrum[range.clone()];

@@ -16,7 +16,7 @@ pub use envelope::EnvelopeCurve;
 pub use external_param::{ExternalParam, ExternalParamConfig, ExternalParamsBlock};
 pub use harmonic_editor::HarmonicEditor;
 pub use harmonic_editor::HarmonicEditorConfig;
-pub use lfo::Lfo;
+pub use lfo::{Lfo, LfoConfig, LfoShape};
 pub use modulation_filter::{ModulationFilter, ModulationFilterConfig};
 pub use oscillator::Oscillator;
 pub use oscillator::OscillatorConfig;
