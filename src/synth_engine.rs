@@ -215,7 +215,7 @@ impl SynthEngine {
     }
 
     pub fn set_buffer_size(&mut self, buffer_size: usize) {
-        self.buffer_size = (buffer_size).clamp(BUFFER_SIZE / 4, BUFFER_SIZE);
+        self.buffer_size = (buffer_size).clamp(BUFFER_SIZE / 8, BUFFER_SIZE);
         self.config.routing.lock().buffer_size = self.buffer_size;
     }
 
@@ -783,7 +783,7 @@ impl SynthEngine {
         self.next_id = routing.next_module_id;
         self.output_level = routing.output_level;
         self.num_voices = routing.num_voices.clamp(1, MAX_VOICES);
-        self.buffer_size = routing.buffer_size.clamp(BUFFER_SIZE / 4, BUFFER_SIZE);
+        self.buffer_size = routing.buffer_size.clamp(BUFFER_SIZE / 8, BUFFER_SIZE);
         self.setup_routing(&routing.links).is_ok()
     }
 

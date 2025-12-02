@@ -205,7 +205,7 @@ fn show_params_ui(ui: &mut Ui, synth_engine: &mut SynthEngine) {
         .spacing([40.0, 24.0])
         .striped(true)
         .show(ui, |ui| {
-            let buffer_sizes = [32usize, 64, 128];
+            let buffer_sizes = [16, 32, 64, 128];
             let mut voices = synth_engine.get_voices_num();
             let mut buffer_size = synth_engine.get_buffer_size();
 

@@ -146,7 +146,7 @@ impl Lfo {
         }
     }
 
-    set_param_method!(set_frequency, frequency, frequency.clamp(-50.0, 50.0));
+    set_param_method!(set_frequency, frequency, frequency.clamp(-32.0, 32.0));
     set_param_method!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
     set_param_method!(set_skew, skew, skew.clamp(0.0, 1.0));
 
@@ -196,7 +196,7 @@ impl Lfo {
         router: &VoiceRouter,
     ) {
         let frequency = (channel_params.frequency + router.scalar(Input::LowFrequency, current))
-            .clamp(-50.0, 50.0);
+            .clamp(-32.0, 32.0);
 
         let phase_shift = (channel_params.phase_shift + router.scalar(Input::PhaseShift, current))
             .clamp(-1.0, 1.0);
