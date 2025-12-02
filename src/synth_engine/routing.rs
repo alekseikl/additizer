@@ -31,15 +31,13 @@ pub enum DataType {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
-pub enum InputType {
+pub enum Input {
     Audio,
-    ScalarInput,
     Level,
     PitchShift,
     Detune,
     PhaseShift,
     Spectrum,
-    PhaseShiftScalar,
     LowFrequency,
     Cutoff,
     Q,
@@ -53,43 +51,17 @@ pub enum InputType {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 pub struct ModuleInput {
-    pub input_type: InputType,
+    pub input_type: Input,
     pub module_id: ModuleId,
 }
 
-macro_rules! input_ctor {
-    ($ctor_name:ident, $input_type:ident) => {
-        pub fn $ctor_name(id: ModuleId) -> Self {
-            Self::new(InputType::$input_type, id)
-        }
-    };
-}
-
 impl ModuleInput {
-    pub fn new(input: InputType, id: ModuleId) -> Self {
+    pub fn new(input: Input, id: ModuleId) -> Self {
         Self {
             input_type: input,
             module_id: id,
         }
     }
-
-    input_ctor!(audio, Audio);
-    input_ctor!(scalar_input, ScalarInput);
-    input_ctor!(level, Level);
-    input_ctor!(pitch_shift, PitchShift);
-    input_ctor!(detune, Detune);
-    input_ctor!(phase_shift, PhaseShift);
-    input_ctor!(spectrum, Spectrum);
-    input_ctor!(phase_shift_scalar, PhaseShiftScalar);
-    input_ctor!(low_frequency, LowFrequency);
-    input_ctor!(cutoff, Cutoff);
-    input_ctor!(q, Q);
-    input_ctor!(skew, Skew);
-    input_ctor!(attack, Attack);
-    input_ctor!(hold, Hold);
-    input_ctor!(decay, Decay);
-    input_ctor!(sustain, Sustain);
-    input_ctor!(release, Release);
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

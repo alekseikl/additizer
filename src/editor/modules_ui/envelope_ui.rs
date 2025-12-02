@@ -5,7 +5,7 @@ use crate::{
         ModuleUI, modulation_input::ModulationInput, module_label::ModuleLabel,
         utils::confirm_module_removal,
     },
-    synth_engine::{Envelope, EnvelopeCurve, ModuleId, ModuleInput, Sample, SynthEngine},
+    synth_engine::{Envelope, EnvelopeCurve, Input, ModuleId, Sample, SynthEngine},
     utils::from_ms,
 };
 
@@ -175,7 +175,7 @@ impl ModuleUI for EnvelopeUI {
                 ui.label("Attack");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.attack, synth, ModuleInput::attack(id))
+                        ModulationInput::new(&mut ui_data.attack, synth, Input::Attack, id)
                             .default(from_ms(4.0)),
                     )
                     .changed()
@@ -193,7 +193,8 @@ impl ModuleUI for EnvelopeUI {
                     .add(ModulationInput::new(
                         &mut ui_data.hold,
                         synth,
-                        ModuleInput::hold(id),
+                        Input::Hold,
+                        id,
                     ))
                     .changed()
                 {
@@ -204,7 +205,7 @@ impl ModuleUI for EnvelopeUI {
                 ui.label("Decay");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.decay, synth, ModuleInput::decay(id))
+                        ModulationInput::new(&mut ui_data.decay, synth, Input::Decay, id)
                             .default(from_ms(150.0)),
                     )
                     .changed()
@@ -222,7 +223,8 @@ impl ModuleUI for EnvelopeUI {
                     .add(ModulationInput::new(
                         &mut ui_data.sustain,
                         synth,
-                        ModuleInput::sustain(id),
+                        Input::Sustain,
+                        id,
                     ))
                     .changed()
                 {
@@ -233,7 +235,7 @@ impl ModuleUI for EnvelopeUI {
                 ui.label("Release");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.release, synth, ModuleInput::release(id))
+                        ModulationInput::new(&mut ui_data.release, synth, Input::Release, id)
                             .default(from_ms(250.0)),
                     )
                     .changed()

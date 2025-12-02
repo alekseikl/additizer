@@ -11,10 +11,7 @@ use crate::{
             Buffer, SpectralBuffer, WAVEFORM_BITS, make_zero_buffer, make_zero_spectral_buffer,
         },
         phase::Phase,
-        routing::{
-            DataType, InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS,
-            Router,
-        },
+        routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
         synth_module::{
             InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, SynthModule, VoiceRouter,
         },
@@ -350,21 +347,16 @@ impl Oscillator {
         params: &ProcessParams,
         router: VoiceRouter,
     ) {
-        let id = common.id;
         let sample_rate = params.sample_rate;
 
-        let level_mod = router.get_input(ModuleInput::level(id), &mut common.level_mod_input);
-
-        let pitch_shift_mod =
-            router.get_input(ModuleInput::pitch_shift(id), &mut common.pitch_shift_input);
-
-        let phase_shift_mod =
-            router.get_input(ModuleInput::phase_shift(id), &mut common.phase_shift_input);
+        let level_mod = router.buffer(Input::Level, &mut common.level_mod_input);
+        let pitch_shift_mod = router.buffer(Input::PitchShift, &mut common.pitch_shift_input);
+        let phase_shift_mod = router.buffer(Input::PhaseShift, &mut common.phase_shift_input);
 
         let wave_octave_fixed = voice.octave + channel.pitch_shift;
 
         if voice.triggered {
-            let spectrum_from = router.get_spectral_input(ModuleInput::spectrum(common.id), false);
+            let spectrum_from = router.spectral(Input::Spectrum, false);
 
             Self::build_wave(
                 common.inverse_fft.as_ref(),
@@ -380,7 +372,7 @@ impl Oscillator {
             voice.triggered = false;
         }
 
-        let spectrum = router.get_spectral_input(ModuleInput::spectrum(id), true);
+        let spectrum = router.spectral(Input::Spectrum, true);
 
         let (wave_from, wave_to) = if voice.wave_buffers_swapped {
             (&voice.wave_buffers.1, &mut voice.wave_buffers.0)
@@ -404,8 +396,7 @@ impl Oscillator {
         let fixed_octave = voice.octave + channel.pitch_shift;
 
         if common.unison > 1 {
-            let detune_mod =
-                router.get_input(ModuleInput::detune(id), &mut common.detune_mod_input);
+            let detune_mod = router.buffer(Input::Detune, &mut common.detune_mod_input);
 
             let unison_mult = ((common.unison - 1) as Sample).recip();
             let unison_scale = 1.0 / (common.unison as Sample).sqrt();
@@ -489,11 +480,11 @@ impl SynthModule for Oscillator {
 
     fn inputs(&self) -> &'static [InputInfo] {
         static INPUTS: &[InputInfo] = &[
-            InputInfo::spectral(InputType::Spectrum),
-            InputInfo::buffer(InputType::Level),
-            InputInfo::buffer(InputType::PitchShift),
-            InputInfo::buffer(InputType::PhaseShift),
-            InputInfo::buffer(InputType::Detune),
+            InputInfo::spectral(Input::Spectrum),
+            InputInfo::buffer(Input::Level),
+            InputInfo::buffer(Input::PitchShift),
+            InputInfo::buffer(Input::PhaseShift),
+            InputInfo::buffer(Input::Detune),
         ];
 
         INPUTS
@@ -525,6 +516,7 @@ impl SynthModule for Oscillator {
             for voice_idx in params.active_voices {
                 let router = VoiceRouter {
                     router,
+                    module_id: self.common.id,
                     samples: params.samples,
                     voice_idx: *voice_idx,
                     channel_idx,

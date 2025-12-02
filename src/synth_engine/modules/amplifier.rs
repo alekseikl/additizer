@@ -4,7 +4,7 @@ use crate::synth_engine::{
     StereoSample,
     buffer::{Buffer, ONES_BUFFER, ZEROES_BUFFER, make_zero_buffer},
     routing::{
-        DataType, InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, Router,
+        DataType, Input, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, Router,
     },
     synth_module::{InputInfo, ModuleConfigBox, ProcessParams, SynthModule},
     types::Sample,
@@ -142,7 +142,7 @@ impl Amplifier {
         let voice = &mut channel.voices[voice_idx];
         let input = router
             .get_input(
-                ModuleInput::audio(id),
+                ModuleInput::new(Input::Audio, id),
                 params.samples,
                 voice_idx,
                 channel_idx,
@@ -151,7 +151,7 @@ impl Amplifier {
             .unwrap_or(&ZEROES_BUFFER);
         let level_mod = router
             .get_input(
-                ModuleInput::level(id),
+                ModuleInput::new(Input::Level, id),
                 params.samples,
                 voice_idx,
                 channel_idx,
@@ -187,8 +187,8 @@ impl SynthModule for Amplifier {
 
     fn inputs(&self) -> &'static [InputInfo] {
         static INPUTS: &[InputInfo] = &[
-            InputInfo::buffer(InputType::Audio),
-            InputInfo::buffer(InputType::Level),
+            InputInfo::buffer(Input::Audio),
+            InputInfo::buffer(Input::Level),
         ];
 
         INPUTS

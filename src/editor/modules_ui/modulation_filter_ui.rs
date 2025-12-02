@@ -5,7 +5,7 @@ use crate::{
         ModuleUI, direct_input::DirectInput, module_label::ModuleLabel,
         utils::confirm_module_removal,
     },
-    synth_engine::{ModulationFilter, ModuleId, ModuleInput, SynthEngine},
+    synth_engine::{Input, ModulationFilter, ModuleId, SynthEngine},
 };
 
 pub struct ModulationFilterUI {
@@ -50,7 +50,7 @@ impl ModuleUI for ModulationFilterUI {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Inputs");
-                ui.add(DirectInput::new(synth, ModuleInput::audio(self.module_id)));
+                ui.add(DirectInput::new(synth, Input::Audio, self.module_id));
                 ui.end_row();
 
                 ui.label("Cutoff Frequency");

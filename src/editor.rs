@@ -15,7 +15,9 @@ use crate::{
             OscillatorUI, SpectralFilterUI,
         },
     },
-    synth_engine::{ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, SynthEngine, SynthModule},
+    synth_engine::{
+        Input, ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, SynthEngine, SynthModule,
+    },
 };
 
 use egui_integration::{ResizableWindow, create_egui_editor};
@@ -160,7 +162,10 @@ fn show_side_bar(
                                     let amp_id = synth_engine.add_amplifier();
 
                                     synth_engine
-                                        .add_link(amp_id, ModuleInput::audio(OUTPUT_MODULE_ID))
+                                        .add_link(
+                                            amp_id,
+                                            ModuleInput::new(Input::Audio, OUTPUT_MODULE_ID),
+                                        )
                                         .unwrap();
                                 }
                             });

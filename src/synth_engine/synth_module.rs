@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 use crate::synth_engine::{
     ModuleInput,
     buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER},
-    routing::{DataType, InputType, ModuleId, ModuleType, Router},
+    routing::{DataType, Input, ModuleId, ModuleType, Router},
     types::Sample,
 };
 
@@ -27,26 +27,26 @@ pub struct ProcessParams<'a> {
 }
 
 pub struct InputInfo {
-    pub input: InputType,
+    pub input: Input,
     pub data_type: DataType,
 }
 
 impl InputInfo {
-    pub const fn buffer(input: InputType) -> Self {
+    pub const fn buffer(input: Input) -> Self {
         Self {
             input,
             data_type: DataType::Buffer,
         }
     }
 
-    pub const fn scalar(input: InputType) -> Self {
+    pub const fn scalar(input: Input) -> Self {
         Self {
             input,
             data_type: DataType::Scalar,
         }
     }
 
-    pub const fn spectral(input: InputType) -> Self {
+    pub const fn spectral(input: Input) -> Self {
         Self {
             input,
             data_type: DataType::Spectral,
@@ -88,33 +88,44 @@ pub trait SynthModule: Any + Send {
 
 pub struct VoiceRouter<'a> {
     pub router: &'a dyn Router,
+    pub module_id: ModuleId,
     pub samples: usize,
     pub voice_idx: usize,
     pub channel_idx: usize,
 }
 
 impl<'a> VoiceRouter<'a> {
-    pub fn get_input(&'a self, input: ModuleInput, input_buffer: &'a mut Buffer) -> &'a Buffer {
+    pub fn buffer(&'a self, input: Input, buff: &'a mut Buffer) -> &'a Buffer {
         self.router
             .get_input(
-                input,
+                ModuleInput::new(input, self.module_id),
                 self.samples,
                 self.voice_idx,
                 self.channel_idx,
-                input_buffer,
+                buff,
             )
             .unwrap_or(&ZEROES_BUFFER)
     }
 
-    pub fn get_spectral_input(&self, input: ModuleInput, current: bool) -> &SpectralBuffer {
+    pub fn spectral(&self, input: Input, current: bool) -> &SpectralBuffer {
         self.router
-            .get_spectral_input(input, current, self.voice_idx, self.channel_idx)
+            .get_spectral_input(
+                ModuleInput::new(input, self.module_id),
+                current,
+                self.voice_idx,
+                self.channel_idx,
+            )
             .unwrap_or(&ZEROES_SPECTRAL_BUFFER)
     }
 
-    pub fn get_scalar_input(&self, input: ModuleInput, current: bool) -> Sample {
+    pub fn scalar(&self, input: Input, current: bool) -> Sample {
         self.router
-            .get_scalar_input(input, current, self.voice_idx, self.channel_idx)
+            .get_scalar_input(
+                ModuleInput::new(input, self.module_id),
+                current,
+                self.voice_idx,
+                self.channel_idx,
+            )
             .unwrap_or(0.0)
     }
 }

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::any::Any;
 
 use crate::synth_engine::{
-    InputType, ModuleId, ModuleInput, ModuleType, Sample, SynthModule,
+    Input, ModuleId, ModuleInput, ModuleType, Sample, SynthModule,
     buffer::{Buffer, ZEROES_BUFFER, make_zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
     synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams},
@@ -120,7 +120,7 @@ impl ModulationFilter {
 
         let input = router
             .get_input(
-                ModuleInput::audio(id),
+                ModuleInput::new(Input::Audio, id),
                 params.samples,
                 voice_idx,
                 channel_idx,
@@ -166,7 +166,7 @@ impl SynthModule for ModulationFilter {
     }
 
     fn inputs(&self) -> &'static [InputInfo] {
-        static INPUTS: &[InputInfo] = &[InputInfo::buffer(InputType::Audio)];
+        static INPUTS: &[InputInfo] = &[InputInfo::buffer(Input::Audio)];
 
         INPUTS
     }

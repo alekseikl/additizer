@@ -32,8 +32,7 @@ pub use modules::{
     LfoShape, ModulationFilter, Oscillator, SpectralFilter,
 };
 pub use routing::{
-    ConnectedInputSourceUI, InputType, ModuleId, ModuleInput, ModuleLink, ModuleType,
-    OUTPUT_MODULE_ID,
+    ConnectedInputSourceUI, Input, ModuleId, ModuleInput, ModuleLink, ModuleType, OUTPUT_MODULE_ID,
 };
 pub use stereo_sample::StereoSample;
 pub use synth_module::SynthModule;
@@ -522,7 +521,7 @@ impl SynthEngine {
             return Err("Invalid node.".to_string());
         };
 
-        let is_compatible = dst.input_type == InputType::Audio
+        let is_compatible = dst.input_type == Input::Audio
             && Self::data_types_compatible(src_module.output_type(), DataType::Buffer);
 
         if !is_compatible {
@@ -617,7 +616,7 @@ impl SynthEngine {
             for voice_idx in params.active_voices.iter() {
                 let input = self
                     .get_input(
-                        ModuleInput::audio(OUTPUT_MODULE_ID),
+                        ModuleInput::new(Input::Audio, OUTPUT_MODULE_ID),
                         params.samples,
                         *voice_idx,
                         channel,

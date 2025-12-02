@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{any::Any, f32};
 
 use crate::synth_engine::{
-    InputType, ModuleId, ModuleInput, ModuleType, Sample, StereoSample, SynthModule,
+    Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     phase::Phase,
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
     synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
@@ -188,7 +188,6 @@ impl Lfo {
     }
 
     fn process_voice(
-        id: ModuleId,
         params: &Params,
         channel_params: &ChannelParams,
         voice: &mut Voice,
@@ -196,16 +195,13 @@ impl Lfo {
         t_step: Sample,
         router: &VoiceRouter,
     ) {
-        let frequency = (channel_params.frequency
-            + router.get_scalar_input(ModuleInput::low_frequency(id), current))
-        .clamp(-50.0, 50.0);
+        let frequency = (channel_params.frequency + router.scalar(Input::LowFrequency, current))
+            .clamp(-50.0, 50.0);
 
-        let phase_shift = (channel_params.phase_shift
-            + router.get_scalar_input(ModuleInput::phase_shift_scalar(id), current))
-        .clamp(-1.0, 1.0);
+        let phase_shift = (channel_params.phase_shift + router.scalar(Input::PhaseShift, current))
+            .clamp(-1.0, 1.0);
 
-        let skew = (channel_params.skew + router.get_scalar_input(ModuleInput::skew(id), current))
-            .clamp(0.0, 1.0);
+        let skew = (channel_params.skew + router.scalar(Input::Skew, current)).clamp(0.0, 1.0);
 
         let arg = voice.phase.add_normalized(phase_shift).normalized();
 
@@ -250,9 +246,9 @@ impl SynthModule for Lfo {
 
     fn inputs(&self) -> &'static [InputInfo] {
         static INPUTS: &[InputInfo] = &[
-            InputInfo::scalar(InputType::LowFrequency),
-            InputInfo::scalar(InputType::PhaseShiftScalar),
-            InputInfo::scalar(InputType::Skew),
+            InputInfo::scalar(Input::LowFrequency),
+            InputInfo::scalar(Input::PhaseShift),
+            InputInfo::scalar(Input::Skew),
         ];
 
         INPUTS
@@ -282,32 +278,17 @@ impl SynthModule for Lfo {
                 let voice = &mut channel.voices[*voice_idx];
                 let router = VoiceRouter {
                     router,
+                    module_id: self.id,
                     samples: params.samples,
                     voice_idx: *voice_idx,
                     channel_idx,
                 };
 
                 if voice.triggered {
-                    Self::process_voice(
-                        self.id,
-                        &self.params,
-                        &channel.params,
-                        voice,
-                        false,
-                        0.0,
-                        &router,
-                    );
+                    Self::process_voice(&self.params, &channel.params, voice, false, 0.0, &router);
                     voice.triggered = false;
                 }
-                Self::process_voice(
-                    self.id,
-                    &self.params,
-                    &channel.params,
-                    voice,
-                    true,
-                    t_step,
-                    &router,
-                );
+                Self::process_voice(&self.params, &channel.params, voice, true, t_step, &router);
             }
         }
     }

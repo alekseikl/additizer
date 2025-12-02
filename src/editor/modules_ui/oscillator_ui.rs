@@ -5,7 +5,7 @@ use crate::{
         ModuleUI, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
-    synth_engine::{ModuleId, ModuleInput, Oscillator, SynthEngine},
+    synth_engine::{Input, ModuleId, Oscillator, SynthEngine},
 };
 
 pub struct OscillatorUI {
@@ -50,10 +50,7 @@ impl ModuleUI for OscillatorUI {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Input");
-                ui.add(DirectInput::new(
-                    synth,
-                    ModuleInput::spectrum(self.module_id),
-                ));
+                ui.add(DirectInput::new(synth, Input::Spectrum, self.module_id));
                 ui.end_row();
 
                 ui.label("Level");
@@ -61,7 +58,8 @@ impl ModuleUI for OscillatorUI {
                     .add(ModulationInput::new(
                         &mut ui_data.level,
                         synth,
-                        ModuleInput::level(self.module_id),
+                        Input::Level,
+                        self.module_id,
                     ))
                     .changed()
                 {
@@ -74,7 +72,8 @@ impl ModuleUI for OscillatorUI {
                     .add(ModulationInput::new(
                         &mut ui_data.pitch_shift,
                         synth,
-                        ModuleInput::pitch_shift(self.module_id),
+                        Input::PitchShift,
+                        self.module_id,
                     ))
                     .changed()
                 {
@@ -87,7 +86,8 @@ impl ModuleUI for OscillatorUI {
                     .add(ModulationInput::new(
                         &mut ui_data.phase_shift,
                         synth,
-                        ModuleInput::phase_shift(self.module_id),
+                        Input::PhaseShift,
+                        self.module_id,
                     ))
                     .changed()
                 {
@@ -100,7 +100,8 @@ impl ModuleUI for OscillatorUI {
                     .add(ModulationInput::new(
                         &mut ui_data.detune,
                         synth,
-                        ModuleInput::detune(self.module_id),
+                        Input::Detune,
+                        self.module_id,
                     ))
                     .changed()
                 {

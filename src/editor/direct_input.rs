@@ -1,6 +1,6 @@
 use egui_baseview::egui::{ComboBox, Response, Ui, Widget};
 
-use crate::synth_engine::{ModuleId, ModuleInput, SynthEngine};
+use crate::synth_engine::{Input, ModuleId, ModuleInput, SynthEngine};
 
 pub struct DirectInput<'a> {
     synth_engine: &'a mut SynthEngine,
@@ -8,10 +8,10 @@ pub struct DirectInput<'a> {
 }
 
 impl<'a> DirectInput<'a> {
-    pub fn new(synth_engine: &'a mut SynthEngine, input: ModuleInput) -> Self {
+    pub fn new(synth_engine: &'a mut SynthEngine, input: Input, module_id: ModuleId) -> Self {
         Self {
             synth_engine,
-            input,
+            input: ModuleInput::new(input, module_id),
         }
     }
 

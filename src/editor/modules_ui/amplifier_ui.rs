@@ -5,7 +5,7 @@ use crate::{
         ModuleUI, modulation_input::ModulationInput, module_label::ModuleLabel,
         multi_input::MultiInput, utils::confirm_module_removal,
     },
-    synth_engine::{Amplifier, ModuleId, ModuleInput, SynthEngine},
+    synth_engine::{Amplifier, Input, ModuleId, SynthEngine},
 };
 
 pub struct AmplifierUI {
@@ -50,7 +50,7 @@ impl ModuleUI for AmplifierUI {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Inputs");
-                ui.add(MultiInput::new(synth, ModuleInput::audio(self.module_id)));
+                ui.add(MultiInput::new(synth, Input::Audio, self.module_id));
                 ui.end_row();
 
                 ui.label("Level");
@@ -59,7 +59,8 @@ impl ModuleUI for AmplifierUI {
                         ModulationInput::new(
                             &mut ui_data.level,
                             synth,
-                            ModuleInput::level(self.module_id),
+                            Input::Level,
+                            self.module_id,
                         )
                         .modulation_default(1.0),
                     )

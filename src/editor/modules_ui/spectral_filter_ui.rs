@@ -5,7 +5,7 @@ use crate::{
         ModuleUI, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
-    synth_engine::{ModuleId, ModuleInput, SpectralFilter, SynthEngine},
+    synth_engine::{Input, ModuleId, SpectralFilter, SynthEngine},
 };
 
 pub struct SpectralFilterUI {
@@ -50,10 +50,7 @@ impl ModuleUI for SpectralFilterUI {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Input");
-                ui.add(DirectInput::new(
-                    synth,
-                    ModuleInput::spectrum(self.module_id),
-                ));
+                ui.add(DirectInput::new(synth, Input::Spectrum, self.module_id));
                 ui.end_row();
 
                 ui.label("Cutoff");
@@ -61,7 +58,8 @@ impl ModuleUI for SpectralFilterUI {
                     .add(ModulationInput::new(
                         &mut ui_data.cutoff,
                         synth,
-                        ModuleInput::cutoff(self.module_id),
+                        Input::Cutoff,
+                        self.module_id,
                     ))
                     .changed()
                 {
@@ -74,7 +72,8 @@ impl ModuleUI for SpectralFilterUI {
                     .add(ModulationInput::new(
                         &mut ui_data.q,
                         synth,
-                        ModuleInput::q(self.module_id),
+                        Input::Q,
+                        self.module_id,
                     ))
                     .changed()
                 {

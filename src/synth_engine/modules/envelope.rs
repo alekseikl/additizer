@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::{
-        ModuleInput, StereoSample,
+        StereoSample,
         curves::{CurveFunction, ExponentialIn, ExponentialOut, PowerIn, PowerOut},
-        routing::{DataType, InputType, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
+        routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
         synth_module::{
             InputInfo, ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule,
             VoiceRouter,
@@ -394,24 +394,16 @@ impl Envelope {
     }
 
     fn process_voice(
-        id: ModuleId,
         env: &ChannelParams,
         voice: &mut Voice,
         current: bool,
         t_step: Sample,
         router: &VoiceRouter,
     ) {
-        let attack_time =
-            || (env.attack + router.get_scalar_input(ModuleInput::attack(id), current)).max(0.0);
-
-        let hold_time =
-            || (env.hold + router.get_scalar_input(ModuleInput::hold(id), current)).max(0.0);
-
-        let decay_time =
-            || (env.decay + router.get_scalar_input(ModuleInput::decay(id), current)).max(0.0);
-
-        let release_time =
-            || (env.release + router.get_scalar_input(ModuleInput::release(id), current)).max(0.0);
+        let attack_time = || (env.attack + router.scalar(Input::Attack, current)).max(0.0);
+        let hold_time = || (env.hold + router.scalar(Input::Hold, current)).max(0.0);
+        let decay_time = || (env.decay + router.scalar(Input::Decay, current)).max(0.0);
+        let release_time = || (env.release + router.scalar(Input::Release, current)).max(0.0);
 
         if voice.released {
             voice.stage = Stage::Release(env.release_curve.curve_iter(
@@ -454,9 +446,7 @@ impl Envelope {
                     CurveResult::TimeRemainder(_) => Stage::Sustain,
                 },
                 Stage::Sustain => {
-                    break (env.sustain
-                        + router.get_scalar_input(ModuleInput::sustain(id), current))
-                    .clamp(0.0, 1.0);
+                    break (env.sustain + router.scalar(Input::Sustain, current)).clamp(0.0, 1.0);
                 }
                 Stage::Release(curve) => match curve.next(t_step, release_time()) {
                     CurveResult::Value(value) => break value,
@@ -502,11 +492,11 @@ impl SynthModule for Envelope {
 
     fn inputs(&self) -> &'static [InputInfo] {
         static INPUTS: &[InputInfo] = &[
-            InputInfo::scalar(InputType::Attack),
-            InputInfo::scalar(InputType::Hold),
-            InputInfo::scalar(InputType::Decay),
-            InputInfo::scalar(InputType::Sustain),
-            InputInfo::scalar(InputType::Release),
+            InputInfo::scalar(Input::Attack),
+            InputInfo::scalar(Input::Hold),
+            InputInfo::scalar(Input::Decay),
+            InputInfo::scalar(Input::Sustain),
+            InputInfo::scalar(Input::Release),
         ];
 
         INPUTS
@@ -538,16 +528,17 @@ impl SynthModule for Envelope {
                 let voice = &mut channel.voices[*voice_idx];
                 let router = VoiceRouter {
                     router,
+                    module_id: self.id,
                     samples: params.samples,
                     voice_idx: *voice_idx,
                     channel_idx,
                 };
 
                 if voice.triggered {
-                    Self::process_voice(self.id, env, voice, false, 0.0, &router);
+                    Self::process_voice(env, voice, false, 0.0, &router);
                     voice.triggered = false;
                 }
-                Self::process_voice(self.id, env, voice, true, t_step, &router);
+                Self::process_voice(env, voice, true, t_step, &router);
             }
         }
     }

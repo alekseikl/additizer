@@ -5,9 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::synth_engine::{
     StereoSample,
     buffer::{SPECTRAL_BUFFER_SIZE, SpectralBuffer},
-    routing::{
-        DataType, InputType, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, Router,
-    },
+    routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
     synth_module::{InputInfo, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
     types::{ComplexSample, Sample, SpectralOutput},
 };
@@ -146,16 +144,15 @@ impl SpectralFilter {
     set_param_method!(set_q, q, q.clamp(0.1, 10.0));
 
     fn process_voice(
-        id: ModuleId,
         four_pole: bool,
         current: bool,
         params: &ChannelParams,
         voice: &mut Voice,
         router: &VoiceRouter,
     ) {
-        let spectrum = router.get_spectral_input(ModuleInput::spectrum(id), current);
-        let cutoff_mod = router.get_scalar_input(ModuleInput::cutoff(id), current);
-        let q_mod = router.get_scalar_input(ModuleInput::q(id), current);
+        let spectrum = router.spectral(Input::Spectrum, current);
+        let cutoff_mod = router.scalar(Input::Cutoff, current);
+        let q_mod = router.scalar(Input::Q, current);
 
         let range = 1..SPECTRAL_BUFFER_SIZE - 1;
         let input_buff = &spectrum[range.clone()];
@@ -199,9 +196,9 @@ impl SynthModule for SpectralFilter {
 
     fn inputs(&self) -> &'static [InputInfo] {
         static INPUTS: &[InputInfo] = &[
-            InputInfo::spectral(InputType::Spectrum),
-            InputInfo::scalar(InputType::Cutoff),
-            InputInfo::scalar(InputType::Q),
+            InputInfo::spectral(Input::Spectrum),
+            InputInfo::scalar(Input::Cutoff),
+            InputInfo::scalar(Input::Q),
         ];
 
         INPUTS
@@ -219,16 +216,17 @@ impl SynthModule for SpectralFilter {
                 let voice = &mut channel.voices[*voice_idx];
                 let router = VoiceRouter {
                     router,
+                    module_id: self.id,
                     samples: process_params.samples,
                     voice_idx: *voice_idx,
                     channel_idx,
                 };
 
                 if voice.triggered {
-                    Self::process_voice(self.id, self.four_pole, false, params, voice, &router);
+                    Self::process_voice(self.four_pole, false, params, voice, &router);
                     voice.triggered = false;
                 }
-                Self::process_voice(self.id, self.four_pole, true, params, voice, &router);
+                Self::process_voice(self.four_pole, true, params, voice, &router);
             }
         }
     }

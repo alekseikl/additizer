@@ -5,7 +5,7 @@ use crate::{
         ModuleUI, modulation_input::ModulationInput, module_label::ModuleLabel,
         utils::confirm_module_removal,
     },
-    synth_engine::{Lfo, LfoShape, ModuleId, ModuleInput, SynthEngine},
+    synth_engine::{Input, Lfo, LfoShape, ModuleId, SynthEngine},
 };
 
 impl LfoShape {
@@ -82,7 +82,8 @@ impl ModuleUI for LfoUi {
                     .add(ModulationInput::new(
                         &mut ui_data.skew,
                         synth,
-                        ModuleInput::skew(id),
+                        Input::Skew,
+                        id,
                     ))
                     .changed()
                 {
@@ -95,7 +96,8 @@ impl ModuleUI for LfoUi {
                     .add(ModulationInput::new(
                         &mut ui_data.frequency,
                         synth,
-                        ModuleInput::low_frequency(id),
+                        Input::LowFrequency,
+                        id,
                     ))
                     .changed()
                 {
@@ -108,7 +110,8 @@ impl ModuleUI for LfoUi {
                     .add(ModulationInput::new(
                         &mut ui_data.phase_shift,
                         synth,
-                        ModuleInput::phase_shift(id),
+                        Input::PhaseShift,
+                        id,
                     ))
                     .changed()
                 {

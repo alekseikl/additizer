@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use egui_baseview::egui::{ComboBox, Response, Ui, Widget, vec2};
 
-use crate::synth_engine::{ModuleId, ModuleInput, SynthEngine};
+use crate::synth_engine::{Input, ModuleId, ModuleInput, SynthEngine};
 
 pub struct MultiInput<'a> {
     synth_engine: &'a mut SynthEngine,
@@ -10,10 +10,10 @@ pub struct MultiInput<'a> {
 }
 
 impl<'a> MultiInput<'a> {
-    pub fn new(synth_engine: &'a mut SynthEngine, input: ModuleInput) -> Self {
+    pub fn new(synth_engine: &'a mut SynthEngine, input: Input, module_id: ModuleId) -> Self {
         Self {
             synth_engine,
-            input,
+            input: ModuleInput::new(input, module_id),
         }
     }
 
