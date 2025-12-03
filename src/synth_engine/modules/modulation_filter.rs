@@ -91,7 +91,7 @@ impl ModulationFilter {
         filter
     }
 
-    gen_downcast_methods!(ModulationFilter);
+    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> ModulationFilterUI {
         ModulationFilterUI {

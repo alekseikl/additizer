@@ -19,7 +19,7 @@ use crate::synth_engine::{
     modules::{
         AmplifierConfig, EnvelopeActivityState, EnvelopeConfig, ExternalParamConfig,
         HarmonicEditorConfig, LfoConfig, ModulationFilterConfig, OscillatorConfig,
-        SpectralFilterConfig,
+        SpectralBlendConfig, SpectralFilterConfig,
     },
     routing::{AvailableInputSourceUI, DataType, MAX_VOICES, Router},
     synth_module::{NoteOffParams, NoteOnParams, ProcessParams},
@@ -29,7 +29,7 @@ pub use buffer::BUFFER_SIZE;
 pub use config::Config;
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, HarmonicEditor, Lfo,
-    LfoShape, ModulationFilter, Oscillator, SpectralFilter,
+    LfoShape, ModulationFilter, Oscillator, SpectralBlend, SpectralFilter,
 };
 pub use routing::{
     ConnectedInputSourceUI, Input, ModuleId, ModuleInput, ModuleLink, ModuleType, OUTPUT_MODULE_ID,
@@ -201,7 +201,7 @@ impl SynthEngine {
     }
 
     pub fn set_num_voices(&mut self, num_voices: usize) {
-        self.num_voices = num_voices.clamp(1, MAX_VOICES);
+        self.num_voices = Self::clamp_num_voices(num_voices);
 
         for voice in &mut self.voices[self.num_voices..] {
             voice.active = false;
@@ -215,8 +215,16 @@ impl SynthEngine {
     }
 
     pub fn set_buffer_size(&mut self, buffer_size: usize) {
-        self.buffer_size = (buffer_size).clamp(BUFFER_SIZE / 8, BUFFER_SIZE);
+        self.buffer_size = Self::clamp_buffer_size(buffer_size);
         self.config.routing.lock().buffer_size = self.buffer_size;
+    }
+
+    fn clamp_num_voices(num_voices: usize) -> usize {
+        num_voices.clamp(1, MAX_VOICES)
+    }
+
+    fn clamp_buffer_size(buffer_size: usize) -> usize {
+        (buffer_size).clamp(BUFFER_SIZE / 8, BUFFER_SIZE)
     }
 
     add_module_method!(add_oscillator, Oscillator, OscillatorConfig);
@@ -224,6 +232,7 @@ impl SynthEngine {
     add_module_method!(add_lfo, Lfo, LfoConfig);
     add_module_method!(add_amplifier, Amplifier, AmplifierConfig);
     add_module_method!(add_spectral_filter, SpectralFilter, SpectralFilterConfig);
+    add_module_method!(add_spectral_blend, SpectralBlend, SpectralBlendConfig);
     add_module_method!(add_harmonic_editor, HarmonicEditor, HarmonicEditorConfig);
     add_module_method!(
         add_external_param,
@@ -748,6 +757,15 @@ impl SynthEngine {
         let modules_arc = Arc::clone(&self.config.modules);
         let modules_cfg = modules_arc.lock();
 
+        if modules_cfg.is_empty() {
+            return false;
+        }
+
+        self.next_id = routing.next_module_id;
+        self.output_level = routing.output_level;
+        self.num_voices = Self::clamp_num_voices(routing.num_voices);
+        self.buffer_size = Self::clamp_buffer_size(routing.buffer_size);
+
         macro_rules! restore_module {
             ($module_type:ident, $module_id:ident, $cfg:ident $(, $arg:ident )*) => {{
                 self.modules.insert(
@@ -761,16 +779,13 @@ impl SynthEngine {
             }};
         }
 
-        if modules_cfg.is_empty() {
-            return false;
-        }
-
         for (id, cfg) in modules_cfg.iter() {
             match cfg {
                 ModuleConfig::Amplifier(cfg) => restore_module!(Amplifier, id, cfg),
                 ModuleConfig::Envelope(cfg) => restore_module!(Envelope, id, cfg),
                 ModuleConfig::Oscillator(cfg) => restore_module!(Oscillator, id, cfg),
                 ModuleConfig::SpectralFilter(cfg) => restore_module!(SpectralFilter, id, cfg),
+                ModuleConfig::SpectralBlend(cfg) => restore_module!(SpectralBlend, id, cfg),
                 ModuleConfig::HarmonicEditor(cfg) => restore_module!(HarmonicEditor, id, cfg),
                 ModuleConfig::ExternalParam(cfg) => {
                     restore_module!(ExternalParam, id, cfg, get_external_params)
@@ -780,17 +795,17 @@ impl SynthEngine {
             }
         }
 
-        self.next_id = routing.next_module_id;
-        self.output_level = routing.output_level;
-        self.num_voices = routing.num_voices.clamp(1, MAX_VOICES);
-        self.buffer_size = routing.buffer_size.clamp(BUFFER_SIZE / 8, BUFFER_SIZE);
+        for link in &routing.links {
+            if self.can_be_linked(&link.src, &link.dst).is_err() {
+                return false;
+            }
+        }
+
         self.setup_routing(&routing.links).is_ok()
     }
 
     fn save_links(&self) {
-        let mut routing = self.config.routing.lock();
-
-        routing.links = self.get_links();
+        self.config.routing.lock().links = self.get_links();
     }
 }
 

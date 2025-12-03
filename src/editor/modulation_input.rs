@@ -51,6 +51,7 @@ impl<'a> ModulationInput<'a> {
     ) -> StereoSlider<'_> {
         let mut updated = match input_type {
             Input::Level => slider.default_value(1.0).precision(2),
+            Input::Blend => slider.range(0.0..=1.0).default_value(1.0).precision(2),
             Input::Cutoff => slider
                 .range(-4.0..=10.0)
                 .display_scale(12.0)
@@ -96,7 +97,7 @@ impl<'a> ModulationInput<'a> {
                 .skew(2.0)
                 .precision(1)
                 .units(" ms"),
-            Input::Audio | Input::Spectrum => slider,
+            Input::Audio | Input::Spectrum | Input::SpectrumTo => slider,
         };
 
         if let Some(default) = default {
@@ -109,6 +110,11 @@ impl<'a> ModulationInput<'a> {
     fn setup_modulation_slider(&self, slider: StereoSlider<'a>) -> StereoSlider<'a> {
         let mut updated = match self.input.input_type {
             Input::Level => slider.default_value(0.0).precision(2).allow_inverse(),
+            Input::Blend => slider
+                .range(0.0..=1.0)
+                .default_value(1.0)
+                .precision(2)
+                .allow_inverse(),
             Input::Cutoff => slider
                 .range(0.0..=8.0)
                 .display_scale(12.0)
@@ -158,7 +164,7 @@ impl<'a> ModulationInput<'a> {
                 .precision(1)
                 .allow_inverse()
                 .units(" ms"),
-            Input::Audio | Input::Spectrum => slider,
+            Input::Audio | Input::Spectrum | Input::SpectrumTo => slider,
         };
 
         if let Some(default) = self.modulation_default {

@@ -5,6 +5,7 @@ mod harmonic_editor_ui;
 mod lfo_ui;
 mod modulation_filter_ui;
 mod oscillator_ui;
+mod spectral_blend_ui;
 mod spectral_filter_ui;
 
 pub use amplifier_ui::AmplifierUI;
@@ -14,4 +15,5 @@ pub use harmonic_editor_ui::HarmonicEditorUI;
 pub use lfo_ui::LfoUi;
 pub use modulation_filter_ui::ModulationFilterUI;
 pub use oscillator_ui::OscillatorUI;
+pub use spectral_blend_ui::SpectralBlendUi;
 pub use spectral_filter_ui::SpectralFilterUI;

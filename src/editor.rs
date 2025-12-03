@@ -12,7 +12,7 @@ use crate::{
         gain_slider::GainSlider,
         modules_ui::{
             AmplifierUI, EnvelopeUI, ExternalParamUI, HarmonicEditorUI, LfoUi, ModulationFilterUI,
-            OscillatorUI, SpectralFilterUI,
+            OscillatorUI, SpectralBlendUi, SpectralFilterUI,
         },
     },
     synth_engine::{
@@ -80,6 +80,7 @@ fn ui_for_module(module: &dyn SynthModule) -> ModuleUIBox {
         ModuleType::ExternalParam => Box::new(ExternalParamUI::new(module.id())),
         ModuleType::ModulationFilter => Box::new(ModulationFilterUI::new(module.id())),
         ModuleType::Lfo => Box::new(LfoUi::new(module.id())),
+        ModuleType::SpectralBlend => Box::new(SpectralBlendUi::new(module.id())),
     }
 }
 
@@ -151,6 +152,9 @@ fn show_side_bar(
                                 }
                                 if ui.selectable_label(false, "Spectral Filter").clicked() {
                                     synth_engine.add_spectral_filter();
+                                }
+                                if ui.selectable_label(false, "Spectral Blend").clicked() {
+                                    synth_engine.add_spectral_blend();
                                 }
                                 if ui.selectable_label(false, "External Parameter").clicked() {
                                     synth_engine.add_external_param();

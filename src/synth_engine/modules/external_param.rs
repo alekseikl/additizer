@@ -75,7 +75,7 @@ impl ExternalParam {
         ext
     }
 
-    gen_downcast_methods!(ExternalParam);
+    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> ExternalParamUI {
         ExternalParamUI {

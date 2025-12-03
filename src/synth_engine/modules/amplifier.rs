@@ -107,7 +107,7 @@ impl Amplifier {
         amp
     }
 
-    gen_downcast_methods!(Amplifier);
+    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> AmplifierUIData {
         AmplifierUIData {

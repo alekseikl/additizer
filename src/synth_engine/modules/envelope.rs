@@ -344,7 +344,7 @@ impl Envelope {
         env
     }
 
-    gen_downcast_methods!(Envelope);
+    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> EnvelopeUIData {
         EnvelopeUIData {

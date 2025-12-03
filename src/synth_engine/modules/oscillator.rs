@@ -220,7 +220,7 @@ impl Oscillator {
         osc
     }
 
-    gen_downcast_methods!(Oscillator);
+    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> OscillatorUIData {
         OscillatorUIData {

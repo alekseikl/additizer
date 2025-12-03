@@ -63,7 +63,7 @@ impl HarmonicEditor {
         editor
     }
 
-    gen_downcast_methods!(HarmonicEditor);
+    gen_downcast_methods!();
 
     pub fn set_all_to_zero(&mut self) {
         self.harmonics.fill(StereoSample::splat(0.0));

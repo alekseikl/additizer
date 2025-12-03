@@ -133,18 +133,40 @@ impl<'a> VoiceRouter<'a> {
 pub type ModuleConfigBox<T> = Arc<Mutex<T>>;
 
 macro_rules! gen_downcast_methods {
-    ($mod_type:ident) => {
+    () => {
         #[allow(dead_code)]
-        pub fn downcast(module: &dyn SynthModule) -> Option<&$mod_type> {
+        pub fn downcast(module: &dyn SynthModule) -> Option<&Self> {
             (module as &dyn Any).downcast_ref()
         }
 
-        pub fn downcast_mut(module: &mut dyn SynthModule) -> Option<&mut $mod_type> {
+        pub fn downcast_mut(module: &mut dyn SynthModule) -> Option<&mut Self> {
             (module as &mut dyn Any).downcast_mut()
         }
 
-        pub fn downcast_mut_unwrap(module: Option<&mut dyn SynthModule>) -> &mut $mod_type {
+        pub fn downcast_mut_unwrap(module: Option<&mut dyn SynthModule>) -> &mut Self {
             Self::downcast_mut(module.unwrap()).unwrap()
         }
+    };
+}
+
+macro_rules! set_module_param_method {
+    ($fn_name:ident, $param:ident, $transform:expr) => {
+        pub fn $fn_name(&mut self, $param: StereoSample) {
+            for (channel, $param) in self.channels.iter_mut().zip($param.iter()) {
+                channel.params.$param = $transform;
+            }
+
+            let mut cfg = self.config.lock();
+
+            for (config_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
+                config_channel.$param = channel.params.$param;
+            }
+        }
+    };
+}
+
+macro_rules! extract_module_param {
+    ($self:ident, $param:ident) => {
+        StereoSample::from_iter($self.channels.iter().map(|channel| channel.params.$param))
     };
 }

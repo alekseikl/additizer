@@ -132,7 +132,7 @@ impl Lfo {
         lfo
     }
 
-    gen_downcast_methods!(Lfo);
+    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> LfoUiData {
         LfoUiData {

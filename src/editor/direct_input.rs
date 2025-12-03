@@ -28,7 +28,7 @@ impl Widget for DirectInput<'_> {
         let connected = self.synth_engine.get_connected_input_sources(self.input);
         let mut selected = connected.first().map(|src| src.output);
 
-        ComboBox::from_id_salt("direct-input")
+        ComboBox::from_id_salt(format!("direct-input-{:?}", self.input.input_type))
             .selected_text(
                 connected
                     .first()

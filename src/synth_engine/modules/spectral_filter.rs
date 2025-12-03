@@ -6,7 +6,9 @@ use crate::synth_engine::{
     StereoSample,
     buffer::{SPECTRAL_BUFFER_SIZE, SpectralBuffer},
     routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
-    synth_module::{InputInfo, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
+    synth_module::{
+        InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, SynthModule, VoiceRouter,
+    },
     types::{ComplexSample, Sample, SpectralOutput},
 };
 
@@ -124,7 +126,7 @@ impl SpectralFilter {
         filter
     }
 
-    gen_downcast_methods!(SpectralFilter);
+    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> SpectralFilterUIData {
         SpectralFilterUIData {
@@ -206,6 +208,12 @@ impl SynthModule for SpectralFilter {
 
     fn output_type(&self) -> DataType {
         DataType::Spectral
+    }
+
+    fn note_on(&mut self, params: &NoteOnParams) {
+        for channel in &mut self.channels {
+            channel.voices[params.voice_idx].triggered = true;
+        }
     }
 
     fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
