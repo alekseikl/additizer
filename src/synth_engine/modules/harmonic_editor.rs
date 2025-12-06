@@ -147,8 +147,8 @@ impl SynthModule for HarmonicEditor {
         &[]
     }
 
-    fn output_type(&self) -> DataType {
-        DataType::Spectral
+    fn outputs(&self) -> &'static [DataType] {
+        &[DataType::Spectral]
     }
 
     fn process(&mut self, _params: &ProcessParams, _router: &dyn Router) {}

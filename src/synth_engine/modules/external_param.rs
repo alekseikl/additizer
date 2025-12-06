@@ -119,8 +119,8 @@ impl SynthModule for ExternalParam {
         &[]
     }
 
-    fn output_type(&self) -> DataType {
-        DataType::Scalar
+    fn outputs(&self) -> &'static [DataType] {
+        &[DataType::Scalar]
     }
 
     fn process(&mut self, _params: &ProcessParams, _router: &dyn Router) {

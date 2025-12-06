@@ -592,8 +592,8 @@ impl SynthEngine {
         }
     }
 
-    fn data_types_compatible(src: DataType, dst: DataType) -> bool {
-        (src == dst) || (src == DataType::Scalar && dst == DataType::Buffer)
+    fn data_types_compatible(src: &[DataType], dst: DataType) -> bool {
+        src.contains(&dst) || (dst == DataType::Buffer && src.contains(&DataType::Scalar))
     }
 
     fn can_be_linked_with_output(&self, src: &ModuleId, dst: &ModuleInput) -> Result<(), String> {
@@ -602,7 +602,7 @@ impl SynthEngine {
         };
 
         let is_compatible = dst.input_type == Input::Audio
-            && Self::data_types_compatible(src_module.output_type(), DataType::Buffer);
+            && Self::data_types_compatible(src_module.outputs(), DataType::Buffer);
 
         if !is_compatible {
             return Err("Data types mismatch.".to_string());
@@ -622,11 +622,11 @@ impl SynthEngine {
             return Err("Invalid node.".to_string());
         };
 
-        let src_data_type = src_module.output_type();
+        let src_data_types = src_module.outputs();
 
         let is_compatible = dst_module.inputs().iter().any(|input_info| {
             input_info.input == dst.input_type
-                && Self::data_types_compatible(src_data_type, input_info.data_type)
+                && Self::data_types_compatible(src_data_types, input_info.data_type)
         });
 
         if !is_compatible {
@@ -746,7 +746,7 @@ impl SynthEngine {
             .filter_map(|module| module.as_deref())
             .filter(|module| {
                 module.id() != input.module_id
-                    && Self::data_types_compatible(module.output_type(), input_info.data_type)
+                    && Self::data_types_compatible(module.outputs(), input_info.data_type)
                     && !self.is_connected_to_source(module.id(), input.module_id)
             })
             .map(|module| AvailableInputSourceUI {
@@ -901,7 +901,7 @@ impl Router for SynthEngine {
             && let Some(first) = sources.first()
             && first.modulation == StereoSample::ONE
             && let Some(module) = get_module!(self, &first.src)
-            && module.output_type() == DataType::Buffer
+            && module.outputs().contains(&DataType::Buffer)
         {
             return Some(module.get_buffer_output(voice_idx, channel_idx));
         }
@@ -910,13 +910,13 @@ impl Router for SynthEngine {
 
         let modules = sources.iter().filter_map(|source| {
             get_module!(self, &source.src)
-                .map(|module| (module, source.modulation, module.output_type()))
+                .map(|module| (module, source.modulation, module.outputs()))
         });
 
-        for (mod_idx, (module, modulation, data_type)) in modules.enumerate() {
+        for (mod_idx, (module, modulation, data_types)) in modules.enumerate() {
             let mod_amount = modulation[channel_idx];
 
-            if data_type == DataType::Buffer {
+            if data_types.contains(&DataType::Buffer) {
                 let buff = module.get_buffer_output(voice_idx, channel_idx);
 
                 fill_or_append_buffer_slice(

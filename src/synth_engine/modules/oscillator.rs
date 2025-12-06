@@ -490,8 +490,8 @@ impl SynthModule for Oscillator {
         INPUTS
     }
 
-    fn output_type(&self) -> DataType {
-        DataType::Buffer
+    fn outputs(&self) -> &'static [DataType] {
+        &[DataType::Buffer]
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {

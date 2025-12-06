@@ -206,8 +206,8 @@ impl SynthModule for SpectralFilter {
         INPUTS
     }
 
-    fn output_type(&self) -> DataType {
-        DataType::Spectral
+    fn outputs(&self) -> &'static [DataType] {
+        &[DataType::Spectral]
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {

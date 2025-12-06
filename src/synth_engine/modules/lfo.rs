@@ -254,8 +254,8 @@ impl SynthModule for Lfo {
         INPUTS
     }
 
-    fn output_type(&self) -> DataType {
-        DataType::Scalar
+    fn outputs(&self) -> &'static [DataType] {
+        &[DataType::Scalar]
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
