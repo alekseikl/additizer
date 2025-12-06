@@ -1,13 +1,18 @@
 use std::any::Any;
 
-use crate::synth_engine::{
-    StereoSample,
-    buffer::{Buffer, ONES_BUFFER, ZEROES_BUFFER, make_zero_buffer},
-    routing::{
-        DataType, Input, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, Router,
+use crate::{
+    synth_engine::{
+        StereoSample,
+        buffer::{Buffer, ONES_BUFFER, ZEROES_BUFFER, make_zero_buffer},
+        routing::{
+            DataType, Input, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, Router,
+        },
+        synth_module::{
+            InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, SynthModule, VoiceAlive,
+        },
+        types::Sample,
     },
-    synth_module::{InputInfo, ModuleConfigBox, ProcessParams, SynthModule},
-    types::Sample,
+    utils::from_ms,
 };
 use itertools::izip;
 use serde::{Deserialize, Serialize};
@@ -35,12 +40,18 @@ pub struct AmplifierUIData {
 }
 
 struct Voice {
+    killed: bool,
+    killed_output_power: Sample,
+    killed_level: Sample,
     output: Buffer,
 }
 
 impl Voice {
     pub fn new() -> Self {
         Self {
+            killed: false,
+            killed_level: 0.0,
+            killed_output_power: 0.0,
             output: make_zero_buffer(),
         }
     }
@@ -159,10 +170,26 @@ impl Amplifier {
             )
             .unwrap_or(&ONES_BUFFER);
 
-        for (out, input, modulation, _) in
-            izip!(&mut voice.output, input, level_mod, 0..params.samples)
-        {
+        for (out, input, modulation) in izip!(
+            voice.output.iter_mut().take(params.samples),
+            input,
+            level_mod
+        ) {
             *out = input * channel.level * modulation;
+        }
+
+        if voice.killed {
+            let base = (0.00673795 as Sample).powf((params.sample_rate * from_ms(30.0)).recip());
+            let mut sum = 0.0;
+
+            for out in voice.output.iter_mut().take(params.samples) {
+                voice.killed_level *= base;
+                *out *= voice.killed_level;
+                sum += *out * *out;
+            }
+
+            voice.killed_output_power =
+                (voice.killed_output_power + sum) / (params.samples + 1) as Sample;
         }
     }
 }
@@ -196,6 +223,34 @@ impl SynthModule for Amplifier {
 
     fn output_type(&self) -> DataType {
         DataType::Buffer
+    }
+
+    fn note_on(&mut self, params: &NoteOnParams) {
+        for channel in &mut self.channels {
+            let voice = &mut channel.voices[params.voice_idx];
+
+            voice.killed = false;
+            voice.killed_level = 1.0;
+            voice.killed_output_power = 1.0;
+        }
+    }
+
+    fn kill_voice(&mut self, voice_idx: usize) {
+        for channel in &mut self.channels {
+            channel.voices[voice_idx].killed = true;
+        }
+    }
+
+    fn poll_alive_voices(&self, alive_state: &mut [VoiceAlive]) {
+        const ALIVE_THRESHOLD: Sample = 0.00000001;
+
+        for voice_alive in alive_state.iter_mut().filter(|alive| alive.killed()) {
+            for channel in &self.channels {
+                voice_alive.mark_alive(
+                    channel.voices[voice_alive.index()].killed_output_power > ALIVE_THRESHOLD,
+                );
+            }
+        }
     }
 
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {

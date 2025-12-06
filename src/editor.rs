@@ -17,6 +17,7 @@ use crate::{
     },
     synth_engine::{
         Input, ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, SynthEngine, SynthModule,
+        VoiceOverride,
     },
 };
 
@@ -178,6 +179,15 @@ fn show_side_bar(
         });
 }
 
+impl VoiceOverride {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Kill => "Kill",
+            Self::Steal => "Steal",
+        }
+    }
+}
+
 fn show_right_bar(ui: &mut Ui, synth_engine: &mut SynthEngine) {
     let mut level = synth_engine.get_output_level();
 
@@ -212,6 +222,7 @@ fn show_params_ui(ui: &mut Ui, synth_engine: &mut SynthEngine) {
             let buffer_sizes = [16, 32, 64, 128];
             let mut voices = synth_engine.get_voices_num();
             let mut buffer_size = synth_engine.get_buffer_size();
+            let mut voice_override = synth_engine.get_voice_override();
 
             ui.label("Voices");
             if ui.add(Slider::new(&mut voices, 1..=16)).changed() {
@@ -219,8 +230,24 @@ fn show_params_ui(ui: &mut Ui, synth_engine: &mut SynthEngine) {
             }
             ui.end_row();
 
-            ui.label("Buffer Size");
+            let overrides = [VoiceOverride::Kill, VoiceOverride::Steal];
 
+            ui.label("Voice override");
+            ComboBox::from_id_salt("voice-override-select")
+                .selected_text(voice_override.label())
+                .show_ui(ui, |ui| {
+                    for vo in &overrides {
+                        if ui
+                            .selectable_value(&mut voice_override, *vo, vo.label())
+                            .clicked()
+                        {
+                            synth_engine.set_voice_override(*vo);
+                        }
+                    }
+                });
+            ui.end_row();
+
+            ui.label("Buffer Size");
             ComboBox::from_id_salt("buff-size-select")
                 .selected_text(format!("{} samples", buffer_size))
                 .show_ui(ui, |ui| {

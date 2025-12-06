@@ -9,18 +9,12 @@ use crate::{
         routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
         synth_module::{
             InputInfo, ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule,
-            VoiceRouter,
+            VoiceAlive, VoiceRouter,
         },
         types::{Sample, ScalarOutput},
     },
     utils::from_ms,
 };
-
-#[derive(Debug)]
-pub struct EnvelopeActivityState {
-    pub voice_idx: usize,
-    pub active: bool,
-}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct EnvelopeConfig {
@@ -380,19 +374,6 @@ impl Envelope {
     set_param_method!(set_sustain, sustain, *sustain);
     set_param_method!(set_release, release, *release);
 
-    pub fn check_activity(&self, activity: &mut [EnvelopeActivityState]) {
-        if self.keep_voice_alive {
-            for channel in &self.channels {
-                for voice_activity in activity.iter_mut() {
-                    let voice = &channel.voices[voice_activity.voice_idx];
-
-                    voice_activity.active = voice_activity.active
-                        || (!matches!(voice.stage, Stage::Done) || voice.triggered);
-                }
-            }
-        }
-    }
-
     fn process_voice(
         env: &ChannelParams,
         voice: &mut Voice,
@@ -515,6 +496,18 @@ impl SynthModule for Envelope {
     fn note_off(&mut self, params: &NoteOffParams) {
         for channel in &mut self.channels {
             Self::release_voice(&mut channel.voices[params.voice_idx]);
+        }
+    }
+
+    fn poll_alive_voices(&self, alive_state: &mut [VoiceAlive]) {
+        if self.keep_voice_alive {
+            for channel in &self.channels {
+                for voice_alive in alive_state.iter_mut().filter(|alive| !alive.killed()) {
+                    let voice = &channel.voices[voice_alive.index()];
+
+                    voice_alive.mark_alive(!matches!(voice.stage, Stage::Done) || voice.triggered);
+                }
+            }
         }
     }
 

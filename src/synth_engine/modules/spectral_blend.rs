@@ -89,8 +89,7 @@ impl SpectralBlend {
         let spectrum_from = router.spectral(Input::Spectrum, current);
         let spectrum_to = router.spectral(Input::SpectrumTo, current);
         let blend = (params.blend + router.scalar(Input::Blend, current)).clamp(0.0, 1.0);
-        let range = 0..SPECTRAL_BUFFER_SIZE - 1;
-        let output = &mut voice.output.advance()[range.clone()];
+        let output = &mut voice.output.advance()[..SPECTRAL_BUFFER_SIZE - 1];
 
         for (out, from, to) in izip!(output, spectrum_from, spectrum_to) {
             *out = from + (to - from) * blend;

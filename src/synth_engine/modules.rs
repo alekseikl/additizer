@@ -9,7 +9,7 @@ mod spectral_blend;
 mod spectral_filter;
 
 pub use amplifier::{Amplifier, AmplifierConfig};
-pub use envelope::{Envelope, EnvelopeActivityState, EnvelopeConfig, EnvelopeCurve};
+pub use envelope::{Envelope, EnvelopeConfig, EnvelopeCurve};
 pub use external_param::{ExternalParam, ExternalParamConfig, ExternalParamsBlock};
 pub use harmonic_editor::{HarmonicEditor, HarmonicEditorConfig};
 pub use lfo::{Lfo, LfoConfig, LfoShape};
