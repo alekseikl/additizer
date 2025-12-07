@@ -14,7 +14,7 @@ use topo_sort::{SortResults, TopoSort};
 use crate::synth_engine::{
     buffer::{
         Buffer, SpectralBuffer, ZEROES_BUFFER, append_buffer_slice, fill_or_append_buffer_slice,
-        make_zero_buffer,
+        zero_buffer,
     },
     config::{ModuleConfig, RoutingConfig},
     modules::{
@@ -106,7 +106,6 @@ pub struct SynthEngine {
     config: Arc<Config>,
     modules: HashMap<ModuleId, Option<Box<dyn SynthModule>>>,
     input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>>,
-    modules_to_execute: HashSet<ModuleId>,
     execution_order: Vec<ModuleId>,
     voices: [Voice; MAX_VOICES],
     external_params: Option<Arc<ExternalParamsBlock>>,
@@ -165,7 +164,6 @@ impl SynthEngine {
             config: Default::default(),
             modules: HashMap::new(),
             input_sources: HashMap::new(),
-            modules_to_execute: HashSet::new(),
             execution_order: Vec::new(),
             voices: Default::default(),
             external_params: None,
@@ -175,7 +173,7 @@ impl SynthEngine {
                 0.0,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             )),
-            tmp_output_buffer: Some(Box::new((make_zero_buffer(), make_zero_buffer()))),
+            tmp_output_buffer: Some(Box::new((zero_buffer(), zero_buffer()))),
         }
     }
 
@@ -672,7 +670,6 @@ impl SynthEngine {
         }
 
         self.input_sources = input_sources;
-        self.modules_to_execute = HashSet::from_iter(execution_order.iter().copied());
         self.execution_order = execution_order;
         Ok(())
     }

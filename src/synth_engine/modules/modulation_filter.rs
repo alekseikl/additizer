@@ -4,7 +4,7 @@ use std::any::Any;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleInput, ModuleType, Sample, SynthModule,
-    buffer::{Buffer, ZEROES_BUFFER, make_zero_buffer},
+    buffer::{Buffer, ZEROES_BUFFER, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
     synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams},
 };
@@ -48,7 +48,7 @@ impl Default for Voice {
         Self {
             filter: DirectForm1::new(coeffs),
             current_cutoff: -1.0,
-            output: make_zero_buffer(),
+            output: zero_buffer(),
         }
     }
 }
@@ -75,7 +75,7 @@ impl ModulationFilter {
             config,
             cutoff_frequency: 0.0,
             channels: Default::default(),
-            input_buffer: make_zero_buffer(),
+            input_buffer: zero_buffer(),
         };
 
         {

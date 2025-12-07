@@ -1,6 +1,6 @@
 use realfft::num_complex::Complex;
 
-use crate::synth_engine::buffer::{SpectralBuffer, make_zero_spectral_buffer};
+use crate::synth_engine::buffer::{SpectralBuffer, zero_spectral_buffer};
 
 pub type Sample = f32;
 pub type ComplexSample = Complex<Sample>;
@@ -34,7 +34,7 @@ impl Default for SpectralOutput {
     fn default() -> Self {
         Self {
             swapped: false,
-            output: [make_zero_spectral_buffer(), make_zero_spectral_buffer()],
+            output: [zero_spectral_buffer(), zero_spectral_buffer()],
         }
     }
 }

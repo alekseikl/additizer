@@ -7,9 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     synth_engine::{
         StereoSample,
-        buffer::{
-            Buffer, SpectralBuffer, WAVEFORM_BITS, make_zero_buffer, make_zero_spectral_buffer,
-        },
+        buffer::{Buffer, SpectralBuffer, WAVEFORM_BITS, zero_buffer, zero_spectral_buffer},
         phase::Phase,
         routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
         synth_module::{
@@ -105,7 +103,7 @@ impl Default for Voice {
             wave_buffers_swapped: false,
             triggered: false,
             phases: Default::default(),
-            output: make_zero_buffer(),
+            output: zero_buffer(),
             wave_buffers: (make_zero_wave_buffer(), make_zero_wave_buffer()),
         }
     }
@@ -189,12 +187,12 @@ impl Oscillator {
                 unison: 1,
                 reset_phase: false,
                 inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE),
-                tmp_spectral_buff: make_zero_spectral_buffer(),
-                scratch_buff: make_zero_spectral_buffer(),
-                level_mod_input: make_zero_buffer(),
-                pitch_shift_input: make_zero_buffer(),
-                phase_shift_input: make_zero_buffer(),
-                detune_mod_input: make_zero_buffer(),
+                tmp_spectral_buff: zero_spectral_buffer(),
+                scratch_buff: zero_spectral_buffer(),
+                level_mod_input: zero_buffer(),
+                pitch_shift_input: zero_buffer(),
+                phase_shift_input: zero_buffer(),
+                detune_mod_input: zero_buffer(),
             },
             channels: Default::default(),
         };

@@ -3,7 +3,7 @@ use std::any::Any;
 use crate::{
     synth_engine::{
         StereoSample,
-        buffer::{Buffer, ONES_BUFFER, ZEROES_BUFFER, make_zero_buffer},
+        buffer::{Buffer, ONES_BUFFER, ZEROES_BUFFER, zero_buffer},
         routing::{
             DataType, Input, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, Router,
         },
@@ -52,7 +52,7 @@ impl Voice {
             killed: false,
             killed_level: 0.0,
             killed_output_power: 0.0,
-            output: make_zero_buffer(),
+            output: zero_buffer(),
         }
     }
 }
@@ -97,8 +97,8 @@ impl Amplifier {
                 id,
                 label: format!("Amplifier {id}"),
                 config,
-                input: make_zero_buffer(),
-                level_mod_input: make_zero_buffer(),
+                input: zero_buffer(),
+                level_mod_input: zero_buffer(),
             },
             channels: Default::default(),
         };

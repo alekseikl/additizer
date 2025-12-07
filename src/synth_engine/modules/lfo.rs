@@ -1,8 +1,10 @@
+use itertools::izip;
 use serde::{Deserialize, Serialize};
 use std::{any::Any, f32};
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
+    buffer::{Buffer, zero_buffer},
     phase::Phase,
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
     synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
@@ -58,11 +60,24 @@ pub struct LfoConfig {
     channels: [ChannelParams; NUM_CHANNELS],
 }
 
-#[derive(Default)]
 struct Voice {
     phase: Phase,
     triggered: bool,
     output: ScalarOutput,
+    audio_phase: Phase,
+    audio_output: Buffer,
+}
+
+impl Default for Voice {
+    fn default() -> Self {
+        Self {
+            phase: Phase::ZERO,
+            triggered: false,
+            output: ScalarOutput::default(),
+            audio_phase: Phase::ZERO,
+            audio_output: zero_buffer(),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -71,11 +86,18 @@ struct Channel {
     voices: [Voice; MAX_VOICES],
 }
 
+struct InputBuffers {
+    frequency: Buffer,
+    phase_shift: Buffer,
+    skew: Buffer,
+}
+
 pub struct Lfo {
     id: ModuleId,
     label: String,
     params: Params,
     config: ModuleConfigBox<LfoConfig>,
+    inputs: InputBuffers,
     channels: [Channel; NUM_CHANNELS],
 }
 
@@ -112,6 +134,11 @@ impl Lfo {
                 bipolar: false,
                 reset_phase: false,
             },
+            inputs: InputBuffers {
+                frequency: zero_buffer(),
+                phase_shift: zero_buffer(),
+                skew: zero_buffer(),
+            },
             channels: Default::default(),
         };
 
@@ -146,7 +173,7 @@ impl Lfo {
         }
     }
 
-    set_param_method!(set_frequency, frequency, frequency.clamp(-32.0, 32.0));
+    set_param_method!(set_frequency, frequency, *frequency);
     set_param_method!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
     set_param_method!(set_skew, skew, skew.clamp(0.0, 1.0));
 
@@ -187,6 +214,19 @@ impl Lfo {
         }
     }
 
+    #[inline]
+    fn skew_arg(arg: Sample, skew: Sample) -> Sample {
+        if skew == 0.0 {
+            0.5 + 0.5 * arg
+        } else if skew == 1.0 {
+            0.5 * arg
+        } else if arg < skew {
+            arg * 0.5 / skew
+        } else {
+            0.5 + (arg - skew) * 0.5 / (1.0 - skew)
+        }
+    }
+
     fn process_voice(
         params: &Params,
         channel_params: &ChannelParams,
@@ -195,8 +235,7 @@ impl Lfo {
         t_step: Sample,
         router: &VoiceRouter,
     ) {
-        let frequency = (channel_params.frequency + router.scalar(Input::LowFrequency, current))
-            .clamp(-32.0, 32.0);
+        let frequency = channel_params.frequency + router.scalar(Input::LowFrequency, current);
 
         let phase_shift = (channel_params.phase_shift + router.scalar(Input::PhaseShift, current))
             .clamp(-1.0, 1.0);
@@ -204,18 +243,7 @@ impl Lfo {
         let skew = (channel_params.skew + router.scalar(Input::Skew, current)).clamp(0.0, 1.0);
 
         let arg = voice.phase.add_normalized(phase_shift).normalized();
-
-        let skewed_arg = if skew == 0.0 {
-            0.5 + 0.5 * arg
-        } else if skew == 1.0 {
-            0.5 * arg
-        } else if arg < skew {
-            arg * 0.5 / skew
-        } else {
-            0.5 + (arg - skew) * 0.5 / (1.0 - skew)
-        };
-
-        let mut value = Self::shape_function(params.shape)(skewed_arg);
+        let mut value = Self::shape_function(params.shape)(Self::skew_arg(arg, skew));
 
         if params.bipolar {
             value = value * 2.0 - 1.0;
@@ -223,6 +251,43 @@ impl Lfo {
 
         voice.output.advance(value);
         voice.phase.advance_normalized(t_step * frequency);
+    }
+
+    fn process_voice_buffer(
+        params: &Params,
+        channel_params: &ChannelParams,
+        process_params: &ProcessParams,
+        inputs: &mut InputBuffers,
+        voice: &mut Voice,
+        router: &VoiceRouter,
+    ) {
+        let frequency_mod = router.buffer(Input::LowFrequency, &mut inputs.frequency);
+        let phase_shift_mod = router.buffer(Input::PhaseShift, &mut inputs.phase_shift);
+        let skew_mod = router.buffer(Input::Skew, &mut inputs.skew);
+        let out = voice.audio_output.iter_mut().take(process_params.samples);
+
+        let shape_func = Self::shape_function(params.shape);
+        let freq_phase_mult = Phase::freq_phase_mult(process_params.sample_rate);
+
+        for (out, frequency_mod, phase_shift_mod, skew_mod) in
+            izip!(out, frequency_mod, phase_shift_mod, skew_mod)
+        {
+            let arg = voice
+                .audio_phase
+                .add_normalized(channel_params.phase_shift + phase_shift_mod)
+                .normalized();
+
+            *out = shape_func(Self::skew_arg(
+                arg,
+                (channel_params.skew + skew_mod).clamp(0.0, 1.0),
+            ));
+
+            if params.bipolar {
+                *out = *out * 2.0 - 1.0;
+            }
+
+            voice.audio_phase += (channel_params.frequency + frequency_mod) * freq_phase_mult;
+        }
     }
 }
 
@@ -255,7 +320,7 @@ impl SynthModule for Lfo {
     }
 
     fn outputs(&self) -> &'static [DataType] {
-        &[DataType::Scalar]
+        &[DataType::Scalar, DataType::Buffer]
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
@@ -266,6 +331,7 @@ impl SynthModule for Lfo {
 
             if params.reset || self.params.reset_phase {
                 voice.phase = Phase::ZERO;
+                voice.audio_phase = Phase::ZERO;
             }
         }
     }
@@ -289,11 +355,26 @@ impl SynthModule for Lfo {
                     voice.triggered = false;
                 }
                 Self::process_voice(&self.params, &channel.params, voice, true, t_step, &router);
+
+                Self::process_voice_buffer(
+                    &self.params,
+                    &channel.params,
+                    params,
+                    &mut self.inputs,
+                    voice,
+                    &router,
+                );
             }
         }
     }
 
-    fn get_scalar_output(&self, current: bool, voice_idx: usize, channel: usize) -> Sample {
-        self.channels[channel].voices[voice_idx].output.get(current)
+    fn get_buffer_output(&self, voice_idx: usize, channel_idx: usize) -> &Buffer {
+        &self.channels[channel_idx].voices[voice_idx].audio_output
+    }
+
+    fn get_scalar_output(&self, current: bool, voice_idx: usize, channel_idx: usize) -> Sample {
+        self.channels[channel_idx].voices[voice_idx]
+            .output
+            .get(current)
     }
 }
