@@ -17,20 +17,59 @@ use crate::{
 };
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct EnvelopeConfig {
-    label: Option<String>,
+pub struct Params {
     keep_voice_alive: bool,
-    channels: [ChannelParams; NUM_CHANNELS],
 }
 
-impl Default for EnvelopeConfig {
+impl Default for Params {
     fn default() -> Self {
         Self {
-            label: None,
             keep_voice_alive: true,
-            channels: Default::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelParams {
+    attack: Sample,
+    attack_curve: EnvelopeCurve,
+    hold: Sample,
+    decay: Sample,
+    decay_curve: EnvelopeCurve,
+    sustain: Sample,
+    release: Sample,
+    release_curve: EnvelopeCurve,
+}
+
+impl Default for ChannelParams {
+    fn default() -> Self {
+        Self {
+            attack: from_ms(10.0),
+            attack_curve: EnvelopeCurve::PowerIn {
+                full_range: true,
+                curvature: 0.3,
+            },
+            hold: 0.0,
+            decay: from_ms(200.0),
+            decay_curve: EnvelopeCurve::PowerOut {
+                full_range: true,
+                curvature: 0.2,
+            },
+            sustain: 1.0,
+            release: from_ms(300.0),
+            release_curve: EnvelopeCurve::PowerOut {
+                full_range: true,
+                curvature: 0.2,
+            },
+        }
+    }
+}
+
+#[derive(Default, Clone, Serialize, Deserialize)]
+pub struct EnvelopeConfig {
+    label: Option<String>,
+    params: Params,
+    channels: [ChannelParams; NUM_CHANNELS],
 }
 
 enum CurveResult {
@@ -219,42 +258,6 @@ impl Default for Voice {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChannelParams {
-    attack: Sample,
-    attack_curve: EnvelopeCurve,
-    hold: Sample,
-    decay: Sample,
-    decay_curve: EnvelopeCurve,
-    sustain: Sample,
-    release: Sample,
-    release_curve: EnvelopeCurve,
-}
-
-impl Default for ChannelParams {
-    fn default() -> Self {
-        Self {
-            attack: from_ms(10.0),
-            attack_curve: EnvelopeCurve::PowerIn {
-                full_range: true,
-                curvature: 0.3,
-            },
-            hold: 0.0,
-            decay: from_ms(200.0),
-            decay_curve: EnvelopeCurve::PowerOut {
-                full_range: true,
-                curvature: 0.2,
-            },
-            sustain: 1.0,
-            release: from_ms(300.0),
-            release_curve: EnvelopeCurve::PowerOut {
-                full_range: true,
-                curvature: 0.2,
-            },
-        }
-    }
-}
-
 #[derive(Default)]
 struct Channel {
     params: ChannelParams,
@@ -265,26 +268,8 @@ pub struct Envelope {
     id: ModuleId,
     label: String,
     config: ModuleConfigBox<EnvelopeConfig>,
-    keep_voice_alive: bool,
+    params: Params,
     channels: [Channel; NUM_CHANNELS],
-}
-
-macro_rules! set_param_method {
-    ($fn_name:ident, $param:ident, $transform:expr) => {
-        pub fn $fn_name(&mut self, $param: StereoSample) {
-            for (channel, $param) in self.channels.iter_mut().zip($param.iter()) {
-                channel.params.$param = $transform;
-            }
-
-            {
-                let mut cfg = self.config.lock();
-
-                for (cfg_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-                    cfg_channel.$param = channel.params.$param;
-                }
-            }
-        }
-    };
 }
 
 macro_rules! set_curve_method {
@@ -294,20 +279,12 @@ macro_rules! set_curve_method {
                 channel.params.$param = $param;
             }
 
-            {
-                let mut cfg = self.config.lock();
+            let mut cfg = self.config.lock();
 
-                for channel in &mut cfg.channels {
-                    channel.$param = $param;
-                }
+            for channel in &mut cfg.channels {
+                channel.$param = $param;
             }
         }
-    };
-}
-
-macro_rules! extract_param {
-    ($self:ident, $param:ident) => {
-        StereoSample::from_iter($self.channels.iter().map(|channel| channel.params.$param))
     };
 }
 
@@ -317,24 +294,11 @@ impl Envelope {
             id,
             label: format!("Envelope {id}"),
             config,
-            keep_voice_alive: true,
+            params: Params::default(),
             channels: Default::default(),
         };
 
-        {
-            let cfg = env.config.lock();
-
-            if let Some(label) = cfg.label.as_ref() {
-                env.label = label.clone();
-            }
-
-            for (channel, cfg_channel) in env.channels.iter_mut().zip(cfg.channels.iter()) {
-                channel.params = cfg_channel.clone();
-            }
-
-            env.keep_voice_alive = cfg.keep_voice_alive;
-        }
-
+        load_module_config!(env);
         env
     }
 
@@ -343,36 +307,29 @@ impl Envelope {
     pub fn get_ui(&self) -> EnvelopeUIData {
         EnvelopeUIData {
             label: self.label.clone(),
-            attack: extract_param!(self, attack),
+            attack: get_stereo_param!(self, attack),
             attack_curve: self.channels[0].params.attack_curve,
-            hold: extract_param!(self, hold),
-            decay: extract_param!(self, decay),
+            hold: get_stereo_param!(self, hold),
+            decay: get_stereo_param!(self, decay),
             decay_curve: self.channels[0].params.decay_curve,
-            sustain: extract_param!(self, sustain),
-            release: extract_param!(self, release),
+            sustain: get_stereo_param!(self, sustain),
+            release: get_stereo_param!(self, release),
             release_curve: self.channels[0].params.release_curve,
-            keep_voice_alive: self.keep_voice_alive,
+            keep_voice_alive: self.params.keep_voice_alive,
         }
     }
 
-    pub fn set_keep_voice_alive(&mut self, keep_alive: bool) {
-        self.keep_voice_alive = keep_alive;
-
-        {
-            let mut cfg = self.config.lock();
-            cfg.keep_voice_alive = keep_alive;
-        }
-    }
+    set_mono_param!(set_keep_voice_alive, keep_voice_alive, bool);
 
     set_curve_method!(set_attack_curve, attack_curve);
     set_curve_method!(set_decay_curve, decay_curve);
     set_curve_method!(set_release_curve, release_curve);
 
-    set_param_method!(set_attack, attack, *attack);
-    set_param_method!(set_hold, hold, *hold);
-    set_param_method!(set_decay, decay, *decay);
-    set_param_method!(set_sustain, sustain, *sustain);
-    set_param_method!(set_release, release, *release);
+    set_stereo_param!(set_attack, attack);
+    set_stereo_param!(set_hold, hold);
+    set_stereo_param!(set_decay, decay);
+    set_stereo_param!(set_sustain, sustain);
+    set_stereo_param!(set_release, release);
 
     fn process_voice(
         env: &ChannelParams,
@@ -500,7 +457,7 @@ impl SynthModule for Envelope {
     }
 
     fn poll_alive_voices(&self, alive_state: &mut [VoiceAlive]) {
-        if self.keep_voice_alive {
+        if self.params.keep_voice_alive {
             for channel in &self.channels {
                 for voice_alive in alive_state.iter_mut().filter(|alive| !alive.killed()) {
                     let voice = &channel.voices[voice_alive.index()];

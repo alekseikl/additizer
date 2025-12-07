@@ -3,12 +3,11 @@ use std::any::Any;
 use crate::{
     synth_engine::{
         StereoSample,
-        buffer::{Buffer, ONES_BUFFER, ZEROES_BUFFER, zero_buffer},
-        routing::{
-            DataType, Input, MAX_VOICES, ModuleId, ModuleInput, ModuleType, NUM_CHANNELS, Router,
-        },
+        buffer::{Buffer, ONES_BUFFER, zero_buffer},
+        routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
         synth_module::{
             InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, SynthModule, VoiceAlive,
+            VoiceRouter,
         },
         types::Sample,
     },
@@ -18,31 +17,34 @@ use itertools::izip;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct AmplifierConfigChannel {
+pub struct Params {
+    voice_kill_time: Sample,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            voice_kill_time: from_ms(30.0),
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ChannelParams {
     level: Sample,
 }
 
-impl Default for AmplifierConfigChannel {
+impl Default for ChannelParams {
     fn default() -> Self {
         Self { level: 1.0 }
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct AmplifierConfig {
     label: Option<String>,
-    voice_kill_time: Sample,
-    channels: [AmplifierConfigChannel; NUM_CHANNELS],
-}
-
-impl Default for AmplifierConfig {
-    fn default() -> Self {
-        Self {
-            label: None,
-            voice_kill_time: from_ms(30.0),
-            channels: Default::default(),
-        }
-    }
+    params: Params,
+    channels: [ChannelParams; NUM_CHANNELS],
 }
 
 pub struct AmplifierUIData {
@@ -75,62 +77,41 @@ impl Default for Voice {
     }
 }
 
+#[derive(Default)]
 struct Channel {
-    level: f32,
+    params: ChannelParams,
     voices: [Voice; MAX_VOICES],
 }
 
-impl Default for Channel {
-    fn default() -> Self {
-        Self {
-            level: 1.0,
-            voices: Default::default(),
-        }
-    }
-}
-
-struct Common {
-    id: ModuleId,
-    label: String,
-    voice_kill_time: Sample,
-    config: ModuleConfigBox<AmplifierConfig>,
+struct Buffers {
     input: Buffer,
     level_mod_input: Buffer,
 }
 
 pub struct Amplifier {
-    common: Common,
+    id: ModuleId,
+    label: String,
+    config: ModuleConfigBox<AmplifierConfig>,
+    params: Params,
+    buffers: Buffers,
     channels: [Channel; NUM_CHANNELS],
 }
 
 impl Amplifier {
     pub fn new(id: ModuleId, config: ModuleConfigBox<AmplifierConfig>) -> Self {
         let mut amp = Self {
-            common: Common {
-                id,
-                label: format!("Amplifier {id}"),
-                voice_kill_time: AmplifierConfig::default().voice_kill_time,
-                config,
+            id,
+            label: format!("Amplifier {id}"),
+            params: Params::default(),
+            config,
+            buffers: Buffers {
                 input: zero_buffer(),
                 level_mod_input: zero_buffer(),
             },
             channels: Default::default(),
         };
 
-        {
-            let cfg = amp.common.config.lock();
-
-            if let Some(label) = cfg.label.as_ref() {
-                amp.common.label = label.clone();
-            }
-
-            for (channel, cfg) in amp.channels.iter_mut().zip(cfg.channels.iter()) {
-                channel.level = cfg.level;
-            }
-
-            amp.common.voice_kill_time = cfg.voice_kill_time;
-        }
-
+        load_module_config!(amp);
         amp
     }
 
@@ -138,60 +119,30 @@ impl Amplifier {
 
     pub fn get_ui(&self) -> AmplifierUIData {
         AmplifierUIData {
-            label: self.common.label.clone(),
-            level: StereoSample::from_iter(self.channels.iter().map(|channel| channel.level)),
-            voice_kill_time: self.common.voice_kill_time,
+            label: self.label.clone(),
+            level: get_stereo_param!(self, level),
+            voice_kill_time: self.params.voice_kill_time,
         }
     }
 
-    pub fn set_level(&mut self, level: StereoSample) {
-        for (chan, value) in self.channels.iter_mut().zip(level.iter()) {
-            chan.level = *value;
-        }
-
-        let mut cfg = self.common.config.lock();
-
-        for (chan, value) in cfg.channels.iter_mut().zip(level.iter()) {
-            chan.level = *value;
-        }
-    }
-
-    pub fn set_voice_kill_time(&mut self, kill_time: Sample) {
-        self.common.voice_kill_time = kill_time;
-        self.common.config.lock().voice_kill_time = kill_time;
-    }
+    set_mono_param!(set_voice_kill_time, voice_kill_time, Sample);
+    set_stereo_param!(set_level, level);
 
     fn process_channel_voice(
-        common: &mut Common,
-        channel: &mut Channel,
-        params: &ProcessParams,
-        router: &dyn Router,
-        voice_idx: usize,
-        channel_idx: usize,
+        params: &Params,
+        channel: &ChannelParams,
+        sample_rate: Sample,
+        voice: &mut Voice,
+        buffers: &mut Buffers,
+        router: &VoiceRouter,
     ) {
-        let id = common.id;
-        let voice = &mut channel.voices[voice_idx];
-        let input = router
-            .get_input(
-                ModuleInput::new(Input::Audio, id),
-                params.samples,
-                voice_idx,
-                channel_idx,
-                &mut common.input,
-            )
-            .unwrap_or(&ZEROES_BUFFER);
+        let input = router.buffer(Input::Audio, &mut buffers.input);
         let level_mod = router
-            .get_input(
-                ModuleInput::new(Input::Level, id),
-                params.samples,
-                voice_idx,
-                channel_idx,
-                &mut common.level_mod_input,
-            )
+            .buffer_opt(Input::Level, &mut buffers.level_mod_input)
             .unwrap_or(&ONES_BUFFER);
 
         for (out, input, modulation) in izip!(
-            voice.output.iter_mut().take(params.samples),
+            voice.output.iter_mut().take(router.samples),
             input,
             level_mod
         ) {
@@ -199,34 +150,33 @@ impl Amplifier {
         }
 
         if voice.killed {
-            let base =
-                (0.00673795 as Sample).powf((params.sample_rate * common.voice_kill_time).recip());
+            let base = (0.00673795 as Sample).powf((sample_rate * params.voice_kill_time).recip());
             let mut sum = 0.0;
 
-            for out in voice.output.iter_mut().take(params.samples) {
+            for out in voice.output.iter_mut().take(router.samples) {
                 voice.killed_level *= base;
                 *out *= voice.killed_level;
                 sum += *out * *out;
             }
 
             voice.killed_output_power =
-                (voice.killed_output_power + sum) / (params.samples + 1) as Sample;
+                (voice.killed_output_power + sum) / (router.samples + 1) as Sample;
         }
     }
 }
 
 impl SynthModule for Amplifier {
     fn id(&self) -> ModuleId {
-        self.common.id
+        self.id
     }
 
     fn label(&self) -> String {
-        self.common.label.clone()
+        self.label.clone()
     }
 
     fn set_label(&mut self, label: String) {
-        self.common.label = label.clone();
-        self.common.config.lock().label = Some(label);
+        self.label = label.clone();
+        self.config.lock().label = Some(label);
     }
 
     fn module_type(&self) -> ModuleType {
@@ -274,16 +224,25 @@ impl SynthModule for Amplifier {
         }
     }
 
-    fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
+    fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
-            for voice_idx in params.active_voices {
-                Self::process_channel_voice(
-                    &mut self.common,
-                    channel,
-                    params,
+            for voice_idx in process_params.active_voices {
+                let router = VoiceRouter {
                     router,
-                    *voice_idx,
+                    module_id: self.id,
+                    samples: process_params.samples,
+                    voice_idx: *voice_idx,
                     channel_idx,
+                };
+                let voice = &mut channel.voices[*voice_idx];
+
+                Self::process_channel_voice(
+                    &self.params,
+                    &channel.params,
+                    process_params.sample_rate,
+                    voice,
+                    &mut self.buffers,
+                    &router,
                 );
             }
         }

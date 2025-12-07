@@ -131,16 +131,18 @@ pub struct VoiceRouter<'a> {
 }
 
 impl<'a> VoiceRouter<'a> {
+    pub fn buffer_opt(&'a self, input: Input, buff: &'a mut Buffer) -> Option<&'a Buffer> {
+        self.router.get_input(
+            ModuleInput::new(input, self.module_id),
+            self.samples,
+            self.voice_idx,
+            self.channel_idx,
+            buff,
+        )
+    }
+
     pub fn buffer(&'a self, input: Input, buff: &'a mut Buffer) -> &'a Buffer {
-        self.router
-            .get_input(
-                ModuleInput::new(input, self.module_id),
-                self.samples,
-                self.voice_idx,
-                self.channel_idx,
-                buff,
-            )
-            .unwrap_or(&ZEROES_BUFFER)
+        self.buffer_opt(input, buff).unwrap_or(&ZEROES_BUFFER)
     }
 
     pub fn spectral(&self, input: Input, current: bool) -> &SpectralBuffer {
@@ -185,7 +187,25 @@ macro_rules! gen_downcast_methods {
     };
 }
 
-macro_rules! set_module_param_method {
+macro_rules! set_mono_param {
+    ($fn_name:ident, $param:ident, $type:ty) => {
+        pub fn $fn_name(&mut self, $param: $type) {
+            self.params.$param = $param;
+            self.config.lock().params.$param = self.params.$param;
+        }
+    };
+    ($fn_name:ident, $param:ident, $type:ty, $transform:expr) => {
+        pub fn $fn_name(&mut self, $param: $type) {
+            self.params.$param = $transform;
+            self.config.lock().params.$param = self.params.$param;
+        }
+    };
+}
+
+macro_rules! set_stereo_param {
+    ($fn_name:ident, $param:ident) => {
+        set_stereo_param!($fn_name, $param, *$param);
+    };
     ($fn_name:ident, $param:ident, $transform:expr) => {
         pub fn $fn_name(&mut self, $param: StereoSample) {
             for (channel, $param) in self.channels.iter_mut().zip($param.iter()) {
@@ -201,8 +221,38 @@ macro_rules! set_module_param_method {
     };
 }
 
-macro_rules! extract_module_param {
+macro_rules! get_stereo_param {
     ($self:ident, $param:ident) => {
         StereoSample::from_iter($self.channels.iter().map(|channel| channel.params.$param))
     };
+}
+
+macro_rules! load_module_config {
+    ($self:ident) => {{
+        let cfg = $self.config.lock();
+
+        if let Some(label) = cfg.label.as_ref() {
+            $self.label = label.clone();
+        }
+
+        for (channel, cfg_channel) in $self.channels.iter_mut().zip(cfg.channels.iter()) {
+            channel.params = cfg_channel.clone();
+        }
+
+        $self.params = cfg.params.clone();
+    }};
+}
+
+macro_rules! load_module_config_no_params {
+    ($self:ident) => {{
+        let cfg = $self.config.lock();
+
+        if let Some(label) = cfg.label.as_ref() {
+            $self.label = label.clone();
+        }
+
+        for (channel, cfg_channel) in $self.channels.iter_mut().zip(cfg.channels.iter()) {
+            channel.params = cfg_channel.clone();
+        }
+    }};
 }

@@ -12,13 +12,18 @@ use crate::synth_engine::{
     types::{ComplexSample, Sample, SpectralOutput},
 };
 
+#[derive(Default, Clone, Serialize, Deserialize)]
+pub struct Params {
+    four_pole: bool,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
-pub struct SpectralFilterConfigChannel {
-    cutoff: Sample,
+pub struct ChannelParams {
+    cutoff: Sample, //Cutoff octave
     q: Sample,
 }
 
-impl Default for SpectralFilterConfigChannel {
+impl Default for ChannelParams {
     fn default() -> Self {
         Self {
             cutoff: 1.0,
@@ -30,8 +35,8 @@ impl Default for SpectralFilterConfigChannel {
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct SpectralFilterConfig {
     label: Option<String>,
-    channels: [SpectralFilterConfigChannel; NUM_CHANNELS],
-    four_pole: bool,
+    params: Params,
+    channels: [ChannelParams; NUM_CHANNELS],
 }
 
 pub struct SpectralFilterUIData {
@@ -47,20 +52,6 @@ struct Voice {
     output: SpectralOutput,
 }
 
-struct ChannelParams {
-    cutoff: Sample, //Cutoff octave
-    q: Sample,
-}
-
-impl Default for ChannelParams {
-    fn default() -> Self {
-        Self {
-            cutoff: 1.0,
-            q: 0.7,
-        }
-    }
-}
-
 #[derive(Default)]
 struct Channel {
     params: ChannelParams,
@@ -71,31 +62,8 @@ pub struct SpectralFilter {
     id: ModuleId,
     label: String,
     config: ModuleConfigBox<SpectralFilterConfig>,
-    four_pole: bool,
+    params: Params,
     channels: [Channel; NUM_CHANNELS],
-}
-
-macro_rules! set_param_method {
-    ($fn_name:ident, $param:ident, $transform:expr) => {
-        pub fn $fn_name(&mut self, $param: StereoSample) {
-            for (channel, $param) in self.channels.iter_mut().zip($param.iter()) {
-                channel.params.$param = $transform;
-            }
-
-            {
-                let mut cfg = self.config.lock();
-                for (config_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-                    config_channel.$param = channel.params.$param;
-                }
-            }
-        }
-    };
-}
-
-macro_rules! extract_param {
-    ($self:ident, $param:ident) => {
-        StereoSample::from_iter($self.channels.iter().map(|channel| channel.params.$param))
-    };
 }
 
 impl SpectralFilter {
@@ -104,25 +72,11 @@ impl SpectralFilter {
             id,
             label: format!("Filter {id}"),
             config,
-            four_pole: false,
+            params: Params::default(),
             channels: Default::default(),
         };
 
-        {
-            let cfg = filter.config.lock();
-
-            if let Some(label) = cfg.label.as_ref() {
-                filter.label = label.clone();
-            }
-
-            for (channel, cfg_channel) in filter.channels.iter_mut().zip(cfg.channels.iter()) {
-                channel.params.cutoff = cfg_channel.cutoff;
-                channel.params.q = cfg_channel.q;
-            }
-
-            filter.four_pole = cfg.four_pole;
-        }
-
+        load_module_config!(filter);
         filter
     }
 
@@ -131,19 +85,16 @@ impl SpectralFilter {
     pub fn get_ui(&self) -> SpectralFilterUIData {
         SpectralFilterUIData {
             label: self.label.clone(),
-            cutoff: extract_param!(self, cutoff),
-            q: extract_param!(self, q),
-            four_pole: self.four_pole,
+            cutoff: get_stereo_param!(self, cutoff),
+            q: get_stereo_param!(self, q),
+            four_pole: self.params.four_pole,
         }
     }
 
-    pub fn set_four_pole(&mut self, four_pole: bool) {
-        self.four_pole = four_pole;
-        self.config.lock().four_pole = four_pole;
-    }
+    set_mono_param!(set_four_pole, four_pole, bool);
 
-    set_param_method!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
-    set_param_method!(set_q, q, q.clamp(0.1, 10.0));
+    set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
+    set_stereo_param!(set_q, q, q.clamp(0.1, 10.0));
 
     fn process_voice(
         four_pole: bool,
@@ -231,10 +182,10 @@ impl SynthModule for SpectralFilter {
                 };
 
                 if voice.triggered {
-                    Self::process_voice(self.four_pole, false, params, voice, &router);
+                    Self::process_voice(self.params.four_pole, false, params, voice, &router);
                     voice.triggered = false;
                 }
-                Self::process_voice(self.four_pole, true, params, voice, &router);
+                Self::process_voice(self.params.four_pole, true, params, voice, &router);
             }
         }
     }

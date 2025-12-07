@@ -103,28 +103,6 @@ pub struct Lfo {
     channels: [Channel; NUM_CHANNELS],
 }
 
-macro_rules! set_param_method {
-    ($fn_name:ident, $param:ident, $transform:expr) => {
-        pub fn $fn_name(&mut self, $param: StereoSample) {
-            for (channel, $param) in self.channels.iter_mut().zip($param.iter()) {
-                channel.params.$param = $transform;
-            }
-
-            let mut cfg = self.config.lock();
-
-            for (cfg_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-                cfg_channel.$param = channel.params.$param;
-            }
-        }
-    };
-}
-
-macro_rules! extract_param {
-    ($self:ident, $param:ident) => {
-        StereoSample::from_iter($self.channels.iter().map(|channel| channel.params.$param))
-    };
-}
-
 impl Lfo {
     pub fn new(id: ModuleId, config: ModuleConfigBox<LfoConfig>) -> Self {
         let mut lfo = Self {
@@ -140,20 +118,7 @@ impl Lfo {
             channels: Default::default(),
         };
 
-        {
-            let cfg = lfo.config.lock();
-
-            if let Some(label) = cfg.label.as_ref() {
-                lfo.label = label.clone();
-            }
-
-            for (channel, cfg_channel) in lfo.channels.iter_mut().zip(cfg.channels.iter()) {
-                channel.params = cfg_channel.clone();
-            }
-
-            lfo.params = cfg.params.clone();
-        }
-
+        load_module_config!(lfo);
         lfo
     }
 
@@ -165,36 +130,21 @@ impl Lfo {
             shape: self.params.shape,
             bipolar: self.params.bipolar,
             reset_phase: self.params.reset_phase,
-            frequency: extract_param!(self, frequency),
-            phase_shift: extract_param!(self, phase_shift),
-            skew: extract_param!(self, skew),
+            frequency: get_stereo_param!(self, frequency),
+            phase_shift: get_stereo_param!(self, phase_shift),
+            skew: get_stereo_param!(self, skew),
             produce_audio_rate: self.params.produce_audio_rate,
         }
     }
 
-    set_param_method!(set_frequency, frequency, *frequency);
-    set_param_method!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
-    set_param_method!(set_skew, skew, skew.clamp(0.0, 1.0));
+    set_mono_param!(set_shape, shape, LfoShape);
+    set_mono_param!(set_bipolar, bipolar, bool);
+    set_mono_param!(set_reset_phase, reset_phase, bool);
+    set_mono_param!(set_produce_audio_rate, produce_audio_rate, bool);
 
-    pub fn set_shape(&mut self, shape: LfoShape) {
-        self.params.shape = shape;
-        self.config.lock().params.shape = shape;
-    }
-
-    pub fn set_bipolar(&mut self, bipolar: bool) {
-        self.params.bipolar = bipolar;
-        self.config.lock().params.bipolar = bipolar;
-    }
-
-    pub fn set_reset_phase(&mut self, reset: bool) {
-        self.params.reset_phase = reset;
-        self.config.lock().params.reset_phase = reset;
-    }
-
-    pub fn set_produce_audio_rate(&mut self, produce_audio: bool) {
-        self.params.produce_audio_rate = produce_audio;
-        self.config.lock().params.produce_audio_rate = produce_audio;
-    }
+    set_stereo_param!(set_frequency, frequency);
+    set_stereo_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
+    set_stereo_param!(set_skew, skew, skew.clamp(0.0, 1.0));
 
     fn triangle(x: Sample) -> Sample {
         if x < 0.5 { 2.0 * x } else { 2.0 - 2.0 * x }

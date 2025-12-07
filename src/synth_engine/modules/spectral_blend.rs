@@ -54,18 +54,7 @@ impl SpectralBlend {
             channels: Default::default(),
         };
 
-        {
-            let cfg = blend.config.lock();
-
-            if let Some(label) = cfg.label.as_ref() {
-                blend.label = label.clone();
-            }
-
-            for (channel, cfg_channel) in blend.channels.iter_mut().zip(cfg.channels.iter()) {
-                channel.params = cfg_channel.clone();
-            }
-        }
-
+        load_module_config_no_params!(blend);
         blend
     }
 
@@ -74,11 +63,11 @@ impl SpectralBlend {
     pub fn get_ui(&self) -> SpectralBlendUIData {
         SpectralBlendUIData {
             label: self.label.clone(),
-            blend: extract_module_param!(self, blend),
+            blend: get_stereo_param!(self, blend),
         }
     }
 
-    set_module_param_method!(set_blend, blend, blend.clamp(0.0, 1.0));
+    set_stereo_param!(set_blend, blend, blend.clamp(0.0, 1.0));
 
     fn process_voice(
         current: bool,
