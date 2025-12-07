@@ -28,15 +28,27 @@ impl Default for AmplifierConfigChannel {
     }
 }
 
-#[derive(Clone, Default, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AmplifierConfig {
     label: Option<String>,
+    voice_kill_time: Sample,
     channels: [AmplifierConfigChannel; NUM_CHANNELS],
+}
+
+impl Default for AmplifierConfig {
+    fn default() -> Self {
+        Self {
+            label: None,
+            voice_kill_time: from_ms(30.0),
+            channels: Default::default(),
+        }
+    }
 }
 
 pub struct AmplifierUIData {
     pub label: String,
     pub level: StereoSample,
+    pub voice_kill_time: Sample,
 }
 
 struct Voice {
@@ -80,6 +92,7 @@ impl Default for Channel {
 struct Common {
     id: ModuleId,
     label: String,
+    voice_kill_time: Sample,
     config: ModuleConfigBox<AmplifierConfig>,
     input: Buffer,
     level_mod_input: Buffer,
@@ -96,6 +109,7 @@ impl Amplifier {
             common: Common {
                 id,
                 label: format!("Amplifier {id}"),
+                voice_kill_time: AmplifierConfig::default().voice_kill_time,
                 config,
                 input: zero_buffer(),
                 level_mod_input: zero_buffer(),
@@ -113,6 +127,8 @@ impl Amplifier {
             for (channel, cfg) in amp.channels.iter_mut().zip(cfg.channels.iter()) {
                 channel.level = cfg.level;
             }
+
+            amp.common.voice_kill_time = cfg.voice_kill_time;
         }
 
         amp
@@ -124,6 +140,7 @@ impl Amplifier {
         AmplifierUIData {
             label: self.common.label.clone(),
             level: StereoSample::from_iter(self.channels.iter().map(|channel| channel.level)),
+            voice_kill_time: self.common.voice_kill_time,
         }
     }
 
@@ -132,13 +149,16 @@ impl Amplifier {
             chan.level = *value;
         }
 
-        {
-            let mut cfg = self.common.config.lock();
+        let mut cfg = self.common.config.lock();
 
-            for (chan, value) in cfg.channels.iter_mut().zip(level.iter()) {
-                chan.level = *value;
-            }
+        for (chan, value) in cfg.channels.iter_mut().zip(level.iter()) {
+            chan.level = *value;
         }
+    }
+
+    pub fn set_voice_kill_time(&mut self, kill_time: Sample) {
+        self.common.voice_kill_time = kill_time;
+        self.common.config.lock().voice_kill_time = kill_time;
     }
 
     fn process_channel_voice(
@@ -179,7 +199,8 @@ impl Amplifier {
         }
 
         if voice.killed {
-            let base = (0.00673795 as Sample).powf((params.sample_rate * from_ms(30.0)).recip());
+            let base =
+                (0.00673795 as Sample).powf((params.sample_rate * common.voice_kill_time).recip());
             let mut sum = 0.0;
 
             for out in voice.output.iter_mut().take(params.samples) {
