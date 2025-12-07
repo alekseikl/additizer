@@ -41,6 +41,7 @@ pub struct Params {
     shape: LfoShape,
     bipolar: bool,
     reset_phase: bool,
+    produce_audio_rate: bool,
 }
 
 pub struct LfoUiData {
@@ -51,6 +52,7 @@ pub struct LfoUiData {
     pub frequency: StereoSample,
     pub phase_shift: StereoSample,
     pub skew: StereoSample,
+    pub produce_audio_rate: bool,
 }
 
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -129,11 +131,7 @@ impl Lfo {
             id,
             label: format!("LFO {id}"),
             config,
-            params: Params {
-                shape: LfoShape::Triangle,
-                bipolar: false,
-                reset_phase: false,
-            },
+            params: Params::default(),
             inputs: InputBuffers {
                 frequency: zero_buffer(),
                 phase_shift: zero_buffer(),
@@ -170,6 +168,7 @@ impl Lfo {
             frequency: extract_param!(self, frequency),
             phase_shift: extract_param!(self, phase_shift),
             skew: extract_param!(self, skew),
+            produce_audio_rate: self.params.produce_audio_rate,
         }
     }
 
@@ -190,6 +189,11 @@ impl Lfo {
     pub fn set_reset_phase(&mut self, reset: bool) {
         self.params.reset_phase = reset;
         self.config.lock().params.reset_phase = reset;
+    }
+
+    pub fn set_produce_audio_rate(&mut self, produce_audio: bool) {
+        self.params.produce_audio_rate = produce_audio;
+        self.config.lock().params.produce_audio_rate = produce_audio;
     }
 
     fn triangle(x: Sample) -> Sample {
@@ -227,6 +231,11 @@ impl Lfo {
         }
     }
 
+    #[inline]
+    fn apply_bipolar(value: Sample, bipolar: bool) -> Sample {
+        if bipolar { value * 2.0 - 1.0 } else { value }
+    }
+
     fn process_voice(
         params: &Params,
         channel_params: &ChannelParams,
@@ -243,13 +252,11 @@ impl Lfo {
         let skew = (channel_params.skew + router.scalar(Input::Skew, current)).clamp(0.0, 1.0);
 
         let arg = voice.phase.add_normalized(phase_shift).normalized();
-        let mut value = Self::shape_function(params.shape)(Self::skew_arg(arg, skew));
 
-        if params.bipolar {
-            value = value * 2.0 - 1.0;
-        }
-
-        voice.output.advance(value);
+        voice.output.advance(Self::apply_bipolar(
+            Self::shape_function(params.shape)(Self::skew_arg(arg, skew)),
+            params.bipolar,
+        ));
         voice.phase.advance_normalized(t_step * frequency);
     }
 
@@ -277,15 +284,13 @@ impl Lfo {
                 .add_normalized(channel_params.phase_shift + phase_shift_mod)
                 .normalized();
 
-            *out = shape_func(Self::skew_arg(
-                arg,
-                (channel_params.skew + skew_mod).clamp(0.0, 1.0),
-            ));
-
-            if params.bipolar {
-                *out = *out * 2.0 - 1.0;
-            }
-
+            *out = Self::apply_bipolar(
+                shape_func(Self::skew_arg(
+                    arg,
+                    (channel_params.skew + skew_mod).clamp(0.0, 1.0),
+                )),
+                params.bipolar,
+            );
             voice.audio_phase += (channel_params.frequency + frequency_mod) * freq_phase_mult;
         }
     }
@@ -320,7 +325,11 @@ impl SynthModule for Lfo {
     }
 
     fn outputs(&self) -> &'static [DataType] {
-        &[DataType::Scalar, DataType::Buffer]
+        if self.params.produce_audio_rate {
+            &[DataType::Scalar, DataType::Buffer]
+        } else {
+            &[DataType::Scalar]
+        }
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
@@ -356,14 +365,16 @@ impl SynthModule for Lfo {
                 }
                 Self::process_voice(&self.params, &channel.params, voice, true, t_step, &router);
 
-                Self::process_voice_buffer(
-                    &self.params,
-                    &channel.params,
-                    params,
-                    &mut self.inputs,
-                    voice,
-                    &router,
-                );
+                if self.params.produce_audio_rate {
+                    Self::process_voice_buffer(
+                        &self.params,
+                        &channel.params,
+                        params,
+                        &mut self.inputs,
+                        voice,
+                        &router,
+                    );
+                }
             }
         }
     }
