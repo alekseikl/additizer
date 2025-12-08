@@ -115,6 +115,7 @@ pub struct SynthEngine {
     config: Arc<Config>,
     modules: HashMap<ModuleId, Option<Box<dyn SynthModule>>>,
     input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>>,
+    needs_audio_rate: HashSet<ModuleId>,
     execution_order: Vec<ModuleId>,
     voices: [Voice; MAX_VOICES],
     external_params: Option<Arc<ExternalParamsBlock>>,
@@ -173,6 +174,7 @@ impl SynthEngine {
             config: Default::default(),
             modules: HashMap::new(),
             input_sources: HashMap::new(),
+            needs_audio_rate: HashSet::new(),
             execution_order: Vec::new(),
             voices: Default::default(),
             external_params: None,
@@ -578,10 +580,11 @@ impl SynthEngine {
             .map(|alive| alive.index())
             .collect();
 
-        let params = ProcessParams {
+        let mut params = ProcessParams {
             samples,
             sample_rate: self.sample_rate,
             buffer_t_step: samples as Sample / self.sample_rate,
+            needs_audio_rate: false,
             active_voices: &active_idx,
         };
 
@@ -589,6 +592,7 @@ impl SynthEngine {
             if let Some(module_box) = self.modules.get_mut(module_id)
                 && let Some(mut module) = module_box.take()
             {
+                params.needs_audio_rate = self.needs_audio_rate.contains(module_id);
                 module.process(&params, self);
                 self.modules.get_mut(module_id).unwrap().replace(module);
             }
@@ -689,6 +693,7 @@ impl SynthEngine {
     fn setup_routing(&mut self, links: &[ModuleLink]) -> Result<(), String> {
         let execution_order = Self::calc_execution_order(links)?;
         let mut input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>> = HashMap::new();
+        let mut needs_audio_rate: HashSet<ModuleId> = HashSet::new();
 
         for link in links {
             input_sources
@@ -698,9 +703,22 @@ impl SynthEngine {
                     src: link.src,
                     modulation: link.modulation,
                 });
+
+            if let Some(src_mod) = get_module!(self, &link.src)
+                && let Some(dst_mod) = get_module!(self, &link.dst.module_id)
+                && let Some(input_info) = dst_mod
+                    .inputs()
+                    .iter()
+                    .find(|ii| ii.input == link.dst.input_type)
+                && input_info.data_type == DataType::Buffer
+                && src_mod.outputs().contains(&DataType::Buffer)
+            {
+                needs_audio_rate.insert(link.src);
+            }
         }
 
         self.input_sources = input_sources;
+        self.needs_audio_rate = needs_audio_rate;
         self.execution_order = execution_order;
         Ok(())
     }

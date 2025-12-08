@@ -41,7 +41,6 @@ pub struct Params {
     shape: LfoShape,
     bipolar: bool,
     reset_phase: bool,
-    produce_audio_rate: bool,
 }
 
 pub struct LfoUiData {
@@ -52,7 +51,6 @@ pub struct LfoUiData {
     pub frequency: StereoSample,
     pub phase_shift: StereoSample,
     pub skew: StereoSample,
-    pub produce_audio_rate: bool,
 }
 
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -133,14 +131,12 @@ impl Lfo {
             frequency: get_stereo_param!(self, frequency),
             phase_shift: get_stereo_param!(self, phase_shift),
             skew: get_stereo_param!(self, skew),
-            produce_audio_rate: self.params.produce_audio_rate,
         }
     }
 
     set_mono_param!(set_shape, shape, LfoShape);
     set_mono_param!(set_bipolar, bipolar, bool);
     set_mono_param!(set_reset_phase, reset_phase, bool);
-    set_mono_param!(set_produce_audio_rate, produce_audio_rate, bool);
 
     set_stereo_param!(set_frequency, frequency);
     set_stereo_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
@@ -271,11 +267,7 @@ impl SynthModule for Lfo {
     }
 
     fn outputs(&self) -> &'static [DataType] {
-        if self.params.produce_audio_rate {
-            &[DataType::Scalar, DataType::Buffer]
-        } else {
-            &[DataType::Scalar]
-        }
+        &[DataType::Scalar, DataType::Buffer]
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
@@ -311,7 +303,7 @@ impl SynthModule for Lfo {
                 }
                 Self::process_voice(&self.params, &channel.params, voice, true, t_step, &router);
 
-                if self.params.produce_audio_rate {
+                if params.needs_audio_rate {
                     Self::process_voice_buffer(
                         &self.params,
                         &channel.params,

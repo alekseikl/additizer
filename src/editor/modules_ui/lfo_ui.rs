@@ -136,16 +136,6 @@ impl ModuleUI for LfoUi {
                     self.lfo(synth).set_reset_phase(ui_data.reset_phase);
                 }
                 ui.end_row();
-
-                ui.label("Produce audio rate");
-                if ui
-                    .add(Checkbox::without_text(&mut ui_data.produce_audio_rate))
-                    .changed()
-                {
-                    self.lfo(synth)
-                        .set_produce_audio_rate(ui_data.produce_audio_rate);
-                }
-                ui.end_row();
             });
 
         ui.add_space(40.0);
