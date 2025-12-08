@@ -222,14 +222,29 @@ impl Oscillator {
     }
 
     #[inline(always)]
-    fn get_interpolated_sample(wave_buff: &WaveformBuffer, idx: usize, t: Sample) -> Sample {
+    fn load_segment(wave_buffer: &WaveformBuffer, idx: usize) -> f32x4 {
+        let s = &wave_buffer[idx..idx + 4];
+
+        f32x4::new([s[0], s[1], s[2], s[3]])
+    }
+
+    #[inline(always)]
+    fn get_interpolated_sample(
+        wave_from: &WaveformBuffer,
+        wave_to: &WaveformBuffer,
+        buff_t: Sample,
+        idx: usize,
+        t: Sample,
+    ) -> Sample {
         const B0: f32x4 = f32x4::new([-1.0 / 2.0, 3.0 / 2.0, -3.0 / 2.0, 1.0 / 2.0]);
         const B1: f32x4 = f32x4::new([1.0, -5.0 / 2.0, 4.0 / 2.0, -1.0 / 2.0]);
         const B2: f32x4 = f32x4::new([-1.0 / 2.0, 0.0 / 2.0, 1.0 / 2.0, 0.0 / 2.0]);
         const B3: f32x4 = f32x4::new([0.0 / 2.0, 1.0, 0.0 / 2.0, 0.0 / 2.0]);
 
-        let s = &wave_buff[idx..idx + 4];
-        let c = f32x4::new([s[0], s[1], s[2], s[3]]);
+        let c_from = Self::load_segment(wave_from, idx);
+        let c_to = Self::load_segment(wave_to, idx);
+
+        let c = (c_to - c_from).mul_add(f32x4::splat(buff_t), c_from);
         let t = f32x4::splat(t);
 
         (c * B0)
@@ -285,9 +300,7 @@ impl Oscillator {
         let shifted_phase = *phase + phase_shift;
         let idx = shifted_phase.wave_index();
         let t = shifted_phase.wave_index_fraction();
-        let sample_from = Self::get_interpolated_sample(wave_from, idx, t);
-        let sample_to = Self::get_interpolated_sample(wave_to, idx, t);
-        let result = (sample_to - sample_from).mul_add(buff_t, sample_from);
+        let result = Self::get_interpolated_sample(wave_from, wave_to, buff_t, idx, t);
 
         *phase += octave_to_freq(octave) * freq_phase_mult;
 
