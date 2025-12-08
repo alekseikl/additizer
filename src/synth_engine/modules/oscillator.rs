@@ -3,6 +3,7 @@ use std::{any::Any, f32, sync::Arc};
 use itertools::izip;
 use realfft::{ComplexToReal, RealFftPlanner};
 use serde::{Deserialize, Serialize};
+use wide::f32x4;
 
 use crate::{
     synth_engine::{
@@ -17,7 +18,6 @@ use crate::{
     },
     utils::{note_to_octave, octave_to_freq, st_to_octave},
 };
-use uniform_cubic_splines::{CatmullRom, spline_segment};
 
 const WAVEFORM_SIZE: usize = 1 << WAVEFORM_BITS;
 const WAVEFORM_PAD_LEFT: usize = 1;
@@ -223,10 +223,20 @@ impl Oscillator {
 
     #[inline(always)]
     fn get_interpolated_sample(wave_buff: &WaveformBuffer, idx: usize, t: Sample) -> Sample {
-        spline_segment::<CatmullRom, _, _>(
-            t,
-            &wave_buff[idx..(idx + WAVEFORM_PAD_LEFT + WAVEFORM_PAD_RIGHT + 1)],
-        )
+        const B0: f32x4 = f32x4::new([-1.0 / 2.0, 3.0 / 2.0, -3.0 / 2.0, 1.0 / 2.0]);
+        const B1: f32x4 = f32x4::new([1.0, -5.0 / 2.0, 4.0 / 2.0, -1.0 / 2.0]);
+        const B2: f32x4 = f32x4::new([-1.0 / 2.0, 0.0 / 2.0, 1.0 / 2.0, 0.0 / 2.0]);
+        const B3: f32x4 = f32x4::new([0.0 / 2.0, 1.0, 0.0 / 2.0, 0.0 / 2.0]);
+
+        let s = &wave_buff[idx..idx + 4];
+        let c = f32x4::new([s[0], s[1], s[2], s[3]]);
+        let t = f32x4::splat(t);
+
+        (c * B0)
+            .mul_add(t, c * B1)
+            .mul_add(t, c * B2)
+            .mul_add(t, c * B3)
+            .reduce_add()
     }
 
     #[inline(always)]
@@ -277,7 +287,7 @@ impl Oscillator {
         let t = shifted_phase.wave_index_fraction();
         let sample_from = Self::get_interpolated_sample(wave_from, idx, t);
         let sample_to = Self::get_interpolated_sample(wave_to, idx, t);
-        let result = sample_from + (sample_to - sample_from) * buff_t;
+        let result = (sample_to - sample_from).mul_add(buff_t, sample_from);
 
         *phase += octave_to_freq(octave) * freq_phase_mult;
 
