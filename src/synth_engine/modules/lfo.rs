@@ -147,11 +147,11 @@ impl Lfo {
     set_stereo_param!(set_skew, skew, skew.clamp(0.0, 1.0));
 
     fn triangle(x: Sample) -> Sample {
-        if x < 0.5 { 2.0 * x } else { 2.0 - 2.0 * x }
+        2.0 * x.min(1.0 - x)
     }
 
     fn square(x: Sample) -> Sample {
-        if x < 0.5 { 1.0 } else { 0.0 }
+        Sample::from(x < 0.5)
     }
 
     fn sine(x: Sample) -> Sample {
@@ -170,20 +170,16 @@ impl Lfo {
 
     #[inline]
     fn skew_arg(arg: Sample, skew: Sample) -> Sample {
-        if skew == 0.0 {
-            0.5 + 0.5 * arg
-        } else if skew == 1.0 {
-            0.5 * arg
-        } else if arg < skew {
-            arg * 0.5 / skew
-        } else {
-            0.5 + (arg - skew) * 0.5 / (1.0 - skew)
-        }
+        let arg_less = arg < skew;
+
+        Sample::from(arg_less) * (0.5 * arg / skew.max(Sample::EPSILON))
+            + Sample::from(!arg_less)
+                * (0.5 + (arg - skew) * 0.5 / (1.0 - skew).max(Sample::EPSILON))
     }
 
     #[inline]
     fn apply_bipolar(value: Sample, bipolar: bool) -> Sample {
-        if bipolar { value * 2.0 - 1.0 } else { value }
+        Sample::from(bipolar) * value.mul_add(2.0, -1.0) + Sample::from(!bipolar) * value
     }
 
     fn process_voice(
