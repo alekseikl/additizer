@@ -220,13 +220,11 @@ fn show_params_ui(ui: &mut Ui, synth_engine: &mut SynthEngine) {
         .striped(true)
         .show(ui, |ui| {
             let buffer_sizes = [16, 32, 64, 128];
-            let mut voices = synth_engine.get_voices_num();
-            let mut buffer_size = synth_engine.get_buffer_size();
-            let mut voice_override = synth_engine.get_voice_override();
+            let mut ui_data = synth_engine.get_ui();
 
             ui.label("Voices");
-            if ui.add(Slider::new(&mut voices, 1..=16)).changed() {
-                synth_engine.set_num_voices(voices);
+            if ui.add(Slider::new(&mut ui_data.voices, 1..=16)).changed() {
+                synth_engine.set_num_voices(ui_data.voices);
             }
             ui.end_row();
 
@@ -234,11 +232,11 @@ fn show_params_ui(ui: &mut Ui, synth_engine: &mut SynthEngine) {
 
             ui.label("Voice override");
             ComboBox::from_id_salt("voice-override-select")
-                .selected_text(voice_override.label())
+                .selected_text(ui_data.voice_override.label())
                 .show_ui(ui, |ui| {
                     for vo in &overrides {
                         if ui
-                            .selectable_value(&mut voice_override, *vo, vo.label())
+                            .selectable_value(&mut ui_data.voice_override, *vo, vo.label())
                             .clicked()
                         {
                             synth_engine.set_voice_override(*vo);
@@ -247,13 +245,24 @@ fn show_params_ui(ui: &mut Ui, synth_engine: &mut SynthEngine) {
                 });
             ui.end_row();
 
+            ui.label("Voices state");
+            ui.label(format!(
+                "Playing: {}, Releasing: {}, Killing: {}",
+                ui_data.playing_voices, ui_data.releasing_voices, ui_data.killing_voices
+            ));
+            ui.end_row();
+
             ui.label("Buffer Size");
             ComboBox::from_id_salt("buff-size-select")
-                .selected_text(format!("{} samples", buffer_size))
+                .selected_text(format!("{} samples", ui_data.buffer_size))
                 .show_ui(ui, |ui| {
                     for sz in &buffer_sizes {
                         if ui
-                            .selectable_value(&mut buffer_size, *sz, format!("{} samples", sz))
+                            .selectable_value(
+                                &mut ui_data.buffer_size,
+                                *sz,
+                                format!("{} samples", sz),
+                            )
                             .clicked()
                         {
                             synth_engine.set_buffer_size(*sz);

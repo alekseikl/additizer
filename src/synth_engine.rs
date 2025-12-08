@@ -62,6 +62,15 @@ pub enum VoiceOverride {
     Steal,
 }
 
+pub struct SynthEngineUiData {
+    pub voices: usize,
+    pub buffer_size: usize,
+    pub voice_override: VoiceOverride,
+    pub playing_voices: usize,
+    pub releasing_voices: usize,
+    pub killing_voices: usize,
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub enum VoiceState {
     NoteOn,
@@ -198,8 +207,34 @@ impl SynthEngine {
         self.modules.is_empty()
     }
 
-    pub fn get_voices_num(&self) -> usize {
-        self.num_voices
+    pub fn get_ui(&self) -> SynthEngineUiData {
+        let mut ui_data = SynthEngineUiData {
+            voices: self.num_voices,
+            buffer_size: self.buffer_size,
+            voice_override: self.voice_override,
+            playing_voices: 0,
+            releasing_voices: 0,
+            killing_voices: 0,
+        };
+
+        for voice in &self.voices {
+            match voice.state {
+                VoiceState::NoteOn => {
+                    ui_data.playing_voices += 1;
+                }
+                VoiceState::Release => {
+                    ui_data.playing_voices += 1;
+                    ui_data.releasing_voices += 1;
+                }
+                VoiceState::Kill => {
+                    ui_data.playing_voices += 1;
+                    ui_data.killing_voices += 1;
+                }
+                VoiceState::Free => (),
+            }
+        }
+
+        ui_data
     }
 
     pub fn set_num_voices(&mut self, num_voices: usize) {
@@ -213,17 +248,13 @@ impl SynthEngine {
             .for_each(|v| v.state = VoiceState::Free);
     }
 
-    pub fn get_buffer_size(&self) -> usize {
+    pub fn buffer_size(&self) -> usize {
         self.buffer_size
     }
 
     pub fn set_buffer_size(&mut self, buffer_size: usize) {
         self.buffer_size = Self::clamp_buffer_size(buffer_size);
         self.config.routing.lock().buffer_size = self.buffer_size;
-    }
-
-    pub fn get_voice_override(&self) -> VoiceOverride {
-        self.voice_override
     }
 
     pub fn set_voice_override(&mut self, voice_override: VoiceOverride) {

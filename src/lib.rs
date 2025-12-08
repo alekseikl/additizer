@@ -150,7 +150,7 @@ impl Plugin for Additizer {
 
         assert_no_alloc::assert_no_alloc(|| {
             let total_samples = buffer.samples();
-            let desired_buffer_size = synth.get_buffer_size();
+            let desired_buffer_size = synth.buffer_size();
 
             let mut process =
                 |synth: &mut SynthEngine,
