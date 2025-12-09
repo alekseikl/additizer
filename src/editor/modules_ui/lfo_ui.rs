@@ -3,7 +3,7 @@ use egui_baseview::egui::{Checkbox, ComboBox, Grid, Ui};
 use crate::{
     editor::{
         ModuleUI, modulation_input::ModulationInput, module_label::ModuleLabel,
-        utils::confirm_module_removal,
+        stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
     synth_engine::{Input, Lfo, LfoShape, ModuleId, SynthEngine},
 };
@@ -116,6 +116,23 @@ impl ModuleUI for LfoUi {
                     .changed()
                 {
                     self.lfo(synth).set_phase_shift(ui_data.phase_shift);
+                }
+                ui.end_row();
+
+                ui.label("Smooth");
+                if ui
+                    .add(
+                        StereoSlider::new(&mut ui_data.smooth_time)
+                            .range(0.0..=0.1)
+                            .display_scale(1000.0)
+                            .default_value(0.0)
+                            .skew(1.2)
+                            .precision(1)
+                            .units(" ms"),
+                    )
+                    .changed()
+                {
+                    self.lfo(synth).set_smooth_time(ui_data.smooth_time);
                 }
                 ui.end_row();
 

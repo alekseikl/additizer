@@ -7,6 +7,7 @@ use crate::synth_engine::{
     buffer::{Buffer, zero_buffer},
     phase::Phase,
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
+    smoother::Smoother,
     synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
     types::ScalarOutput,
 };
@@ -24,6 +25,7 @@ pub struct ChannelParams {
     frequency: Sample,
     phase_shift: Sample,
     skew: Sample,
+    smooth_time: Sample,
 }
 
 impl Default for ChannelParams {
@@ -32,6 +34,7 @@ impl Default for ChannelParams {
             frequency: 1.0,
             phase_shift: 0.0,
             skew: 0.5,
+            smooth_time: 0.0,
         }
     }
 }
@@ -51,6 +54,7 @@ pub struct LfoUiData {
     pub frequency: StereoSample,
     pub phase_shift: StereoSample,
     pub skew: StereoSample,
+    pub smooth_time: StereoSample,
 }
 
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -65,6 +69,7 @@ struct Voice {
     triggered: bool,
     output: ScalarOutput,
     audio_phase: Phase,
+    audio_smoother: Smoother,
     audio_output: Buffer,
 }
 
@@ -75,6 +80,7 @@ impl Default for Voice {
             triggered: false,
             output: ScalarOutput::default(),
             audio_phase: Phase::ZERO,
+            audio_smoother: Smoother::default(),
             audio_output: zero_buffer(),
         }
     }
@@ -131,6 +137,7 @@ impl Lfo {
             frequency: get_stereo_param!(self, frequency),
             phase_shift: get_stereo_param!(self, phase_shift),
             skew: get_stereo_param!(self, skew),
+            smooth_time: get_stereo_param!(self, smooth_time),
         }
     }
 
@@ -141,6 +148,7 @@ impl Lfo {
     set_stereo_param!(set_frequency, frequency);
     set_stereo_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
     set_stereo_param!(set_skew, skew, skew.clamp(0.0, 1.0));
+    set_stereo_param!(set_smooth_time, smooth_time, smooth_time.max(0.0));
 
     fn triangle(x: Sample) -> Sample {
         2.0 * x.min(1.0 - x)
@@ -218,6 +226,10 @@ impl Lfo {
         let shape_func = Self::shape_function(params.shape);
         let freq_phase_mult = Phase::freq_phase_mult(process_params.sample_rate);
 
+        voice
+            .audio_smoother
+            .update(process_params.sample_rate, channel_params.smooth_time);
+
         for (out, frequency_mod, phase_shift_mod, skew_mod) in
             izip!(out, frequency_mod, phase_shift_mod, skew_mod)
         {
@@ -226,13 +238,15 @@ impl Lfo {
                 .add_normalized(channel_params.phase_shift + phase_shift_mod)
                 .normalized();
 
-            *out = Self::apply_bipolar(
+            let sample = Self::apply_bipolar(
                 shape_func(Self::skew_arg(
                     arg,
                     (channel_params.skew + skew_mod).clamp(0.0, 1.0),
                 )),
                 params.bipolar,
             );
+
+            *out = voice.audio_smoother.tick(sample);
             voice.audio_phase += (channel_params.frequency + frequency_mod) * freq_phase_mult;
         }
     }
@@ -279,6 +293,7 @@ impl SynthModule for Lfo {
             if params.reset || self.params.reset_phase {
                 voice.phase = Phase::ZERO;
                 voice.audio_phase = Phase::ZERO;
+                voice.audio_smoother.reset(0.0);
             }
         }
     }

@@ -3,7 +3,7 @@ use egui_baseview::egui::{Checkbox, ComboBox, Grid, Slider, Ui};
 use crate::{
     editor::{
         ModuleUI, modulation_input::ModulationInput, module_label::ModuleLabel,
-        utils::confirm_module_removal,
+        stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
     synth_engine::{Envelope, EnvelopeCurve, Input, ModuleId, Sample, SynthEngine},
     utils::from_ms,
@@ -247,6 +247,23 @@ impl ModuleUI for EnvelopeUI {
                 if self.add_curve(ui, "Release Curve", &mut ui_data.release_curve) {
                     self.env(synth).set_release_curve(ui_data.release_curve);
                 }
+
+                ui.label("Smooth");
+                if ui
+                    .add(
+                        StereoSlider::new(&mut ui_data.smooth)
+                            .range(0.0..=0.1)
+                            .display_scale(1000.0)
+                            .default_value(0.0)
+                            .skew(1.2)
+                            .precision(1)
+                            .units(" ms"),
+                    )
+                    .changed()
+                {
+                    self.env(synth).set_smooth(ui_data.smooth);
+                }
+                ui.end_row();
 
                 ui.label("Keep voice alive");
                 if ui

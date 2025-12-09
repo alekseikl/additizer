@@ -5,8 +5,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     synth_engine::{
         StereoSample,
+        buffer::{Buffer, zero_buffer},
         curves::{CurveFunction, ExponentialIn, ExponentialOut, PowerIn, PowerOut},
         routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
+        smoother::Smoother,
         synth_module::{
             InputInfo, ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule,
             VoiceAlive, VoiceRouter,
@@ -39,6 +41,7 @@ pub struct ChannelParams {
     sustain: Sample,
     release: Sample,
     release_curve: EnvelopeCurve,
+    smooth: Sample,
 }
 
 impl Default for ChannelParams {
@@ -61,6 +64,7 @@ impl Default for ChannelParams {
                 full_range: true,
                 curvature: 0.2,
             },
+            smooth: 0.0,
         }
     }
 }
@@ -228,6 +232,7 @@ pub struct EnvelopeUIData {
     pub sustain: StereoSample,
     pub release: StereoSample,
     pub release_curve: EnvelopeCurve,
+    pub smooth: StereoSample,
     pub keep_voice_alive: bool,
 }
 
@@ -245,6 +250,8 @@ struct Voice {
     triggered: bool,
     released: bool,
     output: ScalarOutput,
+    audio_smoother: Smoother,
+    audio_output: Buffer,
 }
 
 impl Default for Voice {
@@ -254,6 +261,8 @@ impl Default for Voice {
             triggered: false,
             released: false,
             output: ScalarOutput::default(),
+            audio_smoother: Smoother::default(),
+            audio_output: zero_buffer(),
         }
     }
 }
@@ -315,6 +324,7 @@ impl Envelope {
             sustain: get_stereo_param!(self, sustain),
             release: get_stereo_param!(self, release),
             release_curve: self.channels[0].params.release_curve,
+            smooth: get_stereo_param!(self, smooth),
             keep_voice_alive: self.params.keep_voice_alive,
         }
     }
@@ -330,6 +340,7 @@ impl Envelope {
     set_stereo_param!(set_decay, decay);
     set_stereo_param!(set_sustain, sustain);
     set_stereo_param!(set_release, release);
+    set_stereo_param!(set_smooth, smooth);
 
     fn process_voice(
         env: &ChannelParams,
@@ -338,10 +349,16 @@ impl Envelope {
         t_step: Sample,
         router: &VoiceRouter,
     ) {
-        let attack_time = || (env.attack + router.scalar(Input::Attack, current)).max(0.0);
-        let hold_time = || (env.hold + router.scalar(Input::Hold, current)).max(0.0);
-        let decay_time = || (env.decay + router.scalar(Input::Decay, current)).max(0.0);
-        let release_time = || (env.release + router.scalar(Input::Release, current)).max(0.0);
+        fn snap(t: Sample) -> Sample {
+            const MIN_TIME_THRESHOLD: Sample = from_ms(0.5);
+
+            Sample::from(t > 0.0) * t.max(MIN_TIME_THRESHOLD)
+        }
+
+        let attack_time = || snap(env.attack + router.scalar(Input::Attack, current));
+        let hold_time = || snap(env.hold + router.scalar(Input::Hold, current));
+        let decay_time = || snap(env.decay + router.scalar(Input::Decay, current));
+        let release_time = || snap(env.release + router.scalar(Input::Release, current));
 
         if voice.released {
             voice.stage = Stage::Release(env.release_curve.curve_iter(
@@ -441,12 +458,18 @@ impl SynthModule for Envelope {
     }
 
     fn outputs(&self) -> &'static [DataType] {
-        &[DataType::Scalar]
+        &[DataType::Buffer, DataType::Scalar]
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
         for channel in &mut self.channels {
-            Self::trigger_voice(&mut channel.voices[params.voice_idx], params.reset);
+            let voice = &mut channel.voices[params.voice_idx];
+
+            Self::trigger_voice(voice, params.reset);
+
+            if params.reset {
+                voice.audio_smoother.reset(0.0);
+            }
         }
     }
 
@@ -489,8 +512,24 @@ impl SynthModule for Envelope {
                     voice.triggered = false;
                 }
                 Self::process_voice(env, voice, true, t_step, &router);
+
+                if params.needs_audio_rate {
+                    voice
+                        .audio_smoother
+                        .update(params.sample_rate, channel.params.smooth);
+
+                    voice.audio_smoother.segment(
+                        voice.output.previous(),
+                        voice.output.current(),
+                        &mut voice.audio_output[..params.samples],
+                    );
+                }
             }
         }
+    }
+
+    fn get_buffer_output(&self, voice_idx: usize, channel_idx: usize) -> &Buffer {
+        &self.channels[channel_idx].voices[voice_idx].audio_output
     }
 
     fn get_scalar_output(&self, current: bool, voice_idx: usize, channel: usize) -> Sample {

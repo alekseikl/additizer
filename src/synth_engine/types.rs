@@ -11,6 +11,10 @@ pub struct ScalarOutput {
 }
 
 impl ScalarOutput {
+    pub fn previous(&self) -> Sample {
+        self.output[0]
+    }
+
     pub fn current(&self) -> Sample {
         self.output[1]
     }

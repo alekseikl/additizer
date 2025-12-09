@@ -46,6 +46,7 @@ mod curves;
 mod modules;
 mod phase;
 mod routing;
+mod smoother;
 mod stereo_sample;
 mod types;
 
