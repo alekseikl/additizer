@@ -95,7 +95,7 @@ pub trait SynthModule: Any + Send {
     fn set_label(&mut self, label: String);
 
     fn inputs(&self) -> &'static [InputInfo];
-    fn outputs(&self) -> &'static [DataType];
+    fn output(&self) -> DataType;
 
     fn note_on(&mut self, params: &NoteOnParams) {}
     fn note_off(&mut self, params: &NoteOffParams) {}

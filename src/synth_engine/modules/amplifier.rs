@@ -150,7 +150,8 @@ impl Amplifier {
         }
 
         if voice.killed {
-            let base = (0.00673795 as Sample).powf((sample_rate * params.voice_kill_time).recip());
+            let kill_time = params.voice_kill_time.max(from_ms(4.0));
+            let base = (-5.0 / (sample_rate * kill_time)).exp();
             let mut sum = 0.0;
 
             for out in voice.output.iter_mut().take(router.samples) {
@@ -192,8 +193,8 @@ impl SynthModule for Amplifier {
         INPUTS
     }
 
-    fn outputs(&self) -> &'static [DataType] {
-        &[DataType::Buffer]
+    fn output(&self) -> DataType {
+        DataType::Buffer
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
@@ -213,7 +214,7 @@ impl SynthModule for Amplifier {
     }
 
     fn poll_alive_voices(&self, alive_state: &mut [VoiceAlive]) {
-        const ALIVE_THRESHOLD: Sample = 0.00000001;
+        const ALIVE_THRESHOLD: Sample = 0.0000001;
 
         for voice_alive in alive_state.iter_mut().filter(|alive| alive.killed()) {
             for channel in &self.channels {

@@ -171,8 +171,8 @@ impl SynthModule for ModulationFilter {
         INPUTS
     }
 
-    fn outputs(&self) -> &'static [DataType] {
-        &[DataType::Buffer]
+    fn output(&self) -> DataType {
+        DataType::Buffer
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {

@@ -614,7 +614,7 @@ impl SynthEngine {
         let active_voices = voices
             .iter()
             .enumerate()
-            .filter(|(_, voice)| !matches!(voice.state, VoiceState::Free))
+            .filter(|(_, voice)| matches!(voice.state, VoiceState::NoteOn))
             .map(|(voice_idx, voice)| NoteOnParams {
                 note: voice.note as f32,
                 voice_idx,
@@ -626,8 +626,8 @@ impl SynthEngine {
         }
     }
 
-    fn data_types_compatible(src: &[DataType], dst: DataType) -> bool {
-        src.contains(&dst) || (dst == DataType::Buffer && src.contains(&DataType::Scalar))
+    fn data_types_compatible(src: DataType, dst: DataType) -> bool {
+        src == dst || (dst == DataType::Buffer && src == DataType::Scalar)
     }
 
     fn can_be_linked_with_output(&self, src: &ModuleId, dst: &ModuleInput) -> Result<(), String> {
@@ -636,7 +636,7 @@ impl SynthEngine {
         };
 
         let is_compatible = dst.input_type == Input::Audio
-            && Self::data_types_compatible(src_module.outputs(), DataType::Buffer);
+            && Self::data_types_compatible(src_module.output(), DataType::Buffer);
 
         if !is_compatible {
             return Err("Data types mismatch.".to_string());
@@ -656,7 +656,7 @@ impl SynthEngine {
             return Err("Invalid node.".to_string());
         };
 
-        let src_data_types = src_module.outputs();
+        let src_data_types = src_module.output();
 
         let is_compatible = dst_module.inputs().iter().any(|input_info| {
             input_info.input == dst.input_type
@@ -689,39 +689,6 @@ impl SynthEngine {
                 })
             })
             .collect()
-    }
-
-    fn setup_routing(&mut self, links: &[ModuleLink]) -> Result<(), String> {
-        let execution_order = Self::calc_execution_order(links)?;
-        let mut input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>> = HashMap::new();
-        let mut needs_audio_rate: HashSet<ModuleId> = HashSet::new();
-
-        for link in links {
-            input_sources
-                .entry(link.dst)
-                .or_default()
-                .push(ModuleInputSource {
-                    src: link.src,
-                    modulation: link.modulation,
-                });
-
-            if let Some(src_mod) = get_module!(self, &link.src)
-                && let Some(dst_mod) = get_module!(self, &link.dst.module_id)
-                && let Some(input_info) = dst_mod
-                    .inputs()
-                    .iter()
-                    .find(|ii| ii.input == link.dst.input_type)
-                && input_info.data_type == DataType::Buffer
-                && src_mod.outputs().contains(&DataType::Buffer)
-            {
-                needs_audio_rate.insert(link.src);
-            }
-        }
-
-        self.input_sources = input_sources;
-        self.needs_audio_rate = needs_audio_rate;
-        self.execution_order = execution_order;
-        Ok(())
     }
 
     fn write_output<'a>(
@@ -793,7 +760,7 @@ impl SynthEngine {
             .filter_map(|module| module.as_deref())
             .filter(|module| {
                 module.id() != input.module_id
-                    && Self::data_types_compatible(module.outputs(), input_info.data_type)
+                    && Self::data_types_compatible(module.output(), input_info.data_type)
                     && !self.is_connected_to_source(module.id(), input.module_id)
             })
             .map(|module| AvailableInputSourceUI {
@@ -853,6 +820,69 @@ impl SynthEngine {
                 .collect()),
             SortResults::Partial(_) => Err("Cycles detected!".to_string()),
         }
+    }
+
+    fn setup_routing(&mut self, links: &[ModuleLink]) -> Result<(), String> {
+        fn mark_needs_audio_rate(
+            sources: &Vec<ModuleInputSource>,
+            input_sources: &HashMap<ModuleInput, Vec<ModuleInputSource>>,
+            modules: &HashMap<ModuleId, Option<Box<dyn SynthModule>>>,
+            needs_audio_rate: &mut HashSet<ModuleId>,
+        ) {
+            const NEEDS_BUFFER_TYPES: &[DataType] = &[DataType::Buffer, DataType::Scalar];
+
+            for src in sources {
+                let module_id = src.src;
+
+                if let Some(src_module) =
+                    modules.get(&module_id).and_then(|result| result.as_deref())
+                    && NEEDS_BUFFER_TYPES.contains(&src_module.output())
+                {
+                    needs_audio_rate.insert(module_id);
+
+                    for (input, sources) in input_sources {
+                        if input.module_id == module_id {
+                            mark_needs_audio_rate(
+                                sources,
+                                input_sources,
+                                modules,
+                                needs_audio_rate,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        let execution_order = Self::calc_execution_order(links)?;
+        let mut input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>> = HashMap::new();
+        let mut needs_audio_rate: HashSet<ModuleId> = HashSet::new();
+
+        for link in links {
+            input_sources
+                .entry(link.dst)
+                .or_default()
+                .push(ModuleInputSource {
+                    src: link.src,
+                    modulation: link.modulation,
+                });
+        }
+
+        if let Some(output_sources) =
+            input_sources.get(&ModuleInput::new(Input::Audio, OUTPUT_MODULE_ID))
+        {
+            mark_needs_audio_rate(
+                output_sources,
+                &input_sources,
+                &self.modules,
+                &mut needs_audio_rate,
+            );
+        }
+
+        self.input_sources = input_sources;
+        self.needs_audio_rate = needs_audio_rate;
+        self.execution_order = execution_order;
+        Ok(())
     }
 
     fn clear(&mut self) {
@@ -948,7 +978,7 @@ impl Router for SynthEngine {
             && let Some(first) = sources.first()
             && first.modulation == StereoSample::ONE
             && let Some(module) = get_module!(self, &first.src)
-            && module.outputs().contains(&DataType::Buffer)
+            && [DataType::Buffer, DataType::Scalar].contains(&module.output())
         {
             return Some(module.get_buffer_output(voice_idx, channel_idx));
         }
@@ -956,32 +986,18 @@ impl Router for SynthEngine {
         let result = &mut input_buffer[..samples];
 
         let modules = sources.iter().filter_map(|source| {
-            get_module!(self, &source.src)
-                .map(|module| (module, source.modulation, module.outputs()))
+            get_module!(self, &source.src).map(|module| (module, source.modulation))
         });
 
-        for (mod_idx, (module, modulation, data_types)) in modules.enumerate() {
+        for (mod_idx, (module, modulation)) in modules.enumerate() {
             let mod_amount = modulation[channel_idx];
+            let buff = module.get_buffer_output(voice_idx, channel_idx);
 
-            if data_types.contains(&DataType::Buffer) {
-                let buff = module.get_buffer_output(voice_idx, channel_idx);
-
-                fill_or_append_buffer_slice(
-                    mod_idx == 0,
-                    result,
-                    buff.iter().map(|sample| sample * mod_amount),
-                );
-            } else {
-                let from_value = module.get_scalar_output(false, voice_idx, channel_idx);
-                let to_value = module.get_scalar_output(true, voice_idx, channel_idx);
-                let step = (to_value - from_value) * (samples as Sample).recip();
-
-                fill_or_append_buffer_slice(
-                    mod_idx == 0,
-                    result,
-                    (0..samples).map(|idx| (from_value + step * idx as Sample) * mod_amount),
-                );
-            };
+            fill_or_append_buffer_slice(
+                mod_idx == 0,
+                result,
+                buff.iter().map(|sample| sample * mod_amount),
+            );
         }
 
         Some(input_buffer)

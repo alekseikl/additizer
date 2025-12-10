@@ -457,8 +457,8 @@ impl SynthModule for Envelope {
         INPUTS
     }
 
-    fn outputs(&self) -> &'static [DataType] {
-        &[DataType::Buffer, DataType::Scalar]
+    fn output(&self) -> DataType {
+        DataType::Scalar
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
@@ -519,9 +519,9 @@ impl SynthModule for Envelope {
                         .update(params.sample_rate, channel.params.smooth);
 
                     voice.audio_smoother.segment(
-                        voice.output.previous(),
-                        voice.output.current(),
-                        &mut voice.audio_output[..params.samples],
+                        &voice.output,
+                        params.samples,
+                        &mut voice.audio_output,
                     );
                 }
             }

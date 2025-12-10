@@ -4,11 +4,16 @@ use std::sync::Arc;
 use nih_plug::params::FloatParam;
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::{
-    ModuleId, ModuleType, Sample, SynthModule,
-    routing::{DataType, Router},
-    synth_module::{InputInfo, ModuleConfigBox, ProcessParams},
-    types::ScalarOutput,
+use crate::{
+    synth_engine::{
+        ModuleId, ModuleType, Sample, SynthModule,
+        buffer::{Buffer, zero_buffer},
+        routing::{DataType, Router},
+        smoother::Smoother,
+        synth_module::{InputInfo, ModuleConfigBox, ProcessParams},
+        types::ScalarOutput,
+    },
+    utils::from_ms,
 };
 
 pub const NUM_FLOAT_PARAMS: usize = 4;
@@ -38,6 +43,8 @@ pub struct ExternalParam {
     selected_param_index: usize,
     need_reset: bool,
     output: ScalarOutput,
+    audio_smoother: Smoother,
+    audio_output: Buffer,
 }
 
 impl ExternalParam {
@@ -55,6 +62,8 @@ impl ExternalParam {
             selected_param_index: 0,
             need_reset: true,
             output: ScalarOutput::default(),
+            audio_smoother: Smoother::default(),
+            audio_output: zero_buffer(),
         };
 
         {
@@ -119,11 +128,11 @@ impl SynthModule for ExternalParam {
         &[]
     }
 
-    fn outputs(&self) -> &'static [DataType] {
-        &[DataType::Scalar]
+    fn output(&self) -> DataType {
+        DataType::Scalar
     }
 
-    fn process(&mut self, _params: &ProcessParams, _router: &dyn Router) {
+    fn process(&mut self, params: &ProcessParams, _router: &dyn Router) {
         self.output.advance(
             self.selected_param
                 .as_ref()
@@ -133,8 +142,19 @@ impl SynthModule for ExternalParam {
 
         if self.need_reset {
             self.output.advance(self.output.current());
+            self.audio_smoother.reset(self.output.previous());
             self.need_reset = false;
         }
+
+        if params.needs_audio_rate {
+            self.audio_smoother.update(params.sample_rate, from_ms(2.0));
+            self.audio_smoother
+                .segment(&self.output, params.samples, &mut self.audio_output);
+        }
+    }
+
+    fn get_buffer_output(&self, _voice_idx: usize, _channel_idx: usize) -> &Buffer {
+        &self.audio_output
     }
 
     fn get_scalar_output(&self, current: bool, _voice_idx: usize, _channel: usize) -> Sample {
