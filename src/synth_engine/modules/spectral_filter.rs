@@ -1,6 +1,6 @@
-use std::any::Any;
-
 use serde::{Deserialize, Serialize};
+use std::any::Any;
+use std::f32;
 
 use crate::synth_engine::{
     StereoSample,
@@ -107,18 +107,22 @@ impl SpectralFilter {
         let cutoff_mod = router.scalar(Input::Cutoff, current);
         let q_mod = router.scalar(Input::Q, current);
 
-        let range = 1..SPECTRAL_BUFFER_SIZE - 1;
-        let input_buff = &spectrum[range.clone()];
-        let output_buff = &mut voice.output.advance()[range];
-        let cutoff_freq = (params.cutoff + cutoff_mod).exp2();
+        let output_buff = voice.output.advance();
+        let cutoff_freq = 2.0 * f32::consts::PI * (params.cutoff + cutoff_mod).exp2();
         let cutoff_squared = cutoff_freq * cutoff_freq;
         let numerator = ComplexSample::new(cutoff_squared, 0.0);
         let q_mult = (params.q + q_mod).clamp(0.1, 10.0).recip();
+        let cutoff_q_mult = cutoff_freq * q_mult;
 
-        for (idx, (out_freq, in_freq)) in output_buff.iter_mut().zip(input_buff).enumerate() {
-            let freq = (idx + 1) as Sample;
+        for (idx, (out_freq, in_freq)) in output_buff
+            .iter_mut()
+            .zip(spectrum)
+            .enumerate()
+            .take(SPECTRAL_BUFFER_SIZE - 1)
+        {
+            let freq = 2.0 * f32::consts::PI * idx as Sample;
             let mut filter_response = numerator
-                / ComplexSample::new(cutoff_squared - (freq * freq), cutoff_freq * freq * q_mult);
+                / ComplexSample::new(cutoff_squared - (freq * freq), freq * cutoff_q_mult);
 
             if four_pole {
                 filter_response *= filter_response;
