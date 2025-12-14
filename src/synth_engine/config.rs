@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 use crate::synth_engine::{
     BUFFER_SIZE, StereoSample, VoiceOverride,
     modules::{
-        AmplifierConfig, EnvelopeConfig, ExternalParamConfig, HarmonicEditorConfig, LfoConfig,
-        ModulationFilterConfig, OscillatorConfig, SpectralBlendConfig, SpectralFilterConfig,
+        AmplifierConfig, EnvelopeConfig, ExternalParamConfig, LfoConfig, ModulationFilterConfig,
+        OscillatorConfig, SpectralBlendConfig, SpectralFilterConfig,
+        harmonic_editor::HarmonicEditorConfig,
     },
     routing::{MAX_VOICES, MIN_MODULE_ID, ModuleId, ModuleLink},
 };

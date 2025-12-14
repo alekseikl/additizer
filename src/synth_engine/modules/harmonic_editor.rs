@@ -1,18 +1,33 @@
-use std::{any::Any, f64};
+use std::any::Any;
 
 use itertools::izip;
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::{
-    StereoSample,
-    buffer::{
-        HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer, ZEROES_SPECTRAL_BUFFER,
+use crate::{
+    synth_engine::{
+        Sample, StereoSample,
+        buffer::{
+            HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer, ZEROES_SPECTRAL_BUFFER,
+        },
+        routing::{DataType, ModuleId, ModuleType, NUM_CHANNELS, Router},
+        synth_module::{InputInfo, ModuleConfigBox, ProcessParams, SynthModule},
     },
-    routing::{DataType, ModuleId, ModuleType, NUM_CHANNELS, Router},
-    synth_module::{InputInfo, ModuleConfigBox, ProcessParams, SynthModule},
+    utils::NthElement,
 };
 
-const NUM_EDITABLE_HARMONICS: usize = SPECTRAL_BUFFER_SIZE - 2;
+#[derive(Clone, Copy, PartialEq)]
+pub enum SetAction {
+    Set,
+    Multiple,
+}
+
+pub struct SetParams {
+    pub from: usize, // One based index
+    pub to: usize,
+    pub n_th: Option<NthElement>,
+    pub action: SetAction,
+    pub gain: StereoSample,
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct HarmonicEditorConfig {
@@ -24,7 +39,7 @@ impl Default for HarmonicEditorConfig {
     fn default() -> Self {
         Self {
             label: None,
-            harmonics: vec![StereoSample::splat(1.0); NUM_EDITABLE_HARMONICS],
+            harmonics: vec![StereoSample::splat(1.0); HarmonicEditor::NUM_EDITABLE_HARMONICS],
         }
     }
 }
@@ -38,12 +53,14 @@ pub struct HarmonicEditor {
 }
 
 impl HarmonicEditor {
+    pub const NUM_EDITABLE_HARMONICS: usize = SPECTRAL_BUFFER_SIZE - 2;
+
     pub fn new(id: ModuleId, config: ModuleConfigBox<HarmonicEditorConfig>) -> Self {
         let mut editor = Self {
             id,
             label: format!("Harmonic Editor {id}"),
             config,
-            harmonics: vec![StereoSample::splat(1.0); NUM_EDITABLE_HARMONICS],
+            harmonics: vec![StereoSample::splat(1.0); Self::NUM_EDITABLE_HARMONICS],
             outputs: [ZEROES_SPECTRAL_BUFFER; NUM_CHANNELS],
         };
 
@@ -54,7 +71,7 @@ impl HarmonicEditor {
                 editor.label = label.clone();
             }
 
-            if config.harmonics.len() == NUM_EDITABLE_HARMONICS {
+            if config.harmonics.len() == Self::NUM_EDITABLE_HARMONICS {
                 editor.harmonics = config.harmonics.clone();
             }
         }
@@ -65,32 +82,33 @@ impl HarmonicEditor {
 
     gen_downcast_methods!();
 
-    pub fn set_all_to_zero(&mut self) {
-        self.harmonics.fill(StereoSample::splat(0.0));
-        self.apply_harmonics();
-    }
+    pub fn set_selected(&mut self, params: &SetParams) {
+        assert!(!self.harmonics.is_empty());
 
-    pub fn set_all_to_one(&mut self) {
-        self.harmonics.fill(StereoSample::splat(1.0));
-        self.apply_harmonics();
-    }
+        const ZERO_THRESHOLD: Sample = 0.000011; //Slightly above -100dB
 
-    pub fn keep_selected(&mut self, a: isize, b: isize) {
-        let matches = |idx: usize| -> bool {
-            let i = idx as isize + 1;
+        let max_idx = self.harmonics.len() - 1;
+        let idx_from = params.from.wrapping_sub(1).clamp(0, max_idx);
+        let range = idx_from..params.to.clamp(idx_from, self.harmonics.len());
+        let gain: StereoSample = params
+            .gain
+            .iter()
+            .map(|gain| Sample::from(*gain > ZERO_THRESHOLD) * gain)
+            .collect();
 
-            if a == 0 {
-                i == b
-            } else {
-                let result = (i - b) as f64 / a as f64;
+        for (idx, harmonic) in self.harmonics[range].iter_mut().enumerate() {
+            let matches = params
+                .n_th
+                .as_ref()
+                .is_none_or(|n_th| n_th.matches(idx_from + idx));
 
-                result >= 0.0 && result.fract().abs() < f32::EPSILON as f64
+            if !matches {
+                continue;
             }
-        };
 
-        for (idx, harmonic) in self.harmonics.iter_mut().enumerate() {
-            if !matches(idx) {
-                *harmonic = StereoSample::splat(0.0);
+            match params.action {
+                SetAction::Set => *harmonic = gain,
+                SetAction::Multiple => *harmonic = *harmonic * gain,
             }
         }
 

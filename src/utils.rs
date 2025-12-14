@@ -21,3 +21,28 @@ pub fn octave_to_freq(octave: Sample) -> Sample {
 pub const fn st_to_octave(st: Sample) -> Sample {
     st * ST_TO_OCTAVE_MULT
 }
+
+pub struct NthElement {
+    mul: isize,
+    add: isize,
+    inverted: bool,
+}
+
+impl NthElement {
+    pub fn new(mul: isize, add: isize, inverted: bool) -> Self {
+        Self { mul, add, inverted }
+    }
+
+    pub fn matches(&self, idx: usize) -> bool {
+        let i = idx as isize + 1;
+        let result = if self.mul == 0 {
+            i == self.add
+        } else {
+            let scaled = (i - self.add) as f32 / self.mul as f32;
+
+            scaled >= 0.0 && scaled.fract().abs() < f32::EPSILON
+        };
+
+        result ^ self.inverted
+    }
+}
