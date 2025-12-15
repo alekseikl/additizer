@@ -6,21 +6,21 @@ const HARMONICS_NUM: usize = SPECTRAL_BUFFER_SIZE - 1;
 const TAU: Sample = f32::consts::TAU;
 
 pub struct BiquadFilter {
-    gain: Sample,
+    level: Sample,
     cutoff: Sample,
     q: Sample,
 }
 
 impl BiquadFilter {
-    pub fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
-        Self { gain, cutoff, q }
+    pub fn new(level: Sample, cutoff: Sample, q: Sample) -> Self {
+        Self { level, cutoff, q }
     }
 
     pub fn low_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
         let w = self.cutoff * TAU;
         let w_squared = w * w;
         let w_q = w / self.q;
-        let numerator = self.gain * w_squared;
+        let numerator = self.level * w_squared;
 
         (0..HARMONICS_NUM).map(move |i| {
             let x = i as Sample * TAU;
@@ -31,7 +31,7 @@ impl BiquadFilter {
 
     pub fn high_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
         let w = self.cutoff * TAU;
-        let neg_g = -self.gain;
+        let neg_g = -self.level;
         let w_squared = w * w;
         let w_q = w / self.q;
 
@@ -45,7 +45,7 @@ impl BiquadFilter {
 
     pub fn peaking(&self) -> impl Iterator<Item = ComplexSample> + 'static {
         let w = self.cutoff * TAU;
-        let a = self.gain;
+        let a = self.level;
         let w_squared = w * w;
         let wa_q = (w * a) / self.q;
         let w_aq = w / (a * self.q);
@@ -59,7 +59,7 @@ impl BiquadFilter {
     }
 
     pub fn band_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
-        let a = self.gain;
+        let a = self.level;
         let w = self.cutoff * TAU;
         let w_squared = w * w;
         let w_q = w / self.q;
@@ -74,7 +74,7 @@ impl BiquadFilter {
     }
 
     pub fn band_stop(&self) -> impl Iterator<Item = ComplexSample> + 'static {
-        let a = self.gain;
+        let a = self.level;
         let w = self.cutoff * TAU;
         let w_squared = w * w;
         let w_q = w / self.q;

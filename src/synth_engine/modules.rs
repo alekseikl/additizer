@@ -15,4 +15,4 @@ pub use lfo::{Lfo, LfoConfig, LfoShape};
 pub use modulation_filter::{ModulationFilter, ModulationFilterConfig};
 pub use oscillator::{Oscillator, OscillatorConfig};
 pub use spectral_blend::{SpectralBlend, SpectralBlendConfig};
-pub use spectral_filter::{SpectralFilter, SpectralFilterConfig};
+pub use spectral_filter::{SpectralFilter, SpectralFilterConfig, SpectralFilterType};

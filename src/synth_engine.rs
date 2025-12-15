@@ -26,11 +26,11 @@ use crate::synth_engine::{
     synth_module::{NoteOffParams, NoteOnParams, ProcessParams, VoiceAlive},
 };
 
-pub use buffer::BUFFER_SIZE;
+pub use buffer::{BUFFER_SIZE, SPECTRAL_BUFFER_SIZE};
 pub use config::Config;
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, Lfo, LfoShape,
-    ModulationFilter, Oscillator, SpectralBlend, SpectralFilter,
+    ModulationFilter, Oscillator, SpectralBlend, SpectralFilter, SpectralFilterType,
     harmonic_editor::{self, HarmonicEditor},
 };
 pub use routing::{

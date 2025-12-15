@@ -10,13 +10,13 @@ use crate::{
         utils::confirm_module_removal,
     },
     synth_engine::{
-        HarmonicEditor, ModuleId, StereoSample, SynthEngine,
+        HarmonicEditor, ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample, SynthEngine,
         harmonic_editor::{FilterParams, FilterType, SetAction, SetParams},
     },
     utils::NthElement,
 };
 
-const NUM_EDITABLE_HARMONICS: usize = 1023;
+const NUM_EDITABLE_HARMONICS: usize = SPECTRAL_BUFFER_SIZE - 2;
 
 impl SetAction {
     fn label(&self) -> &'static str {
@@ -229,7 +229,7 @@ impl HarmonicEditorUI {
             filter_order: state.order,
             cutoff: state.cutoff.iter().map(|octave| octave.exp2()).collect(),
             q: state.q,
-            gain: state
+            level: state
                 .gain
                 .iter()
                 .map(|volume| db_to_gain(*volume))
@@ -305,8 +305,10 @@ impl HarmonicEditorUI {
                     ui.label("Gain");
                     ui.add(
                         StereoSlider::new(&mut state.gain)
-                            .range(-24.0..=12.0)
+                            .range(0.0..=24.0)
                             .default_value(0.0)
+                            .skew(1.6)
+                            .allow_inverse()
                             .units(" dB"),
                     );
                     ui.end_row();

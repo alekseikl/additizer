@@ -1,12 +1,24 @@
-use egui_baseview::egui::{Checkbox, Grid, Ui};
+use egui_baseview::egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
         ModuleUI, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
-    synth_engine::{Input, ModuleId, SpectralFilter, SynthEngine},
+    synth_engine::{Input, ModuleId, SpectralFilter, SpectralFilterType, SynthEngine},
 };
+
+impl SpectralFilterType {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::LowPass => "Lowpass",
+            Self::HighPass => "Highpass",
+            Self::BandPass => "Bandpass",
+            Self::BandStop => "Bandstop",
+            Self::Peaking => "Peaking",
+        }
+    }
+}
 
 pub struct SpectralFilterUI {
     module_id: ModuleId,
@@ -53,6 +65,33 @@ impl ModuleUI for SpectralFilterUI {
                 ui.add(DirectInput::new(synth, Input::Spectrum, self.module_id));
                 ui.end_row();
 
+                ui.label("Type");
+                ComboBox::from_id_salt("spectral-filter-type")
+                    .selected_text(ui_data.filter_type.label())
+                    .show_ui(ui, |ui| {
+                        const TYPE_OPTIONS: &[SpectralFilterType] = &[
+                            SpectralFilterType::LowPass,
+                            SpectralFilterType::HighPass,
+                            SpectralFilterType::BandPass,
+                            SpectralFilterType::BandStop,
+                            SpectralFilterType::Peaking,
+                        ];
+
+                        for filter_type in TYPE_OPTIONS {
+                            if ui
+                                .selectable_value(
+                                    &mut ui_data.filter_type,
+                                    *filter_type,
+                                    filter_type.label(),
+                                )
+                                .clicked()
+                            {
+                                self.filter(synth).set_filter_type(*filter_type);
+                            }
+                        }
+                    });
+                ui.end_row();
+
                 ui.label("Cutoff");
                 if ui
                     .add(ModulationInput::new(
@@ -81,12 +120,26 @@ impl ModuleUI for SpectralFilterUI {
                 }
                 ui.end_row();
 
-                ui.label("Four pole");
+                ui.label("Gain");
                 if ui
-                    .add(Checkbox::without_text(&mut ui_data.four_pole))
+                    .add(ModulationInput::new(
+                        &mut ui_data.gain_db,
+                        synth,
+                        Input::GainDb,
+                        self.module_id,
+                    ))
                     .changed()
                 {
-                    self.filter(synth).set_four_pole(ui_data.four_pole);
+                    self.filter(synth).set_gain_db(ui_data.gain_db);
+                }
+                ui.end_row();
+
+                ui.label("Fourth order");
+                if ui
+                    .add(Checkbox::without_text(&mut ui_data.fourth_order))
+                    .changed()
+                {
+                    self.filter(synth).set_fourth_order(ui_data.fourth_order);
                 }
                 ui.end_row();
             });

@@ -44,7 +44,7 @@ pub struct FilterParams {
     pub filter_order: StereoSample,
     pub cutoff: StereoSample,
     pub q: StereoSample,
-    pub gain: StereoSample,
+    pub level: StereoSample,
 }
 
 #[derive(Default, Clone, Copy, Serialize, Deserialize)]
@@ -159,10 +159,11 @@ impl HarmonicEditor {
             for (harmonic_idx, (magnitude, harmonic)) in
                 magnitudes.iter_mut().zip(channel.iter()).enumerate()
             {
-                let norm = harmonic.norm();
-                let mg = harmonic_idx as Sample * norm * f32::consts::PI;
+                let value = harmonic_idx as Sample * f32::consts::PI * harmonic.norm();
+                let almost_one = (value - 1.0).abs() < Sample::EPSILON;
 
-                magnitude[channel_idx] = mg;
+                magnitude[channel_idx] =
+                    Sample::from(almost_one) * 1.0 + Sample::from(!almost_one) * value;
             }
         }
 
@@ -215,7 +216,7 @@ impl HarmonicEditor {
     pub fn apply_filter(&mut self, params: &FilterParams) {
         for (channel_idx, spectrum) in self.outputs.iter_mut().enumerate() {
             let filter = BiquadFilter::new(
-                params.gain[channel_idx],
+                params.level[channel_idx],
                 params.cutoff[channel_idx],
                 params.q[channel_idx],
             );

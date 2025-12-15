@@ -1,10 +1,12 @@
+use itertools::izip;
+use nih_plug::util::db_to_gain_fast;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
-use std::f32;
 
 use crate::synth_engine::{
     StereoSample,
-    buffer::{SPECTRAL_BUFFER_SIZE, SpectralBuffer},
+    biquad_filter::BiquadFilter,
+    buffer::SpectralBuffer,
     routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
     synth_module::{
         InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, SynthModule, VoiceRouter,
@@ -12,15 +14,27 @@ use crate::synth_engine::{
     types::{ComplexSample, Sample, SpectralOutput},
 };
 
+#[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum SpectralFilterType {
+    #[default]
+    LowPass,
+    HighPass,
+    BandPass,
+    BandStop,
+    Peaking,
+}
+
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct Params {
-    four_pole: bool,
+    filter_type: SpectralFilterType,
+    fourth_order: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChannelParams {
     cutoff: Sample, //Cutoff octave
     q: Sample,
+    gain_db: Sample,
 }
 
 impl Default for ChannelParams {
@@ -28,6 +42,7 @@ impl Default for ChannelParams {
         Self {
             cutoff: 1.0,
             q: 0.7,
+            gain_db: 0.0,
         }
     }
 }
@@ -41,9 +56,11 @@ pub struct SpectralFilterConfig {
 
 pub struct SpectralFilterUIData {
     pub label: String,
+    pub filter_type: SpectralFilterType,
     pub cutoff: StereoSample,
     pub q: StereoSample,
-    pub four_pole: bool,
+    pub gain_db: StereoSample,
+    pub fourth_order: bool,
 }
 
 #[derive(Default)]
@@ -85,51 +102,85 @@ impl SpectralFilter {
     pub fn get_ui(&self) -> SpectralFilterUIData {
         SpectralFilterUIData {
             label: self.label.clone(),
+            filter_type: self.params.filter_type,
             cutoff: get_stereo_param!(self, cutoff),
             q: get_stereo_param!(self, q),
-            four_pole: self.params.four_pole,
+            gain_db: get_stereo_param!(self, gain_db),
+            fourth_order: self.params.fourth_order,
         }
     }
 
-    set_mono_param!(set_four_pole, four_pole, bool);
+    set_mono_param!(set_filter_type, filter_type, SpectralFilterType);
+    set_mono_param!(set_fourth_order, fourth_order, bool);
 
     set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
     set_stereo_param!(set_q, q, q.clamp(0.1, 10.0));
+    set_stereo_param!(set_gain_db, gain_db, gain_db.min(24.0));
+
+    fn apply_response(
+        output: &mut SpectralBuffer,
+        input: &SpectralBuffer,
+        response: impl Iterator<Item = ComplexSample>,
+        fourth_order: bool,
+    ) {
+        if fourth_order {
+            for (out, input, response) in izip!(output, input, response) {
+                *out = input * response * response;
+            }
+        } else {
+            for (out, input, response) in izip!(output, input, response) {
+                *out = input * response;
+            }
+        }
+    }
+
+    fn apply_biquad(
+        output: &mut SpectralBuffer,
+        input: &SpectralBuffer,
+        filter_type: SpectralFilterType,
+        biquad: &BiquadFilter,
+        fourth_order: bool,
+    ) {
+        match filter_type {
+            SpectralFilterType::LowPass => {
+                Self::apply_response(output, input, biquad.low_pass(), fourth_order)
+            }
+            SpectralFilterType::HighPass => {
+                Self::apply_response(output, input, biquad.high_pass(), fourth_order)
+            }
+            SpectralFilterType::BandPass => {
+                Self::apply_response(output, input, biquad.band_pass(), fourth_order)
+            }
+            SpectralFilterType::BandStop => {
+                Self::apply_response(output, input, biquad.band_stop(), fourth_order)
+            }
+            SpectralFilterType::Peaking => {
+                Self::apply_response(output, input, biquad.peaking(), fourth_order)
+            }
+        }
+    }
 
     fn process_voice(
-        four_pole: bool,
+        params: &Params,
         current: bool,
-        params: &ChannelParams,
+        channel: &ChannelParams,
         voice: &mut Voice,
         router: &VoiceRouter,
     ) {
-        let spectrum = router.spectral(Input::Spectrum, current);
-        let cutoff_mod = router.scalar(Input::Cutoff, current);
-        let q_mod = router.scalar(Input::Q, current);
+        let input = router.spectral(Input::Spectrum, current);
+        let cutoff = (channel.cutoff + router.scalar(Input::Cutoff, current)).clamp(-4.0, 10.0);
+        let q = (channel.q + router.scalar(Input::Q, current)).clamp(0.1, 10.0);
+        let gain_db = (channel.gain_db + router.scalar(Input::GainDb, current)).min(24.0);
 
-        let output_buff = voice.output.advance();
-        let cutoff_freq = 2.0 * f32::consts::PI * (params.cutoff + cutoff_mod).exp2();
-        let cutoff_squared = cutoff_freq * cutoff_freq;
-        let numerator = ComplexSample::new(cutoff_squared, 0.0);
-        let q_mult = (params.q + q_mod).clamp(0.1, 10.0).recip();
-        let cutoff_q_mult = cutoff_freq * q_mult;
+        let biquad = BiquadFilter::new(db_to_gain_fast(gain_db), cutoff.exp2(), q);
 
-        for (idx, (out_freq, in_freq)) in output_buff
-            .iter_mut()
-            .zip(spectrum)
-            .enumerate()
-            .take(SPECTRAL_BUFFER_SIZE - 1)
-        {
-            let freq = 2.0 * f32::consts::PI * idx as Sample;
-            let mut filter_response = numerator
-                / ComplexSample::new(cutoff_squared - (freq * freq), freq * cutoff_q_mult);
-
-            if four_pole {
-                filter_response *= filter_response;
-            }
-
-            *out_freq = filter_response * in_freq;
-        }
+        Self::apply_biquad(
+            voice.output.advance(),
+            input,
+            params.filter_type,
+            &biquad,
+            params.fourth_order,
+        );
     }
 }
 
@@ -173,8 +224,6 @@ impl SynthModule for SpectralFilter {
 
     fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
-            let params = &channel.params;
-
             for voice_idx in process_params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
                 let router = VoiceRouter {
@@ -186,10 +235,10 @@ impl SynthModule for SpectralFilter {
                 };
 
                 if voice.triggered {
-                    Self::process_voice(self.params.four_pole, false, params, voice, &router);
+                    Self::process_voice(&self.params, false, &channel.params, voice, &router);
                     voice.triggered = false;
                 }
-                Self::process_voice(self.params.four_pole, true, params, voice, &router);
+                Self::process_voice(&self.params, true, &channel.params, voice, &router);
             }
         }
     }
