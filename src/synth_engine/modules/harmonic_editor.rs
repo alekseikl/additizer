@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     synth_engine::{
         Sample, StereoSample,
+        biquad_filter::BiquadFilter,
         buffer::{HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer},
         routing::{DataType, ModuleId, ModuleType, NUM_CHANNELS, Router},
         synth_module::{InputInfo, ModuleConfigBox, ProcessParams, SynthModule},
@@ -26,6 +27,23 @@ pub struct SetParams {
     pub to: usize,
     pub n_th: Option<NthElement>,
     pub action: SetAction,
+    pub gain: StereoSample,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum FilterType {
+    LowPass,
+    HighPass,
+    BandPass,
+    BandStop,
+    Peaking,
+}
+
+pub struct FilterParams {
+    pub filter_type: FilterType,
+    pub filter_order: StereoSample,
+    pub cutoff: StereoSample,
+    pub q: StereoSample,
     pub gain: StereoSample,
 }
 
@@ -73,6 +91,27 @@ impl Default for HarmonicEditorConfig {
         }
 
         cfg
+    }
+}
+
+impl BiquadFilter {
+    fn iter_for_type(
+        &self,
+        filter_type: FilterType,
+        order: Sample,
+    ) -> impl Iterator<Item = ComplexSample> {
+        let order = order.clamp(1.0, 8.0);
+        let power = order / 2.0;
+
+        let iter: Box<dyn Iterator<Item = ComplexSample>> = match filter_type {
+            FilterType::LowPass => Box::new(self.low_pass()),
+            FilterType::HighPass => Box::new(self.high_pass()),
+            FilterType::BandPass => Box::new(self.band_pass()),
+            FilterType::BandStop => Box::new(self.band_stop()),
+            FilterType::Peaking => Box::new(self.peaking()),
+        };
+
+        iter.map(move |response| response.powf(power))
     }
 }
 
@@ -167,6 +206,25 @@ impl HarmonicEditor {
                     SetAction::Set => *harmonic = *initial_harmonic * gain,
                     SetAction::Multiple => *harmonic *= gain,
                 }
+            }
+        }
+
+        self.save_harmonics();
+    }
+
+    pub fn apply_filter(&mut self, params: &FilterParams) {
+        for (channel_idx, spectrum) in self.outputs.iter_mut().enumerate() {
+            let filter = BiquadFilter::new(
+                params.gain[channel_idx],
+                params.cutoff[channel_idx],
+                params.q[channel_idx],
+            );
+
+            let filter_iter =
+                filter.iter_for_type(params.filter_type, params.filter_order[channel_idx]);
+
+            for (out, response) in spectrum.iter_mut().zip(filter_iter) {
+                *out *= response;
             }
         }
 

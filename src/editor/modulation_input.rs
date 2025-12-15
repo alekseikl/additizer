@@ -60,7 +60,7 @@ impl<'a> ModulationInput<'a> {
                 .units(" st"),
             Input::Q => slider
                 .range(0.1..=10.0)
-                .default_value(0.7)
+                .default_value(0.707)
                 .skew(1.8)
                 .precision(2),
             Input::Detune => slider

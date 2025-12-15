@@ -1,14 +1,9 @@
-use crate::synth_engine::{Sample, buffer::SPECTRAL_BUFFER_SIZE};
+use std::f32;
+
+use crate::synth_engine::{Sample, buffer::SPECTRAL_BUFFER_SIZE, types::ComplexSample};
 
 const HARMONICS_NUM: usize = SPECTRAL_BUFFER_SIZE - 1;
-
-pub enum BiquadFilterType {
-    LowPass,
-    HighPass,
-    BandPass,
-    BandStop,
-    Peaking,
-}
+const TAU: Sample = f32::consts::TAU;
 
 pub struct BiquadFilter {
     gain: Sample,
@@ -21,125 +16,74 @@ impl BiquadFilter {
         Self { gain, cutoff, q }
     }
 
-    #[inline(always)]
-    fn common_denominator(x_squared: Sample, w_q_squared: Sample, first_term: Sample) -> Sample {
-        x_squared.mul_add(w_q_squared, first_term * first_term)
-    }
-
-    pub fn low_pass_4(&self) -> impl Iterator<Item = Sample> + 'static {
-        let w = self.cutoff;
+    pub fn low_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
+        let w = self.cutoff * TAU;
         let w_squared = w * w;
         let w_q = w / self.q;
-        let w_q_squared = w_q * w_q;
         let numerator = self.gain * w_squared;
-        let numerator_squared = numerator * numerator;
 
         (0..HARMONICS_NUM).map(move |i| {
-            let x = i as Sample;
-            let x_squared = x * x;
-            let first_term = w_squared - x_squared;
+            let x = i as Sample * TAU;
 
-            numerator_squared / Self::common_denominator(x_squared, w_q_squared, first_term)
+            numerator / ComplexSample::new(w_squared - x * x, w_q * x)
         })
     }
 
-    pub fn high_pass_4(&self) -> impl Iterator<Item = Sample> + 'static {
-        let a = self.gain;
-        let w = self.cutoff;
+    pub fn high_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
+        let w = self.cutoff * TAU;
+        let neg_g = -self.gain;
         let w_squared = w * w;
         let w_q = w / self.q;
-        let w_q_squared = w_q * w_q;
 
         (0..HARMONICS_NUM).map(move |i| {
-            let x = i as Sample;
+            let x = i as Sample * TAU;
             let x_squared = x * x;
-            let first_term = w_squared - x_squared;
-            let numerator = a * x_squared;
 
-            (numerator * numerator) / Self::common_denominator(x_squared, w_q_squared, first_term)
+            (neg_g * x_squared) / ComplexSample::new(w_squared - x_squared, w_q * x)
         })
     }
 
-    pub fn band_pass_4(&self) -> impl Iterator<Item = Sample> + 'static {
+    pub fn peaking(&self) -> impl Iterator<Item = ComplexSample> + 'static {
+        let w = self.cutoff * TAU;
         let a = self.gain;
-        let w = self.cutoff;
-        let q = self.q;
         let w_squared = w * w;
-        let w_q = w / q;
-        let w_q_squared = w_q * w_q;
-        let aw_q = a * w / q;
-        let aw_q_squared = aw_q * aw_q;
+        let wa_q = (w * a) / self.q;
+        let w_aq = w / (a * self.q);
 
         (0..HARMONICS_NUM).map(move |i| {
-            let x = i as Sample;
-            let x_squared = x * x;
-            let first_term = w_squared - x_squared;
+            let x = i as Sample * TAU;
+            let wx_diff = w_squared - x * x;
 
-            (aw_q_squared * x_squared)
-                / Self::common_denominator(x_squared, w_q_squared, first_term)
+            ComplexSample::new(wx_diff, wa_q * x) / ComplexSample::new(wx_diff, w_aq * x)
         })
     }
 
-    pub fn band_stop_4(&self) -> impl Iterator<Item = Sample> + 'static {
-        let a_abs = self.gain.abs();
-        let w = self.cutoff;
+    pub fn band_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
+        let a = self.gain;
+        let w = self.cutoff * TAU;
         let w_squared = w * w;
         let w_q = w / self.q;
-        let w_q_squared = w_q * w_q;
 
         (0..HARMONICS_NUM).map(move |i| {
-            let x = i as Sample;
+            let x = i as Sample * TAU;
             let x_squared = x * x;
-            let first_term = w_squared - x_squared;
-            let numerator = a_abs * first_term.abs();
+            let wx_q = w_q * x;
 
-            (numerator * numerator) / Self::common_denominator(x_squared, w_q_squared, first_term)
+            ComplexSample::new(0.0, a * wx_q) / ComplexSample::new(w_squared - x_squared, wx_q)
         })
     }
 
-    pub fn peaking_4(&self) -> impl Iterator<Item = Sample> + 'static {
+    pub fn band_stop(&self) -> impl Iterator<Item = ComplexSample> + 'static {
         let a = self.gain;
-        let w = self.cutoff;
-        let q = self.q;
+        let w = self.cutoff * TAU;
         let w_squared = w * w;
-        let aw_q = a * w / q;
-        let aw_q_squared = aw_q * aw_q;
-        let w_qa = w / (q * a);
-        let w_qa_squared = w_qa * w_qa;
+        let w_q = w / self.q;
 
         (0..HARMONICS_NUM).map(move |i| {
-            let x = i as Sample;
-            let x_squared = x * x;
-            let first_term = w_squared - x_squared;
-            let first_term_squared = first_term * first_term;
+            let x = i as Sample * TAU;
+            let wx_diff = w_squared - x * x;
 
-            x_squared.mul_add(aw_q_squared, first_term_squared)
-                / x_squared.mul_add(w_qa_squared, first_term_squared)
+            (a * wx_diff) / ComplexSample::new(wx_diff, w_q * x)
         })
-    }
-
-    fn apply_order(
-        filter_iter: impl Iterator<Item = Sample> + 'static,
-        order: Sample,
-    ) -> Box<dyn Iterator<Item = Sample>> {
-        let power = order / 4.0;
-
-        Box::new(filter_iter.map(move |magnitude| magnitude.powf(power)))
-    }
-
-    pub fn filter_iter(
-        &self,
-        filter_type: BiquadFilterType,
-        order: Sample,
-    ) -> Box<dyn Iterator<Item = Sample>> {
-        let order = order.clamp(2.0, 8.0);
-
-        match filter_type {
-            BiquadFilterType::LowPass => Self::apply_order(self.low_pass_4(), order),
-            BiquadFilterType::HighPass => Self::apply_order(self.high_pass_4(), order),
-            BiquadFilterType::BandPass => Self::apply_order(self.band_pass_4(), order),
-            BiquadFilterType::BandStop => Self::apply_order(self.band_stop_4(), order),
-            BiquadFilterType::Peaking => Self::apply_order(self.peaking_4(), order),
-        }
     }
 }
