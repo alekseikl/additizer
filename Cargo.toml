@@ -27,7 +27,7 @@ rand = "0.9"
 rand_pcg = "0.9"
 itertools = "0.14"
 topo_sort = "0.4"
-realfft = "3.5"
+realfft = { version = "3.5" }
 parking_lot = { version = "0.12.5", features = ["serde"] }
 smallvec = "1.15.1"
 assert_no_alloc = "1.1.2"

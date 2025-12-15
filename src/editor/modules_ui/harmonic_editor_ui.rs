@@ -16,6 +16,8 @@ use crate::{
     utils::NthElement,
 };
 
+const NUM_EDITABLE_HARMONICS: usize = 1023;
+
 impl SetAction {
     fn label(&self) -> &'static str {
         match self {
@@ -40,7 +42,7 @@ impl Default for SelectAndSetState {
     fn default() -> Self {
         Self {
             from: 1,
-            to: HarmonicEditor::NUM_EDITABLE_HARMONICS,
+            to: NUM_EDITABLE_HARMONICS,
             n_th_element: false,
             n_th_mul: 2,
             n_th_add: 1,
@@ -102,8 +104,6 @@ impl HarmonicEditorUI {
         ui: &mut Ui,
         state: &mut SelectAndSetState,
     ) -> bool {
-        const NUM_HARMONICS: usize = HarmonicEditor::NUM_EDITABLE_HARMONICS;
-
         let modal = Modal::new(Id::new("set-and-select-modal")).show(ui.ctx(), |ui| {
             ui.set_width(440.0);
 
@@ -114,9 +114,9 @@ impl HarmonicEditorUI {
                 .show(ui, |ui| {
                     ui.label("Harmonics");
                     ui.horizontal(|ui| {
-                        ui.add(DragValue::new(&mut state.from).range(1..=NUM_HARMONICS));
+                        ui.add(DragValue::new(&mut state.from).range(1..=NUM_EDITABLE_HARMONICS));
                         ui.label(" — ");
-                        ui.add(DragValue::new(&mut state.to).range(1..=NUM_HARMONICS));
+                        ui.add(DragValue::new(&mut state.to).range(1..=NUM_EDITABLE_HARMONICS));
                     });
                     ui.end_row();
 
@@ -196,8 +196,6 @@ impl ModuleUI for HarmonicEditorUI {
     }
 
     fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
-        let mut need_update = false;
-
         ui.style_mut().spacing.scroll = ScrollStyle::solid();
 
         TopBottomPanel::top("harmonics-list")
@@ -213,23 +211,23 @@ impl ModuleUI for HarmonicEditorUI {
             .show_inside(ui, |ui| {
                 ScrollArea::horizontal().show(ui, |ui| {
                     ui.horizontal_top(|ui| {
-                        let harmonics = self.editor(synth).harmonics_ref_mut();
+                        let mut harmonics = self.editor(synth).get_harmonics();
                         let height = ui.available_height();
 
                         ui.style_mut().spacing.item_spacing = Vec2::splat(2.0);
                         ui.style_mut().interaction.tooltip_delay = 0.1;
                         ui.style_mut().interaction.show_tooltips_only_when_still = false;
 
-                        for (idx, harmonic) in harmonics.iter_mut().enumerate() {
+                        for (idx, harmonic) in harmonics.iter_mut().enumerate().skip(1) {
                             if ui
                                 .add(
                                     GainSlider::new(harmonic)
-                                        .label(&format!("{}", idx + 1))
+                                        .label(&format!("{}", idx))
                                         .height(height),
                                 )
                                 .changed()
                             {
-                                need_update = true;
+                                self.editor(synth).set_harmonic(idx, *harmonic);
                             }
                         }
                     });
@@ -246,17 +244,13 @@ impl ModuleUI for HarmonicEditorUI {
             ));
         });
 
-        if need_update {
-            self.editor(synth).apply_harmonics();
-        }
-
         ui.add_space(60.0);
 
         ui.horizontal(|ui| {
             if ui.button("All to Zero").clicked() {
                 self.editor(synth).set_selected(&SetParams {
                     from: 1,
-                    to: HarmonicEditor::NUM_EDITABLE_HARMONICS,
+                    to: NUM_EDITABLE_HARMONICS,
                     n_th: None,
                     action: SetAction::Set,
                     gain: StereoSample::splat(0.0),
@@ -266,7 +260,7 @@ impl ModuleUI for HarmonicEditorUI {
             if ui.button("All to One").clicked() {
                 self.editor(synth).set_selected(&SetParams {
                     from: 1,
-                    to: HarmonicEditor::NUM_EDITABLE_HARMONICS,
+                    to: NUM_EDITABLE_HARMONICS,
                     n_th: None,
                     action: SetAction::Set,
                     gain: StereoSample::splat(1.0),
@@ -276,7 +270,7 @@ impl ModuleUI for HarmonicEditorUI {
             if ui.button("Keep Even").clicked() {
                 self.editor(synth).set_selected(&SetParams {
                     from: 1,
-                    to: HarmonicEditor::NUM_EDITABLE_HARMONICS,
+                    to: NUM_EDITABLE_HARMONICS,
                     n_th: Some(NthElement::new(2, 0, true)),
                     action: SetAction::Set,
                     gain: StereoSample::splat(0.0),
@@ -286,7 +280,7 @@ impl ModuleUI for HarmonicEditorUI {
             if ui.button("Keep Odd").clicked() {
                 self.editor(synth).set_selected(&SetParams {
                     from: 1,
-                    to: HarmonicEditor::NUM_EDITABLE_HARMONICS,
+                    to: NUM_EDITABLE_HARMONICS,
                     n_th: Some(NthElement::new(2, 1, true)),
                     action: SetAction::Set,
                     gain: StereoSample::splat(0.0),

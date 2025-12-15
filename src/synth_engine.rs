@@ -44,6 +44,7 @@ mod buffer;
 mod config;
 #[macro_use]
 mod synth_module;
+mod biquad_filter;
 mod curves;
 mod modules;
 mod phase;

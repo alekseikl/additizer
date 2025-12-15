@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, Div, Index, Mul, Sub};
+use std::ops::{Add, Div, Index, IndexMut, Mul, Sub};
 
 use crate::synth_engine::{Sample, routing::NUM_CHANNELS};
 
@@ -76,6 +76,12 @@ impl Index<usize> for StereoSample {
     #[inline(always)]
     fn index(&self, index: usize) -> &Self::Output {
         &self.channels[index]
+    }
+}
+
+impl IndexMut<usize> for StereoSample {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.channels[index]
     }
 }
 

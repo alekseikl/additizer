@@ -1,19 +1,19 @@
-use std::any::Any;
+use std::{any::Any, f32};
 
-use itertools::izip;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::{
         Sample, StereoSample,
-        buffer::{
-            HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer, ZEROES_SPECTRAL_BUFFER,
-        },
+        buffer::{HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer},
         routing::{DataType, ModuleId, ModuleType, NUM_CHANNELS, Router},
         synth_module::{InputInfo, ModuleConfigBox, ProcessParams, SynthModule},
+        types::ComplexSample,
     },
     utils::NthElement,
 };
+
+const NUM_HARMONICS: usize = SPECTRAL_BUFFER_SIZE - 1;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum SetAction {
@@ -29,18 +29,50 @@ pub struct SetParams {
     pub gain: StereoSample,
 }
 
+#[derive(Default, Clone, Copy, Serialize, Deserialize)]
+pub struct ComplexCfg {
+    re: Sample,
+    im: Sample,
+}
+
+impl ComplexCfg {
+    fn from_complex(complex: ComplexSample) -> Self {
+        Self {
+            re: complex.re,
+            im: complex.im,
+        }
+    }
+
+    fn complex(&self) -> ComplexSample {
+        ComplexSample::new(self.re, self.im)
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct HarmonicEditorConfig {
     label: Option<String>,
-    harmonics: Vec<StereoSample>,
+    spectrum: [Vec<ComplexCfg>; NUM_CHANNELS],
 }
 
 impl Default for HarmonicEditorConfig {
     fn default() -> Self {
-        Self {
+        let mut cfg = Self {
             label: None,
-            harmonics: vec![StereoSample::splat(1.0); HarmonicEditor::NUM_EDITABLE_HARMONICS],
+            spectrum: Default::default(),
+        };
+
+        let harmonic_series = &HARMONIC_SERIES_BUFFER;
+
+        for channel in &mut cfg.spectrum {
+            channel.extend(
+                harmonic_series
+                    .iter()
+                    .take(NUM_HARMONICS)
+                    .map(|c| ComplexCfg::from_complex(*c)),
+            );
         }
+
+        cfg
     }
 }
 
@@ -48,20 +80,16 @@ pub struct HarmonicEditor {
     id: ModuleId,
     label: String,
     config: ModuleConfigBox<HarmonicEditorConfig>,
-    harmonics: Vec<StereoSample>,
     outputs: [SpectralBuffer; NUM_CHANNELS],
 }
 
 impl HarmonicEditor {
-    pub const NUM_EDITABLE_HARMONICS: usize = SPECTRAL_BUFFER_SIZE - 2;
-
     pub fn new(id: ModuleId, config: ModuleConfigBox<HarmonicEditorConfig>) -> Self {
         let mut editor = Self {
             id,
             label: format!("Harmonic Editor {id}"),
             config,
-            harmonics: vec![StereoSample::splat(1.0); Self::NUM_EDITABLE_HARMONICS],
-            outputs: [ZEROES_SPECTRAL_BUFFER; NUM_CHANNELS],
+            outputs: [HARMONIC_SERIES_BUFFER; NUM_CHANNELS],
         };
 
         {
@@ -71,75 +99,88 @@ impl HarmonicEditor {
                 editor.label = label.clone();
             }
 
-            if config.harmonics.len() == Self::NUM_EDITABLE_HARMONICS {
-                editor.harmonics = config.harmonics.clone();
+            for (channel, cfg_channel) in editor.outputs.iter_mut().zip(&config.spectrum) {
+                if cfg_channel.len() == NUM_HARMONICS {
+                    for (out, cfg) in channel.iter_mut().zip(cfg_channel.iter()) {
+                        *out = cfg.complex();
+                    }
+                }
             }
         }
 
-        editor.update_buffers();
         editor
     }
 
     gen_downcast_methods!();
 
+    pub fn get_harmonics(&self) -> Vec<StereoSample> {
+        let mut magnitudes = vec![StereoSample::ZERO; NUM_HARMONICS];
+
+        for (channel_idx, channel) in self.outputs.iter().enumerate() {
+            for (harmonic_idx, (magnitude, harmonic)) in
+                magnitudes.iter_mut().zip(channel.iter()).enumerate()
+            {
+                let norm = harmonic.norm();
+                let mg = harmonic_idx as Sample * norm * f32::consts::PI;
+
+                magnitude[channel_idx] = mg;
+            }
+        }
+
+        magnitudes
+    }
+
+    pub fn set_harmonic(&mut self, harmonic_number: usize, gain: StereoSample) {
+        let idx = harmonic_number.clamp(1, NUM_HARMONICS - 1);
+
+        for (spectrum, gain) in self.outputs.iter_mut().zip(gain.iter()) {
+            spectrum[idx] = HARMONIC_SERIES_BUFFER[idx] * gain;
+        }
+
+        let mut config = self.config.lock();
+
+        for (cfg_spectrum, spectrum) in config.spectrum.iter_mut().zip(self.outputs) {
+            cfg_spectrum[idx] = ComplexCfg::from_complex(spectrum[idx]);
+        }
+    }
+
     pub fn set_selected(&mut self, params: &SetParams) {
-        assert!(!self.harmonics.is_empty());
+        let idx_from = params.from.clamp(1, NUM_HARMONICS - 1);
+        let range = idx_from..params.to.clamp(idx_from, NUM_HARMONICS);
 
-        const ZERO_THRESHOLD: Sample = 0.000011; //Slightly above -100dB
-
-        let max_idx = self.harmonics.len() - 1;
-        let idx_from = params.from.wrapping_sub(1).clamp(0, max_idx);
-        let range = idx_from..params.to.clamp(idx_from, self.harmonics.len());
-        let gain: StereoSample = params
-            .gain
-            .iter()
-            .map(|gain| Sample::from(*gain > ZERO_THRESHOLD) * gain)
-            .collect();
-
-        for (idx, harmonic) in self.harmonics[range].iter_mut().enumerate() {
-            let matches = params
-                .n_th
-                .as_ref()
-                .is_none_or(|n_th| n_th.matches(idx_from + idx));
-
-            if !matches {
-                continue;
-            }
-
-            match params.action {
-                SetAction::Set => *harmonic = gain,
-                SetAction::Multiple => *harmonic = *harmonic * gain,
-            }
-        }
-
-        self.apply_harmonics();
-    }
-
-    pub fn apply_harmonics(&mut self) {
-        self.update_buffers();
-        self.config.lock().harmonics = self.harmonics.clone();
-    }
-
-    fn update_buffers(&mut self) {
-        let (channel_l, channel_r) = self.outputs.split_at_mut(1);
-        let buff_l = &mut channel_l[0];
-        let buff_r = &mut channel_r[0];
-        let range = 1..(self.harmonics.len() + 1);
-
-        for ((out_l, out_r), series_factor, harmonic) in izip!(
-            buff_l[range.clone()]
+        for (spectrum, gain) in self.outputs.iter_mut().zip(params.gain.iter()) {
+            for (idx, (harmonic, initial_harmonic)) in spectrum[range.clone()]
                 .iter_mut()
-                .zip(buff_r[range.clone()].iter_mut()),
-            &HARMONIC_SERIES_BUFFER[range],
-            &self.harmonics
-        ) {
-            *out_l = series_factor * harmonic.left();
-            *out_r = series_factor * harmonic.right();
+                .zip(HARMONIC_SERIES_BUFFER[range.clone()].iter())
+                .enumerate()
+            {
+                let matches = params
+                    .n_th
+                    .as_ref()
+                    .is_none_or(|n_th| n_th.matches(idx_from - 1 + idx));
+
+                if !matches {
+                    continue;
+                }
+
+                match params.action {
+                    SetAction::Set => *harmonic = *initial_harmonic * gain,
+                    SetAction::Multiple => *harmonic *= gain,
+                }
+            }
         }
+
+        self.save_harmonics();
     }
 
-    pub fn harmonics_ref_mut(&mut self) -> &mut [StereoSample] {
-        &mut self.harmonics
+    fn save_harmonics(&self) {
+        let mut config = self.config.lock();
+
+        for (cfg_channel, channel) in config.spectrum.iter_mut().zip(self.outputs.iter()) {
+            for (cfg, out) in cfg_channel.iter_mut().zip(channel.iter()) {
+                *cfg = ComplexCfg::from_complex(*out);
+            }
+        }
     }
 }
 

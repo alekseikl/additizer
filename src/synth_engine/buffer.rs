@@ -26,7 +26,7 @@ pub const fn harmonic_series_buffer() -> SpectralBuffer {
     let mut buff: SpectralBuffer = [ComplexSample::ZERO; SPECTRAL_BUFFER_SIZE];
     let mut i = 1;
 
-    while i < SPECTRAL_BUFFER_SIZE {
+    while i < (SPECTRAL_BUFFER_SIZE - 1) {
         buff[i].im = -1.0 / (i as f32 * f32::consts::PI);
 
         if i % 2 == 0 {

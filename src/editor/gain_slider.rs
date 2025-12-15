@@ -218,7 +218,7 @@ impl<'a> GainSlider<'a> {
                     Self::gain_to_db_string(self.value.left()),
                     Self::gain_to_db_string(self.value.right())
                 ));
-            } else if self.value.left() != 1.0 {
+            } else if (self.value.left() - 1.0).abs() > Sample::EPSILON {
                 parts.push(Self::gain_to_db_string(self.value.left()));
             }
 
