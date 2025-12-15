@@ -270,8 +270,10 @@ impl Oscillator {
         scratch_buff: &mut SpectralBuffer,
         out_wave_buff: &mut WaveformBuffer,
     ) {
+        let max_frequency = 0.5 * sample_rate;
+
         let cutoff_index =
-            ((0.5 * sample_rate / frequency).floor() as usize + 1).min(spectral_buff.len() - 1);
+            ((max_frequency / frequency).floor() as usize + 1).min(spectral_buff.len() - 1);
 
         *tmp_spectral_buff = *spectral_buff;
         tmp_spectral_buff[cutoff_index..].fill(ComplexSample::ZERO);

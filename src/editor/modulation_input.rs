@@ -59,7 +59,7 @@ impl<'a> ModulationInput<'a> {
                 .units(" dB"),
             Input::Blend => slider.range(0.0..=1.0).default_value(1.0).precision(2),
             Input::Cutoff => slider
-                .range(-2.0..=10.0)
+                .range(-2.0..=8.0)
                 .display_scale(12.0)
                 .default_value(0.0)
                 .precision(2)
