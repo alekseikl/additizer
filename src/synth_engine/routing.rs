@@ -6,7 +6,7 @@ use super::buffer::Buffer;
 
 pub type ModuleId = i64;
 
-pub const MAX_VOICES: usize = 16;
+pub const MAX_VOICES: usize = 24;
 pub const NUM_CHANNELS: usize = 2;
 pub const OUTPUT_MODULE_ID: ModuleId = 0;
 pub const MIN_MODULE_ID: ModuleId = 1;

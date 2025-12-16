@@ -223,7 +223,13 @@ fn show_params_ui(ui: &mut Ui, synth_engine: &mut SynthEngine) {
             let mut ui_data = synth_engine.get_ui();
 
             ui.label("Voices");
-            if ui.add(Slider::new(&mut ui_data.voices, 1..=16)).changed() {
+            if ui
+                .add(Slider::new(
+                    &mut ui_data.voices,
+                    1..=SynthEngine::AVAILABLE_VOICES,
+                ))
+                .changed()
+            {
                 synth_engine.set_num_voices(ui_data.voices);
             }
             ui.end_row();

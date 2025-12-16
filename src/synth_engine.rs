@@ -165,6 +165,8 @@ macro_rules! add_module_method {
 }
 
 impl SynthEngine {
+    pub const AVAILABLE_VOICES: usize = MAX_VOICES - 8;
+
     pub fn new() -> Self {
         let default_cfg = RoutingConfig::default();
 
@@ -269,7 +271,7 @@ impl SynthEngine {
     }
 
     fn clamp_num_voices(num_voices: usize) -> usize {
-        num_voices.clamp(1, MAX_VOICES)
+        num_voices.clamp(1, Self::AVAILABLE_VOICES)
     }
 
     fn clamp_buffer_size(buffer_size: usize) -> usize {
@@ -441,8 +443,13 @@ impl SynthEngine {
         )
     }
 
-    fn find_or_steal_voice(&mut self) -> (usize, bool) {
+    fn find_or_steal_voice(&mut self, new_note: u8) -> (usize, bool) {
         let playing_voices = Self::playing_voices(&mut self.voices);
+
+        // Steal same note voice
+        if let Some((voice_idx, _)) = playing_voices.iter().find(|(_, v)| v.note == new_note) {
+            return (*voice_idx, true);
+        }
 
         // Steal excess voice
         if playing_voices.len() >= self.num_voices {
@@ -458,23 +465,34 @@ impl SynthEngine {
         self.find_free_voice()
     }
 
-    fn find_or_kill_voice(&mut self) -> (usize, bool) {
-        let mut playing_voices = Self::playing_voices(&mut self.voices);
+    fn find_or_kill_voice(&mut self, new_note: u8) -> (usize, bool) {
+        let playing_voices = Self::playing_voices(&mut self.voices);
 
-        // Kill excess voice
-        if playing_voices.len() >= self.num_voices
-            && let Some((voice_idx, voice)) = playing_voices.first_mut()
-        {
+        let voice_idx =
+            // Kill same note voice
+            if let Some((voice_idx, _)) = playing_voices.iter().find(|(_, v)| v.note == new_note) {
+                Some(*voice_idx)
+                // Kill excess voice
+            } else if playing_voices.len() >= self.num_voices
+                && let Some((voice_idx, _)) = playing_voices.first()
+            {
+                Some(*voice_idx)
+            } else {
+                None
+            };
+
+        drop(playing_voices);
+
+        if let Some(voice_idx) = voice_idx {
             for module_id in &self.execution_order {
                 if let Some(module) = get_module_mut!(self, &module_id) {
-                    module.kill_voice(*voice_idx);
+                    module.kill_voice(voice_idx);
                 }
             }
 
-            voice.state = VoiceState::Kill;
+            self.voices[voice_idx].state = VoiceState::Kill;
         }
 
-        drop(playing_voices);
         self.find_free_voice()
     }
 
@@ -488,8 +506,8 @@ impl SynthEngine {
         let mut terminated_voice: Option<VoiceId> = None;
 
         let (voice_idx, stolen) = match self.voice_override {
-            VoiceOverride::Kill => self.find_or_kill_voice(),
-            VoiceOverride::Steal => self.find_or_steal_voice(),
+            VoiceOverride::Kill => self.find_or_kill_voice(note),
+            VoiceOverride::Steal => self.find_or_steal_voice(note),
         };
         let dst_voice = &mut self.voices[voice_idx];
 

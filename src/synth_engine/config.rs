@@ -27,7 +27,7 @@ impl Default for RoutingConfig {
     fn default() -> Self {
         Self {
             next_module_id: MIN_MODULE_ID,
-            num_voices: MAX_VOICES / 2,
+            num_voices: MAX_VOICES / 4,
             voice_override: VoiceOverride::Kill,
             buffer_size: BUFFER_SIZE,
             links: Default::default(),
