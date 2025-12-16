@@ -114,13 +114,14 @@ pub trait Router {
         input_buffer: &'a mut Buffer,
     ) -> Option<&'a Buffer>;
 
-    fn get_spectral_input(
-        &self,
+    fn get_spectral_input<'a>(
+        &'a self,
         input: ModuleInput,
         current: bool,
         voice_idx: usize,
         channel_idx: usize,
-    ) -> Option<&SpectralBuffer>;
+        input_buffer: &'a mut SpectralBuffer,
+    ) -> Option<&'a SpectralBuffer>;
 
     fn get_scalar_input(
         &self,

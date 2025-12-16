@@ -981,7 +981,6 @@ impl Router for SynthEngine {
             && let Some(first) = sources.first()
             && first.modulation == StereoSample::ONE
             && let Some(module) = get_module!(self, &first.src)
-            && [DataType::Buffer, DataType::Scalar].contains(&module.output())
         {
             return Some(module.get_buffer_output(voice_idx, channel_idx));
         }
@@ -1006,21 +1005,48 @@ impl Router for SynthEngine {
         Some(input_buffer)
     }
 
-    fn get_spectral_input(
-        &self,
+    fn get_spectral_input<'a>(
+        &'a self,
         input: ModuleInput,
         current: bool,
         voice_idx: usize,
-        channel: usize,
-    ) -> Option<&SpectralBuffer> {
+        channel_idx: usize,
+        input_buffer: &'a mut SpectralBuffer,
+    ) -> Option<&'a SpectralBuffer> {
         let sources = self.input_sources.get(&input)?;
 
         if sources.is_empty() {
             return None;
         }
 
-        get_module!(self, &sources[0].src)
-            .map(|module| module.get_spectral_output(current, voice_idx, channel))
+        if sources.len() == 1
+            && let Some(first) = sources.first()
+            && first.modulation == StereoSample::ONE
+            && let Some(module) = get_module!(self, &first.src)
+        {
+            return Some(module.get_spectral_output(current, voice_idx, channel_idx));
+        }
+
+        let modules = sources.iter().filter_map(|source| {
+            get_module!(self, &source.src).map(|module| (module, source.modulation))
+        });
+
+        for (mod_idx, (module, modulation)) in modules.enumerate() {
+            let mod_amount = modulation[channel_idx];
+            let input = module.get_spectral_output(current, voice_idx, channel_idx);
+
+            if mod_idx == 0 {
+                for (out, input) in input_buffer.iter_mut().zip(input) {
+                    *out = input * mod_amount;
+                }
+            } else {
+                for (out, input) in input_buffer.iter_mut().zip(input) {
+                    *out += input * mod_amount;
+                }
+            }
+        }
+
+        Some(input_buffer)
     }
 
     fn get_scalar_input(

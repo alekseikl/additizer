@@ -16,6 +16,7 @@ pub struct ModulationInput<'a> {
     input: ModuleInput,
     default: Option<Sample>,
     modulation_default: Option<Sample>,
+    hide_value: bool,
 }
 
 impl<'a> ModulationInput<'a> {
@@ -31,6 +32,7 @@ impl<'a> ModulationInput<'a> {
             input: ModuleInput::new(input, module_id),
             default: None,
             modulation_default: None,
+            hide_value: false,
         }
     }
 
@@ -41,6 +43,11 @@ impl<'a> ModulationInput<'a> {
 
     pub fn modulation_default(mut self, default: Sample) -> Self {
         self.modulation_default = Some(default);
+        self
+    }
+
+    pub fn hide_value(mut self) -> Self {
+        self.hide_value = true;
         self
     }
 
@@ -103,7 +110,14 @@ impl<'a> ModulationInput<'a> {
                 .skew(2.0)
                 .precision(1)
                 .units(" ms"),
-            Input::Audio | Input::Spectrum | Input::SpectrumTo => slider,
+            Input::Spectrum | Input::SpectrumTo => slider
+                .range(0.0..=1.0)
+                .default_value(1.0)
+                .display_scale(100.0)
+                .precision(2)
+                .allow_inverse()
+                .units("%"),
+            Input::Audio => slider,
         };
 
         if let Some(default) = default {
@@ -176,7 +190,14 @@ impl<'a> ModulationInput<'a> {
                 .precision(1)
                 .allow_inverse()
                 .units(" ms"),
-            Input::Audio | Input::Spectrum | Input::SpectrumTo => slider,
+            Input::Spectrum | Input::SpectrumTo => slider
+                .range(0.0..=1.0)
+                .default_value(1.0)
+                .display_scale(100.0)
+                .precision(0)
+                .allow_inverse()
+                .units("%"),
+            Input::Audio => slider,
         };
 
         if let Some(default) = self.modulation_default {
@@ -220,7 +241,7 @@ impl<'a> ModulationInput<'a> {
         }
 
         ComboBox::from_id_salt(format!("mod-select-{:?}", self.input.input_type))
-            .selected_text("➕")
+            .selected_text(if self.hide_value { "Add Source" } else { "➕" })
             .width(0.0)
             .show_ui(ui, |ui| {
                 for src in &filtered {
@@ -270,7 +291,11 @@ impl Widget for ModulationInput<'_> {
             let connected = self.synth_engine.get_connected_input_sources(self.input);
             let result_response = ui
                 .horizontal(|ui| {
-                    let result_response = self.add_slider(ui);
+                    let result_response = if self.hide_value {
+                        ui.response()
+                    } else {
+                        self.add_slider(ui)
+                    };
 
                     self.add_modulation_select(ui, &connected);
                     result_response

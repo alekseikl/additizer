@@ -2,10 +2,10 @@ use egui_baseview::egui::{Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUI, direct_input::DirectInput, modulation_input::ModulationInput,
-        module_label::ModuleLabel, utils::confirm_module_removal,
+        ModuleUI, modulation_input::ModulationInput, module_label::ModuleLabel,
+        utils::confirm_module_removal,
     },
-    synth_engine::{Input, ModuleId, SpectralBlend, SynthEngine},
+    synth_engine::{Input, ModuleId, SpectralBlend, StereoSample, SynthEngine},
 };
 
 pub struct SpectralBlendUi {
@@ -35,6 +35,7 @@ impl ModuleUI for SpectralBlendUi {
 
     fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
         let mut ui_data = self.blend(synth).get_ui();
+        let mut value_stub = StereoSample::ZERO;
 
         ui.add(ModuleLabel::new(
             &ui_data.label,
@@ -50,11 +51,19 @@ impl ModuleUI for SpectralBlendUi {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("From");
-                ui.add(DirectInput::new(synth, Input::Spectrum, self.module_id));
+                ui.add(
+                    ModulationInput::new(&mut value_stub, synth, Input::Spectrum, self.module_id)
+                        .hide_value()
+                        .modulation_default(1.0),
+                );
                 ui.end_row();
 
                 ui.label("To");
-                ui.add(DirectInput::new(synth, Input::SpectrumTo, self.module_id));
+                ui.add(
+                    ModulationInput::new(&mut value_stub, synth, Input::SpectrumTo, self.module_id)
+                        .hide_value()
+                        .modulation_default(1.0),
+                );
                 ui.end_row();
 
                 ui.label("Blend");

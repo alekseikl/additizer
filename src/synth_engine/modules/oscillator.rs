@@ -8,7 +8,7 @@ use wide::f32x4;
 use crate::{
     synth_engine::{
         StereoSample,
-        buffer::{Buffer, SPECTRUM_BITS, SpectralBuffer, zero_buffer},
+        buffer::{Buffer, SPECTRUM_BITS, SpectralBuffer, zero_buffer, zero_spectral_buffer},
         phase::Phase,
         routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
         synth_module::{
@@ -131,6 +131,7 @@ struct Buffers {
     inverse_fft: Arc<dyn ComplexToReal<Sample>>,
     tmp_spectral: DftBuffer,
     scratch: DftBuffer,
+    input: SpectralBuffer,
     level_mod: Buffer,
     pitch_shift_mod: Buffer,
     phase_shift_mod: Buffer,
@@ -143,6 +144,7 @@ impl Default for Buffers {
             inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE),
             tmp_spectral: zero_dft_buffer(),
             scratch: zero_dft_buffer(),
+            input: zero_spectral_buffer(),
             level_mod: zero_buffer(),
             pitch_shift_mod: zero_buffer(),
             phase_shift_mod: zero_buffer(),
@@ -333,7 +335,7 @@ impl Oscillator {
         let wave_octave_fixed = voice.octave + channel.pitch_shift;
 
         if voice.triggered {
-            let spectrum_from = router.spectral(Input::Spectrum, false);
+            let spectrum_from = router.spectral(Input::Spectrum, false, &mut buffers.input);
 
             Self::build_wave(
                 buffers.inverse_fft.as_ref(),
@@ -349,7 +351,7 @@ impl Oscillator {
             voice.triggered = false;
         }
 
-        let spectrum = router.spectral(Input::Spectrum, true);
+        let spectrum = router.spectral(Input::Spectrum, true, &mut buffers.input);
 
         let (wave_from, wave_to) = if voice.wave_buffers_swapped {
             (&voice.wave_buffers.1, &mut voice.wave_buffers.0)
