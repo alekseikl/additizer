@@ -16,7 +16,7 @@ use crate::{
     utils::NthElement,
 };
 
-const NUM_EDITABLE_HARMONICS: usize = SPECTRAL_BUFFER_SIZE - 2;
+const NUM_EDITABLE_HARMONICS: usize = SPECTRAL_BUFFER_SIZE - 1;
 
 impl SetAction {
     fn label(&self) -> &'static str {

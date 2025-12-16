@@ -8,7 +8,7 @@ use wide::f32x4;
 use crate::{
     synth_engine::{
         StereoSample,
-        buffer::{Buffer, SpectralBuffer, WAVEFORM_BITS, zero_buffer, zero_spectral_buffer},
+        buffer::{Buffer, SPECTRUM_BITS, SpectralBuffer, zero_buffer},
         phase::Phase,
         routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
         synth_module::{
@@ -19,10 +19,14 @@ use crate::{
     utils::{note_to_octave, octave_to_freq, st_to_octave},
 };
 
+const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
 const WAVEFORM_SIZE: usize = 1 << WAVEFORM_BITS;
 const WAVEFORM_PAD_LEFT: usize = 1;
 const WAVEFORM_PAD_RIGHT: usize = 2;
 const WAVEFORM_BUFFER_SIZE: usize = WAVEFORM_SIZE + WAVEFORM_PAD_LEFT + WAVEFORM_PAD_RIGHT;
+
+const DFT_BUFFER_SIZE: usize = (1 << (WAVEFORM_BITS - 1)) + 1;
+
 const MAX_UNISON_VOICES: usize = 16;
 
 const INITIAL_PHASES: [Sample; MAX_UNISON_VOICES] = [
@@ -31,9 +35,14 @@ const INITIAL_PHASES: [Sample; MAX_UNISON_VOICES] = [
 ];
 
 type WaveformBuffer = [Sample; WAVEFORM_BUFFER_SIZE];
+type DftBuffer = [ComplexSample; DFT_BUFFER_SIZE];
 
 const fn make_zero_wave_buffer() -> WaveformBuffer {
     [0.0; WAVEFORM_BUFFER_SIZE]
+}
+
+const fn zero_dft_buffer() -> DftBuffer {
+    [ComplexSample::ZERO; DFT_BUFFER_SIZE]
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -120,8 +129,8 @@ struct Channel {
 
 struct Buffers {
     inverse_fft: Arc<dyn ComplexToReal<Sample>>,
-    tmp_spectral: SpectralBuffer,
-    scratch: SpectralBuffer,
+    tmp_spectral: DftBuffer,
+    scratch: DftBuffer,
     level_mod: Buffer,
     pitch_shift_mod: Buffer,
     phase_shift_mod: Buffer,
@@ -132,8 +141,8 @@ impl Default for Buffers {
     fn default() -> Self {
         Self {
             inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE),
-            tmp_spectral: zero_spectral_buffer(),
-            scratch: zero_spectral_buffer(),
+            tmp_spectral: zero_dft_buffer(),
+            scratch: zero_dft_buffer(),
             level_mod: zero_buffer(),
             pitch_shift_mod: zero_buffer(),
             phase_shift_mod: zero_buffer(),
@@ -266,16 +275,16 @@ impl Oscillator {
         frequency: f32,
         sample_rate: f32,
         spectral_buff: &SpectralBuffer,
-        tmp_spectral_buff: &mut SpectralBuffer,
-        scratch_buff: &mut SpectralBuffer,
+        tmp_spectral_buff: &mut DftBuffer,
+        scratch_buff: &mut DftBuffer,
         out_wave_buff: &mut WaveformBuffer,
     ) {
         let max_frequency = 0.5 * sample_rate;
 
         let cutoff_index =
-            ((max_frequency / frequency).floor() as usize + 1).min(spectral_buff.len() - 1);
+            ((max_frequency / frequency).floor() as usize + 1).min(spectral_buff.len());
 
-        *tmp_spectral_buff = *spectral_buff;
+        tmp_spectral_buff[..cutoff_index].copy_from_slice(&spectral_buff[..cutoff_index]);
         tmp_spectral_buff[cutoff_index..].fill(ComplexSample::ZERO);
 
         inverse_fft
@@ -300,8 +309,8 @@ impl Oscillator {
         phase: &mut Phase,
     ) -> Sample {
         let shifted_phase = *phase + phase_shift;
-        let idx = shifted_phase.wave_index();
-        let t = shifted_phase.wave_index_fraction();
+        let idx = shifted_phase.wave_index::<WAVEFORM_BITS>();
+        let t = shifted_phase.wave_index_fraction::<WAVEFORM_BITS>();
         let result = Self::get_interpolated_sample(wave_from, wave_to, buff_t, idx, t);
 
         *phase += octave_to_freq(octave) * freq_phase_mult;

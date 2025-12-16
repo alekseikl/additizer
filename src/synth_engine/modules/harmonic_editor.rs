@@ -14,8 +14,6 @@ use crate::{
     utils::NthElement,
 };
 
-const NUM_HARMONICS: usize = SPECTRAL_BUFFER_SIZE - 1;
-
 #[derive(Clone, Copy, PartialEq)]
 pub enum SetAction {
     Set,
@@ -85,7 +83,7 @@ impl Default for HarmonicEditorConfig {
             channel.extend(
                 harmonic_series
                     .iter()
-                    .take(NUM_HARMONICS)
+                    .take(SPECTRAL_BUFFER_SIZE)
                     .map(|c| ComplexCfg::from_complex(*c)),
             );
         }
@@ -139,7 +137,7 @@ impl HarmonicEditor {
             }
 
             for (channel, cfg_channel) in editor.outputs.iter_mut().zip(&config.spectrum) {
-                if cfg_channel.len() == NUM_HARMONICS {
+                if cfg_channel.len() == SPECTRAL_BUFFER_SIZE {
                     for (out, cfg) in channel.iter_mut().zip(cfg_channel.iter()) {
                         *out = cfg.complex();
                     }
@@ -153,7 +151,7 @@ impl HarmonicEditor {
     gen_downcast_methods!();
 
     pub fn get_harmonics(&self) -> Vec<StereoSample> {
-        let mut magnitudes = vec![StereoSample::ZERO; NUM_HARMONICS];
+        let mut magnitudes = vec![StereoSample::ZERO; SPECTRAL_BUFFER_SIZE];
 
         for (channel_idx, channel) in self.outputs.iter().enumerate() {
             for (harmonic_idx, (magnitude, harmonic)) in
@@ -171,7 +169,7 @@ impl HarmonicEditor {
     }
 
     pub fn set_harmonic(&mut self, harmonic_number: usize, gain: StereoSample) {
-        let idx = harmonic_number.clamp(1, NUM_HARMONICS - 1);
+        let idx = harmonic_number.clamp(1, SPECTRAL_BUFFER_SIZE - 1);
 
         for (spectrum, gain) in self.outputs.iter_mut().zip(gain.iter()) {
             spectrum[idx] = HARMONIC_SERIES_BUFFER[idx] * gain;
@@ -185,8 +183,8 @@ impl HarmonicEditor {
     }
 
     pub fn set_selected(&mut self, params: &SetParams) {
-        let idx_from = params.from.clamp(1, NUM_HARMONICS - 1);
-        let range = idx_from..params.to.clamp(idx_from, NUM_HARMONICS);
+        let idx_from = params.from.clamp(1, SPECTRAL_BUFFER_SIZE - 1);
+        let range = idx_from..params.to.clamp(idx_from, SPECTRAL_BUFFER_SIZE);
 
         for (spectrum, gain) in self.outputs.iter_mut().zip(params.gain.iter()) {
             for (idx, (harmonic, initial_harmonic)) in spectrum[range.clone()]

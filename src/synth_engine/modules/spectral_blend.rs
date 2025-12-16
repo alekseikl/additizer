@@ -4,7 +4,7 @@ use std::any::Any;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
-    buffer::{SPECTRAL_BUFFER_SIZE, SpectralBuffer},
+    buffer::SpectralBuffer,
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
     synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
     types::SpectralOutput,
@@ -78,7 +78,7 @@ impl SpectralBlend {
         let spectrum_from = router.spectral(Input::Spectrum, current);
         let spectrum_to = router.spectral(Input::SpectrumTo, current);
         let blend = (params.blend + router.scalar(Input::Blend, current)).clamp(0.0, 1.0);
-        let output = &mut voice.output.advance()[..SPECTRAL_BUFFER_SIZE - 1];
+        let output = voice.output.advance();
 
         for (out, from, to) in izip!(output, spectrum_from, spectrum_to) {
             *out = from + (to - from) * blend;

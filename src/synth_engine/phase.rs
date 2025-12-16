@@ -2,7 +2,7 @@ use std::ops::{Add, AddAssign};
 
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::{Sample, buffer::WAVEFORM_BITS};
+use crate::synth_engine::Sample;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Phase(u32);
@@ -11,9 +11,6 @@ impl Phase {
     pub const ZERO: Self = Self(0);
 
     const FULL_PHASE: Sample = ((u32::MAX as u64) + 1) as Sample;
-    const INTERMEDIATE_BITS: usize = 32 - WAVEFORM_BITS;
-    const INTERMEDIATE_MASK: u32 = (1 << Self::INTERMEDIATE_BITS) - 1;
-    const INTERMEDIATE_MULT: Sample = ((1 << Self::INTERMEDIATE_BITS) as Sample).recip();
 
     #[inline(always)]
     pub const fn freq_phase_mult(sample_rate: Sample) -> Sample {
@@ -25,14 +22,27 @@ impl Phase {
         Self((phase * Self::FULL_PHASE) as i64 as u32)
     }
 
-    #[inline(always)]
-    pub fn wave_index(&self) -> usize {
-        (self.0 >> Self::INTERMEDIATE_BITS) as usize
+    const fn intermediate_bits<const WAVEFORM_BITS: usize>() -> usize {
+        32 - WAVEFORM_BITS
+    }
+
+    const fn intermediate_mask<const WAVEFORM_BITS: usize>() -> u32 {
+        (1 << Self::intermediate_bits::<WAVEFORM_BITS>()) - 1
+    }
+
+    const fn intermediate_mult<const WAVEFORM_BITS: usize>() -> Sample {
+        ((1 << Self::intermediate_bits::<WAVEFORM_BITS>()) as Sample).recip()
     }
 
     #[inline(always)]
-    pub fn wave_index_fraction(&self) -> Sample {
-        (self.0 & Self::INTERMEDIATE_MASK) as Sample * Self::INTERMEDIATE_MULT
+    pub fn wave_index<const WAVEFORM_BITS: usize>(&self) -> usize {
+        (self.0 >> Self::intermediate_bits::<WAVEFORM_BITS>()) as usize
+    }
+
+    #[inline(always)]
+    pub fn wave_index_fraction<const WAVEFORM_BITS: usize>(&self) -> Sample {
+        (self.0 & Self::intermediate_mask::<WAVEFORM_BITS>()) as Sample
+            * Self::intermediate_mult::<WAVEFORM_BITS>()
     }
 
     pub fn normalized(&self) -> Sample {

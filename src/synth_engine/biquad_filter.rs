@@ -2,7 +2,6 @@ use std::f32;
 
 use crate::synth_engine::{Sample, buffer::SPECTRAL_BUFFER_SIZE, types::ComplexSample};
 
-const HARMONICS_NUM: usize = SPECTRAL_BUFFER_SIZE - 1;
 const TAU: Sample = f32::consts::TAU;
 
 pub struct BiquadFilter {
@@ -22,7 +21,7 @@ impl BiquadFilter {
         let w_q = w / self.q;
         let numerator = self.level * w_squared;
 
-        (0..HARMONICS_NUM).map(move |i| {
+        (0..SPECTRAL_BUFFER_SIZE).map(move |i| {
             let x = i as Sample * TAU;
 
             numerator / ComplexSample::new(w_squared - x * x, w_q * x)
@@ -35,7 +34,7 @@ impl BiquadFilter {
         let w_squared = w * w;
         let w_q = w / self.q;
 
-        (0..HARMONICS_NUM).map(move |i| {
+        (0..SPECTRAL_BUFFER_SIZE).map(move |i| {
             let x = i as Sample * TAU;
             let x_squared = x * x;
 
@@ -50,7 +49,7 @@ impl BiquadFilter {
         let wa_q = (w * a) / self.q;
         let w_aq = w / (a * self.q);
 
-        (0..HARMONICS_NUM).map(move |i| {
+        (0..SPECTRAL_BUFFER_SIZE).map(move |i| {
             let x = i as Sample * TAU;
             let wx_diff = w_squared - x * x;
 
@@ -64,7 +63,7 @@ impl BiquadFilter {
         let w_squared = w * w;
         let w_q = w / self.q;
 
-        (0..HARMONICS_NUM).map(move |i| {
+        (0..SPECTRAL_BUFFER_SIZE).map(move |i| {
             let x = i as Sample * TAU;
             let x_squared = x * x;
             let wx_q = w_q * x;
@@ -79,7 +78,7 @@ impl BiquadFilter {
         let w_squared = w * w;
         let w_q = w / self.q;
 
-        (0..HARMONICS_NUM).map(move |i| {
+        (0..SPECTRAL_BUFFER_SIZE).map(move |i| {
             let x = i as Sample * TAU;
             let wx_diff = w_squared - x * x;
 
