@@ -151,10 +151,10 @@ macro_rules! add_module_method {
         pub fn $func_name(&mut self) -> ModuleId {
             let id = self.alloc_next_id();
             let config = Arc::new(Mutex::new($module_cfg::default()));
-            let mut module = $module_type::new(id, Arc::clone(&config) $(, self.$arg() )*);
+            let mut module = Box::new($module_type::new(id, Arc::clone(&config) $(, self.$arg() )*));
 
-            Self::trigger_active_notes(&self.voices, &mut module);
-            self.modules.insert(id, Some(Box::new(module)));
+            Self::trigger_active_notes(&self.voices, module.as_mut());
+            self.modules.insert(id, Some(module));
             self.config
                 .modules
                 .lock()

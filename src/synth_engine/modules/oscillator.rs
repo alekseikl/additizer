@@ -66,6 +66,7 @@ pub struct ChannelParams {
     pitch_shift: Sample, //Octaves
     detune: Sample,      //Octaves
     phase_shift: Sample,
+    frequency_shift: Sample,
     initial_phases: [Sample; MAX_UNISON_VOICES],
 }
 
@@ -74,8 +75,9 @@ impl Default for ChannelParams {
         Self {
             level: 0.5,
             pitch_shift: 0.0,
-            detune: st_to_octave(20.0),
+            detune: st_to_octave(0.2),
             phase_shift: 0.0,
+            frequency_shift: 0.0,
             initial_phases: INITIAL_PHASES,
         }
     }
@@ -94,6 +96,7 @@ pub struct OscillatorUIData {
     pub pitch_shift: StereoSample,
     pub detune: StereoSample,
     pub phase_shift: StereoSample,
+    pub frequency_shift: StereoSample,
     pub unison: usize,
     pub reset_phase: bool,
     pub initial_phases: [StereoSample; MAX_UNISON_VOICES],
@@ -135,6 +138,7 @@ struct Buffers {
     level_mod: Buffer,
     pitch_shift_mod: Buffer,
     phase_shift_mod: Buffer,
+    frequency_shift_mod: Buffer,
     detune_mod: Buffer,
 }
 
@@ -148,6 +152,7 @@ impl Default for Buffers {
             level_mod: zero_buffer(),
             pitch_shift_mod: zero_buffer(),
             phase_shift_mod: zero_buffer(),
+            frequency_shift_mod: zero_buffer(),
             detune_mod: zero_buffer(),
         }
     }
@@ -186,6 +191,7 @@ impl Oscillator {
             pitch_shift: get_stereo_param!(self, pitch_shift),
             detune: get_stereo_param!(self, detune),
             phase_shift: get_stereo_param!(self, phase_shift),
+            frequency_shift: get_stereo_param!(self, frequency_shift),
             unison: self.params.unison,
             reset_phase: self.params.reset_phase,
             initial_phases: std::array::from_fn(|i| {
@@ -214,6 +220,7 @@ impl Oscillator {
     );
     set_stereo_param!(set_detune, detune, detune.clamp(0.0, st_to_octave(1.0)));
     set_stereo_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
+    set_stereo_param!(set_frequency_shift, frequency_shift, *frequency_shift);
 
     pub fn set_initial_phase(&mut self, voice_idx: usize, phase: StereoSample) {
         for (channel, phase) in self.channels.iter_mut().zip(phase.iter()) {
@@ -281,6 +288,7 @@ impl Oscillator {
         scratch_buff: &mut DftBuffer,
         out_wave_buff: &mut WaveformBuffer,
     ) {
+        let frequency = frequency.abs();
         let max_frequency = 0.5 * sample_rate;
 
         let cutoff_index =
@@ -300,10 +308,12 @@ impl Oscillator {
     }
 
     #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
     // #[unsafe(no_mangle)]
     fn process_sample(
         octave: Sample,
         phase_shift: Phase,
+        freq_shift: Sample,
         buff_t: Sample,
         wave_from: &WaveformBuffer,
         wave_to: &WaveformBuffer,
@@ -315,7 +325,7 @@ impl Oscillator {
         let t = shifted_phase.wave_index_fraction::<WAVEFORM_BITS>();
         let result = Self::get_interpolated_sample(wave_from, wave_to, buff_t, idx, t);
 
-        *phase += octave_to_freq(octave) * freq_phase_mult;
+        *phase += (octave_to_freq(octave) + freq_shift) * freq_phase_mult;
 
         result
     }
@@ -331,6 +341,7 @@ impl Oscillator {
         let level_mod = router.buffer(Input::Level, &mut buffers.level_mod);
         let pitch_shift_mod = router.buffer(Input::PitchShift, &mut buffers.pitch_shift_mod);
         let phase_shift_mod = router.buffer(Input::PhaseShift, &mut buffers.phase_shift_mod);
+        let freq_shift_mod = router.buffer(Input::FrequencyShift, &mut buffers.frequency_shift_mod);
 
         let wave_octave_fixed = voice.octave + channel.pitch_shift;
 
@@ -339,7 +350,9 @@ impl Oscillator {
 
             Self::build_wave(
                 buffers.inverse_fft.as_ref(),
-                octave_to_freq(wave_octave_fixed + pitch_shift_mod[0]),
+                octave_to_freq(wave_octave_fixed + pitch_shift_mod[0])
+                    + channel.frequency_shift
+                    + freq_shift_mod[0],
                 sample_rate,
                 spectrum_from,
                 &mut buffers.tmp_spectral,
@@ -361,7 +374,9 @@ impl Oscillator {
 
         Self::build_wave(
             buffers.inverse_fft.as_ref(),
-            octave_to_freq(wave_octave_fixed + pitch_shift_mod[router.samples - 1]),
+            octave_to_freq(wave_octave_fixed + pitch_shift_mod[router.samples - 1])
+                + channel.frequency_shift
+                + freq_shift_mod[router.samples - 1],
             sample_rate,
             spectrum,
             &mut buffers.tmp_spectral,
@@ -380,11 +395,20 @@ impl Oscillator {
             let unison_mult = ((params.unison - 1) as Sample).recip();
             let unison_scale = 1.0 / (params.unison as Sample).sqrt();
 
-            for (out, level_mod, pitch_shift_mod, phase_shift_mod, detune_mod, sample_idx) in izip!(
+            for (
+                out,
+                level_mod,
+                pitch_shift_mod,
+                phase_shift_mod,
+                freq_shift_mod,
+                detune_mod,
+                sample_idx,
+            ) in izip!(
                 &mut voice.output,
                 level_mod,
                 pitch_shift_mod,
                 phase_shift_mod,
+                freq_shift_mod,
                 detune_mod,
                 0..router.samples
             ) {
@@ -395,6 +419,7 @@ impl Oscillator {
                 let unison_pitch_step = detune * unison_mult;
                 let unison_pitch_from = -0.5 * detune;
                 let phase_shift = Phase::from_normalized(channel.phase_shift + *phase_shift_mod);
+                let freq_shift = channel.frequency_shift + *freq_shift_mod;
 
                 for unison_idx in 0..params.unison {
                     let unison_idx_float = unison_idx as Sample;
@@ -405,6 +430,7 @@ impl Oscillator {
                     sample += Self::process_sample(
                         octave + unison_pitch_shift,
                         phase_shift,
+                        freq_shift,
                         buff_t,
                         wave_from,
                         wave_to,
@@ -418,16 +444,18 @@ impl Oscillator {
         } else {
             let phase = &mut voice.phases[0];
 
-            for (out, level_mod, pitch_shift_mod, phase_shift_mod, sample_idx) in izip!(
+            for (out, level_mod, pitch_shift_mod, phase_shift_mod, freq_shift_mod, sample_idx) in izip!(
                 &mut voice.output,
                 level_mod,
                 pitch_shift_mod,
                 phase_shift_mod,
+                freq_shift_mod,
                 0..router.samples
             ) {
                 *out = Self::process_sample(
                     fixed_octave + *pitch_shift_mod,
                     Phase::from_normalized(channel.phase_shift + *phase_shift_mod),
+                    channel.frequency_shift + *freq_shift_mod,
                     sample_idx as Sample * buff_t_mult,
                     wave_from,
                     wave_to,
@@ -463,6 +491,7 @@ impl SynthModule for Oscillator {
             InputInfo::buffer(Input::Level),
             InputInfo::buffer(Input::PitchShift),
             InputInfo::buffer(Input::PhaseShift),
+            InputInfo::buffer(Input::FrequencyShift),
             InputInfo::buffer(Input::Detune),
         ];
 

@@ -39,6 +39,7 @@ pub enum Input {
     PitchShift,
     Detune,
     PhaseShift,
+    FrequencyShift,
     Spectrum,
     SpectrumTo,
     Blend,

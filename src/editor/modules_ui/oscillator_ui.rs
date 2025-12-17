@@ -95,6 +95,20 @@ impl ModuleUI for OscillatorUI {
                 }
                 ui.end_row();
 
+                ui.label("Frequency shift");
+                if ui
+                    .add(ModulationInput::new(
+                        &mut ui_data.frequency_shift,
+                        synth,
+                        Input::FrequencyShift,
+                        self.module_id,
+                    ))
+                    .changed()
+                {
+                    self.osc(synth).set_frequency_shift(ui_data.frequency_shift);
+                }
+                ui.end_row();
+
                 ui.label("Detune");
                 if ui
                     .add(ModulationInput::new(

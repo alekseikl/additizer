@@ -90,6 +90,13 @@ impl<'a> ModulationInput<'a> {
                 .allow_inverse()
                 .units(" st"),
             Input::PhaseShift => slider.default_value(0.0).precision(2).allow_inverse(),
+            Input::FrequencyShift => slider
+                .range(0.0..=440.0)
+                .default_value(0.0)
+                .precision(0)
+                .allow_inverse()
+                .units(" Hz")
+                .skew(1.8),
             Input::LowFrequency => slider
                 .range(0.0..=100.0)
                 .default_value(1.0)
@@ -169,6 +176,13 @@ impl<'a> ModulationInput<'a> {
                 .allow_inverse()
                 .units(" st"),
             Input::PhaseShift => slider.default_value(0.0).precision(2).allow_inverse(),
+            Input::FrequencyShift => slider
+                .range(0.0..=440.0)
+                .default_value(0.0)
+                .precision(0)
+                .allow_inverse()
+                .units(" Hz")
+                .skew(1.8),
             Input::LowFrequency => slider
                 .range(0.0..=100.0)
                 .default_value(1.0)
