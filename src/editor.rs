@@ -19,6 +19,7 @@ use crate::{
         Input, ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, SynthEngine, SynthModule,
         VoiceOverride,
     },
+    utils::from_ms,
 };
 
 use egui_integration::{ResizableWindow, create_egui_editor};
@@ -221,6 +222,7 @@ fn show_params_ui(ui: &mut Ui, synth_engine: &mut SynthEngine) {
         .show(ui, |ui| {
             let buffer_sizes = [16, 32, 64, 128];
             let mut ui_data = synth_engine.get_ui();
+            let mut kill_time_ms = ui_data.voice_kill_time * 1000.0;
 
             ui.label("Voices");
             if ui
@@ -249,6 +251,15 @@ fn show_params_ui(ui: &mut Ui, synth_engine: &mut SynthEngine) {
                         }
                     }
                 });
+            ui.end_row();
+
+            ui.label("Voice kill time");
+            if ui
+                .add(Slider::new(&mut kill_time_ms, 4.0..=100.0))
+                .changed()
+            {
+                synth_engine.set_voice_kill_time(from_ms(kill_time_ms));
+            }
             ui.end_row();
 
             ui.label("Voices state");

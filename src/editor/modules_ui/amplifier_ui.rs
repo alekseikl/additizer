@@ -1,4 +1,4 @@
-use egui_baseview::egui::{Grid, Slider, Ui};
+use egui_baseview::egui::{Grid, Ui};
 
 use crate::{
     editor::{
@@ -6,7 +6,6 @@ use crate::{
         multi_input::MultiInput, utils::confirm_module_removal,
     },
     synth_engine::{Amplifier, Input, ModuleId, SynthEngine},
-    utils::from_ms,
 };
 
 pub struct AmplifierUI {
@@ -36,7 +35,7 @@ impl ModuleUI for AmplifierUI {
 
     fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
         let mut ui_data = self.amp(synth).get_ui();
-        let mut kill_time_ms = ui_data.voice_kill_time * 1000.0;
+        // let mut kill_time_ms = ui_data.voice_kill_time * 1000.0;
 
         ui.add(ModuleLabel::new(
             &ui_data.label,
@@ -72,14 +71,14 @@ impl ModuleUI for AmplifierUI {
                 }
                 ui.end_row();
 
-                ui.label("Voice kill time");
-                if ui
-                    .add(Slider::new(&mut kill_time_ms, 4.0..=100.0))
-                    .changed()
-                {
-                    self.amp(synth).set_voice_kill_time(from_ms(kill_time_ms));
-                }
-                ui.end_row();
+                // ui.label("Voice kill time");
+                // if ui
+                //     .add(Slider::new(&mut kill_time_ms, 4.0..=100.0))
+                //     .changed()
+                // {
+                //     self.amp(synth).set_voice_kill_time(from_ms(kill_time_ms));
+                // }
+                // ui.end_row();
             });
 
         ui.add_space(40.0);

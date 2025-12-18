@@ -115,6 +115,15 @@ pub trait Router {
         input_buffer: &'a mut Buffer,
     ) -> Option<&'a Buffer>;
 
+    fn read_unmodulated_input(
+        &self,
+        input: ModuleInput,
+        samples: usize,
+        voice_idx: usize,
+        channel_idx: usize,
+        input_buffer: &mut Buffer,
+    ) -> bool;
+
     fn get_spectral_input<'a>(
         &'a self,
         input: ModuleInput,

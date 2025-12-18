@@ -75,6 +75,7 @@ impl<'a> PersistentField<'a, Config> for Arc<Config> {
     fn set(&self, new_value: Config) {
         *self.routing.lock() = new_value.routing.lock().clone();
         *self.modules.lock() = new_value.modules.lock().clone();
+        *self.output.lock() = new_value.output.lock().clone();
     }
 
     fn map<F, R>(&self, f: F) -> R

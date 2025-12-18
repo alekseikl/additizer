@@ -5,6 +5,7 @@ pub mod harmonic_editor;
 mod lfo;
 mod modulation_filter;
 mod oscillator;
+mod output;
 mod spectral_blend;
 mod spectral_filter;
 
@@ -14,5 +15,6 @@ pub use external_param::{ExternalParam, ExternalParamConfig, ExternalParamsBlock
 pub use lfo::{Lfo, LfoConfig, LfoShape};
 pub use modulation_filter::{ModulationFilter, ModulationFilterConfig};
 pub use oscillator::{Oscillator, OscillatorConfig};
+pub use output::{Output, OutputConfig};
 pub use spectral_blend::{SpectralBlend, SpectralBlendConfig};
 pub use spectral_filter::{SpectralFilter, SpectralFilterConfig, SpectralFilterType};

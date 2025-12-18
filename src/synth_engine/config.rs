@@ -4,10 +4,10 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
-    BUFFER_SIZE, StereoSample, VoiceOverride,
+    BUFFER_SIZE, VoiceOverride,
     modules::{
         AmplifierConfig, EnvelopeConfig, ExternalParamConfig, LfoConfig, ModulationFilterConfig,
-        OscillatorConfig, SpectralBlendConfig, SpectralFilterConfig,
+        OscillatorConfig, OutputConfig, SpectralBlendConfig, SpectralFilterConfig,
         harmonic_editor::HarmonicEditorConfig,
     },
     routing::{MAX_VOICES, MIN_MODULE_ID, ModuleId, ModuleLink},
@@ -20,7 +20,6 @@ pub struct RoutingConfig {
     pub voice_override: VoiceOverride,
     pub buffer_size: usize,
     pub links: Vec<ModuleLink>,
-    pub output_level: StereoSample,
 }
 
 impl Default for RoutingConfig {
@@ -31,7 +30,6 @@ impl Default for RoutingConfig {
             voice_override: VoiceOverride::Kill,
             buffer_size: BUFFER_SIZE,
             links: Default::default(),
-            output_level: StereoSample::splat(0.25),
         }
     }
 }
@@ -55,4 +53,5 @@ pub enum ModuleConfig {
 pub struct Config {
     pub routing: CfgBox<RoutingConfig>,
     pub modules: CfgBox<HashMap<ModuleId, ModuleConfig>>,
+    pub output: CfgBox<OutputConfig>,
 }

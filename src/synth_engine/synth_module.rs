@@ -3,7 +3,7 @@ use std::{any::Any, sync::Arc};
 use parking_lot::Mutex;
 
 use crate::synth_engine::{
-    ModuleInput, VoiceState,
+    ModuleInput,
     buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER},
     routing::{DataType, Input, ModuleId, ModuleType, Router},
     types::Sample,
@@ -57,15 +57,13 @@ impl InputInfo {
 
 pub struct VoiceAlive {
     voice_idx: usize,
-    state: VoiceState,
     alive: bool,
 }
 
 impl VoiceAlive {
-    pub fn new(voice_idx: usize, state: VoiceState) -> Self {
+    pub fn new(voice_idx: usize) -> Self {
         Self {
             voice_idx,
-            state,
             alive: false,
         }
     }
@@ -78,12 +76,12 @@ impl VoiceAlive {
         self.voice_idx
     }
 
-    pub fn killed(&self) -> bool {
-        matches!(self.state, VoiceState::Kill)
-    }
-
     pub fn mark_alive(&mut self, alive: bool) {
         self.alive = self.alive || alive;
+    }
+
+    pub fn reset_alive(&mut self, alive: bool) {
+        self.alive = alive;
     }
 }
 
@@ -99,7 +97,6 @@ pub trait SynthModule: Any + Send {
 
     fn note_on(&mut self, params: &NoteOnParams) {}
     fn note_off(&mut self, params: &NoteOffParams) {}
-    fn kill_voice(&mut self, voice_idx: usize) {}
 
     fn poll_alive_voices(&self, alive_state: &mut [VoiceAlive]) {}
 

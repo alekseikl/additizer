@@ -5,21 +5,18 @@ use std::{
 };
 
 use itertools::Itertools;
-use nih_plug::{params::FloatParam, prelude::FloatRange, util::db_to_gain_fast};
+use nih_plug::params::FloatParam;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
-    buffer::{
-        Buffer, SpectralBuffer, ZEROES_BUFFER, append_buffer_slice, fill_or_append_buffer_slice,
-        zero_buffer,
-    },
+    buffer::{Buffer, SpectralBuffer, fill_or_append_buffer_slice},
     config::{ModuleConfig, RoutingConfig},
     modules::{
         AmplifierConfig, EnvelopeConfig, ExternalParamConfig, LfoConfig, ModulationFilterConfig,
-        OscillatorConfig, SpectralBlendConfig, SpectralFilterConfig,
+        OscillatorConfig, Output, SpectralBlendConfig, SpectralFilterConfig,
         harmonic_editor::HarmonicEditorConfig,
     },
     routing::{AvailableInputSourceUI, DataType, MAX_VOICES, Router},
@@ -70,6 +67,7 @@ pub struct SynthEngineUiData {
     pub voices: usize,
     pub buffer_size: usize,
     pub voice_override: VoiceOverride,
+    pub voice_kill_time: Sample,
     pub playing_voices: usize,
     pub releasing_voices: usize,
     pub killing_voices: usize,
@@ -118,14 +116,12 @@ pub struct SynthEngine {
     voice_override: VoiceOverride,
     config: Arc<Config>,
     modules: HashMap<ModuleId, Option<Box<dyn SynthModule>>>,
+    output: Option<Box<Output>>,
     input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>>,
     needs_audio_rate: HashSet<ModuleId>,
     execution_order: Vec<ModuleId>,
     voices: [Voice; MAX_VOICES],
     external_params: Option<Arc<ExternalParamsBlock>>,
-    output_level: StereoSample,
-    output_level_param: Arc<FloatParam>,
-    tmp_output_buffer: Option<Box<(Buffer, Buffer)>>,
 }
 
 macro_rules! get_module {
@@ -179,18 +175,12 @@ impl SynthEngine {
             voice_override: default_cfg.voice_override,
             config: Default::default(),
             modules: HashMap::new(),
+            output: None,
             input_sources: HashMap::new(),
             needs_audio_rate: HashSet::new(),
             execution_order: Vec::new(),
             voices: Default::default(),
             external_params: None,
-            output_level: StereoSample::splat(0.25),
-            output_level_param: Arc::new(FloatParam::new(
-                "",
-                0.0,
-                FloatRange::Linear { min: 0.0, max: 1.0 },
-            )),
-            tmp_output_buffer: Some(Box::new((zero_buffer(), zero_buffer()))),
         }
     }
 
@@ -203,8 +193,11 @@ impl SynthEngine {
     ) {
         self.config = config;
         self.sample_rate = sample_rate;
-        self.output_level_param = output_level_param;
         self.external_params = Some(Arc::new(external_params));
+        self.output = Some(Box::new(Output::new(
+            Arc::clone(&self.config.output),
+            output_level_param,
+        )));
 
         if !self.load_config() {
             self.clear();
@@ -220,6 +213,10 @@ impl SynthEngine {
             voices: self.num_voices,
             buffer_size: self.buffer_size,
             voice_override: self.voice_override,
+            voice_kill_time: self
+                .output
+                .as_deref()
+                .map_or(0.0, |output| output.get_voice_kill_time()),
             playing_voices: 0,
             releasing_voices: 0,
             killing_voices: 0,
@@ -268,6 +265,24 @@ impl SynthEngine {
     pub fn set_voice_override(&mut self, voice_override: VoiceOverride) {
         self.voice_override = voice_override;
         self.config.routing.lock().voice_override = voice_override;
+    }
+
+    pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) {
+        if let Some(output) = self.output.as_deref_mut() {
+            output.set_voice_kill_time(voice_kill_time);
+        }
+    }
+
+    pub fn get_output_level(&self) -> StereoSample {
+        self.output
+            .as_deref()
+            .map_or(StereoSample::ZERO, |output| output.get_level())
+    }
+
+    pub fn set_output_level(&mut self, level: StereoSample) {
+        if let Some(output) = self.output.as_deref_mut() {
+            output.set_level(level);
+        }
     }
 
     fn clamp_num_voices(num_voices: usize) -> usize {
@@ -390,15 +405,6 @@ impl SynthEngine {
         self.save_links();
     }
 
-    pub fn get_output_level(&self) -> StereoSample {
-        self.output_level
-    }
-
-    pub fn set_output_level(&mut self, level: StereoSample) {
-        self.output_level = level;
-        self.config.routing.lock().output_level = level;
-    }
-
     fn playing_voices(voices: &mut [Voice]) -> SmallVec<[(usize, &mut Voice); MAX_VOICES]> {
         voices
             .iter_mut()
@@ -484,10 +490,8 @@ impl SynthEngine {
         drop(playing_voices);
 
         if let Some(voice_idx) = voice_idx {
-            for module_id in &self.execution_order {
-                if let Some(module) = get_module_mut!(self, &module_id) {
-                    module.kill_voice(voice_idx);
-                }
+            if let Some(output) = self.output.as_deref_mut() {
+                output.kill_voice(voice_idx);
             }
 
             self.voices[voice_idx].state = VoiceState::Kill;
@@ -537,6 +541,10 @@ impl SynthEngine {
             }
         }
 
+        if let Some(output) = self.output.as_deref_mut() {
+            output.note_on(&params);
+        }
+
         terminated_voice
     }
 
@@ -581,13 +589,17 @@ impl SynthEngine {
             .iter()
             .enumerate()
             .filter(|(_, v)| !matches!(v.state, VoiceState::Free))
-            .map(|(voice_idx, v)| VoiceAlive::new(voice_idx, v.state))
+            .map(|(voice_idx, _)| VoiceAlive::new(voice_idx))
             .collect();
 
         self.execution_order
             .iter()
             .filter_map(|id| get_module!(self, id))
             .for_each(|module| module.poll_alive_voices(&mut alive_voices));
+
+        if let Some(output) = self.output.as_deref() {
+            output.poll_alive_voices(&mut alive_voices);
+        }
 
         for completed in alive_voices.iter().filter(|alive| !alive.alive()) {
             let voice = &mut self.voices[completed.index()];
@@ -620,7 +632,10 @@ impl SynthEngine {
             }
         }
 
-        self.write_output(&params, outputs);
+        if let Some(mut output) = self.output.take() {
+            output.process(&params, self, outputs);
+            self.output.replace(output);
+        }
     }
 
     fn alloc_next_id(&mut self) -> ModuleId {
@@ -710,46 +725,6 @@ impl SynthEngine {
                 })
             })
             .collect()
-    }
-
-    fn write_output<'a>(
-        &mut self,
-        params: &ProcessParams,
-        outputs: impl Iterator<Item = &'a mut [f32]>,
-    ) {
-        let mut tmp_buffers = self.tmp_output_buffer.take().unwrap();
-
-        self.output_level_param.smoothed.next_block_mapped(
-            &mut tmp_buffers.0,
-            params.samples,
-            |_, dbs| db_to_gain_fast(dbs),
-        );
-
-        for (channel, (output, level)) in outputs.zip(self.output_level.iter()).enumerate() {
-            output.fill(0.0);
-
-            for voice_idx in params.active_voices.iter() {
-                let input = self
-                    .get_input(
-                        ModuleInput::new(Input::Audio, OUTPUT_MODULE_ID),
-                        params.samples,
-                        *voice_idx,
-                        channel,
-                        &mut tmp_buffers.1,
-                    )
-                    .unwrap_or(&ZEROES_BUFFER);
-
-                append_buffer_slice(
-                    output,
-                    input
-                        .iter()
-                        .zip(&tmp_buffers.0)
-                        .map(|(input, level_mod)| input * level * level_mod),
-                );
-            }
-        }
-
-        self.tmp_output_buffer.replace(tmp_buffers);
     }
 
     pub fn get_modules(&self) -> Vec<&dyn SynthModule> {
@@ -932,7 +907,6 @@ impl SynthEngine {
         }
 
         self.next_id = routing.next_module_id;
-        self.output_level = routing.output_level;
         self.num_voices = Self::clamp_num_voices(routing.num_voices);
         self.buffer_size = Self::clamp_buffer_size(routing.buffer_size);
         self.voice_override = routing.voice_override;
@@ -1021,6 +995,38 @@ impl Router for SynthEngine {
         }
 
         Some(input_buffer)
+    }
+
+    fn read_unmodulated_input(
+        &self,
+        input: ModuleInput,
+        samples: usize,
+        voice_idx: usize,
+        channel_idx: usize,
+        input_buffer: &mut Buffer,
+    ) -> bool {
+        if let Some(sources) = self.input_sources.get(&input)
+            && !sources.is_empty()
+        {
+            let result = &mut input_buffer[..samples];
+            let modules = sources
+                .iter()
+                .filter_map(|source| get_module!(self, &source.src));
+
+            for (mod_idx, module) in modules.enumerate() {
+                fill_or_append_buffer_slice(
+                    mod_idx == 0,
+                    result,
+                    module
+                        .get_buffer_output(voice_idx, channel_idx)
+                        .iter()
+                        .copied(),
+                );
+            }
+            true
+        } else {
+            false
+        }
     }
 
     fn get_spectral_input<'a>(
