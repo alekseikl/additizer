@@ -1,5 +1,4 @@
 use itertools::izip;
-use nih_plug::util::db_to_gain_fast;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 
@@ -34,7 +33,7 @@ pub struct Params {
 pub struct ChannelParams {
     cutoff: Sample, //Cutoff octave
     q: Sample,
-    gain_db: Sample,
+    gain: Sample,
 }
 
 impl Default for ChannelParams {
@@ -42,7 +41,7 @@ impl Default for ChannelParams {
         Self {
             cutoff: 1.0,
             q: 0.7,
-            gain_db: 0.0,
+            gain: 1.0,
         }
     }
 }
@@ -59,7 +58,7 @@ pub struct SpectralFilterUIData {
     pub filter_type: SpectralFilterType,
     pub cutoff: StereoSample,
     pub q: StereoSample,
-    pub gain_db: StereoSample,
+    pub gain: StereoSample,
     pub fourth_order: bool,
 }
 
@@ -107,7 +106,7 @@ impl SpectralFilter {
             filter_type: self.params.filter_type,
             cutoff: get_stereo_param!(self, cutoff),
             q: get_stereo_param!(self, q),
-            gain_db: get_stereo_param!(self, gain_db),
+            gain: get_stereo_param!(self, gain),
             fourth_order: self.params.fourth_order,
         }
     }
@@ -117,7 +116,7 @@ impl SpectralFilter {
 
     set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
     set_stereo_param!(set_q, q, q.clamp(0.1, 10.0));
-    set_stereo_param!(set_gain_db, gain_db, gain_db.min(24.0));
+    set_stereo_param!(set_gain, gain, *gain);
 
     fn apply_response(
         output: &mut SpectralBuffer,
@@ -173,9 +172,9 @@ impl SpectralFilter {
         let input = router.spectral(Input::Spectrum, current, input_buffer);
         let cutoff = (channel.cutoff + router.scalar(Input::Cutoff, current)).clamp(-4.0, 10.0);
         let q = (channel.q + router.scalar(Input::Q, current)).clamp(0.1, 10.0);
-        let gain_db = (channel.gain_db + router.scalar(Input::GainDb, current)).min(24.0);
+        let gain = (channel.gain + router.scalar(Input::Level, current)).min(24.0);
 
-        let biquad = BiquadFilter::new(db_to_gain_fast(gain_db), cutoff.exp2(), q);
+        let biquad = BiquadFilter::new(gain, cutoff.exp2(), q);
 
         Self::apply_biquad(
             voice.output.advance(),

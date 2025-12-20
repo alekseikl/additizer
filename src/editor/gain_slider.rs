@@ -1,4 +1,4 @@
-use egui_baseview::egui::{Color32, PointerButton, Rect, Response, Sense, Ui, Widget, vec2};
+use egui_baseview::egui::{Color32, PointerButton, Rect, Response, Sense, Ui, Widget, pos2, vec2};
 use nih_plug::util::MINUS_INFINITY_DB;
 
 use crate::synth_engine::{Sample, StereoSample};
@@ -14,6 +14,7 @@ pub struct GainSlider<'a> {
     max_dbs: Sample,
     mid_point: Sample,
     skew_factor: Sample,
+    horizontal: bool,
     width: f32,
     height: Option<f32>,
     color: Color32,
@@ -25,6 +26,7 @@ impl<'a> GainSlider<'a> {
             max_dbs: 48.0,
             mid_point: 0.75,
             skew_factor: 1.6,
+            horizontal: false,
             width: SLIDER_WIDTH,
             height: None,
             color: ATTENUATED_COLOR,
@@ -45,6 +47,11 @@ impl<'a> GainSlider<'a> {
 
     pub fn width(mut self, width: f32) -> Self {
         self.width = width;
+        self
+    }
+
+    pub fn horizontal(mut self) -> Self {
+        self.horizontal = true;
         self
     }
 
@@ -127,6 +134,33 @@ impl<'a> GainSlider<'a> {
         }
     }
 
+    fn fill_gain_rect_horizontal(&self, ui: &mut Ui, gain: f32, rect: Rect) {
+        let norm_value = self.gain_to_normalized(gain);
+        let width = rect.width();
+
+        if norm_value > self.mid_point {
+            ui.painter().rect_filled(
+                Rect::from_min_max(rect.min, pos2(rect.min.x + norm_value * width, rect.max.y)),
+                0.0,
+                AMPLIFIED_COLOR,
+            );
+            ui.painter().rect_filled(
+                Rect::from_min_max(
+                    rect.min,
+                    pos2(rect.min.x + self.mid_point * width, rect.max.y),
+                ),
+                0.0,
+                self.color,
+            );
+        } else {
+            ui.painter().rect_filled(
+                Rect::from_min_max(rect.min, pos2(rect.min.x + norm_value * width, rect.max.y)),
+                0.0,
+                self.color,
+            );
+        }
+    }
+
     fn updated_gain(&self, normalized_delta: f32, gain: Sample) -> Sample {
         self.normalized_to_gain((self.gain_to_normalized(gain) + normalized_delta).clamp(0.0, 1.0))
     }
@@ -135,12 +169,45 @@ impl<'a> GainSlider<'a> {
         let dbs = nih_plug::util::gain_to_db(gain);
         if dbs <= MINUS_INFINITY_DB {
             "-Inf dB".to_string()
+        } else if dbs == 0.0 {
+            "0 dB".to_string()
         } else {
             format!("{:+.1} dB", nih_plug::util::gain_to_db(gain))
         }
     }
 
-    fn add_contents(&mut self, ui: &mut Ui) -> Response {
+    fn handle_dragging(&mut self, ui: &mut Ui, response: &mut Response, normalized_delta: Sample) {
+        if response.dragged_by(PointerButton::Primary) {
+            self.value
+                .set_left(self.updated_gain(normalized_delta, self.value.left()));
+            self.value
+                .set_right(self.updated_gain(normalized_delta, self.value.right()));
+            response.mark_changed();
+        } else if response.dragged_by(PointerButton::Secondary) {
+            let is_right_channel = ui.memory(|mem| mem.data.get_temp(response.id).unwrap_or(false));
+
+            if is_right_channel {
+                self.value
+                    .set_right(self.updated_gain(normalized_delta, self.value.right()));
+            } else {
+                self.value
+                    .set_left(self.updated_gain(normalized_delta, self.value.left()));
+            }
+            response.mark_changed();
+        }
+    }
+
+    fn handle_primary_click(&mut self, response: &mut Response) {
+        *self.value = StereoSample::splat(1.0);
+        response.mark_changed();
+    }
+
+    fn handle_secondary_click(&mut self, response: &mut Response) {
+        *self.value = StereoSample::splat(0.0);
+        response.mark_changed();
+    }
+
+    fn add_contents_vertical(&mut self, ui: &mut Ui) -> Response {
         let mut response = ui.allocate_response(
             vec2(self.width, self.height.unwrap_or(ui.available_size().y)),
             Sense::click_and_drag(),
@@ -159,31 +226,11 @@ impl<'a> GainSlider<'a> {
         if response.dragged() {
             let normalized_delta = -response.drag_delta().y / response.rect.height();
 
-            if response.dragged_by(PointerButton::Primary) {
-                self.value
-                    .set_left(self.updated_gain(normalized_delta, self.value.left()));
-                self.value
-                    .set_right(self.updated_gain(normalized_delta, self.value.right()));
-                response.mark_changed();
-            } else if response.dragged_by(PointerButton::Secondary) {
-                let is_right_channel =
-                    ui.memory(|mem| mem.data.get_temp(response.id).unwrap_or(false));
-
-                if is_right_channel {
-                    self.value
-                        .set_right(self.updated_gain(normalized_delta, self.value.right()));
-                } else {
-                    self.value
-                        .set_left(self.updated_gain(normalized_delta, self.value.left()));
-                }
-                response.mark_changed();
-            }
+            self.handle_dragging(ui, &mut response, normalized_delta);
         } else if response.double_clicked_by(PointerButton::Primary) {
-            *self.value = StereoSample::splat(1.0);
-            response.mark_changed();
+            self.handle_primary_click(&mut response);
         } else if response.double_clicked_by(PointerButton::Secondary) {
-            *self.value = StereoSample::splat(0.0);
-            response.mark_changed();
+            self.handle_secondary_click(&mut response);
         } else if let Some(hover_pos) = response.hover_pos() {
             if modifiers.ctrl {
                 *self.value = StereoSample::splat(1.0);
@@ -227,10 +274,63 @@ impl<'a> GainSlider<'a> {
 
         response
     }
+
+    fn add_contents_horizontal(&mut self, ui: &mut Ui) -> Response {
+        let mut response = ui.allocate_response(
+            vec2(self.height.unwrap_or(ui.available_size().x), self.width),
+            Sense::click_and_drag(),
+        );
+
+        if let Some(pos) = response.interact_pointer_pos()
+            && response.drag_started_by(PointerButton::Secondary)
+        {
+            let is_right_channel = pos.y >= response.rect.center().y;
+
+            ui.memory_mut(|mem| mem.data.insert_temp(response.id, is_right_channel));
+        }
+
+        if response.dragged() {
+            let normalized_delta = response.drag_delta().x / response.rect.width();
+
+            self.handle_dragging(ui, &mut response, normalized_delta);
+        } else if response.double_clicked_by(PointerButton::Primary) {
+            self.handle_primary_click(&mut response);
+        } else if response.double_clicked_by(PointerButton::Secondary) {
+            self.handle_secondary_click(&mut response);
+        }
+
+        let label = if self.value.left() != self.value.right() {
+            format!(
+                "L: {}, R: {}",
+                Self::gain_to_db_string(self.value.left()),
+                Self::gain_to_db_string(self.value.right())
+            )
+        } else {
+            Self::gain_to_db_string(self.value.left())
+        };
+
+        if ui.is_rect_visible(response.rect) {
+            let lr_rect = response.rect.split_top_bottom_at_fraction(0.5);
+
+            ui.painter().rect_filled(response.rect, 0.0, BG_COLOR);
+            self.fill_gain_rect_horizontal(ui, self.value.left(), lr_rect.0);
+            self.fill_gain_rect_horizontal(ui, self.value.right(), lr_rect.1);
+
+            response = response.on_hover_text_at_pointer(&label);
+        }
+
+        ui.label(&label);
+
+        response
+    }
 }
 
 impl Widget for GainSlider<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        self.add_contents(ui)
+        if self.horizontal {
+            ui.horizontal(|ui| self.add_contents_horizontal(ui)).inner
+        } else {
+            self.add_contents_vertical(ui)
+        }
     }
 }
