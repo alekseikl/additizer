@@ -8,7 +8,7 @@ use crate::synth_engine::{
     modules::{
         AmplifierConfig, EnvelopeConfig, ExternalParamConfig, LfoConfig, ModulationFilterConfig,
         OscillatorConfig, OutputConfig, SpectralBlendConfig, SpectralFilterConfig,
-        harmonic_editor::HarmonicEditorConfig,
+        SpectralMixerConfig, harmonic_editor::HarmonicEditorConfig,
     },
     routing::{MAX_VOICES, MIN_MODULE_ID, ModuleId, ModuleLink},
 };
@@ -43,6 +43,7 @@ pub enum ModuleConfig {
     Oscillator(CfgBox<OscillatorConfig>),
     SpectralFilter(CfgBox<SpectralFilterConfig>),
     SpectralBlend(CfgBox<SpectralBlendConfig>),
+    SpectralMixer(CfgBox<SpectralMixerConfig>),
     HarmonicEditor(CfgBox<HarmonicEditorConfig>),
     ExternalParam(CfgBox<ExternalParamConfig>),
     ModulationFilter(CfgBox<ModulationFilterConfig>),

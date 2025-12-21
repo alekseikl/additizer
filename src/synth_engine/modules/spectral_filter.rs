@@ -116,7 +116,7 @@ impl SpectralFilter {
 
     set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
     set_stereo_param!(set_q, q, q.clamp(0.1, 10.0));
-    set_stereo_param!(set_gain, gain, *gain);
+    set_stereo_param!(set_gain, gain);
 
     fn apply_response(
         output: &mut SpectralBuffer,

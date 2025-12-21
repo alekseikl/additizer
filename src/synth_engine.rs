@@ -16,7 +16,7 @@ use crate::synth_engine::{
     config::{ModuleConfig, RoutingConfig},
     modules::{
         AmplifierConfig, EnvelopeConfig, ExternalParamConfig, LfoConfig, ModulationFilterConfig,
-        OscillatorConfig, Output, SpectralBlendConfig, SpectralFilterConfig,
+        OscillatorConfig, Output, SpectralBlendConfig, SpectralFilterConfig, SpectralMixerConfig,
         harmonic_editor::HarmonicEditorConfig,
     },
     routing::{AvailableInputSourceUI, DataType, MAX_VOICES, Router},
@@ -27,7 +27,7 @@ pub use buffer::{BUFFER_SIZE, SPECTRAL_BUFFER_SIZE};
 pub use config::Config;
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, Lfo, LfoShape,
-    ModulationFilter, Oscillator, SpectralBlend, SpectralFilter, SpectralFilterType,
+    ModulationFilter, Oscillator, SpectralBlend, SpectralFilter, SpectralFilterType, SpectralMixer,
     harmonic_editor::{self, HarmonicEditor},
 };
 pub use routing::{
@@ -299,6 +299,7 @@ impl SynthEngine {
     add_module_method!(add_amplifier, Amplifier, AmplifierConfig);
     add_module_method!(add_spectral_filter, SpectralFilter, SpectralFilterConfig);
     add_module_method!(add_spectral_blend, SpectralBlend, SpectralBlendConfig);
+    add_module_method!(add_spectral_mixer, SpectralMixer, SpectralMixerConfig);
     add_module_method!(add_harmonic_editor, HarmonicEditor, HarmonicEditorConfig);
     add_module_method!(
         add_external_param,
@@ -931,6 +932,7 @@ impl SynthEngine {
                 ModuleConfig::Oscillator(cfg) => restore_module!(Oscillator, id, cfg),
                 ModuleConfig::SpectralFilter(cfg) => restore_module!(SpectralFilter, id, cfg),
                 ModuleConfig::SpectralBlend(cfg) => restore_module!(SpectralBlend, id, cfg),
+                ModuleConfig::SpectralMixer(cfg) => restore_module!(SpectralMixer, id, cfg),
                 ModuleConfig::HarmonicEditor(cfg) => restore_module!(HarmonicEditor, id, cfg),
                 ModuleConfig::ExternalParam(cfg) => {
                     restore_module!(ExternalParam, id, cfg, get_external_params)

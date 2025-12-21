@@ -8,6 +8,7 @@ mod oscillator;
 mod output;
 mod spectral_blend;
 mod spectral_filter;
+mod spectral_mixer;
 
 pub use amplifier::{Amplifier, AmplifierConfig};
 pub use envelope::{Envelope, EnvelopeConfig, EnvelopeCurve};
@@ -18,3 +19,4 @@ pub use oscillator::{Oscillator, OscillatorConfig};
 pub use output::{Output, OutputConfig};
 pub use spectral_blend::{SpectralBlend, SpectralBlendConfig};
 pub use spectral_filter::{SpectralFilter, SpectralFilterConfig, SpectralFilterType};
+pub use spectral_mixer::{SpectralMixer, SpectralMixerConfig};

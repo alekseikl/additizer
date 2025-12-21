@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     synth_engine::{
         Input, ModuleInput, OUTPUT_MODULE_ID, Sample, StereoSample,
-        buffer::{Buffer, append_buffer_slice, zero_buffer},
+        buffer::{Buffer, zero_buffer},
         routing::{MAX_VOICES, NUM_CHANNELS, Router},
         synth_module::{ModuleConfigBox, NoteOnParams, ProcessParams, VoiceAlive},
     },
@@ -141,7 +141,10 @@ impl Output {
                             (voice.killed_output_power + sum) / (samples + 1) as Sample;
                     }
 
-                    append_buffer_slice(output, self.input_buffer.iter().copied());
+                    output
+                        .iter_mut()
+                        .zip(&self.input_buffer)
+                        .for_each(|(out, value)| *out += value);
                 }
             }
 

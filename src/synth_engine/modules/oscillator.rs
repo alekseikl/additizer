@@ -212,7 +212,7 @@ impl Oscillator {
     );
     set_mono_param!(set_reset_phase, reset_phase, bool);
 
-    set_stereo_param!(set_level, level, level.clamp(0.0, 1.0));
+    set_stereo_param!(set_level, level);
     set_stereo_param!(
         set_pitch_shift,
         pitch_shift,
@@ -220,7 +220,7 @@ impl Oscillator {
     );
     set_stereo_param!(set_detune, detune, detune.clamp(0.0, st_to_octave(1.0)));
     set_stereo_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
-    set_stereo_param!(set_frequency_shift, frequency_shift, *frequency_shift);
+    set_stereo_param!(set_frequency_shift, frequency_shift);
 
     pub fn set_initial_phase(&mut self, voice_idx: usize, phase: StereoSample) {
         for (channel, phase) in self.channels.iter_mut().zip(phase.iter()) {

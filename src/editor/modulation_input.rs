@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use egui_baseview::egui::{ComboBox, Frame, Grid, Margin, Response, Ui, Widget};
 
 use crate::{
-    editor::{gain_slider::GainSlider, stereo_slider::StereoSlider},
+    editor::{direct_input::DirectInput, gain_slider::GainSlider, stereo_slider::StereoSlider},
     synth_engine::{
         ConnectedInputSourceUI, Input, ModuleId, ModuleInput, Sample, StereoSample, SynthEngine,
     },
@@ -14,9 +14,9 @@ pub struct ModulationInput<'a> {
     value: &'a mut StereoSample,
     synth_engine: &'a mut SynthEngine,
     input: ModuleInput,
+    direct_input: Option<Input>,
     default: Option<Sample>,
     modulation_default: Option<Sample>,
-    hide_value: bool,
 }
 
 impl<'a> ModulationInput<'a> {
@@ -30,9 +30,9 @@ impl<'a> ModulationInput<'a> {
             value,
             synth_engine,
             input: ModuleInput::new(input, module_id),
+            direct_input: None,
             default: None,
             modulation_default: None,
-            hide_value: false,
         }
     }
 
@@ -46,8 +46,8 @@ impl<'a> ModulationInput<'a> {
         self
     }
 
-    pub fn hide_value(mut self) -> Self {
-        self.hide_value = true;
+    pub fn direct_input(mut self, input: Input) -> Self {
+        self.direct_input = Some(input);
         self
     }
 
@@ -57,7 +57,7 @@ impl<'a> ModulationInput<'a> {
         default: Option<Sample>,
     ) -> StereoSlider<'_> {
         let mut updated = match input_type {
-            Input::Level => slider.default_value(1.0).precision(2),
+            Input::Level | Input::LevelMix(_) => slider.default_value(1.0).precision(2),
             Input::Blend => slider.range(0.0..=1.0).default_value(1.0).precision(2),
             Input::Cutoff => slider
                 .range(-2.0..=10.0)
@@ -111,7 +111,7 @@ impl<'a> ModulationInput<'a> {
                 .skew(2.0)
                 .precision(1)
                 .units(" ms"),
-            Input::Spectrum | Input::SpectrumTo => slider
+            Input::Spectrum | Input::SpectrumTo | Input::SpectrumMix(_) => slider
                 .range(0.0..=1.0)
                 .default_value(1.0)
                 .display_scale(100.0)
@@ -130,7 +130,9 @@ impl<'a> ModulationInput<'a> {
 
     fn setup_modulation_slider(&self, slider: StereoSlider<'a>) -> StereoSlider<'a> {
         let mut updated = match self.input.input_type {
-            Input::Level => slider.default_value(0.0).precision(2).allow_inverse(),
+            Input::Level | Input::LevelMix(_) => {
+                slider.default_value(0.0).precision(2).allow_inverse()
+            }
             Input::Blend => slider
                 .range(0.0..=1.0)
                 .default_value(1.0)
@@ -192,7 +194,7 @@ impl<'a> ModulationInput<'a> {
                 .precision(1)
                 .allow_inverse()
                 .units(" ms"),
-            Input::Spectrum | Input::SpectrumTo => slider
+            Input::Spectrum | Input::SpectrumTo | Input::SpectrumMix(_) => slider
                 .range(0.0..=1.0)
                 .default_value(1.0)
                 .display_scale(100.0)
@@ -211,7 +213,7 @@ impl<'a> ModulationInput<'a> {
 
     fn add_slider(&mut self, ui: &mut Ui) -> Response {
         match self.input.input_type {
-            Input::Level => ui.add(
+            Input::Level | Input::LevelMix(_) => ui.add(
                 GainSlider::new(self.value)
                     .horizontal()
                     .width(16.0)
@@ -251,7 +253,7 @@ impl<'a> ModulationInput<'a> {
         }
 
         ComboBox::from_id_salt(format!("mod-select-{:?}", self.input.input_type))
-            .selected_text(if self.hide_value { "Add Source" } else { "➕" })
+            .selected_text("➕")
             .width(0.0)
             .show_ui(ui, |ui| {
                 for src in &filtered {
@@ -276,7 +278,7 @@ impl<'a> ModulationInput<'a> {
                     let mut modulation = src.modulation;
 
                     let slider_response = match self.input.input_type {
-                        Input::Level => ui.add(
+                        Input::Level | Input::LevelMix(_) => ui.add(
                             GainSlider::new(&mut modulation)
                                 .horizontal()
                                 .width(16.0)
@@ -309,11 +311,15 @@ impl Widget for ModulationInput<'_> {
             let connected = self.synth_engine.get_connected_input_sources(self.input);
             let result_response = ui
                 .horizontal(|ui| {
-                    let result_response = if self.hide_value {
-                        ui.response()
-                    } else {
-                        self.add_slider(ui)
-                    };
+                    if let Some(direct) = self.direct_input {
+                        ui.add(DirectInput::new(
+                            self.synth_engine,
+                            direct,
+                            self.input.module_id,
+                        ));
+                    }
+
+                    let result_response = self.add_slider(ui);
 
                     self.add_modulation_select(ui, &connected);
                     result_response
