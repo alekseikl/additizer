@@ -100,7 +100,7 @@ fn show_side_bar(
         .show_inside(ui, |ui| {
             let mut modules = synth_engine.get_modules();
 
-            modules.sort_by_key(|module| module.id());
+            modules.sort_by_key(|module| module.label().to_lowercase());
 
             CentralPanel::default()
                 .frame(Frame::NONE)
@@ -224,7 +224,7 @@ fn show_params_ui(ui: &mut Ui, synth_engine: &mut SynthEngine) {
         .spacing([40.0, 24.0])
         .striped(true)
         .show(ui, |ui| {
-            let buffer_sizes = [16, 32, 64, 128];
+            let buffer_sizes = [8, 16, 32, 64, 128];
             let mut ui_data = synth_engine.get_ui();
             let mut kill_time_ms = ui_data.voice_kill_time * 1000.0;
 

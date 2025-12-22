@@ -35,8 +35,9 @@ pub enum DataType {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 pub enum Input {
     Audio,
-    Level,
-    LevelMix(usize),
+    Level,            // 0.0 - 1.0
+    Volume,           // dB
+    VolumeMix(usize), // dB
     PitchShift,
     Detune,
     PhaseShift,

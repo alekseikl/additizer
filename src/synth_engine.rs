@@ -290,7 +290,7 @@ impl SynthEngine {
     }
 
     fn clamp_buffer_size(buffer_size: usize) -> usize {
-        (buffer_size).clamp(BUFFER_SIZE / 8, BUFFER_SIZE)
+        (buffer_size).clamp(4, BUFFER_SIZE)
     }
 
     add_module_method!(add_oscillator, Oscillator, OscillatorConfig);

@@ -123,14 +123,14 @@ impl ModuleUI for SpectralFilterUI {
                 ui.label("Gain");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.gain,
+                        &mut ui_data.volume,
                         synth,
-                        Input::Level,
+                        Input::Volume,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.filter(synth).set_gain(ui_data.gain);
+                    self.filter(synth).set_volume(ui_data.volume);
                 }
                 ui.end_row();
 

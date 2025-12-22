@@ -66,9 +66,9 @@ impl ModuleUI for SpectralMixerUi {
                     if ui
                         .add(
                             ModulationInput::new(
-                                &mut ui_data.input_levels[input_idx],
+                                &mut ui_data.input_volumes[input_idx],
                                 synth,
-                                Input::LevelMix(input_idx),
+                                Input::VolumeMix(input_idx),
                                 self.module_id,
                             )
                             .direct_input(Input::SpectrumMix(input_idx)),
@@ -76,7 +76,7 @@ impl ModuleUI for SpectralMixerUi {
                         .changed()
                     {
                         self.mixer(synth)
-                            .set_input_level(input_idx, ui_data.input_levels[input_idx]);
+                            .set_input_volume(input_idx, ui_data.input_volumes[input_idx]);
                     }
                     ui.end_row();
                 }
@@ -84,14 +84,14 @@ impl ModuleUI for SpectralMixerUi {
                 ui.label("Output");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.output_level,
+                        &mut ui_data.output_volume,
                         synth,
-                        Input::Level,
+                        Input::Volume,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.mixer(synth).set_output_level(ui_data.output_level);
+                    self.mixer(synth).set_output_volume(ui_data.output_volume);
                 }
                 ui.end_row();
             });

@@ -50,6 +50,7 @@ impl<'a> GainSlider<'a> {
         self
     }
 
+    #[allow(unused)]
     pub fn horizontal(mut self) -> Self {
         self.horizontal = true;
         self

@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use egui_baseview::egui::{ComboBox, Frame, Grid, Margin, Response, Ui, Widget};
 
 use crate::{
-    editor::{direct_input::DirectInput, gain_slider::GainSlider, stereo_slider::StereoSlider},
+    editor::{direct_input::DirectInput, stereo_slider::StereoSlider},
     synth_engine::{
         ConnectedInputSourceUI, Input, ModuleId, ModuleInput, Sample, StereoSample, SynthEngine,
     },
@@ -57,7 +57,10 @@ impl<'a> ModulationInput<'a> {
         default: Option<Sample>,
     ) -> StereoSlider<'_> {
         let mut updated = match input_type {
-            Input::Level | Input::LevelMix(_) => slider.default_value(1.0).precision(2),
+            Input::Level => slider.default_value(1.0).precision(2),
+            Input::Volume | Input::VolumeMix(_) => {
+                slider.range(-48.0..=48.0).default_value(0.0).units(" dB")
+            }
             Input::Blend => slider.range(0.0..=1.0).default_value(1.0).precision(2),
             Input::Cutoff => slider
                 .range(-2.0..=10.0)
@@ -130,9 +133,12 @@ impl<'a> ModulationInput<'a> {
 
     fn setup_modulation_slider(&self, slider: StereoSlider<'a>) -> StereoSlider<'a> {
         let mut updated = match self.input.input_type {
-            Input::Level | Input::LevelMix(_) => {
-                slider.default_value(0.0).precision(2).allow_inverse()
-            }
+            Input::Level => slider.default_value(0.0).precision(2).allow_inverse(),
+            Input::Volume | Input::VolumeMix(_) => slider
+                .range(0.0..=48.0)
+                .default_value(0.0)
+                .allow_inverse()
+                .units(" dB"),
             Input::Blend => slider
                 .range(0.0..=1.0)
                 .default_value(1.0)
@@ -212,22 +218,14 @@ impl<'a> ModulationInput<'a> {
     }
 
     fn add_slider(&mut self, ui: &mut Ui) -> Response {
-        match self.input.input_type {
-            Input::Level | Input::LevelMix(_) => ui.add(
-                GainSlider::new(self.value)
-                    .horizontal()
-                    .width(16.0)
-                    .height(200.0),
-            ),
-            _ => ui.add(
-                Self::setup_value_slider(
-                    StereoSlider::new(self.value),
-                    self.input.input_type,
-                    self.default,
-                )
-                .width(200.0),
-            ),
-        }
+        ui.add(
+            Self::setup_value_slider(
+                StereoSlider::new(self.value),
+                self.input.input_type,
+                self.default,
+            )
+            .width(200.0),
+        )
     }
 
     fn add_modulation(&mut self, src: ModuleId) {
@@ -277,18 +275,10 @@ impl<'a> ModulationInput<'a> {
 
                     let mut modulation = src.modulation;
 
-                    let slider_response = match self.input.input_type {
-                        Input::Level | Input::LevelMix(_) => ui.add(
-                            GainSlider::new(&mut modulation)
-                                .horizontal()
-                                .width(16.0)
-                                .height(200.0),
-                        ),
-                        _ => ui.add(
-                            self.setup_modulation_slider(StereoSlider::new(&mut modulation))
-                                .width(200.0),
-                        ),
-                    };
+                    let slider_response = ui.add(
+                        self.setup_modulation_slider(StereoSlider::new(&mut modulation))
+                            .width(200.0),
+                    );
 
                     if slider_response.changed() {
                         self.synth_engine
