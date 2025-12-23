@@ -33,6 +33,7 @@ impl Default for Params {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelParams {
+    delay: Sample,
     attack: Sample,
     attack_curve: EnvelopeCurve,
     hold: Sample,
@@ -47,6 +48,7 @@ pub struct ChannelParams {
 impl Default for ChannelParams {
     fn default() -> Self {
         Self {
+            delay: 0.0,
             attack: from_ms(10.0),
             attack_curve: EnvelopeCurve::PowerIn {
                 full_range: true,
@@ -78,7 +80,7 @@ pub struct EnvelopeConfig {
 
 enum CurveResult {
     Value(Sample),
-    TimeRemainder(Sample),
+    TimeOverrun(Sample),
 }
 
 trait CurveIterator {
@@ -162,7 +164,7 @@ impl<T: CurveFunction + Send + 'static> CurveIterator for CurveIter<T> {
         if self.t < t_to {
             CurveResult::Value(self.value_from + self.interval * self.curve_fn.calc(self.t / time))
         } else {
-            CurveResult::TimeRemainder(if time > 0.0 {
+            CurveResult::TimeOverrun(if time > 0.0 {
                 (self.t - t_to).clamp(0.0, t_step)
             } else {
                 self.t_from + t_step
@@ -208,6 +210,19 @@ impl EnvelopeCurve {
         }
     }
 
+    fn delay_iter(time: Sample, level: Sample) -> CurveBox {
+        CurveIter::iter(
+            PowerIn::new(0.0),
+            CurveIterParams {
+                from: level,
+                to: level,
+                time,
+                t_from: 0.0,
+            },
+            true,
+        )
+    }
+
     fn hold_iter(time: Sample, t_from: Sample) -> CurveBox {
         CurveIter::iter(
             PowerIn::new(0.0),
@@ -224,6 +239,7 @@ impl EnvelopeCurve {
 
 pub struct EnvelopeUIData {
     pub label: String,
+    pub delay: StereoSample,
     pub attack: StereoSample,
     pub attack_curve: EnvelopeCurve,
     pub hold: StereoSample,
@@ -237,6 +253,7 @@ pub struct EnvelopeUIData {
 }
 
 enum Stage {
+    Delay(CurveBox),
     Attack(CurveBox),
     Hold(CurveBox),
     Decay(CurveBox),
@@ -316,6 +333,7 @@ impl Envelope {
     pub fn get_ui(&self) -> EnvelopeUIData {
         EnvelopeUIData {
             label: self.label.clone(),
+            delay: get_stereo_param!(self, delay),
             attack: get_stereo_param!(self, attack),
             attack_curve: self.channels[0].params.attack_curve,
             hold: get_stereo_param!(self, hold),
@@ -335,6 +353,7 @@ impl Envelope {
     set_curve_method!(set_decay_curve, decay_curve);
     set_curve_method!(set_release_curve, release_curve);
 
+    set_stereo_param!(set_delay, delay);
     set_stereo_param!(set_attack, attack);
     set_stereo_param!(set_hold, hold);
     set_stereo_param!(set_decay, decay);
@@ -355,6 +374,7 @@ impl Envelope {
             Sample::from(t > 0.0) * t.max(MIN_TIME_THRESHOLD)
         }
 
+        let delay_time = || snap(env.delay + router.scalar(Input::Delay, current));
         let attack_time = || snap(env.attack + router.scalar(Input::Attack, current));
         let hold_time = || snap(env.hold + router.scalar(Input::Hold, current));
         let decay_time = || snap(env.decay + router.scalar(Input::Decay, current));
@@ -371,41 +391,48 @@ impl Envelope {
         }
 
         if voice.triggered {
-            voice.stage = Stage::Attack(env.attack_curve.curve_iter(
+            voice.stage = Stage::Delay(EnvelopeCurve::delay_iter(
+                delay_time(),
                 voice.output.current(),
-                1.0,
-                attack_time(),
-                0.0,
             ));
         }
 
         voice.output.advance(loop {
             voice.stage = match &mut voice.stage {
+                Stage::Delay(curve) => match curve.next(t_step, delay_time()) {
+                    CurveResult::Value(value) => break value,
+                    CurveResult::TimeOverrun(t_over) => Stage::Attack(env.attack_curve.curve_iter(
+                        voice.output.current(),
+                        1.0,
+                        attack_time(),
+                        t_over - t_step,
+                    )),
+                },
                 Stage::Attack(curve) => match curve.next(t_step, attack_time()) {
                     CurveResult::Value(value) => break value,
-                    CurveResult::TimeRemainder(t_rem) => {
-                        Stage::Hold(EnvelopeCurve::hold_iter(hold_time(), t_rem - t_step))
+                    CurveResult::TimeOverrun(t_over) => {
+                        Stage::Hold(EnvelopeCurve::hold_iter(hold_time(), t_over - t_step))
                     }
                 },
                 Stage::Hold(curve) => match curve.next(t_step, hold_time()) {
                     CurveResult::Value(value) => break value,
-                    CurveResult::TimeRemainder(t_rem) => Stage::Decay(env.decay_curve.curve_iter(
+                    CurveResult::TimeOverrun(t_over) => Stage::Decay(env.decay_curve.curve_iter(
                         1.0,
                         env.sustain,
                         decay_time(),
-                        t_rem - t_step,
+                        t_over - t_step,
                     )),
                 },
                 Stage::Decay(curve) => match curve.next(t_step, decay_time()) {
                     CurveResult::Value(value) => break value,
-                    CurveResult::TimeRemainder(_) => Stage::Sustain,
+                    CurveResult::TimeOverrun(_) => Stage::Sustain,
                 },
                 Stage::Sustain => {
                     break (env.sustain + router.scalar(Input::Sustain, current)).clamp(0.0, 1.0);
                 }
                 Stage::Release(curve) => match curve.next(t_step, release_time()) {
                     CurveResult::Value(value) => break value,
-                    CurveResult::TimeRemainder(_) => Stage::Done,
+                    CurveResult::TimeOverrun(_) => Stage::Done,
                 },
                 Stage::Done => {
                     break 0.0;
@@ -447,6 +474,7 @@ impl SynthModule for Envelope {
 
     fn inputs(&self) -> &'static [InputInfo] {
         static INPUTS: &[InputInfo] = &[
+            InputInfo::scalar(Input::Delay),
             InputInfo::scalar(Input::Attack),
             InputInfo::scalar(Input::Hold),
             InputInfo::scalar(Input::Decay),

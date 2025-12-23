@@ -24,7 +24,7 @@ impl<'a> GainSlider<'a> {
     pub fn new(value: &'a mut StereoSample) -> Self {
         Self {
             max_dbs: 48.0,
-            mid_point: 0.75,
+            mid_point: 0.5,
             skew_factor: 1.6,
             horizontal: false,
             width: SLIDER_WIDTH,

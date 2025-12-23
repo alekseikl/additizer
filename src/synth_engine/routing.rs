@@ -50,6 +50,7 @@ pub enum Input {
     Cutoff,
     Q,
     Skew,
+    Delay,
     Attack,
     Hold,
     Decay,

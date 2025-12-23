@@ -88,12 +88,12 @@ impl<'a> ModulationInput<'a> {
                 .units(" st"),
             Input::PhaseShift => slider.default_value(0.0).precision(2).allow_inverse(),
             Input::FrequencyShift => slider
-                .range(0.0..=440.0)
+                .range(0.0..=880.0)
                 .default_value(0.0)
                 .precision(0)
                 .allow_inverse()
                 .units(" Hz")
-                .skew(1.8),
+                .skew(2.0),
             Input::LowFrequency => slider
                 .range(0.0..=100.0)
                 .default_value(1.0)
@@ -107,7 +107,7 @@ impl<'a> ModulationInput<'a> {
                 .display_scale(100.0)
                 .precision(2)
                 .units("%"),
-            Input::Attack | Input::Hold | Input::Decay | Input::Release => slider
+            Input::Delay | Input::Attack | Input::Hold | Input::Decay | Input::Release => slider
                 .range(0.0..=8.0)
                 .display_scale(1000.0)
                 .default_value(0.0)
@@ -173,12 +173,12 @@ impl<'a> ModulationInput<'a> {
                 .units(" st"),
             Input::PhaseShift => slider.default_value(0.0).precision(2).allow_inverse(),
             Input::FrequencyShift => slider
-                .range(0.0..=440.0)
+                .range(0.0..=880.0)
                 .default_value(0.0)
                 .precision(0)
                 .allow_inverse()
                 .units(" Hz")
-                .skew(1.8),
+                .skew(2.0),
             Input::LowFrequency => slider
                 .range(0.0..=100.0)
                 .default_value(1.0)
@@ -192,7 +192,7 @@ impl<'a> ModulationInput<'a> {
                 .display_scale(100.0)
                 .precision(2)
                 .units("%"),
-            Input::Attack | Input::Hold | Input::Decay | Input::Release => slider
+            Input::Delay | Input::Attack | Input::Hold | Input::Decay | Input::Release => slider
                 .range(0.0..=8.0)
                 .display_scale(1000.0)
                 .default_value(0.0)

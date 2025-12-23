@@ -172,11 +172,22 @@ impl ModuleUI for EnvelopeUI {
             .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
+                ui.label("Delay");
+                if ui
+                    .add(
+                        ModulationInput::new(&mut ui_data.delay, synth, Input::Delay, id)
+                            .default(from_ms(0.0)),
+                    )
+                    .changed()
+                {
+                    self.env(synth).set_delay(ui_data.delay);
+                }
+                ui.end_row();
                 ui.label("Attack");
                 if ui
                     .add(
                         ModulationInput::new(&mut ui_data.attack, synth, Input::Attack, id)
-                            .default(from_ms(4.0)),
+                            .default(from_ms(0.0)),
                     )
                     .changed()
                 {

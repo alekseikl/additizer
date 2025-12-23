@@ -184,7 +184,7 @@ impl HarmonicEditor {
 
     pub fn set_selected(&mut self, params: &SetParams) {
         let idx_from = params.from.clamp(1, SPECTRAL_BUFFER_SIZE - 1);
-        let range = idx_from..params.to.clamp(idx_from, SPECTRAL_BUFFER_SIZE);
+        let range = idx_from..(params.to + 1).clamp(idx_from, SPECTRAL_BUFFER_SIZE);
 
         for (spectrum, gain) in self.outputs.iter_mut().zip(params.gain.iter()) {
             for (idx, (harmonic, initial_harmonic)) in spectrum[range.clone()]
