@@ -36,8 +36,8 @@ pub enum DataType {
 pub enum Input {
     Audio,
     Level,            // 0.0 - 1.0
-    Volume,           // dB
-    VolumeMix(usize), // dB
+    GainDb,           // dB
+    GainDbMix(usize), // dB
     PitchShift,
     Detune,
     PhaseShift,

@@ -165,7 +165,7 @@ impl SpectralMixer {
                 router.spectral(Input::SpectrumMix(input_idx), current, &mut buffers.input);
             let gain = to_gain(
                 channel.input_volumes[input_idx]
-                    + router.scalar(Input::VolumeMix(input_idx), current),
+                    + router.scalar(Input::GainDbMix(input_idx), current),
             );
 
             for (out, input) in output.iter_mut().zip(spectrum) {
@@ -173,7 +173,7 @@ impl SpectralMixer {
             }
         }
 
-        let output_gain = to_gain(channel.output_volume + router.scalar(Input::Volume, current));
+        let output_gain = to_gain(channel.output_volume + router.scalar(Input::GainDb, current));
 
         for out in output.iter_mut() {
             *out *= output_gain;
@@ -201,19 +201,19 @@ impl SynthModule for SpectralMixer {
 
     fn inputs(&self) -> &'static [InputInfo] {
         static INPUTS: &[InputInfo] = &[
-            InputInfo::scalar(Input::Volume),
+            InputInfo::scalar(Input::GainDb),
             InputInfo::spectral(Input::SpectrumMix(0)),
-            InputInfo::scalar(Input::VolumeMix(0)),
+            InputInfo::scalar(Input::GainDbMix(0)),
             InputInfo::spectral(Input::SpectrumMix(1)),
-            InputInfo::scalar(Input::VolumeMix(1)),
+            InputInfo::scalar(Input::GainDbMix(1)),
             InputInfo::spectral(Input::SpectrumMix(2)),
-            InputInfo::scalar(Input::VolumeMix(2)),
+            InputInfo::scalar(Input::GainDbMix(2)),
             InputInfo::spectral(Input::SpectrumMix(3)),
-            InputInfo::scalar(Input::VolumeMix(3)),
+            InputInfo::scalar(Input::GainDbMix(3)),
             InputInfo::spectral(Input::SpectrumMix(4)),
-            InputInfo::scalar(Input::VolumeMix(4)),
+            InputInfo::scalar(Input::GainDbMix(4)),
             InputInfo::spectral(Input::SpectrumMix(5)),
-            InputInfo::scalar(Input::VolumeMix(5)),
+            InputInfo::scalar(Input::GainDbMix(5)),
         ];
 
         INPUTS

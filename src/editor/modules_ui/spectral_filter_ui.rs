@@ -120,17 +120,17 @@ impl ModuleUI for SpectralFilterUI {
                 }
                 ui.end_row();
 
-                ui.label("Gain");
+                ui.label("Drive");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.volume,
+                        &mut ui_data.drive,
                         synth,
-                        Input::Volume,
+                        Input::GainDb,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.filter(synth).set_volume(ui_data.volume);
+                    self.filter(synth).set_drive(ui_data.drive);
                 }
                 ui.end_row();
 

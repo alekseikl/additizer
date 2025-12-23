@@ -34,7 +34,7 @@ pub struct Params {
 pub struct ChannelParams {
     cutoff: Sample, //Cutoff octave
     q: Sample,
-    volume: Sample,
+    drive: Sample,
 }
 
 impl Default for ChannelParams {
@@ -42,7 +42,7 @@ impl Default for ChannelParams {
         Self {
             cutoff: 1.0,
             q: 0.7,
-            volume: 0.0,
+            drive: 0.0,
         }
     }
 }
@@ -59,7 +59,7 @@ pub struct SpectralFilterUIData {
     pub filter_type: SpectralFilterType,
     pub cutoff: StereoSample,
     pub q: StereoSample,
-    pub volume: StereoSample,
+    pub drive: StereoSample,
     pub fourth_order: bool,
 }
 
@@ -107,7 +107,7 @@ impl SpectralFilter {
             filter_type: self.params.filter_type,
             cutoff: get_stereo_param!(self, cutoff),
             q: get_stereo_param!(self, q),
-            volume: get_stereo_param!(self, volume),
+            drive: get_stereo_param!(self, drive),
             fourth_order: self.params.fourth_order,
         }
     }
@@ -117,7 +117,7 @@ impl SpectralFilter {
 
     set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
     set_stereo_param!(set_q, q, q.clamp(0.1, 10.0));
-    set_stereo_param!(set_volume, volume);
+    set_stereo_param!(set_drive, drive);
 
     fn apply_response(
         output: &mut SpectralBuffer,
@@ -173,9 +173,9 @@ impl SpectralFilter {
         let input = router.spectral(Input::Spectrum, current, input_buffer);
         let cutoff = (channel.cutoff + router.scalar(Input::Cutoff, current)).clamp(-4.0, 10.0);
         let q = (channel.q + router.scalar(Input::Q, current)).clamp(0.1, 10.0);
-        let volume = (channel.volume + router.scalar(Input::Volume, current)).min(24.0);
+        let drive = (channel.drive + router.scalar(Input::GainDb, current)).min(24.0);
 
-        let biquad = BiquadFilter::new(db_to_gain_fast(volume), cutoff.exp2(), q);
+        let biquad = BiquadFilter::new(db_to_gain_fast(drive), cutoff.exp2(), q);
 
         Self::apply_biquad(
             voice.output.advance(),
@@ -210,7 +210,7 @@ impl SynthModule for SpectralFilter {
             InputInfo::spectral(Input::Spectrum),
             InputInfo::scalar(Input::Cutoff),
             InputInfo::scalar(Input::Q),
-            InputInfo::scalar(Input::Volume),
+            InputInfo::scalar(Input::GainDb),
         ];
 
         INPUTS

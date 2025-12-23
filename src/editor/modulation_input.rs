@@ -58,7 +58,7 @@ impl<'a> ModulationInput<'a> {
     ) -> StereoSlider<'_> {
         let mut updated = match input_type {
             Input::Level => slider.default_value(1.0).precision(2),
-            Input::Volume | Input::VolumeMix(_) => {
+            Input::GainDb | Input::GainDbMix(_) => {
                 slider.range(-48.0..=48.0).default_value(0.0).units(" dB")
             }
             Input::Blend => slider.range(0.0..=1.0).default_value(1.0).precision(2),
@@ -134,7 +134,7 @@ impl<'a> ModulationInput<'a> {
     fn setup_modulation_slider(&self, slider: StereoSlider<'a>) -> StereoSlider<'a> {
         let mut updated = match self.input.input_type {
             Input::Level => slider.default_value(0.0).precision(2).allow_inverse(),
-            Input::Volume | Input::VolumeMix(_) => slider
+            Input::GainDb | Input::GainDbMix(_) => slider
                 .range(0.0..=48.0)
                 .default_value(0.0)
                 .allow_inverse()
