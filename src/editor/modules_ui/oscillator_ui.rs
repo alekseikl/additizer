@@ -53,17 +53,17 @@ impl ModuleUI for OscillatorUI {
                 ui.add(DirectInput::new(synth, Input::Spectrum, self.module_id));
                 ui.end_row();
 
-                ui.label("Level");
+                ui.label("Gain");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.level,
+                        &mut ui_data.gain,
                         synth,
-                        Input::Level,
+                        Input::Gain,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.osc(synth).set_level(ui_data.level);
+                    self.osc(synth).set_gain(ui_data.gain);
                 }
                 ui.end_row();
 

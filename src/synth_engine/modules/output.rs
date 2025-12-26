@@ -15,14 +15,14 @@ use crate::{
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Params {
-    level: StereoSample,
+    gain: StereoSample,
     voice_kill_time: Sample,
 }
 
 impl Default for Params {
     fn default() -> Self {
         Self {
-            level: StereoSample::splat(0.5),
+            gain: StereoSample::splat(0.5),
             voice_kill_time: from_ms(30.0),
         }
     }
@@ -36,14 +36,14 @@ pub struct OutputConfig {
 struct Voice {
     killed: bool,
     killed_output_power: Sample,
-    killed_level: Sample,
+    killed_gain: Sample,
 }
 
 impl Default for Voice {
     fn default() -> Self {
         Self {
             killed: false,
-            killed_level: 0.0,
+            killed_gain: 0.0,
             killed_output_power: 0.0,
         }
     }
@@ -59,7 +59,7 @@ pub struct Output {
     params: Params,
     output_level_param: Arc<FloatParam>,
     channels: [Channel; NUM_CHANNELS],
-    level_param_buffer: Buffer,
+    gain_param_buffer: Buffer,
     input_buffer: Buffer,
 }
 
@@ -70,7 +70,7 @@ impl Output {
             config,
             output_level_param: level_param,
             channels: Default::default(),
-            level_param_buffer: zero_buffer(),
+            gain_param_buffer: zero_buffer(),
             input_buffer: zero_buffer(),
         };
 
@@ -78,13 +78,13 @@ impl Output {
         out
     }
 
-    pub fn get_level(&self) -> StereoSample {
-        self.params.level
+    pub fn get_gain(&self) -> StereoSample {
+        self.params.gain
     }
 
-    pub fn set_level(&mut self, level: StereoSample) {
-        self.params.level = level;
-        self.config.lock().params.level = level;
+    pub fn set_gain(&mut self, gain: StereoSample) {
+        self.params.gain = gain;
+        self.config.lock().params.gain = gain;
     }
 
     pub fn get_voice_kill_time(&self) -> Sample {
@@ -106,12 +106,12 @@ impl Output {
         let sample_rate = process_params.sample_rate;
 
         self.output_level_param.smoothed.next_block_mapped(
-            &mut self.level_param_buffer,
+            &mut self.gain_param_buffer,
             samples,
             |_, dbs| db_to_gain_fast(dbs),
         );
 
-        for (channel_idx, (output, level)) in outputs.zip(self.params.level.iter()).enumerate() {
+        for (channel_idx, (output, gain)) in outputs.zip(self.params.gain.iter()).enumerate() {
             output.fill(0.0);
 
             let output = &mut output[..samples];
@@ -132,8 +132,8 @@ impl Output {
                         let mut sum = 0.0;
 
                         for out in self.input_buffer.iter_mut().take(samples) {
-                            voice.killed_level *= base;
-                            *out *= voice.killed_level;
+                            voice.killed_gain *= base;
+                            *out *= voice.killed_gain;
                             sum += *out * *out;
                         }
 
@@ -148,8 +148,8 @@ impl Output {
                 }
             }
 
-            for (out, level_mod) in output.iter_mut().zip(self.level_param_buffer.iter()) {
-                *out *= level_mod * level;
+            for (out, gain_mod) in output.iter_mut().zip(self.gain_param_buffer.iter()) {
+                *out *= gain_mod * gain;
             }
         }
     }
@@ -159,7 +159,7 @@ impl Output {
             let voice = &mut channel.voices[params.voice_idx];
 
             voice.killed = false;
-            voice.killed_level = 1.0;
+            voice.killed_gain = 1.0;
             voice.killed_output_power = 1.0;
         }
     }

@@ -62,7 +62,7 @@ impl Default for Params {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChannelParams {
-    level: Sample,
+    gain: Sample,
     pitch_shift: Sample, //Octaves
     detune: Sample,      //Octaves
     phase_shift: Sample,
@@ -73,7 +73,7 @@ pub struct ChannelParams {
 impl Default for ChannelParams {
     fn default() -> Self {
         Self {
-            level: 0.5,
+            gain: 0.5,
             pitch_shift: 0.0,
             detune: st_to_octave(0.2),
             phase_shift: 0.0,
@@ -92,7 +92,7 @@ pub struct OscillatorConfig {
 
 pub struct OscillatorUIData {
     pub label: String,
-    pub level: StereoSample,
+    pub gain: StereoSample,
     pub pitch_shift: StereoSample,
     pub detune: StereoSample,
     pub phase_shift: StereoSample,
@@ -135,7 +135,7 @@ struct Buffers {
     tmp_spectral: DftBuffer,
     scratch: DftBuffer,
     input: SpectralBuffer,
-    level_mod: Buffer,
+    gain_mod: Buffer,
     pitch_shift_mod: Buffer,
     phase_shift_mod: Buffer,
     frequency_shift_mod: Buffer,
@@ -149,7 +149,7 @@ impl Default for Buffers {
             tmp_spectral: zero_dft_buffer(),
             scratch: zero_dft_buffer(),
             input: zero_spectral_buffer(),
-            level_mod: zero_buffer(),
+            gain_mod: zero_buffer(),
             pitch_shift_mod: zero_buffer(),
             phase_shift_mod: zero_buffer(),
             frequency_shift_mod: zero_buffer(),
@@ -187,7 +187,7 @@ impl Oscillator {
     pub fn get_ui(&self) -> OscillatorUIData {
         OscillatorUIData {
             label: self.label.clone(),
-            level: get_stereo_param!(self, level),
+            gain: get_stereo_param!(self, gain),
             pitch_shift: get_stereo_param!(self, pitch_shift),
             detune: get_stereo_param!(self, detune),
             phase_shift: get_stereo_param!(self, phase_shift),
@@ -212,7 +212,7 @@ impl Oscillator {
     );
     set_mono_param!(set_reset_phase, reset_phase, bool);
 
-    set_stereo_param!(set_level, level);
+    set_stereo_param!(set_gain, gain);
     set_stereo_param!(
         set_pitch_shift,
         pitch_shift,
@@ -338,7 +338,7 @@ impl Oscillator {
         sample_rate: Sample,
         router: VoiceRouter,
     ) {
-        let level_mod = router.buffer(Input::Level, &mut buffers.level_mod);
+        let gain_mod = router.buffer(Input::Gain, &mut buffers.gain_mod);
         let pitch_shift_mod = router.buffer(Input::PitchShift, &mut buffers.pitch_shift_mod);
         let phase_shift_mod = router.buffer(Input::PhaseShift, &mut buffers.phase_shift_mod);
         let freq_shift_mod = router.buffer(Input::FrequencyShift, &mut buffers.frequency_shift_mod);
@@ -397,7 +397,7 @@ impl Oscillator {
 
             for (
                 out,
-                level_mod,
+                gain_mod,
                 pitch_shift_mod,
                 phase_shift_mod,
                 freq_shift_mod,
@@ -405,7 +405,7 @@ impl Oscillator {
                 sample_idx,
             ) in izip!(
                 &mut voice.output,
-                level_mod,
+                gain_mod,
                 pitch_shift_mod,
                 phase_shift_mod,
                 freq_shift_mod,
@@ -439,14 +439,14 @@ impl Oscillator {
                     );
                 }
 
-                *out = sample * unison_scale * (channel.level + level_mod);
+                *out = sample * unison_scale * (channel.gain + gain_mod);
             }
         } else {
             let phase = &mut voice.phases[0];
 
-            for (out, level_mod, pitch_shift_mod, phase_shift_mod, freq_shift_mod, sample_idx) in izip!(
+            for (out, gain_mod, pitch_shift_mod, phase_shift_mod, freq_shift_mod, sample_idx) in izip!(
                 &mut voice.output,
-                level_mod,
+                gain_mod,
                 pitch_shift_mod,
                 phase_shift_mod,
                 freq_shift_mod,
@@ -461,7 +461,7 @@ impl Oscillator {
                     wave_to,
                     freq_phase_mult,
                     phase,
-                ) * (channel.level + level_mod);
+                ) * (channel.gain + gain_mod);
             }
         }
     }
@@ -488,7 +488,7 @@ impl SynthModule for Oscillator {
     fn inputs(&self) -> &'static [InputInfo] {
         static INPUTS: &[InputInfo] = &[
             InputInfo::spectral(Input::Spectrum),
-            InputInfo::buffer(Input::Level),
+            InputInfo::buffer(Input::Gain),
             InputInfo::buffer(Input::PitchShift),
             InputInfo::buffer(Input::PhaseShift),
             InputInfo::buffer(Input::FrequencyShift),

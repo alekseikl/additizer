@@ -5,21 +5,21 @@ use crate::synth_engine::{Sample, buffer::SPECTRAL_BUFFER_SIZE, types::ComplexSa
 const TAU: Sample = f32::consts::TAU;
 
 pub struct BiquadFilter {
-    level: Sample,
+    gain: Sample,
     cutoff: Sample,
     q: Sample,
 }
 
 impl BiquadFilter {
-    pub fn new(level: Sample, cutoff: Sample, q: Sample) -> Self {
-        Self { level, cutoff, q }
+    pub fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+        Self { gain, cutoff, q }
     }
 
     pub fn low_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
         let w = self.cutoff * TAU;
         let w_squared = w * w;
         let w_q = w / self.q;
-        let numerator = self.level * w_squared;
+        let numerator = self.gain * w_squared;
 
         (0..SPECTRAL_BUFFER_SIZE).map(move |i| {
             let x = i as Sample * TAU;
@@ -30,7 +30,7 @@ impl BiquadFilter {
 
     pub fn high_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
         let w = self.cutoff * TAU;
-        let neg_g = -self.level;
+        let neg_g = -self.gain;
         let w_squared = w * w;
         let w_q = w / self.q;
 
@@ -44,7 +44,7 @@ impl BiquadFilter {
 
     pub fn peaking(&self) -> impl Iterator<Item = ComplexSample> + 'static {
         let w = self.cutoff * TAU;
-        let a = self.level;
+        let a = self.gain;
         let w_squared = w * w;
         let wa_q = (w * a) / self.q;
         let w_aq = w / (a * self.q);
@@ -58,7 +58,7 @@ impl BiquadFilter {
     }
 
     pub fn band_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
-        let a = self.level;
+        let a = self.gain;
         let w = self.cutoff * TAU;
         let w_squared = w * w;
         let w_q = w / self.q;
@@ -73,7 +73,7 @@ impl BiquadFilter {
     }
 
     pub fn band_stop(&self) -> impl Iterator<Item = ComplexSample> + 'static {
-        let a = self.level;
+        let a = self.gain;
         let w = self.cutoff * TAU;
         let w_squared = w * w;
         let w_q = w / self.q;

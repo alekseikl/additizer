@@ -57,8 +57,8 @@ impl<'a> ModulationInput<'a> {
         default: Option<Sample>,
     ) -> StereoSlider<'_> {
         let mut updated = match input_type {
-            Input::Level => slider.default_value(1.0).precision(2),
-            Input::LevelDb | Input::LevelDbMix(_) => {
+            Input::Gain => slider.default_value(1.0).precision(2),
+            Input::Level | Input::LevelMix(_) => {
                 slider.range(-48.0..=48.0).default_value(0.0).units(" dB")
             }
             Input::Drive | Input::ClippingLevel => {
@@ -137,8 +137,8 @@ impl<'a> ModulationInput<'a> {
 
     fn setup_modulation_slider(&self, slider: StereoSlider<'a>) -> StereoSlider<'a> {
         let mut updated = match self.input.input_type {
-            Input::Level => slider.default_value(0.0).precision(2).allow_inverse(),
-            Input::LevelDb | Input::LevelDbMix(_) => slider
+            Input::Gain => slider.default_value(0.0).precision(2).allow_inverse(),
+            Input::Level | Input::LevelMix(_) => slider
                 .range(0.0..=48.0)
                 .default_value(0.0)
                 .allow_inverse()

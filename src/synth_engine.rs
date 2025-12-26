@@ -277,12 +277,12 @@ impl SynthEngine {
     pub fn get_output_level(&self) -> StereoSample {
         self.output
             .as_deref()
-            .map_or(StereoSample::ZERO, |output| output.get_level())
+            .map_or(StereoSample::ZERO, |output| output.get_gain())
     }
 
     pub fn set_output_level(&mut self, level: StereoSample) {
         if let Some(output) = self.output.as_deref_mut() {
-            output.set_level(level);
+            output.set_gain(level);
         }
     }
 

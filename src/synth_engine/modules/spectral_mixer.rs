@@ -15,6 +15,13 @@ use crate::synth_engine::{
 const MAX_INPUTS: usize = 6;
 const MAX_VOLUME: Sample = 48.0; // dB
 
+#[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum MixType {
+    #[default]
+    Add,
+    Multiply,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChannelParams {
     input_volumes: [Sample; MAX_INPUTS],
@@ -165,7 +172,7 @@ impl SpectralMixer {
                 router.spectral(Input::SpectrumMix(input_idx), current, &mut buffers.input);
             let gain = to_gain(
                 channel.input_volumes[input_idx]
-                    + router.scalar(Input::LevelDbMix(input_idx), current),
+                    + router.scalar(Input::LevelMix(input_idx), current),
             );
 
             for (out, input) in output.iter_mut().zip(spectrum) {
@@ -173,7 +180,7 @@ impl SpectralMixer {
             }
         }
 
-        let output_gain = to_gain(channel.output_volume + router.scalar(Input::LevelDb, current));
+        let output_gain = to_gain(channel.output_volume + router.scalar(Input::Level, current));
 
         for out in output.iter_mut() {
             *out *= output_gain;
@@ -201,19 +208,19 @@ impl SynthModule for SpectralMixer {
 
     fn inputs(&self) -> &'static [InputInfo] {
         static INPUTS: &[InputInfo] = &[
-            InputInfo::scalar(Input::LevelDb),
+            InputInfo::scalar(Input::Level),
             InputInfo::spectral(Input::SpectrumMix(0)),
-            InputInfo::scalar(Input::LevelDbMix(0)),
+            InputInfo::scalar(Input::LevelMix(0)),
             InputInfo::spectral(Input::SpectrumMix(1)),
-            InputInfo::scalar(Input::LevelDbMix(1)),
+            InputInfo::scalar(Input::LevelMix(1)),
             InputInfo::spectral(Input::SpectrumMix(2)),
-            InputInfo::scalar(Input::LevelDbMix(2)),
+            InputInfo::scalar(Input::LevelMix(2)),
             InputInfo::spectral(Input::SpectrumMix(3)),
-            InputInfo::scalar(Input::LevelDbMix(3)),
+            InputInfo::scalar(Input::LevelMix(3)),
             InputInfo::spectral(Input::SpectrumMix(4)),
-            InputInfo::scalar(Input::LevelDbMix(4)),
+            InputInfo::scalar(Input::LevelMix(4)),
             InputInfo::spectral(Input::SpectrumMix(5)),
-            InputInfo::scalar(Input::LevelDbMix(5)),
+            InputInfo::scalar(Input::LevelMix(5)),
         ];
 
         INPUTS

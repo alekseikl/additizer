@@ -12,12 +12,12 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChannelParams {
-    level: Sample,
+    gain: Sample,
 }
 
 impl Default for ChannelParams {
     fn default() -> Self {
-        Self { level: 1.0 }
+        Self { gain: 1.0 }
     }
 }
 
@@ -29,7 +29,7 @@ pub struct AmplifierConfig {
 
 pub struct AmplifierUIData {
     pub label: String,
-    pub level: StereoSample,
+    pub gain: StereoSample,
 }
 
 struct Voice {
@@ -58,7 +58,7 @@ struct Channel {
 
 struct Buffers {
     input: Buffer,
-    level_mod_input: Buffer,
+    gain_mod_input: Buffer,
 }
 
 pub struct Amplifier {
@@ -77,7 +77,7 @@ impl Amplifier {
             config,
             buffers: Buffers {
                 input: zero_buffer(),
-                level_mod_input: zero_buffer(),
+                gain_mod_input: zero_buffer(),
             },
             channels: Default::default(),
         };
@@ -91,11 +91,11 @@ impl Amplifier {
     pub fn get_ui(&self) -> AmplifierUIData {
         AmplifierUIData {
             label: self.label.clone(),
-            level: get_stereo_param!(self, level),
+            gain: get_stereo_param!(self, gain),
         }
     }
 
-    set_stereo_param!(set_level, level);
+    set_stereo_param!(set_gain, gain);
 
     fn process_channel_voice(
         channel: &ChannelParams,
@@ -104,16 +104,16 @@ impl Amplifier {
         router: &VoiceRouter,
     ) {
         let input = router.buffer(Input::Audio, &mut buffers.input);
-        let level_mod = router
-            .buffer_opt(Input::Level, &mut buffers.level_mod_input)
+        let gain_mod = router
+            .buffer_opt(Input::Gain, &mut buffers.gain_mod_input)
             .unwrap_or(&ONES_BUFFER);
 
         for (out, input, modulation) in izip!(
             voice.output.iter_mut().take(router.samples),
             input,
-            level_mod
+            gain_mod
         ) {
-            *out = input * channel.level * modulation;
+            *out = input * channel.gain * modulation;
         }
     }
 }
@@ -139,7 +139,7 @@ impl SynthModule for Amplifier {
     fn inputs(&self) -> &'static [InputInfo] {
         static INPUTS: &[InputInfo] = &[
             InputInfo::buffer(Input::Audio),
-            InputInfo::buffer(Input::Level),
+            InputInfo::buffer(Input::Gain),
         ];
 
         INPUTS

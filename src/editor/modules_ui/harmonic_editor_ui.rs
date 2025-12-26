@@ -229,7 +229,7 @@ impl HarmonicEditorUI {
             filter_order: state.order,
             cutoff: state.cutoff.iter().map(|octave| octave.exp2()).collect(),
             q: state.q,
-            level: state
+            gain: state
                 .gain
                 .iter()
                 .map(|volume| db_to_gain(*volume))

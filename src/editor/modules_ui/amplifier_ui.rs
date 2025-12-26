@@ -54,20 +54,15 @@ impl ModuleUI for AmplifierUI {
                 ui.add(MultiInput::new(synth, Input::Audio, self.module_id));
                 ui.end_row();
 
-                ui.label("Level");
+                ui.label("Gain");
                 if ui
                     .add(
-                        ModulationInput::new(
-                            &mut ui_data.level,
-                            synth,
-                            Input::Level,
-                            self.module_id,
-                        )
-                        .modulation_default(1.0),
+                        ModulationInput::new(&mut ui_data.gain, synth, Input::Gain, self.module_id)
+                            .modulation_default(1.0),
                     )
                     .changed()
                 {
-                    self.amp(synth).set_level(ui_data.level);
+                    self.amp(synth).set_gain(ui_data.gain);
                 }
                 ui.end_row();
             });

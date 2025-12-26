@@ -42,7 +42,7 @@ pub struct FilterParams {
     pub filter_order: StereoSample,
     pub cutoff: StereoSample,
     pub q: StereoSample,
-    pub level: StereoSample,
+    pub gain: StereoSample,
 }
 
 #[derive(Default, Clone, Copy, Serialize, Deserialize)]
@@ -214,7 +214,7 @@ impl HarmonicEditor {
     pub fn apply_filter(&mut self, params: &FilterParams) {
         for (channel_idx, spectrum) in self.outputs.iter_mut().enumerate() {
             let filter = BiquadFilter::new(
-                params.level[channel_idx],
+                params.gain[channel_idx],
                 params.cutoff[channel_idx],
                 params.q[channel_idx],
             );

@@ -81,7 +81,7 @@ pub fn build_default_scheme(synth: &mut SynthEngine) {
         .unwrap();
 
     synth
-        .add_link(amp_env_id, ModuleInput::new(Input::Level, amp_id))
+        .add_link(amp_env_id, ModuleInput::new(Input::Gain, amp_id))
         .unwrap();
 
     synth
