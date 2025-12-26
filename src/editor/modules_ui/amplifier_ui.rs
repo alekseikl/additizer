@@ -70,15 +70,6 @@ impl ModuleUI for AmplifierUI {
                     self.amp(synth).set_level(ui_data.level);
                 }
                 ui.end_row();
-
-                // ui.label("Voice kill time");
-                // if ui
-                //     .add(Slider::new(&mut kill_time_ms, 4.0..=100.0))
-                //     .changed()
-                // {
-                //     self.amp(synth).set_voice_kill_time(from_ms(kill_time_ms));
-                // }
-                // ui.end_row();
             });
 
         ui.add_space(40.0);

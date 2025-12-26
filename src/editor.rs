@@ -14,6 +14,7 @@ use crate::{
             AmplifierUI, EnvelopeUI, ExternalParamUI, HarmonicEditorUI, LfoUi, ModulationFilterUI,
             OscillatorUI, SpectralBlendUi, SpectralFilterUI, SpectralMixerUi, WaveShaperUi,
         },
+        multi_input::MultiInput,
     },
     synth_engine::{
         Input, ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, SynthEngine, SynthModule,
@@ -272,7 +273,7 @@ fn show_params_ui(ui: &mut Ui, synth_engine: &mut SynthEngine) {
 
             ui.label("Voices state");
             ui.label(format!(
-                "Playing: {}, Releasing: {}, Killing: {}",
+                "Playing: {:02}, Releasing: {:02}, Killing: {:02}",
                 ui_data.playing_voices, ui_data.releasing_voices, ui_data.killing_voices
             ));
             ui.end_row();
@@ -294,6 +295,14 @@ fn show_params_ui(ui: &mut Ui, synth_engine: &mut SynthEngine) {
                         }
                     }
                 });
+            ui.end_row();
+
+            ui.label("Output");
+            ui.add(MultiInput::new(
+                synth_engine,
+                Input::Audio,
+                OUTPUT_MODULE_ID,
+            ));
             ui.end_row();
         });
 }

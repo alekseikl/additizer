@@ -742,24 +742,26 @@ impl SynthEngine {
     }
 
     pub fn get_available_input_sources(&self, input: ModuleInput) -> Vec<AvailableInputSourceUI> {
-        let Some(input_module) = get_module!(self, &input.module_id) else {
-            return Vec::new();
-        };
-
-        let Some(input_info) = input_module
-            .inputs()
-            .iter()
-            .find(|input_info| input_info.input == input.input_type)
-        else {
-            return Vec::new();
-        };
+        let dst_data_type =
+            if input.module_id == OUTPUT_MODULE_ID && input.input_type == Input::Audio {
+                DataType::Buffer
+            } else if let Some(input_module) = get_module!(self, &input.module_id)
+                && let Some(input_info) = input_module
+                    .inputs()
+                    .iter()
+                    .find(|input_info| input_info.input == input.input_type)
+            {
+                input_info.data_type
+            } else {
+                return Vec::new();
+            };
 
         self.modules
             .values()
             .filter_map(|module| module.as_deref())
             .filter(|module| {
                 module.id() != input.module_id
-                    && Self::data_types_compatible(module.output(), input_info.data_type)
+                    && Self::data_types_compatible(module.output(), dst_data_type)
                     && !self.is_connected_to_source(module.id(), input.module_id)
             })
             .map(|module| AvailableInputSourceUI {
