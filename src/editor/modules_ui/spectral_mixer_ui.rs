@@ -68,7 +68,7 @@ impl ModuleUI for SpectralMixerUi {
                             ModulationInput::new(
                                 &mut ui_data.input_volumes[input_idx],
                                 synth,
-                                Input::GainDbMix(input_idx),
+                                Input::LevelDbMix(input_idx),
                                 self.module_id,
                             )
                             .direct_input(Input::SpectrumMix(input_idx)),
@@ -86,7 +86,7 @@ impl ModuleUI for SpectralMixerUi {
                     .add(ModulationInput::new(
                         &mut ui_data.output_volume,
                         synth,
-                        Input::GainDb,
+                        Input::LevelDb,
                         self.module_id,
                     ))
                     .changed()

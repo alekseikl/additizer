@@ -23,6 +23,7 @@ pub enum ModuleType {
     ExternalParam,
     ModulationFilter,
     Lfo,
+    WaveShaper,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -35,9 +36,11 @@ pub enum DataType {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 pub enum Input {
     Audio,
-    Level,            // 0.0 - 1.0
-    GainDb,           // dB
-    GainDbMix(usize), // dB
+    Level, // 0.0 - 1.0
+    LevelDb,
+    LevelDbMix(usize),
+    Distortion,    // dB
+    ClippingLevel, // dB
     PitchShift,
     Detune,
     PhaseShift,
@@ -49,6 +52,7 @@ pub enum Input {
     LowFrequency,
     Cutoff,
     Q,
+    Drive, // dB
     Skew,
     Delay,
     Attack,

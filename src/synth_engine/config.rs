@@ -4,7 +4,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
-    BUFFER_SIZE, VoiceOverride,
+    BUFFER_SIZE, VoiceOverride, WaveShaperConfig,
     modules::{
         AmplifierConfig, EnvelopeConfig, ExternalParamConfig, LfoConfig, ModulationFilterConfig,
         OscillatorConfig, OutputConfig, SpectralBlendConfig, SpectralFilterConfig,
@@ -48,6 +48,7 @@ pub enum ModuleConfig {
     ExternalParam(CfgBox<ExternalParamConfig>),
     ModulationFilter(CfgBox<ModulationFilterConfig>),
     Lfo(CfgBox<LfoConfig>),
+    WaveShaper(CfgBox<WaveShaperConfig>),
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]

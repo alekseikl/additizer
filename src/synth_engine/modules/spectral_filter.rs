@@ -173,7 +173,7 @@ impl SpectralFilter {
         let input = router.spectral(Input::Spectrum, current, input_buffer);
         let cutoff = (channel.cutoff + router.scalar(Input::Cutoff, current)).clamp(-4.0, 10.0);
         let q = (channel.q + router.scalar(Input::Q, current)).clamp(0.1, 10.0);
-        let drive = (channel.drive + router.scalar(Input::GainDb, current)).min(24.0);
+        let drive = (channel.drive + router.scalar(Input::Drive, current)).min(24.0);
 
         let biquad = BiquadFilter::new(db_to_gain_fast(drive), cutoff.exp2(), q);
 
@@ -210,7 +210,7 @@ impl SynthModule for SpectralFilter {
             InputInfo::spectral(Input::Spectrum),
             InputInfo::scalar(Input::Cutoff),
             InputInfo::scalar(Input::Q),
-            InputInfo::scalar(Input::GainDb),
+            InputInfo::scalar(Input::Drive),
         ];
 
         INPUTS

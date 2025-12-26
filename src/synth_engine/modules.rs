@@ -9,6 +9,7 @@ mod output;
 mod spectral_blend;
 mod spectral_filter;
 mod spectral_mixer;
+mod wave_shaper;
 
 pub use amplifier::{Amplifier, AmplifierConfig};
 pub use envelope::{Envelope, EnvelopeConfig, EnvelopeCurve};
@@ -20,3 +21,4 @@ pub use output::{Output, OutputConfig};
 pub use spectral_blend::{SpectralBlend, SpectralBlendConfig};
 pub use spectral_filter::{SpectralFilter, SpectralFilterConfig, SpectralFilterType};
 pub use spectral_mixer::{SpectralMixer, SpectralMixerConfig};
+pub use wave_shaper::{ShaperType, WaveShaper, WaveShaperConfig};

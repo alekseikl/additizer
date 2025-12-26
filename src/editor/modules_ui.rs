@@ -8,6 +8,7 @@ mod oscillator_ui;
 mod spectral_blend_ui;
 mod spectral_filter_ui;
 mod spectral_mixer_ui;
+mod wave_shaper_ui;
 
 pub use amplifier_ui::AmplifierUI;
 pub use envelope_ui::EnvelopeUI;
@@ -19,3 +20,4 @@ pub use oscillator_ui::OscillatorUI;
 pub use spectral_blend_ui::SpectralBlendUi;
 pub use spectral_filter_ui::SpectralFilterUI;
 pub use spectral_mixer_ui::SpectralMixerUi;
+pub use wave_shaper_ui::WaveShaperUi;

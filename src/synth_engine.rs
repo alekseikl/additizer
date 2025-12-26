@@ -17,7 +17,7 @@ use crate::synth_engine::{
     modules::{
         AmplifierConfig, EnvelopeConfig, ExternalParamConfig, LfoConfig, ModulationFilterConfig,
         OscillatorConfig, Output, SpectralBlendConfig, SpectralFilterConfig, SpectralMixerConfig,
-        harmonic_editor::HarmonicEditorConfig,
+        WaveShaperConfig, harmonic_editor::HarmonicEditorConfig,
     },
     routing::{AvailableInputSourceUI, DataType, MAX_VOICES, Router},
     synth_module::{NoteOffParams, NoteOnParams, ProcessParams, VoiceAlive},
@@ -27,7 +27,8 @@ pub use buffer::{BUFFER_SIZE, SPECTRAL_BUFFER_SIZE};
 pub use config::Config;
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, Lfo, LfoShape,
-    ModulationFilter, Oscillator, SpectralBlend, SpectralFilter, SpectralFilterType, SpectralMixer,
+    ModulationFilter, Oscillator, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType,
+    SpectralMixer, WaveShaper,
     harmonic_editor::{self, HarmonicEditor},
 };
 pub use routing::{
@@ -297,6 +298,7 @@ impl SynthEngine {
     add_module_method!(add_envelope, Envelope, EnvelopeConfig);
     add_module_method!(add_lfo, Lfo, LfoConfig);
     add_module_method!(add_amplifier, Amplifier, AmplifierConfig);
+    add_module_method!(add_wave_shaper, WaveShaper, WaveShaperConfig);
     add_module_method!(add_spectral_filter, SpectralFilter, SpectralFilterConfig);
     add_module_method!(add_spectral_blend, SpectralBlend, SpectralBlendConfig);
     add_module_method!(add_spectral_mixer, SpectralMixer, SpectralMixerConfig);
@@ -939,6 +941,7 @@ impl SynthEngine {
                 }
                 ModuleConfig::ModulationFilter(cfg) => restore_module!(ModulationFilter, id, cfg),
                 ModuleConfig::Lfo(cfg) => restore_module!(Lfo, id, cfg),
+                ModuleConfig::WaveShaper(cfg) => restore_module!(WaveShaper, id, cfg),
             }
         }
 

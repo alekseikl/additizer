@@ -125,7 +125,7 @@ impl ModuleUI for SpectralFilterUI {
                     .add(ModulationInput::new(
                         &mut ui_data.drive,
                         synth,
-                        Input::GainDb,
+                        Input::Drive,
                         self.module_id,
                     ))
                     .changed()
