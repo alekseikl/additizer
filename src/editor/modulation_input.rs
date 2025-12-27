@@ -3,20 +3,22 @@ use std::collections::HashSet;
 use egui_baseview::egui::{ComboBox, Frame, Grid, Margin, Response, Ui, Widget};
 
 use crate::{
-    editor::{direct_input::DirectInput, stereo_slider::StereoSlider},
+    editor::stereo_slider::StereoSlider,
     synth_engine::{
         ConnectedInputSourceUI, Input, ModuleId, ModuleInput, Sample, StereoSample, SynthEngine,
     },
     utils::st_to_octave,
 };
 
+type BeforeCallback = dyn FnMut(&mut Ui, &mut SynthEngine);
+
 pub struct ModulationInput<'a> {
     value: &'a mut StereoSample,
     synth_engine: &'a mut SynthEngine,
     input: ModuleInput,
-    direct_input: Option<Input>,
     default: Option<Sample>,
     modulation_default: Option<Sample>,
+    before: Option<Box<BeforeCallback>>,
 }
 
 impl<'a> ModulationInput<'a> {
@@ -30,9 +32,9 @@ impl<'a> ModulationInput<'a> {
             value,
             synth_engine,
             input: ModuleInput::new(input, module_id),
-            direct_input: None,
             default: None,
             modulation_default: None,
+            before: None,
         }
     }
 
@@ -46,8 +48,8 @@ impl<'a> ModulationInput<'a> {
         self
     }
 
-    pub fn direct_input(mut self, input: Input) -> Self {
-        self.direct_input = Some(input);
+    pub fn before(mut self, func: impl FnMut(&mut Ui, &mut SynthEngine) + 'static) -> Self {
+        self.before = Some(Box::new(func));
         self
     }
 
@@ -316,12 +318,8 @@ impl Widget for ModulationInput<'_> {
             let connected = self.synth_engine.get_connected_input_sources(self.input);
             let result_response = ui
                 .horizontal(|ui| {
-                    if let Some(direct) = self.direct_input {
-                        ui.add(DirectInput::new(
-                            self.synth_engine,
-                            direct,
-                            self.input.module_id,
-                        ));
+                    if let Some(before) = self.before.as_deref_mut() {
+                        before(ui, self.synth_engine);
                     }
 
                     let result_response = self.add_slider(ui);

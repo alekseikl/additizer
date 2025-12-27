@@ -1,12 +1,22 @@
-use egui_baseview::egui::{Grid, Slider, Ui};
+use egui_baseview::egui::{ComboBox, Grid, Slider, Ui};
 
 use crate::{
     editor::{
-        ModuleUI, modulation_input::ModulationInput, module_label::ModuleLabel,
-        utils::confirm_module_removal,
+        ModuleUI, direct_input::DirectInput, modulation_input::ModulationInput,
+        module_label::ModuleLabel, utils::confirm_module_removal,
     },
-    synth_engine::{Input, ModuleId, SpectralMixer, SynthEngine},
+    synth_engine::{Input, MixType, ModuleId, SpectralMixer, SynthEngine},
 };
+
+impl MixType {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Add => "+",
+            Self::Subtract => "-",
+            Self::Multiply => "*",
+        }
+    }
+}
 
 pub struct SpectralMixerUi {
     module_id: ModuleId,
@@ -23,8 +33,12 @@ impl SpectralMixerUi {
         }
     }
 
-    fn mixer<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut SpectralMixer {
-        SpectralMixer::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
+    fn mixer_module(module_id: ModuleId, synth: &mut SynthEngine) -> &mut SpectralMixer {
+        SpectralMixer::downcast_mut_unwrap(synth.get_module_mut(module_id))
+    }
+
+    fn mixer<'a>(&self, synth: &'a mut SynthEngine) -> &'a mut SpectralMixer {
+        Self::mixer_module(self.module_id, synth)
     }
 }
 
@@ -61,6 +75,8 @@ impl ModuleUI for SpectralMixerUi {
                 }
                 ui.end_row();
 
+                let module_id = self.module_id;
+
                 for input_idx in 0..ui_data.num_inputs {
                     ui.label(format!("Input {}", input_idx + 1));
                     if ui
@@ -69,9 +85,44 @@ impl ModuleUI for SpectralMixerUi {
                                 &mut ui_data.input_volumes[input_idx],
                                 synth,
                                 Input::LevelMix(input_idx),
-                                self.module_id,
+                                module_id,
                             )
-                            .direct_input(Input::SpectrumMix(input_idx)),
+                            .before(move |ui, synth| {
+                                if input_idx > 0 {
+                                    let mix_type = &mut ui_data.mix_types[input_idx];
+
+                                    ComboBox::from_id_salt(format!("mix-type-{}", input_idx))
+                                        .selected_text(mix_type.label())
+                                        .width(34.0)
+                                        .show_ui(ui, |ui| {
+                                            const TYPE_OPTIONS: &[MixType] = &[
+                                                MixType::Add,
+                                                MixType::Subtract,
+                                                MixType::Multiply,
+                                            ];
+
+                                            for filter_type in TYPE_OPTIONS {
+                                                if ui
+                                                    .selectable_value(
+                                                        mix_type,
+                                                        *filter_type,
+                                                        filter_type.label(),
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    Self::mixer_module(module_id, synth)
+                                                        .set_mix_type(input_idx, *mix_type);
+                                                }
+                                            }
+                                        });
+                                }
+
+                                ui.add(DirectInput::new(
+                                    synth,
+                                    Input::SpectrumMix(input_idx),
+                                    module_id,
+                                ));
+                            }),
                         )
                         .changed()
                     {

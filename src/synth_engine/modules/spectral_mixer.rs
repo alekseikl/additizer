@@ -1,3 +1,4 @@
+use core::f32;
 use std::any::Any;
 use std::array;
 
@@ -19,6 +20,7 @@ const MAX_VOLUME: Sample = 48.0; // dB
 pub enum MixType {
     #[default]
     Add,
+    Subtract,
     Multiply,
 }
 
@@ -40,11 +42,15 @@ impl Default for ChannelParams {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Params {
     num_inputs: usize,
+    mix_types: [MixType; MAX_INPUTS],
 }
 
 impl Default for Params {
     fn default() -> Self {
-        Self { num_inputs: 2 }
+        Self {
+            num_inputs: 2,
+            mix_types: Default::default(),
+        }
     }
 }
 
@@ -58,6 +64,7 @@ pub struct SpectralMixerConfig {
 pub struct SpectralMixerUIData {
     pub label: String,
     pub num_inputs: usize,
+    pub mix_types: [MixType; MAX_INPUTS],
     pub input_volumes: [StereoSample; MAX_INPUTS],
     pub output_volume: StereoSample,
 }
@@ -118,6 +125,7 @@ impl SpectralMixer {
         SpectralMixerUIData {
             label: self.label.clone(),
             num_inputs: self.params.num_inputs,
+            mix_types: self.params.mix_types,
             input_volumes: array::from_fn(|idx| {
                 self.channels
                     .iter()
@@ -136,6 +144,11 @@ impl SpectralMixer {
     );
 
     set_stereo_param!(set_output_volume, output_volume);
+
+    pub fn set_mix_type(&mut self, input_idx: usize, mix_type: MixType) {
+        self.params.mix_types[input_idx] = mix_type;
+        self.config.lock().params.mix_types[input_idx] = mix_type;
+    }
 
     pub fn set_input_volume(&mut self, input_idx: usize, volume: StereoSample) {
         let input_idx = input_idx.clamp(0, MAX_INPUTS);
@@ -174,9 +187,24 @@ impl SpectralMixer {
                 channel.input_volumes[input_idx]
                     + router.scalar(Input::LevelMix(input_idx), current),
             );
+            let iter = output.iter_mut().zip(spectrum.map(|input| input * gain));
 
-            for (out, input) in output.iter_mut().zip(spectrum) {
-                *out += input * gain;
+            if input_idx == 0 {
+                iter.for_each(|(out, input)| *out = input);
+            } else {
+                match params.mix_types[input_idx] {
+                    MixType::Add => {
+                        iter.for_each(|(out, input)| *out += input);
+                    }
+                    MixType::Subtract => {
+                        iter.for_each(|(out, input)| *out -= input);
+                    }
+                    MixType::Multiply => {
+                        iter.enumerate().for_each(|(idx, (out, input))| {
+                            *out *= input * idx as Sample * f32::consts::PI
+                        });
+                    }
+                }
             }
         }
 

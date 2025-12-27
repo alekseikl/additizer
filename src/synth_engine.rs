@@ -26,7 +26,7 @@ use crate::synth_engine::{
 pub use buffer::{BUFFER_SIZE, SPECTRAL_BUFFER_SIZE};
 pub use config::Config;
 pub use modules::{
-    Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, Lfo, LfoShape,
+    Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, Lfo, LfoShape, MixType,
     ModulationFilter, Oscillator, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType,
     SpectralMixer, WaveShaper,
     harmonic_editor::{self, HarmonicEditor},
