@@ -17,8 +17,7 @@ use crate::{
         multi_input::MultiInput,
     },
     synth_engine::{
-        Input, ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, SynthEngine, SynthModule,
-        VoiceOverride,
+        Input, ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, SynthEngine, VoiceOverride,
     },
     utils::from_ms,
 };
@@ -73,19 +72,39 @@ fn show_menu_item(ui: &mut Ui, label: &str, selected: bool) -> Response {
     response.response.interact(Sense::click())
 }
 
-fn ui_for_module(module: &dyn SynthModule) -> ModuleUIBox {
-    match module.module_type() {
-        ModuleType::HarmonicEditor => Box::new(HarmonicEditorUI::new(module.id())),
-        ModuleType::SpectralFilter => Box::new(SpectralFilterUI::new(module.id())),
-        ModuleType::Amplifier => Box::new(AmplifierUI::new(module.id())),
-        ModuleType::Oscillator => Box::new(OscillatorUI::new(module.id())),
-        ModuleType::Envelope => Box::new(EnvelopeUI::new(module.id())),
-        ModuleType::ExternalParam => Box::new(ExternalParamUI::new(module.id())),
-        ModuleType::ModulationFilter => Box::new(ModulationFilterUI::new(module.id())),
-        ModuleType::Lfo => Box::new(LfoUi::new(module.id())),
-        ModuleType::SpectralBlend => Box::new(SpectralBlendUi::new(module.id())),
-        ModuleType::SpectralMixer => Box::new(SpectralMixerUi::new(module.id())),
-        ModuleType::WaveShaper => Box::new(WaveShaperUi::new(module.id())),
+impl ModuleType {
+    fn has_ui(&self) -> bool {
+        match self {
+            Self::HarmonicEditor
+            | Self::SpectralFilter
+            | Self::Amplifier
+            | Self::Oscillator
+            | Self::Envelope
+            | Self::ExternalParam
+            | Self::ModulationFilter
+            | Self::Lfo
+            | Self::SpectralBlend
+            | Self::SpectralMixer
+            | Self::WaveShaper => true,
+            Self::One => false,
+        }
+    }
+
+    fn ui(&self, id: ModuleId) -> Option<ModuleUIBox> {
+        match self {
+            Self::HarmonicEditor => Some(Box::new(HarmonicEditorUI::new(id))),
+            Self::SpectralFilter => Some(Box::new(SpectralFilterUI::new(id))),
+            Self::Amplifier => Some(Box::new(AmplifierUI::new(id))),
+            Self::Oscillator => Some(Box::new(OscillatorUI::new(id))),
+            Self::Envelope => Some(Box::new(EnvelopeUI::new(id))),
+            Self::ExternalParam => Some(Box::new(ExternalParamUI::new(id))),
+            Self::ModulationFilter => Some(Box::new(ModulationFilterUI::new(id))),
+            Self::Lfo => Some(Box::new(LfoUi::new(id))),
+            Self::SpectralBlend => Some(Box::new(SpectralBlendUi::new(id))),
+            Self::SpectralMixer => Some(Box::new(SpectralMixerUi::new(id))),
+            Self::WaveShaper => Some(Box::new(WaveShaperUi::new(id))),
+            Self::One => None,
+        }
     }
 }
 
@@ -102,6 +121,7 @@ fn show_side_bar(
         .show_inside(ui, |ui| {
             let mut modules = synth_engine.get_modules();
 
+            modules.retain(|module| module.module_type().has_ui());
             modules.sort_by_key(|module| module.label().to_lowercase());
 
             CentralPanel::default()
@@ -127,7 +147,7 @@ fn show_side_bar(
                                 )
                                 .clicked()
                                 {
-                                    *selected_module_ui = Some(ui_for_module(module));
+                                    *selected_module_ui = module.module_type().ui(module.id());
                                 }
                             }
                         })

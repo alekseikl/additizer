@@ -8,21 +8,13 @@ use serde::{Deserialize, Serialize};
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::{SpectralBuffer, zero_spectral_buffer},
-    routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
+    routing::{DataType, MAX_VOICES, MixType, NUM_CHANNELS, Router},
     synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
     types::{ComplexSample, SpectralOutput},
 };
 
 const MAX_INPUTS: usize = 6;
 const MAX_VOLUME: Sample = 48.0; // dB
-
-#[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum MixType {
-    #[default]
-    Add,
-    Subtract,
-    Multiply,
-}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChannelParams {

@@ -61,11 +61,8 @@ pub struct VoiceAlive {
 }
 
 impl VoiceAlive {
-    pub fn new(voice_idx: usize) -> Self {
-        Self {
-            voice_idx,
-            alive: false,
-        }
+    pub fn new(voice_idx: usize, alive: bool) -> Self {
+        Self { voice_idx, alive }
     }
 
     pub fn alive(&self) -> bool {

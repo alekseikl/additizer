@@ -16,8 +16,8 @@ use crate::synth_engine::{
     config::{ModuleConfig, RoutingConfig},
     modules::{
         AmplifierConfig, EnvelopeConfig, ExternalParamConfig, LfoConfig, ModulationFilterConfig,
-        OscillatorConfig, Output, SpectralBlendConfig, SpectralFilterConfig, SpectralMixerConfig,
-        WaveShaperConfig, harmonic_editor::HarmonicEditorConfig,
+        One, OscillatorConfig, Output, OutputConfig, SpectralBlendConfig, SpectralFilterConfig,
+        SpectralMixerConfig, WaveShaperConfig, harmonic_editor::HarmonicEditorConfig,
     },
     routing::{AvailableInputSourceUI, DataType, MAX_VOICES, Router},
     synth_module::{NoteOffParams, NoteOnParams, ProcessParams, VoiceAlive},
@@ -26,13 +26,14 @@ use crate::synth_engine::{
 pub use buffer::{BUFFER_SIZE, SPECTRAL_BUFFER_SIZE};
 pub use config::Config;
 pub use modules::{
-    Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, Lfo, LfoShape, MixType,
+    Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, Lfo, LfoShape,
     ModulationFilter, Oscillator, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType,
     SpectralMixer, WaveShaper,
     harmonic_editor::{self, HarmonicEditor},
 };
 pub use routing::{
-    ConnectedInputSourceUI, Input, ModuleId, ModuleInput, ModuleLink, ModuleType, OUTPUT_MODULE_ID,
+    ConnectedInputSourceUI, Input, MixType, ModuleId, ModuleInput, ModuleLink, ModuleType,
+    OUTPUT_MODULE_ID,
 };
 pub use stereo_sample::StereoSample;
 pub use synth_module::SynthModule;
@@ -146,7 +147,7 @@ macro_rules! get_module_mut {
 macro_rules! add_module_method {
     ($func_name:ident, $module_type:ident, $module_cfg:ident $(, $arg:ident )*) => {
         pub fn $func_name(&mut self) -> ModuleId {
-            let id = self.alloc_next_id();
+            let id = self.alloc_module_id();
             let config = Arc::new(Mutex::new($module_cfg::default()));
             let mut module = Box::new($module_type::new(id, Arc::clone(&config) $(, self.$arg() )*));
 
@@ -165,15 +166,13 @@ impl SynthEngine {
     pub const AVAILABLE_VOICES: usize = MAX_VOICES - 8;
 
     pub fn new() -> Self {
-        let default_cfg = RoutingConfig::default();
-
         Self {
-            next_id: default_cfg.next_module_id,
-            next_voice_id: 1,
-            sample_rate: 1000.0,
-            buffer_size: default_cfg.buffer_size,
-            num_voices: default_cfg.num_voices,
-            voice_override: default_cfg.voice_override,
+            next_id: 0,
+            next_voice_id: 0,
+            sample_rate: 0.0,
+            buffer_size: 0,
+            num_voices: 0,
+            voice_override: VoiceOverride::Kill,
             config: Default::default(),
             modules: HashMap::new(),
             output: None,
@@ -200,8 +199,10 @@ impl SynthEngine {
             output_level_param,
         )));
 
+        self.reset();
+
         if !self.load_config() {
-            self.clear();
+            self.reset();
         }
     }
 
@@ -592,7 +593,7 @@ impl SynthEngine {
             .iter()
             .enumerate()
             .filter(|(_, v)| !matches!(v.state, VoiceState::Free))
-            .map(|(voice_idx, _)| VoiceAlive::new(voice_idx))
+            .map(|(voice_idx, v)| VoiceAlive::new(voice_idx, matches!(v.state, VoiceState::NoteOn)))
             .collect();
 
         self.execution_order
@@ -641,7 +642,7 @@ impl SynthEngine {
         }
     }
 
-    fn alloc_next_id(&mut self) -> ModuleId {
+    fn alloc_module_id(&mut self) -> ModuleId {
         let module_id = self.next_id;
 
         self.next_id += 1;
@@ -886,7 +887,7 @@ impl SynthEngine {
         Ok(())
     }
 
-    fn clear(&mut self) {
+    fn reset(&mut self) {
         let default_cfg = RoutingConfig::default();
 
         self.execution_order.clear();
@@ -899,6 +900,11 @@ impl SynthEngine {
 
         *self.config.routing.lock() = default_cfg;
         self.config.modules.lock().clear();
+        *self.config.output.lock() = OutputConfig::default();
+
+        let one = Box::new(One::new(self.alloc_module_id()));
+
+        self.modules.insert(one.id(), Some(one));
     }
 
     fn load_config(&mut self) -> bool {

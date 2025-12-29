@@ -509,8 +509,8 @@ impl SynthModule for Envelope {
 
     fn poll_alive_voices(&self, alive_state: &mut [VoiceAlive]) {
         if self.params.keep_voice_alive {
-            for channel in &self.channels {
-                for voice_alive in alive_state.iter_mut() {
+            for voice_alive in alive_state.iter_mut().filter(|va| !va.alive()) {
+                for channel in &self.channels {
                     let voice = &channel.voices[voice_alive.index()];
 
                     voice_alive.mark_alive(!matches!(voice.stage, Stage::Done) || voice.triggered);

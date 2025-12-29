@@ -24,6 +24,7 @@ pub enum ModuleType {
     ModulationFilter,
     Lfo,
     WaveShaper,
+    One,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -60,6 +61,14 @@ pub enum Input {
     Decay,
     Sustain,
     Release,
+}
+
+#[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum MixType {
+    #[default]
+    Add,
+    Subtract,
+    Multiply,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
