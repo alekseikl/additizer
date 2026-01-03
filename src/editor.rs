@@ -16,9 +16,7 @@ use crate::{
         },
         multi_input::MultiInput,
     },
-    synth_engine::{
-        Input, ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, SynthEngine, VoiceOverride,
-    },
+    synth_engine::{Input, ModuleId, ModuleType, OUTPUT_MODULE_ID, SynthEngine, VoiceOverride},
     utils::from_ms,
 };
 
@@ -194,14 +192,7 @@ fn show_side_bar(
                                     synth_engine.add_wave_shaper();
                                 }
                                 if ui.selectable_label(false, "Amplifier").clicked() {
-                                    let amp_id = synth_engine.add_amplifier();
-
-                                    synth_engine
-                                        .add_link(
-                                            amp_id,
-                                            ModuleInput::new(Input::Audio, OUTPUT_MODULE_ID),
-                                        )
-                                        .unwrap();
+                                    synth_engine.add_amplifier();
                                 }
                             });
                     });
@@ -231,6 +222,7 @@ fn show_right_bar(ui: &mut Ui, synth_engine: &mut SynthEngine) {
                     GainSlider::new(&mut level)
                         .width(16.0)
                         .max_dbs(6.0)
+                        .mid_point(0.8)
                         .label("Volume"),
                 )
                 .changed()

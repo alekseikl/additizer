@@ -87,10 +87,16 @@ impl ModuleInput {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct LinkModulation {
+    pub src: ModuleId,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ModuleLink {
     pub src: ModuleId,
     pub dst: ModuleInput,
-    pub modulation: StereoSample,
+    pub amount: StereoSample,
+    pub modulation: Option<LinkModulation>,
 }
 
 impl ModuleLink {
@@ -98,7 +104,8 @@ impl ModuleLink {
         Self {
             src,
             dst,
-            modulation: StereoSample::ONE,
+            amount: StereoSample::ONE,
+            modulation: None,
         }
     }
 
@@ -106,20 +113,27 @@ impl ModuleLink {
         Self {
             src,
             dst,
-            modulation: amount.into(),
+            amount: amount.into(),
+            modulation: None,
         }
     }
 }
 
 pub struct AvailableInputSourceUI {
-    pub output: ModuleId,
+    pub src: ModuleId,
+    pub label: String,
+}
+
+pub struct InputModulationUI {
+    pub src: ModuleId,
     pub label: String,
 }
 
 pub struct ConnectedInputSourceUI {
-    pub output: ModuleId,
-    pub modulation: StereoSample,
+    pub src: ModuleId,
+    pub amount: StereoSample,
     pub label: String,
+    pub modulation: Option<InputModulationUI>,
 }
 
 pub trait Router {
@@ -141,14 +155,13 @@ pub trait Router {
         input_buffer: &mut Buffer,
     ) -> bool;
 
-    fn get_spectral_input<'a>(
-        &'a self,
+    fn get_spectral_input(
+        &self,
         input: ModuleInput,
         current: bool,
         voice_idx: usize,
         channel_idx: usize,
-        input_buffer: &'a mut SpectralBuffer,
-    ) -> Option<&'a SpectralBuffer>;
+    ) -> Option<&SpectralBuffer>;
 
     fn get_scalar_input(
         &self,

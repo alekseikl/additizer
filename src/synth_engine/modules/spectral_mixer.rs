@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
-    buffer::{SpectralBuffer, zero_spectral_buffer},
+    buffer::SpectralBuffer,
     routing::{DataType, MAX_VOICES, MixType, NUM_CHANNELS, Router},
     synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
     types::{ComplexSample, SpectralOutput},
@@ -73,24 +73,11 @@ struct Channel {
     voices: [Voice; MAX_VOICES],
 }
 
-struct Buffers {
-    input: SpectralBuffer,
-}
-
-impl Default for Buffers {
-    fn default() -> Self {
-        Self {
-            input: zero_spectral_buffer(),
-        }
-    }
-}
-
 pub struct SpectralMixer {
     id: ModuleId,
     label: String,
     config: ModuleConfigBox<SpectralMixerConfig>,
     params: Params,
-    buffers: Buffers,
     channels: [Channel; NUM_CHANNELS],
 }
 
@@ -103,7 +90,6 @@ impl SpectralMixer {
             label: format!("Spectral Mixer {id}"),
             config,
             params: Params::default(),
-            buffers: Buffers::default(),
             channels: Default::default(),
         };
 
@@ -160,7 +146,6 @@ impl SpectralMixer {
         current: bool,
         params: &Params,
         channel: &ChannelParams,
-        buffers: &mut Buffers,
         voice: &mut Voice,
         router: &VoiceRouter,
     ) {
@@ -173,8 +158,7 @@ impl SpectralMixer {
         output.fill(ComplexSample::ZERO);
 
         for input_idx in 0..params.num_inputs {
-            let spectrum =
-                router.spectral(Input::SpectrumMix(input_idx), current, &mut buffers.input);
+            let spectrum = router.spectral(Input::SpectrumMix(input_idx), current);
             let gain = to_gain(
                 channel.input_volumes[input_idx]
                     + router.scalar(Input::LevelMix(input_idx), current),
@@ -269,24 +253,10 @@ impl SynthModule for SpectralMixer {
                 };
 
                 if voice.triggered {
-                    Self::process_voice(
-                        false,
-                        &self.params,
-                        &channel.params,
-                        &mut self.buffers,
-                        voice,
-                        &router,
-                    );
+                    Self::process_voice(false, &self.params, &channel.params, voice, &router);
                     voice.triggered = false;
                 }
-                Self::process_voice(
-                    true,
-                    &self.params,
-                    &channel.params,
-                    &mut self.buffers,
-                    voice,
-                    &router,
-                );
+                Self::process_voice(true, &self.params, &channel.params, voice, &router);
             }
         }
     }

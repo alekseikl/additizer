@@ -19,7 +19,7 @@ impl<'a> MultiInput<'a> {
 
     fn select_output(&mut self, output: ModuleId) {
         self.synth_engine
-            .add_link(output, self.input)
+            .add_link(output, self.input, 1.0.into())
             .unwrap_or_else(|_| println!("Failed to select output"))
     }
 }
@@ -28,10 +28,10 @@ impl Widget for MultiInput<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {
         let available = self.synth_engine.get_available_input_sources(self.input);
         let connected = self.synth_engine.get_connected_input_sources(self.input);
-        let connected_ids: HashSet<_> = HashSet::from_iter(connected.iter().map(|src| src.output));
+        let connected_ids: HashSet<_> = HashSet::from_iter(connected.iter().map(|src| src.src));
         let filtered: Vec<_> = available
             .iter()
-            .filter(|src| !connected_ids.contains(&src.output))
+            .filter(|src| !connected_ids.contains(&src.src))
             .collect();
 
         ui.vertical(|ui| {
@@ -42,7 +42,7 @@ impl Widget for MultiInput<'_> {
                     ui.label(&src.label);
 
                     if ui.button("❌").clicked() {
-                        self.synth_engine.remove_link(&src.output, &self.input);
+                        self.synth_engine.remove_link(&src.src, &self.input);
                     }
                 });
             }
@@ -53,7 +53,7 @@ impl Widget for MultiInput<'_> {
                     .show_ui(ui, |ui| {
                         for src in &filtered {
                             if ui.selectable_label(false, &src.label).clicked() {
-                                self.select_output(src.output);
+                                self.select_output(src.src);
                             }
                         }
                     });

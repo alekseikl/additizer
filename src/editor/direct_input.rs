@@ -26,7 +26,7 @@ impl Widget for DirectInput<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {
         let available = self.synth_engine.get_available_input_sources(self.input);
         let connected = self.synth_engine.get_connected_input_sources(self.input);
-        let mut selected = connected.first().map(|src| src.output);
+        let mut selected = connected.first().map(|src| src.src);
 
         ComboBox::from_id_salt(format!("direct-input-{:?}", self.input.input_type))
             .selected_text(
@@ -38,10 +38,10 @@ impl Widget for DirectInput<'_> {
             .show_ui(ui, |ui| {
                 for src in &available {
                     if ui
-                        .selectable_value(&mut selected, Some(src.output), &src.label)
+                        .selectable_value(&mut selected, Some(src.src), &src.label)
                         .clicked()
                     {
-                        self.select_output(src.output);
+                        self.select_output(src.src);
                     }
                 }
             })

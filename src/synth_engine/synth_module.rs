@@ -140,19 +140,13 @@ impl<'a> VoiceRouter<'a> {
         self.buffer_opt(input, buff).unwrap_or(&ZEROES_BUFFER)
     }
 
-    pub fn spectral(
-        &'a self,
-        input: Input,
-        current: bool,
-        buff: &'a mut SpectralBuffer,
-    ) -> &'a SpectralBuffer {
+    pub fn spectral(&self, input: Input, current: bool) -> &SpectralBuffer {
         self.router
             .get_spectral_input(
                 ModuleInput::new(input, self.module_id),
                 current,
                 self.voice_idx,
                 self.channel_idx,
-                buff,
             )
             .unwrap_or(&ZEROES_SPECTRAL_BUFFER)
     }

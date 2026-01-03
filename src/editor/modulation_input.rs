@@ -5,7 +5,8 @@ use egui_baseview::egui::{ComboBox, Frame, Grid, Margin, Response, Ui, Widget};
 use crate::{
     editor::stereo_slider::StereoSlider,
     synth_engine::{
-        ConnectedInputSourceUI, Input, ModuleId, ModuleInput, Sample, StereoSample, SynthEngine,
+        AvailableInputSourceUI, ConnectedInputSourceUI, Input, ModuleId, ModuleInput, Sample,
+        StereoSample, SynthEngine,
     },
     utils::st_to_octave,
 };
@@ -245,9 +246,9 @@ impl<'a> ModulationInput<'a> {
         )
     }
 
-    fn add_modulation(&mut self, src: ModuleId) {
+    fn add_link(&mut self, src: ModuleId) {
         self.synth_engine
-            .add_modulation(
+            .add_link(
                 src,
                 self.input,
                 StereoSample::splat(self.modulation_default.unwrap_or(0.0)),
@@ -255,25 +256,35 @@ impl<'a> ModulationInput<'a> {
             .unwrap_or_else(|_| println!("Failed to add modulation"));
     }
 
-    fn add_modulation_select(&mut self, ui: &mut Ui, connected: &[ConnectedInputSourceUI]) {
-        let available = self.synth_engine.get_available_input_sources(self.input);
-        let connected_ids: HashSet<_> = HashSet::from_iter(connected.iter().map(|src| src.output));
+    fn set_modulation(&mut self, src_id: ModuleId, modulator_id: ModuleId) {
+        self.synth_engine
+            .set_link_modulation(src_id, &self.input, modulator_id)
+            .unwrap_or_else(|_| println!("Failed to set modulation"));
+    }
+
+    fn add_link_select(
+        &mut self,
+        ui: &mut Ui,
+        connected: &[ConnectedInputSourceUI],
+        available: &[AvailableInputSourceUI],
+    ) {
+        let connected_ids: HashSet<_> = HashSet::from_iter(connected.iter().map(|src| src.src));
         let filtered: Vec<_> = available
             .iter()
-            .filter(|src| !connected_ids.contains(&src.output))
+            .filter(|src| !connected_ids.contains(&src.src))
             .collect();
 
         if filtered.is_empty() {
             return;
         }
 
-        ComboBox::from_id_salt(format!("mod-select-{:?}", self.input.input_type))
+        ComboBox::from_id_salt(format!("mod-src-select-{:?}", self.input.input_type))
             .selected_text("➕")
             .width(0.0)
             .show_ui(ui, |ui| {
                 for src in &filtered {
                     if ui.selectable_label(false, &src.label).clicked() {
-                        self.add_modulation(src.output);
+                        self.add_link(src.src);
                     }
                 }
             })
@@ -281,29 +292,63 @@ impl<'a> ModulationInput<'a> {
             .on_hover_text("Add Modulation Source");
     }
 
-    fn add_connected_modulations(&mut self, ui: &mut Ui, connected: &[ConnectedInputSourceUI]) {
+    fn add_connected_links(
+        &mut self,
+        ui: &mut Ui,
+        connected: &[ConnectedInputSourceUI],
+        available: &[AvailableInputSourceUI],
+    ) {
         Grid::new(format!("mod-grid-{:?}", self.input.input_type))
             .num_columns(3)
             .spacing([8.0, 4.0])
             .striped(false)
             .show(ui, |ui| {
                 for src in connected {
-                    ui.label(&src.label);
+                    if let Some(modulation) = src.modulation.as_ref() {
+                        ui.horizontal(|ui| {
+                            ui.label(&src.label);
+                            if ui.button("✱").on_hover_text("Remove Modulation").clicked() {
+                                self.synth_engine
+                                    .remove_link_modulation(src.src, &self.input);
+                            }
+                            ui.label(&modulation.label);
+                        });
+                    } else {
+                        ui.label(&src.label);
+                    }
 
-                    let mut modulation = src.modulation;
+                    let mut amount = src.amount;
 
                     let slider_response = ui.add(
-                        self.setup_modulation_slider(StereoSlider::new(&mut modulation))
+                        self.setup_modulation_slider(StereoSlider::new(&mut amount))
                             .width(200.0),
                     );
 
                     if slider_response.changed() {
                         self.synth_engine
-                            .update_modulation(&src.output, &self.input, modulation);
+                            .update_link_amount(&src.src, &self.input, amount);
+                    }
+
+                    if src.modulation.is_none() {
+                        ComboBox::from_id_salt(format!(
+                            "mod-mod-select-{:?}-{}",
+                            self.input.input_type, src.src
+                        ))
+                        .selected_text("✱")
+                        .width(0.0)
+                        .show_ui(ui, |ui| {
+                            for modulator in available {
+                                if ui.selectable_label(false, &modulator.label).clicked() {
+                                    self.set_modulation(src.src, modulator.src);
+                                }
+                            }
+                        })
+                        .response
+                        .on_hover_text("Modulate modulation");
                     }
 
                     if ui.button("❌").on_hover_text("Remove Modulation").clicked() {
-                        self.synth_engine.remove_link(&src.output, &self.input);
+                        self.synth_engine.remove_link(&src.src, &self.input);
                     }
 
                     ui.end_row();
@@ -316,6 +361,8 @@ impl Widget for ModulationInput<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {
         ui.vertical(|ui| {
             let connected = self.synth_engine.get_connected_input_sources(self.input);
+            let available = self.synth_engine.get_available_input_sources(self.input);
+
             let result_response = ui
                 .horizontal(|ui| {
                     if let Some(before) = self.before.as_deref_mut() {
@@ -324,7 +371,7 @@ impl Widget for ModulationInput<'_> {
 
                     let result_response = self.add_slider(ui);
 
-                    self.add_modulation_select(ui, &connected);
+                    self.add_link_select(ui, &connected, &available);
                     result_response
                 })
                 .inner;
@@ -338,7 +385,7 @@ impl Widget for ModulationInput<'_> {
                         bottom: 0,
                     })
                     .show(ui, |ui| {
-                        self.add_connected_modulations(ui, &connected);
+                        self.add_connected_links(ui, &connected, &available);
                     });
             }
 

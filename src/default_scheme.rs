@@ -58,14 +58,14 @@ pub fn build_default_scheme(synth: &mut SynthEngine) {
         .set_decay_curve(EnvelopeCurve::ExponentialOut { full_range: true });
 
     synth
-        .add_link(
+        .set_direct_link(
             harmonic_editor_id,
             ModuleInput::new(Input::Spectrum, filter_id),
         )
         .unwrap();
 
     synth
-        .add_modulation(
+        .add_link(
             filter_env_id,
             ModuleInput::new(Input::Cutoff, filter_id),
             st_to_octave(64.0).into(),
@@ -73,18 +73,18 @@ pub fn build_default_scheme(synth: &mut SynthEngine) {
         .unwrap();
 
     synth
-        .add_link(filter_id, ModuleInput::new(Input::Spectrum, osc_id))
+        .set_direct_link(filter_id, ModuleInput::new(Input::Spectrum, osc_id))
         .unwrap();
 
     synth
-        .add_link(osc_id, ModuleInput::new(Input::Audio, amp_id))
+        .set_direct_link(osc_id, ModuleInput::new(Input::Audio, amp_id))
         .unwrap();
 
     synth
-        .add_link(amp_env_id, ModuleInput::new(Input::Gain, amp_id))
+        .set_direct_link(amp_env_id, ModuleInput::new(Input::Gain, amp_id))
         .unwrap();
 
     synth
-        .add_link(amp_id, ModuleInput::new(Input::Audio, OUTPUT_MODULE_ID))
+        .set_direct_link(amp_id, ModuleInput::new(Input::Audio, OUTPUT_MODULE_ID))
         .unwrap();
 }

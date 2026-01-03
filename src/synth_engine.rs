@@ -12,14 +12,14 @@ use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
-    buffer::{Buffer, SpectralBuffer, fill_or_append_buffer_slice},
+    buffer::{Buffer, SpectralBuffer, copy_or_add_buffer},
     config::{ModuleConfig, RoutingConfig},
     modules::{
         AmplifierConfig, EnvelopeConfig, ExternalParamConfig, LfoConfig, ModulationFilterConfig,
-        One, OscillatorConfig, Output, OutputConfig, SpectralBlendConfig, SpectralFilterConfig,
+        OscillatorConfig, Output, OutputConfig, SpectralBlendConfig, SpectralFilterConfig,
         SpectralMixerConfig, WaveShaperConfig, harmonic_editor::HarmonicEditorConfig,
     },
-    routing::{AvailableInputSourceUI, DataType, MAX_VOICES, Router},
+    routing::{DataType, InputModulationUI, LinkModulation, MAX_VOICES, Router},
     synth_module::{NoteOffParams, NoteOnParams, ProcessParams, VoiceAlive},
 };
 
@@ -32,8 +32,8 @@ pub use modules::{
     harmonic_editor::{self, HarmonicEditor},
 };
 pub use routing::{
-    ConnectedInputSourceUI, Input, MixType, ModuleId, ModuleInput, ModuleLink, ModuleType,
-    OUTPUT_MODULE_ID,
+    AvailableInputSourceUI, ConnectedInputSourceUI, Input, MixType, ModuleId, ModuleInput,
+    ModuleLink, ModuleType, OUTPUT_MODULE_ID,
 };
 pub use stereo_sample::StereoSample;
 pub use synth_module::SynthModule;
@@ -106,7 +106,22 @@ impl Voice {
 #[derive(Debug, Clone, Copy)]
 struct ModuleInputSource {
     src: ModuleId,
-    modulation: StereoSample,
+    amount: StereoSample,
+    modulation: Option<LinkModulation>,
+}
+
+impl ModuleInputSource {
+    fn source_ids(&self) -> impl Iterator<Item = ModuleId> {
+        let mut ids: SmallVec<[ModuleId; 2]> = SmallVec::new();
+
+        ids.push(self.src);
+
+        if let Some(modulation) = self.modulation {
+            ids.push(modulation.src);
+        }
+
+        ids.into_iter()
+    }
 }
 
 pub struct SynthEngine {
@@ -357,7 +372,7 @@ impl SynthEngine {
         Ok(())
     }
 
-    pub fn add_modulation(
+    pub fn add_link(
         &mut self,
         src: ModuleId,
         dst: ModuleInput,
@@ -377,25 +392,44 @@ impl SynthEngine {
         Ok(())
     }
 
-    pub fn update_modulation(&mut self, src: &ModuleId, dst: &ModuleInput, amount: StereoSample) {
+    pub fn update_link_amount(&mut self, src: &ModuleId, dst: &ModuleInput, amount: StereoSample) {
         if let Some(inputs) = self.input_sources.get_mut(dst)
             && let Some(input) = inputs.iter_mut().find(|input| input.src == *src)
         {
-            input.modulation = amount;
+            input.amount = amount;
+            self.save_links();
         }
-
-        self.save_links();
     }
 
-    pub fn add_link(&mut self, src: ModuleId, dst: ModuleInput) -> Result<(), String> {
-        self.can_be_linked(&src, &dst)?;
+    pub fn set_link_modulation(
+        &mut self,
+        src_id: ModuleId,
+        dst_input: &ModuleInput,
+        modulator_id: ModuleId,
+    ) -> Result<(), String> {
+        self.can_be_linked(&modulator_id, dst_input)?;
 
-        let mut new_links: Vec<_> = self.get_links();
+        if let Some(sources) = self.input_sources.get_mut(dst_input)
+            && let Some(source) = sources.iter_mut().find(|src| src.src == src_id)
+        {
+            source.modulation = Some(LinkModulation { src: modulator_id });
+            self.setup_routing(&self.get_links())?;
+            self.save_links();
 
-        new_links.push(ModuleLink::link(src, dst));
-        self.setup_routing(&new_links)?;
-        self.save_links();
-        Ok(())
+            Ok(())
+        } else {
+            Err("Invalid node.".to_string())
+        }
+    }
+
+    pub fn remove_link_modulation(&mut self, src_id: ModuleId, dst_input: &ModuleInput) {
+        if let Some(sources) = self.input_sources.get_mut(dst_input)
+            && let Some(source) = sources.iter_mut().find(|src| src.src == src_id)
+        {
+            source.modulation = None;
+            self.setup_routing(&self.get_links()).unwrap();
+            self.save_links();
+        }
     }
 
     pub fn remove_link(&mut self, src: &ModuleId, dst: &ModuleInput) {
@@ -725,6 +759,7 @@ impl SynthEngine {
                 sources.iter().map(|src| ModuleLink {
                     dst: *dst,
                     src: src.src,
+                    amount: src.amount,
                     modulation: src.modulation,
                 })
             })
@@ -766,7 +801,7 @@ impl SynthEngine {
                     && !self.is_connected_to_source(module.id(), input.module_id)
             })
             .map(|module| AvailableInputSourceUI {
-                output: module.id(),
+                src: module.id(),
                 label: module.label(),
             })
             .collect()
@@ -781,9 +816,18 @@ impl SynthEngine {
             .iter()
             .filter_map(|source| get_module!(self, &source.src).map(|module| (module, source)))
             .map(|(module, source)| ConnectedInputSourceUI {
-                output: source.src,
-                modulation: source.modulation,
+                src: source.src,
+                amount: source.amount,
                 label: module.label(),
+                modulation: source
+                    .modulation
+                    .and_then(|modulation| {
+                        get_module!(self, &modulation.src).map(|module| (module, modulation))
+                    })
+                    .map(|(module, modulation)| InputModulationUI {
+                        src: modulation.src,
+                        label: module.label(),
+                    }),
             })
             .collect()
     }
@@ -791,8 +835,8 @@ impl SynthEngine {
     fn is_connected_to_source(&self, dst_id: ModuleId, src_id: ModuleId) -> bool {
         for (input, sources) in &self.input_sources {
             if input.module_id == dst_id {
-                for source in sources {
-                    if source.src == src_id || self.is_connected_to_source(source.src, src_id) {
+                for source in sources.iter().flat_map(|src| src.source_ids()) {
+                    if source == src_id || self.is_connected_to_source(source, src_id) {
                         return true;
                     }
                 }
@@ -811,6 +855,14 @@ impl SynthEngine {
 
             dependents.entry(dst_node).or_default().insert(src_node);
             dependents.entry(src_node).or_default();
+
+            if let Some(modulation) = link.modulation {
+                dependents
+                    .entry(dst_node)
+                    .or_default()
+                    .insert(modulation.src);
+                dependents.entry(modulation.src).or_default();
+            }
         }
 
         let topo_sort = TopoSort::from_map(dependents);
@@ -826,16 +878,14 @@ impl SynthEngine {
 
     fn setup_routing(&mut self, links: &[ModuleLink]) -> Result<(), String> {
         fn mark_needs_audio_rate(
-            sources: &Vec<ModuleInputSource>,
+            sources: &[ModuleInputSource],
             input_sources: &HashMap<ModuleInput, Vec<ModuleInputSource>>,
             modules: &HashMap<ModuleId, Option<Box<dyn SynthModule>>>,
             needs_audio_rate: &mut HashSet<ModuleId>,
         ) {
             const NEEDS_BUFFER_TYPES: &[DataType] = &[DataType::Buffer, DataType::Scalar];
 
-            for src in sources {
-                let module_id = src.src;
-
+            for module_id in sources.iter().flat_map(|src| src.source_ids()) {
                 if let Some(src_module) =
                     modules.get(&module_id).and_then(|result| result.as_deref())
                     && NEEDS_BUFFER_TYPES.contains(&src_module.output())
@@ -866,6 +916,7 @@ impl SynthEngine {
                 .or_default()
                 .push(ModuleInputSource {
                     src: link.src,
+                    amount: link.amount,
                     modulation: link.modulation,
                 });
         }
@@ -901,10 +952,6 @@ impl SynthEngine {
         *self.config.routing.lock() = default_cfg;
         self.config.modules.lock().clear();
         *self.config.output.lock() = OutputConfig::default();
-
-        let one = Box::new(One::new(self.alloc_module_id()));
-
-        self.modules.insert(one.id(), Some(one));
     }
 
     fn load_config(&mut self) -> bool {
@@ -978,33 +1025,47 @@ impl Router for SynthEngine {
     ) -> Option<&'a Buffer> {
         let sources = self.input_sources.get(&input)?;
 
-        if sources.is_empty() {
-            return None;
-        }
-
         if sources.len() == 1
             && let Some(first) = sources.first()
-            && first.modulation == StereoSample::ONE
+            && first.amount == StereoSample::ONE
+            && first.modulation.is_none()
             && let Some(module) = get_module!(self, &first.src)
         {
             return Some(module.get_buffer_output(voice_idx, channel_idx));
         }
 
+        if sources.is_empty() {
+            return None;
+        }
+
         let result = &mut input_buffer[..samples];
 
         let modules = sources.iter().filter_map(|source| {
-            get_module!(self, &source.src).map(|module| (module, source.modulation))
+            get_module!(self, &source.src).map(|module| (module, source.amount, source.modulation))
         });
 
-        for (mod_idx, (module, modulation)) in modules.enumerate() {
-            let mod_amount = modulation[channel_idx];
-            let buff = module.get_buffer_output(voice_idx, channel_idx);
+        for (mod_idx, (module, amount, modulation)) in modules.enumerate() {
+            let amount = amount[channel_idx];
+            let input = module
+                .get_buffer_output(voice_idx, channel_idx)
+                .iter()
+                .map(|sample| sample * amount);
 
-            fill_or_append_buffer_slice(
-                mod_idx == 0,
-                result,
-                buff.iter().map(|sample| sample * mod_amount),
-            );
+            if let Some(modulation) = modulation
+                && let Some(module) = get_module!(self, &modulation.src)
+            {
+                let input_mod = module.get_buffer_output(voice_idx, channel_idx).iter();
+
+                copy_or_add_buffer(
+                    mod_idx == 0,
+                    result,
+                    input
+                        .zip(input_mod)
+                        .map(|(input, input_mod)| input * input_mod),
+                );
+            } else {
+                copy_or_add_buffer(mod_idx == 0, result, input);
+            }
         }
 
         Some(input_buffer)
@@ -1027,14 +1088,15 @@ impl Router for SynthEngine {
                 .filter_map(|source| get_module!(self, &source.src));
 
             for (mod_idx, module) in modules.enumerate() {
-                fill_or_append_buffer_slice(
-                    mod_idx == 0,
-                    result,
-                    module
-                        .get_buffer_output(voice_idx, channel_idx)
-                        .iter()
-                        .copied(),
-                );
+                let pairs = result
+                    .iter_mut()
+                    .zip(module.get_buffer_output(voice_idx, channel_idx));
+
+                if mod_idx == 0 {
+                    pairs.for_each(|(out, sample)| *out = *sample);
+                } else {
+                    pairs.for_each(|(out, sample)| *out += *sample);
+                }
             }
             true
         } else {
@@ -1042,48 +1104,22 @@ impl Router for SynthEngine {
         }
     }
 
-    fn get_spectral_input<'a>(
-        &'a self,
+    fn get_spectral_input(
+        &self,
         input: ModuleInput,
         current: bool,
         voice_idx: usize,
         channel_idx: usize,
-        input_buffer: &'a mut SpectralBuffer,
-    ) -> Option<&'a SpectralBuffer> {
+    ) -> Option<&SpectralBuffer> {
         let sources = self.input_sources.get(&input)?;
 
-        if sources.is_empty() {
-            return None;
-        }
-
-        if sources.len() == 1
-            && let Some(first) = sources.first()
-            && first.modulation == StereoSample::ONE
+        if let Some(first) = sources.first()
             && let Some(module) = get_module!(self, &first.src)
         {
-            return Some(module.get_spectral_output(current, voice_idx, channel_idx));
+            Some(module.get_spectral_output(current, voice_idx, channel_idx))
+        } else {
+            None
         }
-
-        let modules = sources.iter().filter_map(|source| {
-            get_module!(self, &source.src).map(|module| (module, source.modulation))
-        });
-
-        for (mod_idx, (module, modulation)) in modules.enumerate() {
-            let mod_amount = modulation[channel_idx];
-            let input = module.get_spectral_output(current, voice_idx, channel_idx);
-
-            if mod_idx == 0 {
-                for (out, input) in input_buffer.iter_mut().zip(input) {
-                    *out = input * mod_amount;
-                }
-            } else {
-                for (out, input) in input_buffer.iter_mut().zip(input) {
-                    *out += input * mod_amount;
-                }
-            }
-        }
-
-        Some(input_buffer)
     }
 
     fn get_scalar_input(
@@ -1091,7 +1127,7 @@ impl Router for SynthEngine {
         input: ModuleInput,
         current: bool,
         voice_idx: usize,
-        channel: usize,
+        channel_idx: usize,
     ) -> Option<Sample> {
         let sources = self.input_sources.get(&input)?;
 
@@ -1104,14 +1140,23 @@ impl Router for SynthEngine {
         let values = sources.iter().filter_map(|source| {
             get_module!(self, &source.src).map(|module| {
                 (
-                    module.get_scalar_output(current, voice_idx, channel),
+                    module.get_scalar_output(current, voice_idx, channel_idx),
+                    source.amount,
                     source.modulation,
                 )
             })
         });
 
-        for (value, mod_amount) in values {
-            output += value * mod_amount[channel];
+        for (value, amount, modulation) in values {
+            let mut input = value * amount[channel_idx];
+
+            if let Some(modulation) = modulation
+                && let Some(module) = get_module!(self, &modulation.src)
+            {
+                input *= module.get_scalar_output(current, voice_idx, channel_idx);
+            }
+
+            output += input;
         }
 
         Some(output)
