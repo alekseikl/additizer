@@ -1,8 +1,11 @@
-use egui_baseview::egui::{ComboBox, Ui};
+use egui_baseview::egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
-    editor::{ModuleUI, module_label::ModuleLabel, utils::confirm_module_removal},
-    synth_engine::{ExternalParam, ModuleId, SynthEngine},
+    editor::{
+        ModuleUI, module_label::ModuleLabel, stereo_slider::StereoSlider,
+        utils::confirm_module_removal,
+    },
+    synth_engine::{ExternalParam, ModuleId, StereoSample, SynthEngine},
 };
 
 pub struct ExternalParamUI {
@@ -31,7 +34,7 @@ impl ModuleUI for ExternalParamUI {
     }
 
     fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
-        let ui_data = self.param(synth).get_ui();
+        let mut ui_data = self.param(synth).get_ui();
 
         ui.add(ModuleLabel::new(
             &ui_data.label,
@@ -41,20 +44,57 @@ impl ModuleUI for ExternalParamUI {
 
         ui.add_space(20.0);
 
-        ComboBox::from_id_salt("ext-param-select")
-            .selected_text(format!("Param #{}", ui_data.selected_param_index + 1))
-            .show_ui(ui, |ui| {
-                for i in 0..ui_data.num_of_params {
-                    if ui
-                        .selectable_label(
-                            i == ui_data.selected_param_index,
-                            format!("Param #{}", i + 1),
-                        )
-                        .clicked()
-                    {
-                        self.param(synth).select_param(i);
-                    }
+        Grid::new("ext-param-grid")
+            .num_columns(2)
+            .spacing([40.0, 24.0])
+            .striped(true)
+            .show(ui, |ui| {
+                ui.label("Input");
+                ComboBox::from_id_salt("ext-param-select")
+                    .selected_text(format!("Param #{}", ui_data.selected_param_index + 1))
+                    .show_ui(ui, |ui| {
+                        for i in 0..ui_data.num_of_params {
+                            if ui
+                                .selectable_label(
+                                    i == ui_data.selected_param_index,
+                                    format!("Param #{}", i + 1),
+                                )
+                                .clicked()
+                            {
+                                self.param(synth).select_param(i);
+                            }
+                        }
+                    });
+                ui.end_row();
+
+                let mut smooth = StereoSample::splat(ui_data.smooth);
+
+                ui.label("Smooth");
+                if ui
+                    .add(
+                        StereoSlider::new(&mut smooth)
+                            .range(0.0..=0.05)
+                            .display_scale(1000.0)
+                            .default_value(0.0)
+                            .skew(1.2)
+                            .precision(1)
+                            .units(" ms"),
+                    )
+                    .changed()
+                {
+                    self.param(synth).set_smooth(smooth.left());
                 }
+                ui.end_row();
+
+                ui.label("Sample and Hold");
+                if ui
+                    .add(Checkbox::without_text(&mut ui_data.sample_and_hold))
+                    .changed()
+                {
+                    self.param(synth)
+                        .set_sample_and_hold(ui_data.sample_and_hold);
+                }
+                ui.end_row();
             });
 
         ui.add_space(40.0);

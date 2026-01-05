@@ -125,6 +125,7 @@ pub struct AvailableInputSourceUI {
 }
 
 pub struct InputModulationUI {
+    #[allow(unused)]
     pub src: ModuleId,
     pub label: String,
 }

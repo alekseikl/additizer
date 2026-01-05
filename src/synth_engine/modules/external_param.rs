@@ -8,9 +8,9 @@ use crate::{
     synth_engine::{
         ModuleId, ModuleType, Sample, SynthModule,
         buffer::{Buffer, zero_buffer},
-        routing::{DataType, Router},
+        routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
         smoother::Smoother,
-        synth_module::{InputInfo, ModuleConfigBox, ProcessParams},
+        synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams},
         types::ScalarOutput,
     },
     utils::from_ms,
@@ -22,16 +22,60 @@ pub struct ExternalParamsBlock {
     pub float_params: [Arc<FloatParam>; NUM_FLOAT_PARAMS],
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Params {
+    selected_param_index: usize,
+    smooth: Sample,
+    sample_and_hold: bool,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            selected_param_index: 0,
+            smooth: from_ms(2.0),
+            sample_and_hold: false,
+        }
+    }
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct ExternalParamConfig {
     label: Option<String>,
-    selected_param_index: usize,
+    params: Params,
 }
 
 pub struct ExternalParamUI {
     pub label: String,
     pub selected_param_index: usize,
     pub num_of_params: usize,
+    pub smooth: Sample,
+    pub sample_and_hold: bool,
+}
+
+struct Voice {
+    triggered: bool,
+    value_at_trigger: Sample,
+    output: ScalarOutput,
+    audio_smoother: Smoother,
+    audio_output: Buffer,
+}
+
+impl Default for Voice {
+    fn default() -> Self {
+        Self {
+            triggered: false,
+            value_at_trigger: 0.0,
+            output: ScalarOutput::default(),
+            audio_smoother: Smoother::default(),
+            audio_output: zero_buffer(),
+        }
+    }
+}
+
+#[derive(Default)]
+struct Channel {
+    voices: [Voice; MAX_VOICES],
 }
 
 pub struct ExternalParam {
@@ -39,12 +83,8 @@ pub struct ExternalParam {
     label: String,
     config: ModuleConfigBox<ExternalParamConfig>,
     params_block: Arc<ExternalParamsBlock>,
-    selected_param: Option<Arc<FloatParam>>,
-    selected_param_index: usize,
-    need_reset: bool,
-    output: ScalarOutput,
-    audio_smoother: Smoother,
-    audio_output: Buffer,
+    params: Params,
+    channels: [Channel; NUM_CHANNELS],
 }
 
 impl ExternalParam {
@@ -58,12 +98,8 @@ impl ExternalParam {
             label: format!("External Param {id}"),
             config,
             params_block,
-            selected_param: None,
-            selected_param_index: 0,
-            need_reset: true,
-            output: ScalarOutput::default(),
-            audio_smoother: Smoother::default(),
-            audio_output: zero_buffer(),
+            params: Params::default(),
+            channels: Default::default(),
         };
 
         {
@@ -72,14 +108,10 @@ impl ExternalParam {
             if let Some(label) = cfg.label.as_ref() {
                 ext.label = label.clone();
             }
-
-            let idx = cfg
-                .selected_param_index
-                .min(ext.params_block.float_params.len() - 1);
-
-            ext.selected_param_index = idx;
-            ext.selected_param = Some(Arc::clone(&ext.params_block.float_params[idx]));
+            ext.params = cfg.params.clone();
         }
+
+        ext.params.selected_param_index = ext.params.selected_param_index.min(NUM_FLOAT_PARAMS - 1);
 
         ext
     }
@@ -89,21 +121,21 @@ impl ExternalParam {
     pub fn get_ui(&self) -> ExternalParamUI {
         ExternalParamUI {
             label: self.label.clone(),
-            selected_param_index: self.selected_param_index,
+            selected_param_index: self.params.selected_param_index,
             num_of_params: NUM_FLOAT_PARAMS,
+            smooth: self.params.smooth,
+            sample_and_hold: self.params.sample_and_hold,
         }
     }
 
-    pub fn select_param(&mut self, param_idx: usize) {
-        let param_idx = param_idx.min(self.params_block.float_params.len() - 1);
-
-        if param_idx != self.selected_param_index {
-            self.selected_param_index = param_idx;
-            self.selected_param = Some(Arc::clone(&self.params_block.float_params[param_idx]));
-            self.need_reset = true;
-            self.config.lock().selected_param_index = param_idx;
-        }
-    }
+    set_mono_param!(
+        select_param,
+        selected_param_index,
+        usize,
+        selected_param_index.min(NUM_FLOAT_PARAMS - 1)
+    );
+    set_mono_param!(set_smooth, smooth, Sample);
+    set_mono_param!(set_sample_and_hold, sample_and_hold, bool);
 }
 
 impl SynthModule for ExternalParam {
@@ -132,32 +164,59 @@ impl SynthModule for ExternalParam {
         DataType::Scalar
     }
 
+    fn note_on(&mut self, params: &NoteOnParams) {
+        let param_value = self.params_block.float_params[self.params.selected_param_index].value();
+
+        for channel in &mut self.channels {
+            let voice = &mut channel.voices[params.voice_idx];
+
+            voice.triggered = true;
+            voice.value_at_trigger = param_value;
+
+            if params.reset {
+                voice.audio_smoother.reset(param_value);
+            }
+        }
+    }
+
     fn process(&mut self, params: &ProcessParams, _router: &dyn Router) {
-        self.output.advance(
-            self.selected_param
-                .as_ref()
-                .map(|param| param.value())
-                .unwrap_or_default(),
-        );
+        let param_value = self.params_block.float_params[self.params.selected_param_index].value();
 
-        if self.need_reset {
-            self.output.advance(self.output.current());
-            self.audio_smoother.reset(self.output.previous());
-            self.need_reset = false;
-        }
+        for channel in self.channels.iter_mut() {
+            for voice_idx in params.active_voices {
+                let voice = &mut channel.voices[*voice_idx];
+                let param_value = if self.params.sample_and_hold {
+                    voice.value_at_trigger
+                } else {
+                    param_value
+                };
 
-        if params.needs_audio_rate {
-            self.audio_smoother.update(params.sample_rate, from_ms(2.0));
-            self.audio_smoother
-                .segment(&self.output, params.samples, &mut self.audio_output);
+                if voice.triggered {
+                    voice.output.advance(param_value);
+                    voice.triggered = false;
+                }
+
+                voice.output.advance(param_value);
+
+                if params.needs_audio_rate {
+                    voice
+                        .audio_smoother
+                        .update(params.sample_rate, self.params.smooth);
+                    voice.audio_smoother.segment(
+                        &voice.output,
+                        params.samples,
+                        &mut voice.audio_output,
+                    );
+                }
+            }
         }
     }
 
-    fn get_buffer_output(&self, _voice_idx: usize, _channel_idx: usize) -> &Buffer {
-        &self.audio_output
+    fn get_buffer_output(&self, voice_idx: usize, channel_idx: usize) -> &Buffer {
+        &self.channels[channel_idx].voices[voice_idx].audio_output
     }
 
-    fn get_scalar_output(&self, current: bool, _voice_idx: usize, _channel: usize) -> Sample {
-        self.output.get(current)
+    fn get_scalar_output(&self, current: bool, voice_idx: usize, channel: usize) -> Sample {
+        self.channels[channel].voices[voice_idx].output.get(current)
     }
 }
