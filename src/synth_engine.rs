@@ -218,6 +218,7 @@ impl SynthEngine {
 
         if !self.load_config() {
             self.reset();
+            self.reset_config();
         }
     }
 
@@ -948,8 +949,10 @@ impl SynthEngine {
         self.num_voices = default_cfg.num_voices;
         self.buffer_size = default_cfg.buffer_size;
         self.voice_override = VoiceOverride::Kill;
+    }
 
-        *self.config.routing.lock() = default_cfg;
+    fn reset_config(&mut self) {
+        *self.config.routing.lock() = RoutingConfig::default();
         self.config.modules.lock().clear();
         *self.config.output.lock() = OutputConfig::default();
     }
@@ -1002,6 +1005,12 @@ impl SynthEngine {
 
         for link in &routing.links {
             if self.can_be_linked(&link.src, &link.dst).is_err() {
+                return false;
+            }
+
+            if let Some(modulation) = link.modulation
+                && self.can_be_linked(&modulation.src, &link.dst).is_err()
+            {
                 return false;
             }
         }
