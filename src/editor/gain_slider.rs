@@ -68,7 +68,6 @@ impl<'a> GainSlider<'a> {
         self
     }
 
-    #[allow(unused)]
     pub fn mid_point(mut self, mid_point: Sample) -> Self {
         self.mid_point = mid_point;
         self

@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use egui_baseview::egui::{ComboBox, Frame, Grid, Margin, Response, Ui, Widget};
 
 use crate::{
-    editor::stereo_slider::StereoSlider,
+    editor::{db_slider::DbSlider, stereo_slider::StereoSlider},
     synth_engine::{
         AvailableInputSourceUI, ConnectedInputSourceUI, Input, ModuleId, ModuleInput, Sample,
         StereoSample, SynthEngine,
@@ -236,14 +236,17 @@ impl<'a> ModulationInput<'a> {
     }
 
     fn add_slider(&mut self, ui: &mut Ui) -> Response {
-        ui.add(
-            Self::setup_value_slider(
-                StereoSlider::new(self.value),
-                self.input.input_type,
-                self.default,
-            )
-            .width(200.0),
-        )
+        match self.input.input_type {
+            Input::Level | Input::LevelMix(_) => ui.add(DbSlider::new(self.value).width(200.0)),
+            _ => ui.add(
+                Self::setup_value_slider(
+                    StereoSlider::new(self.value),
+                    self.input.input_type,
+                    self.default,
+                )
+                .width(200.0),
+            ),
+        }
     }
 
     fn add_link(&mut self, src: ModuleId) {

@@ -159,21 +159,23 @@ impl<'a> StereoSlider<'a> {
             response.mark_changed();
         }
 
-        ui.painter().rect_filled(response.rect, 0.0, BG_COLOR);
+        if ui.is_rect_visible(response.rect) {
+            ui.painter().rect_filled(response.rect, 0.0, BG_COLOR);
 
-        let lr_rect = response.rect.split_top_bottom_at_fraction(0.5);
-        let paint_bar = |mut rect: Rect, norm_value: Sample| {
-            if norm_value < 0.0 {
-                *rect.left_mut() += (1.0 + norm_value) * response.rect.width();
-                ui.painter().rect_filled(rect, 0.0, NEGATIVE_LEVEL_COLOR);
-            } else {
-                *rect.right_mut() -= (1.0 - norm_value) * response.rect.width();
-                ui.painter().rect_filled(rect, 0.0, self.color);
-            }
-        };
+            let lr_rect = response.rect.split_top_bottom_at_fraction(0.5);
+            let paint_bar = |mut rect: Rect, norm_value: Sample| {
+                if norm_value < 0.0 {
+                    *rect.left_mut() += (1.0 + norm_value) * response.rect.width();
+                    ui.painter().rect_filled(rect, 0.0, NEGATIVE_LEVEL_COLOR);
+                } else {
+                    *rect.right_mut() -= (1.0 - norm_value) * response.rect.width();
+                    ui.painter().rect_filled(rect, 0.0, self.color);
+                }
+            };
 
-        paint_bar(lr_rect.0, normalized_value.left());
-        paint_bar(lr_rect.1, normalized_value.right());
+            paint_bar(lr_rect.0, normalized_value.left());
+            paint_bar(lr_rect.1, normalized_value.right());
+        }
 
         let mut parts: Vec<String> = Vec::with_capacity(4);
 

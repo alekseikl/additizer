@@ -24,6 +24,7 @@ use egui_integration::{ResizableWindow, create_egui_editor};
 
 pub use egui_integration::EguiState;
 
+mod db_slider;
 mod direct_input;
 mod egui_integration;
 mod gain_slider;
