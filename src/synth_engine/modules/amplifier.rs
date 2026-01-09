@@ -2,7 +2,7 @@ use std::any::Any;
 
 use crate::synth_engine::{
     StereoSample,
-    buffer::{Buffer, ONES_BUFFER, zero_buffer},
+    buffer::{Buffer, zero_buffer},
     routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
     synth_module::{InputInfo, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
     types::Sample,
@@ -17,7 +17,7 @@ pub struct ChannelParams {
 
 impl Default for ChannelParams {
     fn default() -> Self {
-        Self { gain: 1.0 }
+        Self { gain: 0.0 }
     }
 }
 
@@ -104,16 +104,14 @@ impl Amplifier {
         router: &VoiceRouter,
     ) {
         let input = router.buffer(Input::Audio, &mut buffers.input);
-        let gain_mod = router
-            .buffer_opt(Input::Gain, &mut buffers.gain_mod_input)
-            .unwrap_or(&ONES_BUFFER);
+        let gain_mod = router.buffer(Input::Gain, &mut buffers.gain_mod_input);
 
         for (out, input, modulation) in izip!(
             voice.output.iter_mut().take(router.samples),
             input,
             gain_mod
         ) {
-            *out = input * channel.gain * modulation;
+            *out = input * (channel.gain + modulation);
         }
     }
 }

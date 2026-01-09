@@ -10,6 +10,7 @@ pub type Buffer = [Sample; BUFFER_SIZE];
 pub type SpectralBuffer = [ComplexSample; SPECTRAL_BUFFER_SIZE];
 
 pub static ZEROES_BUFFER: Buffer = [0.0; BUFFER_SIZE];
+#[allow(unused)]
 pub static ONES_BUFFER: Buffer = [1.0; BUFFER_SIZE];
 pub static ZEROES_SPECTRAL_BUFFER: SpectralBuffer = zero_spectral_buffer();
 pub static HARMONIC_SERIES_BUFFER: SpectralBuffer = harmonic_series_buffer();

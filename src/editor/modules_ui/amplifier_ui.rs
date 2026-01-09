@@ -35,7 +35,6 @@ impl ModuleUI for AmplifierUI {
 
     fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
         let mut ui_data = self.amp(synth).get_ui();
-        // let mut kill_time_ms = ui_data.voice_kill_time * 1000.0;
 
         ui.add(ModuleLabel::new(
             &ui_data.label,
