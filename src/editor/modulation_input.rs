@@ -146,7 +146,6 @@ impl<'a> ModulationInput<'a> {
                 .default_value(0.0)
                 .allow_inverse()
                 .units(" dB"),
-
             Input::Drive | Input::ClippingLevel => slider
                 .range(0.0..=24.0)
                 .default_value(0.0)
@@ -182,7 +181,7 @@ impl<'a> ModulationInput<'a> {
                 .allow_inverse()
                 .units(" cents"),
             Input::PitchShift => slider
-                .range(0.0..=st_to_octave(60.0))
+                .range(0.0..=8.0)
                 .skew(1.8)
                 .display_scale(12.0)
                 .default_value(0.0)

@@ -1,5 +1,7 @@
 #![allow(clippy::new_without_default)]
 
+use const_format::concatcp;
+
 mod default_scheme;
 mod editor;
 mod params;
@@ -77,12 +79,12 @@ impl Additizer {
 }
 
 impl Plugin for Additizer {
-    const NAME: &'static str = "Additizer";
-    const VENDOR: &'static str = "Spectral Blaze";
-    const URL: &'static str = "https://youtu.be/dQw4w9WgXcQ";
-    const EMAIL: &'static str = "info@example.com";
+    const NAME: &'static str = concatcp!("Additizer", env!("GIT_COMMIT_SUFFIX"));
+    const VENDOR: &'static str = "Alexey Klyotzin";
+    const URL: &'static str = "https://github.com/alekseikl/additizer";
+    const EMAIL: &'static str = "svbs8000@gmail.com";
 
-    const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+    const VERSION: &'static str = concatcp!(env!("CARGO_PKG_VERSION"), env!("GIT_COMMIT_SUFFIX"));
 
     const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
         main_input_channels: None,
@@ -196,7 +198,7 @@ impl Plugin for Additizer {
 }
 
 impl ClapPlugin for Additizer {
-    const CLAP_ID: &'static str = "com.spectral-blaze.additizer";
+    const CLAP_ID: &'static str = concatcp!("com.alekseikl.additizer", env!("GIT_COMMIT_SUFFIX"));
     const CLAP_DESCRIPTION: Option<&'static str> = Some("Additive synthesizer");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
