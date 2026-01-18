@@ -20,7 +20,7 @@ impl<'a> DbSlider<'a> {
     pub fn new(value: &'a mut StereoSample) -> Self {
         Self {
             value,
-            max_dbs: 48.0,
+            max_dbs: 24.0,
             mid_point: 0.7,
             skew_factor: 1.6,
             width: 200.0,

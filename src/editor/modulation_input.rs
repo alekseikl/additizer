@@ -61,9 +61,6 @@ impl<'a> ModulationInput<'a> {
     ) -> StereoSlider<'_> {
         let mut updated = match input_type {
             Input::Gain => slider.default_value(1.0).precision(2),
-            Input::Level | Input::LevelMix(_) => {
-                slider.range(-48.0..=48.0).default_value(0.0).units(" dB")
-            }
             Input::Drive | Input::ClippingLevel => {
                 slider.range(-24.0..=24.0).default_value(0.0).units(" dB")
             }
@@ -128,7 +125,7 @@ impl<'a> ModulationInput<'a> {
                 .precision(2)
                 .allow_inverse()
                 .units("%"),
-            Input::Audio => slider,
+            Input::Audio | Input::AudioMix(_) | Input::Level | Input::LevelMix(_) => slider,
         };
 
         if let Some(default) = default {
@@ -142,8 +139,9 @@ impl<'a> ModulationInput<'a> {
         let mut updated = match self.input.input_type {
             Input::Gain => slider.default_value(0.0).precision(2).allow_inverse(),
             Input::Level | Input::LevelMix(_) => slider
-                .range(0.0..=48.0)
+                .range(0.0..=100.0)
                 .default_value(0.0)
+                .skew(2.0)
                 .allow_inverse()
                 .units(" dB"),
             Input::Drive | Input::ClippingLevel => slider
@@ -224,7 +222,7 @@ impl<'a> ModulationInput<'a> {
                 .precision(0)
                 .allow_inverse()
                 .units("%"),
-            Input::Audio => slider,
+            Input::Audio | Input::AudioMix(_) => slider,
         };
 
         if let Some(default) = self.modulation_default {

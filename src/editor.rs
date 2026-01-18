@@ -11,8 +11,9 @@ use crate::{
     editor::{
         gain_slider::GainSlider,
         modules_ui::{
-            AmplifierUI, EnvelopeUI, ExternalParamUI, HarmonicEditorUI, LfoUi, ModulationFilterUI,
-            OscillatorUI, SpectralBlendUi, SpectralFilterUI, SpectralMixerUi, WaveShaperUi,
+            AmplifierUI, EnvelopeUI, ExternalParamUI, HarmonicEditorUI, LfoUi, MixerUi,
+            ModulationFilterUI, OscillatorUI, SpectralBlendUi, SpectralFilterUI, SpectralMixerUi,
+            WaveShaperUi,
         },
         multi_input::MultiInput,
     },
@@ -77,6 +78,7 @@ impl ModuleType {
             Self::HarmonicEditor
             | Self::SpectralFilter
             | Self::Amplifier
+            | Self::Mixer
             | Self::Oscillator
             | Self::Envelope
             | Self::ExternalParam
@@ -94,6 +96,7 @@ impl ModuleType {
             Self::HarmonicEditor => Some(Box::new(HarmonicEditorUI::new(id))),
             Self::SpectralFilter => Some(Box::new(SpectralFilterUI::new(id))),
             Self::Amplifier => Some(Box::new(AmplifierUI::new(id))),
+            Self::Mixer => Some(Box::new(MixerUi::new(id))),
             Self::Oscillator => Some(Box::new(OscillatorUI::new(id))),
             Self::Envelope => Some(Box::new(EnvelopeUI::new(id))),
             Self::ExternalParam => Some(Box::new(ExternalParamUI::new(id))),
@@ -194,6 +197,9 @@ fn show_side_bar(
                                 }
                                 if ui.selectable_label(false, "Amplifier").clicked() {
                                     synth_engine.add_amplifier();
+                                }
+                                if ui.selectable_label(false, "Mixer").clicked() {
+                                    synth_engine.add_mixer();
                                 }
                             });
                     });

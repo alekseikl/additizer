@@ -14,7 +14,7 @@ use crate::synth_engine::{
 };
 
 const MAX_INPUTS: usize = 6;
-const MAX_VOLUME: Sample = 48.0; // dB
+const MAX_VOLUME: Sample = 24.0; // dB
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChannelParams {
@@ -149,6 +149,7 @@ impl SpectralMixer {
         voice: &mut Voice,
         router: &VoiceRouter,
     ) {
+        #[inline(always)]
         fn to_gain(vol: Sample) -> Sample {
             db_to_gain_fast(vol.min(MAX_VOLUME))
         }

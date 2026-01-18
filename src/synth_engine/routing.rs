@@ -15,6 +15,7 @@ pub const MIN_MODULE_ID: ModuleId = 1;
 pub enum ModuleType {
     Envelope,
     Amplifier,
+    Mixer,
     Oscillator,
     SpectralFilter,
     SpectralBlend,
@@ -37,6 +38,7 @@ pub enum DataType {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 pub enum Input {
     Audio,
+    AudioMix(usize),
     Gain,            // 0.0 - 1.0
     Level,           // dB
     LevelMix(usize), // dB

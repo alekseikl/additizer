@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use crate::synth_engine::{
     BUFFER_SIZE, VoiceOverride, WaveShaperConfig,
     modules::{
-        AmplifierConfig, EnvelopeConfig, ExternalParamConfig, LfoConfig, ModulationFilterConfig,
-        OscillatorConfig, OutputConfig, SpectralBlendConfig, SpectralFilterConfig,
-        SpectralMixerConfig, harmonic_editor::HarmonicEditorConfig,
+        AmplifierConfig, EnvelopeConfig, ExternalParamConfig, LfoConfig, MixerConfig,
+        ModulationFilterConfig, OscillatorConfig, OutputConfig, SpectralBlendConfig,
+        SpectralFilterConfig, SpectralMixerConfig, harmonic_editor::HarmonicEditorConfig,
     },
     routing::{MAX_VOICES, MIN_MODULE_ID, ModuleId, ModuleLink},
 };
@@ -49,6 +49,7 @@ pub enum ModuleConfig {
     ModulationFilter(CfgBox<ModulationFilterConfig>),
     Lfo(CfgBox<LfoConfig>),
     WaveShaper(CfgBox<WaveShaperConfig>),
+    Mixer(CfgBox<MixerConfig>),
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
