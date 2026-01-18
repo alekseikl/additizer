@@ -30,7 +30,7 @@ const DFT_BUFFER_SIZE: usize = (1 << (WAVEFORM_BITS - 1)) + 1;
 const MAX_UNISON_VOICES: usize = 16;
 
 const INITIAL_PHASES: [Sample; MAX_UNISON_VOICES] = [
-    0.46912605, 0.9068176, 0.6544455, 0.26577616, 0.24667478, 0.12834072, 0.5805929, 0.55541587,
+    0.0, 0.9068176, 0.6544455, 0.26577616, 0.24667478, 0.12834072, 0.5805929, 0.55541587,
     0.58291245, 0.03298676, 0.8845756, 0.96093744, 0.42001683, 0.63606197, 0.28810132, 0.5167134,
 ];
 
@@ -73,7 +73,7 @@ pub struct ChannelParams {
 impl Default for ChannelParams {
     fn default() -> Self {
         Self {
-            gain: 0.5,
+            gain: 1.0,
             pitch_shift: 0.0,
             detune: st_to_octave(0.2),
             phase_shift: 0.0,

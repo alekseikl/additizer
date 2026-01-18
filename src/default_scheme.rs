@@ -1,7 +1,7 @@
 use crate::{
     synth_engine::{
-        Envelope, EnvelopeCurve, Input, ModuleInput, OUTPUT_MODULE_ID, Oscillator, SpectralFilter,
-        StereoSample, SynthEngine,
+        Amplifier, Envelope, EnvelopeCurve, HarmonicEditor, Input, ModuleInput, OUTPUT_MODULE_ID,
+        Oscillator, SpectralFilter, StereoSample, SynthEngine, SynthModule,
     },
     utils::{from_ms, st_to_octave},
 };
@@ -22,40 +22,43 @@ pub fn build_default_scheme(synth: &mut SynthEngine) {
         };
     }
 
+    let editor = typed_module_mut!(harmonic_editor_id, HarmonicEditor).unwrap();
+
+    editor.set_label("01 - Harmonics".into());
+
     let filter_env = typed_module_mut!(filter_env_id, Envelope).unwrap();
 
+    filter_env.set_label("03 - Cutoff Env".into());
     filter_env.set_attack(0.0.into());
     filter_env.set_decay(from_ms(500.0).into());
     filter_env.set_sustain(0.0.into());
     filter_env.set_release(from_ms(100.0).into());
+    filter_env.set_decay_curve(EnvelopeCurve::ExponentialOut { full_range: true });
+    filter_env.set_attack_curve(EnvelopeCurve::ExponentialOut { full_range: true });
 
-    typed_module_mut!(filter_env_id, Envelope)
-        .unwrap()
-        .set_decay_curve(EnvelopeCurve::ExponentialOut { full_range: true });
+    let spectral_filter = typed_module_mut!(filter_id, SpectralFilter).unwrap();
 
-    typed_module_mut!(filter_env_id, Envelope)
-        .unwrap()
-        .set_attack_curve(EnvelopeCurve::ExponentialIn { full_range: true });
-
-    typed_module_mut!(filter_id, SpectralFilter)
-        .unwrap()
-        .set_cutoff(2.0.into());
+    spectral_filter.set_label("03 - Filter".into());
+    spectral_filter.set_cutoff(2.0.into());
 
     let osc = typed_module_mut!(osc_id, Oscillator).unwrap();
 
+    osc.set_label("04 - Oscillator".into());
     osc.set_unison(1);
-    osc.set_detune(st_to_octave(0.01).into());
+    osc.set_detune(st_to_octave(0.1).into());
 
     let amp_env = typed_module_mut!(amp_env_id, Envelope).unwrap();
 
+    amp_env.set_label("06 - Amp Envelope".into());
     amp_env.set_attack(StereoSample::splat(from_ms(10.0)));
     amp_env.set_decay(from_ms(20.0).into());
-    amp_env.set_sustain(1.0.into());
+    amp_env.set_sustain(0.6.into());
     amp_env.set_release(from_ms(300.0).into());
+    amp_env.set_decay_curve(EnvelopeCurve::ExponentialOut { full_range: true });
 
-    typed_module_mut!(amp_env_id, Envelope)
-        .unwrap()
-        .set_decay_curve(EnvelopeCurve::ExponentialOut { full_range: true });
+    let amp = typed_module_mut!(amp_id, Amplifier).unwrap();
+
+    amp.set_label("06 - Amplifier".into());
 
     synth
         .set_direct_link(
