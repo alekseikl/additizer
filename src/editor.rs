@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use egui_baseview::egui::{
-    CentralPanel, Color32, ComboBox, Frame, Grid, Margin, Response, ScrollArea, Sense, Separator,
-    SidePanel, Slider, TopBottomPanel, Ui, Vec2, vec2,
+    CentralPanel, Color32, ComboBox, Frame, Margin, Response, ScrollArea, Sense, Separator,
+    SidePanel, TopBottomPanel, Ui, Vec2, vec2,
 };
 use nih_plug::editor::Editor;
 use parking_lot::Mutex;
@@ -12,13 +12,11 @@ use crate::{
         gain_slider::GainSlider,
         modules_ui::{
             AmplifierUI, EnvelopeUI, ExternalParamUI, HarmonicEditorUI, LfoUi, MixerUi,
-            ModulationFilterUI, OscillatorUI, SpectralBlendUi, SpectralFilterUI, SpectralMixerUi,
-            WaveShaperUi,
+            ModulationFilterUI, OscillatorUI, ParamsUi, SpectralBlendUi, SpectralFilterUI,
+            SpectralMixerUi, WaveShaperUi,
         },
-        multi_input::MultiInput,
     },
-    synth_engine::{Input, ModuleId, ModuleType, OUTPUT_MODULE_ID, SynthEngine, VoiceOverride},
-    utils::from_ms,
+    synth_engine::{ModuleId, ModuleType, SynthEngine},
 };
 
 use egui_integration::{ResizableWindow, create_egui_editor};
@@ -37,20 +35,20 @@ mod stereo_slider;
 mod utils;
 
 pub trait ModuleUI {
-    fn module_id(&self) -> ModuleId;
+    fn module_id(&self) -> Option<ModuleId>;
     fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui);
 }
 
 type ModuleUIBox = Box<dyn ModuleUI + Send + Sync>;
 
 struct EditorState {
-    selected_module_ui: Option<ModuleUIBox>,
+    selected_module_ui: ModuleUIBox,
 }
 
 impl EditorState {
     pub fn new() -> Self {
         Self {
-            selected_module_ui: None,
+            selected_module_ui: Box::new(ParamsUi::new()),
         }
     }
 }
@@ -91,28 +89,28 @@ impl ModuleType {
         }
     }
 
-    fn ui(&self, id: ModuleId) -> Option<ModuleUIBox> {
+    fn ui(&self, id: ModuleId) -> ModuleUIBox {
         match self {
-            Self::HarmonicEditor => Some(Box::new(HarmonicEditorUI::new(id))),
-            Self::SpectralFilter => Some(Box::new(SpectralFilterUI::new(id))),
-            Self::Amplifier => Some(Box::new(AmplifierUI::new(id))),
-            Self::Mixer => Some(Box::new(MixerUi::new(id))),
-            Self::Oscillator => Some(Box::new(OscillatorUI::new(id))),
-            Self::Envelope => Some(Box::new(EnvelopeUI::new(id))),
-            Self::ExternalParam => Some(Box::new(ExternalParamUI::new(id))),
-            Self::ModulationFilter => Some(Box::new(ModulationFilterUI::new(id))),
-            Self::Lfo => Some(Box::new(LfoUi::new(id))),
-            Self::SpectralBlend => Some(Box::new(SpectralBlendUi::new(id))),
-            Self::SpectralMixer => Some(Box::new(SpectralMixerUi::new(id))),
-            Self::WaveShaper => Some(Box::new(WaveShaperUi::new(id))),
-            Self::One => None,
+            Self::HarmonicEditor => Box::new(HarmonicEditorUI::new(id)),
+            Self::SpectralFilter => Box::new(SpectralFilterUI::new(id)),
+            Self::Amplifier => Box::new(AmplifierUI::new(id)),
+            Self::Mixer => Box::new(MixerUi::new(id)),
+            Self::Oscillator => Box::new(OscillatorUI::new(id)),
+            Self::Envelope => Box::new(EnvelopeUI::new(id)),
+            Self::ExternalParam => Box::new(ExternalParamUI::new(id)),
+            Self::ModulationFilter => Box::new(ModulationFilterUI::new(id)),
+            Self::Lfo => Box::new(LfoUi::new(id)),
+            Self::SpectralBlend => Box::new(SpectralBlendUi::new(id)),
+            Self::SpectralMixer => Box::new(SpectralMixerUi::new(id)),
+            Self::WaveShaper => Box::new(WaveShaperUi::new(id)),
+            Self::One => Box::new(ParamsUi::new()),
         }
     }
 }
 
 fn show_side_bar(
     ui: &mut Ui,
-    selected_module_ui: &mut Option<ModuleUIBox>,
+    selected_module_ui: &mut ModuleUIBox,
     synth_engine: &mut SynthEngine,
 ) {
     SidePanel::left("side-bar")
@@ -133,19 +131,19 @@ fn show_side_bar(
                         ui.vertical(|ui| {
                             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
 
-                            if show_menu_item(ui, "Parameters", selected_module_ui.is_none())
+                            let selected_module_id = selected_module_ui.module_id();
+
+                            if show_menu_item(ui, "Parameters", selected_module_id.is_none())
                                 .clicked()
                             {
-                                *selected_module_ui = None;
+                                *selected_module_ui = Box::new(ParamsUi::new());
                             }
 
                             for module in modules {
                                 if show_menu_item(
                                     ui,
                                     &module.label(),
-                                    selected_module_ui
-                                        .as_ref()
-                                        .is_some_and(|mod_ui| mod_ui.module_id() == module.id()),
+                                    selected_module_id.is_some_and(|mod_id| mod_id == module.id()),
                                 )
                                 .clicked()
                                 {
@@ -207,15 +205,6 @@ fn show_side_bar(
         });
 }
 
-impl VoiceOverride {
-    pub fn label(&self) -> &'static str {
-        match self {
-            Self::Kill => "Kill",
-            Self::Steal => "Steal",
-        }
-    }
-}
-
 fn show_right_bar(ui: &mut Ui, synth_engine: &mut SynthEngine) {
     let mut level = synth_engine.get_output_level();
 
@@ -239,98 +228,11 @@ fn show_right_bar(ui: &mut Ui, synth_engine: &mut SynthEngine) {
         });
 }
 
-fn show_params_ui(ui: &mut Ui, synth_engine: &mut SynthEngine) {
-    ui.heading("Parameters");
-    ui.add_space(20.0);
-
-    Grid::new("params_grid")
-        .num_columns(2)
-        .spacing([40.0, 24.0])
-        .striped(true)
-        .show(ui, |ui| {
-            let buffer_sizes = [8, 16, 32, 64, 128];
-            let mut ui_data = synth_engine.get_ui();
-            let mut kill_time_ms = ui_data.voice_kill_time * 1000.0;
-
-            ui.label("Voices");
-            if ui
-                .add(Slider::new(
-                    &mut ui_data.voices,
-                    1..=SynthEngine::AVAILABLE_VOICES,
-                ))
-                .changed()
-            {
-                synth_engine.set_num_voices(ui_data.voices);
-            }
-            ui.end_row();
-
-            let overrides = [VoiceOverride::Kill, VoiceOverride::Steal];
-
-            ui.label("Voice override");
-            ComboBox::from_id_salt("voice-override-select")
-                .selected_text(ui_data.voice_override.label())
-                .show_ui(ui, |ui| {
-                    for vo in &overrides {
-                        if ui
-                            .selectable_value(&mut ui_data.voice_override, *vo, vo.label())
-                            .clicked()
-                        {
-                            synth_engine.set_voice_override(*vo);
-                        }
-                    }
-                });
-            ui.end_row();
-
-            ui.label("Voice kill time");
-            if ui
-                .add(Slider::new(&mut kill_time_ms, 4.0..=100.0))
-                .changed()
-            {
-                synth_engine.set_voice_kill_time(from_ms(kill_time_ms));
-            }
-            ui.end_row();
-
-            ui.label("Voices state");
-            ui.label(format!(
-                "Playing: {:02}, Releasing: {:02}, Killing: {:02}",
-                ui_data.playing_voices, ui_data.releasing_voices, ui_data.killing_voices
-            ));
-            ui.end_row();
-
-            ui.label("Buffer Size");
-            ComboBox::from_id_salt("buff-size-select")
-                .selected_text(format!("{} samples", ui_data.buffer_size))
-                .show_ui(ui, |ui| {
-                    for sz in &buffer_sizes {
-                        if ui
-                            .selectable_value(
-                                &mut ui_data.buffer_size,
-                                *sz,
-                                format!("{} samples", sz),
-                            )
-                            .clicked()
-                        {
-                            synth_engine.set_buffer_size(*sz);
-                        }
-                    }
-                });
-            ui.end_row();
-
-            ui.label("Output");
-            ui.add(MultiInput::new(
-                synth_engine,
-                Input::Audio,
-                OUTPUT_MODULE_ID,
-            ));
-            ui.end_row();
-        });
-}
-
 fn show_editor(ui: &mut Ui, editor_state: &mut EditorState, synth_engine: &mut SynthEngine) {
-    if let Some(module_ui) = &editor_state.selected_module_ui
-        && !synth_engine.has_module_id(module_ui.module_id())
+    if let Some(module_id) = editor_state.selected_module_ui.module_id()
+        && !synth_engine.has_module_id(module_id)
     {
-        editor_state.selected_module_ui = None;
+        editor_state.selected_module_ui = Box::new(ParamsUi::new());
     }
 
     show_side_bar(ui, &mut editor_state.selected_module_ui, synth_engine);
@@ -339,15 +241,11 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState, synth_engine: &mut S
     CentralPanel::default()
         .frame(Frame::default().inner_margin(8.0))
         .show_inside(ui, |ui| {
-            if let Some(module_ui) = &mut editor_state.selected_module_ui {
-                ScrollArea::vertical()
-                    .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        module_ui.ui(synth_engine, ui);
-                    });
-            } else {
-                show_params_ui(ui, synth_engine);
-            }
+            ScrollArea::vertical()
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
+                    editor_state.selected_module_ui.ui(synth_engine, ui);
+                });
         });
 }
 

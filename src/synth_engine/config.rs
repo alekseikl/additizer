@@ -54,7 +54,7 @@ pub enum ModuleConfig {
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Config {
-    pub routing: CfgBox<RoutingConfig>,
-    pub modules: CfgBox<HashMap<ModuleId, ModuleConfig>>,
+    pub routing: RoutingConfig,
+    pub modules: HashMap<ModuleId, ModuleConfig>,
     pub output: CfgBox<OutputConfig>,
 }

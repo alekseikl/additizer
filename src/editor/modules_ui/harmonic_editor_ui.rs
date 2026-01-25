@@ -341,8 +341,8 @@ impl HarmonicEditorUI {
 }
 
 impl ModuleUI for HarmonicEditorUI {
-    fn module_id(&self) -> ModuleId {
-        self.module_id
+    fn module_id(&self) -> Option<ModuleId> {
+        Some(self.module_id)
     }
 
     fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {

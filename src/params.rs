@@ -1,4 +1,5 @@
-use nih_plug::{params::persist::PersistentField, prelude::*};
+use nih_plug::prelude::*;
+use parking_lot::Mutex;
 use std::sync::Arc;
 
 use crate::{editor::EguiState, synth_engine::Config};
@@ -9,7 +10,7 @@ pub struct AdditizerParams {
     pub editor_state: Arc<EguiState>,
 
     #[persist = "plugin-config"]
-    pub config: Arc<Config>,
+    pub config: Arc<Mutex<Config>>,
 
     #[id = "volume"]
     pub volume: Arc<FloatParam>,
@@ -68,20 +69,5 @@ impl Default for AdditizerParams {
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             )),
         }
-    }
-}
-
-impl<'a> PersistentField<'a, Config> for Arc<Config> {
-    fn set(&self, new_value: Config) {
-        *self.routing.lock() = new_value.routing.lock().clone();
-        *self.modules.lock() = new_value.modules.lock().clone();
-        *self.output.lock() = new_value.output.lock().clone();
-    }
-
-    fn map<F, R>(&self, f: F) -> R
-    where
-        F: Fn(&Config) -> R,
-    {
-        f(self)
     }
 }

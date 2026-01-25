@@ -132,7 +132,7 @@ pub struct SynthEngine {
     buffer_size: usize,
     num_voices: usize,
     voice_override: VoiceOverride,
-    config: Arc<Config>,
+    config: Arc<Mutex<Config>>,
     modules: HashMap<ModuleId, Option<Box<dyn SynthModule>>>,
     output: Option<Box<Output>>,
     input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>>,
@@ -140,6 +140,7 @@ pub struct SynthEngine {
     execution_order: Vec<ModuleId>,
     voices: [Voice; MAX_VOICES],
     external_params: Option<Arc<ExternalParamsBlock>>,
+    output_level_param: Option<Arc<FloatParam>>,
 }
 
 macro_rules! get_module {
@@ -170,8 +171,8 @@ macro_rules! add_module_method {
             Self::trigger_active_notes(&self.voices, module.as_mut());
             self.modules.insert(id, Some(module));
             self.config
-                .modules
                 .lock()
+                .modules
                 .insert(id, ModuleConfig::$module_type(Arc::clone(&config)));
             id
         }
@@ -197,12 +198,13 @@ impl SynthEngine {
             execution_order: Vec::new(),
             voices: Default::default(),
             external_params: None,
+            output_level_param: None,
         }
     }
 
     pub fn init(
         &mut self,
-        config: Arc<Config>,
+        config: Arc<Mutex<Config>>,
         output_level_param: Arc<FloatParam>,
         external_params: ExternalParamsBlock,
         sample_rate: Sample,
@@ -210,16 +212,33 @@ impl SynthEngine {
         self.config = config;
         self.sample_rate = sample_rate;
         self.external_params = Some(Arc::new(external_params));
-        self.output = Some(Box::new(Output::new(
-            Arc::clone(&self.config.output),
-            output_level_param,
-        )));
+        self.output_level_param = Some(Arc::clone(&output_level_param));
 
         self.reset();
 
         if !self.load_config() {
-            self.reset();
             self.reset_config();
+            self.reset();
+        }
+    }
+
+    pub fn get_config(&self) -> Config {
+        self.config.lock().clone()
+    }
+
+    pub fn set_config(&mut self, config: &Config) -> bool {
+        let prev_config = self.config.lock().clone();
+
+        *self.config.lock() = config.clone();
+        self.reset();
+
+        if !self.load_config() {
+            *self.config.lock() = prev_config;
+            self.reset();
+            self.load_config();
+            false
+        } else {
+            true
         }
     }
 
@@ -263,7 +282,7 @@ impl SynthEngine {
 
     pub fn set_num_voices(&mut self, num_voices: usize) {
         self.num_voices = Self::clamp_num_voices(num_voices);
-        self.config.routing.lock().num_voices = self.num_voices;
+        self.config.lock().routing.num_voices = self.num_voices;
 
         self.voices
             .iter_mut()
@@ -278,12 +297,12 @@ impl SynthEngine {
 
     pub fn set_buffer_size(&mut self, buffer_size: usize) {
         self.buffer_size = Self::clamp_buffer_size(buffer_size);
-        self.config.routing.lock().buffer_size = self.buffer_size;
+        self.config.lock().routing.buffer_size = self.buffer_size;
     }
 
     pub fn set_voice_override(&mut self, voice_override: VoiceOverride) {
         self.voice_override = voice_override;
-        self.config.routing.lock().voice_override = voice_override;
+        self.config.lock().routing.voice_override = voice_override;
     }
 
     pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) {
@@ -344,7 +363,7 @@ impl SynthEngine {
         };
 
         self.modules.remove(&id);
-        self.config.modules.lock().remove(&id);
+        self.config.lock().modules.remove(&id);
 
         let new_links: Vec<_> = self
             .get_links()
@@ -353,6 +372,7 @@ impl SynthEngine {
             .collect();
 
         self.setup_routing(&new_links).unwrap();
+        self.save_links();
     }
 
     pub fn has_module_id(&self, module_id: ModuleId) -> bool {
@@ -683,7 +703,7 @@ impl SynthEngine {
         let module_id = self.next_id;
 
         self.next_id += 1;
-        self.config.routing.lock().next_module_id = self.next_id;
+        self.config.lock().routing.next_module_id = self.next_id;
         module_id
     }
 
@@ -951,28 +971,33 @@ impl SynthEngine {
         self.num_voices = default_cfg.num_voices;
         self.buffer_size = default_cfg.buffer_size;
         self.voice_override = VoiceOverride::Kill;
+
+        self.output = Some(Box::new(Output::new(
+            Arc::clone(&self.config.lock().output),
+            Arc::clone(self.output_level_param.as_ref().unwrap()),
+        )));
     }
 
     fn reset_config(&mut self) {
-        *self.config.routing.lock() = RoutingConfig::default();
-        self.config.modules.lock().clear();
-        *self.config.output.lock() = OutputConfig::default();
+        let mut cfg = self.config.lock();
+
+        cfg.routing = RoutingConfig::default();
+        cfg.modules.clear();
+        *cfg.output.lock() = OutputConfig::default();
     }
 
     fn load_config(&mut self) -> bool {
-        let routing_arc = Arc::clone(&self.config.routing);
-        let routing = routing_arc.lock();
-        let modules_arc = Arc::clone(&self.config.modules);
-        let modules_cfg = modules_arc.lock();
+        let cfg = Arc::clone(&self.config);
+        let cfg = cfg.lock();
 
-        if modules_cfg.is_empty() {
+        if cfg.modules.is_empty() {
             return false;
         }
 
-        self.next_id = routing.next_module_id;
-        self.num_voices = Self::clamp_num_voices(routing.num_voices);
-        self.buffer_size = Self::clamp_buffer_size(routing.buffer_size);
-        self.voice_override = routing.voice_override;
+        self.next_id = cfg.routing.next_module_id;
+        self.num_voices = Self::clamp_num_voices(cfg.routing.num_voices);
+        self.buffer_size = Self::clamp_buffer_size(cfg.routing.buffer_size);
+        self.voice_override = cfg.routing.voice_override;
 
         macro_rules! restore_module {
             ($module_type:ident, $module_id:ident, $cfg:ident $(, $arg:ident )*) => {{
@@ -987,7 +1012,7 @@ impl SynthEngine {
             }};
         }
 
-        for (id, cfg) in modules_cfg.iter() {
+        for (id, cfg) in cfg.modules.iter() {
             match cfg {
                 ModuleConfig::Amplifier(cfg) => restore_module!(Amplifier, id, cfg),
                 ModuleConfig::Envelope(cfg) => restore_module!(Envelope, id, cfg),
@@ -1006,7 +1031,7 @@ impl SynthEngine {
             }
         }
 
-        for link in &routing.links {
+        for link in &cfg.routing.links {
             if self.can_be_linked(&link.src, &link.dst).is_err() {
                 return false;
             }
@@ -1018,11 +1043,11 @@ impl SynthEngine {
             }
         }
 
-        self.setup_routing(&routing.links).is_ok()
+        self.setup_routing(&cfg.routing.links).is_ok()
     }
 
     fn save_links(&self) {
-        self.config.routing.lock().links = self.get_links();
+        self.config.lock().routing.links = self.get_links();
     }
 }
 

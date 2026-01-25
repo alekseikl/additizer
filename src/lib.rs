@@ -5,6 +5,7 @@ use const_format::concatcp;
 mod default_scheme;
 mod editor;
 mod params;
+mod presets;
 mod synth_engine;
 mod utils;
 
