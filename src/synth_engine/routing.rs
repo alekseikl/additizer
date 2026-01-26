@@ -67,11 +67,19 @@ pub enum Input {
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
-
 pub enum VolumeType {
     #[default]
     Gain,
     Db,
+}
+
+impl VolumeType {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Db => "dB",
+            Self::Gain => "Gain",
+        }
+    }
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]

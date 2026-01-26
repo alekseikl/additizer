@@ -18,15 +18,6 @@ impl MixType {
     }
 }
 
-impl VolumeType {
-    fn label(&self) -> &'static str {
-        match self {
-            Self::Db => "dB",
-            Self::Gain => "Gain",
-        }
-    }
-}
-
 pub struct SpectralMixerUi {
     module_id: ModuleId,
     remove_confirmation: bool,
