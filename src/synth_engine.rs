@@ -34,7 +34,7 @@ pub use modules::{
 };
 pub use routing::{
     AvailableInputSourceUI, ConnectedInputSourceUI, Input, MixType, ModuleId, ModuleInput,
-    ModuleLink, ModuleType, OUTPUT_MODULE_ID,
+    ModuleLink, ModuleType, OUTPUT_MODULE_ID, VolumeType,
 };
 pub use stereo_sample::StereoSample;
 pub use synth_module::SynthModule;

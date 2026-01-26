@@ -31,7 +31,7 @@ pub struct AdditizerParams {
 impl Default for AdditizerParams {
     fn default() -> Self {
         Self {
-            editor_state: EguiState::from_size(800, 600),
+            editor_state: EguiState::from_size(900, 600),
             config: Default::default(),
             volume: Arc::new(
                 FloatParam::new(

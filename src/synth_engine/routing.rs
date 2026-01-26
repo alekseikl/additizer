@@ -39,7 +39,8 @@ pub enum DataType {
 pub enum Input {
     Audio,
     AudioMix(usize),
-    Gain,            // 0.0 - 1.0
+    Gain, // 0.0 - 1.0
+    GainMix(usize),
     Level,           // dB
     LevelMix(usize), // dB
     Distortion,      // dB
@@ -63,6 +64,14 @@ pub enum Input {
     Decay,
     Sustain,
     Release,
+}
+
+#[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
+
+pub enum VolumeType {
+    #[default]
+    Gain,
+    Db,
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
