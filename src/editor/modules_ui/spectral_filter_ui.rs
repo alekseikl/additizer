@@ -142,6 +142,15 @@ impl ModuleUI for SpectralFilterUI {
                     self.filter(synth).set_fourth_order(ui_data.fourth_order);
                 }
                 ui.end_row();
+
+                ui.label("Linear phase");
+                if ui
+                    .add(Checkbox::without_text(&mut ui_data.linear_phase))
+                    .changed()
+                {
+                    self.filter(synth).set_linear_phase(ui_data.linear_phase);
+                }
+                ui.end_row();
             });
 
         ui.add_space(40.0);

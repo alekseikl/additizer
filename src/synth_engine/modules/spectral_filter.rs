@@ -28,6 +28,7 @@ pub enum SpectralFilterType {
 pub struct Params {
     filter_type: SpectralFilterType,
     fourth_order: bool,
+    linear_phase: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -61,6 +62,7 @@ pub struct SpectralFilterUIData {
     pub q: StereoSample,
     pub drive: StereoSample,
     pub fourth_order: bool,
+    pub linear_phase: bool,
 }
 
 #[derive(Default)]
@@ -107,11 +109,13 @@ impl SpectralFilter {
             q: get_stereo_param!(self, q),
             drive: get_stereo_param!(self, drive),
             fourth_order: self.params.fourth_order,
+            linear_phase: self.params.linear_phase,
         }
     }
 
     set_mono_param!(set_filter_type, filter_type, SpectralFilterType);
     set_mono_param!(set_fourth_order, fourth_order, bool);
+    set_mono_param!(set_linear_phase, linear_phase, bool);
 
     set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
     set_stereo_param!(set_q, q, q.clamp(0.1, 10.0));
@@ -122,8 +126,21 @@ impl SpectralFilter {
         input: &SpectralBuffer,
         response: impl Iterator<Item = ComplexSample>,
         fourth_order: bool,
+        linear_phase: bool,
     ) {
-        if fourth_order {
+        if linear_phase {
+            if fourth_order {
+                for (out, input, response) in izip!(output, input, response) {
+                    let magnitude = response.norm();
+
+                    *out = input * (magnitude * magnitude);
+                }
+            } else {
+                for (out, input, response) in izip!(output, input, response) {
+                    *out = input * response.norm();
+                }
+            }
+        } else if fourth_order {
             for (out, input, response) in izip!(output, input, response) {
                 *out = input * response * response;
             }
@@ -140,22 +157,35 @@ impl SpectralFilter {
         filter_type: SpectralFilterType,
         biquad: &BiquadFilter,
         fourth_order: bool,
+        linear_phase: bool,
     ) {
         match filter_type {
             SpectralFilterType::LowPass => {
-                Self::apply_response(output, input, biquad.low_pass(), fourth_order)
+                Self::apply_response(output, input, biquad.low_pass(), fourth_order, linear_phase)
             }
-            SpectralFilterType::HighPass => {
-                Self::apply_response(output, input, biquad.high_pass(), fourth_order)
-            }
-            SpectralFilterType::BandPass => {
-                Self::apply_response(output, input, biquad.band_pass(), fourth_order)
-            }
-            SpectralFilterType::BandStop => {
-                Self::apply_response(output, input, biquad.band_stop(), fourth_order)
-            }
+            SpectralFilterType::HighPass => Self::apply_response(
+                output,
+                input,
+                biquad.high_pass(),
+                fourth_order,
+                linear_phase,
+            ),
+            SpectralFilterType::BandPass => Self::apply_response(
+                output,
+                input,
+                biquad.band_pass(),
+                fourth_order,
+                linear_phase,
+            ),
+            SpectralFilterType::BandStop => Self::apply_response(
+                output,
+                input,
+                biquad.band_stop(),
+                fourth_order,
+                linear_phase,
+            ),
             SpectralFilterType::Peaking => {
-                Self::apply_response(output, input, biquad.peaking(), fourth_order)
+                Self::apply_response(output, input, biquad.peaking(), fourth_order, linear_phase)
             }
         }
     }
@@ -180,6 +210,7 @@ impl SpectralFilter {
             params.filter_type,
             &biquad,
             params.fourth_order,
+            params.linear_phase,
         );
     }
 }
