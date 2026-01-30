@@ -1,1 +1,24 @@
-Additive synthesis plugin
+## Overview
+Additizer is a modular additive synthesis plugin that builds sounds from harmonic spectra,
+then shapes and mixes them through a graph of audio and spectral-processing modules.
+It targets real-time use, with per-voice processing, modulation sources, and stereo support.
+Every slider in UI is stereo, individual channel can be changed by dragging with right mouse button.
+
+## Synth Engine Modules
+- `Harmonic Editor`: Edits the harmonic spectrum by setting individual or ranged partial gains.
+- `Spectral Filter`: Spectral-domain filter (LP/HP/BP/BS/peaking) with optional linear-phase and 4th-order responses.
+- `Spectral Mixer`: Mixes multiple spectral inputs with selectable mix/volume types and output gain.
+- `Spectral Blend`: Crossfades between two spectra with a blend control.
+- `Oscillator`: Spectral additive oscillator with unison, detune, pitch/phase offsets, and per-voice output.
+- `Envelope`: ADSR-style envelope generator with selectable curve shapes per stage.
+- `LFO`: Low-frequency oscillator (triangle/square/sine) for modulation, with skew and bipolar modes.
+- `Mixer`: Mixes multiple audio inputs with per-input level/gain and output volume control.
+- `Waveshaper`: Wave shaping distortion (hard clip or sigmoid) with drive and clipping level.
+- `Amplifier`: Simple gain stage for audio with gain modulation input.
+- `External Parameter`: Exposes host/plugin float parameters as modulation sources with smoothing or sample-and-hold.
+- `Modulation Filter`: Low-pass filter to smooth modulation/control-rate signals.
+
+## Build
+```shell
+cargo nih-plug bundle additizer --release
+```
