@@ -25,7 +25,6 @@ pub enum ModuleType {
     ModulationFilter,
     Lfo,
     WaveShaper,
-    One,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

@@ -28,8 +28,8 @@ pub use buffer::{BUFFER_SIZE, SPECTRAL_BUFFER_SIZE};
 pub use config::Config;
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, Lfo, LfoShape, Mixer,
-    ModulationFilter, Oscillator, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType,
-    SpectralMixer, WaveShaper,
+    ModulationFilter, Oscillator, OscillatorUIData, ShaperType, SpectralBlend, SpectralFilter,
+    SpectralFilterType, SpectralMixer, WaveShaper,
     harmonic_editor::{self, HarmonicEditor},
 };
 pub use routing::{
@@ -66,6 +66,8 @@ pub enum VoiceOverride {
     Steal,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SynthEngineUiData {
     pub voices: usize,
     pub buffer_size: usize,

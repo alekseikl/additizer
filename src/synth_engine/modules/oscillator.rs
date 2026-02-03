@@ -90,6 +90,8 @@ pub struct OscillatorConfig {
     channels: [ChannelParams; NUM_CHANNELS],
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OscillatorUIData {
     pub label: String,
     pub gain: StereoSample,

@@ -8,6 +8,7 @@ use nih_plug::editor::Editor;
 use parking_lot::Mutex;
 
 use crate::{
+    api::ApiServer,
     editor::{
         gain_slider::GainSlider,
         modules_ui::{
@@ -46,9 +47,9 @@ struct EditorState {
 }
 
 impl EditorState {
-    pub fn new() -> Self {
+    pub fn new(api_server: &Arc<ApiServer>) -> Self {
         Self {
-            selected_module_ui: Box::new(ParamsUi::new()),
+            selected_module_ui: Box::new(ParamsUi::new(Arc::clone(api_server))),
         }
     }
 }
@@ -85,7 +86,6 @@ impl ModuleType {
             | Self::SpectralBlend
             | Self::SpectralMixer
             | Self::WaveShaper => true,
-            Self::One => false,
         }
     }
 
@@ -103,7 +103,6 @@ impl ModuleType {
             Self::SpectralBlend => Box::new(SpectralBlendUi::new(id)),
             Self::SpectralMixer => Box::new(SpectralMixerUi::new(id)),
             Self::WaveShaper => Box::new(WaveShaperUi::new(id)),
-            Self::One => Box::new(ParamsUi::new()),
         }
     }
 }
@@ -112,6 +111,7 @@ fn show_side_bar(
     ui: &mut Ui,
     selected_module_ui: &mut ModuleUIBox,
     synth_engine: &mut SynthEngine,
+    api_server: &Arc<ApiServer>,
 ) {
     SidePanel::left("side-bar")
         .resizable(true)
@@ -136,7 +136,8 @@ fn show_side_bar(
                             if show_menu_item(ui, "Parameters", selected_module_id.is_none())
                                 .clicked()
                             {
-                                *selected_module_ui = Box::new(ParamsUi::new());
+                                *selected_module_ui =
+                                    Box::new(ParamsUi::new(Arc::clone(api_server)));
                             }
 
                             for module in modules {
@@ -228,14 +229,24 @@ fn show_right_bar(ui: &mut Ui, synth_engine: &mut SynthEngine) {
         });
 }
 
-fn show_editor(ui: &mut Ui, editor_state: &mut EditorState, synth_engine: &mut SynthEngine) {
+fn show_editor(
+    ui: &mut Ui,
+    editor_state: &mut EditorState,
+    synth_engine: &mut SynthEngine,
+    api_server: &Arc<ApiServer>,
+) {
     if let Some(module_id) = editor_state.selected_module_ui.module_id()
         && !synth_engine.has_module_id(module_id)
     {
-        editor_state.selected_module_ui = Box::new(ParamsUi::new());
+        editor_state.selected_module_ui = Box::new(ParamsUi::new(Arc::clone(api_server)));
     }
 
-    show_side_bar(ui, &mut editor_state.selected_module_ui, synth_engine);
+    show_side_bar(
+        ui,
+        &mut editor_state.selected_module_ui,
+        synth_engine,
+        api_server,
+    );
     show_right_bar(ui, synth_engine);
 
     CentralPanel::default()
@@ -252,16 +263,17 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState, synth_engine: &mut S
 pub fn create_editor(
     egui_state: Arc<EguiState>,
     synth_engine: Arc<Mutex<SynthEngine>>,
+    api_server: Arc<ApiServer>,
 ) -> Option<Box<dyn Editor>> {
     create_egui_editor(
         Arc::clone(&egui_state),
-        EditorState::new(),
+        EditorState::new(&api_server),
         |_, _| {},
         move |egui_ctx, _setter, editor_state| {
             ResizableWindow::new("res-wind")
                 .min_size(Vec2::new(640.0, 480.0))
                 .show(egui_ctx, egui_state.as_ref(), |ui| {
-                    show_editor(ui, editor_state, &mut synth_engine.lock());
+                    show_editor(ui, editor_state, &mut synth_engine.lock(), &api_server);
                 });
         },
     )

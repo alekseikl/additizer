@@ -1,0 +1,6 @@
+{
+    "lldb.adapterEnv": {
+        "RUST_PRETTY_PRINTERS": "1"
+    },
+    "lldb.library": "/opt/homebrew/Cellar/llvm/21.1.8/lib/liblldb.21.1.8.dylib"
+}

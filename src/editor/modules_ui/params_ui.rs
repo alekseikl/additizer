@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use egui_baseview::{
     egui::{
         Button, Color32, ComboBox, Frame, Grid, Id, Label, Modal, RichText, Sense, Sides, Slider,
@@ -7,6 +9,7 @@ use egui_baseview::{
 };
 
 use crate::{
+    api::ApiServer,
     editor::{ModuleUI, multi_input::MultiInput},
     presets::{Preset, PresetInfo, PresetListItem, Presets},
     synth_engine::{Input, ModuleId, OUTPUT_MODULE_ID, SynthEngine, VoiceOverride},
@@ -35,13 +38,15 @@ pub struct LoadPresetState {
 }
 
 pub struct ParamsUi {
+    api_server: Arc<ApiServer>,
     save_preset_state: Option<Box<SavePresetState>>,
     load_preset_state: Option<Box<LoadPresetState>>,
 }
 
 impl ParamsUi {
-    pub fn new() -> Self {
+    pub fn new(api_server: Arc<ApiServer>) -> Self {
         Self {
+            api_server,
             save_preset_state: None,
             load_preset_state: None,
         }
@@ -262,6 +267,16 @@ impl ModuleUI for ParamsUi {
                             }
                         }
                     });
+                ui.end_row();
+
+                ui.label("API Server");
+                if self.api_server.is_running() {
+                    if ui.button("Stop").clicked() {
+                        self.api_server.stop();
+                    }
+                } else if ui.button("Start").clicked() {
+                    self.api_server.start();
+                }
                 ui.end_row();
 
                 ui.label("Output");

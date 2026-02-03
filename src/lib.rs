@@ -2,6 +2,7 @@
 
 use const_format::concatcp;
 
+mod api;
 mod default_scheme;
 mod editor;
 mod params;
@@ -9,6 +10,7 @@ mod presets;
 mod synth_engine;
 mod utils;
 
+use crate::api::ApiServer;
 use crate::default_scheme::build_default_scheme;
 use crate::editor::create_editor;
 use crate::params::AdditizerParams;
@@ -21,13 +23,17 @@ use std::sync::Arc;
 pub struct Additizer {
     params: Arc<AdditizerParams>,
     synth_engine: Arc<Mutex<SynthEngine>>,
+    api_server: Arc<ApiServer>,
 }
 
 impl Default for Additizer {
     fn default() -> Self {
+        let synth_engine = Arc::new(Mutex::new(SynthEngine::new()));
+
         Self {
             params: Arc::new(AdditizerParams::default()),
-            synth_engine: Arc::new(Mutex::new(SynthEngine::new())),
+            api_server: Arc::new(ApiServer::new(Arc::clone(&synth_engine))),
+            synth_engine,
         }
     }
 }
@@ -107,6 +113,7 @@ impl Plugin for Additizer {
         create_editor(
             Arc::clone(&self.params.editor_state),
             Arc::clone(&self.synth_engine),
+            Arc::clone(&self.api_server),
         )
     }
 

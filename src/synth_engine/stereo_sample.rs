@@ -1,11 +1,30 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::ops::{Add, Div, Index, IndexMut, Mul, Sub};
 
 use crate::synth_engine::{Sample, routing::NUM_CHANNELS};
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StereoSample {
     channels: [Sample; NUM_CHANNELS],
+}
+
+impl Serialize for StereoSample {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.channels.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for StereoSample {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let channels = <[Sample; NUM_CHANNELS]>::deserialize(deserializer)?;
+        Ok(Self { channels })
+    }
 }
 
 impl StereoSample {
