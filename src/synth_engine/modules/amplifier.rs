@@ -27,6 +27,8 @@ pub struct AmplifierConfig {
     channels: [ChannelParams; NUM_CHANNELS],
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AmplifierUIData {
     pub label: String,
     pub gain: StereoSample,

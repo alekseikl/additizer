@@ -237,6 +237,8 @@ impl EnvelopeCurve {
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EnvelopeUIData {
     pub label: String,
     pub delay: StereoSample,

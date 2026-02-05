@@ -21,6 +21,8 @@ pub use modulation_filter::{ModulationFilter, ModulationFilterConfig};
 pub use oscillator::{Oscillator, OscillatorConfig, OscillatorUIData};
 pub use output::{Output, OutputConfig};
 pub use spectral_blend::{SpectralBlend, SpectralBlendConfig};
-pub use spectral_filter::{SpectralFilter, SpectralFilterConfig, SpectralFilterType};
+pub use spectral_filter::{
+    SpectralFilter, SpectralFilterConfig, SpectralFilterType, SpectralFilterUIData,
+};
 pub use spectral_mixer::{SpectralMixer, SpectralMixerConfig};
 pub use wave_shaper::{ShaperType, WaveShaper, WaveShaperConfig};

@@ -1,12 +1,63 @@
 use std::sync::Arc;
 
-use axum::{Router, routing::get};
+use axum::{Json, Router, http::StatusCode, response::IntoResponse};
 use parking_lot::Mutex;
+use serde::Serialize;
 use tokio::runtime::Runtime;
 
-use crate::{api::router::build_router, synth_engine::SynthEngine};
+use crate::{
+    api::{
+        engine::engine_router, oscillator::oscillator_router,
+        spectral_filter::spectral_filter_router,
+    },
+    synth_engine::{ModuleId, SynthEngine},
+};
 
-mod router;
+mod engine;
+mod oscillator;
+mod spectral_filter;
+
+pub type SynthRef = Arc<Mutex<SynthEngine>>;
+
+pub enum ApiError {
+    ModuleNotFound(ModuleId),
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> axum::response::Response {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct ErrorResponse {
+            message: String,
+        }
+
+        let (status, message) = match &self {
+            Self::ModuleNotFound(id) => {
+                (StatusCode::BAD_REQUEST, format!("Module {id} not found."))
+            }
+        };
+
+        (status, Json(ErrorResponse { message })).into_response()
+    }
+}
+
+#[macro_export]
+macro_rules! get_typed_module {
+    ($synth:ident, $module_type:ident, $module_id:expr) => {
+        $synth
+            .get_module_mut($module_id)
+            .and_then(|module| $module_type::downcast_mut(module))
+            .ok_or(ApiError::ModuleNotFound($module_id))
+    };
+}
+
+fn build_router(synth_engine: SynthRef) -> Router {
+    Router::new()
+        .merge(engine_router())
+        .nest("/oscillator/{id}", oscillator_router())
+        .nest("/spectral-filter/{id}", spectral_filter_router())
+        .with_state(synth_engine)
+}
 
 pub struct ApiServer {
     runtime: Mutex<Option<Runtime>>,

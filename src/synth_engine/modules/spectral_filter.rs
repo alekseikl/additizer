@@ -55,6 +55,8 @@ pub struct SpectralFilterConfig {
     channels: [ChannelParams; NUM_CHANNELS],
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpectralFilterUIData {
     pub label: String,
     pub filter_type: SpectralFilterType,

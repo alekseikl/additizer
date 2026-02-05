@@ -29,7 +29,7 @@ pub use config::Config;
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, Lfo, LfoShape, Mixer,
     ModulationFilter, Oscillator, OscillatorUIData, ShaperType, SpectralBlend, SpectralFilter,
-    SpectralFilterType, SpectralMixer, WaveShaper,
+    SpectralFilterType, SpectralFilterUIData, SpectralMixer, WaveShaper,
     harmonic_editor::{self, HarmonicEditor},
 };
 pub use routing::{
