@@ -24,7 +24,7 @@ use crate::synth_engine::{
     synth_module::{NoteOffParams, NoteOnParams, ProcessParams, VoiceAlive},
 };
 
-pub use buffer::{BUFFER_SIZE, SPECTRAL_BUFFER_SIZE};
+pub use buffer::SPECTRAL_BUFFER_SIZE;
 pub use config::Config;
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, Lfo, LfoShape, Mixer,
@@ -46,12 +46,15 @@ mod config;
 mod synth_module;
 mod biquad_filter;
 mod curves;
+mod iir_decimator;
 mod modules;
 mod phase;
 mod routing;
 mod smoother;
 mod stereo_sample;
 mod types;
+
+pub const MAX_BLOCK_SIZE: usize = 128;
 
 #[derive(Debug, Clone, Copy)]
 pub struct VoiceId {
@@ -68,9 +71,10 @@ pub enum VoiceOverride {
 
 pub struct SynthEngineUiData {
     pub voices: usize,
-    pub buffer_size: usize,
+    pub block_size: usize,
     pub voice_override: VoiceOverride,
     pub voice_kill_time: Sample,
+    pub oversampling: bool,
     pub playing_voices: usize,
     pub releasing_voices: usize,
     pub killing_voices: usize,
@@ -128,9 +132,10 @@ impl ModuleInputSource {
 pub struct SynthEngine {
     next_id: ModuleId,
     next_voice_id: u64,
-    sample_rate: f32,
-    buffer_size: usize,
+    host_sample_rate: f32,
+    block_size: usize,
     num_voices: usize,
+    oversampling: bool,
     voice_override: VoiceOverride,
     config: Arc<Mutex<Config>>,
     modules: HashMap<ModuleId, Option<Box<dyn SynthModule>>>,
@@ -186,9 +191,10 @@ impl SynthEngine {
         Self {
             next_id: 0,
             next_voice_id: 0,
-            sample_rate: 0.0,
-            buffer_size: 0,
+            host_sample_rate: 0.0,
+            block_size: 0,
             num_voices: 0,
+            oversampling: false,
             voice_override: VoiceOverride::Kill,
             config: Default::default(),
             modules: HashMap::new(),
@@ -207,10 +213,10 @@ impl SynthEngine {
         config: Arc<Mutex<Config>>,
         output_level_param: Arc<FloatParam>,
         external_params: ExternalParamsBlock,
-        sample_rate: Sample,
+        host_sample_rate: Sample,
     ) {
         self.config = config;
-        self.sample_rate = sample_rate;
+        self.host_sample_rate = host_sample_rate;
         self.external_params = Some(Arc::new(external_params));
         self.output_level_param = Some(Arc::clone(&output_level_param));
 
@@ -219,6 +225,14 @@ impl SynthEngine {
         if !self.load_config() {
             self.reset_config();
             self.reset();
+        }
+    }
+
+    fn sample_rate(&self) -> Sample {
+        if self.oversampling {
+            2.0 * self.host_sample_rate
+        } else {
+            self.host_sample_rate
         }
     }
 
@@ -249,12 +263,13 @@ impl SynthEngine {
     pub fn get_ui(&self) -> SynthEngineUiData {
         let mut ui_data = SynthEngineUiData {
             voices: self.num_voices,
-            buffer_size: self.buffer_size,
+            block_size: self.block_size,
             voice_override: self.voice_override,
             voice_kill_time: self
                 .output
                 .as_deref()
                 .map_or(0.0, |output| output.get_voice_kill_time()),
+            oversampling: self.oversampling,
             playing_voices: 0,
             releasing_voices: 0,
             killing_voices: 0,
@@ -291,13 +306,13 @@ impl SynthEngine {
             .for_each(|v| v.state = VoiceState::Free);
     }
 
-    pub fn buffer_size(&self) -> usize {
-        self.buffer_size
+    pub fn block_size(&self) -> usize {
+        self.block_size
     }
 
-    pub fn set_buffer_size(&mut self, buffer_size: usize) {
-        self.buffer_size = Self::clamp_buffer_size(buffer_size);
-        self.config.lock().routing.buffer_size = self.buffer_size;
+    pub fn set_block_size(&mut self, block_size: usize) {
+        self.block_size = Self::clamp_block_size(block_size);
+        self.config.lock().routing.block_size = self.block_size;
     }
 
     pub fn set_voice_override(&mut self, voice_override: VoiceOverride) {
@@ -309,6 +324,10 @@ impl SynthEngine {
         if let Some(output) = self.output.as_deref_mut() {
             output.set_voice_kill_time(voice_kill_time);
         }
+    }
+
+    pub fn set_oversampling(&mut self, oversampling: bool) {
+        self.oversampling = oversampling;
     }
 
     pub fn get_output_level(&self) -> StereoSample {
@@ -327,8 +346,8 @@ impl SynthEngine {
         num_voices.clamp(1, Self::AVAILABLE_VOICES)
     }
 
-    fn clamp_buffer_size(buffer_size: usize) -> usize {
-        (buffer_size).clamp(4, BUFFER_SIZE)
+    fn clamp_block_size(block_size: usize) -> usize {
+        (block_size).clamp(4, MAX_BLOCK_SIZE)
     }
 
     add_module_method!(add_oscillator, Oscillator, OscillatorConfig);
@@ -675,10 +694,17 @@ impl SynthEngine {
             .map(|alive| alive.index())
             .collect();
 
+        let samples = if self.oversampling {
+            2 * samples
+        } else {
+            samples
+        };
+        let sample_rate = self.sample_rate();
+
         let mut params = ProcessParams {
             samples,
-            sample_rate: self.sample_rate,
-            buffer_t_step: samples as Sample / self.sample_rate,
+            sample_rate,
+            buffer_t_step: samples as Sample / sample_rate,
             needs_audio_rate: false,
             active_voices: &active_idx,
         };
@@ -694,7 +720,7 @@ impl SynthEngine {
         }
 
         if let Some(mut output) = self.output.take() {
-            output.process(&params, self, outputs);
+            output.process(&params, self.oversampling, self, outputs);
             self.output.replace(output);
         }
     }
@@ -969,8 +995,9 @@ impl SynthEngine {
         self.modules.clear();
         self.next_id = default_cfg.next_module_id;
         self.num_voices = default_cfg.num_voices;
-        self.buffer_size = default_cfg.buffer_size;
-        self.voice_override = VoiceOverride::Kill;
+        self.block_size = default_cfg.block_size;
+        self.voice_override = default_cfg.voice_override;
+        self.oversampling = default_cfg.oversampling;
 
         self.output = Some(Box::new(Output::new(
             Arc::clone(&self.config.lock().output),
@@ -996,8 +1023,9 @@ impl SynthEngine {
 
         self.next_id = cfg.routing.next_module_id;
         self.num_voices = Self::clamp_num_voices(cfg.routing.num_voices);
-        self.buffer_size = Self::clamp_buffer_size(cfg.routing.buffer_size);
+        self.block_size = Self::clamp_block_size(cfg.routing.block_size);
         self.voice_override = cfg.routing.voice_override;
+        self.oversampling = cfg.routing.oversampling;
 
         macro_rules! restore_module {
             ($module_type:ident, $module_id:ident, $cfg:ident $(, $arg:ident )*) => {{

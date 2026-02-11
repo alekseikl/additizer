@@ -1,7 +1,7 @@
 use egui_baseview::{
     egui::{
-        Button, Color32, ComboBox, Frame, Grid, Id, Label, Modal, RichText, Sense, Sides, Slider,
-        TextEdit, Ui, vec2,
+        Button, Checkbox, Color32, ComboBox, Frame, Grid, Id, Label, Modal, RichText, Sense, Sides,
+        Slider, TextEdit, Ui, vec2,
     },
     egui_extras::{Column, TableBuilder},
 };
@@ -196,7 +196,7 @@ impl ModuleUI for ParamsUi {
             .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
-                let buffer_sizes = [8, 16, 32, 64, 128];
+                let block_sizes = [8, 16, 32, 64, 128];
                 let mut ui_data = synth.get_ui();
                 let mut kill_time_ms = ui_data.voice_kill_time * 1000.0;
 
@@ -245,23 +245,32 @@ impl ModuleUI for ParamsUi {
                 ));
                 ui.end_row();
 
-                ui.label("Buffer Size");
+                ui.label("Block Size");
                 ComboBox::from_id_salt("buff-size-select")
-                    .selected_text(format!("{} samples", ui_data.buffer_size))
+                    .selected_text(format!("{} samples", ui_data.block_size))
                     .show_ui(ui, |ui| {
-                        for sz in &buffer_sizes {
+                        for sz in &block_sizes {
                             if ui
                                 .selectable_value(
-                                    &mut ui_data.buffer_size,
+                                    &mut ui_data.block_size,
                                     *sz,
                                     format!("{} samples", sz),
                                 )
                                 .clicked()
                             {
-                                synth.set_buffer_size(*sz);
+                                synth.set_block_size(*sz);
                             }
                         }
                     });
+                ui.end_row();
+
+                ui.label("Oversampling x2");
+                if ui
+                    .add(Checkbox::without_text(&mut ui_data.oversampling))
+                    .changed()
+                {
+                    synth.set_oversampling(ui_data.oversampling);
+                }
                 ui.end_row();
 
                 ui.label("Output");

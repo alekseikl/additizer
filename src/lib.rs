@@ -153,7 +153,7 @@ impl Plugin for Additizer {
 
         assert_no_alloc::assert_no_alloc(|| {
             let total_samples = buffer.samples();
-            let desired_buffer_size = synth.buffer_size();
+            let desired_block_size = synth.block_size();
 
             let mut process =
                 |synth: &mut SynthEngine,
@@ -161,7 +161,7 @@ impl Plugin for Additizer {
                  sample_idx_to: usize,
                  context: &mut dyn ProcessContext<Self>| {
                     while sample_idx < sample_idx_to {
-                        let samples = desired_buffer_size.min(sample_idx_to - sample_idx);
+                        let samples = desired_block_size.min(sample_idx_to - sample_idx);
 
                         synth.process(
                             samples,

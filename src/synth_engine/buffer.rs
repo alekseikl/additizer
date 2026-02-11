@@ -2,7 +2,7 @@ use core::f32;
 
 use crate::synth_engine::types::{ComplexSample, Sample};
 
-pub const BUFFER_SIZE: usize = 128;
+pub const BUFFER_SIZE: usize = 256;
 pub const SPECTRUM_BITS: usize = 10;
 pub const SPECTRAL_BUFFER_SIZE: usize = 1 << SPECTRUM_BITS;
 

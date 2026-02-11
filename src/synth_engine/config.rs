@@ -4,7 +4,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
-    BUFFER_SIZE, VoiceOverride, WaveShaperConfig,
+    MAX_BLOCK_SIZE, VoiceOverride, WaveShaperConfig,
     modules::{
         AmplifierConfig, EnvelopeConfig, ExternalParamConfig, LfoConfig, MixerConfig,
         ModulationFilterConfig, OscillatorConfig, OutputConfig, SpectralBlendConfig,
@@ -18,7 +18,8 @@ pub struct RoutingConfig {
     pub next_module_id: ModuleId,
     pub num_voices: usize,
     pub voice_override: VoiceOverride,
-    pub buffer_size: usize,
+    pub block_size: usize,
+    pub oversampling: bool,
     pub links: Vec<ModuleLink>,
 }
 
@@ -28,7 +29,8 @@ impl Default for RoutingConfig {
             next_module_id: MIN_MODULE_ID,
             num_voices: MAX_VOICES / 4,
             voice_override: VoiceOverride::Kill,
-            buffer_size: BUFFER_SIZE,
+            block_size: MAX_BLOCK_SIZE,
+            oversampling: false,
             links: Default::default(),
         }
     }
