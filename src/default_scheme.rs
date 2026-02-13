@@ -1,7 +1,7 @@
 use crate::{
     synth_engine::{
         Amplifier, Envelope, EnvelopeCurve, HarmonicEditor, Input, ModuleInput, OUTPUT_MODULE_ID,
-        Oscillator, SpectralFilter, StereoSample, SynthEngine, SynthModule,
+        Oscillator, SpectralFilter, SynthEngine, SynthModule,
     },
     utils::{from_ms, st_to_octave},
 };
@@ -50,11 +50,12 @@ pub fn build_default_scheme(synth: &mut SynthEngine) {
     let amp_env = typed_module_mut!(amp_env_id, Envelope).unwrap();
 
     amp_env.set_label("06 - Amp Envelope".into());
-    amp_env.set_attack(StereoSample::splat(from_ms(10.0)));
-    amp_env.set_decay(from_ms(20.0).into());
+    amp_env.set_decay(from_ms(400.0).into());
     amp_env.set_sustain(0.6.into());
     amp_env.set_release(from_ms(300.0).into());
     amp_env.set_decay_curve(EnvelopeCurve::ExponentialOut { full_range: true });
+    amp_env.set_smooth(from_ms(4.0).into());
+    amp_env.set_keep_voice_alive(true);
 
     let amp = typed_module_mut!(amp_id, Amplifier).unwrap();
 

@@ -18,17 +18,9 @@ use crate::{
     utils::from_ms,
 };
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct Params {
     keep_voice_alive: bool,
-}
-
-impl Default for Params {
-    fn default() -> Self {
-        Self {
-            keep_voice_alive: true,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,8 +41,8 @@ impl Default for ChannelParams {
     fn default() -> Self {
         Self {
             delay: 0.0,
-            attack: from_ms(10.0),
-            attack_curve: EnvelopeCurve::PowerIn {
+            attack: 0.0,
+            attack_curve: EnvelopeCurve::PowerOut {
                 full_range: true,
                 curvature: 0.3,
             },
