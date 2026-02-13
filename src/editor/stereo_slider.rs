@@ -1,13 +1,14 @@
 use std::ops::RangeInclusive;
 
-use egui_baseview::egui::{Color32, PointerButton, Rect, Response, Sense, Ui, Widget, vec2};
+use egui_baseview::egui::{
+    Color32, PointerButton, Pos2, Rect, Response, Sense, Ui, Vec2, Widget, vec2,
+};
 
 use crate::synth_engine::{Sample, StereoSample};
 
 const BG_COLOR: Color32 = Color32::from_rgb(0, 0, 0);
 const LEVEL_COLOR: Color32 = Color32::from_rgb(0x0b, 0x42, 0x67);
 const NEGATIVE_LEVEL_COLOR: Color32 = Color32::from_rgb(0x72, 0x72, 0x12);
-const SLIDER_HEIGHT: f32 = 16.0;
 
 pub struct StereoSlider<'a> {
     units: Option<&'a str>,
@@ -17,7 +18,9 @@ pub struct StereoSlider<'a> {
     precision: usize,
     skew_factor: Sample,
     display_scale_factor: Sample,
-    width: f32,
+    length: f32,
+    thickness: f32,
+    vertical: bool,
     color: Color32,
     allow_inverse: bool,
 }
@@ -27,7 +30,9 @@ impl<'a> StereoSlider<'a> {
         Self {
             skew_factor: 1.0,
             display_scale_factor: 1.0,
-            width: 200.0,
+            length: 200.0,
+            thickness: 16.0,
+            vertical: false,
             color: LEVEL_COLOR,
             units: None,
             default: None,
@@ -58,8 +63,18 @@ impl<'a> StereoSlider<'a> {
         self
     }
 
-    pub fn width(mut self, width: f32) -> Self {
-        self.width = width;
+    pub fn length(mut self, length: f32) -> Self {
+        self.length = length;
+        self
+    }
+
+    pub fn thickness(mut self, thickness: f32) -> Self {
+        self.thickness = thickness;
+        self
+    }
+
+    pub fn vertical(mut self) -> Self {
+        self.vertical = true;
         self
     }
 
@@ -119,21 +134,77 @@ impl<'a> StereoSlider<'a> {
         format!("{0:.1$}", value * self.display_scale_factor, self.precision)
     }
 
+    fn response_size(&self) -> Vec2 {
+        if self.vertical {
+            vec2(self.thickness, self.length)
+        } else {
+            vec2(self.length, self.thickness)
+        }
+    }
+
+    fn normalized_delta(&self, response: &Response) -> f32 {
+        if self.vertical {
+            -response.drag_delta().y / response.rect.height()
+        } else {
+            response.drag_delta().x / response.rect.width()
+        }
+    }
+
+    fn is_right_channel(&self, pos: Pos2, response: &Response) -> bool {
+        if self.vertical {
+            pos.x >= response.rect.center().x
+        } else {
+            pos.y >= response.rect.center().y
+        }
+    }
+
+    fn paint_bars(&self, ui: &mut Ui, response: &Response, normalized_value: StereoSample) {
+        if self.vertical {
+            let lr_rect = response.rect.split_left_right_at_fraction(0.5);
+            let paint_bar = |mut rect: Rect, norm_value: Sample| {
+                if norm_value < 0.0 {
+                    *rect.bottom_mut() -= (1.0 + norm_value) * response.rect.height();
+                    ui.painter().rect_filled(rect, 0.0, NEGATIVE_LEVEL_COLOR);
+                } else {
+                    *rect.top_mut() += (1.0 - norm_value) * response.rect.height();
+                    ui.painter().rect_filled(rect, 0.0, self.color);
+                }
+            };
+
+            paint_bar(lr_rect.0, normalized_value.left());
+            paint_bar(lr_rect.1, normalized_value.right());
+        } else {
+            let lr_rect = response.rect.split_top_bottom_at_fraction(0.5);
+            let paint_bar = |mut rect: Rect, norm_value: Sample| {
+                if norm_value < 0.0 {
+                    *rect.left_mut() += (1.0 + norm_value) * response.rect.width();
+                    ui.painter().rect_filled(rect, 0.0, NEGATIVE_LEVEL_COLOR);
+                } else {
+                    *rect.right_mut() -= (1.0 - norm_value) * response.rect.width();
+                    ui.painter().rect_filled(rect, 0.0, self.color);
+                }
+            };
+
+            paint_bar(lr_rect.0, normalized_value.left());
+            paint_bar(lr_rect.1, normalized_value.right());
+        }
+    }
+
     fn add_contents(&mut self, ui: &mut Ui) -> Response {
-        let mut response =
-            ui.allocate_response(vec2(self.width, SLIDER_HEIGHT), Sense::click_and_drag());
+        let mut response = ui.allocate_response(self.response_size(), Sense::click_and_drag());
         let normalized_value = self.normalized_value();
 
         if let Some(pos) = response.interact_pointer_pos()
             && response.drag_started_by(PointerButton::Secondary)
         {
-            let is_right_channel = pos.y >= response.rect.center().y;
-
-            ui.memory_mut(|mem| mem.data.insert_temp(response.id, is_right_channel));
+            ui.memory_mut(|mem| {
+                mem.data
+                    .insert_temp(response.id, self.is_right_channel(pos, &response))
+            });
         }
 
         if response.dragged() {
-            let mut normalized_delta = response.drag_delta().x / response.rect.width();
+            let mut normalized_delta = self.normalized_delta(&response);
 
             if ui.input(|state| state.modifiers.shift) {
                 normalized_delta *= 0.01;
@@ -161,20 +232,7 @@ impl<'a> StereoSlider<'a> {
 
         if ui.is_rect_visible(response.rect) {
             ui.painter().rect_filled(response.rect, 0.0, BG_COLOR);
-
-            let lr_rect = response.rect.split_top_bottom_at_fraction(0.5);
-            let paint_bar = |mut rect: Rect, norm_value: Sample| {
-                if norm_value < 0.0 {
-                    *rect.left_mut() += (1.0 + norm_value) * response.rect.width();
-                    ui.painter().rect_filled(rect, 0.0, NEGATIVE_LEVEL_COLOR);
-                } else {
-                    *rect.right_mut() -= (1.0 - norm_value) * response.rect.width();
-                    ui.painter().rect_filled(rect, 0.0, self.color);
-                }
-            };
-
-            paint_bar(lr_rect.0, normalized_value.left());
-            paint_bar(lr_rect.1, normalized_value.right());
+            self.paint_bars(ui, &response, normalized_value);
         }
 
         let mut parts: Vec<String> = Vec::with_capacity(4);
@@ -191,7 +249,9 @@ impl<'a> StereoSlider<'a> {
 
         let label = parts.join(" ") + self.units.unwrap_or_default();
 
-        ui.label(&label);
+        if !self.vertical {
+            ui.label(&label);
+        }
         response = response.on_hover_text_at_pointer(label);
 
         response
@@ -200,6 +260,10 @@ impl<'a> StereoSlider<'a> {
 
 impl Widget for StereoSlider<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        ui.horizontal_centered(|ui| self.add_contents(ui)).inner
+        if self.vertical {
+            self.add_contents(ui)
+        } else {
+            ui.horizontal_centered(|ui| self.add_contents(ui)).inner
+        }
     }
 }

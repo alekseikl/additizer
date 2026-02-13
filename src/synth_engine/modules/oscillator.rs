@@ -67,7 +67,8 @@ pub struct ChannelParams {
     detune: Sample,      //Octaves
     phase_shift: Sample,
     frequency_shift: Sample,
-    initial_phases: [Sample; MAX_UNISON_VOICES],
+    unison_phases: [Sample; MAX_UNISON_VOICES],
+    unison_gains: [Sample; MAX_UNISON_VOICES],
 }
 
 impl Default for ChannelParams {
@@ -78,7 +79,8 @@ impl Default for ChannelParams {
             detune: st_to_octave(0.2),
             phase_shift: 0.0,
             frequency_shift: 0.0,
-            initial_phases: INITIAL_PHASES,
+            unison_phases: INITIAL_PHASES,
+            unison_gains: [1.0; MAX_UNISON_VOICES],
         }
     }
 }
@@ -99,29 +101,46 @@ pub struct OscillatorUIData {
     pub frequency_shift: StereoSample,
     pub unison: usize,
     pub reset_phase: bool,
-    pub initial_phases: [StereoSample; MAX_UNISON_VOICES],
+    pub unison_phases: [StereoSample; MAX_UNISON_VOICES],
+    pub unison_gains: [StereoSample; MAX_UNISON_VOICES],
 }
 
-struct Voice {
+struct VoiceState {
     octave: Sample,
-    wave_buffers_swapped: bool,
     triggered: bool,
     phases: [Phase; MAX_UNISON_VOICES],
     output: Buffer,
-    wave_buffers: (WaveformBuffer, WaveformBuffer),
 }
 
-impl Default for Voice {
+impl Default for VoiceState {
     fn default() -> Self {
         Self {
             octave: 0.0,
-            wave_buffers_swapped: false,
             triggered: false,
             phases: Default::default(),
             output: zero_buffer(),
+        }
+    }
+}
+
+struct VoiceBuffers {
+    wave_buffers_swapped: bool,
+    wave_buffers: (WaveformBuffer, WaveformBuffer),
+}
+
+impl Default for VoiceBuffers {
+    fn default() -> Self {
+        Self {
+            wave_buffers_swapped: false,
             wave_buffers: (make_zero_wave_buffer(), make_zero_wave_buffer()),
         }
     }
+}
+
+#[derive(Default)]
+struct Voice {
+    state: VoiceState,
+    buffers: VoiceBuffers,
 }
 
 #[derive(Default)]
@@ -154,6 +173,20 @@ impl Default for Buffers {
             detune_mod: zero_buffer(),
         }
     }
+}
+
+struct ProcessVoiceCtx<'a> {
+    params: &'a Params,
+    channel: &'a ChannelParams,
+    voice: &'a mut VoiceState,
+    sample_rate: Sample,
+    samples: usize,
+    gain_mod: &'a Buffer,
+    phase_shift_mod: &'a Buffer,
+    pitch_shift_mod: &'a Buffer,
+    freq_shift_mod: &'a Buffer,
+    wave_from: &'a WaveformBuffer,
+    wave_to: &'a WaveformBuffer,
 }
 
 pub struct Oscillator {
@@ -192,11 +225,18 @@ impl Oscillator {
             frequency_shift: get_stereo_param!(self, frequency_shift),
             unison: self.params.unison,
             reset_phase: self.params.reset_phase,
-            initial_phases: std::array::from_fn(|i| {
+            unison_phases: std::array::from_fn(|i| {
                 StereoSample::from_iter(
                     self.channels
                         .iter()
-                        .map(|channel| channel.params.initial_phases[i]),
+                        .map(|channel| channel.params.unison_phases[i]),
+                )
+            }),
+            unison_gains: std::array::from_fn(|i| {
+                StereoSample::from_iter(
+                    self.channels
+                        .iter()
+                        .map(|channel| channel.params.unison_gains[i]),
                 )
             }),
         }
@@ -220,15 +260,27 @@ impl Oscillator {
     set_stereo_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
     set_stereo_param!(set_frequency_shift, frequency_shift);
 
-    pub fn set_initial_phase(&mut self, voice_idx: usize, phase: StereoSample) {
+    pub fn set_unison_phase(&mut self, voice_idx: usize, phase: StereoSample) {
         for (channel, phase) in self.channels.iter_mut().zip(phase.iter()) {
-            channel.params.initial_phases[voice_idx] = *phase;
+            channel.params.unison_phases[voice_idx] = *phase;
         }
 
         let mut cfg = self.config.lock();
 
         for (channel_cfg, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-            channel_cfg.initial_phases[voice_idx] = channel.params.initial_phases[voice_idx];
+            channel_cfg.unison_phases[voice_idx] = channel.params.unison_phases[voice_idx];
+        }
+    }
+
+    pub fn set_unison_gain(&mut self, voice_idx: usize, gain: StereoSample) {
+        for (channel, gain) in self.channels.iter_mut().zip(gain.iter()) {
+            channel.params.unison_gains[voice_idx] = *gain;
+        }
+
+        let mut cfg = self.config.lock();
+
+        for (channel_cfg, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
+            channel_cfg.unison_gains[voice_idx] = channel.params.unison_gains[voice_idx];
         }
     }
 
@@ -336,6 +388,9 @@ impl Oscillator {
         sample_rate: Sample,
         router: VoiceRouter,
     ) {
+        let voice_buffers = &mut voice.buffers;
+        let voice = &mut voice.state;
+
         let gain_mod = router.buffer(Input::Gain, &mut buffers.gain_mod);
         let pitch_shift_mod = router.buffer(Input::PitchShift, &mut buffers.pitch_shift_mod);
         let phase_shift_mod = router.buffer(Input::PhaseShift, &mut buffers.phase_shift_mod);
@@ -355,19 +410,25 @@ impl Oscillator {
                 spectrum_from,
                 &mut buffers.tmp_spectral,
                 &mut buffers.scratch,
-                &mut voice.wave_buffers.0,
+                &mut voice_buffers.wave_buffers.0,
             );
 
-            voice.wave_buffers_swapped = false;
+            voice_buffers.wave_buffers_swapped = false;
             voice.triggered = false;
         }
 
         let spectrum = router.spectral(Input::Spectrum, true);
 
-        let (wave_from, wave_to) = if voice.wave_buffers_swapped {
-            (&voice.wave_buffers.1, &mut voice.wave_buffers.0)
+        let (wave_from, wave_to) = if voice_buffers.wave_buffers_swapped {
+            (
+                &voice_buffers.wave_buffers.1,
+                &mut voice_buffers.wave_buffers.0,
+            )
         } else {
-            (&voice.wave_buffers.0, &mut voice.wave_buffers.1)
+            (
+                &voice_buffers.wave_buffers.0,
+                &mut voice_buffers.wave_buffers.1,
+            )
         };
 
         Self::build_wave(
@@ -381,86 +442,138 @@ impl Oscillator {
             &mut buffers.scratch,
             wave_to,
         );
-        voice.wave_buffers_swapped = !voice.wave_buffers_swapped;
+        voice_buffers.wave_buffers_swapped = !voice_buffers.wave_buffers_swapped;
 
-        let freq_phase_mult = Phase::freq_phase_mult(sample_rate);
-        let buff_t_mult = (router.samples as f32).recip();
-        let fixed_octave = voice.octave + channel.pitch_shift;
+        let ctx = ProcessVoiceCtx {
+            params,
+            channel,
+            voice,
+            sample_rate,
+            samples: router.samples,
+            gain_mod,
+            phase_shift_mod,
+            pitch_shift_mod,
+            freq_shift_mod,
+            wave_from,
+            wave_to,
+        };
 
-        if params.unison > 1 {
+        if params.unison == 1 {
+            Self::process_single(ctx);
+        } else {
             let detune_mod = router.buffer(Input::Detune, &mut buffers.detune_mod);
 
-            let unison_mult = ((params.unison - 1) as Sample).recip();
-            let unison_scale = 1.0 / (params.unison as Sample).sqrt();
+            Self::process_unison(ctx, detune_mod);
+        }
+    }
 
-            for (
-                out,
-                gain_mod,
-                pitch_shift_mod,
-                phase_shift_mod,
-                freq_shift_mod,
-                detune_mod,
-                sample_idx,
-            ) in izip!(
-                &mut voice.output,
-                gain_mod,
-                pitch_shift_mod,
-                phase_shift_mod,
-                freq_shift_mod,
-                detune_mod,
-                0..router.samples
-            ) {
-                let mut sample: Sample = 0.0;
-                let buff_t = sample_idx as Sample * buff_t_mult;
-                let octave = fixed_octave + *pitch_shift_mod;
-                let detune = channel.detune + *detune_mod;
-                let unison_pitch_step = detune * unison_mult;
-                let unison_pitch_from = -0.5 * detune;
-                let phase_shift = Phase::from_normalized(channel.phase_shift + *phase_shift_mod);
-                let freq_shift = channel.frequency_shift + *freq_shift_mod;
+    fn process_single(
+        ProcessVoiceCtx {
+            channel,
+            voice,
+            gain_mod,
+            pitch_shift_mod,
+            phase_shift_mod,
+            freq_shift_mod,
+            sample_rate,
+            samples,
+            wave_from,
+            wave_to,
+            ..
+        }: ProcessVoiceCtx,
+    ) {
+        let freq_phase_mult = Phase::freq_phase_mult(sample_rate);
+        let buff_t_mult = (samples as f32).recip();
+        let fixed_octave = voice.octave + channel.pitch_shift;
+        let phase = &mut voice.phases[0];
 
-                for unison_idx in 0..params.unison {
-                    let unison_idx_float = unison_idx as Sample;
-                    let unison_pitch_shift =
-                        unison_pitch_from + unison_pitch_step * unison_idx_float;
-                    let phase = &mut voice.phases[unison_idx];
+        for (out, gain_mod, pitch_shift_mod, phase_shift_mod, freq_shift_mod, sample_idx) in izip!(
+            &mut voice.output,
+            gain_mod,
+            pitch_shift_mod,
+            phase_shift_mod,
+            freq_shift_mod,
+            0..samples
+        ) {
+            *out = Self::process_sample(
+                fixed_octave + *pitch_shift_mod,
+                Phase::from_normalized(channel.phase_shift + *phase_shift_mod),
+                channel.frequency_shift + *freq_shift_mod,
+                sample_idx as Sample * buff_t_mult,
+                wave_from,
+                wave_to,
+                freq_phase_mult,
+                phase,
+            ) * (channel.gain + gain_mod);
+        }
+    }
 
-                    sample += Self::process_sample(
-                        octave + unison_pitch_shift,
-                        phase_shift,
-                        freq_shift,
-                        buff_t,
-                        wave_from,
-                        wave_to,
-                        freq_phase_mult,
-                        phase,
-                    );
-                }
+    fn process_unison(
+        ProcessVoiceCtx {
+            params,
+            channel,
+            voice,
+            gain_mod,
+            pitch_shift_mod,
+            phase_shift_mod,
+            freq_shift_mod,
+            sample_rate,
+            samples,
+            wave_from,
+            wave_to,
+        }: ProcessVoiceCtx,
+        detune_mod: &Buffer,
+    ) {
+        let freq_phase_mult = Phase::freq_phase_mult(sample_rate);
+        let buff_t_mult = (samples as f32).recip();
+        let fixed_octave = voice.octave + channel.pitch_shift;
+        let unison_mult = ((params.unison - 1) as Sample).recip();
+        let unison_scale = 1.0 / (params.unison as Sample).sqrt();
 
-                *out = sample * unison_scale * (channel.gain + gain_mod);
-            }
-        } else {
-            let phase = &mut voice.phases[0];
+        for (
+            out,
+            gain_mod,
+            pitch_shift_mod,
+            phase_shift_mod,
+            freq_shift_mod,
+            detune_mod,
+            sample_idx,
+        ) in izip!(
+            &mut voice.output,
+            gain_mod,
+            pitch_shift_mod,
+            phase_shift_mod,
+            freq_shift_mod,
+            detune_mod,
+            0..samples
+        ) {
+            let mut sample: Sample = 0.0;
+            let buff_t = sample_idx as Sample * buff_t_mult;
+            let octave = fixed_octave + *pitch_shift_mod;
+            let detune = channel.detune + *detune_mod;
+            let unison_pitch_step = detune * unison_mult;
+            let unison_pitch_from = -0.5 * detune;
+            let phase_shift = Phase::from_normalized(channel.phase_shift + *phase_shift_mod);
+            let freq_shift = channel.frequency_shift + *freq_shift_mod;
 
-            for (out, gain_mod, pitch_shift_mod, phase_shift_mod, freq_shift_mod, sample_idx) in izip!(
-                &mut voice.output,
-                gain_mod,
-                pitch_shift_mod,
-                phase_shift_mod,
-                freq_shift_mod,
-                0..router.samples
-            ) {
-                *out = Self::process_sample(
-                    fixed_octave + *pitch_shift_mod,
-                    Phase::from_normalized(channel.phase_shift + *phase_shift_mod),
-                    channel.frequency_shift + *freq_shift_mod,
-                    sample_idx as Sample * buff_t_mult,
+            for (unison_idx, gain) in channel.unison_gains.iter().enumerate().take(params.unison) {
+                let unison_idx_float = unison_idx as Sample;
+                let unison_pitch_shift = unison_pitch_from + unison_pitch_step * unison_idx_float;
+                let phase = &mut voice.phases[unison_idx];
+
+                sample += Self::process_sample(
+                    octave + unison_pitch_shift,
+                    phase_shift,
+                    freq_shift,
+                    buff_t,
                     wave_from,
                     wave_to,
                     freq_phase_mult,
                     phase,
-                ) * (channel.gain + gain_mod);
+                ) * gain;
             }
+
+            *out = sample * unison_scale * (channel.gain + gain_mod);
         }
     }
 }
@@ -504,12 +617,15 @@ impl SynthModule for Oscillator {
         for channel in self.channels.iter_mut() {
             let voice = &mut channel.voices[params.voice_idx];
 
-            voice.octave = note_to_octave(params.note);
-            voice.triggered = true;
+            voice.state.octave = note_to_octave(params.note);
+            voice.state.triggered = true;
 
             if params.reset || self.params.reset_phase {
-                for (phase, initial_phase) in
-                    voice.phases.iter_mut().zip(channel.params.initial_phases)
+                for (phase, initial_phase) in voice
+                    .state
+                    .phases
+                    .iter_mut()
+                    .zip(channel.params.unison_phases)
                 {
                     *phase = Phase::from_normalized(initial_phase);
                 }
@@ -541,6 +657,6 @@ impl SynthModule for Oscillator {
     }
 
     fn get_buffer_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
-        &self.channels[channel].voices[voice_idx].output
+        &self.channels[channel].voices[voice_idx].state.output
     }
 }

@@ -243,7 +243,7 @@ impl<'a> ModulationInput<'a> {
                     self.input.input_type,
                     self.default,
                 )
-                .width(200.0),
+                .length(200.0),
             ),
         }
     }
@@ -323,7 +323,7 @@ impl<'a> ModulationInput<'a> {
 
                     let slider_response = ui.add(
                         self.setup_modulation_slider(StereoSlider::new(&mut amount))
-                            .width(200.0),
+                            .length(200.0),
                     );
 
                     if slider_response.changed() {

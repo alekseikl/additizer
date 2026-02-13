@@ -2,8 +2,9 @@ use egui_baseview::egui::{Checkbox, DragValue, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUI, direct_input::DirectInput, modulation_input::ModulationInput,
-        module_label::ModuleLabel, stereo_slider::StereoSlider, utils::confirm_module_removal,
+        ModuleUI, direct_input::DirectInput, gain_slider::GainSlider,
+        modulation_input::ModulationInput, module_label::ModuleLabel, stereo_slider::StereoSlider,
+        utils::confirm_module_removal,
     },
     synth_engine::{Input, ModuleId, Oscillator, SynthEngine},
 };
@@ -123,15 +124,6 @@ impl ModuleUI for OscillatorUI {
                 }
                 ui.end_row();
 
-                ui.label("Unison");
-                if ui
-                    .add(DragValue::new(&mut ui_data.unison).range(1..=16))
-                    .changed()
-                {
-                    self.osc(synth).set_unison(ui_data.unison);
-                }
-                ui.end_row();
-
                 ui.label("Reset phase");
                 if ui
                     .add(Checkbox::without_text(&mut ui_data.reset_phase))
@@ -141,36 +133,83 @@ impl ModuleUI for OscillatorUI {
                 }
                 ui.end_row();
 
-                ui.label("Initial Phases");
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
-                        let phase = &mut ui_data.initial_phases[0];
+                ui.label("Unison");
+                if ui
+                    .add(DragValue::new(&mut ui_data.unison).range(1..=16))
+                    .changed()
+                {
+                    self.osc(synth).set_unison(ui_data.unison);
+                }
+                ui.end_row();
 
-                        ui.label("#1");
-                        if ui
-                            .add(StereoSlider::new(phase).default_value(0.0).precision(2))
-                            .changed()
-                        {
-                            self.osc(synth).set_initial_phase(0, *phase);
-                        }
-                    });
-                    ui.add_space(8.0);
-
-                    ui.collapsing("Unison Phases", |ui| {
-                        for (idx, phase) in ui_data.initial_phases[1..].iter_mut().enumerate() {
-                            ui.horizontal(|ui| {
-                                ui.label(format!("#{}", idx + 2));
+                if ui_data.unison > 1 {
+                    ui.label("Unison Phases");
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            for (voice_idx, phase) in ui_data
+                                .unison_phases
+                                .iter_mut()
+                                .take(ui_data.unison)
+                                .enumerate()
+                            {
                                 if ui
-                                    .add(StereoSlider::new(phase).default_value(0.0).precision(2))
+                                    .add(
+                                        StereoSlider::new(phase)
+                                            .vertical()
+                                            .thickness(12.0)
+                                            .length(100.0)
+                                            .precision(2)
+                                            .default_value(0.0),
+                                    )
                                     .changed()
                                 {
-                                    self.osc(synth).set_initial_phase(idx + 1, *phase);
+                                    self.osc(synth).set_unison_phase(voice_idx, *phase);
                                 }
-                            });
-                        }
+                            }
+                        });
                     });
-                });
-                ui.end_row();
+                    ui.end_row();
+                } else {
+                    let phase = &mut ui_data.unison_phases[0];
+
+                    ui.label("Initial Phase");
+                    if ui
+                        .add(StereoSlider::new(phase).precision(2).default_value(0.0))
+                        .changed()
+                    {
+                        self.osc(synth).set_unison_phase(0, *phase);
+                    }
+                    ui.end_row();
+                }
+
+                if ui_data.unison > 1 {
+                    ui.label("Unison Gains");
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            for (voice_idx, gain) in ui_data
+                                .unison_gains
+                                .iter_mut()
+                                .take(ui_data.unison)
+                                .enumerate()
+                            {
+                                if ui
+                                    .add(
+                                        GainSlider::new(gain)
+                                            .label(&format!("{}", voice_idx + 1))
+                                            .max_dbs(6.0)
+                                            .mid_point(0.8)
+                                            .height(100.0),
+                                    )
+                                    .changed()
+                                {
+                                    self.osc(synth).set_unison_gain(voice_idx, *gain);
+                                }
+                            }
+                        });
+                    });
+
+                    ui.end_row();
+                }
             });
 
         ui.add_space(40.0);
