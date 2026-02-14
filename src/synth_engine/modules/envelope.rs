@@ -42,22 +42,13 @@ impl Default for ChannelParams {
         Self {
             delay: 0.0,
             attack: 0.0,
-            attack_curve: EnvelopeCurve::PowerOut {
-                full_range: true,
-                curvature: 0.3,
-            },
+            attack_curve: EnvelopeCurve::PowerOut { curvature: 0.3 },
             hold: 0.0,
             decay: from_ms(200.0),
-            decay_curve: EnvelopeCurve::PowerOut {
-                full_range: true,
-                curvature: 0.2,
-            },
+            decay_curve: EnvelopeCurve::PowerOut { curvature: 0.2 },
             sustain: 1.0,
             release: from_ms(300.0),
-            release_curve: EnvelopeCurve::PowerOut {
-                full_range: true,
-                curvature: 0.2,
-            },
+            release_curve: EnvelopeCurve::PowerOut { curvature: 0.2 },
             smooth: 0.0,
         }
     }
@@ -84,72 +75,34 @@ type CurveBox = Box<dyn CurveIterator + Send>;
 struct CurveIterParams {
     from: Sample,
     to: Sample,
-    time: Sample,
     t_from: Sample,
 }
 struct CurveIter<T: CurveFunction + Send> {
     curve_fn: T,
     t_from: Sample,
     t: Sample,
-    arg_to: Sample,
     value_from: Sample,
     interval: Sample,
 }
 
 impl<T: CurveFunction + Send + 'static> CurveIter<T> {
-    fn iter(
-        curve_fn: T,
-        CurveIterParams {
-            from,
-            to,
-            time,
-            t_from,
-        }: CurveIterParams,
-        full_range: bool,
-    ) -> CurveBox {
+    fn iter(curve_fn: T, CurveIterParams { from, to, t_from }: CurveIterParams) -> CurveBox {
         let from = from.clamp(0.0, 1.0);
         let to = to.clamp(0.0, 1.0);
 
-        let (arg_from, arg_to) = if full_range {
-            (0.0, 1.0)
-        } else if from > to {
-            (
-                curve_fn.calc_inverse(1.0 - from),
-                curve_fn.calc_inverse(1.0 - to),
-            )
-        } else {
-            (curve_fn.calc_inverse(from), curve_fn.calc_inverse(to))
-        };
-
-        let t = t_from + arg_from * time;
-
-        let iter = if full_range {
-            Self {
-                curve_fn,
-                t_from,
-                t,
-                arg_to,
-                value_from: from,
-                interval: to - from,
-            }
-        } else {
-            Self {
-                curve_fn,
-                t_from,
-                t,
-                arg_to,
-                value_from: if from > to { 1.0 } else { 0.0 },
-                interval: (to - from).signum(),
-            }
-        };
-
-        Box::new(iter)
+        Box::new(Self {
+            curve_fn,
+            t_from,
+            t: t_from,
+            value_from: from,
+            interval: to - from,
+        })
     }
 }
 
 impl<T: CurveFunction + Send + 'static> CurveIterator for CurveIter<T> {
     fn next(&mut self, t_step: Sample, time: Sample) -> CurveResult {
-        let t_to = self.arg_to * time;
+        let t_to = time;
 
         self.t = (self.t + t_step).max(0.0);
 
@@ -167,64 +120,45 @@ impl<T: CurveFunction + Send + 'static> CurveIterator for CurveIter<T> {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum EnvelopeCurve {
-    Linear { full_range: bool },
-    PowerIn { full_range: bool, curvature: Sample },
-    PowerOut { full_range: bool, curvature: Sample },
-    ExponentialIn { full_range: bool },
-    ExponentialOut { full_range: bool },
+    Linear,
+    PowerIn { curvature: Sample },
+    PowerOut { curvature: Sample },
+    ExponentialIn,
+    ExponentialOut,
 }
 
 impl EnvelopeCurve {
-    fn curve_iter(&self, from: Sample, to: Sample, time: Sample, t_from: Sample) -> CurveBox {
-        let params = CurveIterParams {
-            from,
-            to,
-            time,
-            t_from,
-        };
+    fn curve_iter(&self, from: Sample, to: Sample, t_from: Sample) -> CurveBox {
+        let params = CurveIterParams { from, to, t_from };
 
         match *self {
-            Self::Linear { full_range } => CurveIter::iter(PowerIn::new(0.0), params, full_range),
-            Self::PowerIn {
-                curvature,
-                full_range,
-            } => CurveIter::iter(PowerIn::new(curvature), params, full_range),
-            Self::PowerOut {
-                full_range,
-                curvature,
-            } => CurveIter::iter(PowerOut::new(curvature), params, full_range),
-            Self::ExponentialIn { full_range } => {
-                CurveIter::iter(ExponentialIn::new(), params, full_range)
-            }
-            Self::ExponentialOut { full_range } => {
-                CurveIter::iter(ExponentialOut::new(), params, full_range)
-            }
+            Self::Linear => CurveIter::iter(PowerIn::new(0.0), params),
+            Self::PowerIn { curvature } => CurveIter::iter(PowerIn::new(curvature), params),
+            Self::PowerOut { curvature } => CurveIter::iter(PowerOut::new(curvature), params),
+            Self::ExponentialIn => CurveIter::iter(ExponentialIn::new(), params),
+            Self::ExponentialOut => CurveIter::iter(ExponentialOut::new(), params),
         }
     }
 
-    fn delay_iter(time: Sample, level: Sample) -> CurveBox {
+    fn delay_iter(level: Sample) -> CurveBox {
         CurveIter::iter(
             PowerIn::new(0.0),
             CurveIterParams {
                 from: level,
                 to: level,
-                time,
                 t_from: 0.0,
             },
-            true,
         )
     }
 
-    fn hold_iter(time: Sample, t_from: Sample) -> CurveBox {
+    fn hold_iter(t_from: Sample) -> CurveBox {
         CurveIter::iter(
             PowerIn::new(0.0),
             CurveIterParams {
                 from: 1.0,
                 to: 1.0,
-                time,
                 t_from,
             },
-            true,
         )
     }
 }
@@ -376,17 +310,13 @@ impl Envelope {
             voice.stage = Stage::Release(env.release_curve.curve_iter(
                 voice.output.current(),
                 0.0,
-                release_time(),
                 0.0,
             ));
             voice.released = false;
         }
 
         if voice.triggered {
-            voice.stage = Stage::Delay(EnvelopeCurve::delay_iter(
-                delay_time(),
-                voice.output.current(),
-            ));
+            voice.stage = Stage::Delay(EnvelopeCurve::delay_iter(voice.output.current()));
         }
 
         voice.output.advance(loop {
@@ -396,14 +326,13 @@ impl Envelope {
                     CurveResult::TimeOverrun(t_over) => Stage::Attack(env.attack_curve.curve_iter(
                         voice.output.current(),
                         1.0,
-                        attack_time(),
                         t_over - t_step,
                     )),
                 },
                 Stage::Attack(curve) => match curve.next(t_step, attack_time()) {
                     CurveResult::Value(value) => break value,
                     CurveResult::TimeOverrun(t_over) => {
-                        Stage::Hold(EnvelopeCurve::hold_iter(hold_time(), t_over - t_step))
+                        Stage::Hold(EnvelopeCurve::hold_iter(t_over - t_step))
                     }
                 },
                 Stage::Hold(curve) => match curve.next(t_step, hold_time()) {
@@ -411,7 +340,6 @@ impl Envelope {
                     CurveResult::TimeOverrun(t_over) => Stage::Decay(env.decay_curve.curve_iter(
                         1.0,
                         env.sustain,
-                        decay_time(),
                         t_over - t_step,
                     )),
                 },

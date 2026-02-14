@@ -37,17 +37,11 @@ impl DisplayCurve {
 
     fn env_curve(&self) -> EnvelopeCurve {
         match self {
-            Self::Linear => EnvelopeCurve::Linear { full_range: true },
-            Self::PowerIn => EnvelopeCurve::PowerIn {
-                full_range: true,
-                curvature: 0.2,
-            },
-            Self::PowerOut => EnvelopeCurve::PowerOut {
-                full_range: true,
-                curvature: 0.2,
-            },
-            Self::ExponentialIn => EnvelopeCurve::ExponentialIn { full_range: true },
-            Self::ExponentialOut => EnvelopeCurve::ExponentialOut { full_range: true },
+            Self::Linear => EnvelopeCurve::Linear,
+            Self::PowerIn => EnvelopeCurve::PowerIn { curvature: 0.2 },
+            Self::PowerOut => EnvelopeCurve::PowerOut { curvature: 0.2 },
+            Self::ExponentialIn => EnvelopeCurve::ExponentialIn,
+            Self::ExponentialOut => EnvelopeCurve::ExponentialOut,
         }
     }
 }
@@ -119,28 +113,6 @@ impl EnvelopeUI {
                     add_curvature_slider(curvature);
                 }
                 _ => (),
-            }
-
-            let mut add_full_range_checkbox = |full_range: &mut bool| {
-                changed = changed || ui.add(Checkbox::new(full_range, "Full range")).changed();
-            };
-
-            match env_curve {
-                EnvelopeCurve::Linear { full_range, .. } => {
-                    add_full_range_checkbox(full_range);
-                }
-                EnvelopeCurve::PowerIn { full_range, .. } => {
-                    add_full_range_checkbox(full_range);
-                }
-                EnvelopeCurve::PowerOut { full_range, .. } => {
-                    add_full_range_checkbox(full_range);
-                }
-                EnvelopeCurve::ExponentialIn { full_range, .. } => {
-                    add_full_range_checkbox(full_range);
-                }
-                EnvelopeCurve::ExponentialOut { full_range, .. } => {
-                    add_full_range_checkbox(full_range);
-                }
             }
         });
 

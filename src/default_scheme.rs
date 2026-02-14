@@ -33,8 +33,8 @@ pub fn build_default_scheme(synth: &mut SynthEngine) {
     filter_env.set_decay(from_ms(500.0).into());
     filter_env.set_sustain(0.0.into());
     filter_env.set_release(from_ms(100.0).into());
-    filter_env.set_decay_curve(EnvelopeCurve::ExponentialOut { full_range: true });
-    filter_env.set_attack_curve(EnvelopeCurve::ExponentialOut { full_range: true });
+    filter_env.set_decay_curve(EnvelopeCurve::ExponentialOut);
+    filter_env.set_attack_curve(EnvelopeCurve::ExponentialOut);
 
     let spectral_filter = typed_module_mut!(filter_id, SpectralFilter).unwrap();
 
@@ -53,7 +53,7 @@ pub fn build_default_scheme(synth: &mut SynthEngine) {
     amp_env.set_decay(from_ms(400.0).into());
     amp_env.set_sustain(0.6.into());
     amp_env.set_release(from_ms(300.0).into());
-    amp_env.set_decay_curve(EnvelopeCurve::ExponentialOut { full_range: true });
+    amp_env.set_decay_curve(EnvelopeCurve::ExponentialOut);
     amp_env.set_smooth(from_ms(4.0).into());
     amp_env.set_keep_voice_alive(true);
 
