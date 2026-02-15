@@ -161,6 +161,17 @@ impl EnvelopeCurve {
             },
         )
     }
+
+    fn flush_iter(t_from: Sample) -> CurveBox {
+        CurveIter::iter(
+            PowerIn::new(0.0),
+            CurveIterParams {
+                from: 0.0,
+                to: 0.0,
+                t_from,
+            },
+        )
+    }
 }
 
 pub struct EnvelopeUIData {
@@ -185,6 +196,7 @@ enum Stage {
     Decay(CurveBox),
     Sustain,
     Release(CurveBox),
+    Flush(CurveBox),
     Done,
 }
 
@@ -352,6 +364,12 @@ impl Envelope {
                 }
                 Stage::Release(curve) => match curve.next(t_step, release_time()) {
                     CurveResult::Value(value) => break value,
+                    CurveResult::TimeOverrun(t_over) => {
+                        Stage::Flush(EnvelopeCurve::flush_iter(t_over - t_step))
+                    }
+                },
+                Stage::Flush(curve) => match curve.next(t_step, env.smooth) {
+                    CurveResult::Value(_) => break 0.0,
                     CurveResult::TimeOverrun(_) => Stage::Done,
                 },
                 Stage::Done => {
