@@ -193,6 +193,6 @@ impl<'a> DbSlider<'a> {
 
 impl Widget for DbSlider<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        self.add_contents(ui)
+        ui.horizontal(|ui| self.add_contents(ui)).inner
     }
 }

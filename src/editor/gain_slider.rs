@@ -224,7 +224,11 @@ impl<'a> GainSlider<'a> {
         let modifiers = ui.input(|state| state.modifiers);
 
         if response.dragged() {
-            let normalized_delta = -response.drag_delta().y / response.rect.height();
+            let mut normalized_delta = -response.drag_delta().y / response.rect.height();
+
+            if ui.input(|state| state.modifiers.shift) {
+                normalized_delta *= 0.01;
+            }
 
             self.handle_dragging(ui, &mut response, normalized_delta);
         } else if response.double_clicked_by(PointerButton::Primary) {

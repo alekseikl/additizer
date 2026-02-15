@@ -43,8 +43,8 @@ impl CurveFunction for PowerOut {
 pub struct ExponentialIn;
 
 impl ExponentialIn {
-    const RATE: Sample = 5.0;
-    const POWER: Sample = 10.0;
+    const RATE: Sample = 6.0;
+    const POWER: Sample = 15.0;
 
     pub fn new() -> Self {
         Self
@@ -60,8 +60,8 @@ impl CurveFunction for ExponentialIn {
 pub struct ExponentialOut;
 
 impl ExponentialOut {
-    const RATE: Sample = 5.0;
-    const POWER: Sample = 10.0;
+    const RATE: Sample = 6.0;
+    const POWER: Sample = 15.0;
 
     pub fn new() -> Self {
         Self

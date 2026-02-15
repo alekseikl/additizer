@@ -1,6 +1,7 @@
 use std::{any::Any, f32, sync::Arc};
 
 use itertools::izip;
+use nih_plug::util::db_to_gain;
 use realfft::{ComplexToReal, RealFftPlanner};
 use serde::{Deserialize, Serialize};
 use wide::f32x4;
@@ -281,6 +282,39 @@ impl Oscillator {
 
         for (channel_cfg, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
             channel_cfg.unison_gains[voice_idx] = channel.params.unison_gains[voice_idx];
+        }
+    }
+
+    pub fn apply_unison_gain_shape(&mut self, center: StereoSample, level: StereoSample) {
+        if self.params.unison < 2 {
+            return;
+        }
+
+        for (center, edge_level, channel) in
+            izip!(center.iter(), level.iter(), self.channels.iter_mut())
+        {
+            let center = center.clamp(0.0, 1.0);
+            let step = ((self.params.unison - 1) as Sample).recip();
+
+            for (idx, gain) in channel
+                .params
+                .unison_gains
+                .iter_mut()
+                .enumerate()
+                .take(self.params.unison)
+            {
+                let pos = idx as Sample * step;
+
+                let level = if pos < center {
+                    let t = pos / center;
+                    edge_level + (-edge_level) * t
+                } else {
+                    let t = (pos - center) / (1.0 - center + f32::EPSILON);
+                    edge_level * t
+                };
+
+                *gain = db_to_gain(level);
+            }
         }
     }
 

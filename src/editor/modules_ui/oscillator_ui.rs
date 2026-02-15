@@ -1,18 +1,34 @@
-use egui_baseview::egui::{Checkbox, DragValue, Grid, Ui};
+use egui_baseview::egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
 
 use crate::{
     editor::{
-        ModuleUI, direct_input::DirectInput, gain_slider::GainSlider,
+        ModuleUI, db_slider::DbSlider, direct_input::DirectInput, gain_slider::GainSlider,
         modulation_input::ModulationInput, module_label::ModuleLabel, stereo_slider::StereoSlider,
         utils::confirm_module_removal,
     },
-    synth_engine::{Input, ModuleId, Oscillator, SynthEngine},
+    show_modal,
+    synth_engine::{Input, ModuleId, Oscillator, StereoSample, SynthEngine},
 };
+
+struct GainShapeState {
+    center: StereoSample,
+    level: StereoSample, // dB
+}
+
+impl Default for GainShapeState {
+    fn default() -> Self {
+        Self {
+            center: 0.5.into(),
+            level: (-24.0).into(),
+        }
+    }
+}
 
 pub struct OscillatorUI {
     module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
+    gain_shape_state: Option<Box<GainShapeState>>,
 }
 
 impl OscillatorUI {
@@ -21,11 +37,68 @@ impl OscillatorUI {
             module_id,
             remove_confirmation: false,
             label_state: None,
+            gain_shape_state: None,
         }
     }
 
     fn osc<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut Oscillator {
         Oscillator::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
+    }
+
+    fn show_gain_shape_modal(
+        &mut self,
+        synth: &mut SynthEngine,
+        ui: &mut Ui,
+        state: &mut GainShapeState,
+    ) -> bool {
+        let modal = Modal::new(Id::new("show_gain_shape_modal-modal")).show(ui.ctx(), |ui| {
+            ui.heading("Gain shape");
+            ui.add_space(20.0);
+            ui.set_width(440.0);
+
+            Grid::new("set-and-select-modal")
+                .num_columns(2)
+                .spacing([40.0, 24.0])
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.label("Center");
+                    ui.add(
+                        StereoSlider::new(&mut state.center)
+                            .default_value(0.5)
+                            .precision(2),
+                    );
+                    ui.end_row();
+
+                    ui.label("Level");
+                    ui.add(DbSlider::new(&mut state.level).max_dbs(6.0));
+                    ui.end_row();
+                });
+
+            ui.add_space(40.0);
+
+            Sides::new().show(
+                ui,
+                |_ui| {},
+                |ui| {
+                    if ui.button("Ok").clicked() {
+                        self.osc(synth)
+                            .apply_unison_gain_shape(state.center, state.level);
+                        ui.close();
+                    }
+
+                    if ui.button("Apply").clicked() {
+                        self.osc(synth)
+                            .apply_unison_gain_shape(state.center, state.level);
+                    }
+
+                    if ui.button("Cancel").clicked() {
+                        ui.close();
+                    }
+                },
+            );
+        });
+
+        !modal.should_close()
     }
 }
 
@@ -198,6 +271,7 @@ impl ModuleUI for OscillatorUI {
                                             .label(&format!("{}", voice_idx + 1))
                                             .max_dbs(6.0)
                                             .mid_point(0.8)
+                                            .skew(2.0)
                                             .height(100.0),
                                     )
                                     .changed()
@@ -206,6 +280,12 @@ impl ModuleUI for OscillatorUI {
                                 }
                             }
                         });
+
+                        ui.add_space(8.0);
+
+                        if ui.button("Shape").clicked() {
+                            self.gain_shape_state = Some(Box::new(GainShapeState::default()));
+                        }
                     });
 
                     ui.end_row();
@@ -213,6 +293,8 @@ impl ModuleUI for OscillatorUI {
             });
 
         ui.add_space(40.0);
+
+        show_modal!(self, gain_shape_state, show_gain_shape_modal, synth, ui);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
             synth.remove_module(self.module_id);
