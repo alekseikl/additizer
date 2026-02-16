@@ -7,7 +7,7 @@ use egui_baseview::{
 };
 
 use crate::{
-    editor::{ModuleUI, multi_input::MultiInput},
+    editor::{ModuleUi, multi_input::MultiInput},
     presets::{Preset, PresetInfo, PresetListItem, Presets},
     synth_engine::{Input, ModuleId, OUTPUT_MODULE_ID, SynthEngine, VoiceOverride},
     utils::from_ms,
@@ -182,7 +182,7 @@ impl ParamsUi {
     }
 }
 
-impl ModuleUI for ParamsUi {
+impl ModuleUi for ParamsUi {
     fn module_id(&self) -> Option<ModuleId> {
         None
     }

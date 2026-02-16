@@ -2,7 +2,7 @@ use egui_baseview::egui::{Grid, Slider, Ui};
 
 use crate::{
     editor::{
-        ModuleUI, direct_input::DirectInput, module_label::ModuleLabel,
+        ModuleUi, direct_input::DirectInput, module_label::ModuleLabel,
         utils::confirm_module_removal,
     },
     synth_engine::{Input, ModulationFilter, ModuleId, SynthEngine},
@@ -28,7 +28,7 @@ impl ModulationFilterUI {
     }
 }
 
-impl ModuleUI for ModulationFilterUI {
+impl ModuleUi for ModulationFilterUI {
     fn module_id(&self) -> Option<ModuleId> {
         Some(self.module_id)
     }

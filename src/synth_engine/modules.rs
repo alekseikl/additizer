@@ -1,5 +1,6 @@
 mod amplifier;
 mod envelope;
+mod expressions;
 mod external_param;
 pub mod harmonic_editor;
 mod lfo;
@@ -14,6 +15,7 @@ mod wave_shaper;
 
 pub use amplifier::{Amplifier, AmplifierConfig};
 pub use envelope::{Envelope, EnvelopeConfig, EnvelopeCurve};
+pub use expressions::{Expressions, ExpressionsConfig};
 pub use external_param::{ExternalParam, ExternalParamConfig, ExternalParamsBlock};
 pub use lfo::{Lfo, LfoConfig, LfoShape};
 pub use mixer::{Mixer, MixerConfig};

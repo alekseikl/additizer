@@ -2,7 +2,7 @@ use egui_baseview::egui::{Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUI, direct_input::DirectInput, modulation_input::ModulationInput,
+        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{Input, ModuleId, SpectralBlend, SynthEngine},
@@ -28,7 +28,7 @@ impl SpectralBlendUi {
     }
 }
 
-impl ModuleUI for SpectralBlendUi {
+impl ModuleUi for SpectralBlendUi {
     fn module_id(&self) -> Option<ModuleId> {
         Some(self.module_id)
     }

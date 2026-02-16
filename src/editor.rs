@@ -11,8 +11,8 @@ use crate::{
     editor::{
         gain_slider::GainSlider,
         modules_ui::{
-            AmplifierUI, EnvelopeUI, ExternalParamUI, HarmonicEditorUI, LfoUi, MixerUi,
-            ModulationFilterUI, OscillatorUI, ParamsUi, SpectralBlendUi, SpectralFilterUI,
+            AmplifierUI, EnvelopeUI, ExpressionsUi, ExternalParamUI, HarmonicEditorUI, LfoUi,
+            MixerUi, ModulationFilterUI, OscillatorUI, ParamsUi, SpectralBlendUi, SpectralFilterUI,
             SpectralMixerUi, WaveShaperUi,
         },
     },
@@ -34,12 +34,12 @@ mod multi_input;
 mod stereo_slider;
 mod utils;
 
-pub trait ModuleUI {
+pub trait ModuleUi {
     fn module_id(&self) -> Option<ModuleId>;
     fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui);
 }
 
-type ModuleUIBox = Box<dyn ModuleUI + Send + Sync>;
+type ModuleUIBox = Box<dyn ModuleUi + Send + Sync>;
 
 struct EditorState {
     selected_module_ui: ModuleUIBox,
@@ -71,24 +71,6 @@ fn show_menu_item(ui: &mut Ui, label: &str, selected: bool) -> Response {
 }
 
 impl ModuleType {
-    fn has_ui(&self) -> bool {
-        match self {
-            Self::HarmonicEditor
-            | Self::SpectralFilter
-            | Self::Amplifier
-            | Self::Mixer
-            | Self::Oscillator
-            | Self::Envelope
-            | Self::ExternalParam
-            | Self::ModulationFilter
-            | Self::Lfo
-            | Self::SpectralBlend
-            | Self::SpectralMixer
-            | Self::WaveShaper => true,
-            Self::One => false,
-        }
-    }
-
     fn ui(&self, id: ModuleId) -> ModuleUIBox {
         match self {
             Self::HarmonicEditor => Box::new(HarmonicEditorUI::new(id)),
@@ -103,7 +85,7 @@ impl ModuleType {
             Self::SpectralBlend => Box::new(SpectralBlendUi::new(id)),
             Self::SpectralMixer => Box::new(SpectralMixerUi::new(id)),
             Self::WaveShaper => Box::new(WaveShaperUi::new(id)),
-            Self::One => Box::new(ParamsUi::new()),
+            Self::Expressions => Box::new(ExpressionsUi::new(id)),
         }
     }
 }
@@ -121,7 +103,6 @@ fn show_side_bar(
         .show_inside(ui, |ui| {
             let mut modules = synth_engine.get_modules();
 
-            modules.retain(|module| module.module_type().has_ui());
             modules.sort_by_key(|module| module.label().to_lowercase());
 
             CentralPanel::default()
@@ -186,6 +167,9 @@ fn show_side_bar(
                                 }
                                 if ui.selectable_label(false, "External Parameter").clicked() {
                                     synth_engine.add_external_param();
+                                }
+                                if ui.selectable_label(false, "Expressions").clicked() {
+                                    synth_engine.add_expressions();
                                 }
                                 if ui.selectable_label(false, "Modulation Filter").clicked() {
                                     synth_engine.add_modulation_filter();

@@ -1,20 +1,33 @@
-use egui_baseview::egui::{Checkbox, ComboBox, Grid, Ui};
+use egui_baseview::egui::{ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
         ModuleUi, module_label::ModuleLabel, stereo_slider::StereoSlider,
         utils::confirm_module_removal,
     },
-    synth_engine::{ExternalParam, ModuleId, StereoSample, SynthEngine},
+    synth_engine::{Expression, Expressions, ModuleId, StereoSample, SynthEngine},
 };
 
-pub struct ExternalParamUI {
+impl Expression {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Velocity => "Velocity",
+            Self::Gain => "Gain",
+            Self::Pan => "Pan",
+            Self::Pitch => "Pitch",
+            Self::Timbre => "Timbre",
+            Self::Pressure => "Pressure",
+        }
+    }
+}
+
+pub struct ExpressionsUi {
     module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
 }
 
-impl ExternalParamUI {
+impl ExpressionsUi {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
@@ -23,18 +36,18 @@ impl ExternalParamUI {
         }
     }
 
-    fn param<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut ExternalParam {
-        ExternalParam::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
+    fn expr<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut Expressions {
+        Expressions::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
     }
 }
 
-impl ModuleUi for ExternalParamUI {
+impl ModuleUi for ExpressionsUi {
     fn module_id(&self) -> Option<ModuleId> {
         Some(self.module_id)
     }
 
     fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
-        let mut ui_data = self.param(synth).get_ui();
+        let mut ui_data = self.expr(synth).get_ui();
 
         ui.add(ModuleLabel::new(
             &ui_data.label,
@@ -44,30 +57,40 @@ impl ModuleUi for ExternalParamUI {
 
         ui.add_space(20.0);
 
-        Grid::new("ext-param-grid")
+        Grid::new("expressions-grid")
             .num_columns(2)
             .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
-                ui.label("Input");
-                ComboBox::from_id_salt("ext-param-select")
-                    .selected_text(format!("Param #{}", ui_data.selected_param_index + 1))
+                let mut smooth = StereoSample::splat(ui_data.smooth);
+
+                ui.label("Expression");
+                ComboBox::from_id_salt("expressions-combo")
+                    .selected_text(ui_data.expression.label())
                     .show_ui(ui, |ui| {
-                        for i in 0..ui_data.num_of_params {
+                        const TYPE_OPTIONS: &[Expression] = &[
+                            Expression::Velocity,
+                            Expression::Gain,
+                            Expression::Pan,
+                            Expression::Pitch,
+                            Expression::Timbre,
+                            Expression::Pressure,
+                        ];
+
+                        for expression in TYPE_OPTIONS {
                             if ui
-                                .selectable_label(
-                                    i == ui_data.selected_param_index,
-                                    format!("Param #{}", i + 1),
+                                .selectable_value(
+                                    &mut ui_data.expression,
+                                    *expression,
+                                    expression.label(),
                                 )
                                 .clicked()
                             {
-                                self.param(synth).select_param(i);
+                                self.expr(synth).set_expression(*expression);
                             }
                         }
                     });
                 ui.end_row();
-
-                let mut smooth = StereoSample::splat(ui_data.smooth);
 
                 ui.label("Smooth");
                 if ui
@@ -82,17 +105,7 @@ impl ModuleUi for ExternalParamUI {
                     )
                     .changed()
                 {
-                    self.param(synth).set_smooth(smooth.left());
-                }
-                ui.end_row();
-
-                ui.label("Sample and Hold");
-                if ui
-                    .add(Checkbox::without_text(&mut ui_data.sample_and_hold))
-                    .changed()
-                {
-                    self.param(synth)
-                        .set_sample_and_hold(ui_data.sample_and_hold);
+                    self.expr(synth).set_smooth(smooth.left());
                 }
                 ui.end_row();
             });

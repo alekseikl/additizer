@@ -2,7 +2,7 @@ use egui_baseview::egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUI, direct_input::DirectInput, modulation_input::ModulationInput,
+        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{Input, ModuleId, SpectralFilter, SpectralFilterType, SynthEngine},
@@ -40,7 +40,7 @@ impl SpectralFilterUI {
     }
 }
 
-impl ModuleUI for SpectralFilterUI {
+impl ModuleUi for SpectralFilterUI {
     fn module_id(&self) -> Option<ModuleId> {
         Some(self.module_id)
     }

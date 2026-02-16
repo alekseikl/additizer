@@ -2,7 +2,7 @@ use egui_baseview::egui::{Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUI, modulation_input::ModulationInput, module_label::ModuleLabel,
+        ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
         multi_input::MultiInput, utils::confirm_module_removal,
     },
     synth_engine::{Amplifier, Input, ModuleId, SynthEngine},
@@ -28,7 +28,7 @@ impl AmplifierUI {
     }
 }
 
-impl ModuleUI for AmplifierUI {
+impl ModuleUi for AmplifierUI {
     fn module_id(&self) -> Option<ModuleId> {
         Some(self.module_id)
     }

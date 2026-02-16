@@ -5,18 +5,26 @@ use parking_lot::Mutex;
 use crate::synth_engine::{
     ModuleInput,
     buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER},
-    routing::{DataType, Input, ModuleId, ModuleType, Router},
+    routing::{DataType, Expression, Input, ModuleId, ModuleType, Router},
     types::Sample,
 };
 
 pub struct NoteOnParams {
     pub note: f32,
+    pub velocity: f32,
     pub voice_idx: usize,
     pub reset: bool,
 }
 
 pub struct NoteOffParams {
     pub voice_idx: usize,
+    pub velocity: f32,
+}
+
+pub struct ExpressionParams {
+    pub voice_idx: usize,
+    pub expression: Expression,
+    pub value: Sample,
 }
 
 pub struct ProcessParams<'a> {
@@ -93,6 +101,7 @@ pub trait SynthModule: Any + Send {
     fn output(&self) -> DataType;
 
     fn note_on(&mut self, params: &NoteOnParams) {}
+    fn expression(&mut self, params: &ExpressionParams) {}
     fn note_off(&mut self, params: &NoteOffParams) {}
 
     fn poll_alive_voices(&self, alive_state: &mut [VoiceAlive]) {}

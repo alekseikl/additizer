@@ -15,26 +15,26 @@ use crate::synth_engine::{
     buffer::{Buffer, SpectralBuffer, copy_or_add_buffer},
     config::{ModuleConfig, RoutingConfig},
     modules::{
-        AmplifierConfig, EnvelopeConfig, ExternalParamConfig, LfoConfig, MixerConfig,
-        ModulationFilterConfig, OscillatorConfig, Output, OutputConfig, SpectralBlendConfig,
-        SpectralFilterConfig, SpectralMixerConfig, WaveShaperConfig,
+        AmplifierConfig, EnvelopeConfig, ExpressionsConfig, ExternalParamConfig, LfoConfig,
+        MixerConfig, ModulationFilterConfig, OscillatorConfig, Output, OutputConfig,
+        SpectralBlendConfig, SpectralFilterConfig, SpectralMixerConfig, WaveShaperConfig,
         harmonic_editor::HarmonicEditorConfig,
     },
     routing::{DataType, InputModulationUI, LinkModulation, MAX_VOICES, Router},
-    synth_module::{NoteOffParams, NoteOnParams, ProcessParams, VoiceAlive},
+    synth_module::{ExpressionParams, NoteOffParams, NoteOnParams, ProcessParams, VoiceAlive},
 };
 
 pub use buffer::SPECTRAL_BUFFER_SIZE;
 pub use config::Config;
 pub use modules::{
-    Amplifier, Envelope, EnvelopeCurve, ExternalParam, ExternalParamsBlock, Lfo, LfoShape, Mixer,
-    ModulationFilter, Oscillator, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType,
-    SpectralMixer, WaveShaper,
+    Amplifier, Envelope, EnvelopeCurve, Expressions, ExternalParam, ExternalParamsBlock, Lfo,
+    LfoShape, Mixer, ModulationFilter, Oscillator, ShaperType, SpectralBlend, SpectralFilter,
+    SpectralFilterType, SpectralMixer, WaveShaper,
     harmonic_editor::{self, HarmonicEditor},
 };
 pub use routing::{
-    AvailableInputSourceUI, ConnectedInputSourceUI, Input, MixType, ModuleId, ModuleInput,
-    ModuleLink, ModuleType, OUTPUT_MODULE_ID, VolumeType,
+    AvailableInputSourceUI, ConnectedInputSourceUI, Expression, Input, MixType, ModuleId,
+    ModuleInput, ModuleLink, ModuleType, OUTPUT_MODULE_ID, VolumeType,
 };
 pub use stereo_sample::StereoSample;
 pub use synth_module::SynthModule;
@@ -360,6 +360,7 @@ impl SynthEngine {
     add_module_method!(add_spectral_blend, SpectralBlend, SpectralBlendConfig);
     add_module_method!(add_spectral_mixer, SpectralMixer, SpectralMixerConfig);
     add_module_method!(add_harmonic_editor, HarmonicEditor, HarmonicEditorConfig);
+    add_module_method!(add_expressions, Expressions, ExpressionsConfig);
     add_module_method!(
         add_external_param,
         ExternalParam,
@@ -585,7 +586,7 @@ impl SynthEngine {
         voice_id: Option<i32>,
         channel: u8,
         note: u8,
-        _velocity: f32,
+        velocity: f32,
     ) -> Option<VoiceId> {
         let mut terminated_voice: Option<VoiceId> = None;
 
@@ -611,6 +612,7 @@ impl SynthEngine {
 
         let params = NoteOnParams {
             note: note as f32,
+            velocity,
             voice_idx,
             reset: !stolen,
         };
@@ -628,7 +630,41 @@ impl SynthEngine {
         terminated_voice
     }
 
-    pub fn note_off(&mut self, note: u8) {
+    pub fn handle_expression(
+        &mut self,
+        expression: Expression,
+        note: u8,
+        voice_id: Option<i32>,
+        value: Sample,
+    ) {
+        let voice_idx = if voice_id.is_some() {
+            self.voices.iter().position(|voice| {
+                voice.external_voice_id == voice_id && !matches!(voice.state, VoiceState::Free)
+            })
+        } else {
+            self.voices
+                .iter()
+                .position(|voice| voice.note == note && !matches!(voice.state, VoiceState::Free))
+        };
+
+        let Some(voice_idx) = voice_idx else {
+            return;
+        };
+
+        let params = ExpressionParams {
+            voice_idx,
+            expression,
+            value,
+        };
+
+        for module_id in &self.execution_order {
+            if let Some(module) = get_module_mut!(self, &module_id) {
+                module.expression(&params);
+            }
+        }
+    }
+
+    pub fn note_off(&mut self, note: u8, velocity: f32) {
         let Some(voice_idx) = self
             .voices
             .iter()
@@ -639,7 +675,10 @@ impl SynthEngine {
 
         self.voices[voice_idx].state = VoiceState::Release;
 
-        let params = NoteOffParams { voice_idx };
+        let params = NoteOffParams {
+            voice_idx,
+            velocity,
+        };
 
         for module_id in &self.execution_order {
             if let Some(module) = get_module_mut!(self, &module_id) {
@@ -740,6 +779,7 @@ impl SynthEngine {
             .filter(|(_, voice)| matches!(voice.state, VoiceState::NoteOn))
             .map(|(voice_idx, voice)| NoteOnParams {
                 note: voice.note as f32,
+                velocity: 1.0,
                 voice_idx,
                 reset: true,
             });
@@ -1056,6 +1096,7 @@ impl SynthEngine {
                 ModuleConfig::Lfo(cfg) => restore_module!(Lfo, id, cfg),
                 ModuleConfig::WaveShaper(cfg) => restore_module!(WaveShaper, id, cfg),
                 ModuleConfig::Mixer(cfg) => restore_module!(Mixer, id, cfg),
+                ModuleConfig::Expressions(cfg) => restore_module!(Expressions, id, cfg),
             }
         }
 

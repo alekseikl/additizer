@@ -2,7 +2,7 @@ use egui_baseview::egui::{ComboBox, Grid, Slider, Ui};
 
 use crate::{
     editor::{
-        ModuleUI, direct_input::DirectInput, modulation_input::ModulationInput,
+        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{Input, Mixer, ModuleId, SynthEngine, VolumeType},
@@ -32,7 +32,7 @@ impl MixerUi {
     }
 }
 
-impl ModuleUI for MixerUi {
+impl ModuleUi for MixerUi {
     fn module_id(&self) -> Option<ModuleId> {
         Some(self.module_id)
     }

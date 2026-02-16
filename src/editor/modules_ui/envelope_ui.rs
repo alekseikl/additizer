@@ -2,7 +2,7 @@ use egui_baseview::egui::{Checkbox, ComboBox, Grid, Slider, Ui};
 
 use crate::{
     editor::{
-        ModuleUI, modulation_input::ModulationInput, module_label::ModuleLabel,
+        ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
         stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
     synth_engine::{Envelope, EnvelopeCurve, Input, ModuleId, Sample, SynthEngine},
@@ -122,7 +122,7 @@ impl EnvelopeUI {
     }
 }
 
-impl ModuleUI for EnvelopeUI {
+impl ModuleUi for EnvelopeUI {
     fn module_id(&self) -> Option<ModuleId> {
         Some(self.module_id)
     }

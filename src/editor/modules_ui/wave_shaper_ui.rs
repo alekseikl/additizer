@@ -2,7 +2,7 @@ use egui_baseview::egui::{ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUI, direct_input::DirectInput, modulation_input::ModulationInput,
+        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{Input, ModuleId, ShaperType, SynthEngine, WaveShaper},
@@ -37,7 +37,7 @@ impl WaveShaperUi {
     }
 }
 
-impl ModuleUI for WaveShaperUi {
+impl ModuleUi for WaveShaperUi {
     fn module_id(&self) -> Option<ModuleId> {
         Some(self.module_id)
     }

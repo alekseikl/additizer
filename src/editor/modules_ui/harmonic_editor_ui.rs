@@ -6,7 +6,7 @@ use nih_plug::util::db_to_gain;
 
 use crate::{
     editor::{
-        ModuleUI, gain_slider::GainSlider, module_label::ModuleLabel, stereo_slider::StereoSlider,
+        ModuleUi, gain_slider::GainSlider, module_label::ModuleLabel, stereo_slider::StereoSlider,
         utils::confirm_module_removal,
     },
     synth_engine::{
@@ -340,7 +340,7 @@ impl HarmonicEditorUI {
     }
 }
 
-impl ModuleUI for HarmonicEditorUI {
+impl ModuleUi for HarmonicEditorUI {
     fn module_id(&self) -> Option<ModuleId> {
         Some(self.module_id)
     }

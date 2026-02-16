@@ -2,7 +2,7 @@ use egui_baseview::egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
 
 use crate::{
     editor::{
-        ModuleUI, db_slider::DbSlider, direct_input::DirectInput, gain_slider::GainSlider,
+        ModuleUi, db_slider::DbSlider, direct_input::DirectInput, gain_slider::GainSlider,
         modulation_input::ModulationInput, module_label::ModuleLabel, stereo_slider::StereoSlider,
         utils::confirm_module_removal,
     },
@@ -102,7 +102,7 @@ impl OscillatorUI {
     }
 }
 
-impl ModuleUI for OscillatorUI {
+impl ModuleUi for OscillatorUI {
     fn module_id(&self) -> Option<ModuleId> {
         Some(self.module_id)
     }

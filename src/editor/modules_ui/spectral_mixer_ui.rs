@@ -2,7 +2,7 @@ use egui_baseview::egui::{ComboBox, Grid, Slider, Ui};
 
 use crate::{
     editor::{
-        ModuleUI, direct_input::DirectInput, modulation_input::ModulationInput,
+        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{Input, MixType, ModuleId, SpectralMixer, SynthEngine, VolumeType},
@@ -42,7 +42,7 @@ impl SpectralMixerUi {
     }
 }
 
-impl ModuleUI for SpectralMixerUi {
+impl ModuleUi for SpectralMixerUi {
     fn module_id(&self) -> Option<ModuleId> {
         Some(self.module_id)
     }

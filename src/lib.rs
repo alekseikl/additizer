@@ -12,7 +12,7 @@ mod utils;
 use crate::default_scheme::build_default_scheme;
 use crate::editor::create_editor;
 use crate::params::AdditizerParams;
-use crate::synth_engine::{ExternalParamsBlock, SynthEngine, VoiceId};
+use crate::synth_engine::{Expression, ExternalParamsBlock, SynthEngine, VoiceId};
 pub use egui_baseview::egui;
 use nih_plug::prelude::*;
 use parking_lot::Mutex;
@@ -67,12 +67,52 @@ impl Additizer {
                 let terminated = synth.note_on(voice_id, channel, note, velocity);
                 terminate_voice(terminated);
             }
-            NoteEvent::NoteOff { note, .. } => {
-                synth.note_off(note);
+            NoteEvent::NoteOff { note, velocity, .. } => {
+                synth.note_off(note, velocity);
             }
             NoteEvent::Choke { note, .. } => {
                 let terminated = synth.choke(note);
                 terminate_voice(terminated);
+            }
+            NoteEvent::PolyVolume {
+                voice_id,
+                note,
+                gain,
+                ..
+            } => {
+                synth.handle_expression(Expression::Gain, note, voice_id, gain);
+            }
+            NoteEvent::PolyPan {
+                voice_id,
+                note,
+                pan,
+                ..
+            } => {
+                synth.handle_expression(Expression::Pan, note, voice_id, pan);
+            }
+            NoteEvent::PolyTuning {
+                voice_id,
+                note,
+                tuning,
+                ..
+            } => {
+                synth.handle_expression(Expression::Pitch, note, voice_id, tuning);
+            }
+            NoteEvent::PolyBrightness {
+                voice_id,
+                note,
+                brightness,
+                ..
+            } => {
+                synth.handle_expression(Expression::Timbre, note, voice_id, brightness);
+            }
+            NoteEvent::PolyPressure {
+                voice_id,
+                note,
+                pressure,
+                ..
+            } => {
+                synth.handle_expression(Expression::Pressure, note, voice_id, pressure);
             }
             _ => (),
         }
@@ -191,7 +231,9 @@ impl Plugin for Additizer {
                 next_event = context.next_event();
             }
 
-            process(&mut synth, sample_idx, total_samples, context);
+            if total_samples > sample_idx {
+                process(&mut synth, sample_idx, total_samples, context);
+            }
         });
 
         ProcessStatus::KeepAlive
@@ -207,7 +249,6 @@ impl ClapPlugin for Additizer {
         ClapFeature::Instrument,
         ClapFeature::Synthesizer,
         ClapFeature::Stereo,
-        ClapFeature::Mono,
         ClapFeature::Utility,
     ];
 }

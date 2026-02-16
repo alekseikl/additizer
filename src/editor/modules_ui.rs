@@ -1,5 +1,6 @@
 mod amplifier_ui;
 mod envelope_ui;
+mod expressions_ui;
 mod external_param_ui;
 mod harmonic_editor_ui;
 mod lfo_ui;
@@ -14,6 +15,7 @@ mod wave_shaper_ui;
 
 pub use amplifier_ui::AmplifierUI;
 pub use envelope_ui::EnvelopeUI;
+pub use expressions_ui::ExpressionsUi;
 pub use external_param_ui::ExternalParamUI;
 pub use harmonic_editor_ui::HarmonicEditorUI;
 pub use lfo_ui::LfoUi;
