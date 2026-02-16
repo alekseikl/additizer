@@ -52,7 +52,7 @@ impl OscillatorUI {
         state: &mut GainShapeState,
     ) -> bool {
         let modal = Modal::new(Id::new("show_gain_shape_modal-modal")).show(ui.ctx(), |ui| {
-            ui.heading("Gain shape");
+            ui.heading("Levels shape");
             ui.add_space(20.0);
             ui.set_width(440.0);
 
@@ -82,13 +82,13 @@ impl OscillatorUI {
                 |ui| {
                     if ui.button("Ok").clicked() {
                         self.osc(synth)
-                            .apply_unison_gain_shape(state.center, state.level);
+                            .apply_unison_level_shape(state.center, state.level);
                         ui.close();
                     }
 
                     if ui.button("Apply").clicked() {
                         self.osc(synth)
-                            .apply_unison_gain_shape(state.center, state.level);
+                            .apply_unison_level_shape(state.center, state.level);
                     }
 
                     if ui.button("Cancel").clicked() {
@@ -256,7 +256,7 @@ impl ModuleUI for OscillatorUI {
                 }
 
                 if ui_data.unison > 1 {
-                    ui.label("Unison Gains");
+                    ui.label("Unison Levels");
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
                             for (voice_idx, gain) in ui_data

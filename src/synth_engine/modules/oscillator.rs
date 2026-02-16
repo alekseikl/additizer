@@ -285,7 +285,7 @@ impl Oscillator {
         }
     }
 
-    pub fn apply_unison_gain_shape(&mut self, center: StereoSample, level: StereoSample) {
+    pub fn apply_unison_level_shape(&mut self, center: StereoSample, level: StereoSample) {
         if self.params.unison < 2 {
             return;
         }
@@ -315,6 +315,12 @@ impl Oscillator {
 
                 *gain = db_to_gain(level);
             }
+        }
+
+        let mut cfg = self.config.lock();
+
+        for (channel_cfg, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
+            channel_cfg.unison_gains = channel.params.unison_gains;
         }
     }
 
