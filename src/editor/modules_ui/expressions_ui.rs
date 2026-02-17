@@ -1,4 +1,4 @@
-use egui_baseview::egui::{ComboBox, Grid, Ui};
+use egui_baseview::egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
@@ -91,6 +91,18 @@ impl ModuleUi for ExpressionsUi {
                         }
                     });
                 ui.end_row();
+
+                if matches!(ui_data.expression, Expression::Velocity) {
+                    ui.label("Use Release velocity");
+                    if ui
+                        .add(Checkbox::without_text(&mut ui_data.use_release_velocity))
+                        .changed()
+                    {
+                        self.expr(synth)
+                            .set_use_release_velocity(ui_data.use_release_velocity);
+                    }
+                    ui.end_row();
+                }
 
                 ui.label("Smooth");
                 if ui

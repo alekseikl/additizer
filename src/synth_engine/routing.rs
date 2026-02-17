@@ -184,7 +184,7 @@ pub trait Router {
         voice_idx: usize,
         channel_idx: usize,
         input_buffer: &mut Buffer,
-    ) -> bool;
+    );
 
     fn get_spectral_input(
         &self,

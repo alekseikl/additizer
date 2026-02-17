@@ -18,6 +18,7 @@ use crate::{
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Params {
     expression: Expression,
+    use_release_velocity: bool,
     smooth: Sample,
 }
 
@@ -25,6 +26,7 @@ impl Default for Params {
     fn default() -> Self {
         Self {
             expression: Expression::Velocity,
+            use_release_velocity: false,
             smooth: from_ms(4.0),
         }
     }
@@ -39,6 +41,7 @@ pub struct ExpressionsConfig {
 pub struct ExpressionsUi {
     pub label: String,
     pub expression: Expression,
+    pub use_release_velocity: bool,
     pub smooth: Sample,
 }
 
@@ -101,11 +104,13 @@ impl Expressions {
         ExpressionsUi {
             label: self.label.clone(),
             expression: self.params.expression,
+            use_release_velocity: self.params.use_release_velocity,
             smooth: self.params.smooth,
         }
     }
 
     set_mono_param!(set_expression, expression, Expression);
+    set_mono_param!(set_use_release_velocity, use_release_velocity, bool);
     set_mono_param!(set_smooth, smooth, Sample);
 
     fn transform_value(expression: Expression, channel_idx: usize, value: Sample) -> Sample {
@@ -121,6 +126,13 @@ impl Expressions {
                 }
             }
             _ => value,
+        }
+    }
+
+    fn default_value(expression: Expression) -> Sample {
+        match expression {
+            Expression::Gain => 1.0,
+            _ => 0.0,
         }
     }
 }
@@ -152,7 +164,7 @@ impl SynthModule for Expressions {
     }
 
     fn note_on(&mut self, params: &NoteOnParams) {
-        for channel in &mut self.channels {
+        for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             let voice = &mut channel.voices[params.voice_idx];
 
             if matches!(self.params.expression, Expression::Velocity) {
@@ -160,15 +172,21 @@ impl SynthModule for Expressions {
                 voice.audio_smoother.reset(params.velocity);
                 voice.triggered = false;
             } else {
-                voice.output = 0.0;
-                voice.audio_smoother.reset(0.0);
+                let default_value = Self::default_value(self.params.expression);
+                let value =
+                    Self::transform_value(self.params.expression, channel_idx, default_value);
+
+                voice.output = value;
+                voice.audio_smoother.reset(value);
                 voice.triggered = true;
             }
         }
     }
 
     fn note_off(&mut self, params: &NoteOffParams) {
-        if matches!(self.params.expression, Expression::Velocity) {
+        if matches!(self.params.expression, Expression::Velocity)
+            && self.params.use_release_velocity
+        {
             for channel in &mut self.channels {
                 let voice = &mut channel.voices[params.voice_idx];
 

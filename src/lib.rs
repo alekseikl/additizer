@@ -56,6 +56,8 @@ impl Additizer {
             }
         };
 
+        // nih_log!("Event: {:?}", event);
+
         match event {
             NoteEvent::NoteOn {
                 channel,

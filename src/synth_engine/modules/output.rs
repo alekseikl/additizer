@@ -154,36 +154,36 @@ impl Output {
             .enumerate()
         {
             for (iteration_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
-                if router.read_unmodulated_input(
+                router.read_unmodulated_input(
                     ModuleInput::new(Input::Audio, OUTPUT_MODULE_ID),
                     samples,
                     *voice_idx,
                     channel_idx,
                     &mut self.input_buffer,
-                ) {
-                    let voice = &mut self.channels[channel_idx].voices[*voice_idx];
+                );
 
-                    if voice.killed {
-                        let kill_time = self.params.voice_kill_time.max(from_ms(4.0));
-                        let base = (-5.0 / (sample_rate * kill_time)).exp();
-                        let mut sum = 0.0;
+                let voice = &mut self.channels[channel_idx].voices[*voice_idx];
 
-                        for out in self.input_buffer.iter_mut().take(samples) {
-                            voice.killed_gain *= base;
-                            *out *= voice.killed_gain;
-                            sum += *out * *out;
-                        }
+                if voice.killed {
+                    let kill_time = self.params.voice_kill_time.max(from_ms(4.0));
+                    let base = (-5.0 / (sample_rate * kill_time)).exp();
+                    let mut sum = 0.0;
 
-                        voice.killed_output_power =
-                            (voice.killed_output_power + sum) / (samples + 1) as Sample;
+                    for out in self.input_buffer.iter_mut().take(samples) {
+                        voice.killed_gain *= base;
+                        *out *= voice.killed_gain;
+                        sum += *out * *out;
                     }
 
-                    copy_or_add_buffer(
-                        iteration_idx == 0,
-                        aggregated,
-                        self.input_buffer.iter().copied().take(samples),
-                    );
+                    voice.killed_output_power =
+                        (voice.killed_output_power + sum) / (samples + 1) as Sample;
                 }
+
+                copy_or_add_buffer(
+                    iteration_idx == 0,
+                    aggregated,
+                    self.input_buffer.iter().copied().take(samples),
+                );
             }
 
             for (aggregated, gain_mod) in aggregated

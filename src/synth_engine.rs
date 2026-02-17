@@ -639,12 +639,13 @@ impl SynthEngine {
     ) {
         let voice_idx = if voice_id.is_some() {
             self.voices.iter().position(|voice| {
-                voice.external_voice_id == voice_id && !matches!(voice.state, VoiceState::Free)
+                voice.external_voice_id == voice_id
+                    && !matches!(voice.state, VoiceState::Free | VoiceState::Kill)
             })
         } else {
-            self.voices
-                .iter()
-                .position(|voice| voice.note == note && !matches!(voice.state, VoiceState::Free))
+            self.voices.iter().position(|voice| {
+                voice.note == note && !matches!(voice.state, VoiceState::Free | VoiceState::Kill)
+            })
         };
 
         let Some(voice_idx) = voice_idx else {
@@ -1184,11 +1185,12 @@ impl Router for SynthEngine {
         voice_idx: usize,
         channel_idx: usize,
         input_buffer: &mut Buffer,
-    ) -> bool {
+    ) {
+        let result = &mut input_buffer[..samples];
+
         if let Some(sources) = self.input_sources.get(&input)
             && !sources.is_empty()
         {
-            let result = &mut input_buffer[..samples];
             let modules = sources
                 .iter()
                 .filter_map(|source| get_module!(self, &source.src));
@@ -1204,9 +1206,8 @@ impl Router for SynthEngine {
                     pairs.for_each(|(out, sample)| *out += *sample);
                 }
             }
-            true
         } else {
-            false
+            result.fill(0.0);
         }
     }
 
