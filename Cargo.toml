@@ -32,6 +32,7 @@ parking_lot = { version = "0.12.5", features = ["serde"] }
 smallvec = "1.15.1"
 assert_no_alloc = "1.1.2"
 biquad = "0.5.0"
-wide = "1.0.2"
+wide = "1.1.1"
 const_format = "0.2.35"
 directories = "6.0.0"
+bytemuck = "1.25.0"

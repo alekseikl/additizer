@@ -22,27 +22,9 @@ impl Phase {
         Self((phase * Self::FULL_PHASE) as i64 as u32)
     }
 
-    const fn intermediate_bits<const WAVEFORM_BITS: usize>() -> usize {
-        32 - WAVEFORM_BITS
-    }
-
-    const fn intermediate_mask<const WAVEFORM_BITS: usize>() -> u32 {
-        (1 << Self::intermediate_bits::<WAVEFORM_BITS>()) - 1
-    }
-
-    const fn intermediate_mult<const WAVEFORM_BITS: usize>() -> Sample {
-        ((1 << Self::intermediate_bits::<WAVEFORM_BITS>()) as Sample).recip()
-    }
-
     #[inline(always)]
-    pub fn wave_index<const WAVEFORM_BITS: usize>(&self) -> usize {
-        (self.0 >> Self::intermediate_bits::<WAVEFORM_BITS>()) as usize
-    }
-
-    #[inline(always)]
-    pub fn wave_index_fraction<const WAVEFORM_BITS: usize>(&self) -> Sample {
-        (self.0 & Self::intermediate_mask::<WAVEFORM_BITS>()) as Sample
-            * Self::intermediate_mult::<WAVEFORM_BITS>()
+    pub fn value(&self) -> u32 {
+        self.0
     }
 
     pub fn normalized(&self) -> Sample {
