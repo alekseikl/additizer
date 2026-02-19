@@ -389,12 +389,11 @@ impl Oscillator {
         channel: &ChannelParams,
         buffers: &mut Buffers,
         voice: &mut Voice,
+        mono_voice_buffers: Option<&VoiceBuffers>,
         sample_rate: Sample,
         router: VoiceRouter,
     ) {
         let samples = router.samples;
-        let voice_buffers = &mut voice.buffers;
-        let voice = &mut voice.state;
 
         let gain_mod = router.buffer(Input::Gain, &mut buffers.gain_mod);
         let pitch_shift_mod = router.buffer(Input::PitchShift, &mut buffers.pitch_shift_mod);
@@ -402,53 +401,61 @@ impl Oscillator {
         let freq_shift_mod = router.buffer(Input::FrequencyShift, &mut buffers.frequency_shift_mod);
         let detune_mod = router.buffer(Input::Detune, &mut buffers.detune_mod);
 
-        let wave_octave_fixed = voice.octave + channel.pitch_shift;
+        let voice_buffers = if let Some(mono_voice_buffers) = mono_voice_buffers {
+            mono_voice_buffers
+        } else {
+            let voice_buffers = &mut voice.buffers;
+            let voice = &mut voice.state;
+            let wave_octave_fixed = voice.octave + channel.pitch_shift;
 
-        if voice.triggered {
-            let spectrum_from = router.spectral(Input::Spectrum, false);
+            if voice.triggered {
+                let spectrum_from = router.spectral(Input::Spectrum, false);
+
+                Self::build_wave(
+                    buffers.inverse_fft.as_ref(),
+                    octave_to_freq(wave_octave_fixed + pitch_shift_mod[0])
+                        + channel.frequency_shift
+                        + freq_shift_mod[0],
+                    sample_rate,
+                    spectrum_from,
+                    &mut buffers.tmp_spectral,
+                    &mut buffers.scratch,
+                    &mut voice_buffers.wave_buffers.0,
+                );
+
+                voice_buffers.wave_buffers_swapped = false;
+                voice.triggered = false;
+            }
+
+            let spectrum = router.spectral(Input::Spectrum, true);
+
+            let wave_to = if voice_buffers.wave_buffers_swapped {
+                &mut voice_buffers.wave_buffers.0
+            } else {
+                &mut voice_buffers.wave_buffers.1
+            };
 
             Self::build_wave(
                 buffers.inverse_fft.as_ref(),
-                octave_to_freq(wave_octave_fixed + pitch_shift_mod[0])
+                octave_to_freq(wave_octave_fixed + pitch_shift_mod[router.samples - 1])
                     + channel.frequency_shift
-                    + freq_shift_mod[0],
+                    + freq_shift_mod[router.samples - 1],
                 sample_rate,
-                spectrum_from,
+                spectrum,
                 &mut buffers.tmp_spectral,
                 &mut buffers.scratch,
-                &mut voice_buffers.wave_buffers.0,
+                wave_to,
             );
+            voice_buffers.wave_buffers_swapped = !voice_buffers.wave_buffers_swapped;
 
-            voice_buffers.wave_buffers_swapped = false;
-            voice.triggered = false;
-        }
-
-        let spectrum = router.spectral(Input::Spectrum, true);
-
-        let (wave_from, wave_to) = if voice_buffers.wave_buffers_swapped {
-            (
-                &voice_buffers.wave_buffers.1,
-                &mut voice_buffers.wave_buffers.0,
-            )
-        } else {
-            (
-                &voice_buffers.wave_buffers.0,
-                &mut voice_buffers.wave_buffers.1,
-            )
+            voice_buffers
         };
 
-        Self::build_wave(
-            buffers.inverse_fft.as_ref(),
-            octave_to_freq(wave_octave_fixed + pitch_shift_mod[router.samples - 1])
-                + channel.frequency_shift
-                + freq_shift_mod[router.samples - 1],
-            sample_rate,
-            spectrum,
-            &mut buffers.tmp_spectral,
-            &mut buffers.scratch,
-            wave_to,
-        );
-        voice_buffers.wave_buffers_swapped = !voice_buffers.wave_buffers_swapped;
+        let (wave_from, wave_to) = if voice_buffers.wave_buffers_swapped {
+            (&voice_buffers.wave_buffers.0, &voice_buffers.wave_buffers.1)
+        } else {
+            (&voice_buffers.wave_buffers.1, &voice_buffers.wave_buffers.0)
+        };
 
         struct UnisonVoice {
             pitch_spread: Sample,
@@ -482,6 +489,7 @@ impl Oscillator {
                 )
             };
 
+        let voice = &mut voice.state;
         let freq_phase_mult = Phase::freq_phase_mult(sample_rate);
         let buff_t_mult = (samples as f32).recip();
         let fixed_pitch = voice.octave + channel.pitch_shift;
@@ -584,7 +592,12 @@ impl SynthModule for Oscillator {
     }
 
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
-        for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
+        for (channel_idx, channel) in self
+            .channels
+            .iter_mut()
+            .enumerate()
+            .take(params.spectrum_channels)
+        {
             for voice_idx in params.active_voices {
                 let router = VoiceRouter {
                     router,
@@ -599,9 +612,39 @@ impl SynthModule for Oscillator {
                     &channel.params,
                     &mut self.buffers,
                     &mut channel.voices[*voice_idx],
+                    None,
                     params.sample_rate,
                     router,
                 );
+            }
+        }
+
+        if params.spectrum_channels > 0 && params.spectrum_channels < self.channels.len() {
+            let (left, right) = self.channels.split_at_mut(params.spectrum_channels);
+            let left = &left[0];
+
+            for (idx, channel) in right.iter_mut().enumerate() {
+                let channel_idx = idx + params.spectrum_channels;
+
+                for voice_idx in params.active_voices {
+                    let router = VoiceRouter {
+                        router,
+                        module_id: self.id,
+                        samples: params.samples,
+                        voice_idx: *voice_idx,
+                        channel_idx,
+                    };
+
+                    Self::process_voice(
+                        &self.params,
+                        &channel.params,
+                        &mut self.buffers,
+                        &mut channel.voices[*voice_idx],
+                        Some(&left.voices[*voice_idx].buffers),
+                        params.sample_rate,
+                        router,
+                    );
+                }
             }
         }
     }

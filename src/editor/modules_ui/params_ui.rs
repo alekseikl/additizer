@@ -273,6 +273,15 @@ impl ModuleUi for ParamsUi {
                 }
                 ui.end_row();
 
+                ui.label("Stereo Spectrum");
+                if ui
+                    .add(Checkbox::without_text(&mut ui_data.stereo_spectrum))
+                    .changed()
+                {
+                    synth.set_stereo_spectrum(ui_data.stereo_spectrum);
+                }
+                ui.end_row();
+
                 ui.label("Output");
                 ui.add(MultiInput::new(synth, Input::Audio, OUTPUT_MODULE_ID));
                 ui.end_row();

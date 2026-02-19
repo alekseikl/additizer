@@ -20,7 +20,7 @@ use crate::synth_engine::{
         SpectralBlendConfig, SpectralFilterConfig, SpectralMixerConfig, WaveShaperConfig,
         harmonic_editor::HarmonicEditorConfig,
     },
-    routing::{DataType, InputModulationUI, LinkModulation, MAX_VOICES, Router},
+    routing::{DataType, InputModulationUI, LinkModulation, MAX_VOICES, NUM_CHANNELS, Router},
     synth_module::{ExpressionParams, NoteOffParams, NoteOnParams, ProcessParams, VoiceAlive},
 };
 
@@ -75,6 +75,7 @@ pub struct SynthEngineUiData {
     pub voice_override: VoiceOverride,
     pub voice_kill_time: Sample,
     pub oversampling: bool,
+    pub stereo_spectrum: bool,
     pub playing_voices: usize,
     pub releasing_voices: usize,
     pub killing_voices: usize,
@@ -136,6 +137,7 @@ pub struct SynthEngine {
     block_size: usize,
     num_voices: usize,
     oversampling: bool,
+    spectrum_channels: usize,
     voice_override: VoiceOverride,
     config: Arc<Mutex<Config>>,
     modules: HashMap<ModuleId, Option<Box<dyn SynthModule>>>,
@@ -195,6 +197,7 @@ impl SynthEngine {
             block_size: 0,
             num_voices: 0,
             oversampling: false,
+            spectrum_channels: NUM_CHANNELS,
             voice_override: VoiceOverride::Kill,
             config: Default::default(),
             modules: HashMap::new(),
@@ -270,6 +273,7 @@ impl SynthEngine {
                 .as_deref()
                 .map_or(0.0, |output| output.get_voice_kill_time()),
             oversampling: self.oversampling,
+            stereo_spectrum: self.spectrum_channels == NUM_CHANNELS,
             playing_voices: 0,
             releasing_voices: 0,
             killing_voices: 0,
@@ -328,6 +332,12 @@ impl SynthEngine {
 
     pub fn set_oversampling(&mut self, oversampling: bool) {
         self.oversampling = oversampling;
+        self.config.lock().routing.oversampling = oversampling;
+    }
+
+    pub fn set_stereo_spectrum(&mut self, stereo_spectrum: bool) {
+        self.spectrum_channels = Self::stereo_spectrum_channels(stereo_spectrum);
+        self.config.lock().routing.stereo_spectrum = stereo_spectrum;
     }
 
     pub fn get_output_level(&self) -> StereoSample {
@@ -746,6 +756,7 @@ impl SynthEngine {
             sample_rate,
             buffer_t_step: samples as Sample / sample_rate,
             needs_audio_rate: false,
+            spectrum_channels: self.spectrum_channels,
             active_voices: &active_idx,
         };
 
@@ -1028,6 +1039,10 @@ impl SynthEngine {
         Ok(())
     }
 
+    fn stereo_spectrum_channels(stereo_spectrum: bool) -> usize {
+        if stereo_spectrum { NUM_CHANNELS } else { 1 }
+    }
+
     fn reset(&mut self) {
         let default_cfg = RoutingConfig::default();
 
@@ -1039,6 +1054,7 @@ impl SynthEngine {
         self.block_size = default_cfg.block_size;
         self.voice_override = default_cfg.voice_override;
         self.oversampling = default_cfg.oversampling;
+        self.spectrum_channels = Self::stereo_spectrum_channels(default_cfg.stereo_spectrum);
 
         self.output = Some(Box::new(Output::new(
             Arc::clone(&self.config.lock().output),
@@ -1067,6 +1083,7 @@ impl SynthEngine {
         self.block_size = Self::clamp_block_size(cfg.routing.block_size);
         self.voice_override = cfg.routing.voice_override;
         self.oversampling = cfg.routing.oversampling;
+        self.spectrum_channels = Self::stereo_spectrum_channels(cfg.routing.stereo_spectrum);
 
         macro_rules! restore_module {
             ($module_type:ident, $module_id:ident, $cfg:ident $(, $arg:ident )*) => {{

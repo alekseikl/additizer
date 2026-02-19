@@ -255,7 +255,12 @@ impl SynthModule for SpectralFilter {
     }
 
     fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
-        for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
+        for (channel_idx, channel) in self
+            .channels
+            .iter_mut()
+            .enumerate()
+            .take(process_params.spectrum_channels)
+        {
             for voice_idx in process_params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
                 let router = VoiceRouter {

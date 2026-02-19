@@ -125,7 +125,12 @@ impl SynthModule for SpectralBlend {
     }
 
     fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
-        for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
+        for (channel_idx, channel) in self
+            .channels
+            .iter_mut()
+            .enumerate()
+            .take(process_params.spectrum_channels)
+        {
             let params = &channel.params;
 
             for voice_idx in process_params.active_voices {

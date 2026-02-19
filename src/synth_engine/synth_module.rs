@@ -32,6 +32,7 @@ pub struct ProcessParams<'a> {
     pub sample_rate: Sample,
     pub buffer_t_step: Sample,
     pub needs_audio_rate: bool,
+    pub spectrum_channels: usize,
     pub active_voices: &'a [usize],
 }
 

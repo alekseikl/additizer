@@ -20,6 +20,7 @@ pub struct RoutingConfig {
     pub voice_override: VoiceOverride,
     pub block_size: usize,
     pub oversampling: bool,
+    pub stereo_spectrum: bool,
     pub links: Vec<ModuleLink>,
 }
 
@@ -31,6 +32,7 @@ impl Default for RoutingConfig {
             voice_override: VoiceOverride::Kill,
             block_size: MAX_BLOCK_SIZE,
             oversampling: false,
+            stereo_spectrum: true,
             links: Default::default(),
         }
     }
