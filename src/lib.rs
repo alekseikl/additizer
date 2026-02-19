@@ -43,6 +43,16 @@ impl VoiceId {
     }
 }
 
+trait UrgentEvent {
+    fn urgent(&self) -> bool;
+}
+
+impl UrgentEvent for NoteEvent<()> {
+    fn urgent(&self) -> bool {
+        matches!(self, NoteEvent::NoteOn { .. } | NoteEvent::NoteOff { .. })
+    }
+}
+
 impl Additizer {
     fn process_event(
         synth: &mut SynthEngine,
@@ -224,7 +234,9 @@ impl Plugin for Additizer {
             while let Some(event) = next_event {
                 let sample_idx_to = event.timing() as usize;
 
-                if sample_idx_to > sample_idx {
+                if sample_idx_to > sample_idx
+                    && ((sample_idx_to - sample_idx >= desired_block_size) || event.urgent())
+                {
                     process(&mut synth, sample_idx, sample_idx_to, context);
                     sample_idx = sample_idx_to;
                 }
