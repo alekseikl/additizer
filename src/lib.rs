@@ -43,12 +43,12 @@ impl VoiceId {
     }
 }
 
-trait UrgentEvent {
-    fn urgent(&self) -> bool;
+trait EventUtils {
+    fn is_barrier(&self) -> bool;
 }
 
-impl UrgentEvent for NoteEvent<()> {
-    fn urgent(&self) -> bool {
+impl EventUtils for NoteEvent<()> {
+    fn is_barrier(&self) -> bool {
         matches!(self, NoteEvent::NoteOn { .. } | NoteEvent::NoteOff { .. })
     }
 }
@@ -58,11 +58,10 @@ impl Additizer {
         synth: &mut SynthEngine,
         context: &mut impl ProcessContext<Self>,
         event: NoteEvent<()>,
-        timing: usize,
     ) {
         let mut terminate_voice = |voice: Option<VoiceId>| {
             if let Some(voice) = voice {
-                context.send_event(voice.terminated_event(timing))
+                context.send_event(voice.terminated_event(event.timing() as usize))
             }
         };
 
@@ -145,7 +144,7 @@ impl Plugin for Additizer {
         ..AudioIOLayout::const_default()
     }];
 
-    const MIDI_INPUT: MidiConfig = MidiConfig::Basic;
+    const MIDI_INPUT: MidiConfig = MidiConfig::MidiCCs;
     const SAMPLE_ACCURATE_AUTOMATION: bool = true;
 
     type SysExMessage = ();
@@ -201,53 +200,91 @@ impl Plugin for Additizer {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
+        struct BlocksHandler<'a, 'b> {
+            buffer: &'a mut Buffer<'b>,
+            synth: &'a mut SynthEngine,
+            desired_block_size: usize,
+        }
+
+        impl<'a, 'b> BlocksHandler<'a, 'b> {
+            #[inline]
+            fn process_single_block(
+                &mut self,
+                sample_from: usize,
+                samples: usize,
+                context: &mut dyn ProcessContext<Additizer>,
+            ) {
+                self.synth.process(
+                    samples,
+                    self.buffer
+                        .as_slice()
+                        .iter_mut()
+                        .map(|buff| &mut buff[sample_from..sample_from + samples]),
+                    &mut |voice| context.send_event(voice.terminated_event(sample_from)),
+                );
+            }
+
+            fn process(
+                &mut self,
+                mut sample_from: usize,
+                sample_to: usize,
+                context: &mut dyn ProcessContext<Additizer>,
+            ) -> usize {
+                while sample_to - sample_from >= self.desired_block_size {
+                    self.process_single_block(sample_from, self.desired_block_size, context);
+                    sample_from += self.desired_block_size;
+                }
+
+                sample_from
+            }
+
+            #[inline]
+            fn process_all(
+                &mut self,
+                mut sample_from: usize,
+                sample_to: usize,
+                context: &mut dyn ProcessContext<Additizer>,
+            ) -> usize {
+                while sample_from < sample_to {
+                    let samples = self.desired_block_size.min(sample_to - sample_from);
+
+                    self.process_single_block(sample_from, samples, context);
+                    sample_from += samples;
+                }
+
+                sample_from
+            }
+        }
+
         let mut synth = self.synth_engine.lock();
 
         assert_no_alloc::assert_no_alloc(|| {
             let total_samples = buffer.samples();
             let desired_block_size = synth.block_size();
 
-            let mut process =
-                |synth: &mut SynthEngine,
-                 mut sample_idx: usize,
-                 sample_idx_to: usize,
-                 context: &mut dyn ProcessContext<Self>| {
-                    while sample_idx < sample_idx_to {
-                        let samples = desired_block_size.min(sample_idx_to - sample_idx);
-
-                        synth.process(
-                            samples,
-                            buffer
-                                .as_slice()
-                                .iter_mut()
-                                .map(|buff| &mut buff[sample_idx..sample_idx + samples]),
-                            &mut |voice| context.send_event(voice.terminated_event(sample_idx)),
-                        );
-
-                        sample_idx += samples;
-                    }
-                };
+            let mut blocks_handler = BlocksHandler {
+                buffer,
+                synth: &mut synth,
+                desired_block_size,
+            };
 
             let mut next_event = context.next_event();
-            let mut sample_idx = 0usize;
+            let mut sample_from = 0usize;
 
             while let Some(event) = next_event {
-                let sample_idx_to = event.timing() as usize;
+                let sample_to = event.timing() as usize;
 
-                if sample_idx_to > sample_idx
-                    && ((sample_idx_to - sample_idx >= desired_block_size) || event.urgent())
-                {
-                    process(&mut synth, sample_idx, sample_idx_to, context);
-                    sample_idx = sample_idx_to;
+                if sample_to > sample_from && event.is_barrier() {
+                    sample_from = blocks_handler.process_all(sample_from, sample_to, context);
+                } else if sample_to - sample_from >= desired_block_size {
+                    sample_from = blocks_handler.process(sample_from, sample_to, context);
                 }
 
-                Self::process_event(&mut synth, context, event, sample_idx);
+                Self::process_event(blocks_handler.synth, context, event);
                 next_event = context.next_event();
             }
 
-            if total_samples > sample_idx {
-                process(&mut synth, sample_idx, total_samples, context);
-            }
+            blocks_handler.process_all(sample_from, total_samples, context);
         });
 
         ProcessStatus::KeepAlive
