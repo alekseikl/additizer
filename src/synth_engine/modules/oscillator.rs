@@ -462,12 +462,20 @@ impl Oscillator {
             gain: Sample,
         }
 
-        let (unison_voices, unison_scale): (SmallVec<[UnisonVoice; MAX_UNISON_VOICES]>, Sample) =
+        let (unison_voices, unison_gain): (SmallVec<[UnisonVoice; MAX_UNISON_VOICES]>, Sample) =
             if params.unison > 1 {
                 let center = 0.5 * (params.unison - 1) as Sample;
                 let center_recip = center.recip();
                 let pitch_spread =
                     (0..params.unison).map(|idx| (idx as Sample - center) * center_recip);
+                let unison_gain = channel
+                    .unison_gains
+                    .iter()
+                    .take(params.unison)
+                    .map(|gain| gain * gain)
+                    .sum::<Sample>()
+                    .sqrt()
+                    .recip();
 
                 (
                     pitch_spread
@@ -477,7 +485,7 @@ impl Oscillator {
                             gain: *gain,
                         })
                         .collect(),
-                    (params.unison as Sample).sqrt().recip(),
+                    unison_gain,
                 )
             } else {
                 (
@@ -531,7 +539,7 @@ impl Oscillator {
                     * freq_phase_mult;
             }
 
-            *out = sample * unison_scale * (channel.gain + gain_mod);
+            *out = sample * unison_gain * (channel.gain + gain_mod);
         }
     }
 }
