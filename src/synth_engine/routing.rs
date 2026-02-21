@@ -177,6 +177,14 @@ pub trait Router {
         input_buffer: &'a mut Buffer,
     ) -> Option<&'a Buffer>;
 
+    fn add_input_to(
+        &self,
+        input: ModuleInput,
+        voice_idx: usize,
+        channel_idx: usize,
+        result: &mut [Sample],
+    );
+
     fn read_unmodulated_input(
         &self,
         input: ModuleInput,

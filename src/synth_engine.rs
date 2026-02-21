@@ -12,7 +12,7 @@ use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
-    buffer::{Buffer, SpectralBuffer, copy_or_add_buffer},
+    buffer::{Buffer, SpectralBuffer, add_buffer_slice, copy_or_add_buffer},
     config::{ModuleConfig, RoutingConfig},
     modules::{
         AmplifierConfig, EnvelopeConfig, ExpressionsConfig, ExternalParamConfig, LfoConfig,
@@ -1193,6 +1193,45 @@ impl Router for SynthEngine {
         }
 
         Some(input_buffer)
+    }
+
+    fn add_input_to(
+        &self,
+        input: ModuleInput,
+        voice_idx: usize,
+        channel_idx: usize,
+        result: &mut [Sample],
+    ) {
+        let Some(sources) = self.input_sources.get(&input) else {
+            return;
+        };
+
+        let modules = sources.iter().filter_map(|source| {
+            get_module!(self, &source.src).map(|module| (module, source.amount, source.modulation))
+        });
+
+        for (module, amount, modulation) in modules {
+            let amount = amount[channel_idx];
+            let input = module
+                .get_buffer_output(voice_idx, channel_idx)
+                .iter()
+                .map(|sample| sample * amount);
+
+            if let Some(modulation) = modulation
+                && let Some(module) = get_module!(self, &modulation.src)
+            {
+                let input_mod = module.get_buffer_output(voice_idx, channel_idx).iter();
+
+                add_buffer_slice(
+                    result,
+                    input
+                        .zip(input_mod)
+                        .map(|(input, input_mod)| input * input_mod),
+                );
+            } else {
+                add_buffer_slice(result, input);
+            }
+        }
     }
 
     fn read_unmodulated_input(

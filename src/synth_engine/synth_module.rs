@@ -131,6 +131,7 @@ pub struct VoiceRouter<'a> {
     pub router: &'a dyn Router,
     pub module_id: ModuleId,
     pub samples: usize,
+    pub sample_rate: Sample,
     pub voice_idx: usize,
     pub channel_idx: usize,
 }
@@ -148,6 +149,28 @@ impl<'a> VoiceRouter<'a> {
 
     pub fn buffer(&'a self, input: Input, buff: &'a mut Buffer) -> &'a Buffer {
         self.buffer_opt(input, buff).unwrap_or(&ZEROES_BUFFER)
+    }
+
+    // pub fn add_input_to(&self, input: Input, buff: &'a mut Buffer) {
+    //     self.router.add_input_to(
+    //         ModuleInput::new(input, self.module_id),
+    //         self.voice_idx,
+    //         self.channel_idx,
+    //         &mut buff[..self.samples],
+    //     );
+    // }
+
+    pub fn fill_and_add_input(&self, input: Input, value: Sample, buff: &'a mut Buffer) {
+        let buff = &mut buff[..self.samples];
+
+        buff.fill(value);
+
+        self.router.add_input_to(
+            ModuleInput::new(input, self.module_id),
+            self.voice_idx,
+            self.channel_idx,
+            buff,
+        );
     }
 
     pub fn spectral(&self, input: Input, current: bool) -> &SpectralBuffer {

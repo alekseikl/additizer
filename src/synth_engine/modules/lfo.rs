@@ -308,6 +308,7 @@ impl SynthModule for Lfo {
                     router,
                     module_id: self.id,
                     samples: params.samples,
+                    sample_rate: params.sample_rate,
                     voice_idx: *voice_idx,
                     channel_idx,
                 };

@@ -267,6 +267,7 @@ impl SynthModule for SpectralFilter {
                     router,
                     module_id: self.id,
                     samples: process_params.samples,
+                    sample_rate: process_params.sample_rate,
                     voice_idx: *voice_idx,
                     channel_idx,
                 };
