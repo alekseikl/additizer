@@ -9,7 +9,7 @@ use wide::f32x4;
 use crate::{
     synth_engine::{
         StereoSample,
-        buffer::{BUFFER_SIZE, Buffer, SPECTRUM_BITS, SpectralBuffer, zero_buffer},
+        buffer::{Buffer, SPECTRUM_BITS, SpectralBuffer, zero_buffer},
         phase::Phase,
         routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
         synth_module::{
@@ -109,6 +109,7 @@ pub struct OscillatorUIData {
 struct UnisonVoice {
     rate_from: Sample,
     rate_to: Sample,
+    rate_diff: Sample,
     gain: Sample,
     phase_shift: Sample,
 }
@@ -118,6 +119,7 @@ impl Default for UnisonVoice {
         Self {
             rate_from: 1.0,
             rate_to: 1.0,
+            rate_diff: 0.0,
             gain: 1.0,
             phase_shift: 0.0,
         }
@@ -172,23 +174,6 @@ struct Channel {
     voices: [Voice; MAX_VOICES],
 }
 
-#[derive(Clone, Copy)]
-struct SampleCommon {
-    phase_shift: Phase,
-    pitch_phase_inc: Sample,
-    freq_phase_inc: Sample,
-    buff_t: Sample,
-}
-
-impl SampleCommon {
-    const ZERO: SampleCommon = SampleCommon {
-        phase_shift: Phase::ZERO,
-        pitch_phase_inc: 0.0,
-        freq_phase_inc: 0.0,
-        buff_t: 0.0,
-    };
-}
-
 struct OscState {
     inverse_fft: Arc<dyn ComplexToReal<Sample>>,
     tmp_spectral: DftBuffer,
@@ -197,7 +182,6 @@ struct OscState {
     pitch: Buffer,
     phase_shift: Buffer,
     frequency_shift: Buffer,
-    sample_common: [SampleCommon; BUFFER_SIZE],
 }
 
 impl Default for OscState {
@@ -210,7 +194,6 @@ impl Default for OscState {
             pitch: zero_buffer(),
             phase_shift: zero_buffer(),
             frequency_shift: zero_buffer(),
-            sample_common: [SampleCommon::ZERO; BUFFER_SIZE],
         }
     }
 }
@@ -537,6 +520,7 @@ impl Oscillator {
             calc_params(unison, detune)
         ) {
             state.rate_to = param.rate;
+            state.rate_diff = state.rate_to - state.rate_from;
             state.phase_shift = *phase;
             state.gain = *gain;
         }
@@ -597,49 +581,42 @@ impl Oscillator {
         let freq_phase_mult = Phase::freq_phase_mult(router.sample_rate);
         let buff_t_mult = (samples as f32).recip();
 
-        for (common, pitch, phase_shift, freq_shift, sample_idx) in izip!(
-            &mut osc_state.sample_common,
+        for (out, pitch, phase_shift, freq_shift, gain, sample_idx) in izip!(
+            &mut voice.output,
             &osc_state.pitch,
             &osc_state.phase_shift,
             &osc_state.frequency_shift,
+            &osc_state.gain,
             0..samples
         ) {
-            common.buff_t = sample_idx as Sample * buff_t_mult;
-            common.phase_shift = Phase::from_normalized(*phase_shift);
-            common.pitch_phase_inc = octave_to_freq(*pitch) * freq_phase_mult;
-            common.freq_phase_inc = freq_shift * freq_phase_mult;
-        }
+            let mut sample: Sample = 0.0;
+            let buff_t = sample_idx as Sample * buff_t_mult;
+            let phase_shift = Phase::from_normalized(*phase_shift);
+            let pitch_phase_inc = octave_to_freq(*pitch) * freq_phase_mult;
+            let freq_phase_inc = freq_shift * freq_phase_mult;
 
-        let output = &mut voice.output[..samples];
-
-        output.fill(0.0);
-
-        for (phase, unison_voice) in voice
-            .phases
-            .iter_mut()
-            .zip(voice.unison.iter())
-            .take(params.unison)
-        {
-            let rate_diff = unison_voice.rate_to - unison_voice.rate_from;
-            let phase_shift = Phase::from_normalized(unison_voice.phase_shift);
-
-            for (out, per_sample) in output.iter_mut().zip(&osc_state.sample_common) {
-                let read_phase = *phase + phase_shift + per_sample.phase_shift;
+            for (phase, unison_voice) in voice
+                .phases
+                .iter_mut()
+                .zip(voice.unison.iter())
+                .take(params.unison)
+            {
+                let read_phase =
+                    *phase + phase_shift + Phase::from_normalized(unison_voice.phase_shift);
                 let idx = read_phase.wave_index::<WAVEFORM_BITS>();
                 let t = read_phase.wave_index_fraction::<WAVEFORM_BITS>();
 
-                *out +=
-                    Self::get_interpolated_sample(wave_from, wave_to, per_sample.buff_t, idx, t)
-                        * unison_voice.gain;
+                sample += Self::get_interpolated_sample(wave_from, wave_to, buff_t, idx, t)
+                    * unison_voice.gain;
 
-                *phase += per_sample.pitch_phase_inc
-                    * rate_diff.mul_add(per_sample.buff_t, unison_voice.rate_from)
-                    + per_sample.freq_phase_inc;
+                *phase += pitch_phase_inc
+                    * unison_voice
+                        .rate_diff
+                        .mul_add(buff_t, unison_voice.rate_from)
+                    + freq_phase_inc;
             }
-        }
 
-        for (out, gain) in output.iter_mut().zip(&osc_state.gain) {
-            *out *= voice.unison_gain * gain;
+            *out = sample * voice.unison_gain * gain;
         }
     }
 }
