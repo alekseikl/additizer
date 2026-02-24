@@ -7,13 +7,23 @@ use crate::{
         utils::confirm_module_removal,
     },
     show_modal,
-    synth_engine::{Input, ModuleId, Oscillator, OscillatorUIData, StereoSample, SynthEngine},
+    synth_engine::{
+        Input, ModuleId, Sample, StereoSample, SynthEngine,
+        oscillator::{Oscillator, OscillatorUIData, PhasesDst},
+    },
 };
 
 struct GainShapeState {
     center: StereoSample,
     level: StereoSample, // dB
     to: bool,
+}
+
+struct RandomizePhaseState {
+    from: Sample,
+    to: Sample,
+    stereo_spread: Sample,
+    dst: PhasesDst,
 }
 
 pub struct OscillatorUI {
@@ -23,6 +33,7 @@ pub struct OscillatorUI {
     phases_shift_to: bool,
     gains_to: bool,
     gain_shape_state: Option<Box<GainShapeState>>,
+    randomize_phase_state: Option<Box<RandomizePhaseState>>,
 }
 
 impl OscillatorUI {
@@ -34,6 +45,7 @@ impl OscillatorUI {
             phases_shift_to: false,
             gains_to: false,
             gain_shape_state: None,
+            randomize_phase_state: None,
         }
     }
 
@@ -90,6 +102,82 @@ impl OscillatorUI {
                             state.center,
                             state.level,
                             state.to,
+                        );
+                    }
+
+                    if ui.button("Cancel").clicked() {
+                        ui.close();
+                    }
+                },
+            );
+        });
+
+        !modal.should_close()
+    }
+
+    fn show_randomize_phases_modal(
+        &mut self,
+        synth: &mut SynthEngine,
+        ui: &mut Ui,
+        state: &mut RandomizePhaseState,
+    ) -> bool {
+        let modal = Modal::new(Id::new("show_randomize_phases_modal")).show(ui.ctx(), |ui| {
+            ui.heading("Randomize phases");
+            ui.add_space(20.0);
+            ui.set_width(440.0);
+
+            let mut from = state.from.into();
+            let mut to = state.to.into();
+            let mut stereo_spread = state.stereo_spread.into();
+
+            Grid::new("randomize_phases-grid")
+                .num_columns(2)
+                .spacing([40.0, 24.0])
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.label("From");
+                    ui.add(StereoSlider::new(&mut from).default_value(0.0).precision(2));
+                    ui.end_row();
+
+                    ui.label("To");
+                    ui.add(StereoSlider::new(&mut to).default_value(1.0).precision(2));
+                    ui.end_row();
+
+                    ui.label("Stereo spread");
+                    ui.add(
+                        StereoSlider::new(&mut stereo_spread)
+                            .default_value(1.0)
+                            .precision(2),
+                    );
+                    ui.end_row();
+                });
+
+            state.from = from.left();
+            state.to = to.left();
+            state.stereo_spread = stereo_spread.left();
+
+            ui.add_space(40.0);
+
+            Sides::new().show(
+                ui,
+                |_ui| {},
+                |ui| {
+                    if ui.button("Ok").clicked() {
+                        self.osc(synth).randomize_phases(
+                            state.from,
+                            state.to,
+                            state.stereo_spread,
+                            state.dst,
+                        );
+                        ui.close();
+                    }
+
+                    if ui.button("Apply").clicked() {
+                        self.osc(synth).randomize_phases(
+                            state.from,
+                            state.to,
+                            state.stereo_spread,
+                            state.dst,
                         );
                     }
 
@@ -186,11 +274,24 @@ impl OscillatorUI {
         };
 
         ui.label("Initial Phase");
-        if let Some((voice_idx, phase)) =
-            Self::show_phases(ui, params_iter().map(|p| p.initial_phase))
-        {
-            self.osc(synth).set_initial_phase(voice_idx, phase);
-        }
+        ui.vertical(|ui| {
+            if let Some((voice_idx, phase)) =
+                Self::show_phases(ui, params_iter().map(|p| p.initial_phase))
+            {
+                self.osc(synth).set_initial_phase(voice_idx, phase);
+            }
+
+            ui.add_space(8.0);
+
+            if ui.button("Randomize").clicked() {
+                self.randomize_phase_state = Some(Box::new(RandomizePhaseState {
+                    from: 0.0,
+                    to: 1.0,
+                    stereo_spread: 0.1,
+                    dst: PhasesDst::Initial,
+                }));
+            }
+        });
         ui.end_row();
 
         ui.label("Phase Shift");
@@ -199,17 +300,34 @@ impl OscillatorUI {
                 from_to_toggle(ui, &mut self.phases_shift_to);
             });
 
-            if self.phases_shift_to {
-                if let Some((voice_idx, phase)) =
-                    Self::show_phases(ui, params_iter().map(|p| p.phase_shift_to))
+            ui.vertical(|ui| {
+                if self.phases_shift_to {
+                    if let Some((voice_idx, phase)) =
+                        Self::show_phases(ui, params_iter().map(|p| p.phase_shift_to))
+                    {
+                        self.osc(synth).set_unison_phase_to(voice_idx, phase);
+                    }
+                } else if let Some((voice_idx, phase)) =
+                    Self::show_phases(ui, params_iter().map(|p| p.phase_shift))
                 {
-                    self.osc(synth).set_unison_phase_to(voice_idx, phase);
+                    self.osc(synth).set_unison_phase(voice_idx, phase);
                 }
-            } else if let Some((voice_idx, phase)) =
-                Self::show_phases(ui, params_iter().map(|p| p.phase_shift))
-            {
-                self.osc(synth).set_unison_phase(voice_idx, phase);
-            }
+
+                ui.add_space(8.0);
+
+                if ui.button("Randomize").clicked() {
+                    self.randomize_phase_state = Some(Box::new(RandomizePhaseState {
+                        from: 0.0,
+                        to: 1.0,
+                        stereo_spread: 0.1,
+                        dst: if self.phases_shift_to {
+                            PhasesDst::To
+                        } else {
+                            PhasesDst::From
+                        },
+                    }));
+                }
+            });
         });
         ui.end_row();
 
@@ -394,6 +512,13 @@ impl ModuleUi for OscillatorUI {
         ui.add_space(40.0);
 
         show_modal!(self, gain_shape_state, show_gain_shape_modal, synth, ui);
+        show_modal!(
+            self,
+            randomize_phase_state,
+            show_randomize_phases_modal,
+            synth,
+            ui
+        );
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
             synth.remove_module(self.module_id);

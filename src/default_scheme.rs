@@ -1,7 +1,7 @@
 use crate::{
     synth_engine::{
         Amplifier, Envelope, EnvelopeCurve, HarmonicEditor, Input, ModuleInput, OUTPUT_MODULE_ID,
-        Oscillator, SpectralFilter, SynthEngine, SynthModule,
+        SpectralFilter, SynthEngine, SynthModule, oscillator::Oscillator,
     },
     utils::{from_ms, st_to_octave},
 };

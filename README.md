@@ -1,7 +1,6 @@
 ## Overview
-Additizer is a modular additive synthesis plugin that builds sounds from harmonic spectra,
+Additizer is a modular synthesis plugin that builds sounds from harmonic spectra,
 then shapes and mixes them through a graph of audio and spectral-processing modules.
-It targets real-time use, with per-voice processing, modulation sources, and stereo support.
 Every slider in UI is stereo, individual channel can be changed by dragging with right mouse button.
 
 ## Synth Engine Modules
@@ -9,7 +8,7 @@ Every slider in UI is stereo, individual channel can be changed by dragging with
 - `Spectral Filter`: Spectral-domain filter (LP/HP/BP/BS/peaking) with optional linear-phase and 4th-order responses.
 - `Spectral Mixer`: Mixes multiple spectral inputs with selectable mix/volume types and output gain.
 - `Spectral Blend`: Crossfades between two spectra with a blend control.
-- `Oscillator`: Spectral additive oscillator with unison, detune, pitch shift, phase and frequency shift (through-zero FM).
+- `Oscillator`: Spectral oscillator with unison, detune, pitch shift, phase and frequency shift (through-zero FM).
 - `Envelope`: ADSR-style envelope generator with selectable curve shapes per stage.
 - `LFO`: Low-frequency oscillator (triangle/square/sine) for modulation, with skew and bipolar modes.
 - `Mixer`: Mixes multiple audio inputs with per-input level/gain and output volume control.

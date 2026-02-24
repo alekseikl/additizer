@@ -7,8 +7,9 @@ use crate::synth_engine::{
     MAX_BLOCK_SIZE, VoiceOverride, WaveShaperConfig,
     modules::{
         AmplifierConfig, EnvelopeConfig, ExpressionsConfig, ExternalParamConfig, LfoConfig,
-        MixerConfig, ModulationFilterConfig, OscillatorConfig, OutputConfig, SpectralBlendConfig,
+        MixerConfig, ModulationFilterConfig, OutputConfig, SpectralBlendConfig,
         SpectralFilterConfig, SpectralMixerConfig, harmonic_editor::HarmonicEditorConfig,
+        oscillator::OscillatorConfig,
     },
     routing::{MAX_VOICES, MIN_MODULE_ID, ModuleId, ModuleLink},
 };

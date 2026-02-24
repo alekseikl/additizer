@@ -1,7 +1,9 @@
-use std::{any::Any, f32, sync::Arc};
+use std::{any::Any, array, f32, sync::Arc};
 
 use itertools::izip;
 use nih_plug::util::db_to_gain;
+use rand::RngExt;
+use rand_pcg::Pcg32;
 use realfft::{ComplexToReal, RealFftPlanner};
 use serde::{Deserialize, Serialize};
 use wide::f32x4;
@@ -230,6 +232,7 @@ struct Channel {
 
 struct OscState {
     inverse_fft: Arc<dyn ComplexToReal<Sample>>,
+    random: Pcg32,
     tmp_spectral: DftBuffer,
     scratch: DftBuffer,
     gain: Buffer,
@@ -242,6 +245,7 @@ impl Default for OscState {
     fn default() -> Self {
         Self {
             inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE),
+            random: Pcg32::new(420, 1337),
             tmp_spectral: zero_dft_buffer(),
             scratch: zero_dft_buffer(),
             gain: zero_buffer(),
@@ -280,6 +284,13 @@ macro_rules! get_unison_param {
                 .map(|channel| channel.params.unison[$voice_idx].$param),
         )
     };
+}
+
+#[derive(Clone, Copy)]
+pub enum PhasesDst {
+    Initial,
+    From,
+    To,
 }
 
 pub struct Oscillator {
@@ -406,6 +417,43 @@ impl Oscillator {
                 };
 
                 *gain = db_to_gain(level);
+            }
+        }
+
+        let mut cfg = self.config.lock();
+
+        for (channel_cfg, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
+            channel_cfg.unison = channel.params.unison.clone();
+        }
+    }
+
+    pub fn randomize_phases(
+        &mut self,
+        from: Sample,
+        to: Sample,
+        stereo_spread: Sample,
+        dst: PhasesDst,
+    ) {
+        let from = from.clamp(0.0, 1.0);
+        let to = to.clamp(0.0, 1.0);
+
+        let randoms: [StereoSample; MAX_UNISON_VOICES] = array::from_fn(|_| {
+            let left = from + (to - from) * self.osc_state.random.random::<Sample>();
+            let right = left - 0.5 * stereo_spread
+                + stereo_spread * self.osc_state.random.random::<Sample>();
+
+            StereoSample::new(left, right).clamp(0.0, 1.0)
+        });
+
+        for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
+            for (unison, random) in channel.params.unison.iter_mut().zip(randoms) {
+                let phase = match dst {
+                    PhasesDst::Initial => &mut unison.initial_phase,
+                    PhasesDst::From => &mut unison.phase_shift,
+                    PhasesDst::To => &mut unison.phase_shift_to,
+                };
+
+                *phase = random[channel_idx];
             }
         }
 

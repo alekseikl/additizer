@@ -19,12 +19,9 @@ nih_plug = { git = "https://github.com/alekseikl/nih-plug.git", branch = "my_fix
 egui-baseview = { git = "https://github.com/alekseikl/egui-baseview.git", branch = "my_fixes" }
 baseview = { git = "https://github.com/blepfx/baseview.git", rev = "3724a00c970a9cd10a3494fa3c37bca66d631bb7" }
 raw-window-handle = "0.5"
-
 crossbeam = "0.8"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
-rand = "0.9"
-rand_pcg = "0.9"
 itertools = "0.14"
 topo_sort = "0.4"
 realfft = { version = "3.5" }
@@ -35,3 +32,6 @@ biquad = "0.5.0"
 wide = "1.0.2"
 const_format = "0.2.35"
 directories = "6.0.0"
+
+rand = "0.10.0"
+rand_pcg = "0.10.1"

@@ -16,9 +16,10 @@ use crate::synth_engine::{
     config::{ModuleConfig, RoutingConfig},
     modules::{
         AmplifierConfig, EnvelopeConfig, ExpressionsConfig, ExternalParamConfig, LfoConfig,
-        MixerConfig, ModulationFilterConfig, OscillatorConfig, Output, OutputConfig,
-        SpectralBlendConfig, SpectralFilterConfig, SpectralMixerConfig, WaveShaperConfig,
+        MixerConfig, ModulationFilterConfig, Output, OutputConfig, SpectralBlendConfig,
+        SpectralFilterConfig, SpectralMixerConfig, WaveShaperConfig,
         harmonic_editor::HarmonicEditorConfig,
+        oscillator::{Oscillator, OscillatorConfig},
     },
     routing::{DataType, InputModulationUI, LinkModulation, MAX_VOICES, NUM_CHANNELS, Router},
     synth_module::{ExpressionParams, NoteOffParams, NoteOnParams, ProcessParams, VoiceAlive},
@@ -28,9 +29,10 @@ pub use buffer::SPECTRAL_BUFFER_SIZE;
 pub use config::Config;
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, Expressions, ExternalParam, ExternalParamsBlock, Lfo,
-    LfoShape, Mixer, ModulationFilter, Oscillator, OscillatorUIData, ShaperType, SpectralBlend,
-    SpectralFilter, SpectralFilterType, SpectralMixer, WaveShaper,
+    LfoShape, Mixer, ModulationFilter, ShaperType, SpectralBlend, SpectralFilter,
+    SpectralFilterType, SpectralMixer, WaveShaper,
     harmonic_editor::{self, HarmonicEditor},
+    oscillator::{self},
 };
 pub use routing::{
     AvailableInputSourceUI, ConnectedInputSourceUI, Expression, Input, MixType, ModuleId,
