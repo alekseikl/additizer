@@ -53,6 +53,8 @@ pub enum Input {
     SpectrumMix(usize),
     SpectrumTo,
     Blend,
+    PhasesBlend,
+    GainsBlend,
     LowFrequency,
     Cutoff,
     Q,

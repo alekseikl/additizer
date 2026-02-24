@@ -4,7 +4,7 @@ use crate::synth_engine::{
     StereoSample,
     buffer::{Buffer, zero_buffer},
     routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
-    synth_module::{InputInfo, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
+    synth_module::{ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
     types::Sample,
 };
 use itertools::izip;
@@ -134,10 +134,10 @@ impl SynthModule for Amplifier {
         ModuleType::Amplifier
     }
 
-    fn inputs(&self) -> &'static [InputInfo] {
-        static INPUTS: &[InputInfo] = &[
-            InputInfo::buffer(Input::Audio),
-            InputInfo::buffer(Input::Gain),
+    fn inputs(&self) -> &'static [ModInput] {
+        static INPUTS: &[ModInput] = &[
+            ModInput::buffer(Input::Audio),
+            ModInput::buffer(Input::Gain),
         ];
 
         INPUTS

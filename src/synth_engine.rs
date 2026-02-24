@@ -28,8 +28,8 @@ pub use buffer::SPECTRAL_BUFFER_SIZE;
 pub use config::Config;
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, Expressions, ExternalParam, ExternalParamsBlock, Lfo,
-    LfoShape, Mixer, ModulationFilter, Oscillator, ShaperType, SpectralBlend, SpectralFilter,
-    SpectralFilterType, SpectralMixer, WaveShaper,
+    LfoShape, Mixer, ModulationFilter, Oscillator, OscillatorUIData, ShaperType, SpectralBlend,
+    SpectralFilter, SpectralFilterType, SpectralMixer, WaveShaper,
     harmonic_editor::{self, HarmonicEditor},
 };
 pub use routing::{

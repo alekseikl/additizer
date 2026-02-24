@@ -10,7 +10,7 @@ use crate::{
         routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
         smoother::Smoother,
         synth_module::{
-            InputInfo, ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule,
+            ModInput, ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule,
             VoiceAlive, VoiceRouter,
         },
         types::{Sample, ScalarOutput},
@@ -410,14 +410,14 @@ impl SynthModule for Envelope {
         ModuleType::Envelope
     }
 
-    fn inputs(&self) -> &'static [InputInfo] {
-        static INPUTS: &[InputInfo] = &[
-            InputInfo::scalar(Input::Delay),
-            InputInfo::scalar(Input::Attack),
-            InputInfo::scalar(Input::Hold),
-            InputInfo::scalar(Input::Decay),
-            InputInfo::scalar(Input::Sustain),
-            InputInfo::scalar(Input::Release),
+    fn inputs(&self) -> &'static [ModInput] {
+        static INPUTS: &[ModInput] = &[
+            ModInput::scalar(Input::Delay),
+            ModInput::scalar(Input::Attack),
+            ModInput::scalar(Input::Hold),
+            ModInput::scalar(Input::Decay),
+            ModInput::scalar(Input::Sustain),
+            ModInput::scalar(Input::Release),
         ];
 
         INPUTS

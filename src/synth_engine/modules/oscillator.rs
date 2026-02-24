@@ -13,11 +13,11 @@ use crate::{
         phase::Phase,
         routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
         synth_module::{
-            InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, SynthModule, VoiceRouter,
+            ModInput, ModuleConfigBox, NoteOnParams, ProcessParams, SynthModule, VoiceRouter,
         },
         types::{ComplexSample, Sample},
     },
-    utils::{note_to_octave, octave_to_freq, st_to_octave},
+    utils::{note_to_octave, pitch_to_freq, st_to_octave},
 };
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
@@ -62,26 +62,55 @@ impl Default for Params {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+pub struct UnisonParams {
+    initial_phase: Sample,
+    phase_shift: Sample,
+    phase_shift_to: Sample,
+    gain: Sample,
+    gain_to: Sample,
+}
+
+impl Default for UnisonParams {
+    fn default() -> Self {
+        Self {
+            initial_phase: 0.0,
+            phase_shift: 0.0,
+            phase_shift_to: 0.0,
+            gain: 1.0,
+            gain_to: 1.0,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ChannelParams {
     gain: Sample,
     pitch_shift: Sample, //Octaves
     detune: Sample,      //Octaves
     phase_shift: Sample,
     frequency_shift: Sample,
-    unison_phases: [Sample; MAX_UNISON_VOICES],
-    unison_gains: [Sample; MAX_UNISON_VOICES],
+    phases_blend: Sample,
+    gains_blend: Sample,
+    unison: [UnisonParams; MAX_UNISON_VOICES],
 }
 
 impl Default for ChannelParams {
     fn default() -> Self {
+        let mut unison = <[UnisonParams; MAX_UNISON_VOICES]>::default();
+
+        for (voice, phase) in unison.iter_mut().zip(&INITIAL_PHASES) {
+            voice.initial_phase = *phase;
+        }
+
         Self {
             gain: 1.0,
             pitch_shift: 0.0,
             detune: st_to_octave(0.2),
             phase_shift: 0.0,
             frequency_shift: 0.0,
-            unison_phases: INITIAL_PHASES,
-            unison_gains: [1.0; MAX_UNISON_VOICES],
+            phases_blend: 0.0,
+            gains_blend: 0.0,
+            unison,
         }
     }
 }
@@ -93,6 +122,14 @@ pub struct OscillatorConfig {
     channels: [ChannelParams; NUM_CHANNELS],
 }
 
+pub struct UnisonUiParams {
+    pub initial_phase: StereoSample,
+    pub phase_shift: StereoSample,
+    pub phase_shift_to: StereoSample,
+    pub gain: StereoSample,
+    pub gain_to: StereoSample,
+}
+
 pub struct OscillatorUIData {
     pub label: String,
     pub gain: StereoSample,
@@ -102,16 +139,23 @@ pub struct OscillatorUIData {
     pub frequency_shift: StereoSample,
     pub unison: usize,
     pub reset_phase: bool,
-    pub unison_phases: [StereoSample; MAX_UNISON_VOICES],
-    pub unison_gains: [StereoSample; MAX_UNISON_VOICES],
+    pub phases_blend: StereoSample,
+    pub gains_blend: StereoSample,
+    pub unison_params: [UnisonUiParams; MAX_UNISON_VOICES],
 }
 
 struct UnisonVoice {
     rate_from: Sample,
     rate_to: Sample,
     rate_diff: Sample,
-    gain: Sample,
-    phase_shift: Sample,
+
+    phase_shift_from: Sample,
+    phase_shift_to: Sample,
+    phase_shift_diff: Sample,
+
+    gain_from: Sample,
+    gain_to: Sample,
+    gain_diff: Sample,
 }
 
 impl Default for UnisonVoice {
@@ -120,16 +164,24 @@ impl Default for UnisonVoice {
             rate_from: 1.0,
             rate_to: 1.0,
             rate_diff: 0.0,
-            gain: 1.0,
-            phase_shift: 0.0,
+
+            phase_shift_from: 0.0,
+            phase_shift_to: 0.0,
+            phase_shift_diff: 0.0,
+
+            gain_from: 1.0,
+            gain_to: 1.0,
+            gain_diff: 0.0,
         }
     }
 }
 
 struct VoiceState {
-    octave: Sample,
+    pitch: Sample, // Octave units
     triggered: bool,
-    unison_gain: Sample,
+    unison_gain_from: Sample,
+    unison_gain_to: Sample,
+    unison_gain_diff: Sample,
     unison: [UnisonVoice; MAX_UNISON_VOICES],
     phases: [Phase; MAX_UNISON_VOICES],
     output: Buffer,
@@ -138,10 +190,12 @@ struct VoiceState {
 impl Default for VoiceState {
     fn default() -> Self {
         Self {
-            octave: 0.0,
+            pitch: 0.0,
             triggered: false,
             phases: Default::default(),
-            unison_gain: 1.0,
+            unison_gain_from: 1.0,
+            unison_gain_to: 1.0,
+            unison_gain_diff: 0.0,
             unison: Default::default(),
             output: zero_buffer(),
         }
@@ -198,6 +252,36 @@ impl Default for OscState {
     }
 }
 
+macro_rules! set_unison_param {
+    ($fn_name:ident, $param:ident) => {
+        set_unison_param!($fn_name, $param, *$param);
+    };
+    ($fn_name:ident, $param:ident, $transform:expr) => {
+        pub fn $fn_name(&mut self, voice_idx: usize, $param: StereoSample) {
+            for (channel, $param) in self.channels.iter_mut().zip($param.iter()) {
+                channel.params.unison[voice_idx].$param = $transform;
+            }
+
+            let mut cfg = self.config.lock();
+
+            for (channel_cfg, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
+                channel_cfg.unison[voice_idx].$param = channel.params.unison[voice_idx].$param;
+            }
+        }
+    };
+}
+
+macro_rules! get_unison_param {
+    ($self:ident, $param:ident, $voice_idx:expr) => {
+        StereoSample::from_iter(
+            $self
+                .channels
+                .iter()
+                .map(|channel| channel.params.unison[$voice_idx].$param),
+        )
+    };
+}
+
 pub struct Oscillator {
     id: ModuleId,
     label: String,
@@ -232,21 +316,16 @@ impl Oscillator {
             detune: get_stereo_param!(self, detune),
             phase_shift: get_stereo_param!(self, phase_shift),
             frequency_shift: get_stereo_param!(self, frequency_shift),
-            unison: self.params.unison,
             reset_phase: self.params.reset_phase,
-            unison_phases: std::array::from_fn(|i| {
-                StereoSample::from_iter(
-                    self.channels
-                        .iter()
-                        .map(|channel| channel.params.unison_phases[i]),
-                )
-            }),
-            unison_gains: std::array::from_fn(|i| {
-                StereoSample::from_iter(
-                    self.channels
-                        .iter()
-                        .map(|channel| channel.params.unison_gains[i]),
-                )
+            unison: self.params.unison,
+            phases_blend: get_stereo_param!(self, phases_blend),
+            gains_blend: get_stereo_param!(self, gains_blend),
+            unison_params: std::array::from_fn(|i| UnisonUiParams {
+                initial_phase: get_unison_param!(self, initial_phase, i),
+                phase_shift: get_unison_param!(self, phase_shift, i),
+                phase_shift_to: get_unison_param!(self, phase_shift_to, i),
+                gain: get_unison_param!(self, gain, i),
+                gain_to: get_unison_param!(self, gain_to, i),
             }),
         }
     }
@@ -269,31 +348,30 @@ impl Oscillator {
     set_stereo_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
     set_stereo_param!(set_frequency_shift, frequency_shift);
 
-    pub fn set_unison_phase(&mut self, voice_idx: usize, phase: StereoSample) {
-        for (channel, phase) in self.channels.iter_mut().zip(phase.iter()) {
-            channel.params.unison_phases[voice_idx] = *phase;
-        }
+    set_stereo_param!(set_phases_blend, phases_blend, phases_blend.clamp(0.0, 1.0));
+    set_stereo_param!(set_gains_blend, gains_blend, gains_blend.clamp(0.0, 1.0));
 
-        let mut cfg = self.config.lock();
+    set_unison_param!(
+        set_initial_phase,
+        initial_phase,
+        initial_phase.clamp(-1.0, 1.0)
+    );
+    set_unison_param!(set_unison_phase, phase_shift, phase_shift.clamp(-1.0, 1.0));
+    set_unison_param!(
+        set_unison_phase_to,
+        phase_shift_to,
+        phase_shift_to.clamp(-1.0, 1.0)
+    );
 
-        for (channel_cfg, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-            channel_cfg.unison_phases[voice_idx] = channel.params.unison_phases[voice_idx];
-        }
-    }
+    set_unison_param!(set_unison_gain, gain, gain.clamp(0.0, 10.0));
+    set_unison_param!(set_unison_gain_to, gain_to, gain_to.clamp(0.0, 10.0));
 
-    pub fn set_unison_gain(&mut self, voice_idx: usize, gain: StereoSample) {
-        for (channel, gain) in self.channels.iter_mut().zip(gain.iter()) {
-            channel.params.unison_gains[voice_idx] = *gain;
-        }
-
-        let mut cfg = self.config.lock();
-
-        for (channel_cfg, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-            channel_cfg.unison_gains[voice_idx] = channel.params.unison_gains[voice_idx];
-        }
-    }
-
-    pub fn apply_unison_level_shape(&mut self, center: StereoSample, level: StereoSample) {
+    pub fn apply_unison_level_shape(
+        &mut self,
+        center: StereoSample,
+        level: StereoSample,
+        to: bool,
+    ) {
         if self.params.unison < 2 {
             return;
         }
@@ -304,13 +382,19 @@ impl Oscillator {
             let center = center.clamp(0.0, 1.0);
             let step = ((self.params.unison - 1) as Sample).recip();
 
-            for (idx, gain) in channel
+            for (idx, unison_params) in channel
                 .params
-                .unison_gains
+                .unison
                 .iter_mut()
                 .enumerate()
                 .take(self.params.unison)
             {
+                let gain = if to {
+                    &mut unison_params.gain_to
+                } else {
+                    &mut unison_params.gain
+                };
+
                 let pos = idx as Sample * step;
 
                 let level = if pos < center {
@@ -328,7 +412,7 @@ impl Oscillator {
         let mut cfg = self.config.lock();
 
         for (channel_cfg, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-            channel_cfg.unison_gains = channel.params.unison_gains;
+            channel_cfg.unison = channel.params.unison.clone();
         }
     }
 
@@ -420,7 +504,7 @@ impl Oscillator {
 
                 Self::build_wave(
                     osc_state.inverse_fft.as_ref(),
-                    octave_to_freq(osc_state.pitch[0]) + osc_state.frequency_shift[0],
+                    pitch_to_freq(osc_state.pitch[0]) + osc_state.frequency_shift[0],
                     router.sample_rate,
                     spectrum_from,
                     &mut osc_state.tmp_spectral,
@@ -441,7 +525,7 @@ impl Oscillator {
 
             Self::build_wave(
                 osc_state.inverse_fft.as_ref(),
-                octave_to_freq(osc_state.pitch[router.samples - 1])
+                pitch_to_freq(osc_state.pitch[router.samples - 1])
                     + osc_state.frequency_shift[router.samples - 1],
                 router.sample_rate,
                 spectrum,
@@ -471,69 +555,101 @@ impl Oscillator {
 
         if unison < 2 {
             voice.unison[0] = UnisonVoice::default();
-            voice.unison_gain = 1.0;
+            voice.unison_gain_from = 1.0;
+            voice.unison_gain_to = 1.0;
+            voice.unison_gain_diff = 0.0;
             return;
         }
 
-        struct UnisonParam {
+        struct StateUpdate {
             rate: Sample,
+            phase_shift: Sample,
+            gain: Sample,
         }
 
-        fn calc_params(unison: usize, detune: Sample) -> impl Iterator<Item = UnisonParam> {
+        fn calc_update(
+            unison: usize,
+            current: bool,
+            channel: &ChannelParams,
+            router: &VoiceRouter,
+        ) -> impl Iterator<Item = StateUpdate> {
+            let detune = (channel.detune + router.scalar(Input::Detune, false)).min(MAX_DETUNE);
+            let phases_blend =
+                (channel.phases_blend + router.scalar(Input::PhasesBlend, current)).clamp(0.0, 1.0);
+            let gains_blend =
+                channel.gains_blend + router.scalar(Input::GainsBlend, current).clamp(0.0, 1.0);
             let center = 0.5 * (unison - 1) as Sample;
             let center_recip = center.recip();
 
-            (0..unison).map(move |idx| {
-                let spread = (idx as Sample - center) * center_recip;
+            channel
+                .unison
+                .iter()
+                .take(unison)
+                .enumerate()
+                .map(move |(idx, param)| {
+                    let spread = (idx as Sample - center) * center_recip;
 
-                UnisonParam {
-                    rate: (spread * detune).exp2(),
-                }
-            })
+                    StateUpdate {
+                        rate: (spread * detune).exp2(),
+                        phase_shift: (param.phase_shift_to - param.phase_shift)
+                            .mul_add(phases_blend, param.phase_shift),
+                        gain: (param.gain_to - param.gain).mul_add(gains_blend, param.gain),
+                    }
+                })
+        }
+
+        fn cal_unison_gain(gains: impl Iterator<Item = Sample>) -> Sample {
+            gains
+                .sum::<Sample>()
+                .sqrt()
+                .max(1.0) //Don't amplify
+                .recip()
         }
 
         if voice.triggered {
-            let detune = (channel.detune + router.scalar(Input::Detune, false)).min(MAX_DETUNE);
-
-            for (state, gain, phase, param) in izip!(
+            for (state, update) in izip!(
                 &mut voice.unison,
-                &channel.unison_gains,
-                &channel.unison_phases,
-                calc_params(unison, detune)
+                calc_update(unison, false, channel, router)
             ) {
-                state.rate_from = param.rate;
-                state.phase_shift = *phase;
-                state.gain = *gain;
+                state.rate_from = update.rate;
+                state.phase_shift_from = update.phase_shift;
+                state.gain_from = update.gain;
             }
+
+            voice.unison_gain_from = cal_unison_gain(
+                voice
+                    .unison
+                    .iter()
+                    .take(unison)
+                    .map(|state| state.gain_from),
+            );
         } else {
             for state in &mut voice.unison {
                 state.rate_from = state.rate_to;
+                state.phase_shift_from = state.phase_shift_to;
+                state.gain_from = state.gain_to;
             }
+
+            voice.unison_gain_from = voice.unison_gain_to;
         }
 
-        let detune = (channel.detune + router.scalar(Input::Detune, true)).min(MAX_DETUNE);
-
-        for (state, gain, phase, param) in izip!(
+        for (state, update) in izip!(
             &mut voice.unison,
-            &channel.unison_gains,
-            &channel.unison_phases,
-            calc_params(unison, detune)
+            calc_update(unison, true, channel, router)
         ) {
-            state.rate_to = param.rate;
+            state.rate_to = update.rate;
+            state.phase_shift_to = update.phase_shift;
+            state.gain_to = update.gain;
+
             state.rate_diff = state.rate_to - state.rate_from;
-            state.phase_shift = *phase;
-            state.gain = *gain;
+            state.phase_shift_diff = state.phase_shift_to - state.phase_shift_from;
+            state.gain_diff = state.gain_to - state.gain_from;
         }
 
-        voice.unison_gain = channel
-            .unison_gains
-            .iter()
-            .take(unison)
-            .map(|gain| gain * gain)
-            .sum::<Sample>()
-            .sqrt()
-            .max(1.0) //Don't amplify
-            .recip();
+        voice.unison_gain_to =
+            cal_unison_gain(voice.unison.iter().take(unison).map(|state| state.gain_to));
+
+        voice.unison_gain_diff = voice.unison_gain_to - voice.unison_gain_from;
     }
 
     fn process_voice(
@@ -549,7 +665,7 @@ impl Oscillator {
         router.fill_and_add_input(Input::Gain, channel.gain, &mut osc_state.gain);
         router.fill_and_add_input(
             Input::PitchShift,
-            voice.state.octave + channel.pitch_shift,
+            voice.state.pitch + channel.pitch_shift,
             &mut osc_state.pitch,
         );
         router.fill_and_add_input(
@@ -592,31 +708,35 @@ impl Oscillator {
             let mut sample: Sample = 0.0;
             let buff_t = sample_idx as Sample * buff_t_mult;
             let phase_shift = Phase::from_normalized(*phase_shift);
-            let pitch_phase_inc = octave_to_freq(*pitch) * freq_phase_mult;
+            let pitch_phase_inc = pitch_to_freq(*pitch) * freq_phase_mult;
             let freq_phase_inc = freq_shift * freq_phase_mult;
 
-            for (phase, unison_voice) in voice
+            for (phase, uv) in voice
                 .phases
                 .iter_mut()
                 .zip(voice.unison.iter())
                 .take(params.unison)
             {
-                let read_phase =
-                    *phase + phase_shift + Phase::from_normalized(unison_voice.phase_shift);
+                let read_phase = *phase
+                    + phase_shift
+                    + Phase::from_normalized(
+                        uv.phase_shift_diff.mul_add(buff_t, uv.phase_shift_from),
+                    );
                 let idx = read_phase.wave_index::<WAVEFORM_BITS>();
                 let t = read_phase.wave_index_fraction::<WAVEFORM_BITS>();
 
                 sample += Self::get_interpolated_sample(wave_from, wave_to, buff_t, idx, t)
-                    * unison_voice.gain;
+                    * uv.gain_diff.mul_add(buff_t, uv.gain_from);
 
                 *phase += pitch_phase_inc
-                    * unison_voice
-                        .rate_diff
-                        .mul_add(buff_t, unison_voice.rate_from)
-                    + freq_phase_inc;
+                    .mul_add(uv.rate_diff.mul_add(buff_t, uv.rate_from), freq_phase_inc);
             }
 
-            *out = sample * voice.unison_gain * gain;
+            *out = sample
+                * gain
+                * voice
+                    .unison_gain_diff
+                    .mul_add(buff_t, voice.unison_gain_from);
         }
     }
 }
@@ -639,14 +759,16 @@ impl SynthModule for Oscillator {
         ModuleType::Oscillator
     }
 
-    fn inputs(&self) -> &'static [InputInfo] {
-        static INPUTS: &[InputInfo] = &[
-            InputInfo::spectral(Input::Spectrum),
-            InputInfo::buffer(Input::Gain),
-            InputInfo::buffer(Input::PitchShift),
-            InputInfo::buffer(Input::PhaseShift),
-            InputInfo::buffer(Input::FrequencyShift),
-            InputInfo::buffer(Input::Detune),
+    fn inputs(&self) -> &'static [ModInput] {
+        static INPUTS: &[ModInput] = &[
+            ModInput::spectral(Input::Spectrum),
+            ModInput::buffer(Input::Gain),
+            ModInput::buffer(Input::PitchShift),
+            ModInput::buffer(Input::PhaseShift),
+            ModInput::buffer(Input::FrequencyShift),
+            ModInput::scalar(Input::Detune),
+            ModInput::scalar(Input::PhasesBlend),
+            ModInput::scalar(Input::GainsBlend),
         ];
 
         INPUTS
@@ -660,11 +782,15 @@ impl SynthModule for Oscillator {
         for channel in self.channels.iter_mut() {
             let voice = &mut channel.voices[params.voice_idx];
 
-            voice.state.octave = note_to_octave(params.note);
+            voice.state.pitch = note_to_octave(params.note);
             voice.state.triggered = true;
 
             if params.reset || self.params.reset_phase {
-                voice.state.phases = Default::default();
+                for (phase, unison_voice) in
+                    voice.state.phases.iter_mut().zip(&channel.params.unison)
+                {
+                    *phase = Phase::from_normalized(unison_voice.initial_phase);
+                }
             }
         }
     }

@@ -8,8 +8,7 @@ use crate::{
         routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
         smoother::Smoother,
         synth_module::{
-            ExpressionParams, InputInfo, ModuleConfigBox, NoteOffParams, NoteOnParams,
-            ProcessParams,
+            ExpressionParams, ModInput, ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams,
         },
     },
     utils::{from_ms, st_to_octave},
@@ -155,7 +154,7 @@ impl SynthModule for Expressions {
         ModuleType::Expressions
     }
 
-    fn inputs(&self) -> &'static [InputInfo] {
+    fn inputs(&self) -> &'static [ModInput] {
         &[]
     }
 

@@ -8,7 +8,7 @@ use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule, VolumeType,
     buffer::{Buffer, copy_or_add_buffer, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
-    synth_module::{InputInfo, ModuleConfigBox, ProcessParams, VoiceRouter},
+    synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter},
 };
 
 const MAX_INPUTS: usize = 6;
@@ -314,28 +314,28 @@ impl SynthModule for Mixer {
         ModuleType::Mixer
     }
 
-    fn inputs(&self) -> &'static [InputInfo] {
-        static INPUTS: &[InputInfo] = &[
-            InputInfo::buffer(Input::Gain),
-            InputInfo::buffer(Input::Level),
-            InputInfo::buffer(Input::AudioMix(0)),
-            InputInfo::buffer(Input::GainMix(0)),
-            InputInfo::buffer(Input::LevelMix(0)),
-            InputInfo::buffer(Input::AudioMix(1)),
-            InputInfo::buffer(Input::GainMix(1)),
-            InputInfo::buffer(Input::LevelMix(1)),
-            InputInfo::buffer(Input::AudioMix(2)),
-            InputInfo::buffer(Input::GainMix(2)),
-            InputInfo::buffer(Input::LevelMix(2)),
-            InputInfo::buffer(Input::AudioMix(3)),
-            InputInfo::buffer(Input::GainMix(3)),
-            InputInfo::buffer(Input::LevelMix(3)),
-            InputInfo::buffer(Input::AudioMix(4)),
-            InputInfo::buffer(Input::GainMix(4)),
-            InputInfo::buffer(Input::LevelMix(4)),
-            InputInfo::buffer(Input::AudioMix(5)),
-            InputInfo::buffer(Input::GainMix(5)),
-            InputInfo::buffer(Input::LevelMix(5)),
+    fn inputs(&self) -> &'static [ModInput] {
+        static INPUTS: &[ModInput] = &[
+            ModInput::buffer(Input::Gain),
+            ModInput::buffer(Input::Level),
+            ModInput::buffer(Input::AudioMix(0)),
+            ModInput::buffer(Input::GainMix(0)),
+            ModInput::buffer(Input::LevelMix(0)),
+            ModInput::buffer(Input::AudioMix(1)),
+            ModInput::buffer(Input::GainMix(1)),
+            ModInput::buffer(Input::LevelMix(1)),
+            ModInput::buffer(Input::AudioMix(2)),
+            ModInput::buffer(Input::GainMix(2)),
+            ModInput::buffer(Input::LevelMix(2)),
+            ModInput::buffer(Input::AudioMix(3)),
+            ModInput::buffer(Input::GainMix(3)),
+            ModInput::buffer(Input::LevelMix(3)),
+            ModInput::buffer(Input::AudioMix(4)),
+            ModInput::buffer(Input::GainMix(4)),
+            ModInput::buffer(Input::LevelMix(4)),
+            ModInput::buffer(Input::AudioMix(5)),
+            ModInput::buffer(Input::GainMix(5)),
+            ModInput::buffer(Input::LevelMix(5)),
         ];
 
         INPUTS

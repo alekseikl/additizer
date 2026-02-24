@@ -8,7 +8,7 @@ use crate::synth_engine::{
     phase::Phase,
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
     smoother::Smoother,
-    synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
+    synth_module::{ModInput, ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
     types::ScalarOutput,
 };
 
@@ -270,11 +270,11 @@ impl SynthModule for Lfo {
         ModuleType::Lfo
     }
 
-    fn inputs(&self) -> &'static [InputInfo] {
-        static INPUTS: &[InputInfo] = &[
-            InputInfo::scalar(Input::LowFrequency),
-            InputInfo::scalar(Input::PhaseShift),
-            InputInfo::scalar(Input::Skew),
+    fn inputs(&self) -> &'static [ModInput] {
+        static INPUTS: &[ModInput] = &[
+            ModInput::scalar(Input::LowFrequency),
+            ModInput::scalar(Input::PhaseShift),
+            ModInput::scalar(Input::Skew),
         ];
 
         INPUTS

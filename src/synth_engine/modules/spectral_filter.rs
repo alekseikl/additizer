@@ -9,7 +9,7 @@ use crate::synth_engine::{
     buffer::SpectralBuffer,
     routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
     synth_module::{
-        InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, SynthModule, VoiceRouter,
+        ModInput, ModuleConfigBox, NoteOnParams, ProcessParams, SynthModule, VoiceRouter,
     },
     types::{ComplexSample, Sample, SpectralOutput},
 };
@@ -233,12 +233,12 @@ impl SynthModule for SpectralFilter {
         ModuleType::SpectralFilter
     }
 
-    fn inputs(&self) -> &'static [InputInfo] {
-        static INPUTS: &[InputInfo] = &[
-            InputInfo::spectral(Input::Spectrum),
-            InputInfo::scalar(Input::Cutoff),
-            InputInfo::scalar(Input::Q),
-            InputInfo::scalar(Input::Drive),
+    fn inputs(&self) -> &'static [ModInput] {
+        static INPUTS: &[ModInput] = &[
+            ModInput::spectral(Input::Spectrum),
+            ModInput::scalar(Input::Cutoff),
+            ModInput::scalar(Input::Q),
+            ModInput::scalar(Input::Drive),
         ];
 
         INPUTS

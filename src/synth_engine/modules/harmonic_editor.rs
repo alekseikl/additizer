@@ -8,7 +8,7 @@ use crate::{
         biquad_filter::BiquadFilter,
         buffer::{HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer},
         routing::{DataType, ModuleId, ModuleType, NUM_CHANNELS, Router},
-        synth_module::{InputInfo, ModuleConfigBox, ProcessParams, SynthModule},
+        synth_module::{ModInput, ModuleConfigBox, ProcessParams, SynthModule},
         types::ComplexSample,
     },
     utils::NthElement,
@@ -259,7 +259,7 @@ impl SynthModule for HarmonicEditor {
         ModuleType::HarmonicEditor
     }
 
-    fn inputs(&self) -> &'static [InputInfo] {
+    fn inputs(&self) -> &'static [ModInput] {
         &[]
     }
 

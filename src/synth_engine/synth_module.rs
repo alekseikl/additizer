@@ -36,12 +36,12 @@ pub struct ProcessParams<'a> {
     pub active_voices: &'a [usize],
 }
 
-pub struct InputInfo {
+pub struct ModInput {
     pub input: Input,
     pub data_type: DataType,
 }
 
-impl InputInfo {
+impl ModInput {
     pub const fn buffer(input: Input) -> Self {
         Self {
             input,
@@ -98,7 +98,7 @@ pub trait SynthModule: Any + Send {
     fn label(&self) -> String;
     fn set_label(&mut self, label: String);
 
-    fn inputs(&self) -> &'static [InputInfo];
+    fn inputs(&self) -> &'static [ModInput];
     fn output(&self) -> DataType;
 
     fn note_on(&mut self, params: &NoteOnParams) {}

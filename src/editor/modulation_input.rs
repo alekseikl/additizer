@@ -65,7 +65,9 @@ impl<'a> ModulationInput<'a> {
                 slider.range(-24.0..=24.0).default_value(0.0).units(" dB")
             }
             Input::Distortion => slider.range(0.0..=48.0).default_value(0.0).units(" dB"),
-            Input::Blend => slider.range(0.0..=1.0).default_value(1.0).precision(2),
+            Input::Blend | Input::GainsBlend | Input::PhasesBlend => {
+                slider.range(0.0..=1.0).default_value(1.0).precision(2)
+            }
             Input::Cutoff => slider
                 .range(-2.0..=10.0)
                 .display_scale(12.0)
@@ -156,7 +158,7 @@ impl<'a> ModulationInput<'a> {
                 .default_value(0.0)
                 .allow_inverse()
                 .units(" dB"),
-            Input::Blend => slider
+            Input::Blend | Input::GainsBlend | Input::PhasesBlend => slider
                 .range(0.0..=1.0)
                 .default_value(1.0)
                 .precision(2)

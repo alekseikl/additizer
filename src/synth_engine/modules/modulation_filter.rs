@@ -6,7 +6,7 @@ use crate::synth_engine::{
     Input, ModuleId, ModuleInput, ModuleType, Sample, SynthModule,
     buffer::{Buffer, ZEROES_BUFFER, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
-    synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams},
+    synth_module::{ModInput, ModuleConfigBox, NoteOnParams, ProcessParams},
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -165,8 +165,8 @@ impl SynthModule for ModulationFilter {
         ModuleType::ModulationFilter
     }
 
-    fn inputs(&self) -> &'static [InputInfo] {
-        static INPUTS: &[InputInfo] = &[InputInfo::buffer(Input::Audio)];
+    fn inputs(&self) -> &'static [ModInput] {
+        static INPUTS: &[ModInput] = &[ModInput::buffer(Input::Audio)];
 
         INPUTS
     }

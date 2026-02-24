@@ -6,7 +6,7 @@ use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::SpectralBuffer,
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
-    synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
+    synth_module::{ModInput, ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
     types::SpectralOutput,
 };
 
@@ -104,11 +104,11 @@ impl SynthModule for SpectralBlend {
         ModuleType::SpectralBlend
     }
 
-    fn inputs(&self) -> &'static [InputInfo] {
-        static INPUTS: &[InputInfo] = &[
-            InputInfo::spectral(Input::Spectrum),
-            InputInfo::spectral(Input::SpectrumTo),
-            InputInfo::scalar(Input::Blend),
+    fn inputs(&self) -> &'static [ModInput] {
+        static INPUTS: &[ModInput] = &[
+            ModInput::spectral(Input::Spectrum),
+            ModInput::spectral(Input::SpectrumTo),
+            ModInput::scalar(Input::Blend),
         ];
 
         INPUTS

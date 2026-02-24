@@ -7,7 +7,7 @@ use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::{Buffer, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
-    synth_module::{InputInfo, ModuleConfigBox, ProcessParams, VoiceRouter},
+    synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter},
 };
 
 #[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -171,11 +171,11 @@ impl SynthModule for WaveShaper {
         ModuleType::WaveShaper
     }
 
-    fn inputs(&self) -> &'static [InputInfo] {
-        static INPUTS: &[InputInfo] = &[
-            InputInfo::buffer(Input::Audio),
-            InputInfo::buffer(Input::ClippingLevel),
-            InputInfo::buffer(Input::Distortion),
+    fn inputs(&self) -> &'static [ModInput] {
+        static INPUTS: &[ModInput] = &[
+            ModInput::buffer(Input::Audio),
+            ModInput::buffer(Input::ClippingLevel),
+            ModInput::buffer(Input::Distortion),
         ];
 
         INPUTS

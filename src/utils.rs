@@ -12,9 +12,10 @@ pub const fn note_to_octave(note: Sample) -> Sample {
     (note - 69.0) / 12.0
 }
 
+// Pitch in octave units
 #[inline(always)]
-pub fn octave_to_freq(octave: Sample) -> Sample {
-    octave.exp2() * 440.0
+pub fn pitch_to_freq(pitch: Sample) -> Sample {
+    pitch.exp2() * 440.0
 }
 
 #[inline(always)]

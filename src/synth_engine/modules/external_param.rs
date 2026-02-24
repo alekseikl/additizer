@@ -10,7 +10,7 @@ use crate::{
         buffer::{Buffer, zero_buffer},
         routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
         smoother::Smoother,
-        synth_module::{InputInfo, ModuleConfigBox, NoteOnParams, ProcessParams},
+        synth_module::{ModInput, ModuleConfigBox, NoteOnParams, ProcessParams},
         types::ScalarOutput,
     },
     utils::from_ms,
@@ -156,7 +156,7 @@ impl SynthModule for ExternalParam {
         ModuleType::ExternalParam
     }
 
-    fn inputs(&self) -> &'static [InputInfo] {
+    fn inputs(&self) -> &'static [ModInput] {
         &[]
     }
 

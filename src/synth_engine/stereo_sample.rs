@@ -45,10 +45,15 @@ impl StereoSample {
         self.channels.iter()
     }
 
-    pub fn clamp(&self, min: Sample, max: Sample) -> Self {
+    #[inline]
+    pub fn map(&self, f: impl FnMut(Sample) -> Sample) -> Self {
         Self {
-            channels: self.channels.map(|channel| channel.clamp(min, max)),
+            channels: self.channels.map(f),
         }
+    }
+
+    pub fn clamp(&self, min: Sample, max: Sample) -> Self {
+        self.map(|channel| channel.clamp(min, max))
     }
 
     pub fn powf(&self, n: Sample) -> Self {

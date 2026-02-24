@@ -20,7 +20,7 @@ pub use external_param::{ExternalParam, ExternalParamConfig, ExternalParamsBlock
 pub use lfo::{Lfo, LfoConfig, LfoShape};
 pub use mixer::{Mixer, MixerConfig};
 pub use modulation_filter::{ModulationFilter, ModulationFilterConfig};
-pub use oscillator::{Oscillator, OscillatorConfig};
+pub use oscillator::{Oscillator, OscillatorConfig, OscillatorUIData};
 pub use output::{Output, OutputConfig};
 pub use spectral_blend::{SpectralBlend, SpectralBlendConfig};
 pub use spectral_filter::{SpectralFilter, SpectralFilterConfig, SpectralFilterType};
