@@ -1,6 +1,6 @@
 ## Overview
-Additizer is a modular synthesis plugin that builds sounds from harmonic spectra,
-then shapes and mixes them through a graph of audio and spectral-processing modules.
+Additizer is a modular synthesis plugin. It consists of a wavetable-like oscillator inspired by Matt Tytel's Vital 
+and a set of modules that process audio in frequency and time domains.
 Every slider in UI is stereo, individual channel can be changed by dragging with right mouse button.
 
 ## Synth Engine Modules
