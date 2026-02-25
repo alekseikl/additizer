@@ -630,13 +630,14 @@ impl Oscillator {
             channel: &ChannelParams,
             router: &VoiceRouter,
         ) -> impl Iterator<Item = StateUpdate> {
-            let detune = (channel.detune + router.scalar(Input::Detune, current)).min(MAX_DETUNE);
+            let detune =
+                (channel.detune + router.scalar(Input::Detune, current)).clamp(0.0, MAX_DETUNE);
             let detune_power = (channel.detune_power + router.scalar(Input::DetunePower, current))
                 .clamp(-5.0, 5.0);
             let phases_blend =
                 (channel.phases_blend + router.scalar(Input::PhasesBlend, current)).clamp(0.0, 1.0);
             let gains_blend =
-                channel.gains_blend + router.scalar(Input::GainsBlend, current).clamp(0.0, 1.0);
+                (channel.gains_blend + router.scalar(Input::GainsBlend, current)).clamp(0.0, 1.0);
             let center = 0.5 * (unison - 1) as Sample;
             let center_recip = center.recip();
 
@@ -660,6 +661,7 @@ impl Oscillator {
 
         fn cal_unison_gain(gains: impl Iterator<Item = Sample>) -> Sample {
             gains
+                .map(|gain| gain * gain)
                 .sum::<Sample>()
                 .sqrt()
                 .max(1.0) //Don't amplify
@@ -684,7 +686,7 @@ impl Oscillator {
                     .map(|state| state.gain_from),
             );
         } else {
-            for state in &mut voice.unison {
+            for state in voice.unison.iter_mut().take(unison) {
                 state.rate_from = state.rate_to;
                 state.phase_shift_from = state.phase_shift_to;
                 state.gain_from = state.gain_to;
