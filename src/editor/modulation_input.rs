@@ -84,6 +84,7 @@ impl<'a> ModulationInput<'a> {
                 .display_scale(1200.0)
                 .default_value(st_to_octave(0.2))
                 .units(" cents"),
+            Input::DetunePower => slider.range(0.0..=5.0).default_value(0.0).allow_inverse(),
             Input::PitchShift => slider
                 .range(0.0..=st_to_octave(60.0))
                 .skew(1.6)
@@ -182,6 +183,7 @@ impl<'a> ModulationInput<'a> {
                 .default_value(st_to_octave(0.2))
                 .allow_inverse()
                 .units(" cents"),
+            Input::DetunePower => slider.range(0.0..=5.0).default_value(0.0).allow_inverse(),
             Input::PitchShift => slider
                 .range(0.0..=8.0)
                 .skew(1.8)

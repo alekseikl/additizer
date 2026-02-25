@@ -486,6 +486,20 @@ impl ModuleUi for OscillatorUI {
                 }
                 ui.end_row();
 
+                ui.label("Detune power");
+                if ui
+                    .add(ModulationInput::new(
+                        &mut ui_data.detune_power,
+                        synth,
+                        Input::DetunePower,
+                        self.module_id,
+                    ))
+                    .changed()
+                {
+                    self.osc(synth).set_detune_power(ui_data.detune_power);
+                }
+                ui.end_row();
+
                 ui.label("Reset phase");
                 if ui
                     .add(Checkbox::without_text(&mut ui_data.reset_phase))

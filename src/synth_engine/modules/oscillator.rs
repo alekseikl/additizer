@@ -19,7 +19,7 @@ use crate::{
         },
         types::{ComplexSample, Sample},
     },
-    utils::{note_to_octave, pitch_to_freq, st_to_octave},
+    utils::{note_to_octave, pitch_to_freq, power_scale, st_to_octave},
 };
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
@@ -27,15 +27,9 @@ const WAVEFORM_SIZE: usize = 1 << WAVEFORM_BITS;
 const WAVEFORM_PAD_LEFT: usize = 1;
 const WAVEFORM_PAD_RIGHT: usize = 2;
 const WAVEFORM_BUFFER_SIZE: usize = WAVEFORM_SIZE + WAVEFORM_PAD_LEFT + WAVEFORM_PAD_RIGHT;
-
 const DFT_BUFFER_SIZE: usize = (1 << (WAVEFORM_BITS - 1)) + 1;
 
 const MAX_UNISON_VOICES: usize = 16;
-
-const INITIAL_PHASES: [Sample; MAX_UNISON_VOICES] = [
-    0.0, 0.9068176, 0.6544455, 0.26577616, 0.24667478, 0.12834072, 0.5805929, 0.55541587,
-    0.58291245, 0.03298676, 0.8845756, 0.96093744, 0.42001683, 0.63606197, 0.28810132, 0.5167134,
-];
 
 type WaveformBuffer = [Sample; WAVEFORM_BUFFER_SIZE];
 type DftBuffer = [ComplexSample; DFT_BUFFER_SIZE];
@@ -89,6 +83,7 @@ pub struct ChannelParams {
     gain: Sample,
     pitch_shift: Sample, //Octaves
     detune: Sample,      //Octaves
+    detune_power: Sample,
     phase_shift: Sample,
     frequency_shift: Sample,
     phases_blend: Sample,
@@ -98,6 +93,12 @@ pub struct ChannelParams {
 
 impl Default for ChannelParams {
     fn default() -> Self {
+        static INITIAL_PHASES: [Sample; MAX_UNISON_VOICES] = [
+            0.0, 0.9068176, 0.6544455, 0.26577616, 0.24667478, 0.12834072, 0.5805929, 0.55541587,
+            0.58291245, 0.03298676, 0.8845756, 0.96093744, 0.42001683, 0.63606197, 0.28810132,
+            0.5167134,
+        ];
+
         let mut unison = <[UnisonParams; MAX_UNISON_VOICES]>::default();
 
         for (voice, phase) in unison.iter_mut().zip(&INITIAL_PHASES) {
@@ -108,6 +109,7 @@ impl Default for ChannelParams {
             gain: 1.0,
             pitch_shift: 0.0,
             detune: st_to_octave(0.2),
+            detune_power: 0.0,
             phase_shift: 0.0,
             frequency_shift: 0.0,
             phases_blend: 0.0,
@@ -137,6 +139,7 @@ pub struct OscillatorUIData {
     pub gain: StereoSample,
     pub pitch_shift: StereoSample,
     pub detune: StereoSample,
+    pub detune_power: StereoSample,
     pub phase_shift: StereoSample,
     pub frequency_shift: StereoSample,
     pub unison: usize,
@@ -325,6 +328,7 @@ impl Oscillator {
             gain: get_stereo_param!(self, gain),
             pitch_shift: get_stereo_param!(self, pitch_shift),
             detune: get_stereo_param!(self, detune),
+            detune_power: get_stereo_param!(self, detune_power),
             phase_shift: get_stereo_param!(self, phase_shift),
             frequency_shift: get_stereo_param!(self, frequency_shift),
             reset_phase: self.params.reset_phase,
@@ -356,6 +360,11 @@ impl Oscillator {
         pitch_shift.clamp(st_to_octave(-60.0), st_to_octave(60.0))
     );
     set_stereo_param!(set_detune, detune, detune.clamp(0.0, st_to_octave(1.0)));
+    set_stereo_param!(
+        set_detune_power,
+        detune_power,
+        detune_power.clamp(-5.0, 5.0)
+    );
     set_stereo_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
     set_stereo_param!(set_frequency_shift, frequency_shift);
 
@@ -621,7 +630,9 @@ impl Oscillator {
             channel: &ChannelParams,
             router: &VoiceRouter,
         ) -> impl Iterator<Item = StateUpdate> {
-            let detune = (channel.detune + router.scalar(Input::Detune, false)).min(MAX_DETUNE);
+            let detune = (channel.detune + router.scalar(Input::Detune, current)).min(MAX_DETUNE);
+            let detune_power = (channel.detune_power + router.scalar(Input::DetunePower, current))
+                .clamp(-5.0, 5.0);
             let phases_blend =
                 (channel.phases_blend + router.scalar(Input::PhasesBlend, current)).clamp(0.0, 1.0);
             let gains_blend =
@@ -638,7 +649,8 @@ impl Oscillator {
                     let spread = (idx as Sample - center) * center_recip;
 
                     StateUpdate {
-                        rate: (spread * detune).exp2(),
+                        rate: (power_scale(spread.abs(), detune_power).copysign(spread) * detune)
+                            .exp2(),
                         phase_shift: (param.phase_shift_to - param.phase_shift)
                             .mul_add(phases_blend, param.phase_shift),
                         gain: (param.gain_to - param.gain).mul_add(gains_blend, param.gain),
@@ -815,6 +827,7 @@ impl SynthModule for Oscillator {
             ModInput::buffer(Input::PhaseShift),
             ModInput::buffer(Input::FrequencyShift),
             ModInput::scalar(Input::Detune),
+            ModInput::scalar(Input::DetunePower),
             ModInput::scalar(Input::PhasesBlend),
             ModInput::scalar(Input::GainsBlend),
         ];

@@ -47,6 +47,7 @@ pub enum Input {
     ClippingLevel,   // dB
     PitchShift,
     Detune,
+    DetunePower,
     PhaseShift,
     FrequencyShift,
     Spectrum,

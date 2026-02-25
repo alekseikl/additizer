@@ -23,6 +23,15 @@ pub const fn st_to_octave(st: Sample) -> Sample {
     st * ST_TO_OCTAVE_MULT
 }
 
+#[inline(always)]
+pub fn power_scale(value: Sample, power: Sample) -> Sample {
+    if power.abs() < 0.005 {
+        value
+    } else {
+        ((power * value).exp() - 1.0) / ((power).exp() - 1.0)
+    }
+}
+
 pub struct NthElement {
     mul: isize,
     add: isize,
