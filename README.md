@@ -1,6 +1,6 @@
 ## Overview
 Additizer is a modular synthesizer plugin. It consists of a wavetable-like oscillator inspired by Matt Tytel's Vital 
-and a set of modules that process audio in frequency and time domains.
+and a set of modules that process waveforms in frequency domain.
 Every slider in UI is stereo, individual channel can be changed by dragging with right mouse button.
 
 ## Synth Engine Modules

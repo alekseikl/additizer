@@ -6,7 +6,7 @@ use crate::{
     synth_engine::{
         StereoSample,
         buffer::{Buffer, zero_buffer},
-        curves::{CurveFunction, ExponentialIn, ExponentialOut, PowerIn, PowerOut},
+        curves::{CurveFunction, Exponential, ExponentialIn, ExponentialOut},
         routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
         smoother::Smoother,
         synth_module::{
@@ -42,13 +42,13 @@ impl Default for ChannelParams {
         Self {
             delay: 0.0,
             attack: 0.0,
-            attack_curve: EnvelopeCurve::PowerOut { curvature: 0.3 },
+            attack_curve: EnvelopeCurve::Exponential { curvature: 0.3 },
             hold: 0.0,
             decay: from_ms(200.0),
-            decay_curve: EnvelopeCurve::PowerOut { curvature: 0.2 },
+            decay_curve: EnvelopeCurve::Exponential { curvature: 0.2 },
             sustain: 1.0,
             release: from_ms(300.0),
-            release_curve: EnvelopeCurve::PowerOut { curvature: 0.2 },
+            release_curve: EnvelopeCurve::Exponential { curvature: 0.2 },
             smooth: 0.0,
         }
     }
@@ -121,8 +121,7 @@ impl<T: CurveFunction + Send + 'static> CurveIterator for CurveIter<T> {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum EnvelopeCurve {
     Linear,
-    PowerIn { curvature: Sample },
-    PowerOut { curvature: Sample },
+    Exponential { curvature: Sample },
     ExponentialIn,
     ExponentialOut,
 }
@@ -132,9 +131,8 @@ impl EnvelopeCurve {
         let params = CurveIterParams { from, to, t_from };
 
         match *self {
-            Self::Linear => CurveIter::iter(PowerIn::new(0.0), params),
-            Self::PowerIn { curvature } => CurveIter::iter(PowerIn::new(curvature), params),
-            Self::PowerOut { curvature } => CurveIter::iter(PowerOut::new(curvature), params),
+            Self::Linear => CurveIter::iter(Exponential::new(0.0), params),
+            Self::Exponential { curvature } => CurveIter::iter(Exponential::new(curvature), params),
             Self::ExponentialIn => CurveIter::iter(ExponentialIn::new(), params),
             Self::ExponentialOut => CurveIter::iter(ExponentialOut::new(), params),
         }
@@ -142,7 +140,7 @@ impl EnvelopeCurve {
 
     fn delay_iter(level: Sample) -> CurveBox {
         CurveIter::iter(
-            PowerIn::new(0.0),
+            Exponential::new(0.0),
             CurveIterParams {
                 from: level,
                 to: level,
@@ -153,7 +151,7 @@ impl EnvelopeCurve {
 
     fn hold_iter(t_from: Sample) -> CurveBox {
         CurveIter::iter(
-            PowerIn::new(0.0),
+            Exponential::new(0.0),
             CurveIterParams {
                 from: 1.0,
                 to: 1.0,
@@ -164,7 +162,7 @@ impl EnvelopeCurve {
 
     fn flush_iter(t_from: Sample) -> CurveBox {
         CurveIter::iter(
-            PowerIn::new(0.0),
+            Exponential::new(0.0),
             CurveIterParams {
                 from: 0.0,
                 to: 0.0,

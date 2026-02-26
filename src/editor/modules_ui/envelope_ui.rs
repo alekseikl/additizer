@@ -18,8 +18,7 @@ pub struct EnvelopeUI {
 #[derive(PartialEq, Eq, Clone, Copy)]
 enum DisplayCurve {
     Linear,
-    PowerIn,
-    PowerOut,
+    Exponential,
     ExponentialIn,
     ExponentialOut,
 }
@@ -28,8 +27,7 @@ impl DisplayCurve {
     fn label(&self) -> &'static str {
         match self {
             Self::Linear => "Linear",
-            Self::PowerIn => "Power In",
-            Self::PowerOut => "Power Out",
+            Self::Exponential => "Exponential",
             Self::ExponentialIn => "Exponential In",
             Self::ExponentialOut => "Exponential Out",
         }
@@ -38,8 +36,7 @@ impl DisplayCurve {
     fn env_curve(&self) -> EnvelopeCurve {
         match self {
             Self::Linear => EnvelopeCurve::Linear,
-            Self::PowerIn => EnvelopeCurve::PowerIn { curvature: 0.2 },
-            Self::PowerOut => EnvelopeCurve::PowerOut { curvature: 0.2 },
+            Self::Exponential => EnvelopeCurve::Exponential { curvature: 0.5 },
             Self::ExponentialIn => EnvelopeCurve::ExponentialIn,
             Self::ExponentialOut => EnvelopeCurve::ExponentialOut,
         }
@@ -48,8 +45,7 @@ impl DisplayCurve {
 
 static CURVE_OPTIONS: &[DisplayCurve] = &[
     DisplayCurve::Linear,
-    DisplayCurve::PowerIn,
-    DisplayCurve::PowerOut,
+    DisplayCurve::Exponential,
     DisplayCurve::ExponentialIn,
     DisplayCurve::ExponentialOut,
 ];
@@ -58,8 +54,7 @@ impl EnvelopeCurve {
     fn display_curve(&self) -> DisplayCurve {
         match self {
             Self::Linear { .. } => DisplayCurve::Linear,
-            Self::PowerIn { .. } => DisplayCurve::PowerIn,
-            Self::PowerOut { .. } => DisplayCurve::PowerOut,
+            Self::Exponential { .. } => DisplayCurve::Exponential,
             Self::ExponentialIn { .. } => DisplayCurve::ExponentialIn,
             Self::ExponentialOut { .. } => DisplayCurve::ExponentialOut,
         }
@@ -102,17 +97,11 @@ impl EnvelopeUI {
                 });
 
             let mut add_curvature_slider = |curvature: &mut Sample| {
-                changed = changed || ui.add(Slider::new(curvature, 0.0..=1.0)).changed();
+                changed = changed || ui.add(Slider::new(curvature, -1.0..=1.0)).changed();
             };
 
-            match env_curve {
-                EnvelopeCurve::PowerIn { curvature, .. } => {
-                    add_curvature_slider(curvature);
-                }
-                EnvelopeCurve::PowerOut { curvature, .. } => {
-                    add_curvature_slider(curvature);
-                }
-                _ => (),
+            if let EnvelopeCurve::Exponential { curvature } = env_curve {
+                add_curvature_slider(curvature);
             }
         });
 
