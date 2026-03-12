@@ -144,10 +144,7 @@ impl WaveShaper {
                 ShaperType::HardClip => {
                     *out = (input * gain).clamp(-clipping_gain, clipping_gain);
                 }
-                ShaperType::Sigmoid => {
-                    *out = clipping_gain
-                        * (2.0 / (1.0 + (-2.0 * input * gain / clipping_gain).exp()) - 1.0)
-                }
+                ShaperType::Sigmoid => *out = clipping_gain * (input * gain / clipping_gain).tanh(),
             }
         }
     }
