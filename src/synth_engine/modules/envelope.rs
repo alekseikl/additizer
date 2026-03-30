@@ -63,8 +63,19 @@ pub struct EnvelopeConfig {
     channels: [ChannelParams; NUM_CHANNELS],
 }
 
+enum CurveBlockResult {
+    HasMore,
+    Done,
+}
+
 trait CurveIterator {
-    fn next_block(&mut self, t_step: Sample, time: Sample, output: &mut [Sample]) -> Option<usize>;
+    fn next_block(
+        &mut self,
+        t_step: Sample,
+        time: Sample,
+        sample_from: &mut usize,
+        output: &mut [Sample],
+    ) -> CurveBlockResult;
 }
 
 type CurveBox = Box<dyn CurveIterator + Send>;
@@ -95,10 +106,18 @@ impl<T: CurveFunction + Send + 'static> CurveIter<T> {
 }
 
 impl<T: CurveFunction + Send + 'static> CurveIterator for CurveIter<T> {
-    fn next_block(&mut self, t_step: Sample, time: Sample, output: &mut [Sample]) -> Option<usize> {
+    fn next_block(
+        &mut self,
+        t_step: Sample,
+        time: Sample,
+        sample_from: &mut usize,
+        output: &mut [Sample],
+    ) -> CurveBlockResult {
         if time < MIN_TIME_THRESHOLD {
-            return Some(0);
+            return CurveBlockResult::Done;
         }
+
+        let output = &mut output[*sample_from..];
 
         let samples = output
             .len()
@@ -111,10 +130,12 @@ impl<T: CurveFunction + Send + 'static> CurveIterator for CurveIter<T> {
             self.t += t_step;
         }
 
+        *sample_from += samples;
+
         if samples < output.len() {
-            Some(samples)
+            CurveBlockResult::Done
         } else {
-            None
+            CurveBlockResult::HasMore
         }
     }
 }
@@ -314,87 +335,58 @@ impl Envelope {
         }
 
         let mut sample_from = if voice.triggered { 0 } else { 1 };
-        let sample_to = router.samples + 1;
-        let output = &mut voice.output;
+        let output = &mut voice.output[..router.samples + 1];
 
         loop {
             voice.stage = match &mut voice.stage {
                 Stage::Delay(curve) => {
-                    match curve.next_block(
-                        t_step,
-                        delay_time(),
-                        &mut output[sample_from..sample_to],
-                    ) {
-                        Some(processed) => {
-                            sample_from += processed;
-                            Stage::Attack(
-                                env.attack_curve
-                                    .curve_iter(voice.scalar_output.current(), 1.0),
-                            )
-                        }
-                        None => break,
+                    match curve.next_block(t_step, delay_time(), &mut sample_from, output) {
+                        CurveBlockResult::Done => Stage::Attack(
+                            env.attack_curve
+                                .curve_iter(voice.scalar_output.current(), 1.0),
+                        ),
+                        CurveBlockResult::HasMore => break,
                     }
                 }
-                Stage::Attack(curve) => match curve.next_block(
-                    t_step,
-                    attack_time(),
-                    &mut output[sample_from..sample_to],
-                ) {
-                    Some(processed) => {
-                        sample_from += processed;
-                        Stage::Hold(EnvelopeCurve::hold_iter())
+                Stage::Attack(curve) => {
+                    match curve.next_block(t_step, attack_time(), &mut sample_from, output) {
+                        CurveBlockResult::Done => Stage::Hold(EnvelopeCurve::hold_iter()),
+                        CurveBlockResult::HasMore => break,
                     }
-                    None => break,
-                },
+                }
                 Stage::Hold(curve) => {
-                    match curve.next_block(t_step, hold_time(), &mut output[sample_from..sample_to])
-                    {
-                        Some(processed) => {
-                            sample_from += processed;
+                    match curve.next_block(t_step, hold_time(), &mut sample_from, output) {
+                        CurveBlockResult::Done => {
                             Stage::Decay(env.decay_curve.curve_iter(1.0, env.sustain))
                         }
-                        None => break,
+                        CurveBlockResult::HasMore => break,
                     }
                 }
-                Stage::Decay(curve) => match curve.next_block(
-                    t_step,
-                    decay_time(),
-                    &mut output[sample_from..sample_to],
-                ) {
-                    Some(processed) => {
-                        sample_from += processed;
-                        Stage::Sustain
+                Stage::Decay(curve) => {
+                    match curve.next_block(t_step, decay_time(), &mut sample_from, output) {
+                        CurveBlockResult::Done => Stage::Sustain,
+                        CurveBlockResult::HasMore => break,
                     }
-                    None => break,
-                },
+                }
                 Stage::Sustain => {
-                    output[sample_from..sample_to]
+                    output[sample_from..]
                         .fill((env.sustain + router.scalar(Input::Sustain, true)).clamp(0.0, 1.0));
                     break;
                 }
-                Stage::Release(curve) => match curve.next_block(
-                    t_step,
-                    release_time(),
-                    &mut output[sample_from..sample_to],
-                ) {
-                    Some(processed) => {
-                        sample_from += processed;
-                        Stage::Flush(EnvelopeCurve::flush_iter())
+                Stage::Release(curve) => {
+                    match curve.next_block(t_step, release_time(), &mut sample_from, output) {
+                        CurveBlockResult::Done => Stage::Flush(EnvelopeCurve::flush_iter()),
+                        CurveBlockResult::HasMore => break,
                     }
-                    None => break,
-                },
+                }
                 Stage::Flush(curve) => {
-                    match curve.next_block(t_step, env.smooth, &mut output[sample_from..sample_to])
-                    {
-                        Some(processed) => {
-                            sample_from += processed;
-                            Stage::Done
-                        }
-                        None => break,
+                    match curve.next_block(t_step, env.smooth, &mut sample_from, output) {
+                        CurveBlockResult::Done => Stage::Done,
+                        CurveBlockResult::HasMore => break,
                     }
                 }
                 Stage::Done => {
-                    output[sample_from..sample_to].fill(0.0);
+                    output[sample_from..].fill(0.0);
                     break;
                 }
             };
@@ -402,11 +394,11 @@ impl Envelope {
 
         if voice.triggered {
             voice.scalar_output.advance(voice.output[0]);
-            voice.scalar_output.advance(voice.output[sample_to - 1]);
+            voice.scalar_output.advance(voice.output[router.samples]);
             voice.triggered = false;
         } else {
             voice.output[0] = voice.scalar_output.current();
-            voice.scalar_output.advance(voice.output[sample_to - 1]);
+            voice.scalar_output.advance(voice.output[router.samples]);
         }
 
         if env.smooth >= MIN_TIME_THRESHOLD {
