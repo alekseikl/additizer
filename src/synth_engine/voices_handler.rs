@@ -428,6 +428,8 @@ impl VoicesHandler {
                 .voice_idx;
 
             self.free_voices.push(voice_idx);
+        } else if let Some(waiting_idx) = self.waiting_notes.iter().position(|w| w.id == note_id) {
+            self.waiting_notes.remove(waiting_idx);
         }
     }
 
@@ -514,3 +516,6 @@ impl VoicesHandler {
         playing_voices.extend(self.killing_voices.iter().map(|k| *k as usize));
     }
 }
+
+#[cfg(test)]
+mod tests;

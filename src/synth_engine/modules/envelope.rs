@@ -322,16 +322,16 @@ impl Envelope {
         let decay_time = || env.decay + router.scalar(Input::Decay, true);
         let release_time = || env.release + router.scalar(Input::Release, true);
 
+        if voice.triggered {
+            voice.stage = Stage::Delay(EnvelopeCurve::delay_iter(voice.scalar_output.current()));
+        }
+
         if voice.released {
             voice.stage = Stage::Release(
                 env.release_curve
                     .curve_iter(voice.scalar_output.current(), 0.0),
             );
             voice.released = false;
-        }
-
-        if voice.triggered {
-            voice.stage = Stage::Delay(EnvelopeCurve::delay_iter(voice.scalar_output.current()));
         }
 
         let mut sample_from = if voice.triggered { 0 } else { 1 };

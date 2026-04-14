@@ -69,7 +69,7 @@ pub enum Input {
     Release,
 }
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum Expression {
     #[default]
     Velocity,
@@ -80,6 +80,7 @@ pub enum Expression {
     Pressure,
 }
 
+#[derive(Debug)]
 pub enum VoiceEvent {
     Trigger {
         voice_idx: usize,

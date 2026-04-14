@@ -44,6 +44,8 @@ impl EventUtils for NoteEvent<()> {
 
 impl Additizer {
     fn process_event(synth: &mut SynthEngine, event: NoteEvent<()>) {
+        // nih_log!("Event: {:?}", event);
+
         match event {
             NoteEvent::NoteOn {
                 channel,
