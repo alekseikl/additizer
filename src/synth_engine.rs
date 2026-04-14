@@ -14,6 +14,7 @@ use topo_sort::{SortResults, TopoSort};
 use crate::synth_engine::{
     buffer::{Buffer, SpectralBuffer, add_buffer_slice, copy_or_add_buffer},
     config::{ModuleConfig, RoutingConfig},
+    event_processor::MAX_AVAILABLE_VOICES,
     modules::{
         AmplifierConfig, EnvelopeConfig, ExpressionsConfig, ExternalParamConfig, LfoConfig,
         MixerConfig, ModulationFilterConfig, Output, OutputConfig, SpectralBlendConfig,
@@ -48,6 +49,7 @@ mod config;
 mod synth_module;
 mod biquad_filter;
 mod curves;
+mod event_processor;
 mod iir_decimator;
 mod modules;
 mod phase;
@@ -189,7 +191,7 @@ macro_rules! add_module_method {
 }
 
 impl SynthEngine {
-    pub const AVAILABLE_VOICES: usize = MAX_VOICES - 8;
+    pub const AVAILABLE_VOICES: usize = MAX_AVAILABLE_VOICES;
 
     pub fn new() -> Self {
         Self {

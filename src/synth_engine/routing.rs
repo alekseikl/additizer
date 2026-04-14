@@ -80,6 +80,32 @@ pub enum Expression {
     Pressure,
 }
 
+pub enum VoiceEvent {
+    Restart {
+        voice_idx: usize,
+        prev_voice_idx: Option<usize>,
+        pitch: Sample,
+        velocity: Sample,
+    },
+    Update {
+        voice_idx: usize,
+        pitch: Sample,
+        velocity: Sample,
+    },
+    Release {
+        voice_idx: usize,
+        velocity: Sample,
+    },
+    Kill {
+        voice_idx: usize,
+    },
+    Expression {
+        voice_idx: usize,
+        expression: Expression,
+        value: Sample,
+    },
+}
+
 #[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum VolumeType {
     #[default]

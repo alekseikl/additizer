@@ -300,7 +300,6 @@ impl ClapPlugin for Additizer {
         ClapFeature::Instrument,
         ClapFeature::Synthesizer,
         ClapFeature::Stereo,
-        ClapFeature::Utility,
     ];
 }
 
