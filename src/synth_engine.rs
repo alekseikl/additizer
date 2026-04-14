@@ -625,6 +625,7 @@ impl SynthEngine {
         self.modules
             .values()
             .filter_map(|val| val.as_deref())
+            .filter(|m| m.module_type() != ModuleType::Output)
             .collect()
     }
 
