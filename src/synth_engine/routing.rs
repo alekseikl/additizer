@@ -23,7 +23,6 @@ pub enum ModuleType {
     SpectralMixer,
     HarmonicEditor,
     ExternalParam,
-    ModulationFilter,
     Lfo,
     WaveShaper,
     Expressions,

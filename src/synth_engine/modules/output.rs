@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::sync::Arc;
 
 use nih_plug::{params::FloatParam, util::db_to_gain_fast};
@@ -97,6 +98,8 @@ impl Output {
 
         out
     }
+
+    gen_downcast_methods!();
 
     pub fn get_gain(&self) -> StereoSample {
         self.params.gain
@@ -210,20 +213,6 @@ impl Output {
             }
         }
     }
-
-    // pub fn poll_alive_voices(&self, alive_state: &mut [VoiceAlive]) {
-    //     const ALIVE_THRESHOLD: Sample = 0.0000001;
-
-    //     for voice_alive in alive_state.iter_mut().filter(|alive| alive.alive()) {
-    //         for channel in &self.channels {
-    //             let voice = &channel.voices[voice_alive.index()];
-
-    //             if voice.killed {
-    //                 voice_alive.reset_alive(voice.killed_output_power > ALIVE_THRESHOLD);
-    //             }
-    //         }
-    //     }
-    // }
 }
 
 impl SynthModule for Output {

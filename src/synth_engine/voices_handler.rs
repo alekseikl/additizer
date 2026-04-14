@@ -266,7 +266,9 @@ impl VoicesHandler {
                 self.kill_voice(playing.voice_idx, events);
                 self.grab_and_restart_voice(Some(playing.voice_idx), new_note, velocity, events);
             }
-        };
+        } else {
+            self.grab_and_restart_voice(None, new_note, velocity, events);
+        }
     }
 
     fn note_on_polyphonic(&mut self, new_note: NoteId, velocity: u8, events: &mut VoiceEvents) {

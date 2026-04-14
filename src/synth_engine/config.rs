@@ -7,9 +7,8 @@ use crate::synth_engine::{
     MAX_BLOCK_SIZE, WaveShaperConfig,
     modules::{
         AmplifierConfig, EnvelopeConfig, ExpressionsConfig, ExternalParamConfig, LfoConfig,
-        MixerConfig, ModulationFilterConfig, OutputConfig, SpectralBlendConfig,
-        SpectralFilterConfig, SpectralMixerConfig, harmonic_editor::HarmonicEditorConfig,
-        oscillator::OscillatorConfig,
+        MixerConfig, OutputConfig, SpectralBlendConfig, SpectralFilterConfig, SpectralMixerConfig,
+        harmonic_editor::HarmonicEditorConfig, oscillator::OscillatorConfig,
     },
     routing::{MAX_VOICES, MIN_MODULE_ID, ModuleId, ModuleLink},
 };
@@ -18,6 +17,7 @@ use crate::synth_engine::{
 pub struct RoutingConfig {
     pub next_module_id: ModuleId,
     pub num_voices: usize,
+    pub legato: bool,
     pub block_size: usize,
     pub oversampling: bool,
     pub stereo_spectrum: bool,
@@ -29,6 +29,7 @@ impl Default for RoutingConfig {
         Self {
             next_module_id: MIN_MODULE_ID,
             num_voices: MAX_VOICES / 4,
+            legato: false,
             block_size: MAX_BLOCK_SIZE,
             oversampling: false,
             stereo_spectrum: true,
@@ -49,7 +50,6 @@ pub enum ModuleConfig {
     SpectralMixer(CfgBox<SpectralMixerConfig>),
     HarmonicEditor(CfgBox<HarmonicEditorConfig>),
     ExternalParam(CfgBox<ExternalParamConfig>),
-    ModulationFilter(CfgBox<ModulationFilterConfig>),
     Lfo(CfgBox<LfoConfig>),
     WaveShaper(CfgBox<WaveShaperConfig>),
     Mixer(CfgBox<MixerConfig>),

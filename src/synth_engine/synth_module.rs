@@ -162,6 +162,7 @@ macro_rules! gen_downcast_methods {
             (module as &mut dyn Any).downcast_mut()
         }
 
+        #[allow(dead_code)]
         pub fn downcast_mut_unwrap(module: Option<&mut dyn SynthModule>) -> &mut Self {
             Self::downcast_mut(module.unwrap()).unwrap()
         }

@@ -203,6 +203,15 @@ impl ModuleUi for ParamsUi {
                 }
                 ui.end_row();
 
+                ui.label("Legato");
+                if ui
+                    .add(Checkbox::without_text(&mut ui_data.legato))
+                    .changed()
+                {
+                    synth.set_legato(ui_data.legato);
+                }
+                ui.end_row();
+
                 ui.label("Voice kill time");
                 if ui
                     .add(Slider::new(&mut kill_time_ms, 4.0..=100.0))
@@ -214,8 +223,11 @@ impl ModuleUi for ParamsUi {
 
                 ui.label("Voices state");
                 ui.label(format!(
-                    "Playing: {:02}, Releasing: {:02}, Killing: {:02}",
-                    ui_data.playing_voices, ui_data.releasing_voices, ui_data.killing_voices
+                    "Playing: {:02}, Releasing: {:02}, Killing: {:02}, Waiting Notes: {:02}",
+                    ui_data.playing_voices,
+                    ui_data.releasing_voices,
+                    ui_data.killing_voices,
+                    ui_data.waiting_notes
                 ));
                 ui.end_row();
 

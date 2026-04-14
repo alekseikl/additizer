@@ -3,7 +3,7 @@ Additizer is a modular synthesizer plugin. It consists of a wavetable-like oscil
 and a set of modules that process waveforms in the frequency domain.
 Every slider in the UI is stereo, and each channel can be adjusted by dragging with the right mouse button.
 
-## Synth Engine Modules
+## Modules
 - `Harmonic Editor`: Allows you to set each of the 1024 harmonics manually, apply a biquad filter statically, or set the gain for a group of harmonics
     selected by range and an n-th-element formula.
 - `Spectral Filter`: Applies a biquad filter to the frequency bins (lowpass, highpass, bandpass, bandstop, and peaking).

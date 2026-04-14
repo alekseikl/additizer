@@ -14,8 +14,8 @@ use crate::synth_engine::{
     config::{ModuleConfig, RoutingConfig},
     modules::{
         AmplifierConfig, EnvelopeConfig, ExpressionsConfig, ExternalParamConfig, LfoConfig,
-        MixerConfig, ModulationFilterConfig, Output, OutputConfig, SpectralBlendConfig,
-        SpectralFilterConfig, SpectralMixerConfig, WaveShaperConfig,
+        MixerConfig, Output, OutputConfig, SpectralBlendConfig, SpectralFilterConfig,
+        SpectralMixerConfig, WaveShaperConfig,
         harmonic_editor::HarmonicEditorConfig,
         oscillator::{Oscillator, OscillatorConfig},
     },
@@ -30,8 +30,8 @@ pub use buffer::SPECTRAL_BUFFER_SIZE;
 pub use config::Config;
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, Expressions, ExternalParam, ExternalParamsBlock, Lfo,
-    LfoShape, Mixer, ModulationFilter, ShaperType, SpectralBlend, SpectralFilter,
-    SpectralFilterType, SpectralMixer, WaveShaper,
+    LfoShape, Mixer, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType, SpectralMixer,
+    WaveShaper,
     harmonic_editor::{self, HarmonicEditor},
     oscillator::{self},
 };
@@ -62,10 +62,12 @@ pub const MAX_BLOCK_SIZE: usize = 128;
 
 pub struct SynthEngineUiData {
     pub voices: usize,
+    pub legato: bool,
     pub block_size: usize,
     pub voice_kill_time: Sample,
     pub oversampling: bool,
     pub stereo_spectrum: bool,
+    pub waiting_notes: usize,
     pub playing_voices: usize,
     pub releasing_voices: usize,
     pub killing_voices: usize,
@@ -100,7 +102,6 @@ pub struct SynthEngine {
     spectrum_channels: usize,
     config: Arc<Mutex<Config>>,
     modules: HashMap<ModuleId, Option<Box<dyn SynthModule>>>,
-    output: Option<Box<Output>>,
     input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>>,
     needs_audio_rate: HashSet<ModuleId>,
     execution_order: Vec<ModuleId>,
@@ -124,6 +125,26 @@ macro_rules! get_module_mut {
             .modules
             .get_mut($module_id)
             .and_then(|result| result.as_deref_mut())
+    };
+}
+
+macro_rules! get_typed_module {
+    ($self:ident, $module_type:ident, $module_id:expr) => {
+        $self
+            .modules
+            .get($module_id)
+            .and_then(|result| result.as_deref())
+            .and_then($module_type::downcast)
+    };
+}
+
+macro_rules! get_typed_module_mut {
+    ($self:ident, $module_type:ident, $module_id:expr) => {
+        $self
+            .modules
+            .get_mut($module_id)
+            .and_then(|result| result.as_deref_mut())
+            .and_then($module_type::downcast_mut)
     };
 }
 
@@ -156,7 +177,6 @@ impl SynthEngine {
             spectrum_channels: NUM_CHANNELS,
             config: Default::default(),
             modules: HashMap::new(),
-            output: None,
             input_sources: HashMap::new(),
             needs_audio_rate: HashSet::new(),
             execution_order: Vec::new(),
@@ -215,7 +235,7 @@ impl SynthEngine {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.modules.is_empty()
+        self.modules.len() == 1
     }
 
     pub fn get_ui(&self) -> SynthEngineUiData {
@@ -223,13 +243,13 @@ impl SynthEngine {
 
         SynthEngineUiData {
             voices: voices_ui_data.num_voices,
+            legato: voices_ui_data.legato,
             block_size: self.block_size,
-            voice_kill_time: self
-                .output
-                .as_deref()
+            voice_kill_time: get_typed_module!(self, Output, &OUTPUT_MODULE_ID)
                 .map_or(0.0, |output| output.get_voice_kill_time()),
             oversampling: self.oversampling,
             stereo_spectrum: self.spectrum_channels == NUM_CHANNELS,
+            waiting_notes: voices_ui_data.waiting,
             playing_voices: voices_ui_data.playing,
             releasing_voices: voices_ui_data.releasing,
             killing_voices: voices_ui_data.killing,
@@ -243,6 +263,11 @@ impl SynthEngine {
         self.config.lock().routing.num_voices = num_voices;
     }
 
+    pub fn set_legato(&mut self, legato: bool) {
+        self.voices_handler.set_legato(legato);
+        self.config.lock().routing.legato = legato;
+    }
+
     pub fn block_size(&self) -> usize {
         self.block_size
     }
@@ -253,7 +278,7 @@ impl SynthEngine {
     }
 
     pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) {
-        if let Some(output) = self.output.as_deref_mut() {
+        if let Some(output) = get_typed_module_mut!(self, Output, &OUTPUT_MODULE_ID) {
             output.set_voice_kill_time(voice_kill_time);
         }
     }
@@ -269,13 +294,12 @@ impl SynthEngine {
     }
 
     pub fn get_output_level(&self) -> StereoSample {
-        self.output
-            .as_deref()
+        get_typed_module!(self, Output, &OUTPUT_MODULE_ID)
             .map_or(StereoSample::ZERO, |output| output.get_gain())
     }
 
     pub fn set_output_level(&mut self, level: StereoSample) {
-        if let Some(output) = self.output.as_deref_mut() {
+        if let Some(output) = get_typed_module_mut!(self, Output, &OUTPUT_MODULE_ID) {
             output.set_gain(level);
         }
     }
@@ -304,11 +328,6 @@ impl SynthEngine {
         ExternalParam,
         ExternalParamConfig,
         get_external_params
-    );
-    add_module_method!(
-        add_modulation_filter,
-        ModulationFilter,
-        ModulationFilterConfig
     );
 
     fn get_external_params(&self) -> Arc<ExternalParamsBlock> {
@@ -514,9 +533,17 @@ impl SynthEngine {
             }
         }
 
-        if let Some(mut output) = self.output.take() {
-            output.process_output(&params, self.oversampling, self, outputs);
-            self.output.replace(output);
+        if let Some(output_box) = self.modules.get_mut(&OUTPUT_MODULE_ID)
+            && let Some(mut output) = output_box.take()
+        {
+            Output::downcast_mut(output.as_mut())
+                .unwrap()
+                .process_output(&params, self.oversampling, self, outputs);
+
+            self.modules
+                .get_mut(&OUTPUT_MODULE_ID)
+                .unwrap()
+                .replace(output);
         }
     }
 
@@ -696,10 +723,7 @@ impl SynthEngine {
         let topo_sort = TopoSort::from_map(dependents);
 
         match topo_sort.into_vec_nodes() {
-            SortResults::Full(nodes) => Ok(nodes
-                .into_iter()
-                .filter(|node| *node != OUTPUT_MODULE_ID)
-                .collect()),
+            SortResults::Full(nodes) => Ok(nodes.into_iter().collect()),
             SortResults::Partial(_) => Err("Cycles detected!".to_string()),
         }
     }
@@ -782,10 +806,13 @@ impl SynthEngine {
         self.spectrum_channels = Self::stereo_spectrum_channels(default_cfg.stereo_spectrum);
         self.voices_handler.set_num_voices(default_cfg.num_voices);
 
-        self.output = Some(Box::new(Output::new(
-            Arc::clone(&self.config.lock().output),
-            Arc::clone(self.output_level_param.as_ref().unwrap()),
-        )));
+        self.modules.insert(
+            OUTPUT_MODULE_ID,
+            Some(Box::new(Output::new(
+                Arc::clone(&self.config.lock().output),
+                Arc::clone(self.output_level_param.as_ref().unwrap()),
+            ))),
+        );
     }
 
     fn reset_config(&mut self) {
@@ -836,7 +863,6 @@ impl SynthEngine {
                 ModuleConfig::ExternalParam(cfg) => {
                     restore_module!(ExternalParam, id, cfg, get_external_params)
                 }
-                ModuleConfig::ModulationFilter(cfg) => restore_module!(ModulationFilter, id, cfg),
                 ModuleConfig::Lfo(cfg) => restore_module!(Lfo, id, cfg),
                 ModuleConfig::WaveShaper(cfg) => restore_module!(WaveShaper, id, cfg),
                 ModuleConfig::Mixer(cfg) => restore_module!(Mixer, id, cfg),

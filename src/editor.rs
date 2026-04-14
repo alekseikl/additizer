@@ -12,8 +12,8 @@ use crate::{
         gain_slider::GainSlider,
         modules_ui::{
             AmplifierUI, EnvelopeUI, ExpressionsUi, ExternalParamUI, HarmonicEditorUI, LfoUi,
-            MixerUi, ModulationFilterUI, OscillatorUI, ParamsUi, SpectralBlendUi, SpectralFilterUI,
-            SpectralMixerUi, WaveShaperUi,
+            MixerUi, OscillatorUI, ParamsUi, SpectralBlendUi, SpectralFilterUI, SpectralMixerUi,
+            WaveShaperUi,
         },
     },
     synth_engine::{ModuleId, ModuleType, OUTPUT_MODULE_ID, SynthEngine},
@@ -91,7 +91,6 @@ impl ModuleType {
             Self::Oscillator => Box::new(OscillatorUI::new(id)),
             Self::Envelope => Box::new(EnvelopeUI::new(id)),
             Self::ExternalParam => Box::new(ExternalParamUI::new(id)),
-            Self::ModulationFilter => Box::new(ModulationFilterUI::new(id)),
             Self::Lfo => Box::new(LfoUi::new(id)),
             Self::SpectralBlend => Box::new(SpectralBlendUi::new(id)),
             Self::SpectralMixer => Box::new(SpectralMixerUi::new(id)),
@@ -181,9 +180,6 @@ fn show_side_bar(
                                 }
                                 if ui.selectable_label(false, "Expressions").clicked() {
                                     synth_engine.add_expressions();
-                                }
-                                if ui.selectable_label(false, "Modulation Filter").clicked() {
-                                    synth_engine.add_modulation_filter();
                                 }
                                 if ui.selectable_label(false, "Waveshaper").clicked() {
                                     synth_engine.add_wave_shaper();
