@@ -4,17 +4,14 @@ use std::{
     sync::Arc,
 };
 
-use itertools::Itertools;
 use nih_plug::params::FloatParam;
 use parking_lot::Mutex;
-use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
     buffer::{Buffer, SpectralBuffer, add_buffer_slice, copy_or_add_buffer},
     config::{ModuleConfig, RoutingConfig},
-    event_processor::MAX_AVAILABLE_VOICES,
     modules::{
         AmplifierConfig, EnvelopeConfig, ExpressionsConfig, ExternalParamConfig, LfoConfig,
         MixerConfig, ModulationFilterConfig, Output, OutputConfig, SpectralBlendConfig,
@@ -22,8 +19,11 @@ use crate::synth_engine::{
         harmonic_editor::HarmonicEditorConfig,
         oscillator::{Oscillator, OscillatorConfig},
     },
-    routing::{DataType, InputModulationUI, LinkModulation, MAX_VOICES, NUM_CHANNELS, Router},
-    synth_module::{ExpressionParams, NoteOffParams, NoteOnParams, ProcessParams, VoiceAlive},
+    routing::{DataType, InputModulationUI, LinkModulation, NUM_CHANNELS, Router, VoiceEvent},
+    synth_module::ProcessParams,
+    voices_handler::{
+        DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
+    },
 };
 
 pub use buffer::SPECTRAL_BUFFER_SIZE;
@@ -49,7 +49,6 @@ mod config;
 mod synth_module;
 mod biquad_filter;
 mod curves;
-mod event_processor;
 mod iir_decimator;
 mod modules;
 mod phase;
@@ -57,60 +56,19 @@ mod routing;
 mod smoother;
 mod stereo_sample;
 mod types;
+mod voices_handler;
 
 pub const MAX_BLOCK_SIZE: usize = 128;
-
-#[derive(Debug, Clone, Copy)]
-pub struct VoiceId {
-    pub voice_id: Option<i32>,
-    pub channel: u8,
-    pub note: u8,
-}
-
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum VoiceOverride {
-    Kill,
-    Steal,
-}
 
 pub struct SynthEngineUiData {
     pub voices: usize,
     pub block_size: usize,
-    pub voice_override: VoiceOverride,
     pub voice_kill_time: Sample,
     pub oversampling: bool,
     pub stereo_spectrum: bool,
     pub playing_voices: usize,
     pub releasing_voices: usize,
     pub killing_voices: usize,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub enum VoiceState {
-    NoteOn,
-    Release,
-    Kill,
-    #[default]
-    Free,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-struct Voice {
-    id: u64,
-    external_voice_id: Option<i32>,
-    channel: u8,
-    note: u8,
-    state: VoiceState,
-}
-
-impl Voice {
-    fn get_id(&self) -> VoiceId {
-        VoiceId {
-            voice_id: self.external_voice_id,
-            channel: self.channel,
-            note: self.note,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -136,20 +94,17 @@ impl ModuleInputSource {
 
 pub struct SynthEngine {
     next_id: ModuleId,
-    next_voice_id: u64,
     host_sample_rate: f32,
     block_size: usize,
-    num_voices: usize,
     oversampling: bool,
     spectrum_channels: usize,
-    voice_override: VoiceOverride,
     config: Arc<Mutex<Config>>,
     modules: HashMap<ModuleId, Option<Box<dyn SynthModule>>>,
     output: Option<Box<Output>>,
     input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>>,
     needs_audio_rate: HashSet<ModuleId>,
     execution_order: Vec<ModuleId>,
-    voices: [Voice; MAX_VOICES],
+    voices_handler: VoicesHandler,
     external_params: Option<Arc<ExternalParamsBlock>>,
     output_level_param: Option<Arc<FloatParam>>,
 }
@@ -177,9 +132,8 @@ macro_rules! add_module_method {
         pub fn $func_name(&mut self) -> ModuleId {
             let id = self.alloc_module_id();
             let config = Arc::new(Mutex::new($module_cfg::default()));
-            let mut module = Box::new($module_type::new(id, Arc::clone(&config) $(, self.$arg() )*));
+            let module = Box::new($module_type::new(id, Arc::clone(&config) $(, self.$arg() )*));
 
-            Self::trigger_active_notes(&self.voices, module.as_mut());
             self.modules.insert(id, Some(module));
             self.config
                 .lock()
@@ -196,20 +150,17 @@ impl SynthEngine {
     pub fn new() -> Self {
         Self {
             next_id: 0,
-            next_voice_id: 0,
             host_sample_rate: 0.0,
             block_size: 0,
-            num_voices: 0,
             oversampling: false,
             spectrum_channels: NUM_CHANNELS,
-            voice_override: VoiceOverride::Kill,
             config: Default::default(),
             modules: HashMap::new(),
             output: None,
             input_sources: HashMap::new(),
             needs_audio_rate: HashSet::new(),
             execution_order: Vec::new(),
-            voices: Default::default(),
+            voices_handler: VoicesHandler::new(),
             external_params: None,
             output_level_param: None,
         }
@@ -268,50 +219,28 @@ impl SynthEngine {
     }
 
     pub fn get_ui(&self) -> SynthEngineUiData {
-        let mut ui_data = SynthEngineUiData {
-            voices: self.num_voices,
+        let voices_ui_data = self.voices_handler.get_ui_data();
+
+        SynthEngineUiData {
+            voices: voices_ui_data.num_voices,
             block_size: self.block_size,
-            voice_override: self.voice_override,
             voice_kill_time: self
                 .output
                 .as_deref()
                 .map_or(0.0, |output| output.get_voice_kill_time()),
             oversampling: self.oversampling,
             stereo_spectrum: self.spectrum_channels == NUM_CHANNELS,
-            playing_voices: 0,
-            releasing_voices: 0,
-            killing_voices: 0,
-        };
-
-        for voice in &self.voices {
-            match voice.state {
-                VoiceState::NoteOn => {
-                    ui_data.playing_voices += 1;
-                }
-                VoiceState::Release => {
-                    ui_data.playing_voices += 1;
-                    ui_data.releasing_voices += 1;
-                }
-                VoiceState::Kill => {
-                    ui_data.playing_voices += 1;
-                    ui_data.killing_voices += 1;
-                }
-                VoiceState::Free => (),
-            }
+            playing_voices: voices_ui_data.playing,
+            releasing_voices: voices_ui_data.releasing,
+            killing_voices: voices_ui_data.killing,
         }
-
-        ui_data
     }
 
     pub fn set_num_voices(&mut self, num_voices: usize) {
-        self.num_voices = Self::clamp_num_voices(num_voices);
-        self.config.lock().routing.num_voices = self.num_voices;
+        let num_voices = Self::clamp_num_voices(num_voices);
 
-        self.voices
-            .iter_mut()
-            .filter(|v| !matches!(v.state, VoiceState::Free))
-            .skip(self.num_voices)
-            .for_each(|v| v.state = VoiceState::Free);
+        self.voices_handler.set_num_voices(num_voices);
+        self.config.lock().routing.num_voices = num_voices;
     }
 
     pub fn block_size(&self) -> usize {
@@ -321,11 +250,6 @@ impl SynthEngine {
     pub fn set_block_size(&mut self, block_size: usize) {
         self.block_size = Self::clamp_block_size(block_size);
         self.config.lock().routing.block_size = self.block_size;
-    }
-
-    pub fn set_voice_override(&mut self, voice_override: VoiceOverride) {
-        self.voice_override = voice_override;
-        self.config.lock().routing.voice_override = voice_override;
     }
 
     pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) {
@@ -500,253 +424,69 @@ impl SynthEngine {
         self.save_links();
     }
 
-    fn playing_voices(voices: &mut [Voice]) -> SmallVec<[(usize, &mut Voice); MAX_VOICES]> {
-        voices
-            .iter_mut()
-            .enumerate()
-            .filter(|(_, v)| matches!(v.state, VoiceState::NoteOn | VoiceState::Release))
-            .sorted_by_key(|(_, v)| v.id)
-            .collect()
-    }
-
-    fn find_free_voice(&self) -> (usize, bool) {
-        // Find free voice
-        if let Some((voice_idx, _)) = self
-            .voices
-            .iter()
-            .enumerate()
-            .filter(|(_, v)| matches!(v.state, VoiceState::Free))
-            .min_by_key(|(_, v)| v.id)
-        {
-            return (voice_idx, false);
-        }
-
-        // Steal playing voice
-        if let Some((voice_idx, _)) = self
-            .voices
-            .iter()
-            .enumerate()
-            .filter(|(_, v)| matches!(v.state, VoiceState::NoteOn | VoiceState::Release))
-            .min_by_key(|(_, v)| v.id)
-        {
-            return (voice_idx, true);
-        }
-
-        // Steal killed voice as last resort
-        (
-            self.voices
-                .iter()
-                .enumerate()
-                .filter(|(_, v)| matches!(v.state, VoiceState::Kill))
-                .min_by_key(|(_, v)| v.id)
-                .map_or(0, |(voice_idx, _)| voice_idx),
-            true,
-        )
-    }
-
-    fn find_or_steal_voice(&mut self, new_note: u8) -> (usize, bool) {
-        let playing_voices = Self::playing_voices(&mut self.voices);
-
-        // Steal same note voice
-        if let Some((voice_idx, _)) = playing_voices.iter().find(|(_, v)| v.note == new_note) {
-            return (*voice_idx, true);
-        }
-
-        // Steal excess voice
-        if playing_voices.len() >= self.num_voices {
-            return (
-                playing_voices
-                    .first()
-                    .map_or(0, |(voice_idx, _)| *voice_idx),
-                true,
-            );
-        }
-
-        drop(playing_voices);
-        self.find_free_voice()
-    }
-
-    fn find_or_kill_voice(&mut self, new_note: u8) -> (usize, bool) {
-        let playing_voices = Self::playing_voices(&mut self.voices);
-
-        let voice_idx =
-            // Kill same note voice
-            if let Some((voice_idx, _)) = playing_voices.iter().find(|(_, v)| v.note == new_note) {
-                Some(*voice_idx)
-                // Kill excess voice
-            } else if playing_voices.len() >= self.num_voices
-                && let Some((voice_idx, _)) = playing_voices.first()
-            {
-                Some(*voice_idx)
-            } else {
-                None
-            };
-
-        drop(playing_voices);
-
-        if let Some(voice_idx) = voice_idx {
-            if let Some(output) = self.output.as_deref_mut() {
-                output.kill_voice(voice_idx);
+    fn process_voice_events(&mut self, events: &[VoiceEvent]) {
+        for module_id in &self.execution_order {
+            if let Some(module) = get_module_mut!(self, &module_id) {
+                module.handle_events(events);
             }
-
-            self.voices[voice_idx].state = VoiceState::Kill;
         }
-
-        self.find_free_voice()
     }
 
-    pub fn note_on(
+    pub fn handle_note_on(&mut self, channel: u8, note: u8, velocity: f32) {
+        let mut voice_events = VoiceEvents::new();
+
+        self.voices_handler
+            .handle_note_on(channel, note, velocity, &mut voice_events);
+
+        self.process_voice_events(voice_events.events());
+    }
+
+    pub fn handle_note_off(&mut self, channel: u8, note: u8, velocity: f32) {
+        let mut voice_events = VoiceEvents::new();
+
+        self.voices_handler
+            .handle_note_off(channel, note, velocity, &mut voice_events);
+
+        self.process_voice_events(voice_events.events());
+    }
+
+    pub fn handle_note_expression(
         &mut self,
-        voice_id: Option<i32>,
         channel: u8,
         note: u8,
-        velocity: f32,
-    ) -> Option<VoiceId> {
-        let mut terminated_voice: Option<VoiceId> = None;
-
-        let (voice_idx, stolen) = match self.voice_override {
-            VoiceOverride::Kill => self.find_or_kill_voice(note),
-            VoiceOverride::Steal => self.find_or_steal_voice(note),
-        };
-        let dst_voice = &mut self.voices[voice_idx];
-
-        if stolen {
-            terminated_voice = Some(dst_voice.get_id());
-        }
-
-        *dst_voice = Voice {
-            id: self.next_voice_id,
-            external_voice_id: voice_id,
-            channel,
-            note,
-            state: VoiceState::NoteOn,
-        };
-
-        self.next_voice_id = self.next_voice_id.wrapping_add(1);
-
-        let params = NoteOnParams {
-            note: note as f32,
-            velocity,
-            voice_idx,
-            reset: !stolen,
-        };
-
-        for module_id in &self.execution_order {
-            if let Some(module) = get_module_mut!(self, &module_id) {
-                module.note_on(&params);
-            }
-        }
-
-        if let Some(output) = self.output.as_deref_mut() {
-            output.note_on(&params);
-        }
-
-        terminated_voice
-    }
-
-    pub fn handle_expression(
-        &mut self,
         expression: Expression,
-        note: u8,
-        voice_id: Option<i32>,
         value: Sample,
     ) {
-        let voice_idx = if voice_id.is_some() {
-            self.voices.iter().position(|voice| {
-                voice.external_voice_id == voice_id
-                    && !matches!(voice.state, VoiceState::Free | VoiceState::Kill)
-            })
-        } else {
-            self.voices.iter().position(|voice| {
-                voice.note == note && !matches!(voice.state, VoiceState::Free | VoiceState::Kill)
-            })
-        };
+        let mut voice_events = VoiceEvents::new();
 
-        let Some(voice_idx) = voice_idx else {
-            return;
-        };
+        self.voices_handler
+            .handle_expression(channel, note, expression, value, &mut voice_events);
 
-        let params = ExpressionParams {
-            voice_idx,
-            expression,
-            value,
-        };
-
-        for module_id in &self.execution_order {
-            if let Some(module) = get_module_mut!(self, &module_id) {
-                module.expression(&params);
-            }
-        }
+        self.process_voice_events(voice_events.events());
     }
 
-    pub fn note_off(&mut self, note: u8, velocity: f32) {
-        let Some(voice_idx) = self
-            .voices
-            .iter()
-            .position(|voice| voice.note == note && matches!(voice.state, VoiceState::NoteOn))
-        else {
-            return;
-        };
-
-        self.voices[voice_idx].state = VoiceState::Release;
-
-        let params = NoteOffParams {
-            voice_idx,
-            velocity,
-        };
-
-        for module_id in &self.execution_order {
-            if let Some(module) = get_module_mut!(self, &module_id) {
-                module.note_off(&params);
-            }
-        }
+    pub fn handle_choke(&mut self, channel: u8, note: u8) {
+        self.voices_handler.handle_choke(channel, note);
     }
 
-    pub fn choke(&mut self, note: u8) -> Option<VoiceId> {
-        let voice = self
-            .voices
-            .iter_mut()
-            .find(|voice| voice.note == note && !matches!(voice.state, VoiceState::Free))?;
+    pub fn process<'a>(&mut self, samples: usize, outputs: impl Iterator<Item = &'a mut [f32]>) {
+        {
+            let mut decaying_voices = DecayingVoices::new();
 
-        voice.state = VoiceState::Free;
-        Some(voice.get_id())
-    }
+            self.voices_handler
+                .get_decaying_voices(&mut decaying_voices);
 
-    pub fn process<'a>(
-        &mut self,
-        samples: usize,
-        outputs: impl Iterator<Item = &'a mut [f32]>,
-        on_terminate_voice: &mut dyn FnMut(VoiceId),
-    ) {
-        let mut alive_voices: SmallVec<[VoiceAlive; MAX_VOICES]> = self
-            .voices
-            .iter()
-            .enumerate()
-            .filter(|(_, v)| !matches!(v.state, VoiceState::Free))
-            .map(|(voice_idx, v)| VoiceAlive::new(voice_idx, matches!(v.state, VoiceState::NoteOn)))
-            .collect();
+            self.execution_order
+                .iter()
+                .filter_map(|id| get_module!(self, id))
+                .for_each(|module| module.poll_decaying_voices(&mut decaying_voices));
 
-        self.execution_order
-            .iter()
-            .filter_map(|id| get_module!(self, id))
-            .for_each(|module| module.poll_alive_voices(&mut alive_voices));
-
-        if let Some(output) = self.output.as_deref() {
-            output.poll_alive_voices(&mut alive_voices);
+            self.voices_handler.update_decaying_voices(&decaying_voices);
         }
 
-        for completed in alive_voices.iter().filter(|alive| !alive.alive()) {
-            let voice = &mut self.voices[completed.index()];
+        let mut playing_voices = PlayingVoices::new();
 
-            on_terminate_voice(voice.get_id());
-            voice.state = VoiceState::Free;
-        }
-
-        let active_idx: SmallVec<[usize; MAX_VOICES]> = alive_voices
-            .iter()
-            .filter(|alive| alive.alive())
-            .map(|alive| alive.index())
-            .collect();
+        self.voices_handler.get_playing_voices(&mut playing_voices);
 
         let samples = if self.oversampling {
             2 * samples
@@ -761,7 +501,7 @@ impl SynthEngine {
             buffer_t_step: samples as Sample / sample_rate,
             needs_audio_rate: false,
             spectrum_channels: self.spectrum_channels,
-            active_voices: &active_idx,
+            active_voices: &playing_voices,
         };
 
         for module_id in &self.execution_order {
@@ -775,7 +515,7 @@ impl SynthEngine {
         }
 
         if let Some(mut output) = self.output.take() {
-            output.process(&params, self.oversampling, self, outputs);
+            output.process_output(&params, self.oversampling, self, outputs);
             self.output.replace(output);
         }
     }
@@ -786,23 +526,6 @@ impl SynthEngine {
         self.next_id += 1;
         self.config.lock().routing.next_module_id = self.next_id;
         module_id
-    }
-
-    fn trigger_active_notes(voices: &[Voice], module: &mut dyn SynthModule) {
-        let active_voices = voices
-            .iter()
-            .enumerate()
-            .filter(|(_, voice)| matches!(voice.state, VoiceState::NoteOn))
-            .map(|(voice_idx, voice)| NoteOnParams {
-                note: voice.note as f32,
-                velocity: 1.0,
-                voice_idx,
-                reset: true,
-            });
-
-        for params in active_voices {
-            module.note_on(&params);
-        }
     }
 
     fn data_types_compatible(src: DataType, dst: DataType) -> bool {
@@ -1054,11 +777,10 @@ impl SynthEngine {
         self.input_sources.clear();
         self.modules.clear();
         self.next_id = default_cfg.next_module_id;
-        self.num_voices = default_cfg.num_voices;
         self.block_size = default_cfg.block_size;
-        self.voice_override = default_cfg.voice_override;
         self.oversampling = default_cfg.oversampling;
         self.spectrum_channels = Self::stereo_spectrum_channels(default_cfg.stereo_spectrum);
+        self.voices_handler.set_num_voices(default_cfg.num_voices);
 
         self.output = Some(Box::new(Output::new(
             Arc::clone(&self.config.lock().output),
@@ -1083,11 +805,11 @@ impl SynthEngine {
         }
 
         self.next_id = cfg.routing.next_module_id;
-        self.num_voices = Self::clamp_num_voices(cfg.routing.num_voices);
         self.block_size = Self::clamp_block_size(cfg.routing.block_size);
-        self.voice_override = cfg.routing.voice_override;
         self.oversampling = cfg.routing.oversampling;
         self.spectrum_channels = Self::stereo_spectrum_channels(cfg.routing.stereo_spectrum);
+        self.voices_handler
+            .set_num_voices(Self::clamp_num_voices(cfg.routing.num_voices));
 
         macro_rules! restore_module {
             ($module_type:ident, $module_id:ident, $cfg:ident $(, $arg:ident )*) => {{

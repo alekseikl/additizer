@@ -5,8 +5,8 @@ use std::any::Any;
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::SpectralBuffer,
-    routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
-    synth_module::{ModInput, ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
+    routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
+    synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter},
     types::SpectralOutput,
 };
 
@@ -118,9 +118,13 @@ impl SynthModule for SpectralBlend {
         DataType::Spectral
     }
 
-    fn note_on(&mut self, params: &NoteOnParams) {
+    fn handle_events(&mut self, events: &[VoiceEvent]) {
         for channel in &mut self.channels {
-            channel.voices[params.voice_idx].triggered = true;
+            for event in events {
+                if let VoiceEvent::Trigger { voice_idx, .. } = event {
+                    channel.voices[*voice_idx].triggered = true;
+                }
+            }
         }
     }
 

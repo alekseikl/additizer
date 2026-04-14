@@ -13,13 +13,13 @@ use crate::{
         StereoSample,
         buffer::{Buffer, SPECTRUM_BITS, SpectralBuffer, zero_buffer},
         phase::Phase,
-        routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
-        synth_module::{
-            ModInput, ModuleConfigBox, NoteOnParams, ProcessParams, SynthModule, VoiceRouter,
+        routing::{
+            DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
         },
+        synth_module::{ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
         types::{ComplexSample, Sample},
     },
-    utils::{note_to_octave, pitch_to_freq, power_scale, st_to_octave},
+    utils::{pitch_to_freq, power_scale, st_to_octave},
 };
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
@@ -45,14 +45,14 @@ const fn zero_dft_buffer() -> DftBuffer {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Params {
     unison: usize,
-    reset_phase: bool,
+    steal_phase: bool,
 }
 
 impl Default for Params {
     fn default() -> Self {
         Self {
             unison: 1,
-            reset_phase: false,
+            steal_phase: false,
         }
     }
 }
@@ -143,7 +143,7 @@ pub struct OscillatorUIData {
     pub phase_shift: StereoSample,
     pub frequency_shift: StereoSample,
     pub unison: usize,
-    pub reset_phase: bool,
+    pub steal_phase: bool,
     pub phases_blend: StereoSample,
     pub gains_blend: StereoSample,
     pub unison_params: [UnisonUiParams; MAX_UNISON_VOICES],
@@ -331,7 +331,7 @@ impl Oscillator {
             detune_power: get_stereo_param!(self, detune_power),
             phase_shift: get_stereo_param!(self, phase_shift),
             frequency_shift: get_stereo_param!(self, frequency_shift),
-            reset_phase: self.params.reset_phase,
+            steal_phase: self.params.steal_phase,
             unison: self.params.unison,
             phases_blend: get_stereo_param!(self, phases_blend),
             gains_blend: get_stereo_param!(self, gains_blend),
@@ -351,7 +351,7 @@ impl Oscillator {
         usize,
         unison.clamp(1, MAX_UNISON_VOICES)
     );
-    set_mono_param!(set_reset_phase, reset_phase, bool);
+    set_mono_param!(set_steal_phase, steal_phase, bool);
 
     set_stereo_param!(set_gain, gain);
     set_stereo_param!(
@@ -841,18 +841,40 @@ impl SynthModule for Oscillator {
         DataType::Buffer
     }
 
-    fn note_on(&mut self, params: &NoteOnParams) {
-        for channel in self.channels.iter_mut() {
-            let voice = &mut channel.voices[params.voice_idx];
+    fn handle_events(&mut self, events: &[VoiceEvent]) {
+        for channel in &mut self.channels {
+            for event in events {
+                match event {
+                    VoiceEvent::Trigger {
+                        voice_idx,
+                        prev_voice_idx,
+                        pitch,
+                        ..
+                    } => {
+                        let voice = &mut channel.voices[*voice_idx];
 
-            voice.state.pitch = note_to_octave(params.note);
-            voice.state.triggered = true;
+                        voice.state.pitch = *pitch;
+                        voice.state.triggered = true;
 
-            if params.reset || self.params.reset_phase {
-                for (phase, unison_voice) in
-                    voice.state.phases.iter_mut().zip(&channel.params.unison)
-                {
-                    *phase = Phase::from_normalized(unison_voice.initial_phase);
+                        if let Some(prev_voice_idx) = prev_voice_idx
+                            && self.params.steal_phase
+                        {
+                            channel.voices[*voice_idx].state.phases =
+                                channel.voices[*prev_voice_idx].state.phases;
+                        } else {
+                            for (phase, unison_voice) in
+                                voice.state.phases.iter_mut().zip(&channel.params.unison)
+                            {
+                                *phase = Phase::from_normalized(unison_voice.initial_phase);
+                            }
+                        }
+                    }
+                    VoiceEvent::Update {
+                        voice_idx, pitch, ..
+                    } => {
+                        channel.voices[*voice_idx].state.pitch = *pitch;
+                    }
+                    _ => (),
                 }
             }
         }

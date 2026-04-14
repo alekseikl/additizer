@@ -6,9 +6,9 @@ use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::{Buffer, zero_buffer},
     phase::Phase,
-    routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
+    routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
     smoother::Smoother,
-    synth_module::{ModInput, ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
+    synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter},
     types::ScalarOutput,
 };
 
@@ -43,14 +43,14 @@ impl Default for ChannelParams {
 pub struct Params {
     shape: LfoShape,
     bipolar: bool,
-    reset_phase: bool,
+    steal_phase: bool,
 }
 
 pub struct LfoUiData {
     pub label: String,
     pub shape: LfoShape,
     pub bipolar: bool,
-    pub reset_phase: bool,
+    pub steal_phase: bool,
     pub frequency: StereoSample,
     pub phase_shift: StereoSample,
     pub skew: StereoSample,
@@ -133,7 +133,7 @@ impl Lfo {
             label: self.label.clone(),
             shape: self.params.shape,
             bipolar: self.params.bipolar,
-            reset_phase: self.params.reset_phase,
+            steal_phase: self.params.steal_phase,
             frequency: get_stereo_param!(self, frequency),
             phase_shift: get_stereo_param!(self, phase_shift),
             skew: get_stereo_param!(self, skew),
@@ -143,7 +143,7 @@ impl Lfo {
 
     set_mono_param!(set_shape, shape, LfoShape);
     set_mono_param!(set_bipolar, bipolar, bool);
-    set_mono_param!(set_reset_phase, reset_phase, bool);
+    set_mono_param!(set_steal_phase, steal_phase, bool);
 
     set_stereo_param!(set_frequency, frequency);
     set_stereo_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
@@ -284,16 +284,35 @@ impl SynthModule for Lfo {
         DataType::Scalar
     }
 
-    fn note_on(&mut self, params: &NoteOnParams) {
+    fn handle_events(&mut self, events: &[VoiceEvent]) {
         for channel in &mut self.channels {
-            let voice = &mut channel.voices[params.voice_idx];
+            for event in events {
+                if let VoiceEvent::Trigger {
+                    voice_idx,
+                    prev_voice_idx,
+                    ..
+                } = event
+                {
+                    let voice = &mut channel.voices[*voice_idx];
 
-            voice.triggered = true;
+                    voice.triggered = true;
+                    voice.audio_smoother.reset(0.0);
 
-            if params.reset || self.params.reset_phase {
-                voice.phase = Phase::ZERO;
-                voice.audio_phase = Phase::ZERO;
-                voice.audio_smoother.reset(0.0);
+                    if let Some(prev_voice_idx) = prev_voice_idx
+                        && self.params.steal_phase
+                    {
+                        let prev_voice = &mut channel.voices[*prev_voice_idx];
+                        let prev_phase = prev_voice.phase;
+                        let prev_audio_phase = prev_voice.audio_phase;
+                        let voice = &mut channel.voices[*voice_idx];
+
+                        voice.phase = prev_phase;
+                        voice.audio_phase = prev_audio_phase;
+                    } else {
+                        voice.phase = Phase::ZERO;
+                        voice.audio_phase = Phase::ZERO;
+                    }
+                }
             }
         }
     }

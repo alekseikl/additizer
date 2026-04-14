@@ -8,9 +8,9 @@ use crate::{
     synth_engine::{
         ModuleId, ModuleType, Sample, SynthModule,
         buffer::{Buffer, zero_buffer},
-        routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
+        routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
         smoother::Smoother,
-        synth_module::{ModInput, ModuleConfigBox, NoteOnParams, ProcessParams},
+        synth_module::{ModInput, ModuleConfigBox, ProcessParams},
         types::ScalarOutput,
     },
     utils::from_ms,
@@ -164,17 +164,18 @@ impl SynthModule for ExternalParam {
         DataType::Scalar
     }
 
-    fn note_on(&mut self, params: &NoteOnParams) {
-        let param_value = self.params_block.float_params[self.params.selected_param_index].value();
-
+    fn handle_events(&mut self, events: &[VoiceEvent]) {
         for channel in &mut self.channels {
-            let voice = &mut channel.voices[params.voice_idx];
+            for event in events {
+                if let VoiceEvent::Trigger { voice_idx, .. } = event {
+                    let param_value =
+                        self.params_block.float_params[self.params.selected_param_index].value();
+                    let voice = &mut channel.voices[*voice_idx];
 
-            voice.triggered = true;
-            voice.value_at_trigger = param_value;
-
-            if params.reset {
-                voice.audio_smoother.reset(param_value);
+                    voice.triggered = true;
+                    voice.value_at_trigger = param_value;
+                    voice.audio_smoother.reset(param_value);
+                }
             }
         }
     }

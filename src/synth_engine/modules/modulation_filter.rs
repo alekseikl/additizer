@@ -6,7 +6,7 @@ use crate::synth_engine::{
     Input, ModuleId, ModuleInput, ModuleType, Sample, SynthModule,
     buffer::{Buffer, ZEROES_BUFFER, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
-    synth_module::{ModInput, ModuleConfigBox, NoteOnParams, ProcessParams},
+    synth_module::{ModInput, ModuleConfigBox, ProcessParams},
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -173,14 +173,6 @@ impl SynthModule for ModulationFilter {
 
     fn output(&self) -> DataType {
         DataType::Buffer
-    }
-
-    fn note_on(&mut self, params: &NoteOnParams) {
-        if params.reset {
-            for channel in &mut self.channels {
-                channel.voices[params.voice_idx].filter.reset_state();
-            }
-        }
     }
 
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {

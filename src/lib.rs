@@ -12,7 +12,7 @@ mod utils;
 use crate::default_scheme::build_default_scheme;
 use crate::editor::create_editor;
 use crate::params::AdditizerParams;
-use crate::synth_engine::{Expression, ExternalParamsBlock, SynthEngine, VoiceId};
+use crate::synth_engine::{Expression, ExternalParamsBlock, SynthEngine};
 pub use egui_baseview::egui;
 use nih_plug::prelude::*;
 use parking_lot::Mutex;
@@ -32,17 +32,6 @@ impl Default for Additizer {
     }
 }
 
-impl VoiceId {
-    fn terminated_event(&self, timing: usize) -> NoteEvent<()> {
-        NoteEvent::VoiceTerminated {
-            timing: timing as u32,
-            voice_id: self.voice_id,
-            channel: self.channel,
-            note: self.note,
-        }
-    }
-}
-
 trait EventUtils {
     fn is_barrier(&self) -> bool;
 }
@@ -54,76 +43,63 @@ impl EventUtils for NoteEvent<()> {
 }
 
 impl Additizer {
-    fn process_event(
-        synth: &mut SynthEngine,
-        context: &mut impl ProcessContext<Self>,
-        event: NoteEvent<()>,
-    ) {
-        let mut terminate_voice = |voice: Option<VoiceId>| {
-            if let Some(voice) = voice {
-                context.send_event(voice.terminated_event(event.timing() as usize))
-            }
-        };
-
-        // nih_log!("Event: {:?}", event);
-
+    fn process_event(synth: &mut SynthEngine, event: NoteEvent<()>) {
         match event {
             NoteEvent::NoteOn {
                 channel,
                 note,
-                voice_id,
                 velocity,
                 ..
             } => {
-                let terminated = synth.note_on(voice_id, channel, note, velocity);
-                terminate_voice(terminated);
+                synth.handle_note_on(channel, note, velocity);
             }
-            NoteEvent::NoteOff { note, velocity, .. } => {
-                synth.note_off(note, velocity);
+            NoteEvent::NoteOff {
+                channel,
+                note,
+                velocity,
+                ..
+            } => {
+                synth.handle_note_off(channel, note, velocity);
             }
-            NoteEvent::Choke { note, .. } => {
-                let terminated = synth.choke(note);
-                terminate_voice(terminated);
+            NoteEvent::Choke { channel, note, .. } => {
+                synth.handle_choke(channel, note);
             }
             NoteEvent::PolyVolume {
-                voice_id,
+                channel,
                 note,
                 gain,
                 ..
             } => {
-                synth.handle_expression(Expression::Gain, note, voice_id, gain);
+                synth.handle_note_expression(channel, note, Expression::Gain, gain);
             }
             NoteEvent::PolyPan {
-                voice_id,
-                note,
-                pan,
-                ..
+                channel, note, pan, ..
             } => {
-                synth.handle_expression(Expression::Pan, note, voice_id, pan);
+                synth.handle_note_expression(channel, note, Expression::Pan, pan);
             }
             NoteEvent::PolyTuning {
-                voice_id,
+                channel,
                 note,
                 tuning,
                 ..
             } => {
-                synth.handle_expression(Expression::Pitch, note, voice_id, tuning);
+                synth.handle_note_expression(channel, note, Expression::Pitch, tuning);
             }
             NoteEvent::PolyBrightness {
-                voice_id,
+                channel,
                 note,
                 brightness,
                 ..
             } => {
-                synth.handle_expression(Expression::Timbre, note, voice_id, brightness);
+                synth.handle_note_expression(channel, note, Expression::Timbre, brightness);
             }
             NoteEvent::PolyPressure {
-                voice_id,
+                channel,
                 note,
                 pressure,
                 ..
             } => {
-                synth.handle_expression(Expression::Pressure, note, voice_id, pressure);
+                synth.handle_note_expression(channel, note, Expression::Pressure, pressure);
             }
             _ => (),
         }
@@ -208,30 +184,19 @@ impl Plugin for Additizer {
 
         impl<'a, 'b> BlocksHandler<'a, 'b> {
             #[inline]
-            fn process_single_block(
-                &mut self,
-                sample_from: usize,
-                samples: usize,
-                context: &mut dyn ProcessContext<Additizer>,
-            ) {
+            fn process_single_block(&mut self, sample_from: usize, samples: usize) {
                 self.synth.process(
                     samples,
                     self.buffer
                         .as_slice()
                         .iter_mut()
                         .map(|buff| &mut buff[sample_from..sample_from + samples]),
-                    &mut |voice| context.send_event(voice.terminated_event(sample_from)),
                 );
             }
 
-            fn process(
-                &mut self,
-                mut sample_from: usize,
-                sample_to: usize,
-                context: &mut dyn ProcessContext<Additizer>,
-            ) -> usize {
+            fn process(&mut self, mut sample_from: usize, sample_to: usize) -> usize {
                 while sample_to - sample_from >= self.desired_block_size {
-                    self.process_single_block(sample_from, self.desired_block_size, context);
+                    self.process_single_block(sample_from, self.desired_block_size);
                     sample_from += self.desired_block_size;
                 }
 
@@ -239,16 +204,11 @@ impl Plugin for Additizer {
             }
 
             #[inline]
-            fn process_all(
-                &mut self,
-                mut sample_from: usize,
-                sample_to: usize,
-                context: &mut dyn ProcessContext<Additizer>,
-            ) -> usize {
+            fn process_all(&mut self, mut sample_from: usize, sample_to: usize) -> usize {
                 while sample_from < sample_to {
                     let samples = self.desired_block_size.min(sample_to - sample_from);
 
-                    self.process_single_block(sample_from, samples, context);
+                    self.process_single_block(sample_from, samples);
                     sample_from += samples;
                 }
 
@@ -275,16 +235,16 @@ impl Plugin for Additizer {
                 let sample_to = event.timing() as usize;
 
                 if sample_to > sample_from && event.is_barrier() {
-                    sample_from = blocks_handler.process_all(sample_from, sample_to, context);
+                    sample_from = blocks_handler.process_all(sample_from, sample_to);
                 } else if sample_to - sample_from >= desired_block_size {
-                    sample_from = blocks_handler.process(sample_from, sample_to, context);
+                    sample_from = blocks_handler.process(sample_from, sample_to);
                 }
 
-                Self::process_event(blocks_handler.synth, context, event);
+                Self::process_event(blocks_handler.synth, event);
                 next_event = context.next_event();
             }
 
-            blocks_handler.process_all(sample_from, total_samples, context);
+            blocks_handler.process_all(sample_from, total_samples);
         });
 
         ProcessStatus::KeepAlive

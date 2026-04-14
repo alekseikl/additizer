@@ -500,12 +500,12 @@ impl ModuleUi for OscillatorUI {
                 }
                 ui.end_row();
 
-                ui.label("Reset phase");
+                ui.label("Steal phase");
                 if ui
-                    .add(Checkbox::without_text(&mut ui_data.reset_phase))
+                    .add(Checkbox::without_text(&mut ui_data.steal_phase))
                     .changed()
                 {
-                    self.osc(synth).set_reset_phase(ui_data.reset_phase);
+                    self.osc(synth).set_steal_phase(ui_data.steal_phase);
                 }
                 ui.end_row();
 

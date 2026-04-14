@@ -9,18 +9,9 @@ use egui_baseview::{
 use crate::{
     editor::{ModuleUi, multi_input::MultiInput},
     presets::{Preset, PresetInfo, PresetListItem, Presets},
-    synth_engine::{Input, ModuleId, OUTPUT_MODULE_ID, SynthEngine, VoiceOverride},
+    synth_engine::{Input, ModuleId, OUTPUT_MODULE_ID, SynthEngine},
     utils::from_ms,
 };
-
-impl VoiceOverride {
-    pub fn label(&self) -> &'static str {
-        match self {
-            Self::Kill => "Kill",
-            Self::Steal => "Steal",
-        }
-    }
-}
 
 #[derive(Default)]
 pub struct SavePresetState {
@@ -210,23 +201,6 @@ impl ModuleUi for ParamsUi {
                 {
                     synth.set_num_voices(ui_data.voices);
                 }
-                ui.end_row();
-
-                let overrides = [VoiceOverride::Kill, VoiceOverride::Steal];
-
-                ui.label("Voice override");
-                ComboBox::from_id_salt("voice-override-select")
-                    .selected_text(ui_data.voice_override.label())
-                    .show_ui(ui, |ui| {
-                        for vo in &overrides {
-                            if ui
-                                .selectable_value(&mut ui_data.voice_override, *vo, vo.label())
-                                .clicked()
-                            {
-                                synth.set_voice_override(*vo);
-                            }
-                        }
-                    });
                 ui.end_row();
 
                 ui.label("Voice kill time");

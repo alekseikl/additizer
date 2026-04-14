@@ -5,11 +5,9 @@ use crate::{
     synth_engine::{
         Expression, ModuleId, ModuleType, Sample, SynthModule,
         buffer::{Buffer, zero_buffer},
-        routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
+        routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
         smoother::Smoother,
-        synth_module::{
-            ExpressionParams, ModInput, ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams,
-        },
+        synth_module::{ModInput, ModuleConfigBox, ProcessParams},
     },
     utils::{from_ms, st_to_octave},
 };
@@ -134,6 +132,50 @@ impl Expressions {
             _ => 0.0,
         }
     }
+
+    fn handle_trigger(channel_idx: usize, voice: &mut Voice, params: &Params, velocity: Sample) {
+        if matches!(params.expression, Expression::Velocity) {
+            voice.output = velocity;
+            voice.audio_smoother.reset(velocity);
+            voice.triggered = false;
+        } else {
+            let default_value = Self::default_value(params.expression);
+            let value = Self::transform_value(params.expression, channel_idx, default_value);
+
+            voice.output = value;
+            voice.audio_smoother.reset(value);
+            voice.triggered = true;
+        }
+    }
+
+    fn handle_update(voice: &mut Voice, params: &Params, velocity: Sample) {
+        if matches!(params.expression, Expression::Velocity) {
+            voice.output = velocity;
+        }
+    }
+
+    fn handle_release(voice: &mut Voice, params: &Params, velocity: Sample) {
+        if matches!(params.expression, Expression::Velocity) && params.use_release_velocity {
+            voice.output = velocity;
+        }
+    }
+
+    fn handle_expression(
+        channel_idx: usize,
+        voice: &mut Voice,
+        expression: Expression,
+        value: Sample,
+    ) {
+        let value = Self::transform_value(expression, channel_idx, value);
+
+        if voice.triggered {
+            voice.output = value;
+            voice.audio_smoother.reset(value);
+            voice.triggered = false;
+        } else {
+            voice.output = value;
+        }
+    }
 }
 
 impl SynthModule for Expressions {
@@ -162,53 +204,57 @@ impl SynthModule for Expressions {
         DataType::Scalar
     }
 
-    fn note_on(&mut self, params: &NoteOnParams) {
+    fn handle_events(&mut self, events: &[VoiceEvent]) {
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
-            let voice = &mut channel.voices[params.voice_idx];
-
-            if matches!(self.params.expression, Expression::Velocity) {
-                voice.output = params.velocity;
-                voice.audio_smoother.reset(params.velocity);
-                voice.triggered = false;
-            } else {
-                let default_value = Self::default_value(self.params.expression);
-                let value =
-                    Self::transform_value(self.params.expression, channel_idx, default_value);
-
-                voice.output = value;
-                voice.audio_smoother.reset(value);
-                voice.triggered = true;
-            }
-        }
-    }
-
-    fn note_off(&mut self, params: &NoteOffParams) {
-        if matches!(self.params.expression, Expression::Velocity)
-            && self.params.use_release_velocity
-        {
-            for channel in &mut self.channels {
-                let voice = &mut channel.voices[params.voice_idx];
-
-                voice.output = params.velocity;
-            }
-        }
-    }
-
-    fn expression(&mut self, params: &ExpressionParams) {
-        if params.expression != self.params.expression {
-            return;
-        }
-
-        for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
-            let voice = &mut channel.voices[params.voice_idx];
-            let value = Self::transform_value(self.params.expression, channel_idx, params.value);
-
-            if voice.triggered {
-                voice.output = value;
-                voice.audio_smoother.reset(value);
-                voice.triggered = false;
-            } else {
-                voice.output = value;
+            for event in events {
+                match event {
+                    VoiceEvent::Trigger {
+                        voice_idx,
+                        velocity,
+                        ..
+                    } => {
+                        Self::handle_trigger(
+                            channel_idx,
+                            &mut channel.voices[*voice_idx],
+                            &self.params,
+                            *velocity,
+                        );
+                    }
+                    VoiceEvent::Update {
+                        voice_idx,
+                        velocity,
+                        ..
+                    } => {
+                        Self::handle_update(
+                            &mut channel.voices[*voice_idx],
+                            &self.params,
+                            *velocity,
+                        );
+                    }
+                    VoiceEvent::Release {
+                        voice_idx,
+                        velocity,
+                    } => {
+                        Self::handle_release(
+                            &mut channel.voices[*voice_idx],
+                            &self.params,
+                            *velocity,
+                        );
+                    }
+                    VoiceEvent::Expression {
+                        voice_idx,
+                        expression,
+                        value,
+                    } if *expression == self.params.expression => {
+                        Self::handle_expression(
+                            channel_idx,
+                            &mut channel.voices[*voice_idx],
+                            *expression,
+                            *value,
+                        );
+                    }
+                    _ => (),
+                }
             }
         }
     }

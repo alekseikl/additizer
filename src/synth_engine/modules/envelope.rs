@@ -7,13 +7,13 @@ use crate::{
         StereoSample,
         buffer::{Buffer, zero_buffer},
         curves::{CurveFunction, Exponential, ExponentialIn, ExponentialOut},
-        routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
-        smoother::Smoother,
-        synth_module::{
-            ModInput, ModuleConfigBox, NoteOffParams, NoteOnParams, ProcessParams, SynthModule,
-            VoiceAlive, VoiceRouter,
+        routing::{
+            DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
         },
+        smoother::Smoother,
+        synth_module::{ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
         types::{Sample, ScalarOutput},
+        voices_handler::DecayingVoice,
     },
     utils::from_ms,
 };
@@ -410,11 +410,9 @@ impl Envelope {
         }
     }
 
-    fn trigger_voice(voice: &mut Voice, reset: bool) {
-        if reset {
-            voice.scalar_output = ScalarOutput::default();
-        }
-
+    fn trigger_voice(voice: &mut Voice) {
+        voice.scalar_output = ScalarOutput::default();
+        voice.smoother.reset(0.0);
         voice.triggered = true;
     }
 
@@ -458,31 +456,31 @@ impl SynthModule for Envelope {
         DataType::Scalar
     }
 
-    fn note_on(&mut self, params: &NoteOnParams) {
+    fn handle_events(&mut self, events: &[VoiceEvent]) {
         for channel in &mut self.channels {
-            let voice = &mut channel.voices[params.voice_idx];
-
-            Self::trigger_voice(voice, params.reset);
-
-            if params.reset {
-                voice.smoother.reset(0.0);
+            for event in events {
+                match event {
+                    VoiceEvent::Trigger { voice_idx, .. } => {
+                        Self::trigger_voice(&mut channel.voices[*voice_idx]);
+                    }
+                    VoiceEvent::Release { voice_idx, .. } => {
+                        Self::release_voice(&mut channel.voices[*voice_idx]);
+                    }
+                    _ => (),
+                }
             }
         }
     }
 
-    fn note_off(&mut self, params: &NoteOffParams) {
-        for channel in &mut self.channels {
-            Self::release_voice(&mut channel.voices[params.voice_idx]);
-        }
-    }
-
-    fn poll_alive_voices(&self, alive_state: &mut [VoiceAlive]) {
+    fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {
         if self.params.keep_voice_alive {
-            for voice_alive in alive_state.iter_mut().filter(|va| !va.alive()) {
+            for decaying in decaying_voices.iter_mut().filter(|d| d.is_done()) {
                 for channel in &self.channels {
-                    let voice = &channel.voices[voice_alive.index()];
+                    let voice = &channel.voices[decaying.index()];
 
-                    voice_alive.mark_alive(!matches!(voice.stage, Stage::Done) || voice.triggered);
+                    if !matches!(voice.stage, Stage::Done) || voice.triggered {
+                        decaying.mark_active();
+                    }
                 }
             }
         }

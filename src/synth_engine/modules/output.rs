@@ -5,13 +5,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::{
-        Input, ModuleInput, OUTPUT_MODULE_ID, Sample, StereoSample,
+        Input, ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample,
+        SynthModule,
         buffer::{Buffer, ZEROES_BUFFER, copy_or_add_buffer, zero_buffer},
         iir_decimator::IirDecimator,
-        routing::{MAX_VOICES, NUM_CHANNELS, Router},
+        routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
         smoother::Smoother,
-        synth_module::{ModuleConfigBox, NoteOnParams, ProcessParams, VoiceAlive},
+        synth_module::{ModInput, ModuleConfigBox, ProcessParams},
         types::ScalarOutput,
+        voices_handler::DecayingVoice,
     },
     utils::from_ms,
 };
@@ -114,7 +116,7 @@ impl Output {
         self.config.lock().params.voice_kill_time = voice_kill_time;
     }
 
-    pub fn process<'a>(
+    pub fn process_output<'a>(
         &mut self,
         process_params: &ProcessParams,
         oversampling: bool,
@@ -209,33 +211,81 @@ impl Output {
         }
     }
 
-    pub fn note_on(&mut self, params: &NoteOnParams) {
-        for channel in &mut self.channels {
-            let voice = &mut channel.voices[params.voice_idx];
+    // pub fn poll_alive_voices(&self, alive_state: &mut [VoiceAlive]) {
+    //     const ALIVE_THRESHOLD: Sample = 0.0000001;
 
-            voice.killed = false;
-            voice.killed_gain = 1.0;
-            voice.killed_output_power = 1.0;
-        }
+    //     for voice_alive in alive_state.iter_mut().filter(|alive| alive.alive()) {
+    //         for channel in &self.channels {
+    //             let voice = &channel.voices[voice_alive.index()];
+
+    //             if voice.killed {
+    //                 voice_alive.reset_alive(voice.killed_output_power > ALIVE_THRESHOLD);
+    //             }
+    //         }
+    //     }
+    // }
+}
+
+impl SynthModule for Output {
+    fn id(&self) -> ModuleId {
+        OUTPUT_MODULE_ID
     }
 
-    pub fn kill_voice(&mut self, voice_idx: usize) {
-        for channel in &mut self.channels {
-            channel.voices[voice_idx].killed = true;
-        }
+    fn label(&self) -> String {
+        "Output".to_string()
     }
 
-    pub fn poll_alive_voices(&self, alive_state: &mut [VoiceAlive]) {
-        const ALIVE_THRESHOLD: Sample = 0.0000001;
+    fn set_label(&mut self, _label: String) {}
 
-        for voice_alive in alive_state.iter_mut().filter(|alive| alive.alive()) {
-            for channel in &self.channels {
-                let voice = &channel.voices[voice_alive.index()];
+    fn module_type(&self) -> ModuleType {
+        ModuleType::Output
+    }
 
-                if voice.killed {
-                    voice_alive.reset_alive(voice.killed_output_power > ALIVE_THRESHOLD);
+    fn inputs(&self) -> &'static [ModInput] {
+        static INPUTS: &[ModInput] = &[ModInput::buffer(Input::Audio)];
+
+        INPUTS
+    }
+
+    fn output(&self) -> DataType {
+        DataType::Buffer
+    }
+
+    fn handle_events(&mut self, events: &[VoiceEvent]) {
+        for channel in &mut self.channels {
+            for event in events {
+                match event {
+                    VoiceEvent::Trigger { voice_idx, .. } => {
+                        let voice = &mut channel.voices[*voice_idx];
+
+                        voice.killed = false;
+                        voice.killed_gain = 1.0;
+                        voice.killed_output_power = 1.0;
+                    }
+                    VoiceEvent::Kill { voice_idx } => {
+                        channel.voices[*voice_idx].killed = true;
+                    }
+                    _ => (),
                 }
             }
         }
     }
+
+    fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {
+        const ALIVE_THRESHOLD: Sample = 0.0000001;
+
+        for decaying in decaying_voices.iter_mut().filter(|d| !d.is_done()) {
+            decaying.reset();
+
+            for channel in &self.channels {
+                let voice = &channel.voices[decaying.index()];
+
+                if !voice.killed || voice.killed_output_power > ALIVE_THRESHOLD {
+                    decaying.mark_active();
+                }
+            }
+        }
+    }
+
+    fn process(&mut self, _params: &ProcessParams, _router: &dyn Router) {}
 }

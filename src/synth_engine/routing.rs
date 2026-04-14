@@ -13,6 +13,7 @@ pub const MIN_MODULE_ID: ModuleId = 1;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum ModuleType {
+    Output,
     Envelope,
     Amplifier,
     Mixer,
@@ -81,7 +82,7 @@ pub enum Expression {
 }
 
 pub enum VoiceEvent {
-    Restart {
+    Trigger {
         voice_idx: usize,
         prev_voice_idx: Option<usize>,
         pitch: Sample,

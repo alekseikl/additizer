@@ -16,7 +16,7 @@ use crate::{
             SpectralMixerUi, WaveShaperUi,
         },
     },
-    synth_engine::{ModuleId, ModuleType, SynthEngine},
+    synth_engine::{ModuleId, ModuleType, OUTPUT_MODULE_ID, SynthEngine},
 };
 
 use egui_integration::{ResizableWindow, create_egui_editor};
@@ -70,9 +70,20 @@ fn show_menu_item(ui: &mut Ui, label: &str, selected: bool) -> Response {
     response.response.interact(Sense::click())
 }
 
+struct OutputUi;
+
+impl ModuleUi for OutputUi {
+    fn module_id(&self) -> Option<ModuleId> {
+        Some(OUTPUT_MODULE_ID)
+    }
+
+    fn ui(&mut self, _synth: &mut SynthEngine, _ui: &mut Ui) {}
+}
+
 impl ModuleType {
     fn ui(&self, id: ModuleId) -> ModuleUIBox {
         match self {
+            Self::Output => Box::new(OutputUi),
             Self::HarmonicEditor => Box::new(HarmonicEditorUI::new(id)),
             Self::SpectralFilter => Box::new(SpectralFilterUI::new(id)),
             Self::Amplifier => Box::new(AmplifierUI::new(id)),

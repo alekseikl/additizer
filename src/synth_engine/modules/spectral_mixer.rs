@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::SpectralBuffer,
-    routing::{DataType, MAX_VOICES, MixType, NUM_CHANNELS, Router, VolumeType},
-    synth_module::{ModInput, ModuleConfigBox, NoteOnParams, ProcessParams, VoiceRouter},
+    routing::{DataType, MAX_VOICES, MixType, NUM_CHANNELS, Router, VoiceEvent, VolumeType},
+    synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter},
     types::{ComplexSample, SpectralOutput},
 };
 
@@ -315,9 +315,13 @@ impl SynthModule for SpectralMixer {
         DataType::Spectral
     }
 
-    fn note_on(&mut self, params: &NoteOnParams) {
+    fn handle_events(&mut self, events: &[VoiceEvent]) {
         for channel in &mut self.channels {
-            channel.voices[params.voice_idx].triggered = true;
+            for event in events {
+                if let VoiceEvent::Trigger { voice_idx, .. } = event {
+                    channel.voices[*voice_idx].triggered = true;
+                }
+            }
         }
     }
 

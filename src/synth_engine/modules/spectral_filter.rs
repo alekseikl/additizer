@@ -7,10 +7,10 @@ use crate::synth_engine::{
     StereoSample,
     biquad_filter::BiquadFilter,
     buffer::SpectralBuffer,
-    routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
-    synth_module::{
-        ModInput, ModuleConfigBox, NoteOnParams, ProcessParams, SynthModule, VoiceRouter,
+    routing::{
+        DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
     },
+    synth_module::{ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
     types::{ComplexSample, Sample, SpectralOutput},
 };
 
@@ -248,9 +248,13 @@ impl SynthModule for SpectralFilter {
         DataType::Spectral
     }
 
-    fn note_on(&mut self, params: &NoteOnParams) {
+    fn handle_events(&mut self, events: &[VoiceEvent]) {
         for channel in &mut self.channels {
-            channel.voices[params.voice_idx].triggered = true;
+            for event in events {
+                if let VoiceEvent::Trigger { voice_idx, .. } = event {
+                    channel.voices[*voice_idx].triggered = true;
+                }
+            }
         }
     }
 

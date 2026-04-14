@@ -5,27 +5,10 @@ use parking_lot::Mutex;
 use crate::synth_engine::{
     ModuleInput,
     buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER},
-    routing::{DataType, Expression, Input, ModuleId, ModuleType, Router},
+    routing::{DataType, Input, ModuleId, ModuleType, Router, VoiceEvent},
     types::Sample,
+    voices_handler::DecayingVoice,
 };
-
-pub struct NoteOnParams {
-    pub note: f32,
-    pub velocity: f32,
-    pub voice_idx: usize,
-    pub reset: bool,
-}
-
-pub struct NoteOffParams {
-    pub voice_idx: usize,
-    pub velocity: f32,
-}
-
-pub struct ExpressionParams {
-    pub voice_idx: usize,
-    pub expression: Expression,
-    pub value: Sample,
-}
 
 pub struct ProcessParams<'a> {
     pub samples: usize,
@@ -64,33 +47,6 @@ impl ModInput {
     }
 }
 
-pub struct VoiceAlive {
-    voice_idx: usize,
-    alive: bool,
-}
-
-impl VoiceAlive {
-    pub fn new(voice_idx: usize, alive: bool) -> Self {
-        Self { voice_idx, alive }
-    }
-
-    pub fn alive(&self) -> bool {
-        self.alive
-    }
-
-    pub fn index(&self) -> usize {
-        self.voice_idx
-    }
-
-    pub fn mark_alive(&mut self, alive: bool) {
-        self.alive = self.alive || alive;
-    }
-
-    pub fn reset_alive(&mut self, alive: bool) {
-        self.alive = alive;
-    }
-}
-
 #[allow(unused_variables)]
 pub trait SynthModule: Any + Send {
     fn id(&self) -> ModuleId;
@@ -101,11 +57,8 @@ pub trait SynthModule: Any + Send {
     fn inputs(&self) -> &'static [ModInput];
     fn output(&self) -> DataType;
 
-    fn note_on(&mut self, params: &NoteOnParams) {}
-    fn expression(&mut self, params: &ExpressionParams) {}
-    fn note_off(&mut self, params: &NoteOffParams) {}
-
-    fn poll_alive_voices(&self, alive_state: &mut [VoiceAlive]) {}
+    fn handle_events(&mut self, events: &[VoiceEvent]) {}
+    fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {}
 
     fn process(&mut self, params: &ProcessParams, router: &dyn Router);
 
