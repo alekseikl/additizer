@@ -806,6 +806,7 @@ impl SynthEngine {
         self.oversampling = default_cfg.oversampling;
         self.spectrum_channels = Self::stereo_spectrum_channels(default_cfg.stereo_spectrum);
         self.voices_handler.set_num_voices(default_cfg.num_voices);
+        self.voices_handler.set_legato(default_cfg.legato);
 
         self.modules.insert(
             OUTPUT_MODULE_ID,
@@ -838,6 +839,7 @@ impl SynthEngine {
         self.spectrum_channels = Self::stereo_spectrum_channels(cfg.routing.stereo_spectrum);
         self.voices_handler
             .set_num_voices(Self::clamp_num_voices(cfg.routing.num_voices));
+        self.voices_handler.set_legato(cfg.routing.legato);
 
         macro_rules! restore_module {
             ($module_type:ident, $module_id:ident, $cfg:ident $(, $arg:ident )*) => {{

@@ -443,22 +443,14 @@ impl VoicesHandler {
     ) {
         let note_id = NoteId { channel, note };
 
-        let Some(voice_idx) = self
+        if let Some(voice_idx) = self
             .playing_notes
             .iter()
             .find(|p| p.id == note_id)
             .map(|p| p.voice_idx)
-            .or_else(|| {
-                self.releasing_notes
-                    .iter()
-                    .find(|r| r.id == note_id)
-                    .map(|r| r.voice_idx)
-            })
-        else {
-            return;
-        };
-
-        events.expression(voice_idx, expression, value);
+        {
+            events.expression(voice_idx, expression, value);
+        }
     }
 
     pub fn set_num_voices(&mut self, num_voices: usize) {

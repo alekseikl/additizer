@@ -148,9 +148,14 @@ impl Expressions {
         }
     }
 
-    fn handle_update(voice: &mut Voice, params: &Params, velocity: Sample) {
+    fn handle_update(channel_idx: usize, voice: &mut Voice, params: &Params, velocity: Sample) {
         if matches!(params.expression, Expression::Velocity) {
             voice.output = velocity;
+        } else {
+            let default_value = Self::default_value(params.expression);
+            let value = Self::transform_value(params.expression, channel_idx, default_value);
+
+            voice.output = value;
         }
     }
 
@@ -226,6 +231,7 @@ impl SynthModule for Expressions {
                         ..
                     } => {
                         Self::handle_update(
+                            channel_idx,
                             &mut channel.voices[*voice_idx],
                             &self.params,
                             *velocity,
