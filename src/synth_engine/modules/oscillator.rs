@@ -149,34 +149,35 @@ pub struct OscillatorUIData {
     pub unison_params: [UnisonUiParams; MAX_UNISON_VOICES],
 }
 
+struct Interpolated {
+    from: Sample,
+    to: Sample,
+}
+
+impl Interpolated {
+    #[inline(always)]
+    fn advance(&mut self) {
+        self.from = self.to;
+    }
+
+    #[inline(always)]
+    fn interpolate(&self, t: Sample) -> Sample {
+        (self.to - self.from).mul_add(t, self.from)
+    }
+}
+
 struct UnisonVoice {
-    rate_from: Sample,
-    rate_to: Sample,
-    rate_diff: Sample,
-
-    phase_shift_from: Sample,
-    phase_shift_to: Sample,
-    phase_shift_diff: Sample,
-
-    gain_from: Sample,
-    gain_to: Sample,
-    gain_diff: Sample,
+    rate: Interpolated,
+    phase_shift: Interpolated,
+    gain: Interpolated,
 }
 
 impl Default for UnisonVoice {
     fn default() -> Self {
         Self {
-            rate_from: 1.0,
-            rate_to: 1.0,
-            rate_diff: 0.0,
-
-            phase_shift_from: 0.0,
-            phase_shift_to: 0.0,
-            phase_shift_diff: 0.0,
-
-            gain_from: 1.0,
-            gain_to: 1.0,
-            gain_diff: 0.0,
+            rate: Interpolated { from: 1.0, to: 1.0 },
+            phase_shift: Interpolated { from: 0.0, to: 0.0 },
+            gain: Interpolated { from: 1.0, to: 1.0 },
         }
     }
 }
@@ -184,9 +185,7 @@ impl Default for UnisonVoice {
 struct VoiceState {
     pitch: Sample, // Octave units
     triggered: bool,
-    unison_gain_from: Sample,
-    unison_gain_to: Sample,
-    unison_gain_diff: Sample,
+    unison_gain: Interpolated,
     unison: [UnisonVoice; MAX_UNISON_VOICES],
     phases: [Phase; MAX_UNISON_VOICES],
     output: Buffer,
@@ -198,9 +197,7 @@ impl Default for VoiceState {
             pitch: 0.0,
             triggered: false,
             phases: Default::default(),
-            unison_gain_from: 1.0,
-            unison_gain_to: 1.0,
-            unison_gain_diff: 0.0,
+            unison_gain: Interpolated { from: 1.0, to: 1.0 },
             unison: Default::default(),
             output: zero_buffer(),
         }
@@ -612,9 +609,7 @@ impl Oscillator {
 
         if unison < 2 {
             voice.unison[0] = UnisonVoice::default();
-            voice.unison_gain_from = 1.0;
-            voice.unison_gain_to = 1.0;
-            voice.unison_gain_diff = 0.0;
+            voice.unison_gain = Interpolated { from: 1.0, to: 1.0 };
             return;
         }
 
@@ -673,45 +668,39 @@ impl Oscillator {
                 &mut voice.unison,
                 calc_update(unison, false, channel, router)
             ) {
-                state.rate_from = update.rate;
-                state.phase_shift_from = update.phase_shift;
-                state.gain_from = update.gain;
+                state.rate.from = update.rate;
+                state.phase_shift.from = update.phase_shift;
+                state.gain.from = update.gain;
             }
 
-            voice.unison_gain_from = cal_unison_gain(
+            voice.unison_gain.from = cal_unison_gain(
                 voice
                     .unison
                     .iter()
                     .take(unison)
-                    .map(|state| state.gain_from),
+                    .map(|state| state.gain.from),
             );
         } else {
             for state in voice.unison.iter_mut().take(unison) {
-                state.rate_from = state.rate_to;
-                state.phase_shift_from = state.phase_shift_to;
-                state.gain_from = state.gain_to;
+                state.rate.advance();
+                state.phase_shift.advance();
+                state.gain.advance();
             }
 
-            voice.unison_gain_from = voice.unison_gain_to;
+            voice.unison_gain.advance();
         }
 
         for (state, update) in izip!(
             &mut voice.unison,
             calc_update(unison, true, channel, router)
         ) {
-            state.rate_to = update.rate;
-            state.phase_shift_to = update.phase_shift;
-            state.gain_to = update.gain;
-
-            state.rate_diff = state.rate_to - state.rate_from;
-            state.phase_shift_diff = state.phase_shift_to - state.phase_shift_from;
-            state.gain_diff = state.gain_to - state.gain_from;
+            state.rate.to = update.rate;
+            state.phase_shift.to = update.phase_shift;
+            state.gain.to = update.gain;
         }
 
-        voice.unison_gain_to =
-            cal_unison_gain(voice.unison.iter().take(unison).map(|state| state.gain_to));
-
-        voice.unison_gain_diff = voice.unison_gain_to - voice.unison_gain_from;
+        voice.unison_gain.to =
+            cal_unison_gain(voice.unison.iter().take(unison).map(|state| state.gain.to));
     }
 
     fn process_voice(
@@ -781,24 +770,17 @@ impl Oscillator {
             {
                 let read_phase = *phase
                     + phase_shift
-                    + Phase::from_normalized(
-                        uv.phase_shift_diff.mul_add(buff_t, uv.phase_shift_from),
-                    );
+                    + Phase::from_normalized(uv.phase_shift.interpolate(buff_t));
                 let idx = read_phase.wave_index::<WAVEFORM_BITS>();
                 let t = read_phase.wave_index_fraction::<WAVEFORM_BITS>();
 
                 sample += Self::get_interpolated_sample(wave_from, wave_to, buff_t, idx, t)
-                    * uv.gain_diff.mul_add(buff_t, uv.gain_from);
+                    * uv.gain.interpolate(buff_t);
 
-                *phase += pitch_phase_inc
-                    .mul_add(uv.rate_diff.mul_add(buff_t, uv.rate_from), freq_phase_inc);
+                *phase += pitch_phase_inc.mul_add(uv.rate.interpolate(buff_t), freq_phase_inc);
             }
 
-            *out = sample
-                * gain
-                * voice
-                    .unison_gain_diff
-                    .mul_add(buff_t, voice.unison_gain_from);
+            *out = sample * gain * voice.unison_gain.interpolate(buff_t);
         }
     }
 }
