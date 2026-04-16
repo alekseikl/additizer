@@ -1,4 +1,4 @@
-use std::{any::Any, array, f32, sync::Arc};
+use std::{any::Any, array, convert::identity, f32, sync::Arc};
 
 use itertools::izip;
 use nih_plug::util::db_to_gain;
@@ -19,7 +19,7 @@ use crate::{
         synth_module::{ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
         types::{ComplexSample, Sample},
     },
-    utils::{pitch_to_freq, power_scale, st_to_octave},
+    utils::{from_ms, pitch_to_freq, power_scale, st_to_octave},
 };
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
@@ -30,6 +30,7 @@ const WAVEFORM_BUFFER_SIZE: usize = WAVEFORM_SIZE + WAVEFORM_PAD_LEFT + WAVEFORM
 const DFT_BUFFER_SIZE: usize = (1 << (WAVEFORM_BITS - 1)) + 1;
 
 const MAX_UNISON_VOICES: usize = 16;
+const MAX_GLIDE: Sample = 5.0;
 
 type WaveformBuffer = [Sample; WAVEFORM_BUFFER_SIZE];
 type DftBuffer = [ComplexSample; DFT_BUFFER_SIZE];
@@ -84,6 +85,8 @@ pub struct ChannelParams {
     pitch_shift: Sample, //Octaves
     detune: Sample,      //Octaves
     detune_power: Sample,
+    glide: Sample,
+    glide_slope: Sample,
     phase_shift: Sample,
     frequency_shift: Sample,
     phases_blend: Sample,
@@ -110,6 +113,8 @@ impl Default for ChannelParams {
             pitch_shift: 0.0,
             detune: st_to_octave(0.2),
             detune_power: 0.0,
+            glide: 0.0,
+            glide_slope: 0.0,
             phase_shift: 0.0,
             frequency_shift: 0.0,
             phases_blend: 0.0,
@@ -140,6 +145,8 @@ pub struct OscillatorUIData {
     pub pitch_shift: StereoSample,
     pub detune: StereoSample,
     pub detune_power: StereoSample,
+    pub glide: StereoSample,
+    pub glide_slope: StereoSample,
     pub phase_shift: StereoSample,
     pub frequency_shift: StereoSample,
     pub unison: usize,
@@ -166,6 +173,22 @@ impl Interpolated {
     }
 }
 
+struct Glide {
+    t: Sample,
+    pitch_from: Sample,
+    current_pitch: Sample,
+}
+
+impl Glide {
+    fn new(pitch_from: Sample) -> Self {
+        Self {
+            pitch_from,
+            current_pitch: pitch_from,
+            t: 0.0,
+        }
+    }
+}
+
 struct UnisonVoice {
     rate: Interpolated,
     phase_shift: Interpolated,
@@ -183,8 +206,9 @@ impl Default for UnisonVoice {
 }
 
 struct VoiceState {
-    pitch: Sample, // Octave units
     triggered: bool,
+    pitch: Sample, // Octave units
+    glide: Option<Glide>,
     unison_gain: Interpolated,
     unison: [UnisonVoice; MAX_UNISON_VOICES],
     phases: [Phase; MAX_UNISON_VOICES],
@@ -194,8 +218,9 @@ struct VoiceState {
 impl Default for VoiceState {
     fn default() -> Self {
         Self {
-            pitch: 0.0,
             triggered: false,
+            pitch: 0.0,
+            glide: None,
             phases: Default::default(),
             unison_gain: Interpolated { from: 1.0, to: 1.0 },
             unison: Default::default(),
@@ -326,6 +351,8 @@ impl Oscillator {
             pitch_shift: get_stereo_param!(self, pitch_shift),
             detune: get_stereo_param!(self, detune),
             detune_power: get_stereo_param!(self, detune_power),
+            glide: get_stereo_param!(self, glide),
+            glide_slope: get_stereo_param!(self, glide_slope),
             phase_shift: get_stereo_param!(self, phase_shift),
             frequency_shift: get_stereo_param!(self, frequency_shift),
             steal_phase: self.params.steal_phase,
@@ -362,6 +389,10 @@ impl Oscillator {
         detune_power,
         detune_power.clamp(-5.0, 5.0)
     );
+
+    set_stereo_param!(set_glide, glide, glide.clamp(0.0, MAX_GLIDE));
+    set_stereo_param!(set_glide_slope, glide_slope, glide_slope.clamp(-1.0, 1.0));
+
     set_stereo_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
     set_stereo_param!(set_frequency_shift, frequency_shift);
 
@@ -606,6 +637,7 @@ impl Oscillator {
         router: &VoiceRouter,
     ) {
         const MAX_DETUNE: Sample = 1.0;
+        const MAX_DETUNE_POWER: Sample = 5.0;
 
         if unison < 2 {
             voice.unison[0] = UnisonVoice::default();
@@ -628,7 +660,7 @@ impl Oscillator {
             let detune =
                 (channel.detune + router.scalar(Input::Detune, current)).clamp(0.0, MAX_DETUNE);
             let detune_power = (channel.detune_power + router.scalar(Input::DetunePower, current))
-                .clamp(-5.0, 5.0);
+                .clamp(-MAX_DETUNE_POWER, MAX_DETUNE_POWER);
             let phases_blend =
                 (channel.phases_blend + router.scalar(Input::PhasesBlend, current)).clamp(0.0, 1.0);
             let gains_blend =
@@ -703,6 +735,75 @@ impl Oscillator {
             cal_unison_gain(voice.unison.iter().take(unison).map(|state| state.gain.to));
     }
 
+    fn process_glide(
+        channel: &ChannelParams,
+        osc_state: &mut OscState,
+        voice: &mut VoiceState,
+        router: &VoiceRouter,
+    ) {
+        const GLIDE_TIME_THRESHOLD: Sample = from_ms(1.0);
+        const GLIDE_POWER_MAX: Sample = 6.0;
+        const POWER_LINEAR_THRESHOLD: Sample = 0.005;
+
+        let pitch = voice.pitch;
+
+        let Some(glide) = voice.glide.as_mut() else {
+            return;
+        };
+
+        let glide_time = (channel.glide + router.scalar(Input::Glide, false)).clamp(0.0, MAX_GLIDE);
+        let time_left = glide_time - glide.t;
+
+        if glide_time < GLIDE_TIME_THRESHOLD || time_left <= 0.0 {
+            voice.glide = None;
+            return;
+        }
+
+        let glide_slope =
+            (channel.glide_slope + router.scalar(Input::GlideSlope, false)).clamp(-1.0, 1.0);
+        let glide_power = -glide_slope * GLIDE_POWER_MAX;
+        let t_step = router.sample_rate.recip();
+        let samples = router
+            .samples
+            .min((time_left * router.sample_rate) as usize);
+        let pitch_buff = &mut osc_state.pitch[..samples];
+
+        #[inline(always)]
+        fn process(
+            buff: &mut [Sample],
+            glide: &mut Glide,
+            glide_time: Sample,
+            pitch: Sample,
+            t_step: Sample,
+            curve: impl Fn(Sample) -> Sample,
+        ) {
+            let pitch_diff = pitch - glide.pitch_from;
+            let glide_time_recip = glide_time.recip();
+
+            for out_pitch in buff {
+                let diff = pitch_diff * (1.0 - curve(glide.t * glide_time_recip));
+
+                glide.current_pitch = pitch - diff;
+                *out_pitch -= diff;
+                glide.t += t_step;
+            }
+        }
+
+        if glide_power.abs() < POWER_LINEAR_THRESHOLD {
+            process(pitch_buff, glide, glide_time, pitch, t_step, identity);
+        } else {
+            let denominator_mult = (glide_power.exp() - 1.0).recip();
+
+            process(pitch_buff, glide, glide_time, pitch, t_step, |v| {
+                ((v * glide_power).exp() - 1.0) * denominator_mult
+            });
+        }
+
+        if samples < router.samples {
+            voice.glide = None;
+        }
+    }
+
     fn process_voice(
         params: &Params,
         channel: &ChannelParams,
@@ -739,6 +840,7 @@ impl Oscillator {
         );
 
         Self::process_unison(params.unison, channel, &mut voice.state, &router);
+        Self::process_glide(channel, osc_state, &mut voice.state, &router);
 
         if voice.state.triggered {
             voice.state.triggered = false;
@@ -783,6 +885,54 @@ impl Oscillator {
             *out = sample * gain * voice.unison_gain.interpolate(buff_t);
         }
     }
+
+    fn handle_trigger(
+        params: &Params,
+        channel: &mut Channel,
+        prev_voice_idx: Option<usize>,
+        voice_idx: usize,
+        pitch: Sample,
+    ) {
+        if let Some(prev_voice_idx) = prev_voice_idx {
+            let prev_voice_state = &channel.voices[prev_voice_idx].state;
+            let prev_pitch = prev_voice_state
+                .glide
+                .as_ref()
+                .map_or(prev_voice_state.pitch, |g| g.current_pitch);
+
+            channel.voices[voice_idx].state.glide = Some(Glide::new(prev_pitch));
+        } else {
+            channel.voices[voice_idx].state.glide = None;
+        }
+
+        let voice = &mut channel.voices[voice_idx];
+
+        voice.state.pitch = pitch;
+        voice.state.triggered = true;
+
+        if let Some(prev_voice_idx) = prev_voice_idx
+            && params.steal_phase
+        {
+            channel.voices[voice_idx].state.phases = channel.voices[prev_voice_idx].state.phases;
+        } else {
+            for (phase, unison_voice) in voice.state.phases.iter_mut().zip(&channel.params.unison) {
+                *phase = Phase::from_normalized(unison_voice.initial_phase);
+            }
+        }
+    }
+
+    fn handle_update(channel: &mut Channel, voice_idx: usize, pitch: Sample) {
+        let voice = &mut channel.voices[voice_idx];
+
+        voice.state.glide = Some(Glide::new(
+            voice
+                .state
+                .glide
+                .as_ref()
+                .map_or(voice.state.pitch, |g| g.current_pitch),
+        ));
+        voice.state.pitch = pitch;
+    }
 }
 
 impl SynthModule for Oscillator {
@@ -812,6 +962,8 @@ impl SynthModule for Oscillator {
             ModInput::buffer(Input::FrequencyShift),
             ModInput::scalar(Input::Detune),
             ModInput::scalar(Input::DetunePower),
+            ModInput::scalar(Input::Glide),
+            ModInput::scalar(Input::GlideSlope),
             ModInput::scalar(Input::PhasesBlend),
             ModInput::scalar(Input::GainsBlend),
         ];
@@ -832,30 +984,16 @@ impl SynthModule for Oscillator {
                         prev_voice_idx,
                         pitch,
                         ..
-                    } => {
-                        let voice = &mut channel.voices[*voice_idx];
-
-                        voice.state.pitch = *pitch;
-                        voice.state.triggered = true;
-
-                        if let Some(prev_voice_idx) = prev_voice_idx
-                            && self.params.steal_phase
-                        {
-                            channel.voices[*voice_idx].state.phases =
-                                channel.voices[*prev_voice_idx].state.phases;
-                        } else {
-                            for (phase, unison_voice) in
-                                voice.state.phases.iter_mut().zip(&channel.params.unison)
-                            {
-                                *phase = Phase::from_normalized(unison_voice.initial_phase);
-                            }
-                        }
-                    }
+                    } => Self::handle_trigger(
+                        &self.params,
+                        channel,
+                        *prev_voice_idx,
+                        *voice_idx,
+                        *pitch,
+                    ),
                     VoiceEvent::Update {
                         voice_idx, pitch, ..
-                    } => {
-                        channel.voices[*voice_idx].state.pitch = *pitch;
-                    }
+                    } => Self::handle_update(channel, *voice_idx, *pitch),
                     _ => (),
                 }
             }

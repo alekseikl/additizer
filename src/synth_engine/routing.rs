@@ -48,6 +48,8 @@ pub enum Input {
     PitchShift,
     Detune,
     DetunePower,
+    Glide,
+    GlideSlope,
     PhaseShift,
     FrequencyShift,
     Spectrum,

@@ -93,6 +93,19 @@ impl<'a> ModulationInput<'a> {
                 .precision(2)
                 .allow_inverse()
                 .units(" st"),
+            Input::Glide => slider
+                .range(0.0..=5.0)
+                .display_scale(1000.0)
+                .default_value(0.0)
+                .skew(2.0)
+                .precision(1)
+                .units(" ms"),
+            Input::GlideSlope => slider
+                .default_value(0.0)
+                .display_scale(100.0)
+                .precision(0)
+                .allow_inverse()
+                .units("%"),
             Input::PhaseShift => slider.default_value(0.0).precision(2).allow_inverse(),
             Input::FrequencyShift => slider
                 .range(0.0..=880.0)
@@ -192,6 +205,20 @@ impl<'a> ModulationInput<'a> {
                 .precision(2)
                 .allow_inverse()
                 .units(" st"),
+            Input::Glide => slider
+                .range(0.0..=5.0)
+                .display_scale(1000.0)
+                .default_value(0.0)
+                .skew(2.0)
+                .precision(1)
+                .allow_inverse()
+                .units(" ms"),
+            Input::GlideSlope => slider
+                .default_value(0.0)
+                .display_scale(100.0)
+                .precision(0)
+                .allow_inverse()
+                .units("%"),
             Input::PhaseShift => slider.default_value(0.0).precision(2).allow_inverse(),
             Input::FrequencyShift => slider
                 .range(0.0..=880.0)

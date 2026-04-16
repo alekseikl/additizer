@@ -500,6 +500,34 @@ impl ModuleUi for OscillatorUI {
                 }
                 ui.end_row();
 
+                ui.label("Glide");
+                if ui
+                    .add(ModulationInput::new(
+                        &mut ui_data.glide,
+                        synth,
+                        Input::Glide,
+                        self.module_id,
+                    ))
+                    .changed()
+                {
+                    self.osc(synth).set_glide(ui_data.glide);
+                }
+                ui.end_row();
+
+                ui.label("Glide Slope");
+                if ui
+                    .add(ModulationInput::new(
+                        &mut ui_data.glide_slope,
+                        synth,
+                        Input::GlideSlope,
+                        self.module_id,
+                    ))
+                    .changed()
+                {
+                    self.osc(synth).set_glide_slope(ui_data.glide_slope);
+                }
+                ui.end_row();
+
                 ui.label("Steal phase");
                 if ui
                     .add(Checkbox::without_text(&mut ui_data.steal_phase))
