@@ -1,6 +1,7 @@
 #![allow(clippy::new_without_default)]
 
 use const_format::concatcp;
+use smallvec::SmallVec;
 
 mod default_scheme;
 mod editor;
@@ -39,6 +40,54 @@ trait EventUtils {
 impl EventUtils for NoteEvent<()> {
     fn is_barrier(&self) -> bool {
         matches!(self, NoteEvent::NoteOn { .. } | NoteEvent::NoteOff { .. })
+    }
+}
+
+struct EventReorderer<'a, C: ProcessContext<Additizer>> {
+    context: &'a mut C,
+    buffer: SmallVec<[NoteEvent<()>; 32]>,
+    stashed: Option<NoteEvent<()>>,
+}
+
+impl<'a, C: ProcessContext<Additizer>> EventReorderer<'a, C> {
+    fn new(context: &'a mut C) -> Self {
+        Self {
+            context,
+            buffer: SmallVec::new(),
+            stashed: None,
+        }
+    }
+
+    fn priority(event: &NoteEvent<()>) -> u8 {
+        match event {
+            NoteEvent::Choke { .. } => 3,
+            NoteEvent::NoteOff { .. } => 2,
+            NoteEvent::NoteOn { .. } => 1,
+            _ => 0,
+        }
+    }
+
+    fn next_event(&mut self) -> Option<NoteEvent<()>> {
+        if !self.buffer.is_empty() {
+            return self.buffer.pop();
+        }
+
+        let first = self.stashed.take().or_else(|| self.context.next_event())?;
+        let current_timing = first.timing();
+
+        self.buffer.push(first);
+
+        while let Some(event) = self.context.next_event() {
+            if event.timing() == current_timing {
+                self.buffer.push(event);
+            } else {
+                self.stashed.replace(event);
+                break;
+            }
+        }
+
+        self.buffer.sort_by_key(Self::priority);
+        self.buffer.pop()
     }
 }
 
@@ -230,7 +279,8 @@ impl Plugin for Additizer {
                 desired_block_size,
             };
 
-            let mut next_event = context.next_event();
+            let mut events = EventReorderer::new(context);
+            let mut next_event = events.next_event();
             let mut sample_from = 0usize;
 
             while let Some(event) = next_event {
@@ -243,7 +293,7 @@ impl Plugin for Additizer {
                 }
 
                 Self::process_event(blocks_handler.synth, event);
-                next_event = context.next_event();
+                next_event = events.next_event();
             }
 
             blocks_handler.process_all(sample_from, total_samples);
