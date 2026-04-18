@@ -20,6 +20,7 @@ use crate::synth_engine::{
         oscillator::{Oscillator, OscillatorConfig},
     },
     routing::{DataType, InputModulationUI, LinkModulation, NUM_CHANNELS, Router, VoiceEvent},
+    smoothed_sample::SmoothedSample,
     synth_module::ProcessParams,
     voices_handler::{
         DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
@@ -53,6 +54,7 @@ mod iir_decimator;
 mod modules;
 mod phase;
 mod routing;
+mod smoothed_sample;
 mod smoother;
 mod stereo_sample;
 mod types;
@@ -518,6 +520,7 @@ impl SynthEngine {
             samples,
             sample_rate,
             buffer_t_step: samples as Sample / sample_rate,
+            smooth_mult: SmoothedSample::calc_smooth_mult(sample_rate),
             needs_audio_rate: false,
             spectrum_channels: self.spectrum_channels,
             active_voices: &playing_voices,

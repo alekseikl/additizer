@@ -11,11 +11,12 @@ use wide::f32x4;
 use crate::{
     synth_engine::{
         StereoSample,
-        buffer::{Buffer, SPECTRUM_BITS, SpectralBuffer, zero_buffer},
+        buffer::{Buffer, SPECTRUM_BITS, SpectralBuffer, add_buffer_value, zero_buffer},
         phase::Phase,
         routing::{
             DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
         },
+        smoothed_sample::SmoothedSample,
         synth_module::{ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
         types::{ComplexSample, Sample},
     },
@@ -81,14 +82,14 @@ impl Default for UnisonParams {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChannelParams {
-    gain: Sample,
-    pitch_shift: Sample, //Octaves
-    detune: Sample,      //Octaves
+    gain: SmoothedSample,
+    pitch_shift: SmoothedSample, //Octaves
+    detune: Sample,              //Octaves
     detune_power: Sample,
     glide: Sample,
     glide_slope: Sample,
-    phase_shift: Sample,
-    frequency_shift: Sample,
+    phase_shift: SmoothedSample,
+    frequency_shift: SmoothedSample,
     phases_blend: Sample,
     gains_blend: Sample,
     unison: [UnisonParams; MAX_UNISON_VOICES],
@@ -109,14 +110,14 @@ impl Default for ChannelParams {
         }
 
         Self {
-            gain: 1.0,
-            pitch_shift: 0.0,
+            gain: 1.0.into(),
+            pitch_shift: 0.0.into(),
             detune: st_to_octave(0.2),
             detune_power: 0.0,
             glide: 0.0,
             glide_slope: 0.0,
-            phase_shift: 0.0,
-            frequency_shift: 0.0,
+            phase_shift: 0.0.into(),
+            frequency_shift: 0.0.into(),
             phases_blend: 0.0,
             gains_blend: 0.0,
             unison,
@@ -347,14 +348,14 @@ impl Oscillator {
     pub fn get_ui(&self) -> OscillatorUIData {
         OscillatorUIData {
             label: self.label.clone(),
-            gain: get_stereo_param!(self, gain),
-            pitch_shift: get_stereo_param!(self, pitch_shift),
+            gain: get_smoothed_param!(self, gain),
+            pitch_shift: get_smoothed_param!(self, pitch_shift),
             detune: get_stereo_param!(self, detune),
             detune_power: get_stereo_param!(self, detune_power),
             glide: get_stereo_param!(self, glide),
             glide_slope: get_stereo_param!(self, glide_slope),
-            phase_shift: get_stereo_param!(self, phase_shift),
-            frequency_shift: get_stereo_param!(self, frequency_shift),
+            phase_shift: get_smoothed_param!(self, phase_shift),
+            frequency_shift: get_smoothed_param!(self, frequency_shift),
             steal_phase: self.params.steal_phase,
             unison: self.params.unison,
             phases_blend: get_stereo_param!(self, phases_blend),
@@ -377,8 +378,8 @@ impl Oscillator {
     );
     set_mono_param!(set_steal_phase, steal_phase, bool);
 
-    set_stereo_param!(set_gain, gain);
-    set_stereo_param!(
+    set_smoothed_param!(set_gain, gain);
+    set_smoothed_param!(
         set_pitch_shift,
         pitch_shift,
         pitch_shift.clamp(st_to_octave(-60.0), st_to_octave(60.0))
@@ -393,8 +394,8 @@ impl Oscillator {
     set_stereo_param!(set_glide, glide, glide.clamp(0.0, MAX_GLIDE));
     set_stereo_param!(set_glide_slope, glide_slope, glide_slope.clamp(-1.0, 1.0));
 
-    set_stereo_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
-    set_stereo_param!(set_frequency_shift, frequency_shift);
+    set_smoothed_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
+    set_smoothed_param!(set_frequency_shift, frequency_shift);
 
     set_stereo_param!(set_phases_blend, phases_blend, phases_blend.clamp(0.0, 1.0));
     set_stereo_param!(set_gains_blend, gains_blend, gains_blend.clamp(0.0, 1.0));
@@ -806,7 +807,7 @@ impl Oscillator {
 
     fn process_voice(
         params: &Params,
-        channel: &ChannelParams,
+        channel: &mut ChannelParams,
         osc_state: &mut OscState,
         voice: &mut Voice,
         mono_voice_buffers: Option<&VoiceBuffers>,
@@ -814,20 +815,24 @@ impl Oscillator {
     ) {
         let samples = router.samples;
 
-        router.fill_and_add_input(Input::Gain, channel.gain, &mut osc_state.gain);
-        router.fill_and_add_input(
+        router.buff_param(Input::Gain, &mut channel.gain, &mut osc_state.gain);
+
+        router.buff_param(
             Input::PitchShift,
-            voice.state.pitch + channel.pitch_shift,
+            &mut channel.pitch_shift,
             &mut osc_state.pitch,
         );
-        router.fill_and_add_input(
+        add_buffer_value(&mut osc_state.pitch[..samples], voice.state.pitch);
+
+        router.buff_param(
             Input::PhaseShift,
-            channel.phase_shift,
+            &mut channel.phase_shift,
             &mut osc_state.phase_shift,
         );
-        router.fill_and_add_input(
+
+        router.buff_param(
             Input::FrequencyShift,
-            channel.frequency_shift,
+            &mut channel.frequency_shift,
             &mut osc_state.frequency_shift,
         );
 
@@ -1008,18 +1013,11 @@ impl SynthModule for Oscillator {
             .take(params.spectrum_channels)
         {
             for voice_idx in params.active_voices {
-                let router = VoiceRouter {
-                    router,
-                    module_id: self.id,
-                    samples: params.samples,
-                    sample_rate: params.sample_rate,
-                    voice_idx: *voice_idx,
-                    channel_idx,
-                };
+                let router = VoiceRouter::new(router, self.id, channel_idx, *voice_idx, params);
 
                 Self::process_voice(
                     &self.params,
-                    &channel.params,
+                    &mut channel.params,
                     &mut self.osc_state,
                     &mut channel.voices[*voice_idx],
                     None,
@@ -1036,18 +1034,11 @@ impl SynthModule for Oscillator {
                 let channel_idx = idx + params.spectrum_channels;
 
                 for voice_idx in params.active_voices {
-                    let router = VoiceRouter {
-                        router,
-                        module_id: self.id,
-                        samples: params.samples,
-                        sample_rate: params.sample_rate,
-                        voice_idx: *voice_idx,
-                        channel_idx,
-                    };
+                    let router = VoiceRouter::new(router, self.id, channel_idx, *voice_idx, params);
 
                     Self::process_voice(
                         &self.params,
-                        &channel.params,
+                        &mut channel.params,
                         &mut self.osc_state,
                         &mut channel.voices[*voice_idx],
                         Some(&left.voices[*voice_idx].buffers),

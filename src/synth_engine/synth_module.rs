@@ -6,6 +6,7 @@ use crate::synth_engine::{
     ModuleInput,
     buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER},
     routing::{DataType, Input, ModuleId, ModuleType, Router, VoiceEvent},
+    smoothed_sample::SmoothedSample,
     types::Sample,
     voices_handler::DecayingVoice,
 };
@@ -15,6 +16,7 @@ pub struct ProcessParams<'a> {
     pub sample_rate: Sample,
     pub buffer_t_step: Sample,
     pub needs_audio_rate: bool,
+    pub smooth_mult: Sample,
     pub spectrum_channels: usize,
     pub active_voices: &'a [usize],
 }
@@ -85,11 +87,30 @@ pub struct VoiceRouter<'a> {
     pub module_id: ModuleId,
     pub samples: usize,
     pub sample_rate: Sample,
+    pub smooth_mult: Sample,
     pub voice_idx: usize,
     pub channel_idx: usize,
 }
 
 impl<'a> VoiceRouter<'a> {
+    pub fn new(
+        router: &'a dyn Router,
+        module_id: ModuleId,
+        channel_idx: usize,
+        voice_idx: usize,
+        params: &ProcessParams,
+    ) -> Self {
+        Self {
+            router,
+            module_id,
+            samples: params.samples,
+            sample_rate: params.sample_rate,
+            smooth_mult: params.smooth_mult,
+            voice_idx,
+            channel_idx,
+        }
+    }
+
     pub fn buffer_opt(&'a self, input: Input, buff: &'a mut Buffer) -> Option<&'a Buffer> {
         self.router.get_input(
             ModuleInput::new(input, self.module_id),
@@ -104,19 +125,10 @@ impl<'a> VoiceRouter<'a> {
         self.buffer_opt(input, buff).unwrap_or(&ZEROES_BUFFER)
     }
 
-    // pub fn add_input_to(&self, input: Input, buff: &'a mut Buffer) {
-    //     self.router.add_input_to(
-    //         ModuleInput::new(input, self.module_id),
-    //         self.voice_idx,
-    //         self.channel_idx,
-    //         &mut buff[..self.samples],
-    //     );
-    // }
-
-    pub fn fill_and_add_input(&self, input: Input, value: Sample, buff: &'a mut Buffer) {
+    pub fn buff_param(&self, input: Input, param: &mut SmoothedSample, buff: &mut Buffer) {
         let buff = &mut buff[..self.samples];
 
-        buff.fill(value);
+        param.smoothed_buff(buff, self.smooth_mult);
 
         self.router.add_input_to(
             ModuleInput::new(input, self.module_id),
@@ -206,6 +218,36 @@ macro_rules! set_stereo_param {
 macro_rules! get_stereo_param {
     ($self:ident, $param:ident) => {
         StereoSample::from_iter($self.channels.iter().map(|channel| channel.params.$param))
+    };
+}
+
+macro_rules! set_smoothed_param {
+    ($fn_name:ident, $param:ident) => {
+        set_smoothed_param!($fn_name, $param, *$param);
+    };
+    ($fn_name:ident, $param:ident, $transform:expr) => {
+        pub fn $fn_name(&mut self, $param: StereoSample) {
+            for (channel, $param) in self.channels.iter_mut().zip($param.iter()) {
+                channel.params.$param.set($transform);
+            }
+
+            let mut cfg = self.config.lock();
+
+            for (config_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
+                config_channel.$param.set(channel.params.$param.get());
+            }
+        }
+    };
+}
+
+macro_rules! get_smoothed_param {
+    ($self:ident, $param:ident) => {
+        StereoSample::from_iter(
+            $self
+                .channels
+                .iter()
+                .map(|channel| channel.params.$param.get()),
+        )
     };
 }
 

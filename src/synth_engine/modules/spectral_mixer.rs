@@ -334,14 +334,8 @@ impl SynthModule for SpectralMixer {
         {
             for voice_idx in process_params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
-                let router = VoiceRouter {
-                    router,
-                    module_id: self.id,
-                    samples: process_params.samples,
-                    sample_rate: process_params.sample_rate,
-                    voice_idx: *voice_idx,
-                    channel_idx,
-                };
+                let router =
+                    VoiceRouter::new(router, self.id, channel_idx, *voice_idx, process_params);
 
                 if voice.triggered {
                     Self::process_voice(false, &self.params, &channel.params, voice, &router);

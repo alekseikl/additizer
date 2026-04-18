@@ -494,14 +494,7 @@ impl SynthModule for Envelope {
 
             for voice_idx in params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
-                let router = VoiceRouter {
-                    router,
-                    module_id: self.id,
-                    samples: params.samples,
-                    sample_rate: params.sample_rate,
-                    voice_idx: *voice_idx,
-                    channel_idx,
-                };
+                let router = VoiceRouter::new(router, self.id, channel_idx, *voice_idx, params);
 
                 Self::process_voice_buffer(env, voice, t_step, &router);
             }

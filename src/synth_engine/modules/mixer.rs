@@ -349,14 +349,8 @@ impl SynthModule for Mixer {
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for voice_idx in process_params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
-                let router = VoiceRouter {
-                    router,
-                    module_id: self.id,
-                    samples: process_params.samples,
-                    sample_rate: process_params.sample_rate,
-                    voice_idx: *voice_idx,
-                    channel_idx,
-                };
+                let router =
+                    VoiceRouter::new(router, self.id, channel_idx, *voice_idx, process_params);
 
                 Self::process_voice(
                     &self.params,

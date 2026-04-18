@@ -280,10 +280,9 @@ impl Plugin for Additizer {
             };
 
             let mut events = EventReorderer::new(context);
-            let mut next_event = events.next_event();
             let mut sample_from = 0usize;
 
-            while let Some(event) = next_event {
+            while let Some(event) = events.next_event() {
                 let sample_to = event.timing() as usize;
 
                 if sample_to > sample_from && event.is_barrier() {
@@ -293,7 +292,6 @@ impl Plugin for Additizer {
                 }
 
                 Self::process_event(blocks_handler.synth, event);
-                next_event = events.next_event();
             }
 
             blocks_handler.process_all(sample_from, total_samples);

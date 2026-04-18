@@ -52,6 +52,10 @@ pub fn add_buffer_slice(buff: &mut [Sample], iter: impl Iterator<Item = Sample>)
         .for_each(|(buff, value)| *buff += value);
 }
 
+pub fn add_buffer_value(buff: &mut [Sample], value: Sample) {
+    buff.iter_mut().for_each(|buff_value| *buff_value += value);
+}
+
 pub fn copy_or_add_buffer(copy: bool, buff: &mut [Sample], input: impl Iterator<Item = Sample>) {
     if copy {
         copy_buffer_slice(buff, input);

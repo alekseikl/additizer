@@ -323,14 +323,7 @@ impl SynthModule for Lfo {
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for voice_idx in params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
-                let router = VoiceRouter {
-                    router,
-                    module_id: self.id,
-                    samples: params.samples,
-                    sample_rate: params.sample_rate,
-                    voice_idx: *voice_idx,
-                    channel_idx,
-                };
+                let router = VoiceRouter::new(router, self.id, channel_idx, *voice_idx, params);
 
                 if voice.triggered {
                     Self::process_voice(&self.params, &channel.params, voice, false, 0.0, &router);
