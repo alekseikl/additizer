@@ -535,17 +535,8 @@ impl SynthEngine {
             }
         }
 
-        if let Some(output_box) = self.modules.get_mut(&OUTPUT_MODULE_ID)
-            && let Some(mut output) = output_box.take()
-        {
-            Output::downcast_mut(output.as_mut())
-                .unwrap()
-                .process_output(&params, self.oversampling, self, outputs);
-
-            self.modules
-                .get_mut(&OUTPUT_MODULE_ID)
-                .unwrap()
-                .replace(output);
+        if let Some(output) = get_typed_module_mut!(self, Output, &OUTPUT_MODULE_ID) {
+            output.read_output(self.oversampling, outputs);
         }
     }
 

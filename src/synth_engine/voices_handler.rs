@@ -8,7 +8,7 @@ use crate::{
         Expression, Sample,
         routing::{MAX_VOICES, VoiceEvent},
     },
-    utils::note_to_octave,
+    utils::note_to_pitch,
 };
 
 pub const MAX_AVAILABLE_VOICES: usize = MAX_VOICES - 8;
@@ -88,7 +88,7 @@ impl VoiceEvents {
     }
 
     fn note_to_pitch(note: u8) -> Sample {
-        note_to_octave(note as f32)
+        note_to_pitch(note as f32)
     }
 
     fn to_float_velocity(velocity: u8) -> Sample {

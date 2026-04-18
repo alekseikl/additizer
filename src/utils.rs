@@ -8,7 +8,7 @@ pub const fn from_ms(ms: f32) -> f32 {
 }
 
 #[inline(always)]
-pub const fn note_to_octave(note: Sample) -> Sample {
+pub const fn note_to_pitch(note: Sample) -> Sample {
     (note - 69.0) / 12.0
 }
 
