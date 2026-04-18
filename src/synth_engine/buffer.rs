@@ -40,13 +40,13 @@ pub const fn harmonic_series_buffer() -> SpectralBuffer {
     buff
 }
 
-pub fn copy_buffer_slice(buff: &mut [Sample], iter: impl Iterator<Item = Sample>) {
+pub fn copy_to_buffer(buff: &mut [Sample], iter: impl Iterator<Item = Sample>) {
     buff.iter_mut()
         .zip(iter)
         .for_each(|(buff, value)| *buff = value);
 }
 
-pub fn add_buffer_slice(buff: &mut [Sample], iter: impl Iterator<Item = Sample>) {
+pub fn add_to_buffer(buff: &mut [Sample], iter: impl Iterator<Item = Sample>) {
     buff.iter_mut()
         .zip(iter)
         .for_each(|(buff, value)| *buff += value);
@@ -56,10 +56,10 @@ pub fn add_buffer_value(buff: &mut [Sample], value: Sample) {
     buff.iter_mut().for_each(|buff_value| *buff_value += value);
 }
 
-pub fn copy_or_add_buffer(copy: bool, buff: &mut [Sample], input: impl Iterator<Item = Sample>) {
+pub fn copy_or_add_to_buffer(copy: bool, buff: &mut [Sample], input: impl Iterator<Item = Sample>) {
     if copy {
-        copy_buffer_slice(buff, input);
+        copy_to_buffer(buff, input);
     } else {
-        add_buffer_slice(buff, input);
+        add_to_buffer(buff, input);
     }
 }

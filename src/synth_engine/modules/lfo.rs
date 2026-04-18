@@ -7,7 +7,7 @@ use crate::synth_engine::{
     buffer::{Buffer, zero_buffer},
     phase::Phase,
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
-    smoother::Smoother,
+    smooth::Smoother,
     synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter},
     types::ScalarOutput,
 };

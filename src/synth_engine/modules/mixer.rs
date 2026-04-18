@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule, VolumeType,
-    buffer::{Buffer, copy_or_add_buffer, zero_buffer},
+    buffer::{Buffer, copy_or_add_to_buffer, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
     synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter},
 };
@@ -229,7 +229,7 @@ impl Mixer {
             .zip(gain_mod)
             .map(|(sample, gain_mod)| sample * gain_mod);
 
-        copy_or_add_buffer(input_idx == 0, output, input.take(samples));
+        copy_or_add_to_buffer(input_idx == 0, output, input.take(samples));
     }
 
     fn modulate_output(

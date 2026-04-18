@@ -9,7 +9,7 @@ use crate::{
         ModuleId, ModuleType, Sample, SynthModule,
         buffer::{Buffer, zero_buffer},
         routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
-        smoother::Smoother,
+        smooth::Smoother,
         synth_module::{ModInput, ModuleConfigBox, ProcessParams},
         types::ScalarOutput,
     },

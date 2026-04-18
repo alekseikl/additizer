@@ -6,7 +6,7 @@ use crate::{
         Expression, ModuleId, ModuleType, Sample, SynthModule,
         buffer::{Buffer, zero_buffer},
         routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
-        smoother::Smoother,
+        smooth::Smoother,
         synth_module::{ModInput, ModuleConfigBox, ProcessParams},
     },
     utils::{from_ms, st_to_octave},

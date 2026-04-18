@@ -6,7 +6,7 @@ use crate::synth_engine::{
     ModuleInput,
     buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER},
     routing::{DataType, Input, ModuleId, ModuleType, Router, VoiceEvent},
-    smoothed_sample::SmoothedSample,
+    smooth::{SmoothedSample, SmoothedSampleParams},
     types::Sample,
     voices_handler::DecayingVoice,
 };
@@ -16,7 +16,7 @@ pub struct ProcessParams<'a> {
     pub sample_rate: Sample,
     pub buffer_t_step: Sample,
     pub needs_audio_rate: bool,
-    pub smooth_mult: Sample,
+    pub smooth_params: SmoothedSampleParams,
     pub spectrum_channels: usize,
     pub active_voices: &'a [usize],
 }
@@ -87,7 +87,7 @@ pub struct VoiceRouter<'a> {
     pub module_id: ModuleId,
     pub samples: usize,
     pub sample_rate: Sample,
-    pub smooth_mult: Sample,
+    pub smooth_params: SmoothedSampleParams,
     pub voice_idx: usize,
     pub channel_idx: usize,
 }
@@ -105,7 +105,7 @@ impl<'a> VoiceRouter<'a> {
             module_id,
             samples: params.samples,
             sample_rate: params.sample_rate,
-            smooth_mult: params.smooth_mult,
+            smooth_params: params.smooth_params,
             voice_idx,
             channel_idx,
         }
@@ -128,7 +128,11 @@ impl<'a> VoiceRouter<'a> {
     pub fn buff_param(&self, input: Input, param: &mut SmoothedSample, buff: &mut Buffer) {
         let buff = &mut buff[..self.samples];
 
-        param.smoothed_buff(buff, self.smooth_mult);
+        if param.check_needs_smoothing(&self.smooth_params) {
+            param.smoothed_buff(buff, &self.smooth_params);
+        } else {
+            buff.fill(param.get());
+        }
 
         self.router.add_input_to(
             ModuleInput::new(input, self.module_id),

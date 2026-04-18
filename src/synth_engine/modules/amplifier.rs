@@ -4,20 +4,20 @@ use crate::synth_engine::{
     StereoSample,
     buffer::{Buffer, zero_buffer},
     routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
+    smooth::SmoothedSample,
     synth_module::{ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
-    types::Sample,
 };
 use itertools::izip;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChannelParams {
-    gain: Sample,
+    gain: SmoothedSample,
 }
 
 impl Default for ChannelParams {
     fn default() -> Self {
-        Self { gain: 0.0 }
+        Self { gain: 0.0.into() }
     }
 }
 
@@ -91,27 +91,26 @@ impl Amplifier {
     pub fn get_ui(&self) -> AmplifierUIData {
         AmplifierUIData {
             label: self.label.clone(),
-            gain: get_stereo_param!(self, gain),
+            gain: get_smoothed_param!(self, gain),
         }
     }
 
-    set_stereo_param!(set_gain, gain);
+    set_smoothed_param!(set_gain, gain);
 
     fn process_channel_voice(
-        channel: &ChannelParams,
+        channel: &mut ChannelParams,
         voice: &mut Voice,
         buffers: &mut Buffers,
         router: &VoiceRouter,
     ) {
         let input = router.buffer(Input::Audio, &mut buffers.input);
-        let gain_mod = router.buffer(Input::Gain, &mut buffers.gain_mod_input);
 
-        for (out, input, modulation) in izip!(
-            voice.output.iter_mut().take(router.samples),
-            input,
-            gain_mod
-        ) {
-            *out = input * (channel.gain + modulation);
+        router.buff_param(Input::Gain, &mut channel.gain, &mut buffers.gain_mod_input);
+
+        for (out, input, modulation) in
+            izip!(voice.output.iter_mut(), input, buffers.gain_mod_input).take(router.samples)
+        {
+            *out = input * modulation;
         }
     }
 }
@@ -154,7 +153,7 @@ impl SynthModule for Amplifier {
                     VoiceRouter::new(router, self.id, channel_idx, *voice_idx, process_params);
                 let voice = &mut channel.voices[*voice_idx];
 
-                Self::process_channel_voice(&channel.params, voice, &mut self.buffers, &router);
+                Self::process_channel_voice(&mut channel.params, voice, &mut self.buffers, &router);
             }
         }
     }

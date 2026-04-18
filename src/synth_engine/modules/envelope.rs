@@ -10,7 +10,7 @@ use crate::{
         routing::{
             DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
         },
-        smoother::Smoother,
+        smooth::Smoother,
         synth_module::{ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
         types::{Sample, ScalarOutput},
         voices_handler::DecayingVoice,
@@ -122,11 +122,12 @@ impl<T: CurveFunction + Send + 'static> CurveIterator for CurveIter<T> {
         let samples = output
             .len()
             .min(((time - self.t).max(0.0) / t_step) as usize);
+        let time_recip = time.recip();
 
         for out in output.iter_mut().take(samples) {
             *out = self
                 .interval
-                .mul_add(self.curve_fn.calc(self.t / time), self.value_from);
+                .mul_add(self.curve_fn.calc(self.t * time_recip), self.value_from);
             self.t += t_step;
         }
 

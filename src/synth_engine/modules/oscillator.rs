@@ -16,7 +16,7 @@ use crate::{
         routing::{
             DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
         },
-        smoothed_sample::SmoothedSample,
+        smooth::SmoothedSample,
         synth_module::{ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
         types::{ComplexSample, Sample},
     },

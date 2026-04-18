@@ -1,6 +1,7 @@
 use std::any::Any;
 use std::sync::Arc;
 
+use itertools::izip;
 use nih_plug::{params::FloatParam, util::db_to_gain_fast};
 use serde::{Deserialize, Serialize};
 
@@ -8,12 +9,11 @@ use crate::{
     synth_engine::{
         Input, ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample,
         SynthModule,
-        buffer::{Buffer, ZEROES_BUFFER, copy_or_add_buffer, zero_buffer},
+        buffer::{Buffer, ZEROES_BUFFER, copy_or_add_to_buffer, copy_to_buffer, zero_buffer},
         iir_decimator::IirDecimator,
         routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
-        smoother::Smoother,
+        smooth::{InfiniteSmoothed, SmoothedSample},
         synth_module::{ModInput, ModuleConfigBox, ProcessParams},
-        types::ScalarOutput,
         voices_handler::DecayingVoice,
     },
     utils::from_ms,
@@ -23,14 +23,14 @@ const _: () = assert!(NUM_CHANNELS == 2);
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Params {
-    gain: StereoSample,
+    gain: [SmoothedSample; NUM_CHANNELS],
     voice_kill_time: Sample,
 }
 
 impl Default for Params {
     fn default() -> Self {
         Self {
-            gain: StereoSample::splat(0.5),
+            gain: [0.5.into(), 0.5.into()],
             voice_kill_time: from_ms(30.0),
         }
     }
@@ -65,36 +65,32 @@ struct Channel {
 pub struct Output {
     config: ModuleConfigBox<OutputConfig>,
     params: Params,
-    output_level_param: Arc<FloatParam>,
+    ext_level_param: Arc<FloatParam>,
+    ext_gain_smoothed: InfiniteSmoothed,
     channels: [Channel; NUM_CHANNELS],
-    gain_param_buffer: Buffer,
     input_buffer: Buffer,
+    ext_gain_buffer: Buffer,
     aggregated_voices: [Buffer; NUM_CHANNELS],
     decimator: IirDecimator,
-    level_mod_output: ScalarOutput,
-    level_mod_smoother: Smoother,
 }
 
 impl Output {
     pub fn new(config: ModuleConfigBox<OutputConfig>, level_param: Arc<FloatParam>) -> Self {
+        let ext_gain = db_to_gain_fast(level_param.value());
+
         let mut out = Self {
             params: Params::default(),
             config,
-            output_level_param: level_param,
+            ext_level_param: level_param,
+            ext_gain_smoothed: ext_gain.into(),
             channels: Default::default(),
-            gain_param_buffer: zero_buffer(),
             input_buffer: zero_buffer(),
+            ext_gain_buffer: zero_buffer(),
             aggregated_voices: [zero_buffer(), zero_buffer()],
             decimator: IirDecimator::new(),
-            level_mod_output: ScalarOutput::default(),
-            level_mod_smoother: Smoother::new(),
         };
 
-        let gain = db_to_gain_fast(out.output_level_param.value());
-
         out.params = out.config.lock().params.clone();
-        out.level_mod_output.advance(gain);
-        out.level_mod_smoother.reset(gain);
 
         out
     }
@@ -102,12 +98,15 @@ impl Output {
     gen_downcast_methods!();
 
     pub fn get_gain(&self) -> StereoSample {
-        self.params.gain
+        StereoSample::from_iter(self.params.gain.iter().map(|s| s.get()))
     }
 
     pub fn set_gain(&mut self, gain: StereoSample) {
-        self.params.gain = gain;
-        self.config.lock().params.gain = gain;
+        for (smoothed_gain, gain) in self.params.gain.iter_mut().zip(gain.iter()) {
+            smoothed_gain.set(*gain);
+        }
+
+        self.config.lock().params.gain = self.params.gain;
     }
 
     pub fn get_voice_kill_time(&self) -> Sample {
@@ -126,9 +125,6 @@ impl Output {
         router: &dyn Router,
         mut outputs: impl Iterator<Item = &'a mut [f32]>,
     ) {
-        self.level_mod_output
-            .advance(db_to_gain_fast(self.output_level_param.value()));
-
         if process_params.active_voices.is_empty() {
             if oversampling {
                 self.decimator.process(
@@ -145,17 +141,20 @@ impl Output {
         let sample_rate = process_params.sample_rate;
         let samples = process_params.samples;
 
-        self.level_mod_smoother.update(sample_rate, from_ms(4.0));
-        self.level_mod_smoother.segment(
-            &self.level_mod_output,
-            samples,
-            &mut self.gain_param_buffer,
+        self.ext_gain_smoothed
+            .set(db_to_gain_fast(self.ext_level_param.value()));
+
+        copy_to_buffer(
+            &mut self.ext_gain_buffer,
+            self.ext_gain_smoothed
+                .iter(InfiniteSmoothed::smooth_mult(sample_rate, from_ms(4.0)))
+                .take(samples),
         );
 
         for (channel_idx, (aggregated, gain)) in self
             .aggregated_voices
             .iter_mut()
-            .zip(self.params.gain.iter())
+            .zip(self.params.gain.iter_mut())
             .enumerate()
         {
             for (iteration_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
@@ -184,19 +183,39 @@ impl Output {
                         (voice.killed_output_power + sum) / (samples + 1) as Sample;
                 }
 
-                copy_or_add_buffer(
+                copy_or_add_to_buffer(
                     iteration_idx == 0,
                     aggregated,
                     self.input_buffer.iter().copied().take(samples),
                 );
             }
 
-            for (aggregated, gain_mod) in aggregated
-                .iter_mut()
-                .zip(self.gain_param_buffer.iter())
-                .take(samples)
-            {
-                *aggregated *= gain_mod * gain;
+            fn apply_volume<'a>(
+                aggregated: impl Iterator<Item = &'a mut Sample>,
+                gain: impl Iterator<Item = Sample>,
+                ext_gain: impl Iterator<Item = &'a Sample>,
+                samples: usize,
+            ) {
+                for (aggregated, gain, gain_ext) in izip!(aggregated, gain, ext_gain).take(samples)
+                {
+                    *aggregated *= gain * gain_ext;
+                }
+            }
+
+            if gain.check_needs_smoothing(&process_params.smooth_params) {
+                apply_volume(
+                    aggregated.iter_mut(),
+                    gain.smoothed_iter(&process_params.smooth_params),
+                    self.ext_gain_buffer.iter(),
+                    samples,
+                );
+            } else {
+                apply_volume(
+                    aggregated.iter_mut(),
+                    std::iter::repeat(gain.get()),
+                    self.ext_gain_buffer.iter(),
+                    samples,
+                );
             }
         }
 
@@ -261,7 +280,7 @@ impl SynthModule for Output {
     }
 
     fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {
-        const ALIVE_THRESHOLD: Sample = 0.0000001;
+        const ALIVE_THRESHOLD: Sample = 0.00001;
 
         for decaying in decaying_voices.iter_mut().filter(|d| !d.is_done()) {
             decaying.reset();

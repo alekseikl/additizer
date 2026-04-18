@@ -10,7 +10,7 @@ use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
-    buffer::{Buffer, SpectralBuffer, add_buffer_slice, copy_or_add_buffer},
+    buffer::{Buffer, SpectralBuffer, add_to_buffer, copy_or_add_to_buffer},
     config::{ModuleConfig, RoutingConfig},
     modules::{
         AmplifierConfig, EnvelopeConfig, ExpressionsConfig, ExternalParamConfig, LfoConfig,
@@ -20,7 +20,7 @@ use crate::synth_engine::{
         oscillator::{Oscillator, OscillatorConfig},
     },
     routing::{DataType, InputModulationUI, LinkModulation, NUM_CHANNELS, Router, VoiceEvent},
-    smoothed_sample::SmoothedSample,
+    smooth::SmoothedSampleParams,
     synth_module::ProcessParams,
     voices_handler::{
         DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
@@ -54,8 +54,7 @@ mod iir_decimator;
 mod modules;
 mod phase;
 mod routing;
-mod smoothed_sample;
-mod smoother;
+mod smooth;
 mod stereo_sample;
 mod types;
 mod voices_handler;
@@ -520,7 +519,7 @@ impl SynthEngine {
             samples,
             sample_rate,
             buffer_t_step: samples as Sample / sample_rate,
-            smooth_mult: SmoothedSample::calc_smooth_mult(sample_rate),
+            smooth_params: SmoothedSampleParams::new(sample_rate),
             needs_audio_rate: false,
             spectrum_channels: self.spectrum_channels,
             active_voices: &playing_voices,
@@ -938,7 +937,7 @@ impl Router for SynthEngine {
             {
                 let input_mod = module.get_buffer_output(voice_idx, channel_idx).iter();
 
-                copy_or_add_buffer(
+                copy_or_add_to_buffer(
                     mod_idx == 0,
                     result,
                     input
@@ -946,7 +945,7 @@ impl Router for SynthEngine {
                         .map(|(input, input_mod)| input * input_mod),
                 );
             } else {
-                copy_or_add_buffer(mod_idx == 0, result, input);
+                copy_or_add_to_buffer(mod_idx == 0, result, input);
             }
         }
 
@@ -980,14 +979,14 @@ impl Router for SynthEngine {
             {
                 let input_mod = module.get_buffer_output(voice_idx, channel_idx).iter();
 
-                add_buffer_slice(
+                add_to_buffer(
                     result,
                     input
                         .zip(input_mod)
                         .map(|(input, input_mod)| input * input_mod),
                 );
             } else {
-                add_buffer_slice(result, input);
+                add_to_buffer(result, input);
             }
         }
     }
