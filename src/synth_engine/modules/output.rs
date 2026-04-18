@@ -184,7 +184,7 @@ impl SynthModule for Output {
     }
 
     fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {
-        const ALIVE_THRESHOLD: Sample = 0.00001;
+        const ALIVE_THRESHOLD: Sample = 0.000001;
 
         for decaying in decaying_voices.iter_mut().filter(|d| !d.is_done()) {
             decaying.reset();
