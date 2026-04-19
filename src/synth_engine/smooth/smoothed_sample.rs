@@ -1,7 +1,7 @@
 use crate::{synth_engine::Sample, utils::from_ms};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-const SMOOTHING_TIME: Sample = from_ms(40.0);
+const SMOOTHING_TIME: Sample = from_ms(300.0);
 
 #[derive(Clone, Copy)]
 pub struct SmoothedSampleParams {
@@ -12,8 +12,8 @@ pub struct SmoothedSampleParams {
 impl SmoothedSampleParams {
     pub fn new(sample_rate: Sample) -> Self {
         Self {
-            smooth_mult: (-5.0 / (sample_rate * SMOOTHING_TIME)).exp2(),
-            smooth_steps: (sample_rate * SMOOTHING_TIME * 1.5).round() as u32,
+            smooth_mult: 0.0001f64.powf((sample_rate * SMOOTHING_TIME).recip() as f64) as f32,
+            smooth_steps: (sample_rate * SMOOTHING_TIME).round() as u32,
         }
     }
 }

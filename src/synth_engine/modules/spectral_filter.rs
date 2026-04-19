@@ -24,11 +24,21 @@ pub enum SpectralFilterType {
     Peaking,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Params {
     filter_type: SpectralFilterType,
     fourth_order: bool,
     linear_phase: bool,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            filter_type: SpectralFilterType::default(),
+            fourth_order: false,
+            linear_phase: true,
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
