@@ -138,26 +138,31 @@ impl SpectralFilter {
         fourth_order: bool,
         linear_phase: bool,
     ) {
+        fn apply(
+            output: &mut SpectralBuffer,
+            input: &SpectralBuffer,
+            response: impl Iterator<Item = ComplexSample>,
+            transform: impl Fn(ComplexSample, ComplexSample) -> ComplexSample,
+        ) {
+            for (out, input, response) in izip!(output, input, response) {
+                *out = transform(*input, response);
+            }
+        }
+
         if linear_phase {
             if fourth_order {
-                for (out, input, response) in izip!(output, input, response) {
+                apply(output, input, response, |input, response| {
                     let magnitude = response.norm();
 
-                    *out = input * (magnitude * magnitude);
-                }
+                    input * (magnitude * magnitude)
+                });
             } else {
-                for (out, input, response) in izip!(output, input, response) {
-                    *out = input * response.norm();
-                }
+                apply(output, input, response, |i, r| i * r.norm());
             }
         } else if fourth_order {
-            for (out, input, response) in izip!(output, input, response) {
-                *out = input * response * response;
-            }
+            apply(output, input, response, |i, r| i * r * r);
         } else {
-            for (out, input, response) in izip!(output, input, response) {
-                *out = input * response;
-            }
+            apply(output, input, response, |i, r| i * r);
         }
     }
 
