@@ -1,4 +1,4 @@
-use egui_baseview::egui::{ComboBox, Response, Ui, Widget};
+use egui::{ComboBox, Response, Ui, Widget};
 
 use crate::synth_engine::{Input, ModuleId, ModuleInput, SynthEngine};
 

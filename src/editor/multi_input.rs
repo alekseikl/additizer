@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use egui_baseview::egui::{ComboBox, Response, Ui, Widget, vec2};
+use egui::{ComboBox, Response, Ui, Widget, vec2};
 
 use crate::synth_engine::{Input, ModuleId, ModuleInput, SynthEngine};
 

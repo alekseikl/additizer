@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-use egui_baseview::egui::{
+use egui::{
     Color32, PointerButton, Pos2, Rect, Response, Sense, Ui, Vec2, Widget, vec2,
 };
 

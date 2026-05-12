@@ -1,4 +1,4 @@
-use egui_baseview::egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
+use egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
 
 use crate::{
     editor::{

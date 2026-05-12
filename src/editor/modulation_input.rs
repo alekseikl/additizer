@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use egui_baseview::egui::{ComboBox, Frame, Grid, Margin, Response, Ui, Widget};
+use egui::{ComboBox, Frame, Grid, Margin, Response, Ui, Widget};
 
 use crate::{
     editor::{db_slider::DbSlider, stereo_slider::StereoSlider},

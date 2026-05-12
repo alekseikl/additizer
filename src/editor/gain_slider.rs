@@ -1,4 +1,4 @@
-use egui_baseview::egui::{Color32, PointerButton, Rect, Response, Sense, Ui, Widget, pos2, vec2};
+use egui::{Color32, PointerButton, Rect, Response, Sense, Ui, Widget, pos2, vec2};
 use nih_plug::util::MINUS_INFINITY_DB;
 
 use crate::synth_engine::{Sample, StereoSample};

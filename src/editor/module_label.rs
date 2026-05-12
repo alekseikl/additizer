@@ -1,4 +1,4 @@
-use egui_baseview::egui::{self, Button, Id, Modal, Response, Sides, TextEdit, Ui, Widget};
+use egui::{self, Button, Id, Modal, Response, Sides, TextEdit, Ui, Widget};
 
 use crate::synth_engine::SynthModule;
 

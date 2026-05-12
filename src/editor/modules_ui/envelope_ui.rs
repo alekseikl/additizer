@@ -1,4 +1,4 @@
-use egui_baseview::egui::{Checkbox, ComboBox, Grid, Slider, Ui};
+use egui::{Checkbox, ComboBox, Grid, Slider, Ui};
 
 use crate::{
     editor::{

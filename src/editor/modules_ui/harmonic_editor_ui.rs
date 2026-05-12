@@ -1,4 +1,4 @@
-use egui_baseview::egui::{
+use egui::{
     CentralPanel, Checkbox, ComboBox, DragValue, Frame, Grid, Id, Margin, Modal, ScrollArea, Sides,
     TopBottomPanel, Ui, Vec2, style::ScrollStyle,
 };

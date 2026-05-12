@@ -1,4 +1,4 @@
-use egui_baseview::egui::{Id, Modal, Sides, Ui};
+use egui::{Id, Modal, Sides, Ui};
 
 #[macro_export]
 macro_rules! show_modal {

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use egui_baseview::egui::{
+use egui::{
     CentralPanel, Color32, ComboBox, Frame, Margin, Response, ScrollArea, Sense, Separator,
     SidePanel, TopBottomPanel, Ui, Vec2, vec2,
 };

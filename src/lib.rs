@@ -14,7 +14,7 @@ use crate::default_scheme::build_default_scheme;
 use crate::editor::create_editor;
 use crate::params::AdditizerParams;
 use crate::synth_engine::{Expression, ExternalParamsBlock, SynthEngine};
-pub use egui_baseview::egui;
+pub use egui;
 use nih_plug::prelude::*;
 use parking_lot::Mutex;
 use std::sync::Arc;

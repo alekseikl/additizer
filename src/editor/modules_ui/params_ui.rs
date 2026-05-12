@@ -1,10 +1,8 @@
-use egui_baseview::{
-    egui::{
-        Button, Checkbox, Color32, ComboBox, Frame, Grid, Id, Label, Modal, RichText, Sense, Sides,
-        Slider, TextEdit, Ui, vec2,
-    },
-    egui_extras::{Column, TableBuilder},
+use egui::{
+    Button, Checkbox, Color32, ComboBox, Frame, Grid, Id, Label, Modal, RichText, Sense, Sides,
+    Slider, TextEdit, Ui, vec2,
 };
+use egui_extras::{Column, TableBuilder};
 
 use crate::{
     editor::{ModuleUi, multi_input::MultiInput},

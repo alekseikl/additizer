@@ -1,4 +1,4 @@
-use egui_baseview::egui::{Grid, Ui};
+use egui::{Grid, Ui};
 
 use crate::{
     editor::{
