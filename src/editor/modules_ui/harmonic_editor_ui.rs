@@ -1,6 +1,6 @@
 use egui::{
-    CentralPanel, Checkbox, ComboBox, DragValue, Frame, Grid, Id, Margin, Modal, ScrollArea, Sides,
-    TopBottomPanel, Ui, Vec2, style::ScrollStyle,
+    CentralPanel, Checkbox, ComboBox, DragValue, Frame, Grid, Id, Margin, Modal, Panel, ScrollArea,
+    Sides, Ui, Vec2, style::ScrollStyle,
 };
 use nih_plug::util::db_to_gain;
 
@@ -348,10 +348,10 @@ impl ModuleUi for HarmonicEditorUI {
     fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
         ui.style_mut().spacing.scroll = ScrollStyle::solid();
 
-        TopBottomPanel::top("harmonics-list")
+        Panel::top("harmonics-list")
             .resizable(true)
-            .height_range(150.0..=400.0)
-            .default_height(200.0)
+            .size_range(150.0..=400.0)
+            .default_size(200.0)
             .frame(Frame::NONE.inner_margin(Margin {
                 left: 0,
                 top: 0,

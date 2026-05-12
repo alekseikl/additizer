@@ -7,9 +7,9 @@ use crossbeam::atomic::AtomicCell;
 use egui::ViewportCommand;
 use egui::{CentralPanel, Context, Id, Rect, Sense, Ui, Vec2};
 use egui::{InnerResponse, UiBuilder};
-use nih_plug_egui::EguiWindow;
 use nih_plug::params::persist::PersistentField;
 use nih_plug::prelude::{Editor, GuiContext, ParamSetter, ParentWindowHandle};
+use nih_plug_egui::EguiWindow;
 use parking_lot::RwLock;
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use serde::{Deserialize, Serialize};
@@ -83,7 +83,7 @@ pub(crate) struct EguiEditor<T> {
     /// The user's build function. Applied once at the start of the application.
     pub(crate) build: Arc<dyn Fn(&Context, &mut T) + 'static + Send + Sync>,
     /// The user's update function.
-    pub(crate) update: Arc<dyn Fn(&Context, &ParamSetter, &mut T) + 'static + Send + Sync>,
+    pub(crate) update: Arc<dyn Fn(&mut Ui, &ParamSetter, &mut T) + 'static + Send + Sync>,
 
     /// The scaling factor reported by the host, if any. On macOS this will never be set and we
     /// should use the system scaling factor instead.
@@ -264,7 +264,7 @@ pub fn create_egui_editor<T, B, U>(
 where
     T: 'static + Send + Sync,
     B: Fn(&Context, &mut T) + 'static + Send + Sync,
-    U: Fn(&Context, &ParamSetter, &mut T) + 'static + Send + Sync,
+    U: Fn(&mut Ui, &ParamSetter, &mut T) + 'static + Send + Sync,
 {
     Some(Box::new(EguiEditor {
         egui_state,
@@ -306,11 +306,11 @@ impl ResizableWindow {
 
     pub fn show<R>(
         self,
-        context: &Context,
+        ui: &mut Ui,
         egui_state: &EguiState,
         add_contents: impl FnOnce(&mut Ui) -> R,
     ) -> InnerResponse<R> {
-        CentralPanel::default().show(context, move |ui| {
+        CentralPanel::default().show_inside(ui, move |ui| {
             let ui_rect = ui.clip_rect();
             let mut content_ui =
                 ui.new_child(UiBuilder::new().max_rect(ui_rect).layout(*ui.layout()));

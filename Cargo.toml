@@ -19,24 +19,22 @@ egui_extras = { version = "0.34.1", default-features = false }
 nih_plug = { git = "https://github.com/BillyDM/nih-plug.git", branch = "main", features = [
     "standalone",
 ] }
-
 nih_plug_egui = { git = "https://github.com/BillyDM/nih-plug.git", branch = "main", default-features = false, features = [
     "opengl",
 ] }
 raw-window-handle = "0.5"
 crossbeam = "0.8"
 serde = { version = "1.0", features = ["derive", "rc"] }
-serde_json = "1.0"
+serde_json = "1.0.149"
 itertools = "0.14"
 topo_sort = "0.4"
 realfft = { version = "3.5" }
 parking_lot = { version = "0.12.5", features = ["serde"] }
 smallvec = "1.15.1"
 assert_no_alloc = "1.1.2"
-biquad = "0.5.0"
-wide = "1.0.2"
-const_format = "0.2.35"
+wide = "1.4.0"
+const_format = "0.2.36"
 directories = "6.0.0"
 
-rand = "0.10.0"
-rand_pcg = "0.10.1"
+rand = "0.10.1"
+rand_pcg = "0.10.2"

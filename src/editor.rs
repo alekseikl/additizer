@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use egui::{
-    CentralPanel, Color32, ComboBox, Frame, Margin, Response, ScrollArea, Sense, Separator,
-    SidePanel, TopBottomPanel, Ui, Vec2, vec2,
+    CentralPanel, Color32, ComboBox, Frame, Margin, Panel, Response, ScrollArea, Sense, Separator,
+    Ui, Vec2, vec2,
 };
 use nih_plug::editor::Editor;
 use parking_lot::Mutex;
@@ -105,10 +105,10 @@ fn show_side_bar(
     selected_module_ui: &mut ModuleUIBox,
     synth_engine: &mut SynthEngine,
 ) {
-    SidePanel::left("side-bar")
+    Panel::left("side-bar")
         .resizable(true)
-        .width_range(100.0..=200.0)
-        .default_width(150.0)
+        .size_range(100.0..=200.0)
+        .default_size(150.0)
         .frame(Frame::NONE)
         .show_inside(ui, |ui| {
             let mut modules = synth_engine.get_modules();
@@ -145,7 +145,7 @@ fn show_side_bar(
                     });
                 });
 
-            TopBottomPanel::bottom("side-bar-bottom")
+            Panel::bottom("side-bar-bottom")
                 .resizable(false)
                 .frame(Frame::new().inner_margin(8.0))
                 .show_inside(ui, |ui| {
@@ -199,8 +199,8 @@ fn show_side_bar(
 fn show_right_bar(ui: &mut Ui, synth_engine: &mut SynthEngine) {
     let mut level = synth_engine.get_output_level();
 
-    SidePanel::right("right-bar")
-        .exact_width(24.0)
+    Panel::right("right-bar")
+        .exact_size(24.0)
         .resizable(false)
         .frame(Frame::new().inner_margin(vec2(4.0, 8.0)))
         .show_inside(ui, |ui| {
