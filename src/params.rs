@@ -1,8 +1,9 @@
 use nih_plug::prelude::*;
+use nih_plug_egui::EguiState;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
-use crate::{editor::EguiState, synth_engine::Config};
+use crate::synth_engine::Config;
 
 #[derive(Params)]
 pub struct AdditizerParams {

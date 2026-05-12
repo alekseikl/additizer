@@ -5,6 +5,7 @@ use egui::{
     Ui, Vec2, vec2,
 };
 use nih_plug::editor::Editor;
+use nih_plug_egui::{EguiState, create_egui_editor, resizable_window::ResizableWindow};
 use parking_lot::Mutex;
 
 use crate::{
@@ -19,13 +20,8 @@ use crate::{
     synth_engine::{ModuleId, ModuleType, OUTPUT_MODULE_ID, SynthEngine},
 };
 
-use egui_integration::{ResizableWindow, create_egui_editor};
-
-pub use egui_integration::EguiState;
-
 mod db_slider;
 mod direct_input;
-mod egui_integration;
 mod gain_slider;
 mod modulation_input;
 mod module_label;
@@ -247,8 +243,9 @@ pub fn create_editor(
     create_egui_editor(
         Arc::clone(&egui_state),
         EditorState::new(),
-        |_, _| {},
-        move |egui_ctx, _setter, editor_state| {
+        Default::default(),
+        |_egui_ctx, _queue, _gui_state| {},
+        move |egui_ctx, _setter, _queue, editor_state| {
             ResizableWindow::new("res-wind")
                 .min_size(Vec2::new(640.0, 480.0))
                 .show(egui_ctx, egui_state.as_ref(), |ui| {
