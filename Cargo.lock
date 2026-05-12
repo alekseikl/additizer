@@ -843,7 +843,7 @@ dependencies = [
 [[package]]
 name = "egui-baseview"
 version = "0.1.1"
-source = "git+https://github.com/BillyDM/nih-plug.git?branch=main#4ec22b4565669d271a1589cb4bdc72da4ea549ee"
+source = "git+https://github.com/alekseikl/nih-plug.git?branch=my-fixes-2#4ec22b4565669d271a1589cb4bdc72da4ea549ee"
 dependencies = [
  "baseview",
  "copypasta",
@@ -1588,7 +1588,7 @@ dependencies = [
 [[package]]
 name = "nih_plug"
 version = "0.1.0"
-source = "git+https://github.com/BillyDM/nih-plug.git?branch=main#4ec22b4565669d271a1589cb4bdc72da4ea549ee"
+source = "git+https://github.com/alekseikl/nih-plug.git?branch=my-fixes-2#4ec22b4565669d271a1589cb4bdc72da4ea549ee"
 dependencies = [
  "anyhow",
  "anymap3",
@@ -1621,7 +1621,7 @@ dependencies = [
 [[package]]
 name = "nih_plug_core"
 version = "0.1.1"
-source = "git+https://github.com/BillyDM/nih-plug.git?branch=main#4ec22b4565669d271a1589cb4bdc72da4ea549ee"
+source = "git+https://github.com/alekseikl/nih-plug.git?branch=my-fixes-2#4ec22b4565669d271a1589cb4bdc72da4ea549ee"
 dependencies = [
  "atomic_float",
  "atomic_refcell",
@@ -1639,7 +1639,7 @@ dependencies = [
 [[package]]
 name = "nih_plug_derive"
 version = "0.1.0"
-source = "git+https://github.com/BillyDM/nih-plug.git?branch=main#4ec22b4565669d271a1589cb4bdc72da4ea549ee"
+source = "git+https://github.com/alekseikl/nih-plug.git?branch=my-fixes-2#4ec22b4565669d271a1589cb4bdc72da4ea549ee"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1649,7 +1649,7 @@ dependencies = [
 [[package]]
 name = "nih_plug_egui"
 version = "0.1.1"
-source = "git+https://github.com/BillyDM/nih-plug.git?branch=main#4ec22b4565669d271a1589cb4bdc72da4ea549ee"
+source = "git+https://github.com/alekseikl/nih-plug.git?branch=my-fixes-2#4ec22b4565669d271a1589cb4bdc72da4ea549ee"
 dependencies = [
  "crossbeam",
  "egui",

@@ -16,10 +16,10 @@ rayon = ["egui/rayon"]
 baseview = "0.1"
 egui = { version = "0.34.1", default-features = false, features = ["bytemuck"] }
 egui_extras = { version = "0.34.1", default-features = false }
-nih_plug = { git = "https://github.com/BillyDM/nih-plug.git", branch = "main", features = [
+nih_plug = { git = "https://github.com/alekseikl/nih-plug.git", branch = "my-fixes-2", features = [
     "standalone",
 ] }
-nih_plug_egui = { git = "https://github.com/BillyDM/nih-plug.git", branch = "main", default-features = false, features = [
+nih_plug_egui = { git = "https://github.com/alekseikl/nih-plug.git", branch = "my-fixes-2", default-features = false, features = [
     "opengl",
 ] }
 raw-window-handle = "0.5"
