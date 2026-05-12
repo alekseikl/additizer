@@ -107,40 +107,6 @@ fn show_side_bar(
         .default_size(150.0)
         .frame(Frame::NONE)
         .show_inside(ui, |ui| {
-            let mut modules = synth_engine.get_modules();
-
-            modules.sort_by_key(|module| module.label().to_lowercase());
-
-            CentralPanel::default()
-                .frame(Frame::NONE)
-                .show_inside(ui, |ui| {
-                    ScrollArea::vertical().show(ui, |ui| {
-                        ui.vertical(|ui| {
-                            ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-
-                            let selected_module_id = selected_module_ui.module_id();
-
-                            if show_menu_item(ui, "Parameters", selected_module_id.is_none())
-                                .clicked()
-                            {
-                                *selected_module_ui = Box::new(ParamsUi::new());
-                            }
-
-                            for module in modules {
-                                if show_menu_item(
-                                    ui,
-                                    &module.label(),
-                                    selected_module_id.is_some_and(|mod_id| mod_id == module.id()),
-                                )
-                                .clicked()
-                                {
-                                    *selected_module_ui = module.module_type().ui(module.id());
-                                }
-                            }
-                        })
-                    });
-                });
-
             Panel::bottom("side-bar-bottom")
                 .resizable(false)
                 .frame(Frame::new().inner_margin(8.0))
@@ -187,6 +153,40 @@ fn show_side_bar(
                                     synth_engine.add_mixer();
                                 }
                             });
+                    });
+                });
+
+            let mut modules = synth_engine.get_modules();
+
+            modules.sort_by_key(|module| module.label().to_lowercase());
+
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show_inside(ui, |ui| {
+                    ScrollArea::vertical().show(ui, |ui| {
+                        ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+
+                            let selected_module_id = selected_module_ui.module_id();
+
+                            if show_menu_item(ui, "Parameters", selected_module_id.is_none())
+                                .clicked()
+                            {
+                                *selected_module_ui = Box::new(ParamsUi::new());
+                            }
+
+                            for module in modules {
+                                if show_menu_item(
+                                    ui,
+                                    &module.label(),
+                                    selected_module_id.is_some_and(|mod_id| mod_id == module.id()),
+                                )
+                                .clicked()
+                                {
+                                    *selected_module_ui = module.module_type().ui(module.id());
+                                }
+                            }
+                        })
                     });
                 });
         });
