@@ -392,78 +392,78 @@ impl ModuleUi for HarmonicEditorUI {
                 &mut self.label_state,
                 module,
             ));
+
+            ui.add_space(32.0);
+
+            ui.horizontal(|ui| {
+                if ui.button("All to Zero").clicked() {
+                    self.editor(synth).set_selected(&SetParams {
+                        from: 1,
+                        to: NUM_EDITABLE_HARMONICS,
+                        n_th: None,
+                        action: SetAction::Set,
+                        gain: StereoSample::splat(0.0),
+                    });
+                }
+
+                if ui.button("All to One").clicked() {
+                    self.editor(synth).set_selected(&SetParams {
+                        from: 1,
+                        to: NUM_EDITABLE_HARMONICS,
+                        n_th: None,
+                        action: SetAction::Set,
+                        gain: StereoSample::splat(1.0),
+                    });
+                }
+
+                if ui.button("Keep Even").clicked() {
+                    self.editor(synth).set_selected(&SetParams {
+                        from: 1,
+                        to: NUM_EDITABLE_HARMONICS,
+                        n_th: Some(NthElement::new(2, 0, true)),
+                        action: SetAction::Set,
+                        gain: StereoSample::splat(0.0),
+                    });
+                }
+
+                if ui.button("Keep Odd").clicked() {
+                    self.editor(synth).set_selected(&SetParams {
+                        from: 1,
+                        to: NUM_EDITABLE_HARMONICS,
+                        n_th: Some(NthElement::new(2, 1, true)),
+                        action: SetAction::Set,
+                        gain: StereoSample::splat(0.0),
+                    });
+                }
+            });
+
+            ui.horizontal(|ui| {
+                if ui.button("Select and Set").clicked() {
+                    self.select_and_set_state = Some(Box::new(SelectAndSetState::default()));
+                }
+
+                if ui.button("Apply Filter").clicked() {
+                    self.apply_filter_state = Some(Box::new(ApplyFilterState::default()));
+                }
+            });
+
+            if let Some(mut state) = self.select_and_set_state.take()
+                && self.show_select_and_set_modal(synth, ui, &mut state)
+            {
+                self.select_and_set_state.replace(state);
+            }
+
+            if let Some(mut state) = self.apply_filter_state.take()
+                && self.show_apply_filter_modal(synth, ui, &mut state)
+            {
+                self.apply_filter_state.replace(state);
+            }
+
+            ui.add_space(40.0);
+
+            if confirm_module_removal(ui, &mut self.remove_confirmation) {
+                synth.remove_module(self.module_id);
+            }
         });
-
-        ui.add_space(60.0);
-
-        ui.horizontal(|ui| {
-            if ui.button("All to Zero").clicked() {
-                self.editor(synth).set_selected(&SetParams {
-                    from: 1,
-                    to: NUM_EDITABLE_HARMONICS,
-                    n_th: None,
-                    action: SetAction::Set,
-                    gain: StereoSample::splat(0.0),
-                });
-            }
-
-            if ui.button("All to One").clicked() {
-                self.editor(synth).set_selected(&SetParams {
-                    from: 1,
-                    to: NUM_EDITABLE_HARMONICS,
-                    n_th: None,
-                    action: SetAction::Set,
-                    gain: StereoSample::splat(1.0),
-                });
-            }
-
-            if ui.button("Keep Even").clicked() {
-                self.editor(synth).set_selected(&SetParams {
-                    from: 1,
-                    to: NUM_EDITABLE_HARMONICS,
-                    n_th: Some(NthElement::new(2, 0, true)),
-                    action: SetAction::Set,
-                    gain: StereoSample::splat(0.0),
-                });
-            }
-
-            if ui.button("Keep Odd").clicked() {
-                self.editor(synth).set_selected(&SetParams {
-                    from: 1,
-                    to: NUM_EDITABLE_HARMONICS,
-                    n_th: Some(NthElement::new(2, 1, true)),
-                    action: SetAction::Set,
-                    gain: StereoSample::splat(0.0),
-                });
-            }
-        });
-
-        ui.horizontal(|ui| {
-            if ui.button("Select and Set").clicked() {
-                self.select_and_set_state = Some(Box::new(SelectAndSetState::default()));
-            }
-
-            if ui.button("Apply Filter").clicked() {
-                self.apply_filter_state = Some(Box::new(ApplyFilterState::default()));
-            }
-        });
-
-        if let Some(mut state) = self.select_and_set_state.take()
-            && self.show_select_and_set_modal(synth, ui, &mut state)
-        {
-            self.select_and_set_state.replace(state);
-        }
-
-        if let Some(mut state) = self.apply_filter_state.take()
-            && self.show_apply_filter_modal(synth, ui, &mut state)
-        {
-            self.apply_filter_state.replace(state);
-        }
-
-        ui.add_space(40.0);
-
-        if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            synth.remove_module(self.module_id);
-        }
     }
 }
