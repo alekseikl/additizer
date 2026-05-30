@@ -7,7 +7,7 @@ use crate::{
         stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
     synth_engine::{
-        Input, ModuleId, Sample, StereoSample, SynthEngine,
+        Input, ModuleId, Sample, StereoSample, SynthModule,
         oscillator::{AudioBridge, Oscillator, PhasesDst, UiState, UiUpdate},
     },
 };
@@ -29,6 +29,7 @@ pub struct OscillatorUI {
     module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
+    label: String,
     ui_state: UiState,
     bridge: Option<AudioBridge>,
     phases_shift_to: bool,
@@ -46,6 +47,7 @@ impl OscillatorUI {
             module_id,
             remove_confirmation: false,
             label_state: None,
+            label: osc.label(),
             ui_state: osc.get_ui_state(),
             bridge: osc.take_audio_bridge(),
             phases_shift_to: false,
@@ -53,10 +55,6 @@ impl OscillatorUI {
             gain_shape_state: None,
             randomize_phase_state: None,
         }
-    }
-
-    fn osc<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut Oscillator {
-        synth.get_typed_module_mut(self.module_id).unwrap()
     }
 
     fn apply_ui_update(ui_state: &mut UiState, update: UiUpdate) {
@@ -432,31 +430,30 @@ impl ModuleUi for OscillatorUI {
 
     fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
         let mut bridge = self.bridge.take().unwrap();
+        let mut refresh_state = false;
 
-        let updates: Vec<_> = bridge.updates().collect();
-        let refresh_state = updates
-            .iter()
-            .any(|update| matches!(update, UiUpdate::RefreshState));
-
-        for update in updates {
-            if !matches!(update, UiUpdate::RefreshState) {
+        while let Some(update) = bridge.pop_update() {
+            if matches!(update, UiUpdate::RefreshState) {
+                refresh_state = true;
+            } else {
                 Self::apply_ui_update(&mut self.ui_state, update);
             }
         }
 
         if refresh_state {
-            self.ui_state = self.osc(&mut synth.lock()).get_ui_state();
+            self.ui_state = synth
+                .lock()
+                .get_typed_module_mut::<Oscillator>(self.module_id)
+                .unwrap()
+                .get_ui_state();
         }
 
-        {
-            let mut s = synth.lock();
-            let module_label = s.get_module_mut(self.module_id).unwrap().label();
-            ui.add(ModuleLabel::new(
-                &module_label,
-                &mut self.label_state,
-                s.get_module_mut(self.module_id).unwrap(),
-            ));
-        }
+        ui.add(ModuleLabel::new(
+            &self.label,
+            &mut self.label_state,
+            synth,
+            self.module_id,
+        ));
 
         ui.add_space(20.0);
 
@@ -634,6 +631,10 @@ impl ModuleUi for OscillatorUI {
             return;
         };
 
-        self.osc(&mut synth.lock()).return_audio_bridge(bridge);
+        synth
+            .lock()
+            .get_typed_module_mut::<Oscillator>(self.module_id)
+            .unwrap()
+            .return_audio_bridge(bridge);
     }
 }

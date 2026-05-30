@@ -386,15 +386,18 @@ impl ModuleUi for HarmonicEditorUI {
             });
 
         CentralPanel::default().show_inside(ui, |ui| {
-            {
-                let mut s = synth.lock();
-                let module = s.get_module_mut(self.module_id).unwrap();
-                ui.add(ModuleLabel::new(
-                    &module.label(),
-                    &mut self.label_state,
-                    module,
-                ));
-            }
+            let module_label = synth
+                .lock()
+                .get_module_mut(self.module_id)
+                .unwrap()
+                .label()
+                .to_string();
+            ui.add(ModuleLabel::new(
+                &module_label,
+                &mut self.label_state,
+                synth,
+                self.module_id,
+            ));
 
             ui.add_space(32.0);
 

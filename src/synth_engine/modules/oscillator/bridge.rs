@@ -148,8 +148,8 @@ impl AudioBridge {
         });
     }
 
-    pub fn updates(&mut self) -> impl Iterator<Item = UiUpdate> + '_ {
-        std::iter::from_fn(|| self.rx.pop().ok())
+    pub fn pop_update(&mut self) -> Option<UiUpdate> {
+        self.rx.pop().ok()
     }
 }
 

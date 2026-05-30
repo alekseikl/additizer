@@ -120,14 +120,12 @@ impl ModuleUi for EnvelopeUI {
         let id = self.module_id;
         let mut ui_data = self.env(&mut synth.lock()).get_ui();
 
-        {
-            let mut s = synth.lock();
-            ui.add(ModuleLabel::new(
-                &ui_data.label,
-                &mut self.label_state,
-                s.get_module_mut(self.module_id).unwrap(),
-            ));
-        }
+        ui.add(ModuleLabel::new(
+            &ui_data.label,
+            &mut self.label_state,
+            synth,
+            self.module_id,
+        ));
 
         ui.add_space(20.0);
 
