@@ -2,7 +2,7 @@ use egui::{Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
+        ModuleUi, SynthEngineHandle, modulation_input::ModulationInput, module_label::ModuleLabel,
         multi_input::MultiInput, utils::confirm_module_removal,
     },
     synth_engine::{Amplifier, Input, ModuleId, SynthEngine},
@@ -33,14 +33,17 @@ impl ModuleUi for AmplifierUI {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
-        let mut ui_data = self.amp(synth).get_ui();
+    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
+        let mut ui_data = self.amp(&mut synth.lock()).get_ui();
 
-        ui.add(ModuleLabel::new(
-            &ui_data.label,
-            &mut self.module_label,
-            synth.get_module_mut(self.module_id).unwrap(),
-        ));
+        {
+            let mut s = synth.lock();
+            ui.add(ModuleLabel::new(
+                &ui_data.label,
+                &mut self.module_label,
+                s.get_module_mut(self.module_id).unwrap(),
+            ));
+        }
 
         ui.add_space(20.0);
 
@@ -50,18 +53,23 @@ impl ModuleUi for AmplifierUI {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Inputs");
-                ui.add(MultiInput::new(synth, Input::Audio, self.module_id));
+                ui.add(MultiInput::new(synth.clone(), Input::Audio, self.module_id));
                 ui.end_row();
 
                 ui.label("Gain");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.gain, synth, Input::Gain, self.module_id)
-                            .modulation_default(1.0),
+                        ModulationInput::new(
+                            &mut ui_data.gain,
+                            synth.clone(),
+                            Input::Gain,
+                            self.module_id,
+                        )
+                        .modulation_default(1.0),
                     )
                     .changed()
                 {
-                    self.amp(synth).set_gain(ui_data.gain);
+                    self.amp(&mut synth.lock()).set_gain(ui_data.gain);
                 }
                 ui.end_row();
             });
@@ -69,7 +77,7 @@ impl ModuleUi for AmplifierUI {
         ui.add_space(40.0);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            synth.remove_module(self.module_id);
+            synth.lock().remove_module(self.module_id);
         }
     }
 }

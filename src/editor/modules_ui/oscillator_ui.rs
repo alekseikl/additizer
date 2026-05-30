@@ -3,7 +3,8 @@ use parking_lot::Mutex;
 
 use crate::{
     editor::{
-        ModuleUi, db_slider::DbSlider, direct_input::DirectInput, gain_slider::GainSlider,
+        ModuleUi, SynthEngineHandle, db_slider::DbSlider, direct_input::DirectInput,
+        gain_slider::GainSlider,
         modulation_input::ModulationInput, module_label::ModuleLabel, stereo_slider::StereoSlider,
         utils::confirm_module_removal,
     },
@@ -39,8 +40,9 @@ pub struct OscillatorUI {
 }
 
 impl OscillatorUI {
-    pub fn new(module_id: ModuleId, synth: &mut SynthEngine) -> Self {
-        let osc = Oscillator::downcast_mut_unwrap(synth.get_module_mut(module_id));
+    pub fn new(module_id: ModuleId, synth: &SynthEngineHandle) -> Self {
+        let mut s = synth.lock();
+        let osc = Oscillator::downcast_mut_unwrap(s.get_module_mut(module_id));
 
         Self {
             module_id,
@@ -277,7 +279,7 @@ impl OscillatorUI {
     fn show_unison_section(
         &mut self,
         bridge: &mut AudioBridge,
-        synth: &mut SynthEngine,
+        synth: &SynthEngineHandle,
         ui: &mut Ui,
     ) {
         let unison = self.ui_state.unison;
@@ -366,7 +368,7 @@ impl OscillatorUI {
         if ui
             .add(ModulationInput::new(
                 &mut self.ui_state.phases_blend,
-                synth,
+                synth.clone(),
                 Input::PhasesBlend,
                 self.module_id,
             ))
@@ -413,7 +415,7 @@ impl OscillatorUI {
         if ui
             .add(ModulationInput::new(
                 &mut self.ui_state.gains_blend,
-                synth,
+                synth.clone(),
                 Input::GainsBlend,
                 self.module_id,
             ))
@@ -430,7 +432,7 @@ impl ModuleUi for OscillatorUI {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
+    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
         let mut bridge = self.bridge.lock().take().unwrap();
 
         let updates: Vec<_> = bridge.updates().collect();
@@ -445,15 +447,18 @@ impl ModuleUi for OscillatorUI {
         }
 
         if refresh_state {
-            self.ui_state = self.osc(synth).get_ui_state();
+            self.ui_state = self.osc(&mut synth.lock()).get_ui_state();
         }
 
-        let module_label = synth.get_module_mut(self.module_id).unwrap().label();
-        ui.add(ModuleLabel::new(
-            &module_label,
-            &mut self.label_state,
-            synth.get_module_mut(self.module_id).unwrap(),
-        ));
+        {
+            let mut s = synth.lock();
+            let module_label = s.get_module_mut(self.module_id).unwrap().label();
+            ui.add(ModuleLabel::new(
+                &module_label,
+                &mut self.label_state,
+                s.get_module_mut(self.module_id).unwrap(),
+            ));
+        }
 
         ui.add_space(20.0);
 
@@ -463,14 +468,14 @@ impl ModuleUi for OscillatorUI {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Input");
-                ui.add(DirectInput::new(synth, Input::Spectrum, self.module_id));
+                ui.add(DirectInput::new(synth.clone(), Input::Spectrum, self.module_id));
                 ui.end_row();
 
                 ui.label("Gain");
                 if ui
                     .add(ModulationInput::new(
                         &mut self.ui_state.gain,
-                        synth,
+                        synth.clone(),
                         Input::Gain,
                         self.module_id,
                     ))
@@ -484,7 +489,7 @@ impl ModuleUi for OscillatorUI {
                 if ui
                     .add(ModulationInput::new(
                         &mut self.ui_state.pitch_shift,
-                        synth,
+                        synth.clone(),
                         Input::PitchShift,
                         self.module_id,
                     ))
@@ -498,7 +503,7 @@ impl ModuleUi for OscillatorUI {
                 if ui
                     .add(ModulationInput::new(
                         &mut self.ui_state.phase_shift,
-                        synth,
+                        synth.clone(),
                         Input::PhaseShift,
                         self.module_id,
                     ))
@@ -512,7 +517,7 @@ impl ModuleUi for OscillatorUI {
                 if ui
                     .add(ModulationInput::new(
                         &mut self.ui_state.frequency_shift,
-                        synth,
+                        synth.clone(),
                         Input::FrequencyShift,
                         self.module_id,
                     ))
@@ -526,7 +531,7 @@ impl ModuleUi for OscillatorUI {
                 if ui
                     .add(ModulationInput::new(
                         &mut self.ui_state.detune,
-                        synth,
+                        synth.clone(),
                         Input::Detune,
                         self.module_id,
                     ))
@@ -540,7 +545,7 @@ impl ModuleUi for OscillatorUI {
                 if ui
                     .add(ModulationInput::new(
                         &mut self.ui_state.detune_power,
-                        synth,
+                        synth.clone(),
                         Input::DetunePower,
                         self.module_id,
                     ))
@@ -554,7 +559,7 @@ impl ModuleUi for OscillatorUI {
                 if ui
                     .add(ModulationInput::new(
                         &mut self.ui_state.glide,
-                        synth,
+                        synth.clone(),
                         Input::Glide,
                         self.module_id,
                     ))
@@ -568,7 +573,7 @@ impl ModuleUi for OscillatorUI {
                 if ui
                     .add(ModulationInput::new(
                         &mut self.ui_state.glide_slope,
-                        synth,
+                        synth.clone(),
                         Input::GlideSlope,
                         self.module_id,
                     ))
@@ -616,17 +621,17 @@ impl ModuleUi for OscillatorUI {
         }
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            synth.remove_module(self.module_id);
+            synth.lock().remove_module(self.module_id);
         }
 
         self.bridge.lock().replace(bridge);
     }
 
-    fn cleanup(&mut self, synth: &mut SynthEngine) {
+    fn cleanup(&mut self, synth: &SynthEngineHandle) {
         let Some(bridge) = self.bridge.lock().take() else {
             return;
         };
 
-        self.osc(synth).return_audio_bridge(bridge);
+        self.osc(&mut synth.lock()).return_audio_bridge(bridge);
     }
 }

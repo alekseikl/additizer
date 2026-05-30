@@ -2,7 +2,7 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
+        ModuleUi, SynthEngineHandle, modulation_input::ModulationInput, module_label::ModuleLabel,
         stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
     synth_engine::{Input, Lfo, LfoShape, ModuleId, SynthEngine},
@@ -45,15 +45,18 @@ impl ModuleUi for LfoUi {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
+    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
         let id = self.module_id;
-        let mut ui_data = self.lfo(synth).get_ui();
+        let mut ui_data = self.lfo(&mut synth.lock()).get_ui();
 
-        ui.add(ModuleLabel::new(
-            &ui_data.label,
-            &mut self.label_state,
-            synth.get_module_mut(self.module_id).unwrap(),
-        ));
+        {
+            let mut s = synth.lock();
+            ui.add(ModuleLabel::new(
+                &ui_data.label,
+                &mut self.label_state,
+                s.get_module_mut(self.module_id).unwrap(),
+            ));
+        }
 
         ui.add_space(20.0);
 
@@ -71,7 +74,7 @@ impl ModuleUi for LfoUi {
                                 .selectable_label(ui_data.shape == *shape, shape.label())
                                 .clicked()
                             {
-                                self.lfo(synth).set_shape(*shape);
+                                self.lfo(&mut synth.lock()).set_shape(*shape);
                             }
                         }
                     });
@@ -81,13 +84,13 @@ impl ModuleUi for LfoUi {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.skew,
-                        synth,
+                        synth.clone(),
                         Input::Skew,
                         id,
                     ))
                     .changed()
                 {
-                    self.lfo(synth).set_skew(ui_data.skew);
+                    self.lfo(&mut synth.lock()).set_skew(ui_data.skew);
                 }
                 ui.end_row();
 
@@ -95,13 +98,13 @@ impl ModuleUi for LfoUi {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.frequency,
-                        synth,
+                        synth.clone(),
                         Input::LowFrequency,
                         id,
                     ))
                     .changed()
                 {
-                    self.lfo(synth).set_frequency(ui_data.frequency);
+                    self.lfo(&mut synth.lock()).set_frequency(ui_data.frequency);
                 }
                 ui.end_row();
 
@@ -109,13 +112,13 @@ impl ModuleUi for LfoUi {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.phase_shift,
-                        synth,
+                        synth.clone(),
                         Input::PhaseShift,
                         id,
                     ))
                     .changed()
                 {
-                    self.lfo(synth).set_phase_shift(ui_data.phase_shift);
+                    self.lfo(&mut synth.lock()).set_phase_shift(ui_data.phase_shift);
                 }
                 ui.end_row();
 
@@ -132,7 +135,7 @@ impl ModuleUi for LfoUi {
                     )
                     .changed()
                 {
-                    self.lfo(synth).set_smooth_time(ui_data.smooth_time);
+                    self.lfo(&mut synth.lock()).set_smooth_time(ui_data.smooth_time);
                 }
                 ui.end_row();
 
@@ -141,7 +144,7 @@ impl ModuleUi for LfoUi {
                     .add(Checkbox::without_text(&mut ui_data.bipolar))
                     .changed()
                 {
-                    self.lfo(synth).set_bipolar(ui_data.bipolar);
+                    self.lfo(&mut synth.lock()).set_bipolar(ui_data.bipolar);
                 }
                 ui.end_row();
 
@@ -150,7 +153,7 @@ impl ModuleUi for LfoUi {
                     .add(Checkbox::without_text(&mut ui_data.steal_phase))
                     .changed()
                 {
-                    self.lfo(synth).set_steal_phase(ui_data.steal_phase);
+                    self.lfo(&mut synth.lock()).set_steal_phase(ui_data.steal_phase);
                 }
                 ui.end_row();
             });
@@ -158,7 +161,7 @@ impl ModuleUi for LfoUi {
         ui.add_space(40.0);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            synth.remove_module(self.module_id);
+            synth.lock().remove_module(self.module_id);
         }
     }
 }

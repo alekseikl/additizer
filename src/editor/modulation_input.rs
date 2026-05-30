@@ -3,19 +3,19 @@ use std::collections::HashSet;
 use egui::{ComboBox, Frame, Grid, Margin, Response, Ui, Widget};
 
 use crate::{
-    editor::{db_slider::DbSlider, stereo_slider::StereoSlider},
+    editor::{SynthEngineHandle, db_slider::DbSlider, stereo_slider::StereoSlider},
     synth_engine::{
         AvailableInputSourceUI, ConnectedInputSourceUI, Input, ModuleId, ModuleInput, Sample,
-        StereoSample, SynthEngine,
+        StereoSample,
     },
     utils::st_to_octave,
 };
 
-type BeforeCallback = dyn FnMut(&mut Ui, &mut SynthEngine);
+type BeforeCallback = dyn FnMut(&mut Ui, &SynthEngineHandle);
 
 pub struct ModulationInput<'a> {
     value: &'a mut StereoSample,
-    synth_engine: &'a mut SynthEngine,
+    synth_engine: SynthEngineHandle,
     input: ModuleInput,
     default: Option<Sample>,
     modulation_default: Option<Sample>,
@@ -25,7 +25,7 @@ pub struct ModulationInput<'a> {
 impl<'a> ModulationInput<'a> {
     pub fn new(
         value: &'a mut StereoSample,
-        synth_engine: &'a mut SynthEngine,
+        synth_engine: SynthEngineHandle,
         input: Input,
         module_id: ModuleId,
     ) -> Self {
@@ -49,7 +49,7 @@ impl<'a> ModulationInput<'a> {
         self
     }
 
-    pub fn before(mut self, func: impl FnMut(&mut Ui, &mut SynthEngine) + 'static) -> Self {
+    pub fn before(mut self, func: impl FnMut(&mut Ui, &SynthEngineHandle) + 'static) -> Self {
         self.before = Some(Box::new(func));
         self
     }
@@ -281,6 +281,7 @@ impl<'a> ModulationInput<'a> {
 
     fn add_link(&mut self, src: ModuleId) {
         self.synth_engine
+            .lock()
             .add_link(
                 src,
                 self.input,
@@ -291,6 +292,7 @@ impl<'a> ModulationInput<'a> {
 
     fn set_modulation(&mut self, src_id: ModuleId, modulator_id: ModuleId) {
         self.synth_engine
+            .lock()
             .set_link_modulation(src_id, &self.input, modulator_id)
             .unwrap_or_else(|_| println!("Failed to set modulation"));
     }
@@ -342,6 +344,7 @@ impl<'a> ModulationInput<'a> {
                             ui.label(&src.label);
                             if ui.button("✱").on_hover_text("Remove Modulation").clicked() {
                                 self.synth_engine
+                                    .lock()
                                     .remove_link_modulation(src.src, &self.input);
                             }
                             ui.label(&modulation.label);
@@ -359,6 +362,7 @@ impl<'a> ModulationInput<'a> {
 
                     if slider_response.changed() {
                         self.synth_engine
+                            .lock()
                             .update_link_amount(&src.src, &self.input, amount);
                     }
 
@@ -381,7 +385,7 @@ impl<'a> ModulationInput<'a> {
                     }
 
                     if ui.button("❌").on_hover_text("Remove Modulation").clicked() {
-                        self.synth_engine.remove_link(&src.src, &self.input);
+                        self.synth_engine.lock().remove_link(&src.src, &self.input);
                     }
 
                     ui.end_row();
@@ -393,13 +397,18 @@ impl<'a> ModulationInput<'a> {
 impl Widget for ModulationInput<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {
         ui.vertical(|ui| {
-            let connected = self.synth_engine.get_connected_input_sources(self.input);
-            let available = self.synth_engine.get_available_input_sources(self.input);
+            let (connected, available) = {
+                let synth = self.synth_engine.lock();
+                (
+                    synth.get_connected_input_sources(self.input),
+                    synth.get_available_input_sources(self.input),
+                )
+            };
 
             let result_response = ui
                 .horizontal(|ui| {
                     if let Some(before) = self.before.as_deref_mut() {
-                        before(ui, self.synth_engine);
+                        before(ui, &self.synth_engine);
                     }
 
                     let result_response = self.add_slider(ui);

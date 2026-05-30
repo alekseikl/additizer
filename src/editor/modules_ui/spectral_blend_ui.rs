@@ -2,7 +2,7 @@ use egui::{Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
+        ModuleUi, SynthEngineHandle, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{Input, ModuleId, SpectralBlend, SynthEngine},
@@ -33,14 +33,17 @@ impl ModuleUi for SpectralBlendUi {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
-        let mut ui_data = self.blend(synth).get_ui();
+    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
+        let mut ui_data = self.blend(&mut synth.lock()).get_ui();
 
-        ui.add(ModuleLabel::new(
-            &ui_data.label,
-            &mut self.label_state,
-            synth.get_module_mut(self.module_id).unwrap(),
-        ));
+        {
+            let mut s = synth.lock();
+            ui.add(ModuleLabel::new(
+                &ui_data.label,
+                &mut self.label_state,
+                s.get_module_mut(self.module_id).unwrap(),
+            ));
+        }
 
         ui.add_space(20.0);
 
@@ -50,24 +53,24 @@ impl ModuleUi for SpectralBlendUi {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("From");
-                ui.add(DirectInput::new(synth, Input::Spectrum, self.module_id));
+                ui.add(DirectInput::new(synth.clone(), Input::Spectrum, self.module_id));
                 ui.end_row();
 
                 ui.label("To");
-                ui.add(DirectInput::new(synth, Input::SpectrumTo, self.module_id));
+                ui.add(DirectInput::new(synth.clone(), Input::SpectrumTo, self.module_id));
                 ui.end_row();
 
                 ui.label("Blend");
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.blend,
-                        synth,
+                        synth.clone(),
                         Input::Blend,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.blend(synth).set_blend(ui_data.blend);
+                    self.blend(&mut synth.lock()).set_blend(ui_data.blend);
                 }
                 ui.end_row();
             });
@@ -75,7 +78,7 @@ impl ModuleUi for SpectralBlendUi {
         ui.add_space(40.0);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            synth.remove_module(self.module_id);
+            synth.lock().remove_module(self.module_id);
         }
     }
 }

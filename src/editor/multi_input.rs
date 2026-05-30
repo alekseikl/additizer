@@ -2,15 +2,18 @@ use std::collections::HashSet;
 
 use egui::{ComboBox, Response, Ui, Widget, vec2};
 
-use crate::synth_engine::{Input, ModuleId, ModuleInput, SynthEngine};
+use crate::{
+    editor::SynthEngineHandle,
+    synth_engine::{Input, ModuleId, ModuleInput},
+};
 
-pub struct MultiInput<'a> {
-    synth_engine: &'a mut SynthEngine,
+pub struct MultiInput {
+    synth_engine: SynthEngineHandle,
     input: ModuleInput,
 }
 
-impl<'a> MultiInput<'a> {
-    pub fn new(synth_engine: &'a mut SynthEngine, input: Input, module_id: ModuleId) -> Self {
+impl MultiInput {
+    pub fn new(synth_engine: SynthEngineHandle, input: Input, module_id: ModuleId) -> Self {
         Self {
             synth_engine,
             input: ModuleInput::new(input, module_id),
@@ -19,15 +22,21 @@ impl<'a> MultiInput<'a> {
 
     fn select_output(&mut self, output: ModuleId) {
         self.synth_engine
+            .lock()
             .add_link(output, self.input, 1.0.into())
             .unwrap_or_else(|_| println!("Failed to select output"))
     }
 }
 
-impl Widget for MultiInput<'_> {
+impl Widget for MultiInput {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        let available = self.synth_engine.get_available_input_sources(self.input);
-        let connected = self.synth_engine.get_connected_input_sources(self.input);
+        let (available, connected) = {
+            let synth = self.synth_engine.lock();
+            (
+                synth.get_available_input_sources(self.input),
+                synth.get_connected_input_sources(self.input),
+            )
+        };
         let connected_ids: HashSet<_> = HashSet::from_iter(connected.iter().map(|src| src.src));
         let filtered: Vec<_> = available
             .iter()
@@ -42,7 +51,9 @@ impl Widget for MultiInput<'_> {
                     ui.label(&src.label);
 
                     if ui.button("❌").clicked() {
-                        self.synth_engine.remove_link(&src.src, &self.input);
+                        self.synth_engine
+                            .lock()
+                            .remove_link(&src.src, &self.input);
                     }
                 });
             }

@@ -6,7 +6,8 @@ use nih_plug::util::db_to_gain;
 
 use crate::{
     editor::{
-        ModuleUi, gain_slider::GainSlider, module_label::ModuleLabel, stereo_slider::StereoSlider,
+        ModuleUi, SynthEngineHandle, gain_slider::GainSlider, module_label::ModuleLabel,
+        stereo_slider::StereoSlider,
         utils::confirm_module_removal,
     },
     synth_engine::{
@@ -134,7 +135,7 @@ impl HarmonicEditorUI {
 
     fn show_select_and_set_modal(
         &mut self,
-        synth: &mut SynthEngine,
+        synth: &SynthEngineHandle,
         ui: &mut Ui,
         state: &mut SelectAndSetState,
     ) -> bool {
@@ -205,12 +206,12 @@ impl HarmonicEditorUI {
                 |_ui| {},
                 |ui| {
                     if ui.button("Ok").clicked() {
-                        self.apply_select_and_set(synth, state);
+                        self.apply_select_and_set(&mut synth.lock(), state);
                         ui.close();
                     }
 
                     if ui.button("Apply").clicked() {
-                        self.apply_select_and_set(synth, state);
+                        self.apply_select_and_set(&mut synth.lock(), state);
                     }
 
                     if ui.button("Cancel").clicked() {
@@ -239,7 +240,7 @@ impl HarmonicEditorUI {
 
     fn show_apply_filter_modal(
         &mut self,
-        synth: &mut SynthEngine,
+        synth: &SynthEngineHandle,
         ui: &mut Ui,
         state: &mut ApplyFilterState,
     ) -> bool {
@@ -321,12 +322,12 @@ impl HarmonicEditorUI {
                 |_ui| {},
                 |ui| {
                     if ui.button("Ok").clicked() {
-                        self.apply_filter(synth, state);
+                        self.apply_filter(&mut synth.lock(), state);
                         ui.close();
                     }
 
                     if ui.button("Apply").clicked() {
-                        self.apply_filter(synth, state);
+                        self.apply_filter(&mut synth.lock(), state);
                     }
 
                     if ui.button("Cancel").clicked() {
@@ -345,7 +346,7 @@ impl ModuleUi for HarmonicEditorUI {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
+    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
         ui.style_mut().spacing.scroll = ScrollStyle::solid();
 
         Panel::top("harmonics-list")
@@ -361,7 +362,7 @@ impl ModuleUi for HarmonicEditorUI {
             .show_inside(ui, |ui| {
                 ScrollArea::horizontal().show(ui, |ui| {
                     ui.horizontal_top(|ui| {
-                        let mut harmonics = self.editor(synth).get_harmonics();
+                        let mut harmonics = self.editor(&mut synth.lock()).get_harmonics();
                         let height = ui.available_height();
 
                         ui.style_mut().spacing.item_spacing = Vec2::splat(2.0);
@@ -377,7 +378,7 @@ impl ModuleUi for HarmonicEditorUI {
                                 )
                                 .changed()
                             {
-                                self.editor(synth).set_harmonic(idx, *harmonic);
+                                self.editor(&mut synth.lock()).set_harmonic(idx, *harmonic);
                             }
                         }
                     });
@@ -385,19 +386,21 @@ impl ModuleUi for HarmonicEditorUI {
             });
 
         CentralPanel::default().show_inside(ui, |ui| {
-            let module = synth.get_module_mut(self.module_id).unwrap();
-
-            ui.add(ModuleLabel::new(
-                &module.label(),
-                &mut self.label_state,
-                module,
-            ));
+            {
+                let mut s = synth.lock();
+                let module = s.get_module_mut(self.module_id).unwrap();
+                ui.add(ModuleLabel::new(
+                    &module.label(),
+                    &mut self.label_state,
+                    module,
+                ));
+            }
 
             ui.add_space(32.0);
 
             ui.horizontal(|ui| {
                 if ui.button("All to Zero").clicked() {
-                    self.editor(synth).set_selected(&SetParams {
+                    self.editor(&mut synth.lock()).set_selected(&SetParams {
                         from: 1,
                         to: NUM_EDITABLE_HARMONICS,
                         n_th: None,
@@ -407,7 +410,7 @@ impl ModuleUi for HarmonicEditorUI {
                 }
 
                 if ui.button("All to One").clicked() {
-                    self.editor(synth).set_selected(&SetParams {
+                    self.editor(&mut synth.lock()).set_selected(&SetParams {
                         from: 1,
                         to: NUM_EDITABLE_HARMONICS,
                         n_th: None,
@@ -417,7 +420,7 @@ impl ModuleUi for HarmonicEditorUI {
                 }
 
                 if ui.button("Keep Even").clicked() {
-                    self.editor(synth).set_selected(&SetParams {
+                    self.editor(&mut synth.lock()).set_selected(&SetParams {
                         from: 1,
                         to: NUM_EDITABLE_HARMONICS,
                         n_th: Some(NthElement::new(2, 0, true)),
@@ -427,7 +430,7 @@ impl ModuleUi for HarmonicEditorUI {
                 }
 
                 if ui.button("Keep Odd").clicked() {
-                    self.editor(synth).set_selected(&SetParams {
+                    self.editor(&mut synth.lock()).set_selected(&SetParams {
                         from: 1,
                         to: NUM_EDITABLE_HARMONICS,
                         n_th: Some(NthElement::new(2, 1, true)),
@@ -462,7 +465,7 @@ impl ModuleUi for HarmonicEditorUI {
             ui.add_space(40.0);
 
             if confirm_module_removal(ui, &mut self.remove_confirmation) {
-                synth.remove_module(self.module_id);
+                synth.lock().remove_module(self.module_id);
             }
         });
     }

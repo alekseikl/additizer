@@ -2,7 +2,7 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, module_label::ModuleLabel, stereo_slider::StereoSlider,
+        ModuleUi, SynthEngineHandle, module_label::ModuleLabel, stereo_slider::StereoSlider,
         utils::confirm_module_removal,
     },
     synth_engine::{ExternalParam, ModuleId, StereoSample, SynthEngine},
@@ -33,14 +33,17 @@ impl ModuleUi for ExternalParamUI {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
-        let mut ui_data = self.param(synth).get_ui();
+    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
+        let mut ui_data = self.param(&mut synth.lock()).get_ui();
 
-        ui.add(ModuleLabel::new(
-            &ui_data.label,
-            &mut self.label_state,
-            synth.get_module_mut(self.module_id).unwrap(),
-        ));
+        {
+            let mut s = synth.lock();
+            ui.add(ModuleLabel::new(
+                &ui_data.label,
+                &mut self.label_state,
+                s.get_module_mut(self.module_id).unwrap(),
+            ));
+        }
 
         ui.add_space(20.0);
 
@@ -61,7 +64,7 @@ impl ModuleUi for ExternalParamUI {
                                 )
                                 .clicked()
                             {
-                                self.param(synth).select_param(i);
+                                self.param(&mut synth.lock()).select_param(i);
                             }
                         }
                     });
@@ -82,7 +85,7 @@ impl ModuleUi for ExternalParamUI {
                     )
                     .changed()
                 {
-                    self.param(synth).set_smooth(smooth.left());
+                    self.param(&mut synth.lock()).set_smooth(smooth.left());
                 }
                 ui.end_row();
 
@@ -91,7 +94,7 @@ impl ModuleUi for ExternalParamUI {
                     .add(Checkbox::without_text(&mut ui_data.sample_and_hold))
                     .changed()
                 {
-                    self.param(synth)
+                    self.param(&mut synth.lock())
                         .set_sample_and_hold(ui_data.sample_and_hold);
                 }
                 ui.end_row();
@@ -100,7 +103,7 @@ impl ModuleUi for ExternalParamUI {
         ui.add_space(40.0);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            synth.remove_module(self.module_id);
+            synth.lock().remove_module(self.module_id);
         }
     }
 }

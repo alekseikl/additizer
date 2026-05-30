@@ -2,7 +2,7 @@ use egui::{ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
+        ModuleUi, SynthEngineHandle, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{Input, ModuleId, ShaperType, SynthEngine, WaveShaper},
@@ -42,14 +42,17 @@ impl ModuleUi for WaveShaperUi {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
-        let mut ui_data = self.shaper(synth).get_ui();
+    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
+        let mut ui_data = self.shaper(&mut synth.lock()).get_ui();
 
-        ui.add(ModuleLabel::new(
-            &ui_data.label,
-            &mut self.label_state,
-            synth.get_module_mut(self.module_id).unwrap(),
-        ));
+        {
+            let mut s = synth.lock();
+            ui.add(ModuleLabel::new(
+                &ui_data.label,
+                &mut self.label_state,
+                s.get_module_mut(self.module_id).unwrap(),
+            ));
+        }
 
         ui.add_space(20.0);
 
@@ -59,7 +62,7 @@ impl ModuleUi for WaveShaperUi {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Input");
-                ui.add(DirectInput::new(synth, Input::Audio, self.module_id));
+                ui.add(DirectInput::new(synth.clone(), Input::Audio, self.module_id));
                 ui.end_row();
 
                 ui.label("Type");
@@ -78,7 +81,7 @@ impl ModuleUi for WaveShaperUi {
                                 )
                                 .clicked()
                             {
-                                self.shaper(synth).set_shaper_type(*shaper_type);
+                                self.shaper(&mut synth.lock()).set_shaper_type(*shaper_type);
                             }
                         }
                     });
@@ -88,13 +91,13 @@ impl ModuleUi for WaveShaperUi {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.distortion,
-                        synth,
+                        synth.clone(),
                         Input::Distortion,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.shaper(synth).set_distortion(ui_data.distortion);
+                    self.shaper(&mut synth.lock()).set_distortion(ui_data.distortion);
                 }
                 ui.end_row();
 
@@ -102,13 +105,13 @@ impl ModuleUi for WaveShaperUi {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.clipping_level,
-                        synth,
+                        synth.clone(),
                         Input::ClippingLevel,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.shaper(synth)
+                    self.shaper(&mut synth.lock())
                         .set_clipping_level(ui_data.clipping_level);
                 }
                 ui.end_row();
@@ -117,7 +120,7 @@ impl ModuleUi for WaveShaperUi {
         ui.add_space(40.0);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            synth.remove_module(self.module_id);
+            synth.lock().remove_module(self.module_id);
         }
     }
 }

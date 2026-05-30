@@ -2,7 +2,7 @@ use egui::{Checkbox, ComboBox, Grid, Slider, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
+        ModuleUi, SynthEngineHandle, modulation_input::ModulationInput, module_label::ModuleLabel,
         stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
     synth_engine::{Envelope, EnvelopeCurve, Input, ModuleId, Sample, SynthEngine},
@@ -116,15 +116,18 @@ impl ModuleUi for EnvelopeUI {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
+    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
         let id = self.module_id;
-        let mut ui_data = self.env(synth).get_ui();
+        let mut ui_data = self.env(&mut synth.lock()).get_ui();
 
-        ui.add(ModuleLabel::new(
-            &ui_data.label,
-            &mut self.label_state,
-            synth.get_module_mut(self.module_id).unwrap(),
-        ));
+        {
+            let mut s = synth.lock();
+            ui.add(ModuleLabel::new(
+                &ui_data.label,
+                &mut self.label_state,
+                s.get_module_mut(self.module_id).unwrap(),
+            ));
+        }
 
         ui.add_space(20.0);
 
@@ -136,88 +139,88 @@ impl ModuleUi for EnvelopeUI {
                 ui.label("Delay");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.delay, synth, Input::Delay, id)
+                        ModulationInput::new(&mut ui_data.delay, synth.clone(), Input::Delay, id)
                             .default(from_ms(0.0)),
                     )
                     .changed()
                 {
-                    self.env(synth).set_delay(ui_data.delay);
+                    self.env(&mut synth.lock()).set_delay(ui_data.delay);
                 }
                 ui.end_row();
                 ui.label("Attack");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.attack, synth, Input::Attack, id)
+                        ModulationInput::new(&mut ui_data.attack, synth.clone(), Input::Attack, id)
                             .default(from_ms(0.0)),
                     )
                     .changed()
                 {
-                    self.env(synth).set_attack(ui_data.attack);
+                    self.env(&mut synth.lock()).set_attack(ui_data.attack);
                 }
                 ui.end_row();
 
                 if self.add_curve(ui, "Attack Curve", &mut ui_data.attack_curve) {
-                    self.env(synth).set_attack_curve(ui_data.attack_curve);
+                    self.env(&mut synth.lock()).set_attack_curve(ui_data.attack_curve);
                 }
 
                 ui.label("Hold");
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.hold,
-                        synth,
+                        synth.clone(),
                         Input::Hold,
                         id,
                     ))
                     .changed()
                 {
-                    self.env(synth).set_hold(ui_data.hold);
+                    self.env(&mut synth.lock()).set_hold(ui_data.hold);
                 }
                 ui.end_row();
 
                 ui.label("Decay");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.decay, synth, Input::Decay, id)
+                        ModulationInput::new(&mut ui_data.decay, synth.clone(), Input::Decay, id)
                             .default(from_ms(150.0)),
                     )
                     .changed()
                 {
-                    self.env(synth).set_decay(ui_data.decay);
+                    self.env(&mut synth.lock()).set_decay(ui_data.decay);
                 }
                 ui.end_row();
 
                 if self.add_curve(ui, "Decay Curve", &mut ui_data.decay_curve) {
-                    self.env(synth).set_decay_curve(ui_data.decay_curve);
+                    self.env(&mut synth.lock()).set_decay_curve(ui_data.decay_curve);
                 }
 
                 ui.label("Sustain");
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.sustain,
-                        synth,
+                        synth.clone(),
                         Input::Sustain,
                         id,
                     ))
                     .changed()
                 {
-                    self.env(synth).set_sustain(ui_data.sustain);
+                    self.env(&mut synth.lock()).set_sustain(ui_data.sustain);
                 }
                 ui.end_row();
 
                 ui.label("Release");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.release, synth, Input::Release, id)
+                        ModulationInput::new(&mut ui_data.release, synth.clone(), Input::Release, id)
                             .default(from_ms(250.0)),
                     )
                     .changed()
                 {
-                    self.env(synth).set_release(ui_data.release);
+                    self.env(&mut synth.lock()).set_release(ui_data.release);
                 }
                 ui.end_row();
 
                 if self.add_curve(ui, "Release Curve", &mut ui_data.release_curve) {
-                    self.env(synth).set_release_curve(ui_data.release_curve);
+                    self.env(&mut synth.lock()).set_release_curve(ui_data.release_curve);
                 }
 
                 ui.label("Smooth");
@@ -233,7 +236,7 @@ impl ModuleUi for EnvelopeUI {
                     )
                     .changed()
                 {
-                    self.env(synth).set_smooth(ui_data.smooth);
+                    self.env(&mut synth.lock()).set_smooth(ui_data.smooth);
                 }
                 ui.end_row();
 
@@ -242,7 +245,7 @@ impl ModuleUi for EnvelopeUI {
                     .add(Checkbox::without_text(&mut ui_data.keep_voice_alive))
                     .changed()
                 {
-                    self.env(synth)
+                    self.env(&mut synth.lock())
                         .set_keep_voice_alive(ui_data.keep_voice_alive);
                 }
                 ui.end_row();
@@ -251,7 +254,7 @@ impl ModuleUi for EnvelopeUI {
         ui.add_space(40.0);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            synth.remove_module(self.module_id);
+            synth.lock().remove_module(self.module_id);
         }
     }
 }

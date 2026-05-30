@@ -5,7 +5,7 @@ use egui::{
 use egui_extras::{Column, TableBuilder};
 
 use crate::{
-    editor::{ModuleUi, multi_input::MultiInput},
+    editor::{ModuleUi, SynthEngineHandle, multi_input::MultiInput},
     presets::{Preset, PresetInfo, PresetListItem, Presets},
     synth_engine::{Input, ModuleId, OUTPUT_MODULE_ID, SynthEngine},
     utils::from_ms,
@@ -38,7 +38,7 @@ impl ParamsUi {
 
     fn show_save_preset_modal(
         &mut self,
-        synth: &mut SynthEngine,
+        synth: &SynthEngineHandle,
         ui: &mut Ui,
         state: &mut SavePresetState,
     ) -> bool {
@@ -66,7 +66,7 @@ impl ParamsUi {
                 |_ui| {},
                 |ui| {
                     if ui.add_enabled(valid, Button::new("Save")).clicked() {
-                        let config = synth.get_config();
+                        let config = synth.lock().get_config();
                         let preset = Preset {
                             info: PresetInfo {
                                 title: trimmed.to_string(),
@@ -96,7 +96,7 @@ impl ParamsUi {
 
     fn show_load_preset_modal(
         &mut self,
-        synth: &mut SynthEngine,
+        synth: &SynthEngineHandle,
         ui: &mut Ui,
         state: &mut LoadPresetState,
     ) -> bool {
@@ -152,7 +152,7 @@ impl ParamsUi {
                     {
                         if let Some(idx) = state.selected_index
                             && let Some(preset) = Presets::read_preset(&state.preset_list[idx].path)
-                            && synth.set_config(&preset.config)
+                            && synth.lock().set_config(&preset.config)
                         {
                             ui.close();
                         } else {
@@ -176,7 +176,7 @@ impl ModuleUi for ParamsUi {
         None
     }
 
-    fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
+    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
         ui.heading("Parameters");
         ui.add_space(20.0);
 
@@ -186,7 +186,7 @@ impl ModuleUi for ParamsUi {
             .striped(true)
             .show(ui, |ui| {
                 let block_sizes = [8, 16, 32, 64, 128];
-                let mut ui_data = synth.get_ui();
+                let mut ui_data = synth.lock().get_ui();
                 let mut kill_time_ms = ui_data.voice_kill_time * 1000.0;
 
                 ui.label("Voices");
@@ -197,7 +197,7 @@ impl ModuleUi for ParamsUi {
                     ))
                     .changed()
                 {
-                    synth.set_num_voices(ui_data.voices);
+                    synth.lock().set_num_voices(ui_data.voices);
                 }
                 ui.end_row();
 
@@ -206,7 +206,7 @@ impl ModuleUi for ParamsUi {
                     .add(Checkbox::without_text(&mut ui_data.legato))
                     .changed()
                 {
-                    synth.set_legato(ui_data.legato);
+                    synth.lock().set_legato(ui_data.legato);
                 }
                 ui.end_row();
 
@@ -215,7 +215,7 @@ impl ModuleUi for ParamsUi {
                     .add(Slider::new(&mut kill_time_ms, 4.0..=100.0))
                     .changed()
                 {
-                    synth.set_voice_kill_time(from_ms(kill_time_ms));
+                    synth.lock().set_voice_kill_time(from_ms(kill_time_ms));
                 }
                 ui.end_row();
 
@@ -242,7 +242,7 @@ impl ModuleUi for ParamsUi {
                                 )
                                 .clicked()
                             {
-                                synth.set_block_size(*sz);
+                                synth.lock().set_block_size(*sz);
                             }
                         }
                     });
@@ -253,7 +253,7 @@ impl ModuleUi for ParamsUi {
                     .add(Checkbox::without_text(&mut ui_data.oversampling))
                     .changed()
                 {
-                    synth.set_oversampling(ui_data.oversampling);
+                    synth.lock().set_oversampling(ui_data.oversampling);
                 }
                 ui.end_row();
 
@@ -262,12 +262,12 @@ impl ModuleUi for ParamsUi {
                     .add(Checkbox::without_text(&mut ui_data.stereo_spectrum))
                     .changed()
                 {
-                    synth.set_stereo_spectrum(ui_data.stereo_spectrum);
+                    synth.lock().set_stereo_spectrum(ui_data.stereo_spectrum);
                 }
                 ui.end_row();
 
                 ui.label("Output");
-                ui.add(MultiInput::new(synth, Input::Audio, OUTPUT_MODULE_ID));
+                ui.add(MultiInput::new(synth.clone(), Input::Audio, OUTPUT_MODULE_ID));
                 ui.end_row();
 
                 ui.label("Presets");
