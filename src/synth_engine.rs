@@ -521,6 +521,7 @@ impl SynthEngine {
             buffer_t_step: samples as Sample / sample_rate,
             smooth_params: SmoothedSampleParams::new(sample_rate),
             needs_audio_rate: false,
+            needs_update_ui: true,
             spectrum_channels: self.spectrum_channels,
             active_voices: &playing_voices,
         };
@@ -949,9 +950,9 @@ impl Router for SynthEngine {
         voice_idx: usize,
         channel_idx: usize,
         result: &mut [Sample],
-    ) {
+    ) -> bool {
         let Some(sources) = self.input_sources.get(&input) else {
-            return;
+            return false;
         };
 
         let modules = sources.iter().filter_map(|source| {
@@ -980,6 +981,8 @@ impl Router for SynthEngine {
                 add_to_buffer(result, input);
             }
         }
+
+        true
     }
 
     fn read_unmodulated_input(

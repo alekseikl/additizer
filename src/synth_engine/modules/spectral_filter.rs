@@ -10,7 +10,9 @@ use crate::synth_engine::{
     routing::{
         DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
     },
-    synth_module::{ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
+    synth_module::{
+        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter,
+    },
     types::{ComplexSample, Sample, SpectralOutput},
 };
 
@@ -210,7 +212,7 @@ impl SpectralFilter {
         params: &Params,
         channel: &ChannelParams,
         voice: &mut Voice,
-        router: &VoiceRouter,
+        router: &VoiceRouter<'_, MockToUiBridge>,
     ) {
         let input = router.spectral(Input::Spectrum, current);
         let cutoff = (channel.cutoff + router.scalar(Input::Cutoff, current)).clamp(-4.0, 10.0);
@@ -274,6 +276,8 @@ impl SynthModule for SpectralFilter {
     }
 
     fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
+        let mut ui_bridge = MockToUiBridge;
+
         for (channel_idx, channel) in self
             .channels
             .iter_mut()
@@ -282,8 +286,14 @@ impl SynthModule for SpectralFilter {
         {
             for voice_idx in process_params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
-                let router =
-                    VoiceRouter::new(router, self.id, channel_idx, *voice_idx, process_params);
+                let router = VoiceRouter::new(
+                    router,
+                    self.id,
+                    channel_idx,
+                    *voice_idx,
+                    process_params,
+                    &mut ui_bridge,
+                );
 
                 if voice.triggered {
                     Self::process_voice(false, &self.params, &channel.params, voice, &router);

@@ -215,7 +215,7 @@ pub trait Router {
         voice_idx: usize,
         channel_idx: usize,
         result: &mut [Sample],
-    );
+    ) -> bool;
 
     fn read_unmodulated_input(
         &self,

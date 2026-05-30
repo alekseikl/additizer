@@ -11,7 +11,9 @@ use crate::{
             DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
         },
         smooth::Smoother,
-        synth_module::{ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
+        synth_module::{
+            MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter,
+        },
         types::{Sample, ScalarOutput},
         voices_handler::DecayingVoice,
     },
@@ -315,7 +317,7 @@ impl Envelope {
         env: &ChannelParams,
         voice: &mut Voice,
         t_step: Sample,
-        router: &VoiceRouter,
+        router: &VoiceRouter<'_, MockToUiBridge>,
     ) {
         let delay_time = || env.delay + router.scalar(Input::Delay, true);
         let attack_time = || env.attack + router.scalar(Input::Attack, true);
@@ -489,13 +491,21 @@ impl SynthModule for Envelope {
 
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
         let t_step = params.sample_rate.recip();
+        let mut ui_bridge = MockToUiBridge;
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             let env = &channel.params;
 
             for voice_idx in params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
-                let router = VoiceRouter::new(router, self.id, channel_idx, *voice_idx, params);
+                let router = VoiceRouter::new(
+                    router,
+                    self.id,
+                    channel_idx,
+                    *voice_idx,
+                    params,
+                    &mut ui_bridge,
+                );
 
                 Self::process_voice_buffer(env, voice, t_step, &router);
             }

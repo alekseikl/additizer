@@ -28,6 +28,7 @@ dependencies = [
  "rand",
  "rand_pcg",
  "realfft",
+ "rtrb",
  "serde",
  "serde_json",
  "smallvec",

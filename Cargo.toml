@@ -30,6 +30,7 @@ assert_no_alloc = "1.1.2"
 wide = "1.4.0"
 const_format = "0.2.36"
 directories = "6.0.0"
+rtrb = "0.3.4"
 
 rand = "0.10.1"
 rand_pcg = "0.10.2"

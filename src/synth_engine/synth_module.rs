@@ -16,6 +16,7 @@ pub struct ProcessParams<'a> {
     pub sample_rate: Sample,
     pub buffer_t_step: Sample,
     pub needs_audio_rate: bool,
+    pub needs_update_ui: bool,
     pub smooth_params: SmoothedSampleParams,
     pub spectrum_channels: usize,
     pub active_voices: &'a [usize],
@@ -82,8 +83,21 @@ pub trait SynthModule: Any + Send {
     }
 }
 
-pub struct VoiceRouter<'a> {
+pub trait ModuleToUiBridge {
+    fn update_modulated_input(&mut self, input: Input, channel_idx: usize, value: Sample);
+    fn update_output(&mut self, channel_idx: usize, value: Sample);
+}
+
+pub struct MockToUiBridge;
+
+impl ModuleToUiBridge for MockToUiBridge {
+    fn update_modulated_input(&mut self, _input: Input, _channel_idx: usize, _value: Sample) {}
+    fn update_output(&mut self, _channel_idx: usize, _value: Sample) {}
+}
+
+pub struct VoiceRouter<'a, Bridge: ModuleToUiBridge> {
     pub router: &'a dyn Router,
+    pub ui_bridge: &'a mut Bridge,
     pub module_id: ModuleId,
     pub samples: usize,
     pub sample_rate: Sample,
@@ -92,13 +106,14 @@ pub struct VoiceRouter<'a> {
     pub channel_idx: usize,
 }
 
-impl<'a> VoiceRouter<'a> {
+impl<'a, Bridge: ModuleToUiBridge> VoiceRouter<'a, Bridge> {
     pub fn new(
         router: &'a dyn Router,
         module_id: ModuleId,
         channel_idx: usize,
         voice_idx: usize,
         params: &ProcessParams,
+        ui_bridge: &'a mut Bridge,
     ) -> Self {
         Self {
             router,
@@ -108,6 +123,7 @@ impl<'a> VoiceRouter<'a> {
             smooth_params: params.smooth_params,
             voice_idx,
             channel_idx,
+            ui_bridge,
         }
     }
 
@@ -125,7 +141,7 @@ impl<'a> VoiceRouter<'a> {
         self.buffer_opt(input, buff).unwrap_or(&ZEROES_BUFFER)
     }
 
-    pub fn buff_param(&self, input: Input, param: &mut SmoothedSample, buff: &mut Buffer) {
+    pub fn buff_param(&self, input: Input, param: &mut SmoothedSample, buff: &mut Buffer) -> bool {
         let buff = &mut buff[..self.samples];
 
         if param.check_needs_smoothing(&self.smooth_params) {
@@ -139,7 +155,32 @@ impl<'a> VoiceRouter<'a> {
             self.voice_idx,
             self.channel_idx,
             buff,
-        );
+        )
+    }
+
+    pub fn buff_param_bridge(
+        &self,
+        input: Input,
+        param: &mut SmoothedSample,
+        buff: &mut Buffer,
+        bridge: &mut impl ModuleToUiBridge,
+    ) {
+        let buff = &mut buff[..self.samples];
+
+        if param.check_needs_smoothing(&self.smooth_params) {
+            param.smoothed_buff(buff, &self.smooth_params);
+        } else {
+            buff.fill(param.get());
+        }
+
+        if self.router.add_input_to(
+            ModuleInput::new(input, self.module_id),
+            self.voice_idx,
+            self.channel_idx,
+            buff,
+        ) {
+            bridge.update_modulated_input(input, self.channel_idx, buff[0]);
+        }
     }
 
     pub fn spectral(&self, input: Input, current: bool) -> &SpectralBuffer {
@@ -200,6 +241,13 @@ macro_rules! set_mono_param {
     };
 }
 
+macro_rules! set_mono_param_inline {
+    ($self:ident, $param:ident, $value:expr) => {{
+        $self.params.$param = $value;
+        $self.config.lock().params.$param = $self.params.$param;
+    }};
+}
+
 macro_rules! set_stereo_param {
     ($fn_name:ident, $param:ident) => {
         set_stereo_param!($fn_name, $param, *$param);
@@ -242,6 +290,34 @@ macro_rules! set_smoothed_param {
             }
         }
     };
+}
+
+macro_rules! set_param_inline {
+    ($self:ident, $param:ident, $value:expr) => {{
+        for (channel, $param) in $self.channels.iter_mut().zip($value.iter()) {
+            channel.params.$param.set(*$param);
+        }
+
+        let mut cfg = $self.config.lock();
+
+        for (config_channel, channel) in cfg.channels.iter_mut().zip($self.channels.iter()) {
+            config_channel.$param.set(channel.params.$param.get());
+        }
+    }};
+}
+
+macro_rules! set_stereo_param_inline {
+    ($self:ident, $param:ident, $value:expr) => {{
+        for (channel, val) in $self.channels.iter_mut().zip($value.iter()) {
+            channel.params.$param = *val;
+        }
+
+        let mut cfg = $self.config.lock();
+
+        for (config_channel, channel) in cfg.channels.iter_mut().zip($self.channels.iter()) {
+            config_channel.$param = channel.params.$param;
+        }
+    }};
 }
 
 macro_rules! get_smoothed_param {

@@ -5,7 +5,9 @@ use crate::synth_engine::{
     buffer::{Buffer, zero_buffer},
     routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
     smooth::SmoothedSample,
-    synth_module::{ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
+    synth_module::{
+        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter,
+    },
 };
 use itertools::izip;
 use serde::{Deserialize, Serialize};
@@ -101,7 +103,7 @@ impl Amplifier {
         channel: &mut ChannelParams,
         voice: &mut Voice,
         buffers: &mut Buffers,
-        router: &VoiceRouter,
+        router: &VoiceRouter<'_, MockToUiBridge>,
     ) {
         let input = router.buffer(Input::Audio, &mut buffers.input);
 
@@ -147,10 +149,18 @@ impl SynthModule for Amplifier {
     }
 
     fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
+        let mut ui_bridge = MockToUiBridge;
+
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for voice_idx in process_params.active_voices {
-                let router =
-                    VoiceRouter::new(router, self.id, channel_idx, *voice_idx, process_params);
+                let router = VoiceRouter::new(
+                    router,
+                    self.id,
+                    channel_idx,
+                    *voice_idx,
+                    process_params,
+                    &mut ui_bridge,
+                );
                 let voice = &mut channel.voices[*voice_idx];
 
                 Self::process_channel_voice(&mut channel.params, voice, &mut self.buffers, &router);

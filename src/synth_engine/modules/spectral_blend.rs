@@ -6,7 +6,7 @@ use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::SpectralBuffer,
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
-    synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter},
+    synth_module::{MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter},
     types::SpectralOutput,
 };
 
@@ -73,7 +73,7 @@ impl SpectralBlend {
         current: bool,
         params: &ChannelParams,
         voice: &mut Voice,
-        router: &VoiceRouter,
+        router: &VoiceRouter<'_, MockToUiBridge>,
     ) {
         let spectrum_from = router.spectral(Input::Spectrum, current);
         let spectrum_to = router.spectral(Input::SpectrumTo, current);
@@ -129,6 +129,8 @@ impl SynthModule for SpectralBlend {
     }
 
     fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
+        let mut ui_bridge = MockToUiBridge;
+
         for (channel_idx, channel) in self
             .channels
             .iter_mut()
@@ -139,8 +141,14 @@ impl SynthModule for SpectralBlend {
 
             for voice_idx in process_params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
-                let router =
-                    VoiceRouter::new(router, self.id, channel_idx, *voice_idx, process_params);
+                let router = VoiceRouter::new(
+                    router,
+                    self.id,
+                    channel_idx,
+                    *voice_idx,
+                    process_params,
+                    &mut ui_bridge,
+                );
 
                 if voice.triggered {
                     Self::process_voice(false, params, voice, &router);
