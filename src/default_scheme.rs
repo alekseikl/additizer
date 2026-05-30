@@ -44,8 +44,8 @@ pub fn build_default_scheme(synth: &mut SynthEngine) {
     let osc = typed_module_mut!(osc_id, Oscillator).unwrap();
 
     osc.set_label("04 - Oscillator".into());
-    osc.set_unison(1);
-    osc.set_detune(st_to_octave(0.1).into());
+    // osc.set_unison(1);
+    // osc.set_detune(st_to_octave(0.1).into());
 
     let amp_env = typed_module_mut!(amp_env_id, Envelope).unwrap();
 

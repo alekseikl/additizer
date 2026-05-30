@@ -33,6 +33,7 @@ mod utils;
 pub trait ModuleUi {
     fn module_id(&self) -> Option<ModuleId>;
     fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui);
+    fn cleanup(&mut self, _synth: &mut SynthEngine) {}
 }
 
 type ModuleUIBox = Box<dyn ModuleUi + Send + Sync>;
@@ -77,14 +78,14 @@ impl ModuleUi for OutputUi {
 }
 
 impl ModuleType {
-    fn ui(&self, id: ModuleId) -> ModuleUIBox {
+    fn ui(&self, id: ModuleId, synth_engine: &mut SynthEngine) -> ModuleUIBox {
         match self {
             Self::Output => Box::new(OutputUi),
             Self::HarmonicEditor => Box::new(HarmonicEditorUI::new(id)),
             Self::SpectralFilter => Box::new(SpectralFilterUI::new(id)),
             Self::Amplifier => Box::new(AmplifierUI::new(id)),
             Self::Mixer => Box::new(MixerUi::new(id)),
-            Self::Oscillator => Box::new(OscillatorUI::new(id)),
+            Self::Oscillator => Box::new(OscillatorUI::new(id, synth_engine)),
             Self::Envelope => Box::new(EnvelopeUI::new(id)),
             Self::ExternalParam => Box::new(ExternalParamUI::new(id)),
             Self::Lfo => Box::new(LfoUi::new(id)),
@@ -156,9 +157,23 @@ fn show_side_bar(
                     });
                 });
 
-            let mut modules = synth_engine.get_modules();
+            struct ModuleMenuItem {
+                id: ModuleId,
+                label: String,
+                module_type: ModuleType,
+            }
 
-            modules.sort_by_key(|module| module.label().to_lowercase());
+            let mut modules: Vec<ModuleMenuItem> = synth_engine
+                .get_modules()
+                .into_iter()
+                .map(|module| ModuleMenuItem {
+                    id: module.id(),
+                    label: module.label(),
+                    module_type: module.module_type(),
+                })
+                .collect();
+
+            modules.sort_by_key(|module| module.label.to_lowercase());
 
             CentralPanel::default()
                 .frame(Frame::NONE)
@@ -178,12 +193,15 @@ fn show_side_bar(
                             for module in modules {
                                 if show_menu_item(
                                     ui,
-                                    &module.label(),
-                                    selected_module_id.is_some_and(|mod_id| mod_id == module.id()),
+                                    &module.label,
+                                    selected_module_id.is_some_and(|mod_id| mod_id == module.id),
                                 )
                                 .clicked()
                                 {
-                                    *selected_module_ui = module.module_type().ui(module.id());
+                                    selected_module_ui.cleanup(synth_engine);
+
+                                    *selected_module_ui =
+                                        module.module_type.ui(module.id, synth_engine);
                                 }
                             }
                         })

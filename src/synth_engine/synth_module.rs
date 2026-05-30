@@ -223,13 +223,6 @@ macro_rules! set_mono_param {
     };
 }
 
-macro_rules! set_mono_param_inline {
-    ($self:ident, $param:ident, $value:expr) => {{
-        $self.params.$param = $value;
-        $self.config.lock().params.$param = $self.params.$param;
-    }};
-}
-
 macro_rules! set_stereo_param {
     ($fn_name:ident, $param:ident) => {
         set_stereo_param!($fn_name, $param, *$param);
@@ -272,34 +265,6 @@ macro_rules! set_smoothed_param {
             }
         }
     };
-}
-
-macro_rules! set_param_inline {
-    ($self:ident, $param:ident, $value:expr) => {{
-        for (channel, $param) in $self.channels.iter_mut().zip($value.iter()) {
-            channel.params.$param.set(*$param);
-        }
-
-        let mut cfg = $self.config.lock();
-
-        for (config_channel, channel) in cfg.channels.iter_mut().zip($self.channels.iter()) {
-            config_channel.$param.set(channel.params.$param.get());
-        }
-    }};
-}
-
-macro_rules! set_stereo_param_inline {
-    ($self:ident, $param:ident, $value:expr) => {{
-        for (channel, val) in $self.channels.iter_mut().zip($value.iter()) {
-            channel.params.$param = *val;
-        }
-
-        let mut cfg = $self.config.lock();
-
-        for (config_channel, channel) in cfg.channels.iter_mut().zip($self.channels.iter()) {
-            config_channel.$param = channel.params.$param;
-        }
-    }};
 }
 
 macro_rules! get_smoothed_param {

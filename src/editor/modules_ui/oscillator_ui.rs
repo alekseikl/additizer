@@ -1,4 +1,5 @@
 use egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
+use parking_lot::Mutex;
 
 use crate::{
     editor::{
@@ -6,10 +7,9 @@ use crate::{
         modulation_input::ModulationInput, module_label::ModuleLabel, stereo_slider::StereoSlider,
         utils::confirm_module_removal,
     },
-    show_modal,
     synth_engine::{
         Input, ModuleId, Sample, StereoSample, SynthEngine,
-        oscillator::{Oscillator, OscillatorUIData, PhasesDst},
+        oscillator::{AudioBridge, Oscillator, PhasesDst, UiState, UiUpdate},
     },
 };
 
@@ -30,6 +30,8 @@ pub struct OscillatorUI {
     module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
+    ui_state: UiState,
+    bridge: Mutex<Option<AudioBridge>>,
     phases_shift_to: bool,
     gains_to: bool,
     gain_shape_state: Option<Box<GainShapeState>>,
@@ -37,11 +39,15 @@ pub struct OscillatorUI {
 }
 
 impl OscillatorUI {
-    pub fn new(module_id: ModuleId) -> Self {
+    pub fn new(module_id: ModuleId, synth: &mut SynthEngine) -> Self {
+        let osc = Oscillator::downcast_mut_unwrap(synth.get_module_mut(module_id));
+
         Self {
             module_id,
             remove_confirmation: false,
             label_state: None,
+            ui_state: osc.get_ui_state(),
+            bridge: Mutex::new(osc.take_audio_bridge()),
             phases_shift_to: false,
             gains_to: false,
             gain_shape_state: None,
@@ -53,9 +59,36 @@ impl OscillatorUI {
         Oscillator::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
     }
 
+    fn apply_ui_update(ui_state: &mut UiState, update: UiUpdate) {
+        match update {
+            UiUpdate::ModulatedInput {
+                input,
+                channel,
+                value,
+            } => {
+                let channel = channel as usize;
+                match input {
+                    Input::Gain => ui_state.gain[channel] = value,
+                    Input::PitchShift => ui_state.pitch_shift[channel] = value,
+                    Input::PhaseShift => ui_state.phase_shift[channel] = value,
+                    Input::FrequencyShift => ui_state.frequency_shift[channel] = value,
+                    Input::Detune => ui_state.detune[channel] = value,
+                    Input::DetunePower => ui_state.detune_power[channel] = value,
+                    Input::Glide => ui_state.glide[channel] = value,
+                    Input::GlideSlope => ui_state.glide_slope[channel] = value,
+                    Input::PhasesBlend => ui_state.phases_blend[channel] = value,
+                    Input::GainsBlend => ui_state.gains_blend[channel] = value,
+                    _ => (),
+                }
+            }
+            UiUpdate::Output { .. } => (),
+            UiUpdate::RefreshState => (),
+        }
+    }
+
     fn show_gain_shape_modal(
         &mut self,
-        synth: &mut SynthEngine,
+        bridge: &mut AudioBridge,
         ui: &mut Ui,
         state: &mut GainShapeState,
     ) -> bool {
@@ -89,20 +122,12 @@ impl OscillatorUI {
                 |_ui| {},
                 |ui| {
                     if ui.button("Ok").clicked() {
-                        self.osc(synth).apply_unison_level_shape(
-                            state.center,
-                            state.level,
-                            state.to,
-                        );
+                        bridge.apply_unison_level_shape(state.center, state.level, state.to);
                         ui.close();
                     }
 
                     if ui.button("Apply").clicked() {
-                        self.osc(synth).apply_unison_level_shape(
-                            state.center,
-                            state.level,
-                            state.to,
-                        );
+                        bridge.apply_unison_level_shape(state.center, state.level, state.to);
                     }
 
                     if ui.button("Cancel").clicked() {
@@ -117,7 +142,7 @@ impl OscillatorUI {
 
     fn show_randomize_phases_modal(
         &mut self,
-        synth: &mut SynthEngine,
+        bridge: &mut AudioBridge,
         ui: &mut Ui,
         state: &mut RandomizePhaseState,
     ) -> bool {
@@ -163,7 +188,7 @@ impl OscillatorUI {
                 |_ui| {},
                 |ui| {
                     if ui.button("Ok").clicked() {
-                        self.osc(synth).randomize_phases(
+                        bridge.randomize_phases(
                             state.from,
                             state.to,
                             state.stereo_spread,
@@ -173,7 +198,7 @@ impl OscillatorUI {
                     }
 
                     if ui.button("Apply").clicked() {
-                        self.osc(synth).randomize_phases(
+                        bridge.randomize_phases(
                             state.from,
                             state.to,
                             state.stereo_spread,
@@ -251,11 +276,11 @@ impl OscillatorUI {
 
     fn show_unison_section(
         &mut self,
-        ui_data: &mut OscillatorUIData,
+        bridge: &mut AudioBridge,
         synth: &mut SynthEngine,
         ui: &mut Ui,
     ) {
-        let params_iter = || ui_data.unison_params.iter().take(ui_data.unison);
+        let unison = self.ui_state.unison;
 
         let from_to_toggle = |ui: &mut Ui, toggle: &mut bool| {
             if *toggle {
@@ -275,10 +300,12 @@ impl OscillatorUI {
 
         ui.label("Initial Phase");
         ui.vertical(|ui| {
-            if let Some((voice_idx, phase)) =
-                Self::show_phases(ui, params_iter().map(|p| p.initial_phase))
-            {
-                self.osc(synth).set_initial_phase(voice_idx, phase);
+            if let Some((voice_idx, phase)) = Self::show_phases(
+                ui,
+                (0..unison).map(|i| self.ui_state.unison_params[i].initial_phase),
+            ) {
+                self.ui_state.unison_params[voice_idx].initial_phase = phase;
+                bridge.set_unison_initial_phase(voice_idx, phase);
             }
 
             ui.add_space(8.0);
@@ -302,15 +329,19 @@ impl OscillatorUI {
 
             ui.vertical(|ui| {
                 if self.phases_shift_to {
-                    if let Some((voice_idx, phase)) =
-                        Self::show_phases(ui, params_iter().map(|p| p.phase_shift_to))
-                    {
-                        self.osc(synth).set_unison_phase_to(voice_idx, phase);
+                    if let Some((voice_idx, phase)) = Self::show_phases(
+                        ui,
+                        (0..unison).map(|i| self.ui_state.unison_params[i].phase_shift_to),
+                    ) {
+                        self.ui_state.unison_params[voice_idx].phase_shift_to = phase;
+                        bridge.set_unison_phase_shift_to(voice_idx, phase);
                     }
-                } else if let Some((voice_idx, phase)) =
-                    Self::show_phases(ui, params_iter().map(|p| p.phase_shift))
-                {
-                    self.osc(synth).set_unison_phase(voice_idx, phase);
+                } else if let Some((voice_idx, phase)) = Self::show_phases(
+                    ui,
+                    (0..unison).map(|i| self.ui_state.unison_params[i].phase_shift),
+                ) {
+                    self.ui_state.unison_params[voice_idx].phase_shift = phase;
+                    bridge.set_unison_phase_shift(voice_idx, phase);
                 }
 
                 ui.add_space(8.0);
@@ -334,14 +365,14 @@ impl OscillatorUI {
         ui.label("Phases Blend");
         if ui
             .add(ModulationInput::new(
-                &mut ui_data.phases_blend,
+                &mut self.ui_state.phases_blend,
                 synth,
                 Input::PhasesBlend,
                 self.module_id,
             ))
             .changed()
         {
-            self.osc(synth).set_phases_blend(ui_data.phases_blend);
+            bridge.set_param(Input::PhasesBlend, self.ui_state.phases_blend);
         }
         ui.end_row();
 
@@ -352,15 +383,18 @@ impl OscillatorUI {
             });
 
             if self.gains_to {
-                if let Some((voice_idx, gain)) =
-                    Self::show_gains(ui, params_iter().map(|p| p.gain_to))
-                {
-                    self.osc(synth).set_unison_gain_to(voice_idx, gain);
+                if let Some((voice_idx, gain)) = Self::show_gains(
+                    ui,
+                    (0..unison).map(|i| self.ui_state.unison_params[i].gain_to),
+                ) {
+                    self.ui_state.unison_params[voice_idx].gain_to = gain;
+                    bridge.set_unison_gain_to(voice_idx, gain);
                 }
             } else if let Some((voice_idx, gain)) =
-                Self::show_gains(ui, params_iter().map(|p| p.gain))
+                Self::show_gains(ui, (0..unison).map(|i| self.ui_state.unison_params[i].gain))
             {
-                self.osc(synth).set_unison_gain(voice_idx, gain);
+                self.ui_state.unison_params[voice_idx].gain = gain;
+                bridge.set_unison_gain(voice_idx, gain);
             }
 
             ui.add_space(8.0);
@@ -378,14 +412,14 @@ impl OscillatorUI {
         ui.label("Levels Blend");
         if ui
             .add(ModulationInput::new(
-                &mut ui_data.gains_blend,
+                &mut self.ui_state.gains_blend,
                 synth,
                 Input::GainsBlend,
                 self.module_id,
             ))
             .changed()
         {
-            self.osc(synth).set_gains_blend(ui_data.gains_blend);
+            bridge.set_param(Input::GainsBlend, self.ui_state.gains_blend);
         }
         ui.end_row();
     }
@@ -397,10 +431,26 @@ impl ModuleUi for OscillatorUI {
     }
 
     fn ui(&mut self, synth: &mut SynthEngine, ui: &mut Ui) {
-        let mut ui_data = self.osc(synth).get_ui();
+        let mut bridge = self.bridge.lock().take().unwrap();
 
+        let updates: Vec<_> = bridge.updates().collect();
+        let refresh_state = updates
+            .iter()
+            .any(|update| matches!(update, UiUpdate::RefreshState));
+
+        for update in updates {
+            if !matches!(update, UiUpdate::RefreshState) {
+                Self::apply_ui_update(&mut self.ui_state, update);
+            }
+        }
+
+        if refresh_state {
+            self.ui_state = self.osc(synth).get_ui_state();
+        }
+
+        let module_label = synth.get_module_mut(self.module_id).unwrap().label();
         ui.add(ModuleLabel::new(
-            &ui_data.label,
+            &module_label,
             &mut self.label_state,
             synth.get_module_mut(self.module_id).unwrap(),
         ));
@@ -419,151 +469,164 @@ impl ModuleUi for OscillatorUI {
                 ui.label("Gain");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.gain,
+                        &mut self.ui_state.gain,
                         synth,
                         Input::Gain,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.osc(synth).set_gain(ui_data.gain);
+                    bridge.set_param(Input::Gain, self.ui_state.gain);
                 }
                 ui.end_row();
 
                 ui.label("Pitch shift");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.pitch_shift,
+                        &mut self.ui_state.pitch_shift,
                         synth,
                         Input::PitchShift,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.osc(synth).set_pitch_shift(ui_data.pitch_shift);
+                    bridge.set_param(Input::PitchShift, self.ui_state.pitch_shift);
                 }
                 ui.end_row();
 
                 ui.label("Phase shift");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.phase_shift,
+                        &mut self.ui_state.phase_shift,
                         synth,
                         Input::PhaseShift,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.osc(synth).set_phase_shift(ui_data.phase_shift);
+                    bridge.set_param(Input::PhaseShift, self.ui_state.phase_shift);
                 }
                 ui.end_row();
 
                 ui.label("Frequency shift");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.frequency_shift,
+                        &mut self.ui_state.frequency_shift,
                         synth,
                         Input::FrequencyShift,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.osc(synth).set_frequency_shift(ui_data.frequency_shift);
+                    bridge.set_param(Input::FrequencyShift, self.ui_state.frequency_shift);
                 }
                 ui.end_row();
 
                 ui.label("Detune");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.detune,
+                        &mut self.ui_state.detune,
                         synth,
                         Input::Detune,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.osc(synth).set_detune(ui_data.detune);
+                    bridge.set_param(Input::Detune, self.ui_state.detune);
                 }
                 ui.end_row();
 
                 ui.label("Detune power");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.detune_power,
+                        &mut self.ui_state.detune_power,
                         synth,
                         Input::DetunePower,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.osc(synth).set_detune_power(ui_data.detune_power);
+                    bridge.set_param(Input::DetunePower, self.ui_state.detune_power);
                 }
                 ui.end_row();
 
                 ui.label("Glide");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.glide,
+                        &mut self.ui_state.glide,
                         synth,
                         Input::Glide,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.osc(synth).set_glide(ui_data.glide);
+                    bridge.set_param(Input::Glide, self.ui_state.glide);
                 }
                 ui.end_row();
 
                 ui.label("Glide Slope");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.glide_slope,
+                        &mut self.ui_state.glide_slope,
                         synth,
                         Input::GlideSlope,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.osc(synth).set_glide_slope(ui_data.glide_slope);
+                    bridge.set_param(Input::GlideSlope, self.ui_state.glide_slope);
                 }
                 ui.end_row();
 
                 ui.label("Steal phase");
                 if ui
-                    .add(Checkbox::without_text(&mut ui_data.steal_phase))
+                    .add(Checkbox::without_text(&mut self.ui_state.steal_phase))
                     .changed()
                 {
-                    self.osc(synth).set_steal_phase(ui_data.steal_phase);
+                    bridge.set_steal_phase(self.ui_state.steal_phase);
                 }
                 ui.end_row();
 
                 ui.label("Unison");
                 if ui
-                    .add(DragValue::new(&mut ui_data.unison).range(1..=16))
+                    .add(DragValue::new(&mut self.ui_state.unison).range(1..=16))
                     .changed()
                 {
-                    self.osc(synth).set_unison(ui_data.unison);
+                    bridge.set_unison(self.ui_state.unison);
                 }
                 ui.end_row();
 
-                if ui_data.unison > 1 {
-                    self.show_unison_section(&mut ui_data, synth, ui);
+                if self.ui_state.unison > 1 {
+                    self.show_unison_section(&mut bridge, synth, ui);
                 }
             });
 
         ui.add_space(40.0);
 
-        show_modal!(self, gain_shape_state, show_gain_shape_modal, synth, ui);
-        show_modal!(
-            self,
-            randomize_phase_state,
-            show_randomize_phases_modal,
-            synth,
-            ui
-        );
+        if let Some(mut state) = self.gain_shape_state.take()
+            && self.show_gain_shape_modal(&mut bridge, ui, &mut state)
+        {
+            self.gain_shape_state.replace(state);
+        }
+
+        if let Some(mut state) = self.randomize_phase_state.take()
+            && self.show_randomize_phases_modal(&mut bridge, ui, &mut state)
+        {
+            self.randomize_phase_state.replace(state);
+        }
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
             synth.remove_module(self.module_id);
         }
+
+        self.bridge.lock().replace(bridge);
+    }
+
+    fn cleanup(&mut self, synth: &mut SynthEngine) {
+        let Some(bridge) = self.bridge.lock().take() else {
+            return;
+        };
+
+        self.osc(synth).return_audio_bridge(bridge);
     }
 }
