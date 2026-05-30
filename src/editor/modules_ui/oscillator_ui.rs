@@ -1,12 +1,10 @@
 use egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
-use parking_lot::Mutex;
 
 use crate::{
     editor::{
         ModuleUi, SynthEngineHandle, db_slider::DbSlider, direct_input::DirectInput,
-        gain_slider::GainSlider,
-        modulation_input::ModulationInput, module_label::ModuleLabel, stereo_slider::StereoSlider,
-        utils::confirm_module_removal,
+        gain_slider::GainSlider, modulation_input::ModulationInput, module_label::ModuleLabel,
+        stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
     synth_engine::{
         Input, ModuleId, Sample, StereoSample, SynthEngine,
@@ -32,7 +30,7 @@ pub struct OscillatorUI {
     remove_confirmation: bool,
     label_state: Option<String>,
     ui_state: UiState,
-    bridge: Mutex<Option<AudioBridge>>,
+    bridge: Option<AudioBridge>,
     phases_shift_to: bool,
     gains_to: bool,
     gain_shape_state: Option<Box<GainShapeState>>,
@@ -49,7 +47,7 @@ impl OscillatorUI {
             remove_confirmation: false,
             label_state: None,
             ui_state: osc.get_ui_state(),
-            bridge: Mutex::new(osc.take_audio_bridge()),
+            bridge: osc.take_audio_bridge(),
             phases_shift_to: false,
             gains_to: false,
             gain_shape_state: None,
@@ -433,7 +431,7 @@ impl ModuleUi for OscillatorUI {
     }
 
     fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
-        let mut bridge = self.bridge.lock().take().unwrap();
+        let mut bridge = self.bridge.take().unwrap();
 
         let updates: Vec<_> = bridge.updates().collect();
         let refresh_state = updates
@@ -468,7 +466,11 @@ impl ModuleUi for OscillatorUI {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Input");
-                ui.add(DirectInput::new(synth.clone(), Input::Spectrum, self.module_id));
+                ui.add(DirectInput::new(
+                    synth.clone(),
+                    Input::Spectrum,
+                    self.module_id,
+                ));
                 ui.end_row();
 
                 ui.label("Gain");
@@ -624,11 +626,11 @@ impl ModuleUi for OscillatorUI {
             synth.lock().remove_module(self.module_id);
         }
 
-        self.bridge.lock().replace(bridge);
+        self.bridge.replace(bridge);
     }
 
     fn cleanup(&mut self, synth: &SynthEngineHandle) {
-        let Some(bridge) = self.bridge.lock().take() else {
+        let Some(bridge) = self.bridge.take() else {
             return;
         };
 

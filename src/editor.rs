@@ -38,7 +38,7 @@ pub trait ModuleUi {
     fn cleanup(&mut self, _synth: &SynthEngineHandle) {}
 }
 
-type ModuleUIBox = Box<dyn ModuleUi + Send + Sync>;
+type ModuleUIBox = Box<dyn ModuleUi + Send>;
 
 struct EditorState {
     selected_module_ui: ModuleUIBox,
