@@ -103,11 +103,11 @@ impl Amplifier {
         channel: &mut ChannelParams,
         voice: &mut Voice,
         buffers: &mut Buffers,
-        router: &VoiceRouter<'_, MockToUiBridge>,
+        router: &mut VoiceRouter<'_, MockToUiBridge>,
     ) {
-        let input = router.buffer(Input::Audio, &mut buffers.input);
-
         router.buff_param(Input::Gain, &mut channel.gain, &mut buffers.gain_mod_input);
+
+        let input = router.buffer(Input::Audio, &mut buffers.input);
 
         for (out, input, modulation) in
             izip!(voice.output.iter_mut(), input, buffers.gain_mod_input).take(router.samples)
@@ -153,7 +153,7 @@ impl SynthModule for Amplifier {
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for voice_idx in process_params.active_voices {
-                let router = VoiceRouter::new(
+                let mut router = VoiceRouter::new(
                     router,
                     self.id,
                     channel_idx,
@@ -163,7 +163,12 @@ impl SynthModule for Amplifier {
                 );
                 let voice = &mut channel.voices[*voice_idx];
 
-                Self::process_channel_voice(&mut channel.params, voice, &mut self.buffers, &router);
+                Self::process_channel_voice(
+                    &mut channel.params,
+                    voice,
+                    &mut self.buffers,
+                    &mut router,
+                );
             }
         }
     }

@@ -184,9 +184,14 @@ pub struct UiState {
 }
 
 pub enum UiEvent {
-    SetInputParam { input: Input, value: StereoSample },
-    SetUnison(usize),
-    SetStealPhase(bool),
+    InputParam { input: Input, value: StereoSample },
+    Unison(usize),
+    UnisonInitialPhase { idx: usize, value: StereoSample },
+    UnisonPhaseShift { idx: usize, value: StereoSample },
+    UnisonPhaseShiftTo { idx: usize, value: StereoSample },
+    UnisonGain { idx: usize, value: StereoSample },
+    UnisonGainTo { idx: usize, value: StereoSample },
+    StealPhase(bool),
 }
 
 pub enum UiUpdate {
@@ -201,26 +206,26 @@ pub enum UiUpdate {
     },
 }
 
-pub struct UiToAudioBridge {
+pub struct ToAudioBridge {
     rx: rtrb::Consumer<UiUpdate>,
     tx: rtrb::Producer<UiEvent>,
 }
 
-impl UiToAudioBridge {
+impl ToAudioBridge {
     fn new(rx: rtrb::Consumer<UiUpdate>, tx: rtrb::Producer<UiEvent>) -> Self {
         Self { rx, tx }
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
-        let _ = self.tx.push(UiEvent::SetInputParam { input, value });
+        let _ = self.tx.push(UiEvent::InputParam { input, value });
     }
 
     pub fn set_unison(&mut self, unison: usize) {
-        let _ = self.tx.push(UiEvent::SetUnison(unison));
+        let _ = self.tx.push(UiEvent::Unison(unison));
     }
 
     pub fn set_steal_phase(&mut self, steal_phase: bool) {
-        let _ = self.tx.push(UiEvent::SetStealPhase(steal_phase));
+        let _ = self.tx.push(UiEvent::StealPhase(steal_phase));
     }
 
     pub fn updates(&mut self) -> impl Iterator<Item = UiUpdate> + '_ {
@@ -228,12 +233,12 @@ impl UiToAudioBridge {
     }
 }
 
-pub struct AudioToUiBridge {
+pub struct ToUiBridge {
     rx: rtrb::Consumer<UiEvent>,
     tx: rtrb::Producer<UiUpdate>,
 }
 
-impl AudioToUiBridge {
+impl ToUiBridge {
     fn new(rx: rtrb::Consumer<UiEvent>, tx: rtrb::Producer<UiUpdate>) -> Self {
         Self { rx, tx }
     }
@@ -243,7 +248,7 @@ impl AudioToUiBridge {
     }
 }
 
-impl ModuleToUiBridge for AudioToUiBridge {
+impl ModuleToUiBridge for ToUiBridge {
     fn update_modulated_input(&mut self, input: Input, channel_idx: usize, value: Sample) {
         let _ = self.tx.push(UiUpdate::ModulatedInput {
             input,
@@ -362,8 +367,6 @@ struct Channel {
 struct OscState {
     inverse_fft: Arc<dyn ComplexToReal<Sample>>,
     random: Pcg32,
-    to_ui_bridge: AudioToUiBridge,
-    to_audio_bridge: Option<UiToAudioBridge>,
     tmp_spectral: DftBuffer,
     scratch: DftBuffer,
     gain: Buffer,
@@ -374,14 +377,10 @@ struct OscState {
 
 impl Default for OscState {
     fn default() -> Self {
-        let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(512);
-        let (to_ui_tx, from_audio_rx) = rtrb::RingBuffer::<UiUpdate>::new(128);
-
         Self {
             inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE),
             random: Pcg32::new(420, 1337),
-            to_ui_bridge: AudioToUiBridge::new(from_ui_rx, to_ui_tx),
-            to_audio_bridge: Some(UiToAudioBridge::new(from_audio_rx, to_audio_tx)),
+
             tmp_spectral: zero_dft_buffer(),
             scratch: zero_dft_buffer(),
             gain: zero_buffer(),
@@ -411,6 +410,20 @@ macro_rules! set_unison_param {
     };
 }
 
+macro_rules! set_unison_param_inline {
+    ($self:ident, $voice_idx:expr, $param:ident, $value:expr) => {{
+        for (channel, val) in $self.channels.iter_mut().zip($value.iter()) {
+            channel.params.unison[$voice_idx].$param = *val;
+        }
+
+        let mut cfg = $self.config.lock();
+
+        for (channel_cfg, channel) in cfg.channels.iter_mut().zip($self.channels.iter()) {
+            channel_cfg.unison[$voice_idx].$param = channel.params.unison[$voice_idx].$param;
+        }
+    }};
+}
+
 macro_rules! get_unison_param {
     ($self:ident, $param:ident, $voice_idx:expr) => {
         StereoSample::from_iter(
@@ -435,17 +448,24 @@ pub struct Oscillator {
     config: ModuleConfigBox<OscillatorConfig>,
     params: Params,
     osc_state: OscState,
+    to_ui_bridge: ToUiBridge,
+    to_audio_bridge: Option<ToAudioBridge>,
     channels: [Channel; NUM_CHANNELS],
 }
 
 impl Oscillator {
     pub fn new(id: ModuleId, config: ModuleConfigBox<OscillatorConfig>) -> Self {
+        let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(512);
+        let (to_ui_tx, from_audio_rx) = rtrb::RingBuffer::<UiUpdate>::new(128);
+
         let mut osc = Self {
             id,
             label: format!("Oscillator {id}"),
             config,
             params: Params::default(),
             osc_state: OscState::default(),
+            to_ui_bridge: ToUiBridge::new(from_ui_rx, to_ui_tx),
+            to_audio_bridge: Some(ToAudioBridge::new(from_audio_rx, to_audio_tx)),
             channels: Default::default(),
         };
 
@@ -454,6 +474,15 @@ impl Oscillator {
     }
 
     gen_downcast_methods!();
+
+    pub fn take_to_audio_bridge(&mut self) -> Option<ToAudioBridge> {
+        self.to_audio_bridge.take()
+    }
+
+    pub fn return_to_audio_bridge(&mut self, bridge: ToAudioBridge) {
+        assert!(self.to_audio_bridge.is_none(), "to_audio_bridge not taken");
+        self.to_audio_bridge = Some(bridge);
+    }
 
     pub fn get_ui(&self) -> OscillatorUIData {
         OscillatorUIData {
@@ -714,7 +743,7 @@ impl Oscillator {
         mono_voice_buffers: Option<&'a VoiceBuffers>,
         osc_state: &mut OscState,
         triggered: bool,
-        router: &VoiceRouter<'_, MockToUiBridge>,
+        router: &VoiceRouter<'_, ToUiBridge>,
     ) -> (&'a WaveformBuffer, &'a WaveformBuffer) {
         let voice_buffers = if let Some(mono_voice_buffers) = mono_voice_buffers {
             mono_voice_buffers
@@ -769,7 +798,7 @@ impl Oscillator {
         unison: usize,
         channel: &ChannelParams,
         voice: &mut VoiceState,
-        router: &VoiceRouter<'_, MockToUiBridge>,
+        router: &VoiceRouter<'_, ToUiBridge>,
     ) {
         const MAX_DETUNE: Sample = 1.0;
         const MAX_DETUNE_POWER: Sample = 5.0;
@@ -790,7 +819,7 @@ impl Oscillator {
             unison: usize,
             current: bool,
             channel: &ChannelParams,
-            router: &VoiceRouter<'_, MockToUiBridge>,
+            router: &VoiceRouter<'_, ToUiBridge>,
         ) -> impl Iterator<Item = StateUpdate> {
             let detune =
                 (channel.detune + router.scalar(Input::Detune, current)).clamp(0.0, MAX_DETUNE);
@@ -874,7 +903,7 @@ impl Oscillator {
         channel: &ChannelParams,
         osc_state: &mut OscState,
         voice: &mut VoiceState,
-        router: &VoiceRouter<'_, MockToUiBridge>,
+        router: &VoiceRouter<'_, ToUiBridge>,
     ) {
         const GLIDE_TIME_THRESHOLD: Sample = from_ms(1.0);
         const GLIDE_POWER_MAX: Sample = 6.0;
@@ -945,38 +974,30 @@ impl Oscillator {
         osc_state: &mut OscState,
         voice: &mut Voice,
         mono_voice_buffers: Option<&VoiceBuffers>,
-        router: VoiceRouter<'_, MockToUiBridge>,
+        mut router: VoiceRouter<'_, ToUiBridge>,
     ) {
         let samples = router.samples;
 
-        router.buff_param_bridge(
-            Input::Gain,
-            &mut channel.gain,
-            &mut osc_state.gain,
-            &mut osc_state.to_ui_bridge,
-        );
+        router.buff_param(Input::Gain, &mut channel.gain, &mut osc_state.gain);
 
-        router.buff_param_bridge(
+        router.buff_param(
             Input::PitchShift,
             &mut channel.pitch_shift,
             &mut osc_state.pitch,
-            &mut osc_state.to_ui_bridge,
         );
 
         add_buffer_value(&mut osc_state.pitch[..samples], voice.state.pitch);
 
-        router.buff_param_bridge(
+        router.buff_param(
             Input::PhaseShift,
             &mut channel.phase_shift,
             &mut osc_state.phase_shift,
-            &mut osc_state.to_ui_bridge,
         );
 
-        router.buff_param_bridge(
+        router.buff_param(
             Input::FrequencyShift,
             &mut channel.frequency_shift,
             &mut osc_state.frequency_shift,
-            &mut osc_state.to_ui_bridge,
         );
 
         let (wave_from, wave_to) = Self::build_waveforms(
@@ -1033,9 +1054,7 @@ impl Oscillator {
             *out = sample * gain * voice.unison_gain.interpolate(buff_t);
         }
 
-        osc_state
-            .to_ui_bridge
-            .update_output(router.channel_idx, voice.output[0]);
+        router.update_output(&voice.output);
     }
 
     fn handle_trigger(
@@ -1087,9 +1106,9 @@ impl Oscillator {
     }
 
     fn handle_ui_events(&mut self) {
-        for event in self.osc_state.to_ui_bridge.events() {
+        for event in self.to_ui_bridge.events() {
             match event {
-                UiEvent::SetInputParam { input, value } => match input {
+                UiEvent::InputParam { input, value } => match input {
                     Input::Gain => set_param_inline!(self, gain, value.clamp(0.0, 1.0)),
                     Input::PitchShift => set_param_inline!(
                         self,
@@ -1120,10 +1139,25 @@ impl Oscillator {
                     }
                     _ => (),
                 },
-                UiEvent::SetUnison(unison) => {
+                UiEvent::Unison(unison) => {
                     set_mono_param_inline!(self, unison, unison.clamp(1, MAX_UNISON_VOICES))
                 }
-                UiEvent::SetStealPhase(steal_phase) => {
+                UiEvent::UnisonInitialPhase { idx, value } => {
+                    set_unison_param_inline!(self, idx, initial_phase, value.clamp(-1.0, 1.0))
+                }
+                UiEvent::UnisonPhaseShift { idx, value } => {
+                    set_unison_param_inline!(self, idx, phase_shift, value.clamp(-1.0, 1.0))
+                }
+                UiEvent::UnisonPhaseShiftTo { idx, value } => {
+                    set_unison_param_inline!(self, idx, phase_shift_to, value.clamp(-1.0, 1.0))
+                }
+                UiEvent::UnisonGain { idx, value } => {
+                    set_unison_param_inline!(self, idx, gain, value.clamp(0.0, 10.0))
+                }
+                UiEvent::UnisonGainTo { idx, value } => {
+                    set_unison_param_inline!(self, idx, gain_to, value.clamp(0.0, 10.0))
+                }
+                UiEvent::StealPhase(steal_phase) => {
                     set_mono_param_inline!(self, steal_phase, steal_phase)
                 }
             }
@@ -1199,8 +1233,6 @@ impl SynthModule for Oscillator {
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
         self.handle_ui_events();
 
-        let mut ui_bridge = MockToUiBridge;
-
         for (channel_idx, channel) in self
             .channels
             .iter_mut()
@@ -1214,7 +1246,7 @@ impl SynthModule for Oscillator {
                     channel_idx,
                     *voice_idx,
                     params,
-                    &mut ui_bridge,
+                    &mut self.to_ui_bridge,
                 );
 
                 Self::process_voice(
@@ -1242,7 +1274,7 @@ impl SynthModule for Oscillator {
                         channel_idx,
                         *voice_idx,
                         params,
-                        &mut ui_bridge,
+                        &mut self.to_ui_bridge,
                     );
 
                     Self::process_voice(

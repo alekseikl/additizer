@@ -141,30 +141,7 @@ impl<'a, Bridge: ModuleToUiBridge> VoiceRouter<'a, Bridge> {
         self.buffer_opt(input, buff).unwrap_or(&ZEROES_BUFFER)
     }
 
-    pub fn buff_param(&self, input: Input, param: &mut SmoothedSample, buff: &mut Buffer) -> bool {
-        let buff = &mut buff[..self.samples];
-
-        if param.check_needs_smoothing(&self.smooth_params) {
-            param.smoothed_buff(buff, &self.smooth_params);
-        } else {
-            buff.fill(param.get());
-        }
-
-        self.router.add_input_to(
-            ModuleInput::new(input, self.module_id),
-            self.voice_idx,
-            self.channel_idx,
-            buff,
-        )
-    }
-
-    pub fn buff_param_bridge(
-        &self,
-        input: Input,
-        param: &mut SmoothedSample,
-        buff: &mut Buffer,
-        bridge: &mut impl ModuleToUiBridge,
-    ) {
+    pub fn buff_param(&mut self, input: Input, param: &mut SmoothedSample, buff: &mut Buffer) {
         let buff = &mut buff[..self.samples];
 
         if param.check_needs_smoothing(&self.smooth_params) {
@@ -179,8 +156,13 @@ impl<'a, Bridge: ModuleToUiBridge> VoiceRouter<'a, Bridge> {
             self.channel_idx,
             buff,
         ) {
-            bridge.update_modulated_input(input, self.channel_idx, buff[0]);
+            self.ui_bridge
+                .update_modulated_input(input, self.channel_idx, buff[0]);
         }
+    }
+
+    pub fn update_output(&mut self, buff: &Buffer) {
+        self.ui_bridge.update_output(self.channel_idx, buff[0]);
     }
 
     pub fn spectral(&self, input: Input, current: bool) -> &SpectralBuffer {
