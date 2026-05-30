@@ -24,7 +24,7 @@ impl SpectralBlendUi {
     }
 
     fn blend<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut SpectralBlend {
-        SpectralBlend::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
+        synth.get_typed_module_mut(self.module_id).unwrap()
     }
 }
 

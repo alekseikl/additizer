@@ -106,7 +106,7 @@ impl HarmonicEditorUI {
     }
 
     fn editor<'a>(&self, synth: &'a mut SynthEngine) -> &'a mut HarmonicEditor {
-        HarmonicEditor::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
+        synth.get_typed_module_mut(self.module_id).unwrap()
     }
 
     fn apply_select_and_set(&self, synth: &mut SynthEngine, state: &SelectAndSetState) {

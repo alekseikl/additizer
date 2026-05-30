@@ -24,7 +24,7 @@ impl MixerUi {
     }
 
     fn mixer_module(module_id: ModuleId, synth: &mut SynthEngine) -> &mut Mixer {
-        Mixer::downcast_mut_unwrap(synth.get_module_mut(module_id))
+        synth.get_typed_module_mut(module_id).unwrap()
     }
 
     fn mixer<'a>(&self, synth: &'a mut SynthEngine) -> &'a mut Mixer {

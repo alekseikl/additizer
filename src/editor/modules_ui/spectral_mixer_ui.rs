@@ -34,7 +34,7 @@ impl SpectralMixerUi {
     }
 
     fn mixer_module(module_id: ModuleId, synth: &mut SynthEngine) -> &mut SpectralMixer {
-        SpectralMixer::downcast_mut_unwrap(synth.get_module_mut(module_id))
+        synth.get_typed_module_mut(module_id).unwrap()
     }
 
     fn mixer<'a>(&self, synth: &'a mut SynthEngine) -> &'a mut SpectralMixer {
@@ -74,7 +74,8 @@ impl ModuleUi for SpectralMixerUi {
                     ))
                     .changed()
                 {
-                    self.mixer(&mut synth.lock()).set_num_inputs(ui_data.num_inputs);
+                    self.mixer(&mut synth.lock())
+                        .set_num_inputs(ui_data.num_inputs);
                 }
                 ui.end_row();
 
@@ -95,68 +96,78 @@ impl ModuleUi for SpectralMixerUi {
 
                     ui.label(format!("Input {}", input_idx + 1));
                     if ui
-                        .add(ModulationInput::new(value, synth.clone(), input, module_id).before(
-                            move |ui, synth| {
-                                if input_idx > 0 {
-                                    let mix_type = &mut ui_data.input_params[input_idx].mix_type;
+                        .add(
+                            ModulationInput::new(value, synth.clone(), input, module_id).before(
+                                move |ui, synth| {
+                                    if input_idx > 0 {
+                                        let mix_type =
+                                            &mut ui_data.input_params[input_idx].mix_type;
 
-                                    ComboBox::from_id_salt(format!("mix-type-{}", input_idx))
-                                        .selected_text(mix_type.label())
+                                        ComboBox::from_id_salt(format!("mix-type-{}", input_idx))
+                                            .selected_text(mix_type.label())
+                                            .width(0.0)
+                                            .show_ui(ui, |ui| {
+                                                const TYPE_OPTIONS: &[MixType] = &[
+                                                    MixType::Add,
+                                                    MixType::Subtract,
+                                                    MixType::Multiply,
+                                                ];
+
+                                                for mix_type_item in TYPE_OPTIONS {
+                                                    if ui
+                                                        .selectable_value(
+                                                            mix_type,
+                                                            *mix_type_item,
+                                                            mix_type_item.label(),
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        Self::mixer_module(
+                                                            module_id,
+                                                            &mut synth.lock(),
+                                                        )
+                                                        .set_mix_type(input_idx, *mix_type);
+                                                    }
+                                                }
+                                            });
+                                    }
+
+                                    ui.add(DirectInput::new(
+                                        synth.clone(),
+                                        Input::SpectrumMix(input_idx),
+                                        module_id,
+                                    ));
+
+                                    let volume_type =
+                                        &mut ui_data.input_params[input_idx].volume_type;
+
+                                    ComboBox::from_id_salt(format!("volume-type-{}", input_idx))
+                                        .selected_text(volume_type.label())
                                         .width(0.0)
                                         .show_ui(ui, |ui| {
-                                            const TYPE_OPTIONS: &[MixType] = &[
-                                                MixType::Add,
-                                                MixType::Subtract,
-                                                MixType::Multiply,
-                                            ];
+                                            const TYPE_OPTIONS: &[VolumeType] =
+                                                &[VolumeType::Gain, VolumeType::Db];
 
-                                            for mix_type_item in TYPE_OPTIONS {
+                                            for vol_type_item in TYPE_OPTIONS {
                                                 if ui
                                                     .selectable_value(
-                                                        mix_type,
-                                                        *mix_type_item,
-                                                        mix_type_item.label(),
+                                                        volume_type,
+                                                        *vol_type_item,
+                                                        vol_type_item.label(),
                                                     )
                                                     .clicked()
                                                 {
-                                                    Self::mixer_module(module_id, &mut synth.lock())
-                                                        .set_mix_type(input_idx, *mix_type);
+                                                    Self::mixer_module(
+                                                        module_id,
+                                                        &mut synth.lock(),
+                                                    )
+                                                    .set_volume_type(input_idx, *volume_type);
                                                 }
                                             }
                                         });
-                                }
-
-                                ui.add(DirectInput::new(
-                                    synth.clone(),
-                                    Input::SpectrumMix(input_idx),
-                                    module_id,
-                                ));
-
-                                let volume_type = &mut ui_data.input_params[input_idx].volume_type;
-
-                                ComboBox::from_id_salt(format!("volume-type-{}", input_idx))
-                                    .selected_text(volume_type.label())
-                                    .width(0.0)
-                                    .show_ui(ui, |ui| {
-                                        const TYPE_OPTIONS: &[VolumeType] =
-                                            &[VolumeType::Gain, VolumeType::Db];
-
-                                        for vol_type_item in TYPE_OPTIONS {
-                                            if ui
-                                                .selectable_value(
-                                                    volume_type,
-                                                    *vol_type_item,
-                                                    vol_type_item.label(),
-                                                )
-                                                .clicked()
-                                            {
-                                                Self::mixer_module(module_id, &mut synth.lock())
-                                                    .set_volume_type(input_idx, *volume_type);
-                                            }
-                                        }
-                                    });
-                            },
-                        ))
+                                },
+                            ),
+                        )
                         .changed()
                     {
                         match vol_type {
@@ -213,10 +224,12 @@ impl ModuleUi for SpectralMixerUi {
                 {
                     match ui_data.output_volume_type {
                         VolumeType::Db => {
-                            self.mixer(&mut synth.lock()).set_output_level(ui_data.output_level);
+                            self.mixer(&mut synth.lock())
+                                .set_output_level(ui_data.output_level);
                         }
                         VolumeType::Gain => {
-                            self.mixer(&mut synth.lock()).set_output_gain(ui_data.output_gain);
+                            self.mixer(&mut synth.lock())
+                                .set_output_gain(ui_data.output_gain);
                         }
                     }
                 }

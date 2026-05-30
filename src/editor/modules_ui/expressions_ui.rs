@@ -37,7 +37,7 @@ impl ExpressionsUi {
     }
 
     fn expr<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut Expressions {
-        Expressions::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
+        synth.get_typed_module_mut(self.module_id).unwrap()
     }
 }
 

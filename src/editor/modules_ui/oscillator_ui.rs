@@ -42,7 +42,7 @@ pub struct OscillatorUI {
 impl OscillatorUI {
     pub fn new(module_id: ModuleId, synth: &SynthEngineHandle) -> Self {
         let mut s = synth.lock();
-        let osc = Oscillator::downcast_mut_unwrap(s.get_module_mut(module_id));
+        let osc = s.get_typed_module_mut::<Oscillator>(module_id).unwrap();
 
         Self {
             module_id,
@@ -58,7 +58,7 @@ impl OscillatorUI {
     }
 
     fn osc<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut Oscillator {
-        Oscillator::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
+        synth.get_typed_module_mut(self.module_id).unwrap()
     }
 
     fn apply_ui_update(ui_state: &mut UiState, update: UiUpdate) {

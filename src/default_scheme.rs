@@ -14,19 +14,13 @@ pub fn build_default_scheme(synth: &mut SynthEngine) {
     let amp_id = synth.add_amplifier();
     let amp_env_id = synth.add_envelope();
 
-    macro_rules! typed_module_mut {
-        ($module_id:expr, $module_type:ident) => {
-            synth
-                .get_module_mut($module_id)
-                .and_then(|module| $module_type::downcast_mut(module))
-        };
-    }
-
-    let editor = typed_module_mut!(harmonic_editor_id, HarmonicEditor).unwrap();
+    let editor = synth
+        .get_typed_module_mut::<HarmonicEditor>(harmonic_editor_id)
+        .unwrap();
 
     editor.set_label("01 - Harmonics".into());
 
-    let filter_env = typed_module_mut!(filter_env_id, Envelope).unwrap();
+    let filter_env = synth.get_typed_module_mut::<Envelope>(filter_env_id).unwrap();
 
     filter_env.set_label("03 - Cutoff Env".into());
     filter_env.set_attack(0.0.into());
@@ -36,18 +30,20 @@ pub fn build_default_scheme(synth: &mut SynthEngine) {
     filter_env.set_decay_curve(EnvelopeCurve::ExponentialOut);
     filter_env.set_attack_curve(EnvelopeCurve::ExponentialOut);
 
-    let spectral_filter = typed_module_mut!(filter_id, SpectralFilter).unwrap();
+    let spectral_filter = synth
+        .get_typed_module_mut::<SpectralFilter>(filter_id)
+        .unwrap();
 
     spectral_filter.set_label("03 - Filter".into());
     spectral_filter.set_cutoff(2.0.into());
 
-    let osc = typed_module_mut!(osc_id, Oscillator).unwrap();
+    let osc = synth.get_typed_module_mut::<Oscillator>(osc_id).unwrap();
 
     osc.set_label("04 - Oscillator".into());
     // osc.set_unison(1);
     // osc.set_detune(st_to_octave(0.1).into());
 
-    let amp_env = typed_module_mut!(amp_env_id, Envelope).unwrap();
+    let amp_env = synth.get_typed_module_mut::<Envelope>(amp_env_id).unwrap();
 
     amp_env.set_label("06 - Amp Envelope".into());
     amp_env.set_decay(from_ms(400.0).into());
@@ -57,7 +53,7 @@ pub fn build_default_scheme(synth: &mut SynthEngine) {
     amp_env.set_smooth(from_ms(4.0).into());
     amp_env.set_keep_voice_alive(true);
 
-    let amp = typed_module_mut!(amp_id, Amplifier).unwrap();
+    let amp = synth.get_typed_module_mut::<Amplifier>(amp_id).unwrap();
 
     amp.set_label("06 - Amplifier".into());
 

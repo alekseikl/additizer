@@ -71,7 +71,7 @@ impl EnvelopeUI {
     }
 
     fn env<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut Envelope {
-        Envelope::downcast_mut_unwrap(synth.get_module_mut(self.module_id))
+        synth.get_typed_module_mut(self.module_id).unwrap()
     }
 
     fn add_curve(&self, ui: &mut Ui, label: &str, env_curve: &mut EnvelopeCurve) -> bool {

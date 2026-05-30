@@ -1,5 +1,6 @@
 use core::f32;
 use std::{
+    any::Any,
     collections::{HashMap, HashSet},
     sync::Arc,
 };
@@ -139,16 +140,6 @@ macro_rules! get_typed_module {
     };
 }
 
-macro_rules! get_typed_module_mut {
-    ($self:ident, $module_type:ident, $module_id:expr) => {
-        $self
-            .modules
-            .get_mut($module_id)
-            .and_then(|result| result.as_deref_mut())
-            .and_then($module_type::downcast_mut)
-    };
-}
-
 macro_rules! add_module_method {
     ($func_name:ident, $module_type:ident, $module_cfg:ident $(, $arg:ident )*) => {
         pub fn $func_name(&mut self) -> ModuleId {
@@ -279,7 +270,7 @@ impl SynthEngine {
     }
 
     pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) {
-        if let Some(output) = get_typed_module_mut!(self, Output, &OUTPUT_MODULE_ID) {
+        if let Some(output) = self.get_typed_module_mut::<Output>(OUTPUT_MODULE_ID) {
             output.set_voice_kill_time(voice_kill_time);
         }
     }
@@ -300,7 +291,7 @@ impl SynthEngine {
     }
 
     pub fn set_output_level(&mut self, level: StereoSample) {
-        if let Some(output) = get_typed_module_mut!(self, Output, &OUTPUT_MODULE_ID) {
+        if let Some(output) = self.get_typed_module_mut::<Output>(OUTPUT_MODULE_ID) {
             output.set_gain(level);
         }
     }
@@ -536,8 +527,10 @@ impl SynthEngine {
             }
         }
 
-        if let Some(output) = get_typed_module_mut!(self, Output, &OUTPUT_MODULE_ID) {
-            output.read_output(self.oversampling, outputs);
+        let oversampling = self.oversampling;
+
+        if let Some(output) = self.get_typed_module_mut::<Output>(OUTPUT_MODULE_ID) {
+            output.read_output(oversampling, outputs);
         }
     }
 
@@ -625,6 +618,11 @@ impl SynthEngine {
 
     pub fn get_module_mut(&mut self, id: ModuleId) -> Option<&mut dyn SynthModule> {
         get_module_mut!(self, &id)
+    }
+
+    pub fn get_typed_module_mut<T: SynthModule>(&mut self, id: ModuleId) -> Option<&mut T> {
+        self.get_module_mut(id)
+            .and_then(|module| (module as &mut dyn Any).downcast_mut())
     }
 
     pub fn get_available_input_sources(&self, input: ModuleInput) -> Vec<AvailableInputSourceUI> {
