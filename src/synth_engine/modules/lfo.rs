@@ -194,14 +194,17 @@ impl Lfo {
         voice: &mut Voice,
         current: bool,
         t_step: Sample,
-        router: &VoiceRouter<'_, '_, MockToUiBridge>,
+        router: &mut VoiceRouter<'_, '_, MockToUiBridge>,
     ) {
-        let frequency = channel_params.frequency + router.scalar(Input::LowFrequency, current);
+        let frequency = router.scalar(Input::LowFrequency, channel_params.frequency, current);
 
-        let phase_shift = (channel_params.phase_shift + router.scalar(Input::PhaseShift, current))
+        let phase_shift = router
+            .scalar(Input::PhaseShift, channel_params.phase_shift, current)
             .clamp(-1.0, 1.0);
 
-        let skew = (channel_params.skew + router.scalar(Input::Skew, current)).clamp(0.0, 1.0);
+        let skew = router
+            .scalar(Input::Skew, channel_params.skew, current)
+            .clamp(0.0, 1.0);
 
         let arg = voice.phase.add_normalized(phase_shift).normalized();
 
@@ -327,7 +330,7 @@ impl SynthModule for Lfo {
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for (seq_idx, voice_idx) in params.active_voices.iter().enumerate() {
                 let voice = &mut channel.voices[*voice_idx];
-                let voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
+                let mut voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
 
                 if voice.triggered {
                     Self::process_voice(
@@ -336,7 +339,7 @@ impl SynthModule for Lfo {
                         voice,
                         false,
                         0.0,
-                        &voice_router,
+                        &mut voice_router,
                     );
                     voice.triggered = false;
                 }
@@ -346,7 +349,7 @@ impl SynthModule for Lfo {
                     voice,
                     true,
                     t_step,
-                    &voice_router,
+                    &mut voice_router,
                 );
 
                 if params.needs_audio_rate {

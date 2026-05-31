@@ -214,7 +214,7 @@ impl SpectralMixer {
         params: &Params,
         channel: &ChannelParams,
         voice: &mut Voice,
-        router: &VoiceRouter<'_, '_, MockToUiBridge>,
+        router: &mut VoiceRouter<'_, '_, MockToUiBridge>,
     ) {
         let output = voice.output.advance();
 
@@ -223,16 +223,21 @@ impl SpectralMixer {
         for input_idx in 0..params.num_inputs {
             let input_params = &params.input_params[input_idx];
             let channel_input_params = &channel.input_params[input_idx];
-            let spectrum = router.spectral(Input::SpectrumMix(input_idx), current);
 
             let gain = match input_params.volume_type {
-                VolumeType::Db => Self::to_gain(
-                    channel_input_params.level + router.scalar(Input::LevelMix(input_idx), current),
+                VolumeType::Db => Self::to_gain(router.scalar(
+                    Input::LevelMix(input_idx),
+                    channel_input_params.level,
+                    current,
+                )),
+                VolumeType::Gain => router.scalar(
+                    Input::GainMix(input_idx),
+                    channel_input_params.gain,
+                    current,
                 ),
-                VolumeType::Gain => {
-                    channel_input_params.gain + router.scalar(Input::GainMix(input_idx), current)
-                }
             };
+
+            let spectrum = router.spectral(Input::SpectrumMix(input_idx), current);
 
             let iter = output.iter_mut().zip(spectrum.map(|input| input * gain));
 
@@ -257,9 +262,9 @@ impl SpectralMixer {
 
         let output_gain = match params.output_volume_type {
             VolumeType::Db => {
-                Self::to_gain(channel.output_level + router.scalar(Input::Level, current))
+                Self::to_gain(router.scalar(Input::Level, channel.output_level, current))
             }
-            VolumeType::Gain => channel.output_gain + router.scalar(Input::Gain, current),
+            VolumeType::Gain => router.scalar(Input::Gain, channel.output_gain, current),
         };
 
         for out in output.iter_mut() {
@@ -339,13 +344,25 @@ impl SynthModule for SpectralMixer {
         {
             for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
                 let voice = &mut channel.voices[*voice_idx];
-                let voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
+                let mut voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
 
                 if voice.triggered {
-                    Self::process_voice(false, &self.params, &channel.params, voice, &voice_router);
+                    Self::process_voice(
+                        false,
+                        &self.params,
+                        &channel.params,
+                        voice,
+                        &mut voice_router,
+                    );
                     voice.triggered = false;
                 }
-                Self::process_voice(true, &self.params, &channel.params, voice, &voice_router);
+                Self::process_voice(
+                    true,
+                    &self.params,
+                    &channel.params,
+                    voice,
+                    &mut voice_router,
+                );
             }
         }
     }

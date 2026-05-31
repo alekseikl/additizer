@@ -75,11 +75,13 @@ impl SpectralBlend {
         current: bool,
         params: &ChannelParams,
         voice: &mut Voice,
-        router: &VoiceRouter<'_, '_, MockToUiBridge>,
+        router: &mut VoiceRouter<'_, '_, MockToUiBridge>,
     ) {
+        let blend = router
+            .scalar(Input::Blend, params.blend, current)
+            .clamp(0.0, 1.0);
         let spectrum_from = router.spectral(Input::Spectrum, current);
         let spectrum_to = router.spectral(Input::SpectrumTo, current);
-        let blend = (params.blend + router.scalar(Input::Blend, current)).clamp(0.0, 1.0);
         let output = voice.output.advance();
 
         for (out, from, to) in izip!(output, spectrum_from, spectrum_to) {
@@ -144,13 +146,13 @@ impl SynthModule for SpectralBlend {
 
             for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
                 let voice = &mut channel.voices[*voice_idx];
-                let voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
+                let mut voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
 
                 if voice.triggered {
-                    Self::process_voice(false, params, voice, &voice_router);
+                    Self::process_voice(false, params, voice, &mut voice_router);
                     voice.triggered = false;
                 }
-                Self::process_voice(true, params, voice, &voice_router);
+                Self::process_voice(true, params, voice, &mut voice_router);
             }
         }
     }

@@ -634,7 +634,7 @@ impl Oscillator {
         unison: usize,
         channel: &ChannelParams,
         voice: &mut VoiceState,
-        router: &VoiceRouter<'_, '_, UiBridge>,
+        router: &mut VoiceRouter<'_, '_, UiBridge>,
     ) {
         const MAX_DETUNE: Sample = 1.0;
         const MAX_DETUNE_POWER: Sample = 5.0;
@@ -655,16 +655,20 @@ impl Oscillator {
             unison: usize,
             current: bool,
             channel: &ChannelParams,
-            router: &VoiceRouter<'_, '_, UiBridge>,
+            router: &mut VoiceRouter<'_, '_, UiBridge>,
         ) -> impl Iterator<Item = StateUpdate> {
-            let detune =
-                (channel.detune + router.scalar(Input::Detune, current)).clamp(0.0, MAX_DETUNE);
-            let detune_power = (channel.detune_power + router.scalar(Input::DetunePower, current))
+            let detune = router
+                .scalar(Input::Detune, channel.detune, current)
+                .clamp(0.0, MAX_DETUNE);
+            let detune_power = router
+                .scalar(Input::DetunePower, channel.detune_power, current)
                 .clamp(-MAX_DETUNE_POWER, MAX_DETUNE_POWER);
-            let phases_blend =
-                (channel.phases_blend + router.scalar(Input::PhasesBlend, current)).clamp(0.0, 1.0);
-            let gains_blend =
-                (channel.gains_blend + router.scalar(Input::GainsBlend, current)).clamp(0.0, 1.0);
+            let phases_blend = router
+                .scalar(Input::PhasesBlend, channel.phases_blend, current)
+                .clamp(0.0, 1.0);
+            let gains_blend = router
+                .scalar(Input::GainsBlend, channel.gains_blend, current)
+                .clamp(0.0, 1.0);
             let center = 0.5 * (unison - 1) as Sample;
             let center_recip = center.recip();
 
@@ -739,7 +743,7 @@ impl Oscillator {
         channel: &ChannelParams,
         osc_state: &mut OscState,
         voice: &mut VoiceState,
-        router: &VoiceRouter<'_, '_, UiBridge>,
+        router: &mut VoiceRouter<'_, '_, UiBridge>,
     ) {
         const GLIDE_TIME_THRESHOLD: Sample = from_ms(1.0);
         const GLIDE_POWER_MAX: Sample = 6.0;
@@ -751,7 +755,9 @@ impl Oscillator {
             return;
         };
 
-        let glide_time = (channel.glide + router.scalar(Input::Glide, false)).clamp(0.0, MAX_GLIDE);
+        let glide_time = router
+            .scalar(Input::Glide, channel.glide, false)
+            .clamp(0.0, MAX_GLIDE);
         let time_left = glide_time - glide.t;
 
         if glide_time < GLIDE_TIME_THRESHOLD || time_left <= 0.0 {
@@ -759,8 +765,9 @@ impl Oscillator {
             return;
         }
 
-        let glide_slope =
-            (channel.glide_slope + router.scalar(Input::GlideSlope, false)).clamp(-1.0, 1.0);
+        let glide_slope = router
+            .scalar(Input::GlideSlope, channel.glide_slope, false)
+            .clamp(-1.0, 1.0);
         let glide_power = -glide_slope * GLIDE_POWER_MAX;
         let t_step = router.sample_rate().recip();
         let samples = router
@@ -844,8 +851,8 @@ impl Oscillator {
             &router,
         );
 
-        Self::process_unison(params.unison, channel, &mut voice.state, &router);
-        Self::process_glide(channel, osc_state, &mut voice.state, &router);
+        Self::process_unison(params.unison, channel, &mut voice.state, &mut router);
+        Self::process_glide(channel, osc_state, &mut voice.state, &mut router);
 
         if voice.state.triggered {
             voice.state.triggered = false;

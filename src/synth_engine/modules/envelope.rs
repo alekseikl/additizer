@@ -318,14 +318,8 @@ impl Envelope {
         env: &ChannelParams,
         voice: &mut Voice,
         t_step: Sample,
-        router: &VoiceRouter<'_, '_, MockToUiBridge>,
+        mut router: VoiceRouter<'_, '_, MockToUiBridge>,
     ) {
-        let delay_time = || env.delay + router.scalar(Input::Delay, true);
-        let attack_time = || env.attack + router.scalar(Input::Attack, true);
-        let hold_time = || env.hold + router.scalar(Input::Hold, true);
-        let decay_time = || env.decay + router.scalar(Input::Decay, true);
-        let release_time = || env.release + router.scalar(Input::Release, true);
-
         if voice.triggered {
             voice.stage = Stage::Delay(EnvelopeCurve::delay_iter(voice.scalar_output.current()));
         }
@@ -344,7 +338,12 @@ impl Envelope {
         loop {
             voice.stage = match &mut voice.stage {
                 Stage::Delay(curve) => {
-                    match curve.next_block(t_step, delay_time(), &mut sample_from, output) {
+                    match curve.next_block(
+                        t_step,
+                        router.scalar(Input::Delay, env.delay, true),
+                        &mut sample_from,
+                        output,
+                    ) {
                         CurveBlockResult::Done => Stage::Attack(
                             env.attack_curve
                                 .curve_iter(voice.scalar_output.current(), 1.0),
@@ -353,13 +352,23 @@ impl Envelope {
                     }
                 }
                 Stage::Attack(curve) => {
-                    match curve.next_block(t_step, attack_time(), &mut sample_from, output) {
+                    match curve.next_block(
+                        t_step,
+                        router.scalar(Input::Attack, env.attack, true),
+                        &mut sample_from,
+                        output,
+                    ) {
                         CurveBlockResult::Done => Stage::Hold(EnvelopeCurve::hold_iter()),
                         CurveBlockResult::HasMore => break,
                     }
                 }
                 Stage::Hold(curve) => {
-                    match curve.next_block(t_step, hold_time(), &mut sample_from, output) {
+                    match curve.next_block(
+                        t_step,
+                        router.scalar(Input::Hold, env.hold, true),
+                        &mut sample_from,
+                        output,
+                    ) {
                         CurveBlockResult::Done => {
                             Stage::Decay(env.decay_curve.curve_iter(1.0, env.sustain))
                         }
@@ -367,18 +376,28 @@ impl Envelope {
                     }
                 }
                 Stage::Decay(curve) => {
-                    match curve.next_block(t_step, decay_time(), &mut sample_from, output) {
+                    match curve.next_block(
+                        t_step,
+                        router.scalar(Input::Decay, env.decay, true),
+                        &mut sample_from,
+                        output,
+                    ) {
                         CurveBlockResult::Done => Stage::Sustain,
                         CurveBlockResult::HasMore => break,
                     }
                 }
                 Stage::Sustain => {
                     output[sample_from..]
-                        .fill((env.sustain + router.scalar(Input::Sustain, true)).clamp(0.0, 1.0));
+                        .fill((router.scalar(Input::Sustain, env.sustain, true)).clamp(0.0, 1.0));
                     break;
                 }
                 Stage::Release(curve) => {
-                    match curve.next_block(t_step, release_time(), &mut sample_from, output) {
+                    match curve.next_block(
+                        t_step,
+                        router.scalar(Input::Release, env.release, true),
+                        &mut sample_from,
+                        output,
+                    ) {
                         CurveBlockResult::Done => Stage::Flush(EnvelopeCurve::flush_iter()),
                         CurveBlockResult::HasMore => break,
                     }
@@ -500,9 +519,13 @@ impl SynthModule for Envelope {
 
             for (seq_idx, voice_idx) in params.active_voices.iter().enumerate() {
                 let voice = &mut channel.voices[*voice_idx];
-                let voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
 
-                Self::process_voice_buffer(env, voice, t_step, &voice_router);
+                Self::process_voice_buffer(
+                    env,
+                    voice,
+                    t_step,
+                    rf.for_voice(*voice_idx, channel_idx, seq_idx),
+                );
             }
         }
     }

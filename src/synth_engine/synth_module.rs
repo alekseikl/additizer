@@ -207,16 +207,27 @@ impl<'a, 'b, Bridge: ModuleToUiBridge> VoiceRouter<'a, 'b, Bridge> {
             .unwrap_or(&ZEROES_SPECTRAL_BUFFER)
     }
 
-    pub fn scalar(&self, input: Input, current: bool) -> Sample {
-        self.factory
-            .router
-            .get_scalar_input(
-                ModuleInput::new(input, self.factory.module_id),
-                current,
-                self.voice_idx,
-                self.channel_idx,
-            )
-            .unwrap_or(0.0)
+    pub fn scalar(&mut self, input: Input, param: Sample, current: bool) -> Sample {
+        let value = self.factory.router.get_scalar_input(
+            ModuleInput::new(input, self.factory.module_id),
+            current,
+            self.voice_idx,
+            self.channel_idx,
+        );
+
+        if let Some(value) = value {
+            let value = value + param;
+
+            if self.factory.process_params.needs_update_ui && self.voice_seq_idx == 0 {
+                self.factory
+                    .ui_bridge
+                    .update_modulated_input(input, self.channel_idx, value);
+            }
+
+            value
+        } else {
+            param
+        }
     }
 }
 
