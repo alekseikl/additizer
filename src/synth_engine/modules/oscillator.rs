@@ -534,12 +534,9 @@ impl Oscillator {
 
         let c = (c_to - c_from).mul_add(f32x4::splat(buff_t), c_from);
         let t = f32x4::splat(t);
+        let poly = B0.mul_add(t, B1).mul_add(t, B2).mul_add(t, B3);
 
-        (c * B0)
-            .mul_add(t, c * B1)
-            .mul_add(t, c * B2)
-            .mul_add(t, c * B3)
-            .reduce_add()
+        (poly * c).reduce_add()
     }
 
     #[inline(always)]
