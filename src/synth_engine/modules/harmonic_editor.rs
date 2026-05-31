@@ -1,4 +1,4 @@
-use std::{any::Any, f32};
+use std::f32;
 
 use serde::{Deserialize, Serialize};
 
@@ -147,8 +147,6 @@ impl HarmonicEditor {
 
         editor
     }
-
-    gen_downcast_methods!();
 
     pub fn get_harmonics(&self) -> Vec<StereoSample> {
         let mut magnitudes = vec![StereoSample::ZERO; SPECTRAL_BUFFER_SIZE];

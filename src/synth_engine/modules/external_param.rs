@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::sync::Arc;
 
 use nih_plug::params::FloatParam;
@@ -115,8 +114,6 @@ impl ExternalParam {
 
         ext
     }
-
-    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> ExternalParamUI {
         ExternalParamUI {

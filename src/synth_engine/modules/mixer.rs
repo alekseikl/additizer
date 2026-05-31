@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::array;
 
 use nih_plug::util::db_to_gain_fast;
@@ -140,8 +139,6 @@ impl Mixer {
         load_module_config!(mixer);
         mixer
     }
-
-    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> MixerUIData {
         MixerUIData {

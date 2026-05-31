@@ -1,5 +1,3 @@
-use std::any::Any;
-
 use crate::synth_engine::{
     StereoSample,
     buffer::{Buffer, zero_buffer},
@@ -88,8 +86,6 @@ impl Amplifier {
         load_module_config_no_params!(amp);
         amp
     }
-
-    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> AmplifierUIData {
         AmplifierUIData {

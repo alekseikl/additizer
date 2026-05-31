@@ -233,24 +233,6 @@ impl<'a, 'b, Bridge: ModuleToUiBridge> VoiceRouter<'a, 'b, Bridge> {
 
 pub type ModuleConfigBox<T> = Arc<Mutex<T>>;
 
-macro_rules! gen_downcast_methods {
-    () => {
-        #[allow(dead_code)]
-        pub fn downcast(module: &dyn SynthModule) -> Option<&Self> {
-            (module as &dyn Any).downcast_ref()
-        }
-
-        pub fn downcast_mut(module: &mut dyn SynthModule) -> Option<&mut Self> {
-            (module as &mut dyn Any).downcast_mut()
-        }
-
-        #[allow(dead_code)]
-        pub fn downcast_mut_unwrap(module: Option<&mut dyn SynthModule>) -> &mut Self {
-            Self::downcast_mut(module.unwrap()).unwrap()
-        }
-    };
-}
-
 macro_rules! set_mono_param {
     ($fn_name:ident, $param:ident, $type:ty) => {
         pub fn $fn_name(&mut self, $param: $type) {

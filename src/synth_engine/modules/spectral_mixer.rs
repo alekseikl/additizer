@@ -1,5 +1,4 @@
 use core::f32;
-use std::any::Any;
 use std::array;
 
 use nih_plug::util::db_to_gain_fast;
@@ -126,8 +125,6 @@ impl SpectralMixer {
         load_module_config!(mixer);
         mixer
     }
-
-    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> SpectralMixerUIData {
         SpectralMixerUIData {

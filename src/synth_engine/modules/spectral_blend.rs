@@ -1,6 +1,5 @@
 use itertools::izip;
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
@@ -59,8 +58,6 @@ impl SpectralBlend {
         load_module_config_no_params!(blend);
         blend
     }
-
-    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> SpectralBlendUIData {
         SpectralBlendUIData {

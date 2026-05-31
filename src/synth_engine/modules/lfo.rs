@@ -1,6 +1,6 @@
 use itertools::izip;
 use serde::{Deserialize, Serialize};
-use std::{any::Any, f32};
+use std::f32;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
@@ -127,8 +127,6 @@ impl Lfo {
         load_module_config!(lfo);
         lfo
     }
-
-    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> LfoUiData {
         LfoUiData {

@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::sync::Arc;
 
 use itertools::izip;
@@ -94,8 +93,6 @@ impl Output {
 
         out
     }
-
-    gen_downcast_methods!();
 
     pub fn get_gain(&self) -> StereoSample {
         StereoSample::from_iter(self.params.gain.iter().map(|s| s.get()))

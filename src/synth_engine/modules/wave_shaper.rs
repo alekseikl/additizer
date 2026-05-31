@@ -1,7 +1,6 @@
 use itertools::izip;
 use nih_plug::util::db_to_gain_fast;
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
@@ -103,8 +102,6 @@ impl WaveShaper {
         load_module_config!(ws);
         ws
     }
-
-    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> WaveShaperUIData {
         WaveShaperUIData {

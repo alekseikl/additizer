@@ -1,7 +1,6 @@
 use itertools::izip;
 use nih_plug::util::db_to_gain_fast;
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 
 use crate::synth_engine::{
     StereoSample,
@@ -111,8 +110,6 @@ impl SpectralFilter {
         load_module_config!(filter);
         filter
     }
-
-    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> SpectralFilterUIData {
         SpectralFilterUIData {

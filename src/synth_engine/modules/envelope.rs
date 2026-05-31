@@ -1,5 +1,3 @@
-use std::any::Any;
-
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -280,8 +278,6 @@ impl Envelope {
         load_module_config!(env);
         env
     }
-
-    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> EnvelopeUIData {
         EnvelopeUIData {

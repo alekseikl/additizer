@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 
 use crate::{
     synth_engine::{
@@ -94,8 +93,6 @@ impl Expressions {
 
         exp
     }
-
-    gen_downcast_methods!();
 
     pub fn get_ui(&self) -> ExpressionsUi {
         ExpressionsUi {

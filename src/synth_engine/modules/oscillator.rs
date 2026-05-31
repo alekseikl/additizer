@@ -1,4 +1,4 @@
-use std::{any::Any, array, convert::identity, f32, sync::Arc};
+use std::{array, convert::identity, f32, sync::Arc};
 
 use itertools::izip;
 use nih_plug::util::db_to_gain;
@@ -332,8 +332,6 @@ impl Oscillator {
         load_module_config!(osc);
         osc
     }
-
-    gen_downcast_methods!();
 
     pub fn take_audio_bridge(&mut self) -> Option<AudioBridge> {
         self.to_audio_bridge.take()
