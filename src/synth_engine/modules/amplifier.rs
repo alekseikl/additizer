@@ -7,6 +7,7 @@ use crate::synth_engine::{
     smooth::SmoothedSample,
     synth_module::{
         MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter,
+        VoiceRouterFactory,
     },
 };
 use itertools::izip;
@@ -103,14 +104,14 @@ impl Amplifier {
         channel: &mut ChannelParams,
         voice: &mut Voice,
         buffers: &mut Buffers,
-        router: &mut VoiceRouter<'_, MockToUiBridge>,
+        router: &mut VoiceRouter<'_, '_, MockToUiBridge>,
     ) {
         router.buff_param(Input::Gain, &mut channel.gain, &mut buffers.gain_mod_input);
 
         let input = router.buffer(Input::Audio, &mut buffers.input);
 
         for (out, input, modulation) in
-            izip!(voice.output.iter_mut(), input, buffers.gain_mod_input).take(router.samples)
+            izip!(voice.output.iter_mut(), input, buffers.gain_mod_input).take(router.samples())
         {
             *out = input * modulation;
         }
@@ -150,24 +151,18 @@ impl SynthModule for Amplifier {
 
     fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
         let mut ui_bridge = MockToUiBridge;
+        let mut rf = VoiceRouterFactory::new(self.id, router, process_params, &mut ui_bridge);
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for voice_idx in process_params.active_voices {
-                let mut router = VoiceRouter::new(
-                    router,
-                    self.id,
-                    channel_idx,
-                    *voice_idx,
-                    process_params,
-                    &mut ui_bridge,
-                );
                 let voice = &mut channel.voices[*voice_idx];
+                let mut voice_router = rf.for_voice(*voice_idx, channel_idx, false);
 
                 Self::process_channel_voice(
                     &mut channel.params,
                     voice,
                     &mut self.buffers,
-                    &mut router,
+                    &mut voice_router,
                 );
             }
         }

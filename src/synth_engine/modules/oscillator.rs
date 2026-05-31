@@ -17,7 +17,9 @@ use crate::{
             DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
         },
         smooth::SmoothedSample,
-        synth_module::{ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter},
+        synth_module::{
+            ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter, VoiceRouterFactory,
+        },
         types::{ComplexSample, Sample},
     },
     utils::{from_ms, pitch_to_freq, power_scale, st_to_octave},
@@ -580,7 +582,7 @@ impl Oscillator {
         mono_voice_buffers: Option<&'a VoiceBuffers>,
         osc_state: &mut OscState,
         triggered: bool,
-        router: &VoiceRouter<'_, UiBridge>,
+        router: &VoiceRouter<'_, '_, UiBridge>,
     ) -> (&'a WaveformBuffer, &'a WaveformBuffer) {
         let voice_buffers = if let Some(mono_voice_buffers) = mono_voice_buffers {
             mono_voice_buffers
@@ -591,7 +593,7 @@ impl Oscillator {
                 Self::build_wave(
                     osc_state.inverse_fft.as_ref(),
                     pitch_to_freq(osc_state.pitch[0]) + osc_state.frequency_shift[0],
-                    router.sample_rate,
+                    router.sample_rate(),
                     spectrum_from,
                     &mut osc_state.tmp_spectral,
                     &mut osc_state.scratch,
@@ -611,9 +613,9 @@ impl Oscillator {
 
             Self::build_wave(
                 osc_state.inverse_fft.as_ref(),
-                pitch_to_freq(osc_state.pitch[router.samples - 1])
-                    + osc_state.frequency_shift[router.samples - 1],
-                router.sample_rate,
+                pitch_to_freq(osc_state.pitch[router.samples() - 1])
+                    + osc_state.frequency_shift[router.samples() - 1],
+                router.sample_rate(),
                 spectrum,
                 &mut osc_state.tmp_spectral,
                 &mut osc_state.scratch,
@@ -635,7 +637,7 @@ impl Oscillator {
         unison: usize,
         channel: &ChannelParams,
         voice: &mut VoiceState,
-        router: &VoiceRouter<'_, UiBridge>,
+        router: &VoiceRouter<'_, '_, UiBridge>,
     ) {
         const MAX_DETUNE: Sample = 1.0;
         const MAX_DETUNE_POWER: Sample = 5.0;
@@ -656,7 +658,7 @@ impl Oscillator {
             unison: usize,
             current: bool,
             channel: &ChannelParams,
-            router: &VoiceRouter<'_, UiBridge>,
+            router: &VoiceRouter<'_, '_, UiBridge>,
         ) -> impl Iterator<Item = StateUpdate> {
             let detune =
                 (channel.detune + router.scalar(Input::Detune, current)).clamp(0.0, MAX_DETUNE);
@@ -740,7 +742,7 @@ impl Oscillator {
         channel: &ChannelParams,
         osc_state: &mut OscState,
         voice: &mut VoiceState,
-        router: &VoiceRouter<'_, UiBridge>,
+        router: &VoiceRouter<'_, '_, UiBridge>,
     ) {
         const GLIDE_TIME_THRESHOLD: Sample = from_ms(1.0);
         const GLIDE_POWER_MAX: Sample = 6.0;
@@ -763,10 +765,10 @@ impl Oscillator {
         let glide_slope =
             (channel.glide_slope + router.scalar(Input::GlideSlope, false)).clamp(-1.0, 1.0);
         let glide_power = -glide_slope * GLIDE_POWER_MAX;
-        let t_step = router.sample_rate.recip();
+        let t_step = router.sample_rate().recip();
         let samples = router
-            .samples
-            .min((time_left * router.sample_rate) as usize);
+            .samples()
+            .min((time_left * router.sample_rate()) as usize);
         let pitch_buff = &mut osc_state.pitch[..samples];
 
         #[inline(always)]
@@ -800,7 +802,7 @@ impl Oscillator {
             });
         }
 
-        if samples < router.samples {
+        if samples < router.samples() {
             voice.glide = None;
         }
     }
@@ -811,9 +813,9 @@ impl Oscillator {
         osc_state: &mut OscState,
         voice: &mut Voice,
         mono_voice_buffers: Option<&VoiceBuffers>,
-        mut router: VoiceRouter<'_, UiBridge>,
+        mut router: VoiceRouter<'_, '_, UiBridge>,
     ) {
-        let samples = router.samples;
+        let samples = router.samples();
 
         router.buff_param(Input::Gain, &mut channel.gain, &mut osc_state.gain);
 
@@ -853,7 +855,7 @@ impl Oscillator {
         }
 
         let voice = &mut voice.state;
-        let freq_phase_mult = Phase::freq_phase_mult(router.sample_rate);
+        let freq_phase_mult = Phase::freq_phase_mult(router.sample_rate());
         let buff_t_mult = (samples as f32).recip();
 
         for (out, pitch, phase_shift, freq_shift, gain, sample_idx) in izip!(
@@ -1049,6 +1051,8 @@ impl SynthModule for Oscillator {
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
         self.handle_ui_events();
 
+        let mut rf = VoiceRouterFactory::new(self.id, router, params, &mut self.ui_bridge);
+
         for (channel_idx, channel) in self
             .channels
             .iter_mut()
@@ -1056,22 +1060,13 @@ impl SynthModule for Oscillator {
             .take(params.spectrum_channels)
         {
             for voice_idx in params.active_voices {
-                let router = VoiceRouter::new(
-                    router,
-                    self.id,
-                    channel_idx,
-                    *voice_idx,
-                    params,
-                    &mut self.ui_bridge,
-                );
-
                 Self::process_voice(
                     &self.params,
                     &mut channel.params,
                     &mut self.osc_state,
                     &mut channel.voices[*voice_idx],
                     None,
-                    router,
+                    rf.for_voice(*voice_idx, channel_idx, false),
                 );
             }
         }
@@ -1084,22 +1079,13 @@ impl SynthModule for Oscillator {
                 let channel_idx = idx + params.spectrum_channels;
 
                 for voice_idx in params.active_voices {
-                    let router = VoiceRouter::new(
-                        router,
-                        self.id,
-                        channel_idx,
-                        *voice_idx,
-                        params,
-                        &mut self.ui_bridge,
-                    );
-
                     Self::process_voice(
                         &self.params,
                         &mut channel.params,
                         &mut self.osc_state,
                         &mut channel.voices[*voice_idx],
                         Some(&left.voices[*voice_idx].buffers),
-                        router,
+                        rf.for_voice(*voice_idx, channel_idx, false),
                     );
                 }
             }

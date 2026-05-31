@@ -9,7 +9,7 @@ use crate::synth_engine::{
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
     smooth::Smoother,
     synth_module::{
-        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter,
+        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory,
     },
     types::ScalarOutput,
 };
@@ -194,7 +194,7 @@ impl Lfo {
         voice: &mut Voice,
         current: bool,
         t_step: Sample,
-        router: &VoiceRouter<'_, MockToUiBridge>,
+        router: &VoiceRouter<'_, '_, MockToUiBridge>,
     ) {
         let frequency = channel_params.frequency + router.scalar(Input::LowFrequency, current);
 
@@ -218,7 +218,7 @@ impl Lfo {
         process_params: &ProcessParams,
         inputs: &mut InputBuffers,
         voice: &mut Voice,
-        router: &VoiceRouter<'_, MockToUiBridge>,
+        router: &VoiceRouter<'_, '_, MockToUiBridge>,
     ) {
         let frequency_mod = router.buffer(Input::LowFrequency, &mut inputs.frequency);
         let phase_shift_mod = router.buffer(Input::PhaseShift, &mut inputs.phase_shift);
@@ -322,24 +322,32 @@ impl SynthModule for Lfo {
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
         let t_step = params.buffer_t_step;
         let mut ui_bridge = MockToUiBridge;
+        let mut rf = VoiceRouterFactory::new(self.id, router, params, &mut ui_bridge);
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for voice_idx in params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
-                let router = VoiceRouter::new(
-                    router,
-                    self.id,
-                    channel_idx,
-                    *voice_idx,
-                    params,
-                    &mut ui_bridge,
-                );
+                let voice_router = rf.for_voice(*voice_idx, channel_idx, false);
 
                 if voice.triggered {
-                    Self::process_voice(&self.params, &channel.params, voice, false, 0.0, &router);
+                    Self::process_voice(
+                        &self.params,
+                        &channel.params,
+                        voice,
+                        false,
+                        0.0,
+                        &voice_router,
+                    );
                     voice.triggered = false;
                 }
-                Self::process_voice(&self.params, &channel.params, voice, true, t_step, &router);
+                Self::process_voice(
+                    &self.params,
+                    &channel.params,
+                    voice,
+                    true,
+                    t_step,
+                    &voice_router,
+                );
 
                 if params.needs_audio_rate {
                     Self::process_voice_buffer(
@@ -348,7 +356,7 @@ impl SynthModule for Lfo {
                         params,
                         &mut self.inputs,
                         voice,
-                        &router,
+                        &voice_router,
                     );
                 }
             }

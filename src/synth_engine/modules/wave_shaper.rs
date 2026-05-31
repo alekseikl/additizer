@@ -8,7 +8,7 @@ use crate::synth_engine::{
     buffer::{Buffer, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
     synth_module::{
-        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter,
+        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory,
     },
 };
 
@@ -125,7 +125,7 @@ impl WaveShaper {
         channel: &ChannelParams,
         voice: &mut Voice,
         buffers: &mut Buffers,
-        router: &VoiceRouter<'_, MockToUiBridge>,
+        router: &VoiceRouter<'_, '_, MockToUiBridge>,
     ) {
         let input = router.buffer(Input::Audio, &mut buffers.input);
         let clipping_level_mod =
@@ -133,7 +133,7 @@ impl WaveShaper {
         let distortion_mod = router.buffer(Input::Distortion, &mut buffers.distortion_mod_input);
 
         for (out, input, clipping_level_mod, distortion_mod) in izip!(
-            voice.output.iter_mut().take(router.samples),
+            voice.output.iter_mut().take(router.samples()),
             input,
             clipping_level_mod,
             distortion_mod
@@ -186,26 +186,19 @@ impl SynthModule for WaveShaper {
 
     fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
         let mut ui_bridge = MockToUiBridge;
+        let mut rf = VoiceRouterFactory::new(self.id, router, process_params, &mut ui_bridge);
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for voice_idx in process_params.active_voices {
-                let router = VoiceRouter::new(
-                    router,
-                    self.id,
-                    channel_idx,
-                    *voice_idx,
-                    process_params,
-                    &mut ui_bridge,
-                );
-
                 let voice = &mut channel.voices[*voice_idx];
+                let voice_router = rf.for_voice(*voice_idx, channel_idx, false);
 
                 Self::process_channel_voice(
                     &self.params,
                     &channel.params,
                     voice,
                     &mut self.buffers,
-                    &router,
+                    &voice_router,
                 );
             }
         }

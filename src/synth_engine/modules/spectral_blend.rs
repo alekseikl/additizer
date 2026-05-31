@@ -6,7 +6,9 @@ use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::SpectralBuffer,
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
-    synth_module::{MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter},
+    synth_module::{
+        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory,
+    },
     types::SpectralOutput,
 };
 
@@ -73,7 +75,7 @@ impl SpectralBlend {
         current: bool,
         params: &ChannelParams,
         voice: &mut Voice,
-        router: &VoiceRouter<'_, MockToUiBridge>,
+        router: &VoiceRouter<'_, '_, MockToUiBridge>,
     ) {
         let spectrum_from = router.spectral(Input::Spectrum, current);
         let spectrum_to = router.spectral(Input::SpectrumTo, current);
@@ -130,6 +132,7 @@ impl SynthModule for SpectralBlend {
 
     fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
         let mut ui_bridge = MockToUiBridge;
+        let mut rf = VoiceRouterFactory::new(self.id, router, process_params, &mut ui_bridge);
 
         for (channel_idx, channel) in self
             .channels
@@ -141,20 +144,13 @@ impl SynthModule for SpectralBlend {
 
             for voice_idx in process_params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
-                let router = VoiceRouter::new(
-                    router,
-                    self.id,
-                    channel_idx,
-                    *voice_idx,
-                    process_params,
-                    &mut ui_bridge,
-                );
+                let voice_router = rf.for_voice(*voice_idx, channel_idx, false);
 
                 if voice.triggered {
-                    Self::process_voice(false, params, voice, &router);
+                    Self::process_voice(false, params, voice, &voice_router);
                     voice.triggered = false;
                 }
-                Self::process_voice(true, params, voice, &router);
+                Self::process_voice(true, params, voice, &voice_router);
             }
         }
     }

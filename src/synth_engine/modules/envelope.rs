@@ -13,6 +13,7 @@ use crate::{
         smooth::Smoother,
         synth_module::{
             MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter,
+            VoiceRouterFactory,
         },
         types::{Sample, ScalarOutput},
         voices_handler::DecayingVoice,
@@ -317,7 +318,7 @@ impl Envelope {
         env: &ChannelParams,
         voice: &mut Voice,
         t_step: Sample,
-        router: &VoiceRouter<'_, MockToUiBridge>,
+        router: &VoiceRouter<'_, '_, MockToUiBridge>,
     ) {
         let delay_time = || env.delay + router.scalar(Input::Delay, true);
         let attack_time = || env.attack + router.scalar(Input::Attack, true);
@@ -338,7 +339,7 @@ impl Envelope {
         }
 
         let mut sample_from = if voice.triggered { 0 } else { 1 };
-        let output = &mut voice.output[..router.samples + 1];
+        let output = &mut voice.output[..router.samples() + 1];
 
         loop {
             voice.stage = match &mut voice.stage {
@@ -397,17 +398,17 @@ impl Envelope {
 
         if voice.triggered {
             voice.scalar_output.advance(voice.output[0]);
-            voice.scalar_output.advance(voice.output[router.samples]);
+            voice.scalar_output.advance(voice.output[router.samples()]);
             voice.triggered = false;
         } else {
             voice.output[0] = voice.scalar_output.current();
-            voice.scalar_output.advance(voice.output[router.samples]);
+            voice.scalar_output.advance(voice.output[router.samples()]);
         }
 
         if env.smooth >= MIN_TIME_THRESHOLD {
-            voice.smoother.update(router.sample_rate, env.smooth);
+            voice.smoother.update(router.sample_rate(), env.smooth);
 
-            for sample in voice.output.iter_mut().take(router.samples) {
+            for sample in voice.output.iter_mut().take(router.samples()) {
                 *sample = voice.smoother.tick(*sample);
             }
         }
@@ -492,22 +493,16 @@ impl SynthModule for Envelope {
     fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
         let t_step = params.sample_rate.recip();
         let mut ui_bridge = MockToUiBridge;
+        let mut rf = VoiceRouterFactory::new(self.id, router, params, &mut ui_bridge);
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             let env = &channel.params;
 
             for voice_idx in params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
-                let router = VoiceRouter::new(
-                    router,
-                    self.id,
-                    channel_idx,
-                    *voice_idx,
-                    params,
-                    &mut ui_bridge,
-                );
+                let voice_router = rf.for_voice(*voice_idx, channel_idx, false);
 
-                Self::process_voice_buffer(env, voice, t_step, &router);
+                Self::process_voice_buffer(env, voice, t_step, &voice_router);
             }
         }
     }

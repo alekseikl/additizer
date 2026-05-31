@@ -12,6 +12,7 @@ use crate::synth_engine::{
     },
     synth_module::{
         MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter,
+        VoiceRouterFactory,
     },
     types::{ComplexSample, Sample, SpectralOutput},
 };
@@ -212,7 +213,7 @@ impl SpectralFilter {
         params: &Params,
         channel: &ChannelParams,
         voice: &mut Voice,
-        router: &VoiceRouter<'_, MockToUiBridge>,
+        router: &VoiceRouter<'_, '_, MockToUiBridge>,
     ) {
         let input = router.spectral(Input::Spectrum, current);
         let cutoff = (channel.cutoff + router.scalar(Input::Cutoff, current)).clamp(-4.0, 10.0);
@@ -277,6 +278,7 @@ impl SynthModule for SpectralFilter {
 
     fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
         let mut ui_bridge = MockToUiBridge;
+        let mut rf = VoiceRouterFactory::new(self.id, router, process_params, &mut ui_bridge);
 
         for (channel_idx, channel) in self
             .channels
@@ -286,20 +288,13 @@ impl SynthModule for SpectralFilter {
         {
             for voice_idx in process_params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
-                let router = VoiceRouter::new(
-                    router,
-                    self.id,
-                    channel_idx,
-                    *voice_idx,
-                    process_params,
-                    &mut ui_bridge,
-                );
+                let voice_router = rf.for_voice(*voice_idx, channel_idx, false);
 
                 if voice.triggered {
-                    Self::process_voice(false, &self.params, &channel.params, voice, &router);
+                    Self::process_voice(false, &self.params, &channel.params, voice, &voice_router);
                     voice.triggered = false;
                 }
-                Self::process_voice(true, &self.params, &channel.params, voice, &router);
+                Self::process_voice(true, &self.params, &channel.params, voice, &voice_router);
             }
         }
     }

@@ -95,42 +95,66 @@ impl ModuleToUiBridge for MockToUiBridge {
     fn update_output(&mut self, _channel_idx: usize, _value: Sample) {}
 }
 
-pub struct VoiceRouter<'a, Bridge: ModuleToUiBridge> {
-    pub router: &'a dyn Router,
-    pub ui_bridge: &'a mut Bridge,
-    pub module_id: ModuleId,
-    pub samples: usize,
-    pub sample_rate: Sample,
-    pub smooth_params: SmoothedSampleParams,
-    pub voice_idx: usize,
-    pub channel_idx: usize,
+pub struct VoiceRouterFactory<'a, Bridge: ModuleToUiBridge> {
+    router: &'a dyn Router,
+    ui_bridge: &'a mut Bridge,
+    process_params: &'a ProcessParams<'a>,
+    module_id: ModuleId,
 }
 
-impl<'a, Bridge: ModuleToUiBridge> VoiceRouter<'a, Bridge> {
+impl<'a, Bridge: ModuleToUiBridge> VoiceRouterFactory<'a, Bridge> {
     pub fn new(
-        router: &'a dyn Router,
         module_id: ModuleId,
-        channel_idx: usize,
-        voice_idx: usize,
-        params: &ProcessParams,
+        router: &'a dyn Router,
+        process_params: &'a ProcessParams,
         ui_bridge: &'a mut Bridge,
     ) -> Self {
         Self {
             router,
-            module_id,
-            samples: params.samples,
-            sample_rate: params.sample_rate,
-            smooth_params: params.smooth_params,
-            voice_idx,
-            channel_idx,
             ui_bridge,
+            process_params,
+            module_id,
         }
     }
 
+    pub fn for_voice<'b>(
+        &'b mut self,
+        voice_idx: usize,
+        channel_idx: usize,
+        is_last: bool,
+    ) -> VoiceRouter<'b, 'a, Bridge>
+    where
+        'a: 'b,
+    {
+        VoiceRouter {
+            factory: self,
+            voice_idx,
+            channel_idx,
+            is_last_voice: is_last,
+        }
+    }
+}
+
+pub struct VoiceRouter<'a, 'b, Bridge: ModuleToUiBridge> {
+    factory: &'a mut VoiceRouterFactory<'b, Bridge>,
+    voice_idx: usize,
+    channel_idx: usize,
+    is_last_voice: bool,
+}
+
+impl<'a, 'b, Bridge: ModuleToUiBridge> VoiceRouter<'a, 'b, Bridge> {
+    pub fn samples(&self) -> usize {
+        self.factory.process_params.samples
+    }
+
+    pub fn sample_rate(&self) -> Sample {
+        self.factory.process_params.sample_rate
+    }
+
     pub fn buffer_opt(&'a self, input: Input, buff: &'a mut Buffer) -> Option<&'a Buffer> {
-        self.router.get_input(
-            ModuleInput::new(input, self.module_id),
-            self.samples,
+        self.factory.router.get_input(
+            ModuleInput::new(input, self.factory.module_id),
+            self.factory.process_params.samples,
             self.voice_idx,
             self.channel_idx,
             buff,
@@ -142,33 +166,37 @@ impl<'a, Bridge: ModuleToUiBridge> VoiceRouter<'a, Bridge> {
     }
 
     pub fn buff_param(&mut self, input: Input, param: &mut SmoothedSample, buff: &mut Buffer) {
-        let buff = &mut buff[..self.samples];
+        let buff = &mut buff[..self.factory.process_params.samples];
 
-        if param.check_needs_smoothing(&self.smooth_params) {
-            param.smoothed_buff(buff, &self.smooth_params);
+        if param.check_needs_smoothing(&self.factory.process_params.smooth_params) {
+            param.smoothed_buff(buff, &self.factory.process_params.smooth_params);
         } else {
             buff.fill(param.get());
         }
 
-        if self.router.add_input_to(
-            ModuleInput::new(input, self.module_id),
+        if self.factory.router.add_input_to(
+            ModuleInput::new(input, self.factory.module_id),
             self.voice_idx,
             self.channel_idx,
             buff,
         ) {
-            self.ui_bridge
+            self.factory
+                .ui_bridge
                 .update_modulated_input(input, self.channel_idx, buff[0]);
         }
     }
 
     pub fn update_output(&mut self, buff: &Buffer) {
-        self.ui_bridge.update_output(self.channel_idx, buff[0]);
+        self.factory
+            .ui_bridge
+            .update_output(self.channel_idx, buff[0]);
     }
 
     pub fn spectral(&self, input: Input, current: bool) -> &SpectralBuffer {
-        self.router
+        self.factory
+            .router
             .get_spectral_input(
-                ModuleInput::new(input, self.module_id),
+                ModuleInput::new(input, self.factory.module_id),
                 current,
                 self.voice_idx,
                 self.channel_idx,
@@ -177,9 +205,10 @@ impl<'a, Bridge: ModuleToUiBridge> VoiceRouter<'a, Bridge> {
     }
 
     pub fn scalar(&self, input: Input, current: bool) -> Sample {
-        self.router
+        self.factory
+            .router
             .get_scalar_input(
-                ModuleInput::new(input, self.module_id),
+                ModuleInput::new(input, self.factory.module_id),
                 current,
                 self.voice_idx,
                 self.channel_idx,

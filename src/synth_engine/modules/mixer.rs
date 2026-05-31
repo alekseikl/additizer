@@ -9,7 +9,7 @@ use crate::synth_engine::{
     buffer::{Buffer, copy_or_add_to_buffer, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
     synth_module::{
-        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter,
+        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory,
     },
 };
 
@@ -249,9 +249,9 @@ impl Mixer {
         channel: &ChannelParams,
         buffers: &mut Buffers,
         voice: &mut Voice,
-        router: &VoiceRouter<'_, MockToUiBridge>,
+        router: &VoiceRouter<'_, '_, MockToUiBridge>,
     ) {
-        let samples = router.samples;
+        let samples = router.samples();
 
         for input_idx in 0..params.num_inputs {
             let input = router.buffer(Input::AudioMix(input_idx), &mut buffers.input);
@@ -349,25 +349,19 @@ impl SynthModule for Mixer {
 
     fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
         let mut ui_bridge = MockToUiBridge;
+        let mut rf = VoiceRouterFactory::new(self.id, router, process_params, &mut ui_bridge);
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for voice_idx in process_params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
-                let router = VoiceRouter::new(
-                    router,
-                    self.id,
-                    channel_idx,
-                    *voice_idx,
-                    process_params,
-                    &mut ui_bridge,
-                );
+                let voice_router = rf.for_voice(*voice_idx, channel_idx, false);
 
                 Self::process_voice(
                     &self.params,
                     &channel.params,
                     &mut self.buffers,
                     voice,
-                    &router,
+                    &voice_router,
                 );
             }
         }

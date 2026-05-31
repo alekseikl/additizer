@@ -10,7 +10,7 @@ use crate::synth_engine::{
     buffer::SpectralBuffer,
     routing::{DataType, MAX_VOICES, MixType, NUM_CHANNELS, Router, VoiceEvent, VolumeType},
     synth_module::{
-        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter,
+        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory,
     },
     types::{ComplexSample, SpectralOutput},
 };
@@ -214,7 +214,7 @@ impl SpectralMixer {
         params: &Params,
         channel: &ChannelParams,
         voice: &mut Voice,
-        router: &VoiceRouter<'_, MockToUiBridge>,
+        router: &VoiceRouter<'_, '_, MockToUiBridge>,
     ) {
         let output = voice.output.advance();
 
@@ -329,6 +329,7 @@ impl SynthModule for SpectralMixer {
 
     fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
         let mut ui_bridge = MockToUiBridge;
+        let mut rf = VoiceRouterFactory::new(self.id, router, process_params, &mut ui_bridge);
 
         for (channel_idx, channel) in self
             .channels
@@ -338,20 +339,13 @@ impl SynthModule for SpectralMixer {
         {
             for voice_idx in process_params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
-                let router = VoiceRouter::new(
-                    router,
-                    self.id,
-                    channel_idx,
-                    *voice_idx,
-                    process_params,
-                    &mut ui_bridge,
-                );
+                let voice_router = rf.for_voice(*voice_idx, channel_idx, false);
 
                 if voice.triggered {
-                    Self::process_voice(false, &self.params, &channel.params, voice, &router);
+                    Self::process_voice(false, &self.params, &channel.params, voice, &voice_router);
                     voice.triggered = false;
                 }
-                Self::process_voice(true, &self.params, &channel.params, voice, &router);
+                Self::process_voice(true, &self.params, &channel.params, voice, &voice_router);
             }
         }
     }
