@@ -352,9 +352,9 @@ impl SynthModule for Mixer {
         let mut rf = VoiceRouterFactory::new(self.id, router, process_params, &mut ui_bridge);
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
-            for voice_idx in process_params.active_voices {
+            for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
                 let voice = &mut channel.voices[*voice_idx];
-                let voice_router = rf.for_voice(*voice_idx, channel_idx, false);
+                let voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
 
                 Self::process_voice(
                     &self.params,

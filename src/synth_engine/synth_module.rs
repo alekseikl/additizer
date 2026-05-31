@@ -121,7 +121,7 @@ impl<'a, Bridge: ModuleToUiBridge> VoiceRouterFactory<'a, Bridge> {
         &'b mut self,
         voice_idx: usize,
         channel_idx: usize,
-        is_last: bool,
+        seq_idx: usize,
     ) -> VoiceRouter<'b, 'a, Bridge>
     where
         'a: 'b,
@@ -130,7 +130,7 @@ impl<'a, Bridge: ModuleToUiBridge> VoiceRouterFactory<'a, Bridge> {
             factory: self,
             voice_idx,
             channel_idx,
-            is_last_voice: is_last,
+            voice_seq_idx: seq_idx,
         }
     }
 }
@@ -139,7 +139,7 @@ pub struct VoiceRouter<'a, 'b, Bridge: ModuleToUiBridge> {
     factory: &'a mut VoiceRouterFactory<'b, Bridge>,
     voice_idx: usize,
     channel_idx: usize,
-    is_last_voice: bool,
+    voice_seq_idx: usize,
 }
 
 impl<'a, 'b, Bridge: ModuleToUiBridge> VoiceRouter<'a, 'b, Bridge> {
@@ -166,10 +166,11 @@ impl<'a, 'b, Bridge: ModuleToUiBridge> VoiceRouter<'a, 'b, Bridge> {
     }
 
     pub fn buff_param(&mut self, input: Input, param: &mut SmoothedSample, buff: &mut Buffer) {
-        let buff = &mut buff[..self.factory.process_params.samples];
+        let params = &self.factory.process_params;
+        let buff = &mut buff[..params.samples];
 
-        if param.check_needs_smoothing(&self.factory.process_params.smooth_params) {
-            param.smoothed_buff(buff, &self.factory.process_params.smooth_params);
+        if param.check_needs_smoothing(&params.smooth_params) {
+            param.smoothed_buff(buff, &params.smooth_params);
         } else {
             buff.fill(param.get());
         }
@@ -179,7 +180,9 @@ impl<'a, 'b, Bridge: ModuleToUiBridge> VoiceRouter<'a, 'b, Bridge> {
             self.voice_idx,
             self.channel_idx,
             buff,
-        ) {
+        ) && params.needs_update_ui
+            && self.voice_seq_idx == 0
+        {
             self.factory
                 .ui_bridge
                 .update_modulated_input(input, self.channel_idx, buff[0]);

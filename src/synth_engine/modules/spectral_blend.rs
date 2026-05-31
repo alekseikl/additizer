@@ -142,9 +142,9 @@ impl SynthModule for SpectralBlend {
         {
             let params = &channel.params;
 
-            for voice_idx in process_params.active_voices {
+            for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
                 let voice = &mut channel.voices[*voice_idx];
-                let voice_router = rf.for_voice(*voice_idx, channel_idx, false);
+                let voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
 
                 if voice.triggered {
                     Self::process_voice(false, params, voice, &voice_router);

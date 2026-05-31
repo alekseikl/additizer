@@ -1059,14 +1059,14 @@ impl SynthModule for Oscillator {
             .enumerate()
             .take(params.spectrum_channels)
         {
-            for voice_idx in params.active_voices {
+            for (seq_idx, voice_idx) in params.active_voices.iter().enumerate() {
                 Self::process_voice(
                     &self.params,
                     &mut channel.params,
                     &mut self.osc_state,
                     &mut channel.voices[*voice_idx],
                     None,
-                    rf.for_voice(*voice_idx, channel_idx, false),
+                    rf.for_voice(*voice_idx, channel_idx, seq_idx),
                 );
             }
         }
@@ -1078,14 +1078,14 @@ impl SynthModule for Oscillator {
             for (idx, channel) in right.iter_mut().enumerate() {
                 let channel_idx = idx + params.spectrum_channels;
 
-                for voice_idx in params.active_voices {
+                for (seq_idx, voice_idx) in params.active_voices.iter().enumerate() {
                     Self::process_voice(
                         &self.params,
                         &mut channel.params,
                         &mut self.osc_state,
                         &mut channel.voices[*voice_idx],
                         Some(&left.voices[*voice_idx].buffers),
-                        rf.for_voice(*voice_idx, channel_idx, false),
+                        rf.for_voice(*voice_idx, channel_idx, seq_idx),
                     );
                 }
             }

@@ -337,9 +337,9 @@ impl SynthModule for SpectralMixer {
             .enumerate()
             .take(process_params.spectrum_channels)
         {
-            for voice_idx in process_params.active_voices {
+            for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
                 let voice = &mut channel.voices[*voice_idx];
-                let voice_router = rf.for_voice(*voice_idx, channel_idx, false);
+                let voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
 
                 if voice.triggered {
                     Self::process_voice(false, &self.params, &channel.params, voice, &voice_router);
