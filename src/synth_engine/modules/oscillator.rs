@@ -517,13 +517,13 @@ impl Oscillator {
     }
 
     #[inline(always)]
-    fn get_interpolated_sample(
+    fn interpolated_segment(
         wave_from: &WaveformBuffer,
         wave_to: &WaveformBuffer,
         buff_t: Sample,
         idx: usize,
         t: Sample,
-    ) -> Sample {
+    ) -> f32x4 {
         const B0: f32x4 = f32x4::new([-1.0 / 2.0, 3.0 / 2.0, -3.0 / 2.0, 1.0 / 2.0]);
         const B1: f32x4 = f32x4::new([1.0, -5.0 / 2.0, 4.0 / 2.0, -1.0 / 2.0]);
         const B2: f32x4 = f32x4::new([-1.0 / 2.0, 0.0 / 2.0, 1.0 / 2.0, 0.0 / 2.0]);
@@ -536,7 +536,7 @@ impl Oscillator {
         let t = f32x4::splat(t);
         let poly = B0.mul_add(t, B1).mul_add(t, B2).mul_add(t, B3);
 
-        (poly * c).reduce_add()
+        poly * c
     }
 
     #[inline(always)]
@@ -863,7 +863,7 @@ impl Oscillator {
             &osc_state.gain,
             0..samples
         ) {
-            let mut sample: Sample = 0.0;
+            let mut sample_acc = f32x4::splat(0.0);
             let buff_t = sample_idx as Sample * buff_t_mult;
             let phase_shift = Phase::from_normalized(*phase_shift);
             let pitch_phase_inc = pitch_to_freq(*pitch) * freq_phase_mult;
@@ -881,13 +881,13 @@ impl Oscillator {
                 let idx = read_phase.wave_index::<WAVEFORM_BITS>();
                 let t = read_phase.wave_index_fraction::<WAVEFORM_BITS>();
 
-                sample += Self::get_interpolated_sample(wave_from, wave_to, buff_t, idx, t)
-                    * uv.gain.interpolate(buff_t);
+                let segment = Self::interpolated_segment(wave_from, wave_to, buff_t, idx, t);
+                sample_acc = segment.mul_add(f32x4::splat(uv.gain.interpolate(buff_t)), sample_acc);
 
                 *phase += pitch_phase_inc.mul_add(uv.rate.interpolate(buff_t), freq_phase_inc);
             }
 
-            *out = sample * gain * voice.unison_gain.interpolate(buff_t);
+            *out = sample_acc.reduce_add() * gain * voice.unison_gain.interpolate(buff_t);
         }
 
         router.update_output(&voice.output);
