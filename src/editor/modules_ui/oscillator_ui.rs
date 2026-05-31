@@ -12,6 +12,56 @@ use crate::{
     },
 };
 
+struct ModulatedUiState {
+    gain: StereoSample,
+    pitch_shift: StereoSample,
+    detune: StereoSample,
+    detune_power: StereoSample,
+    glide: StereoSample,
+    glide_slope: StereoSample,
+    phase_shift: StereoSample,
+    frequency_shift: StereoSample,
+    phases_blend: StereoSample,
+    gains_blend: StereoSample,
+    output: StereoSample,
+}
+
+impl Default for ModulatedUiState {
+    fn default() -> Self {
+        Self {
+            gain: StereoSample::ZERO,
+            pitch_shift: StereoSample::ZERO,
+            detune: StereoSample::ZERO,
+            detune_power: StereoSample::ZERO,
+            glide: StereoSample::ZERO,
+            glide_slope: StereoSample::ZERO,
+            phase_shift: StereoSample::ZERO,
+            frequency_shift: StereoSample::ZERO,
+            phases_blend: StereoSample::ZERO,
+            gains_blend: StereoSample::ZERO,
+            output: StereoSample::ZERO,
+        }
+    }
+}
+
+impl ModulatedUiState {
+    fn set(&mut self, input: Input, channel: usize, value: Sample) {
+        match input {
+            Input::Gain => self.gain[channel] = value,
+            Input::PitchShift => self.pitch_shift[channel] = value,
+            Input::PhaseShift => self.phase_shift[channel] = value,
+            Input::FrequencyShift => self.frequency_shift[channel] = value,
+            Input::Detune => self.detune[channel] = value,
+            Input::DetunePower => self.detune_power[channel] = value,
+            Input::Glide => self.glide[channel] = value,
+            Input::GlideSlope => self.glide_slope[channel] = value,
+            Input::PhasesBlend => self.phases_blend[channel] = value,
+            Input::GainsBlend => self.gains_blend[channel] = value,
+            _ => (),
+        }
+    }
+}
+
 struct GainShapeState {
     center: StereoSample,
     level: StereoSample, // dB
@@ -31,6 +81,7 @@ pub struct OscillatorUI {
     label_state: Option<String>,
     label: String,
     ui_state: UiState,
+    modulated_ui_state: ModulatedUiState,
     bridge: Option<AudioBridge>,
     phases_shift_to: bool,
     gains_to: bool,
@@ -49,6 +100,7 @@ impl OscillatorUI {
             label_state: None,
             label: osc.label(),
             ui_state: osc.get_ui_state(),
+            modulated_ui_state: ModulatedUiState::default(),
             bridge: osc.take_audio_bridge(),
             phases_shift_to: false,
             gains_to: false,
@@ -57,29 +109,16 @@ impl OscillatorUI {
         }
     }
 
-    fn apply_ui_update(ui_state: &mut UiState, update: UiUpdate) {
+    fn apply_ui_update(modulated_ui_state: &mut ModulatedUiState, update: UiUpdate) {
         match update {
             UiUpdate::ModulatedInput {
                 input,
                 channel,
                 value,
             } => {
-                let channel = channel as usize;
-                match input {
-                    Input::Gain => ui_state.gain[channel] = value,
-                    Input::PitchShift => ui_state.pitch_shift[channel] = value,
-                    Input::PhaseShift => ui_state.phase_shift[channel] = value,
-                    Input::FrequencyShift => ui_state.frequency_shift[channel] = value,
-                    Input::Detune => ui_state.detune[channel] = value,
-                    Input::DetunePower => ui_state.detune_power[channel] = value,
-                    Input::Glide => ui_state.glide[channel] = value,
-                    Input::GlideSlope => ui_state.glide_slope[channel] = value,
-                    Input::PhasesBlend => ui_state.phases_blend[channel] = value,
-                    Input::GainsBlend => ui_state.gains_blend[channel] = value,
-                    _ => (),
-                }
+                modulated_ui_state.set(input, channel as usize, value);
             }
-            UiUpdate::Output { .. } => (),
+            UiUpdate::Output { channel, value } => modulated_ui_state.output[channel] = value,
             UiUpdate::RefreshState => (),
         }
     }
@@ -362,12 +401,15 @@ impl OscillatorUI {
 
         ui.label("Phases Blend");
         if ui
-            .add(ModulationInput::new(
-                &mut self.ui_state.phases_blend,
-                synth.clone(),
-                Input::PhasesBlend,
-                self.module_id,
-            ))
+            .add(
+                ModulationInput::new(
+                    &mut self.ui_state.phases_blend,
+                    synth.clone(),
+                    Input::PhasesBlend,
+                    self.module_id,
+                )
+                .modulated(&self.modulated_ui_state.phases_blend),
+            )
             .changed()
         {
             bridge.set_param(Input::PhasesBlend, self.ui_state.phases_blend);
@@ -409,12 +451,15 @@ impl OscillatorUI {
 
         ui.label("Levels Blend");
         if ui
-            .add(ModulationInput::new(
-                &mut self.ui_state.gains_blend,
-                synth.clone(),
-                Input::GainsBlend,
-                self.module_id,
-            ))
+            .add(
+                ModulationInput::new(
+                    &mut self.ui_state.gains_blend,
+                    synth.clone(),
+                    Input::GainsBlend,
+                    self.module_id,
+                )
+                .modulated(&self.modulated_ui_state.gains_blend),
+            )
             .changed()
         {
             bridge.set_param(Input::GainsBlend, self.ui_state.gains_blend);
@@ -436,7 +481,7 @@ impl ModuleUi for OscillatorUI {
             if matches!(update, UiUpdate::RefreshState) {
                 refresh_state = true;
             } else {
-                Self::apply_ui_update(&mut self.ui_state, update);
+                Self::apply_ui_update(&mut self.modulated_ui_state, update);
             }
         }
 
@@ -472,12 +517,15 @@ impl ModuleUi for OscillatorUI {
 
                 ui.label("Gain");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut self.ui_state.gain,
-                        synth.clone(),
-                        Input::Gain,
-                        self.module_id,
-                    ))
+                    .add(
+                        ModulationInput::new(
+                            &mut self.ui_state.gain,
+                            synth.clone(),
+                            Input::Gain,
+                            self.module_id,
+                        )
+                        .modulated(&self.modulated_ui_state.gain),
+                    )
                     .changed()
                 {
                     bridge.set_param(Input::Gain, self.ui_state.gain);
@@ -486,12 +534,15 @@ impl ModuleUi for OscillatorUI {
 
                 ui.label("Pitch shift");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut self.ui_state.pitch_shift,
-                        synth.clone(),
-                        Input::PitchShift,
-                        self.module_id,
-                    ))
+                    .add(
+                        ModulationInput::new(
+                            &mut self.ui_state.pitch_shift,
+                            synth.clone(),
+                            Input::PitchShift,
+                            self.module_id,
+                        )
+                        .modulated(&self.modulated_ui_state.pitch_shift),
+                    )
                     .changed()
                 {
                     bridge.set_param(Input::PitchShift, self.ui_state.pitch_shift);
@@ -500,12 +551,15 @@ impl ModuleUi for OscillatorUI {
 
                 ui.label("Phase shift");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut self.ui_state.phase_shift,
-                        synth.clone(),
-                        Input::PhaseShift,
-                        self.module_id,
-                    ))
+                    .add(
+                        ModulationInput::new(
+                            &mut self.ui_state.phase_shift,
+                            synth.clone(),
+                            Input::PhaseShift,
+                            self.module_id,
+                        )
+                        .modulated(&self.modulated_ui_state.phase_shift),
+                    )
                     .changed()
                 {
                     bridge.set_param(Input::PhaseShift, self.ui_state.phase_shift);
@@ -514,12 +568,15 @@ impl ModuleUi for OscillatorUI {
 
                 ui.label("Frequency shift");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut self.ui_state.frequency_shift,
-                        synth.clone(),
-                        Input::FrequencyShift,
-                        self.module_id,
-                    ))
+                    .add(
+                        ModulationInput::new(
+                            &mut self.ui_state.frequency_shift,
+                            synth.clone(),
+                            Input::FrequencyShift,
+                            self.module_id,
+                        )
+                        .modulated(&self.modulated_ui_state.frequency_shift),
+                    )
                     .changed()
                 {
                     bridge.set_param(Input::FrequencyShift, self.ui_state.frequency_shift);
@@ -528,12 +585,15 @@ impl ModuleUi for OscillatorUI {
 
                 ui.label("Detune");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut self.ui_state.detune,
-                        synth.clone(),
-                        Input::Detune,
-                        self.module_id,
-                    ))
+                    .add(
+                        ModulationInput::new(
+                            &mut self.ui_state.detune,
+                            synth.clone(),
+                            Input::Detune,
+                            self.module_id,
+                        )
+                        .modulated(&self.modulated_ui_state.detune),
+                    )
                     .changed()
                 {
                     bridge.set_param(Input::Detune, self.ui_state.detune);
@@ -542,12 +602,15 @@ impl ModuleUi for OscillatorUI {
 
                 ui.label("Detune power");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut self.ui_state.detune_power,
-                        synth.clone(),
-                        Input::DetunePower,
-                        self.module_id,
-                    ))
+                    .add(
+                        ModulationInput::new(
+                            &mut self.ui_state.detune_power,
+                            synth.clone(),
+                            Input::DetunePower,
+                            self.module_id,
+                        )
+                        .modulated(&self.modulated_ui_state.detune_power),
+                    )
                     .changed()
                 {
                     bridge.set_param(Input::DetunePower, self.ui_state.detune_power);
@@ -556,12 +619,15 @@ impl ModuleUi for OscillatorUI {
 
                 ui.label("Glide");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut self.ui_state.glide,
-                        synth.clone(),
-                        Input::Glide,
-                        self.module_id,
-                    ))
+                    .add(
+                        ModulationInput::new(
+                            &mut self.ui_state.glide,
+                            synth.clone(),
+                            Input::Glide,
+                            self.module_id,
+                        )
+                        .modulated(&self.modulated_ui_state.glide),
+                    )
                     .changed()
                 {
                     bridge.set_param(Input::Glide, self.ui_state.glide);
@@ -570,12 +636,15 @@ impl ModuleUi for OscillatorUI {
 
                 ui.label("Glide Slope");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut self.ui_state.glide_slope,
-                        synth.clone(),
-                        Input::GlideSlope,
-                        self.module_id,
-                    ))
+                    .add(
+                        ModulationInput::new(
+                            &mut self.ui_state.glide_slope,
+                            synth.clone(),
+                            Input::GlideSlope,
+                            self.module_id,
+                        )
+                        .modulated(&self.modulated_ui_state.glide_slope),
+                    )
                     .changed()
                 {
                     bridge.set_param(Input::GlideSlope, self.ui_state.glide_slope);

@@ -9,10 +9,12 @@ use crate::synth_engine::{Sample, StereoSample};
 const BG_COLOR: Color32 = Color32::from_rgb(0, 0, 0);
 const LEVEL_COLOR: Color32 = Color32::from_rgb(0x0b, 0x42, 0x67);
 const NEGATIVE_LEVEL_COLOR: Color32 = Color32::from_rgb(0x72, 0x72, 0x12);
+const MODULATED_COLOR: Color32 = Color32::from_rgb(0x9a, 0x6a, 0x12);
 
 pub struct StereoSlider<'a> {
     units: Option<&'a str>,
     value: &'a mut StereoSample,
+    modulated: Option<&'a StereoSample>,
     range: RangeInclusive<Sample>,
     default: Option<Sample>,
     precision: usize,
@@ -38,6 +40,7 @@ impl<'a> StereoSlider<'a> {
             default: None,
             precision: 1,
             value,
+            modulated: None,
             range: 0.0..=1.0,
             allow_inverse: false,
         }
@@ -99,6 +102,11 @@ impl<'a> StereoSlider<'a> {
         self
     }
 
+    pub fn modulated(mut self, value: &'a StereoSample) -> Self {
+        self.modulated = Some(value);
+        self
+    }
+
     fn normalized_minimum(&self) -> Sample {
         if self.allow_inverse { -1.0 } else { 0.0 }
     }
@@ -111,13 +119,17 @@ impl<'a> StereoSlider<'a> {
         norm_value.abs().powf(self.skew_factor) * norm_value.signum()
     }
 
-    fn normalized_value(&self) -> StereoSample {
+    fn normalized_value_from(&self, value: &StereoSample) -> StereoSample {
         let start = *self.range.start();
         let end = *self.range.end();
         let min_normalized = self.normalized_minimum();
-        let clamped = ((*self.value - start) * (end - start).recip()).clamp(min_normalized, 1.0);
+        let clamped = ((*value - start) * (end - start).recip()).clamp(min_normalized, 1.0);
 
         self.skew_value(clamped)
+    }
+
+    fn normalized_value(&self) -> StereoSample {
+        self.normalized_value_from(self.value)
     }
 
     fn update_normalized_value(&mut self, response: &mut Response, normalized: StereoSample) {
@@ -190,6 +202,48 @@ impl<'a> StereoSlider<'a> {
         }
     }
 
+    fn paint_modulated_indicators(&self, ui: &mut Ui, response: &Response) {
+        let Some(modulated) = self.modulated else {
+            return;
+        };
+
+        let normalized_modulated = self.normalized_value_from(modulated);
+
+        let paint_horizontal_bar = |rect: Rect, norm_value: Sample, at_top: bool| {
+            let y = if at_top { rect.top() } else { rect.bottom() - 1.0 };
+            let bar_rect = if norm_value < 0.0 {
+                let x = rect.left() + (1.0 + norm_value) * rect.width();
+                Rect::from_min_max(Pos2::new(x, y), Pos2::new(rect.right(), y + 1.0))
+            } else {
+                let x = rect.left() + norm_value * rect.width();
+                Rect::from_min_max(Pos2::new(rect.left(), y), Pos2::new(x, y + 1.0))
+            };
+            ui.painter().rect_filled(bar_rect, 0.0, MODULATED_COLOR);
+        };
+
+        let paint_vertical_bar = |rect: Rect, norm_value: Sample, at_left: bool| {
+            let x = if at_left { rect.left() } else { rect.right() - 1.0 };
+            let bar_rect = if norm_value < 0.0 {
+                let y = rect.bottom() - (1.0 + norm_value) * rect.height();
+                Rect::from_min_max(Pos2::new(x, y), Pos2::new(x + 1.0, rect.bottom()))
+            } else {
+                let y = rect.bottom() - norm_value * rect.height();
+                Rect::from_min_max(Pos2::new(x, y), Pos2::new(x + 1.0, rect.bottom()))
+            };
+            ui.painter().rect_filled(bar_rect, 0.0, MODULATED_COLOR);
+        };
+
+        if self.vertical {
+            let lr_rect = response.rect.split_left_right_at_fraction(0.5);
+            paint_vertical_bar(lr_rect.0, normalized_modulated.left(), true);
+            paint_vertical_bar(lr_rect.1, normalized_modulated.right(), false);
+        } else {
+            let lr_rect = response.rect.split_top_bottom_at_fraction(0.5);
+            paint_horizontal_bar(lr_rect.0, normalized_modulated.left(), true);
+            paint_horizontal_bar(lr_rect.1, normalized_modulated.right(), false);
+        }
+    }
+
     fn add_contents(&mut self, ui: &mut Ui) -> Response {
         let mut response = ui.allocate_response(self.response_size(), Sense::click_and_drag());
         let normalized_value = self.normalized_value();
@@ -233,6 +287,7 @@ impl<'a> StereoSlider<'a> {
         if ui.is_rect_visible(response.rect) {
             ui.painter().rect_filled(response.rect, 0.0, BG_COLOR);
             self.paint_bars(ui, &response, normalized_value);
+            self.paint_modulated_indicators(ui, &response);
         }
 
         let mut parts: Vec<String> = Vec::with_capacity(4);

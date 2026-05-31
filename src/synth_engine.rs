@@ -480,7 +480,12 @@ impl SynthEngine {
         self.voices_handler.handle_choke(channel, note);
     }
 
-    pub fn process<'a>(&mut self, samples: usize, outputs: impl Iterator<Item = &'a mut [f32]>) {
+    pub fn process<'a>(
+        &mut self,
+        samples: usize,
+        update_ui: bool,
+        outputs: impl Iterator<Item = &'a mut [f32]>,
+    ) {
         {
             let mut decaying_voices = DecayingVoices::new();
 
@@ -512,7 +517,7 @@ impl SynthEngine {
             buffer_t_step: samples as Sample / sample_rate,
             smooth_params: SmoothedSampleParams::new(sample_rate),
             needs_audio_rate: false,
-            needs_update_ui: true,
+            needs_update_ui: update_ui,
             spectrum_channels: self.spectrum_channels,
             active_voices: &playing_voices,
         };

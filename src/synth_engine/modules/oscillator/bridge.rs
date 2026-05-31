@@ -74,7 +74,7 @@ pub enum UiUpdate {
         value: Sample,
     },
     Output {
-        channel: u8,
+        channel: usize,
         value: Sample,
     },
     RefreshState,
@@ -183,7 +183,7 @@ impl ModuleToUiBridge for UiBridge {
 
     fn update_output(&mut self, channel_idx: usize, value: Sample) {
         let _ = self.tx.push(UiUpdate::Output {
-            channel: channel_idx as u8,
+            channel: channel_idx,
             value,
         });
     }

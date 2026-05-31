@@ -231,6 +231,8 @@ impl Plugin for Additizer {
             buffer: &'a mut Buffer<'b>,
             synth: &'a mut SynthEngine,
             desired_block_size: usize,
+            iteration: usize,
+            update_ui: bool,
         }
 
         impl<'a, 'b> BlocksHandler<'a, 'b> {
@@ -238,11 +240,13 @@ impl Plugin for Additizer {
             fn process_single_block(&mut self, sample_from: usize, samples: usize) {
                 self.synth.process(
                     samples,
+                    self.update_ui && self.iteration & 1 == 0,
                     self.buffer
                         .as_slice()
                         .iter_mut()
                         .map(|buff| &mut buff[sample_from..sample_from + samples]),
                 );
+                self.iteration += 1;
             }
 
             fn process(&mut self, mut sample_from: usize, sample_to: usize) -> usize {
@@ -277,6 +281,8 @@ impl Plugin for Additizer {
                 buffer,
                 synth: &mut synth,
                 desired_block_size,
+                iteration: 0,
+                update_ui: self.params.editor_state.is_open(),
             };
 
             let mut events = EventReorderer::new(context);

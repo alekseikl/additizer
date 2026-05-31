@@ -880,10 +880,9 @@ impl Oscillator {
                     + Phase::from_normalized(uv.phase_shift.interpolate(buff_t));
                 let idx = read_phase.wave_index::<WAVEFORM_BITS>();
                 let t = read_phase.wave_index_fraction::<WAVEFORM_BITS>();
-
                 let segment = Self::interpolated_segment(wave_from, wave_to, buff_t, idx, t);
-                sample_acc = segment.mul_add(f32x4::splat(uv.gain.interpolate(buff_t)), sample_acc);
 
+                sample_acc = segment.mul_add(f32x4::splat(uv.gain.interpolate(buff_t)), sample_acc);
                 *phase += pitch_phase_inc.mul_add(uv.rate.interpolate(buff_t), freq_phase_inc);
             }
 

@@ -15,6 +15,7 @@ type BeforeCallback = dyn FnMut(&mut Ui, &SynthEngineHandle);
 
 pub struct ModulationInput<'a> {
     value: &'a mut StereoSample,
+    modulated: Option<&'a StereoSample>,
     synth_engine: SynthEngineHandle,
     input: ModuleInput,
     default: Option<Sample>,
@@ -31,6 +32,7 @@ impl<'a> ModulationInput<'a> {
     ) -> Self {
         Self {
             value,
+            modulated: None,
             synth_engine,
             input: ModuleInput::new(input, module_id),
             default: None,
@@ -49,16 +51,22 @@ impl<'a> ModulationInput<'a> {
         self
     }
 
+    pub fn modulated(mut self, value: &'a StereoSample) -> Self {
+        self.modulated = Some(value);
+        self
+    }
+
     pub fn before(mut self, func: impl FnMut(&mut Ui, &SynthEngineHandle) + 'static) -> Self {
         self.before = Some(Box::new(func));
         self
     }
 
-    fn setup_value_slider(
-        slider: StereoSlider<'_>,
+    fn setup_value_slider<'b>(
+        slider: StereoSlider<'b>,
         input_type: Input,
         default: Option<Sample>,
-    ) -> StereoSlider<'_> {
+        modulated: Option<&'b StereoSample>,
+    ) -> StereoSlider<'b> {
         let mut updated = match input_type {
             Input::Gain | Input::GainMix(_) => slider.default_value(1.0).precision(2),
             Input::Drive | Input::ClippingLevel => {
@@ -146,6 +154,10 @@ impl<'a> ModulationInput<'a> {
 
         if let Some(default) = default {
             updated = updated.default_value(default);
+        }
+
+        if let Some(modulated) = modulated {
+            updated = updated.modulated(modulated);
         }
 
         updated
@@ -265,7 +277,8 @@ impl<'a> ModulationInput<'a> {
         updated
     }
 
-    fn add_slider(&mut self, ui: &mut Ui) -> Response {
+    fn add_slider(&mut self, ui: &mut Ui, has_modulators: bool) -> Response {
+        let modulated = has_modulators.then_some(self.modulated).flatten();
         match self.input.input_type {
             Input::Level | Input::LevelMix(_) => ui.add(DbSlider::new(self.value).width(200.0)),
             _ => ui.add(
@@ -273,6 +286,7 @@ impl<'a> ModulationInput<'a> {
                     StereoSlider::new(self.value),
                     self.input.input_type,
                     self.default,
+                    modulated,
                 )
                 .length(200.0),
             ),
@@ -411,7 +425,7 @@ impl Widget for ModulationInput<'_> {
                         before(ui, &self.synth_engine);
                     }
 
-                    let result_response = self.add_slider(ui);
+                    let result_response = self.add_slider(ui, !connected.is_empty());
 
                     self.add_link_select(ui, &connected, &available);
                     result_response
