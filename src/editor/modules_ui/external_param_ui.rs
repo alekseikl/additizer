@@ -2,10 +2,10 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, SynthEngineHandle, module_label::ModuleLabel, stereo_slider::StereoSlider,
+        ModuleUi, module_label::ModuleLabel, stereo_slider::StereoSlider,
         utils::confirm_module_removal,
     },
-    synth_engine::{ExternalParam, ModuleId, StereoSample, SynthEngine},
+    synth_engine::{ExternalParam, ModuleId, StereoSample, SynthEngine, ui_bridge::UiBridge},
 };
 
 pub struct ExternalParamUI {
@@ -33,7 +33,8 @@ impl ModuleUi for ExternalParamUI {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        let synth = bridge.synth();
         let mut ui_data = self.param(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(

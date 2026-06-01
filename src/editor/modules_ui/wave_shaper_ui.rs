@@ -2,10 +2,10 @@ use egui::{ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, SynthEngineHandle, direct_input::DirectInput, modulation_input::ModulationInput,
+        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
-    synth_engine::{Input, ModuleId, ShaperType, SynthEngine, WaveShaper},
+    synth_engine::{Input, ModuleId, ShaperType, SynthEngine, WaveShaper, ui_bridge::UiBridge},
 };
 
 impl ShaperType {
@@ -42,7 +42,8 @@ impl ModuleUi for WaveShaperUi {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        let synth = bridge.synth();
         let mut ui_data = self.shaper(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(

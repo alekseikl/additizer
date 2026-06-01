@@ -9,6 +9,7 @@ use crate::{
     synth_engine::{
         Input, ModuleId, Sample, StereoSample, SynthModule,
         oscillator::{AudioBridge, Oscillator, PhasesDst, UiState, UiUpdate},
+        ui_bridge::UiBridge,
     },
 };
 
@@ -473,7 +474,8 @@ impl ModuleUi for OscillatorUI {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
+    fn ui(&mut self, ui_bridge: &mut UiBridge, ui: &mut Ui) {
+        let synth = ui_bridge.synth();
         let mut bridge = self.bridge.take().unwrap();
         let mut refresh_state = false;
 
@@ -695,12 +697,13 @@ impl ModuleUi for OscillatorUI {
         self.bridge.replace(bridge);
     }
 
-    fn cleanup(&mut self, synth: &SynthEngineHandle) {
+    fn cleanup(&mut self, ui_bridge: &mut UiBridge) {
         let Some(bridge) = self.bridge.take() else {
             return;
         };
 
-        synth
+        ui_bridge
+            .synth()
             .lock()
             .get_typed_module_mut::<Oscillator>(self.module_id)
             .unwrap()

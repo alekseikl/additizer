@@ -2,10 +2,10 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, SynthEngineHandle, modulation_input::ModulationInput, module_label::ModuleLabel,
+        ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
         stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
-    synth_engine::{Input, Lfo, LfoShape, ModuleId, SynthEngine},
+    synth_engine::{Input, Lfo, LfoShape, ModuleId, SynthEngine, ui_bridge::UiBridge},
 };
 
 impl LfoShape {
@@ -45,7 +45,8 @@ impl ModuleUi for LfoUi {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        let synth = bridge.synth();
         let id = self.module_id;
         let mut ui_data = self.lfo(&mut synth.lock()).get_ui();
 

@@ -13,6 +13,7 @@ use crate::{
     synth_engine::{
         HarmonicEditor, ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample, SynthEngine,
         harmonic_editor::{FilterParams, FilterType, SetAction, SetParams},
+        ui_bridge::UiBridge,
     },
     utils::NthElement,
 };
@@ -346,7 +347,8 @@ impl ModuleUi for HarmonicEditorUI {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        let synth = bridge.synth();
         ui.style_mut().spacing.scroll = ScrollStyle::solid();
 
         Panel::top("harmonics-list")

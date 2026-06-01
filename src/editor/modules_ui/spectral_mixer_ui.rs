@@ -2,10 +2,10 @@ use egui::{ComboBox, Grid, Slider, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, SynthEngineHandle, direct_input::DirectInput, modulation_input::ModulationInput,
+        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
-    synth_engine::{Input, MixType, ModuleId, SpectralMixer, SynthEngine, VolumeType},
+    synth_engine::{Input, MixType, ModuleId, SpectralMixer, SynthEngine, VolumeType, ui_bridge::UiBridge},
 };
 
 impl MixType {
@@ -47,7 +47,8 @@ impl ModuleUi for SpectralMixerUi {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        let synth = bridge.synth();
         let mut ui_data = self.mixer(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(

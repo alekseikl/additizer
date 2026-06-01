@@ -34,8 +34,8 @@ mod utils;
 
 pub trait ModuleUi {
     fn module_id(&self) -> Option<ModuleId>;
-    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui);
-    fn cleanup(&mut self, _synth: &SynthEngineHandle) {}
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui);
+    fn cleanup(&mut self, _bridge: &mut UiBridge) {}
 }
 
 type ModuleUIBox = Box<dyn ModuleUi + Send>;
@@ -78,7 +78,7 @@ impl ModuleUi for OutputUi {
         Some(OUTPUT_MODULE_ID)
     }
 
-    fn ui(&mut self, _synth: &SynthEngineHandle, _ui: &mut Ui) {}
+    fn ui(&mut self, _bridge: &mut UiBridge, _ui: &mut Ui) {}
 }
 
 impl ModuleType {
@@ -101,11 +101,8 @@ impl ModuleType {
     }
 }
 
-fn show_side_bar(
-    ui: &mut Ui,
-    selected_module_ui: &mut ModuleUIBox,
-    synth_engine: &SynthEngineHandle,
-) {
+fn show_side_bar(ui: &mut Ui, selected_module_ui: &mut ModuleUIBox, bridge: &mut UiBridge) {
+    let synth_engine = bridge.synth().clone();
     Panel::left("side-bar")
         .resizable(true)
         .size_range(100.0..=200.0)
@@ -177,7 +174,7 @@ fn show_side_bar(
                             if show_menu_item(ui, "Parameters", selected_module_id.is_none())
                                 .clicked()
                             {
-                                selected_module_ui.cleanup(synth_engine);
+                                selected_module_ui.cleanup(bridge);
                                 *selected_module_ui = Box::new(ParamsUi::new());
                             }
 
@@ -189,10 +186,10 @@ fn show_side_bar(
                                 )
                                 .clicked()
                                 {
-                                    selected_module_ui.cleanup(synth_engine);
+                                    selected_module_ui.cleanup(bridge);
 
                                     *selected_module_ui =
-                                        module.module_type.ui(module.id, synth_engine);
+                                        module.module_type.ui(module.id, &synth_engine);
                                 }
                             }
                         })
@@ -201,8 +198,8 @@ fn show_side_bar(
         });
 }
 
-fn show_right_bar(ui: &mut Ui, synth_engine: &SynthEngineHandle) {
-    let mut level = synth_engine.lock().get_output_level();
+fn show_right_bar(ui: &mut Ui, bridge: &mut UiBridge) {
+    let mut level = bridge.synth().lock().get_output_level();
 
     Panel::right("right-bar")
         .exact_size(24.0)
@@ -219,20 +216,26 @@ fn show_right_bar(ui: &mut Ui, synth_engine: &SynthEngineHandle) {
                 )
                 .changed()
             {
-                synth_engine.lock().set_output_level(level);
+                bridge.synth().lock().set_output_level(level);
             }
         });
 }
 
-fn show_editor(ui: &mut Ui, editor_state: &mut EditorState, synth_engine: &SynthEngineHandle) {
+fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
+    editor_state.synth_bridge.update();
+
+    let bridge = &mut editor_state.synth_bridge;
+
+    bridge.update();
+
     if let Some(module_id) = editor_state.selected_module_ui.module_id()
-        && !synth_engine.lock().has_module_id(module_id)
+        && !bridge.synth().lock().has_module_id(module_id)
     {
         editor_state.selected_module_ui = Box::new(ParamsUi::new());
     }
 
-    show_side_bar(ui, &mut editor_state.selected_module_ui, synth_engine);
-    show_right_bar(ui, synth_engine);
+    show_side_bar(ui, &mut editor_state.selected_module_ui, bridge);
+    show_right_bar(ui, bridge);
 
     CentralPanel::default()
         .frame(Frame::default().inner_margin(8.0))
@@ -240,7 +243,7 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState, synth_engine: &Synth
             ScrollArea::vertical()
                 .auto_shrink([false, true])
                 .show(ui, |ui| {
-                    editor_state.selected_module_ui.ui(synth_engine, ui);
+                    editor_state.selected_module_ui.ui(bridge, ui);
                 });
         });
 }
@@ -253,12 +256,14 @@ pub fn create_editor(
         Arc::clone(&egui_state),
         EditorState::new(UiBridge::create(synth_engine.clone()).unwrap()),
         Default::default(),
-        |_egui_ctx, _queue, _gui_state| {},
+        |_egui_ctx, _queue, editor_state| {
+            editor_state.synth_bridge.sync();
+        },
         move |egui_ctx, _setter, _queue, editor_state| {
             ResizableWindow::new("res-wind")
                 .min_size(Vec2::new(640.0, 480.0))
                 .show(egui_ctx, egui_state.as_ref(), |ui| {
-                    show_editor(ui, editor_state, &synth_engine);
+                    show_editor(ui, editor_state);
                 });
         },
     )

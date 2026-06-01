@@ -1,46 +1,23 @@
 use std::collections::HashSet;
 
-use egui::{ComboBox, Response, Ui, Widget, vec2};
+use egui::{ComboBox, Response, Ui, vec2};
 
-use crate::{
-    editor::SynthEngineHandle,
-    synth_engine::{Input, ModuleId, ModuleInput},
-};
+use crate::synth_engine::{Input, ModuleId, ModuleInput, StereoSample, ui_bridge::UiBridge};
 
 pub struct MultiInput {
-    synth_engine: SynthEngineHandle,
     input: ModuleInput,
 }
 
 impl MultiInput {
-    pub fn new(synth_engine: SynthEngineHandle, input: Input, module_id: ModuleId) -> Self {
+    pub fn new(input: Input, module_id: ModuleId) -> Self {
         Self {
-            synth_engine,
             input: ModuleInput::new(input, module_id),
         }
     }
 
-    fn select_output(&mut self, output: ModuleId) {
-        self.synth_engine
-            .lock()
-            .add_link(output, self.input, 1.0.into())
-            .unwrap_or_else(|_| println!("Failed to select output"))
-    }
-}
-
-impl Widget for MultiInput {
-    fn ui(mut self, ui: &mut Ui) -> Response {
-        let (available, connected) = {
-            let synth = self.synth_engine.lock();
-            (
-                synth
-                    .get_routing_state()
-                    .get_available_input_sources(self.input),
-                synth
-                    .get_routing_state()
-                    .get_connected_input_sources(self.input),
-            )
-        };
+    pub fn show(self, ui: &mut Ui, bridge: &mut UiBridge) -> Response {
+        let available = bridge.get_available_input_sources(self.input);
+        let connected = bridge.get_connected_input_sources(self.input);
         let connected_ids: HashSet<_> = HashSet::from_iter(connected.iter().map(|src| src.src));
         let filtered: Vec<_> = available
             .iter()
@@ -55,7 +32,7 @@ impl Widget for MultiInput {
                     ui.label(&src.label);
 
                     if ui.button("❌").clicked() {
-                        self.synth_engine.lock().remove_link(&src.src, &self.input);
+                        bridge.remove_link(src.src, self.input);
                     }
                 });
             }
@@ -66,7 +43,7 @@ impl Widget for MultiInput {
                     .show_ui(ui, |ui| {
                         for src in &filtered {
                             if ui.selectable_label(false, &src.label).clicked() {
-                                self.select_output(src.src);
+                                bridge.add_link(src.src, self.input, StereoSample::ONE);
                             }
                         }
                     });

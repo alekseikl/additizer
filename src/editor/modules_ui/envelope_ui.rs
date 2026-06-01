@@ -2,10 +2,10 @@ use egui::{Checkbox, ComboBox, Grid, Slider, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, SynthEngineHandle, modulation_input::ModulationInput, module_label::ModuleLabel,
+        ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
         stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
-    synth_engine::{Envelope, EnvelopeCurve, Input, ModuleId, Sample, SynthEngine},
+    synth_engine::{Envelope, EnvelopeCurve, Input, ModuleId, Sample, SynthEngine, ui_bridge::UiBridge},
     utils::from_ms,
 };
 
@@ -116,7 +116,8 @@ impl ModuleUi for EnvelopeUI {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        let synth = bridge.synth();
         let id = self.module_id;
         let mut ui_data = self.env(&mut synth.lock()).get_ui();
 

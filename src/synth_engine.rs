@@ -64,19 +64,6 @@ mod voices_handler;
 
 pub const MAX_BLOCK_SIZE: usize = 128;
 
-pub struct SynthEngineUiData {
-    pub voices: usize,
-    pub legato: bool,
-    pub block_size: usize,
-    pub voice_kill_time: Sample,
-    pub oversampling: bool,
-    pub stereo_spectrum: bool,
-    pub waiting_notes: usize,
-    pub playing_voices: usize,
-    pub releasing_voices: usize,
-    pub killing_voices: usize,
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct ModuleInputSource {
     src: ModuleId,
@@ -235,26 +222,6 @@ impl SynthEngine {
 
     pub fn is_empty(&self) -> bool {
         self.modules.len() == 1
-    }
-
-    pub fn get_ui(&self) -> SynthEngineUiData {
-        let voices_ui_data = self.voices_handler.get_ui_data();
-
-        SynthEngineUiData {
-            voices: voices_ui_data.num_voices,
-            legato: voices_ui_data.legato,
-            block_size: self.block_size,
-            voice_kill_time: self
-                .modules
-                .get_typed_module::<Output>(OUTPUT_MODULE_ID)
-                .map_or(0.0, |output| output.get_voice_kill_time()),
-            oversampling: self.oversampling,
-            stereo_spectrum: self.spectrum_channels == NUM_CHANNELS,
-            waiting_notes: voices_ui_data.waiting,
-            playing_voices: voices_ui_data.playing,
-            releasing_voices: voices_ui_data.releasing,
-            killing_voices: voices_ui_data.killing,
-        }
     }
 
     pub fn get_ui_state(&self) -> ui_bridge::UiState {
@@ -566,6 +533,9 @@ impl SynthEngine {
 
             self.voices_handler.update_decaying_voices(&decaying_voices);
         }
+
+        self.audio_end
+            .update_voices_status(&self.voices_handler.get_ui_data());
 
         let mut playing_voices = PlayingVoices::new();
 

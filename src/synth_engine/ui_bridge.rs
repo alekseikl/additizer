@@ -7,7 +7,7 @@ pub mod routing_state;
 
 pub use link::{AudioEnd, UiEnd, UiEvent, UiUpdate, create_link_pair};
 use parking_lot::Mutex;
-pub use routing_state::RoutingState;
+pub use routing_state::{AvailableInputSource, ConnectedInputSource, ModuleItem, RoutingState};
 use rustc_hash::FxHashMap;
 
 pub struct UiState {
@@ -21,10 +21,10 @@ pub struct UiState {
 
 #[derive(Clone, Copy, Default)]
 pub struct VoicesStatus {
-    waiting_notes: u8,
-    playing: u8,
-    releasing: u8,
-    killing: u8,
+    pub waiting_notes: u8,
+    pub playing: u8,
+    pub releasing: u8,
+    pub killing: u8,
 }
 
 pub struct UiBridge {
@@ -62,6 +62,33 @@ impl UiBridge {
         &self.synth
     }
 
+    pub fn controls(&self) -> &UiState {
+        &self.controls
+    }
+
+    pub fn voices_status(&self) -> &VoicesStatus {
+        &self.voices
+    }
+
+    pub fn get_modules(&self) -> Vec<ModuleItem> {
+        self.routing.get_modules()
+    }
+
+    pub fn get_available_input_sources(&self, input: ModuleInput) -> Vec<AvailableInputSource> {
+        self.routing.get_available_input_sources(input)
+    }
+
+    pub fn get_connected_input_sources(&self, input: ModuleInput) -> Vec<ConnectedInputSource> {
+        self.routing.get_connected_input_sources(input)
+    }
+
+    pub fn sync(&mut self) {
+        let synth = self.synth.lock();
+
+        self.routing = synth.get_routing_state();
+        self.controls = synth.get_ui_state();
+    }
+
     pub fn update(&mut self) {
         let Some(ui_end) = self.ui_end.as_mut() else {
             return;
@@ -90,6 +117,20 @@ impl UiBridge {
                 UiUpdate::VoicesStatus(status) => self.voices = status,
             }
         }
+    }
+
+    pub fn add_link(&mut self, src: ModuleId, dst: ModuleInput, amount: StereoSample) {
+        let mut synth = self.synth.lock();
+        if let Err(err) = synth.add_link(src, dst, amount) {
+            println!("Failed to add link: {err}");
+        }
+        self.routing = synth.get_routing_state();
+    }
+
+    pub fn remove_link(&mut self, src: ModuleId, dst: ModuleInput) {
+        let mut synth = self.synth.lock();
+        synth.remove_link(&src, &dst);
+        self.routing = synth.get_routing_state();
     }
 
     pub fn set_link_amount(&mut self, src: ModuleId, dst: ModuleInput, amount: StereoSample) {

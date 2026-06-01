@@ -2,10 +2,10 @@ use egui::{Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, SynthEngineHandle, direct_input::DirectInput, modulation_input::ModulationInput,
+        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
-    synth_engine::{Input, ModuleId, SpectralBlend, SynthEngine},
+    synth_engine::{Input, ModuleId, SpectralBlend, SynthEngine, ui_bridge::UiBridge},
 };
 
 pub struct SpectralBlendUi {
@@ -33,7 +33,8 @@ impl ModuleUi for SpectralBlendUi {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        let synth = bridge.synth();
         let mut ui_data = self.blend(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(

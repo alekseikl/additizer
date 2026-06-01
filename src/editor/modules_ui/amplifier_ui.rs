@@ -2,10 +2,10 @@ use egui::{Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, SynthEngineHandle, modulation_input::ModulationInput, module_label::ModuleLabel,
+        ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
         multi_input::MultiInput, utils::confirm_module_removal,
     },
-    synth_engine::{Amplifier, Input, ModuleId, SynthEngine},
+    synth_engine::{Amplifier, Input, ModuleId, SynthEngine, ui_bridge::UiBridge},
 };
 
 pub struct AmplifierUI {
@@ -33,13 +33,14 @@ impl ModuleUi for AmplifierUI {
         Some(self.module_id)
     }
 
-    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        let synth = bridge.synth().clone();
         let mut ui_data = self.amp(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(
             &ui_data.label,
             &mut self.module_label,
-            synth,
+            &synth,
             self.module_id,
         ));
 
@@ -51,7 +52,7 @@ impl ModuleUi for AmplifierUI {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Inputs");
-                ui.add(MultiInput::new(synth.clone(), Input::Audio, self.module_id));
+                MultiInput::new(Input::Audio, self.module_id).show(ui, bridge);
                 ui.end_row();
 
                 ui.label("Gain");

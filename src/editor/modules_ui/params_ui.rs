@@ -7,7 +7,7 @@ use egui_extras::{Column, TableBuilder};
 use crate::{
     editor::{ModuleUi, SynthEngineHandle, multi_input::MultiInput},
     presets::{Preset, PresetInfo, PresetListItem, Presets},
-    synth_engine::{Input, ModuleId, OUTPUT_MODULE_ID, SynthEngine},
+    synth_engine::{Input, ModuleId, OUTPUT_MODULE_ID, SynthEngine, ui_bridge::UiBridge},
     utils::from_ms,
 };
 
@@ -176,7 +176,7 @@ impl ModuleUi for ParamsUi {
         None
     }
 
-    fn ui(&mut self, synth: &SynthEngineHandle, ui: &mut Ui) {
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
         ui.heading("Parameters");
         ui.add_space(20.0);
 
@@ -185,28 +185,29 @@ impl ModuleUi for ParamsUi {
             .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
+                let controls = bridge.controls();
                 let block_sizes = [8, 16, 32, 64, 128];
-                let mut ui_data = synth.lock().get_ui();
-                let mut kill_time_ms = ui_data.voice_kill_time * 1000.0;
+                let voices_status = *bridge.voices_status();
+
+                let mut kill_time_ms = controls.voice_kill_time * 1000.0;
+                let mut voices = controls.voices;
+                let mut legato = controls.legato;
+                let mut block_size = controls.block_size;
+                let mut oversampling = controls.oversampling;
+                let mut stereo_spectrum = controls.stereo_spectrum;
 
                 ui.label("Voices");
                 if ui
-                    .add(Slider::new(
-                        &mut ui_data.voices,
-                        1..=SynthEngine::AVAILABLE_VOICES,
-                    ))
+                    .add(Slider::new(&mut voices, 1..=SynthEngine::AVAILABLE_VOICES))
                     .changed()
                 {
-                    synth.lock().set_num_voices(ui_data.voices);
+                    bridge.set_voices(voices);
                 }
                 ui.end_row();
 
                 ui.label("Legato");
-                if ui
-                    .add(Checkbox::without_text(&mut ui_data.legato))
-                    .changed()
-                {
-                    synth.lock().set_legato(ui_data.legato);
+                if ui.add(Checkbox::without_text(&mut legato)).changed() {
+                    bridge.set_legato(legato);
                 }
                 ui.end_row();
 
@@ -215,59 +216,52 @@ impl ModuleUi for ParamsUi {
                     .add(Slider::new(&mut kill_time_ms, 4.0..=100.0))
                     .changed()
                 {
-                    synth.lock().set_voice_kill_time(from_ms(kill_time_ms));
+                    bridge.set_voice_kill_time(from_ms(kill_time_ms));
                 }
                 ui.end_row();
 
                 ui.label("Voices state");
                 ui.label(format!(
                     "Playing: {:02}, Releasing: {:02}, Killing: {:02}, Waiting Notes: {:02}",
-                    ui_data.playing_voices,
-                    ui_data.releasing_voices,
-                    ui_data.killing_voices,
-                    ui_data.waiting_notes
+                    voices_status.playing,
+                    voices_status.releasing,
+                    voices_status.killing,
+                    voices_status.waiting_notes
                 ));
                 ui.end_row();
 
                 ui.label("Block Size");
                 ComboBox::from_id_salt("buff-size-select")
-                    .selected_text(format!("{} samples", ui_data.block_size))
+                    .selected_text(format!("{} samples", block_size))
                     .show_ui(ui, |ui| {
                         for sz in &block_sizes {
                             if ui
-                                .selectable_value(
-                                    &mut ui_data.block_size,
-                                    *sz,
-                                    format!("{} samples", sz),
-                                )
+                                .selectable_value(&mut block_size, *sz, format!("{} samples", sz))
                                 .clicked()
                             {
-                                synth.lock().set_block_size(*sz);
+                                bridge.set_block_size(*sz);
                             }
                         }
                     });
                 ui.end_row();
 
                 ui.label("Oversampling x2");
-                if ui
-                    .add(Checkbox::without_text(&mut ui_data.oversampling))
-                    .changed()
-                {
-                    synth.lock().set_oversampling(ui_data.oversampling);
+                if ui.add(Checkbox::without_text(&mut oversampling)).changed() {
+                    bridge.set_oversampling(oversampling);
                 }
                 ui.end_row();
 
                 ui.label("Stereo Spectrum");
                 if ui
-                    .add(Checkbox::without_text(&mut ui_data.stereo_spectrum))
+                    .add(Checkbox::without_text(&mut stereo_spectrum))
                     .changed()
                 {
-                    synth.lock().set_stereo_spectrum(ui_data.stereo_spectrum);
+                    bridge.set_stereo_spectrum(stereo_spectrum);
                 }
                 ui.end_row();
 
                 ui.label("Output");
-                ui.add(MultiInput::new(synth.clone(), Input::Audio, OUTPUT_MODULE_ID));
+                MultiInput::new(Input::Audio, OUTPUT_MODULE_ID).show(ui, bridge);
                 ui.end_row();
 
                 ui.label("Presets");
@@ -290,13 +284,13 @@ impl ModuleUi for ParamsUi {
             });
 
         if let Some(mut state) = self.save_preset_state.take()
-            && self.show_save_preset_modal(synth, ui, &mut state)
+            && self.show_save_preset_modal(bridge.synth(), ui, &mut state)
         {
             self.save_preset_state.replace(state);
         }
 
         if let Some(mut state) = self.load_preset_state.take()
-            && self.show_load_preset_modal(synth, ui, &mut state)
+            && self.show_load_preset_modal(bridge.synth(), ui, &mut state)
         {
             self.load_preset_state.replace(state);
         }
