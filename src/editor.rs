@@ -17,7 +17,7 @@ use crate::{
             WaveShaperUi,
         },
     },
-    synth_engine::{ModuleId, ModuleType, OUTPUT_MODULE_ID, SynthEngine},
+    synth_engine::{ModuleId, ModuleType, OUTPUT_MODULE_ID, SynthEngine, ui_bridge::UiBridge},
 };
 
 pub type SynthEngineHandle = Arc<Mutex<SynthEngine>>;
@@ -41,12 +41,14 @@ pub trait ModuleUi {
 type ModuleUIBox = Box<dyn ModuleUi + Send>;
 
 struct EditorState {
+    synth_bridge: UiBridge,
     selected_module_ui: ModuleUIBox,
 }
 
 impl EditorState {
-    pub fn new() -> Self {
+    pub fn new(synth_bridge: UiBridge) -> Self {
         Self {
+            synth_bridge,
             selected_module_ui: Box::new(ParamsUi::new()),
         }
     }
@@ -159,22 +161,7 @@ fn show_side_bar(
                     });
                 });
 
-            struct ModuleMenuItem {
-                id: ModuleId,
-                label: String,
-                module_type: ModuleType,
-            }
-
-            let mut modules: Vec<ModuleMenuItem> = synth_engine
-                .lock()
-                .get_modules()
-                .into_iter()
-                .map(|module| ModuleMenuItem {
-                    id: module.id(),
-                    label: module.label(),
-                    module_type: module.module_type(),
-                })
-                .collect();
+            let mut modules = synth_engine.lock().get_routing_state().get_modules();
 
             modules.sort_by_key(|module| module.label.to_lowercase());
 
@@ -264,7 +251,7 @@ pub fn create_editor(
 ) -> Option<Box<dyn Editor>> {
     create_egui_editor(
         Arc::clone(&egui_state),
-        EditorState::new(),
+        EditorState::new(UiBridge::create(synth_engine.clone()).unwrap()),
         Default::default(),
         |_egui_ctx, _queue, _gui_state| {},
         move |egui_ctx, _setter, _queue, editor_state| {

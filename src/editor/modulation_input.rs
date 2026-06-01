@@ -5,8 +5,8 @@ use egui::{ComboBox, Frame, Grid, Margin, Response, Ui, Widget};
 use crate::{
     editor::{SynthEngineHandle, db_slider::DbSlider, stereo_slider::StereoSlider},
     synth_engine::{
-        AvailableInputSourceUI, ConnectedInputSourceUI, Input, ModuleId, ModuleInput, Sample,
-        StereoSample,
+        Input, ModuleId, ModuleInput, Sample, StereoSample,
+        ui_bridge::routing_state::{AvailableInputSource, ConnectedInputSource},
     },
     utils::st_to_octave,
 };
@@ -314,8 +314,8 @@ impl<'a> ModulationInput<'a> {
     fn add_link_select(
         &mut self,
         ui: &mut Ui,
-        connected: &[ConnectedInputSourceUI],
-        available: &[AvailableInputSourceUI],
+        connected: &[ConnectedInputSource],
+        available: &[AvailableInputSource],
     ) {
         let connected_ids: HashSet<_> = HashSet::from_iter(connected.iter().map(|src| src.src));
         let filtered: Vec<_> = available
@@ -344,8 +344,8 @@ impl<'a> ModulationInput<'a> {
     fn add_connected_links(
         &mut self,
         ui: &mut Ui,
-        connected: &[ConnectedInputSourceUI],
-        available: &[AvailableInputSourceUI],
+        connected: &[ConnectedInputSource],
+        available: &[AvailableInputSource],
     ) {
         Grid::new(format!("mod-grid-{:?}", self.input.input_type))
             .num_columns(3)
@@ -414,8 +414,12 @@ impl Widget for ModulationInput<'_> {
             let (connected, available) = {
                 let synth = self.synth_engine.lock();
                 (
-                    synth.get_connected_input_sources(self.input),
-                    synth.get_available_input_sources(self.input),
+                    synth
+                        .get_routing_state()
+                        .get_connected_input_sources(self.input),
+                    synth
+                        .get_routing_state()
+                        .get_available_input_sources(self.input),
                 )
             };
 

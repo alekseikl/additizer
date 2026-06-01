@@ -33,8 +33,12 @@ impl Widget for MultiInput {
         let (available, connected) = {
             let synth = self.synth_engine.lock();
             (
-                synth.get_available_input_sources(self.input),
-                synth.get_connected_input_sources(self.input),
+                synth
+                    .get_routing_state()
+                    .get_available_input_sources(self.input),
+                synth
+                    .get_routing_state()
+                    .get_connected_input_sources(self.input),
             )
         };
         let connected_ids: HashSet<_> = HashSet::from_iter(connected.iter().map(|src| src.src));
@@ -51,9 +55,7 @@ impl Widget for MultiInput {
                     ui.label(&src.label);
 
                     if ui.button("❌").clicked() {
-                        self.synth_engine
-                            .lock()
-                            .remove_link(&src.src, &self.input);
+                        self.synth_engine.lock().remove_link(&src.src, &self.input);
                     }
                 });
             }

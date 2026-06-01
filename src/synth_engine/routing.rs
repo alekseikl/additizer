@@ -181,24 +181,6 @@ impl ModuleLink {
     }
 }
 
-pub struct AvailableInputSourceUI {
-    pub src: ModuleId,
-    pub label: String,
-}
-
-pub struct InputModulationUI {
-    #[allow(unused)]
-    pub src: ModuleId,
-    pub label: String,
-}
-
-pub struct ConnectedInputSourceUI {
-    pub src: ModuleId,
-    pub amount: StereoSample,
-    pub label: String,
-    pub modulation: Option<InputModulationUI>,
-}
-
 pub trait Router {
     fn get_input<'a>(
         &'a self,
@@ -241,4 +223,8 @@ pub trait Router {
         voice_idx: usize,
         channel_idx: usize,
     ) -> Option<Sample>;
+}
+
+pub fn data_types_compatible(src: DataType, dst: DataType) -> bool {
+    src == dst || (dst == DataType::Buffer && src == DataType::Scalar)
 }

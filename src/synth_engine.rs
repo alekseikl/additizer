@@ -21,7 +21,7 @@ use crate::synth_engine::{
         harmonic_editor::HarmonicEditorConfig,
         oscillator::{Oscillator, OscillatorConfig},
     },
-    routing::{DataType, InputModulationUI, LinkModulation, NUM_CHANNELS, Router, VoiceEvent},
+    routing::{DataType, LinkModulation, NUM_CHANNELS, Router, VoiceEvent, data_types_compatible},
     smooth::SmoothedSampleParams,
     synth_module::ProcessParams,
     voices_handler::{
@@ -39,8 +39,8 @@ pub use modules::{
     oscillator::{self},
 };
 pub use routing::{
-    AvailableInputSourceUI, ConnectedInputSourceUI, Expression, Input, MixType, ModuleId,
-    ModuleInput, ModuleLink, ModuleType, OUTPUT_MODULE_ID, VolumeType,
+    Expression, Input, MixType, ModuleId, ModuleInput, ModuleLink, ModuleType, OUTPUT_MODULE_ID,
+    VolumeType,
 };
 pub use stereo_sample::StereoSample;
 pub use synth_module::SynthModule;
@@ -59,7 +59,7 @@ mod routing;
 mod smooth;
 mod stereo_sample;
 mod types;
-mod ui_bridge;
+pub mod ui_bridge;
 mod voices_handler;
 
 pub const MAX_BLOCK_SIZE: usize = 128;
@@ -78,7 +78,7 @@ pub struct SynthEngineUiData {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct ModuleInputSource {
+pub struct ModuleInputSource {
     src: ModuleId,
     amount: StereoSample,
     modulation: Option<LinkModulation>,
@@ -99,6 +99,7 @@ impl ModuleInputSource {
 }
 
 type ModulesMap = FxHashMap<ModuleId, Option<Box<dyn SynthModule>>>;
+type RoutingMap = FxHashMap<ModuleInput, Vec<ModuleInputSource>>;
 
 trait ModuleAccess {
     fn get_module(&self, id: ModuleId) -> Option<&dyn SynthModule>;
@@ -134,11 +135,13 @@ pub struct SynthEngine {
     spectrum_channels: usize,
     config: Arc<Mutex<Config>>,
     modules: ModulesMap,
-    input_sources: FxHashMap<ModuleInput, Vec<ModuleInputSource>>,
+    input_sources: RoutingMap,
     execution_order: Vec<ModuleId>,
     voices_handler: VoicesHandler,
     external_params: Option<Arc<ExternalParamsBlock>>,
     output_level_param: Option<Arc<FloatParam>>,
+    audio_end: ui_bridge::AudioEnd,
+    ui_end: Option<ui_bridge::UiEnd>,
 }
 
 macro_rules! add_module_method {
@@ -162,6 +165,8 @@ impl SynthEngine {
     pub const AVAILABLE_VOICES: usize = MAX_AVAILABLE_VOICES;
 
     pub fn new() -> Self {
+        let (audio_end, ui_end) = ui_bridge::create_link_pair();
+
         Self {
             next_id: 0,
             host_sample_rate: 0.0,
@@ -170,11 +175,13 @@ impl SynthEngine {
             spectrum_channels: NUM_CHANNELS,
             config: Default::default(),
             modules: ModulesMap::default(),
-            input_sources: FxHashMap::default(),
+            input_sources: RoutingMap::default(),
             execution_order: Vec::new(),
             voices_handler: VoicesHandler::new(),
             external_params: None,
             output_level_param: None,
+            audio_end,
+            ui_end: Some(ui_end),
         }
     }
 
@@ -248,6 +255,33 @@ impl SynthEngine {
             releasing_voices: voices_ui_data.releasing,
             killing_voices: voices_ui_data.killing,
         }
+    }
+
+    pub fn get_ui_state(&self) -> ui_bridge::UiState {
+        let voices_ui = self.voices_handler.get_ui_data();
+
+        ui_bridge::UiState {
+            voices: voices_ui.num_voices,
+            legato: voices_ui.legato,
+            block_size: self.block_size,
+            voice_kill_time: self
+                .modules
+                .get_typed_module::<Output>(OUTPUT_MODULE_ID)
+                .map_or(0.0, |output| output.get_voice_kill_time()),
+            oversampling: self.oversampling,
+            stereo_spectrum: self.spectrum_channels == NUM_CHANNELS,
+        }
+    }
+
+    pub fn get_routing_state(&self) -> ui_bridge::RoutingState {
+        ui_bridge::RoutingState::new(
+            self.modules
+                .values()
+                .filter_map(|m| m.as_deref())
+                .map(|m| (m.id(), ui_bridge::routing_state::Module::new(m)))
+                .collect(),
+            self.input_sources.clone(),
+        )
     }
 
     pub fn set_num_voices(&mut self, num_voices: usize) {
@@ -489,12 +523,36 @@ impl SynthEngine {
         self.voices_handler.handle_choke(channel, note);
     }
 
+    fn handle_ui_events(&mut self) {
+        use ui_bridge::UiEvent;
+
+        while let Some(event) = self.audio_end.pop_event() {
+            match event {
+                UiEvent::LinkAmount { src, dst, amount } => {
+                    self.update_link_amount(&src, &dst, amount);
+                }
+                UiEvent::Voices(voices) => self.set_num_voices(voices),
+                UiEvent::Legato(legato) => self.set_legato(legato),
+                UiEvent::BlockSize(block_size) => self.set_block_size(block_size),
+                UiEvent::VoiceKillTime(voice_kill_time) => {
+                    self.set_voice_kill_time(voice_kill_time);
+                }
+                UiEvent::Oversampling(oversampling) => self.set_oversampling(oversampling),
+                UiEvent::StereoSpectrum(stereo_spectrum) => {
+                    self.set_stereo_spectrum(stereo_spectrum);
+                }
+            }
+        }
+    }
+
     pub fn process<'a>(
         &mut self,
         samples: usize,
         update_ui: bool,
         outputs: impl Iterator<Item = &'a mut [f32]>,
     ) {
+        self.handle_ui_events();
+
         {
             let mut decaying_voices = DecayingVoices::new();
 
@@ -555,17 +613,13 @@ impl SynthEngine {
         module_id
     }
 
-    fn data_types_compatible(src: DataType, dst: DataType) -> bool {
-        src == dst || (dst == DataType::Buffer && src == DataType::Scalar)
-    }
-
     fn can_be_linked_with_output(&self, src: &ModuleId, dst: &ModuleInput) -> Result<(), String> {
         let Some(src_module) = self.modules.get_module(*src) else {
             return Err("Invalid node.".to_string());
         };
 
         let is_compatible = dst.input_type == Input::Audio
-            && Self::data_types_compatible(src_module.output(), DataType::Buffer);
+            && data_types_compatible(src_module.output(), DataType::Buffer);
 
         if !is_compatible {
             return Err("Data types mismatch.".to_string());
@@ -590,7 +644,7 @@ impl SynthEngine {
 
         let is_compatible = dst_module.inputs().iter().any(|input_info| {
             input_info.input == dst.input_type
-                && Self::data_types_compatible(src_data_types, input_info.data_type)
+                && data_types_compatible(src_data_types, input_info.data_type)
         });
 
         if !is_compatible {
@@ -622,95 +676,12 @@ impl SynthEngine {
             .collect()
     }
 
-    pub fn get_modules(&self) -> Vec<&dyn SynthModule> {
-        self.modules
-            .values()
-            .filter_map(|val| val.as_deref())
-            .filter(|m| m.module_type() != ModuleType::Output)
-            .collect()
-    }
-
     pub fn get_module_mut(&mut self, id: ModuleId) -> Option<&mut dyn SynthModule> {
         self.modules.get_module_mut(id)
     }
 
     pub fn get_typed_module_mut<T: SynthModule>(&mut self, id: ModuleId) -> Option<&mut T> {
         self.modules.get_typed_module_mut(id)
-    }
-
-    pub fn get_available_input_sources(&self, input: ModuleInput) -> Vec<AvailableInputSourceUI> {
-        let dst_data_type =
-            if input.module_id == OUTPUT_MODULE_ID && input.input_type == Input::Audio {
-                DataType::Buffer
-            } else if let Some(input_module) = self.modules.get_module(input.module_id)
-                && let Some(input_info) = input_module
-                    .inputs()
-                    .iter()
-                    .find(|input_info| input_info.input == input.input_type)
-            {
-                input_info.data_type
-            } else {
-                return Vec::new();
-            };
-
-        self.modules
-            .values()
-            .filter_map(|module| module.as_deref())
-            .filter(|module| {
-                module.id() != input.module_id
-                    && Self::data_types_compatible(module.output(), dst_data_type)
-                    && !self.is_connected_to_source(module.id(), input.module_id)
-            })
-            .map(|module| AvailableInputSourceUI {
-                src: module.id(),
-                label: module.label(),
-            })
-            .collect()
-    }
-
-    pub fn get_connected_input_sources(&self, input: ModuleInput) -> Vec<ConnectedInputSourceUI> {
-        let Some(sources) = self.input_sources.get(&input) else {
-            return Vec::new();
-        };
-
-        sources
-            .iter()
-            .filter_map(|source| {
-                self.modules
-                    .get_module(source.src)
-                    .map(|module| (module, source))
-            })
-            .map(|(module, source)| ConnectedInputSourceUI {
-                src: source.src,
-                amount: source.amount,
-                label: module.label(),
-                modulation: source
-                    .modulation
-                    .and_then(|modulation| {
-                        self.modules
-                            .get_module(modulation.src)
-                            .map(|module| (module, modulation))
-                    })
-                    .map(|(module, modulation)| InputModulationUI {
-                        src: modulation.src,
-                        label: module.label(),
-                    }),
-            })
-            .collect()
-    }
-
-    fn is_connected_to_source(&self, dst_id: ModuleId, src_id: ModuleId) -> bool {
-        for (input, sources) in &self.input_sources {
-            if input.module_id == dst_id {
-                for source in sources.iter().flat_map(|src| src.source_ids()) {
-                    if source == src_id || self.is_connected_to_source(source, src_id) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        false
     }
 
     fn calc_execution_order(links: &[ModuleLink]) -> Result<Vec<ModuleId>, String> {

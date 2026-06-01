@@ -31,8 +31,12 @@ impl Widget for DirectInput {
         let (available, connected) = {
             let synth = self.synth_engine.lock();
             (
-                synth.get_available_input_sources(self.input),
-                synth.get_connected_input_sources(self.input),
+                synth
+                    .get_routing_state()
+                    .get_available_input_sources(self.input),
+                synth
+                    .get_routing_state()
+                    .get_connected_input_sources(self.input),
             )
         };
         let mut selected = connected.first().map(|src| src.src);
