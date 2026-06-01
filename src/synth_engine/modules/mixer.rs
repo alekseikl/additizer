@@ -12,7 +12,7 @@ use crate::synth_engine::{
     },
 };
 
-const MAX_INPUTS: usize = 6;
+const MAX_INPUTS: u8 = 6;
 const MAX_VOLUME: Sample = 24.0; // dB
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -32,7 +32,7 @@ impl Default for InputChannelParams {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChannelParams {
-    input_params: [InputChannelParams; MAX_INPUTS],
+    input_params: [InputChannelParams; MAX_INPUTS as usize],
     output_level: Sample,
     output_gain: Sample,
 }
@@ -49,8 +49,8 @@ impl Default for ChannelParams {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Params {
-    num_inputs: usize,
-    input_volume_types: [VolumeType; MAX_INPUTS],
+    num_inputs: u8,
+    input_volume_types: [VolumeType; MAX_INPUTS as usize],
     output_volume_type: VolumeType,
 }
 
@@ -73,10 +73,10 @@ pub struct MixerConfig {
 
 pub struct MixerUIData {
     pub label: String,
-    pub num_inputs: usize,
-    pub input_volume_types: [VolumeType; MAX_INPUTS],
-    pub input_levels: [StereoSample; MAX_INPUTS],
-    pub input_gains: [StereoSample; MAX_INPUTS],
+    pub num_inputs: u8,
+    pub input_volume_types: [VolumeType; MAX_INPUTS as usize],
+    pub input_levels: [StereoSample; MAX_INPUTS as usize],
+    pub input_gains: [StereoSample; MAX_INPUTS as usize],
     pub output_volume_type: VolumeType,
     pub output_level: StereoSample,
     pub output_gain: StereoSample,
@@ -124,7 +124,7 @@ pub struct Mixer {
 }
 
 impl Mixer {
-    pub const MAX_INPUTS: usize = MAX_INPUTS;
+    pub const MAX_INPUTS: u8 = MAX_INPUTS;
 
     pub fn new(id: ModuleId, config: ModuleConfigBox<MixerConfig>) -> Self {
         let mut mixer = Self {
@@ -166,7 +166,7 @@ impl Mixer {
     set_mono_param!(
         set_num_inputs,
         num_inputs,
-        usize,
+        u8,
         num_inputs.clamp(1, MAX_INPUTS)
     );
 
@@ -175,13 +175,14 @@ impl Mixer {
     set_stereo_param!(set_output_level, output_level);
     set_stereo_param!(set_output_gain, output_gain);
 
-    pub fn set_volume_type(&mut self, input_idx: usize, volume_type: VolumeType) {
+    pub fn set_volume_type(&mut self, input_idx: u8, volume_type: VolumeType) {
+        let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
         self.params.input_volume_types[input_idx] = volume_type;
         self.config.lock().params.input_volume_types[input_idx] = volume_type;
     }
 
-    pub fn set_input_level(&mut self, input_idx: usize, level: StereoSample) {
-        let input_idx = input_idx.clamp(0, MAX_INPUTS);
+    pub fn set_input_level(&mut self, input_idx: u8, level: StereoSample) {
+        let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
 
         for (channel, level) in self.channels.iter_mut().zip(level.iter()) {
             channel.params.input_params[input_idx].level = *level;
@@ -195,8 +196,8 @@ impl Mixer {
         }
     }
 
-    pub fn set_input_gain(&mut self, input_idx: usize, gain: StereoSample) {
-        let input_idx = input_idx.clamp(0, MAX_INPUTS);
+    pub fn set_input_gain(&mut self, input_idx: u8, gain: StereoSample) {
+        let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
 
         for (channel, gain) in self.channels.iter_mut().zip(gain.iter()) {
             channel.params.input_params[input_idx].gain = *gain;
@@ -220,7 +221,7 @@ impl Mixer {
         output: &mut Buffer,
         input: &Buffer,
         gain_mod: impl Iterator<Item = Sample>,
-        input_idx: usize,
+        input_idx: u8,
         samples: usize,
     ) {
         let input = input
@@ -253,9 +254,9 @@ impl Mixer {
         for input_idx in 0..params.num_inputs {
             let input = router.buffer(Input::AudioMix(input_idx), &mut buffers.input);
 
-            match params.input_volume_types[input_idx] {
+            match params.input_volume_types[input_idx as usize] {
                 VolumeType::Db => {
-                    let channel_level = channel.input_params[input_idx].level;
+                    let channel_level = channel.input_params[input_idx as usize].level;
                     let level_mod =
                         router.buffer(Input::LevelMix(input_idx), &mut buffers.level_mod);
                     let gain_mod = level_mod
@@ -265,7 +266,7 @@ impl Mixer {
                     Self::mix_input(&mut voice.output, input, gain_mod, input_idx, samples);
                 }
                 VolumeType::Gain => {
-                    let channel_gain = channel.input_params[input_idx].gain;
+                    let channel_gain = channel.input_params[input_idx as usize].gain;
                     let gain_mod = router.buffer(Input::GainMix(input_idx), &mut buffers.level_mod);
                     let gain_mod = gain_mod.iter().map(|gain_mod| channel_gain + gain_mod);
 

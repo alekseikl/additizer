@@ -66,15 +66,16 @@ impl ModuleUi for MixerUi {
                 let module_id = self.module_id;
 
                 for input_idx in 0..ui_data.num_inputs {
-                    let vol_type = ui_data.input_volume_types[input_idx];
+                    let i = input_idx as usize;
+                    let vol_type = ui_data.input_volume_types[i];
                     let (input, value) = match vol_type {
                         VolumeType::Db => (
                             Input::LevelMix(input_idx),
-                            &mut ui_data.input_levels[input_idx],
+                            &mut ui_data.input_levels[i],
                         ),
                         VolumeType::Gain => (
                             Input::GainMix(input_idx),
-                            &mut ui_data.input_gains[input_idx],
+                            &mut ui_data.input_gains[i],
                         ),
                     };
 
@@ -88,7 +89,7 @@ impl ModuleUi for MixerUi {
                                     module_id,
                                 ));
 
-                                let volume_type = &mut ui_data.input_volume_types[input_idx];
+                                let volume_type = &mut ui_data.input_volume_types[i];
 
                                 ComboBox::from_id_salt(format!("volume-type-{}", input_idx))
                                     .selected_text(volume_type.label())
@@ -118,11 +119,11 @@ impl ModuleUi for MixerUi {
                         match vol_type {
                             VolumeType::Db => {
                                 self.mixer(&mut synth.lock())
-                                    .set_input_level(input_idx, ui_data.input_levels[input_idx]);
+                                    .set_input_level(input_idx, ui_data.input_levels[i]);
                             }
                             VolumeType::Gain => {
                                 self.mixer(&mut synth.lock())
-                                    .set_input_gain(input_idx, ui_data.input_gains[input_idx]);
+                                    .set_input_gain(input_idx, ui_data.input_gains[i]);
                             }
                         }
                     }

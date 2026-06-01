@@ -263,18 +263,16 @@ impl SynthModule for Expressions {
     }
 
     fn process(&mut self, params: &ProcessParams, _router: &dyn Router) {
-        if params.needs_audio_rate {
-            for channel in &mut self.channels {
-                for voice_idx in params.active_voices {
-                    let voice = &mut channel.voices[*voice_idx];
+        for channel in &mut self.channels {
+            for voice_idx in params.active_voices {
+                let voice = &mut channel.voices[*voice_idx];
 
-                    voice
-                        .audio_smoother
-                        .update(params.sample_rate, self.params.smooth);
+                voice
+                    .audio_smoother
+                    .update(params.sample_rate, self.params.smooth);
 
-                    for out in voice.audio_output.iter_mut().take(params.samples) {
-                        *out = voice.audio_smoother.tick(voice.output);
-                    }
+                for out in voice.audio_output.iter_mut().take(params.samples) {
+                    *out = voice.audio_smoother.tick(voice.output);
                 }
             }
         }

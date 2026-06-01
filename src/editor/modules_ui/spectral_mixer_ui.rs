@@ -80,15 +80,16 @@ impl ModuleUi for SpectralMixerUi {
                 let module_id = self.module_id;
 
                 for input_idx in 0..ui_data.num_inputs {
-                    let vol_type = ui_data.input_params[input_idx].volume_type;
+                    let i = input_idx as usize;
+                    let vol_type = ui_data.input_params[i].volume_type;
                     let (input, value) = match vol_type {
                         VolumeType::Db => (
                             Input::LevelMix(input_idx),
-                            &mut ui_data.input_levels[input_idx],
+                            &mut ui_data.input_levels[i],
                         ),
                         VolumeType::Gain => (
                             Input::GainMix(input_idx),
-                            &mut ui_data.input_gains[input_idx],
+                            &mut ui_data.input_gains[i],
                         ),
                     };
 
@@ -98,8 +99,7 @@ impl ModuleUi for SpectralMixerUi {
                             ModulationInput::new(value, synth.clone(), input, module_id).before(
                                 move |ui, synth| {
                                     if input_idx > 0 {
-                                        let mix_type =
-                                            &mut ui_data.input_params[input_idx].mix_type;
+                                        let mix_type = &mut ui_data.input_params[i].mix_type;
 
                                         ComboBox::from_id_salt(format!("mix-type-{}", input_idx))
                                             .selected_text(mix_type.label())
@@ -136,8 +136,7 @@ impl ModuleUi for SpectralMixerUi {
                                         module_id,
                                     ));
 
-                                    let volume_type =
-                                        &mut ui_data.input_params[input_idx].volume_type;
+                                    let volume_type = &mut ui_data.input_params[i].volume_type;
 
                                     ComboBox::from_id_salt(format!("volume-type-{}", input_idx))
                                         .selected_text(volume_type.label())
@@ -171,11 +170,11 @@ impl ModuleUi for SpectralMixerUi {
                         match vol_type {
                             VolumeType::Db => {
                                 self.mixer(&mut synth.lock())
-                                    .set_input_level(input_idx, ui_data.input_levels[input_idx]);
+                                    .set_input_level(input_idx, ui_data.input_levels[i]);
                             }
                             VolumeType::Gain => {
                                 self.mixer(&mut synth.lock())
-                                    .set_input_gain(input_idx, ui_data.input_gains[input_idx]);
+                                    .set_input_gain(input_idx, ui_data.input_gains[i]);
                             }
                         }
                     }

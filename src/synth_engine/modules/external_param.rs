@@ -196,16 +196,14 @@ impl SynthModule for ExternalParam {
 
                 voice.output.advance(param_value);
 
-                if params.needs_audio_rate {
-                    voice
-                        .audio_smoother
-                        .update(params.sample_rate, self.params.smooth);
-                    voice.audio_smoother.segment(
-                        &voice.output,
-                        params.samples,
-                        &mut voice.audio_output,
-                    );
-                }
+                voice
+                    .audio_smoother
+                    .update(params.sample_rate, self.params.smooth);
+                voice.audio_smoother.segment(
+                    &voice.output,
+                    params.samples,
+                    &mut voice.audio_output,
+                );
             }
         }
     }

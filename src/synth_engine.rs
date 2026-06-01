@@ -7,6 +7,7 @@ use std::{
 
 use nih_plug::params::FloatParam;
 use parking_lot::Mutex;
+use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
@@ -58,6 +59,7 @@ mod routing;
 mod smooth;
 mod stereo_sample;
 mod types;
+mod ui_bridge;
 mod voices_handler;
 
 pub const MAX_BLOCK_SIZE: usize = 128;
@@ -96,7 +98,7 @@ impl ModuleInputSource {
     }
 }
 
-type ModulesMap = HashMap<ModuleId, Option<Box<dyn SynthModule>>>;
+type ModulesMap = FxHashMap<ModuleId, Option<Box<dyn SynthModule>>>;
 
 trait ModuleAccess {
     fn get_module(&self, id: ModuleId) -> Option<&dyn SynthModule>;
@@ -132,8 +134,7 @@ pub struct SynthEngine {
     spectrum_channels: usize,
     config: Arc<Mutex<Config>>,
     modules: ModulesMap,
-    input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>>,
-    needs_audio_rate: HashSet<ModuleId>,
+    input_sources: FxHashMap<ModuleInput, Vec<ModuleInputSource>>,
     execution_order: Vec<ModuleId>,
     voices_handler: VoicesHandler,
     external_params: Option<Arc<ExternalParamsBlock>>,
@@ -168,9 +169,8 @@ impl SynthEngine {
             oversampling: false,
             spectrum_channels: NUM_CHANNELS,
             config: Default::default(),
-            modules: HashMap::new(),
-            input_sources: HashMap::new(),
-            needs_audio_rate: HashSet::new(),
+            modules: ModulesMap::default(),
+            input_sources: FxHashMap::default(),
             execution_order: Vec::new(),
             voices_handler: VoicesHandler::new(),
             external_params: None,
@@ -272,7 +272,10 @@ impl SynthEngine {
     }
 
     pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) {
-        if let Some(output) = self.get_typed_module_mut::<Output>(OUTPUT_MODULE_ID) {
+        if let Some(output) = self
+            .modules
+            .get_typed_module_mut::<Output>(OUTPUT_MODULE_ID)
+        {
             output.set_voice_kill_time(voice_kill_time);
         }
     }
@@ -294,7 +297,10 @@ impl SynthEngine {
     }
 
     pub fn set_output_level(&mut self, level: StereoSample) {
-        if let Some(output) = self.get_typed_module_mut::<Output>(OUTPUT_MODULE_ID) {
+        if let Some(output) = self
+            .modules
+            .get_typed_module_mut::<Output>(OUTPUT_MODULE_ID)
+        {
             output.set_gain(level);
         }
     }
@@ -514,12 +520,11 @@ impl SynthEngine {
         };
         let sample_rate = self.sample_rate();
 
-        let mut params = ProcessParams {
+        let params = ProcessParams {
             samples,
             sample_rate,
             buffer_t_step: samples as Sample / sample_rate,
             smooth_params: SmoothedSampleParams::new(sample_rate),
-            needs_audio_rate: false,
             needs_update_ui: update_ui,
             spectrum_channels: self.spectrum_channels,
             active_voices: &playing_voices,
@@ -529,16 +534,16 @@ impl SynthEngine {
             if let Some(module_box) = self.modules.get_mut(module_id)
                 && let Some(mut module) = module_box.take()
             {
-                params.needs_audio_rate = self.needs_audio_rate.contains(module_id);
                 module.process(&params, self);
                 self.modules.get_mut(module_id).unwrap().replace(module);
             }
         }
 
-        let oversampling = self.oversampling;
-
-        if let Some(output) = self.get_typed_module_mut::<Output>(OUTPUT_MODULE_ID) {
-            output.read_output(oversampling, outputs);
+        if let Some(output) = self
+            .modules
+            .get_typed_module_mut::<Output>(OUTPUT_MODULE_ID)
+        {
+            output.read_output(self.oversampling, outputs);
         }
     }
 
@@ -736,38 +741,9 @@ impl SynthEngine {
     }
 
     fn setup_routing(&mut self, links: &[ModuleLink]) -> Result<(), String> {
-        fn mark_needs_audio_rate(
-            sources: &[ModuleInputSource],
-            input_sources: &HashMap<ModuleInput, Vec<ModuleInputSource>>,
-            modules: &HashMap<ModuleId, Option<Box<dyn SynthModule>>>,
-            needs_audio_rate: &mut HashSet<ModuleId>,
-        ) {
-            const NEEDS_BUFFER_TYPES: &[DataType] = &[DataType::Buffer, DataType::Scalar];
-
-            for module_id in sources.iter().flat_map(|src| src.source_ids()) {
-                if let Some(src_module) =
-                    modules.get(&module_id).and_then(|result| result.as_deref())
-                    && NEEDS_BUFFER_TYPES.contains(&src_module.output())
-                {
-                    needs_audio_rate.insert(module_id);
-
-                    for (input, sources) in input_sources {
-                        if input.module_id == module_id {
-                            mark_needs_audio_rate(
-                                sources,
-                                input_sources,
-                                modules,
-                                needs_audio_rate,
-                            );
-                        }
-                    }
-                }
-            }
-        }
-
         let execution_order = Self::calc_execution_order(links)?;
-        let mut input_sources: HashMap<ModuleInput, Vec<ModuleInputSource>> = HashMap::new();
-        let mut needs_audio_rate: HashSet<ModuleId> = HashSet::new();
+        let mut input_sources: FxHashMap<ModuleInput, Vec<ModuleInputSource>> =
+            FxHashMap::default();
 
         for link in links {
             input_sources
@@ -780,19 +756,7 @@ impl SynthEngine {
                 });
         }
 
-        if let Some(output_sources) =
-            input_sources.get(&ModuleInput::new(Input::Audio, OUTPUT_MODULE_ID))
-        {
-            mark_needs_audio_rate(
-                output_sources,
-                &input_sources,
-                &self.modules,
-                &mut needs_audio_rate,
-            );
-        }
-
         self.input_sources = input_sources;
-        self.needs_audio_rate = needs_audio_rate;
         self.execution_order = execution_order;
         Ok(())
     }

@@ -350,16 +350,14 @@ impl SynthModule for Lfo {
                     &mut voice_router,
                 );
 
-                if params.needs_audio_rate {
-                    Self::process_voice_buffer(
-                        &self.params,
-                        &channel.params,
-                        params,
-                        &mut self.inputs,
-                        voice,
-                        &voice_router,
-                    );
-                }
+                Self::process_voice_buffer(
+                    &self.params,
+                    &channel.params,
+                    params,
+                    &mut self.inputs,
+                    voice,
+                    &voice_router,
+                );
             }
         }
     }

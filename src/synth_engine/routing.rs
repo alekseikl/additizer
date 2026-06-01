@@ -4,7 +4,7 @@ use crate::synth_engine::{Sample, StereoSample, buffer::SpectralBuffer};
 
 use super::buffer::Buffer;
 
-pub type ModuleId = i64;
+pub type ModuleId = i32;
 
 pub const MAX_VOICES: usize = 24;
 pub const NUM_CHANNELS: usize = 2;
@@ -38,13 +38,13 @@ pub enum DataType {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 pub enum Input {
     Audio,
-    AudioMix(usize),
+    AudioMix(u8),
     Gain, // 0.0 - 1.0
-    GainMix(usize),
-    Level,           // dB
-    LevelMix(usize), // dB
-    Distortion,      // dB
-    ClippingLevel,   // dB
+    GainMix(u8),
+    Level,         // dB
+    LevelMix(u8),  // dB
+    Distortion,    // dB
+    ClippingLevel, // dB
     PitchShift,
     Detune,
     DetunePower,
@@ -53,7 +53,7 @@ pub enum Input {
     PhaseShift,
     FrequencyShift,
     Spectrum,
-    SpectrumMix(usize),
+    SpectrumMix(u8),
     SpectrumTo,
     Blend,
     PhasesBlend,

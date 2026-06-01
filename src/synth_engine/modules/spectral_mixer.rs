@@ -14,7 +14,7 @@ use crate::synth_engine::{
     types::{ComplexSample, SpectralOutput},
 };
 
-const MAX_INPUTS: usize = 6;
+const MAX_INPUTS: u8 = 6;
 const MAX_VOLUME: Sample = 24.0; // dB
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -34,7 +34,7 @@ impl Default for InputChannelParams {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChannelParams {
-    input_params: [InputChannelParams; MAX_INPUTS],
+    input_params: [InputChannelParams; MAX_INPUTS as usize],
     output_level: Sample,
     output_gain: Sample,
 }
@@ -57,8 +57,8 @@ pub struct InputParams {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Params {
-    num_inputs: usize,
-    input_params: [InputParams; MAX_INPUTS],
+    num_inputs: u8,
+    input_params: [InputParams; MAX_INPUTS as usize],
     output_volume_type: VolumeType,
 }
 
@@ -81,10 +81,10 @@ pub struct SpectralMixerConfig {
 
 pub struct SpectralMixerUIData {
     pub label: String,
-    pub num_inputs: usize,
-    pub input_params: [InputParams; MAX_INPUTS],
-    pub input_levels: [StereoSample; MAX_INPUTS],
-    pub input_gains: [StereoSample; MAX_INPUTS],
+    pub num_inputs: u8,
+    pub input_params: [InputParams; MAX_INPUTS as usize],
+    pub input_levels: [StereoSample; MAX_INPUTS as usize],
+    pub input_gains: [StereoSample; MAX_INPUTS as usize],
     pub output_volume_type: VolumeType,
     pub output_level: StereoSample,
     pub output_gain: StereoSample,
@@ -111,7 +111,7 @@ pub struct SpectralMixer {
 }
 
 impl SpectralMixer {
-    pub const MAX_INPUTS: usize = MAX_INPUTS;
+    pub const MAX_INPUTS: u8 = MAX_INPUTS;
 
     pub fn new(id: ModuleId, config: ModuleConfigBox<SpectralMixerConfig>) -> Self {
         let mut mixer = Self {
@@ -152,7 +152,7 @@ impl SpectralMixer {
     set_mono_param!(
         set_num_inputs,
         num_inputs,
-        usize,
+        u8,
         num_inputs.clamp(1, MAX_INPUTS)
     );
 
@@ -161,18 +161,20 @@ impl SpectralMixer {
     set_stereo_param!(set_output_level, output_level);
     set_stereo_param!(set_output_gain, output_gain);
 
-    pub fn set_mix_type(&mut self, input_idx: usize, mix_type: MixType) {
+    pub fn set_mix_type(&mut self, input_idx: u8, mix_type: MixType) {
+        let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
         self.params.input_params[input_idx].mix_type = mix_type;
         self.config.lock().params.input_params[input_idx].mix_type = mix_type;
     }
 
-    pub fn set_volume_type(&mut self, input_idx: usize, volume_type: VolumeType) {
+    pub fn set_volume_type(&mut self, input_idx: u8, volume_type: VolumeType) {
+        let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
         self.params.input_params[input_idx].volume_type = volume_type;
         self.config.lock().params.input_params[input_idx].volume_type = volume_type;
     }
 
-    pub fn set_input_level(&mut self, input_idx: usize, volume: StereoSample) {
-        let input_idx = input_idx.clamp(0, MAX_INPUTS);
+    pub fn set_input_level(&mut self, input_idx: u8, volume: StereoSample) {
+        let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
 
         for (channel, level) in self.channels.iter_mut().zip(volume.iter()) {
             channel.params.input_params[input_idx].level = *level;
@@ -186,8 +188,8 @@ impl SpectralMixer {
         }
     }
 
-    pub fn set_input_gain(&mut self, input_idx: usize, gain: StereoSample) {
-        let input_idx = input_idx.clamp(0, MAX_INPUTS);
+    pub fn set_input_gain(&mut self, input_idx: u8, gain: StereoSample) {
+        let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
 
         for (channel, gain) in self.channels.iter_mut().zip(gain.iter()) {
             channel.params.input_params[input_idx].gain = *gain;
@@ -218,8 +220,8 @@ impl SpectralMixer {
         output.fill(ComplexSample::ZERO);
 
         for input_idx in 0..params.num_inputs {
-            let input_params = &params.input_params[input_idx];
-            let channel_input_params = &channel.input_params[input_idx];
+            let input_params = &params.input_params[input_idx as usize];
+            let channel_input_params = &channel.input_params[input_idx as usize];
 
             let gain = match input_params.volume_type {
                 VolumeType::Db => Self::to_gain(router.scalar(
