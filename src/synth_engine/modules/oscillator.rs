@@ -12,6 +12,7 @@ use crate::{
     synth_engine::{
         StereoSample,
         buffer::{Buffer, SPECTRUM_BITS, SpectralBuffer, add_buffer_value, zero_buffer},
+        oscillator::link::{AudioEnd, UiEnd, UiEvent, create_link_pair},
         phase::Phase,
         routing::{
             DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
@@ -25,10 +26,11 @@ use crate::{
     utils::{from_ms, pitch_to_freq, power_scale, st_to_octave},
 };
 
+mod link;
 mod ui_bridge;
 
-pub use ui_bridge::{UiBridge, UiState};
 use ui_bridge::*;
+pub use ui_bridge::{UiBridge, UiState};
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
 const WAVEFORM_SIZE: usize = 1 << WAVEFORM_BITS;
