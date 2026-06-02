@@ -8,7 +8,7 @@ use crate::{
     },
     synth_engine::{
         Input, ModuleId, Sample, StereoSample,
-        oscillator::{self, PhasesDst, UiState},
+        oscillator::{self, ControlsState, PhasesDst},
         ui_bridge::UiBridge,
     },
 };
@@ -246,7 +246,7 @@ impl OscillatorUI {
     fn show_unison_section(
         synth_bridge: &mut UiBridge,
         bridge: &mut oscillator::UiBridge,
-        controls: &mut UiState,
+        controls: &mut ControlsState,
         unison_state: &mut UnisonState,
         ui: &mut Ui,
     ) {

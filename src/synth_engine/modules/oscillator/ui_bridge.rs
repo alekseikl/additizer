@@ -11,7 +11,7 @@ use crate::synth_engine::{
 };
 
 #[derive(Clone)]
-pub struct UnisonUiState {
+pub struct UnisonControlsState {
     pub initial_phase: StereoSample,
     pub phase_shift: StereoSample,
     pub phase_shift_to: StereoSample,
@@ -20,7 +20,7 @@ pub struct UnisonUiState {
 }
 
 #[derive(Clone)]
-pub struct UiState {
+pub struct ControlsState {
     pub gain: StereoSample,
     pub pitch_shift: StereoSample,
     pub detune: StereoSample,
@@ -33,14 +33,14 @@ pub struct UiState {
     pub steal_phase: bool,
     pub phases_blend: StereoSample,
     pub gains_blend: StereoSample,
-    pub unison_params: [UnisonUiState; MAX_UNISON_VOICES],
+    pub unison_params: [UnisonControlsState; MAX_UNISON_VOICES],
 }
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    controls: UiState,
+    controls: ControlsState,
 }
 
 impl UiBridge {
@@ -48,7 +48,7 @@ impl UiBridge {
         let mut synth_lock = synth.lock();
         let osc = synth_lock.get_typed_module_mut::<Oscillator>(module_id)?;
         let ui_end = osc.take_ui_end()?;
-        let controls = osc.get_ui_state();
+        let controls = osc.get_controls_state();
 
         drop(synth_lock);
 
@@ -68,7 +68,7 @@ impl UiBridge {
         let synth_lock = self.synth.lock();
 
         if let Some(osc) = synth_lock.get_typed_module::<Oscillator>(self.module_id) {
-            self.controls = osc.get_ui_state();
+            self.controls = osc.get_controls_state();
         }
     }
 
@@ -82,7 +82,7 @@ impl UiBridge {
         }
     }
 
-    pub fn controls(&self) -> &UiState {
+    pub fn controls(&self) -> &ControlsState {
         &self.controls
     }
 

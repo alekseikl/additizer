@@ -86,21 +86,31 @@ impl ModuleType {
         match self {
             Self::Output => Some(Box::new(OutputUi)),
             Self::HarmonicEditor => Some(Box::new(HarmonicEditorUI::new(id))),
-            Self::SpectralFilter => Some(Box::new(SpectralFilterUI::new(id))),
+            Self::SpectralFilter => SpectralFilterUI::new(id, synth_bridge)
+                .map(|filter| Box::new(filter) as ModuleUIBox),
             Self::Amplifier => {
                 AmplifierUI::new(id, synth_bridge).map(|amp| Box::new(amp) as ModuleUIBox)
             }
-            Self::Mixer => Some(Box::new(MixerUi::new(id))),
+            Self::Mixer => {
+                MixerUi::new(id, synth_bridge).map(|mixer| Box::new(mixer) as ModuleUIBox)
+            }
             Self::Oscillator => {
                 OscillatorUI::new(id, synth_bridge).map(|osc| Box::new(osc) as ModuleUIBox)
             }
-            Self::Envelope => Some(Box::new(EnvelopeUI::new(id))),
-            Self::ExternalParam => Some(Box::new(ExternalParamUI::new(id))),
-            Self::Lfo => Some(Box::new(LfoUi::new(id))),
-            Self::SpectralBlend => Some(Box::new(SpectralBlendUi::new(id))),
-            Self::SpectralMixer => Some(Box::new(SpectralMixerUi::new(id))),
-            Self::WaveShaper => Some(Box::new(WaveShaperUi::new(id))),
-            Self::Expressions => Some(Box::new(ExpressionsUi::new(id))),
+            Self::Envelope => {
+                EnvelopeUI::new(id, synth_bridge).map(|env| Box::new(env) as ModuleUIBox)
+            }
+            Self::ExternalParam => ExternalParamUI::new(id, synth_bridge)
+                .map(|param| Box::new(param) as ModuleUIBox),
+            Self::Lfo => LfoUi::new(id, synth_bridge).map(|lfo| Box::new(lfo) as ModuleUIBox),
+            Self::SpectralBlend => SpectralBlendUi::new(id, synth_bridge)
+                .map(|blend| Box::new(blend) as ModuleUIBox),
+            Self::SpectralMixer => SpectralMixerUi::new(id, synth_bridge)
+                .map(|mixer| Box::new(mixer) as ModuleUIBox),
+            Self::WaveShaper => WaveShaperUi::new(id, synth_bridge)
+                .map(|shaper| Box::new(shaper) as ModuleUIBox),
+            Self::Expressions => ExpressionsUi::new(id, synth_bridge)
+                .map(|expr| Box::new(expr) as ModuleUIBox),
         }
     }
 }

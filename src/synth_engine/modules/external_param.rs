@@ -3,6 +3,12 @@ use std::sync::Arc;
 use nih_plug::params::FloatParam;
 use serde::{Deserialize, Serialize};
 
+mod link;
+mod ui_bridge;
+
+use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
+pub use ui_bridge::{ControlsState, UiBridge};
+
 use crate::{
     synth_engine::{
         ModuleId, ModuleType, Sample, SynthModule,
@@ -44,13 +50,6 @@ pub struct ExternalParamConfig {
     params: Params,
 }
 
-pub struct ExternalParamUI {
-    pub selected_param_index: usize,
-    pub num_of_params: usize,
-    pub smooth: Sample,
-    pub sample_and_hold: bool,
-}
-
 struct Voice {
     triggered: bool,
     value_at_trigger: Sample,
@@ -82,6 +81,8 @@ pub struct ExternalParam {
     config: ModuleConfigBox<ExternalParamConfig>,
     params_block: Arc<ExternalParamsBlock>,
     params: Params,
+    audio_end: AudioEnd,
+    ui_end: Option<UiEnd>,
     channels: [Channel; NUM_CHANNELS],
 }
 
@@ -91,12 +92,16 @@ impl ExternalParam {
         config: ModuleConfigBox<ExternalParamConfig>,
         params_block: Arc<ExternalParamsBlock>,
     ) -> Self {
+        let (audio_end, ui_end) = create_link_pair();
+
         let mut ext = Self {
             id,
             label: format!("External Param {id}"),
             config,
             params_block,
             params: Params::default(),
+            audio_end,
+            ui_end: Some(ui_end),
             channels: Default::default(),
         };
 
@@ -114,8 +119,17 @@ impl ExternalParam {
         ext
     }
 
-    pub fn get_ui(&self) -> ExternalParamUI {
-        ExternalParamUI {
+    pub fn take_ui_end(&mut self) -> Option<UiEnd> {
+        self.ui_end.take()
+    }
+
+    pub fn return_ui_end(&mut self, ui_end: UiEnd) {
+        assert!(self.ui_end.is_none(), "ui_end not taken");
+        self.ui_end = Some(ui_end);
+    }
+
+    pub fn get_controls_state(&self) -> ControlsState {
+        ControlsState {
             selected_param_index: self.params.selected_param_index,
             num_of_params: NUM_FLOAT_PARAMS,
             smooth: self.params.smooth,
@@ -171,6 +185,16 @@ impl SynthModule for ExternalParam {
                     voice.value_at_trigger = param_value;
                     voice.audio_smoother.reset(param_value);
                 }
+            }
+        }
+    }
+
+    fn handle_ui_events(&mut self) {
+        while let Some(event) = self.audio_end.pop_event() {
+            match event {
+                UiEvent::SelectedParamIndex(index) => self.select_param(index),
+                UiEvent::Smooth(value) => self.set_smooth(value),
+                UiEvent::SampleAndHold(value) => self.set_sample_and_hold(value),
             }
         }
     }

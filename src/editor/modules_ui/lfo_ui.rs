@@ -5,7 +5,7 @@ use crate::{
         ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
         stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
-    synth_engine::{Input, Lfo, LfoShape, ModuleId, SynthEngine, ui_bridge::UiBridge},
+    synth_engine::{Input, LfoShape, ModuleId, lfo, ui_bridge::UiBridge},
 };
 
 impl LfoShape {
@@ -21,39 +21,36 @@ impl LfoShape {
 static SHAPE_OPTIONS: &[LfoShape] = &[LfoShape::Triangle, LfoShape::Square, LfoShape::Sine];
 
 pub struct LfoUi {
-    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
+    lfo_bridge: lfo::UiBridge,
 }
 
 impl LfoUi {
-    pub fn new(module_id: ModuleId) -> Self {
-        Self {
-            module_id,
+    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
+        let lfo_bridge = lfo::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+
+        Some(Self {
             remove_confirmation: false,
             label_state: None,
-        }
-    }
-
-    fn lfo<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut Lfo {
-        synth.get_typed_module_mut(self.module_id).unwrap()
+            lfo_bridge,
+        })
     }
 }
 
 impl ModuleUi for LfoUi {
     fn module_id(&self) -> Option<ModuleId> {
-        Some(self.module_id)
+        Some(self.lfo_bridge.module_id())
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth().clone();
-        let id = self.module_id;
-        let mut ui_data = self.lfo(&mut synth.lock()).get_ui();
+        let module_id = self.lfo_bridge.module_id();
+        let mut controls = self.lfo_bridge.controls().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
             bridge,
-            self.module_id,
+            module_id,
         ));
 
         ui.add_space(20.0);
@@ -65,14 +62,14 @@ impl ModuleUi for LfoUi {
             .show(ui, |ui| {
                 ui.label("Shape");
                 ComboBox::from_id_salt("shape-select")
-                    .selected_text(ui_data.shape.label())
+                    .selected_text(controls.shape.label())
                     .show_ui(ui, |ui| {
                         for shape in SHAPE_OPTIONS {
                             if ui
-                                .selectable_label(ui_data.shape == *shape, shape.label())
+                                .selectable_label(controls.shape == *shape, shape.label())
                                 .clicked()
                             {
-                                self.lfo(&mut synth.lock()).set_shape(*shape);
+                                self.lfo_bridge.set_shape(*shape);
                             }
                         }
                     });
@@ -81,50 +78,50 @@ impl ModuleUi for LfoUi {
                 ui.label("Skew");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.skew,
+                        &mut controls.skew,
                         bridge,
                         Input::Skew,
-                        id,
+                        module_id,
                     ))
                     .changed()
                 {
-                    self.lfo(&mut synth.lock()).set_skew(ui_data.skew);
+                    self.lfo_bridge.set_param(Input::Skew, controls.skew);
                 }
                 ui.end_row();
 
                 ui.label("Frequency");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.frequency,
+                        &mut controls.frequency,
                         bridge,
                         Input::LowFrequency,
-                        id,
+                        module_id,
                     ))
                     .changed()
                 {
-                    self.lfo(&mut synth.lock()).set_frequency(ui_data.frequency);
+                    self.lfo_bridge.set_param(Input::LowFrequency, controls.frequency);
                 }
                 ui.end_row();
 
                 ui.label("Phase shift");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.phase_shift,
+                        &mut controls.phase_shift,
                         bridge,
                         Input::PhaseShift,
-                        id,
+                        module_id,
                     ))
                     .changed()
                 {
-                    self.lfo(&mut synth.lock())
-                        .set_phase_shift(ui_data.phase_shift);
+                    self.lfo_bridge
+                        .set_param(Input::PhaseShift, controls.phase_shift);
                 }
                 ui.end_row();
 
                 ui.label("Smooth");
                 if ui
                     .add(
-                        StereoSlider::new(&mut ui_data.smooth_time)
+                        StereoSlider::new(&mut controls.smooth_time)
                             .range(0.0..=0.1)
                             .display_scale(1000.0)
                             .default_value(0.0)
@@ -134,27 +131,25 @@ impl ModuleUi for LfoUi {
                     )
                     .changed()
                 {
-                    self.lfo(&mut synth.lock())
-                        .set_smooth_time(ui_data.smooth_time);
+                    self.lfo_bridge.set_smooth_time(controls.smooth_time);
                 }
                 ui.end_row();
 
                 ui.label("Bipolar");
                 if ui
-                    .add(Checkbox::without_text(&mut ui_data.bipolar))
+                    .add(Checkbox::without_text(&mut controls.bipolar))
                     .changed()
                 {
-                    self.lfo(&mut synth.lock()).set_bipolar(ui_data.bipolar);
+                    self.lfo_bridge.set_bipolar(controls.bipolar);
                 }
                 ui.end_row();
 
                 ui.label("Steal phase");
                 if ui
-                    .add(Checkbox::without_text(&mut ui_data.steal_phase))
+                    .add(Checkbox::without_text(&mut controls.steal_phase))
                     .changed()
                 {
-                    self.lfo(&mut synth.lock())
-                        .set_steal_phase(ui_data.steal_phase);
+                    self.lfo_bridge.set_steal_phase(controls.steal_phase);
                 }
                 ui.end_row();
             });
@@ -162,7 +157,7 @@ impl ModuleUi for LfoUi {
         ui.add_space(40.0);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(self.module_id);
+            bridge.remove_module(module_id);
         }
     }
 }

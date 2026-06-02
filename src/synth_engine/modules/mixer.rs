@@ -3,6 +3,12 @@ use std::array;
 use nih_plug::util::db_to_gain_fast;
 use serde::{Deserialize, Serialize};
 
+mod link;
+mod ui_bridge;
+
+use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
+pub use ui_bridge::{ControlsState, UiBridge};
+
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule, VolumeType,
     buffer::{Buffer, copy_or_add_to_buffer, zero_buffer},
@@ -10,7 +16,7 @@ use crate::synth_engine::{
     synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory},
 };
 
-const MAX_INPUTS: u8 = 6;
+pub const MAX_INPUTS: u8 = 6;
 const MAX_VOLUME: Sample = 24.0; // dB
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -69,16 +75,6 @@ pub struct MixerConfig {
     channels: [ChannelParams; NUM_CHANNELS],
 }
 
-pub struct MixerUIData {
-    pub num_inputs: u8,
-    pub input_volume_types: [VolumeType; MAX_INPUTS as usize],
-    pub input_levels: [StereoSample; MAX_INPUTS as usize],
-    pub input_gains: [StereoSample; MAX_INPUTS as usize],
-    pub output_volume_type: VolumeType,
-    pub output_level: StereoSample,
-    pub output_gain: StereoSample,
-}
-
 struct Voice {
     output: Buffer,
 }
@@ -117,6 +113,8 @@ pub struct Mixer {
     config: ModuleConfigBox<MixerConfig>,
     params: Params,
     buffers: Buffers,
+    audio_end: AudioEnd,
+    ui_end: Option<UiEnd>,
     channels: [Channel; NUM_CHANNELS],
 }
 
@@ -124,12 +122,16 @@ impl Mixer {
     pub const MAX_INPUTS: u8 = MAX_INPUTS;
 
     pub fn new(id: ModuleId, config: ModuleConfigBox<MixerConfig>) -> Self {
+        let (audio_end, ui_end) = create_link_pair();
+
         let mut mixer = Self {
             id,
             label: format!("Mixer {id}"),
             config,
             params: Params::default(),
             buffers: Buffers::default(),
+            audio_end,
+            ui_end: Some(ui_end),
             channels: Default::default(),
         };
 
@@ -137,8 +139,17 @@ impl Mixer {
         mixer
     }
 
-    pub fn get_ui(&self) -> MixerUIData {
-        MixerUIData {
+    pub fn take_ui_end(&mut self) -> Option<UiEnd> {
+        self.ui_end.take()
+    }
+
+    pub fn return_ui_end(&mut self, ui_end: UiEnd) {
+        assert!(self.ui_end.is_none(), "ui_end not taken");
+        self.ui_end = Some(ui_end);
+    }
+
+    pub fn get_controls_state(&self) -> ControlsState {
+        ControlsState {
             num_inputs: self.params.num_inputs,
             input_volume_types: self.params.input_volume_types,
             input_gains: array::from_fn(|idx| {
@@ -339,6 +350,26 @@ impl SynthModule for Mixer {
 
     fn output(&self) -> DataType {
         DataType::Buffer
+    }
+
+    fn handle_ui_events(&mut self) {
+        while let Some(event) = self.audio_end.pop_event() {
+            match event {
+                UiEvent::InputParam { input, value } => match input {
+                    Input::Gain => self.set_output_gain(value),
+                    Input::Level => self.set_output_level(value),
+                    Input::GainMix(idx) => self.set_input_gain(idx, value),
+                    Input::LevelMix(idx) => self.set_input_level(idx, value),
+                    _ => (),
+                },
+                UiEvent::NumInputs(num_inputs) => self.set_num_inputs(num_inputs),
+                UiEvent::InputVolumeType {
+                    input_idx,
+                    volume_type,
+                } => self.set_volume_type(input_idx, volume_type),
+                UiEvent::OutputVolumeType(volume_type) => self.set_output_volume_type(volume_type),
+            }
+        }
     }
 
     fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {

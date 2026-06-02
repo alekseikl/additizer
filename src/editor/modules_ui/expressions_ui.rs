@@ -5,7 +5,9 @@ use crate::{
         ModuleUi, module_label::ModuleLabel, stereo_slider::StereoSlider,
         utils::confirm_module_removal,
     },
-    synth_engine::{Expression, Expressions, ModuleId, StereoSample, SynthEngine, ui_bridge::UiBridge},
+    synth_engine::{
+        Expression, ModuleId, StereoSample, expressions, ui_bridge::UiBridge,
+    },
 };
 
 impl Expression {
@@ -22,38 +24,36 @@ impl Expression {
 }
 
 pub struct ExpressionsUi {
-    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
+    expr_bridge: expressions::UiBridge,
 }
 
 impl ExpressionsUi {
-    pub fn new(module_id: ModuleId) -> Self {
-        Self {
-            module_id,
+    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
+        let expr_bridge = expressions::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+
+        Some(Self {
             remove_confirmation: false,
             label_state: None,
-        }
-    }
-
-    fn expr<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut Expressions {
-        synth.get_typed_module_mut(self.module_id).unwrap()
+            expr_bridge,
+        })
     }
 }
 
 impl ModuleUi for ExpressionsUi {
     fn module_id(&self) -> Option<ModuleId> {
-        Some(self.module_id)
+        Some(self.expr_bridge.module_id())
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth().clone();
-        let mut ui_data = self.expr(&mut synth.lock()).get_ui();
+        let module_id = self.expr_bridge.module_id();
+        let mut controls = self.expr_bridge.controls().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
             bridge,
-            self.module_id,
+            module_id,
         ));
 
         ui.add_space(20.0);
@@ -63,11 +63,11 @@ impl ModuleUi for ExpressionsUi {
             .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
-                let mut smooth = StereoSample::splat(ui_data.smooth);
+                let mut smooth = StereoSample::splat(controls.smooth);
 
                 ui.label("Expression");
                 ComboBox::from_id_salt("expressions-combo")
-                    .selected_text(ui_data.expression.label())
+                    .selected_text(controls.expression.label())
                     .show_ui(ui, |ui| {
                         const TYPE_OPTIONS: &[Expression] = &[
                             Expression::Velocity,
@@ -81,26 +81,26 @@ impl ModuleUi for ExpressionsUi {
                         for expression in TYPE_OPTIONS {
                             if ui
                                 .selectable_value(
-                                    &mut ui_data.expression,
+                                    &mut controls.expression,
                                     *expression,
                                     expression.label(),
                                 )
                                 .clicked()
                             {
-                                self.expr(&mut synth.lock()).set_expression(*expression);
+                                self.expr_bridge.set_expression(*expression);
                             }
                         }
                     });
                 ui.end_row();
 
-                if matches!(ui_data.expression, Expression::Velocity) {
+                if matches!(controls.expression, Expression::Velocity) {
                     ui.label("Use Release velocity");
                     if ui
-                        .add(Checkbox::without_text(&mut ui_data.use_release_velocity))
+                        .add(Checkbox::without_text(&mut controls.use_release_velocity))
                         .changed()
                     {
-                        self.expr(&mut synth.lock())
-                            .set_use_release_velocity(ui_data.use_release_velocity);
+                        self.expr_bridge
+                            .set_use_release_velocity(controls.use_release_velocity);
                     }
                     ui.end_row();
                 }
@@ -118,7 +118,7 @@ impl ModuleUi for ExpressionsUi {
                     )
                     .changed()
                 {
-                    self.expr(&mut synth.lock()).set_smooth(smooth.left());
+                    self.expr_bridge.set_smooth(smooth.left());
                 }
                 ui.end_row();
             });
@@ -126,7 +126,7 @@ impl ModuleUi for ExpressionsUi {
         ui.add_space(40.0);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(self.module_id);
+            bridge.remove_module(module_id);
         }
     }
 }

@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+mod link;
+mod ui_bridge;
+
+use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
+pub use ui_bridge::{ControlsState, UiBridge};
+
 use crate::{
     synth_engine::{
         StereoSample,
@@ -186,20 +192,6 @@ impl EnvelopeCurve {
     }
 }
 
-pub struct EnvelopeUIData {
-    pub delay: StereoSample,
-    pub attack: StereoSample,
-    pub attack_curve: EnvelopeCurve,
-    pub hold: StereoSample,
-    pub decay: StereoSample,
-    pub decay_curve: EnvelopeCurve,
-    pub sustain: StereoSample,
-    pub release: StereoSample,
-    pub release_curve: EnvelopeCurve,
-    pub smooth: StereoSample,
-    pub keep_voice_alive: bool,
-}
-
 enum Stage {
     Delay(CurveBox),
     Attack(CurveBox),
@@ -244,6 +236,8 @@ pub struct Envelope {
     label: String,
     config: ModuleConfigBox<EnvelopeConfig>,
     params: Params,
+    audio_end: AudioEnd,
+    ui_end: Option<UiEnd>,
     channels: [Channel; NUM_CHANNELS],
 }
 
@@ -265,11 +259,15 @@ macro_rules! set_curve_method {
 
 impl Envelope {
     pub fn new(id: ModuleId, config: ModuleConfigBox<EnvelopeConfig>) -> Self {
+        let (audio_end, ui_end) = create_link_pair();
+
         let mut env = Self {
             id,
             label: format!("Envelope {id}"),
             config,
             params: Params::default(),
+            audio_end,
+            ui_end: Some(ui_end),
             channels: Default::default(),
         };
 
@@ -277,8 +275,17 @@ impl Envelope {
         env
     }
 
-    pub fn get_ui(&self) -> EnvelopeUIData {
-        EnvelopeUIData {
+    pub fn take_ui_end(&mut self) -> Option<UiEnd> {
+        self.ui_end.take()
+    }
+
+    pub fn return_ui_end(&mut self, ui_end: UiEnd) {
+        assert!(self.ui_end.is_none(), "ui_end not taken");
+        self.ui_end = Some(ui_end);
+    }
+
+    pub fn get_controls_state(&self) -> ControlsState {
+        ControlsState {
             delay: get_stereo_param!(self, delay),
             attack: get_stereo_param!(self, attack),
             attack_curve: self.channels[0].params.attack_curve,
@@ -498,6 +505,27 @@ impl SynthModule for Envelope {
                         decaying.mark_active();
                     }
                 }
+            }
+        }
+    }
+
+    fn handle_ui_events(&mut self) {
+        while let Some(event) = self.audio_end.pop_event() {
+            match event {
+                UiEvent::InputParam { input, value } => match input {
+                    Input::Delay => self.set_delay(value),
+                    Input::Attack => self.set_attack(value),
+                    Input::Hold => self.set_hold(value),
+                    Input::Decay => self.set_decay(value),
+                    Input::Sustain => self.set_sustain(value),
+                    Input::Release => self.set_release(value),
+                    _ => (),
+                },
+                UiEvent::Smooth(value) => self.set_smooth(value),
+                UiEvent::AttackCurve(curve) => self.set_attack_curve(curve),
+                UiEvent::DecayCurve(curve) => self.set_decay_curve(curve),
+                UiEvent::ReleaseCurve(curve) => self.set_release_curve(curve),
+                UiEvent::KeepVoiceAlive(value) => self.set_keep_voice_alive(value),
             }
         }
     }

@@ -2,6 +2,12 @@ use itertools::izip;
 use serde::{Deserialize, Serialize};
 use std::f32;
 
+mod link;
+mod ui_bridge;
+
+use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
+pub use ui_bridge::{ControlsState, UiBridge};
+
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::{Buffer, zero_buffer},
@@ -44,16 +50,6 @@ pub struct Params {
     shape: LfoShape,
     bipolar: bool,
     steal_phase: bool,
-}
-
-pub struct LfoUiData {
-    pub shape: LfoShape,
-    pub bipolar: bool,
-    pub steal_phase: bool,
-    pub frequency: StereoSample,
-    pub phase_shift: StereoSample,
-    pub skew: StereoSample,
-    pub smooth_time: StereoSample,
 }
 
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -103,11 +99,15 @@ pub struct Lfo {
     params: Params,
     config: ModuleConfigBox<LfoConfig>,
     inputs: InputBuffers,
+    audio_end: AudioEnd,
+    ui_end: Option<UiEnd>,
     channels: [Channel; NUM_CHANNELS],
 }
 
 impl Lfo {
     pub fn new(id: ModuleId, config: ModuleConfigBox<LfoConfig>) -> Self {
+        let (audio_end, ui_end) = create_link_pair();
+
         let mut lfo = Self {
             id,
             label: format!("LFO {id}"),
@@ -118,6 +118,8 @@ impl Lfo {
                 phase_shift: zero_buffer(),
                 skew: zero_buffer(),
             },
+            audio_end,
+            ui_end: Some(ui_end),
             channels: Default::default(),
         };
 
@@ -125,8 +127,17 @@ impl Lfo {
         lfo
     }
 
-    pub fn get_ui(&self) -> LfoUiData {
-        LfoUiData {
+    pub fn take_ui_end(&mut self) -> Option<UiEnd> {
+        self.ui_end.take()
+    }
+
+    pub fn return_ui_end(&mut self, ui_end: UiEnd) {
+        assert!(self.ui_end.is_none(), "ui_end not taken");
+        self.ui_end = Some(ui_end);
+    }
+
+    pub fn get_controls_state(&self) -> ControlsState {
+        ControlsState {
             shape: self.params.shape,
             bipolar: self.params.bipolar,
             steal_phase: self.params.steal_phase,
@@ -312,6 +323,23 @@ impl SynthModule for Lfo {
                         voice.audio_phase = Phase::ZERO;
                     }
                 }
+            }
+        }
+    }
+
+    fn handle_ui_events(&mut self) {
+        while let Some(event) = self.audio_end.pop_event() {
+            match event {
+                UiEvent::InputParam { input, value } => match input {
+                    Input::LowFrequency => self.set_frequency(value),
+                    Input::PhaseShift => self.set_phase_shift(value),
+                    Input::Skew => self.set_skew(value),
+                    _ => (),
+                },
+                UiEvent::Shape(shape) => self.set_shape(shape),
+                UiEvent::Bipolar(value) => self.set_bipolar(value),
+                UiEvent::StealPhase(value) => self.set_steal_phase(value),
+                UiEvent::SmoothTime(value) => self.set_smooth_time(value),
             }
         }
     }

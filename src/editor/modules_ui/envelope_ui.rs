@@ -5,14 +5,16 @@ use crate::{
         ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
         stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
-    synth_engine::{Envelope, EnvelopeCurve, Input, ModuleId, Sample, SynthEngine, ui_bridge::UiBridge},
+    synth_engine::{
+        EnvelopeCurve, Input, ModuleId, Sample, envelope, ui_bridge::UiBridge,
+    },
     utils::from_ms,
 };
 
 pub struct EnvelopeUI {
-    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
+    env_bridge: envelope::UiBridge,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -62,19 +64,23 @@ impl EnvelopeCurve {
 }
 
 impl EnvelopeUI {
-    pub fn new(module_id: ModuleId) -> Self {
-        Self {
-            module_id,
+    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
+        let env_bridge = envelope::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+
+        Some(Self {
             remove_confirmation: false,
             label_state: None,
-        }
+            env_bridge,
+        })
     }
 
-    fn env<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut Envelope {
-        synth.get_typed_module_mut(self.module_id).unwrap()
-    }
-
-    fn add_curve(&self, ui: &mut Ui, label: &str, env_curve: &mut EnvelopeCurve) -> bool {
+    fn add_curve(
+        bridge: &mut envelope::UiBridge,
+        ui: &mut Ui,
+        label: &str,
+        env_curve: &mut EnvelopeCurve,
+        set_curve: impl FnOnce(&mut envelope::UiBridge, EnvelopeCurve),
+    ) -> bool {
         let mut changed = false;
 
         ui.label(label);
@@ -107,24 +113,27 @@ impl EnvelopeUI {
 
         ui.end_row();
 
+        if changed {
+            set_curve(bridge, *env_curve);
+        }
+
         changed
     }
 }
 
 impl ModuleUi for EnvelopeUI {
     fn module_id(&self) -> Option<ModuleId> {
-        Some(self.module_id)
+        Some(self.env_bridge.module_id())
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth().clone();
-        let id = self.module_id;
-        let mut ui_data = self.env(&mut synth.lock()).get_ui();
+        let module_id = self.env_bridge.module_id();
+        let mut controls = self.env_bridge.controls().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
             bridge,
-            self.module_id,
+            module_id,
         ));
 
         ui.add_space(20.0);
@@ -137,94 +146,116 @@ impl ModuleUi for EnvelopeUI {
                 ui.label("Delay");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.delay, bridge, Input::Delay, id)
+                        ModulationInput::new(&mut controls.delay, bridge, Input::Delay, module_id)
                             .default(from_ms(0.0)),
                     )
                     .changed()
                 {
-                    self.env(&mut synth.lock()).set_delay(ui_data.delay);
+                    self.env_bridge.set_param(Input::Delay, controls.delay);
                 }
                 ui.end_row();
                 ui.label("Attack");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.attack, bridge, Input::Attack, id)
-                            .default(from_ms(0.0)),
+                        ModulationInput::new(
+                            &mut controls.attack,
+                            bridge,
+                            Input::Attack,
+                            module_id,
+                        )
+                        .default(from_ms(0.0)),
                     )
                     .changed()
                 {
-                    self.env(&mut synth.lock()).set_attack(ui_data.attack);
+                    self.env_bridge.set_param(Input::Attack, controls.attack);
                 }
                 ui.end_row();
 
-                if self.add_curve(ui, "Attack Curve", &mut ui_data.attack_curve) {
-                    self.env(&mut synth.lock()).set_attack_curve(ui_data.attack_curve);
-                }
+                Self::add_curve(
+                    &mut self.env_bridge,
+                    ui,
+                    "Attack Curve",
+                    &mut controls.attack_curve,
+                    envelope::UiBridge::set_attack_curve,
+                );
 
                 ui.label("Hold");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.hold,
+                        &mut controls.hold,
                         bridge,
                         Input::Hold,
-                        id,
+                        module_id,
                     ))
                     .changed()
                 {
-                    self.env(&mut synth.lock()).set_hold(ui_data.hold);
+                    self.env_bridge.set_param(Input::Hold, controls.hold);
                 }
                 ui.end_row();
 
                 ui.label("Decay");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.decay, bridge, Input::Decay, id)
+                        ModulationInput::new(&mut controls.decay, bridge, Input::Decay, module_id)
                             .default(from_ms(150.0)),
                     )
                     .changed()
                 {
-                    self.env(&mut synth.lock()).set_decay(ui_data.decay);
+                    self.env_bridge.set_param(Input::Decay, controls.decay);
                 }
                 ui.end_row();
 
-                if self.add_curve(ui, "Decay Curve", &mut ui_data.decay_curve) {
-                    self.env(&mut synth.lock()).set_decay_curve(ui_data.decay_curve);
-                }
+                Self::add_curve(
+                    &mut self.env_bridge,
+                    ui,
+                    "Decay Curve",
+                    &mut controls.decay_curve,
+                    envelope::UiBridge::set_decay_curve,
+                );
 
                 ui.label("Sustain");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.sustain,
+                        &mut controls.sustain,
                         bridge,
                         Input::Sustain,
-                        id,
+                        module_id,
                     ))
                     .changed()
                 {
-                    self.env(&mut synth.lock()).set_sustain(ui_data.sustain);
+                    self.env_bridge.set_param(Input::Sustain, controls.sustain);
                 }
                 ui.end_row();
 
                 ui.label("Release");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.release, bridge, Input::Release, id)
-                            .default(from_ms(250.0)),
+                        ModulationInput::new(
+                            &mut controls.release,
+                            bridge,
+                            Input::Release,
+                            module_id,
+                        )
+                        .default(from_ms(250.0)),
                     )
                     .changed()
                 {
-                    self.env(&mut synth.lock()).set_release(ui_data.release);
+                    self.env_bridge.set_param(Input::Release, controls.release);
                 }
                 ui.end_row();
 
-                if self.add_curve(ui, "Release Curve", &mut ui_data.release_curve) {
-                    self.env(&mut synth.lock()).set_release_curve(ui_data.release_curve);
-                }
+                Self::add_curve(
+                    &mut self.env_bridge,
+                    ui,
+                    "Release Curve",
+                    &mut controls.release_curve,
+                    envelope::UiBridge::set_release_curve,
+                );
 
                 ui.label("Smooth");
                 if ui
                     .add(
-                        StereoSlider::new(&mut ui_data.smooth)
+                        StereoSlider::new(&mut controls.smooth)
                             .range(0.0..=0.1)
                             .display_scale(1000.0)
                             .default_value(0.0)
@@ -234,17 +265,17 @@ impl ModuleUi for EnvelopeUI {
                     )
                     .changed()
                 {
-                    self.env(&mut synth.lock()).set_smooth(ui_data.smooth);
+                    self.env_bridge.set_smooth(controls.smooth);
                 }
                 ui.end_row();
 
                 ui.label("Keep voice alive");
                 if ui
-                    .add(Checkbox::without_text(&mut ui_data.keep_voice_alive))
+                    .add(Checkbox::without_text(&mut controls.keep_voice_alive))
                     .changed()
                 {
-                    self.env(&mut synth.lock())
-                        .set_keep_voice_alive(ui_data.keep_voice_alive);
+                    self.env_bridge
+                        .set_keep_voice_alive(controls.keep_voice_alive);
                 }
                 ui.end_row();
             });
@@ -252,7 +283,7 @@ impl ModuleUi for EnvelopeUI {
         ui.add_space(40.0);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(self.module_id);
+            bridge.remove_module(module_id);
         }
     }
 }

@@ -30,7 +30,7 @@ mod link;
 mod ui_bridge;
 
 use ui_bridge::*;
-pub use ui_bridge::{UiBridge, UiState};
+pub use ui_bridge::{ControlsState, UiBridge};
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
 const WAVEFORM_SIZE: usize = 1 << WAVEFORM_BITS;
@@ -343,8 +343,8 @@ impl Oscillator {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_ui_state(&self) -> UiState {
-        UiState {
+    pub fn get_controls_state(&self) -> ControlsState {
+        ControlsState {
             gain: get_smoothed_param!(self, gain),
             pitch_shift: get_smoothed_param!(self, pitch_shift),
             detune: get_stereo_param!(self, detune),
@@ -357,7 +357,7 @@ impl Oscillator {
             unison: self.params.unison,
             phases_blend: get_stereo_param!(self, phases_blend),
             gains_blend: get_stereo_param!(self, gains_blend),
-            unison_params: std::array::from_fn(|i| UnisonUiState {
+            unison_params: std::array::from_fn(|i| UnisonControlsState {
                 initial_phase: get_unison_param!(self, initial_phase, i),
                 phase_shift: get_unison_param!(self, phase_shift, i),
                 phase_shift_to: get_unison_param!(self, phase_shift_to, i),
@@ -945,44 +945,6 @@ impl Oscillator {
         ));
         voice.state.pitch = pitch;
     }
-
-    fn handle_ui_events(&mut self) {
-        while let Some(event) = self.audio_end.pop_event() {
-            match event {
-                UiEvent::InputParam { input, value } => match input {
-                    Input::Gain => self.set_gain(value),
-                    Input::PitchShift => self.set_pitch_shift(value),
-                    Input::PhaseShift => self.set_phase_shift(value),
-                    Input::FrequencyShift => self.set_frequency_shift(value),
-                    Input::Detune => self.set_detune(value),
-                    Input::DetunePower => self.set_detune_power(value),
-                    Input::Glide => self.set_glide(value),
-                    Input::GlideSlope => self.set_glide_slope(value),
-                    Input::PhasesBlend => self.set_phases_blend(value),
-                    Input::GainsBlend => self.set_gains_blend(value),
-                    _ => (),
-                },
-                UiEvent::Unison(unison) => self.set_unison(unison),
-                UiEvent::UnisonInitialPhase { idx, value } => self.set_initial_phase(idx, value),
-                UiEvent::UnisonPhaseShift { idx, value } => self.set_unison_phase(idx, value),
-                UiEvent::UnisonPhaseShiftTo { idx, value } => self.set_unison_phase_to(idx, value),
-                UiEvent::UnisonGain { idx, value } => self.set_unison_gain(idx, value),
-                UiEvent::UnisonGainTo { idx, value } => self.set_unison_gain_to(idx, value),
-                UiEvent::StealPhase(steal_phase) => self.set_steal_phase(steal_phase),
-                UiEvent::ApplyUnisonLevelShape { center, level, to } => {
-                    self.apply_unison_level_shape(center, level, to);
-                }
-                UiEvent::RandomizePhases {
-                    from,
-                    to,
-                    stereo_spread,
-                    dst,
-                } => {
-                    self.randomize_phases(from, to, stereo_spread, dst);
-                }
-            }
-        }
-    }
 }
 
 impl SynthModule for Oscillator {
@@ -1050,9 +1012,45 @@ impl SynthModule for Oscillator {
         }
     }
 
-    fn process(&mut self, params: &ProcessParams, router: &mut dyn Router) {
-        self.handle_ui_events();
+    fn handle_ui_events(&mut self) {
+        while let Some(event) = self.audio_end.pop_event() {
+            match event {
+                UiEvent::InputParam { input, value } => match input {
+                    Input::Gain => self.set_gain(value),
+                    Input::PitchShift => self.set_pitch_shift(value),
+                    Input::PhaseShift => self.set_phase_shift(value),
+                    Input::FrequencyShift => self.set_frequency_shift(value),
+                    Input::Detune => self.set_detune(value),
+                    Input::DetunePower => self.set_detune_power(value),
+                    Input::Glide => self.set_glide(value),
+                    Input::GlideSlope => self.set_glide_slope(value),
+                    Input::PhasesBlend => self.set_phases_blend(value),
+                    Input::GainsBlend => self.set_gains_blend(value),
+                    _ => (),
+                },
+                UiEvent::Unison(unison) => self.set_unison(unison),
+                UiEvent::UnisonInitialPhase { idx, value } => self.set_initial_phase(idx, value),
+                UiEvent::UnisonPhaseShift { idx, value } => self.set_unison_phase(idx, value),
+                UiEvent::UnisonPhaseShiftTo { idx, value } => self.set_unison_phase_to(idx, value),
+                UiEvent::UnisonGain { idx, value } => self.set_unison_gain(idx, value),
+                UiEvent::UnisonGainTo { idx, value } => self.set_unison_gain_to(idx, value),
+                UiEvent::StealPhase(steal_phase) => self.set_steal_phase(steal_phase),
+                UiEvent::ApplyUnisonLevelShape { center, level, to } => {
+                    self.apply_unison_level_shape(center, level, to);
+                }
+                UiEvent::RandomizePhases {
+                    from,
+                    to,
+                    stereo_spread,
+                    dst,
+                } => {
+                    self.randomize_phases(from, to, stereo_spread, dst);
+                }
+            }
+        }
+    }
 
+    fn process(&mut self, params: &ProcessParams, router: &mut dyn Router) {
         let mut rf = VoiceRouterFactory::new(self.id, router, params);
 
         for (channel_idx, channel) in self

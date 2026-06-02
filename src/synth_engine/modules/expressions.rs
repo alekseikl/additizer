@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+mod link;
+mod ui_bridge;
+
+use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
+pub use ui_bridge::{ControlsState, UiBridge};
+
 use crate::{
     synth_engine::{
         Expression, ModuleId, ModuleType, Sample, SynthModule,
@@ -34,12 +40,6 @@ pub struct ExpressionsConfig {
     params: Params,
 }
 
-pub struct ExpressionsUi {
-    pub expression: Expression,
-    pub use_release_velocity: bool,
-    pub smooth: Sample,
-}
-
 struct Voice {
     triggered: bool,
     output: Sample,
@@ -68,16 +68,22 @@ pub struct Expressions {
     label: String,
     config: ModuleConfigBox<ExpressionsConfig>,
     params: Params,
+    audio_end: AudioEnd,
+    ui_end: Option<UiEnd>,
     channels: [Channel; NUM_CHANNELS],
 }
 
 impl Expressions {
     pub fn new(id: ModuleId, config: ModuleConfigBox<ExpressionsConfig>) -> Self {
+        let (audio_end, ui_end) = create_link_pair();
+
         let mut exp = Self {
             id,
             label: format!("Expressions {id}"),
             config,
             params: Params::default(),
+            audio_end,
+            ui_end: Some(ui_end),
             channels: Default::default(),
         };
 
@@ -93,8 +99,17 @@ impl Expressions {
         exp
     }
 
-    pub fn get_ui(&self) -> ExpressionsUi {
-        ExpressionsUi {
+    pub fn take_ui_end(&mut self) -> Option<UiEnd> {
+        self.ui_end.take()
+    }
+
+    pub fn return_ui_end(&mut self, ui_end: UiEnd) {
+        assert!(self.ui_end.is_none(), "ui_end not taken");
+        self.ui_end = Some(ui_end);
+    }
+
+    pub fn get_controls_state(&self) -> ControlsState {
+        ControlsState {
             expression: self.params.expression,
             use_release_velocity: self.params.use_release_velocity,
             smooth: self.params.smooth,
@@ -256,6 +271,16 @@ impl SynthModule for Expressions {
                     }
                     _ => (),
                 }
+            }
+        }
+    }
+
+    fn handle_ui_events(&mut self) {
+        while let Some(event) = self.audio_end.pop_event() {
+            match event {
+                UiEvent::Expression(expression) => self.set_expression(expression),
+                UiEvent::UseReleaseVelocity(value) => self.set_use_release_velocity(value),
+                UiEvent::Smooth(value) => self.set_smooth(value),
             }
         }
     }

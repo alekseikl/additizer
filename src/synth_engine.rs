@@ -36,8 +36,17 @@ pub use modules::{
     LfoShape, Mixer, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType, SpectralMixer,
     WaveShaper,
     amplifier::{self},
+    envelope::{self},
+    expressions::{self},
+    external_param::{self},
     harmonic_editor::{self, HarmonicEditor},
+    lfo::{self},
+    mixer::{self},
     oscillator::{self},
+    spectral_blend::{self},
+    spectral_filter::{self},
+    spectral_mixer::{self},
+    wave_shaper::{self},
 };
 pub use routing::{
     Expression, Input, MixType, ModuleId, ModuleInput, ModuleLink, ModuleType, OUTPUT_MODULE_ID,
@@ -507,6 +516,11 @@ impl SynthEngine {
                 }
             }
         }
+
+        self.modules
+            .values_mut()
+            .filter_map(|m| m.as_deref_mut())
+            .for_each(|m| m.handle_ui_events());
     }
 
     pub fn process<'a>(

@@ -14,7 +14,7 @@ mod link;
 mod ui_bridge;
 
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::{UiBridge, UiState};
+pub use ui_bridge::{ControlsState, UiBridge};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChannelParams {
@@ -102,25 +102,13 @@ impl Amplifier {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_ui_state(&self) -> UiState {
-        UiState {
+    pub fn get_controls_state(&self) -> ControlsState {
+        ControlsState {
             gain: get_smoothed_param!(self, gain),
         }
     }
 
     set_smoothed_param!(set_gain, gain);
-
-    fn handle_ui_events(&mut self) {
-        while let Some(event) = self.audio_end.pop_event() {
-            match event {
-                UiEvent::InputParam { input, value } => {
-                    if input == Input::Gain {
-                        self.set_gain(value)
-                    }
-                }
-            }
-        }
-    }
 
     fn process_channel_voice(
         channel: &mut ChannelParams,
@@ -171,9 +159,19 @@ impl SynthModule for Amplifier {
         DataType::Buffer
     }
 
-    fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
-        self.handle_ui_events();
+    fn handle_ui_events(&mut self) {
+        while let Some(event) = self.audio_end.pop_event() {
+            match event {
+                UiEvent::InputParam { input, value } => {
+                    if input == Input::Gain {
+                        self.set_gain(value)
+                    }
+                }
+            }
+        }
+    }
 
+    fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
         let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {

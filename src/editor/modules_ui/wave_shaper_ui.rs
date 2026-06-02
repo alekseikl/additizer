@@ -5,7 +5,7 @@ use crate::{
         ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
-    synth_engine::{Input, ModuleId, ShaperType, SynthEngine, WaveShaper, ui_bridge::UiBridge},
+    synth_engine::{Input, ModuleId, ShaperType, wave_shaper, ui_bridge::UiBridge},
 };
 
 impl ShaperType {
@@ -18,38 +18,37 @@ impl ShaperType {
 }
 
 pub struct WaveShaperUi {
-    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
+    shaper_bridge: wave_shaper::UiBridge,
 }
 
 impl WaveShaperUi {
-    pub fn new(module_id: ModuleId) -> Self {
-        Self {
-            module_id,
+    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
+        let shaper_bridge =
+            wave_shaper::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+
+        Some(Self {
             remove_confirmation: false,
             label_state: None,
-        }
-    }
-
-    fn shaper<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut WaveShaper {
-        synth.get_typed_module_mut(self.module_id).unwrap()
+            shaper_bridge,
+        })
     }
 }
 
 impl ModuleUi for WaveShaperUi {
     fn module_id(&self) -> Option<ModuleId> {
-        Some(self.module_id)
+        Some(self.shaper_bridge.module_id())
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth().clone();
-        let mut ui_data = self.shaper(&mut synth.lock()).get_ui();
+        let module_id = self.shaper_bridge.module_id();
+        let mut controls = self.shaper_bridge.controls().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
             bridge,
-            self.module_id,
+            module_id,
         ));
 
         ui.add_space(20.0);
@@ -60,12 +59,12 @@ impl ModuleUi for WaveShaperUi {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Input");
-                ui.add(DirectInput::new(bridge, Input::Audio, self.module_id));
+                ui.add(DirectInput::new(bridge, Input::Audio, module_id));
                 ui.end_row();
 
                 ui.label("Type");
                 ComboBox::from_id_salt("waveshaper-type")
-                    .selected_text(ui_data.shaper_type.label())
+                    .selected_text(controls.shaper_type.label())
                     .show_ui(ui, |ui| {
                         const TYPE_OPTIONS: &[ShaperType] =
                             &[ShaperType::HardClip, ShaperType::Sigmoid];
@@ -73,13 +72,13 @@ impl ModuleUi for WaveShaperUi {
                         for shaper_type in TYPE_OPTIONS {
                             if ui
                                 .selectable_value(
-                                    &mut ui_data.shaper_type,
+                                    &mut controls.shaper_type,
                                     *shaper_type,
                                     shaper_type.label(),
                                 )
                                 .clicked()
                             {
-                                self.shaper(&mut synth.lock()).set_shaper_type(*shaper_type);
+                                self.shaper_bridge.set_shaper_type(*shaper_type);
                             }
                         }
                     });
@@ -88,30 +87,30 @@ impl ModuleUi for WaveShaperUi {
                 ui.label("Distortion");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.distortion,
+                        &mut controls.distortion,
                         bridge,
                         Input::Distortion,
-                        self.module_id,
+                        module_id,
                     ))
                     .changed()
                 {
-                    self.shaper(&mut synth.lock())
-                        .set_distortion(ui_data.distortion);
+                    self.shaper_bridge
+                        .set_param(Input::Distortion, controls.distortion);
                 }
                 ui.end_row();
 
                 ui.label("Clipping level");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.clipping_level,
+                        &mut controls.clipping_level,
                         bridge,
                         Input::ClippingLevel,
-                        self.module_id,
+                        module_id,
                     ))
                     .changed()
                 {
-                    self.shaper(&mut synth.lock())
-                        .set_clipping_level(ui_data.clipping_level);
+                    self.shaper_bridge
+                        .set_param(Input::ClippingLevel, controls.clipping_level);
                 }
                 ui.end_row();
             });
@@ -119,7 +118,7 @@ impl ModuleUi for WaveShaperUi {
         ui.add_space(40.0);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(self.module_id);
+            bridge.remove_module(module_id);
         }
     }
 }

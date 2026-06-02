@@ -6,7 +6,7 @@ use crate::{
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{
-        Input, ModuleId, SpectralFilter, SpectralFilterType, SynthEngine, ui_bridge::UiBridge,
+        Input, ModuleId, SpectralFilterType, spectral_filter, ui_bridge::UiBridge,
     },
 };
 
@@ -23,38 +23,37 @@ impl SpectralFilterType {
 }
 
 pub struct SpectralFilterUI {
-    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
+    filter_bridge: spectral_filter::UiBridge,
 }
 
 impl SpectralFilterUI {
-    pub fn new(module_id: ModuleId) -> Self {
-        Self {
-            module_id,
+    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
+        let filter_bridge =
+            spectral_filter::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+
+        Some(Self {
             remove_confirmation: false,
             label_state: None,
-        }
-    }
-
-    fn filter<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut SpectralFilter {
-        synth.get_typed_module_mut(self.module_id).unwrap()
+            filter_bridge,
+        })
     }
 }
 
 impl ModuleUi for SpectralFilterUI {
     fn module_id(&self) -> Option<ModuleId> {
-        Some(self.module_id)
+        Some(self.filter_bridge.module_id())
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth().clone();
-        let mut ui_data = self.filter(&mut synth.lock()).get_ui();
+        let module_id = self.filter_bridge.module_id();
+        let mut controls = self.filter_bridge.controls().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
             bridge,
-            self.module_id,
+            module_id,
         ));
 
         ui.add_space(20.0);
@@ -65,12 +64,12 @@ impl ModuleUi for SpectralFilterUI {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Input");
-                ui.add(DirectInput::new(bridge, Input::Spectrum, self.module_id));
+                ui.add(DirectInput::new(bridge, Input::Spectrum, module_id));
                 ui.end_row();
 
                 ui.label("Type");
                 ComboBox::from_id_salt("spectral-filter-type")
-                    .selected_text(ui_data.filter_type.label())
+                    .selected_text(controls.filter_type.label())
                     .show_ui(ui, |ui| {
                         const TYPE_OPTIONS: &[SpectralFilterType] = &[
                             SpectralFilterType::LowPass,
@@ -83,13 +82,13 @@ impl ModuleUi for SpectralFilterUI {
                         for filter_type in TYPE_OPTIONS {
                             if ui
                                 .selectable_value(
-                                    &mut ui_data.filter_type,
+                                    &mut controls.filter_type,
                                     *filter_type,
                                     filter_type.label(),
                                 )
                                 .clicked()
                             {
-                                self.filter(&mut synth.lock()).set_filter_type(*filter_type);
+                                self.filter_bridge.set_filter_type(*filter_type);
                             }
                         }
                     });
@@ -98,62 +97,60 @@ impl ModuleUi for SpectralFilterUI {
                 ui.label("Cutoff");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.cutoff,
+                        &mut controls.cutoff,
                         bridge,
                         Input::Cutoff,
-                        self.module_id,
+                        module_id,
                     ))
                     .changed()
                 {
-                    self.filter(&mut synth.lock()).set_cutoff(ui_data.cutoff);
+                    self.filter_bridge.set_param(Input::Cutoff, controls.cutoff);
                 }
                 ui.end_row();
 
                 ui.label("Q");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.q,
+                        &mut controls.q,
                         bridge,
                         Input::Q,
-                        self.module_id,
+                        module_id,
                     ))
                     .changed()
                 {
-                    self.filter(&mut synth.lock()).set_q(ui_data.q);
+                    self.filter_bridge.set_param(Input::Q, controls.q);
                 }
                 ui.end_row();
 
                 ui.label("Drive");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.drive,
+                        &mut controls.drive,
                         bridge,
                         Input::Drive,
-                        self.module_id,
+                        module_id,
                     ))
                     .changed()
                 {
-                    self.filter(&mut synth.lock()).set_drive(ui_data.drive);
+                    self.filter_bridge.set_param(Input::Drive, controls.drive);
                 }
                 ui.end_row();
 
                 ui.label("Fourth order");
                 if ui
-                    .add(Checkbox::without_text(&mut ui_data.fourth_order))
+                    .add(Checkbox::without_text(&mut controls.fourth_order))
                     .changed()
                 {
-                    self.filter(&mut synth.lock())
-                        .set_fourth_order(ui_data.fourth_order);
+                    self.filter_bridge.set_fourth_order(controls.fourth_order);
                 }
                 ui.end_row();
 
                 ui.label("Linear phase");
                 if ui
-                    .add(Checkbox::without_text(&mut ui_data.linear_phase))
+                    .add(Checkbox::without_text(&mut controls.linear_phase))
                     .changed()
                 {
-                    self.filter(&mut synth.lock())
-                        .set_linear_phase(ui_data.linear_phase);
+                    self.filter_bridge.set_linear_phase(controls.linear_phase);
                 }
                 ui.end_row();
             });
@@ -161,7 +158,7 @@ impl ModuleUi for SpectralFilterUI {
         ui.add_space(40.0);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(self.module_id);
+            bridge.remove_module(module_id);
         }
     }
 }

@@ -1,16 +1,16 @@
 pub mod amplifier;
-mod envelope;
-mod expressions;
-mod external_param;
+pub mod envelope;
+pub mod expressions;
+pub mod external_param;
 pub mod harmonic_editor;
-mod lfo;
-mod mixer;
+pub mod lfo;
+pub mod mixer;
 pub mod oscillator;
 mod output;
-mod spectral_blend;
-mod spectral_filter;
-mod spectral_mixer;
-mod wave_shaper;
+pub mod spectral_blend;
+pub mod spectral_filter;
+pub mod spectral_mixer;
+pub mod wave_shaper;
 
 pub use amplifier::{Amplifier, AmplifierConfig};
 pub use envelope::{Envelope, EnvelopeConfig, EnvelopeCurve};

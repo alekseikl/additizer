@@ -2,6 +2,12 @@ use itertools::izip;
 use nih_plug::util::db_to_gain_fast;
 use serde::{Deserialize, Serialize};
 
+mod link;
+mod ui_bridge;
+
+use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
+pub use ui_bridge::{ControlsState, UiBridge};
+
 use crate::synth_engine::{
     StereoSample,
     biquad_filter::BiquadFilter,
@@ -66,15 +72,6 @@ pub struct SpectralFilterConfig {
     channels: [ChannelParams; NUM_CHANNELS],
 }
 
-pub struct SpectralFilterUIData {
-    pub filter_type: SpectralFilterType,
-    pub cutoff: StereoSample,
-    pub q: StereoSample,
-    pub drive: StereoSample,
-    pub fourth_order: bool,
-    pub linear_phase: bool,
-}
-
 #[derive(Default)]
 struct Voice {
     triggered: bool,
@@ -92,16 +89,22 @@ pub struct SpectralFilter {
     label: String,
     config: ModuleConfigBox<SpectralFilterConfig>,
     params: Params,
+    audio_end: AudioEnd,
+    ui_end: Option<UiEnd>,
     channels: [Channel; NUM_CHANNELS],
 }
 
 impl SpectralFilter {
     pub fn new(id: ModuleId, config: ModuleConfigBox<SpectralFilterConfig>) -> Self {
+        let (audio_end, ui_end) = create_link_pair();
+
         let mut filter = Self {
             id,
             label: format!("Filter {id}"),
             config,
             params: Params::default(),
+            audio_end,
+            ui_end: Some(ui_end),
             channels: Default::default(),
         };
 
@@ -109,8 +112,17 @@ impl SpectralFilter {
         filter
     }
 
-    pub fn get_ui(&self) -> SpectralFilterUIData {
-        SpectralFilterUIData {
+    pub fn take_ui_end(&mut self) -> Option<UiEnd> {
+        self.ui_end.take()
+    }
+
+    pub fn return_ui_end(&mut self, ui_end: UiEnd) {
+        assert!(self.ui_end.is_none(), "ui_end not taken");
+        self.ui_end = Some(ui_end);
+    }
+
+    pub fn get_controls_state(&self) -> ControlsState {
+        ControlsState {
             filter_type: self.params.filter_type,
             cutoff: get_stereo_param!(self, cutoff),
             q: get_stereo_param!(self, q),
@@ -270,6 +282,22 @@ impl SynthModule for SpectralFilter {
                 if let VoiceEvent::Trigger { voice_idx, .. } = event {
                     channel.voices[*voice_idx].triggered = true;
                 }
+            }
+        }
+    }
+
+    fn handle_ui_events(&mut self) {
+        while let Some(event) = self.audio_end.pop_event() {
+            match event {
+                UiEvent::InputParam { input, value } => match input {
+                    Input::Cutoff => self.set_cutoff(value),
+                    Input::Q => self.set_q(value),
+                    Input::Drive => self.set_drive(value),
+                    _ => (),
+                },
+                UiEvent::FilterType(filter_type) => self.set_filter_type(filter_type),
+                UiEvent::FourthOrder(value) => self.set_fourth_order(value),
+                UiEvent::LinearPhase(value) => self.set_linear_phase(value),
             }
         }
     }

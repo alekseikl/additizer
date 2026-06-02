@@ -5,42 +5,41 @@ use crate::{
         ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
-    synth_engine::{Input, ModuleId, SpectralBlend, SynthEngine, ui_bridge::UiBridge},
+    synth_engine::{Input, ModuleId, spectral_blend, ui_bridge::UiBridge},
 };
 
 pub struct SpectralBlendUi {
-    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
+    blend_bridge: spectral_blend::UiBridge,
 }
 
 impl SpectralBlendUi {
-    pub fn new(module_id: ModuleId) -> Self {
-        Self {
-            module_id,
+    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
+        let blend_bridge =
+            spectral_blend::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+
+        Some(Self {
             remove_confirmation: false,
             label_state: None,
-        }
-    }
-
-    fn blend<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut SpectralBlend {
-        synth.get_typed_module_mut(self.module_id).unwrap()
+            blend_bridge,
+        })
     }
 }
 
 impl ModuleUi for SpectralBlendUi {
     fn module_id(&self) -> Option<ModuleId> {
-        Some(self.module_id)
+        Some(self.blend_bridge.module_id())
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth().clone();
-        let mut ui_data = self.blend(&mut synth.lock()).get_ui();
+        let module_id = self.blend_bridge.module_id();
+        let mut controls = self.blend_bridge.controls().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
             bridge,
-            self.module_id,
+            module_id,
         ));
 
         ui.add_space(20.0);
@@ -51,24 +50,24 @@ impl ModuleUi for SpectralBlendUi {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("From");
-                ui.add(DirectInput::new(bridge, Input::Spectrum, self.module_id));
+                ui.add(DirectInput::new(bridge, Input::Spectrum, module_id));
                 ui.end_row();
 
                 ui.label("To");
-                ui.add(DirectInput::new(bridge, Input::SpectrumTo, self.module_id));
+                ui.add(DirectInput::new(bridge, Input::SpectrumTo, module_id));
                 ui.end_row();
 
                 ui.label("Blend");
                 if ui
                     .add(ModulationInput::new(
-                        &mut ui_data.blend,
+                        &mut controls.blend,
                         bridge,
                         Input::Blend,
-                        self.module_id,
+                        module_id,
                     ))
                     .changed()
                 {
-                    self.blend(&mut synth.lock()).set_blend(ui_data.blend);
+                    self.blend_bridge.set_param(Input::Blend, controls.blend);
                 }
                 ui.end_row();
             });
@@ -76,7 +75,7 @@ impl ModuleUi for SpectralBlendUi {
         ui.add_space(40.0);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(self.module_id);
+            bridge.remove_module(module_id);
         }
     }
 }

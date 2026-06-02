@@ -1,6 +1,12 @@
 use itertools::izip;
 use serde::{Deserialize, Serialize};
 
+mod link;
+mod ui_bridge;
+
+use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
+pub use ui_bridge::{ControlsState, UiBridge};
+
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::SpectralBuffer,
@@ -20,10 +26,6 @@ pub struct SpectralBlendConfig {
     channels: [ChannelParams; NUM_CHANNELS],
 }
 
-pub struct SpectralBlendUIData {
-    pub blend: StereoSample,
-}
-
 #[derive(Default)]
 struct Voice {
     triggered: bool,
@@ -40,15 +42,21 @@ pub struct SpectralBlend {
     id: ModuleId,
     label: String,
     config: ModuleConfigBox<SpectralBlendConfig>,
+    audio_end: AudioEnd,
+    ui_end: Option<UiEnd>,
     channels: [Channel; NUM_CHANNELS],
 }
 
 impl SpectralBlend {
     pub fn new(id: ModuleId, config: ModuleConfigBox<SpectralBlendConfig>) -> Self {
+        let (audio_end, ui_end) = create_link_pair();
+
         let mut blend = Self {
             id,
             label: format!("Spectral Blend {id}"),
             config,
+            audio_end,
+            ui_end: Some(ui_end),
             channels: Default::default(),
         };
 
@@ -56,8 +64,17 @@ impl SpectralBlend {
         blend
     }
 
-    pub fn get_ui(&self) -> SpectralBlendUIData {
-        SpectralBlendUIData {
+    pub fn take_ui_end(&mut self) -> Option<UiEnd> {
+        self.ui_end.take()
+    }
+
+    pub fn return_ui_end(&mut self, ui_end: UiEnd) {
+        assert!(self.ui_end.is_none(), "ui_end not taken");
+        self.ui_end = Some(ui_end);
+    }
+
+    pub fn get_controls_state(&self) -> ControlsState {
+        ControlsState {
             blend: get_stereo_param!(self, blend),
         }
     }
@@ -121,6 +138,18 @@ impl SynthModule for SpectralBlend {
                 if let VoiceEvent::Trigger { voice_idx, .. } = event {
                     channel.voices[*voice_idx].triggered = true;
                 }
+            }
+        }
+    }
+
+    fn handle_ui_events(&mut self) {
+        while let Some(event) = self.audio_end.pop_event() {
+            if let UiEvent::InputParam {
+                input: Input::Blend,
+                value,
+            } = event
+            {
+                self.set_blend(value);
             }
         }
     }

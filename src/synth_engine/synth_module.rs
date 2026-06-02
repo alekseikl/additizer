@@ -60,6 +60,7 @@ pub trait SynthModule: Any + Send {
     fn output(&self) -> DataType;
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {}
+    fn handle_ui_events(&mut self);
     fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {}
 
     fn process(&mut self, params: &ProcessParams, router: &mut dyn Router);
