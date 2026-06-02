@@ -8,9 +8,7 @@ use crate::synth_engine::{
     phase::Phase,
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
     smooth::Smoother,
-    synth_module::{
-        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory,
-    },
+    synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory},
     types::ScalarOutput,
 };
 
@@ -192,7 +190,7 @@ impl Lfo {
         voice: &mut Voice,
         current: bool,
         t_step: Sample,
-        router: &mut VoiceRouter<'_, '_, MockToUiBridge>,
+        router: &mut VoiceRouter<'_, '_>,
     ) {
         let frequency = router.scalar(Input::LowFrequency, channel_params.frequency, current);
 
@@ -219,7 +217,7 @@ impl Lfo {
         process_params: &ProcessParams,
         inputs: &mut InputBuffers,
         voice: &mut Voice,
-        router: &VoiceRouter<'_, '_, MockToUiBridge>,
+        router: &VoiceRouter<'_, '_>,
     ) {
         let frequency_mod = router.buffer(Input::LowFrequency, &mut inputs.frequency);
         let phase_shift_mod = router.buffer(Input::PhaseShift, &mut inputs.phase_shift);
@@ -320,10 +318,9 @@ impl SynthModule for Lfo {
         }
     }
 
-    fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
+    fn process(&mut self, params: &ProcessParams, router: &mut dyn Router) {
         let t_step = params.buffer_t_step;
-        let mut ui_bridge = MockToUiBridge;
-        let mut rf = VoiceRouterFactory::new(self.id, router, params, &mut ui_bridge);
+        let mut rf = VoiceRouterFactory::new(self.id, router, params);
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for (seq_idx, voice_idx) in params.active_voices.iter().enumerate() {

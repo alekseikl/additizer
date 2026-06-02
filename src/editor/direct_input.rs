@@ -1,42 +1,31 @@
 use egui::{ComboBox, Response, Ui, Widget};
 
-use crate::{
-    editor::SynthEngineHandle,
-    synth_engine::{Input, ModuleId, ModuleInput},
-};
+use crate::synth_engine::{Input, ModuleId, ModuleInput, ui_bridge::UiBridge};
 
-pub struct DirectInput {
-    synth_engine: SynthEngineHandle,
+pub struct DirectInput<'a> {
+    bridge: &'a mut UiBridge,
     input: ModuleInput,
 }
 
-impl DirectInput {
-    pub fn new(synth_engine: SynthEngineHandle, input: Input, module_id: ModuleId) -> Self {
+impl<'a> DirectInput<'a> {
+    pub fn new(bridge: &'a mut UiBridge, input: Input, module_id: ModuleId) -> Self {
         Self {
-            synth_engine,
+            bridge,
             input: ModuleInput::new(input, module_id),
         }
     }
 
     fn select_output(&mut self, output: ModuleId) {
-        self.synth_engine
-            .lock()
-            .set_direct_link(output, self.input)
-            .unwrap_or_else(|_| println!("Failed to select output"))
+        self.bridge.set_direct_link(output, self.input);
     }
 }
 
-impl Widget for DirectInput {
+impl Widget for DirectInput<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {
         let (available, connected) = {
-            let synth = self.synth_engine.lock();
             (
-                synth
-                    .get_routing_state()
-                    .get_available_input_sources(self.input),
-                synth
-                    .get_routing_state()
-                    .get_connected_input_sources(self.input),
+                self.bridge.get_available_input_sources(self.input),
+                self.bridge.get_connected_input_sources(self.input),
             )
         };
         let mut selected = connected.first().map(|src| src.src);

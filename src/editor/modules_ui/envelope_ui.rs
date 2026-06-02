@@ -117,14 +117,14 @@ impl ModuleUi for EnvelopeUI {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth();
+        let synth = bridge.synth().clone();
         let id = self.module_id;
         let mut ui_data = self.env(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(
             &ui_data.label,
             &mut self.label_state,
-            synth,
+            &synth,
             self.module_id,
         ));
 
@@ -138,7 +138,7 @@ impl ModuleUi for EnvelopeUI {
                 ui.label("Delay");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.delay, synth.clone(), Input::Delay, id)
+                        ModulationInput::new(&mut ui_data.delay, bridge, Input::Delay, id)
                             .default(from_ms(0.0)),
                     )
                     .changed()
@@ -149,7 +149,7 @@ impl ModuleUi for EnvelopeUI {
                 ui.label("Attack");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.attack, synth.clone(), Input::Attack, id)
+                        ModulationInput::new(&mut ui_data.attack, bridge, Input::Attack, id)
                             .default(from_ms(0.0)),
                     )
                     .changed()
@@ -166,7 +166,7 @@ impl ModuleUi for EnvelopeUI {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.hold,
-                        synth.clone(),
+                        bridge,
                         Input::Hold,
                         id,
                     ))
@@ -179,7 +179,7 @@ impl ModuleUi for EnvelopeUI {
                 ui.label("Decay");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.decay, synth.clone(), Input::Decay, id)
+                        ModulationInput::new(&mut ui_data.decay, bridge, Input::Decay, id)
                             .default(from_ms(150.0)),
                     )
                     .changed()
@@ -196,7 +196,7 @@ impl ModuleUi for EnvelopeUI {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.sustain,
-                        synth.clone(),
+                        bridge,
                         Input::Sustain,
                         id,
                     ))
@@ -209,7 +209,7 @@ impl ModuleUi for EnvelopeUI {
                 ui.label("Release");
                 if ui
                     .add(
-                        ModulationInput::new(&mut ui_data.release, synth.clone(), Input::Release, id)
+                        ModulationInput::new(&mut ui_data.release, bridge, Input::Release, id)
                             .default(from_ms(250.0)),
                     )
                     .changed()

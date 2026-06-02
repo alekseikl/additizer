@@ -7,9 +7,7 @@ use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule, VolumeType,
     buffer::{Buffer, copy_or_add_to_buffer, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
-    synth_module::{
-        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory,
-    },
+    synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory},
 };
 
 const MAX_INPUTS: u8 = 6;
@@ -247,7 +245,7 @@ impl Mixer {
         channel: &ChannelParams,
         buffers: &mut Buffers,
         voice: &mut Voice,
-        router: &VoiceRouter<'_, '_, MockToUiBridge>,
+        router: &VoiceRouter<'_, '_>,
     ) {
         let samples = router.samples();
 
@@ -345,9 +343,8 @@ impl SynthModule for Mixer {
         DataType::Buffer
     }
 
-    fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
-        let mut ui_bridge = MockToUiBridge;
-        let mut rf = VoiceRouterFactory::new(self.id, router, process_params, &mut ui_bridge);
+    fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
+        let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {

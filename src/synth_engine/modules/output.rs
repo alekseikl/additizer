@@ -196,7 +196,7 @@ impl SynthModule for Output {
         }
     }
 
-    fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
+    fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
         if process_params.active_voices.is_empty() {
             self.output.iter_mut().for_each(|output| output.fill(0.0));
             return;

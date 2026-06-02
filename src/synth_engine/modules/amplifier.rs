@@ -4,8 +4,7 @@ use crate::synth_engine::{
     routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
     smooth::SmoothedSample,
     synth_module::{
-        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter,
-        VoiceRouterFactory,
+        ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter, VoiceRouterFactory,
     },
 };
 use itertools::izip;
@@ -100,7 +99,7 @@ impl Amplifier {
         channel: &mut ChannelParams,
         voice: &mut Voice,
         buffers: &mut Buffers,
-        router: &mut VoiceRouter<'_, '_, MockToUiBridge>,
+        router: &mut VoiceRouter<'_, '_>,
     ) {
         router.buff_param(Input::Gain, &mut channel.gain, &mut buffers.gain_mod_input);
 
@@ -145,9 +144,8 @@ impl SynthModule for Amplifier {
         DataType::Buffer
     }
 
-    fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
-        let mut ui_bridge = MockToUiBridge;
-        let mut rf = VoiceRouterFactory::new(self.id, router, process_params, &mut ui_bridge);
+    fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
+        let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {

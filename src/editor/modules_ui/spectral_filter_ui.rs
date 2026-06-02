@@ -5,7 +5,9 @@ use crate::{
         ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
-    synth_engine::{Input, ModuleId, SpectralFilter, SpectralFilterType, SynthEngine, ui_bridge::UiBridge},
+    synth_engine::{
+        Input, ModuleId, SpectralFilter, SpectralFilterType, SynthEngine, ui_bridge::UiBridge,
+    },
 };
 
 impl SpectralFilterType {
@@ -46,13 +48,13 @@ impl ModuleUi for SpectralFilterUI {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth();
+        let synth = bridge.synth().clone();
         let mut ui_data = self.filter(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(
             &ui_data.label,
             &mut self.label_state,
-            synth,
+            &synth,
             self.module_id,
         ));
 
@@ -64,7 +66,7 @@ impl ModuleUi for SpectralFilterUI {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Input");
-                ui.add(DirectInput::new(synth.clone(), Input::Spectrum, self.module_id));
+                ui.add(DirectInput::new(bridge, Input::Spectrum, self.module_id));
                 ui.end_row();
 
                 ui.label("Type");
@@ -98,7 +100,7 @@ impl ModuleUi for SpectralFilterUI {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.cutoff,
-                        synth.clone(),
+                        bridge,
                         Input::Cutoff,
                         self.module_id,
                     ))
@@ -112,7 +114,7 @@ impl ModuleUi for SpectralFilterUI {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.q,
-                        synth.clone(),
+                        bridge,
                         Input::Q,
                         self.module_id,
                     ))
@@ -126,7 +128,7 @@ impl ModuleUi for SpectralFilterUI {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.drive,
-                        synth.clone(),
+                        bridge,
                         Input::Drive,
                         self.module_id,
                     ))
@@ -141,7 +143,8 @@ impl ModuleUi for SpectralFilterUI {
                     .add(Checkbox::without_text(&mut ui_data.fourth_order))
                     .changed()
                 {
-                    self.filter(&mut synth.lock()).set_fourth_order(ui_data.fourth_order);
+                    self.filter(&mut synth.lock())
+                        .set_fourth_order(ui_data.fourth_order);
                 }
                 ui.end_row();
 
@@ -150,7 +153,8 @@ impl ModuleUi for SpectralFilterUI {
                     .add(Checkbox::without_text(&mut ui_data.linear_phase))
                     .changed()
                 {
-                    self.filter(&mut synth.lock()).set_linear_phase(ui_data.linear_phase);
+                    self.filter(&mut synth.lock())
+                        .set_linear_phase(ui_data.linear_phase);
                 }
                 ui.end_row();
             });

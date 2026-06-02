@@ -60,7 +60,7 @@ impl ModuleUi for AmplifierUI {
                     .add(
                         ModulationInput::new(
                             &mut ui_data.gain,
-                            synth.clone(),
+                            bridge,
                             Input::Gain,
                             self.module_id,
                         )

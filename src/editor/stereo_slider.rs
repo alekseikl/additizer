@@ -1,8 +1,6 @@
 use std::ops::RangeInclusive;
 
-use egui::{
-    Color32, PointerButton, Pos2, Rect, Response, Sense, Ui, Vec2, Widget, vec2,
-};
+use egui::{Color32, PointerButton, Pos2, Rect, Response, Sense, Ui, Vec2, Widget, vec2};
 
 use crate::synth_engine::{Sample, StereoSample};
 
@@ -14,7 +12,7 @@ const MODULATED_COLOR: Color32 = Color32::from_rgb(0x9a, 0x6a, 0x12);
 pub struct StereoSlider<'a> {
     units: Option<&'a str>,
     value: &'a mut StereoSample,
-    modulated: Option<&'a StereoSample>,
+    modulated: Option<StereoSample>,
     range: RangeInclusive<Sample>,
     default: Option<Sample>,
     precision: usize,
@@ -102,8 +100,8 @@ impl<'a> StereoSlider<'a> {
         self
     }
 
-    pub fn modulated(mut self, value: &'a StereoSample) -> Self {
-        self.modulated = Some(value);
+    pub fn modulated(mut self, value: Option<StereoSample>) -> Self {
+        self.modulated = value;
         self
     }
 
@@ -207,10 +205,14 @@ impl<'a> StereoSlider<'a> {
             return;
         };
 
-        let normalized_modulated = self.normalized_value_from(modulated);
+        let normalized_modulated = self.normalized_value_from(&modulated);
 
         let paint_horizontal_bar = |rect: Rect, norm_value: Sample, at_top: bool| {
-            let y = if at_top { rect.top() } else { rect.bottom() - 1.0 };
+            let y = if at_top {
+                rect.top()
+            } else {
+                rect.bottom() - 1.0
+            };
             let bar_rect = if norm_value < 0.0 {
                 let x = rect.left() + (1.0 + norm_value) * rect.width();
                 Rect::from_min_max(Pos2::new(x, y), Pos2::new(rect.right(), y + 1.0))
@@ -222,7 +224,11 @@ impl<'a> StereoSlider<'a> {
         };
 
         let paint_vertical_bar = |rect: Rect, norm_value: Sample, at_left: bool| {
-            let x = if at_left { rect.left() } else { rect.right() - 1.0 };
+            let x = if at_left {
+                rect.left()
+            } else {
+                rect.right() - 1.0
+            };
             let bar_rect = if norm_value < 0.0 {
                 let y = rect.bottom() - (1.0 + norm_value) * rect.height();
                 Rect::from_min_max(Pos2::new(x, y), Pos2::new(x + 1.0, rect.bottom()))

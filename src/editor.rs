@@ -119,46 +119,46 @@ fn show_side_bar(ui: &mut Ui, selected_module_ui: &mut ModuleUIBox, bridge: &mut
                             .width(ui.available_width())
                             .show_ui(ui, |ui| {
                                 if ui.selectable_label(false, "Harmonic Editor").clicked() {
-                                    synth_engine.lock().add_harmonic_editor();
+                                    bridge.add_module(ModuleType::HarmonicEditor);
                                 }
                                 if ui.selectable_label(false, "Oscillator").clicked() {
-                                    synth_engine.lock().add_oscillator();
+                                    bridge.add_module(ModuleType::Oscillator);
                                 }
                                 if ui.selectable_label(false, "Envelope").clicked() {
-                                    synth_engine.lock().add_envelope();
+                                    bridge.add_module(ModuleType::Envelope);
                                 }
                                 if ui.selectable_label(false, "LFO").clicked() {
-                                    synth_engine.lock().add_lfo();
+                                    bridge.add_module(ModuleType::Lfo);
                                 }
                                 if ui.selectable_label(false, "Spectral Filter").clicked() {
-                                    synth_engine.lock().add_spectral_filter();
+                                    bridge.add_module(ModuleType::SpectralFilter);
                                 }
                                 if ui.selectable_label(false, "Spectral Blend").clicked() {
-                                    synth_engine.lock().add_spectral_blend();
+                                    bridge.add_module(ModuleType::SpectralBlend);
                                 }
                                 if ui.selectable_label(false, "Spectral Mixer").clicked() {
-                                    synth_engine.lock().add_spectral_mixer();
+                                    bridge.add_module(ModuleType::SpectralMixer);
                                 }
                                 if ui.selectable_label(false, "External Parameter").clicked() {
-                                    synth_engine.lock().add_external_param();
+                                    bridge.add_module(ModuleType::ExternalParam);
                                 }
                                 if ui.selectable_label(false, "Expressions").clicked() {
-                                    synth_engine.lock().add_expressions();
+                                    bridge.add_module(ModuleType::Expressions);
                                 }
                                 if ui.selectable_label(false, "Waveshaper").clicked() {
-                                    synth_engine.lock().add_wave_shaper();
+                                    bridge.add_module(ModuleType::WaveShaper);
                                 }
                                 if ui.selectable_label(false, "Amplifier").clicked() {
-                                    synth_engine.lock().add_amplifier();
+                                    bridge.add_module(ModuleType::Amplifier);
                                 }
                                 if ui.selectable_label(false, "Mixer").clicked() {
-                                    synth_engine.lock().add_mixer();
+                                    bridge.add_module(ModuleType::Mixer);
                                 }
                             });
                     });
                 });
 
-            let mut modules = synth_engine.lock().get_routing_state().get_modules();
+            let mut modules = bridge.get_modules();
 
             modules.sort_by_key(|module| module.label.to_lowercase());
 
@@ -229,7 +229,7 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
     bridge.update();
 
     if let Some(module_id) = editor_state.selected_module_ui.module_id()
-        && !bridge.synth().lock().has_module_id(module_id)
+        && !bridge.has_module_id(module_id)
     {
         editor_state.selected_module_ui = Box::new(ParamsUi::new());
     }

@@ -177,7 +177,7 @@ impl SynthModule for ExternalParam {
         }
     }
 
-    fn process(&mut self, params: &ProcessParams, _router: &dyn Router) {
+    fn process(&mut self, params: &ProcessParams, _router: &mut dyn Router) {
         let param_value = self.params_block.float_params[self.params.selected_param_index].value();
 
         for channel in self.channels.iter_mut() {

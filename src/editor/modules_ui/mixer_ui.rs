@@ -38,13 +38,13 @@ impl ModuleUi for MixerUi {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth();
+        let synth = bridge.synth().clone();
         let mut ui_data = self.mixer(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(
             &ui_data.label,
             &mut self.label_state,
-            synth,
+            &synth,
             self.module_id,
         ));
 
@@ -60,7 +60,8 @@ impl ModuleUi for MixerUi {
                     .add(Slider::new(&mut ui_data.num_inputs, 1..=Mixer::MAX_INPUTS))
                     .changed()
                 {
-                    self.mixer(&mut synth.lock()).set_num_inputs(ui_data.num_inputs);
+                    self.mixer(&mut synth.lock())
+                        .set_num_inputs(ui_data.num_inputs);
                 }
                 ui.end_row();
 
@@ -70,51 +71,54 @@ impl ModuleUi for MixerUi {
                     let i = input_idx as usize;
                     let vol_type = ui_data.input_volume_types[i];
                     let (input, value) = match vol_type {
-                        VolumeType::Db => (
-                            Input::LevelMix(input_idx),
-                            &mut ui_data.input_levels[i],
-                        ),
-                        VolumeType::Gain => (
-                            Input::GainMix(input_idx),
-                            &mut ui_data.input_gains[i],
-                        ),
+                        VolumeType::Db => {
+                            (Input::LevelMix(input_idx), &mut ui_data.input_levels[i])
+                        }
+                        VolumeType::Gain => {
+                            (Input::GainMix(input_idx), &mut ui_data.input_gains[i])
+                        }
                     };
 
                     ui.label(format!("Input {}", input_idx + 1));
                     if ui
-                        .add(ModulationInput::new(value, synth.clone(), input, module_id).before(
-                            move |ui, synth| {
-                                ui.add(DirectInput::new(
-                                    synth.clone(),
-                                    Input::AudioMix(input_idx),
-                                    module_id,
-                                ));
+                        .add(
+                            ModulationInput::new(value, bridge, input, module_id).before(
+                                move |ui, bridge| {
+                                    ui.add(DirectInput::new(
+                                        bridge,
+                                        Input::AudioMix(input_idx),
+                                        module_id,
+                                    ));
 
-                                let volume_type = &mut ui_data.input_volume_types[i];
+                                    let volume_type = &mut ui_data.input_volume_types[i];
 
-                                ComboBox::from_id_salt(format!("volume-type-{}", input_idx))
-                                    .selected_text(volume_type.label())
-                                    .width(0.0)
-                                    .show_ui(ui, |ui| {
-                                        const TYPE_OPTIONS: &[VolumeType] =
-                                            &[VolumeType::Gain, VolumeType::Db];
+                                    ComboBox::from_id_salt(format!("volume-type-{}", input_idx))
+                                        .selected_text(volume_type.label())
+                                        .width(0.0)
+                                        .show_ui(ui, |ui| {
+                                            const TYPE_OPTIONS: &[VolumeType] =
+                                                &[VolumeType::Gain, VolumeType::Db];
 
-                                        for vol_type_item in TYPE_OPTIONS {
-                                            if ui
-                                                .selectable_value(
-                                                    volume_type,
-                                                    *vol_type_item,
-                                                    vol_type_item.label(),
-                                                )
-                                                .clicked()
-                                            {
-                                                Self::mixer_module(module_id, &mut synth.lock())
+                                            for vol_type_item in TYPE_OPTIONS {
+                                                if ui
+                                                    .selectable_value(
+                                                        volume_type,
+                                                        *vol_type_item,
+                                                        vol_type_item.label(),
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    Self::mixer_module(
+                                                        module_id,
+                                                        &mut bridge.synth().lock(),
+                                                    )
                                                     .set_volume_type(input_idx, *volume_type);
+                                                }
                                             }
-                                        }
-                                    });
-                            },
-                        ))
+                                        });
+                                },
+                            ),
+                        )
                         .changed()
                     {
                         match vol_type {
@@ -139,8 +143,8 @@ impl ModuleUi for MixerUi {
                 ui.label("Output");
                 if ui
                     .add(
-                        ModulationInput::new(value, synth.clone(), input, self.module_id).before(
-                            move |ui, synth| {
+                        ModulationInput::new(value, bridge, input, self.module_id).before(
+                            move |ui, bridge| {
                                 ComboBox::from_id_salt("volume-type-output")
                                     .selected_text(ui_data.output_volume_type.label())
                                     .width(0.0)
@@ -157,10 +161,11 @@ impl ModuleUi for MixerUi {
                                                 )
                                                 .clicked()
                                             {
-                                                Self::mixer_module(module_id, &mut synth.lock())
-                                                    .set_output_volume_type(
-                                                        ui_data.output_volume_type,
-                                                    );
+                                                Self::mixer_module(
+                                                    module_id,
+                                                    &mut bridge.synth().lock(),
+                                                )
+                                                .set_output_volume_type(ui_data.output_volume_type);
                                             }
                                         }
                                     });
@@ -171,10 +176,12 @@ impl ModuleUi for MixerUi {
                 {
                     match ui_data.output_volume_type {
                         VolumeType::Db => {
-                            self.mixer(&mut synth.lock()).set_output_level(ui_data.output_level);
+                            self.mixer(&mut synth.lock())
+                                .set_output_level(ui_data.output_level);
                         }
                         VolumeType::Gain => {
-                            self.mixer(&mut synth.lock()).set_output_gain(ui_data.output_gain);
+                            self.mixer(&mut synth.lock())
+                                .set_output_gain(ui_data.output_gain);
                         }
                     }
                 }

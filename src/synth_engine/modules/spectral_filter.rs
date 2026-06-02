@@ -10,8 +10,7 @@ use crate::synth_engine::{
         DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
     },
     synth_module::{
-        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter,
-        VoiceRouterFactory,
+        ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter, VoiceRouterFactory,
     },
     types::{ComplexSample, Sample, SpectralOutput},
 };
@@ -210,14 +209,12 @@ impl SpectralFilter {
         params: &Params,
         channel: &ChannelParams,
         voice: &mut Voice,
-        router: &mut VoiceRouter<'_, '_, MockToUiBridge>,
+        router: &mut VoiceRouter<'_, '_>,
     ) {
         let cutoff = router
             .scalar(Input::Cutoff, channel.cutoff, current)
             .clamp(-4.0, 10.0);
-        let q = router
-            .scalar(Input::Q, channel.q, current)
-            .clamp(0.1, 10.0);
+        let q = router.scalar(Input::Q, channel.q, current).clamp(0.1, 10.0);
         let drive = router
             .scalar(Input::Drive, channel.drive, current)
             .min(24.0);
@@ -279,9 +276,8 @@ impl SynthModule for SpectralFilter {
         }
     }
 
-    fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
-        let mut ui_bridge = MockToUiBridge;
-        let mut rf = VoiceRouterFactory::new(self.id, router, process_params, &mut ui_bridge);
+    fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
+        let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
 
         for (channel_idx, channel) in self
             .channels
@@ -303,7 +299,13 @@ impl SynthModule for SpectralFilter {
                     );
                     voice.triggered = false;
                 }
-                Self::process_voice(true, &self.params, &channel.params, voice, &mut voice_router);
+                Self::process_voice(
+                    true,
+                    &self.params,
+                    &channel.params,
+                    voice,
+                    &mut voice_router,
+                );
             }
         }
     }

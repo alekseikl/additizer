@@ -34,13 +34,13 @@ impl ModuleUi for SpectralBlendUi {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth();
+        let synth = bridge.synth().clone();
         let mut ui_data = self.blend(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(
             &ui_data.label,
             &mut self.label_state,
-            synth,
+            &synth,
             self.module_id,
         ));
 
@@ -52,18 +52,18 @@ impl ModuleUi for SpectralBlendUi {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("From");
-                ui.add(DirectInput::new(synth.clone(), Input::Spectrum, self.module_id));
+                ui.add(DirectInput::new(bridge, Input::Spectrum, self.module_id));
                 ui.end_row();
 
                 ui.label("To");
-                ui.add(DirectInput::new(synth.clone(), Input::SpectrumTo, self.module_id));
+                ui.add(DirectInput::new(bridge, Input::SpectrumTo, self.module_id));
                 ui.end_row();
 
                 ui.label("Blend");
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.blend,
-                        synth.clone(),
+                        bridge,
                         Input::Blend,
                         self.module_id,
                     ))

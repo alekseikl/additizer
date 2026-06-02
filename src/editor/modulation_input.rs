@@ -3,20 +3,22 @@ use std::collections::HashSet;
 use egui::{ComboBox, Frame, Grid, Margin, Response, Ui, Widget};
 
 use crate::{
-    editor::{SynthEngineHandle, db_slider::DbSlider, stereo_slider::StereoSlider},
+    editor::{db_slider::DbSlider, stereo_slider::StereoSlider},
     synth_engine::{
         Input, ModuleId, ModuleInput, Sample, StereoSample,
-        ui_bridge::routing_state::{AvailableInputSource, ConnectedInputSource},
+        ui_bridge::{
+            UiBridge,
+            routing_state::{AvailableInputSource, ConnectedInputSource},
+        },
     },
     utils::st_to_octave,
 };
 
-type BeforeCallback = dyn FnMut(&mut Ui, &SynthEngineHandle);
+type BeforeCallback = dyn FnMut(&mut Ui, &mut UiBridge);
 
 pub struct ModulationInput<'a> {
     value: &'a mut StereoSample,
-    modulated: Option<&'a StereoSample>,
-    synth_engine: SynthEngineHandle,
+    bridge: &'a mut UiBridge,
     input: ModuleInput,
     default: Option<Sample>,
     modulation_default: Option<Sample>,
@@ -26,14 +28,13 @@ pub struct ModulationInput<'a> {
 impl<'a> ModulationInput<'a> {
     pub fn new(
         value: &'a mut StereoSample,
-        synth_engine: SynthEngineHandle,
+        bridge: &'a mut UiBridge,
         input: Input,
         module_id: ModuleId,
     ) -> Self {
         Self {
             value,
-            modulated: None,
-            synth_engine,
+            bridge,
             input: ModuleInput::new(input, module_id),
             default: None,
             modulation_default: None,
@@ -51,12 +52,7 @@ impl<'a> ModulationInput<'a> {
         self
     }
 
-    pub fn modulated(mut self, value: &'a StereoSample) -> Self {
-        self.modulated = Some(value);
-        self
-    }
-
-    pub fn before(mut self, func: impl FnMut(&mut Ui, &SynthEngineHandle) + 'static) -> Self {
+    pub fn before(mut self, func: impl FnMut(&mut Ui, &mut UiBridge) + 'static) -> Self {
         self.before = Some(Box::new(func));
         self
     }
@@ -65,7 +61,6 @@ impl<'a> ModulationInput<'a> {
         slider: StereoSlider<'b>,
         input_type: Input,
         default: Option<Sample>,
-        modulated: Option<&'b StereoSample>,
     ) -> StereoSlider<'b> {
         let mut updated = match input_type {
             Input::Gain | Input::GainMix(_) => slider.default_value(1.0).precision(2),
@@ -154,10 +149,6 @@ impl<'a> ModulationInput<'a> {
 
         if let Some(default) = default {
             updated = updated.default_value(default);
-        }
-
-        if let Some(modulated) = modulated {
-            updated = updated.modulated(modulated);
         }
 
         updated
@@ -277,16 +268,15 @@ impl<'a> ModulationInput<'a> {
         updated
     }
 
-    fn add_slider(&mut self, ui: &mut Ui, has_modulators: bool) -> Response {
-        let modulated = has_modulators.then_some(self.modulated).flatten();
+    fn add_slider(&mut self, ui: &mut Ui) -> Response {
         match self.input.input_type {
             Input::Level | Input::LevelMix(_) => ui.add(DbSlider::new(self.value).width(200.0)),
             _ => ui.add(
                 Self::setup_value_slider(
-                    StereoSlider::new(self.value),
+                    StereoSlider::new(self.value)
+                        .modulated(self.bridge.get_input_modulated_value(self.input)),
                     self.input.input_type,
                     self.default,
-                    modulated,
                 )
                 .length(200.0),
             ),
@@ -294,21 +284,16 @@ impl<'a> ModulationInput<'a> {
     }
 
     fn add_link(&mut self, src: ModuleId) {
-        self.synth_engine
-            .lock()
-            .add_link(
-                src,
-                self.input,
-                StereoSample::splat(self.modulation_default.unwrap_or(0.0)),
-            )
-            .unwrap_or_else(|_| println!("Failed to add modulation"));
+        self.bridge.add_link(
+            src,
+            self.input,
+            StereoSample::splat(self.modulation_default.unwrap_or(0.0)),
+        );
     }
 
     fn set_modulation(&mut self, src_id: ModuleId, modulator_id: ModuleId) {
-        self.synth_engine
-            .lock()
-            .set_link_modulation(src_id, &self.input, modulator_id)
-            .unwrap_or_else(|_| println!("Failed to set modulation"));
+        self.bridge
+            .set_link_modulation(src_id, &self.input, modulator_id);
     }
 
     fn add_link_select(
@@ -357,9 +342,7 @@ impl<'a> ModulationInput<'a> {
                         ui.horizontal(|ui| {
                             ui.label(&src.label);
                             if ui.button("✱").on_hover_text("Remove Modulation").clicked() {
-                                self.synth_engine
-                                    .lock()
-                                    .remove_link_modulation(src.src, &self.input);
+                                self.bridge.remove_link_modulation(src.src, &self.input);
                             }
                             ui.label(&modulation.label);
                         });
@@ -375,9 +358,7 @@ impl<'a> ModulationInput<'a> {
                     );
 
                     if slider_response.changed() {
-                        self.synth_engine
-                            .lock()
-                            .update_link_amount(&src.src, &self.input, amount);
+                        self.bridge.set_link_amount(src.src, self.input, amount);
                     }
 
                     if src.modulation.is_none() {
@@ -399,7 +380,7 @@ impl<'a> ModulationInput<'a> {
                     }
 
                     if ui.button("❌").on_hover_text("Remove Modulation").clicked() {
-                        self.synth_engine.lock().remove_link(&src.src, &self.input);
+                        self.bridge.remove_link(src.src, self.input);
                     }
 
                     ui.end_row();
@@ -407,29 +388,23 @@ impl<'a> ModulationInput<'a> {
             });
     }
 }
-
 impl Widget for ModulationInput<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {
         ui.vertical(|ui| {
             let (connected, available) = {
-                let synth = self.synth_engine.lock();
                 (
-                    synth
-                        .get_routing_state()
-                        .get_connected_input_sources(self.input),
-                    synth
-                        .get_routing_state()
-                        .get_available_input_sources(self.input),
+                    self.bridge.get_connected_input_sources(self.input),
+                    self.bridge.get_available_input_sources(self.input),
                 )
             };
 
             let result_response = ui
                 .horizontal(|ui| {
                     if let Some(before) = self.before.as_deref_mut() {
-                        before(ui, &self.synth_engine);
+                        before(ui, self.bridge);
                     }
 
-                    let result_response = self.add_slider(ui, !connected.is_empty());
+                    let result_response = self.add_slider(ui);
 
                     self.add_link_select(ui, &connected, &available);
                     result_response

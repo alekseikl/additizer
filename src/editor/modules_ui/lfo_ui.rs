@@ -46,14 +46,14 @@ impl ModuleUi for LfoUi {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth();
+        let synth = bridge.synth().clone();
         let id = self.module_id;
         let mut ui_data = self.lfo(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(
             &ui_data.label,
             &mut self.label_state,
-            synth,
+            &synth,
             self.module_id,
         ));
 
@@ -83,7 +83,7 @@ impl ModuleUi for LfoUi {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.skew,
-                        synth.clone(),
+                        bridge,
                         Input::Skew,
                         id,
                     ))
@@ -97,7 +97,7 @@ impl ModuleUi for LfoUi {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.frequency,
-                        synth.clone(),
+                        bridge,
                         Input::LowFrequency,
                         id,
                     ))
@@ -111,13 +111,14 @@ impl ModuleUi for LfoUi {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.phase_shift,
-                        synth.clone(),
+                        bridge,
                         Input::PhaseShift,
                         id,
                     ))
                     .changed()
                 {
-                    self.lfo(&mut synth.lock()).set_phase_shift(ui_data.phase_shift);
+                    self.lfo(&mut synth.lock())
+                        .set_phase_shift(ui_data.phase_shift);
                 }
                 ui.end_row();
 
@@ -134,7 +135,8 @@ impl ModuleUi for LfoUi {
                     )
                     .changed()
                 {
-                    self.lfo(&mut synth.lock()).set_smooth_time(ui_data.smooth_time);
+                    self.lfo(&mut synth.lock())
+                        .set_smooth_time(ui_data.smooth_time);
                 }
                 ui.end_row();
 
@@ -152,7 +154,8 @@ impl ModuleUi for LfoUi {
                     .add(Checkbox::without_text(&mut ui_data.steal_phase))
                     .changed()
                 {
-                    self.lfo(&mut synth.lock()).set_steal_phase(ui_data.steal_phase);
+                    self.lfo(&mut synth.lock())
+                        .set_steal_phase(ui_data.steal_phase);
                 }
                 ui.end_row();
             });

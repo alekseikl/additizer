@@ -6,9 +6,7 @@ use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::{Buffer, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
-    synth_module::{
-        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory,
-    },
+    synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory},
 };
 
 #[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -122,7 +120,7 @@ impl WaveShaper {
         channel: &ChannelParams,
         voice: &mut Voice,
         buffers: &mut Buffers,
-        router: &VoiceRouter<'_, '_, MockToUiBridge>,
+        router: &VoiceRouter<'_, '_>,
     ) {
         let input = router.buffer(Input::Audio, &mut buffers.input);
         let clipping_level_mod =
@@ -181,9 +179,8 @@ impl SynthModule for WaveShaper {
         DataType::Buffer
     }
 
-    fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
-        let mut ui_bridge = MockToUiBridge;
-        let mut rf = VoiceRouterFactory::new(self.id, router, process_params, &mut ui_bridge);
+    fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
+        let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {

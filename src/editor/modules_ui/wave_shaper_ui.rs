@@ -43,13 +43,13 @@ impl ModuleUi for WaveShaperUi {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth();
+        let synth = bridge.synth().clone();
         let mut ui_data = self.shaper(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(
             &ui_data.label,
             &mut self.label_state,
-            synth,
+            &synth,
             self.module_id,
         ));
 
@@ -61,7 +61,7 @@ impl ModuleUi for WaveShaperUi {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Input");
-                ui.add(DirectInput::new(synth.clone(), Input::Audio, self.module_id));
+                ui.add(DirectInput::new(bridge, Input::Audio, self.module_id));
                 ui.end_row();
 
                 ui.label("Type");
@@ -90,13 +90,14 @@ impl ModuleUi for WaveShaperUi {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.distortion,
-                        synth.clone(),
+                        bridge,
                         Input::Distortion,
                         self.module_id,
                     ))
                     .changed()
                 {
-                    self.shaper(&mut synth.lock()).set_distortion(ui_data.distortion);
+                    self.shaper(&mut synth.lock())
+                        .set_distortion(ui_data.distortion);
                 }
                 ui.end_row();
 
@@ -104,7 +105,7 @@ impl ModuleUi for WaveShaperUi {
                 if ui
                     .add(ModulationInput::new(
                         &mut ui_data.clipping_level,
-                        synth.clone(),
+                        bridge,
                         Input::ClippingLevel,
                         self.module_id,
                     ))

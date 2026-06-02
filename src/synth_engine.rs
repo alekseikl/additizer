@@ -224,7 +224,7 @@ impl SynthEngine {
         self.modules.len() == 1
     }
 
-    pub fn get_ui_state(&self) -> ui_bridge::UiState {
+    fn get_ui_state(&self) -> ui_bridge::UiState {
         let voices_ui = self.voices_handler.get_ui_data();
 
         ui_bridge::UiState {
@@ -240,7 +240,7 @@ impl SynthEngine {
         }
     }
 
-    pub fn get_routing_state(&self) -> ui_bridge::RoutingState {
+    fn get_routing_state(&self) -> ui_bridge::RoutingState {
         ui_bridge::RoutingState::new(
             self.modules
                 .values()
@@ -352,10 +352,6 @@ impl SynthEngine {
 
         self.setup_routing(&new_links).unwrap();
         self.save_links();
-    }
-
-    pub fn has_module_id(&self, module_id: ModuleId) -> bool {
-        self.modules.contains_key(&module_id)
     }
 
     pub fn set_direct_link(&mut self, src: ModuleId, dst: ModuleInput) -> Result<(), String> {
@@ -558,12 +554,14 @@ impl SynthEngine {
             active_voices: &playing_voices,
         };
 
-        for module_id in &self.execution_order {
-            if let Some(module_box) = self.modules.get_mut(module_id)
+        for i in 0..self.execution_order.len() {
+            let module_id = self.execution_order[i];
+
+            if let Some(module_box) = self.modules.get_mut(&module_id)
                 && let Some(mut module) = module_box.take()
             {
                 module.process(&params, self);
-                self.modules.get_mut(module_id).unwrap().replace(module);
+                self.modules.get_mut(&module_id).unwrap().replace(module);
             }
         }
 
@@ -676,7 +674,15 @@ impl SynthEngine {
         let topo_sort = TopoSort::from_map(dependents);
 
         match topo_sort.into_vec_nodes() {
-            SortResults::Full(nodes) => Ok(nodes.into_iter().collect()),
+            SortResults::Full(nodes) => {
+                let mut order: Vec<_> = nodes
+                    .into_iter()
+                    .filter(|id| *id != OUTPUT_MODULE_ID)
+                    .collect();
+
+                order.push(OUTPUT_MODULE_ID);
+                Ok(order)
+            }
             SortResults::Partial(_) => Err("Cycles detected!".to_string()),
         }
     }
@@ -995,5 +1001,21 @@ impl Router for SynthEngine {
         }
 
         Some(output)
+    }
+
+    fn update_modulated_input(
+        &mut self,
+        module_id: ModuleId,
+        input: Input,
+        channel_idx: usize,
+        value: Sample,
+    ) {
+        self.audio_end
+            .update_modulated_input(module_id, input, channel_idx as u8, value);
+    }
+
+    fn update_output(&mut self, module_id: ModuleId, channel_idx: usize, value: Sample) {
+        self.audio_end
+            .update_output(module_id, channel_idx as u8, value);
     }
 }

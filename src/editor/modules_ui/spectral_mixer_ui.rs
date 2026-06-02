@@ -5,7 +5,9 @@ use crate::{
         ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
-    synth_engine::{Input, MixType, ModuleId, SpectralMixer, SynthEngine, VolumeType, ui_bridge::UiBridge},
+    synth_engine::{
+        Input, MixType, ModuleId, SpectralMixer, SynthEngine, VolumeType, ui_bridge::UiBridge,
+    },
 };
 
 impl MixType {
@@ -48,13 +50,13 @@ impl ModuleUi for SpectralMixerUi {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth();
+        let synth = bridge.synth().clone();
         let mut ui_data = self.mixer(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(
             &ui_data.label,
             &mut self.label_state,
-            synth,
+            &synth,
             self.module_id,
         ));
 
@@ -84,21 +86,19 @@ impl ModuleUi for SpectralMixerUi {
                     let i = input_idx as usize;
                     let vol_type = ui_data.input_params[i].volume_type;
                     let (input, value) = match vol_type {
-                        VolumeType::Db => (
-                            Input::LevelMix(input_idx),
-                            &mut ui_data.input_levels[i],
-                        ),
-                        VolumeType::Gain => (
-                            Input::GainMix(input_idx),
-                            &mut ui_data.input_gains[i],
-                        ),
+                        VolumeType::Db => {
+                            (Input::LevelMix(input_idx), &mut ui_data.input_levels[i])
+                        }
+                        VolumeType::Gain => {
+                            (Input::GainMix(input_idx), &mut ui_data.input_gains[i])
+                        }
                     };
 
                     ui.label(format!("Input {}", input_idx + 1));
                     if ui
                         .add(
-                            ModulationInput::new(value, synth.clone(), input, module_id).before(
-                                move |ui, synth| {
+                            ModulationInput::new(value, bridge, input, module_id).before(
+                                move |ui, bridge| {
                                     if input_idx > 0 {
                                         let mix_type = &mut ui_data.input_params[i].mix_type;
 
@@ -123,7 +123,7 @@ impl ModuleUi for SpectralMixerUi {
                                                     {
                                                         Self::mixer_module(
                                                             module_id,
-                                                            &mut synth.lock(),
+                                                            &mut bridge.synth().lock(),
                                                         )
                                                         .set_mix_type(input_idx, *mix_type);
                                                     }
@@ -132,7 +132,7 @@ impl ModuleUi for SpectralMixerUi {
                                     }
 
                                     ui.add(DirectInput::new(
-                                        synth.clone(),
+                                        bridge,
                                         Input::SpectrumMix(input_idx),
                                         module_id,
                                     ));
@@ -157,7 +157,7 @@ impl ModuleUi for SpectralMixerUi {
                                                 {
                                                     Self::mixer_module(
                                                         module_id,
-                                                        &mut synth.lock(),
+                                                        &mut bridge.synth().lock(),
                                                     )
                                                     .set_volume_type(input_idx, *volume_type);
                                                 }
@@ -190,8 +190,8 @@ impl ModuleUi for SpectralMixerUi {
                 ui.label("Output");
                 if ui
                     .add(
-                        ModulationInput::new(value, synth.clone(), input, self.module_id).before(
-                            move |ui, synth| {
+                        ModulationInput::new(value, bridge, input, self.module_id).before(
+                            move |ui, bridge| {
                                 ComboBox::from_id_salt("volume-type-output")
                                     .selected_text(ui_data.output_volume_type.label())
                                     .width(0.0)
@@ -208,10 +208,11 @@ impl ModuleUi for SpectralMixerUi {
                                                 )
                                                 .clicked()
                                             {
-                                                Self::mixer_module(module_id, &mut synth.lock())
-                                                    .set_output_volume_type(
-                                                        ui_data.output_volume_type,
-                                                    );
+                                                Self::mixer_module(
+                                                    module_id,
+                                                    &mut bridge.synth().lock(),
+                                                )
+                                                .set_output_volume_type(ui_data.output_volume_type);
                                             }
                                         }
                                     });

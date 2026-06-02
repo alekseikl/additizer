@@ -62,7 +62,7 @@ pub trait SynthModule: Any + Send {
     fn handle_events(&mut self, events: &[VoiceEvent]) {}
     fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {}
 
-    fn process(&mut self, params: &ProcessParams, router: &dyn Router);
+    fn process(&mut self, params: &ProcessParams, router: &mut dyn Router);
 
     fn get_buffer_output(&self, voice_idx: usize, channel_idx: usize) -> &Buffer {
         panic!("{:?} don't have buffer output.", self.module_type())
@@ -82,35 +82,20 @@ pub trait SynthModule: Any + Send {
     }
 }
 
-pub trait ModuleToUiBridge {
-    fn update_modulated_input(&mut self, input: Input, channel_idx: usize, value: Sample);
-    fn update_output(&mut self, channel_idx: usize, value: Sample);
-}
-
-pub struct MockToUiBridge;
-
-impl ModuleToUiBridge for MockToUiBridge {
-    fn update_modulated_input(&mut self, _input: Input, _channel_idx: usize, _value: Sample) {}
-    fn update_output(&mut self, _channel_idx: usize, _value: Sample) {}
-}
-
-pub struct VoiceRouterFactory<'a, Bridge: ModuleToUiBridge> {
-    router: &'a dyn Router,
-    ui_bridge: &'a mut Bridge,
+pub struct VoiceRouterFactory<'a> {
+    router: &'a mut dyn Router,
     process_params: &'a ProcessParams<'a>,
     module_id: ModuleId,
 }
 
-impl<'a, Bridge: ModuleToUiBridge> VoiceRouterFactory<'a, Bridge> {
+impl<'a> VoiceRouterFactory<'a> {
     pub fn new(
         module_id: ModuleId,
-        router: &'a dyn Router,
+        router: &'a mut dyn Router,
         process_params: &'a ProcessParams,
-        ui_bridge: &'a mut Bridge,
     ) -> Self {
         Self {
             router,
-            ui_bridge,
             process_params,
             module_id,
         }
@@ -121,7 +106,7 @@ impl<'a, Bridge: ModuleToUiBridge> VoiceRouterFactory<'a, Bridge> {
         voice_idx: usize,
         channel_idx: usize,
         seq_idx: usize,
-    ) -> VoiceRouter<'b, 'a, Bridge>
+    ) -> VoiceRouter<'b, 'a>
     where
         'a: 'b,
     {
@@ -134,14 +119,14 @@ impl<'a, Bridge: ModuleToUiBridge> VoiceRouterFactory<'a, Bridge> {
     }
 }
 
-pub struct VoiceRouter<'a, 'b, Bridge: ModuleToUiBridge> {
-    factory: &'a mut VoiceRouterFactory<'b, Bridge>,
+pub struct VoiceRouter<'a, 'b> {
+    factory: &'a mut VoiceRouterFactory<'b>,
     voice_idx: usize,
     channel_idx: usize,
     voice_seq_idx: usize,
 }
 
-impl<'a, 'b, Bridge: ModuleToUiBridge> VoiceRouter<'a, 'b, Bridge> {
+impl<'a, 'b> VoiceRouter<'a, 'b> {
     pub fn samples(&self) -> usize {
         self.factory.process_params.samples
     }
@@ -182,16 +167,19 @@ impl<'a, 'b, Bridge: ModuleToUiBridge> VoiceRouter<'a, 'b, Bridge> {
         ) && params.needs_update_ui
             && self.voice_seq_idx == 0
         {
-            self.factory
-                .ui_bridge
-                .update_modulated_input(input, self.channel_idx, buff[0]);
+            self.factory.router.update_modulated_input(
+                self.factory.module_id,
+                input,
+                self.channel_idx,
+                buff[0],
+            );
         }
     }
 
     pub fn update_output(&mut self, buff: &Buffer) {
         self.factory
-            .ui_bridge
-            .update_output(self.channel_idx, buff[0]);
+            .router
+            .update_output(self.factory.module_id, self.channel_idx, buff[0]);
     }
 
     pub fn spectral(&self, input: Input, current: bool) -> &SpectralBuffer {
@@ -218,9 +206,12 @@ impl<'a, 'b, Bridge: ModuleToUiBridge> VoiceRouter<'a, 'b, Bridge> {
             let value = value + param;
 
             if self.factory.process_params.needs_update_ui && self.voice_seq_idx == 0 {
-                self.factory
-                    .ui_bridge
-                    .update_modulated_input(input, self.channel_idx, value);
+                self.factory.router.update_modulated_input(
+                    self.factory.module_id,
+                    input,
+                    self.channel_idx,
+                    value,
+                );
             }
 
             value

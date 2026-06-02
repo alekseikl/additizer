@@ -10,8 +10,7 @@ use crate::{
         },
         smooth::Smoother,
         synth_module::{
-            MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter,
-            VoiceRouterFactory,
+            ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter, VoiceRouterFactory,
         },
         types::{Sample, ScalarOutput},
         voices_handler::DecayingVoice,
@@ -314,7 +313,7 @@ impl Envelope {
         env: &ChannelParams,
         voice: &mut Voice,
         t_step: Sample,
-        mut router: VoiceRouter<'_, '_, MockToUiBridge>,
+        mut router: VoiceRouter<'_, '_>,
     ) {
         if voice.triggered {
             voice.stage = Stage::Delay(EnvelopeCurve::delay_iter(voice.scalar_output.current()));
@@ -505,10 +504,9 @@ impl SynthModule for Envelope {
         }
     }
 
-    fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
+    fn process(&mut self, params: &ProcessParams, router: &mut dyn Router) {
         let t_step = params.sample_rate.recip();
-        let mut ui_bridge = MockToUiBridge;
-        let mut rf = VoiceRouterFactory::new(self.id, router, params, &mut ui_bridge);
+        let mut rf = VoiceRouterFactory::new(self.id, router, params);
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
             let env = &channel.params;

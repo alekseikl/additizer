@@ -5,9 +5,7 @@ use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::SpectralBuffer,
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
-    synth_module::{
-        MockToUiBridge, ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory,
-    },
+    synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory},
     types::SpectralOutput,
 };
 
@@ -72,7 +70,7 @@ impl SpectralBlend {
         current: bool,
         params: &ChannelParams,
         voice: &mut Voice,
-        router: &mut VoiceRouter<'_, '_, MockToUiBridge>,
+        router: &mut VoiceRouter<'_, '_>,
     ) {
         let blend = router
             .scalar(Input::Blend, params.blend, current)
@@ -129,9 +127,8 @@ impl SynthModule for SpectralBlend {
         }
     }
 
-    fn process(&mut self, process_params: &ProcessParams, router: &dyn Router) {
-        let mut ui_bridge = MockToUiBridge;
-        let mut rf = VoiceRouterFactory::new(self.id, router, process_params, &mut ui_bridge);
+    fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
+        let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
 
         for (channel_idx, channel) in self
             .channels

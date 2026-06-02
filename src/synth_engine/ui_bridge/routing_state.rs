@@ -72,6 +72,10 @@ impl RoutingState {
             .collect()
     }
 
+    pub fn has_module_id(&self, module_id: ModuleId) -> bool {
+        self.modules.contains_key(&module_id)
+    }
+
     pub fn get_available_input_sources(&self, input: ModuleInput) -> Vec<AvailableInputSource> {
         let dst_data_type =
             if input.module_id == OUTPUT_MODULE_ID && input.input_type == Input::Audio {
@@ -134,6 +138,10 @@ impl RoutingState {
         {
             source.amount = amount;
         }
+    }
+
+    pub fn has_input(&self, input: ModuleInput) -> bool {
+        self.routing.contains_key(&input)
     }
 
     fn is_connected_to_source(&self, dst_id: ModuleId, src_id: ModuleId) -> bool {

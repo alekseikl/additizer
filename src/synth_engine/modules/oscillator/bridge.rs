@@ -1,7 +1,6 @@
 use crate::synth_engine::{
     Input, Sample, StereoSample,
     oscillator::{MAX_UNISON_VOICES, PhasesDst},
-    synth_module::ModuleToUiBridge,
 };
 
 pub struct UnisonUiState {
@@ -68,15 +67,6 @@ pub enum UiEvent {
 }
 
 pub enum UiUpdate {
-    ModulatedInput {
-        input: Input,
-        channel: u8,
-        value: Sample,
-    },
-    Output {
-        channel: usize,
-        value: Sample,
-    },
     RefreshState,
 }
 
@@ -169,22 +159,5 @@ impl UiBridge {
 
     pub fn push_refresh_state(&mut self) {
         let _ = self.tx.push(UiUpdate::RefreshState);
-    }
-}
-
-impl ModuleToUiBridge for UiBridge {
-    fn update_modulated_input(&mut self, input: Input, channel_idx: usize, value: Sample) {
-        let _ = self.tx.push(UiUpdate::ModulatedInput {
-            input,
-            channel: channel_idx as u8,
-            value,
-        });
-    }
-
-    fn update_output(&mut self, channel_idx: usize, value: Sample) {
-        let _ = self.tx.push(UiUpdate::Output {
-            channel: channel_idx,
-            value,
-        });
     }
 }

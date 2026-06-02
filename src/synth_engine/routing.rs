@@ -223,6 +223,16 @@ pub trait Router {
         voice_idx: usize,
         channel_idx: usize,
     ) -> Option<Sample>;
+
+    fn update_modulated_input(
+        &mut self,
+        module_id: ModuleId,
+        input: Input,
+        channel_idx: usize,
+        value: Sample,
+    );
+
+    fn update_output(&mut self, module_id: ModuleId, channel_idx: usize, value: Sample);
 }
 
 pub fn data_types_compatible(src: DataType, dst: DataType) -> bool {

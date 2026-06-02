@@ -265,7 +265,7 @@ impl SynthModule for HarmonicEditor {
         DataType::Spectral
     }
 
-    fn process(&mut self, _params: &ProcessParams, _router: &dyn Router) {}
+    fn process(&mut self, _params: &ProcessParams, _router: &mut dyn Router) {}
 
     fn get_spectral_output(
         &self,

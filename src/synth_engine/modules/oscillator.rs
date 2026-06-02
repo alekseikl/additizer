@@ -577,7 +577,7 @@ impl Oscillator {
         mono_voice_buffers: Option<&'a VoiceBuffers>,
         osc_state: &mut OscState,
         triggered: bool,
-        router: &VoiceRouter<'_, '_, UiBridge>,
+        router: &VoiceRouter<'_, '_>,
     ) -> (&'a WaveformBuffer, &'a WaveformBuffer) {
         let voice_buffers = if let Some(mono_voice_buffers) = mono_voice_buffers {
             mono_voice_buffers
@@ -632,7 +632,7 @@ impl Oscillator {
         unison: usize,
         channel: &ChannelParams,
         voice: &mut VoiceState,
-        router: &mut VoiceRouter<'_, '_, UiBridge>,
+        router: &mut VoiceRouter<'_, '_>,
     ) {
         const MAX_DETUNE: Sample = 1.0;
         const MAX_DETUNE_POWER: Sample = 5.0;
@@ -653,7 +653,7 @@ impl Oscillator {
             unison: usize,
             current: bool,
             channel: &ChannelParams,
-            router: &mut VoiceRouter<'_, '_, UiBridge>,
+            router: &mut VoiceRouter<'_, '_>,
         ) -> impl Iterator<Item = StateUpdate> {
             let detune = router
                 .scalar(Input::Detune, channel.detune, current)
@@ -741,7 +741,7 @@ impl Oscillator {
         channel: &ChannelParams,
         osc_state: &mut OscState,
         voice: &mut VoiceState,
-        router: &mut VoiceRouter<'_, '_, UiBridge>,
+        router: &mut VoiceRouter<'_, '_>,
     ) {
         const GLIDE_TIME_THRESHOLD: Sample = from_ms(1.0);
         const GLIDE_POWER_MAX: Sample = 6.0;
@@ -815,7 +815,7 @@ impl Oscillator {
         osc_state: &mut OscState,
         voice: &mut Voice,
         mono_voice_buffers: Option<&VoiceBuffers>,
-        mut router: VoiceRouter<'_, '_, UiBridge>,
+        mut router: VoiceRouter<'_, '_>,
     ) {
         let samples = router.samples();
 
@@ -1049,10 +1049,10 @@ impl SynthModule for Oscillator {
         }
     }
 
-    fn process(&mut self, params: &ProcessParams, router: &dyn Router) {
+    fn process(&mut self, params: &ProcessParams, router: &mut dyn Router) {
         self.handle_ui_events();
 
-        let mut rf = VoiceRouterFactory::new(self.id, router, params, &mut self.ui_bridge);
+        let mut rf = VoiceRouterFactory::new(self.id, router, params);
 
         for (channel_idx, channel) in self
             .channels

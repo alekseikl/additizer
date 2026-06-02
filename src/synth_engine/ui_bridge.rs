@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use crate::synth_engine::{ModuleId, ModuleInput, Sample, StereoSample, SynthEngine};
+use crate::synth_engine::{
+    ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
+};
 
 mod link;
 pub mod routing_state;
@@ -74,12 +76,28 @@ impl UiBridge {
         self.routing.get_modules()
     }
 
+    pub fn has_module_id(&self, module_id: ModuleId) -> bool {
+        self.routing.has_module_id(module_id)
+    }
+
+    pub fn has_active_voices(&self) -> bool {
+        self.voices.playing + self.voices.releasing > 0
+    }
+
     pub fn get_available_input_sources(&self, input: ModuleInput) -> Vec<AvailableInputSource> {
         self.routing.get_available_input_sources(input)
     }
 
     pub fn get_connected_input_sources(&self, input: ModuleInput) -> Vec<ConnectedInputSource> {
         self.routing.get_connected_input_sources(input)
+    }
+
+    pub fn get_input_modulated_value(&self, input: ModuleInput) -> Option<StereoSample> {
+        if self.routing.has_input(input) && self.has_active_voices() {
+            self.modulated_inputs.get(&input).copied()
+        } else {
+            None
+        }
     }
 
     pub fn sync(&mut self) {
@@ -119,8 +137,39 @@ impl UiBridge {
         }
     }
 
+    pub fn add_module(&mut self, module_type: ModuleType) -> ModuleId {
+        let mut synth = self.synth.lock();
+
+        let result = match module_type {
+            ModuleType::Output => OUTPUT_MODULE_ID,
+            ModuleType::Amplifier => synth.add_amplifier(),
+            ModuleType::Envelope => synth.add_envelope(),
+            ModuleType::Mixer => synth.add_mixer(),
+            ModuleType::Oscillator => synth.add_oscillator(),
+            ModuleType::SpectralFilter => synth.add_spectral_filter(),
+            ModuleType::SpectralBlend => synth.add_spectral_blend(),
+            ModuleType::SpectralMixer => synth.add_spectral_mixer(),
+            ModuleType::HarmonicEditor => synth.add_harmonic_editor(),
+            ModuleType::ExternalParam => synth.add_external_param(),
+            ModuleType::Lfo => synth.add_lfo(),
+            ModuleType::WaveShaper => synth.add_wave_shaper(),
+            ModuleType::Expressions => synth.add_expressions(),
+        };
+
+        self.routing = synth.get_routing_state();
+        result
+    }
+
+    pub fn set_direct_link(&mut self, src: ModuleId, dst: ModuleInput) {
+        let mut synth = self.synth.lock();
+
+        let _ = synth.set_direct_link(src, dst);
+        self.routing = synth.get_routing_state();
+    }
+
     pub fn add_link(&mut self, src: ModuleId, dst: ModuleInput, amount: StereoSample) {
         let mut synth = self.synth.lock();
+
         if let Err(err) = synth.add_link(src, dst, amount) {
             println!("Failed to add link: {err}");
         }
@@ -129,7 +178,27 @@ impl UiBridge {
 
     pub fn remove_link(&mut self, src: ModuleId, dst: ModuleInput) {
         let mut synth = self.synth.lock();
+
         synth.remove_link(&src, &dst);
+        self.routing = synth.get_routing_state();
+    }
+
+    pub fn set_link_modulation(
+        &mut self,
+        src_id: ModuleId,
+        dst_input: &ModuleInput,
+        modulator_id: ModuleId,
+    ) {
+        let mut synth = self.synth.lock();
+
+        let _ = synth.set_link_modulation(src_id, dst_input, modulator_id);
+        self.routing = synth.get_routing_state();
+    }
+
+    pub fn remove_link_modulation(&mut self, src_id: ModuleId, dst_input: &ModuleInput) {
+        let mut synth = self.synth.lock();
+
+        synth.remove_link_modulation(src_id, dst_input);
         self.routing = synth.get_routing_state();
     }
 

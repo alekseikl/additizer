@@ -262,7 +262,7 @@ impl SynthModule for Expressions {
         }
     }
 
-    fn process(&mut self, params: &ProcessParams, _router: &dyn Router) {
+    fn process(&mut self, params: &ProcessParams, _router: &mut dyn Router) {
         for channel in &mut self.channels {
             for voice_idx in params.active_voices {
                 let voice = &mut channel.voices[*voice_idx];
