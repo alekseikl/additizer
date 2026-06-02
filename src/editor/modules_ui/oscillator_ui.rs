@@ -2,13 +2,13 @@ use egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, SynthEngineHandle, db_slider::DbSlider, direct_input::DirectInput,
-        gain_slider::GainSlider, modulation_input::ModulationInput, module_label::ModuleLabel,
-        stereo_slider::StereoSlider, utils::confirm_module_removal,
+        ModuleUi, db_slider::DbSlider, direct_input::DirectInput, gain_slider::GainSlider,
+        modulation_input::ModulationInput, module_label::ModuleLabel, stereo_slider::StereoSlider,
+        utils::confirm_module_removal,
     },
     synth_engine::{
-        Input, ModuleId, Sample, StereoSample, SynthModule,
-        oscillator::{AudioBridge, Oscillator, PhasesDst, UiState, UiUpdate},
+        Input, ModuleId, Sample, StereoSample,
+        oscillator::{Oscillator, PhasesDst, UiEnd, UiState, UiUpdate},
         ui_bridge::UiBridge,
     },
 };
@@ -30,9 +30,8 @@ pub struct OscillatorUI {
     module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
-    label: String,
     ui_state: UiState,
-    bridge: Option<AudioBridge>,
+    bridge: Option<UiEnd>,
     phases_shift_to: bool,
     gains_to: bool,
     gain_shape_state: Option<Box<GainShapeState>>,
@@ -40,17 +39,19 @@ pub struct OscillatorUI {
 }
 
 impl OscillatorUI {
-    pub fn new(module_id: ModuleId, synth: &SynthEngineHandle) -> Self {
-        let mut s = synth.lock();
-        let osc = s.get_typed_module_mut::<Oscillator>(module_id).unwrap();
+    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Self {
+        let (ui_state, ui_end) = synth_bridge.with_synth(|synth| {
+            let osc = synth.get_typed_module_mut::<Oscillator>(module_id).unwrap();
+
+            (osc.get_ui_state(), osc.take_audio_bridge())
+        });
 
         Self {
             module_id,
             remove_confirmation: false,
             label_state: None,
-            label: osc.label(),
-            ui_state: osc.get_ui_state(),
-            bridge: osc.take_audio_bridge(),
+            ui_state,
+            bridge: ui_end,
             phases_shift_to: false,
             gains_to: false,
             gain_shape_state: None,
@@ -60,7 +61,7 @@ impl OscillatorUI {
 
     fn show_gain_shape_modal(
         &mut self,
-        bridge: &mut AudioBridge,
+        bridge: &mut UiEnd,
         ui: &mut Ui,
         state: &mut GainShapeState,
     ) -> bool {
@@ -114,7 +115,7 @@ impl OscillatorUI {
 
     fn show_randomize_phases_modal(
         &mut self,
-        bridge: &mut AudioBridge,
+        bridge: &mut UiEnd,
         ui: &mut Ui,
         state: &mut RandomizePhaseState,
     ) -> bool {
@@ -249,7 +250,7 @@ impl OscillatorUI {
     fn show_unison_section(
         &mut self,
         synth_bridge: &mut UiBridge,
-        bridge: &mut AudioBridge,
+        bridge: &mut UiEnd,
         ui: &mut Ui,
     ) {
         let unison = self.ui_state.unison;
@@ -413,18 +414,17 @@ impl ModuleUi for OscillatorUI {
         }
 
         if refresh_state {
-            self.ui_state = synth_bridge
-                .synth()
-                .lock()
-                .get_typed_module_mut::<Oscillator>(self.module_id)
-                .unwrap()
-                .get_ui_state();
+            self.ui_state = synth_bridge.with_synth(|synth| {
+                synth
+                    .get_typed_module_mut::<Oscillator>(self.module_id)
+                    .unwrap()
+                    .get_ui_state()
+            });
         }
 
         ui.add(ModuleLabel::new(
-            &self.label,
             &mut self.label_state,
-            synth_bridge.synth(),
+            synth_bridge,
             self.module_id,
         ));
 

@@ -82,14 +82,14 @@ impl ModuleUi for OutputUi {
 }
 
 impl ModuleType {
-    fn ui(&self, id: ModuleId, synth_engine: &SynthEngineHandle) -> ModuleUIBox {
+    fn ui(&self, id: ModuleId, synth_bridge: &mut UiBridge) -> ModuleUIBox {
         match self {
             Self::Output => Box::new(OutputUi),
             Self::HarmonicEditor => Box::new(HarmonicEditorUI::new(id)),
             Self::SpectralFilter => Box::new(SpectralFilterUI::new(id)),
             Self::Amplifier => Box::new(AmplifierUI::new(id)),
             Self::Mixer => Box::new(MixerUi::new(id)),
-            Self::Oscillator => Box::new(OscillatorUI::new(id, synth_engine)),
+            Self::Oscillator => Box::new(OscillatorUI::new(id, synth_bridge)),
             Self::Envelope => Box::new(EnvelopeUI::new(id)),
             Self::ExternalParam => Box::new(ExternalParamUI::new(id)),
             Self::Lfo => Box::new(LfoUi::new(id)),
@@ -102,7 +102,6 @@ impl ModuleType {
 }
 
 fn show_side_bar(ui: &mut Ui, selected_module_ui: &mut ModuleUIBox, bridge: &mut UiBridge) {
-    let synth_engine = bridge.synth().clone();
     Panel::left("side-bar")
         .resizable(true)
         .size_range(100.0..=200.0)
@@ -188,8 +187,7 @@ fn show_side_bar(ui: &mut Ui, selected_module_ui: &mut ModuleUIBox, bridge: &mut
                                 {
                                     selected_module_ui.cleanup(bridge);
 
-                                    *selected_module_ui =
-                                        module.module_type.ui(module.id, &synth_engine);
+                                    *selected_module_ui = module.module_type.ui(module.id, bridge);
                                 }
                             }
                         })

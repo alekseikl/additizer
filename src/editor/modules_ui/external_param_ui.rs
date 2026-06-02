@@ -34,13 +34,12 @@ impl ModuleUi for ExternalParamUI {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth();
+        let synth = bridge.synth().clone();
         let mut ui_data = self.param(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(
-            &ui_data.label,
             &mut self.label_state,
-            synth,
+            bridge,
             self.module_id,
         ));
 

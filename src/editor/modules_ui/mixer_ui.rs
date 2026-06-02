@@ -42,9 +42,8 @@ impl ModuleUi for MixerUi {
         let mut ui_data = self.mixer(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(
-            &ui_data.label,
             &mut self.label_state,
-            &synth,
+            bridge,
             self.module_id,
         ));
 

@@ -52,9 +52,8 @@ impl ModuleUi for SpectralFilterUI {
         let mut ui_data = self.filter(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(
-            &ui_data.label,
             &mut self.label_state,
-            &synth,
+            bridge,
             self.module_id,
         ));
 

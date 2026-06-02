@@ -530,8 +530,10 @@ impl SynthEngine {
             self.voices_handler.update_decaying_voices(&decaying_voices);
         }
 
-        self.audio_end
-            .update_voices_status(&self.voices_handler.get_ui_data());
+        if update_ui {
+            self.audio_end
+                .update_voices_status(&self.voices_handler.get_ui_data());
+        }
 
         let mut playing_voices = PlayingVoices::new();
 

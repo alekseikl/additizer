@@ -78,7 +78,6 @@ pub struct SpectralMixerConfig {
 }
 
 pub struct SpectralMixerUIData {
-    pub label: String,
     pub num_inputs: u8,
     pub input_params: [InputParams; MAX_INPUTS as usize],
     pub input_levels: [StereoSample; MAX_INPUTS as usize],
@@ -126,7 +125,6 @@ impl SpectralMixer {
 
     pub fn get_ui(&self) -> SpectralMixerUIData {
         SpectralMixerUIData {
-            label: self.label.clone(),
             num_inputs: self.params.num_inputs,
             input_params: self.params.input_params,
             input_levels: array::from_fn(|idx| {

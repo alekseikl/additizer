@@ -25,10 +25,10 @@ use crate::{
     utils::{from_ms, pitch_to_freq, power_scale, st_to_octave},
 };
 
-mod bridge;
+mod ui_bridge;
 
-use bridge::*;
-pub use bridge::{AudioBridge, UiState, UiUpdate};
+use ui_bridge::*;
+pub use ui_bridge::{UiEnd, UiState, UiUpdate};
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
 const WAVEFORM_SIZE: usize = 1 << WAVEFORM_BITS;
@@ -308,8 +308,8 @@ pub struct Oscillator {
     config: ModuleConfigBox<OscillatorConfig>,
     params: Params,
     osc_state: OscState,
-    ui_bridge: UiBridge,
-    to_audio_bridge: Option<AudioBridge>,
+    ui_bridge: AudioEnd,
+    to_audio_bridge: Option<UiEnd>,
     channels: [Channel; NUM_CHANNELS],
 }
 
@@ -324,8 +324,8 @@ impl Oscillator {
             config,
             params: Params::default(),
             osc_state: OscState::default(),
-            ui_bridge: UiBridge::new(from_ui_rx, to_ui_tx),
-            to_audio_bridge: Some(AudioBridge::new(from_audio_rx, to_audio_tx)),
+            ui_bridge: AudioEnd::new(from_ui_rx, to_ui_tx),
+            to_audio_bridge: Some(UiEnd::new(from_audio_rx, to_audio_tx)),
             channels: Default::default(),
         };
 
@@ -333,11 +333,11 @@ impl Oscillator {
         osc
     }
 
-    pub fn take_audio_bridge(&mut self) -> Option<AudioBridge> {
+    pub fn take_audio_bridge(&mut self) -> Option<UiEnd> {
         self.to_audio_bridge.take()
     }
 
-    pub fn return_audio_bridge(&mut self, bridge: AudioBridge) {
+    pub fn return_audio_bridge(&mut self, bridge: UiEnd) {
         assert!(self.to_audio_bridge.is_none(), "to_audio_bridge not taken");
         self.to_audio_bridge = Some(bridge);
     }

@@ -43,7 +43,6 @@ pub struct WaveShaperConfig {
 }
 
 pub struct WaveShaperUIData {
-    pub label: String,
     pub shaper_type: ShaperType,
     pub distortion: StereoSample,
     pub clipping_level: StereoSample,
@@ -103,7 +102,6 @@ impl WaveShaper {
 
     pub fn get_ui(&self) -> WaveShaperUIData {
         WaveShaperUIData {
-            label: self.label.clone(),
             shaper_type: self.params.shaper_type,
             distortion: get_stereo_param!(self, distortion),
             clipping_level: get_stereo_param!(self, clipping_level),

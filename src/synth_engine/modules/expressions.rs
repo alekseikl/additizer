@@ -35,7 +35,6 @@ pub struct ExpressionsConfig {
 }
 
 pub struct ExpressionsUi {
-    pub label: String,
     pub expression: Expression,
     pub use_release_velocity: bool,
     pub smooth: Sample,
@@ -96,7 +95,6 @@ impl Expressions {
 
     pub fn get_ui(&self) -> ExpressionsUi {
         ExpressionsUi {
-            label: self.label.clone(),
             expression: self.params.expression,
             use_release_velocity: self.params.use_release_velocity,
             smooth: self.params.smooth,

@@ -21,7 +21,6 @@ pub struct SpectralBlendConfig {
 }
 
 pub struct SpectralBlendUIData {
-    pub label: String,
     pub blend: StereoSample,
 }
 
@@ -59,7 +58,6 @@ impl SpectralBlend {
 
     pub fn get_ui(&self) -> SpectralBlendUIData {
         SpectralBlendUIData {
-            label: self.label.clone(),
             blend: get_stereo_param!(self, blend),
         }
     }

@@ -64,6 +64,13 @@ impl UiBridge {
         &self.synth
     }
 
+    pub fn with_synth<R, F>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut SynthEngine) -> R,
+    {
+        f(&mut self.synth.lock())
+    }
+
     pub fn controls(&self) -> &UiState {
         &self.controls
     }
@@ -78,6 +85,19 @@ impl UiBridge {
 
     pub fn has_module_id(&self, module_id: ModuleId) -> bool {
         self.routing.has_module_id(module_id)
+    }
+
+    pub fn get_module_label(&self, module_id: ModuleId) -> String {
+        self.routing.get_module_label(module_id)
+    }
+
+    pub fn set_module_label(&mut self, module_id: ModuleId, label: String) {
+        let mut synth = self.synth.lock();
+
+        if let Some(m) = synth.get_module_mut(module_id) {
+            m.set_label(label.clone());
+            self.routing.set_module_label(module_id, label);
+        }
     }
 
     pub fn has_active_voices(&self) -> bool {

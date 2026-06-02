@@ -67,7 +67,6 @@ pub struct SpectralFilterConfig {
 }
 
 pub struct SpectralFilterUIData {
-    pub label: String,
     pub filter_type: SpectralFilterType,
     pub cutoff: StereoSample,
     pub q: StereoSample,
@@ -112,7 +111,6 @@ impl SpectralFilter {
 
     pub fn get_ui(&self) -> SpectralFilterUIData {
         SpectralFilterUIData {
-            label: self.label.clone(),
             filter_type: self.params.filter_type,
             cutoff: get_stereo_param!(self, cutoff),
             q: get_stereo_param!(self, q),

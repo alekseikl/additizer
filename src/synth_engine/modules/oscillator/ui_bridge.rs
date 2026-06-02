@@ -70,12 +70,12 @@ pub enum UiUpdate {
     RefreshState,
 }
 
-pub struct AudioBridge {
+pub struct UiEnd {
     rx: rtrb::Consumer<UiUpdate>,
     tx: rtrb::Producer<UiEvent>,
 }
 
-impl AudioBridge {
+impl UiEnd {
     pub fn new(rx: rtrb::Consumer<UiUpdate>, tx: rtrb::Producer<UiEvent>) -> Self {
         Self { rx, tx }
     }
@@ -143,12 +143,12 @@ impl AudioBridge {
     }
 }
 
-pub struct UiBridge {
+pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
     tx: rtrb::Producer<UiUpdate>,
 }
 
-impl UiBridge {
+impl AudioEnd {
     pub fn new(rx: rtrb::Consumer<UiEvent>, tx: rtrb::Producer<UiUpdate>) -> Self {
         Self { rx, tx }
     }
@@ -160,4 +160,14 @@ impl UiBridge {
     pub fn push_refresh_state(&mut self) {
         let _ = self.tx.push(UiUpdate::RefreshState);
     }
+}
+
+pub fn create_link_pair() -> (AudioEnd, UiEnd) {
+    let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(512);
+    let (to_ui_tx, from_audio_rx) = rtrb::RingBuffer::<UiUpdate>::new(128);
+
+    (
+        AudioEnd::new(from_ui_rx, to_ui_tx),
+        UiEnd::new(from_audio_rx, to_audio_tx),
+    )
 }

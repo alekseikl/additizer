@@ -348,7 +348,7 @@ impl ModuleUi for HarmonicEditorUI {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth();
+        let synth = bridge.synth().clone();
         ui.style_mut().spacing.scroll = ScrollStyle::solid();
 
         Panel::top("harmonics-list")
@@ -388,16 +388,9 @@ impl ModuleUi for HarmonicEditorUI {
             });
 
         CentralPanel::default().show_inside(ui, |ui| {
-            let module_label = synth
-                .lock()
-                .get_module_mut(self.module_id)
-                .unwrap()
-                .label()
-                .to_string();
             ui.add(ModuleLabel::new(
-                &module_label,
                 &mut self.label_state,
-                synth,
+                bridge,
                 self.module_id,
             ));
 
@@ -456,13 +449,13 @@ impl ModuleUi for HarmonicEditorUI {
             });
 
             if let Some(mut state) = self.select_and_set_state.take()
-                && self.show_select_and_set_modal(synth, ui, &mut state)
+                && self.show_select_and_set_modal(&synth, ui, &mut state)
             {
                 self.select_and_set_state.replace(state);
             }
 
             if let Some(mut state) = self.apply_filter_state.take()
-                && self.show_apply_filter_modal(synth, ui, &mut state)
+                && self.show_apply_filter_modal(&synth, ui, &mut state)
             {
                 self.apply_filter_state.replace(state);
             }

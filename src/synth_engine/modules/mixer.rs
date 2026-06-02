@@ -70,7 +70,6 @@ pub struct MixerConfig {
 }
 
 pub struct MixerUIData {
-    pub label: String,
     pub num_inputs: u8,
     pub input_volume_types: [VolumeType; MAX_INPUTS as usize],
     pub input_levels: [StereoSample; MAX_INPUTS as usize],
@@ -140,7 +139,6 @@ impl Mixer {
 
     pub fn get_ui(&self) -> MixerUIData {
         MixerUIData {
-            label: self.label.clone(),
             num_inputs: self.params.num_inputs,
             input_volume_types: self.params.input_volume_types,
             input_gains: array::from_fn(|idx| {

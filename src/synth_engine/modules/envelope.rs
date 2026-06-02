@@ -187,7 +187,6 @@ impl EnvelopeCurve {
 }
 
 pub struct EnvelopeUIData {
-    pub label: String,
     pub delay: StereoSample,
     pub attack: StereoSample,
     pub attack_curve: EnvelopeCurve,
@@ -280,7 +279,6 @@ impl Envelope {
 
     pub fn get_ui(&self) -> EnvelopeUIData {
         EnvelopeUIData {
-            label: self.label.clone(),
             delay: get_stereo_param!(self, delay),
             attack: get_stereo_param!(self, attack),
             attack_curve: self.channels[0].params.attack_curve,

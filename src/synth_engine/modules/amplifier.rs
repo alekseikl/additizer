@@ -28,7 +28,6 @@ pub struct AmplifierConfig {
 }
 
 pub struct AmplifierUIData {
-    pub label: String,
     pub gain: StereoSample,
 }
 
@@ -88,7 +87,6 @@ impl Amplifier {
 
     pub fn get_ui(&self) -> AmplifierUIData {
         AmplifierUIData {
-            label: self.label.clone(),
             gain: get_smoothed_param!(self, gain),
         }
     }

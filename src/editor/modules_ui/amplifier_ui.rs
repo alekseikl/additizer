@@ -38,9 +38,8 @@ impl ModuleUi for AmplifierUI {
         let mut ui_data = self.amp(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(
-            &ui_data.label,
             &mut self.module_label,
-            &synth,
+            bridge,
             self.module_id,
         ));
 

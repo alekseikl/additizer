@@ -45,7 +45,6 @@ pub struct ExternalParamConfig {
 }
 
 pub struct ExternalParamUI {
-    pub label: String,
     pub selected_param_index: usize,
     pub num_of_params: usize,
     pub smooth: Sample,
@@ -117,7 +116,6 @@ impl ExternalParam {
 
     pub fn get_ui(&self) -> ExternalParamUI {
         ExternalParamUI {
-            label: self.label.clone(),
             selected_param_index: self.params.selected_param_index,
             num_of_params: NUM_FLOAT_PARAMS,
             smooth: self.params.smooth,

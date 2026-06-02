@@ -1,28 +1,22 @@
 use egui::{self, Button, Id, Modal, Response, Sides, TextEdit, Ui, Widget};
 
-use crate::{
-    editor::SynthEngineHandle,
-    synth_engine::ModuleId,
-};
+use crate::synth_engine::{ModuleId, ui_bridge::UiBridge};
 
 pub struct ModuleLabel<'a> {
-    label: &'a str,
     state: &'a mut Option<String>,
-    synth_engine: &'a SynthEngineHandle,
+    synth_bridge: &'a mut UiBridge,
     module_id: ModuleId,
 }
 
 impl<'a> ModuleLabel<'a> {
     pub fn new(
-        label: &'a str,
         state: &'a mut Option<String>,
-        synth_engine: &'a SynthEngineHandle,
+        synth_bridge: &'a mut UiBridge,
         module_id: ModuleId,
     ) -> Self {
         Self {
-            label,
             state,
-            synth_engine,
+            synth_bridge,
             module_id,
         }
     }
@@ -30,11 +24,13 @@ impl<'a> ModuleLabel<'a> {
 
 impl Widget for ModuleLabel<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
+        let label = self.synth_bridge.get_module_label(self.module_id);
+
         let result = ui
             .horizontal(|ui| {
-                ui.heading(self.label);
+                ui.heading(&label);
                 if ui.button("✏").clicked() {
-                    *self.state = Some(self.label.to_string());
+                    *self.state = Some(label.to_string());
                 }
             })
             .response;
@@ -60,11 +56,7 @@ impl Widget for ModuleLabel<'_> {
                         if (save_clicked || ui.input(|i| i.key_pressed(egui::Key::Enter)))
                             && !trimmed.is_empty()
                         {
-                            self.synth_engine
-                                .lock()
-                                .get_module_mut(self.module_id)
-                                .unwrap()
-                                .set_label(trimmed);
+                            self.synth_bridge.set_module_label(self.module_id, trimmed);
                             ui.close();
                         }
 

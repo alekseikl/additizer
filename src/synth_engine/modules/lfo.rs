@@ -47,7 +47,6 @@ pub struct Params {
 }
 
 pub struct LfoUiData {
-    pub label: String,
     pub shape: LfoShape,
     pub bipolar: bool,
     pub steal_phase: bool,
@@ -128,7 +127,6 @@ impl Lfo {
 
     pub fn get_ui(&self) -> LfoUiData {
         LfoUiData {
-            label: self.label.clone(),
             shape: self.params.shape,
             bipolar: self.params.bipolar,
             steal_phase: self.params.steal_phase,

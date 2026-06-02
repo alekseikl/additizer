@@ -51,9 +51,8 @@ impl ModuleUi for LfoUi {
         let mut ui_data = self.lfo(&mut synth.lock()).get_ui();
 
         ui.add(ModuleLabel::new(
-            &ui_data.label,
             &mut self.label_state,
-            &synth,
+            bridge,
             self.module_id,
         ));
 

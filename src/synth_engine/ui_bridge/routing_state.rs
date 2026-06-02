@@ -72,6 +72,19 @@ impl RoutingState {
             .collect()
     }
 
+    pub fn get_module_label(&self, module_id: ModuleId) -> String {
+        self.modules
+            .get(&module_id)
+            .map(|m| m.label.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn set_module_label(&mut self, module_id: ModuleId, label: String) {
+        if let Some(m) = self.modules.get_mut(&module_id) {
+            m.label = label;
+        }
+    }
+
     pub fn has_module_id(&self, module_id: ModuleId) -> bool {
         self.modules.contains_key(&module_id)
     }
