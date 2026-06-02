@@ -35,6 +35,7 @@ pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, Expressions, ExternalParam, ExternalParamsBlock, Lfo,
     LfoShape, Mixer, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType, SpectralMixer,
     WaveShaper,
+    amplifier::{self},
     harmonic_editor::{self, HarmonicEditor},
     oscillator::{self},
 };

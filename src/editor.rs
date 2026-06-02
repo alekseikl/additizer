@@ -87,7 +87,9 @@ impl ModuleType {
             Self::Output => Some(Box::new(OutputUi)),
             Self::HarmonicEditor => Some(Box::new(HarmonicEditorUI::new(id))),
             Self::SpectralFilter => Some(Box::new(SpectralFilterUI::new(id))),
-            Self::Amplifier => Some(Box::new(AmplifierUI::new(id))),
+            Self::Amplifier => {
+                AmplifierUI::new(id, synth_bridge).map(|amp| Box::new(amp) as ModuleUIBox)
+            }
             Self::Mixer => Some(Box::new(MixerUi::new(id))),
             Self::Oscillator => {
                 OscillatorUI::new(id, synth_bridge).map(|osc| Box::new(osc) as ModuleUIBox)

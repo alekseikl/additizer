@@ -10,6 +10,12 @@ use crate::synth_engine::{
 use itertools::izip;
 use serde::{Deserialize, Serialize};
 
+mod link;
+mod ui_bridge;
+
+use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
+pub use ui_bridge::{UiBridge, UiState};
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ChannelParams {
     gain: SmoothedSample,
@@ -25,10 +31,6 @@ impl Default for ChannelParams {
 pub struct AmplifierConfig {
     label: Option<String>,
     channels: [ChannelParams; NUM_CHANNELS],
-}
-
-pub struct AmplifierUIData {
-    pub gain: StereoSample,
 }
 
 struct Voice {
@@ -65,11 +67,15 @@ pub struct Amplifier {
     label: String,
     config: ModuleConfigBox<AmplifierConfig>,
     buffers: Buffers,
+    audio_end: AudioEnd,
+    ui_end: Option<UiEnd>,
     channels: [Channel; NUM_CHANNELS],
 }
 
 impl Amplifier {
     pub fn new(id: ModuleId, config: ModuleConfigBox<AmplifierConfig>) -> Self {
+        let (audio_end, ui_end) = create_link_pair();
+
         let mut amp = Self {
             id,
             label: format!("Amplifier {id}"),
@@ -78,6 +84,8 @@ impl Amplifier {
                 input: zero_buffer(),
                 gain_mod_input: zero_buffer(),
             },
+            audio_end,
+            ui_end: Some(ui_end),
             channels: Default::default(),
         };
 
@@ -85,13 +93,34 @@ impl Amplifier {
         amp
     }
 
-    pub fn get_ui(&self) -> AmplifierUIData {
-        AmplifierUIData {
+    pub fn take_ui_end(&mut self) -> Option<UiEnd> {
+        self.ui_end.take()
+    }
+
+    pub fn return_ui_end(&mut self, ui_end: UiEnd) {
+        assert!(self.ui_end.is_none(), "ui_end not taken");
+        self.ui_end = Some(ui_end);
+    }
+
+    pub fn get_ui_state(&self) -> UiState {
+        UiState {
             gain: get_smoothed_param!(self, gain),
         }
     }
 
     set_smoothed_param!(set_gain, gain);
+
+    fn handle_ui_events(&mut self) {
+        while let Some(event) = self.audio_end.pop_event() {
+            match event {
+                UiEvent::InputParam { input, value } => {
+                    if input == Input::Gain {
+                        self.set_gain(value)
+                    }
+                }
+            }
+        }
+    }
 
     fn process_channel_voice(
         channel: &mut ChannelParams,
@@ -143,6 +172,8 @@ impl SynthModule for Amplifier {
     }
 
     fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
+        self.handle_ui_events();
+
         let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
 
         for (channel_idx, channel) in self.channels.iter_mut().enumerate() {

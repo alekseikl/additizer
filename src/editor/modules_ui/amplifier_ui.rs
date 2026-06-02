@@ -5,43 +5,37 @@ use crate::{
         ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
         multi_input::MultiInput, utils::confirm_module_removal,
     },
-    synth_engine::{Amplifier, Input, ModuleId, SynthEngine, ui_bridge::UiBridge},
+    synth_engine::{Input, ModuleId, amplifier, ui_bridge::UiBridge},
 };
 
 pub struct AmplifierUI {
-    module_id: ModuleId,
     remove_confirmation: bool,
     module_label: Option<String>,
+    amp_bridge: amplifier::UiBridge,
 }
 
 impl AmplifierUI {
-    pub fn new(module_id: ModuleId) -> Self {
-        Self {
-            module_id,
+    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
+        let amp_bridge = amplifier::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+
+        Some(Self {
             remove_confirmation: false,
             module_label: None,
-        }
-    }
-
-    fn amp<'a>(&mut self, synth: &'a mut SynthEngine) -> &'a mut Amplifier {
-        synth.get_typed_module_mut(self.module_id).unwrap()
+            amp_bridge,
+        })
     }
 }
 
 impl ModuleUi for AmplifierUI {
     fn module_id(&self) -> Option<ModuleId> {
-        Some(self.module_id)
+        Some(self.amp_bridge.module_id())
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth().clone();
-        let mut ui_data = self.amp(&mut synth.lock()).get_ui();
+        let module_id = self.amp_bridge.module_id();
+        let mut controls = self.amp_bridge.controls().clone();
 
-        ui.add(ModuleLabel::new(
-            &mut self.module_label,
-            bridge,
-            self.module_id,
-        ));
+        ui.add(ModuleLabel::new(&mut self.module_label, bridge, module_id));
 
         ui.add_space(20.0);
 
@@ -51,23 +45,18 @@ impl ModuleUi for AmplifierUI {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Inputs");
-                MultiInput::new(Input::Audio, self.module_id).show(ui, bridge);
+                MultiInput::new(Input::Audio, module_id).show(ui, bridge);
                 ui.end_row();
 
                 ui.label("Gain");
                 if ui
                     .add(
-                        ModulationInput::new(
-                            &mut ui_data.gain,
-                            bridge,
-                            Input::Gain,
-                            self.module_id,
-                        )
-                        .modulation_default(1.0),
+                        ModulationInput::new(&mut controls.gain, bridge, Input::Gain, module_id)
+                            .modulation_default(1.0),
                     )
                     .changed()
                 {
-                    self.amp(&mut synth.lock()).set_gain(ui_data.gain);
+                    self.amp_bridge.set_param(Input::Gain, controls.gain);
                 }
                 ui.end_row();
             });
@@ -75,7 +64,7 @@ impl ModuleUi for AmplifierUI {
         ui.add_space(40.0);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(self.module_id);
+            bridge.remove_module(module_id);
         }
     }
 }

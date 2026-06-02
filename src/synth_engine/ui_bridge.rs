@@ -64,12 +64,12 @@ impl UiBridge {
         &self.synth
     }
 
-    pub fn with_synth<R, F>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut SynthEngine) -> R,
-    {
-        f(&mut self.synth.lock())
-    }
+    // pub fn with_synth<R, F>(&self, f: F) -> R
+    // where
+    //     F: FnOnce(&mut SynthEngine) -> R,
+    // {
+    //     f(&mut self.synth.lock())
+    // }
 
     pub fn controls(&self) -> &UiState {
         &self.controls

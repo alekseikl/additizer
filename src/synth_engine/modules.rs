@@ -1,4 +1,4 @@
-mod amplifier;
+pub mod amplifier;
 mod envelope;
 mod expressions;
 mod external_param;
