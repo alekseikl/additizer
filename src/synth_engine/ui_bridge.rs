@@ -180,6 +180,13 @@ impl UiBridge {
         result
     }
 
+    pub fn remove_module(&mut self, module_id: ModuleId) {
+        let mut synth = self.synth.lock();
+
+        synth.remove_module(module_id);
+        self.routing = synth.get_routing_state();
+    }
+
     pub fn set_direct_link(&mut self, src: ModuleId, dst: ModuleInput) {
         let mut synth = self.synth.lock();
 

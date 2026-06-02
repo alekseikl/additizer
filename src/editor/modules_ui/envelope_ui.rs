@@ -252,7 +252,7 @@ impl ModuleUi for EnvelopeUI {
         ui.add_space(40.0);
 
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            synth.lock().remove_module(self.module_id);
+            bridge.remove_module(self.module_id);
         }
     }
 }

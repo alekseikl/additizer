@@ -27,8 +27,8 @@ use crate::{
 
 mod ui_bridge;
 
+pub use ui_bridge::{UiBridge, UiState};
 use ui_bridge::*;
-pub use ui_bridge::{UiEnd, UiState, UiUpdate};
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
 const WAVEFORM_SIZE: usize = 1 << WAVEFORM_BITS;
@@ -308,15 +308,14 @@ pub struct Oscillator {
     config: ModuleConfigBox<OscillatorConfig>,
     params: Params,
     osc_state: OscState,
-    ui_bridge: AudioEnd,
-    to_audio_bridge: Option<UiEnd>,
+    audio_end: AudioEnd,
+    ui_end: Option<UiEnd>,
     channels: [Channel; NUM_CHANNELS],
 }
 
 impl Oscillator {
     pub fn new(id: ModuleId, config: ModuleConfigBox<OscillatorConfig>) -> Self {
-        let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(512);
-        let (to_ui_tx, from_audio_rx) = rtrb::RingBuffer::<UiUpdate>::new(128);
+        let (audio_end, ui_end) = create_link_pair();
 
         let mut osc = Self {
             id,
@@ -324,8 +323,8 @@ impl Oscillator {
             config,
             params: Params::default(),
             osc_state: OscState::default(),
-            ui_bridge: AudioEnd::new(from_ui_rx, to_ui_tx),
-            to_audio_bridge: Some(UiEnd::new(from_audio_rx, to_audio_tx)),
+            audio_end,
+            ui_end: Some(ui_end),
             channels: Default::default(),
         };
 
@@ -333,13 +332,13 @@ impl Oscillator {
         osc
     }
 
-    pub fn take_audio_bridge(&mut self) -> Option<UiEnd> {
-        self.to_audio_bridge.take()
+    pub fn take_ui_end(&mut self) -> Option<UiEnd> {
+        self.ui_end.take()
     }
 
-    pub fn return_audio_bridge(&mut self, bridge: UiEnd) {
-        assert!(self.to_audio_bridge.is_none(), "to_audio_bridge not taken");
-        self.to_audio_bridge = Some(bridge);
+    pub fn return_ui_end(&mut self, ui_end: UiEnd) {
+        assert!(self.ui_end.is_none(), "to_audio_bridge not taken");
+        self.ui_end = Some(ui_end);
     }
 
     pub fn get_ui_state(&self) -> UiState {
@@ -460,7 +459,7 @@ impl Oscillator {
             channel_cfg.unison = channel.params.unison.clone();
         }
 
-        self.ui_bridge.push_refresh_state();
+        self.audio_end.push_refresh_state();
     }
 
     pub fn randomize_phases(
@@ -499,7 +498,7 @@ impl Oscillator {
             channel_cfg.unison = channel.params.unison.clone();
         }
 
-        self.ui_bridge.push_refresh_state();
+        self.audio_end.push_refresh_state();
     }
 
     #[inline(always)]
@@ -946,7 +945,7 @@ impl Oscillator {
     }
 
     fn handle_ui_events(&mut self) {
-        while let Some(event) = self.ui_bridge.pop_event() {
+        while let Some(event) = self.audio_end.pop_event() {
             match event {
                 UiEvent::InputParam { input, value } => match input {
                     Input::Gain => self.set_gain(value),

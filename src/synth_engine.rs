@@ -646,6 +646,14 @@ impl SynthEngine {
             .collect()
     }
 
+    pub fn get_module(&self, id: ModuleId) -> Option<&dyn SynthModule> {
+        self.modules.get_module(id)
+    }
+
+    pub fn get_typed_module<T: SynthModule>(&self, id: ModuleId) -> Option<&T> {
+        self.modules.get_typed_module(id)
+    }
+
     pub fn get_module_mut(&mut self, id: ModuleId) -> Option<&mut dyn SynthModule> {
         self.modules.get_module_mut(id)
     }

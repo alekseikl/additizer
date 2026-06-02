@@ -82,21 +82,23 @@ impl ModuleUi for OutputUi {
 }
 
 impl ModuleType {
-    fn ui(&self, id: ModuleId, synth_bridge: &mut UiBridge) -> ModuleUIBox {
+    fn ui(&self, id: ModuleId, synth_bridge: &mut UiBridge) -> Option<ModuleUIBox> {
         match self {
-            Self::Output => Box::new(OutputUi),
-            Self::HarmonicEditor => Box::new(HarmonicEditorUI::new(id)),
-            Self::SpectralFilter => Box::new(SpectralFilterUI::new(id)),
-            Self::Amplifier => Box::new(AmplifierUI::new(id)),
-            Self::Mixer => Box::new(MixerUi::new(id)),
-            Self::Oscillator => Box::new(OscillatorUI::new(id, synth_bridge)),
-            Self::Envelope => Box::new(EnvelopeUI::new(id)),
-            Self::ExternalParam => Box::new(ExternalParamUI::new(id)),
-            Self::Lfo => Box::new(LfoUi::new(id)),
-            Self::SpectralBlend => Box::new(SpectralBlendUi::new(id)),
-            Self::SpectralMixer => Box::new(SpectralMixerUi::new(id)),
-            Self::WaveShaper => Box::new(WaveShaperUi::new(id)),
-            Self::Expressions => Box::new(ExpressionsUi::new(id)),
+            Self::Output => Some(Box::new(OutputUi)),
+            Self::HarmonicEditor => Some(Box::new(HarmonicEditorUI::new(id))),
+            Self::SpectralFilter => Some(Box::new(SpectralFilterUI::new(id))),
+            Self::Amplifier => Some(Box::new(AmplifierUI::new(id))),
+            Self::Mixer => Some(Box::new(MixerUi::new(id))),
+            Self::Oscillator => {
+                OscillatorUI::new(id, synth_bridge).map(|osc| Box::new(osc) as ModuleUIBox)
+            }
+            Self::Envelope => Some(Box::new(EnvelopeUI::new(id))),
+            Self::ExternalParam => Some(Box::new(ExternalParamUI::new(id))),
+            Self::Lfo => Some(Box::new(LfoUi::new(id))),
+            Self::SpectralBlend => Some(Box::new(SpectralBlendUi::new(id))),
+            Self::SpectralMixer => Some(Box::new(SpectralMixerUi::new(id))),
+            Self::WaveShaper => Some(Box::new(WaveShaperUi::new(id))),
+            Self::Expressions => Some(Box::new(ExpressionsUi::new(id))),
         }
     }
 }
@@ -173,7 +175,6 @@ fn show_side_bar(ui: &mut Ui, selected_module_ui: &mut ModuleUIBox, bridge: &mut
                             if show_menu_item(ui, "Parameters", selected_module_id.is_none())
                                 .clicked()
                             {
-                                selected_module_ui.cleanup(bridge);
                                 *selected_module_ui = Box::new(ParamsUi::new());
                             }
 
@@ -187,7 +188,9 @@ fn show_side_bar(ui: &mut Ui, selected_module_ui: &mut ModuleUIBox, bridge: &mut
                                 {
                                     selected_module_ui.cleanup(bridge);
 
-                                    *selected_module_ui = module.module_type.ui(module.id, bridge);
+                                    if let Some(new_ui) = module.module_type.ui(module.id, bridge) {
+                                        *selected_module_ui = new_ui;
+                                    }
                                 }
                             }
                         })
