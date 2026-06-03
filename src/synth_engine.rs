@@ -256,6 +256,7 @@ impl SynthEngine {
             self.modules
                 .values()
                 .filter_map(|m| m.as_deref())
+                .filter(|m| !matches!(m.module_type(), ModuleType::Output))
                 .map(|m| (m.id(), ui_bridge::routing_state::Module::new(m)))
                 .collect(),
             self.input_sources.clone(),
