@@ -1,11 +1,14 @@
+use std::sync::Arc;
+
 use egui::{
     Button, Checkbox, Color32, ComboBox, Frame, Grid, Id, Label, Modal, RichText, Sense, Sides,
     Slider, TextEdit, Ui, vec2,
 };
 use egui_extras::{Column, TableBuilder};
+use parking_lot::Mutex;
 
 use crate::{
-    editor::{ModuleUi, SynthEngineHandle, multi_input::MultiInput},
+    editor::{ModuleUi, multi_input::MultiInput},
     presets::{Preset, PresetInfo, PresetListItem, Presets},
     synth_engine::{Input, ModuleId, OUTPUT_MODULE_ID, SynthEngine, ui_bridge::UiBridge},
     utils::from_ms,
@@ -38,7 +41,7 @@ impl ParamsUi {
 
     fn show_save_preset_modal(
         &mut self,
-        synth: &SynthEngineHandle,
+        synth: &Arc<Mutex<SynthEngine>>,
         ui: &mut Ui,
         state: &mut SavePresetState,
     ) -> bool {
@@ -96,7 +99,7 @@ impl ParamsUi {
 
     fn show_load_preset_modal(
         &mut self,
-        synth: &SynthEngineHandle,
+        synth: &Arc<Mutex<SynthEngine>>,
         ui: &mut Ui,
         state: &mut LoadPresetState,
     ) -> bool {

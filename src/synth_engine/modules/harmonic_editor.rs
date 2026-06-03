@@ -14,6 +14,12 @@ use crate::{
     utils::NthElement,
 };
 
+mod link;
+mod ui_bridge;
+
+use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
+pub use ui_bridge::{ControlsState, UiBridge};
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum SetAction {
     Set,
@@ -37,6 +43,7 @@ pub enum FilterType {
     Peaking,
 }
 
+#[derive(Clone, Copy)]
 pub struct FilterParams {
     pub filter_type: FilterType,
     pub filter_order: StereoSample,
@@ -118,15 +125,21 @@ pub struct HarmonicEditor {
     label: String,
     config: ModuleConfigBox<HarmonicEditorConfig>,
     outputs: [SpectralBuffer; NUM_CHANNELS],
+    audio_end: AudioEnd,
+    ui_end: Option<UiEnd>,
 }
 
 impl HarmonicEditor {
     pub fn new(id: ModuleId, config: ModuleConfigBox<HarmonicEditorConfig>) -> Self {
+        let (audio_end, ui_end) = create_link_pair();
+
         let mut editor = Self {
             id,
             label: format!("Harmonic Editor {id}"),
             config,
             outputs: [HARMONIC_SERIES_BUFFER; NUM_CHANNELS],
+            audio_end,
+            ui_end: Some(ui_end),
         };
 
         {
@@ -146,6 +159,21 @@ impl HarmonicEditor {
         }
 
         editor
+    }
+
+    pub fn take_ui_end(&mut self) -> Option<UiEnd> {
+        self.ui_end.take()
+    }
+
+    pub fn return_ui_end(&mut self, ui_end: UiEnd) {
+        assert!(self.ui_end.is_none(), "ui_end not taken");
+        self.ui_end = Some(ui_end);
+    }
+
+    pub fn get_controls_state(&self) -> ControlsState {
+        ControlsState {
+            harmonics: self.get_harmonics(),
+        }
     }
 
     pub fn get_harmonics(&self) -> Vec<StereoSample> {
@@ -265,7 +293,30 @@ impl SynthModule for HarmonicEditor {
         DataType::Spectral
     }
 
-    fn handle_ui_events(&mut self) {}
+    fn handle_ui_events(&mut self) {
+        let mut refresh = false;
+
+        while let Some(event) = self.audio_end.pop_event() {
+            match event {
+                UiEvent::SetHarmonic {
+                    harmonic_number,
+                    gain,
+                } => self.set_harmonic(harmonic_number, gain),
+                UiEvent::SetSelected(params) => {
+                    self.set_selected(&params);
+                    refresh = true;
+                }
+                UiEvent::ApplyFilter(params) => {
+                    self.apply_filter(&params);
+                    refresh = true;
+                }
+            }
+        }
+
+        if refresh {
+            self.audio_end.push_refresh_state();
+        }
+    }
 
     fn process(&mut self, _params: &ProcessParams, _router: &mut dyn Router) {}
 

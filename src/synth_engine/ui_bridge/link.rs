@@ -15,6 +15,7 @@ pub enum UiEvent {
     VoiceKillTime(Sample),
     Oversampling(bool),
     StereoSpectrum(bool),
+    OutputGain(StereoSample),
 }
 
 pub enum UiUpdate {
@@ -132,6 +133,10 @@ impl UiEnd {
         self.tx
             .push(UiEvent::StereoSpectrum(stereo_spectrum))
             .is_ok()
+    }
+
+    pub fn set_output_gain(&mut self, output_gain: StereoSample) -> bool {
+        self.tx.push(UiEvent::OutputGain(output_gain)).is_ok()
     }
 
     pub fn pop_update(&mut self) -> Option<UiUpdate> {

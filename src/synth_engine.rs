@@ -234,10 +234,10 @@ impl SynthEngine {
         self.modules.len() == 1
     }
 
-    fn get_ui_state(&self) -> ui_bridge::UiState {
+    fn get_ui_state(&self) -> ui_bridge::ControlsState {
         let voices_ui = self.voices_handler.get_ui_data();
 
-        ui_bridge::UiState {
+        ui_bridge::ControlsState {
             voices: voices_ui.num_voices,
             legato: voices_ui.legato,
             block_size: self.block_size,
@@ -247,6 +247,7 @@ impl SynthEngine {
                 .map_or(0.0, |output| output.get_voice_kill_time()),
             oversampling: self.oversampling,
             stereo_spectrum: self.spectrum_channels == NUM_CHANNELS,
+            output_gain: self.get_output_gain(),
         }
     }
 
@@ -301,13 +302,13 @@ impl SynthEngine {
         self.config.lock().routing.stereo_spectrum = stereo_spectrum;
     }
 
-    pub fn get_output_level(&self) -> StereoSample {
+    pub fn get_output_gain(&self) -> StereoSample {
         self.modules
             .get_typed_module::<Output>(OUTPUT_MODULE_ID)
             .map_or(StereoSample::ZERO, |output| output.get_gain())
     }
 
-    pub fn set_output_level(&mut self, level: StereoSample) {
+    pub fn set_output_gain(&mut self, level: StereoSample) {
         if let Some(output) = self
             .modules
             .get_typed_module_mut::<Output>(OUTPUT_MODULE_ID)
@@ -514,6 +515,7 @@ impl SynthEngine {
                 UiEvent::StereoSpectrum(stereo_spectrum) => {
                     self.set_stereo_spectrum(stereo_spectrum);
                 }
+                UiEvent::OutputGain(output_gain) => self.set_output_gain(output_gain),
             }
         }
 
@@ -661,9 +663,9 @@ impl SynthEngine {
             .collect()
     }
 
-    pub fn get_module(&self, id: ModuleId) -> Option<&dyn SynthModule> {
-        self.modules.get_module(id)
-    }
+    // pub fn get_module(&self, id: ModuleId) -> Option<&dyn SynthModule> {
+    //     self.modules.get_module(id)
+    // }
 
     pub fn get_typed_module<T: SynthModule>(&self, id: ModuleId) -> Option<&T> {
         self.modules.get_typed_module(id)

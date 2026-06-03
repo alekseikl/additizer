@@ -6,13 +6,12 @@ use nih_plug::util::db_to_gain;
 
 use crate::{
     editor::{
-        ModuleUi, SynthEngineHandle, gain_slider::GainSlider, module_label::ModuleLabel,
-        stereo_slider::StereoSlider,
+        ModuleUi, gain_slider::GainSlider, module_label::ModuleLabel, stereo_slider::StereoSlider,
         utils::confirm_module_removal,
     },
     synth_engine::{
-        HarmonicEditor, ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample, SynthEngine,
-        harmonic_editor::{FilterParams, FilterType, SetAction, SetParams},
+        ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample,
+        harmonic_editor::{self, FilterParams, FilterType, SetAction, SetParams},
         ui_bridge::UiBridge,
     },
     utils::NthElement,
@@ -88,29 +87,27 @@ impl Default for ApplyFilterState {
 }
 
 pub struct HarmonicEditorUI {
-    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
+    editor_bridge: harmonic_editor::UiBridge,
     select_and_set_state: Option<Box<SelectAndSetState>>,
     apply_filter_state: Option<Box<ApplyFilterState>>,
 }
 
 impl HarmonicEditorUI {
-    pub fn new(module_id: ModuleId) -> Self {
-        Self {
-            module_id,
+    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
+        let editor_bridge = harmonic_editor::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+
+        Some(Self {
             remove_confirmation: false,
             label_state: None,
+            editor_bridge,
             select_and_set_state: None,
             apply_filter_state: None,
-        }
+        })
     }
 
-    fn editor<'a>(&self, synth: &'a mut SynthEngine) -> &'a mut HarmonicEditor {
-        synth.get_typed_module_mut(self.module_id).unwrap()
-    }
-
-    fn apply_select_and_set(&self, synth: &mut SynthEngine, state: &SelectAndSetState) {
+    fn apply_select_and_set(bridge: &mut harmonic_editor::UiBridge, state: &SelectAndSetState) {
         let mut params = SetParams {
             from: state.from,
             to: state.to,
@@ -131,12 +128,11 @@ impl HarmonicEditorUI {
             ))
         }
 
-        self.editor(synth).set_selected(&params);
+        bridge.set_selected(params);
     }
 
     fn show_select_and_set_modal(
-        &mut self,
-        synth: &SynthEngineHandle,
+        bridge: &mut harmonic_editor::UiBridge,
         ui: &mut Ui,
         state: &mut SelectAndSetState,
     ) -> bool {
@@ -207,12 +203,12 @@ impl HarmonicEditorUI {
                 |_ui| {},
                 |ui| {
                     if ui.button("Ok").clicked() {
-                        self.apply_select_and_set(&mut synth.lock(), state);
+                        Self::apply_select_and_set(bridge, state);
                         ui.close();
                     }
 
                     if ui.button("Apply").clicked() {
-                        self.apply_select_and_set(&mut synth.lock(), state);
+                        Self::apply_select_and_set(bridge, state);
                     }
 
                     if ui.button("Cancel").clicked() {
@@ -225,8 +221,8 @@ impl HarmonicEditorUI {
         !modal.should_close()
     }
 
-    fn apply_filter(&self, synth: &mut SynthEngine, state: &ApplyFilterState) {
-        self.editor(synth).apply_filter(&FilterParams {
+    fn apply_filter(bridge: &mut harmonic_editor::UiBridge, state: &ApplyFilterState) {
+        bridge.apply_filter(FilterParams {
             filter_type: state.filter_type,
             filter_order: state.order,
             cutoff: state.cutoff.iter().map(|octave| octave.exp2()).collect(),
@@ -240,8 +236,7 @@ impl HarmonicEditorUI {
     }
 
     fn show_apply_filter_modal(
-        &mut self,
-        synth: &SynthEngineHandle,
+        bridge: &mut harmonic_editor::UiBridge,
         ui: &mut Ui,
         state: &mut ApplyFilterState,
     ) -> bool {
@@ -323,12 +318,12 @@ impl HarmonicEditorUI {
                 |_ui| {},
                 |ui| {
                     if ui.button("Ok").clicked() {
-                        self.apply_filter(&mut synth.lock(), state);
+                        Self::apply_filter(bridge, state);
                         ui.close();
                     }
 
                     if ui.button("Apply").clicked() {
-                        self.apply_filter(&mut synth.lock(), state);
+                        Self::apply_filter(bridge, state);
                     }
 
                     if ui.button("Cancel").clicked() {
@@ -344,11 +339,13 @@ impl HarmonicEditorUI {
 
 impl ModuleUi for HarmonicEditorUI {
     fn module_id(&self) -> Option<ModuleId> {
-        Some(self.module_id)
+        Some(self.editor_bridge.module_id())
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let synth = bridge.synth().clone();
+        self.editor_bridge.update();
+
+        let module_id = self.editor_bridge.module_id();
         ui.style_mut().spacing.scroll = ScrollStyle::solid();
 
         Panel::top("harmonics-list")
@@ -364,7 +361,7 @@ impl ModuleUi for HarmonicEditorUI {
             .show_inside(ui, |ui| {
                 ScrollArea::horizontal().show(ui, |ui| {
                     ui.horizontal_top(|ui| {
-                        let mut harmonics = self.editor(&mut synth.lock()).get_harmonics();
+                        let mut harmonics = self.editor_bridge.controls().harmonics.clone();
                         let height = ui.available_height();
 
                         ui.style_mut().spacing.item_spacing = Vec2::splat(2.0);
@@ -380,7 +377,7 @@ impl ModuleUi for HarmonicEditorUI {
                                 )
                                 .changed()
                             {
-                                self.editor(&mut synth.lock()).set_harmonic(idx, *harmonic);
+                                self.editor_bridge.set_harmonic(idx, *harmonic);
                             }
                         }
                     });
@@ -391,14 +388,14 @@ impl ModuleUi for HarmonicEditorUI {
             ui.add(ModuleLabel::new(
                 &mut self.label_state,
                 bridge,
-                self.module_id,
+                module_id,
             ));
 
             ui.add_space(32.0);
 
             ui.horizontal(|ui| {
                 if ui.button("All to Zero").clicked() {
-                    self.editor(&mut synth.lock()).set_selected(&SetParams {
+                    self.editor_bridge.set_selected(SetParams {
                         from: 1,
                         to: NUM_EDITABLE_HARMONICS,
                         n_th: None,
@@ -408,7 +405,7 @@ impl ModuleUi for HarmonicEditorUI {
                 }
 
                 if ui.button("All to One").clicked() {
-                    self.editor(&mut synth.lock()).set_selected(&SetParams {
+                    self.editor_bridge.set_selected(SetParams {
                         from: 1,
                         to: NUM_EDITABLE_HARMONICS,
                         n_th: None,
@@ -418,7 +415,7 @@ impl ModuleUi for HarmonicEditorUI {
                 }
 
                 if ui.button("Keep Even").clicked() {
-                    self.editor(&mut synth.lock()).set_selected(&SetParams {
+                    self.editor_bridge.set_selected(SetParams {
                         from: 1,
                         to: NUM_EDITABLE_HARMONICS,
                         n_th: Some(NthElement::new(2, 0, true)),
@@ -428,7 +425,7 @@ impl ModuleUi for HarmonicEditorUI {
                 }
 
                 if ui.button("Keep Odd").clicked() {
-                    self.editor(&mut synth.lock()).set_selected(&SetParams {
+                    self.editor_bridge.set_selected(SetParams {
                         from: 1,
                         to: NUM_EDITABLE_HARMONICS,
                         n_th: Some(NthElement::new(2, 1, true)),
@@ -449,13 +446,13 @@ impl ModuleUi for HarmonicEditorUI {
             });
 
             if let Some(mut state) = self.select_and_set_state.take()
-                && self.show_select_and_set_modal(&synth, ui, &mut state)
+                && Self::show_select_and_set_modal(&mut self.editor_bridge, ui, &mut state)
             {
                 self.select_and_set_state.replace(state);
             }
 
             if let Some(mut state) = self.apply_filter_state.take()
-                && self.show_apply_filter_modal(&synth, ui, &mut state)
+                && Self::show_apply_filter_modal(&mut self.editor_bridge, ui, &mut state)
             {
                 self.apply_filter_state.replace(state);
             }
@@ -463,7 +460,7 @@ impl ModuleUi for HarmonicEditorUI {
             ui.add_space(40.0);
 
             if confirm_module_removal(ui, &mut self.remove_confirmation) {
-                bridge.remove_module(self.module_id);
+                bridge.remove_module(module_id);
             }
         });
     }

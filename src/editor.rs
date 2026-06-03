@@ -20,8 +20,6 @@ use crate::{
     synth_engine::{ModuleId, ModuleType, OUTPUT_MODULE_ID, SynthEngine, ui_bridge::UiBridge},
 };
 
-pub type SynthEngineHandle = Arc<Mutex<SynthEngine>>;
-
 mod db_slider;
 mod direct_input;
 mod gain_slider;
@@ -85,7 +83,8 @@ impl ModuleType {
     fn ui(&self, id: ModuleId, synth_bridge: &mut UiBridge) -> Option<ModuleUIBox> {
         match self {
             Self::Output => Some(Box::new(OutputUi)),
-            Self::HarmonicEditor => Some(Box::new(HarmonicEditorUI::new(id))),
+            Self::HarmonicEditor => HarmonicEditorUI::new(id, synth_bridge)
+                .map(|editor| Box::new(editor) as ModuleUIBox),
             Self::SpectralFilter => SpectralFilterUI::new(id, synth_bridge)
                 .map(|filter| Box::new(filter) as ModuleUIBox),
             Self::Amplifier => {
@@ -100,17 +99,22 @@ impl ModuleType {
             Self::Envelope => {
                 EnvelopeUI::new(id, synth_bridge).map(|env| Box::new(env) as ModuleUIBox)
             }
-            Self::ExternalParam => ExternalParamUI::new(id, synth_bridge)
-                .map(|param| Box::new(param) as ModuleUIBox),
+            Self::ExternalParam => {
+                ExternalParamUI::new(id, synth_bridge).map(|param| Box::new(param) as ModuleUIBox)
+            }
             Self::Lfo => LfoUi::new(id, synth_bridge).map(|lfo| Box::new(lfo) as ModuleUIBox),
-            Self::SpectralBlend => SpectralBlendUi::new(id, synth_bridge)
-                .map(|blend| Box::new(blend) as ModuleUIBox),
-            Self::SpectralMixer => SpectralMixerUi::new(id, synth_bridge)
-                .map(|mixer| Box::new(mixer) as ModuleUIBox),
-            Self::WaveShaper => WaveShaperUi::new(id, synth_bridge)
-                .map(|shaper| Box::new(shaper) as ModuleUIBox),
-            Self::Expressions => ExpressionsUi::new(id, synth_bridge)
-                .map(|expr| Box::new(expr) as ModuleUIBox),
+            Self::SpectralBlend => {
+                SpectralBlendUi::new(id, synth_bridge).map(|blend| Box::new(blend) as ModuleUIBox)
+            }
+            Self::SpectralMixer => {
+                SpectralMixerUi::new(id, synth_bridge).map(|mixer| Box::new(mixer) as ModuleUIBox)
+            }
+            Self::WaveShaper => {
+                WaveShaperUi::new(id, synth_bridge).map(|shaper| Box::new(shaper) as ModuleUIBox)
+            }
+            Self::Expressions => {
+                ExpressionsUi::new(id, synth_bridge).map(|expr| Box::new(expr) as ModuleUIBox)
+            }
         }
     }
 }
@@ -212,7 +216,7 @@ fn show_side_bar(ui: &mut Ui, selected_module_ui: &mut ModuleUIBox, bridge: &mut
 }
 
 fn show_right_bar(ui: &mut Ui, bridge: &mut UiBridge) {
-    let mut level = bridge.synth().lock().get_output_level();
+    let mut level = bridge.controls().output_gain;
 
     Panel::right("right-bar")
         .exact_size(24.0)
@@ -229,7 +233,7 @@ fn show_right_bar(ui: &mut Ui, bridge: &mut UiBridge) {
                 )
                 .changed()
             {
-                bridge.synth().lock().set_output_level(level);
+                bridge.set_output_gain(level);
             }
         });
 }
@@ -263,7 +267,7 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
 
 pub fn create_editor(
     egui_state: Arc<EguiState>,
-    synth_engine: SynthEngineHandle,
+    synth_engine: Arc<Mutex<SynthEngine>>,
 ) -> Option<Box<dyn Editor>> {
     create_egui_editor(
         Arc::clone(&egui_state),

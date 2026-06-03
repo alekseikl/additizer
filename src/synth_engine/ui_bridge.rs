@@ -12,13 +12,14 @@ use parking_lot::Mutex;
 pub use routing_state::{AvailableInputSource, ConnectedInputSource, ModuleItem, RoutingState};
 use rustc_hash::FxHashMap;
 
-pub struct UiState {
+pub struct ControlsState {
     pub voices: usize,
     pub legato: bool,
     pub block_size: usize,
     pub voice_kill_time: Sample,
     pub oversampling: bool,
     pub stereo_spectrum: bool,
+    pub output_gain: StereoSample,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -33,7 +34,7 @@ pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     ui_end: Option<UiEnd>,
     routing: RoutingState,
-    controls: UiState,
+    controls: ControlsState,
     voices: VoicesStatus,
     modulated_inputs: FxHashMap<ModuleInput, StereoSample>,
     outputs: FxHashMap<ModuleId, StereoSample>,
@@ -71,7 +72,7 @@ impl UiBridge {
     //     f(&mut self.synth.lock())
     // }
 
-    pub fn controls(&self) -> &UiState {
+    pub fn controls(&self) -> &ControlsState {
         &self.controls
     }
 
@@ -283,6 +284,12 @@ impl UiBridge {
             .set_stereo_spectrum(stereo_spectrum)
         {
             self.controls.stereo_spectrum = stereo_spectrum;
+        }
+    }
+
+    pub fn set_output_gain(&mut self, output_gain: StereoSample) {
+        if self.ui_end.as_mut().unwrap().set_output_gain(output_gain) {
+            self.controls.output_gain = output_gain;
         }
     }
 }
