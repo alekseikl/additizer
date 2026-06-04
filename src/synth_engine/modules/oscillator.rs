@@ -210,12 +210,6 @@ impl Default for VoiceBuffers {
     }
 }
 
-#[derive(Default)]
-struct Voice {
-    state: VoiceState,
-    buffers: VoiceBuffers,
-}
-
 struct OscState {
     inverse_fft: Arc<dyn ComplexToReal<Sample>>,
     random: Pcg32,
@@ -274,7 +268,8 @@ pub enum PhasesDst {
     To,
 }
 
-type ChannelVoices = [Voice; MAX_VOICES];
+type ChannelVoices = [VoiceState; MAX_VOICES];
+type ChannelVoiceBuffers = [VoiceBuffers; MAX_VOICES];
 
 pub struct Oscillator {
     id: ModuleId,
@@ -284,6 +279,7 @@ pub struct Oscillator {
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
     voices: [ChannelVoices; NUM_CHANNELS],
+    voice_buffers: [ChannelVoiceBuffers; NUM_CHANNELS],
 }
 
 impl Oscillator {
@@ -307,6 +303,7 @@ impl Oscillator {
             audio_end,
             ui_end: Some(ui_end),
             voices: Default::default(),
+            voice_buffers: Default::default(),
         }
     }
 
@@ -537,60 +534,47 @@ impl Oscillator {
         Self::wrap_wave_buffer(out_wave_buff);
     }
 
-    fn build_waveforms<'a>(
-        voice_buffers: &'a mut VoiceBuffers,
-        mono_voice_buffers: Option<&'a VoiceBuffers>,
+    fn build_waveforms(
+        voice_buffers: &mut VoiceBuffers,
         osc_state: &mut OscState,
         triggered: bool,
         router: &VoiceRouter<'_, '_>,
-    ) -> (&'a WaveformBuffer, &'a WaveformBuffer) {
-        let voice_buffers = if let Some(mono_voice_buffers) = mono_voice_buffers {
-            mono_voice_buffers
-        } else {
-            if triggered {
-                let spectrum_from = router.spectral(Input::Spectrum, false);
-
-                Self::build_wave(
-                    osc_state.inverse_fft.as_ref(),
-                    pitch_to_freq(osc_state.pitch[0]) + osc_state.frequency_shift[0],
-                    router.sample_rate(),
-                    spectrum_from,
-                    &mut osc_state.tmp_spectral,
-                    &mut osc_state.scratch,
-                    &mut voice_buffers.wave_buffers.0,
-                );
-
-                voice_buffers.wave_buffers_swapped = false;
-            }
-
-            let spectrum = router.spectral(Input::Spectrum, true);
-
-            let wave_to = if voice_buffers.wave_buffers_swapped {
-                &mut voice_buffers.wave_buffers.0
-            } else {
-                &mut voice_buffers.wave_buffers.1
-            };
+    ) {
+        if triggered {
+            let spectrum_from = router.spectral(Input::Spectrum, false);
 
             Self::build_wave(
                 osc_state.inverse_fft.as_ref(),
-                pitch_to_freq(osc_state.pitch[router.samples() - 1])
-                    + osc_state.frequency_shift[router.samples() - 1],
+                pitch_to_freq(osc_state.pitch[0]) + osc_state.frequency_shift[0],
                 router.sample_rate(),
-                spectrum,
+                spectrum_from,
                 &mut osc_state.tmp_spectral,
                 &mut osc_state.scratch,
-                wave_to,
+                &mut voice_buffers.wave_buffers.0,
             );
-            voice_buffers.wave_buffers_swapped = !voice_buffers.wave_buffers_swapped;
 
-            voice_buffers
+            voice_buffers.wave_buffers_swapped = false;
+        }
+
+        let spectrum = router.spectral(Input::Spectrum, true);
+
+        let wave_to = if voice_buffers.wave_buffers_swapped {
+            &mut voice_buffers.wave_buffers.0
+        } else {
+            &mut voice_buffers.wave_buffers.1
         };
 
-        if voice_buffers.wave_buffers_swapped {
-            (&voice_buffers.wave_buffers.0, &voice_buffers.wave_buffers.1)
-        } else {
-            (&voice_buffers.wave_buffers.1, &voice_buffers.wave_buffers.0)
-        }
+        Self::build_wave(
+            osc_state.inverse_fft.as_ref(),
+            pitch_to_freq(osc_state.pitch[router.samples() - 1])
+                + osc_state.frequency_shift[router.samples() - 1],
+            router.sample_rate(),
+            spectrum,
+            &mut osc_state.tmp_spectral,
+            &mut osc_state.scratch,
+            wave_to,
+        );
+        voice_buffers.wave_buffers_swapped = !voice_buffers.wave_buffers_swapped;
     }
 
     fn process_unison(
@@ -774,14 +758,12 @@ impl Oscillator {
         }
     }
 
-    fn process_voice(
-        params: &Params,
-        channel: &mut ChannelParams,
-        osc_state: &mut OscState,
-        voice: &mut Voice,
-        mono_voice_buffers: Option<&VoiceBuffers>,
-        mut router: VoiceRouter<'_, '_>,
-    ) {
+    fn process_voice(&mut self, mono_spectrum: bool, mut router: VoiceRouter<'_, '_>) {
+        let channel_idx = router.channel_idx();
+        let voice_idx = router.voice_idx();
+        let osc_state = &mut self.osc_state;
+        let channel = &mut self.channel_params[channel_idx];
+        let voice = &mut self.voices[channel_idx][voice_idx];
         let samples = router.samples();
 
         router.buff_param(Input::Gain, &mut channel.gain, &mut osc_state.gain);
@@ -792,7 +774,7 @@ impl Oscillator {
             &mut osc_state.pitch,
         );
 
-        add_buffer_value(&mut osc_state.pitch[..samples], voice.state.pitch);
+        add_buffer_value(&mut osc_state.pitch[..samples], voice.pitch);
 
         router.buff_param(
             Input::PhaseShift,
@@ -806,22 +788,28 @@ impl Oscillator {
             &mut osc_state.frequency_shift,
         );
 
-        let (wave_from, wave_to) = Self::build_waveforms(
-            &mut voice.buffers,
-            mono_voice_buffers,
-            osc_state,
-            voice.state.triggered,
-            &router,
-        );
+        let voice_buffers = if mono_spectrum && channel_idx != 0 {
+            &self.voice_buffers[0][voice_idx]
+        } else {
+            let vb = &mut self.voice_buffers[channel_idx][voice_idx];
 
-        Self::process_unison(params.unison, channel, &mut voice.state, &mut router);
-        Self::process_glide(channel, osc_state, &mut voice.state, &mut router);
+            Self::build_waveforms(vb, osc_state, voice.triggered, &router);
+            vb
+        };
 
-        if voice.state.triggered {
-            voice.state.triggered = false;
+        let (wave_from, wave_to) = if voice_buffers.wave_buffers_swapped {
+            (&voice_buffers.wave_buffers.0, &voice_buffers.wave_buffers.1)
+        } else {
+            (&voice_buffers.wave_buffers.1, &voice_buffers.wave_buffers.0)
+        };
+
+        Self::process_unison(self.params.unison, channel, voice, &mut router);
+        Self::process_glide(channel, osc_state, voice, &mut router);
+
+        if voice.triggered {
+            voice.triggered = false;
         }
 
-        let voice = &mut voice.state;
         let freq_phase_mult = Phase::freq_phase_mult(router.sample_rate());
         let buff_t_mult = (samples as f32).recip();
 
@@ -843,7 +831,7 @@ impl Oscillator {
                 .phases
                 .iter_mut()
                 .zip(voice.unison.iter())
-                .take(params.unison)
+                .take(self.params.unison)
             {
                 let read_phase = *phase
                     + phase_shift
@@ -863,52 +851,53 @@ impl Oscillator {
     }
 
     fn handle_trigger(
-        params: &Params,
-        channel: &ChannelParams,
-        voices: &mut ChannelVoices,
+        &mut self,
+        channel_idx: usize,
         prev_voice_idx: Option<usize>,
         voice_idx: usize,
         pitch: Sample,
     ) {
+        let channel = &self.channel_params[channel_idx];
+        let voices = &mut self.voices[channel_idx];
+
         if let Some(prev_voice_idx) = prev_voice_idx {
-            let prev_voice_state = &voices[prev_voice_idx].state;
+            let prev_voice_state = &voices[prev_voice_idx];
             let prev_pitch = prev_voice_state
                 .glide
                 .as_ref()
                 .map_or(prev_voice_state.pitch, |g| g.current_pitch);
 
-            voices[voice_idx].state.glide = Some(Glide::new(prev_pitch));
+            voices[voice_idx].glide = Some(Glide::new(prev_pitch));
         } else {
-            voices[voice_idx].state.glide = None;
+            voices[voice_idx].glide = None;
         }
 
         let voice = &mut voices[voice_idx];
 
-        voice.state.pitch = pitch;
-        voice.state.triggered = true;
+        voice.pitch = pitch;
+        voice.triggered = true;
 
         if let Some(prev_voice_idx) = prev_voice_idx
-            && params.steal_phase
+            && self.params.steal_phase
         {
-            voices[voice_idx].state.phases = voices[prev_voice_idx].state.phases;
+            voices[voice_idx].phases = voices[prev_voice_idx].phases;
         } else {
-            for (phase, unison_voice) in voice.state.phases.iter_mut().zip(&channel.unison) {
+            for (phase, unison_voice) in voice.phases.iter_mut().zip(&channel.unison) {
                 *phase = Phase::from_normalized(unison_voice.initial_phase);
             }
         }
     }
 
-    fn handle_update(voices: &mut ChannelVoices, voice_idx: usize, pitch: Sample) {
-        let voice = &mut voices[voice_idx];
+    fn handle_update(&mut self, channel_idx: usize, voice_idx: usize, pitch: Sample) {
+        let voice = &mut self.voices[channel_idx][voice_idx];
 
-        voice.state.glide = Some(Glide::new(
+        voice.glide = Some(Glide::new(
             voice
-                .state
                 .glide
                 .as_ref()
-                .map_or(voice.state.pitch, |g| g.current_pitch),
+                .map_or(voice.pitch, |g| g.current_pitch),
         ));
-        voice.state.pitch = pitch;
+        voice.pitch = pitch;
     }
 }
 
@@ -950,7 +939,7 @@ impl SynthModule for Oscillator {
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
-        for (channel_idx, channel) in self.channel_params.iter().enumerate() {
+        for channel_idx in 0..NUM_CHANNELS {
             for event in events {
                 match event {
                     VoiceEvent::Trigger {
@@ -958,17 +947,10 @@ impl SynthModule for Oscillator {
                         prev_voice_idx,
                         pitch,
                         ..
-                    } => Self::handle_trigger(
-                        &self.params,
-                        channel,
-                        &mut self.voices[channel_idx],
-                        *prev_voice_idx,
-                        *voice_idx,
-                        *pitch,
-                    ),
+                    } => self.handle_trigger(channel_idx, *prev_voice_idx, *voice_idx, *pitch),
                     VoiceEvent::Update {
                         voice_idx, pitch, ..
-                    } => Self::handle_update(&mut self.voices[channel_idx], *voice_idx, *pitch),
+                    } => self.handle_update(channel_idx, *voice_idx, *pitch),
                     _ => (),
                 }
             }
@@ -1014,53 +996,20 @@ impl SynthModule for Oscillator {
     }
 
     fn process(&mut self, params: &ProcessParams, router: &mut dyn Router) {
+        let mono_spectrum = params.spectrum_channels < NUM_CHANNELS;
         let mut rf = VoiceRouterFactory::new(self.id, router, params);
 
-        for (channel_idx, channel) in self
-            .channel_params
-            .iter_mut()
-            .enumerate()
-            .take(params.spectrum_channels)
-        {
+        for channel_idx in 0..NUM_CHANNELS {
             for (seq_idx, voice_idx) in params.active_voices.iter().enumerate() {
-                Self::process_voice(
-                    &self.params,
-                    channel,
-                    &mut self.osc_state,
-                    &mut self.voices[channel_idx][*voice_idx],
-                    None,
+                self.process_voice(
+                    mono_spectrum,
                     rf.for_voice(*voice_idx, channel_idx, seq_idx),
                 );
-            }
-        }
-
-        if params.spectrum_channels > 0 && params.spectrum_channels < self.channel_params.len() {
-            let (left_voices, voices) = self.voices.split_at_mut(params.spectrum_channels);
-            let left_voices = &left_voices[0];
-
-            for (idx, channel) in self
-                .channel_params
-                .iter_mut()
-                .skip(params.spectrum_channels)
-                .enumerate()
-            {
-                let channel_idx = idx + params.spectrum_channels;
-
-                for (seq_idx, voice_idx) in params.active_voices.iter().enumerate() {
-                    Self::process_voice(
-                        &self.params,
-                        channel,
-                        &mut self.osc_state,
-                        &mut voices[idx][*voice_idx],
-                        Some(&left_voices[*voice_idx].buffers),
-                        rf.for_voice(*voice_idx, channel_idx, seq_idx),
-                    );
-                }
             }
         }
     }
 
     fn get_buffer_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
-        &self.voices[channel][voice_idx].state.output
+        &self.voices[channel][voice_idx].output
     }
 }

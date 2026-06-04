@@ -136,6 +136,14 @@ impl<'a, 'b> VoiceRouter<'a, 'b> {
         self.factory.process_params.sample_rate
     }
 
+    pub fn channel_idx(&self) -> usize {
+        self.channel_idx
+    }
+
+    pub fn voice_idx(&self) -> usize {
+        self.voice_idx
+    }
+
     pub fn buffer_opt(&'a self, input: Input, buff: &'a mut Buffer) -> Option<&'a Buffer> {
         self.factory.router.get_input(
             ModuleInput::new(input, self.factory.module_id),
