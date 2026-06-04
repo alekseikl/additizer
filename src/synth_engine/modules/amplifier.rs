@@ -1,36 +1,33 @@
+use std::array;
+
+use itertools::izip;
+
+mod config;
+mod link;
+mod ui_bridge;
+
+pub use config::Config;
+use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
+pub use ui_bridge::UiBridge;
+
 use crate::synth_engine::{
     StereoSample,
     buffer::{Buffer, zero_buffer},
     routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
     smooth::SmoothedSample,
-    synth_module::{
-        ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter, VoiceRouterFactory,
-    },
+    synth_module::{ModInput, ProcessParams, SynthModule, VoiceRouter, VoiceRouterFactory},
 };
-use itertools::izip;
-use serde::{Deserialize, Serialize};
 
-mod link;
-mod ui_bridge;
-
-use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::{ControlsState, UiBridge};
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ChannelParams {
+struct ChannelParams {
     gain: SmoothedSample,
 }
 
-impl Default for ChannelParams {
-    fn default() -> Self {
-        Self { gain: 0.0.into() }
+impl ChannelParams {
+    fn from_config(c: &Config, channel_idx: usize) -> Self {
+        Self {
+            gain: c.gain[channel_idx].into(),
+        }
     }
-}
-
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct AmplifierConfig {
-    label: Option<String>,
-    channels: [ChannelParams; NUM_CHANNELS],
 }
 
 struct Voice {
@@ -38,7 +35,7 @@ struct Voice {
 }
 
 impl Voice {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             output: zero_buffer(),
         }
@@ -51,46 +48,46 @@ impl Default for Voice {
     }
 }
 
-#[derive(Default)]
-struct Channel {
-    params: ChannelParams,
-    voices: [Voice; MAX_VOICES],
-}
-
 struct Buffers {
     input: Buffer,
     gain_mod_input: Buffer,
 }
 
+type ChannelVoices = [Voice; MAX_VOICES];
+
 pub struct Amplifier {
     id: ModuleId,
-    label: String,
-    config: ModuleConfigBox<AmplifierConfig>,
+    channel_params: [ChannelParams; NUM_CHANNELS],
     buffers: Buffers,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    channels: [Channel; NUM_CHANNELS],
+    voices: [ChannelVoices; NUM_CHANNELS],
 }
 
 impl Amplifier {
-    pub fn new(id: ModuleId, config: ModuleConfigBox<AmplifierConfig>) -> Self {
+    pub fn new(id: ModuleId) -> Self {
+        Self::from_config(&Config {
+            id,
+            ..Config::default()
+        })
+    }
+
+    pub fn from_config(config: &config::Config) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
-        let mut amp = Self {
-            id,
-            label: format!("Amplifier {id}"),
-            config,
+        Self {
+            id: config.id,
+            channel_params: array::from_fn(|channel_idx| {
+                ChannelParams::from_config(config, channel_idx)
+            }),
             buffers: Buffers {
                 input: zero_buffer(),
                 gain_mod_input: zero_buffer(),
             },
             audio_end,
             ui_end: Some(ui_end),
-            channels: Default::default(),
-        };
-
-        load_module_config_no_params!(amp);
-        amp
+            voices: Default::default(),
+        }
     }
 
     pub fn take_ui_end(&mut self) -> Option<UiEnd> {
@@ -102,26 +99,30 @@ impl Amplifier {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_controls_state(&self) -> ControlsState {
-        ControlsState {
-            gain: get_smoothed_param!(self, gain),
+    pub fn get_config(&self) -> Config {
+        Config {
+            id: self.id,
+            gain: get_smoothed_param2!(self, gain),
         }
     }
 
-    set_smoothed_param!(set_gain, gain);
+    set_smoothed_param2!(set_gain, gain);
 
-    fn process_channel_voice(
-        channel: &mut ChannelParams,
-        voice: &mut Voice,
-        buffers: &mut Buffers,
-        router: &mut VoiceRouter<'_, '_>,
-    ) {
-        router.buff_param(Input::Gain, &mut channel.gain, &mut buffers.gain_mod_input);
+    fn process_channel_voice(&mut self, mut router: VoiceRouter<'_, '_>) {
+        let channel = &mut self.channel_params[router.channel_idx()];
+        let voice = &mut self.voices[router.channel_idx()][router.voice_idx()];
 
-        let input = router.buffer(Input::Audio, &mut buffers.input);
+        router.buff_param(
+            Input::Gain,
+            &mut channel.gain,
+            &mut self.buffers.gain_mod_input,
+        );
+
+        let input = router.buffer(Input::Audio, &mut self.buffers.input);
 
         for (out, input, modulation) in
-            izip!(voice.output.iter_mut(), input, buffers.gain_mod_input).take(router.samples())
+            izip!(voice.output.iter_mut(), input, self.buffers.gain_mod_input)
+                .take(router.samples())
         {
             *out = input * modulation;
         }
@@ -134,13 +135,10 @@ impl SynthModule for Amplifier {
     }
 
     fn label(&self) -> String {
-        self.label.clone()
+        "Amp".into()
     }
 
-    fn set_label(&mut self, label: String) {
-        self.label = label.clone();
-        self.config.lock().label = Some(label);
-    }
+    fn set_label(&mut self, _label: String) {}
 
     fn module_type(&self) -> ModuleType {
         ModuleType::Amplifier
@@ -174,22 +172,14 @@ impl SynthModule for Amplifier {
     fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
         let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
 
-        for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
+        for channel_idx in 0..NUM_CHANNELS {
             for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
-                let voice = &mut channel.voices[*voice_idx];
-                let mut voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
-
-                Self::process_channel_voice(
-                    &mut channel.params,
-                    voice,
-                    &mut self.buffers,
-                    &mut voice_router,
-                );
+                self.process_channel_voice(rf.for_voice(*voice_idx, channel_idx, seq_idx));
             }
         }
     }
 
     fn get_buffer_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
-        &self.channels[channel].voices[voice_idx].output
+        &self.voices[channel][voice_idx].output
     }
 }

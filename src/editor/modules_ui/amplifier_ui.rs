@@ -33,7 +33,7 @@ impl ModuleUi for AmplifierUI {
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
         let module_id = self.amp_bridge.module_id();
-        let mut controls = self.amp_bridge.controls().clone();
+        let mut config = self.amp_bridge.config().clone();
 
         ui.add(ModuleLabel::new(&mut self.module_label, bridge, module_id));
 
@@ -51,12 +51,12 @@ impl ModuleUi for AmplifierUI {
                 ui.label("Gain");
                 if ui
                     .add(
-                        ModulationInput::new(&mut controls.gain, bridge, Input::Gain, module_id)
+                        ModulationInput::new(&mut config.gain, bridge, Input::Gain, module_id)
                             .modulation_default(1.0),
                     )
                     .changed()
                 {
-                    self.amp_bridge.set_param(Input::Gain, controls.gain);
+                    self.amp_bridge.set_param(Input::Gain, config.gain);
                 }
                 ui.end_row();
             });

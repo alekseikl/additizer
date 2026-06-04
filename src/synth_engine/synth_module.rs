@@ -264,30 +264,6 @@ macro_rules! get_stereo_param {
     };
 }
 
-macro_rules! set_smoothed_param {
-    ($fn_name:ident, $param:ident) => {
-        set_smoothed_param!($fn_name, $param, *$param);
-    };
-    ($fn_name:ident, $param:ident, $transform:expr) => {
-        pub fn $fn_name(&mut self, $param: StereoSample) {
-            for (channel, $param) in self.channels.iter_mut().zip($param.iter()) {
-                channel.params.$param.set($transform);
-            }
-        }
-    };
-}
-
-macro_rules! get_smoothed_param {
-    ($self:ident, $param:ident) => {
-        StereoSample::from_iter(
-            $self
-                .channels
-                .iter()
-                .map(|channel| channel.params.$param.get()),
-        )
-    };
-}
-
 macro_rules! set_stereo_param2 {
     ($fn_name:ident, $param:ident) => {
         set_stereo_param2!($fn_name, $param, *$param);
