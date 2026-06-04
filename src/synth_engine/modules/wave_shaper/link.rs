@@ -1,6 +1,6 @@
 use crate::synth_engine::{Input, StereoSample};
 
-use super::ShaperType;
+use super::config::ShaperType;
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },

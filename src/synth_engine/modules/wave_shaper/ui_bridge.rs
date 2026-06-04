@@ -4,21 +4,14 @@ use parking_lot::Mutex;
 
 use crate::synth_engine::{Input, ModuleId, StereoSample, SynthEngine};
 
-use super::{ShaperType, WaveShaper};
+use super::{Config, ShaperType, WaveShaper};
 use super::link::UiEnd;
-
-#[derive(Clone)]
-pub struct ControlsState {
-    pub shaper_type: ShaperType,
-    pub distortion: StereoSample,
-    pub clipping_level: StereoSample,
-}
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    controls: ControlsState,
+    config: Config,
 }
 
 impl UiBridge {
@@ -26,7 +19,7 @@ impl UiBridge {
         let mut synth_lock = synth.lock();
         let shaper = synth_lock.get_typed_module_mut::<WaveShaper>(module_id)?;
         let ui_end = shaper.take_ui_end()?;
-        let controls = shaper.get_controls_state();
+        let config = shaper.get_config();
 
         drop(synth_lock);
 
@@ -34,7 +27,7 @@ impl UiBridge {
             synth,
             module_id,
             ui_end: Some(ui_end),
-            controls,
+            config,
         })
     }
 
@@ -42,8 +35,8 @@ impl UiBridge {
         self.module_id
     }
 
-    pub fn controls(&self) -> &ControlsState {
-        &self.controls
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
@@ -52,15 +45,15 @@ impl UiBridge {
         }
 
         match input {
-            Input::Distortion => self.controls.distortion = value,
-            Input::ClippingLevel => self.controls.clipping_level = value,
+            Input::Distortion => self.config.distortion = value,
+            Input::ClippingLevel => self.config.clipping_level = value,
             _ => (),
         }
     }
 
     pub fn set_shaper_type(&mut self, shaper_type: ShaperType) {
         if self.ui_end.as_mut().unwrap().set_shaper_type(shaper_type) {
-            self.controls.shaper_type = shaper_type;
+            self.config.shaper_type = shaper_type;
         }
     }
 }

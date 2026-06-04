@@ -43,7 +43,7 @@ impl ModuleUi for WaveShaperUi {
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
         let module_id = self.shaper_bridge.module_id();
-        let mut controls = self.shaper_bridge.controls().clone();
+        let mut config = self.shaper_bridge.config().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
@@ -64,7 +64,7 @@ impl ModuleUi for WaveShaperUi {
 
                 ui.label("Type");
                 ComboBox::from_id_salt("waveshaper-type")
-                    .selected_text(controls.shaper_type.label())
+                    .selected_text(config.shaper_type.label())
                     .show_ui(ui, |ui| {
                         const TYPE_OPTIONS: &[ShaperType] =
                             &[ShaperType::HardClip, ShaperType::Sigmoid];
@@ -72,7 +72,7 @@ impl ModuleUi for WaveShaperUi {
                         for shaper_type in TYPE_OPTIONS {
                             if ui
                                 .selectable_value(
-                                    &mut controls.shaper_type,
+                                    &mut config.shaper_type,
                                     *shaper_type,
                                     shaper_type.label(),
                                 )
@@ -87,7 +87,7 @@ impl ModuleUi for WaveShaperUi {
                 ui.label("Distortion");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.distortion,
+                        &mut config.distortion,
                         bridge,
                         Input::Distortion,
                         module_id,
@@ -95,14 +95,14 @@ impl ModuleUi for WaveShaperUi {
                     .changed()
                 {
                     self.shaper_bridge
-                        .set_param(Input::Distortion, controls.distortion);
+                        .set_param(Input::Distortion, config.distortion);
                 }
                 ui.end_row();
 
                 ui.label("Clipping level");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.clipping_level,
+                        &mut config.clipping_level,
                         bridge,
                         Input::ClippingLevel,
                         module_id,
@@ -110,7 +110,7 @@ impl ModuleUi for WaveShaperUi {
                     .changed()
                 {
                     self.shaper_bridge
-                        .set_param(Input::ClippingLevel, controls.clipping_level);
+                        .set_param(Input::ClippingLevel, config.clipping_level);
                 }
                 ui.end_row();
             });

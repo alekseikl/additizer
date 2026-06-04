@@ -1,51 +1,47 @@
+use std::array;
+
 use itertools::izip;
 use nih_plug::util::db_to_gain_fast;
-use serde::{Deserialize, Serialize};
 
+mod config;
 mod link;
 mod ui_bridge;
 
+pub use config::{Config, ShaperType};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::{ControlsState, UiBridge};
+pub use ui_bridge::UiBridge;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::{Buffer, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
-    synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory},
+    synth_module::{ModInput, ProcessParams, VoiceRouter, VoiceRouterFactory},
 };
 
-#[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum ShaperType {
-    #[default]
-    HardClip,
-    Sigmoid,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ChannelParams {
-    distortion: Sample,
-    clipping_level: Sample, // dB
-}
-
-impl Default for ChannelParams {
-    fn default() -> Self {
-        Self {
-            distortion: 0.0,
-            clipping_level: 0.0,
-        }
-    }
-}
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct Params {
+struct Params {
     shaper_type: ShaperType,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct WaveShaperConfig {
-    label: Option<String>,
-    params: Params,
-    channels: [ChannelParams; NUM_CHANNELS],
+impl Params {
+    fn from_config(c: &config::Config) -> Self {
+        Self {
+            shaper_type: c.shaper_type,
+        }
+    }
+}
+
+struct ChannelParams {
+    distortion: Sample,
+    clipping_level: Sample,
+}
+
+impl ChannelParams {
+    fn from_config(c: &Config, channel_idx: usize) -> Self {
+        Self {
+            distortion: c.distortion[channel_idx],
+            clipping_level: c.clipping_level[channel_idx],
+        }
+    }
 }
 
 struct Voice {
@@ -60,50 +56,50 @@ impl Default for Voice {
     }
 }
 
-#[derive(Default)]
-struct Channel {
-    params: ChannelParams,
-    voices: [Voice; MAX_VOICES],
-}
-
 struct Buffers {
     input: Buffer,
     distortion_mod_input: Buffer,
     clipping_level_mod_input: Buffer,
 }
 
+type ChannelVoices = [Voice; MAX_VOICES];
+
 pub struct WaveShaper {
     id: ModuleId,
-    label: String,
-    config: ModuleConfigBox<WaveShaperConfig>,
-    buffers: Buffers,
     params: Params,
+    channel_params: [ChannelParams; NUM_CHANNELS],
+    buffers: Buffers,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    channels: [Channel; NUM_CHANNELS],
+    voices: [ChannelVoices; NUM_CHANNELS],
 }
 
 impl WaveShaper {
-    pub fn new(id: ModuleId, config: ModuleConfigBox<WaveShaperConfig>) -> Self {
+    pub fn new(id: ModuleId) -> Self {
+        Self::from_config(&Config {
+            id,
+            ..Config::default()
+        })
+    }
+
+    pub fn from_config(config: &config::Config) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
-        let mut ws = Self {
-            id,
-            label: format!("Waveshaper {id}"),
-            config,
+        Self {
+            id: config.id,
+            params: Params::from_config(config),
+            channel_params: array::from_fn(|channel_idx| {
+                ChannelParams::from_config(config, channel_idx)
+            }),
             buffers: Buffers {
                 input: zero_buffer(),
                 distortion_mod_input: zero_buffer(),
                 clipping_level_mod_input: zero_buffer(),
             },
-            params: Params::default(),
             audio_end,
             ui_end: Some(ui_end),
-            channels: Default::default(),
-        };
-
-        load_module_config!(ws);
-        ws
+            voices: Default::default(),
+        }
     }
 
     pub fn take_ui_end(&mut self) -> Option<UiEnd> {
@@ -115,30 +111,30 @@ impl WaveShaper {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_controls_state(&self) -> ControlsState {
-        ControlsState {
+    pub fn get_config(&self) -> Config {
+        Config {
+            id: self.id,
             shaper_type: self.params.shaper_type,
-            distortion: get_stereo_param!(self, distortion),
-            clipping_level: get_stereo_param!(self, clipping_level),
+            distortion: get_stereo_param2!(self, distortion),
+            clipping_level: get_stereo_param2!(self, clipping_level),
         }
     }
 
     set_mono_param!(set_shaper_type, shaper_type, ShaperType);
 
-    set_stereo_param!(set_distortion, distortion);
-    set_stereo_param!(set_clipping_level, clipping_level);
+    set_stereo_param2!(set_distortion, distortion);
+    set_stereo_param2!(set_clipping_level, clipping_level);
 
-    fn process_channel_voice(
-        params: &Params,
-        channel: &ChannelParams,
-        voice: &mut Voice,
-        buffers: &mut Buffers,
-        router: &VoiceRouter<'_, '_>,
-    ) {
-        let input = router.buffer(Input::Audio, &mut buffers.input);
-        let clipping_level_mod =
-            router.buffer(Input::ClippingLevel, &mut buffers.clipping_level_mod_input);
-        let distortion_mod = router.buffer(Input::Distortion, &mut buffers.distortion_mod_input);
+    fn process_channel_voice(&mut self, router: VoiceRouter<'_, '_>) {
+        let channel = &self.channel_params[router.channel_idx()];
+        let voice = &mut self.voices[router.channel_idx()][router.voice_idx()];
+        let input = router.buffer(Input::Audio, &mut self.buffers.input);
+        let clipping_level_mod = router.buffer(
+            Input::ClippingLevel,
+            &mut self.buffers.clipping_level_mod_input,
+        );
+        let distortion_mod =
+            router.buffer(Input::Distortion, &mut self.buffers.distortion_mod_input);
 
         for (out, input, clipping_level_mod, distortion_mod) in izip!(
             voice.output.iter_mut().take(router.samples()),
@@ -150,7 +146,7 @@ impl WaveShaper {
                 db_to_gain_fast((channel.clipping_level + clipping_level_mod).min(24.0));
             let gain = db_to_gain_fast((channel.distortion + distortion_mod).clamp(0.0, 48.0));
 
-            match params.shaper_type {
+            match self.params.shaper_type {
                 ShaperType::HardClip => {
                     *out = (input * gain).clamp(-clipping_gain, clipping_gain);
                 }
@@ -166,13 +162,10 @@ impl SynthModule for WaveShaper {
     }
 
     fn label(&self) -> String {
-        self.label.clone()
+        "Shaper".into()
     }
 
-    fn set_label(&mut self, label: String) {
-        self.label = label.clone();
-        self.config.lock().label = Some(label);
-    }
+    fn set_label(&mut self, _label: String) {}
 
     fn module_type(&self) -> ModuleType {
         ModuleType::WaveShaper
@@ -208,23 +201,14 @@ impl SynthModule for WaveShaper {
     fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
         let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
 
-        for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
+        for channel_idx in 0..NUM_CHANNELS {
             for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
-                let voice = &mut channel.voices[*voice_idx];
-                let voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
-
-                Self::process_channel_voice(
-                    &self.params,
-                    &channel.params,
-                    voice,
-                    &mut self.buffers,
-                    &voice_router,
-                );
+                self.process_channel_voice(rf.for_voice(*voice_idx, channel_idx, seq_idx));
             }
         }
     }
 
     fn get_buffer_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
-        &self.channels[channel].voices[voice_idx].output
+        &self.voices[channel][voice_idx].output
     }
 }

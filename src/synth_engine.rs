@@ -17,7 +17,7 @@ use crate::synth_engine::{
     modules::{
         EnvelopeConfig, ExpressionsConfig, ExternalParamConfig, LfoConfig,
         MixerConfig, Output, OutputConfig, SpectralBlendConfig, SpectralFilterConfig,
-        SpectralMixerConfig, WaveShaperConfig, harmonic_editor::HarmonicEditorConfig,
+        SpectralMixerConfig, harmonic_editor::HarmonicEditorConfig,
         oscillator::Oscillator,
     },
     routing::{DataType, LinkModulation, NUM_CHANNELS, Router, VoiceEvent, data_types_compatible},
@@ -342,7 +342,7 @@ impl SynthEngine {
     add_module_method!(add_lfo, Lfo, LfoConfig);
     add_module_method2!(add_amplifier, Amplifier);
     add_module_method!(add_mixer, Mixer, MixerConfig);
-    add_module_method!(add_wave_shaper, WaveShaper, WaveShaperConfig);
+    add_module_method2!(add_wave_shaper, WaveShaper);
     add_module_method!(add_spectral_filter, SpectralFilter, SpectralFilterConfig);
     add_module_method!(add_spectral_blend, SpectralBlend, SpectralBlendConfig);
     add_module_method!(add_spectral_mixer, SpectralMixer, SpectralMixerConfig);
@@ -821,7 +821,6 @@ impl SynthEngine {
                     restore_module!(ExternalParam, id, cfg, get_external_params)
                 }
                 ModuleConfig::Lfo(cfg) => restore_module!(Lfo, id, cfg),
-                ModuleConfig::WaveShaper(cfg) => restore_module!(WaveShaper, id, cfg),
                 ModuleConfig::Mixer(cfg) => restore_module!(Mixer, id, cfg),
                 ModuleConfig::Expressions(cfg) => restore_module!(Expressions, id, cfg),
             }

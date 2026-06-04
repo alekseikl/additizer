@@ -4,7 +4,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
-    MAX_BLOCK_SIZE, WaveShaperConfig,
+    MAX_BLOCK_SIZE,
     modules::{
         EnvelopeConfig, ExpressionsConfig, ExternalParamConfig, LfoConfig,
         MixerConfig, OutputConfig, SpectralBlendConfig, SpectralFilterConfig, SpectralMixerConfig,
@@ -49,7 +49,6 @@ pub enum ModuleConfig {
     HarmonicEditor(CfgBox<HarmonicEditorConfig>),
     ExternalParam(CfgBox<ExternalParamConfig>),
     Lfo(CfgBox<LfoConfig>),
-    WaveShaper(CfgBox<WaveShaperConfig>),
     Mixer(CfgBox<MixerConfig>),
     Expressions(CfgBox<ExpressionsConfig>),
 }
