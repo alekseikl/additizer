@@ -2,45 +2,18 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use crate::synth_engine::{
-    Input, ModuleId, Sample, StereoSample, SynthEngine,
-    oscillator::{
-        MAX_UNISON_VOICES, Oscillator, PhasesDst,
-        link::{UiEnd, UiUpdate},
-    },
+use crate::synth_engine::{Input, ModuleId, Sample, StereoSample, SynthEngine};
+
+use super::{
+    Config, Oscillator, PhasesDst,
+    link::{UiEnd, UiUpdate},
 };
-
-#[derive(Clone)]
-pub struct UnisonControlsState {
-    pub initial_phase: StereoSample,
-    pub phase_shift: StereoSample,
-    pub phase_shift_to: StereoSample,
-    pub gain: StereoSample,
-    pub gain_to: StereoSample,
-}
-
-#[derive(Clone)]
-pub struct ControlsState {
-    pub gain: StereoSample,
-    pub pitch_shift: StereoSample,
-    pub detune: StereoSample,
-    pub detune_power: StereoSample,
-    pub glide: StereoSample,
-    pub glide_slope: StereoSample,
-    pub phase_shift: StereoSample,
-    pub frequency_shift: StereoSample,
-    pub unison: usize,
-    pub steal_phase: bool,
-    pub phases_blend: StereoSample,
-    pub gains_blend: StereoSample,
-    pub unison_params: [UnisonControlsState; MAX_UNISON_VOICES],
-}
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    controls: ControlsState,
+    config: Config,
 }
 
 impl UiBridge {
@@ -48,7 +21,7 @@ impl UiBridge {
         let mut synth_lock = synth.lock();
         let osc = synth_lock.get_typed_module_mut::<Oscillator>(module_id)?;
         let ui_end = osc.take_ui_end()?;
-        let controls = osc.get_controls_state();
+        let config = osc.get_config();
 
         drop(synth_lock);
 
@@ -56,7 +29,7 @@ impl UiBridge {
             synth,
             module_id,
             ui_end: Some(ui_end),
-            controls,
+            config,
         })
     }
 
@@ -68,7 +41,7 @@ impl UiBridge {
         let synth_lock = self.synth.lock();
 
         if let Some(osc) = synth_lock.get_typed_module::<Oscillator>(self.module_id) {
-            self.controls = osc.get_controls_state();
+            self.config = osc.get_config();
         }
     }
 
@@ -82,23 +55,23 @@ impl UiBridge {
         }
     }
 
-    pub fn controls(&self) -> &ControlsState {
-        &self.controls
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
         if self.ui_end.as_mut().unwrap().set_param(input, value) {
             match input {
-                Input::Gain => self.controls.gain = value,
-                Input::PitchShift => self.controls.pitch_shift = value,
-                Input::PhaseShift => self.controls.phase_shift = value,
-                Input::FrequencyShift => self.controls.frequency_shift = value,
-                Input::Detune => self.controls.detune = value,
-                Input::DetunePower => self.controls.detune_power = value,
-                Input::Glide => self.controls.glide = value,
-                Input::GlideSlope => self.controls.glide_slope = value,
-                Input::PhasesBlend => self.controls.phases_blend = value,
-                Input::GainsBlend => self.controls.gains_blend = value,
+                Input::Gain => self.config.gain = value,
+                Input::PitchShift => self.config.pitch_shift = value,
+                Input::PhaseShift => self.config.phase_shift = value,
+                Input::FrequencyShift => self.config.frequency_shift = value,
+                Input::Detune => self.config.detune = value,
+                Input::DetunePower => self.config.detune_power = value,
+                Input::Glide => self.config.glide = value,
+                Input::GlideSlope => self.config.glide_slope = value,
+                Input::PhasesBlend => self.config.phases_blend = value,
+                Input::GainsBlend => self.config.gains_blend = value,
                 _ => (),
             }
         }
@@ -106,13 +79,13 @@ impl UiBridge {
 
     pub fn set_unison(&mut self, unison: usize) {
         if self.ui_end.as_mut().unwrap().set_unison(unison) {
-            self.controls.unison = unison;
+            self.config.unison_voices = unison;
         }
     }
 
     pub fn set_steal_phase(&mut self, steal_phase: bool) {
         if self.ui_end.as_mut().unwrap().set_steal_phase(steal_phase) {
-            self.controls.steal_phase = steal_phase;
+            self.config.steal_phase = steal_phase;
         }
     }
 
@@ -123,7 +96,7 @@ impl UiBridge {
             .unwrap()
             .set_unison_initial_phase(idx, value)
         {
-            self.controls.unison_params[idx].initial_phase = value;
+            self.config.unison[idx].initial_phase = value;
         }
     }
 
@@ -134,7 +107,7 @@ impl UiBridge {
             .unwrap()
             .set_unison_phase_shift(idx, value)
         {
-            self.controls.unison_params[idx].phase_shift = value;
+            self.config.unison[idx].phase_shift = value;
         }
     }
 
@@ -145,19 +118,19 @@ impl UiBridge {
             .unwrap()
             .set_unison_phase_shift_to(idx, value)
         {
-            self.controls.unison_params[idx].phase_shift_to = value;
+            self.config.unison[idx].phase_shift_to = value;
         }
     }
 
     pub fn set_unison_gain(&mut self, idx: usize, value: StereoSample) {
         if self.ui_end.as_mut().unwrap().set_unison_gain(idx, value) {
-            self.controls.unison_params[idx].gain = value;
+            self.config.unison[idx].gain = value;
         }
     }
 
     pub fn set_unison_gain_to(&mut self, idx: usize, value: StereoSample) {
         if self.ui_end.as_mut().unwrap().set_unison_gain_to(idx, value) {
-            self.controls.unison_params[idx].gain_to = value;
+            self.config.unison[idx].gain_to = value;
         }
     }
 

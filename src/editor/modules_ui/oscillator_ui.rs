@@ -8,7 +8,7 @@ use crate::{
     },
     synth_engine::{
         Input, ModuleId, Sample, StereoSample,
-        oscillator::{self, ControlsState, PhasesDst},
+        oscillator::{self, Config, PhasesDst},
         ui_bridge::UiBridge,
     },
 };
@@ -246,12 +246,12 @@ impl OscillatorUI {
     fn show_unison_section(
         synth_bridge: &mut UiBridge,
         bridge: &mut oscillator::UiBridge,
-        controls: &mut ControlsState,
+        config: &mut Config,
         unison_state: &mut UnisonState,
         ui: &mut Ui,
     ) {
         let module_id = bridge.module_id();
-        let unison = controls.unison;
+        let unison = config.unison_voices;
 
         let from_to_toggle = |ui: &mut Ui, toggle: &mut bool| {
             if *toggle {
@@ -273,9 +273,9 @@ impl OscillatorUI {
         ui.vertical(|ui| {
             if let Some((voice_idx, phase)) = Self::show_phases(
                 ui,
-                (0..unison).map(|i| controls.unison_params[i].initial_phase),
+                (0..unison).map(|i| config.unison[i].initial_phase),
             ) {
-                controls.unison_params[voice_idx].initial_phase = phase;
+                config.unison[voice_idx].initial_phase = phase;
                 bridge.set_unison_initial_phase(voice_idx, phase);
             }
 
@@ -302,16 +302,16 @@ impl OscillatorUI {
                 if unison_state.phases_shift_to {
                     if let Some((voice_idx, phase)) = Self::show_phases(
                         ui,
-                        (0..unison).map(|i| controls.unison_params[i].phase_shift_to),
+                        (0..unison).map(|i| config.unison[i].phase_shift_to),
                     ) {
-                        controls.unison_params[voice_idx].phase_shift_to = phase;
+                        config.unison[voice_idx].phase_shift_to = phase;
                         bridge.set_unison_phase_shift_to(voice_idx, phase);
                     }
                 } else if let Some((voice_idx, phase)) = Self::show_phases(
                     ui,
-                    (0..unison).map(|i| controls.unison_params[i].phase_shift),
+                    (0..unison).map(|i| config.unison[i].phase_shift),
                 ) {
-                    controls.unison_params[voice_idx].phase_shift = phase;
+                    config.unison[voice_idx].phase_shift = phase;
                     bridge.set_unison_phase_shift(voice_idx, phase);
                 }
 
@@ -336,14 +336,14 @@ impl OscillatorUI {
         ui.label("Phases Blend");
         if ui
             .add(ModulationInput::new(
-                &mut controls.phases_blend,
+                &mut config.phases_blend,
                 synth_bridge,
                 Input::PhasesBlend,
                 module_id,
             ))
             .changed()
         {
-            bridge.set_param(Input::PhasesBlend, controls.phases_blend);
+            bridge.set_param(Input::PhasesBlend, config.phases_blend);
         }
         ui.end_row();
 
@@ -355,15 +355,15 @@ impl OscillatorUI {
 
             if unison_state.gains_to {
                 if let Some((voice_idx, gain)) =
-                    Self::show_gains(ui, (0..unison).map(|i| controls.unison_params[i].gain_to))
+                    Self::show_gains(ui, (0..unison).map(|i| config.unison[i].gain_to))
                 {
-                    controls.unison_params[voice_idx].gain_to = gain;
+                    config.unison[voice_idx].gain_to = gain;
                     bridge.set_unison_gain_to(voice_idx, gain);
                 }
             } else if let Some((voice_idx, gain)) =
-                Self::show_gains(ui, (0..unison).map(|i| controls.unison_params[i].gain))
+                Self::show_gains(ui, (0..unison).map(|i| config.unison[i].gain))
             {
-                controls.unison_params[voice_idx].gain = gain;
+                config.unison[voice_idx].gain = gain;
                 bridge.set_unison_gain(voice_idx, gain);
             }
 
@@ -382,14 +382,14 @@ impl OscillatorUI {
         ui.label("Levels Blend");
         if ui
             .add(ModulationInput::new(
-                &mut controls.gains_blend,
+                &mut config.gains_blend,
                 synth_bridge,
                 Input::GainsBlend,
                 module_id,
             ))
             .changed()
         {
-            bridge.set_param(Input::GainsBlend, controls.gains_blend);
+            bridge.set_param(Input::GainsBlend, config.gains_blend);
         }
         ui.end_row();
     }
@@ -413,7 +413,7 @@ impl ModuleUi for OscillatorUI {
 
         ui.add_space(20.0);
 
-        let mut controls = self.osc_bridge.controls().clone();
+        let mut config = self.osc_bridge.config().clone();
 
         Grid::new("osc_grid")
             .num_columns(2)
@@ -427,21 +427,21 @@ impl ModuleUi for OscillatorUI {
                 ui.label("Gain");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.gain,
+                        &mut config.gain,
                         synth_bridge,
                         Input::Gain,
                         module_id,
                     ))
                     .changed()
                 {
-                    self.osc_bridge.set_param(Input::Gain, controls.gain);
+                    self.osc_bridge.set_param(Input::Gain, config.gain);
                 }
                 ui.end_row();
 
                 ui.label("Pitch shift");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.pitch_shift,
+                        &mut config.pitch_shift,
                         synth_bridge,
                         Input::PitchShift,
                         module_id,
@@ -449,14 +449,14 @@ impl ModuleUi for OscillatorUI {
                     .changed()
                 {
                     self.osc_bridge
-                        .set_param(Input::PitchShift, controls.pitch_shift);
+                        .set_param(Input::PitchShift, config.pitch_shift);
                 }
                 ui.end_row();
 
                 ui.label("Phase shift");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.phase_shift,
+                        &mut config.phase_shift,
                         synth_bridge,
                         Input::PhaseShift,
                         module_id,
@@ -464,14 +464,14 @@ impl ModuleUi for OscillatorUI {
                     .changed()
                 {
                     self.osc_bridge
-                        .set_param(Input::PhaseShift, controls.phase_shift);
+                        .set_param(Input::PhaseShift, config.phase_shift);
                 }
                 ui.end_row();
 
                 ui.label("Frequency shift");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.frequency_shift,
+                        &mut config.frequency_shift,
                         synth_bridge,
                         Input::FrequencyShift,
                         module_id,
@@ -479,28 +479,28 @@ impl ModuleUi for OscillatorUI {
                     .changed()
                 {
                     self.osc_bridge
-                        .set_param(Input::FrequencyShift, controls.frequency_shift);
+                        .set_param(Input::FrequencyShift, config.frequency_shift);
                 }
                 ui.end_row();
 
                 ui.label("Detune");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.detune,
+                        &mut config.detune,
                         synth_bridge,
                         Input::Detune,
                         module_id,
                     ))
                     .changed()
                 {
-                    self.osc_bridge.set_param(Input::Detune, controls.detune);
+                    self.osc_bridge.set_param(Input::Detune, config.detune);
                 }
                 ui.end_row();
 
                 ui.label("Detune power");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.detune_power,
+                        &mut config.detune_power,
                         synth_bridge,
                         Input::DetunePower,
                         module_id,
@@ -508,28 +508,28 @@ impl ModuleUi for OscillatorUI {
                     .changed()
                 {
                     self.osc_bridge
-                        .set_param(Input::DetunePower, controls.detune_power);
+                        .set_param(Input::DetunePower, config.detune_power);
                 }
                 ui.end_row();
 
                 ui.label("Glide");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.glide,
+                        &mut config.glide,
                         synth_bridge,
                         Input::Glide,
                         module_id,
                     ))
                     .changed()
                 {
-                    self.osc_bridge.set_param(Input::Glide, controls.glide);
+                    self.osc_bridge.set_param(Input::Glide, config.glide);
                 }
                 ui.end_row();
 
                 ui.label("Glide Slope");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.glide_slope,
+                        &mut config.glide_slope,
                         synth_bridge,
                         Input::GlideSlope,
                         module_id,
@@ -537,33 +537,33 @@ impl ModuleUi for OscillatorUI {
                     .changed()
                 {
                     self.osc_bridge
-                        .set_param(Input::GlideSlope, controls.glide_slope);
+                        .set_param(Input::GlideSlope, config.glide_slope);
                 }
                 ui.end_row();
 
                 ui.label("Steal phase");
                 if ui
-                    .add(Checkbox::without_text(&mut controls.steal_phase))
+                    .add(Checkbox::without_text(&mut config.steal_phase))
                     .changed()
                 {
-                    self.osc_bridge.set_steal_phase(controls.steal_phase);
+                    self.osc_bridge.set_steal_phase(config.steal_phase);
                 }
                 ui.end_row();
 
                 ui.label("Unison");
                 if ui
-                    .add(DragValue::new(&mut controls.unison).range(1..=16))
+                    .add(DragValue::new(&mut config.unison_voices).range(1..=16))
                     .changed()
                 {
-                    self.osc_bridge.set_unison(controls.unison);
+                    self.osc_bridge.set_unison(config.unison_voices);
                 }
                 ui.end_row();
 
-                if controls.unison > 1 {
+                if config.unison_voices > 1 {
                     Self::show_unison_section(
                         synth_bridge,
                         &mut self.osc_bridge,
-                        &mut controls,
+                        &mut config,
                         &mut self.unison_state,
                         ui,
                     );

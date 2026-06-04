@@ -17,9 +17,8 @@ use crate::synth_engine::{
     modules::{
         AmplifierConfig, EnvelopeConfig, ExpressionsConfig, ExternalParamConfig, LfoConfig,
         MixerConfig, Output, OutputConfig, SpectralBlendConfig, SpectralFilterConfig,
-        SpectralMixerConfig, WaveShaperConfig,
-        harmonic_editor::HarmonicEditorConfig,
-        oscillator::{Oscillator, OscillatorConfig},
+        SpectralMixerConfig, WaveShaperConfig, harmonic_editor::HarmonicEditorConfig,
+        oscillator::Oscillator,
     },
     routing::{DataType, LinkModulation, NUM_CHANNELS, Router, VoiceEvent, data_types_compatible},
     smooth::SmoothedSampleParams,
@@ -153,6 +152,18 @@ macro_rules! add_module_method {
                 .lock()
                 .modules
                 .insert(id, ModuleConfig::$module_type(Arc::clone(&config)));
+            id
+        }
+    };
+}
+
+macro_rules! add_module_method2 {
+    ($func_name:ident, $module_type:ident $(, $arg:ident )*) => {
+        pub fn $func_name(&mut self) -> ModuleId {
+            let id = self.alloc_module_id();
+            let module = Box::new($module_type::new(id $(, self.$arg() )*));
+
+            self.modules.insert(id, Some(module));
             id
         }
     };
@@ -326,7 +337,7 @@ impl SynthEngine {
         (block_size).clamp(4, MAX_BLOCK_SIZE)
     }
 
-    add_module_method!(add_oscillator, Oscillator, OscillatorConfig);
+    add_module_method2!(add_oscillator, Oscillator);
     add_module_method!(add_envelope, Envelope, EnvelopeConfig);
     add_module_method!(add_lfo, Lfo, LfoConfig);
     add_module_method!(add_amplifier, Amplifier, AmplifierConfig);
@@ -803,7 +814,6 @@ impl SynthEngine {
             match cfg {
                 ModuleConfig::Amplifier(cfg) => restore_module!(Amplifier, id, cfg),
                 ModuleConfig::Envelope(cfg) => restore_module!(Envelope, id, cfg),
-                ModuleConfig::Oscillator(cfg) => restore_module!(Oscillator, id, cfg),
                 ModuleConfig::SpectralFilter(cfg) => restore_module!(SpectralFilter, id, cfg),
                 ModuleConfig::SpectralBlend(cfg) => restore_module!(SpectralBlend, id, cfg),
                 ModuleConfig::SpectralMixer(cfg) => restore_module!(SpectralMixer, id, cfg),

@@ -228,13 +228,11 @@ macro_rules! set_mono_param {
     ($fn_name:ident, $param:ident, $type:ty) => {
         pub fn $fn_name(&mut self, $param: $type) {
             self.params.$param = $param;
-            self.config.lock().params.$param = self.params.$param;
         }
     };
     ($fn_name:ident, $param:ident, $type:ty, $transform:expr) => {
         pub fn $fn_name(&mut self, $param: $type) {
             self.params.$param = $transform;
-            self.config.lock().params.$param = self.params.$param;
         }
     };
 }
@@ -247,12 +245,6 @@ macro_rules! set_stereo_param {
         pub fn $fn_name(&mut self, $param: StereoSample) {
             for (channel, $param) in self.channels.iter_mut().zip($param.iter()) {
                 channel.params.$param = $transform;
-            }
-
-            let mut cfg = self.config.lock();
-
-            for (config_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-                config_channel.$param = channel.params.$param;
             }
         }
     };
@@ -273,12 +265,6 @@ macro_rules! set_smoothed_param {
             for (channel, $param) in self.channels.iter_mut().zip($param.iter()) {
                 channel.params.$param.set($transform);
             }
-
-            let mut cfg = self.config.lock();
-
-            for (config_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-                config_channel.$param.set(channel.params.$param.get());
-            }
         }
     };
 }
@@ -294,13 +280,52 @@ macro_rules! get_smoothed_param {
     };
 }
 
+macro_rules! set_stereo_param2 {
+    ($fn_name:ident, $param:ident) => {
+        set_stereo_param2!($fn_name, $param, *$param);
+    };
+    ($fn_name:ident, $param:ident, $transform:expr) => {
+        pub fn $fn_name(&mut self, $param: StereoSample) {
+            for (channel, $param) in self.channel_params.iter_mut().zip($param.iter()) {
+                channel.$param = $transform;
+            }
+        }
+    };
+}
+
+macro_rules! get_stereo_param2 {
+    ($self:ident, $param:ident) => {
+        StereoSample::from_iter($self.channel_params.iter().map(|channel| channel.$param))
+    };
+}
+
+macro_rules! set_smoothed_param2 {
+    ($fn_name:ident, $param:ident) => {
+        set_smoothed_param2!($fn_name, $param, *$param);
+    };
+    ($fn_name:ident, $param:ident, $transform:expr) => {
+        pub fn $fn_name(&mut self, $param: StereoSample) {
+            for (channel, $param) in self.channel_params.iter_mut().zip($param.iter()) {
+                channel.$param.set($transform);
+            }
+        }
+    };
+}
+
+macro_rules! get_smoothed_param2 {
+    ($self:ident, $param:ident) => {
+        StereoSample::from_iter(
+            $self
+                .channel_params
+                .iter()
+                .map(|channel| channel.$param.get()),
+        )
+    };
+}
+
 macro_rules! load_module_config {
     ($self:ident) => {{
         let cfg = $self.config.lock();
-
-        if let Some(label) = cfg.label.as_ref() {
-            $self.label = label.clone();
-        }
 
         for (channel, cfg_channel) in $self.channels.iter_mut().zip(cfg.channels.iter()) {
             channel.params = cfg_channel.clone();
@@ -313,10 +338,6 @@ macro_rules! load_module_config {
 macro_rules! load_module_config_no_params {
     ($self:ident) => {{
         let cfg = $self.config.lock();
-
-        if let Some(label) = cfg.label.as_ref() {
-            $self.label = label.clone();
-        }
 
         for (channel, cfg_channel) in $self.channels.iter_mut().zip(cfg.channels.iter()) {
             channel.params = cfg_channel.clone();
