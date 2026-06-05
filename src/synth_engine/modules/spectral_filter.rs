@@ -1,12 +1,15 @@
+use std::array;
+
 use itertools::izip;
 use nih_plug::util::db_to_gain_fast;
-use serde::{Deserialize, Serialize};
 
+mod config;
 mod link;
 mod ui_bridge;
 
+pub use config::{Config, SpectralFilterType};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::{ControlsState, UiBridge};
+pub use ui_bridge::UiBridge;
 
 use crate::synth_engine::{
     StereoSample,
@@ -15,61 +18,40 @@ use crate::synth_engine::{
     routing::{
         DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
     },
-    synth_module::{
-        ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter, VoiceRouterFactory,
-    },
+    synth_module::{ModInput, ProcessParams, SynthModule, VoiceRouter, VoiceRouterFactory},
     types::{ComplexSample, Sample, SpectralOutput},
 };
 
-#[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum SpectralFilterType {
-    #[default]
-    LowPass,
-    HighPass,
-    BandPass,
-    BandStop,
-    Peaking,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Params {
+struct Params {
     filter_type: SpectralFilterType,
     fourth_order: bool,
     linear_phase: bool,
 }
 
-impl Default for Params {
-    fn default() -> Self {
+impl Params {
+    fn from_config(c: &config::Config) -> Self {
         Self {
-            filter_type: SpectralFilterType::default(),
-            fourth_order: false,
-            linear_phase: true,
+            filter_type: c.filter_type,
+            fourth_order: c.fourth_order,
+            linear_phase: c.linear_phase,
         }
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ChannelParams {
-    cutoff: Sample, //Cutoff octave
+struct ChannelParams {
+    cutoff: Sample,
     q: Sample,
     drive: Sample,
 }
 
-impl Default for ChannelParams {
-    fn default() -> Self {
+impl ChannelParams {
+    fn from_config(c: &Config, channel_idx: usize) -> Self {
         Self {
-            cutoff: 1.0,
-            q: 0.7,
-            drive: 0.0,
+            cutoff: c.cutoff[channel_idx],
+            q: c.q[channel_idx],
+            drive: c.drive[channel_idx],
         }
     }
-}
-
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct SpectralFilterConfig {
-    label: Option<String>,
-    params: Params,
-    channels: [ChannelParams; NUM_CHANNELS],
 }
 
 #[derive(Default)]
@@ -78,38 +60,38 @@ struct Voice {
     output: SpectralOutput,
 }
 
-#[derive(Default)]
-struct Channel {
-    params: ChannelParams,
-    voices: [Voice; MAX_VOICES],
-}
+type ChannelVoices = [Voice; MAX_VOICES];
 
 pub struct SpectralFilter {
     id: ModuleId,
-    label: String,
-    config: ModuleConfigBox<SpectralFilterConfig>,
     params: Params,
+    channel_params: [ChannelParams; NUM_CHANNELS],
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    channels: [Channel; NUM_CHANNELS],
+    voices: [ChannelVoices; NUM_CHANNELS],
 }
 
 impl SpectralFilter {
-    pub fn new(id: ModuleId, config: ModuleConfigBox<SpectralFilterConfig>) -> Self {
+    pub fn new(id: ModuleId) -> Self {
+        Self::from_config(&Config {
+            id,
+            ..Config::default()
+        })
+    }
+
+    pub fn from_config(config: &config::Config) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
-        let mut filter = Self {
-            id,
-            label: format!("Filter {id}"),
-            config,
-            params: Params::default(),
+        Self {
+            id: config.id,
+            params: Params::from_config(config),
+            channel_params: array::from_fn(|channel_idx| {
+                ChannelParams::from_config(config, channel_idx)
+            }),
             audio_end,
             ui_end: Some(ui_end),
-            channels: Default::default(),
-        };
-
-        load_module_config!(filter);
-        filter
+            voices: Default::default(),
+        }
     }
 
     pub fn take_ui_end(&mut self) -> Option<UiEnd> {
@@ -121,14 +103,15 @@ impl SpectralFilter {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_controls_state(&self) -> ControlsState {
-        ControlsState {
+    pub fn get_config(&self) -> Config {
+        Config {
+            id: self.id,
             filter_type: self.params.filter_type,
-            cutoff: get_stereo_param!(self, cutoff),
-            q: get_stereo_param!(self, q),
-            drive: get_stereo_param!(self, drive),
             fourth_order: self.params.fourth_order,
             linear_phase: self.params.linear_phase,
+            cutoff: get_stereo_param2!(self, cutoff),
+            q: get_stereo_param2!(self, q),
+            drive: get_stereo_param2!(self, drive),
         }
     }
 
@@ -136,9 +119,9 @@ impl SpectralFilter {
     set_mono_param!(set_fourth_order, fourth_order, bool);
     set_mono_param!(set_linear_phase, linear_phase, bool);
 
-    set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
-    set_stereo_param!(set_q, q, q.clamp(0.1, 10.0));
-    set_stereo_param!(set_drive, drive);
+    set_stereo_param2!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
+    set_stereo_param2!(set_q, q, q.clamp(0.1, 10.0));
+    set_stereo_param2!(set_drive, drive);
 
     fn apply_response(
         output: &mut SpectralBuffer,
@@ -214,13 +197,11 @@ impl SpectralFilter {
         }
     }
 
-    fn process_voice(
-        current: bool,
-        params: &Params,
-        channel: &ChannelParams,
-        voice: &mut Voice,
-        router: &mut VoiceRouter<'_, '_>,
-    ) {
+    fn process_voice(&mut self, router: &mut VoiceRouter<'_, '_>) {
+        let channel = &self.channel_params[router.channel_idx()];
+        let voice = &mut self.voices[router.channel_idx()][router.voice_idx()];
+        let current = !voice.triggered;
+
         let cutoff = router
             .scalar(Input::Cutoff, channel.cutoff, current)
             .clamp(-4.0, 10.0);
@@ -235,11 +216,17 @@ impl SpectralFilter {
         Self::apply_biquad(
             voice.output.advance(),
             input,
-            params.filter_type,
+            self.params.filter_type,
             &biquad,
-            params.fourth_order,
-            params.linear_phase,
+            self.params.fourth_order,
+            self.params.linear_phase,
         );
+
+        if voice.triggered {
+            voice.triggered = false;
+
+            self.process_voice(router);
+        }
     }
 }
 
@@ -249,13 +236,10 @@ impl SynthModule for SpectralFilter {
     }
 
     fn label(&self) -> String {
-        self.label.clone()
+        "Filter".into()
     }
 
-    fn set_label(&mut self, label: String) {
-        self.label = label.clone();
-        self.config.lock().label = Some(label);
-    }
+    fn set_label(&mut self, _label: String) {}
 
     fn module_type(&self) -> ModuleType {
         ModuleType::SpectralFilter
@@ -277,10 +261,10 @@ impl SynthModule for SpectralFilter {
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
-        for channel in &mut self.channels {
+        for channel in &mut self.voices {
             for event in events {
                 if let VoiceEvent::Trigger { voice_idx, .. } = event {
-                    channel.voices[*voice_idx].triggered = true;
+                    channel[*voice_idx].triggered = true;
                 }
             }
         }
@@ -305,33 +289,11 @@ impl SynthModule for SpectralFilter {
     fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
         let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
 
-        for (channel_idx, channel) in self
-            .channels
-            .iter_mut()
-            .enumerate()
-            .take(process_params.spectrum_channels)
-        {
+        for channel_idx in (0..NUM_CHANNELS).take(process_params.spectrum_channels) {
             for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
-                let voice = &mut channel.voices[*voice_idx];
                 let mut voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
 
-                if voice.triggered {
-                    Self::process_voice(
-                        false,
-                        &self.params,
-                        &channel.params,
-                        voice,
-                        &mut voice_router,
-                    );
-                    voice.triggered = false;
-                }
-                Self::process_voice(
-                    true,
-                    &self.params,
-                    &channel.params,
-                    voice,
-                    &mut voice_router,
-                );
+                self.process_voice(&mut voice_router);
             }
         }
     }
@@ -342,8 +304,6 @@ impl SynthModule for SpectralFilter {
         voice_idx: usize,
         channel_idx: usize,
     ) -> &SpectralBuffer {
-        self.channels[channel_idx].voices[voice_idx]
-            .output
-            .get(current)
+        self.voices[channel_idx][voice_idx].output.get(current)
     }
 }

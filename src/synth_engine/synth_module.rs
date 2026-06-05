@@ -318,13 +318,3 @@ macro_rules! load_module_config {
         $self.params = cfg.params.clone();
     }};
 }
-
-macro_rules! load_module_config_no_params {
-    ($self:ident) => {{
-        let cfg = $self.config.lock();
-
-        for (channel, cfg_channel) in $self.channels.iter_mut().zip(cfg.channels.iter()) {
-            channel.params = cfg_channel.clone();
-        }
-    }};
-}

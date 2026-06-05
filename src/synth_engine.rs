@@ -15,8 +15,7 @@ use crate::synth_engine::{
     buffer::{Buffer, SpectralBuffer, add_to_buffer, copy_or_add_to_buffer},
     config::{ModuleConfig, RoutingConfig},
     modules::{
-        LfoConfig, MixerConfig, Output, OutputConfig, SpectralFilterConfig,
-        SpectralMixerConfig, harmonic_editor::HarmonicEditorConfig,
+        LfoConfig, MixerConfig, Output, OutputConfig, harmonic_editor::HarmonicEditorConfig,
         oscillator::Oscillator,
     },
     routing::{DataType, LinkModulation, NUM_CHANNELS, Router, VoiceEvent, data_types_compatible},
@@ -342,9 +341,9 @@ impl SynthEngine {
     add_module_method2!(add_amplifier, Amplifier);
     add_module_method!(add_mixer, Mixer, MixerConfig);
     add_module_method2!(add_wave_shaper, WaveShaper);
-    add_module_method!(add_spectral_filter, SpectralFilter, SpectralFilterConfig);
+    add_module_method2!(add_spectral_filter, SpectralFilter);
     add_module_method2!(add_spectral_blend, SpectralBlend);
-    add_module_method!(add_spectral_mixer, SpectralMixer, SpectralMixerConfig);
+    add_module_method2!(add_spectral_mixer, SpectralMixer);
     add_module_method!(add_harmonic_editor, HarmonicEditor, HarmonicEditorConfig);
     add_module_method2!(add_expressions, Expressions);
     add_module_method2!(add_external_param, ExternalParam, get_external_params);
@@ -806,8 +805,6 @@ impl SynthEngine {
 
         for (id, cfg) in cfg.modules.iter() {
             match cfg {
-                ModuleConfig::SpectralFilter(cfg) => restore_module!(SpectralFilter, id, cfg),
-                ModuleConfig::SpectralMixer(cfg) => restore_module!(SpectralMixer, id, cfg),
                 ModuleConfig::HarmonicEditor(cfg) => restore_module!(HarmonicEditor, id, cfg),
                 ModuleConfig::Lfo(cfg) => restore_module!(Lfo, id, cfg),
                 ModuleConfig::Mixer(cfg) => restore_module!(Mixer, id, cfg),

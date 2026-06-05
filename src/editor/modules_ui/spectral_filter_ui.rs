@@ -48,7 +48,7 @@ impl ModuleUi for SpectralFilterUI {
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
         let module_id = self.filter_bridge.module_id();
-        let mut controls = self.filter_bridge.controls().clone();
+        let mut config = self.filter_bridge.config().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
@@ -69,7 +69,7 @@ impl ModuleUi for SpectralFilterUI {
 
                 ui.label("Type");
                 ComboBox::from_id_salt("spectral-filter-type")
-                    .selected_text(controls.filter_type.label())
+                    .selected_text(config.filter_type.label())
                     .show_ui(ui, |ui| {
                         const TYPE_OPTIONS: &[SpectralFilterType] = &[
                             SpectralFilterType::LowPass,
@@ -82,7 +82,7 @@ impl ModuleUi for SpectralFilterUI {
                         for filter_type in TYPE_OPTIONS {
                             if ui
                                 .selectable_value(
-                                    &mut controls.filter_type,
+                                    &mut config.filter_type,
                                     *filter_type,
                                     filter_type.label(),
                                 )
@@ -97,60 +97,60 @@ impl ModuleUi for SpectralFilterUI {
                 ui.label("Cutoff");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.cutoff,
+                        &mut config.cutoff,
                         bridge,
                         Input::Cutoff,
                         module_id,
                     ))
                     .changed()
                 {
-                    self.filter_bridge.set_param(Input::Cutoff, controls.cutoff);
+                    self.filter_bridge.set_param(Input::Cutoff, config.cutoff);
                 }
                 ui.end_row();
 
                 ui.label("Q");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.q,
+                        &mut config.q,
                         bridge,
                         Input::Q,
                         module_id,
                     ))
                     .changed()
                 {
-                    self.filter_bridge.set_param(Input::Q, controls.q);
+                    self.filter_bridge.set_param(Input::Q, config.q);
                 }
                 ui.end_row();
 
                 ui.label("Drive");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.drive,
+                        &mut config.drive,
                         bridge,
                         Input::Drive,
                         module_id,
                     ))
                     .changed()
                 {
-                    self.filter_bridge.set_param(Input::Drive, controls.drive);
+                    self.filter_bridge.set_param(Input::Drive, config.drive);
                 }
                 ui.end_row();
 
                 ui.label("Fourth order");
                 if ui
-                    .add(Checkbox::without_text(&mut controls.fourth_order))
+                    .add(Checkbox::without_text(&mut config.fourth_order))
                     .changed()
                 {
-                    self.filter_bridge.set_fourth_order(controls.fourth_order);
+                    self.filter_bridge.set_fourth_order(config.fourth_order);
                 }
                 ui.end_row();
 
                 ui.label("Linear phase");
                 if ui
-                    .add(Checkbox::without_text(&mut controls.linear_phase))
+                    .add(Checkbox::without_text(&mut config.linear_phase))
                     .changed()
                 {
-                    self.filter_bridge.set_linear_phase(controls.linear_phase);
+                    self.filter_bridge.set_linear_phase(config.linear_phase);
                 }
                 ui.end_row();
             });

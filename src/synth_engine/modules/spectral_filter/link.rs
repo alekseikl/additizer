@@ -1,6 +1,6 @@
 use crate::synth_engine::{Input, StereoSample};
 
-use super::SpectralFilterType;
+use super::config::SpectralFilterType;
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },

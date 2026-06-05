@@ -2,85 +2,53 @@ use core::f32;
 use std::array;
 
 use nih_plug::util::db_to_gain_fast;
-use serde::{Deserialize, Serialize};
 
+mod config;
 mod link;
 mod ui_bridge;
 
+pub use config::{Config, MAX_INPUTS};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::{ControlsState, UiBridge};
+pub use ui_bridge::UiBridge;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::SpectralBuffer,
     routing::{DataType, MAX_VOICES, MixType, NUM_CHANNELS, Router, VoiceEvent, VolumeType},
-    synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory},
+    synth_module::{ModInput, ProcessParams, VoiceRouter, VoiceRouterFactory},
     types::{ComplexSample, SpectralOutput},
 };
 
-pub const MAX_INPUTS: u8 = 6;
 const MAX_VOLUME: Sample = 24.0; // dB
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct InputChannelParams {
-    gain: Sample,  // 0.0-1.0
-    level: Sample, // dB
-}
-
-impl Default for InputChannelParams {
-    fn default() -> Self {
-        Self {
-            gain: 1.0,
-            level: 0.0,
-        }
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ChannelParams {
-    input_params: [InputChannelParams; MAX_INPUTS as usize],
+struct ChannelParams {
     output_level: Sample,
     output_gain: Sample,
 }
 
-impl Default for ChannelParams {
-    fn default() -> Self {
+impl ChannelParams {
+    fn from_config(c: &config::Config, channel_idx: usize) -> Self {
         Self {
-            input_params: Default::default(),
-            output_level: 0.0,
-            output_gain: 1.0,
+            output_level: c.output_level[channel_idx],
+            output_gain: c.output_gain[channel_idx],
         }
     }
 }
 
-#[derive(Default, Clone, Copy, Serialize, Deserialize)]
-pub struct InputParams {
-    pub mix_type: MixType,
-    pub volume_type: VolumeType,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Params {
+struct Params {
     num_inputs: u8,
-    input_params: [InputParams; MAX_INPUTS as usize],
+    inputs: [config::InputConfig; MAX_INPUTS as usize],
     output_volume_type: VolumeType,
 }
 
-impl Default for Params {
-    fn default() -> Self {
+impl Params {
+    fn from_config(c: &config::Config) -> Self {
         Self {
-            num_inputs: 2,
-            input_params: Default::default(),
-            output_volume_type: VolumeType::Gain,
+            num_inputs: c.num_inputs.clamp(1, MAX_INPUTS),
+            inputs: c.inputs,
+            output_volume_type: c.output_volume_type,
         }
     }
-}
-
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct SpectralMixerConfig {
-    label: Option<String>,
-    params: Params,
-    channels: [ChannelParams; NUM_CHANNELS],
 }
 
 #[derive(Default)]
@@ -89,40 +57,40 @@ struct Voice {
     output: SpectralOutput,
 }
 
-#[derive(Default)]
-struct Channel {
-    params: ChannelParams,
-    voices: [Voice; MAX_VOICES],
-}
+type ChannelVoices = [Voice; MAX_VOICES];
 
 pub struct SpectralMixer {
     id: ModuleId,
-    label: String,
-    config: ModuleConfigBox<SpectralMixerConfig>,
     params: Params,
+    channel_params: [ChannelParams; NUM_CHANNELS],
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    channels: [Channel; NUM_CHANNELS],
+    voices: [ChannelVoices; NUM_CHANNELS],
 }
 
 impl SpectralMixer {
     pub const MAX_INPUTS: u8 = MAX_INPUTS;
 
-    pub fn new(id: ModuleId, config: ModuleConfigBox<SpectralMixerConfig>) -> Self {
+    pub fn new(id: ModuleId) -> Self {
+        Self::from_config(&Config {
+            id,
+            ..Config::default()
+        })
+    }
+
+    pub fn from_config(config: &config::Config) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
-        let mut mixer = Self {
-            id,
-            label: format!("Spectral Mixer {id}"),
-            config,
-            params: Params::default(),
+        Self {
+            id: config.id,
+            params: Params::from_config(config),
+            channel_params: array::from_fn(|channel_idx| {
+                ChannelParams::from_config(config, channel_idx)
+            }),
             audio_end,
             ui_end: Some(ui_end),
-            channels: Default::default(),
-        };
-
-        load_module_config!(mixer);
-        mixer
+            voices: Default::default(),
+        }
     }
 
     pub fn take_ui_end(&mut self) -> Option<UiEnd> {
@@ -134,25 +102,14 @@ impl SpectralMixer {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_controls_state(&self) -> ControlsState {
-        ControlsState {
+    pub fn get_config(&self) -> Config {
+        Config {
+            id: self.id,
             num_inputs: self.params.num_inputs,
-            input_params: self.params.input_params,
-            input_levels: array::from_fn(|idx| {
-                self.channels
-                    .iter()
-                    .map(|channel| channel.params.input_params[idx].level)
-                    .collect()
-            }),
-            input_gains: array::from_fn(|idx| {
-                self.channels
-                    .iter()
-                    .map(|channel| channel.params.input_params[idx].gain)
-                    .collect()
-            }),
+            inputs: self.params.inputs,
             output_volume_type: self.params.output_volume_type,
-            output_level: get_stereo_param!(self, output_level),
-            output_gain: get_stereo_param!(self, output_gain),
+            output_level: get_stereo_param2!(self, output_level),
+            output_gain: get_stereo_param2!(self, output_gain),
         }
     }
 
@@ -165,49 +122,29 @@ impl SpectralMixer {
 
     set_mono_param!(set_output_volume_type, output_volume_type, VolumeType);
 
-    set_stereo_param!(set_output_level, output_level);
-    set_stereo_param!(set_output_gain, output_gain);
+    set_stereo_param2!(set_output_level, output_level);
+    set_stereo_param2!(set_output_gain, output_gain);
 
     pub fn set_mix_type(&mut self, input_idx: u8, mix_type: MixType) {
         let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
-        self.params.input_params[input_idx].mix_type = mix_type;
-        self.config.lock().params.input_params[input_idx].mix_type = mix_type;
+        self.params.inputs[input_idx].mix_type = mix_type;
     }
 
     pub fn set_volume_type(&mut self, input_idx: u8, volume_type: VolumeType) {
         let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
-        self.params.input_params[input_idx].volume_type = volume_type;
-        self.config.lock().params.input_params[input_idx].volume_type = volume_type;
+        self.params.inputs[input_idx].volume_type = volume_type;
     }
 
-    pub fn set_input_level(&mut self, input_idx: u8, volume: StereoSample) {
+    pub fn set_input_level(&mut self, input_idx: u8, level: StereoSample) {
         let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
 
-        for (channel, level) in self.channels.iter_mut().zip(volume.iter()) {
-            channel.params.input_params[input_idx].level = *level;
-        }
-
-        let mut cfg = self.config.lock();
-
-        for (config_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-            config_channel.input_params[input_idx].level =
-                channel.params.input_params[input_idx].level;
-        }
+        self.params.inputs[input_idx].level = level;
     }
 
     pub fn set_input_gain(&mut self, input_idx: u8, gain: StereoSample) {
         let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
 
-        for (channel, gain) in self.channels.iter_mut().zip(gain.iter()) {
-            channel.params.input_params[input_idx].gain = *gain;
-        }
-
-        let mut cfg = self.config.lock();
-
-        for (config_channel, channel) in cfg.channels.iter_mut().zip(self.channels.iter()) {
-            config_channel.input_params[input_idx].gain =
-                channel.params.input_params[input_idx].gain;
-        }
+        self.params.inputs[input_idx].gain = gain;
     }
 
     #[inline(always)]
@@ -215,30 +152,27 @@ impl SpectralMixer {
         db_to_gain_fast(vol.min(MAX_VOLUME))
     }
 
-    fn process_voice(
-        current: bool,
-        params: &Params,
-        channel: &ChannelParams,
-        voice: &mut Voice,
-        router: &mut VoiceRouter<'_, '_>,
-    ) {
+    fn process_voice(&mut self, router: &mut VoiceRouter<'_, '_>) {
+        let channel = &self.channel_params[router.channel_idx()];
+        let voice = &mut self.voices[router.channel_idx()][router.voice_idx()];
+        let current = !voice.triggered;
         let output = voice.output.advance();
 
         output.fill(ComplexSample::ZERO);
 
-        for input_idx in 0..params.num_inputs {
-            let input_params = &params.input_params[input_idx as usize];
-            let channel_input_params = &channel.input_params[input_idx as usize];
+        for input_idx in 0..self.params.num_inputs {
+            let input_params = &self.params.inputs[input_idx as usize];
+            let channel_idx = router.channel_idx();
 
             let gain = match input_params.volume_type {
                 VolumeType::Db => Self::to_gain(router.scalar(
                     Input::LevelMix(input_idx),
-                    channel_input_params.level,
+                    input_params.level[channel_idx],
                     current,
                 )),
                 VolumeType::Gain => router.scalar(
                     Input::GainMix(input_idx),
-                    channel_input_params.gain,
+                    input_params.gain[channel_idx],
                     current,
                 ),
             };
@@ -266,7 +200,7 @@ impl SpectralMixer {
             }
         }
 
-        let output_gain = match params.output_volume_type {
+        let output_gain = match self.params.output_volume_type {
             VolumeType::Db => {
                 Self::to_gain(router.scalar(Input::Level, channel.output_level, current))
             }
@@ -275,6 +209,12 @@ impl SpectralMixer {
 
         for out in output.iter_mut() {
             *out *= output_gain;
+        }
+
+        if voice.triggered {
+            voice.triggered = false;
+
+            self.process_voice(router);
         }
     }
 }
@@ -285,13 +225,10 @@ impl SynthModule for SpectralMixer {
     }
 
     fn label(&self) -> String {
-        self.label.clone()
+        "SpecMix".into()
     }
 
-    fn set_label(&mut self, label: String) {
-        self.label = label.clone();
-        self.config.lock().label = Some(label);
-    }
+    fn set_label(&mut self, _label: String) {}
 
     fn module_type(&self) -> ModuleType {
         ModuleType::SpectralMixer
@@ -329,10 +266,10 @@ impl SynthModule for SpectralMixer {
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
-        for channel in &mut self.channels {
+        for channel in &mut self.voices {
             for event in events {
                 if let VoiceEvent::Trigger { voice_idx, .. } = event {
-                    channel.voices[*voice_idx].triggered = true;
+                    channel[*voice_idx].triggered = true;
                 }
             }
         }
@@ -365,33 +302,11 @@ impl SynthModule for SpectralMixer {
     fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
         let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
 
-        for (channel_idx, channel) in self
-            .channels
-            .iter_mut()
-            .enumerate()
-            .take(process_params.spectrum_channels)
-        {
+        for channel_idx in (0..NUM_CHANNELS).take(process_params.spectrum_channels) {
             for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
-                let voice = &mut channel.voices[*voice_idx];
                 let mut voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
 
-                if voice.triggered {
-                    Self::process_voice(
-                        false,
-                        &self.params,
-                        &channel.params,
-                        voice,
-                        &mut voice_router,
-                    );
-                    voice.triggered = false;
-                }
-                Self::process_voice(
-                    true,
-                    &self.params,
-                    &channel.params,
-                    voice,
-                    &mut voice_router,
-                );
+                self.process_voice(&mut voice_router);
             }
         }
     }
@@ -402,8 +317,6 @@ impl SynthModule for SpectralMixer {
         voice_idx: usize,
         channel_idx: usize,
     ) -> &SpectralBuffer {
-        self.channels[channel_idx].voices[voice_idx]
-            .output
-            .get(current)
+        self.voices[channel_idx][voice_idx].output.get(current)
     }
 }
