@@ -361,7 +361,7 @@ impl ModuleUi for HarmonicEditorUI {
             .show_inside(ui, |ui| {
                 ScrollArea::horizontal().show(ui, |ui| {
                     ui.horizontal_top(|ui| {
-                        let mut harmonics = self.editor_bridge.controls().harmonics.clone();
+                        let mut harmonics = self.editor_bridge.harmonics();
                         let height = ui.available_height();
 
                         ui.style_mut().spacing.item_spacing = Vec2::splat(2.0);

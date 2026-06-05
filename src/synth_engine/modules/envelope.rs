@@ -263,16 +263,16 @@ impl Envelope {
         Config {
             id: self.id,
             keep_voice_alive: self.params.keep_voice_alive,
-            delay: get_stereo_param2!(self, delay),
-            attack: get_stereo_param2!(self, attack),
+            delay: get_stereo_param!(self, delay),
+            attack: get_stereo_param!(self, attack),
             attack_curve: self.params.attack_curve,
-            hold: get_stereo_param2!(self, hold),
-            decay: get_stereo_param2!(self, decay),
+            hold: get_stereo_param!(self, hold),
+            decay: get_stereo_param!(self, decay),
             decay_curve: self.params.decay_curve,
-            sustain: get_stereo_param2!(self, sustain),
-            release: get_stereo_param2!(self, release),
+            sustain: get_stereo_param!(self, sustain),
+            release: get_stereo_param!(self, release),
             release_curve: self.params.release_curve,
-            smooth: get_stereo_param2!(self, smooth),
+            smooth: get_stereo_param!(self, smooth),
         }
     }
 
@@ -281,13 +281,13 @@ impl Envelope {
     set_mono_param!(set_decay_curve, decay_curve, EnvelopeCurve);
     set_mono_param!(set_release_curve, release_curve, EnvelopeCurve);
 
-    set_stereo_param2!(set_delay, delay);
-    set_stereo_param2!(set_attack, attack);
-    set_stereo_param2!(set_hold, hold);
-    set_stereo_param2!(set_decay, decay);
-    set_stereo_param2!(set_sustain, sustain);
-    set_stereo_param2!(set_release, release);
-    set_stereo_param2!(set_smooth, smooth);
+    set_stereo_param!(set_delay, delay);
+    set_stereo_param!(set_attack, attack);
+    set_stereo_param!(set_hold, hold);
+    set_stereo_param!(set_decay, decay);
+    set_stereo_param!(set_sustain, sustain);
+    set_stereo_param!(set_release, release);
+    set_stereo_param!(set_smooth, smooth);
 
     fn process_voice_buffer(&mut self, t_step: Sample, mut router: VoiceRouter<'_, '_>) {
         let params = &self.params;

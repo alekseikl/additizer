@@ -1,12 +1,14 @@
-use itertools::izip;
-use serde::{Deserialize, Serialize};
-use std::f32;
+use std::{array, f32};
 
+use itertools::izip;
+
+mod config;
 mod link;
 mod ui_bridge;
 
+pub use config::{Config, LfoShape};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::{ControlsState, UiBridge};
+pub use ui_bridge::UiBridge;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
@@ -14,49 +16,42 @@ use crate::synth_engine::{
     phase::Phase,
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
     smooth::Smoother,
-    synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory},
+    synth_module::{ModInput, ProcessParams, VoiceRouter, VoiceRouterFactory},
     types::ScalarOutput,
 };
 
-#[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum LfoShape {
-    #[default]
-    Triangle,
-    Square,
-    Sine,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ChannelParams {
+struct ChannelParams {
     frequency: Sample,
     phase_shift: Sample,
     skew: Sample,
     smooth_time: Sample,
 }
 
-impl Default for ChannelParams {
-    fn default() -> Self {
+impl ChannelParams {
+    fn from_config(c: &config::Config, channel_idx: usize) -> Self {
         Self {
-            frequency: 1.0,
-            phase_shift: 0.0,
-            skew: 0.5,
-            smooth_time: 0.0,
+            frequency: c.frequency[channel_idx],
+            phase_shift: c.phase_shift[channel_idx],
+            skew: c.skew[channel_idx],
+            smooth_time: c.smooth_time[channel_idx],
         }
     }
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct Params {
+struct Params {
     shape: LfoShape,
     bipolar: bool,
     steal_phase: bool,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct LfoConfig {
-    label: Option<String>,
-    params: Params,
-    channels: [ChannelParams; NUM_CHANNELS],
+impl Params {
+    fn from_config(c: &config::Config) -> Self {
+        Self {
+            shape: c.shape,
+            bipolar: c.bipolar,
+            steal_phase: c.steal_phase,
+        }
+    }
 }
 
 struct Voice {
@@ -81,38 +76,41 @@ impl Default for Voice {
     }
 }
 
-#[derive(Default)]
-struct Channel {
-    params: ChannelParams,
-    voices: [Voice; MAX_VOICES],
-}
-
 struct InputBuffers {
     frequency: Buffer,
     phase_shift: Buffer,
     skew: Buffer,
 }
 
+type ChannelVoices = [Voice; MAX_VOICES];
+
 pub struct Lfo {
     id: ModuleId,
-    label: String,
     params: Params,
-    config: ModuleConfigBox<LfoConfig>,
+    channel_params: [ChannelParams; NUM_CHANNELS],
     inputs: InputBuffers,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    channels: [Channel; NUM_CHANNELS],
+    voices: [ChannelVoices; NUM_CHANNELS],
 }
 
 impl Lfo {
-    pub fn new(id: ModuleId, config: ModuleConfigBox<LfoConfig>) -> Self {
+    pub fn new(id: ModuleId) -> Self {
+        Self::from_config(&Config {
+            id,
+            ..Config::default()
+        })
+    }
+
+    pub fn from_config(config: &config::Config) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
-        let mut lfo = Self {
-            id,
-            label: format!("LFO {id}"),
-            config,
-            params: Params::default(),
+        Self {
+            id: config.id,
+            params: Params::from_config(config),
+            channel_params: array::from_fn(|channel_idx| {
+                ChannelParams::from_config(config, channel_idx)
+            }),
             inputs: InputBuffers {
                 frequency: zero_buffer(),
                 phase_shift: zero_buffer(),
@@ -120,11 +118,8 @@ impl Lfo {
             },
             audio_end,
             ui_end: Some(ui_end),
-            channels: Default::default(),
-        };
-
-        load_module_config!(lfo);
-        lfo
+            voices: Default::default(),
+        }
     }
 
     pub fn take_ui_end(&mut self) -> Option<UiEnd> {
@@ -136,8 +131,9 @@ impl Lfo {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_controls_state(&self) -> ControlsState {
-        ControlsState {
+    pub fn get_config(&self) -> Config {
+        Config {
+            id: self.id,
             shape: self.params.shape,
             bipolar: self.params.bipolar,
             steal_phase: self.params.steal_phase,
@@ -193,22 +189,22 @@ impl Lfo {
         Sample::from(bipolar) * value.mul_add(2.0, -1.0) + Sample::from(!bipolar) * value
     }
 
-    fn process_voice(
+    fn process_scalar(
         params: &Params,
-        channel_params: &ChannelParams,
+        channel: &ChannelParams,
         voice: &mut Voice,
         current: bool,
         t_step: Sample,
         router: &mut VoiceRouter<'_, '_>,
     ) {
-        let frequency = router.scalar(Input::LowFrequency, channel_params.frequency, current);
+        let frequency = router.scalar(Input::LowFrequency, channel.frequency, current);
 
         let phase_shift = router
-            .scalar(Input::PhaseShift, channel_params.phase_shift, current)
+            .scalar(Input::PhaseShift, channel.phase_shift, current)
             .clamp(-1.0, 1.0);
 
         let skew = router
-            .scalar(Input::Skew, channel_params.skew, current)
+            .scalar(Input::Skew, channel.skew, current)
             .clamp(0.0, 1.0);
 
         let arg = voice.phase.add_normalized(phase_shift).normalized();
@@ -220,9 +216,9 @@ impl Lfo {
         voice.phase.advance_normalized(t_step * frequency);
     }
 
-    fn process_voice_buffer(
+    fn process_buffer(
         params: &Params,
-        channel_params: &ChannelParams,
+        channel: &ChannelParams,
         process_params: &ProcessParams,
         inputs: &mut InputBuffers,
         voice: &mut Voice,
@@ -238,27 +234,55 @@ impl Lfo {
 
         voice
             .audio_smoother
-            .update(process_params.sample_rate, channel_params.smooth_time);
+            .update(process_params.sample_rate, channel.smooth_time);
 
         for (out, frequency_mod, phase_shift_mod, skew_mod) in
             izip!(out, frequency_mod, phase_shift_mod, skew_mod)
         {
             let arg = voice
                 .audio_phase
-                .add_normalized(channel_params.phase_shift + phase_shift_mod)
+                .add_normalized(channel.phase_shift + phase_shift_mod)
                 .normalized();
 
             let sample = Self::apply_bipolar(
                 shape_func(Self::skew_arg(
                     arg,
-                    (channel_params.skew + skew_mod).clamp(0.0, 1.0),
+                    (channel.skew + skew_mod).clamp(0.0, 1.0),
                 )),
                 params.bipolar,
             );
 
             *out = voice.audio_smoother.tick(sample);
-            voice.audio_phase += (channel_params.frequency + frequency_mod) * freq_phase_mult;
+            voice.audio_phase += (channel.frequency + frequency_mod) * freq_phase_mult;
         }
+    }
+
+    fn process_voice(&mut self, router: &mut VoiceRouter<'_, '_>, process_params: &ProcessParams) {
+        let channel = &self.channel_params[router.channel_idx()];
+        let voice = &mut self.voices[router.channel_idx()][router.voice_idx()];
+
+        if voice.triggered {
+            Self::process_scalar(&self.params, channel, voice, false, 0.0, router);
+            voice.triggered = false;
+        }
+
+        Self::process_scalar(
+            &self.params,
+            channel,
+            voice,
+            true,
+            process_params.buffer_t_step,
+            router,
+        );
+
+        Self::process_buffer(
+            &self.params,
+            channel,
+            process_params,
+            &mut self.inputs,
+            voice,
+            router,
+        );
     }
 }
 
@@ -268,13 +292,10 @@ impl SynthModule for Lfo {
     }
 
     fn label(&self) -> String {
-        self.label.clone()
+        "LFO".into()
     }
 
-    fn set_label(&mut self, label: String) {
-        self.label = label.clone();
-        self.config.lock().label = Some(label);
-    }
+    fn set_label(&mut self, _label: String) {}
 
     fn module_type(&self) -> ModuleType {
         ModuleType::Lfo
@@ -295,7 +316,7 @@ impl SynthModule for Lfo {
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
-        for channel in &mut self.channels {
+        for channel in &mut self.voices {
             for event in events {
                 if let VoiceEvent::Trigger {
                     voice_idx,
@@ -303,25 +324,21 @@ impl SynthModule for Lfo {
                     ..
                 } = event
                 {
-                    let voice = &mut channel.voices[*voice_idx];
+                    let (phase, audio_phase) = if let Some(prev_voice_idx) = prev_voice_idx
+                        && self.params.steal_phase
+                    {
+                        let prev_voice = &channel[*prev_voice_idx];
+                        (prev_voice.phase, prev_voice.audio_phase)
+                    } else {
+                        (Phase::ZERO, Phase::ZERO)
+                    };
+
+                    let voice = &mut channel[*voice_idx];
 
                     voice.triggered = true;
                     voice.audio_smoother.reset(0.0);
-
-                    if let Some(prev_voice_idx) = prev_voice_idx
-                        && self.params.steal_phase
-                    {
-                        let prev_voice = &mut channel.voices[*prev_voice_idx];
-                        let prev_phase = prev_voice.phase;
-                        let prev_audio_phase = prev_voice.audio_phase;
-                        let voice = &mut channel.voices[*voice_idx];
-
-                        voice.phase = prev_phase;
-                        voice.audio_phase = prev_audio_phase;
-                    } else {
-                        voice.phase = Phase::ZERO;
-                        voice.audio_phase = Phase::ZERO;
-                    }
+                    voice.phase = phase;
+                    voice.audio_phase = audio_phase;
                 }
             }
         }
@@ -344,54 +361,23 @@ impl SynthModule for Lfo {
         }
     }
 
-    fn process(&mut self, params: &ProcessParams, router: &mut dyn Router) {
-        let t_step = params.buffer_t_step;
-        let mut rf = VoiceRouterFactory::new(self.id, router, params);
+    fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
+        let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
 
-        for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
-            for (seq_idx, voice_idx) in params.active_voices.iter().enumerate() {
-                let voice = &mut channel.voices[*voice_idx];
+        for channel_idx in 0..NUM_CHANNELS {
+            for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
                 let mut voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
 
-                if voice.triggered {
-                    Self::process_voice(
-                        &self.params,
-                        &channel.params,
-                        voice,
-                        false,
-                        0.0,
-                        &mut voice_router,
-                    );
-                    voice.triggered = false;
-                }
-                Self::process_voice(
-                    &self.params,
-                    &channel.params,
-                    voice,
-                    true,
-                    t_step,
-                    &mut voice_router,
-                );
-
-                Self::process_voice_buffer(
-                    &self.params,
-                    &channel.params,
-                    params,
-                    &mut self.inputs,
-                    voice,
-                    &voice_router,
-                );
+                self.process_voice(&mut voice_router, process_params);
             }
         }
     }
 
     fn get_buffer_output(&self, voice_idx: usize, channel_idx: usize) -> &Buffer {
-        &self.channels[channel_idx].voices[voice_idx].audio_output
+        &self.voices[channel_idx][voice_idx].audio_output
     }
 
     fn get_scalar_output(&self, current: bool, voice_idx: usize, channel_idx: usize) -> Sample {
-        self.channels[channel_idx].voices[voice_idx]
-            .output
-            .get(current)
+        self.voices[channel_idx][voice_idx].output.get(current)
     }
 }

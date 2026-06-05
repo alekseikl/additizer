@@ -2,21 +2,18 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use crate::synth_engine::{ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample, SynthEngine};
+use crate::synth_engine::{
+    ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample, SynthEngine, buffer::HARMONIC_SERIES_BUFFER,
+};
 
 use super::link::{UiEnd, UiUpdate};
-use super::{FilterParams, HarmonicEditor, SetParams};
-
-#[derive(Clone)]
-pub struct ControlsState {
-    pub harmonics: Vec<StereoSample>,
-}
+use super::{Config, FilterParams, HarmonicEditor, SetParams};
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    controls: ControlsState,
+    config: Config,
 }
 
 impl UiBridge {
@@ -24,7 +21,7 @@ impl UiBridge {
         let mut synth_lock = synth.lock();
         let editor = synth_lock.get_typed_module_mut::<HarmonicEditor>(module_id)?;
         let ui_end = editor.take_ui_end()?;
-        let controls = editor.get_controls_state();
+        let config = editor.get_config();
 
         drop(synth_lock);
 
@@ -32,7 +29,7 @@ impl UiBridge {
             synth,
             module_id,
             ui_end: Some(ui_end),
-            controls,
+            config,
         })
     }
 
@@ -44,7 +41,7 @@ impl UiBridge {
         let synth_lock = self.synth.lock();
 
         if let Some(editor) = synth_lock.get_typed_module::<HarmonicEditor>(self.module_id) {
-            self.controls = editor.get_controls_state();
+            self.config = editor.get_config();
         }
     }
 
@@ -58,8 +55,12 @@ impl UiBridge {
         }
     }
 
-    pub fn controls(&self) -> &ControlsState {
-        &self.controls
+    // pub fn config(&self) -> &Config {
+    //     &self.config
+    // }
+
+    pub fn harmonics(&self) -> Vec<StereoSample> {
+        HarmonicEditor::harmonics_from_config(&self.config)
     }
 
     pub fn set_harmonic(&mut self, harmonic_number: usize, gain: StereoSample) {
@@ -70,7 +71,13 @@ impl UiBridge {
             .set_harmonic(harmonic_number, gain)
         {
             let idx = harmonic_number.clamp(1, SPECTRAL_BUFFER_SIZE - 1);
-            self.controls.harmonics[idx] = gain;
+
+            for (channel, gain) in self.config.spectrum.iter_mut().zip(gain.iter()) {
+                if idx < channel.len() {
+                    channel[idx] =
+                        super::config::ComplexCfg::from_complex(HARMONIC_SERIES_BUFFER[idx] * gain);
+                }
+            }
         }
     }
 

@@ -106,7 +106,7 @@ impl Amplifier {
         }
     }
 
-    set_smoothed_param2!(set_gain, gain);
+    set_smoothed_param!(set_gain, gain);
 
     fn process_channel_voice(&mut self, mut router: VoiceRouter<'_, '_>) {
         let channel = &mut self.channel_params[router.channel_idx()];

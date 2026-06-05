@@ -1,14 +1,11 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
     MAX_BLOCK_SIZE,
-    modules::{
-        LfoConfig, OutputConfig,
-        harmonic_editor::HarmonicEditorConfig,
-    },
+    modules::OutputConfig,
     routing::{MAX_VOICES, MIN_MODULE_ID, ModuleId, ModuleLink},
 };
 
@@ -39,15 +36,8 @@ impl Default for RoutingConfig {
 
 type CfgBox<T> = Arc<Mutex<T>>;
 
-#[derive(Clone, Serialize, Deserialize)]
-pub enum ModuleConfig {
-    HarmonicEditor(CfgBox<HarmonicEditorConfig>),
-    Lfo(CfgBox<LfoConfig>),
-}
-
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub routing: RoutingConfig,
-    pub modules: HashMap<ModuleId, ModuleConfig>,
     pub output: CfgBox<OutputConfig>,
 }

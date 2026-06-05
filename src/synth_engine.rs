@@ -13,11 +13,8 @@ use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
     buffer::{Buffer, SpectralBuffer, add_to_buffer, copy_or_add_to_buffer},
-    config::{ModuleConfig, RoutingConfig},
-    modules::{
-        LfoConfig, Output, OutputConfig, harmonic_editor::HarmonicEditorConfig,
-        oscillator::Oscillator,
-    },
+    config::RoutingConfig,
+    modules::{Output, OutputConfig, oscillator::Oscillator},
     routing::{DataType, LinkModulation, NUM_CHANNELS, Router, VoiceEvent, data_types_compatible},
     smooth::SmoothedSampleParams,
     synth_module::ProcessParams,
@@ -136,23 +133,6 @@ pub struct SynthEngine {
     output_level_param: Option<Arc<FloatParam>>,
     audio_end: ui_bridge::AudioEnd,
     ui_end: Option<ui_bridge::UiEnd>,
-}
-
-macro_rules! add_module_method {
-    ($func_name:ident, $module_type:ident, $module_cfg:ident $(, $arg:ident )*) => {
-        pub fn $func_name(&mut self) -> ModuleId {
-            let id = self.alloc_module_id();
-            let config = Arc::new(Mutex::new($module_cfg::default()));
-            let module = Box::new($module_type::new(id, Arc::clone(&config) $(, self.$arg() )*));
-
-            self.modules.insert(id, Some(module));
-            self.config
-                .lock()
-                .modules
-                .insert(id, ModuleConfig::$module_type(Arc::clone(&config)));
-            id
-        }
-    };
 }
 
 macro_rules! add_module_method2 {
@@ -337,14 +317,14 @@ impl SynthEngine {
 
     add_module_method2!(add_oscillator, Oscillator);
     add_module_method2!(add_envelope, Envelope);
-    add_module_method!(add_lfo, Lfo, LfoConfig);
+    add_module_method2!(add_lfo, Lfo);
     add_module_method2!(add_amplifier, Amplifier);
     add_module_method2!(add_mixer, Mixer);
     add_module_method2!(add_wave_shaper, WaveShaper);
     add_module_method2!(add_spectral_filter, SpectralFilter);
     add_module_method2!(add_spectral_blend, SpectralBlend);
     add_module_method2!(add_spectral_mixer, SpectralMixer);
-    add_module_method!(add_harmonic_editor, HarmonicEditor, HarmonicEditorConfig);
+    add_module_method2!(add_harmonic_editor, HarmonicEditor);
     add_module_method2!(add_expressions, Expressions);
     add_module_method2!(add_external_param, ExternalParam, get_external_params);
 
@@ -358,7 +338,6 @@ impl SynthEngine {
         };
 
         self.modules.remove(&id);
-        self.config.lock().modules.remove(&id);
 
         let new_links: Vec<_> = self
             .get_links()
@@ -770,17 +749,12 @@ impl SynthEngine {
         let mut cfg = self.config.lock();
 
         cfg.routing = RoutingConfig::default();
-        cfg.modules.clear();
         *cfg.output.lock() = OutputConfig::default();
     }
 
     fn load_config(&mut self) -> bool {
         let cfg = Arc::clone(&self.config);
         let cfg = cfg.lock();
-
-        if cfg.modules.is_empty() {
-            return false;
-        }
 
         self.next_id = cfg.routing.next_module_id;
         self.block_size = Self::clamp_block_size(cfg.routing.block_size);
@@ -789,26 +763,6 @@ impl SynthEngine {
         self.voices_handler
             .set_num_voices(Self::clamp_num_voices(cfg.routing.num_voices));
         self.voices_handler.set_legato(cfg.routing.legato);
-
-        macro_rules! restore_module {
-            ($module_type:ident, $module_id:ident, $cfg:ident $(, $arg:ident )*) => {{
-                self.modules.insert(
-                    *$module_id,
-                    Some(Box::new($module_type::new(*$module_id, Arc::clone($cfg) $(, self.$arg() )*))),
-                );
-            }};
-            ($module_type:ident, $module_id:ident) => {{
-                self.modules
-                    .insert(*$module_id, Some(Box::new($module_type::new(*$module_id))));
-            }};
-        }
-
-        for (id, cfg) in cfg.modules.iter() {
-            match cfg {
-                ModuleConfig::HarmonicEditor(cfg) => restore_module!(HarmonicEditor, id, cfg),
-                ModuleConfig::Lfo(cfg) => restore_module!(Lfo, id, cfg),
-            }
-        }
 
         for link in &cfg.routing.links {
             if self.can_be_linked(&link.src, &link.dst).is_err() {

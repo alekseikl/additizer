@@ -109,9 +109,9 @@ impl SpectralFilter {
             filter_type: self.params.filter_type,
             fourth_order: self.params.fourth_order,
             linear_phase: self.params.linear_phase,
-            cutoff: get_stereo_param2!(self, cutoff),
-            q: get_stereo_param2!(self, q),
-            drive: get_stereo_param2!(self, drive),
+            cutoff: get_stereo_param!(self, cutoff),
+            q: get_stereo_param!(self, q),
+            drive: get_stereo_param!(self, drive),
         }
     }
 
@@ -119,9 +119,9 @@ impl SpectralFilter {
     set_mono_param!(set_fourth_order, fourth_order, bool);
     set_mono_param!(set_linear_phase, linear_phase, bool);
 
-    set_stereo_param2!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
-    set_stereo_param2!(set_q, q, q.clamp(0.1, 10.0));
-    set_stereo_param2!(set_drive, drive);
+    set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
+    set_stereo_param!(set_q, q, q.clamp(0.1, 10.0));
+    set_stereo_param!(set_drive, drive);
 
     fn apply_response(
         output: &mut SpectralBuffer,

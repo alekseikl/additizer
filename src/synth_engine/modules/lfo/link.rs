@@ -1,6 +1,6 @@
 use crate::synth_engine::{Input, StereoSample};
 
-use super::LfoShape;
+use super::config::LfoShape;
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },

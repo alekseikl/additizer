@@ -80,11 +80,11 @@ impl SpectralBlend {
     pub fn get_config(&self) -> Config {
         Config {
             id: self.id,
-            blend: get_stereo_param2!(self, blend),
+            blend: get_stereo_param!(self, blend),
         }
     }
 
-    set_stereo_param2!(set_blend, blend, blend.clamp(0.0, 1.0));
+    set_stereo_param!(set_blend, blend, blend.clamp(0.0, 1.0));
 
     fn process_voice(&mut self, router: &mut VoiceRouter<'_, '_>) {
         let channel = &self.channel_params[router.channel_idx()];

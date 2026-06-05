@@ -323,14 +323,14 @@ impl Oscillator {
             steal_phase: self.params.steal_phase,
             gain: get_smoothed_param2!(self, gain),
             pitch_shift: get_smoothed_param2!(self, pitch_shift),
-            detune: get_stereo_param2!(self, detune),
-            detune_power: get_stereo_param2!(self, detune_power),
-            glide: get_stereo_param2!(self, glide),
-            glide_slope: get_stereo_param2!(self, glide_slope),
+            detune: get_stereo_param!(self, detune),
+            detune_power: get_stereo_param!(self, detune_power),
+            glide: get_stereo_param!(self, glide),
+            glide_slope: get_stereo_param!(self, glide_slope),
             phase_shift: get_smoothed_param2!(self, phase_shift),
             frequency_shift: get_smoothed_param2!(self, frequency_shift),
-            phases_blend: get_stereo_param2!(self, phases_blend),
-            gains_blend: get_stereo_param2!(self, gains_blend),
+            phases_blend: get_stereo_param!(self, phases_blend),
+            gains_blend: get_stereo_param!(self, gains_blend),
             unison: array::from_fn(|i| config::UnisonConfig {
                 initial_phase: get_unison_param!(self, initial_phase, i),
                 phase_shift: get_unison_param!(self, phase_shift, i),
@@ -349,27 +349,27 @@ impl Oscillator {
     );
     set_mono_param!(set_steal_phase, steal_phase, bool);
 
-    set_smoothed_param2!(set_gain, gain, gain.clamp(0.0, 1.0));
-    set_smoothed_param2!(
+    set_smoothed_param!(set_gain, gain, gain.clamp(0.0, 1.0));
+    set_smoothed_param!(
         set_pitch_shift,
         pitch_shift,
         pitch_shift.clamp(st_to_octave(-60.0), st_to_octave(60.0))
     );
-    set_stereo_param2!(set_detune, detune, detune.clamp(0.0, st_to_octave(1.0)));
-    set_stereo_param2!(
+    set_stereo_param!(set_detune, detune, detune.clamp(0.0, st_to_octave(1.0)));
+    set_stereo_param!(
         set_detune_power,
         detune_power,
         detune_power.clamp(-5.0, 5.0)
     );
 
-    set_stereo_param2!(set_glide, glide, glide.clamp(0.0, MAX_GLIDE));
-    set_stereo_param2!(set_glide_slope, glide_slope, glide_slope.clamp(-1.0, 1.0));
+    set_stereo_param!(set_glide, glide, glide.clamp(0.0, MAX_GLIDE));
+    set_stereo_param!(set_glide_slope, glide_slope, glide_slope.clamp(-1.0, 1.0));
 
-    set_smoothed_param2!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
-    set_smoothed_param2!(set_frequency_shift, frequency_shift);
+    set_smoothed_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
+    set_smoothed_param!(set_frequency_shift, frequency_shift);
 
-    set_stereo_param2!(set_phases_blend, phases_blend, phases_blend.clamp(0.0, 1.0));
-    set_stereo_param2!(set_gains_blend, gains_blend, gains_blend.clamp(0.0, 1.0));
+    set_stereo_param!(set_phases_blend, phases_blend, phases_blend.clamp(0.0, 1.0));
+    set_stereo_param!(set_gains_blend, gains_blend, gains_blend.clamp(0.0, 1.0));
 
     set_unison_param!(
         set_initial_phase,

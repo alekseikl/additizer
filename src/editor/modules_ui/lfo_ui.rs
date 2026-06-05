@@ -45,7 +45,7 @@ impl ModuleUi for LfoUi {
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
         let module_id = self.lfo_bridge.module_id();
-        let mut controls = self.lfo_bridge.controls().clone();
+        let mut config = self.lfo_bridge.config().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
@@ -62,11 +62,11 @@ impl ModuleUi for LfoUi {
             .show(ui, |ui| {
                 ui.label("Shape");
                 ComboBox::from_id_salt("shape-select")
-                    .selected_text(controls.shape.label())
+                    .selected_text(config.shape.label())
                     .show_ui(ui, |ui| {
                         for shape in SHAPE_OPTIONS {
                             if ui
-                                .selectable_label(controls.shape == *shape, shape.label())
+                                .selectable_label(config.shape == *shape, shape.label())
                                 .clicked()
                             {
                                 self.lfo_bridge.set_shape(*shape);
@@ -78,35 +78,35 @@ impl ModuleUi for LfoUi {
                 ui.label("Skew");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.skew,
+                        &mut config.skew,
                         bridge,
                         Input::Skew,
                         module_id,
                     ))
                     .changed()
                 {
-                    self.lfo_bridge.set_param(Input::Skew, controls.skew);
+                    self.lfo_bridge.set_param(Input::Skew, config.skew);
                 }
                 ui.end_row();
 
                 ui.label("Frequency");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.frequency,
+                        &mut config.frequency,
                         bridge,
                         Input::LowFrequency,
                         module_id,
                     ))
                     .changed()
                 {
-                    self.lfo_bridge.set_param(Input::LowFrequency, controls.frequency);
+                    self.lfo_bridge.set_param(Input::LowFrequency, config.frequency);
                 }
                 ui.end_row();
 
                 ui.label("Phase shift");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.phase_shift,
+                        &mut config.phase_shift,
                         bridge,
                         Input::PhaseShift,
                         module_id,
@@ -114,14 +114,14 @@ impl ModuleUi for LfoUi {
                     .changed()
                 {
                     self.lfo_bridge
-                        .set_param(Input::PhaseShift, controls.phase_shift);
+                        .set_param(Input::PhaseShift, config.phase_shift);
                 }
                 ui.end_row();
 
                 ui.label("Smooth");
                 if ui
                     .add(
-                        StereoSlider::new(&mut controls.smooth_time)
+                        StereoSlider::new(&mut config.smooth_time)
                             .range(0.0..=0.1)
                             .display_scale(1000.0)
                             .default_value(0.0)
@@ -131,25 +131,25 @@ impl ModuleUi for LfoUi {
                     )
                     .changed()
                 {
-                    self.lfo_bridge.set_smooth_time(controls.smooth_time);
+                    self.lfo_bridge.set_smooth_time(config.smooth_time);
                 }
                 ui.end_row();
 
                 ui.label("Bipolar");
                 if ui
-                    .add(Checkbox::without_text(&mut controls.bipolar))
+                    .add(Checkbox::without_text(&mut config.bipolar))
                     .changed()
                 {
-                    self.lfo_bridge.set_bipolar(controls.bipolar);
+                    self.lfo_bridge.set_bipolar(config.bipolar);
                 }
                 ui.end_row();
 
                 ui.label("Steal phase");
                 if ui
-                    .add(Checkbox::without_text(&mut controls.steal_phase))
+                    .add(Checkbox::without_text(&mut config.steal_phase))
                     .changed()
                 {
-                    self.lfo_bridge.set_steal_phase(controls.steal_phase);
+                    self.lfo_bridge.set_steal_phase(config.steal_phase);
                 }
                 ui.end_row();
             });

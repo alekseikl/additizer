@@ -115,15 +115,15 @@ impl WaveShaper {
         Config {
             id: self.id,
             shaper_type: self.params.shaper_type,
-            distortion: get_stereo_param2!(self, distortion),
-            clipping_level: get_stereo_param2!(self, clipping_level),
+            distortion: get_stereo_param!(self, distortion),
+            clipping_level: get_stereo_param!(self, clipping_level),
         }
     }
 
     set_mono_param!(set_shaper_type, shaper_type, ShaperType);
 
-    set_stereo_param2!(set_distortion, distortion);
-    set_stereo_param2!(set_clipping_level, clipping_level);
+    set_stereo_param!(set_distortion, distortion);
+    set_stereo_param!(set_clipping_level, clipping_level);
 
     fn process_channel_voice(&mut self, router: VoiceRouter<'_, '_>) {
         let channel = &self.channel_params[router.channel_idx()];

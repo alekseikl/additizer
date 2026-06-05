@@ -139,8 +139,8 @@ impl SpectralMixer {
                 ),
             }),
             output_volume_type: self.params.output_volume_type,
-            output_level: get_stereo_param2!(self, output_level),
-            output_gain: get_stereo_param2!(self, output_gain),
+            output_level: get_stereo_param!(self, output_level),
+            output_gain: get_stereo_param!(self, output_gain),
         }
     }
 
@@ -153,8 +153,8 @@ impl SpectralMixer {
 
     set_mono_param!(set_output_volume_type, output_volume_type, VolumeType);
 
-    set_stereo_param2!(set_output_level, output_level);
-    set_stereo_param2!(set_output_gain, output_gain);
+    set_stereo_param!(set_output_level, output_level);
+    set_stereo_param!(set_output_gain, output_gain);
 
     pub fn set_mix_type(&mut self, input_idx: u8, mix_type: MixType) {
         let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;

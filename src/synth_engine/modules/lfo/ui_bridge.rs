@@ -4,25 +4,14 @@ use parking_lot::Mutex;
 
 use crate::synth_engine::{Input, ModuleId, StereoSample, SynthEngine};
 
-use super::{Lfo, LfoShape};
+use super::{Config, Lfo, LfoShape};
 use super::link::UiEnd;
-
-#[derive(Clone)]
-pub struct ControlsState {
-    pub shape: LfoShape,
-    pub bipolar: bool,
-    pub steal_phase: bool,
-    pub frequency: StereoSample,
-    pub phase_shift: StereoSample,
-    pub skew: StereoSample,
-    pub smooth_time: StereoSample,
-}
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    controls: ControlsState,
+    config: Config,
 }
 
 impl UiBridge {
@@ -30,7 +19,7 @@ impl UiBridge {
         let mut synth_lock = synth.lock();
         let lfo = synth_lock.get_typed_module_mut::<Lfo>(module_id)?;
         let ui_end = lfo.take_ui_end()?;
-        let controls = lfo.get_controls_state();
+        let config = lfo.get_config();
 
         drop(synth_lock);
 
@@ -38,7 +27,7 @@ impl UiBridge {
             synth,
             module_id,
             ui_end: Some(ui_end),
-            controls,
+            config,
         })
     }
 
@@ -46,8 +35,8 @@ impl UiBridge {
         self.module_id
     }
 
-    pub fn controls(&self) -> &ControlsState {
-        &self.controls
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
@@ -56,34 +45,34 @@ impl UiBridge {
         }
 
         match input {
-            Input::LowFrequency => self.controls.frequency = value,
-            Input::PhaseShift => self.controls.phase_shift = value,
-            Input::Skew => self.controls.skew = value,
+            Input::LowFrequency => self.config.frequency = value,
+            Input::PhaseShift => self.config.phase_shift = value,
+            Input::Skew => self.config.skew = value,
             _ => (),
         }
     }
 
     pub fn set_shape(&mut self, shape: LfoShape) {
         if self.ui_end.as_mut().unwrap().set_shape(shape) {
-            self.controls.shape = shape;
+            self.config.shape = shape;
         }
     }
 
     pub fn set_bipolar(&mut self, value: bool) {
         if self.ui_end.as_mut().unwrap().set_bipolar(value) {
-            self.controls.bipolar = value;
+            self.config.bipolar = value;
         }
     }
 
     pub fn set_steal_phase(&mut self, value: bool) {
         if self.ui_end.as_mut().unwrap().set_steal_phase(value) {
-            self.controls.steal_phase = value;
+            self.config.steal_phase = value;
         }
     }
 
     pub fn set_smooth_time(&mut self, value: StereoSample) {
         if self.ui_end.as_mut().unwrap().set_smooth_time(value) {
-            self.controls.smooth_time = value;
+            self.config.smooth_time = value;
         }
     }
 }

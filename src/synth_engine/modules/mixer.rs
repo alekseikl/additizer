@@ -156,8 +156,8 @@ impl Mixer {
                 ),
             }),
             output_volume_type: self.params.output_volume_type,
-            output_level: get_stereo_param2!(self, output_level),
-            output_gain: get_stereo_param2!(self, output_gain),
+            output_level: get_stereo_param!(self, output_level),
+            output_gain: get_stereo_param!(self, output_gain),
         }
     }
 
@@ -170,8 +170,8 @@ impl Mixer {
 
     set_mono_param!(set_output_volume_type, output_volume_type, VolumeType);
 
-    set_stereo_param2!(set_output_level, output_level);
-    set_stereo_param2!(set_output_gain, output_gain);
+    set_stereo_param!(set_output_level, output_level);
+    set_stereo_param!(set_output_gain, output_gain);
 
     pub fn set_volume_type(&mut self, input_idx: u8, volume_type: VolumeType) {
         let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
@@ -249,7 +249,9 @@ impl Mixer {
                 VolumeType::Gain => {
                     let gain_mod =
                         router.buffer(Input::GainMix(input_idx), &mut self.buffers.level_mod);
-                    let gain_mod = gain_mod.iter().map(|gain_mod| input_channel.gain + gain_mod);
+                    let gain_mod = gain_mod
+                        .iter()
+                        .map(|gain_mod| input_channel.gain + gain_mod);
 
                     Self::mix_input(&mut voice.output, input, gain_mod, input_idx, samples);
                 }
@@ -267,7 +269,9 @@ impl Mixer {
             }
             VolumeType::Gain => {
                 let gain_mod = router.buffer(Input::Gain, &mut self.buffers.level_mod);
-                let gain_mod = gain_mod.iter().map(|gain_mod| channel.output_gain + gain_mod);
+                let gain_mod = gain_mod
+                    .iter()
+                    .map(|gain_mod| channel.output_gain + gain_mod);
 
                 Self::modulate_output(&mut voice.output, gain_mod, samples);
             }
