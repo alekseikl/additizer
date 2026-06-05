@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use nih_plug::params::FloatParam;
-use serde::{Deserialize, Serialize};
 
+mod config;
 mod link;
 mod ui_bridge;
 
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::{ControlsState, UiBridge};
+pub use config::Config;
+pub use ui_bridge::UiBridge;
 
 use crate::{
     synth_engine::{
@@ -15,10 +16,9 @@ use crate::{
         buffer::{Buffer, zero_buffer},
         routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
         smooth::Smoother,
-        synth_module::{ModInput, ModuleConfigBox, ProcessParams},
+        synth_module::{ModInput, ProcessParams},
         types::ScalarOutput,
     },
-    utils::from_ms,
 };
 
 pub const NUM_FLOAT_PARAMS: usize = 4;
@@ -27,27 +27,20 @@ pub struct ExternalParamsBlock {
     pub float_params: [Arc<FloatParam>; NUM_FLOAT_PARAMS],
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Params {
+struct Params {
     selected_param_index: usize,
     smooth: Sample,
     sample_and_hold: bool,
 }
 
-impl Default for Params {
-    fn default() -> Self {
+impl Params {
+    fn from_config(c: &config::Config) -> Self {
         Self {
-            selected_param_index: 0,
-            smooth: from_ms(2.0),
-            sample_and_hold: false,
+            selected_param_index: c.selected_param_index.min(NUM_FLOAT_PARAMS - 1),
+            smooth: c.smooth,
+            sample_and_hold: c.sample_and_hold,
         }
     }
-}
-
-#[derive(Clone, Default, Serialize, Deserialize)]
-pub struct ExternalParamConfig {
-    label: Option<String>,
-    params: Params,
 }
 
 struct Voice {
@@ -70,53 +63,39 @@ impl Default for Voice {
     }
 }
 
-#[derive(Default)]
-struct Channel {
-    voices: [Voice; MAX_VOICES],
-}
+type ChannelVoices = [Voice; MAX_VOICES];
 
 pub struct ExternalParam {
     id: ModuleId,
-    label: String,
-    config: ModuleConfigBox<ExternalParamConfig>,
     params_block: Arc<ExternalParamsBlock>,
     params: Params,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    channels: [Channel; NUM_CHANNELS],
+    voices: [ChannelVoices; NUM_CHANNELS],
 }
 
 impl ExternalParam {
-    pub fn new(
-        id: ModuleId,
-        config: ModuleConfigBox<ExternalParamConfig>,
-        params_block: Arc<ExternalParamsBlock>,
-    ) -> Self {
+    pub fn new(id: ModuleId, params_block: Arc<ExternalParamsBlock>) -> Self {
+        Self::from_config(
+            &Config {
+                id,
+                ..Config::default()
+            },
+            params_block,
+        )
+    }
+
+    pub fn from_config(config: &config::Config, params_block: Arc<ExternalParamsBlock>) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
-        let mut ext = Self {
-            id,
-            label: format!("External Param {id}"),
-            config,
+        Self {
+            id: config.id,
             params_block,
-            params: Params::default(),
+            params: Params::from_config(config),
             audio_end,
             ui_end: Some(ui_end),
-            channels: Default::default(),
-        };
-
-        {
-            let cfg = ext.config.lock();
-
-            if let Some(label) = cfg.label.as_ref() {
-                ext.label = label.clone();
-            }
-            ext.params = cfg.params.clone();
+            voices: Default::default(),
         }
-
-        ext.params.selected_param_index = ext.params.selected_param_index.min(NUM_FLOAT_PARAMS - 1);
-
-        ext
     }
 
     pub fn take_ui_end(&mut self) -> Option<UiEnd> {
@@ -128,10 +107,10 @@ impl ExternalParam {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_controls_state(&self) -> ControlsState {
-        ControlsState {
+    pub fn get_config(&self) -> Config {
+        Config {
+            id: self.id,
             selected_param_index: self.params.selected_param_index,
-            num_of_params: NUM_FLOAT_PARAMS,
             smooth: self.params.smooth,
             sample_and_hold: self.params.sample_and_hold,
         }
@@ -153,13 +132,10 @@ impl SynthModule for ExternalParam {
     }
 
     fn label(&self) -> String {
-        self.label.clone()
+        "ExtParam".into()
     }
 
-    fn set_label(&mut self, label: String) {
-        self.label = label.clone();
-        self.config.lock().label = Some(label);
-    }
+    fn set_label(&mut self, _label: String) {}
 
     fn module_type(&self) -> ModuleType {
         ModuleType::ExternalParam
@@ -174,12 +150,12 @@ impl SynthModule for ExternalParam {
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
-        for channel in &mut self.channels {
+        for channel in &mut self.voices {
             for event in events {
                 if let VoiceEvent::Trigger { voice_idx, .. } = event {
                     let param_value =
                         self.params_block.float_params[self.params.selected_param_index].value();
-                    let voice = &mut channel.voices[*voice_idx];
+                    let voice = &mut channel[*voice_idx];
 
                     voice.triggered = true;
                     voice.value_at_trigger = param_value;
@@ -202,9 +178,9 @@ impl SynthModule for ExternalParam {
     fn process(&mut self, params: &ProcessParams, _router: &mut dyn Router) {
         let param_value = self.params_block.float_params[self.params.selected_param_index].value();
 
-        for channel in self.channels.iter_mut() {
+        for channel in self.voices.iter_mut() {
             for voice_idx in params.active_voices {
-                let voice = &mut channel.voices[*voice_idx];
+                let voice = &mut channel[*voice_idx];
                 let param_value = if self.params.sample_and_hold {
                     voice.value_at_trigger
                 } else {
@@ -231,10 +207,10 @@ impl SynthModule for ExternalParam {
     }
 
     fn get_buffer_output(&self, voice_idx: usize, channel_idx: usize) -> &Buffer {
-        &self.channels[channel_idx].voices[voice_idx].audio_output
+        &self.voices[channel_idx][voice_idx].audio_output
     }
 
     fn get_scalar_output(&self, current: bool, voice_idx: usize, channel: usize) -> Sample {
-        self.channels[channel].voices[voice_idx].output.get(current)
+        self.voices[channel][voice_idx].output.get(current)
     }
 }

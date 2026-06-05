@@ -14,12 +14,12 @@ pub mod wave_shaper;
 
 pub use amplifier::Amplifier;
 pub use envelope::{Envelope, EnvelopeCurve};
-pub use expressions::{Expressions, ExpressionsConfig};
-pub use external_param::{ExternalParam, ExternalParamConfig, ExternalParamsBlock};
+pub use expressions::Expressions;
+pub use external_param::{ExternalParam, ExternalParamsBlock};
 pub use lfo::{Lfo, LfoConfig, LfoShape};
 pub use mixer::{Mixer, MixerConfig};
 pub use output::{Output, OutputConfig};
-pub use spectral_blend::{SpectralBlend, SpectralBlendConfig};
+pub use spectral_blend::SpectralBlend;
 pub use spectral_filter::{SpectralFilter, SpectralFilterConfig, SpectralFilterType};
 pub use spectral_mixer::{SpectralMixer, SpectralMixerConfig};
 pub use wave_shaper::{ShaperType, WaveShaper};

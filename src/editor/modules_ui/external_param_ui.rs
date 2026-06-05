@@ -5,7 +5,7 @@ use crate::{
         ModuleUi, module_label::ModuleLabel, stereo_slider::StereoSlider,
         utils::confirm_module_removal,
     },
-    synth_engine::{ModuleId, StereoSample, external_param, ui_bridge::UiBridge},
+    synth_engine::{ModuleId, StereoSample, external_param::{self, NUM_FLOAT_PARAMS}, ui_bridge::UiBridge},
 };
 
 pub struct ExternalParamUI {
@@ -34,7 +34,7 @@ impl ModuleUi for ExternalParamUI {
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
         let module_id = self.param_bridge.module_id();
-        let mut controls = self.param_bridge.controls().clone();
+        let mut config = self.param_bridge.config().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
@@ -51,12 +51,12 @@ impl ModuleUi for ExternalParamUI {
             .show(ui, |ui| {
                 ui.label("Input");
                 ComboBox::from_id_salt("ext-param-select")
-                    .selected_text(format!("Param #{}", controls.selected_param_index + 1))
+                    .selected_text(format!("Param #{}", config.selected_param_index + 1))
                     .show_ui(ui, |ui| {
-                        for i in 0..controls.num_of_params {
+                        for i in 0..NUM_FLOAT_PARAMS {
                             if ui
                                 .selectable_label(
-                                    i == controls.selected_param_index,
+                                    i == config.selected_param_index,
                                     format!("Param #{}", i + 1),
                                 )
                                 .clicked()
@@ -67,7 +67,7 @@ impl ModuleUi for ExternalParamUI {
                     });
                 ui.end_row();
 
-                let mut smooth = StereoSample::splat(controls.smooth);
+                let mut smooth = StereoSample::splat(config.smooth);
 
                 ui.label("Smooth");
                 if ui
@@ -88,11 +88,11 @@ impl ModuleUi for ExternalParamUI {
 
                 ui.label("Sample and Hold");
                 if ui
-                    .add(Checkbox::without_text(&mut controls.sample_and_hold))
+                    .add(Checkbox::without_text(&mut config.sample_and_hold))
                     .changed()
                 {
                     self.param_bridge
-                        .set_sample_and_hold(controls.sample_and_hold);
+                        .set_sample_and_hold(config.sample_and_hold);
                 }
                 ui.end_row();
             });

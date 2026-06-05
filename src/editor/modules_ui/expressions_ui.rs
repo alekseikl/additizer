@@ -48,7 +48,7 @@ impl ModuleUi for ExpressionsUi {
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
         let module_id = self.expr_bridge.module_id();
-        let mut controls = self.expr_bridge.controls().clone();
+        let mut config = self.expr_bridge.config().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
@@ -63,11 +63,11 @@ impl ModuleUi for ExpressionsUi {
             .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
-                let mut smooth = StereoSample::splat(controls.smooth);
+                let mut smooth = StereoSample::splat(config.smooth);
 
                 ui.label("Expression");
                 ComboBox::from_id_salt("expressions-combo")
-                    .selected_text(controls.expression.label())
+                    .selected_text(config.expression.label())
                     .show_ui(ui, |ui| {
                         const TYPE_OPTIONS: &[Expression] = &[
                             Expression::Velocity,
@@ -81,7 +81,7 @@ impl ModuleUi for ExpressionsUi {
                         for expression in TYPE_OPTIONS {
                             if ui
                                 .selectable_value(
-                                    &mut controls.expression,
+                                    &mut config.expression,
                                     *expression,
                                     expression.label(),
                                 )
@@ -93,14 +93,14 @@ impl ModuleUi for ExpressionsUi {
                     });
                 ui.end_row();
 
-                if matches!(controls.expression, Expression::Velocity) {
+                if matches!(config.expression, Expression::Velocity) {
                     ui.label("Use Release velocity");
                     if ui
-                        .add(Checkbox::without_text(&mut controls.use_release_velocity))
+                        .add(Checkbox::without_text(&mut config.use_release_velocity))
                         .changed()
                     {
                         self.expr_bridge
-                            .set_use_release_velocity(controls.use_release_velocity);
+                            .set_use_release_velocity(config.use_release_velocity);
                     }
                     ui.end_row();
                 }

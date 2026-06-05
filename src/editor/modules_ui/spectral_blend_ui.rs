@@ -34,7 +34,7 @@ impl ModuleUi for SpectralBlendUi {
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
         let module_id = self.blend_bridge.module_id();
-        let mut controls = self.blend_bridge.controls().clone();
+        let mut config = self.blend_bridge.config().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
@@ -60,14 +60,14 @@ impl ModuleUi for SpectralBlendUi {
                 ui.label("Blend");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.blend,
+                        &mut config.blend,
                         bridge,
                         Input::Blend,
                         module_id,
                     ))
                     .changed()
                 {
-                    self.blend_bridge.set_param(Input::Blend, controls.blend);
+                    self.blend_bridge.set_param(Input::Blend, config.blend);
                 }
                 ui.end_row();
             });

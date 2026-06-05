@@ -1,29 +1,33 @@
-use itertools::izip;
-use serde::{Deserialize, Serialize};
+use std::array;
 
+use itertools::izip;
+
+mod config;
 mod link;
 mod ui_bridge;
 
+pub use config::Config;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::{ControlsState, UiBridge};
+pub use ui_bridge::UiBridge;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
     buffer::SpectralBuffer,
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
-    synth_module::{ModInput, ModuleConfigBox, ProcessParams, VoiceRouter, VoiceRouterFactory},
+    synth_module::{ModInput, ProcessParams, VoiceRouter, VoiceRouterFactory},
     types::SpectralOutput,
 };
 
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct ChannelParams {
+struct ChannelParams {
     blend: Sample,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct SpectralBlendConfig {
-    label: Option<String>,
-    channels: [ChannelParams; NUM_CHANNELS],
+impl ChannelParams {
+    fn from_config(c: &config::Config, channel_idx: usize) -> Self {
+        Self {
+            blend: c.blend[channel_idx],
+        }
+    }
 }
 
 #[derive(Default)]
@@ -32,36 +36,36 @@ struct Voice {
     output: SpectralOutput,
 }
 
-#[derive(Default)]
-struct Channel {
-    params: ChannelParams,
-    voices: [Voice; MAX_VOICES],
-}
+type ChannelVoices = [Voice; MAX_VOICES];
 
 pub struct SpectralBlend {
     id: ModuleId,
-    label: String,
-    config: ModuleConfigBox<SpectralBlendConfig>,
+    channel_params: [ChannelParams; NUM_CHANNELS],
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    channels: [Channel; NUM_CHANNELS],
+    voices: [ChannelVoices; NUM_CHANNELS],
 }
 
 impl SpectralBlend {
-    pub fn new(id: ModuleId, config: ModuleConfigBox<SpectralBlendConfig>) -> Self {
+    pub fn new(id: ModuleId) -> Self {
+        Self::from_config(&Config {
+            id,
+            ..Config::default()
+        })
+    }
+
+    pub fn from_config(config: &config::Config) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
-        let mut blend = Self {
-            id,
-            label: format!("Spectral Blend {id}"),
-            config,
+        Self {
+            id: config.id,
+            channel_params: array::from_fn(|channel_idx| {
+                ChannelParams::from_config(config, channel_idx)
+            }),
             audio_end,
             ui_end: Some(ui_end),
-            channels: Default::default(),
-        };
-
-        load_module_config_no_params!(blend);
-        blend
+            voices: Default::default(),
+        }
     }
 
     pub fn take_ui_end(&mut self) -> Option<UiEnd> {
@@ -73,22 +77,22 @@ impl SpectralBlend {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_controls_state(&self) -> ControlsState {
-        ControlsState {
-            blend: get_stereo_param!(self, blend),
+    pub fn get_config(&self) -> Config {
+        Config {
+            id: self.id,
+            blend: get_stereo_param2!(self, blend),
         }
     }
 
-    set_stereo_param!(set_blend, blend, blend.clamp(0.0, 1.0));
+    set_stereo_param2!(set_blend, blend, blend.clamp(0.0, 1.0));
 
-    fn process_voice(
-        current: bool,
-        params: &ChannelParams,
-        voice: &mut Voice,
-        router: &mut VoiceRouter<'_, '_>,
-    ) {
+    fn process_voice(&mut self, router: &mut VoiceRouter<'_, '_>) {
+        let channel = &self.channel_params[router.channel_idx()];
+        let voice = &mut self.voices[router.channel_idx()][router.voice_idx()];
+        let current = !voice.triggered;
+
         let blend = router
-            .scalar(Input::Blend, params.blend, current)
+            .scalar(Input::Blend, channel.blend, current)
             .clamp(0.0, 1.0);
         let spectrum_from = router.spectral(Input::Spectrum, current);
         let spectrum_to = router.spectral(Input::SpectrumTo, current);
@@ -96,6 +100,12 @@ impl SpectralBlend {
 
         for (out, from, to) in izip!(output, spectrum_from, spectrum_to) {
             *out = from + (to - from) * blend;
+        }
+
+        if voice.triggered {
+            voice.triggered = false;
+
+            self.process_voice(router);
         }
     }
 }
@@ -106,13 +116,10 @@ impl SynthModule for SpectralBlend {
     }
 
     fn label(&self) -> String {
-        self.label.clone()
+        "Blend".into()
     }
 
-    fn set_label(&mut self, label: String) {
-        self.label = label.clone();
-        self.config.lock().label = Some(label);
-    }
+    fn set_label(&mut self, _label: String) {}
 
     fn module_type(&self) -> ModuleType {
         ModuleType::SpectralBlend
@@ -133,10 +140,10 @@ impl SynthModule for SpectralBlend {
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
-        for channel in &mut self.channels {
+        for channel in &mut self.voices {
             for event in events {
                 if let VoiceEvent::Trigger { voice_idx, .. } = event {
-                    channel.voices[*voice_idx].triggered = true;
+                    channel[*voice_idx].triggered = true;
                 }
             }
         }
@@ -157,23 +164,11 @@ impl SynthModule for SpectralBlend {
     fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
         let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
 
-        for (channel_idx, channel) in self
-            .channels
-            .iter_mut()
-            .enumerate()
-            .take(process_params.spectrum_channels)
-        {
-            let params = &channel.params;
-
+        for channel_idx in (0..NUM_CHANNELS).take(process_params.spectrum_channels) {
             for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
-                let voice = &mut channel.voices[*voice_idx];
                 let mut voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
 
-                if voice.triggered {
-                    Self::process_voice(false, params, voice, &mut voice_router);
-                    voice.triggered = false;
-                }
-                Self::process_voice(true, params, voice, &mut voice_router);
+                self.process_voice(&mut voice_router);
             }
         }
     }
@@ -184,8 +179,6 @@ impl SynthModule for SpectralBlend {
         voice_idx: usize,
         channel_idx: usize,
     ) -> &SpectralBuffer {
-        self.channels[channel_idx].voices[voice_idx]
-            .output
-            .get(current)
+        self.voices[channel_idx][voice_idx].output.get(current)
     }
 }

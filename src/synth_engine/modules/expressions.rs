@@ -1,10 +1,10 @@
-use serde::{Deserialize, Serialize};
-
+mod config;
 mod link;
 mod ui_bridge;
 
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::{ControlsState, UiBridge};
+pub use config::Config;
+pub use ui_bridge::UiBridge;
 
 use crate::{
     synth_engine::{
@@ -12,32 +12,25 @@ use crate::{
         buffer::{Buffer, zero_buffer},
         routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
         smooth::Smoother,
-        synth_module::{ModInput, ModuleConfigBox, ProcessParams},
+        synth_module::{ModInput, ProcessParams},
     },
-    utils::{from_ms, st_to_octave},
+    utils::st_to_octave,
 };
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Params {
+struct Params {
     expression: Expression,
     use_release_velocity: bool,
     smooth: Sample,
 }
 
-impl Default for Params {
-    fn default() -> Self {
+impl Params {
+    fn from_config(c: &config::Config) -> Self {
         Self {
-            expression: Expression::Velocity,
-            use_release_velocity: false,
-            smooth: from_ms(4.0),
+            expression: c.expression,
+            use_release_velocity: c.use_release_velocity,
+            smooth: c.smooth,
         }
     }
-}
-
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct ExpressionsConfig {
-    label: Option<String>,
-    params: Params,
 }
 
 struct Voice {
@@ -58,45 +51,34 @@ impl Default for Voice {
     }
 }
 
-#[derive(Default)]
-struct Channel {
-    voices: [Voice; MAX_VOICES],
-}
+type ChannelVoices = [Voice; MAX_VOICES];
 
 pub struct Expressions {
     id: ModuleId,
-    label: String,
-    config: ModuleConfigBox<ExpressionsConfig>,
     params: Params,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    channels: [Channel; NUM_CHANNELS],
+    voices: [ChannelVoices; NUM_CHANNELS],
 }
 
 impl Expressions {
-    pub fn new(id: ModuleId, config: ModuleConfigBox<ExpressionsConfig>) -> Self {
+    pub fn new(id: ModuleId) -> Self {
+        Self::from_config(&Config {
+            id,
+            ..Config::default()
+        })
+    }
+
+    pub fn from_config(config: &config::Config) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
-        let mut exp = Self {
-            id,
-            label: format!("Expressions {id}"),
-            config,
-            params: Params::default(),
+        Self {
+            id: config.id,
+            params: Params::from_config(config),
             audio_end,
             ui_end: Some(ui_end),
-            channels: Default::default(),
-        };
-
-        {
-            let cfg = exp.config.lock();
-
-            if let Some(label) = cfg.label.as_ref() {
-                exp.label = label.clone();
-            }
-            exp.params = cfg.params.clone();
+            voices: Default::default(),
         }
-
-        exp
     }
 
     pub fn take_ui_end(&mut self) -> Option<UiEnd> {
@@ -108,8 +90,9 @@ impl Expressions {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_controls_state(&self) -> ControlsState {
-        ControlsState {
+    pub fn get_config(&self) -> Config {
+        Config {
+            id: self.id,
             expression: self.params.expression,
             use_release_velocity: self.params.use_release_velocity,
             smooth: self.params.smooth,
@@ -199,13 +182,10 @@ impl SynthModule for Expressions {
     }
 
     fn label(&self) -> String {
-        self.label.clone()
+        "Expr".into()
     }
 
-    fn set_label(&mut self, label: String) {
-        self.label = label.clone();
-        self.config.lock().label = Some(label);
-    }
+    fn set_label(&mut self, _label: String) {}
 
     fn module_type(&self) -> ModuleType {
         ModuleType::Expressions
@@ -220,7 +200,7 @@ impl SynthModule for Expressions {
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
-        for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
+        for (channel_idx, channel) in self.voices.iter_mut().enumerate() {
             for event in events {
                 match event {
                     VoiceEvent::Trigger {
@@ -230,7 +210,7 @@ impl SynthModule for Expressions {
                     } => {
                         Self::handle_trigger(
                             channel_idx,
-                            &mut channel.voices[*voice_idx],
+                            &mut channel[*voice_idx],
                             &self.params,
                             *velocity,
                         );
@@ -242,7 +222,7 @@ impl SynthModule for Expressions {
                     } => {
                         Self::handle_update(
                             channel_idx,
-                            &mut channel.voices[*voice_idx],
+                            &mut channel[*voice_idx],
                             &self.params,
                             *velocity,
                         );
@@ -252,7 +232,7 @@ impl SynthModule for Expressions {
                         velocity,
                     } => {
                         Self::handle_release(
-                            &mut channel.voices[*voice_idx],
+                            &mut channel[*voice_idx],
                             &self.params,
                             *velocity,
                         );
@@ -264,7 +244,7 @@ impl SynthModule for Expressions {
                     } if *expression == self.params.expression => {
                         Self::handle_expression(
                             channel_idx,
-                            &mut channel.voices[*voice_idx],
+                            &mut channel[*voice_idx],
                             *expression,
                             *value,
                         );
@@ -286,9 +266,9 @@ impl SynthModule for Expressions {
     }
 
     fn process(&mut self, params: &ProcessParams, _router: &mut dyn Router) {
-        for channel in &mut self.channels {
+        for channel in &mut self.voices {
             for voice_idx in params.active_voices {
-                let voice = &mut channel.voices[*voice_idx];
+                let voice = &mut channel[*voice_idx];
 
                 voice
                     .audio_smoother
@@ -302,10 +282,10 @@ impl SynthModule for Expressions {
     }
 
     fn get_buffer_output(&self, voice_idx: usize, channel_idx: usize) -> &Buffer {
-        &self.channels[channel_idx].voices[voice_idx].audio_output
+        &self.voices[channel_idx][voice_idx].audio_output
     }
 
     fn get_scalar_output(&self, _current: bool, voice_idx: usize, channel: usize) -> Sample {
-        self.channels[channel].voices[voice_idx].output
+        self.voices[channel][voice_idx].output
     }
 }

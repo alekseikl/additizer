@@ -4,21 +4,14 @@ use parking_lot::Mutex;
 
 use crate::synth_engine::{Expression, ModuleId, Sample, SynthEngine};
 
-use super::Expressions;
+use super::{Config, Expressions};
 use super::link::UiEnd;
-
-#[derive(Clone)]
-pub struct ControlsState {
-    pub expression: Expression,
-    pub use_release_velocity: bool,
-    pub smooth: Sample,
-}
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    controls: ControlsState,
+    config: Config,
 }
 
 impl UiBridge {
@@ -26,7 +19,7 @@ impl UiBridge {
         let mut synth_lock = synth.lock();
         let exp = synth_lock.get_typed_module_mut::<Expressions>(module_id)?;
         let ui_end = exp.take_ui_end()?;
-        let controls = exp.get_controls_state();
+        let config = exp.get_config();
 
         drop(synth_lock);
 
@@ -34,7 +27,7 @@ impl UiBridge {
             synth,
             module_id,
             ui_end: Some(ui_end),
-            controls,
+            config,
         })
     }
 
@@ -42,25 +35,25 @@ impl UiBridge {
         self.module_id
     }
 
-    pub fn controls(&self) -> &ControlsState {
-        &self.controls
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     pub fn set_expression(&mut self, expression: Expression) {
         if self.ui_end.as_mut().unwrap().set_expression(expression) {
-            self.controls.expression = expression;
+            self.config.expression = expression;
         }
     }
 
     pub fn set_use_release_velocity(&mut self, value: bool) {
         if self.ui_end.as_mut().unwrap().set_use_release_velocity(value) {
-            self.controls.use_release_velocity = value;
+            self.config.use_release_velocity = value;
         }
     }
 
     pub fn set_smooth(&mut self, value: Sample) {
         if self.ui_end.as_mut().unwrap().set_smooth(value) {
-            self.controls.smooth = value;
+            self.config.smooth = value;
         }
     }
 }
