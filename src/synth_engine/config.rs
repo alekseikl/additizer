@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::synth_engine::{
     MAX_BLOCK_SIZE,
     modules::{
-        EnvelopeConfig, ExpressionsConfig, ExternalParamConfig, LfoConfig,
+        ExpressionsConfig, ExternalParamConfig, LfoConfig,
         MixerConfig, OutputConfig, SpectralBlendConfig, SpectralFilterConfig, SpectralMixerConfig,
         harmonic_editor::HarmonicEditorConfig,
     },
@@ -42,7 +42,6 @@ type CfgBox<T> = Arc<Mutex<T>>;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub enum ModuleConfig {
-    Envelope(CfgBox<EnvelopeConfig>),
     SpectralFilter(CfgBox<SpectralFilterConfig>),
     SpectralBlend(CfgBox<SpectralBlendConfig>),
     SpectralMixer(CfgBox<SpectralMixerConfig>),

@@ -13,7 +13,7 @@ pub mod spectral_mixer;
 pub mod wave_shaper;
 
 pub use amplifier::Amplifier;
-pub use envelope::{Envelope, EnvelopeConfig, EnvelopeCurve};
+pub use envelope::{Envelope, EnvelopeCurve};
 pub use expressions::{Expressions, ExpressionsConfig};
 pub use external_param::{ExternalParam, ExternalParamConfig, ExternalParamsBlock};
 pub use lfo::{Lfo, LfoConfig, LfoShape};

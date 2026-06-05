@@ -279,7 +279,7 @@ pub struct Oscillator {
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
     voices: [ChannelVoices; NUM_CHANNELS],
-    voice_buffers: [ChannelVoiceBuffers; NUM_CHANNELS],
+    voice_buffers: Box<[ChannelVoiceBuffers; NUM_CHANNELS]>,
 }
 
 impl Oscillator {

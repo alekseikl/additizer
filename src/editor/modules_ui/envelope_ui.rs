@@ -128,7 +128,7 @@ impl ModuleUi for EnvelopeUI {
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
         let module_id = self.env_bridge.module_id();
-        let mut controls = self.env_bridge.controls().clone();
+        let mut config = self.env_bridge.config().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
@@ -146,19 +146,19 @@ impl ModuleUi for EnvelopeUI {
                 ui.label("Delay");
                 if ui
                     .add(
-                        ModulationInput::new(&mut controls.delay, bridge, Input::Delay, module_id)
+                        ModulationInput::new(&mut config.delay, bridge, Input::Delay, module_id)
                             .default(from_ms(0.0)),
                     )
                     .changed()
                 {
-                    self.env_bridge.set_param(Input::Delay, controls.delay);
+                    self.env_bridge.set_param(Input::Delay, config.delay);
                 }
                 ui.end_row();
                 ui.label("Attack");
                 if ui
                     .add(
                         ModulationInput::new(
-                            &mut controls.attack,
+                            &mut config.attack,
                             bridge,
                             Input::Attack,
                             module_id,
@@ -167,7 +167,7 @@ impl ModuleUi for EnvelopeUI {
                     )
                     .changed()
                 {
-                    self.env_bridge.set_param(Input::Attack, controls.attack);
+                    self.env_bridge.set_param(Input::Attack, config.attack);
                 }
                 ui.end_row();
 
@@ -175,33 +175,33 @@ impl ModuleUi for EnvelopeUI {
                     &mut self.env_bridge,
                     ui,
                     "Attack Curve",
-                    &mut controls.attack_curve,
+                    &mut config.attack_curve,
                     envelope::UiBridge::set_attack_curve,
                 );
 
                 ui.label("Hold");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.hold,
+                        &mut config.hold,
                         bridge,
                         Input::Hold,
                         module_id,
                     ))
                     .changed()
                 {
-                    self.env_bridge.set_param(Input::Hold, controls.hold);
+                    self.env_bridge.set_param(Input::Hold, config.hold);
                 }
                 ui.end_row();
 
                 ui.label("Decay");
                 if ui
                     .add(
-                        ModulationInput::new(&mut controls.decay, bridge, Input::Decay, module_id)
+                        ModulationInput::new(&mut config.decay, bridge, Input::Decay, module_id)
                             .default(from_ms(150.0)),
                     )
                     .changed()
                 {
-                    self.env_bridge.set_param(Input::Decay, controls.decay);
+                    self.env_bridge.set_param(Input::Decay, config.decay);
                 }
                 ui.end_row();
 
@@ -209,21 +209,21 @@ impl ModuleUi for EnvelopeUI {
                     &mut self.env_bridge,
                     ui,
                     "Decay Curve",
-                    &mut controls.decay_curve,
+                    &mut config.decay_curve,
                     envelope::UiBridge::set_decay_curve,
                 );
 
                 ui.label("Sustain");
                 if ui
                     .add(ModulationInput::new(
-                        &mut controls.sustain,
+                        &mut config.sustain,
                         bridge,
                         Input::Sustain,
                         module_id,
                     ))
                     .changed()
                 {
-                    self.env_bridge.set_param(Input::Sustain, controls.sustain);
+                    self.env_bridge.set_param(Input::Sustain, config.sustain);
                 }
                 ui.end_row();
 
@@ -231,7 +231,7 @@ impl ModuleUi for EnvelopeUI {
                 if ui
                     .add(
                         ModulationInput::new(
-                            &mut controls.release,
+                            &mut config.release,
                             bridge,
                             Input::Release,
                             module_id,
@@ -240,7 +240,7 @@ impl ModuleUi for EnvelopeUI {
                     )
                     .changed()
                 {
-                    self.env_bridge.set_param(Input::Release, controls.release);
+                    self.env_bridge.set_param(Input::Release, config.release);
                 }
                 ui.end_row();
 
@@ -248,14 +248,14 @@ impl ModuleUi for EnvelopeUI {
                     &mut self.env_bridge,
                     ui,
                     "Release Curve",
-                    &mut controls.release_curve,
+                    &mut config.release_curve,
                     envelope::UiBridge::set_release_curve,
                 );
 
                 ui.label("Smooth");
                 if ui
                     .add(
-                        StereoSlider::new(&mut controls.smooth)
+                        StereoSlider::new(&mut config.smooth)
                             .range(0.0..=0.1)
                             .display_scale(1000.0)
                             .default_value(0.0)
@@ -265,17 +265,17 @@ impl ModuleUi for EnvelopeUI {
                     )
                     .changed()
                 {
-                    self.env_bridge.set_smooth(controls.smooth);
+                    self.env_bridge.set_smooth(config.smooth);
                 }
                 ui.end_row();
 
                 ui.label("Keep voice alive");
                 if ui
-                    .add(Checkbox::without_text(&mut controls.keep_voice_alive))
+                    .add(Checkbox::without_text(&mut config.keep_voice_alive))
                     .changed()
                 {
                     self.env_bridge
-                        .set_keep_voice_alive(controls.keep_voice_alive);
+                        .set_keep_voice_alive(config.keep_voice_alive);
                 }
                 ui.end_row();
             });

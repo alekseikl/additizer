@@ -1,6 +1,6 @@
 use crate::synth_engine::{Input, StereoSample};
 
-use super::EnvelopeCurve;
+use super::config::EnvelopeCurve;
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },

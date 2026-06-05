@@ -4,29 +4,14 @@ use parking_lot::Mutex;
 
 use crate::synth_engine::{Input, ModuleId, StereoSample, SynthEngine};
 
-use super::{Envelope, EnvelopeCurve};
+use super::{Config, Envelope, EnvelopeCurve};
 use super::link::UiEnd;
-
-#[derive(Clone)]
-pub struct ControlsState {
-    pub delay: StereoSample,
-    pub attack: StereoSample,
-    pub attack_curve: EnvelopeCurve,
-    pub hold: StereoSample,
-    pub decay: StereoSample,
-    pub decay_curve: EnvelopeCurve,
-    pub sustain: StereoSample,
-    pub release: StereoSample,
-    pub release_curve: EnvelopeCurve,
-    pub smooth: StereoSample,
-    pub keep_voice_alive: bool,
-}
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    controls: ControlsState,
+    config: Config,
 }
 
 impl UiBridge {
@@ -34,7 +19,7 @@ impl UiBridge {
         let mut synth_lock = synth.lock();
         let env = synth_lock.get_typed_module_mut::<Envelope>(module_id)?;
         let ui_end = env.take_ui_end()?;
-        let controls = env.get_controls_state();
+        let config = env.get_config();
 
         drop(synth_lock);
 
@@ -42,7 +27,7 @@ impl UiBridge {
             synth,
             module_id,
             ui_end: Some(ui_end),
-            controls,
+            config,
         })
     }
 
@@ -50,8 +35,8 @@ impl UiBridge {
         self.module_id
     }
 
-    pub fn controls(&self) -> &ControlsState {
-        &self.controls
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
@@ -60,43 +45,43 @@ impl UiBridge {
         }
 
         match input {
-            Input::Delay => self.controls.delay = value,
-            Input::Attack => self.controls.attack = value,
-            Input::Hold => self.controls.hold = value,
-            Input::Decay => self.controls.decay = value,
-            Input::Sustain => self.controls.sustain = value,
-            Input::Release => self.controls.release = value,
+            Input::Delay => self.config.delay = value,
+            Input::Attack => self.config.attack = value,
+            Input::Hold => self.config.hold = value,
+            Input::Decay => self.config.decay = value,
+            Input::Sustain => self.config.sustain = value,
+            Input::Release => self.config.release = value,
             _ => (),
         }
     }
 
     pub fn set_smooth(&mut self, value: StereoSample) {
         if self.ui_end.as_mut().unwrap().set_smooth(value) {
-            self.controls.smooth = value;
+            self.config.smooth = value;
         }
     }
 
     pub fn set_attack_curve(&mut self, curve: EnvelopeCurve) {
         if self.ui_end.as_mut().unwrap().set_attack_curve(curve) {
-            self.controls.attack_curve = curve;
+            self.config.attack_curve = curve;
         }
     }
 
     pub fn set_decay_curve(&mut self, curve: EnvelopeCurve) {
         if self.ui_end.as_mut().unwrap().set_decay_curve(curve) {
-            self.controls.decay_curve = curve;
+            self.config.decay_curve = curve;
         }
     }
 
     pub fn set_release_curve(&mut self, curve: EnvelopeCurve) {
         if self.ui_end.as_mut().unwrap().set_release_curve(curve) {
-            self.controls.release_curve = curve;
+            self.config.release_curve = curve;
         }
     }
 
     pub fn set_keep_voice_alive(&mut self, value: bool) {
         if self.ui_end.as_mut().unwrap().set_keep_voice_alive(value) {
-            self.controls.keep_voice_alive = value;
+            self.config.keep_voice_alive = value;
         }
     }
 }

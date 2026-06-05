@@ -1,10 +1,12 @@
-use serde::{Deserialize, Serialize};
+use std::array;
 
+mod config;
 mod link;
 mod ui_bridge;
 
+pub use config::{Config, EnvelopeCurve};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::{ControlsState, UiBridge};
+pub use ui_bridge::UiBridge;
 
 use crate::{
     synth_engine::{
@@ -15,9 +17,7 @@ use crate::{
             DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
         },
         smooth::Smoother,
-        synth_module::{
-            ModInput, ModuleConfigBox, ProcessParams, SynthModule, VoiceRouter, VoiceRouterFactory,
-        },
+        synth_module::{ModInput, ProcessParams, SynthModule, VoiceRouter, VoiceRouterFactory},
         types::{Sample, ScalarOutput},
         voices_handler::DecayingVoice,
     },
@@ -26,47 +26,46 @@ use crate::{
 
 const MIN_TIME_THRESHOLD: Sample = from_ms(0.5);
 
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct Params {
+struct Params {
     keep_voice_alive: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChannelParams {
-    delay: Sample,
-    attack: Sample,
     attack_curve: EnvelopeCurve,
-    hold: Sample,
-    decay: Sample,
     decay_curve: EnvelopeCurve,
-    sustain: Sample,
-    release: Sample,
     release_curve: EnvelopeCurve,
-    smooth: Sample,
 }
 
-impl Default for ChannelParams {
-    fn default() -> Self {
+impl Params {
+    fn from_config(c: &config::Config) -> Self {
         Self {
-            delay: 0.0,
-            attack: 0.0,
-            attack_curve: EnvelopeCurve::Exponential { curvature: 0.3 },
-            hold: 0.0,
-            decay: from_ms(200.0),
-            decay_curve: EnvelopeCurve::Exponential { curvature: 0.2 },
-            sustain: 1.0,
-            release: from_ms(300.0),
-            release_curve: EnvelopeCurve::Exponential { curvature: 0.2 },
-            smooth: 0.0,
+            keep_voice_alive: c.keep_voice_alive,
+            attack_curve: c.attack_curve,
+            decay_curve: c.decay_curve,
+            release_curve: c.release_curve,
         }
     }
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct EnvelopeConfig {
-    label: Option<String>,
-    params: Params,
-    channels: [ChannelParams; NUM_CHANNELS],
+struct ChannelParams {
+    delay: Sample,
+    attack: Sample,
+    hold: Sample,
+    decay: Sample,
+    sustain: Sample,
+    release: Sample,
+    smooth: Sample,
+}
+
+impl ChannelParams {
+    fn from_config(c: &Config, channel_idx: usize) -> Self {
+        Self {
+            delay: c.delay[channel_idx],
+            attack: c.attack[channel_idx],
+            hold: c.hold[channel_idx],
+            decay: c.decay[channel_idx],
+            sustain: c.sustain[channel_idx],
+            release: c.release[channel_idx],
+            smooth: c.smooth[channel_idx],
+        }
+    }
 }
 
 enum CurveBlockResult {
@@ -147,14 +146,6 @@ impl<T: CurveFunction + Send + 'static> CurveIterator for CurveIter<T> {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum EnvelopeCurve {
-    Linear,
-    Exponential { curvature: Sample },
-    ExponentialIn,
-    ExponentialOut,
-}
-
 impl EnvelopeCurve {
     fn curve_iter(&self, from: Sample, to: Sample) -> CurveBox {
         let params = CurveIterParams { from, to };
@@ -225,54 +216,38 @@ impl Default for Voice {
     }
 }
 
-#[derive(Default)]
-struct Channel {
-    params: ChannelParams,
-    voices: [Voice; MAX_VOICES],
-}
+type ChannelVoices = [Voice; MAX_VOICES];
 
 pub struct Envelope {
     id: ModuleId,
-    label: String,
-    config: ModuleConfigBox<EnvelopeConfig>,
     params: Params,
+    channel_params: [ChannelParams; NUM_CHANNELS],
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    channels: [Channel; NUM_CHANNELS],
-}
-
-macro_rules! set_curve_method {
-    ($fn_name:ident, $param:ident) => {
-        pub fn $fn_name(&mut self, $param: EnvelopeCurve) {
-            for channel in &mut self.channels {
-                channel.params.$param = $param;
-            }
-
-            let mut cfg = self.config.lock();
-
-            for channel in &mut cfg.channels {
-                channel.$param = $param;
-            }
-        }
-    };
+    voices: [ChannelVoices; NUM_CHANNELS],
 }
 
 impl Envelope {
-    pub fn new(id: ModuleId, config: ModuleConfigBox<EnvelopeConfig>) -> Self {
+    pub fn new(id: ModuleId) -> Self {
+        Self::from_config(&Config {
+            id,
+            ..Config::default()
+        })
+    }
+
+    pub fn from_config(config: &config::Config) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
-        let mut env = Self {
-            id,
-            label: format!("Envelope {id}"),
-            config,
-            params: Params::default(),
+        Self {
+            id: config.id,
+            params: Params::from_config(config),
+            channel_params: array::from_fn(|channel_idx| {
+                ChannelParams::from_config(config, channel_idx)
+            }),
             audio_end,
             ui_end: Some(ui_end),
-            channels: Default::default(),
-        };
-
-        load_module_config!(env);
-        env
+            voices: Default::default(),
+        }
     }
 
     pub fn take_ui_end(&mut self) -> Option<UiEnd> {
@@ -284,49 +259,49 @@ impl Envelope {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_controls_state(&self) -> ControlsState {
-        ControlsState {
-            delay: get_stereo_param!(self, delay),
-            attack: get_stereo_param!(self, attack),
-            attack_curve: self.channels[0].params.attack_curve,
-            hold: get_stereo_param!(self, hold),
-            decay: get_stereo_param!(self, decay),
-            decay_curve: self.channels[0].params.decay_curve,
-            sustain: get_stereo_param!(self, sustain),
-            release: get_stereo_param!(self, release),
-            release_curve: self.channels[0].params.release_curve,
-            smooth: get_stereo_param!(self, smooth),
+    pub fn get_config(&self) -> Config {
+        Config {
+            id: self.id,
             keep_voice_alive: self.params.keep_voice_alive,
+            delay: get_stereo_param2!(self, delay),
+            attack: get_stereo_param2!(self, attack),
+            attack_curve: self.params.attack_curve,
+            hold: get_stereo_param2!(self, hold),
+            decay: get_stereo_param2!(self, decay),
+            decay_curve: self.params.decay_curve,
+            sustain: get_stereo_param2!(self, sustain),
+            release: get_stereo_param2!(self, release),
+            release_curve: self.params.release_curve,
+            smooth: get_stereo_param2!(self, smooth),
         }
     }
 
     set_mono_param!(set_keep_voice_alive, keep_voice_alive, bool);
+    set_mono_param!(set_attack_curve, attack_curve, EnvelopeCurve);
+    set_mono_param!(set_decay_curve, decay_curve, EnvelopeCurve);
+    set_mono_param!(set_release_curve, release_curve, EnvelopeCurve);
 
-    set_curve_method!(set_attack_curve, attack_curve);
-    set_curve_method!(set_decay_curve, decay_curve);
-    set_curve_method!(set_release_curve, release_curve);
+    set_stereo_param2!(set_delay, delay);
+    set_stereo_param2!(set_attack, attack);
+    set_stereo_param2!(set_hold, hold);
+    set_stereo_param2!(set_decay, decay);
+    set_stereo_param2!(set_sustain, sustain);
+    set_stereo_param2!(set_release, release);
+    set_stereo_param2!(set_smooth, smooth);
 
-    set_stereo_param!(set_delay, delay);
-    set_stereo_param!(set_attack, attack);
-    set_stereo_param!(set_hold, hold);
-    set_stereo_param!(set_decay, decay);
-    set_stereo_param!(set_sustain, sustain);
-    set_stereo_param!(set_release, release);
-    set_stereo_param!(set_smooth, smooth);
+    fn process_voice_buffer(&mut self, t_step: Sample, mut router: VoiceRouter<'_, '_>) {
+        let params = &self.params;
+        let channel = &mut self.channel_params[router.channel_idx()];
+        let voice = &mut self.voices[router.channel_idx()][router.voice_idx()];
 
-    fn process_voice_buffer(
-        env: &ChannelParams,
-        voice: &mut Voice,
-        t_step: Sample,
-        mut router: VoiceRouter<'_, '_>,
-    ) {
         if voice.triggered {
             voice.stage = Stage::Delay(EnvelopeCurve::delay_iter(voice.scalar_output.current()));
         }
 
         if voice.released {
             voice.stage = Stage::Release(
-                env.release_curve
+                params
+                    .release_curve
                     .curve_iter(voice.scalar_output.current(), 0.0),
             );
             voice.released = false;
@@ -340,12 +315,13 @@ impl Envelope {
                 Stage::Delay(curve) => {
                     match curve.next_block(
                         t_step,
-                        router.scalar(Input::Delay, env.delay, true),
+                        router.scalar(Input::Delay, channel.delay, true),
                         &mut sample_from,
                         output,
                     ) {
                         CurveBlockResult::Done => Stage::Attack(
-                            env.attack_curve
+                            params
+                                .attack_curve
                                 .curve_iter(voice.scalar_output.current(), 1.0),
                         ),
                         CurveBlockResult::HasMore => break,
@@ -354,7 +330,7 @@ impl Envelope {
                 Stage::Attack(curve) => {
                     match curve.next_block(
                         t_step,
-                        router.scalar(Input::Attack, env.attack, true),
+                        router.scalar(Input::Attack, channel.attack, true),
                         &mut sample_from,
                         output,
                     ) {
@@ -365,12 +341,12 @@ impl Envelope {
                 Stage::Hold(curve) => {
                     match curve.next_block(
                         t_step,
-                        router.scalar(Input::Hold, env.hold, true),
+                        router.scalar(Input::Hold, channel.hold, true),
                         &mut sample_from,
                         output,
                     ) {
                         CurveBlockResult::Done => {
-                            Stage::Decay(env.decay_curve.curve_iter(1.0, env.sustain))
+                            Stage::Decay(params.decay_curve.curve_iter(1.0, channel.sustain))
                         }
                         CurveBlockResult::HasMore => break,
                     }
@@ -378,7 +354,7 @@ impl Envelope {
                 Stage::Decay(curve) => {
                     match curve.next_block(
                         t_step,
-                        router.scalar(Input::Decay, env.decay, true),
+                        router.scalar(Input::Decay, channel.decay, true),
                         &mut sample_from,
                         output,
                     ) {
@@ -387,14 +363,15 @@ impl Envelope {
                     }
                 }
                 Stage::Sustain => {
-                    output[sample_from..]
-                        .fill((router.scalar(Input::Sustain, env.sustain, true)).clamp(0.0, 1.0));
+                    output[sample_from..].fill(
+                        (router.scalar(Input::Sustain, channel.sustain, true)).clamp(0.0, 1.0),
+                    );
                     break;
                 }
                 Stage::Release(curve) => {
                     match curve.next_block(
                         t_step,
-                        router.scalar(Input::Release, env.release, true),
+                        router.scalar(Input::Release, channel.release, true),
                         &mut sample_from,
                         output,
                     ) {
@@ -403,7 +380,7 @@ impl Envelope {
                     }
                 }
                 Stage::Flush(curve) => {
-                    match curve.next_block(t_step, env.smooth, &mut sample_from, output) {
+                    match curve.next_block(t_step, channel.smooth, &mut sample_from, output) {
                         CurveBlockResult::Done => Stage::Done,
                         CurveBlockResult::HasMore => break,
                     }
@@ -424,8 +401,8 @@ impl Envelope {
             voice.scalar_output.advance(voice.output[router.samples()]);
         }
 
-        if env.smooth >= MIN_TIME_THRESHOLD {
-            voice.smoother.update(router.sample_rate(), env.smooth);
+        if channel.smooth >= MIN_TIME_THRESHOLD {
+            voice.smoother.update(router.sample_rate(), channel.smooth);
 
             for sample in voice.output.iter_mut().take(router.samples()) {
                 *sample = voice.smoother.tick(*sample);
@@ -450,13 +427,10 @@ impl SynthModule for Envelope {
     }
 
     fn label(&self) -> String {
-        self.label.clone()
+        "Env".into()
     }
 
-    fn set_label(&mut self, label: String) {
-        self.label = label.clone();
-        self.config.lock().label = Some(label);
-    }
+    fn set_label(&mut self, _label: String) {}
 
     fn module_type(&self) -> ModuleType {
         ModuleType::Envelope
@@ -480,14 +454,14 @@ impl SynthModule for Envelope {
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
-        for channel in &mut self.channels {
+        for channel in &mut self.voices {
             for event in events {
                 match event {
                     VoiceEvent::Trigger { voice_idx, .. } => {
-                        Self::trigger_voice(&mut channel.voices[*voice_idx]);
+                        Self::trigger_voice(&mut channel[*voice_idx]);
                     }
                     VoiceEvent::Release { voice_idx, .. } => {
-                        Self::release_voice(&mut channel.voices[*voice_idx]);
+                        Self::release_voice(&mut channel[*voice_idx]);
                     }
                     _ => (),
                 }
@@ -498,8 +472,8 @@ impl SynthModule for Envelope {
     fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {
         if self.params.keep_voice_alive {
             for decaying in decaying_voices.iter_mut().filter(|d| d.is_done()) {
-                for channel in &self.channels {
-                    let voice = &channel.voices[decaying.index()];
+                for channel in &self.voices {
+                    let voice = &channel[decaying.index()];
 
                     if !matches!(voice.stage, Stage::Done) || voice.triggered {
                         decaying.mark_active();
@@ -534,29 +508,18 @@ impl SynthModule for Envelope {
         let t_step = params.sample_rate.recip();
         let mut rf = VoiceRouterFactory::new(self.id, router, params);
 
-        for (channel_idx, channel) in self.channels.iter_mut().enumerate() {
-            let env = &channel.params;
-
+        for channel_idx in 0..NUM_CHANNELS {
             for (seq_idx, voice_idx) in params.active_voices.iter().enumerate() {
-                let voice = &mut channel.voices[*voice_idx];
-
-                Self::process_voice_buffer(
-                    env,
-                    voice,
-                    t_step,
-                    rf.for_voice(*voice_idx, channel_idx, seq_idx),
-                );
+                self.process_voice_buffer(t_step, rf.for_voice(*voice_idx, channel_idx, seq_idx));
             }
         }
     }
 
     fn get_buffer_output(&self, voice_idx: usize, channel_idx: usize) -> &Buffer {
-        &self.channels[channel_idx].voices[voice_idx].output
+        &self.voices[channel_idx][voice_idx].output
     }
 
     fn get_scalar_output(&self, current: bool, voice_idx: usize, channel: usize) -> Sample {
-        self.channels[channel].voices[voice_idx]
-            .scalar_output
-            .get(current)
+        self.voices[channel][voice_idx].scalar_output.get(current)
     }
 }
