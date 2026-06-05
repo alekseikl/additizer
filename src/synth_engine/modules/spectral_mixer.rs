@@ -21,7 +21,13 @@ use crate::synth_engine::{
 
 const MAX_VOLUME: Sample = 24.0; // dB
 
+struct InputChannelParams {
+    level: Sample,
+    gain: Sample,
+}
+
 struct ChannelParams {
+    input_params: [InputChannelParams; MAX_INPUTS as usize],
     output_level: Sample,
     output_gain: Sample,
 }
@@ -29,23 +35,35 @@ struct ChannelParams {
 impl ChannelParams {
     fn from_config(c: &config::Config, channel_idx: usize) -> Self {
         Self {
+            input_params: c.inputs.map(|input| InputChannelParams {
+                level: input.level[channel_idx],
+                gain: input.gain[channel_idx],
+            }),
             output_level: c.output_level[channel_idx],
             output_gain: c.output_gain[channel_idx],
         }
     }
 }
 
+struct InputParams {
+    mix_type: MixType,
+    volume_type: VolumeType,
+}
+
 struct Params {
     num_inputs: u8,
-    inputs: [config::InputConfig; MAX_INPUTS as usize],
+    inputs: [InputParams; MAX_INPUTS as usize],
     output_volume_type: VolumeType,
 }
 
 impl Params {
     fn from_config(c: &config::Config) -> Self {
         Self {
-            num_inputs: c.num_inputs.clamp(1, MAX_INPUTS),
-            inputs: c.inputs,
+            num_inputs: c.num_inputs,
+            inputs: c.inputs.map(|input| InputParams {
+                mix_type: input.mix_type,
+                volume_type: input.volume_type,
+            }),
             output_volume_type: c.output_volume_type,
         }
     }
@@ -106,7 +124,20 @@ impl SpectralMixer {
         Config {
             id: self.id,
             num_inputs: self.params.num_inputs,
-            inputs: self.params.inputs,
+            inputs: array::from_fn(|input_idx| config::InputConfig {
+                mix_type: self.params.inputs[input_idx].mix_type,
+                volume_type: self.params.inputs[input_idx].volume_type,
+                level: StereoSample::from_iter(
+                    self.channel_params
+                        .iter()
+                        .map(|channel| channel.input_params[input_idx].level),
+                ),
+                gain: StereoSample::from_iter(
+                    self.channel_params
+                        .iter()
+                        .map(|channel| channel.input_params[input_idx].gain),
+                ),
+            }),
             output_volume_type: self.params.output_volume_type,
             output_level: get_stereo_param2!(self, output_level),
             output_gain: get_stereo_param2!(self, output_gain),
@@ -138,13 +169,17 @@ impl SpectralMixer {
     pub fn set_input_level(&mut self, input_idx: u8, level: StereoSample) {
         let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
 
-        self.params.inputs[input_idx].level = level;
+        for (channel, level) in self.channel_params.iter_mut().zip(level.iter()) {
+            channel.input_params[input_idx].level = *level;
+        }
     }
 
     pub fn set_input_gain(&mut self, input_idx: u8, gain: StereoSample) {
         let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
 
-        self.params.inputs[input_idx].gain = gain;
+        for (channel, gain) in self.channel_params.iter_mut().zip(gain.iter()) {
+            channel.input_params[input_idx].gain = *gain;
+        }
     }
 
     #[inline(always)]
@@ -162,19 +197,17 @@ impl SpectralMixer {
 
         for input_idx in 0..self.params.num_inputs {
             let input_params = &self.params.inputs[input_idx as usize];
-            let channel_idx = router.channel_idx();
+            let input_channel = &channel.input_params[input_idx as usize];
 
             let gain = match input_params.volume_type {
                 VolumeType::Db => Self::to_gain(router.scalar(
                     Input::LevelMix(input_idx),
-                    input_params.level[channel_idx],
+                    input_channel.level,
                     current,
                 )),
-                VolumeType::Gain => router.scalar(
-                    Input::GainMix(input_idx),
-                    input_params.gain[channel_idx],
-                    current,
-                ),
+                VolumeType::Gain => {
+                    router.scalar(Input::GainMix(input_idx), input_channel.gain, current)
+                }
             };
 
             let spectrum = router.spectral(Input::SpectrumMix(input_idx), current);
