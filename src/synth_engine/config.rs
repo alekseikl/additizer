@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::synth_engine::{
     MAX_BLOCK_SIZE,
     modules::{
-        LfoConfig, MixerConfig, OutputConfig,
+        LfoConfig, OutputConfig,
         harmonic_editor::HarmonicEditorConfig,
     },
     routing::{MAX_VOICES, MIN_MODULE_ID, ModuleId, ModuleLink},
@@ -43,7 +43,6 @@ type CfgBox<T> = Arc<Mutex<T>>;
 pub enum ModuleConfig {
     HarmonicEditor(CfgBox<HarmonicEditorConfig>),
     Lfo(CfgBox<LfoConfig>),
-    Mixer(CfgBox<MixerConfig>),
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]

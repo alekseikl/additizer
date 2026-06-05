@@ -15,7 +15,7 @@ use crate::synth_engine::{
     buffer::{Buffer, SpectralBuffer, add_to_buffer, copy_or_add_to_buffer},
     config::{ModuleConfig, RoutingConfig},
     modules::{
-        LfoConfig, MixerConfig, Output, OutputConfig, harmonic_editor::HarmonicEditorConfig,
+        LfoConfig, Output, OutputConfig, harmonic_editor::HarmonicEditorConfig,
         oscillator::Oscillator,
     },
     routing::{DataType, LinkModulation, NUM_CHANNELS, Router, VoiceEvent, data_types_compatible},
@@ -339,7 +339,7 @@ impl SynthEngine {
     add_module_method2!(add_envelope, Envelope);
     add_module_method!(add_lfo, Lfo, LfoConfig);
     add_module_method2!(add_amplifier, Amplifier);
-    add_module_method!(add_mixer, Mixer, MixerConfig);
+    add_module_method2!(add_mixer, Mixer);
     add_module_method2!(add_wave_shaper, WaveShaper);
     add_module_method2!(add_spectral_filter, SpectralFilter);
     add_module_method2!(add_spectral_blend, SpectralBlend);
@@ -807,7 +807,6 @@ impl SynthEngine {
             match cfg {
                 ModuleConfig::HarmonicEditor(cfg) => restore_module!(HarmonicEditor, id, cfg),
                 ModuleConfig::Lfo(cfg) => restore_module!(Lfo, id, cfg),
-                ModuleConfig::Mixer(cfg) => restore_module!(Mixer, id, cfg),
             }
         }
 

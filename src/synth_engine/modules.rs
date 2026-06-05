@@ -17,7 +17,7 @@ pub use envelope::{Envelope, EnvelopeCurve};
 pub use expressions::Expressions;
 pub use external_param::{ExternalParam, ExternalParamsBlock};
 pub use lfo::{Lfo, LfoConfig, LfoShape};
-pub use mixer::{Mixer, MixerConfig};
+pub use mixer::Mixer;
 pub use output::{Output, OutputConfig};
 pub use spectral_blend::SpectralBlend;
 pub use spectral_filter::{SpectralFilter, SpectralFilterType};

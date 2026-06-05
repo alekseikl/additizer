@@ -4,25 +4,14 @@ use parking_lot::Mutex;
 
 use crate::synth_engine::{Input, ModuleId, StereoSample, SynthEngine, VolumeType};
 
-use super::Mixer;
+use super::{Config, Mixer};
 use super::link::UiEnd;
-
-#[derive(Clone)]
-pub struct ControlsState {
-    pub num_inputs: u8,
-    pub input_volume_types: [VolumeType; super::MAX_INPUTS as usize],
-    pub input_levels: [StereoSample; super::MAX_INPUTS as usize],
-    pub input_gains: [StereoSample; super::MAX_INPUTS as usize],
-    pub output_volume_type: VolumeType,
-    pub output_level: StereoSample,
-    pub output_gain: StereoSample,
-}
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    controls: ControlsState,
+    config: Config,
 }
 
 impl UiBridge {
@@ -30,7 +19,7 @@ impl UiBridge {
         let mut synth_lock = synth.lock();
         let mixer = synth_lock.get_typed_module_mut::<Mixer>(module_id)?;
         let ui_end = mixer.take_ui_end()?;
-        let controls = mixer.get_controls_state();
+        let config = mixer.get_config();
 
         drop(synth_lock);
 
@@ -38,7 +27,7 @@ impl UiBridge {
             synth,
             module_id,
             ui_end: Some(ui_end),
-            controls,
+            config,
         })
     }
 
@@ -46,8 +35,8 @@ impl UiBridge {
         self.module_id
     }
 
-    pub fn controls(&self) -> &ControlsState {
-        &self.controls
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
@@ -56,17 +45,17 @@ impl UiBridge {
         }
 
         match input {
-            Input::Gain => self.controls.output_gain = value,
-            Input::Level => self.controls.output_level = value,
-            Input::GainMix(idx) => self.controls.input_gains[idx as usize] = value,
-            Input::LevelMix(idx) => self.controls.input_levels[idx as usize] = value,
+            Input::Gain => self.config.output_gain = value,
+            Input::Level => self.config.output_level = value,
+            Input::GainMix(idx) => self.config.inputs[idx as usize].gain = value,
+            Input::LevelMix(idx) => self.config.inputs[idx as usize].level = value,
             _ => (),
         }
     }
 
     pub fn set_num_inputs(&mut self, num_inputs: u8) {
         if self.ui_end.as_mut().unwrap().set_num_inputs(num_inputs) {
-            self.controls.num_inputs = num_inputs;
+            self.config.num_inputs = num_inputs;
         }
     }
 
@@ -77,7 +66,7 @@ impl UiBridge {
             .unwrap()
             .set_volume_type(input_idx, volume_type)
         {
-            self.controls.input_volume_types[input_idx as usize] = volume_type;
+            self.config.inputs[input_idx as usize].volume_type = volume_type;
         }
     }
 
@@ -88,7 +77,7 @@ impl UiBridge {
             .unwrap()
             .set_output_volume_type(volume_type)
         {
-            self.controls.output_volume_type = volume_type;
+            self.config.output_volume_type = volume_type;
         }
     }
 }
