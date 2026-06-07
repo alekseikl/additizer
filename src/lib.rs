@@ -207,11 +207,13 @@ impl Plugin for Additizer {
             ],
         });
 
-        self.factory = Some(Arc::new(EngineFactory::new(
+        let factory = Arc::new(EngineFactory::new(
             self.params.volume.clone(),
             external_params.clone(),
             buffer_config.sample_rate,
-        )));
+        ));
+        self.params.config.set_factory(factory.clone());
+        self.factory = Some(factory);
 
         true
     }

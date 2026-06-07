@@ -12,7 +12,7 @@ use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
     buffer::{Buffer, SpectralBuffer, add_to_buffer, copy_or_add_to_buffer},
-    config::{LinkConfig, ModuleConfig},
+    config::{EngineParams, LinkConfig, ModuleConfig},
     modules::{Output, oscillator::Oscillator},
     routing::{
         DataType, LinkModulation, MIN_MODULE_ID, NUM_CHANNELS, Router, VoiceEvent,
@@ -26,7 +26,7 @@ use crate::synth_engine::{
 };
 
 pub use buffer::SPECTRAL_BUFFER_SIZE;
-pub use config::{Config, FullConfig};
+pub use config::EngineConfig;
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, Expressions, ExternalParam, ExternalParamsBlock, Lfo,
     LfoShape, Mixer, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType, SpectralMixer,
@@ -151,7 +151,7 @@ impl SynthEngine {
     pub const AVAILABLE_VOICES: usize = MAX_AVAILABLE_VOICES;
 
     pub fn try_new(
-        cfg: &FullConfig,
+        cfg: &EngineConfig,
         output_level_param: Arc<FloatParam>,
         external_params: Arc<ExternalParamsBlock>,
         host_sample_rate: Sample,
@@ -234,6 +234,63 @@ impl SynthEngine {
         Some(engine)
     }
 
+    pub fn get_config(&self) -> EngineConfig {
+        let voices = self.voices_handler.get_ui_state();
+        let mut module_ids: Vec<_> = self.modules.keys().copied().collect();
+
+        module_ids.sort_unstable();
+
+        macro_rules! to_cfg {
+            ($module_type:ident, $id:expr) => {
+                self.get_typed_module::<$module_type>($id)
+                    .map(|module| ModuleConfig::$module_type(Box::new(module.get_config())))
+            };
+        }
+
+        let modules = module_ids
+            .iter()
+            .filter_map(|&id| match self.modules.get_module(id)?.module_type() {
+                ModuleType::Oscillator => to_cfg!(Oscillator, id),
+                ModuleType::Envelope => to_cfg!(Envelope, id),
+                ModuleType::Lfo => to_cfg!(Lfo, id),
+                ModuleType::Amplifier => to_cfg!(Amplifier, id),
+                ModuleType::Mixer => to_cfg!(Mixer, id),
+                ModuleType::WaveShaper => to_cfg!(WaveShaper, id),
+                ModuleType::SpectralFilter => to_cfg!(SpectralFilter, id),
+                ModuleType::SpectralBlend => to_cfg!(SpectralBlend, id),
+                ModuleType::SpectralMixer => to_cfg!(SpectralMixer, id),
+                ModuleType::HarmonicEditor => to_cfg!(HarmonicEditor, id),
+                ModuleType::Expressions => to_cfg!(Expressions, id),
+                ModuleType::ExternalParam => to_cfg!(ExternalParam, id),
+                ModuleType::Output => None,
+            })
+            .collect();
+
+        EngineConfig {
+            engine: EngineParams {
+                num_voices: voices.num_voices,
+                legato: voices.legato,
+                block_size: self.block_size,
+                oversampling: self.oversampling,
+                stereo_spectrum: self.spectrum_channels == NUM_CHANNELS,
+                voice_kill_time: self.get_voice_kill_time(),
+                output_gain: self.get_output_gain(),
+            },
+            modules,
+            links: self
+                .get_links()
+                .into_iter()
+                .map(|link| LinkConfig {
+                    src_id: link.src,
+                    dst_id: link.dst.module_id,
+                    dst_input: link.dst.input_type,
+                    amount: link.amount,
+                    modulator_id: link.modulation.map(|m| m.src),
+                })
+                .collect(),
+        }
+    }
+
     fn sample_rate(&self) -> Sample {
         if self.oversampling {
             2.0 * self.host_sample_rate
@@ -243,16 +300,13 @@ impl SynthEngine {
     }
 
     fn get_ui_state(&self) -> ui_bridge::ControlsState {
-        let voices_ui = self.voices_handler.get_ui_data();
+        let voices_ui = self.voices_handler.get_ui_state();
 
         ui_bridge::ControlsState {
             voices: voices_ui.num_voices,
             legato: voices_ui.legato,
             block_size: self.block_size,
-            voice_kill_time: self
-                .modules
-                .get_typed_module::<Output>(OUTPUT_MODULE_ID)
-                .map_or(0.0, |output| output.get_voice_kill_time()),
+            voice_kill_time: self.get_voice_kill_time(),
             oversampling: self.oversampling,
             stereo_spectrum: self.spectrum_channels == NUM_CHANNELS,
             output_gain: self.get_output_gain(),
@@ -309,6 +363,12 @@ impl SynthEngine {
         self.modules
             .get_typed_module::<Output>(OUTPUT_MODULE_ID)
             .map_or(StereoSample::ZERO, |output| output.get_gain())
+    }
+
+    pub fn get_voice_kill_time(&self) -> Sample {
+        self.modules
+            .get_typed_module::<Output>(OUTPUT_MODULE_ID)
+            .map_or(0.0, |output| output.get_voice_kill_time())
     }
 
     pub fn set_output_gain(&mut self, level: StereoSample) {
@@ -565,7 +625,7 @@ impl SynthEngine {
 
         if update_ui {
             self.audio_end
-                .update_voices_status(&self.voices_handler.get_ui_data());
+                .update_voices_status(&self.voices_handler.get_ui_state());
         }
 
         let mut playing_voices = PlayingVoices::new();

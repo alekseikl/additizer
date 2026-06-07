@@ -7,7 +7,7 @@ use std::{
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::Config;
+use crate::synth_engine::EngineConfig;
 
 const PRESET_EXT: &str = "adp";
 
@@ -28,7 +28,7 @@ pub struct PresetListItem {
 pub struct Preset {
     #[serde(flatten)]
     pub info: PresetInfo,
-    pub config: Config,
+    pub config: EngineConfig,
 }
 
 pub struct Presets {

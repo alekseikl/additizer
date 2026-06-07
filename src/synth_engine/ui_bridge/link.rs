@@ -1,6 +1,6 @@
 use crate::synth_engine::{
     Input, ModuleId, ModuleInput, Sample, StereoSample, ui_bridge::VoicesStatus,
-    voices_handler::VoicesHandlerUiData,
+    voices_handler::VoicesHandlerUiState,
 };
 
 pub enum UiEvent {
@@ -70,7 +70,7 @@ impl AudioEnd {
             .is_ok()
     }
 
-    pub fn update_voices_status(&mut self, d: &VoicesHandlerUiData) -> bool {
+    pub fn update_voices_status(&mut self, d: &VoicesHandlerUiState) -> bool {
         self.tx
             .push(UiUpdate::VoicesStatus(VoicesStatus {
                 waiting_notes: d.waiting as u8,

@@ -69,22 +69,22 @@ impl ParamsUi {
                 |_ui| {},
                 |ui| {
                     if ui.add_enabled(valid, Button::new("Save")).clicked() {
-                        // let config = synth.lock().get_config();
-                        // let preset = Preset {
-                        //     info: PresetInfo {
-                        //         title: trimmed.to_string(),
-                        //     },
-                        //     config,
-                        // };
+                        let config = synth.lock().get_config();
+                        let preset = Preset {
+                            info: PresetInfo {
+                                title: trimmed.to_string(),
+                            },
+                            config,
+                        };
 
-                        // if let Some(presets) = Presets::new() {
-                        //     if presets.write_preset(&preset).is_some() {
-                        //         state.error = String::new();
-                        //         ui.close();
-                        //     } else {
-                        //         state.error = "Failed to save preset.".into();
-                        //     }
-                        // }
+                        if let Some(presets) = Presets::new() {
+                            if presets.write_preset(&preset).is_some() {
+                                state.error = String::new();
+                                ui.close();
+                            } else {
+                                state.error = "Failed to save preset.".into();
+                            }
+                        }
                     }
 
                     if ui.button("Cancel").clicked() {
@@ -149,23 +149,23 @@ impl ParamsUi {
                 ui,
                 |_ui| {},
                 |ui| {
-                    // if ui
-                    //     .add_enabled(state.selected_index.is_some(), Button::new("Load"))
-                    //     .clicked()
-                    // {
-                    //     if let Some(idx) = state.selected_index
-                    //         && let Some(preset) = Presets::read_preset(&state.preset_list[idx].path)
-                    //         && synth.lock().set_config(&preset.config)
-                    //     {
-                    //         ui.close();
-                    //     } else {
-                    //         state.error = "Failed to load preset.".into();
-                    //     }
-                    // }
+                    if ui
+                        .add_enabled(state.selected_index.is_some(), Button::new("Load"))
+                        .clicked()
+                    {
+                        // if let Some(idx) = state.selected_index
+                        //     && let Some(preset) = Presets::read_preset(&state.preset_list[idx].path)
+                        //     && synth.lock().set_config(&preset.config)
+                        // {
+                        //     ui.close();
+                        // } else {
+                        //     state.error = "Failed to load preset.".into();
+                        // }
+                    }
 
-                    // if ui.button("Cancel").clicked() {
-                    //     ui.close();
-                    // }
+                    if ui.button("Cancel").clicked() {
+                        ui.close();
+                    }
                 },
             );
         });

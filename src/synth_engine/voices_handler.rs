@@ -140,7 +140,7 @@ impl VoiceEvents {
     }
 }
 
-pub struct VoicesHandlerUiData {
+pub struct VoicesHandlerUiState {
     pub num_voices: usize,
     pub legato: bool,
     pub waiting: usize,
@@ -461,8 +461,8 @@ impl VoicesHandler {
         self.legato = legato;
     }
 
-    pub fn get_ui_data(&self) -> VoicesHandlerUiData {
-        VoicesHandlerUiData {
+    pub fn get_ui_state(&self) -> VoicesHandlerUiState {
+        VoicesHandlerUiState {
             num_voices: self.num_voices,
             legato: self.legato,
             waiting: self.waiting_notes.len(),

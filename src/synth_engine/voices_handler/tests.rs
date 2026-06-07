@@ -48,7 +48,7 @@ fn count_by_kind(ev: &VoiceEvents) -> (usize, usize, usize, usize, usize) {
 #[test]
 fn new_defaults() {
     let h = VoicesHandler::new(1, false);
-    let ui = h.get_ui_data();
+    let ui = h.get_ui_state();
     assert_eq!(ui.num_voices, 1);
     assert!(!ui.legato);
     assert_eq!(ui.waiting, 0);
@@ -62,13 +62,13 @@ fn set_num_voices_clamps() {
     let mut h = VoicesHandler::new(1, false);
 
     h.set_num_voices(0);
-    assert_eq!(h.get_ui_data().num_voices, 1);
+    assert_eq!(h.get_ui_state().num_voices, 1);
 
     h.set_num_voices(999);
-    assert_eq!(h.get_ui_data().num_voices, MAX_AVAILABLE_VOICES);
+    assert_eq!(h.get_ui_state().num_voices, MAX_AVAILABLE_VOICES);
 
     h.set_num_voices(8);
-    assert_eq!(h.get_ui_data().num_voices, 8);
+    assert_eq!(h.get_ui_state().num_voices, 8);
 }
 
 #[test]
@@ -128,7 +128,7 @@ fn poly_single_note_on() {
         }
         _ => panic!("expected Trigger"),
     }
-    assert_eq!(h.get_ui_data().playing, 1);
+    assert_eq!(h.get_ui_state().playing, 1);
 }
 
 #[test]
@@ -140,7 +140,7 @@ fn poly_multiple_notes_get_unique_voices() {
     h.handle_note_on(0, 64, 1.0, &mut ev);
     h.handle_note_on(0, 67, 1.0, &mut ev);
 
-    assert_eq!(h.get_ui_data().playing, 3);
+    assert_eq!(h.get_ui_state().playing, 3);
 
     let mut indices = trigger_indices(&ev);
     let orig_len = indices.len();
@@ -158,7 +158,7 @@ fn poly_duplicate_note_ignored() {
     h.handle_note_on(0, 60, 1.0, &mut ev);
 
     assert_eq!(ev.events().len(), 1);
-    assert_eq!(h.get_ui_data().playing, 1);
+    assert_eq!(h.get_ui_state().playing, 1);
 }
 
 #[test]
@@ -174,7 +174,7 @@ fn poly_voice_stealing_when_full() {
     assert_eq!(trig, 3);
     assert_eq!(kill, 1);
 
-    let ui = h.get_ui_data();
+    let ui = h.get_ui_state();
     assert_eq!(ui.playing, 2);
     assert_eq!(ui.waiting, 1);
 }
@@ -188,13 +188,13 @@ fn poly_steals_releasing_before_playing() {
     h.handle_note_on(0, 64, 1.0, &mut ev);
     h.handle_note_off(0, 60, 1.0, &mut ev);
 
-    let ui = h.get_ui_data();
+    let ui = h.get_ui_state();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.releasing, 1);
 
     h.handle_note_on(0, 67, 1.0, &mut ev);
 
-    let ui = h.get_ui_data();
+    let ui = h.get_ui_state();
     assert_eq!(ui.playing, 2);
     assert_eq!(ui.waiting, 0);
 }
@@ -212,7 +212,7 @@ fn poly_note_off_releases() {
     let (_, _, rel, _, _) = count_by_kind(&ev);
     assert_eq!(rel, 1);
 
-    let ui = h.get_ui_data();
+    let ui = h.get_ui_state();
     assert_eq!(ui.playing, 0);
     assert_eq!(ui.releasing, 1);
 }
@@ -235,11 +235,11 @@ fn poly_note_off_activates_waiting_note() {
     h.handle_note_on(0, 64, 1.0, &mut ev);
     h.handle_note_on(0, 67, 1.0, &mut ev);
 
-    assert_eq!(h.get_ui_data().waiting, 1);
+    assert_eq!(h.get_ui_state().waiting, 1);
 
     h.handle_note_off(0, 67, 1.0, &mut ev);
 
-    let ui = h.get_ui_data();
+    let ui = h.get_ui_state();
     assert_eq!(ui.waiting, 0);
     assert_eq!(ui.playing, 2);
 }
@@ -253,11 +253,11 @@ fn poly_retrigger_releasing_note() {
 
     h.handle_note_on(0, 60, 1.0, &mut ev);
     h.handle_note_off(0, 60, 1.0, &mut ev);
-    assert_eq!(h.get_ui_data().releasing, 1);
+    assert_eq!(h.get_ui_state().releasing, 1);
 
     h.handle_note_on(0, 60, 1.0, &mut ev);
 
-    let ui = h.get_ui_data();
+    let ui = h.get_ui_state();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.releasing, 0);
 }
@@ -272,7 +272,7 @@ fn mono_note_on_replaces_playing() {
     h.handle_note_on(0, 60, 1.0, &mut ev);
     h.handle_note_on(0, 64, 1.0, &mut ev);
 
-    let ui = h.get_ui_data();
+    let ui = h.get_ui_state();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.waiting, 1);
 }
@@ -297,11 +297,11 @@ fn mono_note_on_kills_releasing_on_same_channel() {
 
     h.handle_note_on(0, 60, 1.0, &mut ev);
     h.handle_note_off(0, 60, 1.0, &mut ev);
-    assert_eq!(h.get_ui_data().releasing, 1);
+    assert_eq!(h.get_ui_state().releasing, 1);
 
     h.handle_note_on(0, 64, 1.0, &mut ev);
 
-    let ui = h.get_ui_data();
+    let ui = h.get_ui_state();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.releasing, 0);
 }
@@ -340,7 +340,7 @@ fn mono_legato_note_off_returns_to_previous() {
     h.handle_note_on(0, 64, 0.8, &mut ev);
     h.handle_note_off(0, 64, 1.0, &mut ev);
 
-    let ui = h.get_ui_data();
+    let ui = h.get_ui_state();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.waiting, 0);
     assert_eq!(ui.releasing, 0);
@@ -363,7 +363,7 @@ fn mono_legato_three_notes_unwind() {
     h.handle_note_on(0, 64, 1.0, &mut ev);
     h.handle_note_on(0, 67, 1.0, &mut ev);
 
-    assert_eq!(h.get_ui_data().waiting, 2);
+    assert_eq!(h.get_ui_state().waiting, 2);
 
     h.handle_note_off(0, 67, 1.0, &mut ev);
     match ev.events().last().unwrap() {
@@ -380,7 +380,7 @@ fn mono_legato_three_notes_unwind() {
     h.handle_note_off(0, 60, 1.0, &mut ev);
     let (_, _, rel, _, _) = count_by_kind(&ev);
     assert!(rel >= 1);
-    assert_eq!(h.get_ui_data().playing, 0);
+    assert_eq!(h.get_ui_state().playing, 0);
 }
 
 // ---- Waiting note removal ----
@@ -397,7 +397,7 @@ fn note_off_waiting_note_just_removes() {
     h.handle_note_off(0, 60, 1.0, &mut ev);
 
     assert_eq!(ev.events().len(), before_len);
-    assert_eq!(h.get_ui_data().waiting, 0);
+    assert_eq!(h.get_ui_state().waiting, 0);
 }
 
 // ---- handle_choke ----
@@ -412,7 +412,7 @@ fn choke_playing_note_frees_voice() {
 
     h.handle_choke(0, 60);
 
-    assert_eq!(h.get_ui_data().playing, 0);
+    assert_eq!(h.get_ui_state().playing, 0);
     assert_eq!(h.free_voices.len(), free_before + 1);
 }
 
@@ -427,7 +427,7 @@ fn choke_releasing_note_frees_voice() {
 
     h.handle_choke(0, 60);
 
-    assert_eq!(h.get_ui_data().releasing, 0);
+    assert_eq!(h.get_ui_state().releasing, 0);
     assert_eq!(h.free_voices.len(), free_before + 1);
 }
 
@@ -530,7 +530,7 @@ fn get_decaying_voices_includes_killing() {
 
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
-    assert_eq!(decaying.len(), h.get_ui_data().killing);
+    assert_eq!(decaying.len(), h.get_ui_state().killing);
 }
 
 // ---- update_decaying_voices ----
@@ -549,7 +549,7 @@ fn update_decaying_voices_frees_done() {
 
     h.update_decaying_voices(&decaying);
 
-    assert_eq!(h.get_ui_data().releasing, 0);
+    assert_eq!(h.get_ui_state().releasing, 0);
     assert_eq!(h.free_voices.len(), free_before + 1);
 }
 
@@ -568,7 +568,7 @@ fn update_decaying_voices_keeps_active() {
     let free_before = h.free_voices.len();
     h.update_decaying_voices(&decaying);
 
-    assert_eq!(h.get_ui_data().releasing, 1);
+    assert_eq!(h.get_ui_state().releasing, 1);
     assert_eq!(h.free_voices.len(), free_before);
 }
 
@@ -580,14 +580,14 @@ fn update_decaying_voices_frees_killing() {
     h.handle_note_on(0, 60, 1.0, &mut ev);
     h.handle_note_on(0, 64, 1.0, &mut ev);
 
-    let killing_before = h.get_ui_data().killing;
+    let killing_before = h.get_ui_state().killing;
     let free_before = h.free_voices.len();
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
 
     h.update_decaying_voices(&decaying);
 
-    assert_eq!(h.get_ui_data().killing, 0);
+    assert_eq!(h.get_ui_state().killing, 0);
     assert_eq!(h.free_voices.len(), free_before + killing_before);
 }
 
@@ -619,7 +619,7 @@ fn get_playing_voices_includes_killing() {
     let mut playing = PlayingVoices::new();
     h.get_playing_voices(&mut playing);
 
-    let ui = h.get_ui_data();
+    let ui = h.get_ui_state();
     assert_eq!(playing.len(), ui.playing + ui.releasing + ui.killing);
 }
 
@@ -633,11 +633,11 @@ fn different_channels_same_note_are_independent() {
     h.handle_note_on(0, 60, 1.0, &mut ev);
     h.handle_note_on(1, 60, 1.0, &mut ev);
 
-    assert_eq!(h.get_ui_data().playing, 2);
+    assert_eq!(h.get_ui_state().playing, 2);
 
     h.handle_note_off(0, 60, 1.0, &mut ev);
-    assert_eq!(h.get_ui_data().playing, 1);
-    assert_eq!(h.get_ui_data().releasing, 1);
+    assert_eq!(h.get_ui_state().playing, 1);
+    assert_eq!(h.get_ui_state().releasing, 1);
 }
 
 #[test]
@@ -650,7 +650,7 @@ fn mono_different_channel_does_not_steal() {
 
     // Channel 1 has no prior note, so it grabs a voice independently
     // (monophonic stealing is per-channel)
-    let ui = h.get_ui_data();
+    let ui = h.get_ui_state();
     assert!(ui.playing >= 1);
 }
 
@@ -671,8 +671,8 @@ fn voice_reuse_after_full_lifecycle() {
     h.update_decaying_voices(&decaying);
 
     assert_eq!(h.free_voices.len(), free_after_two + 2);
-    assert_eq!(h.get_ui_data().releasing, 0);
-    assert_eq!(h.get_ui_data().playing, 0);
+    assert_eq!(h.get_ui_state().releasing, 0);
+    assert_eq!(h.get_ui_state().playing, 0);
 }
 
 #[test]
@@ -686,7 +686,7 @@ fn get_ui_data_reflects_complex_state() {
     h.handle_note_on(0, 67, 1.0, &mut ev);
     h.handle_note_off(0, 67, 1.0, &mut ev);
 
-    let ui = h.get_ui_data();
+    let ui = h.get_ui_state();
     assert_eq!(ui.num_voices, 4);
     assert!(ui.legato);
     assert!(ui.playing + ui.waiting + ui.releasing + ui.killing > 0);

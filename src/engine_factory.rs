@@ -6,7 +6,7 @@ use std::sync::{
 use nih_plug::params::FloatParam;
 use parking_lot::Mutex;
 
-use crate::synth_engine::{ExternalParamsBlock, FullConfig, Sample, SynthEngine};
+use crate::synth_engine::{EngineConfig, ExternalParamsBlock, Sample, SynthEngine};
 
 pub type EngineHandle = Arc<Mutex<SynthEngine>>;
 
@@ -30,7 +30,7 @@ impl EngineFactory {
             host_sample_rate,
             current: Mutex::new(Arc::new(Mutex::new(
                 SynthEngine::try_new(
-                    &FullConfig::default(),
+                    &EngineConfig::default(),
                     output_level_param.clone(),
                     external_params.clone(),
                     host_sample_rate,
@@ -49,7 +49,7 @@ impl EngineFactory {
         self.seq_idx.load(Ordering::Acquire)
     }
 
-    pub fn load_config(&self, cfg: &FullConfig) -> bool {
+    pub fn load_config(&self, cfg: &EngineConfig) -> bool {
         let Some(new_engine) = SynthEngine::try_new(
             cfg,
             self.output_level_param.clone(),

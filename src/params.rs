@@ -1,9 +1,10 @@
+use nih_plug::params::persist::PersistentField;
 use nih_plug::prelude::*;
 use nih_plug_egui::EguiState;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
-use crate::synth_engine::Config;
+use crate::{engine_factory::EngineFactory, synth_engine::EngineConfig};
 
 #[derive(Params)]
 pub struct AdditizerParams {
@@ -11,7 +12,7 @@ pub struct AdditizerParams {
     pub editor_state: Arc<EguiState>,
 
     #[persist = "plugin-config"]
-    pub config: Arc<Mutex<Config>>,
+    pub config: ConfigWrapper,
 
     #[id = "volume"]
     pub volume: Arc<FloatParam>,
@@ -33,7 +34,7 @@ impl Default for AdditizerParams {
     fn default() -> Self {
         Self {
             editor_state: EguiState::from_size(900, 600),
-            config: Default::default(),
+            config: ConfigWrapper::new(),
             volume: Arc::new(
                 FloatParam::new(
                     "Volume",
@@ -70,5 +71,52 @@ impl Default for AdditizerParams {
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             )),
         }
+    }
+}
+
+pub(crate) struct ConfigWrapper {
+    factory: Mutex<Option<Arc<EngineFactory>>>,
+    config_from_host: Mutex<Option<EngineConfig>>,
+}
+
+impl ConfigWrapper {
+    fn new() -> Self {
+        Self {
+            factory: Mutex::new(None),
+            config_from_host: Mutex::new(None),
+        }
+    }
+
+    pub fn set_factory(&self, factory: Arc<EngineFactory>) {
+        *self.factory.lock() = Some(factory.clone());
+
+        if let Some(cfg) = self.config_from_host.lock().as_ref() {
+            factory.load_config(cfg);
+        }
+    }
+}
+
+impl<'a> PersistentField<'a, EngineConfig> for ConfigWrapper {
+    fn set(&self, new_value: EngineConfig) {
+        *self.config_from_host.lock() = Some(new_value);
+    }
+
+    fn map<F, R>(&self, f: F) -> R
+    where
+        F: Fn(&EngineConfig) -> R,
+    {
+        if let Some(factory) = self.factory.lock().as_ref() {
+            let config = factory.get_engine().lock().get_config();
+
+            return f(&config);
+        }
+
+        let config_from_host = self.config_from_host.lock();
+
+        if let Some(config) = config_from_host.as_ref() {
+            return f(config);
+        }
+
+        f(&EngineConfig::default())
     }
 }

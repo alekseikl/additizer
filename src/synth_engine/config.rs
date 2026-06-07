@@ -2,26 +2,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::{
-        Input, MAX_BLOCK_SIZE, Sample, StereoSample,
-        amplifier::AmplifierConfig,
-        envelope::EnvelopeConfig,
-        expressions::ExpressionsConfig,
-        external_param::ExternalParamConfig,
-        harmonic_editor::HarmonicEditorConfig,
-        lfo::LfoConfig,
-        mixer::MixerConfig,
-        oscillator::OscillatorConfig,
-        routing::{MAX_VOICES, MIN_MODULE_ID, ModuleId, ModuleLink},
-        spectral_blend::SpectralBlendConfig,
-        spectral_filter::SpectralFilterConfig,
-        spectral_mixer::SpectralMixerConfig,
-        wave_shaper::WaveShaperConfig,
+        Input, MAX_BLOCK_SIZE, Sample, StereoSample, amplifier::AmplifierConfig,
+        envelope::EnvelopeConfig, expressions::ExpressionsConfig,
+        external_param::ExternalParamConfig, harmonic_editor::HarmonicEditorConfig, lfo::LfoConfig,
+        mixer::MixerConfig, oscillator::OscillatorConfig, routing::ModuleId,
+        spectral_blend::SpectralBlendConfig, spectral_filter::SpectralFilterConfig,
+        spectral_mixer::SpectralMixerConfig, wave_shaper::WaveShaperConfig,
     },
     utils::from_ms,
 };
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct EngineConfig {
+pub struct EngineParams {
     pub num_voices: usize,
     pub legato: bool,
     pub block_size: usize,
@@ -31,7 +23,7 @@ pub struct EngineConfig {
     pub output_gain: StereoSample,
 }
 
-impl Default for EngineConfig {
+impl Default for EngineParams {
     fn default() -> Self {
         Self {
             num_voices: 1,
@@ -71,38 +63,8 @@ pub enum ModuleConfig {
 }
 
 #[derive(Default, Clone, Serialize, Deserialize)]
-pub struct FullConfig {
-    pub engine: EngineConfig,
+pub struct EngineConfig {
+    pub engine: EngineParams,
     pub modules: Vec<ModuleConfig>,
     pub links: Vec<LinkConfig>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct RoutingConfig {
-    pub next_module_id: ModuleId,
-    pub num_voices: usize,
-    pub legato: bool,
-    pub block_size: usize,
-    pub oversampling: bool,
-    pub stereo_spectrum: bool,
-    pub links: Vec<ModuleLink>,
-}
-
-impl Default for RoutingConfig {
-    fn default() -> Self {
-        Self {
-            next_module_id: MIN_MODULE_ID,
-            num_voices: MAX_VOICES / 4,
-            legato: false,
-            block_size: MAX_BLOCK_SIZE,
-            oversampling: false,
-            stereo_spectrum: true,
-            links: Default::default(),
-        }
-    }
-}
-
-#[derive(Default, Serialize, Deserialize, Clone)]
-pub struct Config {
-    pub routing: RoutingConfig,
 }
