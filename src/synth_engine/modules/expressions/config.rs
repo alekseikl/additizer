@@ -6,14 +6,14 @@ use crate::{
 };
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Config {
+pub struct ExpressionsConfig {
     pub id: ModuleId,
     pub expression: Expression,
     pub use_release_velocity: bool,
     pub smooth: Sample,
 }
 
-impl Default for Config {
+impl Default for ExpressionsConfig {
     fn default() -> Self {
         Self {
             id: -1,

@@ -22,7 +22,7 @@ impl Default for InputConfig {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Config {
+pub struct MixerConfig {
     pub id: ModuleId,
     pub num_inputs: u8,
     pub inputs: [InputConfig; MAX_INPUTS as usize],
@@ -31,7 +31,7 @@ pub struct Config {
     pub output_gain: StereoSample,
 }
 
-impl Default for Config {
+impl Default for MixerConfig {
     fn default() -> Self {
         Self {
             id: -1,

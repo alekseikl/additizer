@@ -4,14 +4,14 @@ use parking_lot::Mutex;
 
 use crate::synth_engine::{Input, ModuleId, StereoSample, SynthEngine};
 
-use super::{Config, SpectralFilter, SpectralFilterType};
 use super::link::UiEnd;
+use super::{SpectralFilter, SpectralFilterConfig, SpectralFilterType};
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    config: Config,
+    config: SpectralFilterConfig,
 }
 
 impl UiBridge {
@@ -35,7 +35,7 @@ impl UiBridge {
         self.module_id
     }
 
-    pub fn config(&self) -> &Config {
+    pub fn config(&self) -> &SpectralFilterConfig {
         &self.config
     }
 

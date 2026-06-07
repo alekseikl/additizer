@@ -10,14 +10,14 @@ pub enum ShaperType {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Config {
+pub struct WaveShaperConfig {
     pub id: ModuleId,
     pub shaper_type: ShaperType,
     pub distortion: StereoSample,
     pub clipping_level: StereoSample,
 }
 
-impl Default for Config {
+impl Default for WaveShaperConfig {
     fn default() -> Self {
         Self {
             id: -1,

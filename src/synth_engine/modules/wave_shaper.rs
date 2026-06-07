@@ -7,7 +7,7 @@ mod config;
 mod link;
 mod ui_bridge;
 
-pub use config::{Config, ShaperType};
+pub use config::{WaveShaperConfig, ShaperType};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::UiBridge;
 
@@ -23,7 +23,7 @@ struct Params {
 }
 
 impl Params {
-    fn from_config(c: &config::Config) -> Self {
+    fn from_config(c: &config::WaveShaperConfig) -> Self {
         Self {
             shaper_type: c.shaper_type,
         }
@@ -36,7 +36,7 @@ struct ChannelParams {
 }
 
 impl ChannelParams {
-    fn from_config(c: &Config, channel_idx: usize) -> Self {
+    fn from_config(c: &WaveShaperConfig, channel_idx: usize) -> Self {
         Self {
             distortion: c.distortion[channel_idx],
             clipping_level: c.clipping_level[channel_idx],
@@ -76,13 +76,13 @@ pub struct WaveShaper {
 
 impl WaveShaper {
     pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&Config {
+        Self::from_config(&WaveShaperConfig {
             id,
-            ..Config::default()
+            ..WaveShaperConfig::default()
         })
     }
 
-    pub fn from_config(config: &config::Config) -> Self {
+    pub fn from_config(config: &config::WaveShaperConfig) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
         Self {
@@ -111,8 +111,8 @@ impl WaveShaper {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_config(&self) -> Config {
-        Config {
+    pub fn get_config(&self) -> WaveShaperConfig {
+        WaveShaperConfig {
             id: self.id,
             shaper_type: self.params.shaper_type,
             distortion: get_stereo_param!(self, distortion),

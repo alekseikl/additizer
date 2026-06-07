@@ -6,19 +6,17 @@ mod config;
 mod link;
 mod ui_bridge;
 
+pub use config::ExternalParamConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use config::Config;
 pub use ui_bridge::UiBridge;
 
-use crate::{
-    synth_engine::{
-        ModuleId, ModuleType, Sample, SynthModule,
-        buffer::{Buffer, zero_buffer},
-        routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
-        smooth::Smoother,
-        synth_module::{ModInput, ProcessParams},
-        types::ScalarOutput,
-    },
+use crate::synth_engine::{
+    ModuleId, ModuleType, Sample, SynthModule,
+    buffer::{Buffer, zero_buffer},
+    routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
+    smooth::Smoother,
+    synth_module::{ModInput, ProcessParams},
+    types::ScalarOutput,
 };
 
 pub const NUM_FLOAT_PARAMS: usize = 4;
@@ -34,7 +32,7 @@ struct Params {
 }
 
 impl Params {
-    fn from_config(c: &config::Config) -> Self {
+    fn from_config(c: &config::ExternalParamConfig) -> Self {
         Self {
             selected_param_index: c.selected_param_index.min(NUM_FLOAT_PARAMS - 1),
             smooth: c.smooth,
@@ -77,15 +75,18 @@ pub struct ExternalParam {
 impl ExternalParam {
     pub fn new(id: ModuleId, params_block: Arc<ExternalParamsBlock>) -> Self {
         Self::from_config(
-            &Config {
+            &ExternalParamConfig {
                 id,
-                ..Config::default()
+                ..ExternalParamConfig::default()
             },
             params_block,
         )
     }
 
-    pub fn from_config(config: &config::Config, params_block: Arc<ExternalParamsBlock>) -> Self {
+    pub fn from_config(
+        config: &config::ExternalParamConfig,
+        params_block: Arc<ExternalParamsBlock>,
+    ) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
         Self {
@@ -107,8 +108,8 @@ impl ExternalParam {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_config(&self) -> Config {
-        Config {
+    pub fn get_config(&self) -> ExternalParamConfig {
+        ExternalParamConfig {
             id: self.id,
             selected_param_index: self.params.selected_param_index,
             smooth: self.params.smooth,

@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 use crate::synth_engine::{Input, ModuleId, Sample, StereoSample, SynthEngine};
 
 use super::{
-    Config, Oscillator, PhasesDst,
+    Oscillator, OscillatorConfig, PhasesDst,
     link::{UiEnd, UiUpdate},
 };
 
@@ -13,7 +13,7 @@ pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    config: Config,
+    config: OscillatorConfig,
 }
 
 impl UiBridge {
@@ -55,7 +55,7 @@ impl UiBridge {
         }
     }
 
-    pub fn config(&self) -> &Config {
+    pub fn config(&self) -> &OscillatorConfig {
         &self.config
     }
 

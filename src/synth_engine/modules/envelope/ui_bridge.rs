@@ -4,14 +4,14 @@ use parking_lot::Mutex;
 
 use crate::synth_engine::{Input, ModuleId, StereoSample, SynthEngine};
 
-use super::{Config, Envelope, EnvelopeCurve};
 use super::link::UiEnd;
+use super::{Envelope, EnvelopeConfig, EnvelopeCurve};
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    config: Config,
+    config: EnvelopeConfig,
 }
 
 impl UiBridge {
@@ -35,7 +35,7 @@ impl UiBridge {
         self.module_id
     }
 
-    pub fn config(&self) -> &Config {
+    pub fn config(&self) -> &EnvelopeConfig {
         &self.config
     }
 

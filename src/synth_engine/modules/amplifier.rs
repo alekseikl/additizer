@@ -6,7 +6,7 @@ mod config;
 mod link;
 mod ui_bridge;
 
-pub use config::Config;
+pub use config::AmplifierConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::UiBridge;
 
@@ -23,7 +23,7 @@ struct ChannelParams {
 }
 
 impl ChannelParams {
-    fn from_config(c: &Config, channel_idx: usize) -> Self {
+    fn from_config(c: &AmplifierConfig, channel_idx: usize) -> Self {
         Self {
             gain: c.gain[channel_idx].into(),
         }
@@ -66,13 +66,13 @@ pub struct Amplifier {
 
 impl Amplifier {
     pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&Config {
+        Self::from_config(&AmplifierConfig {
             id,
-            ..Config::default()
+            ..AmplifierConfig::default()
         })
     }
 
-    pub fn from_config(config: &config::Config) -> Self {
+    pub fn from_config(config: &config::AmplifierConfig) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
         Self {
@@ -99,8 +99,8 @@ impl Amplifier {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_config(&self) -> Config {
-        Config {
+    pub fn get_config(&self) -> AmplifierConfig {
+        AmplifierConfig {
             id: self.id,
             gain: get_smoothed_param2!(self, gain),
         }

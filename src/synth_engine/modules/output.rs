@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use itertools::izip;
 use nih_plug::{params::FloatParam, util::db_to_gain_fast};
-use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::{
@@ -12,33 +11,13 @@ use crate::{
         iir_decimator::IirDecimator,
         routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
         smooth::{InfiniteSmoothed, SmoothedSample},
-        synth_module::{ModInput, ModuleConfigBox, ProcessParams},
+        synth_module::{ModInput, ProcessParams},
         voices_handler::DecayingVoice,
     },
     utils::from_ms,
 };
 
 const _: () = assert!(NUM_CHANNELS == 2);
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Params {
-    gain: [SmoothedSample; NUM_CHANNELS],
-    voice_kill_time: Sample,
-}
-
-impl Default for Params {
-    fn default() -> Self {
-        Self {
-            gain: [0.5.into(), 0.5.into()],
-            voice_kill_time: from_ms(30.0),
-        }
-    }
-}
-
-#[derive(Default, Clone, Serialize, Deserialize)]
-pub struct OutputConfig {
-    params: Params,
-}
 
 struct Voice {
     killed: bool,
@@ -62,8 +41,8 @@ struct Channel {
 }
 
 pub struct Output {
-    config: ModuleConfigBox<OutputConfig>,
-    params: Params,
+    gain: [SmoothedSample; NUM_CHANNELS],
+    kill_time: Sample,
     ext_level_param: Arc<FloatParam>,
     ext_gain_smoothed: InfiniteSmoothed,
     channels: [Channel; NUM_CHANNELS],
@@ -74,12 +53,15 @@ pub struct Output {
 }
 
 impl Output {
-    pub fn new(config: ModuleConfigBox<OutputConfig>, level_param: Arc<FloatParam>) -> Self {
+    pub fn new(gain: StereoSample, kill_time: Sample, level_param: Arc<FloatParam>) -> Self {
         let ext_gain = db_to_gain_fast(level_param.value());
 
-        let mut out = Self {
-            params: Params::default(),
-            config,
+        Self {
+            gain: [
+                SmoothedSample::new(Self::clamp_gain(gain[0])),
+                SmoothedSample::new(Self::clamp_gain(gain[1])),
+            ],
+            kill_time: Self::clamp_kill_time(kill_time),
             ext_level_param: level_param,
             ext_gain_smoothed: ext_gain.into(),
             channels: Default::default(),
@@ -87,32 +69,33 @@ impl Output {
             ext_gain_buffer: zero_buffer(),
             output: [zero_buffer(), zero_buffer()],
             decimator: IirDecimator::new(),
-        };
+        }
+    }
 
-        out.params = out.config.lock().params.clone();
+    fn clamp_kill_time(kill_time: Sample) -> Sample {
+        kill_time.clamp(from_ms(4.0), from_ms(50.0))
+    }
 
-        out
+    fn clamp_gain(gain: Sample) -> Sample {
+        gain.clamp(0.0, 4.0)
     }
 
     pub fn get_gain(&self) -> StereoSample {
-        StereoSample::from_iter(self.params.gain.iter().map(|s| s.get()))
+        StereoSample::from_iter(self.gain.iter().map(|s| s.get()))
     }
 
     pub fn set_gain(&mut self, gain: StereoSample) {
-        for (smoothed_gain, gain) in self.params.gain.iter_mut().zip(gain.iter()) {
-            smoothed_gain.set(*gain);
+        for (smoothed_gain, gain) in self.gain.iter_mut().zip(gain.iter()) {
+            smoothed_gain.set(Self::clamp_gain(*gain));
         }
-
-        self.config.lock().params.gain = self.params.gain;
     }
 
     pub fn get_voice_kill_time(&self) -> Sample {
-        self.params.voice_kill_time
+        self.kill_time
     }
 
-    pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) {
-        self.params.voice_kill_time = voice_kill_time;
-        self.config.lock().params.voice_kill_time = voice_kill_time;
+    pub fn set_voice_kill_time(&mut self, kill_time: Sample) {
+        self.kill_time = Self::clamp_kill_time(kill_time)
     }
 
     pub fn read_output<'a>(
@@ -217,11 +200,8 @@ impl SynthModule for Output {
                 .take(samples),
         );
 
-        for (channel_idx, (output, gain)) in self
-            .output
-            .iter_mut()
-            .zip(self.params.gain.iter_mut())
-            .enumerate()
+        for (channel_idx, (output, gain)) in
+            self.output.iter_mut().zip(self.gain.iter_mut()).enumerate()
         {
             for (iteration_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
                 router.read_unmodulated_input(
@@ -235,7 +215,7 @@ impl SynthModule for Output {
                 let voice = &mut self.channels[channel_idx].voices[*voice_idx];
 
                 if voice.killed {
-                    let kill_time = self.params.voice_kill_time.max(from_ms(4.0));
+                    let kill_time = self.kill_time.max(from_ms(4.0));
                     let base = (-5.0 / (sample_rate * kill_time)).exp();
                     let mut sum = 0.0;
 

@@ -27,12 +27,12 @@ impl ComplexCfg {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Config {
+pub struct HarmonicEditorConfig {
     pub id: ModuleId,
     pub spectrum: [Vec<ComplexCfg>; NUM_CHANNELS],
 }
 
-impl Default for Config {
+impl Default for HarmonicEditorConfig {
     fn default() -> Self {
         let mut cfg = Self {
             id: -1,

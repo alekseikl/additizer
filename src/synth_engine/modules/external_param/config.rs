@@ -6,14 +6,14 @@ use crate::{
 };
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Config {
+pub struct ExternalParamConfig {
     pub id: ModuleId,
     pub selected_param_index: usize,
     pub smooth: Sample,
     pub sample_and_hold: bool,
 }
 
-impl Default for Config {
+impl Default for ExternalParamConfig {
     fn default() -> Self {
         Self {
             id: -1,

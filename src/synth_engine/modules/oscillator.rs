@@ -27,7 +27,7 @@ mod config;
 mod link;
 mod ui_bridge;
 
-pub use config::Config;
+pub use config::OscillatorConfig;
 pub use ui_bridge::UiBridge;
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
@@ -57,7 +57,7 @@ struct Params {
 }
 
 impl Params {
-    fn from_config(c: &config::Config) -> Self {
+    fn from_config(c: &config::OscillatorConfig) -> Self {
         Self {
             unison: c.unison_voices,
             steal_phase: c.steal_phase,
@@ -100,7 +100,7 @@ struct ChannelParams {
 }
 
 impl ChannelParams {
-    fn from_config(c: &Config, channel_idx: usize) -> Self {
+    fn from_config(c: &OscillatorConfig, channel_idx: usize) -> Self {
         Self {
             gain: c.gain[channel_idx].into(),
             pitch_shift: c.pitch_shift[channel_idx].into(),
@@ -284,13 +284,13 @@ pub struct Oscillator {
 
 impl Oscillator {
     pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&Config {
+        Self::from_config(&OscillatorConfig {
             id,
-            ..Config::default()
+            ..OscillatorConfig::default()
         })
     }
 
-    pub fn from_config(config: &config::Config) -> Self {
+    pub fn from_config(config: &config::OscillatorConfig) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
         Self {
@@ -316,8 +316,8 @@ impl Oscillator {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_config(&self) -> Config {
-        Config {
+    pub fn get_config(&self) -> OscillatorConfig {
+        OscillatorConfig {
             id: self.id,
             unison_voices: self.params.unison,
             steal_phase: self.params.steal_phase,

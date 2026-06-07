@@ -6,7 +6,7 @@ mod config;
 mod link;
 mod ui_bridge;
 
-pub use config::Config;
+pub use config::SpectralBlendConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::UiBridge;
 
@@ -23,7 +23,7 @@ struct ChannelParams {
 }
 
 impl ChannelParams {
-    fn from_config(c: &config::Config, channel_idx: usize) -> Self {
+    fn from_config(c: &config::SpectralBlendConfig, channel_idx: usize) -> Self {
         Self {
             blend: c.blend[channel_idx],
         }
@@ -48,13 +48,13 @@ pub struct SpectralBlend {
 
 impl SpectralBlend {
     pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&Config {
+        Self::from_config(&SpectralBlendConfig {
             id,
-            ..Config::default()
+            ..SpectralBlendConfig::default()
         })
     }
 
-    pub fn from_config(config: &config::Config) -> Self {
+    pub fn from_config(config: &config::SpectralBlendConfig) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
         Self {
@@ -77,8 +77,8 @@ impl SpectralBlend {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_config(&self) -> Config {
-        Config {
+    pub fn get_config(&self) -> SpectralBlendConfig {
+        SpectralBlendConfig {
             id: self.id,
             blend: get_stereo_param!(self, blend),
         }

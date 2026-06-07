@@ -4,14 +4,14 @@ use parking_lot::Mutex;
 
 use crate::synth_engine::{Input, MixType, ModuleId, StereoSample, SynthEngine, VolumeType};
 
-use super::{Config, SpectralMixer};
 use super::link::UiEnd;
+use super::{SpectralMixer, SpectralMixerConfig};
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    config: Config,
+    config: SpectralMixerConfig,
 }
 
 impl UiBridge {
@@ -35,7 +35,7 @@ impl UiBridge {
         self.module_id
     }
 
-    pub fn config(&self) -> &Config {
+    pub fn config(&self) -> &SpectralMixerConfig {
         &self.config
     }
 
@@ -60,7 +60,12 @@ impl UiBridge {
     }
 
     pub fn set_mix_type(&mut self, input_idx: u8, mix_type: MixType) {
-        if self.ui_end.as_mut().unwrap().set_mix_type(input_idx, mix_type) {
+        if self
+            .ui_end
+            .as_mut()
+            .unwrap()
+            .set_mix_type(input_idx, mix_type)
+        {
             self.config.inputs[input_idx as usize].mix_type = mix_type;
         }
     }

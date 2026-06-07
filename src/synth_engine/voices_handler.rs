@@ -160,10 +160,10 @@ pub struct VoicesHandler {
 }
 
 impl VoicesHandler {
-    pub fn new() -> Self {
+    pub fn new(num_voices: usize, legato: bool) -> Self {
         Self {
-            num_voices: 1,
-            legato: false,
+            num_voices: num_voices.clamp(1, MAX_AVAILABLE_VOICES),
+            legato,
             waiting_notes: SmallVec::new(),
             playing_notes: VecDeque::with_capacity(MAX_VOICES),
             releasing_notes: VecDeque::with_capacity(MAX_VOICES),

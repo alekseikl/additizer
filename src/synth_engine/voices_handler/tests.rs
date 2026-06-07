@@ -10,7 +10,7 @@ fn float_vel(velocity: u8) -> Sample {
 }
 
 fn handler(num_voices: usize) -> VoicesHandler {
-    let mut h = VoicesHandler::new();
+    let mut h = VoicesHandler::new(1, false);
     h.set_num_voices(num_voices);
     h
 }
@@ -47,7 +47,7 @@ fn count_by_kind(ev: &VoiceEvents) -> (usize, usize, usize, usize, usize) {
 
 #[test]
 fn new_defaults() {
-    let h = VoicesHandler::new();
+    let h = VoicesHandler::new(1, false);
     let ui = h.get_ui_data();
     assert_eq!(ui.num_voices, 1);
     assert!(!ui.legato);
@@ -59,7 +59,7 @@ fn new_defaults() {
 
 #[test]
 fn set_num_voices_clamps() {
-    let mut h = VoicesHandler::new();
+    let mut h = VoicesHandler::new(1, false);
 
     h.set_num_voices(0);
     assert_eq!(h.get_ui_data().num_voices, 1);
@@ -73,7 +73,7 @@ fn set_num_voices_clamps() {
 
 #[test]
 fn set_legato_toggles() {
-    let mut h = VoicesHandler::new();
+    let mut h = VoicesHandler::new(1, false);
     assert!(!h.legato);
     h.set_legato(true);
     assert!(h.legato);

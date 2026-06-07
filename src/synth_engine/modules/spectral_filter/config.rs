@@ -13,7 +13,7 @@ pub enum SpectralFilterType {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Config {
+pub struct SpectralFilterConfig {
     pub id: ModuleId,
     pub filter_type: SpectralFilterType,
     pub fourth_order: bool,
@@ -23,7 +23,7 @@ pub struct Config {
     pub drive: StereoSample,
 }
 
-impl Default for Config {
+impl Default for SpectralFilterConfig {
     fn default() -> Self {
         Self {
             id: -1,

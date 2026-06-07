@@ -3,12 +3,12 @@ use serde::{Deserialize, Serialize};
 use crate::synth_engine::{ModuleId, StereoSample};
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Config {
+pub struct AmplifierConfig {
     pub id: ModuleId,
     pub gain: StereoSample,
 }
 
-impl Default for Config {
+impl Default for AmplifierConfig {
     fn default() -> Self {
         Self {
             id: -1,

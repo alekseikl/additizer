@@ -18,7 +18,7 @@ pub use expressions::Expressions;
 pub use external_param::{ExternalParam, ExternalParamsBlock};
 pub use lfo::{Lfo, LfoShape};
 pub use mixer::Mixer;
-pub use output::{Output, OutputConfig};
+pub use output::Output;
 pub use spectral_blend::SpectralBlend;
 pub use spectral_filter::{SpectralFilter, SpectralFilterType};
 pub use spectral_mixer::SpectralMixer;

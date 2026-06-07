@@ -4,7 +4,7 @@ mod config;
 mod link;
 mod ui_bridge;
 
-pub use config::{Config, EnvelopeCurve};
+pub use config::{EnvelopeConfig, EnvelopeCurve};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::UiBridge;
 
@@ -34,7 +34,7 @@ struct Params {
 }
 
 impl Params {
-    fn from_config(c: &config::Config) -> Self {
+    fn from_config(c: &config::EnvelopeConfig) -> Self {
         Self {
             keep_voice_alive: c.keep_voice_alive,
             attack_curve: c.attack_curve,
@@ -55,7 +55,7 @@ struct ChannelParams {
 }
 
 impl ChannelParams {
-    fn from_config(c: &Config, channel_idx: usize) -> Self {
+    fn from_config(c: &EnvelopeConfig, channel_idx: usize) -> Self {
         Self {
             delay: c.delay[channel_idx],
             attack: c.attack[channel_idx],
@@ -229,13 +229,13 @@ pub struct Envelope {
 
 impl Envelope {
     pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&Config {
+        Self::from_config(&EnvelopeConfig {
             id,
-            ..Config::default()
+            ..EnvelopeConfig::default()
         })
     }
 
-    pub fn from_config(config: &config::Config) -> Self {
+    pub fn from_config(config: &config::EnvelopeConfig) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
         Self {
@@ -259,8 +259,8 @@ impl Envelope {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_config(&self) -> Config {
-        Config {
+    pub fn get_config(&self) -> EnvelopeConfig {
+        EnvelopeConfig {
             id: self.id,
             keep_voice_alive: self.params.keep_voice_alive,
             delay: get_stereo_param!(self, delay),

@@ -4,14 +4,14 @@ use parking_lot::Mutex;
 
 use crate::synth_engine::{Input, ModuleId, StereoSample, SynthEngine, VolumeType};
 
-use super::{Config, Mixer};
 use super::link::UiEnd;
+use super::{Mixer, MixerConfig};
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    config: Config,
+    config: MixerConfig,
 }
 
 impl UiBridge {
@@ -35,7 +35,7 @@ impl UiBridge {
         self.module_id
     }
 
-    pub fn config(&self) -> &Config {
+    pub fn config(&self) -> &MixerConfig {
         &self.config
     }
 

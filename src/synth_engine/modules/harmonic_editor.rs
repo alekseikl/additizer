@@ -16,7 +16,7 @@ mod config;
 mod link;
 mod ui_bridge;
 
-pub use config::{ComplexCfg, Config};
+pub use config::{ComplexCfg, HarmonicEditorConfig};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::UiBridge;
 
@@ -82,13 +82,13 @@ pub struct HarmonicEditor {
 
 impl HarmonicEditor {
     pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&Config {
+        Self::from_config(&HarmonicEditorConfig {
             id,
-            ..Config::default()
+            ..HarmonicEditorConfig::default()
         })
     }
 
-    pub fn from_config(config: &config::Config) -> Self {
+    pub fn from_config(config: &config::HarmonicEditorConfig) -> Self {
         let (audio_end, ui_end) = create_link_pair();
         let mut outputs = [HARMONIC_SERIES_BUFFER; NUM_CHANNELS];
 
@@ -117,8 +117,8 @@ impl HarmonicEditor {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_config(&self) -> Config {
-        Config {
+    pub fn get_config(&self) -> HarmonicEditorConfig {
+        HarmonicEditorConfig {
             id: self.id,
             spectrum: self.outputs.map(|channel| {
                 channel
@@ -129,7 +129,7 @@ impl HarmonicEditor {
         }
     }
 
-    pub fn harmonics_from_config(config: &Config) -> Vec<StereoSample> {
+    pub fn harmonics_from_config(config: &HarmonicEditorConfig) -> Vec<StereoSample> {
         let mut magnitudes = vec![StereoSample::ZERO; SPECTRAL_BUFFER_SIZE];
 
         for (channel_idx, channel) in config.spectrum.iter().enumerate() {

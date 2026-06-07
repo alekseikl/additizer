@@ -171,7 +171,7 @@ impl ModuleLink {
         }
     }
 
-    pub fn modulation(src: ModuleId, dst: ModuleInput, amount: impl Into<StereoSample>) -> Self {
+    pub fn scaled(src: ModuleId, dst: ModuleInput, amount: impl Into<StereoSample>) -> Self {
         Self {
             src,
             dst,

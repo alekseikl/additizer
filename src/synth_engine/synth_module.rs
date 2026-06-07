@@ -1,6 +1,4 @@
-use std::{any::Any, sync::Arc};
-
-use parking_lot::Mutex;
+use std::any::Any;
 
 use crate::synth_engine::{
     ModuleInput,
@@ -229,8 +227,6 @@ impl<'a, 'b> VoiceRouter<'a, 'b> {
         }
     }
 }
-
-pub type ModuleConfigBox<T> = Arc<Mutex<T>>;
 
 macro_rules! set_mono_param {
     ($fn_name:ident, $param:ident, $type:ty) => {

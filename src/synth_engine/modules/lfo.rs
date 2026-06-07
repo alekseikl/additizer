@@ -6,7 +6,7 @@ mod config;
 mod link;
 mod ui_bridge;
 
-pub use config::{Config, LfoShape};
+pub use config::{LfoConfig, LfoShape};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::UiBridge;
 
@@ -28,7 +28,7 @@ struct ChannelParams {
 }
 
 impl ChannelParams {
-    fn from_config(c: &config::Config, channel_idx: usize) -> Self {
+    fn from_config(c: &config::LfoConfig, channel_idx: usize) -> Self {
         Self {
             frequency: c.frequency[channel_idx],
             phase_shift: c.phase_shift[channel_idx],
@@ -45,7 +45,7 @@ struct Params {
 }
 
 impl Params {
-    fn from_config(c: &config::Config) -> Self {
+    fn from_config(c: &config::LfoConfig) -> Self {
         Self {
             shape: c.shape,
             bipolar: c.bipolar,
@@ -96,13 +96,13 @@ pub struct Lfo {
 
 impl Lfo {
     pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&Config {
+        Self::from_config(&LfoConfig {
             id,
-            ..Config::default()
+            ..LfoConfig::default()
         })
     }
 
-    pub fn from_config(config: &config::Config) -> Self {
+    pub fn from_config(config: &config::LfoConfig) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
         Self {
@@ -131,8 +131,8 @@ impl Lfo {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_config(&self) -> Config {
-        Config {
+    pub fn get_config(&self) -> LfoConfig {
+        LfoConfig {
             id: self.id,
             shape: self.params.shape,
             bipolar: self.params.bipolar,

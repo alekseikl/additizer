@@ -11,7 +11,7 @@ pub enum LfoShape {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Config {
+pub struct LfoConfig {
     pub id: ModuleId,
     pub shape: LfoShape,
     pub bipolar: bool,
@@ -22,7 +22,7 @@ pub struct Config {
     pub smooth_time: StereoSample,
 }
 
-impl Default for Config {
+impl Default for LfoConfig {
     fn default() -> Self {
         Self {
             id: -1,

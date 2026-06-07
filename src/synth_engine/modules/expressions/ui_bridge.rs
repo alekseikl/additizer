@@ -4,14 +4,14 @@ use parking_lot::Mutex;
 
 use crate::synth_engine::{Expression, ModuleId, Sample, SynthEngine};
 
-use super::{Config, Expressions};
 use super::link::UiEnd;
+use super::{Expressions, ExpressionsConfig};
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    config: Config,
+    config: ExpressionsConfig,
 }
 
 impl UiBridge {
@@ -35,7 +35,7 @@ impl UiBridge {
         self.module_id
     }
 
-    pub fn config(&self) -> &Config {
+    pub fn config(&self) -> &ExpressionsConfig {
         &self.config
     }
 
@@ -46,7 +46,12 @@ impl UiBridge {
     }
 
     pub fn set_use_release_velocity(&mut self, value: bool) {
-        if self.ui_end.as_mut().unwrap().set_use_release_velocity(value) {
+        if self
+            .ui_end
+            .as_mut()
+            .unwrap()
+            .set_use_release_velocity(value)
+        {
             self.config.use_release_velocity = value;
         }
     }

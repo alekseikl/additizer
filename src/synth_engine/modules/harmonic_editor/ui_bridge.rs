@@ -7,13 +7,13 @@ use crate::synth_engine::{
 };
 
 use super::link::{UiEnd, UiUpdate};
-use super::{Config, FilterParams, HarmonicEditor, SetParams};
+use super::{FilterParams, HarmonicEditor, HarmonicEditorConfig, SetParams};
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    config: Config,
+    config: HarmonicEditorConfig,
 }
 
 impl UiBridge {

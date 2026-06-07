@@ -27,7 +27,7 @@ impl Default for UnisonConfig {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Config {
+pub struct OscillatorConfig {
     pub id: ModuleId,
     pub unison_voices: usize,
     pub steal_phase: bool,
@@ -44,7 +44,7 @@ pub struct Config {
     pub unison: [UnisonConfig; MAX_UNISON_VOICES],
 }
 
-impl Default for Config {
+impl Default for OscillatorConfig {
     fn default() -> Self {
         static INITIAL_PHASES: [Sample; MAX_UNISON_VOICES] = [
             0.0, 0.9068176, 0.6544455, 0.26577616, 0.24667478, 0.12834072, 0.5805929, 0.55541587,

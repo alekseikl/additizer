@@ -6,7 +6,6 @@ use egui::{
 };
 use nih_plug::editor::Editor;
 use nih_plug_egui::{EguiState, create_egui_editor, resizable_window::ResizableWindow};
-use parking_lot::Mutex;
 
 use crate::{
     editor::{
@@ -17,7 +16,8 @@ use crate::{
             WaveShaperUi,
         },
     },
-    synth_engine::{ModuleId, ModuleType, OUTPUT_MODULE_ID, SynthEngine, ui_bridge::UiBridge},
+    engine_factory::EngineFactory,
+    synth_engine::{ModuleId, ModuleType, OUTPUT_MODULE_ID, ui_bridge::UiBridge},
 };
 
 mod db_slider;
@@ -39,15 +39,34 @@ pub trait ModuleUi {
 type ModuleUIBox = Box<dyn ModuleUi + Send>;
 
 struct EditorState {
+    engine_factory: Arc<EngineFactory>,
+    engine_seq_idx: i64,
     synth_bridge: UiBridge,
     selected_module_ui: ModuleUIBox,
 }
 
 impl EditorState {
-    pub fn new(synth_bridge: UiBridge) -> Self {
+    pub fn new(engine_factory: Arc<EngineFactory>) -> Self {
+        let engine = engine_factory.get_engine();
+        let bridge = UiBridge::create(engine.clone()).unwrap();
+
         Self {
-            synth_bridge,
+            engine_factory,
+            engine_seq_idx: 0,
+            synth_bridge: bridge,
             selected_module_ui: Box::new(ParamsUi::new()),
+        }
+    }
+
+    fn check_engine_handle(&mut self) {
+        let factory_seq_idx = self.engine_factory.get_seq_idx();
+
+        if factory_seq_idx != self.engine_seq_idx {
+            let engine = self.engine_factory.get_engine();
+
+            self.synth_bridge = UiBridge::create(engine.clone()).unwrap();
+            self.selected_module_ui = Box::new(ParamsUi::new());
+            self.engine_seq_idx = factory_seq_idx;
         }
     }
 }
@@ -239,6 +258,7 @@ fn show_right_bar(ui: &mut Ui, bridge: &mut UiBridge) {
 }
 
 fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
+    editor_state.check_engine_handle();
     editor_state.synth_bridge.update();
 
     let bridge = &mut editor_state.synth_bridge;
@@ -267,11 +287,11 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
 
 pub fn create_editor(
     egui_state: Arc<EguiState>,
-    synth_engine: Arc<Mutex<SynthEngine>>,
+    factory: Arc<EngineFactory>,
 ) -> Option<Box<dyn Editor>> {
     create_egui_editor(
         Arc::clone(&egui_state),
-        EditorState::new(UiBridge::create(synth_engine.clone()).unwrap()),
+        EditorState::new(factory),
         Default::default(),
         |_egui_ctx, _queue, editor_state| {
             editor_state.synth_bridge.sync();

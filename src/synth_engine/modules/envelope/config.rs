@@ -14,7 +14,7 @@ pub enum EnvelopeCurve {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Config {
+pub struct EnvelopeConfig {
     pub id: ModuleId,
     pub keep_voice_alive: bool,
     pub delay: StereoSample,
@@ -29,7 +29,7 @@ pub struct Config {
     pub smooth: StereoSample,
 }
 
-impl Default for Config {
+impl Default for EnvelopeConfig {
     fn default() -> Self {
         Self {
             id: -1,

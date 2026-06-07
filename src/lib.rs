@@ -5,30 +5,34 @@ use smallvec::SmallVec;
 
 mod default_scheme;
 mod editor;
+mod engine_factory;
 mod params;
 mod presets;
 mod synth_engine;
 mod utils;
 
-use crate::default_scheme::build_default_scheme;
 use crate::editor::create_editor;
+use crate::engine_factory::{EngineFactory, EngineHandle};
 use crate::params::AdditizerParams;
 use crate::synth_engine::{Expression, ExternalParamsBlock, SynthEngine};
 pub use egui;
 use nih_plug::prelude::*;
-use parking_lot::Mutex;
 use std::sync::Arc;
 
 pub struct Additizer {
     params: Arc<AdditizerParams>,
-    synth_engine: Arc<Mutex<SynthEngine>>,
+    engine: Option<EngineHandle>,
+    factory: Option<Arc<EngineFactory>>,
+    engine_seq_idx: i64,
 }
 
 impl Default for Additizer {
     fn default() -> Self {
         Self {
             params: Arc::new(AdditizerParams::default()),
-            synth_engine: Arc::new(Mutex::new(SynthEngine::new())),
+            engine: None,
+            factory: None,
+            engine_seq_idx: 0,
         }
     }
 }
@@ -184,7 +188,7 @@ impl Plugin for Additizer {
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         create_editor(
             Arc::clone(&self.params.editor_state),
-            Arc::clone(&self.synth_engine),
+            self.factory.as_ref().unwrap().clone(),
         )
     }
 
@@ -194,27 +198,20 @@ impl Plugin for Additizer {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        let mut synth = self.synth_engine.lock();
-
-        let external_params = ExternalParamsBlock {
+        let external_params = Arc::new(ExternalParamsBlock {
             float_params: [
                 Arc::clone(&self.params.float_param_1),
                 Arc::clone(&self.params.float_param_2),
                 Arc::clone(&self.params.float_param_3),
                 Arc::clone(&self.params.float_param_4),
             ],
-        };
+        });
 
-        synth.init(
-            Arc::clone(&self.params.config),
-            Arc::clone(&self.params.volume),
-            external_params,
+        self.factory = Some(Arc::new(EngineFactory::new(
+            self.params.volume.clone(),
+            external_params.clone(),
             buffer_config.sample_rate,
-        );
-
-        if synth.is_empty() {
-            build_default_scheme(&mut synth);
-        }
+        )));
 
         true
     }
@@ -271,7 +268,15 @@ impl Plugin for Additizer {
             }
         }
 
-        let mut synth = self.synth_engine.lock();
+        let factory = self.factory.as_deref().unwrap();
+        let factory_seq_idx = factory.get_seq_idx();
+
+        if factory_seq_idx != self.engine_seq_idx {
+            self.engine = Some(factory.get_engine());
+            self.engine_seq_idx = factory_seq_idx
+        }
+
+        let mut synth = self.engine.as_deref().unwrap().lock();
 
         assert_no_alloc::assert_no_alloc(|| {
             let total_samples = buffer.samples();

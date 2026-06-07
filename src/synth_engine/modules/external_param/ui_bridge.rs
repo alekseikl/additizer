@@ -4,14 +4,14 @@ use parking_lot::Mutex;
 
 use crate::synth_engine::{ModuleId, Sample, SynthEngine};
 
-use super::{Config, ExternalParam, NUM_FLOAT_PARAMS};
 use super::link::UiEnd;
+use super::{ExternalParam, ExternalParamConfig, NUM_FLOAT_PARAMS};
 
 pub struct UiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
-    config: Config,
+    config: ExternalParamConfig,
 }
 
 impl UiBridge {
@@ -35,7 +35,7 @@ impl UiBridge {
         self.module_id
     }
 
-    pub fn config(&self) -> &Config {
+    pub fn config(&self) -> &ExternalParamConfig {
         &self.config
     }
 

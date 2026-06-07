@@ -2,8 +2,8 @@ mod config;
 mod link;
 mod ui_bridge;
 
+pub use config::ExpressionsConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use config::Config;
 pub use ui_bridge::UiBridge;
 
 use crate::{
@@ -24,7 +24,7 @@ struct Params {
 }
 
 impl Params {
-    fn from_config(c: &config::Config) -> Self {
+    fn from_config(c: &config::ExpressionsConfig) -> Self {
         Self {
             expression: c.expression,
             use_release_velocity: c.use_release_velocity,
@@ -63,13 +63,13 @@ pub struct Expressions {
 
 impl Expressions {
     pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&Config {
+        Self::from_config(&ExpressionsConfig {
             id,
-            ..Config::default()
+            ..ExpressionsConfig::default()
         })
     }
 
-    pub fn from_config(config: &config::Config) -> Self {
+    pub fn from_config(config: &config::ExpressionsConfig) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
         Self {
@@ -90,8 +90,8 @@ impl Expressions {
         self.ui_end = Some(ui_end);
     }
 
-    pub fn get_config(&self) -> Config {
-        Config {
+    pub fn get_config(&self) -> ExpressionsConfig {
+        ExpressionsConfig {
             id: self.id,
             expression: self.params.expression,
             use_release_velocity: self.params.use_release_velocity,
@@ -231,11 +231,7 @@ impl SynthModule for Expressions {
                         voice_idx,
                         velocity,
                     } => {
-                        Self::handle_release(
-                            &mut channel[*voice_idx],
-                            &self.params,
-                            *velocity,
-                        );
+                        Self::handle_release(&mut channel[*voice_idx], &self.params, *velocity);
                     }
                     VoiceEvent::Expression {
                         voice_idx,

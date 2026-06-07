@@ -6,16 +6,18 @@ use std::{
 };
 
 use nih_plug::params::FloatParam;
-use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
     buffer::{Buffer, SpectralBuffer, add_to_buffer, copy_or_add_to_buffer},
-    config::RoutingConfig,
-    modules::{Output, OutputConfig, oscillator::Oscillator},
-    routing::{DataType, LinkModulation, NUM_CHANNELS, Router, VoiceEvent, data_types_compatible},
+    config::{LinkConfig, ModuleConfig},
+    modules::{Output, oscillator::Oscillator},
+    routing::{
+        DataType, LinkModulation, MIN_MODULE_ID, NUM_CHANNELS, Router, VoiceEvent,
+        data_types_compatible,
+    },
     smooth::SmoothedSampleParams,
     synth_module::ProcessParams,
     voices_handler::{
@@ -24,7 +26,7 @@ use crate::synth_engine::{
 };
 
 pub use buffer::SPECTRAL_BUFFER_SIZE;
-pub use config::Config;
+pub use config::{Config, FullConfig};
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, Expressions, ExternalParam, ExternalParamsBlock, Lfo,
     LfoShape, Mixer, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType, SpectralMixer,
@@ -124,13 +126,11 @@ pub struct SynthEngine {
     block_size: usize,
     oversampling: bool,
     spectrum_channels: usize,
-    config: Arc<Mutex<Config>>,
     modules: ModulesMap,
     input_sources: RoutingMap,
     execution_order: Vec<ModuleId>,
     voices_handler: VoicesHandler,
     external_params: Option<Arc<ExternalParamsBlock>>,
-    output_level_param: Option<Arc<FloatParam>>,
     audio_end: ui_bridge::AudioEnd,
     ui_end: Option<ui_bridge::UiEnd>,
 }
@@ -150,45 +150,88 @@ macro_rules! add_module_method2 {
 impl SynthEngine {
     pub const AVAILABLE_VOICES: usize = MAX_AVAILABLE_VOICES;
 
-    pub fn new() -> Self {
+    pub fn try_new(
+        cfg: &FullConfig,
+        output_level_param: Arc<FloatParam>,
+        external_params: Arc<ExternalParamsBlock>,
+        host_sample_rate: Sample,
+    ) -> Option<Self> {
         let (audio_end, ui_end) = ui_bridge::create_link_pair();
 
-        Self {
-            next_id: 0,
-            host_sample_rate: 0.0,
-            block_size: 0,
-            oversampling: false,
-            spectrum_channels: NUM_CHANNELS,
-            config: Default::default(),
+        let mut engine = Self {
+            next_id: 1,
+            host_sample_rate,
+            block_size: Self::clamp_block_size(cfg.engine.block_size),
+            oversampling: cfg.engine.oversampling,
+            spectrum_channels: Self::stereo_spectrum_channels(cfg.engine.stereo_spectrum),
             modules: ModulesMap::default(),
             input_sources: RoutingMap::default(),
             execution_order: Vec::new(),
-            voices_handler: VoicesHandler::new(),
-            external_params: None,
-            output_level_param: None,
+            voices_handler: VoicesHandler::new(
+                Self::clamp_num_voices(cfg.engine.num_voices),
+                cfg.engine.legato,
+            ),
+            external_params: Some(external_params.clone()),
             audio_end,
             ui_end: Some(ui_end),
+        };
+
+        engine.modules.insert(
+            OUTPUT_MODULE_ID,
+            Some(Box::new(Output::new(
+                cfg.engine.output_gain,
+                cfg.engine.voice_kill_time,
+                output_level_param,
+            ))),
+        );
+
+        macro_rules! from_cfg {
+            ($module_type:ident, $cfg:expr) => {
+                Box::new($module_type::from_config($cfg)) as Box<dyn SynthModule>
+            };
         }
-    }
 
-    pub fn init(
-        &mut self,
-        config: Arc<Mutex<Config>>,
-        output_level_param: Arc<FloatParam>,
-        external_params: ExternalParamsBlock,
-        host_sample_rate: Sample,
-    ) {
-        self.config = config;
-        self.host_sample_rate = host_sample_rate;
-        self.external_params = Some(Arc::new(external_params));
-        self.output_level_param = Some(Arc::clone(&output_level_param));
+        let mut max_module_id = MIN_MODULE_ID;
 
-        self.reset();
+        for module_cfg in cfg.modules.iter() {
+            let module = match module_cfg {
+                ModuleConfig::Oscillator(cfg) => from_cfg!(Oscillator, cfg),
+                ModuleConfig::Envelope(cfg) => from_cfg!(Envelope, cfg),
+                ModuleConfig::Lfo(cfg) => from_cfg!(Lfo, cfg),
+                ModuleConfig::Amplifier(cfg) => from_cfg!(Amplifier, cfg),
+                ModuleConfig::Mixer(cfg) => from_cfg!(Mixer, cfg),
+                ModuleConfig::WaveShaper(cfg) => from_cfg!(WaveShaper, cfg),
+                ModuleConfig::SpectralFilter(cfg) => from_cfg!(SpectralFilter, cfg),
+                ModuleConfig::SpectralBlend(cfg) => from_cfg!(SpectralBlend, cfg),
+                ModuleConfig::SpectralMixer(cfg) => from_cfg!(SpectralMixer, cfg),
+                ModuleConfig::HarmonicEditor(cfg) => from_cfg!(HarmonicEditor, cfg),
+                ModuleConfig::Expressions(cfg) => from_cfg!(Expressions, cfg),
+                ModuleConfig::ExternalParam(cfg) => {
+                    Box::new(ExternalParam::from_config(cfg, external_params.clone()))
+                        as Box<dyn SynthModule>
+                }
+            };
 
-        if !self.load_config() {
-            self.reset_config();
-            self.reset();
+            let module_id = module.id();
+
+            if module_id < MIN_MODULE_ID || engine.modules.contains_key(&module_id) {
+                return None;
+            }
+
+            if module_id > max_module_id {
+                max_module_id = module_id;
+            }
         }
+
+        engine.next_id = max_module_id + 1;
+
+        for link in cfg.links.iter() {
+            if !engine.add_config_link(link) {
+                return None;
+            }
+        }
+
+        Some(engine)
     }
 
     fn sample_rate(&self) -> Sample {
@@ -197,30 +240,6 @@ impl SynthEngine {
         } else {
             self.host_sample_rate
         }
-    }
-
-    pub fn get_config(&self) -> Config {
-        self.config.lock().clone()
-    }
-
-    pub fn set_config(&mut self, config: &Config) -> bool {
-        let prev_config = self.config.lock().clone();
-
-        *self.config.lock() = config.clone();
-        self.reset();
-
-        if !self.load_config() {
-            *self.config.lock() = prev_config;
-            self.reset();
-            self.load_config();
-            false
-        } else {
-            true
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.modules.len() == 1
     }
 
     fn get_ui_state(&self) -> ui_bridge::ControlsState {
@@ -253,15 +272,12 @@ impl SynthEngine {
     }
 
     pub fn set_num_voices(&mut self, num_voices: usize) {
-        let num_voices = Self::clamp_num_voices(num_voices);
-
-        self.voices_handler.set_num_voices(num_voices);
-        self.config.lock().routing.num_voices = num_voices;
+        self.voices_handler
+            .set_num_voices(Self::clamp_num_voices(num_voices));
     }
 
     pub fn set_legato(&mut self, legato: bool) {
         self.voices_handler.set_legato(legato);
-        self.config.lock().routing.legato = legato;
     }
 
     pub fn block_size(&self) -> usize {
@@ -270,7 +286,6 @@ impl SynthEngine {
 
     pub fn set_block_size(&mut self, block_size: usize) {
         self.block_size = Self::clamp_block_size(block_size);
-        self.config.lock().routing.block_size = self.block_size;
     }
 
     pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) {
@@ -284,12 +299,10 @@ impl SynthEngine {
 
     pub fn set_oversampling(&mut self, oversampling: bool) {
         self.oversampling = oversampling;
-        self.config.lock().routing.oversampling = oversampling;
     }
 
     pub fn set_stereo_spectrum(&mut self, stereo_spectrum: bool) {
         self.spectrum_channels = Self::stereo_spectrum_channels(stereo_spectrum);
-        self.config.lock().routing.stereo_spectrum = stereo_spectrum;
     }
 
     pub fn get_output_gain(&self) -> StereoSample {
@@ -346,7 +359,32 @@ impl SynthEngine {
             .collect();
 
         self.setup_routing(&new_links).unwrap();
-        self.save_links();
+    }
+
+    fn add_config_link(&mut self, link: &LinkConfig) -> bool {
+        let src = link.src_id;
+        let dst = ModuleInput::new(link.dst_input, link.dst_id);
+
+        if self.can_be_linked(&src, &dst).is_err() {
+            return false;
+        }
+
+        if self.already_linked(&src, &dst) {
+            return true;
+        }
+
+        let mut new_links = self.get_links();
+
+        new_links.push(ModuleLink {
+            src,
+            dst,
+            amount: link.amount,
+            modulation: link
+                .modulator_id
+                .map(|mod_id| LinkModulation { src: mod_id }),
+        });
+
+        self.setup_routing(&new_links).is_ok()
     }
 
     pub fn set_direct_link(&mut self, src: ModuleId, dst: ModuleInput) -> Result<(), String> {
@@ -361,7 +399,6 @@ impl SynthEngine {
 
         new_links.push(ModuleLink::link(src, dst));
         self.setup_routing(&new_links)?;
-        self.save_links();
         Ok(())
     }
 
@@ -379,9 +416,8 @@ impl SynthEngine {
 
         let mut new_links = self.get_links();
 
-        new_links.push(ModuleLink::modulation(src, dst, amount));
+        new_links.push(ModuleLink::scaled(src, dst, amount));
         self.setup_routing(&new_links)?;
-        self.save_links();
         Ok(())
     }
 
@@ -390,7 +426,6 @@ impl SynthEngine {
             && let Some(input) = inputs.iter_mut().find(|input| input.src == *src)
         {
             input.amount = amount;
-            self.save_links();
         }
     }
 
@@ -407,7 +442,6 @@ impl SynthEngine {
         {
             source.modulation = Some(LinkModulation { src: modulator_id });
             self.setup_routing(&self.get_links())?;
-            self.save_links();
 
             Ok(())
         } else {
@@ -421,7 +455,6 @@ impl SynthEngine {
         {
             source.modulation = None;
             self.setup_routing(&self.get_links()).unwrap();
-            self.save_links();
         }
     }
 
@@ -433,7 +466,6 @@ impl SynthEngine {
             .collect();
 
         self.setup_routing(&new_links).unwrap();
-        self.save_links();
     }
 
     fn process_voice_events(&mut self, events: &[VoiceEvent]) {
@@ -580,7 +612,6 @@ impl SynthEngine {
         let module_id = self.next_id;
 
         self.next_id += 1;
-        self.config.lock().routing.next_module_id = self.next_id;
         module_id
     }
 
@@ -721,66 +752,6 @@ impl SynthEngine {
 
     fn stereo_spectrum_channels(stereo_spectrum: bool) -> usize {
         if stereo_spectrum { NUM_CHANNELS } else { 1 }
-    }
-
-    fn reset(&mut self) {
-        let default_cfg = RoutingConfig::default();
-
-        self.execution_order.clear();
-        self.input_sources.clear();
-        self.modules.clear();
-        self.next_id = default_cfg.next_module_id;
-        self.block_size = default_cfg.block_size;
-        self.oversampling = default_cfg.oversampling;
-        self.spectrum_channels = Self::stereo_spectrum_channels(default_cfg.stereo_spectrum);
-        self.voices_handler.set_num_voices(default_cfg.num_voices);
-        self.voices_handler.set_legato(default_cfg.legato);
-
-        self.modules.insert(
-            OUTPUT_MODULE_ID,
-            Some(Box::new(Output::new(
-                Arc::clone(&self.config.lock().output),
-                Arc::clone(self.output_level_param.as_ref().unwrap()),
-            ))),
-        );
-    }
-
-    fn reset_config(&mut self) {
-        let mut cfg = self.config.lock();
-
-        cfg.routing = RoutingConfig::default();
-        *cfg.output.lock() = OutputConfig::default();
-    }
-
-    fn load_config(&mut self) -> bool {
-        let cfg = Arc::clone(&self.config);
-        let cfg = cfg.lock();
-
-        self.next_id = cfg.routing.next_module_id;
-        self.block_size = Self::clamp_block_size(cfg.routing.block_size);
-        self.oversampling = cfg.routing.oversampling;
-        self.spectrum_channels = Self::stereo_spectrum_channels(cfg.routing.stereo_spectrum);
-        self.voices_handler
-            .set_num_voices(Self::clamp_num_voices(cfg.routing.num_voices));
-        self.voices_handler.set_legato(cfg.routing.legato);
-
-        for link in &cfg.routing.links {
-            if self.can_be_linked(&link.src, &link.dst).is_err() {
-                return false;
-            }
-
-            if let Some(modulation) = link.modulation
-                && self.can_be_linked(&modulation.src, &link.dst).is_err()
-            {
-                return false;
-            }
-        }
-
-        self.setup_routing(&cfg.routing.links).is_ok()
-    }
-
-    fn save_links(&self) {
-        self.config.lock().routing.links = self.get_links();
     }
 }
 
