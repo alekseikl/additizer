@@ -1,10 +1,11 @@
-use std::any::Any;
+use std::{any::Any, ops::DerefMut};
 
 use crate::{
     engine_factory::{EngineHandle, UiConfigHandle},
     synth_engine::{
-        Input, ModuleId, ModuleInput, ModuleType, ModuleUiBridge, OUTPUT_MODULE_ID, Sample,
-        StereoSample,
+        Amplifier, Envelope, Expressions, ExternalParam, HarmonicEditor, Input, Lfo, Mixer,
+        ModuleId, ModuleInput, ModuleType, ModuleUiBridge, OUTPUT_MODULE_ID, Sample, SpectralBlend,
+        SpectralFilter, SpectralMixer, StereoSample, WaveShaper,
         amplifier::AmplifierUiBridge,
         config::EngineParams,
         envelope::EnvelopeUiBridge,
@@ -13,6 +14,7 @@ use crate::{
         harmonic_editor::HarmonicEditorUiBridge,
         lfo::LfoUiBridge,
         mixer::MixerUiBridge,
+        oscillator::Oscillator,
         oscillator::OscillatorUiBridge,
         routing::{DataType, data_types_compatible},
         spectral_blend::SpectralBlendUiBridge,
@@ -93,31 +95,73 @@ impl UiBridge {
         engine: &EngineHandle,
         bridges: &mut FxHashMap<ModuleId, Option<Box<dyn ModuleUiBridge>>>,
     ) -> Option<()> {
-        macro_rules! add_bridge {
-            ($module_bridges:ident, $module_id:expr, $engine:ident, $bridge:ident) => {{
-                $module_bridges.insert(
-                    $module_id,
-                    Some(Box::new($bridge::create($module_id, $engine.clone())?)),
-                );
-            }};
-        }
-
-        type Mt = ModuleType;
+        let mut engine_lock = engine.lock();
+        let engine_ref = engine_lock.deref_mut();
 
         match module_type {
-            Mt::Envelope => add_bridge!(bridges, id, engine, EnvelopeUiBridge),
-            Mt::Amplifier => add_bridge!(bridges, id, engine, AmplifierUiBridge),
-            Mt::Mixer => add_bridge!(bridges, id, engine, MixerUiBridge),
-            Mt::Oscillator => add_bridge!(bridges, id, engine, OscillatorUiBridge),
-            Mt::SpectralFilter => add_bridge!(bridges, id, engine, SpectralFilterUiBridge),
-            Mt::SpectralBlend => add_bridge!(bridges, id, engine, SpectralBlendUiBridge),
-            Mt::SpectralMixer => add_bridge!(bridges, id, engine, SpectralMixerUiBridge),
-            Mt::HarmonicEditor => add_bridge!(bridges, id, engine, HarmonicEditorUiBridge),
-            Mt::ExternalParam => add_bridge!(bridges, id, engine, ExternalParamUiBridge),
-            Mt::Lfo => add_bridge!(bridges, id, engine, LfoUiBridge),
-            Mt::WaveShaper => add_bridge!(bridges, id, engine, WaveShaperUiBridge),
-            Mt::Expressions => add_bridge!(bridges, id, engine, ExpressionsUiBridge),
-            Mt::Output => (),
+            ModuleType::Envelope => {
+                let env = engine_ref.get_typed_module_mut::<Envelope>(id)?;
+                bridges.insert(id, Some(Box::new(EnvelopeUiBridge::try_new(env)?)));
+            }
+            ModuleType::Amplifier => {
+                let amp = engine_ref.get_typed_module_mut::<Amplifier>(id)?;
+                bridges.insert(id, Some(Box::new(AmplifierUiBridge::try_new(amp)?)));
+            }
+            ModuleType::Mixer => {
+                let mixer = engine_ref.get_typed_module_mut::<Mixer>(id)?;
+                bridges.insert(id, Some(Box::new(MixerUiBridge::try_new(mixer)?)));
+            }
+            ModuleType::Oscillator => {
+                let osc = engine_ref.get_typed_module_mut::<Oscillator>(id)?;
+                bridges.insert(
+                    id,
+                    Some(Box::new(OscillatorUiBridge::try_new(
+                        id,
+                        engine.clone(),
+                        osc,
+                    )?)),
+                );
+            }
+            ModuleType::SpectralFilter => {
+                let filter = engine_ref.get_typed_module_mut::<SpectralFilter>(id)?;
+                bridges.insert(id, Some(Box::new(SpectralFilterUiBridge::try_new(filter)?)));
+            }
+            ModuleType::SpectralBlend => {
+                let blend = engine_ref.get_typed_module_mut::<SpectralBlend>(id)?;
+                bridges.insert(id, Some(Box::new(SpectralBlendUiBridge::try_new(blend)?)));
+            }
+            ModuleType::SpectralMixer => {
+                let mixer = engine_ref.get_typed_module_mut::<SpectralMixer>(id)?;
+                bridges.insert(id, Some(Box::new(SpectralMixerUiBridge::try_new(mixer)?)));
+            }
+            ModuleType::HarmonicEditor => {
+                let editor = engine_ref.get_typed_module_mut::<HarmonicEditor>(id)?;
+                bridges.insert(
+                    id,
+                    Some(Box::new(HarmonicEditorUiBridge::try_new(
+                        id,
+                        engine.clone(),
+                        editor,
+                    )?)),
+                );
+            }
+            ModuleType::ExternalParam => {
+                let param = engine_ref.get_typed_module_mut::<ExternalParam>(id)?;
+                bridges.insert(id, Some(Box::new(ExternalParamUiBridge::try_new(param)?)));
+            }
+            ModuleType::Lfo => {
+                let lfo = engine_ref.get_typed_module_mut::<Lfo>(id)?;
+                bridges.insert(id, Some(Box::new(LfoUiBridge::try_new(lfo)?)));
+            }
+            ModuleType::WaveShaper => {
+                let shaper = engine_ref.get_typed_module_mut::<WaveShaper>(id)?;
+                bridges.insert(id, Some(Box::new(WaveShaperUiBridge::try_new(shaper)?)));
+            }
+            ModuleType::Expressions => {
+                let exp = engine_ref.get_typed_module_mut::<Expressions>(id)?;
+                bridges.insert(id, Some(Box::new(ExpressionsUiBridge::try_new(exp)?)));
+            }
+            ModuleType::Output => (),
         };
 
         Some(())

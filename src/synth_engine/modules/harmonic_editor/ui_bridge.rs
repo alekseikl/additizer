@@ -13,24 +13,21 @@ use super::{FilterParams, HarmonicEditor, HarmonicEditorConfig, SetParams};
 pub struct HarmonicEditorUiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
-    ui_end: Option<UiEnd>,
+    ui_end: UiEnd,
     config: HarmonicEditorConfig,
 }
 
 impl HarmonicEditorUiBridge {
-    pub fn create(module_id: ModuleId, synth: Arc<Mutex<SynthEngine>>) -> Option<Self> {
-        let mut synth_lock = synth.lock();
-        let editor = synth_lock.get_typed_module_mut::<HarmonicEditor>(module_id)?;
-        let ui_end = editor.ui_end.take()?;
-        let config = editor.get_config();
-
-        drop(synth_lock);
-
+    pub fn try_new(
+        module_id: ModuleId,
+        synth: Arc<Mutex<SynthEngine>>,
+        editor: &mut HarmonicEditor,
+    ) -> Option<Self> {
         Some(Self {
             synth,
             module_id,
-            ui_end: Some(ui_end),
-            config,
+            ui_end: editor.ui_end.take()?,
+            config: editor.get_config(),
         })
     }
 
@@ -51,12 +48,7 @@ impl HarmonicEditorUiBridge {
     }
 
     pub fn set_harmonic(&mut self, harmonic_number: usize, gain: StereoSample) {
-        if self
-            .ui_end
-            .as_mut()
-            .unwrap()
-            .set_harmonic(harmonic_number, gain)
-        {
+        if self.ui_end.set_harmonic(harmonic_number, gain) {
             let idx = harmonic_number.clamp(1, SPECTRAL_BUFFER_SIZE - 1);
 
             for (channel, gain) in self.config.spectrum.iter_mut().zip(gain.iter()) {
@@ -69,17 +61,17 @@ impl HarmonicEditorUiBridge {
     }
 
     pub fn set_selected(&mut self, params: SetParams) {
-        self.ui_end.as_mut().unwrap().set_selected(params);
+        self.ui_end.set_selected(params);
     }
 
     pub fn apply_filter(&mut self, params: FilterParams) {
-        self.ui_end.as_mut().unwrap().apply_filter(params);
+        self.ui_end.apply_filter(params);
     }
 }
 
 impl ModuleUiBridge for HarmonicEditorUiBridge {
     fn update(&mut self) {
-        while let Some(update) = self.ui_end.as_mut().unwrap().pop_update() {
+        while let Some(update) = self.ui_end.pop_update() {
             match update {
                 UiUpdate::RefreshState => {
                     self.sync();

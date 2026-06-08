@@ -1,31 +1,18 @@
-use std::sync::Arc;
-
-use parking_lot::Mutex;
-
-use crate::synth_engine::{
-    Input, ModuleId, StereoSample, SynthEngine, synth_module::ModuleUiBridge,
-};
+use crate::synth_engine::{Input, StereoSample, synth_module::ModuleUiBridge};
 
 use super::link::UiEnd;
 use super::{SpectralBlend, SpectralBlendConfig};
 
 pub struct SpectralBlendUiBridge {
-    ui_end: Option<UiEnd>,
+    ui_end: UiEnd,
     config: SpectralBlendConfig,
 }
 
 impl SpectralBlendUiBridge {
-    pub fn create(module_id: ModuleId, synth: Arc<Mutex<SynthEngine>>) -> Option<Self> {
-        let mut synth_lock = synth.lock();
-        let blend = synth_lock.get_typed_module_mut::<SpectralBlend>(module_id)?;
-        let ui_end = blend.ui_end.take()?;
-        let config = blend.get_config();
-
-        drop(synth_lock);
-
+    pub fn try_new(blend: &mut SpectralBlend) -> Option<Self> {
         Some(Self {
-            ui_end: Some(ui_end),
-            config,
+            ui_end: blend.ui_end.take()?,
+            config: blend.get_config(),
         })
     }
 
@@ -34,7 +21,7 @@ impl SpectralBlendUiBridge {
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
-        if self.ui_end.as_mut().unwrap().set_param(input, value) && input == Input::Blend {
+        if self.ui_end.set_param(input, value) && input == Input::Blend {
             self.config.blend = value;
         }
     }

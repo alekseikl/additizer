@@ -1,31 +1,18 @@
-use std::sync::Arc;
-
-use parking_lot::Mutex;
-
-use crate::synth_engine::{
-    Input, ModuleId, StereoSample, SynthEngine, synth_module::ModuleUiBridge,
-};
+use crate::synth_engine::{Input, StereoSample, synth_module::ModuleUiBridge};
 
 use super::link::UiEnd;
 use super::{Amplifier, AmplifierConfig};
 
 pub struct AmplifierUiBridge {
-    ui_end: Option<UiEnd>,
+    ui_end: UiEnd,
     config: AmplifierConfig,
 }
 
 impl AmplifierUiBridge {
-    pub fn create(module_id: ModuleId, synth: Arc<Mutex<SynthEngine>>) -> Option<Self> {
-        let mut synth_lock = synth.lock();
-        let amp = synth_lock.get_typed_module_mut::<Amplifier>(module_id)?;
-        let ui_end = amp.ui_end.take()?;
-        let config = amp.get_config();
-
-        drop(synth_lock);
-
+    pub fn try_new(amp: &mut Amplifier) -> Option<Self> {
         Some(Self {
-            ui_end: Some(ui_end),
-            config,
+            ui_end: amp.ui_end.take()?,
+            config: amp.get_config(),
         })
     }
 
@@ -34,7 +21,7 @@ impl AmplifierUiBridge {
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
-        if self.ui_end.as_mut().unwrap().set_param(input, value) && input == Input::Gain {
+        if self.ui_end.set_param(input, value) && input == Input::Gain {
             self.config.gain = value;
         }
     }

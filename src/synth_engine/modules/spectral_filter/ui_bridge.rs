@@ -1,31 +1,18 @@
-use std::sync::Arc;
-
-use parking_lot::Mutex;
-
-use crate::synth_engine::{
-    Input, ModuleId, StereoSample, SynthEngine, synth_module::ModuleUiBridge,
-};
+use crate::synth_engine::{Input, StereoSample, synth_module::ModuleUiBridge};
 
 use super::link::UiEnd;
 use super::{SpectralFilter, SpectralFilterConfig, SpectralFilterType};
 
 pub struct SpectralFilterUiBridge {
-    ui_end: Option<UiEnd>,
+    ui_end: UiEnd,
     config: SpectralFilterConfig,
 }
 
 impl SpectralFilterUiBridge {
-    pub fn create(module_id: ModuleId, synth: Arc<Mutex<SynthEngine>>) -> Option<Self> {
-        let mut synth_lock = synth.lock();
-        let filter = synth_lock.get_typed_module_mut::<SpectralFilter>(module_id)?;
-        let ui_end = filter.ui_end.take()?;
-        let config = filter.get_config();
-
-        drop(synth_lock);
-
+    pub fn try_new(filter: &mut SpectralFilter) -> Option<Self> {
         Some(Self {
-            ui_end: Some(ui_end),
-            config,
+            ui_end: filter.ui_end.take()?,
+            config: filter.get_config(),
         })
     }
 
@@ -34,7 +21,7 @@ impl SpectralFilterUiBridge {
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
-        if !self.ui_end.as_mut().unwrap().set_param(input, value) {
+        if !self.ui_end.set_param(input, value) {
             return;
         }
 
@@ -47,19 +34,19 @@ impl SpectralFilterUiBridge {
     }
 
     pub fn set_filter_type(&mut self, filter_type: SpectralFilterType) {
-        if self.ui_end.as_mut().unwrap().set_filter_type(filter_type) {
+        if self.ui_end.set_filter_type(filter_type) {
             self.config.filter_type = filter_type;
         }
     }
 
     pub fn set_fourth_order(&mut self, value: bool) {
-        if self.ui_end.as_mut().unwrap().set_fourth_order(value) {
+        if self.ui_end.set_fourth_order(value) {
             self.config.fourth_order = value;
         }
     }
 
     pub fn set_linear_phase(&mut self, value: bool) {
-        if self.ui_end.as_mut().unwrap().set_linear_phase(value) {
+        if self.ui_end.set_linear_phase(value) {
             self.config.linear_phase = value;
         }
     }
