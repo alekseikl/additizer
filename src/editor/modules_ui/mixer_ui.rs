@@ -18,7 +18,7 @@ pub struct MixerUi {
 
 impl MixerUi {
     pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let mixer_bridge = mixer::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+        let mixer_bridge = mixer::UiBridge::create(module_id, synth_bridge.engine().clone())?;
 
         Some(Self {
             remove_confirmation: false,

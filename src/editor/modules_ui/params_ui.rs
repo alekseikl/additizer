@@ -188,12 +188,12 @@ impl ModuleUi for ParamsUi {
             .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
-                let controls = bridge.controls();
+                let controls = bridge.engine_params();
                 let block_sizes = [8, 16, 32, 64, 128];
                 let voices_status = *bridge.voices_status();
 
                 let mut kill_time_ms = controls.voice_kill_time * 1000.0;
-                let mut voices = controls.voices;
+                let mut voices = controls.num_voices;
                 let mut legato = controls.legato;
                 let mut block_size = controls.block_size;
                 let mut oversampling = controls.oversampling;
@@ -287,13 +287,13 @@ impl ModuleUi for ParamsUi {
             });
 
         if let Some(mut state) = self.save_preset_state.take()
-            && self.show_save_preset_modal(bridge.synth(), ui, &mut state)
+            && self.show_save_preset_modal(bridge.engine(), ui, &mut state)
         {
             self.save_preset_state.replace(state);
         }
 
         if let Some(mut state) = self.load_preset_state.take()
-            && self.show_load_preset_modal(bridge.synth(), ui, &mut state)
+            && self.show_load_preset_modal(bridge.engine(), ui, &mut state)
         {
             self.load_preset_state.replace(state);
         }

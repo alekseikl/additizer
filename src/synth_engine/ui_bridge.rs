@@ -1,26 +1,20 @@
 use std::sync::Arc;
 
-use crate::synth_engine::{
-    ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
+use crate::{
+    engine_factory::{EngineFactory, EngineHandle, UiConfigHandle},
+    synth_engine::{
+        ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample,
+        config::EngineParams,
+    },
 };
 
 mod link;
 pub mod routing_state;
+pub mod ui_config;
 
 pub use link::{AudioEnd, UiEnd, UiEvent, UiUpdate, create_link_pair};
-use parking_lot::Mutex;
 pub use routing_state::{AvailableInputSource, ConnectedInputSource, ModuleItem, RoutingState};
 use rustc_hash::FxHashMap;
-
-pub struct ControlsState {
-    pub voices: usize,
-    pub legato: bool,
-    pub block_size: usize,
-    pub voice_kill_time: Sample,
-    pub oversampling: bool,
-    pub stereo_spectrum: bool,
-    pub output_gain: StereoSample,
-}
 
 #[derive(Clone, Copy, Default)]
 pub struct VoicesStatus {
@@ -31,38 +25,44 @@ pub struct VoicesStatus {
 }
 
 pub struct UiBridge {
-    synth: Arc<Mutex<SynthEngine>>,
+    factory: Arc<EngineFactory>,
+    engine: EngineHandle,
+    ui_config: UiConfigHandle,
     ui_end: Option<UiEnd>,
     routing: RoutingState,
-    controls: ControlsState,
+    engine_params: EngineParams,
     voices: VoicesStatus,
     modulated_inputs: FxHashMap<ModuleInput, StereoSample>,
     outputs: FxHashMap<ModuleId, StereoSample>,
 }
 
 impl UiBridge {
-    pub fn create(synth: Arc<Mutex<SynthEngine>>) -> Option<Self> {
-        let mut synth_lock = synth.lock();
+    pub fn create(factory: Arc<EngineFactory>) -> Option<Self> {
+        let engine = factory.get_engine();
+        let ui_config = factory.get_ui_config();
+        let mut engine_lock = engine.lock();
 
-        let ui_end = synth_lock.ui_end.take()?;
-        let routing = synth_lock.get_routing_state();
-        let controls = synth_lock.get_ui_state();
+        let ui_end = engine_lock.ui_end.take()?;
+        let routing = engine_lock.get_routing_state();
+        let engine_params = engine_lock.get_engine_params();
 
-        drop(synth_lock);
+        drop(engine_lock);
 
         Some(Self {
-            synth,
+            factory,
+            engine,
+            ui_config,
             ui_end: Some(ui_end),
             routing,
-            controls,
+            engine_params,
             voices: VoicesStatus::default(),
             modulated_inputs: FxHashMap::default(),
             outputs: FxHashMap::default(),
         })
     }
 
-    pub fn synth(&self) -> &Arc<Mutex<SynthEngine>> {
-        &self.synth
+    pub fn engine(&self) -> &EngineHandle {
+        &self.engine
     }
 
     // pub fn with_synth<R, F>(&self, f: F) -> R
@@ -72,8 +72,8 @@ impl UiBridge {
     //     f(&mut self.synth.lock())
     // }
 
-    pub fn controls(&self) -> &ControlsState {
-        &self.controls
+    pub fn engine_params(&self) -> &EngineParams {
+        &self.engine_params
     }
 
     pub fn voices_status(&self) -> &VoicesStatus {
@@ -89,16 +89,23 @@ impl UiBridge {
     }
 
     pub fn get_module_label(&self, module_id: ModuleId) -> String {
-        self.routing.get_module_label(module_id)
+        let mut ui_config = self.ui_config.lock();
+        let Some(module) = ui_config.modules.get_mut(&module_id) else {
+            debug_assert!(false, "Module with id {module_id} not found in ui_config");
+            return "".into();
+        };
+
+        module.label.clone()
     }
 
     pub fn set_module_label(&mut self, module_id: ModuleId, label: String) {
-        let mut synth = self.synth.lock();
+        let mut ui_config = self.ui_config.lock();
+        let Some(module) = ui_config.modules.get_mut(&module_id) else {
+            debug_assert!(false, "Module with id {module_id} not found in ui_config");
+            return;
+        };
 
-        if let Some(m) = synth.get_module_mut(module_id) {
-            m.set_label(label.clone());
-            self.routing.set_module_label(module_id, label);
-        }
+        module.label = label;
     }
 
     pub fn has_active_voices(&self) -> bool {
@@ -121,17 +128,26 @@ impl UiBridge {
         }
     }
 
-    pub fn sync(&mut self) {
-        let synth = self.synth.lock();
+    fn sync(&mut self) {
+        let synth = self.engine.lock();
 
         self.routing = synth.get_routing_state();
-        self.controls = synth.get_ui_state();
+        self.engine_params = synth.get_engine_params();
+        self.voices = VoicesStatus::default();
     }
 
-    pub fn update(&mut self) {
-        let Some(ui_end) = self.ui_end.as_mut() else {
-            return;
-        };
+    // Returns true when UI needs to be reset
+    pub fn update(&mut self) -> bool {
+        let mut need_reset = false;
+
+        if self.factory.engine_changed(&self.engine) {
+            self.engine = self.factory.get_engine();
+            self.ui_config = self.factory.get_ui_config();
+            self.sync();
+            need_reset = true;
+        }
+
+        let ui_end = self.ui_end.as_mut().unwrap();
 
         while let Some(update) = ui_end.pop_update() {
             match update {
@@ -156,10 +172,12 @@ impl UiBridge {
                 UiUpdate::VoicesStatus(status) => self.voices = status,
             }
         }
+
+        need_reset
     }
 
     pub fn add_module(&mut self, module_type: ModuleType) -> ModuleId {
-        let mut synth = self.synth.lock();
+        let mut synth = self.engine.lock();
 
         let result = match module_type {
             ModuleType::Output => OUTPUT_MODULE_ID,
@@ -182,21 +200,21 @@ impl UiBridge {
     }
 
     pub fn remove_module(&mut self, module_id: ModuleId) {
-        let mut synth = self.synth.lock();
+        let mut synth = self.engine.lock();
 
         synth.remove_module(module_id);
         self.routing = synth.get_routing_state();
     }
 
     pub fn set_direct_link(&mut self, src: ModuleId, dst: ModuleInput) {
-        let mut synth = self.synth.lock();
+        let mut synth = self.engine.lock();
 
         let _ = synth.set_direct_link(src, dst);
         self.routing = synth.get_routing_state();
     }
 
     pub fn add_link(&mut self, src: ModuleId, dst: ModuleInput, amount: StereoSample) {
-        let mut synth = self.synth.lock();
+        let mut synth = self.engine.lock();
 
         if let Err(err) = synth.add_link(src, dst, amount) {
             println!("Failed to add link: {err}");
@@ -205,7 +223,7 @@ impl UiBridge {
     }
 
     pub fn remove_link(&mut self, src: ModuleId, dst: ModuleInput) {
-        let mut synth = self.synth.lock();
+        let mut synth = self.engine.lock();
 
         synth.remove_link(&src, &dst);
         self.routing = synth.get_routing_state();
@@ -217,14 +235,14 @@ impl UiBridge {
         dst_input: &ModuleInput,
         modulator_id: ModuleId,
     ) {
-        let mut synth = self.synth.lock();
+        let mut synth = self.engine.lock();
 
         let _ = synth.set_link_modulation(src_id, dst_input, modulator_id);
         self.routing = synth.get_routing_state();
     }
 
     pub fn remove_link_modulation(&mut self, src_id: ModuleId, dst_input: &ModuleInput) {
-        let mut synth = self.synth.lock();
+        let mut synth = self.engine.lock();
 
         synth.remove_link_modulation(src_id, dst_input);
         self.routing = synth.get_routing_state();
@@ -243,19 +261,19 @@ impl UiBridge {
 
     pub fn set_voices(&mut self, voices: usize) {
         if self.ui_end.as_mut().unwrap().set_voices(voices) {
-            self.controls.voices = voices;
+            self.engine_params.num_voices = voices;
         }
     }
 
     pub fn set_legato(&mut self, legato: bool) {
         if self.ui_end.as_mut().unwrap().set_legato(legato) {
-            self.controls.legato = legato;
+            self.engine_params.legato = legato;
         }
     }
 
     pub fn set_block_size(&mut self, block_size: usize) {
         if self.ui_end.as_mut().unwrap().set_block_size(block_size) {
-            self.controls.block_size = block_size;
+            self.engine_params.block_size = block_size;
         }
     }
 
@@ -266,13 +284,13 @@ impl UiBridge {
             .unwrap()
             .set_voice_kill_time(voice_kill_time)
         {
-            self.controls.voice_kill_time = voice_kill_time;
+            self.engine_params.voice_kill_time = voice_kill_time;
         }
     }
 
     pub fn set_oversampling(&mut self, oversampling: bool) {
         if self.ui_end.as_mut().unwrap().set_oversampling(oversampling) {
-            self.controls.oversampling = oversampling;
+            self.engine_params.oversampling = oversampling;
         }
     }
 
@@ -283,20 +301,20 @@ impl UiBridge {
             .unwrap()
             .set_stereo_spectrum(stereo_spectrum)
         {
-            self.controls.stereo_spectrum = stereo_spectrum;
+            self.engine_params.stereo_spectrum = stereo_spectrum;
         }
     }
 
     pub fn set_output_gain(&mut self, output_gain: StereoSample) {
         if self.ui_end.as_mut().unwrap().set_output_gain(output_gain) {
-            self.controls.output_gain = output_gain;
+            self.engine_params.output_gain = output_gain;
         }
     }
 }
 
 impl Drop for UiBridge {
     fn drop(&mut self) {
-        let mut synth_lock = self.synth.lock();
+        let mut synth_lock = self.engine.lock();
 
         assert!(synth_lock.ui_end.is_none());
 

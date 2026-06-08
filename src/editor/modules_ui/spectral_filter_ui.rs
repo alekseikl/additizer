@@ -31,7 +31,7 @@ pub struct SpectralFilterUI {
 impl SpectralFilterUI {
     pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
         let filter_bridge =
-            spectral_filter::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+            spectral_filter::UiBridge::create(module_id, synth_bridge.engine().clone())?;
 
         Some(Self {
             remove_confirmation: false,

@@ -7,6 +7,7 @@ mod default_scheme;
 mod editor;
 mod engine_factory;
 mod params;
+mod preset;
 mod presets;
 mod synth_engine;
 mod utils;
@@ -23,7 +24,6 @@ pub struct Additizer {
     params: Arc<AdditizerParams>,
     engine: Option<EngineHandle>,
     factory: Option<Arc<EngineFactory>>,
-    engine_seq_idx: i64,
 }
 
 impl Default for Additizer {
@@ -32,7 +32,6 @@ impl Default for Additizer {
             params: Arc::new(AdditizerParams::default()),
             engine: None,
             factory: None,
-            engine_seq_idx: 0,
         }
     }
 }
@@ -271,11 +270,13 @@ impl Plugin for Additizer {
         }
 
         let factory = self.factory.as_deref().unwrap();
-        let factory_seq_idx = factory.get_seq_idx();
 
-        if factory_seq_idx != self.engine_seq_idx {
+        if self
+            .engine
+            .as_ref()
+            .is_none_or(|engine| factory.engine_changed(engine))
+        {
             self.engine = Some(factory.get_engine());
-            self.engine_seq_idx = factory_seq_idx
         }
 
         let mut synth = self.engine.as_deref().unwrap().lock();

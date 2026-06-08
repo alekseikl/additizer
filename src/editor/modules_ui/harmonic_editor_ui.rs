@@ -96,7 +96,7 @@ pub struct HarmonicEditorUI {
 
 impl HarmonicEditorUI {
     pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let editor_bridge = harmonic_editor::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+        let editor_bridge = harmonic_editor::UiBridge::create(module_id, synth_bridge.engine().clone())?;
 
         Some(Self {
             remove_confirmation: false,

@@ -31,7 +31,7 @@ pub struct ExpressionsUi {
 
 impl ExpressionsUi {
     pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let expr_bridge = expressions::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+        let expr_bridge = expressions::UiBridge::create(module_id, synth_bridge.engine().clone())?;
 
         Some(Self {
             remove_confirmation: false,

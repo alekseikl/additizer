@@ -31,7 +31,7 @@ pub struct SpectralMixerUi {
 impl SpectralMixerUi {
     pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
         let mixer_bridge =
-            spectral_mixer::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+            spectral_mixer::UiBridge::create(module_id, synth_bridge.engine().clone())?;
 
         Some(Self {
             remove_confirmation: false,

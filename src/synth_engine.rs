@@ -235,7 +235,6 @@ impl SynthEngine {
     }
 
     pub fn get_config(&self) -> EngineConfig {
-        let voices = self.voices_handler.get_ui_state();
         let mut module_ids: Vec<_> = self.modules.keys().copied().collect();
 
         module_ids.sort_unstable();
@@ -267,15 +266,7 @@ impl SynthEngine {
             .collect();
 
         EngineConfig {
-            engine: EngineParams {
-                num_voices: voices.num_voices,
-                legato: voices.legato,
-                block_size: self.block_size,
-                oversampling: self.oversampling,
-                stereo_spectrum: self.spectrum_channels == NUM_CHANNELS,
-                voice_kill_time: self.get_voice_kill_time(),
-                output_gain: self.get_output_gain(),
-            },
+            engine: self.get_engine_params(),
             modules,
             links: self
                 .get_links()
@@ -299,16 +290,16 @@ impl SynthEngine {
         }
     }
 
-    fn get_ui_state(&self) -> ui_bridge::ControlsState {
-        let voices_ui = self.voices_handler.get_ui_state();
+    fn get_engine_params(&self) -> EngineParams {
+        let voices = self.voices_handler.get_ui_state();
 
-        ui_bridge::ControlsState {
-            voices: voices_ui.num_voices,
-            legato: voices_ui.legato,
+        EngineParams {
+            num_voices: voices.num_voices,
+            legato: voices.legato,
             block_size: self.block_size,
-            voice_kill_time: self.get_voice_kill_time(),
             oversampling: self.oversampling,
             stereo_spectrum: self.spectrum_channels == NUM_CHANNELS,
+            voice_kill_time: self.get_voice_kill_time(),
             output_gain: self.get_output_gain(),
         }
     }

@@ -42,7 +42,7 @@ pub struct OscillatorUI {
 
 impl OscillatorUI {
     pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let osc_bridge = oscillator::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+        let osc_bridge = oscillator::UiBridge::create(module_id, synth_bridge.engine().clone())?;
 
         Some(Self {
             remove_confirmation: false,
@@ -271,10 +271,9 @@ impl OscillatorUI {
 
         ui.label("Initial Phase");
         ui.vertical(|ui| {
-            if let Some((voice_idx, phase)) = Self::show_phases(
-                ui,
-                (0..unison).map(|i| config.unison[i].initial_phase),
-            ) {
+            if let Some((voice_idx, phase)) =
+                Self::show_phases(ui, (0..unison).map(|i| config.unison[i].initial_phase))
+            {
                 config.unison[voice_idx].initial_phase = phase;
                 bridge.set_unison_initial_phase(voice_idx, phase);
             }
@@ -300,17 +299,15 @@ impl OscillatorUI {
 
             ui.vertical(|ui| {
                 if unison_state.phases_shift_to {
-                    if let Some((voice_idx, phase)) = Self::show_phases(
-                        ui,
-                        (0..unison).map(|i| config.unison[i].phase_shift_to),
-                    ) {
+                    if let Some((voice_idx, phase)) =
+                        Self::show_phases(ui, (0..unison).map(|i| config.unison[i].phase_shift_to))
+                    {
                         config.unison[voice_idx].phase_shift_to = phase;
                         bridge.set_unison_phase_shift_to(voice_idx, phase);
                     }
-                } else if let Some((voice_idx, phase)) = Self::show_phases(
-                    ui,
-                    (0..unison).map(|i| config.unison[i].phase_shift),
-                ) {
+                } else if let Some((voice_idx, phase)) =
+                    Self::show_phases(ui, (0..unison).map(|i| config.unison[i].phase_shift))
+                {
                     config.unison[voice_idx].phase_shift = phase;
                     bridge.set_unison_phase_shift(voice_idx, phase);
                 }

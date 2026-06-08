@@ -15,6 +15,7 @@ dependencies = [
 name = "additizer"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
  "assert_no_alloc",
  "baseview",
  "const_format",
@@ -183,6 +184,15 @@ name = "anymap3"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "170433209e817da6aae2c51aa0dd443009a613425dd041ebfb2492d1c4c11a25"
+
+[[package]]
+name = "arc-swap"
+version = "1.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a3a1fd6f75306b68087b831f025c712524bcb19aad54e557b1129cfa0a2b207"
+dependencies = [
+ "rustversion",
+]
 
 [[package]]
 name = "arrayvec"

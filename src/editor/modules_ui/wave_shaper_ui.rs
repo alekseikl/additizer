@@ -26,7 +26,7 @@ pub struct WaveShaperUi {
 impl WaveShaperUi {
     pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
         let shaper_bridge =
-            wave_shaper::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+            wave_shaper::UiBridge::create(module_id, synth_bridge.engine().clone())?;
 
         Some(Self {
             remove_confirmation: false,

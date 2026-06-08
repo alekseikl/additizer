@@ -39,34 +39,17 @@ pub trait ModuleUi {
 type ModuleUIBox = Box<dyn ModuleUi + Send>;
 
 struct EditorState {
-    engine_factory: Arc<EngineFactory>,
-    engine_seq_idx: i64,
-    synth_bridge: UiBridge,
+    ui_bridge: UiBridge,
     selected_module_ui: ModuleUIBox,
 }
 
 impl EditorState {
     pub fn new(engine_factory: Arc<EngineFactory>) -> Self {
-        let engine = engine_factory.get_engine();
-        let bridge = UiBridge::create(engine.clone()).unwrap();
+        let bridge = UiBridge::create(engine_factory.clone()).unwrap();
 
         Self {
-            engine_factory,
-            engine_seq_idx: 0,
-            synth_bridge: bridge,
+            ui_bridge: bridge,
             selected_module_ui: Box::new(ParamsUi::new()),
-        }
-    }
-
-    fn check_engine_handle(&mut self) {
-        let factory_seq_idx = self.engine_factory.get_seq_idx();
-
-        if factory_seq_idx != self.engine_seq_idx {
-            let engine = self.engine_factory.get_engine();
-
-            self.synth_bridge = UiBridge::create(engine.clone()).unwrap();
-            self.selected_module_ui = Box::new(ParamsUi::new());
-            self.engine_seq_idx = factory_seq_idx;
         }
     }
 }
@@ -235,7 +218,7 @@ fn show_side_bar(ui: &mut Ui, selected_module_ui: &mut ModuleUIBox, bridge: &mut
 }
 
 fn show_right_bar(ui: &mut Ui, bridge: &mut UiBridge) {
-    let mut level = bridge.controls().output_gain;
+    let mut level = bridge.engine_params().output_gain;
 
     Panel::right("right-bar")
         .exact_size(24.0)
@@ -258,12 +241,12 @@ fn show_right_bar(ui: &mut Ui, bridge: &mut UiBridge) {
 }
 
 fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
-    editor_state.check_engine_handle();
-    editor_state.synth_bridge.update();
+    let bridge = &mut editor_state.ui_bridge;
 
-    let bridge = &mut editor_state.synth_bridge;
-
-    bridge.update();
+    // A new instance of engine created, reset UI
+    if bridge.update() {
+        editor_state.selected_module_ui = Box::new(ParamsUi::new());
+    }
 
     if let Some(module_id) = editor_state.selected_module_ui.module_id()
         && !bridge.has_module_id(module_id)
@@ -293,9 +276,7 @@ pub fn create_editor(
         Arc::clone(&egui_state),
         EditorState::new(factory),
         Default::default(),
-        |_egui_ctx, _queue, editor_state| {
-            editor_state.synth_bridge.sync();
-        },
+        |_egui_ctx, _queue, _editor_state| {},
         move |egui_ctx, _setter, _queue, editor_state| {
             ResizableWindow::new("res-wind")
                 .min_size(Vec2::new(640.0, 480.0))

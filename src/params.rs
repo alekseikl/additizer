@@ -4,15 +4,15 @@ use nih_plug_egui::EguiState;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
-use crate::{engine_factory::EngineFactory, synth_engine::EngineConfig};
+use crate::{engine_factory::EngineFactory, preset::Preset};
 
 #[derive(Params)]
 pub struct AdditizerParams {
     #[persist = "editor-state"]
     pub editor_state: Arc<EguiState>,
 
-    #[persist = "plugin-config"]
-    pub config: ConfigWrapper,
+    #[persist = "plugin-preset"]
+    pub config: PresetWrapper,
 
     #[id = "volume"]
     pub volume: Arc<FloatParam>,
@@ -34,7 +34,7 @@ impl Default for AdditizerParams {
     fn default() -> Self {
         Self {
             editor_state: EguiState::from_size(900, 600),
-            config: ConfigWrapper::new(),
+            config: PresetWrapper::new(),
             volume: Arc::new(
                 FloatParam::new(
                     "Volume",
@@ -74,49 +74,49 @@ impl Default for AdditizerParams {
     }
 }
 
-pub(crate) struct ConfigWrapper {
+pub(crate) struct PresetWrapper {
     factory: Mutex<Option<Arc<EngineFactory>>>,
-    config_from_host: Mutex<Option<EngineConfig>>,
+    preset_from_host: Mutex<Option<Preset>>,
 }
 
-impl ConfigWrapper {
+impl PresetWrapper {
     fn new() -> Self {
         Self {
             factory: Mutex::new(None),
-            config_from_host: Mutex::new(None),
+            preset_from_host: Mutex::new(None),
         }
     }
 
     pub fn set_factory(&self, factory: Arc<EngineFactory>) {
         *self.factory.lock() = Some(factory.clone());
 
-        if let Some(cfg) = self.config_from_host.lock().as_ref() {
-            factory.load_config(cfg);
+        if let Some(cfg) = self.preset_from_host.lock().as_ref() {
+            factory.load_preset(cfg);
         }
     }
 }
 
-impl<'a> PersistentField<'a, EngineConfig> for ConfigWrapper {
-    fn set(&self, new_value: EngineConfig) {
-        *self.config_from_host.lock() = Some(new_value);
+impl<'a> PersistentField<'a, Preset> for PresetWrapper {
+    fn set(&self, new_value: Preset) {
+        *self.preset_from_host.lock() = Some(new_value);
     }
 
     fn map<F, R>(&self, f: F) -> R
     where
-        F: Fn(&EngineConfig) -> R,
+        F: Fn(&Preset) -> R,
     {
         if let Some(factory) = self.factory.lock().as_ref() {
-            let config = factory.get_engine().lock().get_config();
+            let preset = factory.get_preset();
 
-            return f(&config);
+            return f(&preset);
         }
 
-        let config_from_host = self.config_from_host.lock();
+        let config_from_host = self.preset_from_host.lock();
 
         if let Some(config) = config_from_host.as_ref() {
             return f(config);
         }
 
-        f(&EngineConfig::default())
+        f(&Preset::default())
     }
 }

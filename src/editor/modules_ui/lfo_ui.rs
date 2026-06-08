@@ -28,7 +28,7 @@ pub struct LfoUi {
 
 impl LfoUi {
     pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let lfo_bridge = lfo::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+        let lfo_bridge = lfo::UiBridge::create(module_id, synth_bridge.engine().clone())?;
 
         Some(Self {
             remove_confirmation: false,

@@ -16,7 +16,7 @@ pub struct AmplifierUI {
 
 impl AmplifierUI {
     pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let amp_bridge = amplifier::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+        let amp_bridge = amplifier::UiBridge::create(module_id, synth_bridge.engine().clone())?;
 
         Some(Self {
             remove_confirmation: false,

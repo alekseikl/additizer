@@ -17,7 +17,7 @@ pub struct ExternalParamUI {
 impl ExternalParamUI {
     pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
         let param_bridge =
-            external_param::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+            external_param::UiBridge::create(module_id, synth_bridge.engine().clone())?;
 
         Some(Self {
             remove_confirmation: false,

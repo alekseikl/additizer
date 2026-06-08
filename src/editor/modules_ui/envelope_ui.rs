@@ -65,7 +65,7 @@ impl EnvelopeCurve {
 
 impl EnvelopeUI {
     pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let env_bridge = envelope::UiBridge::create(module_id, synth_bridge.synth().clone())?;
+        let env_bridge = envelope::UiBridge::create(module_id, synth_bridge.engine().clone())?;
 
         Some(Self {
             remove_confirmation: false,
