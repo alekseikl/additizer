@@ -6,7 +6,8 @@ use crate::{
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{
-        Input, ModuleId, SpectralFilterType, spectral_filter, ui_bridge::UiBridge,
+        Input, ModuleId, SpectralFilterType, spectral_filter::SpectralFilterUiBridge,
+        ui_bridge::UiBridge,
     },
 };
 
@@ -23,32 +24,28 @@ impl SpectralFilterType {
 }
 
 pub struct SpectralFilterUI {
+    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
-    filter_bridge: spectral_filter::UiBridge,
 }
 
 impl SpectralFilterUI {
-    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let filter_bridge =
-            spectral_filter::UiBridge::create(module_id, synth_bridge.engine().clone())?;
-
-        Some(Self {
+    pub fn new(module_id: ModuleId) -> Self {
+        Self {
+            module_id,
             remove_confirmation: false,
             label_state: None,
-            filter_bridge,
-        })
-    }
-}
-
-impl ModuleUi for SpectralFilterUI {
-    fn module_id(&self) -> Option<ModuleId> {
-        Some(self.filter_bridge.module_id())
+        }
     }
 
-    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let module_id = self.filter_bridge.module_id();
-        let mut config = self.filter_bridge.config().clone();
+    fn paint_ui(
+        &mut self,
+        bridge: &mut UiBridge,
+        filter_bridge: &mut SpectralFilterUiBridge,
+        ui: &mut Ui,
+    ) {
+        let module_id = self.module_id;
+        let mut config = filter_bridge.config().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
@@ -88,7 +85,7 @@ impl ModuleUi for SpectralFilterUI {
                                 )
                                 .clicked()
                             {
-                                self.filter_bridge.set_filter_type(*filter_type);
+                                filter_bridge.set_filter_type(*filter_type);
                             }
                         }
                     });
@@ -104,7 +101,7 @@ impl ModuleUi for SpectralFilterUI {
                     ))
                     .changed()
                 {
-                    self.filter_bridge.set_param(Input::Cutoff, config.cutoff);
+                    filter_bridge.set_param(Input::Cutoff, config.cutoff);
                 }
                 ui.end_row();
 
@@ -118,7 +115,7 @@ impl ModuleUi for SpectralFilterUI {
                     ))
                     .changed()
                 {
-                    self.filter_bridge.set_param(Input::Q, config.q);
+                    filter_bridge.set_param(Input::Q, config.q);
                 }
                 ui.end_row();
 
@@ -132,7 +129,7 @@ impl ModuleUi for SpectralFilterUI {
                     ))
                     .changed()
                 {
-                    self.filter_bridge.set_param(Input::Drive, config.drive);
+                    filter_bridge.set_param(Input::Drive, config.drive);
                 }
                 ui.end_row();
 
@@ -141,7 +138,7 @@ impl ModuleUi for SpectralFilterUI {
                     .add(Checkbox::without_text(&mut config.fourth_order))
                     .changed()
                 {
-                    self.filter_bridge.set_fourth_order(config.fourth_order);
+                    filter_bridge.set_fourth_order(config.fourth_order);
                 }
                 ui.end_row();
 
@@ -150,7 +147,7 @@ impl ModuleUi for SpectralFilterUI {
                     .add(Checkbox::without_text(&mut config.linear_phase))
                     .changed()
                 {
-                    self.filter_bridge.set_linear_phase(config.linear_phase);
+                    filter_bridge.set_linear_phase(config.linear_phase);
                 }
                 ui.end_row();
             });
@@ -160,5 +157,17 @@ impl ModuleUi for SpectralFilterUI {
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
             bridge.remove_module(module_id);
         }
+    }
+}
+
+impl ModuleUi for SpectralFilterUI {
+    fn module_id(&self) -> Option<ModuleId> {
+        Some(self.module_id)
+    }
+
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        bridge.with_module_bridge(self.module_id, |bridge, filter_bridge| {
+            self.paint_ui(bridge, filter_bridge, ui);
+        });
     }
 }

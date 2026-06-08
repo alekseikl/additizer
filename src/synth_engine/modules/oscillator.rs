@@ -28,7 +28,7 @@ mod link;
 mod ui_bridge;
 
 pub use config::OscillatorConfig;
-pub use ui_bridge::UiBridge;
+pub use ui_bridge::OscillatorUiBridge;
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
 const WAVEFORM_SIZE: usize = 1 << WAVEFORM_BITS;
@@ -305,15 +305,6 @@ impl Oscillator {
             voices: Default::default(),
             voice_buffers: Default::default(),
         }
-    }
-
-    pub fn take_ui_end(&mut self) -> Option<UiEnd> {
-        self.ui_end.take()
-    }
-
-    pub fn return_ui_end(&mut self, ui_end: UiEnd) {
-        assert!(self.ui_end.is_none(), "to_audio_bridge not taken");
-        self.ui_end = Some(ui_end);
     }
 
     pub fn get_config(&self) -> OscillatorConfig {

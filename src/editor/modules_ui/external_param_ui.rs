@@ -5,36 +5,36 @@ use crate::{
         ModuleUi, module_label::ModuleLabel, stereo_slider::StereoSlider,
         utils::confirm_module_removal,
     },
-    synth_engine::{ModuleId, StereoSample, external_param::{self, NUM_FLOAT_PARAMS}, ui_bridge::UiBridge},
+    synth_engine::{
+        ModuleId, StereoSample,
+        external_param::{ExternalParamUiBridge, NUM_FLOAT_PARAMS},
+        ui_bridge::UiBridge,
+    },
 };
 
 pub struct ExternalParamUI {
+    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
-    param_bridge: external_param::UiBridge,
 }
 
 impl ExternalParamUI {
-    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let param_bridge =
-            external_param::UiBridge::create(module_id, synth_bridge.engine().clone())?;
-
-        Some(Self {
+    pub fn new(module_id: ModuleId) -> Self {
+        Self {
+            module_id,
             remove_confirmation: false,
             label_state: None,
-            param_bridge,
-        })
-    }
-}
-
-impl ModuleUi for ExternalParamUI {
-    fn module_id(&self) -> Option<ModuleId> {
-        Some(self.param_bridge.module_id())
+        }
     }
 
-    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let module_id = self.param_bridge.module_id();
-        let mut config = self.param_bridge.config().clone();
+    fn paint_ui(
+        &mut self,
+        bridge: &mut UiBridge,
+        param_bridge: &mut ExternalParamUiBridge,
+        ui: &mut Ui,
+    ) {
+        let module_id = self.module_id;
+        let mut config = param_bridge.config().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
@@ -61,7 +61,7 @@ impl ModuleUi for ExternalParamUI {
                                 )
                                 .clicked()
                             {
-                                self.param_bridge.select_param(i);
+                                param_bridge.select_param(i);
                             }
                         }
                     });
@@ -82,7 +82,7 @@ impl ModuleUi for ExternalParamUI {
                     )
                     .changed()
                 {
-                    self.param_bridge.set_smooth(smooth.left());
+                    param_bridge.set_smooth(smooth.left());
                 }
                 ui.end_row();
 
@@ -91,8 +91,7 @@ impl ModuleUi for ExternalParamUI {
                     .add(Checkbox::without_text(&mut config.sample_and_hold))
                     .changed()
                 {
-                    self.param_bridge
-                        .set_sample_and_hold(config.sample_and_hold);
+                    param_bridge.set_sample_and_hold(config.sample_and_hold);
                 }
                 ui.end_row();
             });
@@ -102,5 +101,17 @@ impl ModuleUi for ExternalParamUI {
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
             bridge.remove_module(module_id);
         }
+    }
+}
+
+impl ModuleUi for ExternalParamUI {
+    fn module_id(&self) -> Option<ModuleId> {
+        Some(self.module_id)
+    }
+
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        bridge.with_module_bridge(self.module_id, |bridge, param_bridge| {
+            self.paint_ui(bridge, param_bridge, ui);
+        });
     }
 }

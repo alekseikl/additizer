@@ -5,7 +5,7 @@ use crate::{
         ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
         stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
-    synth_engine::{Input, LfoShape, ModuleId, lfo, ui_bridge::UiBridge},
+    synth_engine::{Input, LfoShape, ModuleId, lfo::LfoUiBridge, ui_bridge::UiBridge},
 };
 
 impl LfoShape {
@@ -21,31 +21,23 @@ impl LfoShape {
 static SHAPE_OPTIONS: &[LfoShape] = &[LfoShape::Triangle, LfoShape::Square, LfoShape::Sine];
 
 pub struct LfoUi {
+    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
-    lfo_bridge: lfo::UiBridge,
 }
 
 impl LfoUi {
-    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let lfo_bridge = lfo::UiBridge::create(module_id, synth_bridge.engine().clone())?;
-
-        Some(Self {
+    pub fn new(module_id: ModuleId) -> Self {
+        Self {
+            module_id,
             remove_confirmation: false,
             label_state: None,
-            lfo_bridge,
-        })
-    }
-}
-
-impl ModuleUi for LfoUi {
-    fn module_id(&self) -> Option<ModuleId> {
-        Some(self.lfo_bridge.module_id())
+        }
     }
 
-    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let module_id = self.lfo_bridge.module_id();
-        let mut config = self.lfo_bridge.config().clone();
+    fn paint_ui(&mut self, bridge: &mut UiBridge, lfo_bridge: &mut LfoUiBridge, ui: &mut Ui) {
+        let module_id = self.module_id;
+        let mut config = lfo_bridge.config().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
@@ -69,7 +61,7 @@ impl ModuleUi for LfoUi {
                                 .selectable_label(config.shape == *shape, shape.label())
                                 .clicked()
                             {
-                                self.lfo_bridge.set_shape(*shape);
+                                lfo_bridge.set_shape(*shape);
                             }
                         }
                     });
@@ -85,7 +77,7 @@ impl ModuleUi for LfoUi {
                     ))
                     .changed()
                 {
-                    self.lfo_bridge.set_param(Input::Skew, config.skew);
+                    lfo_bridge.set_param(Input::Skew, config.skew);
                 }
                 ui.end_row();
 
@@ -99,7 +91,7 @@ impl ModuleUi for LfoUi {
                     ))
                     .changed()
                 {
-                    self.lfo_bridge.set_param(Input::LowFrequency, config.frequency);
+                    lfo_bridge.set_param(Input::LowFrequency, config.frequency);
                 }
                 ui.end_row();
 
@@ -113,8 +105,7 @@ impl ModuleUi for LfoUi {
                     ))
                     .changed()
                 {
-                    self.lfo_bridge
-                        .set_param(Input::PhaseShift, config.phase_shift);
+                    lfo_bridge.set_param(Input::PhaseShift, config.phase_shift);
                 }
                 ui.end_row();
 
@@ -131,7 +122,7 @@ impl ModuleUi for LfoUi {
                     )
                     .changed()
                 {
-                    self.lfo_bridge.set_smooth_time(config.smooth_time);
+                    lfo_bridge.set_smooth_time(config.smooth_time);
                 }
                 ui.end_row();
 
@@ -140,7 +131,7 @@ impl ModuleUi for LfoUi {
                     .add(Checkbox::without_text(&mut config.bipolar))
                     .changed()
                 {
-                    self.lfo_bridge.set_bipolar(config.bipolar);
+                    lfo_bridge.set_bipolar(config.bipolar);
                 }
                 ui.end_row();
 
@@ -149,7 +140,7 @@ impl ModuleUi for LfoUi {
                     .add(Checkbox::without_text(&mut config.steal_phase))
                     .changed()
                 {
-                    self.lfo_bridge.set_steal_phase(config.steal_phase);
+                    lfo_bridge.set_steal_phase(config.steal_phase);
                 }
                 ui.end_row();
             });
@@ -159,5 +150,17 @@ impl ModuleUi for LfoUi {
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
             bridge.remove_module(module_id);
         }
+    }
+}
+
+impl ModuleUi for LfoUi {
+    fn module_id(&self) -> Option<ModuleId> {
+        Some(self.module_id)
+    }
+
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        bridge.with_module_bridge(self.module_id, |bridge, lfo_bridge| {
+            self.paint_ui(bridge, lfo_bridge, ui);
+        });
     }
 }

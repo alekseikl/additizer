@@ -2,37 +2,31 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use crate::synth_engine::{Input, ModuleId, StereoSample, SynthEngine};
+use crate::synth_engine::{
+    Input, ModuleId, StereoSample, SynthEngine, synth_module::ModuleUiBridge,
+};
 
 use super::link::UiEnd;
 use super::{ShaperType, WaveShaper, WaveShaperConfig};
 
-pub struct UiBridge {
-    synth: Arc<Mutex<SynthEngine>>,
-    module_id: ModuleId,
+pub struct WaveShaperUiBridge {
     ui_end: Option<UiEnd>,
     config: WaveShaperConfig,
 }
 
-impl UiBridge {
+impl WaveShaperUiBridge {
     pub fn create(module_id: ModuleId, synth: Arc<Mutex<SynthEngine>>) -> Option<Self> {
         let mut synth_lock = synth.lock();
         let shaper = synth_lock.get_typed_module_mut::<WaveShaper>(module_id)?;
-        let ui_end = shaper.take_ui_end()?;
+        let ui_end = shaper.ui_end.take()?;
         let config = shaper.get_config();
 
         drop(synth_lock);
 
         Some(Self {
-            synth,
-            module_id,
             ui_end: Some(ui_end),
             config,
         })
-    }
-
-    pub fn module_id(&self) -> ModuleId {
-        self.module_id
     }
 
     pub fn config(&self) -> &WaveShaperConfig {
@@ -58,12 +52,6 @@ impl UiBridge {
     }
 }
 
-impl Drop for UiBridge {
-    fn drop(&mut self) {
-        let mut synth_lock = self.synth.lock();
-
-        if let Some(shaper) = synth_lock.get_typed_module_mut::<WaveShaper>(self.module_id) {
-            shaper.return_ui_end(self.ui_end.take().unwrap());
-        }
-    }
+impl ModuleUiBridge for WaveShaperUiBridge {
+    fn update(&mut self) {}
 }

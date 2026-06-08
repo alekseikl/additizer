@@ -7,35 +7,34 @@ use crate::{
         ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
-    synth_engine::{Input, Mixer, ModuleId, VolumeType, mixer, ui_bridge::UiBridge},
+    synth_engine::{
+        Input, Mixer, ModuleId, VolumeType, mixer::MixerUiBridge, ui_bridge::UiBridge,
+    },
 };
 
 pub struct MixerUi {
+    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
-    mixer_bridge: mixer::UiBridge,
 }
 
 impl MixerUi {
-    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let mixer_bridge = mixer::UiBridge::create(module_id, synth_bridge.engine().clone())?;
-
-        Some(Self {
+    pub fn new(module_id: ModuleId) -> Self {
+        Self {
+            module_id,
             remove_confirmation: false,
             label_state: None,
-            mixer_bridge,
-        })
-    }
-}
-
-impl ModuleUi for MixerUi {
-    fn module_id(&self) -> Option<ModuleId> {
-        Some(self.mixer_bridge.module_id())
+        }
     }
 
-    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let module_id = self.mixer_bridge.module_id();
-        let mut config = self.mixer_bridge.config().clone();
+    fn paint_ui(
+        &mut self,
+        bridge: &mut UiBridge,
+        mixer_bridge: &mut MixerUiBridge,
+        ui: &mut Ui,
+    ) {
+        let module_id = self.module_id;
+        let mut config = mixer_bridge.config().clone();
         let input_volume_type_change = Rc::new(Cell::new(None));
         let output_volume_type_change = Rc::new(Cell::new(None));
 
@@ -57,7 +56,7 @@ impl ModuleUi for MixerUi {
                     .add(Slider::new(&mut config.num_inputs, 1..=Mixer::MAX_INPUTS))
                     .changed()
                 {
-                    self.mixer_bridge.set_num_inputs(config.num_inputs);
+                    mixer_bridge.set_num_inputs(config.num_inputs);
                 }
                 ui.end_row();
 
@@ -117,10 +116,10 @@ impl ModuleUi for MixerUi {
                     {
                         match volume_type {
                             VolumeType::Db => {
-                                self.mixer_bridge.set_param(Input::LevelMix(input_idx), value);
+                                mixer_bridge.set_param(Input::LevelMix(input_idx), value);
                             }
                             VolumeType::Gain => {
-                                self.mixer_bridge.set_param(Input::GainMix(input_idx), value);
+                                mixer_bridge.set_param(Input::GainMix(input_idx), value);
                             }
                         }
                     }
@@ -176,10 +175,10 @@ impl ModuleUi for MixerUi {
                 {
                     match output_volume_type {
                         VolumeType::Db => {
-                            self.mixer_bridge.set_param(Input::Level, output_value);
+                            mixer_bridge.set_param(Input::Level, output_value);
                         }
                         VolumeType::Gain => {
-                            self.mixer_bridge.set_param(Input::Gain, output_value);
+                            mixer_bridge.set_param(Input::Gain, output_value);
                         }
                     }
                 }
@@ -193,11 +192,11 @@ impl ModuleUi for MixerUi {
             });
 
         if let Some((input_idx, volume_type)) = input_volume_type_change.take() {
-            self.mixer_bridge.set_volume_type(input_idx, volume_type);
+            mixer_bridge.set_volume_type(input_idx, volume_type);
         }
 
         if let Some(volume_type) = output_volume_type_change.take() {
-            self.mixer_bridge.set_output_volume_type(volume_type);
+            mixer_bridge.set_output_volume_type(volume_type);
         }
 
         ui.add_space(40.0);
@@ -205,5 +204,17 @@ impl ModuleUi for MixerUi {
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
             bridge.remove_module(module_id);
         }
+    }
+}
+
+impl ModuleUi for MixerUi {
+    fn module_id(&self) -> Option<ModuleId> {
+        Some(self.module_id)
+    }
+
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        bridge.with_module_bridge(self.module_id, |bridge, mixer_bridge| {
+            self.paint_ui(bridge, mixer_bridge, ui);
+        });
     }
 }

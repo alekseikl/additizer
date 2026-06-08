@@ -2,37 +2,31 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use crate::synth_engine::{Input, ModuleId, StereoSample, SynthEngine};
+use crate::synth_engine::{
+    Input, ModuleId, StereoSample, SynthEngine, synth_module::ModuleUiBridge,
+};
 
 use super::link::UiEnd;
 use super::{SpectralFilter, SpectralFilterConfig, SpectralFilterType};
 
-pub struct UiBridge {
-    synth: Arc<Mutex<SynthEngine>>,
-    module_id: ModuleId,
+pub struct SpectralFilterUiBridge {
     ui_end: Option<UiEnd>,
     config: SpectralFilterConfig,
 }
 
-impl UiBridge {
+impl SpectralFilterUiBridge {
     pub fn create(module_id: ModuleId, synth: Arc<Mutex<SynthEngine>>) -> Option<Self> {
         let mut synth_lock = synth.lock();
         let filter = synth_lock.get_typed_module_mut::<SpectralFilter>(module_id)?;
-        let ui_end = filter.take_ui_end()?;
+        let ui_end = filter.ui_end.take()?;
         let config = filter.get_config();
 
         drop(synth_lock);
 
         Some(Self {
-            synth,
-            module_id,
             ui_end: Some(ui_end),
             config,
         })
-    }
-
-    pub fn module_id(&self) -> ModuleId {
-        self.module_id
     }
 
     pub fn config(&self) -> &SpectralFilterConfig {
@@ -71,12 +65,6 @@ impl UiBridge {
     }
 }
 
-impl Drop for UiBridge {
-    fn drop(&mut self) {
-        let mut synth_lock = self.synth.lock();
-
-        if let Some(filter) = synth_lock.get_typed_module_mut::<SpectralFilter>(self.module_id) {
-            filter.return_ui_end(self.ui_end.take().unwrap());
-        }
-    }
+impl ModuleUiBridge for SpectralFilterUiBridge {
+    fn update(&mut self) {}
 }

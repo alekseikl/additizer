@@ -5,7 +5,9 @@ use crate::{
         ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
-    synth_engine::{Input, ModuleId, ShaperType, wave_shaper, ui_bridge::UiBridge},
+    synth_engine::{
+        Input, ModuleId, ShaperType, wave_shaper::WaveShaperUiBridge, ui_bridge::UiBridge,
+    },
 };
 
 impl ShaperType {
@@ -18,32 +20,28 @@ impl ShaperType {
 }
 
 pub struct WaveShaperUi {
+    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
-    shaper_bridge: wave_shaper::UiBridge,
 }
 
 impl WaveShaperUi {
-    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let shaper_bridge =
-            wave_shaper::UiBridge::create(module_id, synth_bridge.engine().clone())?;
-
-        Some(Self {
+    pub fn new(module_id: ModuleId) -> Self {
+        Self {
+            module_id,
             remove_confirmation: false,
             label_state: None,
-            shaper_bridge,
-        })
-    }
-}
-
-impl ModuleUi for WaveShaperUi {
-    fn module_id(&self) -> Option<ModuleId> {
-        Some(self.shaper_bridge.module_id())
+        }
     }
 
-    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let module_id = self.shaper_bridge.module_id();
-        let mut config = self.shaper_bridge.config().clone();
+    fn paint_ui(
+        &mut self,
+        bridge: &mut UiBridge,
+        shaper_bridge: &mut WaveShaperUiBridge,
+        ui: &mut Ui,
+    ) {
+        let module_id = self.module_id;
+        let mut config = shaper_bridge.config().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
@@ -78,7 +76,7 @@ impl ModuleUi for WaveShaperUi {
                                 )
                                 .clicked()
                             {
-                                self.shaper_bridge.set_shaper_type(*shaper_type);
+                                shaper_bridge.set_shaper_type(*shaper_type);
                             }
                         }
                     });
@@ -94,8 +92,7 @@ impl ModuleUi for WaveShaperUi {
                     ))
                     .changed()
                 {
-                    self.shaper_bridge
-                        .set_param(Input::Distortion, config.distortion);
+                    shaper_bridge.set_param(Input::Distortion, config.distortion);
                 }
                 ui.end_row();
 
@@ -109,8 +106,7 @@ impl ModuleUi for WaveShaperUi {
                     ))
                     .changed()
                 {
-                    self.shaper_bridge
-                        .set_param(Input::ClippingLevel, config.clipping_level);
+                    shaper_bridge.set_param(Input::ClippingLevel, config.clipping_level);
                 }
                 ui.end_row();
             });
@@ -120,5 +116,17 @@ impl ModuleUi for WaveShaperUi {
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
             bridge.remove_module(module_id);
         }
+    }
+}
+
+impl ModuleUi for WaveShaperUi {
+    fn module_id(&self) -> Option<ModuleId> {
+        Some(self.module_id)
+    }
+
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        bridge.with_module_bridge(self.module_id, |bridge, shaper_bridge| {
+            self.paint_ui(bridge, shaper_bridge, ui);
+        });
     }
 }

@@ -2,37 +2,29 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use crate::synth_engine::{ModuleId, Sample, SynthEngine};
+use crate::synth_engine::{ModuleId, Sample, SynthEngine, synth_module::ModuleUiBridge};
 
 use super::link::UiEnd;
 use super::{ExternalParam, ExternalParamConfig, NUM_FLOAT_PARAMS};
 
-pub struct UiBridge {
-    synth: Arc<Mutex<SynthEngine>>,
-    module_id: ModuleId,
+pub struct ExternalParamUiBridge {
     ui_end: Option<UiEnd>,
     config: ExternalParamConfig,
 }
 
-impl UiBridge {
+impl ExternalParamUiBridge {
     pub fn create(module_id: ModuleId, synth: Arc<Mutex<SynthEngine>>) -> Option<Self> {
         let mut synth_lock = synth.lock();
         let param = synth_lock.get_typed_module_mut::<ExternalParam>(module_id)?;
-        let ui_end = param.take_ui_end()?;
+        let ui_end = param.ui_end.take()?;
         let config = param.get_config();
 
         drop(synth_lock);
 
         Some(Self {
-            synth,
-            module_id,
             ui_end: Some(ui_end),
             config,
         })
-    }
-
-    pub fn module_id(&self) -> ModuleId {
-        self.module_id
     }
 
     pub fn config(&self) -> &ExternalParamConfig {
@@ -58,12 +50,6 @@ impl UiBridge {
     }
 }
 
-impl Drop for UiBridge {
-    fn drop(&mut self) {
-        let mut synth_lock = self.synth.lock();
-
-        if let Some(param) = synth_lock.get_typed_module_mut::<ExternalParam>(self.module_id) {
-            param.return_ui_end(self.ui_end.take().unwrap());
-        }
-    }
+impl ModuleUiBridge for ExternalParamUiBridge {
+    fn update(&mut self) {}
 }

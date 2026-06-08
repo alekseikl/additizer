@@ -1,13 +1,25 @@
-use std::sync::Arc;
+use std::any::Any;
 
 use crate::{
-    engine_factory::{EngineFactory, EngineHandle, UiConfigHandle},
-    preset::Preset,
+    engine_factory::{EngineHandle, UiConfigHandle},
     synth_engine::{
-        Input, ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample,
+        Input, ModuleId, ModuleInput, ModuleType, ModuleUiBridge, OUTPUT_MODULE_ID, Sample,
+        StereoSample,
+        amplifier::AmplifierUiBridge,
         config::EngineParams,
+        envelope::EnvelopeUiBridge,
+        expressions::ExpressionsUiBridge,
+        external_param::ExternalParamUiBridge,
+        harmonic_editor::HarmonicEditorUiBridge,
+        lfo::LfoUiBridge,
+        mixer::MixerUiBridge,
+        oscillator::OscillatorUiBridge,
         routing::{DataType, data_types_compatible},
+        spectral_blend::SpectralBlendUiBridge,
+        spectral_filter::SpectralFilterUiBridge,
+        spectral_mixer::SpectralMixerUiBridge,
         ui_bridge::ui_config::UiModuleConfig,
+        wave_shaper::WaveShaperUiBridge,
     },
 };
 
@@ -34,21 +46,19 @@ pub struct ModuleItem {
 }
 
 pub struct UiBridge {
-    factory: Arc<EngineFactory>,
     engine: EngineHandle,
     ui_config: UiConfigHandle,
-    ui_end: Option<UiEnd>,
+    ui_end: UiEnd,
     routing: RoutingState,
     engine_params: EngineParams,
     voices: VoicesStatus,
     modulated_inputs: FxHashMap<ModuleInput, StereoSample>,
     outputs: FxHashMap<ModuleId, StereoSample>,
+    module_bridges: FxHashMap<ModuleId, Option<Box<dyn ModuleUiBridge>>>,
 }
 
 impl UiBridge {
-    pub fn create(factory: Arc<EngineFactory>) -> Option<Self> {
-        let engine = factory.get_engine();
-        let ui_config = factory.get_ui_config();
+    pub fn create(engine: EngineHandle, ui_config: UiConfigHandle) -> Option<Self> {
         let mut engine_lock = engine.lock();
 
         let ui_end = engine_lock.ui_end.take()?;
@@ -57,17 +67,60 @@ impl UiBridge {
 
         drop(engine_lock);
 
+        let mut bridges: FxHashMap<ModuleId, Option<Box<dyn ModuleUiBridge>>> =
+            FxHashMap::default();
+
+        for m in routing.modules.values() {
+            Self::insert_module_bridge(m.id, m.module_type, &engine, &mut bridges)?;
+        }
+
         Some(Self {
-            factory,
             engine,
             ui_config,
-            ui_end: Some(ui_end),
+            ui_end,
             routing,
             engine_params,
             voices: VoicesStatus::default(),
             modulated_inputs: FxHashMap::default(),
             outputs: FxHashMap::default(),
+            module_bridges: bridges,
         })
+    }
+
+    fn insert_module_bridge(
+        id: ModuleId,
+        module_type: ModuleType,
+        engine: &EngineHandle,
+        bridges: &mut FxHashMap<ModuleId, Option<Box<dyn ModuleUiBridge>>>,
+    ) -> Option<()> {
+        macro_rules! add_bridge {
+            ($module_bridges:ident, $module_id:expr, $engine:ident, $bridge:ident) => {{
+                $module_bridges.insert(
+                    $module_id,
+                    Some(Box::new($bridge::create($module_id, $engine.clone())?)),
+                );
+            }};
+        }
+
+        type Mt = ModuleType;
+
+        match module_type {
+            Mt::Envelope => add_bridge!(bridges, id, engine, EnvelopeUiBridge),
+            Mt::Amplifier => add_bridge!(bridges, id, engine, AmplifierUiBridge),
+            Mt::Mixer => add_bridge!(bridges, id, engine, MixerUiBridge),
+            Mt::Oscillator => add_bridge!(bridges, id, engine, OscillatorUiBridge),
+            Mt::SpectralFilter => add_bridge!(bridges, id, engine, SpectralFilterUiBridge),
+            Mt::SpectralBlend => add_bridge!(bridges, id, engine, SpectralBlendUiBridge),
+            Mt::SpectralMixer => add_bridge!(bridges, id, engine, SpectralMixerUiBridge),
+            Mt::HarmonicEditor => add_bridge!(bridges, id, engine, HarmonicEditorUiBridge),
+            Mt::ExternalParam => add_bridge!(bridges, id, engine, ExternalParamUiBridge),
+            Mt::Lfo => add_bridge!(bridges, id, engine, LfoUiBridge),
+            Mt::WaveShaper => add_bridge!(bridges, id, engine, WaveShaperUiBridge),
+            Mt::Expressions => add_bridge!(bridges, id, engine, ExpressionsUiBridge),
+            Mt::Output => (),
+        };
+
+        Some(())
     }
 
     pub fn engine(&self) -> &EngineHandle {
@@ -90,14 +143,6 @@ impl UiBridge {
             .unwrap_or_default()
     }
 
-    pub fn get_preset(&self) -> Preset {
-        self.factory.get_preset()
-    }
-
-    pub fn load_preset(&self, preset: &Preset) -> bool {
-        self.factory.load_preset(preset)
-    }
-
     pub fn get_modules(&self) -> Vec<ModuleItem> {
         let ui_config = self.ui_config.lock();
 
@@ -114,6 +159,26 @@ impl UiBridge {
 
     pub fn has_module_id(&self, module_id: ModuleId) -> bool {
         self.routing.modules.contains_key(&module_id)
+    }
+
+    pub fn with_module_bridge<T: ModuleUiBridge>(
+        &mut self,
+        module_id: ModuleId,
+        f: impl FnOnce(&mut Self, &mut T),
+    ) {
+        if let Some(mut bridge) = self
+            .module_bridges
+            .get_mut(&module_id)
+            .and_then(Option::take)
+        {
+            if let Some(bridge) = (bridge.as_mut() as &mut dyn Any).downcast_mut::<T>() {
+                f(self, bridge);
+            }
+
+            if let Some(bridge_box) = self.module_bridges.get_mut(&module_id) {
+                bridge_box.replace(bridge);
+            }
+        }
     }
 
     pub fn get_module_label(&self, module_id: ModuleId) -> String {
@@ -218,29 +283,8 @@ impl UiBridge {
         false
     }
 
-    fn sync(&mut self) {
-        let synth = self.engine.lock();
-
-        self.routing = synth.get_routing_state();
-        self.engine_params = synth.get_engine_params();
-        self.voices = VoicesStatus::default();
-    }
-
-    // Returns true when UI needs to be reset
-    pub fn update(&mut self) -> bool {
-        let mut need_reset = false;
-
-        if self.factory.engine_changed(&self.engine) {
-            self.engine = self.factory.get_engine();
-            self.ui_config = self.factory.get_ui_config();
-            self.ui_end = Some(self.engine.lock().ui_end.take().unwrap());
-            self.sync();
-            need_reset = true;
-        }
-
-        let ui_end = self.ui_end.as_mut().unwrap();
-
-        while let Some(update) = ui_end.pop_update() {
+    pub fn update(&mut self) {
+        while let Some(update) = self.ui_end.pop_update() {
             match update {
                 UiUpdate::ModulatedInput {
                     module_id,
@@ -264,7 +308,13 @@ impl UiBridge {
             }
         }
 
-        need_reset
+        for module in self
+            .module_bridges
+            .values_mut()
+            .filter_map(|m| m.as_deref_mut())
+        {
+            module.update();
+        }
     }
 
     pub fn add_module(&mut self, module_type: ModuleType) -> ModuleId {
@@ -289,6 +339,8 @@ impl UiBridge {
         self.routing = synth.get_routing_state();
         drop(synth);
 
+        Self::insert_module_bridge(id, module_type, &self.engine, &mut self.module_bridges);
+
         let mut ui_config = self.ui_config.lock();
 
         ui_config.modules.insert(
@@ -307,6 +359,7 @@ impl UiBridge {
 
         synth.remove_module(module_id);
         self.routing = synth.get_routing_state();
+        self.module_bridges.remove(&module_id);
     }
 
     pub fn set_direct_link(&mut self, src: ModuleId, dst: ModuleInput) {
@@ -352,11 +405,7 @@ impl UiBridge {
     }
 
     pub fn set_link_amount(&mut self, src: ModuleId, dst: ModuleInput, amount: StereoSample) {
-        if self
-            .ui_end
-            .as_mut()
-            .unwrap()
-            .set_link_amount(src, dst, amount)
+        if self.ui_end.set_link_amount(src, dst, amount)
             && let Some(sources) = self.routing.routing.get_mut(&dst)
             && let Some(source) = sources.iter_mut().find(|s| s.src == src)
         {
@@ -365,64 +414,44 @@ impl UiBridge {
     }
 
     pub fn set_voices(&mut self, voices: usize) {
-        if self.ui_end.as_mut().unwrap().set_voices(voices) {
+        if self.ui_end.set_voices(voices) {
             self.engine_params.num_voices = voices;
         }
     }
 
     pub fn set_legato(&mut self, legato: bool) {
-        if self.ui_end.as_mut().unwrap().set_legato(legato) {
+        if self.ui_end.set_legato(legato) {
             self.engine_params.legato = legato;
         }
     }
 
     pub fn set_block_size(&mut self, block_size: usize) {
-        if self.ui_end.as_mut().unwrap().set_block_size(block_size) {
+        if self.ui_end.set_block_size(block_size) {
             self.engine_params.block_size = block_size;
         }
     }
 
     pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) {
-        if self
-            .ui_end
-            .as_mut()
-            .unwrap()
-            .set_voice_kill_time(voice_kill_time)
-        {
+        if self.ui_end.set_voice_kill_time(voice_kill_time) {
             self.engine_params.voice_kill_time = voice_kill_time;
         }
     }
 
     pub fn set_oversampling(&mut self, oversampling: bool) {
-        if self.ui_end.as_mut().unwrap().set_oversampling(oversampling) {
+        if self.ui_end.set_oversampling(oversampling) {
             self.engine_params.oversampling = oversampling;
         }
     }
 
     pub fn set_stereo_spectrum(&mut self, stereo_spectrum: bool) {
-        if self
-            .ui_end
-            .as_mut()
-            .unwrap()
-            .set_stereo_spectrum(stereo_spectrum)
-        {
+        if self.ui_end.set_stereo_spectrum(stereo_spectrum) {
             self.engine_params.stereo_spectrum = stereo_spectrum;
         }
     }
 
     pub fn set_output_gain(&mut self, output_gain: StereoSample) {
-        if self.ui_end.as_mut().unwrap().set_output_gain(output_gain) {
+        if self.ui_end.set_output_gain(output_gain) {
             self.engine_params.output_gain = output_gain;
         }
-    }
-}
-
-impl Drop for UiBridge {
-    fn drop(&mut self) {
-        let mut synth_lock = self.engine.lock();
-
-        assert!(synth_lock.ui_end.is_none());
-
-        synth_lock.ui_end = Some(self.ui_end.take().unwrap());
     }
 }

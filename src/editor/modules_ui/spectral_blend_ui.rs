@@ -5,36 +5,34 @@ use crate::{
         ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
-    synth_engine::{Input, ModuleId, spectral_blend, ui_bridge::UiBridge},
+    synth_engine::{
+        Input, ModuleId, spectral_blend::SpectralBlendUiBridge, ui_bridge::UiBridge,
+    },
 };
 
 pub struct SpectralBlendUi {
+    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
-    blend_bridge: spectral_blend::UiBridge,
 }
 
 impl SpectralBlendUi {
-    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let blend_bridge =
-            spectral_blend::UiBridge::create(module_id, synth_bridge.engine().clone())?;
-
-        Some(Self {
+    pub fn new(module_id: ModuleId) -> Self {
+        Self {
+            module_id,
             remove_confirmation: false,
             label_state: None,
-            blend_bridge,
-        })
-    }
-}
-
-impl ModuleUi for SpectralBlendUi {
-    fn module_id(&self) -> Option<ModuleId> {
-        Some(self.blend_bridge.module_id())
+        }
     }
 
-    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let module_id = self.blend_bridge.module_id();
-        let mut config = self.blend_bridge.config().clone();
+    fn paint_ui(
+        &mut self,
+        bridge: &mut UiBridge,
+        blend_bridge: &mut SpectralBlendUiBridge,
+        ui: &mut Ui,
+    ) {
+        let module_id = self.module_id;
+        let mut config = blend_bridge.config().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
@@ -67,7 +65,7 @@ impl ModuleUi for SpectralBlendUi {
                     ))
                     .changed()
                 {
-                    self.blend_bridge.set_param(Input::Blend, config.blend);
+                    blend_bridge.set_param(Input::Blend, config.blend);
                 }
                 ui.end_row();
             });
@@ -77,5 +75,17 @@ impl ModuleUi for SpectralBlendUi {
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
             bridge.remove_module(module_id);
         }
+    }
+}
+
+impl ModuleUi for SpectralBlendUi {
+    fn module_id(&self) -> Option<ModuleId> {
+        Some(self.module_id)
+    }
+
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        bridge.with_module_bridge(self.module_id, |bridge, blend_bridge| {
+            self.paint_ui(bridge, blend_bridge, ui);
+        });
     }
 }

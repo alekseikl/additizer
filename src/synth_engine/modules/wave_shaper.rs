@@ -9,7 +9,7 @@ mod ui_bridge;
 
 pub use config::{WaveShaperConfig, ShaperType};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::UiBridge;
+pub use ui_bridge::WaveShaperUiBridge;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
@@ -100,15 +100,6 @@ impl WaveShaper {
             ui_end: Some(ui_end),
             voices: Default::default(),
         }
-    }
-
-    pub fn take_ui_end(&mut self) -> Option<UiEnd> {
-        self.ui_end.take()
-    }
-
-    pub fn return_ui_end(&mut self, ui_end: UiEnd) {
-        assert!(self.ui_end.is_none(), "ui_end not taken");
-        self.ui_end = Some(ui_end);
     }
 
     pub fn get_config(&self) -> WaveShaperConfig {

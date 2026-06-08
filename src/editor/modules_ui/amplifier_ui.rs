@@ -5,35 +5,27 @@ use crate::{
         ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
         multi_input::MultiInput, utils::confirm_module_removal,
     },
-    synth_engine::{Input, ModuleId, amplifier, ui_bridge::UiBridge},
+    synth_engine::{Input, ModuleId, amplifier::AmplifierUiBridge, ui_bridge::UiBridge},
 };
 
 pub struct AmplifierUI {
+    module_id: ModuleId,
     remove_confirmation: bool,
     module_label: Option<String>,
-    amp_bridge: amplifier::UiBridge,
 }
 
 impl AmplifierUI {
-    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let amp_bridge = amplifier::UiBridge::create(module_id, synth_bridge.engine().clone())?;
-
-        Some(Self {
+    pub fn new(module_id: ModuleId) -> Self {
+        Self {
+            module_id,
             remove_confirmation: false,
             module_label: None,
-            amp_bridge,
-        })
-    }
-}
-
-impl ModuleUi for AmplifierUI {
-    fn module_id(&self) -> Option<ModuleId> {
-        Some(self.amp_bridge.module_id())
+        }
     }
 
-    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let module_id = self.amp_bridge.module_id();
-        let mut config = self.amp_bridge.config().clone();
+    fn paint_ui(&mut self, bridge: &mut UiBridge, amp_bridge: &mut AmplifierUiBridge, ui: &mut Ui) {
+        let module_id = self.module_id;
+        let mut config = amp_bridge.config().clone();
 
         ui.add(ModuleLabel::new(&mut self.module_label, bridge, module_id));
 
@@ -56,7 +48,7 @@ impl ModuleUi for AmplifierUI {
                     )
                     .changed()
                 {
-                    self.amp_bridge.set_param(Input::Gain, config.gain);
+                    amp_bridge.set_param(Input::Gain, config.gain);
                 }
                 ui.end_row();
             });
@@ -66,5 +58,17 @@ impl ModuleUi for AmplifierUI {
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
             bridge.remove_module(module_id);
         }
+    }
+}
+
+impl ModuleUi for AmplifierUI {
+    fn module_id(&self) -> Option<ModuleId> {
+        Some(self.module_id)
+    }
+
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        bridge.with_module_bridge(self.module_id, |bridge, amp_bridge| {
+            self.paint_ui(bridge, amp_bridge, ui);
+        });
     }
 }

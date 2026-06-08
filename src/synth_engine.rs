@@ -49,7 +49,7 @@ pub use routing::{
     VolumeType,
 };
 pub use stereo_sample::StereoSample;
-pub use synth_module::SynthModule;
+pub use synth_module::{ModuleUiBridge, SynthModule};
 pub use types::Sample;
 
 mod buffer;
@@ -739,9 +739,9 @@ impl SynthEngine {
         self.modules.get_typed_module(id)
     }
 
-    pub fn get_module_mut(&mut self, id: ModuleId) -> Option<&mut dyn SynthModule> {
-        self.modules.get_module_mut(id)
-    }
+    // pub fn get_module_mut(&mut self, id: ModuleId) -> Option<&mut dyn SynthModule> {
+    //     self.modules.get_module_mut(id)
+    // }
 
     pub fn get_typed_module_mut<T: SynthModule>(&mut self, id: ModuleId) -> Option<&mut T> {
         self.modules.get_typed_module_mut(id)

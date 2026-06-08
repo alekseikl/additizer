@@ -79,6 +79,10 @@ pub trait SynthModule: Any + Send {
     }
 }
 
+pub trait ModuleUiBridge: Any + Send {
+    fn update(&mut self);
+}
+
 pub struct VoiceRouterFactory<'a> {
     router: &'a mut dyn Router,
     process_params: &'a ProcessParams<'a>,

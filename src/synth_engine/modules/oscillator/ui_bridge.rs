@@ -2,25 +2,27 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use crate::synth_engine::{Input, ModuleId, Sample, StereoSample, SynthEngine};
+use crate::synth_engine::{
+    Input, ModuleId, Sample, StereoSample, SynthEngine, synth_module::ModuleUiBridge,
+};
 
 use super::{
     Oscillator, OscillatorConfig, PhasesDst,
     link::{UiEnd, UiUpdate},
 };
 
-pub struct UiBridge {
+pub struct OscillatorUiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
     config: OscillatorConfig,
 }
 
-impl UiBridge {
+impl OscillatorUiBridge {
     pub fn create(module_id: ModuleId, synth: Arc<Mutex<SynthEngine>>) -> Option<Self> {
         let mut synth_lock = synth.lock();
         let osc = synth_lock.get_typed_module_mut::<Oscillator>(module_id)?;
-        let ui_end = osc.take_ui_end()?;
+        let ui_end = osc.ui_end.take()?;
         let config = osc.get_config();
 
         drop(synth_lock);
@@ -33,25 +35,11 @@ impl UiBridge {
         })
     }
 
-    pub fn module_id(&self) -> ModuleId {
-        self.module_id
-    }
-
     pub fn sync(&mut self) {
         let synth_lock = self.synth.lock();
 
         if let Some(osc) = synth_lock.get_typed_module::<Oscillator>(self.module_id) {
             self.config = osc.get_config();
-        }
-    }
-
-    pub fn update(&mut self) {
-        while let Some(update) = self.ui_end.as_mut().unwrap().pop_update() {
-            match update {
-                UiUpdate::RefreshState => {
-                    self.sync();
-                }
-            }
         }
     }
 
@@ -160,12 +148,14 @@ impl UiBridge {
     }
 }
 
-impl Drop for UiBridge {
-    fn drop(&mut self) {
-        let mut synth_lock = self.synth.lock();
-
-        if let Some(osc) = synth_lock.get_typed_module_mut::<Oscillator>(self.module_id) {
-            osc.return_ui_end(self.ui_end.take().unwrap());
+impl ModuleUiBridge for OscillatorUiBridge {
+    fn update(&mut self) {
+        while let Some(update) = self.ui_end.as_mut().unwrap().pop_update() {
+            match update {
+                UiUpdate::RefreshState => {
+                    self.sync();
+                }
+            }
         }
     }
 }

@@ -4,7 +4,7 @@ mod ui_bridge;
 
 pub use config::ExpressionsConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::UiBridge;
+pub use ui_bridge::ExpressionsUiBridge;
 
 use crate::{
     synth_engine::{
@@ -79,15 +79,6 @@ impl Expressions {
             ui_end: Some(ui_end),
             voices: Default::default(),
         }
-    }
-
-    pub fn take_ui_end(&mut self) -> Option<UiEnd> {
-        self.ui_end.take()
-    }
-
-    pub fn return_ui_end(&mut self, ui_end: UiEnd) {
-        assert!(self.ui_end.is_none(), "ui_end not taken");
-        self.ui_end = Some(ui_end);
     }
 
     pub fn get_config(&self) -> ExpressionsConfig {

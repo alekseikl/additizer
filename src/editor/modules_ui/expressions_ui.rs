@@ -6,7 +6,7 @@ use crate::{
         utils::confirm_module_removal,
     },
     synth_engine::{
-        Expression, ModuleId, StereoSample, expressions, ui_bridge::UiBridge,
+        Expression, ModuleId, StereoSample, expressions::ExpressionsUiBridge, ui_bridge::UiBridge,
     },
 };
 
@@ -24,31 +24,28 @@ impl Expression {
 }
 
 pub struct ExpressionsUi {
+    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
-    expr_bridge: expressions::UiBridge,
 }
 
 impl ExpressionsUi {
-    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let expr_bridge = expressions::UiBridge::create(module_id, synth_bridge.engine().clone())?;
-
-        Some(Self {
+    pub fn new(module_id: ModuleId) -> Self {
+        Self {
+            module_id,
             remove_confirmation: false,
             label_state: None,
-            expr_bridge,
-        })
-    }
-}
-
-impl ModuleUi for ExpressionsUi {
-    fn module_id(&self) -> Option<ModuleId> {
-        Some(self.expr_bridge.module_id())
+        }
     }
 
-    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let module_id = self.expr_bridge.module_id();
-        let mut config = self.expr_bridge.config().clone();
+    fn paint_ui(
+        &mut self,
+        bridge: &mut UiBridge,
+        expr_bridge: &mut ExpressionsUiBridge,
+        ui: &mut Ui,
+    ) {
+        let module_id = self.module_id;
+        let mut config = expr_bridge.config().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
@@ -87,7 +84,7 @@ impl ModuleUi for ExpressionsUi {
                                 )
                                 .clicked()
                             {
-                                self.expr_bridge.set_expression(*expression);
+                                expr_bridge.set_expression(*expression);
                             }
                         }
                     });
@@ -99,8 +96,7 @@ impl ModuleUi for ExpressionsUi {
                         .add(Checkbox::without_text(&mut config.use_release_velocity))
                         .changed()
                     {
-                        self.expr_bridge
-                            .set_use_release_velocity(config.use_release_velocity);
+                        expr_bridge.set_use_release_velocity(config.use_release_velocity);
                     }
                     ui.end_row();
                 }
@@ -118,7 +114,7 @@ impl ModuleUi for ExpressionsUi {
                     )
                     .changed()
                 {
-                    self.expr_bridge.set_smooth(smooth.left());
+                    expr_bridge.set_smooth(smooth.left());
                 }
                 ui.end_row();
             });
@@ -128,5 +124,17 @@ impl ModuleUi for ExpressionsUi {
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
             bridge.remove_module(module_id);
         }
+    }
+}
+
+impl ModuleUi for ExpressionsUi {
+    fn module_id(&self) -> Option<ModuleId> {
+        Some(self.module_id)
+    }
+
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        bridge.with_module_bridge(self.module_id, |bridge, expr_bridge| {
+            self.paint_ui(bridge, expr_bridge, ui);
+        });
     }
 }

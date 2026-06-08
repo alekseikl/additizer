@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use egui::{
     Button, Checkbox, Color32, ComboBox, Frame, Grid, Id, Label, Modal, RichText, Sense, Sides,
     Slider, TextEdit, Ui, vec2,
@@ -6,6 +8,7 @@ use egui_extras::{Column, TableBuilder};
 
 use crate::{
     editor::{ModuleUi, multi_input::MultiInput},
+    engine_factory::EngineFactory,
     presets::{PresetListItem, Presets},
     synth_engine::{Input, ModuleId, OUTPUT_MODULE_ID, SynthEngine, ui_bridge::UiBridge},
     utils::from_ms,
@@ -24,24 +27,21 @@ pub struct LoadPresetState {
 }
 
 pub struct ParamsUi {
+    engine_factory: Arc<EngineFactory>,
     save_preset_state: Option<Box<SavePresetState>>,
     load_preset_state: Option<Box<LoadPresetState>>,
 }
 
 impl ParamsUi {
-    pub fn new() -> Self {
+    pub fn new(engine_factory: Arc<EngineFactory>) -> Self {
         Self {
+            engine_factory,
             save_preset_state: None,
             load_preset_state: None,
         }
     }
 
-    fn show_save_preset_modal(
-        &mut self,
-        bridge: &mut UiBridge,
-        ui: &mut Ui,
-        state: &mut SavePresetState,
-    ) -> bool {
+    fn show_save_preset_modal(&mut self, ui: &mut Ui, state: &mut SavePresetState) -> bool {
         let modal = Modal::new(Id::new("save_preset_modal")).show(ui.ctx(), |ui| {
             ui.set_width(220.0);
             ui.heading("Save Preset");
@@ -66,7 +66,7 @@ impl ParamsUi {
                 |_ui| {},
                 |ui| {
                     if ui.add_enabled(valid, Button::new("Save")).clicked() {
-                        let mut preset = bridge.get_preset();
+                        let mut preset = self.engine_factory.get_preset();
 
                         preset.info.title = trimmed.to_string();
 
@@ -90,12 +90,7 @@ impl ParamsUi {
         !modal.should_close()
     }
 
-    fn show_load_preset_modal(
-        &mut self,
-        bridge: &mut UiBridge,
-        ui: &mut Ui,
-        state: &mut LoadPresetState,
-    ) -> bool {
+    fn show_load_preset_modal(&mut self, ui: &mut Ui, state: &mut LoadPresetState) -> bool {
         let modal = Modal::new(Id::new("load_preset_modal")).show(ui.ctx(), |ui| {
             ui.set_width(440.0);
 
@@ -148,7 +143,7 @@ impl ParamsUi {
                     {
                         if let Some(idx) = state.selected_index
                             && let Some(preset) = Presets::read_preset(&state.preset_list[idx].path)
-                            && bridge.load_preset(&preset)
+                            && self.engine_factory.load_preset(&preset)
                         {
                             ui.close();
                         } else {
@@ -280,13 +275,13 @@ impl ModuleUi for ParamsUi {
             });
 
         if let Some(mut state) = self.save_preset_state.take()
-            && self.show_save_preset_modal(bridge, ui, &mut state)
+            && self.show_save_preset_modal(ui, &mut state)
         {
             self.save_preset_state.replace(state);
         }
 
         if let Some(mut state) = self.load_preset_state.take()
-            && self.show_load_preset_modal(bridge, ui, &mut state)
+            && self.show_load_preset_modal(ui, &mut state)
         {
             self.load_preset_state.replace(state);
         }

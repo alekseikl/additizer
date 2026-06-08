@@ -11,7 +11,7 @@ use crate::{
     },
     synth_engine::{
         ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample,
-        harmonic_editor::{self, FilterParams, FilterType, SetAction, SetParams},
+        harmonic_editor::{FilterParams, FilterType, HarmonicEditorUiBridge, SetAction, SetParams},
         ui_bridge::UiBridge,
     },
     utils::NthElement,
@@ -87,27 +87,25 @@ impl Default for ApplyFilterState {
 }
 
 pub struct HarmonicEditorUI {
+    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
-    editor_bridge: harmonic_editor::UiBridge,
     select_and_set_state: Option<Box<SelectAndSetState>>,
     apply_filter_state: Option<Box<ApplyFilterState>>,
 }
 
 impl HarmonicEditorUI {
-    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let editor_bridge = harmonic_editor::UiBridge::create(module_id, synth_bridge.engine().clone())?;
-
-        Some(Self {
+    pub fn new(module_id: ModuleId) -> Self {
+        Self {
+            module_id,
             remove_confirmation: false,
             label_state: None,
-            editor_bridge,
             select_and_set_state: None,
             apply_filter_state: None,
-        })
+        }
     }
 
-    fn apply_select_and_set(bridge: &mut harmonic_editor::UiBridge, state: &SelectAndSetState) {
+    fn apply_select_and_set(bridge: &mut HarmonicEditorUiBridge, state: &SelectAndSetState) {
         let mut params = SetParams {
             from: state.from,
             to: state.to,
@@ -132,7 +130,7 @@ impl HarmonicEditorUI {
     }
 
     fn show_select_and_set_modal(
-        bridge: &mut harmonic_editor::UiBridge,
+        bridge: &mut HarmonicEditorUiBridge,
         ui: &mut Ui,
         state: &mut SelectAndSetState,
     ) -> bool {
@@ -221,7 +219,7 @@ impl HarmonicEditorUI {
         !modal.should_close()
     }
 
-    fn apply_filter(bridge: &mut harmonic_editor::UiBridge, state: &ApplyFilterState) {
+    fn apply_filter(bridge: &mut HarmonicEditorUiBridge, state: &ApplyFilterState) {
         bridge.apply_filter(FilterParams {
             filter_type: state.filter_type,
             filter_order: state.order,
@@ -236,7 +234,7 @@ impl HarmonicEditorUI {
     }
 
     fn show_apply_filter_modal(
-        bridge: &mut harmonic_editor::UiBridge,
+        bridge: &mut HarmonicEditorUiBridge,
         ui: &mut Ui,
         state: &mut ApplyFilterState,
     ) -> bool {
@@ -335,17 +333,14 @@ impl HarmonicEditorUI {
 
         !modal.should_close()
     }
-}
 
-impl ModuleUi for HarmonicEditorUI {
-    fn module_id(&self) -> Option<ModuleId> {
-        Some(self.editor_bridge.module_id())
-    }
-
-    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        self.editor_bridge.update();
-
-        let module_id = self.editor_bridge.module_id();
+    fn paint_ui(
+        &mut self,
+        bridge: &mut UiBridge,
+        editor_bridge: &mut HarmonicEditorUiBridge,
+        ui: &mut Ui,
+    ) {
+        let module_id = self.module_id;
         ui.style_mut().spacing.scroll = ScrollStyle::solid();
 
         Panel::top("harmonics-list")
@@ -361,7 +356,7 @@ impl ModuleUi for HarmonicEditorUI {
             .show_inside(ui, |ui| {
                 ScrollArea::horizontal().show(ui, |ui| {
                     ui.horizontal_top(|ui| {
-                        let mut harmonics = self.editor_bridge.harmonics();
+                        let mut harmonics = editor_bridge.harmonics();
                         let height = ui.available_height();
 
                         ui.style_mut().spacing.item_spacing = Vec2::splat(2.0);
@@ -377,7 +372,7 @@ impl ModuleUi for HarmonicEditorUI {
                                 )
                                 .changed()
                             {
-                                self.editor_bridge.set_harmonic(idx, *harmonic);
+                                editor_bridge.set_harmonic(idx, *harmonic);
                             }
                         }
                     });
@@ -385,17 +380,13 @@ impl ModuleUi for HarmonicEditorUI {
             });
 
         CentralPanel::default().show_inside(ui, |ui| {
-            ui.add(ModuleLabel::new(
-                &mut self.label_state,
-                bridge,
-                module_id,
-            ));
+            ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
 
             ui.add_space(32.0);
 
             ui.horizontal(|ui| {
                 if ui.button("All to Zero").clicked() {
-                    self.editor_bridge.set_selected(SetParams {
+                    editor_bridge.set_selected(SetParams {
                         from: 1,
                         to: NUM_EDITABLE_HARMONICS,
                         n_th: None,
@@ -405,7 +396,7 @@ impl ModuleUi for HarmonicEditorUI {
                 }
 
                 if ui.button("All to One").clicked() {
-                    self.editor_bridge.set_selected(SetParams {
+                    editor_bridge.set_selected(SetParams {
                         from: 1,
                         to: NUM_EDITABLE_HARMONICS,
                         n_th: None,
@@ -415,7 +406,7 @@ impl ModuleUi for HarmonicEditorUI {
                 }
 
                 if ui.button("Keep Even").clicked() {
-                    self.editor_bridge.set_selected(SetParams {
+                    editor_bridge.set_selected(SetParams {
                         from: 1,
                         to: NUM_EDITABLE_HARMONICS,
                         n_th: Some(NthElement::new(2, 0, true)),
@@ -425,7 +416,7 @@ impl ModuleUi for HarmonicEditorUI {
                 }
 
                 if ui.button("Keep Odd").clicked() {
-                    self.editor_bridge.set_selected(SetParams {
+                    editor_bridge.set_selected(SetParams {
                         from: 1,
                         to: NUM_EDITABLE_HARMONICS,
                         n_th: Some(NthElement::new(2, 1, true)),
@@ -446,13 +437,13 @@ impl ModuleUi for HarmonicEditorUI {
             });
 
             if let Some(mut state) = self.select_and_set_state.take()
-                && Self::show_select_and_set_modal(&mut self.editor_bridge, ui, &mut state)
+                && Self::show_select_and_set_modal(editor_bridge, ui, &mut state)
             {
                 self.select_and_set_state.replace(state);
             }
 
             if let Some(mut state) = self.apply_filter_state.take()
-                && Self::show_apply_filter_modal(&mut self.editor_bridge, ui, &mut state)
+                && Self::show_apply_filter_modal(editor_bridge, ui, &mut state)
             {
                 self.apply_filter_state.replace(state);
             }
@@ -462,6 +453,18 @@ impl ModuleUi for HarmonicEditorUI {
             if confirm_module_removal(ui, &mut self.remove_confirmation) {
                 bridge.remove_module(module_id);
             }
+        });
+    }
+}
+
+impl ModuleUi for HarmonicEditorUI {
+    fn module_id(&self) -> Option<ModuleId> {
+        Some(self.module_id)
+    }
+
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        bridge.with_module_bridge(self.module_id, |bridge, editor_bridge| {
+            self.paint_ui(bridge, editor_bridge, ui);
         });
     }
 }

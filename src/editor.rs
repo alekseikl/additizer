@@ -33,23 +33,25 @@ mod utils;
 pub trait ModuleUi {
     fn module_id(&self) -> Option<ModuleId>;
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui);
-    fn cleanup(&mut self, _bridge: &mut UiBridge) {}
 }
 
 type ModuleUIBox = Box<dyn ModuleUi + Send>;
 
 struct EditorState {
+    engine_factory: Arc<EngineFactory>,
     ui_bridge: UiBridge,
     selected_module_ui: ModuleUIBox,
 }
 
 impl EditorState {
     pub fn new(engine_factory: Arc<EngineFactory>) -> Self {
-        let bridge = UiBridge::create(engine_factory.clone()).unwrap();
+        let bridge =
+            UiBridge::create(engine_factory.get_engine(), engine_factory.get_ui_config()).unwrap();
 
         Self {
+            engine_factory: engine_factory.clone(),
             ui_bridge: bridge,
-            selected_module_ui: Box::new(ParamsUi::new()),
+            selected_module_ui: Box::new(ParamsUi::new(engine_factory)),
         }
     }
 }
@@ -82,46 +84,31 @@ impl ModuleUi for OutputUi {
 }
 
 impl ModuleType {
-    fn ui(&self, id: ModuleId, synth_bridge: &mut UiBridge) -> Option<ModuleUIBox> {
+    fn ui(&self, id: ModuleId) -> ModuleUIBox {
         match self {
-            Self::Output => Some(Box::new(OutputUi)),
-            Self::HarmonicEditor => HarmonicEditorUI::new(id, synth_bridge)
-                .map(|editor| Box::new(editor) as ModuleUIBox),
-            Self::SpectralFilter => SpectralFilterUI::new(id, synth_bridge)
-                .map(|filter| Box::new(filter) as ModuleUIBox),
-            Self::Amplifier => {
-                AmplifierUI::new(id, synth_bridge).map(|amp| Box::new(amp) as ModuleUIBox)
-            }
-            Self::Mixer => {
-                MixerUi::new(id, synth_bridge).map(|mixer| Box::new(mixer) as ModuleUIBox)
-            }
-            Self::Oscillator => {
-                OscillatorUI::new(id, synth_bridge).map(|osc| Box::new(osc) as ModuleUIBox)
-            }
-            Self::Envelope => {
-                EnvelopeUI::new(id, synth_bridge).map(|env| Box::new(env) as ModuleUIBox)
-            }
-            Self::ExternalParam => {
-                ExternalParamUI::new(id, synth_bridge).map(|param| Box::new(param) as ModuleUIBox)
-            }
-            Self::Lfo => LfoUi::new(id, synth_bridge).map(|lfo| Box::new(lfo) as ModuleUIBox),
-            Self::SpectralBlend => {
-                SpectralBlendUi::new(id, synth_bridge).map(|blend| Box::new(blend) as ModuleUIBox)
-            }
-            Self::SpectralMixer => {
-                SpectralMixerUi::new(id, synth_bridge).map(|mixer| Box::new(mixer) as ModuleUIBox)
-            }
-            Self::WaveShaper => {
-                WaveShaperUi::new(id, synth_bridge).map(|shaper| Box::new(shaper) as ModuleUIBox)
-            }
-            Self::Expressions => {
-                ExpressionsUi::new(id, synth_bridge).map(|expr| Box::new(expr) as ModuleUIBox)
-            }
+            Self::Output => Box::new(OutputUi),
+            Self::HarmonicEditor => Box::new(HarmonicEditorUI::new(id)),
+            Self::SpectralFilter => Box::new(SpectralFilterUI::new(id)),
+            Self::Amplifier => Box::new(AmplifierUI::new(id)),
+            Self::Mixer => Box::new(MixerUi::new(id)),
+            Self::Oscillator => Box::new(OscillatorUI::new(id)),
+            Self::Envelope => Box::new(EnvelopeUI::new(id)),
+            Self::ExternalParam => Box::new(ExternalParamUI::new(id)),
+            Self::Lfo => Box::new(LfoUi::new(id)),
+            Self::SpectralBlend => Box::new(SpectralBlendUi::new(id)),
+            Self::SpectralMixer => Box::new(SpectralMixerUi::new(id)),
+            Self::WaveShaper => Box::new(WaveShaperUi::new(id)),
+            Self::Expressions => Box::new(ExpressionsUi::new(id)),
         }
     }
 }
 
-fn show_side_bar(ui: &mut Ui, selected_module_ui: &mut ModuleUIBox, bridge: &mut UiBridge) {
+fn show_side_bar(
+    ui: &mut Ui,
+    selected_module_ui: &mut ModuleUIBox,
+    bridge: &mut UiBridge,
+    engine_factory: &Arc<EngineFactory>,
+) {
     Panel::left("side-bar")
         .resizable(true)
         .size_range(100.0..=200.0)
@@ -193,7 +180,8 @@ fn show_side_bar(ui: &mut Ui, selected_module_ui: &mut ModuleUIBox, bridge: &mut
                             if show_menu_item(ui, "Parameters", selected_module_id.is_none())
                                 .clicked()
                             {
-                                *selected_module_ui = Box::new(ParamsUi::new());
+                                *selected_module_ui =
+                                    Box::new(ParamsUi::new(engine_factory.clone()));
                             }
 
                             for module in modules {
@@ -204,11 +192,7 @@ fn show_side_bar(ui: &mut Ui, selected_module_ui: &mut ModuleUIBox, bridge: &mut
                                 )
                                 .clicked()
                                 {
-                                    selected_module_ui.cleanup(bridge);
-
-                                    if let Some(new_ui) = module.module_type.ui(module.id, bridge) {
-                                        *selected_module_ui = new_ui;
-                                    }
+                                    *selected_module_ui = module.module_type.ui(module.id);
                                 }
                             }
                         })
@@ -241,20 +225,37 @@ fn show_right_bar(ui: &mut Ui, bridge: &mut UiBridge) {
 }
 
 fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
+    if editor_state
+        .engine_factory
+        .engine_changed(editor_state.ui_bridge.engine())
+    {
+        editor_state.ui_bridge = UiBridge::create(
+            editor_state.engine_factory.get_engine(),
+            editor_state.engine_factory.get_ui_config(),
+        )
+        .unwrap();
+
+        editor_state.selected_module_ui =
+            Box::new(ParamsUi::new(editor_state.engine_factory.clone()));
+    }
+
     let bridge = &mut editor_state.ui_bridge;
 
-    // A new instance of engine created, reset UI
-    if bridge.update() {
-        editor_state.selected_module_ui = Box::new(ParamsUi::new());
-    }
+    bridge.update();
 
     if let Some(module_id) = editor_state.selected_module_ui.module_id()
         && !bridge.has_module_id(module_id)
     {
-        editor_state.selected_module_ui = Box::new(ParamsUi::new());
+        editor_state.selected_module_ui =
+            Box::new(ParamsUi::new(editor_state.engine_factory.clone()));
     }
 
-    show_side_bar(ui, &mut editor_state.selected_module_ui, bridge);
+    show_side_bar(
+        ui,
+        &mut editor_state.selected_module_ui,
+        bridge,
+        &editor_state.engine_factory,
+    );
     show_right_bar(ui, bridge);
 
     CentralPanel::default()

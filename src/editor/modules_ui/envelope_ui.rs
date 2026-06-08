@@ -6,15 +6,17 @@ use crate::{
         stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
     synth_engine::{
-        EnvelopeCurve, Input, ModuleId, Sample, envelope, ui_bridge::UiBridge,
+        EnvelopeCurve, Input, ModuleId, Sample,
+        envelope::EnvelopeUiBridge,
+        ui_bridge::UiBridge,
     },
     utils::from_ms,
 };
 
 pub struct EnvelopeUI {
+    module_id: ModuleId,
     remove_confirmation: bool,
     label_state: Option<String>,
-    env_bridge: envelope::UiBridge,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -64,22 +66,20 @@ impl EnvelopeCurve {
 }
 
 impl EnvelopeUI {
-    pub fn new(module_id: ModuleId, synth_bridge: &mut UiBridge) -> Option<Self> {
-        let env_bridge = envelope::UiBridge::create(module_id, synth_bridge.engine().clone())?;
-
-        Some(Self {
+    pub fn new(module_id: ModuleId) -> Self {
+        Self {
+            module_id,
             remove_confirmation: false,
             label_state: None,
-            env_bridge,
-        })
+        }
     }
 
     fn add_curve(
-        bridge: &mut envelope::UiBridge,
+        bridge: &mut EnvelopeUiBridge,
         ui: &mut Ui,
         label: &str,
         env_curve: &mut EnvelopeCurve,
-        set_curve: impl FnOnce(&mut envelope::UiBridge, EnvelopeCurve),
+        set_curve: impl FnOnce(&mut EnvelopeUiBridge, EnvelopeCurve),
     ) -> bool {
         let mut changed = false;
 
@@ -119,16 +119,15 @@ impl EnvelopeUI {
 
         changed
     }
-}
 
-impl ModuleUi for EnvelopeUI {
-    fn module_id(&self) -> Option<ModuleId> {
-        Some(self.env_bridge.module_id())
-    }
-
-    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        let module_id = self.env_bridge.module_id();
-        let mut config = self.env_bridge.config().clone();
+    fn paint_ui(
+        &mut self,
+        bridge: &mut UiBridge,
+        env_bridge: &mut EnvelopeUiBridge,
+        ui: &mut Ui,
+    ) {
+        let module_id = self.module_id;
+        let mut config = env_bridge.config().clone();
 
         ui.add(ModuleLabel::new(
             &mut self.label_state,
@@ -151,7 +150,7 @@ impl ModuleUi for EnvelopeUI {
                     )
                     .changed()
                 {
-                    self.env_bridge.set_param(Input::Delay, config.delay);
+                    env_bridge.set_param(Input::Delay, config.delay);
                 }
                 ui.end_row();
                 ui.label("Attack");
@@ -167,16 +166,16 @@ impl ModuleUi for EnvelopeUI {
                     )
                     .changed()
                 {
-                    self.env_bridge.set_param(Input::Attack, config.attack);
+                    env_bridge.set_param(Input::Attack, config.attack);
                 }
                 ui.end_row();
 
                 Self::add_curve(
-                    &mut self.env_bridge,
+                    env_bridge,
                     ui,
                     "Attack Curve",
                     &mut config.attack_curve,
-                    envelope::UiBridge::set_attack_curve,
+                    EnvelopeUiBridge::set_attack_curve,
                 );
 
                 ui.label("Hold");
@@ -189,7 +188,7 @@ impl ModuleUi for EnvelopeUI {
                     ))
                     .changed()
                 {
-                    self.env_bridge.set_param(Input::Hold, config.hold);
+                    env_bridge.set_param(Input::Hold, config.hold);
                 }
                 ui.end_row();
 
@@ -201,16 +200,16 @@ impl ModuleUi for EnvelopeUI {
                     )
                     .changed()
                 {
-                    self.env_bridge.set_param(Input::Decay, config.decay);
+                    env_bridge.set_param(Input::Decay, config.decay);
                 }
                 ui.end_row();
 
                 Self::add_curve(
-                    &mut self.env_bridge,
+                    env_bridge,
                     ui,
                     "Decay Curve",
                     &mut config.decay_curve,
-                    envelope::UiBridge::set_decay_curve,
+                    EnvelopeUiBridge::set_decay_curve,
                 );
 
                 ui.label("Sustain");
@@ -223,7 +222,7 @@ impl ModuleUi for EnvelopeUI {
                     ))
                     .changed()
                 {
-                    self.env_bridge.set_param(Input::Sustain, config.sustain);
+                    env_bridge.set_param(Input::Sustain, config.sustain);
                 }
                 ui.end_row();
 
@@ -240,16 +239,16 @@ impl ModuleUi for EnvelopeUI {
                     )
                     .changed()
                 {
-                    self.env_bridge.set_param(Input::Release, config.release);
+                    env_bridge.set_param(Input::Release, config.release);
                 }
                 ui.end_row();
 
                 Self::add_curve(
-                    &mut self.env_bridge,
+                    env_bridge,
                     ui,
                     "Release Curve",
                     &mut config.release_curve,
-                    envelope::UiBridge::set_release_curve,
+                    EnvelopeUiBridge::set_release_curve,
                 );
 
                 ui.label("Smooth");
@@ -265,7 +264,7 @@ impl ModuleUi for EnvelopeUI {
                     )
                     .changed()
                 {
-                    self.env_bridge.set_smooth(config.smooth);
+                    env_bridge.set_smooth(config.smooth);
                 }
                 ui.end_row();
 
@@ -274,8 +273,7 @@ impl ModuleUi for EnvelopeUI {
                     .add(Checkbox::without_text(&mut config.keep_voice_alive))
                     .changed()
                 {
-                    self.env_bridge
-                        .set_keep_voice_alive(config.keep_voice_alive);
+                    env_bridge.set_keep_voice_alive(config.keep_voice_alive);
                 }
                 ui.end_row();
             });
@@ -285,5 +283,17 @@ impl ModuleUi for EnvelopeUI {
         if confirm_module_removal(ui, &mut self.remove_confirmation) {
             bridge.remove_module(module_id);
         }
+    }
+}
+
+impl ModuleUi for EnvelopeUI {
+    fn module_id(&self) -> Option<ModuleId> {
+        Some(self.module_id)
+    }
+
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        bridge.with_module_bridge(self.module_id, |bridge, env_bridge| {
+            self.paint_ui(bridge, env_bridge, ui);
+        });
     }
 }

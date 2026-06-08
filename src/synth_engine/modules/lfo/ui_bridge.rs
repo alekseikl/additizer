@@ -2,37 +2,31 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use crate::synth_engine::{Input, ModuleId, StereoSample, SynthEngine};
+use crate::synth_engine::{
+    Input, ModuleId, StereoSample, SynthEngine, synth_module::ModuleUiBridge,
+};
 
 use super::link::UiEnd;
 use super::{Lfo, LfoConfig, LfoShape};
 
-pub struct UiBridge {
-    synth: Arc<Mutex<SynthEngine>>,
-    module_id: ModuleId,
+pub struct LfoUiBridge {
     ui_end: Option<UiEnd>,
     config: LfoConfig,
 }
 
-impl UiBridge {
+impl LfoUiBridge {
     pub fn create(module_id: ModuleId, synth: Arc<Mutex<SynthEngine>>) -> Option<Self> {
         let mut synth_lock = synth.lock();
         let lfo = synth_lock.get_typed_module_mut::<Lfo>(module_id)?;
-        let ui_end = lfo.take_ui_end()?;
+        let ui_end = lfo.ui_end.take()?;
         let config = lfo.get_config();
 
         drop(synth_lock);
 
         Some(Self {
-            synth,
-            module_id,
             ui_end: Some(ui_end),
             config,
         })
-    }
-
-    pub fn module_id(&self) -> ModuleId {
-        self.module_id
     }
 
     pub fn config(&self) -> &LfoConfig {
@@ -77,12 +71,6 @@ impl UiBridge {
     }
 }
 
-impl Drop for UiBridge {
-    fn drop(&mut self) {
-        let mut synth_lock = self.synth.lock();
-
-        if let Some(lfo) = synth_lock.get_typed_module_mut::<Lfo>(self.module_id) {
-            lfo.return_ui_end(self.ui_end.take().unwrap());
-        }
-    }
+impl ModuleUiBridge for LfoUiBridge {
+    fn update(&mut self) {}
 }

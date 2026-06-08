@@ -4,23 +4,24 @@ use parking_lot::Mutex;
 
 use crate::synth_engine::{
     ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample, SynthEngine, buffer::HARMONIC_SERIES_BUFFER,
+    synth_module::ModuleUiBridge,
 };
 
 use super::link::{UiEnd, UiUpdate};
 use super::{FilterParams, HarmonicEditor, HarmonicEditorConfig, SetParams};
 
-pub struct UiBridge {
+pub struct HarmonicEditorUiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: Option<UiEnd>,
     config: HarmonicEditorConfig,
 }
 
-impl UiBridge {
+impl HarmonicEditorUiBridge {
     pub fn create(module_id: ModuleId, synth: Arc<Mutex<SynthEngine>>) -> Option<Self> {
         let mut synth_lock = synth.lock();
         let editor = synth_lock.get_typed_module_mut::<HarmonicEditor>(module_id)?;
-        let ui_end = editor.take_ui_end()?;
+        let ui_end = editor.ui_end.take()?;
         let config = editor.get_config();
 
         drop(synth_lock);
@@ -33,25 +34,11 @@ impl UiBridge {
         })
     }
 
-    pub fn module_id(&self) -> ModuleId {
-        self.module_id
-    }
-
     pub fn sync(&mut self) {
         let synth_lock = self.synth.lock();
 
         if let Some(editor) = synth_lock.get_typed_module::<HarmonicEditor>(self.module_id) {
             self.config = editor.get_config();
-        }
-    }
-
-    pub fn update(&mut self) {
-        while let Some(update) = self.ui_end.as_mut().unwrap().pop_update() {
-            match update {
-                UiUpdate::RefreshState => {
-                    self.sync();
-                }
-            }
         }
     }
 
@@ -90,12 +77,15 @@ impl UiBridge {
     }
 }
 
-impl Drop for UiBridge {
-    fn drop(&mut self) {
-        let mut synth_lock = self.synth.lock();
-
-        if let Some(editor) = synth_lock.get_typed_module_mut::<HarmonicEditor>(self.module_id) {
-            editor.return_ui_end(self.ui_end.take().unwrap());
+impl ModuleUiBridge for HarmonicEditorUiBridge {
+    fn update(&mut self) {
+        while let Some(update) = self.ui_end.as_mut().unwrap().pop_update() {
+            match update {
+                UiUpdate::RefreshState => {
+                    self.sync();
+                }
+            }
         }
     }
 }
+
