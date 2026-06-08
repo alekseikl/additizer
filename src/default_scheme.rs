@@ -1,90 +1,148 @@
+use rustc_hash::FxHashMap;
+
 use crate::{
+    preset::Preset,
     synth_engine::{
-        Amplifier, Envelope, EnvelopeCurve, HarmonicEditor, Input, ModuleInput, OUTPUT_MODULE_ID,
-        SpectralFilter, SynthEngine, SynthModule, oscillator::Oscillator,
+        EngineConfig, EnvelopeCurve, Input, LinkConfig, ModuleConfig, ModuleId, OUTPUT_MODULE_ID,
+        StereoSample,
+        amplifier::AmplifierConfig,
+        envelope::EnvelopeConfig,
+        harmonic_editor::HarmonicEditorConfig,
+        oscillator::OscillatorConfig,
+        spectral_filter::SpectralFilterConfig,
+        ui_bridge::ui_config::{UiConfig, UiModuleConfig},
     },
     utils::{from_ms, st_to_octave},
 };
 
-pub fn build_default_scheme(synth: &mut SynthEngine) {
-    let harmonic_editor_id = synth.add_harmonic_editor();
-    let filter_env_id = synth.add_envelope();
-    let filter_id = synth.add_spectral_filter();
-    let osc_id = synth.add_oscillator();
-    let amp_id = synth.add_amplifier();
-    let amp_env_id = synth.add_envelope();
+const HARMONIC_EDITOR_ID: ModuleId = 1;
+const FILTER_ENV_ID: ModuleId = 2;
+const FILTER_ID: ModuleId = 3;
+const OSC_ID: ModuleId = 4;
+const AMP_ID: ModuleId = 5;
+const AMP_ENV_ID: ModuleId = 6;
 
-    let editor = synth
-        .get_typed_module_mut::<HarmonicEditor>(harmonic_editor_id)
-        .unwrap();
+fn default_ui_config() -> UiConfig {
+    let mut modules = FxHashMap::default();
 
-    editor.set_label("01 - Harmonics".into());
+    for (id, label) in [
+        (HARMONIC_EDITOR_ID, "01 - Harmonics"),
+        (FILTER_ENV_ID, "03 - Cutoff Env"),
+        (FILTER_ID, "03 - Filter"),
+        (OSC_ID, "04 - Oscillator"),
+        (AMP_ENV_ID, "06 - Amp Envelope"),
+        (AMP_ID, "06 - Amplifier"),
+    ] {
+        modules.insert(
+            id,
+            UiModuleConfig {
+                id,
+                label: label.into(),
+            },
+        );
+    }
 
-    let filter_env = synth.get_typed_module_mut::<Envelope>(filter_env_id).unwrap();
+    UiConfig { modules }
+}
 
-    filter_env.set_label("03 - Cutoff Env".into());
-    filter_env.set_attack(0.0.into());
-    filter_env.set_decay(from_ms(500.0).into());
-    filter_env.set_sustain(0.0.into());
-    filter_env.set_release(from_ms(100.0).into());
-    filter_env.set_decay_curve(EnvelopeCurve::ExponentialOut);
-    filter_env.set_attack_curve(EnvelopeCurve::ExponentialOut);
+fn default_engine_config() -> EngineConfig {
+    let filter_env = EnvelopeConfig {
+        id: FILTER_ENV_ID,
+        attack: 0.0.into(),
+        decay: from_ms(500.0).into(),
+        sustain: 0.0.into(),
+        release: from_ms(100.0).into(),
+        attack_curve: EnvelopeCurve::ExponentialOut,
+        decay_curve: EnvelopeCurve::ExponentialOut,
+        ..EnvelopeConfig::default()
+    };
 
-    let spectral_filter = synth
-        .get_typed_module_mut::<SpectralFilter>(filter_id)
-        .unwrap();
+    let amp_env = EnvelopeConfig {
+        id: AMP_ENV_ID,
+        decay: from_ms(400.0).into(),
+        sustain: 0.6.into(),
+        release: from_ms(300.0).into(),
+        decay_curve: EnvelopeCurve::ExponentialOut,
+        smooth: from_ms(4.0).into(),
+        keep_voice_alive: true,
+        ..EnvelopeConfig::default()
+    };
 
-    spectral_filter.set_label("03 - Filter".into());
-    spectral_filter.set_cutoff(2.0.into());
+    let spectral_filter = SpectralFilterConfig {
+        id: FILTER_ID,
+        cutoff: 2.0.into(),
+        ..SpectralFilterConfig::default()
+    };
 
-    let osc = synth.get_typed_module_mut::<Oscillator>(osc_id).unwrap();
+    EngineConfig {
+        engine: Default::default(),
+        modules: vec![
+            ModuleConfig::HarmonicEditor(Box::new(HarmonicEditorConfig {
+                id: HARMONIC_EDITOR_ID,
+                ..HarmonicEditorConfig::default()
+            })),
+            ModuleConfig::Envelope(Box::new(filter_env)),
+            ModuleConfig::SpectralFilter(Box::new(spectral_filter)),
+            ModuleConfig::Oscillator(Box::new(OscillatorConfig {
+                id: OSC_ID,
+                ..OscillatorConfig::default()
+            })),
+            ModuleConfig::Amplifier(Box::new(AmplifierConfig {
+                id: AMP_ID,
+                ..AmplifierConfig::default()
+            })),
+            ModuleConfig::Envelope(Box::new(amp_env)),
+        ],
+        links: vec![
+            LinkConfig {
+                src_id: HARMONIC_EDITOR_ID,
+                dst_id: FILTER_ID,
+                dst_input: Input::Spectrum,
+                amount: StereoSample::ONE,
+                modulator_id: None,
+            },
+            LinkConfig {
+                src_id: FILTER_ENV_ID,
+                dst_id: FILTER_ID,
+                dst_input: Input::Cutoff,
+                amount: st_to_octave(64.0).into(),
+                modulator_id: None,
+            },
+            LinkConfig {
+                src_id: FILTER_ID,
+                dst_id: OSC_ID,
+                dst_input: Input::Spectrum,
+                amount: StereoSample::ONE,
+                modulator_id: None,
+            },
+            LinkConfig {
+                src_id: OSC_ID,
+                dst_id: AMP_ID,
+                dst_input: Input::Audio,
+                amount: StereoSample::ONE,
+                modulator_id: None,
+            },
+            LinkConfig {
+                src_id: AMP_ENV_ID,
+                dst_id: AMP_ID,
+                dst_input: Input::Gain,
+                amount: StereoSample::ONE,
+                modulator_id: None,
+            },
+            LinkConfig {
+                src_id: AMP_ID,
+                dst_id: OUTPUT_MODULE_ID,
+                dst_input: Input::Audio,
+                amount: StereoSample::ONE,
+                modulator_id: None,
+            },
+        ],
+    }
+}
 
-    osc.set_label("04 - Oscillator".into());
-    // osc.set_unison(1);
-    // osc.set_detune(st_to_octave(0.1).into());
-
-    let amp_env = synth.get_typed_module_mut::<Envelope>(amp_env_id).unwrap();
-
-    amp_env.set_label("06 - Amp Envelope".into());
-    amp_env.set_decay(from_ms(400.0).into());
-    amp_env.set_sustain(0.6.into());
-    amp_env.set_release(from_ms(300.0).into());
-    amp_env.set_decay_curve(EnvelopeCurve::ExponentialOut);
-    amp_env.set_smooth(from_ms(4.0).into());
-    amp_env.set_keep_voice_alive(true);
-
-    let amp = synth.get_typed_module_mut::<Amplifier>(amp_id).unwrap();
-
-    amp.set_label("06 - Amplifier".into());
-
-    synth
-        .set_direct_link(
-            harmonic_editor_id,
-            ModuleInput::new(Input::Spectrum, filter_id),
-        )
-        .unwrap();
-
-    synth
-        .add_link(
-            filter_env_id,
-            ModuleInput::new(Input::Cutoff, filter_id),
-            st_to_octave(64.0).into(),
-        )
-        .unwrap();
-
-    synth
-        .set_direct_link(filter_id, ModuleInput::new(Input::Spectrum, osc_id))
-        .unwrap();
-
-    synth
-        .set_direct_link(osc_id, ModuleInput::new(Input::Audio, amp_id))
-        .unwrap();
-
-    synth
-        .set_direct_link(amp_env_id, ModuleInput::new(Input::Gain, amp_id))
-        .unwrap();
-
-    synth
-        .set_direct_link(amp_id, ModuleInput::new(Input::Audio, OUTPUT_MODULE_ID))
-        .unwrap();
+pub fn build_default_preset() -> Preset {
+    Preset {
+        engine: default_engine_config(),
+        ui: default_ui_config(),
+    }
 }

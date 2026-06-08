@@ -4,7 +4,7 @@ use nih_plug_egui::EguiState;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
-use crate::{engine_factory::EngineFactory, preset::Preset};
+use crate::{default_scheme::build_default_preset, engine_factory::EngineFactory, preset::Preset};
 
 #[derive(Params)]
 pub struct AdditizerParams {
@@ -92,6 +92,8 @@ impl PresetWrapper {
 
         if let Some(cfg) = self.preset_from_host.lock().as_ref() {
             factory.load_preset(cfg);
+        } else {
+            factory.load_preset(&build_default_preset());
         }
     }
 }

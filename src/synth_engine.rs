@@ -12,7 +12,7 @@ use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
     buffer::{Buffer, SpectralBuffer, add_to_buffer, copy_or_add_to_buffer},
-    config::{EngineParams, LinkConfig, ModuleConfig},
+    config::EngineParams,
     modules::{Output, oscillator::Oscillator},
     routing::{
         DataType, LinkModulation, MIN_MODULE_ID, NUM_CHANNELS, Router, VoiceEvent,
@@ -26,7 +26,7 @@ use crate::synth_engine::{
 };
 
 pub use buffer::SPECTRAL_BUFFER_SIZE;
-pub use config::EngineConfig;
+pub use config::{EngineConfig, LinkConfig, ModuleConfig};
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, Expressions, ExternalParam, ExternalParamsBlock, Lfo,
     LfoShape, Mixer, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType, SpectralMixer,
