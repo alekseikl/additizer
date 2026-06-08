@@ -132,12 +132,6 @@ impl SynthModule for ExternalParam {
         self.id
     }
 
-    fn label(&self) -> String {
-        "ExtParam".into()
-    }
-
-    fn set_label(&mut self, _label: String) {}
-
     fn module_type(&self) -> ModuleType {
         ModuleType::ExternalParam
     }

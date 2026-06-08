@@ -134,12 +134,6 @@ impl SynthModule for Amplifier {
         self.id
     }
 
-    fn label(&self) -> String {
-        "Amp".into()
-    }
-
-    fn set_label(&mut self, _label: String) {}
-
     fn module_type(&self) -> ModuleType {
         ModuleType::Amplifier
     }

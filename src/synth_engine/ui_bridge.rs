@@ -3,8 +3,9 @@ use std::sync::Arc;
 use crate::{
     engine_factory::{EngineFactory, EngineHandle, UiConfigHandle},
     synth_engine::{
-        ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample,
+        Input, ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample,
         config::EngineParams,
+        routing::{DataType, data_types_compatible},
     },
 };
 
@@ -13,7 +14,7 @@ pub mod routing_state;
 pub mod ui_config;
 
 pub use link::{AudioEnd, UiEnd, UiEvent, UiUpdate, create_link_pair};
-pub use routing_state::{AvailableInputSource, ConnectedInputSource, ModuleItem, RoutingState};
+pub use routing_state::{AvailableInputSource, ConnectedInputSource, RoutingState};
 use rustc_hash::FxHashMap;
 
 #[derive(Clone, Copy, Default)]
@@ -22,6 +23,12 @@ pub struct VoicesStatus {
     pub playing: u8,
     pub releasing: u8,
     pub killing: u8,
+}
+
+pub struct ModuleItem {
+    pub id: ModuleId,
+    pub module_type: ModuleType,
+    pub label: String,
 }
 
 pub struct UiBridge {
@@ -80,22 +87,35 @@ impl UiBridge {
         &self.voices
     }
 
+    fn module_label(ui_config: &ui_config::UiConfig, module_id: ModuleId) -> String {
+        ui_config
+            .modules
+            .get(&module_id)
+            .map(|module| module.label.clone())
+            .unwrap_or_default()
+    }
+
     pub fn get_modules(&self) -> Vec<ModuleItem> {
-        self.routing.get_modules()
+        let ui_config = self.ui_config.lock();
+
+        self.routing
+            .modules
+            .values()
+            .map(|m| ModuleItem {
+                id: m.id,
+                module_type: m.module_type,
+                label: Self::module_label(&ui_config, m.id),
+            })
+            .collect()
     }
 
     pub fn has_module_id(&self, module_id: ModuleId) -> bool {
-        self.routing.has_module_id(module_id)
+        self.routing.modules.contains_key(&module_id)
     }
 
     pub fn get_module_label(&self, module_id: ModuleId) -> String {
-        let mut ui_config = self.ui_config.lock();
-        let Some(module) = ui_config.modules.get_mut(&module_id) else {
-            debug_assert!(false, "Module with id {module_id} not found in ui_config");
-            return "".into();
-        };
-
-        module.label.clone()
+        let ui_config = self.ui_config.lock();
+        Self::module_label(&ui_config, module_id)
     }
 
     pub fn set_module_label(&mut self, module_id: ModuleId, label: String) {
@@ -113,19 +133,86 @@ impl UiBridge {
     }
 
     pub fn get_available_input_sources(&self, input: ModuleInput) -> Vec<AvailableInputSource> {
-        self.routing.get_available_input_sources(input)
+        let ui_config = self.ui_config.lock();
+
+        let dst_data_type =
+            if input.module_id == OUTPUT_MODULE_ID && input.input_type == Input::Audio {
+                DataType::Buffer
+            } else if let Some(input_module) = self.routing.modules.get(&input.module_id)
+                && let Some(input_info) = input_module
+                    .inputs
+                    .iter()
+                    .find(|input_info| input_info.input == input.input_type)
+            {
+                input_info.data_type
+            } else {
+                return Vec::new();
+            };
+
+        self.routing
+            .modules
+            .values()
+            .filter(|module| {
+                module.id != input.module_id
+                    && data_types_compatible(module.output, dst_data_type)
+                    && !self.is_connected_to_source(module.id, input.module_id)
+            })
+            .map(|module| AvailableInputSource {
+                src: module.id,
+                label: Self::module_label(&ui_config, module.id),
+            })
+            .collect()
     }
 
     pub fn get_connected_input_sources(&self, input: ModuleInput) -> Vec<ConnectedInputSource> {
-        self.routing.get_connected_input_sources(input)
+        let ui_config = self.ui_config.lock();
+
+        let Some(sources) = self.routing.routing.get(&input) else {
+            return Vec::new();
+        };
+
+        sources
+            .iter()
+            .filter_map(|source| {
+                self.routing
+                    .modules
+                    .get(&source.src)
+                    .map(|module| (module, source))
+            })
+            .map(|(_module, source)| ConnectedInputSource {
+                src: source.src,
+                amount: source.amount,
+                label: Self::module_label(&ui_config, source.src),
+                modulation: source
+                    .modulation
+                    .map(|modulation| routing_state::InputModulation {
+                        src: modulation.src,
+                        label: Self::module_label(&ui_config, modulation.src),
+                    }),
+            })
+            .collect()
     }
 
     pub fn get_input_modulated_value(&self, input: ModuleInput) -> Option<StereoSample> {
-        if self.routing.has_input(input) && self.has_active_voices() {
+        if self.routing.routing.contains_key(&input) && self.has_active_voices() {
             self.modulated_inputs.get(&input).copied()
         } else {
             None
         }
+    }
+
+    fn is_connected_to_source(&self, dst_id: ModuleId, src_id: ModuleId) -> bool {
+        for (input, sources) in &self.routing.routing {
+            if input.module_id == dst_id {
+                for source in sources.iter().flat_map(|src| src.source_ids()) {
+                    if source == src_id || self.is_connected_to_source(source, src_id) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
     }
 
     fn sync(&mut self) {
@@ -254,8 +341,10 @@ impl UiBridge {
             .as_mut()
             .unwrap()
             .set_link_amount(src, dst, amount)
+            && let Some(sources) = self.routing.routing.get_mut(&dst)
+            && let Some(source) = sources.iter_mut().find(|s| s.src == src)
         {
-            self.routing.update_link_amount(src, dst, amount);
+            source.amount = amount;
         }
     }
 

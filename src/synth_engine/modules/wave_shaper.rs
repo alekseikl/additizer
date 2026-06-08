@@ -161,12 +161,6 @@ impl SynthModule for WaveShaper {
         self.id
     }
 
-    fn label(&self) -> String {
-        "Shaper".into()
-    }
-
-    fn set_label(&mut self, _label: String) {}
-
     fn module_type(&self) -> ModuleType {
         ModuleType::WaveShaper
     }

@@ -181,12 +181,6 @@ impl SynthModule for Expressions {
         self.id
     }
 
-    fn label(&self) -> String {
-        "Expr".into()
-    }
-
-    fn set_label(&mut self, _label: String) {}
-
     fn module_type(&self) -> ModuleType {
         ModuleType::Expressions
     }

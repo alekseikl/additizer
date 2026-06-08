@@ -426,12 +426,6 @@ impl SynthModule for Envelope {
         self.id
     }
 
-    fn label(&self) -> String {
-        "Env".into()
-    }
-
-    fn set_label(&mut self, _label: String) {}
-
     fn module_type(&self) -> ModuleType {
         ModuleType::Envelope
     }

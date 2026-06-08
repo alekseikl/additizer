@@ -906,12 +906,6 @@ impl SynthModule for Oscillator {
         self.id
     }
 
-    fn label(&self) -> String {
-        "Osc".into()
-    }
-
-    fn set_label(&mut self, _label: String) {}
-
     fn module_type(&self) -> ModuleType {
         ModuleType::Oscillator
     }

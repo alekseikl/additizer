@@ -51,8 +51,6 @@ impl ModInput {
 pub trait SynthModule: Any + Send {
     fn id(&self) -> ModuleId;
     fn module_type(&self) -> ModuleType;
-    fn label(&self) -> String;
-    fn set_label(&mut self, label: String);
 
     fn inputs(&self) -> &'static [ModInput];
     fn output(&self) -> DataType;

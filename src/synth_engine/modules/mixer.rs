@@ -284,12 +284,6 @@ impl SynthModule for Mixer {
         self.id
     }
 
-    fn label(&self) -> String {
-        "Mixer".into()
-    }
-
-    fn set_label(&mut self, _label: String) {}
-
     fn module_type(&self) -> ModuleType {
         ModuleType::Mixer
     }

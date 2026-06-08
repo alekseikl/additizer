@@ -291,12 +291,6 @@ impl SynthModule for Lfo {
         self.id
     }
 
-    fn label(&self) -> String {
-        "LFO".into()
-    }
-
-    fn set_label(&mut self, _label: String) {}
-
     fn module_type(&self) -> ModuleType {
         ModuleType::Lfo
     }

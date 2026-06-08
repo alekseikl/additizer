@@ -257,12 +257,6 @@ impl SynthModule for SpectralMixer {
         self.id
     }
 
-    fn label(&self) -> String {
-        "SpecMix".into()
-    }
-
-    fn set_label(&mut self, _label: String) {}
-
     fn module_type(&self) -> ModuleType {
         ModuleType::SpectralMixer
     }

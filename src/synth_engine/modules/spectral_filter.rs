@@ -235,12 +235,6 @@ impl SynthModule for SpectralFilter {
         self.id
     }
 
-    fn label(&self) -> String {
-        "Filter".into()
-    }
-
-    fn set_label(&mut self, _label: String) {}
-
     fn module_type(&self) -> ModuleType {
         ModuleType::SpectralFilter
     }

@@ -123,12 +123,6 @@ impl SynthModule for Output {
         OUTPUT_MODULE_ID
     }
 
-    fn label(&self) -> String {
-        "Output".to_string()
-    }
-
-    fn set_label(&mut self, _label: String) {}
-
     fn module_type(&self) -> ModuleType {
         ModuleType::Output
     }

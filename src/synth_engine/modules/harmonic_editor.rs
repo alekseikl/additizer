@@ -205,12 +205,6 @@ impl SynthModule for HarmonicEditor {
         self.id
     }
 
-    fn label(&self) -> String {
-        "Harmonics".into()
-    }
-
-    fn set_label(&mut self, _label: String) {}
-
     fn module_type(&self) -> ModuleType {
         ModuleType::HarmonicEditor
     }

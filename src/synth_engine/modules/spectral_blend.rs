@@ -115,12 +115,6 @@ impl SynthModule for SpectralBlend {
         self.id
     }
 
-    fn label(&self) -> String {
-        "Blend".into()
-    }
-
-    fn set_label(&mut self, _label: String) {}
-
     fn module_type(&self) -> ModuleType {
         ModuleType::SpectralBlend
     }
