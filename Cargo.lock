@@ -17,6 +17,7 @@ version = "0.1.0"
 dependencies = [
  "arc-swap",
  "assert_no_alloc",
+ "atomic_float",
  "baseview",
  "const_format",
  "directories",

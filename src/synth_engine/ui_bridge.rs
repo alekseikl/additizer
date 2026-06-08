@@ -2,10 +2,12 @@ use std::sync::Arc;
 
 use crate::{
     engine_factory::{EngineFactory, EngineHandle, UiConfigHandle},
+    preset::Preset,
     synth_engine::{
         Input, ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample,
         config::EngineParams,
         routing::{DataType, data_types_compatible},
+        ui_bridge::ui_config::UiModuleConfig,
     },
 };
 
@@ -72,13 +74,6 @@ impl UiBridge {
         &self.engine
     }
 
-    // pub fn with_synth<R, F>(&self, f: F) -> R
-    // where
-    //     F: FnOnce(&mut SynthEngine) -> R,
-    // {
-    //     f(&mut self.synth.lock())
-    // }
-
     pub fn engine_params(&self) -> &EngineParams {
         &self.engine_params
     }
@@ -93,6 +88,14 @@ impl UiBridge {
             .get(&module_id)
             .map(|module| module.label.clone())
             .unwrap_or_default()
+    }
+
+    pub fn get_preset(&self) -> Preset {
+        self.factory.get_preset()
+    }
+
+    pub fn load_preset(&self, preset: &Preset) -> bool {
+        self.factory.load_preset(preset)
     }
 
     pub fn get_modules(&self) -> Vec<ModuleItem> {
@@ -230,6 +233,7 @@ impl UiBridge {
         if self.factory.engine_changed(&self.engine) {
             self.engine = self.factory.get_engine();
             self.ui_config = self.factory.get_ui_config();
+            self.ui_end = Some(self.engine.lock().ui_end.take().unwrap());
             self.sync();
             need_reset = true;
         }
@@ -266,24 +270,36 @@ impl UiBridge {
     pub fn add_module(&mut self, module_type: ModuleType) -> ModuleId {
         let mut synth = self.engine.lock();
 
-        let result = match module_type {
-            ModuleType::Output => OUTPUT_MODULE_ID,
-            ModuleType::Amplifier => synth.add_amplifier(),
-            ModuleType::Envelope => synth.add_envelope(),
-            ModuleType::Mixer => synth.add_mixer(),
-            ModuleType::Oscillator => synth.add_oscillator(),
-            ModuleType::SpectralFilter => synth.add_spectral_filter(),
-            ModuleType::SpectralBlend => synth.add_spectral_blend(),
-            ModuleType::SpectralMixer => synth.add_spectral_mixer(),
-            ModuleType::HarmonicEditor => synth.add_harmonic_editor(),
-            ModuleType::ExternalParam => synth.add_external_param(),
-            ModuleType::Lfo => synth.add_lfo(),
-            ModuleType::WaveShaper => synth.add_wave_shaper(),
-            ModuleType::Expressions => synth.add_expressions(),
+        let (id, label) = match module_type {
+            ModuleType::Output => (OUTPUT_MODULE_ID, "Output"),
+            ModuleType::Amplifier => (synth.add_amplifier(), "Amplifier"),
+            ModuleType::Envelope => (synth.add_envelope(), "Envelope"),
+            ModuleType::Mixer => (synth.add_mixer(), "Mixer"),
+            ModuleType::Oscillator => (synth.add_oscillator(), "Oscillator"),
+            ModuleType::SpectralFilter => (synth.add_spectral_filter(), "SpectralFilter"),
+            ModuleType::SpectralBlend => (synth.add_spectral_blend(), "SpectralBlend"),
+            ModuleType::SpectralMixer => (synth.add_spectral_mixer(), "SpectralMixer"),
+            ModuleType::HarmonicEditor => (synth.add_harmonic_editor(), "HarmonicEditor"),
+            ModuleType::ExternalParam => (synth.add_external_param(), "ExternalParam"),
+            ModuleType::Lfo => (synth.add_lfo(), "Lfo"),
+            ModuleType::WaveShaper => (synth.add_wave_shaper(), "WaveShaper"),
+            ModuleType::Expressions => (synth.add_expressions(), "Expressions"),
         };
 
         self.routing = synth.get_routing_state();
-        result
+        drop(synth);
+
+        let mut ui_config = self.ui_config.lock();
+
+        ui_config.modules.insert(
+            id,
+            UiModuleConfig {
+                id,
+                label: format!("{label} {id}"),
+            },
+        );
+
+        id
     }
 
     pub fn remove_module(&mut self, module_id: ModuleId) {

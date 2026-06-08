@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap;
 
 use crate::{
-    preset::Preset,
+    preset::{Preset, PresetInfo},
     synth_engine::{
         EngineConfig, EnvelopeCurve, Input, LinkConfig, ModuleConfig, ModuleId, OUTPUT_MODULE_ID,
         StereoSample,
@@ -142,6 +142,7 @@ fn default_engine_config() -> EngineConfig {
 
 pub fn build_default_preset() -> Preset {
     Preset {
+        info: PresetInfo::default(),
         engine: default_engine_config(),
         ui: default_ui_config(),
     }

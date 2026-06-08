@@ -23,15 +23,28 @@ use std::sync::Arc;
 pub struct Additizer {
     params: Arc<AdditizerParams>,
     engine: Option<EngineHandle>,
-    factory: Option<Arc<EngineFactory>>,
+    factory: Arc<EngineFactory>,
 }
 
 impl Default for Additizer {
     fn default() -> Self {
+        let params = Arc::new(AdditizerParams::default());
+
+        let external_params = Arc::new(ExternalParamsBlock {
+            float_params: [
+                params.float_param_1.clone(),
+                params.float_param_2.clone(),
+                params.float_param_3.clone(),
+                params.float_param_4.clone(),
+            ],
+        });
+
+        let factory = Arc::new(EngineFactory::new(params.volume.clone(), external_params));
+
         Self {
-            params: Arc::new(AdditizerParams::default()),
+            params,
             engine: None,
-            factory: None,
+            factory,
         }
     }
 }
@@ -185,10 +198,7 @@ impl Plugin for Additizer {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
-        create_editor(
-            Arc::clone(&self.params.editor_state),
-            self.factory.as_ref().unwrap().clone(),
-        )
+        create_editor(Arc::clone(&self.params.editor_state), self.factory.clone())
     }
 
     fn initialize(
@@ -197,22 +207,8 @@ impl Plugin for Additizer {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        let external_params = Arc::new(ExternalParamsBlock {
-            float_params: [
-                Arc::clone(&self.params.float_param_1),
-                Arc::clone(&self.params.float_param_2),
-                Arc::clone(&self.params.float_param_3),
-                Arc::clone(&self.params.float_param_4),
-            ],
-        });
-
-        let factory = Arc::new(EngineFactory::new(
-            self.params.volume.clone(),
-            external_params.clone(),
-            buffer_config.sample_rate,
-        ));
-        self.params.config.set_factory(factory.clone());
-        self.factory = Some(factory);
+        self.factory.set_host_sample_rate(buffer_config.sample_rate);
+        self.params.config.set_factory(self.factory.clone());
 
         true
     }
@@ -269,14 +265,12 @@ impl Plugin for Additizer {
             }
         }
 
-        let factory = self.factory.as_deref().unwrap();
-
         if self
             .engine
             .as_ref()
-            .is_none_or(|engine| factory.engine_changed(engine))
+            .is_none_or(|engine| self.factory.engine_changed(engine))
         {
-            self.engine = Some(factory.get_engine());
+            self.engine = Some(self.factory.get_engine());
         }
 
         let mut synth = self.engine.as_deref().unwrap().lock();

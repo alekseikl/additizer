@@ -221,6 +221,8 @@ impl SynthEngine {
             if module_id > max_module_id {
                 max_module_id = module_id;
             }
+
+            engine.modules.insert(module_id, Some(module));
         }
 
         engine.next_id = max_module_id + 1;

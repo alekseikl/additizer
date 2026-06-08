@@ -1,15 +1,12 @@
-use std::sync::Arc;
-
 use egui::{
     Button, Checkbox, Color32, ComboBox, Frame, Grid, Id, Label, Modal, RichText, Sense, Sides,
     Slider, TextEdit, Ui, vec2,
 };
 use egui_extras::{Column, TableBuilder};
-use parking_lot::Mutex;
 
 use crate::{
     editor::{ModuleUi, multi_input::MultiInput},
-    presets::{Preset, PresetInfo, PresetListItem, Presets},
+    presets::{PresetListItem, Presets},
     synth_engine::{Input, ModuleId, OUTPUT_MODULE_ID, SynthEngine, ui_bridge::UiBridge},
     utils::from_ms,
 };
@@ -41,7 +38,7 @@ impl ParamsUi {
 
     fn show_save_preset_modal(
         &mut self,
-        synth: &Arc<Mutex<SynthEngine>>,
+        bridge: &mut UiBridge,
         ui: &mut Ui,
         state: &mut SavePresetState,
     ) -> bool {
@@ -69,13 +66,9 @@ impl ParamsUi {
                 |_ui| {},
                 |ui| {
                     if ui.add_enabled(valid, Button::new("Save")).clicked() {
-                        let config = synth.lock().get_config();
-                        let preset = Preset {
-                            info: PresetInfo {
-                                title: trimmed.to_string(),
-                            },
-                            config,
-                        };
+                        let mut preset = bridge.get_preset();
+
+                        preset.info.title = trimmed.to_string();
 
                         if let Some(presets) = Presets::new() {
                             if presets.write_preset(&preset).is_some() {
@@ -99,7 +92,7 @@ impl ParamsUi {
 
     fn show_load_preset_modal(
         &mut self,
-        synth: &Arc<Mutex<SynthEngine>>,
+        bridge: &mut UiBridge,
         ui: &mut Ui,
         state: &mut LoadPresetState,
     ) -> bool {
@@ -153,14 +146,14 @@ impl ParamsUi {
                         .add_enabled(state.selected_index.is_some(), Button::new("Load"))
                         .clicked()
                     {
-                        // if let Some(idx) = state.selected_index
-                        //     && let Some(preset) = Presets::read_preset(&state.preset_list[idx].path)
-                        //     && synth.lock().set_config(&preset.config)
-                        // {
-                        //     ui.close();
-                        // } else {
-                        //     state.error = "Failed to load preset.".into();
-                        // }
+                        if let Some(idx) = state.selected_index
+                            && let Some(preset) = Presets::read_preset(&state.preset_list[idx].path)
+                            && bridge.load_preset(&preset)
+                        {
+                            ui.close();
+                        } else {
+                            state.error = "Failed to load preset.".into();
+                        }
                     }
 
                     if ui.button("Cancel").clicked() {
@@ -287,13 +280,13 @@ impl ModuleUi for ParamsUi {
             });
 
         if let Some(mut state) = self.save_preset_state.take()
-            && self.show_save_preset_modal(bridge.engine(), ui, &mut state)
+            && self.show_save_preset_modal(bridge, ui, &mut state)
         {
             self.save_preset_state.replace(state);
         }
 
         if let Some(mut state) = self.load_preset_state.take()
-            && self.show_load_preset_modal(bridge.engine(), ui, &mut state)
+            && self.show_load_preset_modal(bridge, ui, &mut state)
         {
             self.load_preset_state.replace(state);
         }
