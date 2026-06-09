@@ -9,7 +9,7 @@ pub use ui_bridge::ExpressionsUiBridge;
 use crate::{
     synth_engine::{
         Expression, ModuleId, ModuleType, Sample, SynthModule,
-        buffer::{Buffer, zero_buffer},
+        buffer::{Buffer, new_channels_layout, zero_buffer},
         routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
         smooth::Smoother,
         synth_module::{ModInput, ProcessParams},
@@ -58,7 +58,7 @@ pub struct Expressions {
     params: Params,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: [ChannelVoices; NUM_CHANNELS],
+    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
 }
 
 impl Expressions {
@@ -77,7 +77,7 @@ impl Expressions {
             params: Params::from_config(config),
             audio_end,
             ui_end: Some(ui_end),
-            voices: Default::default(),
+            voices: new_channels_layout(),
         }
     }
 
@@ -247,7 +247,7 @@ impl SynthModule for Expressions {
     }
 
     fn process(&mut self, params: &ProcessParams, _router: &mut dyn Router) {
-        for channel in &mut self.voices {
+        for channel in self.voices.iter_mut() {
             for voice_idx in params.active_voices {
                 let voice = &mut channel[*voice_idx];
 

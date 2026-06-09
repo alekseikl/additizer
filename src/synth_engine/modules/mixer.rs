@@ -12,7 +12,7 @@ pub use ui_bridge::MixerUiBridge;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule, VolumeType,
-    buffer::{Buffer, copy_or_add_to_buffer, zero_buffer},
+    buffer::{Buffer, copy_or_add_to_buffer, new_channels_layout, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
     synth_module::{ModInput, ProcessParams, VoiceRouter, VoiceRouterFactory},
 };
@@ -100,7 +100,7 @@ pub struct Mixer {
     buffers: Buffers,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: [ChannelVoices; NUM_CHANNELS],
+    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
 }
 
 impl Mixer {
@@ -125,7 +125,7 @@ impl Mixer {
             buffers: Buffers::default(),
             audio_end,
             ui_end: Some(ui_end),
-            voices: Default::default(),
+            voices: new_channels_layout(),
         }
     }
 

@@ -12,7 +12,7 @@ pub use ui_bridge::ExternalParamUiBridge;
 
 use crate::synth_engine::{
     ModuleId, ModuleType, Sample, SynthModule,
-    buffer::{Buffer, zero_buffer},
+    buffer::{Buffer, new_channels_layout, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
     smooth::Smoother,
     synth_module::{ModInput, ProcessParams},
@@ -69,7 +69,7 @@ pub struct ExternalParam {
     params: Params,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: [ChannelVoices; NUM_CHANNELS],
+    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
 }
 
 impl ExternalParam {
@@ -95,7 +95,7 @@ impl ExternalParam {
             params: Params::from_config(config),
             audio_end,
             ui_end: Some(ui_end),
-            voices: Default::default(),
+            voices: new_channels_layout(),
         }
     }
 
@@ -136,7 +136,7 @@ impl SynthModule for ExternalParam {
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
-        for channel in &mut self.voices {
+        for channel in self.voices.iter_mut() {
             for event in events {
                 if let VoiceEvent::Trigger { voice_idx, .. } = event {
                     let param_value =

@@ -1,7 +1,8 @@
 use core::f32;
+use std::mem::MaybeUninit;
 
 use crate::synth_engine::{
-    routing::NUM_CHANNELS,
+    routing::{MAX_VOICES, NUM_CHANNELS},
     types::{ComplexSample, Sample},
 };
 
@@ -43,15 +44,29 @@ pub const fn harmonic_series_buffer() -> SpectralBuffer {
     buff
 }
 
-// Built channels buffers on the heap
-pub fn new_channels_layout<T: Default + Send>() -> Box<[T; NUM_CHANNELS]> {
-    let mut layout: Vec<T> = Vec::with_capacity(NUM_CHANNELS);
-    layout.resize_with(NUM_CHANNELS, Default::default);
-    layout
-        .into_boxed_slice()
-        .try_into()
-        .ok()
-        .expect("voice_buffers length matches NUM_CHANNELS")
+/// Stereo channel layout `[[U; N]; NUM_CHANNELS]`, heap-allocated.
+///
+/// Each inner `U` is [`Default`]-initialized in place so callers never materialize
+/// a full `[U; N]` (potentially hundreds of KB) on the stack.
+pub fn new_channels_layout<U: Default + Send>() -> Box<[[U; MAX_VOICES]; NUM_CHANNELS]> {
+    let mut channels: Box<[MaybeUninit<[U; MAX_VOICES]>; NUM_CHANNELS]> =
+        Box::new([const { MaybeUninit::uninit() }; NUM_CHANNELS]);
+
+    for channel in channels.iter_mut() {
+        init_array_in_place::<U, MAX_VOICES>(channel.as_mut_ptr());
+    }
+
+    unsafe { Box::from_raw(Box::into_raw(channels).cast::<[[U; MAX_VOICES]; NUM_CHANNELS]>()) }
+}
+
+fn init_array_in_place<U: Default, const N: usize>(dst: *mut [U; N]) {
+    let elements = dst.cast::<U>();
+
+    for i in 0..N {
+        unsafe {
+            elements.add(i).write(U::default());
+        }
+    }
 }
 
 pub fn copy_to_buffer(buff: &mut [Sample], iter: impl Iterator<Item = Sample>) {

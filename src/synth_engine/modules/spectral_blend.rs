@@ -12,7 +12,7 @@ pub use ui_bridge::SpectralBlendUiBridge;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
-    buffer::SpectralBuffer,
+    buffer::{SpectralBuffer, new_channels_layout},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
     synth_module::{ModInput, ProcessParams, VoiceRouter, VoiceRouterFactory},
     types::SpectralOutput,
@@ -43,7 +43,7 @@ pub struct SpectralBlend {
     channel_params: [ChannelParams; NUM_CHANNELS],
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: [ChannelVoices; NUM_CHANNELS],
+    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
 }
 
 impl SpectralBlend {
@@ -64,7 +64,7 @@ impl SpectralBlend {
             }),
             audio_end,
             ui_end: Some(ui_end),
-            voices: Default::default(),
+            voices: new_channels_layout(),
         }
     }
 
@@ -125,7 +125,7 @@ impl SynthModule for SpectralBlend {
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
-        for channel in &mut self.voices {
+        for channel in self.voices.iter_mut() {
             for event in events {
                 if let VoiceEvent::Trigger { voice_idx, .. } = event {
                     channel[*voice_idx].triggered = true;

@@ -11,7 +11,7 @@ pub use ui_bridge::EnvelopeUiBridge;
 use crate::{
     synth_engine::{
         StereoSample,
-        buffer::{Buffer, zero_buffer},
+        buffer::{Buffer, new_channels_layout, zero_buffer},
         curves::{CurveFunction, Exponential, ExponentialIn, ExponentialOut},
         routing::{
             DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
@@ -224,7 +224,7 @@ pub struct Envelope {
     channel_params: [ChannelParams; NUM_CHANNELS],
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: [ChannelVoices; NUM_CHANNELS],
+    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
 }
 
 impl Envelope {
@@ -246,7 +246,7 @@ impl Envelope {
             }),
             audio_end,
             ui_end: Some(ui_end),
-            voices: Default::default(),
+            voices: new_channels_layout(),
         }
     }
 
@@ -439,7 +439,7 @@ impl SynthModule for Envelope {
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
-        for channel in &mut self.voices {
+        for channel in self.voices.iter_mut() {
             for event in events {
                 match event {
                     VoiceEvent::Trigger { voice_idx, .. } => {
@@ -457,7 +457,7 @@ impl SynthModule for Envelope {
     fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {
         if self.params.keep_voice_alive {
             for decaying in decaying_voices.iter_mut().filter(|d| d.is_done()) {
-                for channel in &self.voices {
+                for channel in self.voices.iter() {
                     let voice = &channel[decaying.index()];
 
                     if !matches!(voice.stage, Stage::Done) || voice.triggered {

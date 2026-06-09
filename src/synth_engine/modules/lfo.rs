@@ -12,7 +12,7 @@ pub use ui_bridge::LfoUiBridge;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
-    buffer::{Buffer, zero_buffer},
+    buffer::{Buffer, new_channels_layout, zero_buffer},
     phase::Phase,
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
     smooth::Smoother,
@@ -91,7 +91,7 @@ pub struct Lfo {
     inputs: InputBuffers,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: [ChannelVoices; NUM_CHANNELS],
+    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
 }
 
 impl Lfo {
@@ -118,7 +118,7 @@ impl Lfo {
             },
             audio_end,
             ui_end: Some(ui_end),
-            voices: Default::default(),
+            voices: new_channels_layout(),
         }
     }
 
@@ -301,7 +301,7 @@ impl SynthModule for Lfo {
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
-        for channel in &mut self.voices {
+        for channel in self.voices.iter_mut() {
             for event in events {
                 if let VoiceEvent::Trigger {
                     voice_idx,

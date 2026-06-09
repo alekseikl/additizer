@@ -14,7 +14,7 @@ pub use ui_bridge::SpectralFilterUiBridge;
 use crate::synth_engine::{
     StereoSample,
     biquad_filter::BiquadFilter,
-    buffer::SpectralBuffer,
+    buffer::{SpectralBuffer, new_channels_layout},
     routing::{
         DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
     },
@@ -68,7 +68,7 @@ pub struct SpectralFilter {
     channel_params: [ChannelParams; NUM_CHANNELS],
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: [ChannelVoices; NUM_CHANNELS],
+    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
 }
 
 impl SpectralFilter {
@@ -90,7 +90,7 @@ impl SpectralFilter {
             }),
             audio_end,
             ui_end: Some(ui_end),
-            voices: Default::default(),
+            voices: new_channels_layout(),
         }
     }
 
@@ -246,7 +246,7 @@ impl SynthModule for SpectralFilter {
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
-        for channel in &mut self.voices {
+        for channel in self.voices.iter_mut() {
             for event in events {
                 if let VoiceEvent::Trigger { voice_idx, .. } = event {
                     channel[*voice_idx].triggered = true;

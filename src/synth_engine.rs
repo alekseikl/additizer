@@ -63,6 +63,9 @@ mod types;
 pub mod ui_bridge;
 mod voices_handler;
 
+#[cfg(test)]
+mod tests;
+
 pub const MAX_BLOCK_SIZE: usize = 128;
 
 #[derive(Debug, Clone, Copy)]

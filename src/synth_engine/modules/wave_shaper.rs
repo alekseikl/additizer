@@ -13,7 +13,7 @@ pub use ui_bridge::WaveShaperUiBridge;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
-    buffer::{Buffer, zero_buffer},
+    buffer::{Buffer, new_channels_layout, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
     synth_module::{ModInput, ProcessParams, VoiceRouter, VoiceRouterFactory},
 };
@@ -71,7 +71,7 @@ pub struct WaveShaper {
     buffers: Buffers,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: [ChannelVoices; NUM_CHANNELS],
+    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
 }
 
 impl WaveShaper {
@@ -98,7 +98,7 @@ impl WaveShaper {
             },
             audio_end,
             ui_end: Some(ui_end),
-            voices: Default::default(),
+            voices: new_channels_layout(),
         }
     }
 
