@@ -67,6 +67,8 @@ src/
     buffer.rs            # Buffer / SpectralBuffer types and sizes
     ui_bridge.rs         # UiBridge: UI-side view of the engine
     modules/             # One module per file + its config/link/ui_bridge submodules
+benches/
+  synth_engine.rs        # Criterion benchmarks via SynthEngine (not individual modules)
 ```
 
 ## The module pattern (important)
@@ -128,6 +130,10 @@ Use the param macros in `synth_module.rs` (`set_smoothed_param!`, `get_smoothed_
 
 - Tests live next to the code they cover (e.g. `src/synth_engine/voices_handler/tests.rs`,
   included via `#[cfg(test)] mod tests;`). Run them with `cargo test`.
+- Performance benchmarks use [Criterion](https://github.com/bheisler/criterion.rs) in
+  `benches/synth_engine.rs`. Coverage reports use
+  [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov). See `TOOLS.md` for
+  commands and workflows.
 
 ## Behavioral Guidelines
 
