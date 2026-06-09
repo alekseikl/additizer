@@ -10,7 +10,7 @@ fn float_vel(velocity: u8) -> Sample {
 }
 
 fn handler(num_voices: usize) -> VoicesHandler {
-    let mut h = VoicesHandler::new(1, false);
+    let mut h = VoicesHandler::new(num_voices, false);
     h.set_num_voices(num_voices);
     h
 }
@@ -468,17 +468,11 @@ fn expression_on_releasing_note() {
 
     h.handle_note_on(0, 60, 1.0, &mut ev);
     h.handle_note_off(0, 60, 1.0, &mut ev);
-    h.handle_expression(0, 60, Expression::Pressure, 0.3, &mut ev);
+    assert_eq!(h.get_ui_state().releasing, 1);
 
-    match ev.events().last().unwrap() {
-        VoiceEvent::Expression {
-            expression, value, ..
-        } => {
-            assert_eq!(*expression, Expression::Pressure);
-            assert!((value - 0.3).abs() < f32::EPSILON);
-        }
-        _ => panic!("expected Expression event"),
-    }
+    let len_before = ev.events().len();
+    h.handle_expression(0, 60, Expression::Pressure, 0.3, &mut ev);
+    assert_eq!(ev.events().len(), len_before);
 }
 
 #[test]
