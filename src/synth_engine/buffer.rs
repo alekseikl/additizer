@@ -1,6 +1,9 @@
 use core::f32;
 
-use crate::synth_engine::types::{ComplexSample, Sample};
+use crate::synth_engine::{
+    routing::NUM_CHANNELS,
+    types::{ComplexSample, Sample},
+};
 
 pub const BUFFER_SIZE: usize = 256 + 1;
 pub const SPECTRUM_BITS: usize = 10;
@@ -38,6 +41,17 @@ pub const fn harmonic_series_buffer() -> SpectralBuffer {
     }
 
     buff
+}
+
+// Built channels buffers on the heap
+pub fn new_channels_layout<T: Default + Send>() -> Box<[T; NUM_CHANNELS]> {
+    let mut layout: Vec<T> = Vec::with_capacity(NUM_CHANNELS);
+    layout.resize_with(NUM_CHANNELS, Default::default);
+    layout
+        .into_boxed_slice()
+        .try_into()
+        .ok()
+        .expect("voice_buffers length matches NUM_CHANNELS")
 }
 
 pub fn copy_to_buffer(buff: &mut [Sample], iter: impl Iterator<Item = Sample>) {

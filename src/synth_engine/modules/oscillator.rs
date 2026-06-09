@@ -1,5 +1,6 @@
 use std::{array, convert::identity, f32, sync::Arc};
 
+use crossbeam_utils::CachePadded;
 use itertools::izip;
 use nih_plug::util::db_to_gain;
 use rand::RngExt;
@@ -10,7 +11,10 @@ use wide::f32x4;
 use crate::{
     synth_engine::{
         StereoSample,
-        buffer::{Buffer, SPECTRUM_BITS, SpectralBuffer, add_buffer_value, zero_buffer},
+        buffer::{
+            Buffer, SPECTRUM_BITS, SpectralBuffer, add_buffer_value, new_channels_layout,
+            zero_buffer,
+        },
         oscillator::link::{AudioEnd, UiEnd, UiEvent, create_link_pair},
         phase::Phase,
         routing::{
@@ -26,6 +30,9 @@ use crate::{
 mod config;
 mod link;
 mod ui_bridge;
+
+#[cfg(test)]
+mod tests;
 
 pub use config::OscillatorConfig;
 pub use ui_bridge::OscillatorUiBridge;
@@ -173,13 +180,13 @@ impl Default for UnisonVoice {
 }
 
 struct VoiceState {
+    output: CachePadded<Buffer>,
     triggered: bool,
     pitch: Sample, // Octave units
     glide: Option<Glide>,
     unison_gain: Interpolated,
     unison: [UnisonVoice; MAX_UNISON_VOICES],
     phases: [Phase; MAX_UNISON_VOICES],
-    output: Buffer,
 }
 
 impl Default for VoiceState {
@@ -191,48 +198,46 @@ impl Default for VoiceState {
             phases: Default::default(),
             unison_gain: Interpolated { from: 1.0, to: 1.0 },
             unison: Default::default(),
-            output: zero_buffer(),
+            output: zero_buffer().into(),
         }
     }
 }
 
 struct VoiceBuffers {
+    wave_buffers: (CachePadded<WaveformBuffer>, CachePadded<WaveformBuffer>),
     wave_buffers_swapped: bool,
-    wave_buffers: (WaveformBuffer, WaveformBuffer),
 }
 
 impl Default for VoiceBuffers {
     fn default() -> Self {
         Self {
             wave_buffers_swapped: false,
-            wave_buffers: (make_zero_wave_buffer(), make_zero_wave_buffer()),
+            wave_buffers: (
+                make_zero_wave_buffer().into(),
+                make_zero_wave_buffer().into(),
+            ),
         }
     }
 }
 
-struct OscState {
-    inverse_fft: Arc<dyn ComplexToReal<Sample>>,
-    random: Pcg32,
-    tmp_spectral: DftBuffer,
-    scratch: DftBuffer,
-    gain: Buffer,
-    pitch: Buffer,
-    phase_shift: Buffer,
-    frequency_shift: Buffer,
+struct Buffers {
+    tmp_spectral: CachePadded<DftBuffer>,
+    scratch: CachePadded<DftBuffer>,
+    gain: CachePadded<Buffer>,
+    pitch: CachePadded<Buffer>,
+    phase_shift: CachePadded<Buffer>,
+    frequency_shift: CachePadded<Buffer>,
 }
 
-impl Default for OscState {
+impl Default for Buffers {
     fn default() -> Self {
         Self {
-            inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE),
-            random: Pcg32::new(420, 1337),
-
-            tmp_spectral: zero_dft_buffer(),
-            scratch: zero_dft_buffer(),
-            gain: zero_buffer(),
-            pitch: zero_buffer(),
-            phase_shift: zero_buffer(),
-            frequency_shift: zero_buffer(),
+            tmp_spectral: zero_dft_buffer().into(),
+            scratch: zero_dft_buffer().into(),
+            gain: zero_buffer().into(),
+            pitch: zero_buffer().into(),
+            phase_shift: zero_buffer().into(),
+            frequency_shift: zero_buffer().into(),
         }
     }
 }
@@ -272,13 +277,15 @@ type ChannelVoices = [VoiceState; MAX_VOICES];
 type ChannelVoiceBuffers = [VoiceBuffers; MAX_VOICES];
 
 pub struct Oscillator {
+    buffers: Buffers,
+    inverse_fft: Arc<dyn ComplexToReal<Sample>>,
+    random: Pcg32,
     id: ModuleId,
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
-    osc_state: OscState,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: [ChannelVoices; NUM_CHANNELS],
+    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
     voice_buffers: Box<[ChannelVoiceBuffers; NUM_CHANNELS]>,
 }
 
@@ -299,11 +306,13 @@ impl Oscillator {
             channel_params: array::from_fn(|channel_idx| {
                 ChannelParams::from_config(config, channel_idx)
             }),
-            osc_state: OscState::default(),
+            buffers: Buffers::default(),
+            inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE),
+            random: Pcg32::new(420, 1337),
             audio_end,
             ui_end: Some(ui_end),
-            voices: Default::default(),
-            voice_buffers: Default::default(),
+            voices: new_channels_layout(),
+            voice_buffers: new_channels_layout(),
         }
     }
 
@@ -433,9 +442,8 @@ impl Oscillator {
         let to = to.clamp(0.0, 1.0);
 
         let randoms: [StereoSample; MAX_UNISON_VOICES] = array::from_fn(|_| {
-            let left = from + (to - from) * self.osc_state.random.random::<Sample>();
-            let right = left - 0.5 * stereo_spread
-                + stereo_spread * self.osc_state.random.random::<Sample>();
+            let left = from + (to - from) * self.random.random::<Sample>();
+            let right = left - 0.5 * stereo_spread + stereo_spread * self.random.random::<Sample>();
 
             StereoSample::new(left, right).clamp(0.0, 1.0)
         });
@@ -526,8 +534,9 @@ impl Oscillator {
     }
 
     fn build_waveforms(
+        inverse_fft: &dyn ComplexToReal<Sample>,
         voice_buffers: &mut VoiceBuffers,
-        osc_state: &mut OscState,
+        buffers: &mut Buffers,
         triggered: bool,
         router: &VoiceRouter<'_, '_>,
     ) {
@@ -535,12 +544,12 @@ impl Oscillator {
             let spectrum_from = router.spectral(Input::Spectrum, false);
 
             Self::build_wave(
-                osc_state.inverse_fft.as_ref(),
-                pitch_to_freq(osc_state.pitch[0]) + osc_state.frequency_shift[0],
+                inverse_fft,
+                pitch_to_freq(buffers.pitch[0]) + buffers.frequency_shift[0],
                 router.sample_rate(),
                 spectrum_from,
-                &mut osc_state.tmp_spectral,
-                &mut osc_state.scratch,
+                &mut buffers.tmp_spectral,
+                &mut buffers.scratch,
                 &mut voice_buffers.wave_buffers.0,
             );
 
@@ -556,13 +565,13 @@ impl Oscillator {
         };
 
         Self::build_wave(
-            osc_state.inverse_fft.as_ref(),
-            pitch_to_freq(osc_state.pitch[router.samples() - 1])
-                + osc_state.frequency_shift[router.samples() - 1],
+            inverse_fft,
+            pitch_to_freq(buffers.pitch[router.samples() - 1])
+                + buffers.frequency_shift[router.samples() - 1],
             router.sample_rate(),
             spectrum,
-            &mut osc_state.tmp_spectral,
-            &mut osc_state.scratch,
+            &mut buffers.tmp_spectral,
+            &mut buffers.scratch,
             wave_to,
         );
         voice_buffers.wave_buffers_swapped = !voice_buffers.wave_buffers_swapped;
@@ -679,7 +688,7 @@ impl Oscillator {
 
     fn process_glide(
         channel: &ChannelParams,
-        osc_state: &mut OscState,
+        buffers: &mut Buffers,
         voice: &mut VoiceState,
         router: &mut VoiceRouter<'_, '_>,
     ) {
@@ -711,7 +720,7 @@ impl Oscillator {
         let samples = router
             .samples()
             .min((time_left * router.sample_rate()) as usize);
-        let pitch_buff = &mut osc_state.pitch[..samples];
+        let pitch_buff = &mut buffers.pitch[..samples];
 
         #[inline(always)]
         fn process(
@@ -752,31 +761,31 @@ impl Oscillator {
     fn process_voice(&mut self, mono_spectrum: bool, mut router: VoiceRouter<'_, '_>) {
         let channel_idx = router.channel_idx();
         let voice_idx = router.voice_idx();
-        let osc_state = &mut self.osc_state;
+        let buffers = &mut self.buffers;
         let channel = &mut self.channel_params[channel_idx];
         let voice = &mut self.voices[channel_idx][voice_idx];
         let samples = router.samples();
 
-        router.buff_param(Input::Gain, &mut channel.gain, &mut osc_state.gain);
+        router.buff_param(Input::Gain, &mut channel.gain, &mut buffers.gain);
 
         router.buff_param(
             Input::PitchShift,
             &mut channel.pitch_shift,
-            &mut osc_state.pitch,
+            &mut buffers.pitch,
         );
 
-        add_buffer_value(&mut osc_state.pitch[..samples], voice.pitch);
+        add_buffer_value(&mut buffers.pitch[..samples], voice.pitch);
 
         router.buff_param(
             Input::PhaseShift,
             &mut channel.phase_shift,
-            &mut osc_state.phase_shift,
+            &mut buffers.phase_shift,
         );
 
         router.buff_param(
             Input::FrequencyShift,
             &mut channel.frequency_shift,
-            &mut osc_state.frequency_shift,
+            &mut buffers.frequency_shift,
         );
 
         let voice_buffers = if mono_spectrum && channel_idx != 0 {
@@ -784,7 +793,13 @@ impl Oscillator {
         } else {
             let vb = &mut self.voice_buffers[channel_idx][voice_idx];
 
-            Self::build_waveforms(vb, osc_state, voice.triggered, &router);
+            Self::build_waveforms(
+                self.inverse_fft.as_ref(),
+                vb,
+                buffers,
+                voice.triggered,
+                &router,
+            );
             vb
         };
 
@@ -795,7 +810,7 @@ impl Oscillator {
         };
 
         Self::process_unison(self.params.unison, channel, voice, &mut router);
-        Self::process_glide(channel, osc_state, voice, &mut router);
+        Self::process_glide(channel, buffers, voice, &mut router);
 
         if voice.triggered {
             voice.triggered = false;
@@ -805,11 +820,11 @@ impl Oscillator {
         let buff_t_mult = (samples as f32).recip();
 
         for (out, pitch, phase_shift, freq_shift, gain, sample_idx) in izip!(
-            &mut voice.output,
-            &osc_state.pitch,
-            &osc_state.phase_shift,
-            &osc_state.frequency_shift,
-            &osc_state.gain,
+            &mut *voice.output,
+            &*buffers.pitch,
+            &*buffers.phase_shift,
+            &*buffers.frequency_shift,
+            &*buffers.gain,
             0..samples
         ) {
             let mut sample_acc = f32x4::splat(0.0);

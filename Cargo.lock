@@ -20,6 +20,7 @@ dependencies = [
  "atomic_float",
  "baseview",
  "const_format",
+ "crossbeam-utils",
  "directories",
  "egui",
  "egui_extras",
