@@ -11,26 +11,20 @@ use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
-    buffer::{Buffer, SpectralBuffer, add_to_buffer, copy_or_add_to_buffer},
-    config::EngineParams,
-    modules::{Output, oscillator::Oscillator},
-    routing::{
-        DataType, LinkModulation, MIN_MODULE_ID, NUM_CHANNELS, Router, VoiceEvent,
-        data_types_compatible,
-    },
-    smooth::SmoothedSampleParams,
-    synth_module::ProcessParams,
+    buffer::{add_to_buffer, copy_or_add_to_buffer},
+    modules::Output,
+    routing::{DataType, LinkModulation, MIN_MODULE_ID, data_types_compatible},
     voices_handler::{
         DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
     },
 };
 
-pub use buffer::SPECTRAL_BUFFER_SIZE;
-pub use config::{EngineConfig, LinkConfig, ModuleConfig};
+pub use buffer::{Buffer, HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer};
+pub use config::{EngineConfig, EngineParams, LinkConfig, ModuleConfig};
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, Expressions, ExternalParam, ExternalParamsBlock, Lfo,
-    LfoShape, Mixer, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType, SpectralMixer,
-    WaveShaper,
+    LfoShape, Mixer, Oscillator, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType,
+    SpectralMixer, WaveShaper,
     amplifier::{self},
     envelope::{self},
     expressions::{self},
@@ -45,11 +39,12 @@ pub use modules::{
     wave_shaper::{self},
 };
 pub use routing::{
-    Expression, Input, MixType, ModuleId, ModuleInput, ModuleLink, ModuleType, OUTPUT_MODULE_ID,
-    VolumeType,
+    Expression, Input, MixType, ModuleId, ModuleInput, ModuleLink, ModuleType, NUM_CHANNELS,
+    OUTPUT_MODULE_ID, Router, VoiceEvent, VolumeType,
 };
+pub use smooth::SmoothedSampleParams;
 pub use stereo_sample::StereoSample;
-pub use synth_module::{ModuleUiBridge, SynthModule};
+pub use synth_module::{ModuleUiBridge, ProcessParams, SynthModule};
 pub use types::Sample;
 
 mod buffer;

@@ -22,4 +22,5 @@ pub use output::Output;
 pub use spectral_blend::SpectralBlend;
 pub use spectral_filter::{SpectralFilter, SpectralFilterType};
 pub use spectral_mixer::SpectralMixer;
+pub use oscillator::Oscillator;
 pub use wave_shaper::{ShaperType, WaveShaper};

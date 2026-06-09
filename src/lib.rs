@@ -9,7 +9,7 @@ mod engine_factory;
 mod params;
 mod preset;
 mod presets;
-mod synth_engine;
+pub mod synth_engine;
 mod utils;
 
 use crate::editor::create_editor;

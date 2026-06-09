@@ -37,3 +37,10 @@ rand_pcg = "0.10.2"
 rustc-hash = "2.1.2"
 atomic_float = "1.1.0"
 crossbeam-utils = "0.8.21"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "synth_engine"
+harness = false

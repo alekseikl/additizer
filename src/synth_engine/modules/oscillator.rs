@@ -44,7 +44,7 @@ const WAVEFORM_PAD_RIGHT: usize = 2;
 const WAVEFORM_BUFFER_SIZE: usize = WAVEFORM_SIZE + WAVEFORM_PAD_LEFT + WAVEFORM_PAD_RIGHT;
 const DFT_BUFFER_SIZE: usize = (1 << (WAVEFORM_BITS - 1)) + 1;
 
-const MAX_UNISON_VOICES: usize = 16;
+pub const MAX_UNISON_VOICES: usize = 16;
 const MAX_GLIDE: Sample = 5.0;
 
 type WaveformBuffer = [Sample; WAVEFORM_BUFFER_SIZE];

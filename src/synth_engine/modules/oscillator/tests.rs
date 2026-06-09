@@ -16,12 +16,19 @@ fn assert_close(a: Sample, b: Sample) {
 // ---- A minimal Router that feeds a fixed spectrum and records outputs ----
 
 struct TestRouter {
-    spectrum: SpectralBuffer,
+    spectrum: [SpectralBuffer; NUM_CHANNELS],
     outputs: Vec<(ModuleId, usize, Sample)>,
 }
 
 impl TestRouter {
     fn new(spectrum: SpectralBuffer) -> Self {
+        Self {
+            spectrum: [spectrum; NUM_CHANNELS],
+            outputs: Vec::new(),
+        }
+    }
+
+    fn with_channel_spectra(spectrum: [SpectralBuffer; NUM_CHANNELS]) -> Self {
         Self {
             spectrum,
             outputs: Vec::new(),
@@ -67,9 +74,9 @@ impl Router for TestRouter {
         _input: ModuleInput,
         _current: bool,
         _voice_idx: usize,
-        _channel_idx: usize,
+        channel_idx: usize,
     ) -> Option<&SpectralBuffer> {
-        Some(&self.spectrum)
+        Some(&self.spectrum[channel_idx])
     }
 
     fn get_scalar_input(
@@ -453,4 +460,92 @@ fn process_silent_spectrum_is_silent() {
 
     let out = osc.get_buffer_output(0, 0);
     assert!(out[..64].iter().all(|&s| s == 0.0));
+}
+
+#[test]
+fn process_with_max_unison_voices() {
+    let mut osc = Oscillator::new(1);
+    osc.set_unison(MAX_UNISON_VOICES);
+    osc.set_detune(StereoSample::splat(st_to_octave(0.5)));
+    assert_eq!(osc.get_config().unison_voices, MAX_UNISON_VOICES);
+
+    trigger(&mut osc, 0, 0.0);
+
+    let mut router = TestRouter::new(HARMONIC_SERIES_BUFFER);
+    let active = [0usize];
+    let params = process_params(&active, 64);
+
+    osc.process(&params, &mut router);
+
+    let out = osc.get_buffer_output(0, 0);
+    assert!(out[..64].iter().all(|s| s.is_finite()));
+    assert!(out[..64].iter().any(|&s| s.abs() > 1e-6));
+}
+
+#[test]
+fn process_advances_glide_when_enabled() {
+    let mut osc = Oscillator::new(1);
+    osc.set_glide(StereoSample::splat(1.0));
+
+    osc.handle_events(&[VoiceEvent::Trigger {
+        voice_idx: 0,
+        prev_voice_idx: None,
+        pitch: 0.0,
+        velocity: 1.0,
+    }]);
+    osc.handle_events(&[VoiceEvent::Trigger {
+        voice_idx: 1,
+        prev_voice_idx: Some(0),
+        pitch: 1.0,
+        velocity: 1.0,
+    }]);
+
+    // Voice 1 starts a glide from the previous voice's pitch (0.0) toward 1.0.
+    assert_eq!(osc.voices[0][1].glide.as_ref().unwrap().current_pitch, 0.0);
+
+    let mut router = TestRouter::new(HARMONIC_SERIES_BUFFER);
+    let active = [1usize];
+    let params = process_params(&active, 64);
+
+    osc.process(&params, &mut router);
+
+    // A 64-sample block at 48 kHz is far shorter than the 1 s glide, so the
+    // voice is still gliding and has moved partway toward the target pitch.
+    let glide = osc.voices[0][1].glide.as_ref().expect("glide still active");
+    assert!(glide.current_pitch > 0.0 && glide.current_pitch < 1.0);
+}
+
+#[test]
+fn process_mono_spectrum_shares_channel_zero_waveform() {
+    let mut osc = Oscillator::new(1);
+
+    trigger(&mut osc, 0, 0.0);
+
+    // Channel 0 gets the harmonic spectrum; channel 1 gets silence. In the mono
+    // spectrum path channel 1 must reuse channel 0's waveform, so its own
+    // (silent) spectrum has to be ignored.
+    let mut router =
+        TestRouter::with_channel_spectra([HARMONIC_SERIES_BUFFER, ZEROES_SPECTRAL_BUFFER]);
+    let active = [0usize];
+    let params = ProcessParams {
+        samples: 64,
+        sample_rate: SAMPLE_RATE,
+        buffer_t_step: (64.0 as Sample).recip(),
+        needs_update_ui: false,
+        smooth_params: SmoothedSampleParams::new(SAMPLE_RATE),
+        // Fewer spectrum channels than output channels -> mono spectrum path.
+        spectrum_channels: 1,
+        active_voices: &active,
+    };
+
+    osc.process(&params, &mut router);
+
+    let left = osc.get_buffer_output(0, 0);
+    let right = osc.get_buffer_output(0, 1);
+
+    // Channel 1 reuses channel 0's waveform; with identical per-channel params
+    // both channels produce the same (non-silent) output, proving channel 1's
+    // own silent spectrum was ignored.
+    assert!(left[..64].iter().any(|&s| s.abs() > 1e-6));
+    assert_eq!(left[..64], right[..64]);
 }
