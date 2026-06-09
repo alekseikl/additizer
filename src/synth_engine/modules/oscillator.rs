@@ -1,6 +1,5 @@
 use std::{array, convert::identity, f32, sync::Arc};
 
-use crossbeam_utils::CachePadded;
 use itertools::izip;
 use nih_plug::util::db_to_gain;
 use rand::RngExt;
@@ -180,7 +179,7 @@ impl Default for UnisonVoice {
 }
 
 struct VoiceState {
-    output: CachePadded<Buffer>,
+    output: Buffer,
     triggered: bool,
     pitch: Sample, // Octave units
     glide: Option<Glide>,
@@ -198,13 +197,13 @@ impl Default for VoiceState {
             phases: Default::default(),
             unison_gain: Interpolated { from: 1.0, to: 1.0 },
             unison: Default::default(),
-            output: zero_buffer().into(),
+            output: zero_buffer(),
         }
     }
 }
 
 struct VoiceBuffers {
-    wave_buffers: (CachePadded<WaveformBuffer>, CachePadded<WaveformBuffer>),
+    wave_buffers: (WaveformBuffer, WaveformBuffer),
     wave_buffers_swapped: bool,
 }
 
@@ -212,32 +211,29 @@ impl Default for VoiceBuffers {
     fn default() -> Self {
         Self {
             wave_buffers_swapped: false,
-            wave_buffers: (
-                make_zero_wave_buffer().into(),
-                make_zero_wave_buffer().into(),
-            ),
+            wave_buffers: (make_zero_wave_buffer(), make_zero_wave_buffer()),
         }
     }
 }
 
 struct Buffers {
-    tmp_spectral: CachePadded<DftBuffer>,
-    scratch: CachePadded<DftBuffer>,
-    gain: CachePadded<Buffer>,
-    pitch: CachePadded<Buffer>,
-    phase_shift: CachePadded<Buffer>,
-    frequency_shift: CachePadded<Buffer>,
+    tmp_spectral: DftBuffer,
+    scratch: DftBuffer,
+    gain: Buffer,
+    pitch: Buffer,
+    phase_shift: Buffer,
+    frequency_shift: Buffer,
 }
 
 impl Default for Buffers {
     fn default() -> Self {
         Self {
-            tmp_spectral: zero_dft_buffer().into(),
-            scratch: zero_dft_buffer().into(),
-            gain: zero_buffer().into(),
-            pitch: zero_buffer().into(),
-            phase_shift: zero_buffer().into(),
-            frequency_shift: zero_buffer().into(),
+            tmp_spectral: zero_dft_buffer(),
+            scratch: zero_dft_buffer(),
+            gain: zero_buffer(),
+            pitch: zero_buffer(),
+            phase_shift: zero_buffer(),
+            frequency_shift: zero_buffer(),
         }
     }
 }
@@ -820,11 +816,11 @@ impl Oscillator {
         let buff_t_mult = (samples as f32).recip();
 
         for (out, pitch, phase_shift, freq_shift, gain, sample_idx) in izip!(
-            &mut *voice.output,
-            &*buffers.pitch,
-            &*buffers.phase_shift,
-            &*buffers.frequency_shift,
-            &*buffers.gain,
+            &mut voice.output,
+            &buffers.pitch,
+            &buffers.phase_shift,
+            &buffers.frequency_shift,
+            &buffers.gain,
             0..samples
         ) {
             let mut sample_acc = f32x4::splat(0.0);

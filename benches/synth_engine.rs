@@ -187,7 +187,7 @@ fn bench_process(c: &mut Criterion) {
     {
         let mut engine = make_engine(
             EngineParams {
-                num_voices: 8,
+                num_voices: 16,
                 ..EngineParams::default()
             },
             OscillatorConfig {
@@ -197,10 +197,10 @@ fn bench_process(c: &mut Criterion) {
                 ..OscillatorConfig::default()
             },
         );
-        trigger_notes(&mut engine, 8);
+        trigger_notes(&mut engine, 16);
 
         let samples = MAX_BLOCK_SIZE;
-        group.throughput(Throughput::Elements((samples * NUM_CHANNELS * 8) as u64));
+        group.throughput(Throughput::Elements((samples * NUM_CHANNELS * 16) as u64));
         group.bench_function("heavy_patch", |b| {
             b.iter(|| black_box(process_block(&mut engine, samples)));
         });
