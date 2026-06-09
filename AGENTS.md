@@ -96,7 +96,7 @@ The matching editor panel lives in `src/editor/modules_ui/<name>_ui.rs`.
 5. Add the UI bridge to `UiBridge::insert_module_bridge` (`src/synth_engine/ui_bridge.rs`).
 6. Add the editor panel in `src/editor/modules_ui/` and wire it into `editor.rs`.
 
-Use the param macros in `synth_module.rs` (`set_smoothed_param!`, `get_smoothed_param2!`,
+Use the param macros in `synth_module.rs` (`set_smoothed_param!`, `get_smoothed_param!`,
 `set_stereo_param!`, etc.) for the standard stereo/smoothed parameter plumbing.
 
 ## Conventions & constraints

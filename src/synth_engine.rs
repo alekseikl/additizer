@@ -135,7 +135,7 @@ pub struct SynthEngine {
     ui_end: Option<ui_bridge::UiEnd>,
 }
 
-macro_rules! add_module_method2 {
+macro_rules! add_module_method {
     ($func_name:ident, $module_type:ident $(, $arg:ident )*) => {
         pub fn $func_name(&mut self) -> ModuleId {
             let id = self.alloc_module_id();
@@ -381,18 +381,18 @@ impl SynthEngine {
         (block_size).clamp(4, MAX_BLOCK_SIZE)
     }
 
-    add_module_method2!(add_oscillator, Oscillator);
-    add_module_method2!(add_envelope, Envelope);
-    add_module_method2!(add_lfo, Lfo);
-    add_module_method2!(add_amplifier, Amplifier);
-    add_module_method2!(add_mixer, Mixer);
-    add_module_method2!(add_wave_shaper, WaveShaper);
-    add_module_method2!(add_spectral_filter, SpectralFilter);
-    add_module_method2!(add_spectral_blend, SpectralBlend);
-    add_module_method2!(add_spectral_mixer, SpectralMixer);
-    add_module_method2!(add_harmonic_editor, HarmonicEditor);
-    add_module_method2!(add_expressions, Expressions);
-    add_module_method2!(add_external_param, ExternalParam, get_external_params);
+    add_module_method!(add_oscillator, Oscillator);
+    add_module_method!(add_envelope, Envelope);
+    add_module_method!(add_lfo, Lfo);
+    add_module_method!(add_amplifier, Amplifier);
+    add_module_method!(add_mixer, Mixer);
+    add_module_method!(add_wave_shaper, WaveShaper);
+    add_module_method!(add_spectral_filter, SpectralFilter);
+    add_module_method!(add_spectral_blend, SpectralBlend);
+    add_module_method!(add_spectral_mixer, SpectralMixer);
+    add_module_method!(add_harmonic_editor, HarmonicEditor);
+    add_module_method!(add_expressions, Expressions);
+    add_module_method!(add_external_param, ExternalParam, get_external_params);
 
     fn get_external_params(&self) -> Arc<ExternalParamsBlock> {
         Arc::clone(self.external_params.as_ref().unwrap())

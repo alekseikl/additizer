@@ -93,7 +93,7 @@ impl Amplifier {
     pub fn get_config(&self) -> AmplifierConfig {
         AmplifierConfig {
             id: self.id,
-            gain: get_smoothed_param2!(self, gain),
+            gain: get_smoothed_param!(self, gain),
         }
     }
 

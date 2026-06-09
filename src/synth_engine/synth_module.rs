@@ -275,7 +275,7 @@ macro_rules! set_smoothed_param {
     };
 }
 
-macro_rules! get_smoothed_param2 {
+macro_rules! get_smoothed_param {
     ($self:ident, $param:ident) => {
         StereoSample::from_iter(
             $self
