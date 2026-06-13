@@ -182,8 +182,8 @@ impl<'c> ProcessContext<'c> {
         &'f mut self,
         module_id: ModuleId,
         output_slot: usize,
-    ) -> RouterFactory<'f, 'c, SamplesOutputSlot>
-    where
+        f: impl FnOnce(&mut RouterFactory<'f, 'c, SamplesOutputSlot>, &mut VoicesLayout<SamplesOutput>),
+    ) where
         'c: 'f,
     {
         RouterFactory {
@@ -193,14 +193,18 @@ impl<'c> ProcessContext<'c> {
                 samples_slot: output_slot,
             },
         }
+        .with_output_slot(f);
     }
 
     pub fn for_spectral<'f>(
         &'f mut self,
         module_id: ModuleId,
         output_slot: usize,
-    ) -> RouterFactory<'f, 'c, SpectralOutputSlot>
-    where
+        f: impl FnOnce(
+            &mut RouterFactory<'f, 'c, SpectralOutputSlot>,
+            &mut VoicesLayout<SpectralOutput>,
+        ),
+    ) where
         'c: 'f,
     {
         RouterFactory {
@@ -210,6 +214,7 @@ impl<'c> ProcessContext<'c> {
                 spectral_slot: output_slot,
             },
         }
+        .with_output_slot(f);
     }
 }
 

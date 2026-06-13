@@ -13,7 +13,7 @@ pub use ui_bridge::AmplifierUiBridge;
 use crate::synth_engine::{
     StereoSample,
     buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
-    routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
+    routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS, Router},
     smooth::SmoothedSample,
     synth_module::{ModInput, ProcessParams, SynthModule, VoiceRouter, VoiceRouterFactory},
 };

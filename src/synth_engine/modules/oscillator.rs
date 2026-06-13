@@ -1078,22 +1078,21 @@ impl SynthModule for Oscillator {
     }
 
     fn process2(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_samples(self.id, self.output_slot)
-            .with_output_slot(|router, output| {
-                let mono_spectrum = router.params().spectrum_channels < NUM_CHANNELS;
-                let num_active_voices = router.params().active_voices.len();
+        ctx.for_samples(self.id, self.output_slot, |router, output| {
+            let mono_spectrum = router.params().spectrum_channels < NUM_CHANNELS;
+            let num_active_voices = router.params().active_voices.len();
 
-                for channel_idx in 0..NUM_CHANNELS {
-                    for seq_idx in 0..num_active_voices {
-                        let voice_idx = router.params().active_voices[seq_idx];
+            for channel_idx in 0..NUM_CHANNELS {
+                for seq_idx in 0..num_active_voices {
+                    let voice_idx = router.params().active_voices[seq_idx];
 
-                        self.process_voice(
-                            mono_spectrum,
-                            output,
-                            router.for_voice(channel_idx, voice_idx, seq_idx),
-                        );
-                    }
+                    self.process_voice(
+                        mono_spectrum,
+                        output,
+                        router.for_voice(channel_idx, voice_idx, seq_idx),
+                    );
                 }
-            });
+            }
+        });
     }
 }
