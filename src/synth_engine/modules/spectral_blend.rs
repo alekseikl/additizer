@@ -12,7 +12,7 @@ pub use ui_bridge::SpectralBlendUiBridge;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
-    buffer::{SpectralBuffer, new_channels_layout},
+    buffer::{SpectralBuffer, new_voices_layout},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
     synth_module::{ModInput, ProcessParams, VoiceRouter, VoiceRouterFactory},
     types::SpectralOutput,
@@ -64,7 +64,7 @@ impl SpectralBlend {
             }),
             audio_end,
             ui_end: Some(ui_end),
-            voices: new_channels_layout(),
+            voices: new_voices_layout(),
         }
     }
 

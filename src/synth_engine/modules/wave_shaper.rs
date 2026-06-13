@@ -7,13 +7,13 @@ mod config;
 mod link;
 mod ui_bridge;
 
-pub use config::{WaveShaperConfig, ShaperType};
+pub use config::{ShaperType, WaveShaperConfig};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::WaveShaperUiBridge;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
-    buffer::{Buffer, new_channels_layout, zero_buffer},
+    buffer::{Buffer, new_voices_layout, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
     synth_module::{ModInput, ProcessParams, VoiceRouter, VoiceRouterFactory},
 };
@@ -98,7 +98,7 @@ impl WaveShaper {
             },
             audio_end,
             ui_end: Some(ui_end),
-            voices: new_channels_layout(),
+            voices: new_voices_layout(),
         }
     }
 
@@ -167,7 +167,7 @@ impl SynthModule for WaveShaper {
     }
 
     fn output(&self) -> DataType {
-        DataType::Buffer
+        DataType::Audio
     }
 
     fn handle_ui_events(&mut self) {

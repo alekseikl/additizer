@@ -11,7 +11,7 @@ pub use ui_bridge::EnvelopeUiBridge;
 use crate::{
     synth_engine::{
         StereoSample,
-        buffer::{Buffer, new_channels_layout, zero_buffer},
+        buffer::{Buffer, new_voices_layout, zero_buffer},
         curves::{CurveFunction, Exponential, ExponentialIn, ExponentialOut},
         routing::{
             DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
@@ -246,7 +246,7 @@ impl Envelope {
             }),
             audio_end,
             ui_end: Some(ui_end),
-            voices: new_channels_layout(),
+            voices: new_voices_layout(),
         }
     }
 
@@ -286,6 +286,8 @@ impl Envelope {
         let voice = &mut self.voices[router.channel_idx()][router.voice_idx()];
 
         if voice.triggered {
+            voice.scalar_output = ScalarOutput::default();
+            voice.smoother.reset(0.0);
             voice.stage = Stage::Delay(EnvelopeCurve::delay_iter(voice.scalar_output.current()));
         }
 
@@ -402,8 +404,6 @@ impl Envelope {
     }
 
     fn trigger_voice(voice: &mut Voice) {
-        voice.scalar_output = ScalarOutput::default();
-        voice.smoother.reset(0.0);
         voice.triggered = true;
     }
 
@@ -435,7 +435,7 @@ impl SynthModule for Envelope {
     }
 
     fn output(&self) -> DataType {
-        DataType::Scalar
+        DataType::Control
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {

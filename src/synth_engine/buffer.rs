@@ -6,7 +6,7 @@ use crate::synth_engine::{
     types::{ComplexSample, Sample},
 };
 
-pub const BUFFER_SIZE: usize = 256 + 1;
+pub const BUFFER_SIZE: usize = 256;
 pub const SPECTRUM_BITS: usize = 10;
 pub const SPECTRAL_BUFFER_SIZE: usize = 1 << SPECTRUM_BITS;
 
@@ -44,11 +44,14 @@ pub const fn harmonic_series_buffer() -> SpectralBuffer {
     buff
 }
 
+pub type VoicesLayoutArray<T> = [[T; MAX_VOICES]; NUM_CHANNELS];
+pub type VoicesLayout<T> = Box<VoicesLayoutArray<T>>;
+
 /// Stereo channel layout `[[U; N]; NUM_CHANNELS]`, heap-allocated.
 ///
 /// Each inner `U` is [`Default`]-initialized in place so callers never materialize
 /// a full `[U; N]` (potentially hundreds of KB) on the stack.
-pub fn new_channels_layout<U: Default + Send>() -> Box<[[U; MAX_VOICES]; NUM_CHANNELS]> {
+pub fn new_voices_layout<U: Default + Send>() -> VoicesLayout<U> {
     let mut channels: Box<[MaybeUninit<[U; MAX_VOICES]>; NUM_CHANNELS]> =
         Box::new([const { MaybeUninit::uninit() }; NUM_CHANNELS]);
 

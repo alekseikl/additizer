@@ -249,7 +249,7 @@ impl UiBridge {
 
         let dst_data_type =
             if input.module_id == OUTPUT_MODULE_ID && input.input_type == Input::Audio {
-                DataType::Buffer
+                DataType::Audio
             } else if let Some(input_module) = self.routing.modules.get(&input.module_id)
                 && let Some(input_info) = input_module
                     .inputs
@@ -288,18 +288,18 @@ impl UiBridge {
             .filter_map(|source| {
                 self.routing
                     .modules
-                    .get(&source.src)
+                    .get(&source.module_id)
                     .map(|module| (module, source))
             })
             .map(|(_module, source)| ConnectedInputSource {
-                src: source.src,
+                src: source.module_id,
                 amount: source.amount,
-                label: Self::module_label(&ui_config, source.src),
+                label: Self::module_label(&ui_config, source.module_id),
                 modulation: source
                     .modulation
                     .map(|modulation| routing_state::InputModulation {
-                        src: modulation.src,
-                        label: Self::module_label(&ui_config, modulation.src),
+                        src: modulation,
+                        label: Self::module_label(&ui_config, modulation),
                     }),
             })
             .collect()
@@ -451,7 +451,7 @@ impl UiBridge {
     pub fn set_link_amount(&mut self, src: ModuleId, dst: ModuleInput, amount: StereoSample) {
         if self.ui_end.set_link_amount(src, dst, amount)
             && let Some(sources) = self.routing.routing.get_mut(&dst)
-            && let Some(source) = sources.iter_mut().find(|s| s.src == src)
+            && let Some(source) = sources.iter_mut().find(|s| s.module_id == src)
         {
             source.amount = amount;
         }

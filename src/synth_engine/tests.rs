@@ -5,19 +5,11 @@ use nih_plug::prelude::*;
 use super::*;
 use crate::{
     synth_engine::{
-    amplifier::AmplifierConfig,
-    envelope::EnvelopeConfig,
-    expressions::ExpressionsConfig,
-    external_param::ExternalParamConfig,
-    harmonic_editor::HarmonicEditorConfig,
-    lfo::LfoConfig,
-    mixer::MixerConfig,
-    modules::Output,
-    oscillator::OscillatorConfig,
-    spectral_blend::SpectralBlendConfig,
-    spectral_filter::SpectralFilterConfig,
-    spectral_mixer::SpectralMixerConfig,
-        wave_shaper::WaveShaperConfig,
+        amplifier::AmplifierConfig, envelope::EnvelopeConfig, expressions::ExpressionsConfig,
+        external_param::ExternalParamConfig, harmonic_editor::HarmonicEditorConfig, lfo::LfoConfig,
+        mixer::MixerConfig, modules::Output, oscillator::OscillatorConfig,
+        spectral_blend::SpectralBlendConfig, spectral_filter::SpectralFilterConfig,
+        spectral_mixer::SpectralMixerConfig, wave_shaper::WaveShaperConfig,
     },
     utils::from_ms,
 };
@@ -310,11 +302,7 @@ fn try_new_builds_full_patch() {
     assert!(engine.get_typed_module::<Oscillator>(OSC1_ID).is_some());
     assert!(engine.get_typed_module::<Lfo>(LFO_ID).is_some());
     assert!(engine.get_typed_module::<Mixer>(MIXER_ID).is_some());
-    assert!(
-        engine
-            .get_typed_module::<Amplifier>(AMPLIFIER_ID)
-            .is_some()
-    );
+    assert!(engine.get_typed_module::<Amplifier>(AMPLIFIER_ID).is_some());
     assert!(
         engine
             .get_typed_module::<WaveShaper>(WAVE_SHAPER_ID)
@@ -339,7 +327,9 @@ fn try_new_builds_full_patch() {
     let order = SynthEngine::calc_execution_order(
         &cfg.links
             .iter()
-            .map(|l| ModuleLink::scaled(l.src_id, ModuleInput::new(l.dst_input, l.dst_id), l.amount))
+            .map(|l| {
+                ModuleLink::scaled(l.src_id, ModuleInput::new(l.dst_input, l.dst_id), l.amount)
+            })
             .collect::<Vec<_>>(),
     )
     .expect("full patch execution order");
@@ -992,11 +982,7 @@ fn link_modulation_in_preset_builds() {
             .links
             .iter()
             .map(|l| {
-                ModuleLink::scaled(
-                    l.src_id,
-                    ModuleInput::new(l.dst_input, l.dst_id),
-                    l.amount,
-                )
+                ModuleLink::scaled(l.src_id, ModuleInput::new(l.dst_input, l.dst_id), l.amount)
             })
             .collect::<Vec<_>>(),
     )
@@ -1018,11 +1004,7 @@ fn set_link_modulation_rejects_unknown_link() {
     let mut engine = engine;
 
     let err = engine
-        .set_link_modulation(
-            HE0_ID,
-            &ModuleInput::new(Input::Gain, AMPLIFIER_ID),
-            LFO_ID,
-        )
+        .set_link_modulation(HE0_ID, &ModuleInput::new(Input::Gain, AMPLIFIER_ID), LFO_ID)
         .expect_err("harmonic editor is not wired to amp gain");
 
     assert!(err.contains("Invalid"));
@@ -1047,11 +1029,7 @@ fn dual_audio_sources_mix_at_output() {
 
     engine.remove_link(&OSCILLATOR_ID, &out_audio);
     engine
-        .add_link(
-            OSCILLATOR_ID,
-            out_audio,
-            StereoSample::splat(0.5),
-        )
+        .add_link(OSCILLATOR_ID, out_audio, StereoSample::splat(0.5))
         .expect("osc a -> output");
     engine
         .add_link(osc_b, out_audio, StereoSample::splat(0.5))
@@ -1203,9 +1181,12 @@ fn execution_order_accounts_for_link_modulation() {
             src: ENVELOPE_AMP_ID,
             dst: ModuleInput::new(Input::Gain, AMPLIFIER_ID),
             amount: StereoSample::ONE,
-            modulation: Some(super::routing::LinkModulation { src: LFO_ID }),
+            modulation: Some(LFO_ID),
         },
-        ModuleLink::link(AMPLIFIER_ID, ModuleInput::new(Input::Audio, OUTPUT_MODULE_ID)),
+        ModuleLink::link(
+            AMPLIFIER_ID,
+            ModuleInput::new(Input::Audio, OUTPUT_MODULE_ID),
+        ),
     ];
 
     let order = SynthEngine::calc_execution_order(&links).expect("valid order");

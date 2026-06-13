@@ -134,7 +134,7 @@ impl SynthModule for Output {
     }
 
     fn output(&self) -> DataType {
-        DataType::Buffer
+        DataType::Audio
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {

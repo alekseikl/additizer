@@ -12,7 +12,7 @@ pub use ui_bridge::AmplifierUiBridge;
 
 use crate::synth_engine::{
     StereoSample,
-    buffer::{Buffer, new_channels_layout, zero_buffer},
+    buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
     routing::{DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router},
     smooth::SmoothedSample,
     synth_module::{ModInput, ProcessParams, SynthModule, VoiceRouter, VoiceRouterFactory},
@@ -53,15 +53,13 @@ struct Buffers {
     gain_mod_input: Buffer,
 }
 
-type ChannelVoices = [Voice; MAX_VOICES];
-
 pub struct Amplifier {
     id: ModuleId,
     channel_params: [ChannelParams; NUM_CHANNELS],
     buffers: Buffers,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
+    voices: VoicesLayout<Voice>,
 }
 
 impl Amplifier {
@@ -86,7 +84,7 @@ impl Amplifier {
             },
             audio_end,
             ui_end: Some(ui_end),
-            voices: new_channels_layout(),
+            voices: new_voices_layout(),
         }
     }
 
@@ -139,7 +137,7 @@ impl SynthModule for Amplifier {
     }
 
     fn output(&self) -> DataType {
-        DataType::Buffer
+        DataType::Audio
     }
 
     fn handle_ui_events(&mut self) {

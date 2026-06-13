@@ -279,7 +279,7 @@ fn synth_module_metadata() {
 
     assert_eq!(osc.id(), 42);
     assert_eq!(osc.module_type(), ModuleType::Oscillator);
-    assert_eq!(osc.output(), DataType::Buffer);
+    assert_eq!(osc.output(), DataType::Audio);
     assert!(!osc.inputs().is_empty());
 }
 
@@ -372,13 +372,13 @@ fn remaining_setters_round_trip_and_clamp() {
     assert_eq!(osc.get_config().gains_blend, StereoSample::ONE);
 
     osc.set_unison_phase_to(0, StereoSample::splat(5.0));
-    assert_eq!(
-        osc.get_config().unison[0].phase_shift_to,
-        StereoSample::ONE
-    );
+    assert_eq!(osc.get_config().unison[0].phase_shift_to, StereoSample::ONE);
 
     osc.set_unison_gain_to(1, StereoSample::splat(50.0));
-    assert_eq!(osc.get_config().unison[1].gain_to, StereoSample::splat(10.0));
+    assert_eq!(
+        osc.get_config().unison[1].gain_to,
+        StereoSample::splat(10.0)
+    );
 }
 
 // ---- handle_ui_events ----
@@ -650,11 +650,7 @@ fn handle_events_applies_update_event() {
     for channel in 0..NUM_CHANNELS {
         assert_eq!(osc.voices[channel][0].pitch, 1.0);
         assert_eq!(
-            osc.voices[channel][0]
-                .glide
-                .as_ref()
-                .unwrap()
-                .current_pitch,
+            osc.voices[channel][0].glide.as_ref().unwrap().current_pitch,
             0.5
         );
     }
@@ -984,10 +980,7 @@ fn process_with_scalar_detune_modulation_differs_from_unmodulated() {
     let active = [0usize];
     let params = process_params(&active, 64);
 
-    unmodulated.process(
-        &params,
-        &mut TestRouter::new(HARMONIC_SERIES_BUFFER),
-    );
+    unmodulated.process(&params, &mut TestRouter::new(HARMONIC_SERIES_BUFFER));
     modulated.process(
         &params,
         &mut ModulatingTestRouter::new(HARMONIC_SERIES_BUFFER)
@@ -1013,14 +1006,10 @@ fn process_with_gain_buffer_modulation_scales_output() {
     let active = [0usize];
     let params = process_params(&active, 64);
 
-    quiet.process(
-        &params,
-        &mut TestRouter::new(HARMONIC_SERIES_BUFFER),
-    );
+    quiet.process(&params, &mut TestRouter::new(HARMONIC_SERIES_BUFFER));
     boosted.process(
         &params,
-        &mut ModulatingTestRouter::new(HARMONIC_SERIES_BUFFER)
-            .with_buffer_mod(Input::Gain, 0.5),
+        &mut ModulatingTestRouter::new(HARMONIC_SERIES_BUFFER).with_buffer_mod(Input::Gain, 0.5),
     );
 
     let quiet_rms: Sample = quiet.get_buffer_output(0, 0)[..64]

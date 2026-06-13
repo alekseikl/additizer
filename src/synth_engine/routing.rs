@@ -30,8 +30,8 @@ pub enum ModuleType {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DataType {
-    Buffer,
-    Scalar,
+    Audio,
+    Control,
     Spectral,
 }
 
@@ -148,10 +148,7 @@ impl ModuleInput {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct LinkModulation {
-    pub src: ModuleId,
-}
+pub type LinkModulation = ModuleId;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ModuleLink {
@@ -236,5 +233,5 @@ pub trait Router {
 }
 
 pub fn data_types_compatible(src: DataType, dst: DataType) -> bool {
-    src == dst || (dst == DataType::Buffer && src == DataType::Scalar)
+    src == dst || (dst == DataType::Audio && src == DataType::Control)
 }

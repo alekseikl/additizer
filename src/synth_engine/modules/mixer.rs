@@ -6,13 +6,13 @@ mod config;
 mod link;
 mod ui_bridge;
 
-pub use config::{MixerConfig, MAX_INPUTS};
+pub use config::{MAX_INPUTS, MixerConfig};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::MixerUiBridge;
 
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule, VolumeType,
-    buffer::{Buffer, copy_or_add_to_buffer, new_channels_layout, zero_buffer},
+    buffer::{Buffer, copy_or_add_to_buffer, new_voices_layout, zero_buffer},
     routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
     synth_module::{ModInput, ProcessParams, VoiceRouter, VoiceRouterFactory},
 };
@@ -125,7 +125,7 @@ impl Mixer {
             buffers: Buffers::default(),
             audio_end,
             ui_end: Some(ui_end),
-            voices: new_channels_layout(),
+            voices: new_voices_layout(),
         }
     }
 
@@ -307,7 +307,7 @@ impl SynthModule for Mixer {
     }
 
     fn output(&self) -> DataType {
-        DataType::Buffer
+        DataType::Audio
     }
 
     fn handle_ui_events(&mut self) {

@@ -11,14 +11,12 @@ use crate::{
     synth_engine::{
         StereoSample,
         buffer::{
-            Buffer, SPECTRUM_BITS, SpectralBuffer, add_buffer_value, new_channels_layout,
-            zero_buffer,
+            Buffer, SPECTRUM_BITS, SpectralBuffer, VoicesLayout, add_buffer_value,
+            new_voices_layout, zero_buffer,
         },
         oscillator::link::{AudioEnd, UiEnd, UiEvent, create_link_pair},
         phase::Phase,
-        routing::{
-            DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
-        },
+        routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent},
         smooth::SmoothedSample,
         synth_module::{ModInput, ProcessParams, SynthModule, VoiceRouter, VoiceRouterFactory},
         types::{ComplexSample, Sample},
@@ -269,9 +267,6 @@ pub enum PhasesDst {
     To,
 }
 
-type ChannelVoices = [VoiceState; MAX_VOICES];
-type ChannelVoiceBuffers = [VoiceBuffers; MAX_VOICES];
-
 pub struct Oscillator {
     buffers: Buffers,
     inverse_fft: Arc<dyn ComplexToReal<Sample>>,
@@ -281,8 +276,8 @@ pub struct Oscillator {
     channel_params: [ChannelParams; NUM_CHANNELS],
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
-    voice_buffers: Box<[ChannelVoiceBuffers; NUM_CHANNELS]>,
+    voices: VoicesLayout<VoiceState>,
+    voice_buffers: VoicesLayout<VoiceBuffers>,
 }
 
 impl Oscillator {
@@ -307,8 +302,8 @@ impl Oscillator {
             random: Pcg32::new(420, 1337),
             audio_end,
             ui_end: Some(ui_end),
-            voices: new_channels_layout(),
-            voice_buffers: new_channels_layout(),
+            voices: new_voices_layout(),
+            voice_buffers: new_voices_layout(),
         }
     }
 
@@ -931,7 +926,7 @@ impl SynthModule for Oscillator {
     }
 
     fn output(&self) -> DataType {
-        DataType::Buffer
+        DataType::Audio
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {

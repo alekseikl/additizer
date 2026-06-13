@@ -14,7 +14,7 @@ pub use ui_bridge::SpectralFilterUiBridge;
 use crate::synth_engine::{
     StereoSample,
     biquad_filter::BiquadFilter,
-    buffer::{SpectralBuffer, new_channels_layout},
+    buffer::{SpectralBuffer, new_voices_layout},
     routing::{
         DataType, Input, MAX_VOICES, ModuleId, ModuleType, NUM_CHANNELS, Router, VoiceEvent,
     },
@@ -90,7 +90,7 @@ impl SpectralFilter {
             }),
             audio_end,
             ui_end: Some(ui_end),
-            voices: new_channels_layout(),
+            voices: new_voices_layout(),
         }
     }
 

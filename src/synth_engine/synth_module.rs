@@ -1,8 +1,9 @@
 use std::any::Any;
 
 use crate::synth_engine::{
-    ModuleInput,
+    ModuleInput, StereoSample,
     buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER},
+    outputs_arena::{ModuleOutputSlots, SamplesInputSlots, SpectralInputSlot},
     routing::{DataType, Input, ModuleId, ModuleType, Router, VoiceEvent},
     smooth::{SmoothedSample, SmoothedSampleParams},
     types::Sample,
@@ -28,14 +29,14 @@ impl ModInput {
     pub const fn buffer(input: Input) -> Self {
         Self {
             input,
-            data_type: DataType::Buffer,
+            data_type: DataType::Audio,
         }
     }
 
     pub const fn scalar(input: Input) -> Self {
         Self {
             input,
-            data_type: DataType::Scalar,
+            data_type: DataType::Control,
         }
     }
 
@@ -54,6 +55,14 @@ pub trait SynthModule: Any + Send {
 
     fn inputs(&self) -> &'static [ModInput];
     fn output(&self) -> DataType;
+
+    fn set_slots(
+        &mut self,
+        inputs: &[SamplesInputSlots],
+        spectral_inputs: &[SpectralInputSlot],
+        output_slot: usize,
+    ) {
+    }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {}
     fn handle_ui_events(&mut self);
