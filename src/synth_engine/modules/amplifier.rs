@@ -12,10 +12,12 @@ pub use ui_bridge::AmplifierUiBridge;
 
 use crate::synth_engine::{
     StereoSample,
-    buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
-    routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS, Router},
+    buffer::{Buffer, VoicesLayout, zero_buffer},
+    outputs_arena::{self, InputSlots, ProcessContext, SamplesOutputSlot, SpectralInputSlot},
+    routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS},
     smooth::SmoothedSample,
-    synth_module::{ModInput, ProcessParams, SynthModule, VoiceRouter, VoiceRouterFactory},
+    synth_module::{ModInput, SynthModule},
+    types::SamplesOutput,
 };
 
 struct ChannelParams {
@@ -30,26 +32,39 @@ impl ChannelParams {
     }
 }
 
-struct Voice {
-    output: Buffer,
+pub struct Inputs {
+    audio: Option<usize>,
+    gain: InputSlots,
 }
 
-impl Voice {
-    fn new() -> Self {
+impl Default for Inputs {
+    fn default() -> Self {
         Self {
-            output: zero_buffer(),
+            audio: None,
+            gain: InputSlots::empty(Input::Gain),
         }
     }
 }
 
-impl Default for Voice {
-    fn default() -> Self {
-        Self::new()
+impl Inputs {
+    fn from_slots(inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) -> Self {
+        let mut result = Self::default();
+
+        for input in inputs {
+            match input.input_type {
+                Input::Audio => result.audio = input.slots.first().map(|s| s.src_slot),
+                Input::Gain => result.gain = input.clone(),
+                _ => (),
+            }
+        }
+
+        result
     }
 }
 
+type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, SamplesOutputSlot>;
+
 struct Buffers {
-    input: Buffer,
     gain_mod_input: Buffer,
 }
 
@@ -59,7 +74,8 @@ pub struct Amplifier {
     buffers: Buffers,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: VoicesLayout<Voice>,
+    inputs: Inputs,
+    output_slot: usize,
 }
 
 impl Amplifier {
@@ -79,12 +95,12 @@ impl Amplifier {
                 ChannelParams::from_config(config, channel_idx)
             }),
             buffers: Buffers {
-                input: zero_buffer(),
                 gain_mod_input: zero_buffer(),
             },
             audio_end,
             ui_end: Some(ui_end),
-            voices: new_voices_layout(),
+            inputs: Inputs::default(),
+            output_slot: 0,
         }
     }
 
@@ -97,21 +113,28 @@ impl Amplifier {
 
     set_smoothed_param!(set_gain, gain);
 
-    fn process_channel_voice(&mut self, mut router: VoiceRouter<'_, '_>) {
-        let channel = &mut self.channel_params[router.channel_idx()];
-        let voice = &mut self.voices[router.channel_idx()][router.voice_idx()];
+    fn process_voice(
+        &mut self,
+        output: &mut VoicesLayout<SamplesOutput>,
+        mut router: VoiceRouter<'_, '_, '_>,
+    ) {
+        let channel_idx = router.channel_idx();
+        let voice_idx = router.voice_idx();
+        let inputs = &self.inputs;
+        let channel = &mut self.channel_params[channel_idx];
+        let output = output[channel_idx][voice_idx].output();
+        let samples = router.samples();
 
         router.buff_param(
-            Input::Gain,
+            &inputs.gain,
             &mut channel.gain,
             &mut self.buffers.gain_mod_input,
         );
 
-        let input = router.buffer(Input::Audio, &mut self.buffers.input);
+        let input = router.buff(inputs.audio);
 
         for (out, input, modulation) in
-            izip!(voice.output.iter_mut(), input, self.buffers.gain_mod_input)
-                .take(router.samples())
+            izip!(output, input, &self.buffers.gain_mod_input).take(samples)
         {
             *out = input * modulation;
         }
@@ -128,13 +151,26 @@ impl SynthModule for Amplifier {
     }
 
     fn inputs(&self) -> &'static [ModInput] {
-        static INPUTS: &[ModInput] = &[ModInput::audio(Input::Audio), ModInput::audio(Input::Gain)];
+        static INPUTS: &[ModInput] = &[
+            ModInput::audio(Input::Audio),
+            ModInput::control(Input::Gain),
+        ];
 
         INPUTS
     }
 
     fn output(&self) -> DataType {
         DataType::Audio
+    }
+
+    fn set_slots(
+        &mut self,
+        inputs: &[InputSlots],
+        spectral_inputs: &[SpectralInputSlot],
+        output_slot: usize,
+    ) {
+        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
+        self.output_slot = output_slot;
     }
 
     fn handle_ui_events(&mut self) {
@@ -149,17 +185,17 @@ impl SynthModule for Amplifier {
         }
     }
 
-    fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
-        let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
+    fn process2(&mut self, ctx: &mut ProcessContext) {
+        ctx.for_samples(self.id, self.output_slot, |router, output| {
+            let num_active_voices = router.params().active_voices.len();
 
-        for channel_idx in 0..NUM_CHANNELS {
-            for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
-                self.process_channel_voice(rf.for_voice(*voice_idx, channel_idx, seq_idx));
+            for channel_idx in 0..NUM_CHANNELS {
+                for seq_idx in 0..num_active_voices {
+                    let voice_idx = router.params().active_voices[seq_idx];
+
+                    self.process_voice(output, router.for_voice(channel_idx, voice_idx, seq_idx));
+                }
             }
-        }
-    }
-
-    fn get_buffer_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
-        &self.voices[channel][voice_idx].output
+        });
     }
 }
