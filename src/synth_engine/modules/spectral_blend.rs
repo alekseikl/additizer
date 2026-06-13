@@ -114,7 +114,7 @@ impl SynthModule for SpectralBlend {
         static INPUTS: &[ModInput] = &[
             ModInput::spectral(Input::Spectrum),
             ModInput::spectral(Input::SpectrumTo),
-            ModInput::scalar(Input::Blend),
+            ModInput::control(Input::Blend),
         ];
 
         INPUTS

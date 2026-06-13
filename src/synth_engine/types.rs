@@ -112,8 +112,8 @@ impl Default for SpectralOutput {
 }
 
 impl SpectralOutput {
-    pub fn get(&self, current: bool) -> &SpectralBuffer {
-        &self.output[(current ^ self.swapped) as usize]
+    pub fn get(&self, next_frame: bool) -> &SpectralBuffer {
+        &self.output[(next_frame ^ self.swapped) as usize]
     }
 
     pub fn advance(&mut self) -> &mut SpectralBuffer {

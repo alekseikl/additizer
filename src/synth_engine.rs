@@ -14,9 +14,7 @@ use topo_sort::{SortResults, TopoSort};
 use crate::synth_engine::{
     buffer::{add_to_buffer, copy_or_add_to_buffer},
     modules::Output,
-    outputs_arena::{
-        ModuleOutputSlots, OutputsArena, SamplesInputSlots, SamplesInputSrc, SpectralInputSlot,
-    },
+    outputs_arena::{InputSlots, OutputsArena, SamplesInputSrc, SpectralInputSlot},
     routing::{DataType, LinkModulation, MIN_MODULE_ID, data_types_compatible},
     voices_handler::{
         DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
@@ -786,7 +784,7 @@ impl SynthEngine {
         struct ModuleSlots {
             data_type: DataType,
             output_slot: usize,
-            inputs: Vec<SamplesInputSlots>,
+            inputs: Vec<InputSlots>,
             spectral_inputs: Vec<SpectralInputSlot>,
         }
 
@@ -857,7 +855,7 @@ impl SynthEngine {
                 continue;
             }
 
-            let mut input_slots = SamplesInputSlots {
+            let mut input_slots = InputSlots {
                 input_type: input.input_type,
                 slots: Vec::new(),
             };

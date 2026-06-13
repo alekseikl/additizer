@@ -423,12 +423,12 @@ impl SynthModule for Envelope {
 
     fn inputs(&self) -> &'static [ModInput] {
         static INPUTS: &[ModInput] = &[
-            ModInput::scalar(Input::Delay),
-            ModInput::scalar(Input::Attack),
-            ModInput::scalar(Input::Hold),
-            ModInput::scalar(Input::Decay),
-            ModInput::scalar(Input::Sustain),
-            ModInput::scalar(Input::Release),
+            ModInput::control(Input::Delay),
+            ModInput::control(Input::Attack),
+            ModInput::control(Input::Hold),
+            ModInput::control(Input::Decay),
+            ModInput::control(Input::Sustain),
+            ModInput::control(Input::Release),
         ];
 
         INPUTS

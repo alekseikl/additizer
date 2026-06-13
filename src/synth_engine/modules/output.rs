@@ -128,7 +128,7 @@ impl SynthModule for Output {
     }
 
     fn inputs(&self) -> &'static [ModInput] {
-        static INPUTS: &[ModInput] = &[ModInput::buffer(Input::Audio)];
+        static INPUTS: &[ModInput] = &[ModInput::audio(Input::Audio)];
 
         INPUTS
     }

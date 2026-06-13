@@ -11,15 +11,26 @@ use crate::synth_engine::{
     ui_bridge::AudioEnd,
 };
 
+#[derive(Clone)]
 pub struct SamplesInputSrc {
     pub src_slot: usize,
     pub modulation_slot: Option<usize>,
     pub amount: StereoSample,
 }
 
-pub struct SamplesInputSlots {
+#[derive(Clone)]
+pub struct InputSlots {
     pub input_type: Input,
     pub slots: Vec<SamplesInputSrc>,
+}
+
+impl InputSlots {
+    pub fn empty(input_type: Input) -> Self {
+        Self {
+            input_type,
+            slots: Vec::new(),
+        }
+    }
 }
 
 pub struct SpectralInputSlot {
@@ -55,12 +66,6 @@ impl<T: Default + Send> DerefMut for ArenaSlot<T> {
             .as_deref_mut()
             .expect("buffer slot should be in place")
     }
-}
-
-#[derive(Default)]
-pub struct ModuleOutputSlots {
-    pub samples: Option<usize>,
-    pub spectral: Option<usize>,
 }
 
 pub struct OutputsArena {
@@ -160,9 +165,9 @@ impl OutputsArena {
         slot: Option<usize>,
         channel_idx: usize,
         voice_idx: usize,
-        current: bool,
+        next_frame: bool,
     ) -> Option<&SpectralBuffer> {
-        slot.map(|slot| self.spectral[slot][channel_idx][voice_idx].get(current))
+        slot.map(|slot| self.spectral[slot][channel_idx][voice_idx].get(next_frame))
     }
 }
 
@@ -173,24 +178,24 @@ pub struct ProcessContext<'c> {
 }
 
 impl<'c> ProcessContext<'c> {
-    pub fn buffer_factory<'f>(
+    pub fn for_samples<'f>(
         &'f mut self,
         module_id: ModuleId,
         output_slot: usize,
-    ) -> RouterFactory<'f, 'c, AudioOutputSlot>
+    ) -> RouterFactory<'f, 'c, SamplesOutputSlot>
     where
         'c: 'f,
     {
         RouterFactory {
             ctx: self,
             module_id,
-            output_slots: AudioOutputSlot {
+            output_slots: SamplesOutputSlot {
                 samples_slot: output_slot,
             },
         }
     }
 
-    pub fn spectral_factory<'f>(
+    pub fn for_spectral<'f>(
         &'f mut self,
         module_id: ModuleId,
         output_slot: usize,
@@ -210,11 +215,11 @@ impl<'c> ProcessContext<'c> {
 
 pub trait OutputSlotType {}
 
-pub struct AudioOutputSlot {
+pub struct SamplesOutputSlot {
     samples_slot: usize,
 }
 
-impl OutputSlotType for AudioOutputSlot {}
+impl OutputSlotType for SamplesOutputSlot {}
 
 pub struct SpectralOutputSlot {
     spectral_slot: usize,
@@ -229,6 +234,10 @@ pub struct RouterFactory<'f, 'c, S: OutputSlotType> {
 }
 
 impl<'f, 'c, S: OutputSlotType> RouterFactory<'f, 'c, S> {
+    pub fn params(&self) -> &ProcessParams<'_> {
+        &self.ctx.params
+    }
+
     pub fn for_voice<'voice>(
         &'voice mut self,
         channel_idx: usize,
@@ -247,7 +256,7 @@ impl<'f, 'c, S: OutputSlotType> RouterFactory<'f, 'c, S> {
     }
 }
 
-impl<'f, 'c> RouterFactory<'f, 'c, AudioOutputSlot> {
+impl<'f, 'c> RouterFactory<'f, 'c, SamplesOutputSlot> {
     pub fn with_output_slot(
         &mut self,
         f: impl FnOnce(&mut Self, &mut VoicesLayout<SamplesOutput>),
@@ -317,7 +326,7 @@ impl<'v, 'f, 'c, S: OutputSlotType> VoiceRouter<'v, 'f, 'c, S> {
 
     pub fn buff_param(
         &mut self,
-        input: SamplesInputSlots,
+        input: &InputSlots,
         param: &mut SmoothedSample,
         buff: &mut Buffer,
     ) {
@@ -345,17 +354,12 @@ impl<'v, 'f, 'c, S: OutputSlotType> VoiceRouter<'v, 'f, 'c, S> {
         }
     }
 
-    pub fn scalar_param(
-        &mut self,
-        input: SamplesInputSlots,
-        param: Sample,
-        current: bool,
-    ) -> Sample {
+    pub fn scalar_param(&mut self, input: &InputSlots, param: Sample, next_frame: bool) -> Sample {
         if let Some(value) = self.factory.ctx.outputs_arena.get_scalar(
             &input.slots,
             self.channel_idx,
             self.voice_idx,
-            current,
+            next_frame,
         ) {
             let value = value + param;
 
@@ -374,11 +378,11 @@ impl<'v, 'f, 'c, S: OutputSlotType> VoiceRouter<'v, 'f, 'c, S> {
         }
     }
 
-    pub fn spectral(&self, slot: Option<usize>, current: bool) -> &SpectralBuffer {
+    pub fn spectral(&self, slot: Option<usize>, next_frame: bool) -> &SpectralBuffer {
         self.factory
             .ctx
             .outputs_arena
-            .get_spectral(slot, self.channel_idx, self.voice_idx, current)
+            .get_spectral(slot, self.channel_idx, self.voice_idx, next_frame)
             .unwrap_or(&ZEROES_SPECTRAL_BUFFER)
     }
 }

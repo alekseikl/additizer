@@ -1,9 +1,9 @@
 use std::any::Any;
 
 use crate::synth_engine::{
-    ModuleInput, StereoSample,
+    ModuleInput,
     buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER},
-    outputs_arena::{ModuleOutputSlots, SamplesInputSlots, SpectralInputSlot},
+    outputs_arena::{InputSlots, ProcessContext, SpectralInputSlot},
     routing::{DataType, Input, ModuleId, ModuleType, Router, VoiceEvent},
     smooth::{SmoothedSample, SmoothedSampleParams},
     types::Sample,
@@ -26,14 +26,14 @@ pub struct ModInput {
 }
 
 impl ModInput {
-    pub const fn buffer(input: Input) -> Self {
+    pub const fn audio(input: Input) -> Self {
         Self {
             input,
             data_type: DataType::Audio,
         }
     }
 
-    pub const fn scalar(input: Input) -> Self {
+    pub const fn control(input: Input) -> Self {
         Self {
             input,
             data_type: DataType::Control,
@@ -58,7 +58,7 @@ pub trait SynthModule: Any + Send {
 
     fn set_slots(
         &mut self,
-        inputs: &[SamplesInputSlots],
+        inputs: &[InputSlots],
         spectral_inputs: &[SpectralInputSlot],
         output_slot: usize,
     ) {
@@ -68,7 +68,9 @@ pub trait SynthModule: Any + Send {
     fn handle_ui_events(&mut self);
     fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {}
 
-    fn process(&mut self, params: &ProcessParams, router: &mut dyn Router);
+    fn process(&mut self, params: &ProcessParams, router: &mut dyn Router) {}
+
+    fn process2(&mut self, ctx: &mut ProcessContext) {}
 
     fn get_buffer_output(&self, voice_idx: usize, channel_idx: usize) -> &Buffer {
         panic!("{:?} don't have buffer output.", self.module_type())

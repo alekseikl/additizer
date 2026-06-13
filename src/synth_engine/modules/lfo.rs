@@ -288,9 +288,9 @@ impl SynthModule for Lfo {
 
     fn inputs(&self) -> &'static [ModInput] {
         static INPUTS: &[ModInput] = &[
-            ModInput::scalar(Input::LowFrequency),
-            ModInput::scalar(Input::PhaseShift),
-            ModInput::scalar(Input::Skew),
+            ModInput::control(Input::LowFrequency),
+            ModInput::control(Input::PhaseShift),
+            ModInput::control(Input::Skew),
         ];
 
         INPUTS

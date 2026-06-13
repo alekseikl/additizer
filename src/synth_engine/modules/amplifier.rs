@@ -128,10 +128,7 @@ impl SynthModule for Amplifier {
     }
 
     fn inputs(&self) -> &'static [ModInput] {
-        static INPUTS: &[ModInput] = &[
-            ModInput::buffer(Input::Audio),
-            ModInput::buffer(Input::Gain),
-        ];
+        static INPUTS: &[ModInput] = &[ModInput::audio(Input::Audio), ModInput::audio(Input::Gain)];
 
         INPUTS
     }

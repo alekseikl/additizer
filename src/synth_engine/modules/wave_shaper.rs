@@ -158,9 +158,9 @@ impl SynthModule for WaveShaper {
 
     fn inputs(&self) -> &'static [ModInput] {
         static INPUTS: &[ModInput] = &[
-            ModInput::buffer(Input::Audio),
-            ModInput::buffer(Input::ClippingLevel),
-            ModInput::buffer(Input::Distortion),
+            ModInput::audio(Input::Audio),
+            ModInput::audio(Input::ClippingLevel),
+            ModInput::audio(Input::Distortion),
         ];
 
         INPUTS

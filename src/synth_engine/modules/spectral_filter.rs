@@ -233,9 +233,9 @@ impl SynthModule for SpectralFilter {
     fn inputs(&self) -> &'static [ModInput] {
         static INPUTS: &[ModInput] = &[
             ModInput::spectral(Input::Spectrum),
-            ModInput::scalar(Input::Cutoff),
-            ModInput::scalar(Input::Q),
-            ModInput::scalar(Input::Drive),
+            ModInput::control(Input::Cutoff),
+            ModInput::control(Input::Q),
+            ModInput::control(Input::Drive),
         ];
 
         INPUTS
