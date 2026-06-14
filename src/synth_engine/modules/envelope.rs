@@ -13,8 +13,10 @@ use crate::{
         StereoSample,
         buffer::{VoicesLayout, new_voices_layout},
         curves::{CurveFunction, Exponential, ExponentialIn, ExponentialOut},
-        outputs_arena::{self, ControlRouterType, InputSlots, ProcessContext, SpectralInputSlot},
-        routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS, VoiceEvent},
+        routing::{
+            ControlRouterType, DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS,
+            ProcessContext, SpectralInputSlot, VoiceEvent, VoiceRouter,
+        },
         smooth::Smoother,
         synth_module::{ModInput, SynthModule},
         types::{Sample, SamplesOutput},
@@ -267,7 +269,7 @@ impl Inputs {
     }
 }
 
-type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, ControlRouterType>;
+type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, ControlRouterType>;
 
 pub struct Envelope {
     id: ModuleId,
@@ -338,7 +340,7 @@ impl Envelope {
     fn process_voice(
         &mut self,
         output_slot: &mut VoicesLayout<SamplesOutput>,
-        mut router: VoiceRouter<'_, '_, '_>,
+        mut router: Router<'_, '_, '_>,
     ) {
         let channel_idx = router.channel_idx();
         let voice_idx = router.voice_idx();

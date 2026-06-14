@@ -14,9 +14,9 @@ pub use ui_bridge::SpectralMixerUiBridge;
 use crate::synth_engine::{
     StereoSample,
     buffer::{VoicesLayout, new_voices_layout},
-    outputs_arena::{self, InputSlots, ProcessContext, SpectralInputSlot, SpectralRouterType},
     routing::{
-        DataType, Input, MixType, ModuleId, ModuleType, NUM_CHANNELS, VoiceEvent, VolumeType,
+        DataType, Input, InputSlots, MixType, ModuleId, ModuleType, NUM_CHANNELS, ProcessContext,
+        SpectralInputSlot, SpectralRouterType, VoiceEvent, VoiceRouter, VolumeType,
     },
     synth_module::{ModInput, SynthModule},
     types::{ComplexSample, Sample, SpectralOutput},
@@ -141,7 +141,7 @@ impl Inputs {
     }
 }
 
-type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, SpectralRouterType>;
+type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, SpectralRouterType>;
 
 pub struct SpectralMixer {
     id: ModuleId,
@@ -251,7 +251,7 @@ impl SpectralMixer {
     fn process_voice(
         &mut self,
         output: &mut VoicesLayout<SpectralOutput>,
-        mut router: VoiceRouter<'_, '_, '_>,
+        mut router: Router<'_, '_, '_>,
     ) {
         let channel_idx = router.channel_idx();
         let voice_idx = router.voice_idx();

@@ -13,8 +13,10 @@ pub use ui_bridge::SpectralBlendUiBridge;
 use crate::synth_engine::{
     StereoSample,
     buffer::{VoicesLayout, new_voices_layout},
-    outputs_arena::{self, InputSlots, ProcessContext, SpectralInputSlot, SpectralRouterType},
-    routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS, VoiceEvent},
+    routing::{
+        DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS, ProcessContext,
+        SpectralInputSlot, SpectralRouterType, VoiceEvent, VoiceRouter,
+    },
     synth_module::{ModInput, SynthModule},
     types::{Sample, SpectralOutput},
 };
@@ -80,7 +82,7 @@ impl Inputs {
     }
 }
 
-type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, SpectralRouterType>;
+type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, SpectralRouterType>;
 
 pub struct SpectralBlend {
     id: ModuleId,
@@ -128,7 +130,7 @@ impl SpectralBlend {
     fn process_voice(
         &mut self,
         output: &mut VoicesLayout<SpectralOutput>,
-        mut router: VoiceRouter<'_, '_, '_>,
+        mut router: Router<'_, '_, '_>,
     ) {
         let channel_idx = router.channel_idx();
         let voice_idx = router.voice_idx();

@@ -10,8 +10,10 @@ use crate::{
     synth_engine::{
         Expression, Input, ModuleId, ModuleType, Sample, StereoSample,
         buffer::{VoicesLayout, new_voices_layout},
-        outputs_arena::{self, ControlRouterType, InputSlots, ProcessContext, SpectralInputSlot},
-        routing::{DataType, NUM_CHANNELS, VoiceEvent},
+        routing::{
+            ControlRouterType, DataType, InputSlots, NUM_CHANNELS, ProcessContext, SpectralInputSlot,
+            VoiceEvent, VoiceRouter,
+        },
         smooth::Smoother,
         synth_module::{ModInput, SynthModule},
         types::SamplesOutput,
@@ -51,7 +53,7 @@ impl Default for VoiceState {
     }
 }
 
-type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, ControlRouterType>;
+type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, ControlRouterType>;
 
 pub struct Expressions {
     id: ModuleId,
@@ -181,7 +183,7 @@ impl Expressions {
     fn process_voice(
         &mut self,
         output_slot: &mut VoicesLayout<SamplesOutput>,
-        router: VoiceRouter<'_, '_, '_>,
+        router: Router<'_, '_, '_>,
     ) {
         let channel_idx = router.channel_idx();
         let voice_idx = router.voice_idx();

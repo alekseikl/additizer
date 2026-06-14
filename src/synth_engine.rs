@@ -13,8 +13,10 @@ use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
     modules::Output,
-    outputs_arena::{InputSlots, OutputsArena, ProcessContext, SamplesInputSrc, SpectralInputSlot},
-    routing::{DataType, LinkModulation, MIN_MODULE_ID, data_types_compatible},
+    routing::{
+        DataType, InputSlots, MIN_MODULE_ID, OutputsArena, ProcessContext, SamplesInputSrc,
+        SpectralInputSlot, data_types_compatible,
+    },
     voices_handler::{
         DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
     },
@@ -56,7 +58,6 @@ mod biquad_filter;
 mod curves;
 mod iir_decimator;
 mod modules;
-mod outputs_arena;
 mod phase;
 mod routing;
 mod smooth;
@@ -74,7 +75,7 @@ pub const MAX_BLOCK_SIZE: usize = 128;
 pub struct ModuleInputSource {
     module_id: ModuleId,
     amount: StereoSample,
-    modulation: Option<LinkModulation>,
+    modulation: Option<ModuleId>,
 }
 
 impl ModuleInputSource {

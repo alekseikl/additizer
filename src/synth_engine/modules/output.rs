@@ -8,8 +8,10 @@ use crate::{
         Input, ModuleId, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample, SynthModule,
         buffer::{Buffer, copy_or_add_to_buffer, copy_to_buffer, zero_buffer},
         iir_decimator::IirDecimator,
-        outputs_arena::{InputSlots, ProcessContext, SpectralInputSlot},
-        routing::{DataType, MAX_VOICES, NUM_CHANNELS, VoiceEvent},
+        routing::{
+            DataType, InputSlots, MAX_VOICES, NUM_CHANNELS, ProcessContext, SpectralInputSlot,
+            VoiceEvent,
+        },
         smooth::{InfiniteSmoothed, SmoothedSample},
         synth_module::ModInput,
         voices_handler::DecayingVoice,

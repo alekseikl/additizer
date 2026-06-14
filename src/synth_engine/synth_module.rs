@@ -2,8 +2,10 @@ use std::any::Any;
 
 use crate::synth_engine::{
     StereoSample,
-    outputs_arena::{InputSlots, ProcessContext, SpectralInputSlot},
-    routing::{DataType, Input, ModuleId, ModuleType, VoiceEvent},
+    routing::{
+        DataType, Input, InputSlots, ModuleId, ModuleType, ProcessContext, SpectralInputSlot,
+        VoiceEvent,
+    },
     smooth::SmoothedSampleParams,
     types::Sample,
     voices_handler::DecayingVoice,

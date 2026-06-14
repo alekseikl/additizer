@@ -8,8 +8,10 @@ use crate::{
             HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer, VoicesLayout,
             new_voices_layout,
         },
-        outputs_arena::{InputSlots, ProcessContext, SpectralInputSlot},
-        routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS},
+        routing::{
+            DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS, ProcessContext,
+            SpectralInputSlot,
+        },
         synth_module::{ModInput, SynthModule},
         types::ComplexSample,
     },

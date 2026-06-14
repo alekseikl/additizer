@@ -13,9 +13,11 @@ pub use ui_bridge::LfoUiBridge;
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample,
     buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
-    outputs_arena::{self, ControlRouterType, InputSlots, ProcessContext, SpectralInputSlot},
+    routing::{
+        ControlRouterType, DataType, InputSlots, NUM_CHANNELS, ProcessContext, SpectralInputSlot,
+        VoiceEvent, VoiceRouter,
+    },
     phase::Phase,
-    routing::{DataType, NUM_CHANNELS, VoiceEvent},
     smooth::{SmoothedSample, Smoother},
     synth_module::{ModInput, SynthModule},
     types::SamplesOutput,
@@ -113,7 +115,7 @@ impl Inputs {
     }
 }
 
-type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, ControlRouterType>;
+type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, ControlRouterType>;
 
 struct Buffers {
     frequency: Buffer,
@@ -224,7 +226,7 @@ impl Lfo {
     fn process_voice(
         &mut self,
         output_slot: &mut VoicesLayout<SamplesOutput>,
-        mut router: VoiceRouter<'_, '_, '_>,
+        mut router: Router<'_, '_, '_>,
     ) {
         let channel_idx = router.channel_idx();
         let voice_idx = router.voice_idx();

@@ -15,9 +15,11 @@ use crate::{
             new_voices_layout, zero_buffer,
         },
         oscillator::link::{AudioEnd, UiEnd, UiEvent, create_link_pair},
-        outputs_arena::{self, AudioRouterType, InputSlots, ProcessContext, SpectralInputSlot},
+        routing::{
+            AudioRouterType, DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS,
+            ProcessContext, SpectralInputSlot, VoiceEvent, VoiceRouter,
+        },
         phase::Phase,
-        routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS, VoiceEvent},
         smooth::SmoothedSample,
         synth_module::{ModInput, SynthModule},
         types::{ComplexSample, Sample, SamplesOutput},
@@ -344,7 +346,7 @@ impl Inputs {
     }
 }
 
-type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, AudioRouterType>;
+type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, AudioRouterType>;
 
 pub struct Oscillator {
     buffers: Buffers,
@@ -613,7 +615,7 @@ impl Oscillator {
         voice_buffers: &mut VoiceBuffers,
         buffers: &mut Buffers,
         triggered: bool,
-        router: &VoiceRouter<'_, '_, '_>,
+        router: &Router<'_, '_, '_>,
     ) {
         if triggered {
             let spectrum_from = router.spectral(inputs.spectrum, true);
@@ -657,7 +659,7 @@ impl Oscillator {
         channel: &ChannelParams,
         inputs: &Inputs,
         voice: &mut VoiceState,
-        router: &mut VoiceRouter<'_, '_, '_>,
+        router: &mut Router<'_, '_, '_>,
     ) {
         const MAX_DETUNE: Sample = 1.0;
         const MAX_DETUNE_POWER: Sample = 5.0;
@@ -679,7 +681,7 @@ impl Oscillator {
             triggered: bool,
             channel: &ChannelParams,
             inputs: &Inputs,
-            router: &mut VoiceRouter<'_, '_, '_>,
+            router: &mut Router<'_, '_, '_>,
         ) -> impl Iterator<Item = StateUpdate> {
             let detune = router
                 .scalar_param(&inputs.detune, channel.detune, triggered)
@@ -772,7 +774,7 @@ impl Oscillator {
         inputs: &Inputs,
         buffers: &mut Buffers,
         voice: &mut VoiceState,
-        router: &mut VoiceRouter<'_, '_, '_>,
+        router: &mut Router<'_, '_, '_>,
     ) {
         const GLIDE_TIME_THRESHOLD: Sample = from_ms(1.0);
         const GLIDE_POWER_MAX: Sample = 6.0;
@@ -844,7 +846,7 @@ impl Oscillator {
         &mut self,
         mono_spectrum: bool,
         output: &mut VoicesLayout<SamplesOutput>,
-        mut router: VoiceRouter<'_, '_, '_>,
+        mut router: Router<'_, '_, '_>,
     ) {
         let channel_idx = router.channel_idx();
         let voice_idx = router.voice_idx();
