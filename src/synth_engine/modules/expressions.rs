@@ -8,7 +8,7 @@ pub use ui_bridge::ExpressionsUiBridge;
 
 use crate::{
     synth_engine::{
-        Expression, ModuleId, ModuleType, Sample,
+        Expression, Input, ModuleId, ModuleType, Sample, StereoSample,
         buffer::{VoicesLayout, new_voices_layout},
         outputs_arena::{self, ControlRouterType, InputSlots, ProcessContext, SpectralInputSlot},
         routing::{DataType, NUM_CHANNELS, VoiceEvent},
@@ -224,6 +224,10 @@ impl SynthModule for Expressions {
         DataType::Control
     }
 
+    fn output_slot(&self) -> usize {
+        self.output_slot
+    }
+
     fn set_slots(
         &mut self,
         _inputs: &[InputSlots],
@@ -232,6 +236,8 @@ impl SynthModule for Expressions {
     ) {
         self.output_slot = output_slot;
     }
+
+    fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {}
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
         for (channel_idx, channel) in self.voices.iter_mut().enumerate() {
@@ -295,7 +301,7 @@ impl SynthModule for Expressions {
         }
     }
 
-    fn process2(&mut self, ctx: &mut ProcessContext) {
+    fn process(&mut self, ctx: &mut ProcessContext) {
         ctx.for_control(self.id, self.output_slot, |router, output| {
             let num_active_voices = router.params().active_voices.len();
 

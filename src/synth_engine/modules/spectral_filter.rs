@@ -97,6 +97,15 @@ impl Inputs {
 
         result
     }
+
+    fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
+        match input_type {
+            Input::Cutoff => self.cutoff.update_amount(src_slot, amount),
+            Input::Q => self.q.update_amount(src_slot, amount),
+            Input::Drive => self.drive.update_amount(src_slot, amount),
+            _ => (),
+        }
+    }
 }
 
 type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, SpectralRouterType>;
@@ -297,6 +306,10 @@ impl SynthModule for SpectralFilter {
         DataType::Spectral
     }
 
+    fn output_slot(&self) -> usize {
+        self.output_slot
+    }
+
     fn set_slots(
         &mut self,
         inputs: &[InputSlots],
@@ -317,6 +330,10 @@ impl SynthModule for SpectralFilter {
         }
     }
 
+    fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
+        self.inputs.update_amount(input_type, src_slot, amount);
+    }
+
     fn handle_ui_events(&mut self) {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
@@ -333,7 +350,7 @@ impl SynthModule for SpectralFilter {
         }
     }
 
-    fn process2(&mut self, ctx: &mut ProcessContext) {
+    fn process(&mut self, ctx: &mut ProcessContext) {
         ctx.for_spectral(self.id, self.output_slot, |router, output| {
             let num_active_voices = router.params().active_voices.len();
             let spectrum_channels = router.params().spectrum_channels;

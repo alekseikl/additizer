@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::{Sample, StereoSample, buffer::SpectralBuffer};
-
-use super::buffer::Buffer;
+use crate::synth_engine::{Sample, StereoSample};
 
 pub type ModuleId = i32;
 
@@ -176,60 +174,6 @@ impl ModuleLink {
             modulation: None,
         }
     }
-}
-
-pub trait Router {
-    fn get_input<'a>(
-        &'a self,
-        input: ModuleInput,
-        samples: usize,
-        voice_idx: usize,
-        channel_idx: usize,
-        input_buffer: &'a mut Buffer,
-    ) -> Option<&'a Buffer>;
-
-    fn add_input_to(
-        &self,
-        input: ModuleInput,
-        voice_idx: usize,
-        channel_idx: usize,
-        result: &mut [Sample],
-    ) -> bool;
-
-    fn read_unmodulated_input(
-        &self,
-        input: ModuleInput,
-        samples: usize,
-        voice_idx: usize,
-        channel_idx: usize,
-        input_buffer: &mut Buffer,
-    );
-
-    fn get_spectral_input(
-        &self,
-        input: ModuleInput,
-        current: bool,
-        voice_idx: usize,
-        channel_idx: usize,
-    ) -> Option<&SpectralBuffer>;
-
-    fn get_scalar_input(
-        &self,
-        input: ModuleInput,
-        current: bool,
-        voice_idx: usize,
-        channel_idx: usize,
-    ) -> Option<Sample>;
-
-    fn update_modulated_input(
-        &mut self,
-        module_id: ModuleId,
-        input: Input,
-        channel_idx: usize,
-        value: Sample,
-    );
-
-    fn update_output(&mut self, module_id: ModuleId, channel_idx: usize, value: Sample);
 }
 
 pub fn data_types_compatible(src: DataType, dst: DataType) -> bool {

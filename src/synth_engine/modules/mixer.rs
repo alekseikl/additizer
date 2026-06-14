@@ -111,6 +111,23 @@ impl Inputs {
 
         result
     }
+
+    fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
+        match input_type {
+            Input::Gain => self.gain.update_amount(src_slot, amount),
+            Input::Level => self.level.update_amount(src_slot, amount),
+            Input::GainMix(idx) if idx < MAX_INPUTS => {
+                self.gain_mix[idx as usize].update_amount(src_slot, amount);
+            }
+            Input::LevelMix(idx) if idx < MAX_INPUTS => {
+                self.level_mix[idx as usize].update_amount(src_slot, amount);
+            }
+            Input::AudioMix(idx) if idx < MAX_INPUTS => {
+                self.audio_mix[idx as usize].update_amount(src_slot, amount);
+            }
+            _ => (),
+        }
+    }
 }
 
 type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, AudioRouterType>;
@@ -370,6 +387,10 @@ impl SynthModule for Mixer {
         DataType::Audio
     }
 
+    fn output_slot(&self) -> usize {
+        self.output_slot
+    }
+
     fn set_slots(
         &mut self,
         inputs: &[InputSlots],
@@ -378,6 +399,10 @@ impl SynthModule for Mixer {
     ) {
         self.inputs = Inputs::from_slots(inputs, spectral_inputs);
         self.output_slot = output_slot;
+    }
+
+    fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
+        self.inputs.update_amount(input_type, src_slot, amount);
     }
 
     fn handle_ui_events(&mut self) {
@@ -400,7 +425,7 @@ impl SynthModule for Mixer {
         }
     }
 
-    fn process2(&mut self, ctx: &mut ProcessContext) {
+    fn process(&mut self, ctx: &mut ProcessContext) {
         ctx.for_audio(self.id, self.output_slot, |router, output| {
             let num_active_voices = router.params().active_voices.len();
 

@@ -11,10 +11,10 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::ExternalParamUiBridge;
 
 use crate::synth_engine::{
-    ModuleId, ModuleType, Sample,
+    ModuleId, ModuleType, Sample, StereoSample,
     buffer::{VoicesLayout, new_voices_layout},
     outputs_arena::{self, ControlRouterType, InputSlots, ProcessContext, SpectralInputSlot},
-    routing::{DataType, NUM_CHANNELS, VoiceEvent},
+    routing::{DataType, Input, NUM_CHANNELS, VoiceEvent},
     smooth::Smoother,
     synth_module::{ModInput, SynthModule},
     types::SamplesOutput,
@@ -165,6 +165,10 @@ impl SynthModule for ExternalParam {
         DataType::Control
     }
 
+    fn output_slot(&self) -> usize {
+        self.output_slot
+    }
+
     fn set_slots(
         &mut self,
         _inputs: &[InputSlots],
@@ -173,6 +177,8 @@ impl SynthModule for ExternalParam {
     ) {
         self.output_slot = output_slot;
     }
+
+    fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {}
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
         for channel in self.voices.iter_mut() {
@@ -200,7 +206,7 @@ impl SynthModule for ExternalParam {
         }
     }
 
-    fn process2(&mut self, ctx: &mut ProcessContext) {
+    fn process(&mut self, ctx: &mut ProcessContext) {
         ctx.for_control(self.id, self.output_slot, |router, output| {
             let num_active_voices = router.params().active_voices.len();
 

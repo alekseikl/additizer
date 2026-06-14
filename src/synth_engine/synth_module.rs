@@ -1,9 +1,9 @@
 use std::any::Any;
 
 use crate::synth_engine::{
-    buffer::{Buffer, SpectralBuffer},
+    StereoSample,
     outputs_arena::{InputSlots, ProcessContext, SpectralInputSlot},
-    routing::{DataType, Input, ModuleId, ModuleType, Router, VoiceEvent},
+    routing::{DataType, Input, ModuleId, ModuleType, VoiceEvent},
     smooth::SmoothedSampleParams,
     types::Sample,
     voices_handler::DecayingVoice,
@@ -55,38 +55,22 @@ pub trait SynthModule: Any + Send {
     fn inputs(&self) -> &'static [ModInput];
     fn output(&self) -> DataType;
 
+    fn output_slot(&self) -> usize;
+
     fn set_slots(
         &mut self,
         inputs: &[InputSlots],
         spectral_inputs: &[SpectralInputSlot],
         output_slot: usize,
-    ) {
-    }
+    );
+
+    fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample);
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {}
     fn handle_ui_events(&mut self);
     fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {}
 
-    fn process(&mut self, params: &ProcessParams, router: &mut dyn Router) {}
-
-    fn process2(&mut self, ctx: &mut ProcessContext) {}
-
-    fn get_buffer_output(&self, voice_idx: usize, channel_idx: usize) -> &Buffer {
-        panic!("{:?} don't have buffer output.", self.module_type())
-    }
-
-    fn get_spectral_output(
-        &self,
-        current: bool,
-        voice_idx: usize,
-        channel_idx: usize,
-    ) -> &SpectralBuffer {
-        panic!("{:?} don't have spectral output.", self.module_type())
-    }
-
-    fn get_scalar_output(&self, current: bool, voice_idx: usize, channel_idx: usize) -> Sample {
-        panic!("{:?} don't have scalar output.", self.module_type())
-    }
+    fn process(&mut self, ctx: &mut ProcessContext);
 }
 
 pub trait ModuleUiBridge: Any + Send {

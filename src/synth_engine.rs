@@ -12,9 +12,8 @@ use std::assert_matches;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
-    buffer::{add_to_buffer, copy_or_add_to_buffer},
     modules::Output,
-    outputs_arena::{InputSlots, OutputsArena, SamplesInputSrc, SpectralInputSlot},
+    outputs_arena::{InputSlots, OutputsArena, ProcessContext, SamplesInputSrc, SpectralInputSlot},
     routing::{DataType, LinkModulation, MIN_MODULE_ID, data_types_compatible},
     voices_handler::{
         DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
@@ -42,7 +41,7 @@ pub use modules::{
 };
 pub use routing::{
     Expression, Input, MixType, ModuleId, ModuleInput, ModuleLink, ModuleType, NUM_CHANNELS,
-    OUTPUT_MODULE_ID, Router, VoiceEvent, VolumeType,
+    OUTPUT_MODULE_ID, VoiceEvent, VolumeType,
 };
 pub use smooth::SmoothedSampleParams;
 pub use stereo_sample::StereoSample;
@@ -92,7 +91,7 @@ impl ModuleInputSource {
     }
 }
 
-type ModulesMap = FxHashMap<ModuleId, Option<Box<dyn SynthModule>>>;
+type ModulesMap = FxHashMap<ModuleId, Box<dyn SynthModule>>;
 type RoutingMap = FxHashMap<ModuleInput, Vec<ModuleInputSource>>;
 
 trait ModuleAccess {
@@ -113,11 +112,11 @@ trait ModuleAccess {
 
 impl ModuleAccess for ModulesMap {
     fn get_module(&self, id: ModuleId) -> Option<&dyn SynthModule> {
-        self.get(&id).and_then(|module| module.as_deref())
+        self.get(&id).map(|module| module.as_ref())
     }
 
     fn get_module_mut(&mut self, id: ModuleId) -> Option<&mut dyn SynthModule> {
-        self.get_mut(&id).and_then(|module| module.as_deref_mut())
+        self.get_mut(&id).map(|module| module.as_mut())
     }
 }
 
@@ -143,7 +142,7 @@ macro_rules! add_module_method {
             let id = self.alloc_module_id();
             let module = Box::new($module_type::new(id $(, self.$arg() )*));
 
-            self.modules.insert(id, Some(module));
+            self.modules.insert(id, module);
             id
         }
     };
@@ -181,11 +180,11 @@ impl SynthEngine {
 
         engine.modules.insert(
             OUTPUT_MODULE_ID,
-            Some(Box::new(Output::new(
+            Box::new(Output::new(
                 cfg.engine.output_gain,
                 cfg.engine.voice_kill_time,
                 output_level_param,
-            ))),
+            )),
         );
 
         macro_rules! from_cfg {
@@ -225,15 +224,13 @@ impl SynthEngine {
                 max_module_id = module_id;
             }
 
-            engine.modules.insert(module_id, Some(module));
+            engine.modules.insert(module_id, module);
         }
 
         engine.next_id = max_module_id + 1;
 
-        for link in cfg.links.iter() {
-            if !engine.add_config_link(link) {
-                return None;
-            }
+        if !engine.set_config_links(&cfg.links) {
+            return None;
         }
 
         Some(engine)
@@ -313,7 +310,7 @@ impl SynthEngine {
         ui_bridge::RoutingState::new(
             self.modules
                 .values()
-                .filter_map(|m| m.as_deref())
+                .map(|m| m.as_ref())
                 .filter(|m| !matches!(m.module_type(), ModuleType::Output))
                 .map(|m| (m.id(), ui_bridge::routing_state::Module::new(m)))
                 .collect(),
@@ -417,26 +414,28 @@ impl SynthEngine {
         self.setup_routing(&new_links).unwrap();
     }
 
-    fn add_config_link(&mut self, link: &LinkConfig) -> bool {
-        let src = link.src_id;
-        let dst = ModuleInput::new(link.dst_input, link.dst_id);
-
-        if self.can_be_linked(&src, &dst).is_err() {
-            return false;
-        }
-
-        if self.already_linked(&src, &dst) {
-            return true;
-        }
-
+    fn set_config_links(&mut self, links: &[LinkConfig]) -> bool {
         let mut new_links = self.get_links();
 
-        new_links.push(ModuleLink {
-            src,
-            dst,
-            amount: link.amount,
-            modulation: link.modulator_id,
-        });
+        for link in links.iter() {
+            let src = link.src_id;
+            let dst = ModuleInput::new(link.dst_input, link.dst_id);
+
+            if self.can_be_linked(&src, &dst).is_err() {
+                return false;
+            }
+
+            if self.already_linked(&src, &dst) {
+                continue;
+            }
+
+            new_links.push(ModuleLink {
+                src,
+                dst,
+                amount: link.amount,
+                modulation: link.modulator_id,
+            });
+        }
 
         self.setup_routing(&new_links).is_ok()
     }
@@ -478,8 +477,11 @@ impl SynthEngine {
     pub fn update_link_amount(&mut self, src: &ModuleId, dst: &ModuleInput, amount: StereoSample) {
         if let Some(inputs) = self.input_sources.get_mut(dst)
             && let Some(input) = inputs.iter_mut().find(|input| input.module_id == *src)
+            && let Some(src_slot) = self.modules.get(src).map(|m| m.output_slot())
+            && let Some(dst_module) = self.modules.get_mut(&dst.module_id)
         {
             input.amount = amount;
+            dst_module.update_input_amount(dst.input_type, src_slot, amount);
         }
     }
 
@@ -591,7 +593,7 @@ impl SynthEngine {
 
         self.modules
             .values_mut()
-            .filter_map(|m| m.as_deref_mut())
+            .map(|m| m.as_mut())
             .for_each(|m| m.handle_ui_events());
     }
 
@@ -633,24 +635,25 @@ impl SynthEngine {
         };
         let sample_rate = self.sample_rate();
 
-        let params = ProcessParams {
-            samples,
-            sample_rate,
-            buffer_t_step: samples as Sample / sample_rate,
-            smooth_params: SmoothedSampleParams::new(sample_rate),
-            needs_update_ui: update_ui,
-            spectrum_channels: self.spectrum_channels,
-            active_voices: &playing_voices,
+        let mut ctx = ProcessContext {
+            outputs_arena: &mut self.outputs_arena,
+            audio_end: &mut self.audio_end,
+            params: ProcessParams {
+                samples,
+                sample_rate,
+                buffer_t_step: samples as Sample / sample_rate,
+                smooth_params: SmoothedSampleParams::new(sample_rate),
+                needs_update_ui: update_ui,
+                spectrum_channels: self.spectrum_channels,
+                active_voices: &playing_voices,
+            },
         };
 
         for i in 0..self.execution_order.len() {
             let module_id = self.execution_order[i];
 
-            if let Some(module_box) = self.modules.get_mut(&module_id)
-                && let Some(mut module) = module_box.take()
-            {
-                module.process(&params, self);
-                self.modules.get_mut(&module_id).unwrap().replace(module);
+            if let Some(module) = self.modules.get_mut(&module_id) {
+                module.process(&mut ctx);
             }
         }
 
@@ -794,18 +797,16 @@ impl SynthEngine {
         let mut modules_slots: FxHashMap<_, _> = self
             .modules
             .iter()
-            .filter_map(|(&mod_id, m)| {
-                m.as_deref().map(|m| {
-                    (
-                        mod_id,
-                        ModuleSlots {
-                            data_type: m.output(),
-                            output_slot: 0,
-                            inputs: Default::default(),
-                            spectral_inputs: Default::default(),
-                        },
-                    )
-                })
+            .map(|(&mod_id, m)| {
+                (
+                    mod_id,
+                    ModuleSlots {
+                        data_type: m.output(),
+                        output_slot: 0,
+                        inputs: Default::default(),
+                        spectral_inputs: Default::default(),
+                    },
+                )
             })
             .collect();
 
@@ -891,19 +892,25 @@ impl SynthEngine {
                 input_slots.slots.push(input_src);
             }
 
-            for (module_id, mod_slots) in modules_slots.iter() {
-                let module = self
-                    .modules
-                    .get_mut(module_id)
-                    .and_then(|m| m.as_deref_mut())
-                    .expect("module should be in place");
+            let dst_module = modules_slots
+                .get_mut(&input.module_id)
+                .expect("should be in place");
 
-                module.set_slots(
-                    &mod_slots.inputs,
-                    &mod_slots.spectral_inputs,
-                    mod_slots.output_slot,
-                );
-            }
+            dst_module.inputs.push(input_slots);
+        }
+
+        for (module_id, mod_slots) in modules_slots.iter() {
+            let module = self
+                .modules
+                .get_mut(module_id)
+                .map(|m| m.as_mut())
+                .expect("module should be in place");
+
+            module.set_slots(
+                &mod_slots.inputs,
+                &mod_slots.spectral_inputs,
+                mod_slots.output_slot,
+            );
         }
     }
 
@@ -931,215 +938,5 @@ impl SynthEngine {
 
     fn stereo_spectrum_channels(stereo_spectrum: bool) -> usize {
         if stereo_spectrum { NUM_CHANNELS } else { 1 }
-    }
-}
-
-impl Router for SynthEngine {
-    fn get_input<'a>(
-        &'a self,
-        input: ModuleInput,
-        samples: usize,
-        voice_idx: usize,
-        channel_idx: usize,
-        input_buffer: &'a mut Buffer,
-    ) -> Option<&'a Buffer> {
-        let sources = self.input_sources.get(&input)?;
-
-        if sources.len() == 1
-            && let Some(first) = sources.first()
-            && first.amount == StereoSample::ONE
-            && first.modulation.is_none()
-            && let Some(module) = self.modules.get_module(first.module_id)
-        {
-            return Some(module.get_buffer_output(voice_idx, channel_idx));
-        }
-
-        if sources.is_empty() {
-            return None;
-        }
-
-        let result = &mut input_buffer[..samples];
-
-        let modules = sources.iter().filter_map(|source| {
-            self.modules
-                .get_module(source.module_id)
-                .map(|module| (module, source.amount, source.modulation))
-        });
-
-        for (mod_idx, (module, amount, modulation)) in modules.enumerate() {
-            let amount = amount[channel_idx];
-            let input = module
-                .get_buffer_output(voice_idx, channel_idx)
-                .iter()
-                .map(|sample| sample * amount);
-
-            if let Some(modulation) = modulation
-                && let Some(module) = self.modules.get_module(modulation)
-            {
-                let input_mod = module.get_buffer_output(voice_idx, channel_idx).iter();
-
-                copy_or_add_to_buffer(
-                    mod_idx == 0,
-                    result,
-                    input
-                        .zip(input_mod)
-                        .map(|(input, input_mod)| input * input_mod),
-                );
-            } else {
-                copy_or_add_to_buffer(mod_idx == 0, result, input);
-            }
-        }
-
-        Some(input_buffer)
-    }
-
-    fn add_input_to(
-        &self,
-        input: ModuleInput,
-        voice_idx: usize,
-        channel_idx: usize,
-        result: &mut [Sample],
-    ) -> bool {
-        let Some(sources) = self.input_sources.get(&input) else {
-            return false;
-        };
-
-        let modules = sources.iter().filter_map(|source| {
-            self.modules
-                .get_module(source.module_id)
-                .map(|module| (module, source.amount, source.modulation))
-        });
-
-        for (module, amount, modulation) in modules {
-            let amount = amount[channel_idx];
-            let input = module
-                .get_buffer_output(voice_idx, channel_idx)
-                .iter()
-                .map(|sample| sample * amount);
-
-            if let Some(modulation) = modulation
-                && let Some(module) = self.modules.get_module(modulation)
-            {
-                let input_mod = module.get_buffer_output(voice_idx, channel_idx).iter();
-
-                add_to_buffer(
-                    result,
-                    input
-                        .zip(input_mod)
-                        .map(|(input, input_mod)| input * input_mod),
-                );
-            } else {
-                add_to_buffer(result, input);
-            }
-        }
-
-        true
-    }
-
-    fn read_unmodulated_input(
-        &self,
-        input: ModuleInput,
-        samples: usize,
-        voice_idx: usize,
-        channel_idx: usize,
-        input_buffer: &mut Buffer,
-    ) {
-        let result = &mut input_buffer[..samples];
-
-        if let Some(sources) = self.input_sources.get(&input)
-            && !sources.is_empty()
-        {
-            let modules = sources
-                .iter()
-                .filter_map(|source| self.modules.get_module(source.module_id));
-
-            for (mod_idx, module) in modules.enumerate() {
-                let pairs = result
-                    .iter_mut()
-                    .zip(module.get_buffer_output(voice_idx, channel_idx));
-
-                if mod_idx == 0 {
-                    pairs.for_each(|(out, sample)| *out = *sample);
-                } else {
-                    pairs.for_each(|(out, sample)| *out += *sample);
-                }
-            }
-        } else {
-            result.fill(0.0);
-        }
-    }
-
-    fn get_spectral_input(
-        &self,
-        input: ModuleInput,
-        current: bool,
-        voice_idx: usize,
-        channel_idx: usize,
-    ) -> Option<&SpectralBuffer> {
-        let sources = self.input_sources.get(&input)?;
-
-        if let Some(first) = sources.first()
-            && let Some(module) = self.modules.get_module(first.module_id)
-        {
-            Some(module.get_spectral_output(current, voice_idx, channel_idx))
-        } else {
-            None
-        }
-    }
-
-    fn get_scalar_input(
-        &self,
-        input: ModuleInput,
-        current: bool,
-        voice_idx: usize,
-        channel_idx: usize,
-    ) -> Option<Sample> {
-        let sources = self.input_sources.get(&input)?;
-
-        if sources.is_empty() {
-            return None;
-        }
-
-        let mut output: Sample = 0.0;
-
-        let values = sources.iter().filter_map(|source| {
-            self.modules.get_module(source.module_id).map(|module| {
-                (
-                    module.get_scalar_output(current, voice_idx, channel_idx),
-                    source.amount,
-                    source.modulation,
-                )
-            })
-        });
-
-        for (value, amount, modulation) in values {
-            let mut input = value * amount[channel_idx];
-
-            if let Some(modulation) = modulation
-                && let Some(module) = self.modules.get_module(modulation)
-            {
-                input *= module.get_scalar_output(current, voice_idx, channel_idx);
-            }
-
-            output += input;
-        }
-
-        Some(output)
-    }
-
-    fn update_modulated_input(
-        &mut self,
-        module_id: ModuleId,
-        input: Input,
-        channel_idx: usize,
-        value: Sample,
-    ) {
-        self.audio_end
-            .update_modulated_input(module_id, input, channel_idx as u8, value);
-    }
-
-    fn update_output(&mut self, module_id: ModuleId, channel_idx: usize, value: Sample) {
-        self.audio_end
-            .update_output(module_id, channel_idx as u8, value);
     }
 }

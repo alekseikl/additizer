@@ -9,7 +9,7 @@ use crate::{
             new_voices_layout,
         },
         outputs_arena::{InputSlots, ProcessContext, SpectralInputSlot},
-        routing::{DataType, ModuleId, ModuleType, NUM_CHANNELS},
+        routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS},
         synth_module::{ModInput, SynthModule},
         types::ComplexSample,
     },
@@ -221,6 +221,10 @@ impl SynthModule for HarmonicEditor {
         DataType::Spectral
     }
 
+    fn output_slot(&self) -> usize {
+        self.output_slot
+    }
+
     fn set_slots(
         &mut self,
         _inputs: &[InputSlots],
@@ -228,6 +232,9 @@ impl SynthModule for HarmonicEditor {
         output_slot: usize,
     ) {
         self.output_slot = output_slot;
+    }
+
+    fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
@@ -265,25 +272,23 @@ impl SynthModule for HarmonicEditor {
         }
     }
 
-    fn process2(&mut self, ctx: &mut ProcessContext) {
+    fn process(&mut self, ctx: &mut ProcessContext) {
         ctx.for_spectral(self.id, self.output_slot, |router, output| {
             let num_active_voices = router.params().active_voices.len();
             let spectrum_channels = router.params().spectrum_channels;
 
             for channel_idx in 0..spectrum_channels {
-                let channel_output = self.harmonics[channel_idx];
-
                 for seq_idx in 0..num_active_voices {
                     let voice_idx = router.params().active_voices[seq_idx];
                     let voice = &mut self.voices[channel_idx][voice_idx];
                     let voice_output = &mut output[channel_idx][voice_idx];
 
                     if voice.triggered {
-                        *voice_output.advance() = channel_output;
+                        *voice_output.advance() = self.harmonics[channel_idx];
                         voice.triggered = false;
                     }
 
-                    *voice_output.advance() = channel_output;
+                    *voice_output.advance() = self.harmonics[channel_idx];
                 }
             }
         });

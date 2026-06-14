@@ -72,6 +72,12 @@ impl Inputs {
 
         result
     }
+
+    fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
+        if input_type == Input::Blend {
+            self.blend.update_amount(src_slot, amount);
+        }
+    }
 }
 
 type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, SpectralRouterType>;
@@ -172,6 +178,10 @@ impl SynthModule for SpectralBlend {
         DataType::Spectral
     }
 
+    fn output_slot(&self) -> usize {
+        self.output_slot
+    }
+
     fn set_slots(
         &mut self,
         inputs: &[InputSlots],
@@ -180,6 +190,10 @@ impl SynthModule for SpectralBlend {
     ) {
         self.inputs = Inputs::from_slots(inputs, spectral_inputs);
         self.output_slot = output_slot;
+    }
+
+    fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
+        self.inputs.update_amount(input_type, src_slot, amount);
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
@@ -204,7 +218,7 @@ impl SynthModule for SpectralBlend {
         }
     }
 
-    fn process2(&mut self, ctx: &mut ProcessContext) {
+    fn process(&mut self, ctx: &mut ProcessContext) {
         ctx.for_spectral(self.id, self.output_slot, |router, output| {
             let num_active_voices = router.params().active_voices.len();
             let spectrum_channels = router.params().spectrum_channels;

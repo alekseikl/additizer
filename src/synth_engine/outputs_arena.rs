@@ -35,6 +35,12 @@ impl InputSlots {
     pub fn first_slot(&self) -> Option<usize> {
         self.slots.first().map(|s| s.src_slot)
     }
+
+    pub fn update_amount(&mut self, slot: usize, amount: StereoSample) {
+        if let Some(src) = self.slots.iter_mut().find(|src| src.src_slot == slot) {
+            src.amount = amount
+        }
+    }
 }
 
 pub struct SpectralInputSlot {

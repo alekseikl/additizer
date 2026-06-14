@@ -42,6 +42,7 @@ struct Channel {
 
 pub struct Output {
     audio_input: Option<usize>,
+    output_slot: usize,
     gain: [SmoothedSample; NUM_CHANNELS],
     kill_time: Sample,
     ext_level_param: Arc<FloatParam>,
@@ -59,6 +60,7 @@ impl Output {
 
         Self {
             audio_input: None,
+            output_slot: 0,
             gain: [
                 SmoothedSample::new(Self::clamp_gain(gain[0])),
                 SmoothedSample::new(Self::clamp_gain(gain[1])),
@@ -139,14 +141,21 @@ impl SynthModule for Output {
         DataType::Audio
     }
 
+    fn output_slot(&self) -> usize {
+        self.output_slot
+    }
+
     fn set_slots(
         &mut self,
         inputs: &[InputSlots],
         _spectral_inputs: &[SpectralInputSlot],
-        _output_slot: usize,
+        output_slot: usize,
     ) {
         self.audio_input = inputs.first().and_then(|s| s.first_slot());
+        self.output_slot = output_slot;
     }
+
+    fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {}
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
         for channel in &mut self.channels {
@@ -186,7 +195,7 @@ impl SynthModule for Output {
 
     fn handle_ui_events(&mut self) {}
 
-    fn process2(&mut self, ctx: &mut ProcessContext) {
+    fn process(&mut self, ctx: &mut ProcessContext) {
         let mut rf = ctx.for_output(self.id());
         let num_active_voices = rf.params().active_voices.len();
 

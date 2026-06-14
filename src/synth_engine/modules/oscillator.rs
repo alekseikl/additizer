@@ -326,6 +326,22 @@ impl Inputs {
 
         result
     }
+
+    fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
+        match input_type {
+            Input::Gain => self.gain.update_amount(src_slot, amount),
+            Input::PitchShift => self.pitch_shift.update_amount(src_slot, amount),
+            Input::PhaseShift => self.phase_shift.update_amount(src_slot, amount),
+            Input::FrequencyShift => self.freq_shift.update_amount(src_slot, amount),
+            Input::Detune => self.detune.update_amount(src_slot, amount),
+            Input::DetunePower => self.detune_power.update_amount(src_slot, amount),
+            Input::Glide => self.glide.update_amount(src_slot, amount),
+            Input::GlideSlope => self.glide_slope.update_amount(src_slot, amount),
+            Input::PhasesBlend => self.phases_blend.update_amount(src_slot, amount),
+            Input::GainsBlend => self.gains_blend.update_amount(src_slot, amount),
+            _ => (),
+        }
+    }
 }
 
 type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, AudioRouterType>;
@@ -1010,6 +1026,10 @@ impl SynthModule for Oscillator {
         DataType::Audio
     }
 
+    fn output_slot(&self) -> usize {
+        self.output_slot
+    }
+
     fn set_slots(
         &mut self,
         inputs: &[InputSlots],
@@ -1018,6 +1038,10 @@ impl SynthModule for Oscillator {
     ) {
         self.inputs = Inputs::from_slots(inputs, spectral_inputs);
         self.output_slot = output_slot;
+    }
+
+    fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
+        self.inputs.update_amount(input_type, src_slot, amount);
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
@@ -1077,7 +1101,7 @@ impl SynthModule for Oscillator {
         }
     }
 
-    fn process2(&mut self, ctx: &mut ProcessContext) {
+    fn process(&mut self, ctx: &mut ProcessContext) {
         ctx.for_audio(self.id, self.output_slot, |router, output| {
             let mono_spectrum = router.params().spectrum_channels < NUM_CHANNELS;
             let num_active_voices = router.params().active_voices.len();
