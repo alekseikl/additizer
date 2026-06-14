@@ -8,11 +8,13 @@ pub use ui_bridge::ExpressionsUiBridge;
 
 use crate::{
     synth_engine::{
-        Expression, ModuleId, ModuleType, Sample, SynthModule,
-        buffer::{Buffer, new_voices_layout, zero_buffer},
-        routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
+        Expression, ModuleId, ModuleType, Sample,
+        buffer::{VoicesLayout, new_voices_layout},
+        outputs_arena::{self, ControlRouterType, InputSlots, ProcessContext, SpectralInputSlot},
+        routing::{DataType, NUM_CHANNELS, VoiceEvent},
         smooth::Smoother,
-        synth_module::{ModInput, ProcessParams},
+        synth_module::{ModInput, SynthModule},
+        types::SamplesOutput,
     },
     utils::st_to_octave,
 };
@@ -33,32 +35,31 @@ impl Params {
     }
 }
 
-struct Voice {
+struct VoiceState {
     triggered: bool,
-    output: Sample,
-    audio_smoother: Smoother,
-    audio_output: Buffer,
+    value: Sample,
+    smoother: Smoother,
 }
 
-impl Default for Voice {
+impl Default for VoiceState {
     fn default() -> Self {
         Self {
             triggered: false,
-            output: 0.0,
-            audio_smoother: Smoother::default(),
-            audio_output: zero_buffer(),
+            value: 0.0,
+            smoother: Smoother::default(),
         }
     }
 }
 
-type ChannelVoices = [Voice; MAX_VOICES];
+type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, ControlRouterType>;
 
 pub struct Expressions {
     id: ModuleId,
     params: Params,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
+    output_slot: usize,
+    voices: VoicesLayout<VoiceState>,
 }
 
 impl Expressions {
@@ -77,6 +78,7 @@ impl Expressions {
             params: Params::from_config(config),
             audio_end,
             ui_end: Some(ui_end),
+            output_slot: 0,
             voices: new_voices_layout(),
         }
     }
@@ -117,53 +119,91 @@ impl Expressions {
         }
     }
 
-    fn handle_trigger(channel_idx: usize, voice: &mut Voice, params: &Params, velocity: Sample) {
+    fn handle_trigger(
+        channel_idx: usize,
+        voice: &mut VoiceState,
+        params: &Params,
+        velocity: Sample,
+    ) {
         if matches!(params.expression, Expression::Velocity) {
-            voice.output = velocity;
-            voice.audio_smoother.reset(velocity);
+            voice.value = velocity;
+            voice.smoother.reset(velocity);
             voice.triggered = false;
         } else {
             let default_value = Self::default_value(params.expression);
             let value = Self::transform_value(params.expression, channel_idx, default_value);
 
-            voice.output = value;
-            voice.audio_smoother.reset(value);
+            voice.value = value;
+            voice.smoother.reset(value);
             voice.triggered = true;
         }
     }
 
-    fn handle_update(channel_idx: usize, voice: &mut Voice, params: &Params, velocity: Sample) {
+    fn handle_update(
+        channel_idx: usize,
+        voice: &mut VoiceState,
+        params: &Params,
+        velocity: Sample,
+    ) {
         if matches!(params.expression, Expression::Velocity) {
-            voice.output = velocity;
+            voice.value = velocity;
         } else {
             let default_value = Self::default_value(params.expression);
             let value = Self::transform_value(params.expression, channel_idx, default_value);
 
-            voice.output = value;
+            voice.value = value;
         }
     }
 
-    fn handle_release(voice: &mut Voice, params: &Params, velocity: Sample) {
+    fn handle_release(voice: &mut VoiceState, params: &Params, velocity: Sample) {
         if matches!(params.expression, Expression::Velocity) && params.use_release_velocity {
-            voice.output = velocity;
+            voice.value = velocity;
         }
     }
 
     fn handle_expression(
         channel_idx: usize,
-        voice: &mut Voice,
+        voice: &mut VoiceState,
         expression: Expression,
         value: Sample,
     ) {
         let value = Self::transform_value(expression, channel_idx, value);
 
         if voice.triggered {
-            voice.output = value;
-            voice.audio_smoother.reset(value);
+            voice.value = value;
+            voice.smoother.reset(value);
             voice.triggered = false;
         } else {
-            voice.output = value;
+            voice.value = value;
         }
+    }
+
+    fn process_voice(
+        &mut self,
+        output_slot: &mut VoicesLayout<SamplesOutput>,
+        router: VoiceRouter<'_, '_, '_>,
+    ) {
+        let channel_idx = router.channel_idx();
+        let voice_idx = router.voice_idx();
+        let voice = &mut self.voices[channel_idx][voice_idx];
+        let samples = router.samples();
+        let voice_output = &mut output_slot[channel_idx][voice_idx];
+        let triggered = voice.triggered;
+
+        let mut control_output = voice_output.control_output(samples, triggered);
+        control_output.output().fill(voice.value);
+        drop(control_output);
+
+        if triggered {
+            voice.triggered = false;
+        }
+
+        voice.smoother.apply_if_needed(
+            samples,
+            router.sample_rate(),
+            self.params.smooth,
+            voice_output.output(samples),
+        );
     }
 }
 
@@ -182,6 +222,15 @@ impl SynthModule for Expressions {
 
     fn output(&self) -> DataType {
         DataType::Control
+    }
+
+    fn set_slots(
+        &mut self,
+        _inputs: &[InputSlots],
+        _spectral_inputs: &[SpectralInputSlot],
+        output_slot: usize,
+    ) {
+        self.output_slot = output_slot;
     }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
@@ -246,27 +295,17 @@ impl SynthModule for Expressions {
         }
     }
 
-    fn process(&mut self, params: &ProcessParams, _router: &mut dyn Router) {
-        for channel in self.voices.iter_mut() {
-            for voice_idx in params.active_voices {
-                let voice = &mut channel[*voice_idx];
+    fn process2(&mut self, ctx: &mut ProcessContext) {
+        ctx.for_control(self.id, self.output_slot, |router, output| {
+            let num_active_voices = router.params().active_voices.len();
 
-                voice
-                    .audio_smoother
-                    .update(params.sample_rate, self.params.smooth);
+            for channel_idx in 0..NUM_CHANNELS {
+                for seq_idx in 0..num_active_voices {
+                    let voice_idx = router.params().active_voices[seq_idx];
 
-                for out in voice.audio_output.iter_mut().take(params.samples) {
-                    *out = voice.audio_smoother.tick(voice.output);
+                    self.process_voice(output, router.for_voice(channel_idx, voice_idx, seq_idx));
                 }
             }
-        }
-    }
-
-    fn get_buffer_output(&self, voice_idx: usize, channel_idx: usize) -> &Buffer {
-        &self.voices[channel_idx][voice_idx].audio_output
-    }
-
-    fn get_scalar_output(&self, _current: bool, voice_idx: usize, channel: usize) -> Sample {
-        self.voices[channel][voice_idx].output
+        });
     }
 }

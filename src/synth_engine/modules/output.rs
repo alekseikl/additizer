@@ -5,13 +5,13 @@ use nih_plug::{params::FloatParam, util::db_to_gain_fast};
 
 use crate::{
     synth_engine::{
-        Input, ModuleId, ModuleInput, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample,
-        SynthModule,
+        Input, ModuleId, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample, SynthModule,
         buffer::{Buffer, copy_or_add_to_buffer, copy_to_buffer, zero_buffer},
         iir_decimator::IirDecimator,
-        routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
+        outputs_arena::{InputSlots, ProcessContext, SpectralInputSlot},
+        routing::{DataType, MAX_VOICES, NUM_CHANNELS, VoiceEvent},
         smooth::{InfiniteSmoothed, SmoothedSample},
-        synth_module::{ModInput, ProcessParams},
+        synth_module::ModInput,
         voices_handler::DecayingVoice,
     },
     utils::from_ms,
@@ -41,6 +41,7 @@ struct Channel {
 }
 
 pub struct Output {
+    audio_input: Option<usize>,
     gain: [SmoothedSample; NUM_CHANNELS],
     kill_time: Sample,
     ext_level_param: Arc<FloatParam>,
@@ -57,6 +58,7 @@ impl Output {
         let ext_gain = db_to_gain_fast(level_param.value());
 
         Self {
+            audio_input: None,
             gain: [
                 SmoothedSample::new(Self::clamp_gain(gain[0])),
                 SmoothedSample::new(Self::clamp_gain(gain[1])),
@@ -137,6 +139,15 @@ impl SynthModule for Output {
         DataType::Audio
     }
 
+    fn set_slots(
+        &mut self,
+        inputs: &[InputSlots],
+        _spectral_inputs: &[SpectralInputSlot],
+        _output_slot: usize,
+    ) {
+        self.audio_input = inputs.first().and_then(|s| s.first_slot());
+    }
+
     fn handle_events(&mut self, events: &[VoiceEvent]) {
         for channel in &mut self.channels {
             for event in events {
@@ -175,14 +186,17 @@ impl SynthModule for Output {
 
     fn handle_ui_events(&mut self) {}
 
-    fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
-        if process_params.active_voices.is_empty() {
+    fn process2(&mut self, ctx: &mut ProcessContext) {
+        let mut rf = ctx.for_output(self.id());
+        let num_active_voices = rf.params().active_voices.len();
+
+        if num_active_voices == 0 {
             self.output.iter_mut().for_each(|output| output.fill(0.0));
             return;
         }
 
-        let sample_rate = process_params.sample_rate;
-        let samples = process_params.samples;
+        let sample_rate = rf.params().sample_rate;
+        let samples = rf.params().samples;
 
         self.ext_gain_smoothed
             .set(db_to_gain_fast(self.ext_level_param.value()));
@@ -197,16 +211,16 @@ impl SynthModule for Output {
         for (channel_idx, (output, gain)) in
             self.output.iter_mut().zip(self.gain.iter_mut()).enumerate()
         {
-            for (iteration_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
-                router.read_unmodulated_input(
-                    ModuleInput::new(Input::Audio, OUTPUT_MODULE_ID),
-                    samples,
-                    *voice_idx,
-                    channel_idx,
-                    &mut self.input_buffer,
+            for seq_idx in 0..num_active_voices {
+                let voice_idx = rf.params().active_voices[seq_idx];
+                let mut router = rf.for_voice(channel_idx, voice_idx, seq_idx);
+
+                copy_to_buffer(
+                    &mut self.input_buffer[..samples],
+                    router.buff(self.audio_input).iter().copied(),
                 );
 
-                let voice = &mut self.channels[channel_idx].voices[*voice_idx];
+                let voice = &mut self.channels[channel_idx].voices[voice_idx];
 
                 if voice.killed {
                     let kill_time = self.kill_time.max(from_ms(4.0));
@@ -224,7 +238,7 @@ impl SynthModule for Output {
                 }
 
                 copy_or_add_to_buffer(
-                    iteration_idx == 0,
+                    seq_idx == 0,
                     output,
                     self.input_buffer.iter().copied().take(samples),
                 );
@@ -241,10 +255,10 @@ impl SynthModule for Output {
                 }
             }
 
-            if gain.check_needs_smoothing(&process_params.smooth_params) {
+            if gain.check_needs_smoothing(&rf.params().smooth_params) {
                 apply_volume(
                     output.iter_mut(),
-                    gain.smoothed_iter(&process_params.smooth_params),
+                    gain.smoothed_iter(&rf.params().smooth_params),
                     self.ext_gain_buffer.iter(),
                     samples,
                 );

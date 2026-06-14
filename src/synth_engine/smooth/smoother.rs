@@ -1,4 +1,4 @@
-use crate::synth_engine::{Sample, buffer::Buffer, types::ScalarOutput};
+use crate::synth_engine::Sample;
 
 const SMOOTHING_TIME_THRESHOLD: Sample = 0.0005;
 
@@ -45,16 +45,6 @@ impl Smoother {
         self.prev_value = value.mul_add(1.0 - self.smooth_mult, self.prev_value * self.smooth_mult);
 
         self.prev_value
-    }
-
-    #[inline]
-    pub fn segment(&mut self, scalar: &ScalarOutput, samples: usize, output: &mut Buffer) {
-        let from = scalar.previous();
-        let step = (scalar.current() - from) / samples as Sample;
-
-        for (idx, out) in output.iter_mut().enumerate().take(samples) {
-            *out = self.tick(step.mul_add(idx as Sample, from));
-        }
     }
 }
 
