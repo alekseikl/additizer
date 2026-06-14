@@ -445,7 +445,7 @@ impl Envelope {
             samples,
             router.sample_rate(),
             channel.smooth,
-            voice_output.output(),
+            voice_output.output(samples),
         );
     }
 }

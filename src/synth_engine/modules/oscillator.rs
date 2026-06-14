@@ -600,7 +600,7 @@ impl Oscillator {
         router: &VoiceRouter<'_, '_, '_>,
     ) {
         if triggered {
-            let spectrum_from = router.spectral_t(inputs.spectrum, true);
+            let spectrum_from = router.spectral(inputs.spectrum, true);
 
             Self::build_wave(
                 inverse_fft,
@@ -615,7 +615,7 @@ impl Oscillator {
             voice_buffers.wave_buffers_swapped = false;
         }
 
-        let spectrum = router.spectral_t(inputs.spectrum, false);
+        let spectrum = router.spectral(inputs.spectrum, false);
 
         let wave_to = if voice_buffers.wave_buffers_swapped {
             &mut voice_buffers.wave_buffers.0
@@ -666,19 +666,19 @@ impl Oscillator {
             router: &mut VoiceRouter<'_, '_, '_>,
         ) -> impl Iterator<Item = StateUpdate> {
             let detune = router
-                .scalar_param_t(&inputs.detune, channel.detune, triggered)
+                .scalar_param(&inputs.detune, channel.detune, triggered)
                 .clamp(0.0, MAX_DETUNE);
 
             let detune_power = router
-                .scalar_param_t(&inputs.detune_power, channel.detune_power, triggered)
+                .scalar_param(&inputs.detune_power, channel.detune_power, triggered)
                 .clamp(-MAX_DETUNE_POWER, MAX_DETUNE_POWER);
 
             let phases_blend = router
-                .scalar_param_t(&inputs.phases_blend, channel.phases_blend, triggered)
+                .scalar_param(&inputs.phases_blend, channel.phases_blend, triggered)
                 .clamp(0.0, 1.0);
 
             let gains_blend = router
-                .scalar_param_t(&inputs.gains_blend, channel.gains_blend, triggered)
+                .scalar_param(&inputs.gains_blend, channel.gains_blend, triggered)
                 .clamp(0.0, 1.0);
 
             let center = 0.5 * (unison - 1) as Sample;
@@ -769,7 +769,7 @@ impl Oscillator {
         };
 
         let glide_time = router
-            .scalar_param_t(&inputs.glide, channel.glide, false)
+            .scalar_param(&inputs.glide, channel.glide, false)
             .clamp(0.0, MAX_GLIDE);
         let time_left = glide_time - glide.t;
 
@@ -779,7 +779,7 @@ impl Oscillator {
         }
 
         let glide_slope = router
-            .scalar_param_t(&inputs.glide_slope, channel.glide_slope, false)
+            .scalar_param(&inputs.glide_slope, channel.glide_slope, false)
             .clamp(-1.0, 1.0);
         let glide_power = -glide_slope * GLIDE_POWER_MAX;
         let t_step = router.sample_rate().recip();
@@ -836,7 +836,7 @@ impl Oscillator {
         let buffers = &mut self.buffers;
         let channel = &mut self.channel_params[channel_idx];
         let voice = &mut self.voices[channel_idx][voice_idx];
-        let output = output[channel_idx][voice_idx].output();
+        let output = output[channel_idx][voice_idx].output(router.samples());
         let samples = router.samples();
 
         router.buff_param(&inputs.gain, &mut channel.gain, &mut buffers.gain);

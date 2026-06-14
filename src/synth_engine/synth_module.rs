@@ -1,8 +1,7 @@
 use std::any::Any;
 
 use crate::synth_engine::{
-    ModuleInput,
-    buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER},
+    buffer::{Buffer, SpectralBuffer},
     outputs_arena::{InputSlots, ProcessContext, SpectralInputSlot},
     routing::{DataType, Input, ModuleId, ModuleType, Router, VoiceEvent},
     smooth::SmoothedSampleParams,
@@ -92,78 +91,6 @@ pub trait SynthModule: Any + Send {
 
 pub trait ModuleUiBridge: Any + Send {
     fn update(&mut self);
-}
-
-pub struct VoiceRouterFactory<'a> {
-    router: &'a mut dyn Router,
-    process_params: &'a ProcessParams<'a>,
-    module_id: ModuleId,
-}
-
-impl<'a> VoiceRouterFactory<'a> {
-    pub fn new(
-        module_id: ModuleId,
-        router: &'a mut dyn Router,
-        process_params: &'a ProcessParams,
-    ) -> Self {
-        Self {
-            router,
-            process_params,
-            module_id,
-        }
-    }
-
-    pub fn for_voice<'b>(
-        &'b mut self,
-        voice_idx: usize,
-        channel_idx: usize,
-        seq_idx: usize,
-    ) -> VoiceRouter<'b, 'a>
-    where
-        'a: 'b,
-    {
-        VoiceRouter {
-            factory: self,
-            voice_idx,
-            channel_idx,
-            voice_seq_idx: seq_idx,
-        }
-    }
-}
-
-pub struct VoiceRouter<'a, 'b> {
-    factory: &'a mut VoiceRouterFactory<'b>,
-    voice_idx: usize,
-    channel_idx: usize,
-    voice_seq_idx: usize,
-}
-
-impl<'a, 'b> VoiceRouter<'a, 'b> {
-    pub fn samples(&self) -> usize {
-        self.factory.process_params.samples
-    }
-
-    pub fn channel_idx(&self) -> usize {
-        self.channel_idx
-    }
-
-    pub fn voice_idx(&self) -> usize {
-        self.voice_idx
-    }
-
-    pub fn buffer_opt(&'a self, input: Input, buff: &'a mut Buffer) -> Option<&'a Buffer> {
-        self.factory.router.get_input(
-            ModuleInput::new(input, self.factory.module_id),
-            self.factory.process_params.samples,
-            self.voice_idx,
-            self.channel_idx,
-            buff,
-        )
-    }
-
-    pub fn buffer(&'a self, input: Input, buff: &'a mut Buffer) -> &'a Buffer {
-        self.buffer_opt(input, buff).unwrap_or(&ZEROES_BUFFER)
-    }
 }
 
 macro_rules! set_mono_param {

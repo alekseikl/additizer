@@ -13,7 +13,7 @@ pub use ui_bridge::AmplifierUiBridge;
 use crate::synth_engine::{
     StereoSample,
     buffer::{Buffer, VoicesLayout, zero_buffer},
-    outputs_arena::{self, InputSlots, ProcessContext, AudioRouterType, SpectralInputSlot},
+    outputs_arena::{self, AudioRouterType, InputSlots, ProcessContext, SpectralInputSlot},
     routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS},
     smooth::SmoothedSample,
     synth_module::{ModInput, SynthModule},
@@ -122,8 +122,7 @@ impl Amplifier {
         let voice_idx = router.voice_idx();
         let inputs = &self.inputs;
         let channel = &mut self.channel_params[channel_idx];
-        let output = output[channel_idx][voice_idx].output();
-        let samples = router.samples();
+        let output = output[channel_idx][voice_idx].output(router.samples());
 
         router.buff_param(
             &inputs.gain,
@@ -133,9 +132,7 @@ impl Amplifier {
 
         let input = router.buff(inputs.audio);
 
-        for (out, input, modulation) in
-            izip!(output, input, &self.buffers.gain_mod_input).take(samples)
-        {
+        for (out, input, modulation) in izip!(output, input, &self.buffers.gain_mod_input) {
             *out = input * modulation;
         }
     }

@@ -282,7 +282,7 @@ impl Lfo {
             samples,
             sample_rate,
             channel.smooth_time,
-            voice_output.output(),
+            voice_output.output(samples),
         );
     }
 }

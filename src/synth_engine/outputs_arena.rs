@@ -31,6 +31,10 @@ impl InputSlots {
             slots: Vec::new(),
         }
     }
+
+    pub fn first_slot(&self) -> Option<usize> {
+        self.slots.first().map(|s| s.src_slot)
+    }
 }
 
 pub struct SpectralInputSlot {
@@ -439,11 +443,11 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
         }
     }
 
-    pub fn scalar_param_t(&mut self, input: &InputSlots, param: Sample, triggered: bool) -> Sample {
+    pub fn scalar_param(&mut self, input: &InputSlots, param: Sample, triggered: bool) -> Sample {
         self.scalar_param_impl(input, param, triggered)
     }
 
-    pub fn spectral_t(&self, slot: Option<usize>, triggered: bool) -> &SpectralBuffer {
+    pub fn spectral(&self, slot: Option<usize>, triggered: bool) -> &SpectralBuffer {
         self.spectral_impl(slot, triggered)
     }
 }

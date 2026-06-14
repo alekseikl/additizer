@@ -52,8 +52,8 @@ impl SamplesOutput {
         }
     }
 
-    pub fn output(&mut self) -> &mut [Sample] {
-        &mut self.buffer
+    pub fn output(&mut self, samples: usize) -> &mut [Sample] {
+        &mut self.buffer[..samples]
     }
 
     pub fn control_output(&mut self, samples: usize, triggered: bool) -> ControlRateAdapter<'_> {

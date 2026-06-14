@@ -12,10 +12,13 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::WaveShaperUiBridge;
 
 use crate::synth_engine::{
-    Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
-    buffer::{Buffer, new_voices_layout, zero_buffer},
-    routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
-    synth_module::{ModInput, ProcessParams, VoiceRouter, VoiceRouterFactory},
+    StereoSample,
+    buffer::{Buffer, VoicesLayout, zero_buffer},
+    outputs_arena::{self, AudioRouterType, InputSlots, ProcessContext, SpectralInputSlot},
+    routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS},
+    smooth::SmoothedSample,
+    synth_module::{ModInput, SynthModule},
+    types::SamplesOutput,
 };
 
 struct Params {
@@ -31,38 +34,58 @@ impl Params {
 }
 
 struct ChannelParams {
-    distortion: Sample,
-    clipping_level: Sample,
+    distortion: SmoothedSample,
+    clipping_level: SmoothedSample,
 }
 
 impl ChannelParams {
     fn from_config(c: &WaveShaperConfig, channel_idx: usize) -> Self {
         Self {
-            distortion: c.distortion[channel_idx],
-            clipping_level: c.clipping_level[channel_idx],
+            distortion: c.distortion[channel_idx].into(),
+            clipping_level: c.clipping_level[channel_idx].into(),
         }
     }
 }
 
-struct Voice {
-    output: Buffer,
+pub struct Inputs {
+    audio: Option<usize>,
+    distortion: InputSlots,
+    clipping_level: InputSlots,
 }
 
-impl Default for Voice {
+impl Default for Inputs {
     fn default() -> Self {
         Self {
-            output: zero_buffer(),
+            audio: None,
+            distortion: InputSlots::empty(Input::Distortion),
+            clipping_level: InputSlots::empty(Input::ClippingLevel),
         }
     }
 }
 
+impl Inputs {
+    fn from_slots(inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) -> Self {
+        let mut result = Self::default();
+
+        for input in inputs {
+            match input.input_type {
+                Input::Audio => result.audio = input.slots.first().map(|s| s.src_slot),
+                Input::Distortion => result.distortion = input.clone(),
+                Input::ClippingLevel => result.clipping_level = input.clone(),
+                _ => (),
+            }
+        }
+
+        result
+    }
+}
+
+type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, AudioRouterType>;
+
 struct Buffers {
-    input: Buffer,
     distortion_mod_input: Buffer,
     clipping_level_mod_input: Buffer,
 }
-
-type ChannelVoices = [Voice; MAX_VOICES];
 
 pub struct WaveShaper {
     id: ModuleId,
@@ -71,7 +94,8 @@ pub struct WaveShaper {
     buffers: Buffers,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
+    inputs: Inputs,
+    output_slot: usize,
 }
 
 impl WaveShaper {
@@ -92,13 +116,13 @@ impl WaveShaper {
                 ChannelParams::from_config(config, channel_idx)
             }),
             buffers: Buffers {
-                input: zero_buffer(),
                 distortion_mod_input: zero_buffer(),
                 clipping_level_mod_input: zero_buffer(),
             },
             audio_end,
             ui_end: Some(ui_end),
-            voices: new_voices_layout(),
+            inputs: Inputs::default(),
+            output_slot: 0,
         }
     }
 
@@ -106,36 +130,46 @@ impl WaveShaper {
         WaveShaperConfig {
             id: self.id,
             shaper_type: self.params.shaper_type,
-            distortion: get_stereo_param!(self, distortion),
-            clipping_level: get_stereo_param!(self, clipping_level),
+            distortion: get_smoothed_param!(self, distortion),
+            clipping_level: get_smoothed_param!(self, clipping_level),
         }
     }
 
     set_mono_param!(set_shaper_type, shaper_type, ShaperType);
 
-    set_stereo_param!(set_distortion, distortion);
-    set_stereo_param!(set_clipping_level, clipping_level);
+    set_smoothed_param!(set_distortion, distortion);
+    set_smoothed_param!(set_clipping_level, clipping_level);
 
-    fn process_channel_voice(&mut self, router: VoiceRouter<'_, '_>) {
-        let channel = &self.channel_params[router.channel_idx()];
-        let voice = &mut self.voices[router.channel_idx()][router.voice_idx()];
-        let input = router.buffer(Input::Audio, &mut self.buffers.input);
-        let clipping_level_mod = router.buffer(
-            Input::ClippingLevel,
+    fn process_voice(
+        &mut self,
+        output: &mut VoicesLayout<SamplesOutput>,
+        mut router: VoiceRouter<'_, '_, '_>,
+    ) {
+        let channel_idx = router.channel_idx();
+        let voice_idx = router.voice_idx();
+        let inputs = &self.inputs;
+        let channel = &mut self.channel_params[channel_idx];
+        let output = output[channel_idx][voice_idx].output(router.samples());
+
+        router.buff_param(
+            &inputs.clipping_level,
+            &mut channel.clipping_level,
             &mut self.buffers.clipping_level_mod_input,
         );
-        let distortion_mod =
-            router.buffer(Input::Distortion, &mut self.buffers.distortion_mod_input);
+        router.buff_param(
+            &inputs.distortion,
+            &mut channel.distortion,
+            &mut self.buffers.distortion_mod_input,
+        );
 
         for (out, input, clipping_level_mod, distortion_mod) in izip!(
-            voice.output.iter_mut().take(router.samples()),
-            input,
-            clipping_level_mod,
-            distortion_mod
+            output.iter_mut(),
+            router.buff(inputs.audio),
+            &self.buffers.clipping_level_mod_input,
+            &self.buffers.distortion_mod_input
         ) {
-            let clipping_gain =
-                db_to_gain_fast((channel.clipping_level + clipping_level_mod).min(24.0));
-            let gain = db_to_gain_fast((channel.distortion + distortion_mod).clamp(0.0, 48.0));
+            let clipping_gain = db_to_gain_fast(clipping_level_mod.min(24.0));
+            let gain = db_to_gain_fast(distortion_mod.clamp(0.0, 48.0));
 
             match self.params.shaper_type {
                 ShaperType::HardClip => {
@@ -170,6 +204,16 @@ impl SynthModule for WaveShaper {
         DataType::Audio
     }
 
+    fn set_slots(
+        &mut self,
+        inputs: &[InputSlots],
+        spectral_inputs: &[SpectralInputSlot],
+        output_slot: usize,
+    ) {
+        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
+        self.output_slot = output_slot;
+    }
+
     fn handle_ui_events(&mut self) {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
@@ -183,17 +227,17 @@ impl SynthModule for WaveShaper {
         }
     }
 
-    fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
-        let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
+    fn process2(&mut self, ctx: &mut ProcessContext) {
+        ctx.for_audio(self.id, self.output_slot, |router, output| {
+            let num_active_voices = router.params().active_voices.len();
 
-        for channel_idx in 0..NUM_CHANNELS {
-            for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
-                self.process_channel_voice(rf.for_voice(*voice_idx, channel_idx, seq_idx));
+            for channel_idx in 0..NUM_CHANNELS {
+                for seq_idx in 0..num_active_voices {
+                    let voice_idx = router.params().active_voices[seq_idx];
+
+                    self.process_voice(output, router.for_voice(channel_idx, voice_idx, seq_idx));
+                }
             }
-        }
-    }
-
-    fn get_buffer_output(&self, voice_idx: usize, channel: usize) -> &Buffer {
-        &self.voices[channel][voice_idx].output
+        });
     }
 }

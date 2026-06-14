@@ -11,34 +11,37 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::MixerUiBridge;
 
 use crate::synth_engine::{
-    Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule, VolumeType,
-    buffer::{Buffer, copy_or_add_to_buffer, new_voices_layout, zero_buffer},
-    routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router},
-    synth_module::{ModInput, ProcessParams, VoiceRouter, VoiceRouterFactory},
+    StereoSample,
+    buffer::{Buffer, VoicesLayout, copy_or_add_to_buffer, zero_buffer},
+    outputs_arena::{self, AudioRouterType, InputSlots, ProcessContext, SpectralInputSlot},
+    routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS, VolumeType},
+    smooth::SmoothedSample,
+    synth_module::{ModInput, SynthModule},
+    types::{Sample, SamplesOutput},
 };
 
 const MAX_VOLUME: Sample = 24.0; // dB
 
 struct InputChannelParams {
-    level: Sample,
-    gain: Sample,
+    level: SmoothedSample,
+    gain: SmoothedSample,
 }
 
 struct ChannelParams {
     input_params: [InputChannelParams; MAX_INPUTS as usize],
-    output_level: Sample,
-    output_gain: Sample,
+    output_level: SmoothedSample,
+    output_gain: SmoothedSample,
 }
 
 impl ChannelParams {
     fn from_config(c: &config::MixerConfig, channel_idx: usize) -> Self {
         Self {
             input_params: c.inputs.map(|input| InputChannelParams {
-                level: input.level[channel_idx],
-                gain: input.gain[channel_idx],
+                level: input.level[channel_idx].into(),
+                gain: input.gain[channel_idx].into(),
             }),
-            output_level: c.output_level[channel_idx],
-            output_gain: c.output_gain[channel_idx],
+            output_level: c.output_level[channel_idx].into(),
+            output_gain: c.output_gain[channel_idx].into(),
         }
     }
 }
@@ -65,33 +68,64 @@ impl Params {
     }
 }
 
-struct Voice {
-    output: Buffer,
+pub struct Inputs {
+    gain: InputSlots,
+    level: InputSlots,
+    audio_mix: [InputSlots; MAX_INPUTS as usize],
+    gain_mix: [InputSlots; MAX_INPUTS as usize],
+    level_mix: [InputSlots; MAX_INPUTS as usize],
 }
 
-impl Default for Voice {
+impl Default for Inputs {
     fn default() -> Self {
         Self {
-            output: zero_buffer(),
+            gain: InputSlots::empty(Input::Gain),
+            level: InputSlots::empty(Input::Level),
+            audio_mix: array::from_fn(|idx| InputSlots::empty(Input::AudioMix(idx as u8))),
+            gain_mix: array::from_fn(|idx| InputSlots::empty(Input::GainMix(idx as u8))),
+            level_mix: array::from_fn(|idx| InputSlots::empty(Input::LevelMix(idx as u8))),
         }
     }
 }
 
+impl Inputs {
+    fn from_slots(inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) -> Self {
+        let mut result = Self::default();
+
+        for input in inputs {
+            match input.input_type {
+                Input::Gain => result.gain = input.clone(),
+                Input::Level => result.level = input.clone(),
+                Input::GainMix(idx) if idx < MAX_INPUTS => {
+                    result.gain_mix[idx as usize] = input.clone();
+                }
+                Input::LevelMix(idx) if idx < MAX_INPUTS => {
+                    result.level_mix[idx as usize] = input.clone();
+                }
+                Input::AudioMix(idx) if idx < MAX_INPUTS => {
+                    result.audio_mix[idx as usize] = input.clone();
+                }
+                _ => (),
+            }
+        }
+
+        result
+    }
+}
+
+type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, AudioRouterType>;
+
 struct Buffers {
-    input: Buffer,
     level_mod: Buffer,
 }
 
 impl Default for Buffers {
     fn default() -> Self {
         Self {
-            input: zero_buffer(),
             level_mod: zero_buffer(),
         }
     }
 }
-
-type ChannelVoices = [Voice; MAX_VOICES];
 
 pub struct Mixer {
     id: ModuleId,
@@ -100,7 +134,8 @@ pub struct Mixer {
     buffers: Buffers,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
+    inputs: Inputs,
+    output_slot: usize,
 }
 
 impl Mixer {
@@ -125,7 +160,8 @@ impl Mixer {
             buffers: Buffers::default(),
             audio_end,
             ui_end: Some(ui_end),
-            voices: new_voices_layout(),
+            inputs: Inputs::default(),
+            output_slot: 0,
         }
     }
 
@@ -138,17 +174,17 @@ impl Mixer {
                 level: StereoSample::from_iter(
                     self.channel_params
                         .iter()
-                        .map(|channel| channel.input_params[input_idx].level),
+                        .map(|channel| channel.input_params[input_idx].level.get()),
                 ),
                 gain: StereoSample::from_iter(
                     self.channel_params
                         .iter()
-                        .map(|channel| channel.input_params[input_idx].gain),
+                        .map(|channel| channel.input_params[input_idx].gain.get()),
                 ),
             }),
             output_volume_type: self.params.output_volume_type,
-            output_level: get_stereo_param!(self, output_level),
-            output_gain: get_stereo_param!(self, output_gain),
+            output_level: get_smoothed_param!(self, output_level),
+            output_gain: get_smoothed_param!(self, output_gain),
         }
     }
 
@@ -161,8 +197,8 @@ impl Mixer {
 
     set_mono_param!(set_output_volume_type, output_volume_type, VolumeType);
 
-    set_stereo_param!(set_output_level, output_level);
-    set_stereo_param!(set_output_gain, output_gain);
+    set_smoothed_param!(set_output_level, output_level);
+    set_smoothed_param!(set_output_gain, output_gain);
 
     pub fn set_volume_type(&mut self, input_idx: u8, volume_type: VolumeType) {
         let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
@@ -173,7 +209,7 @@ impl Mixer {
         let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
 
         for (channel, level) in self.channel_params.iter_mut().zip(level.iter()) {
-            channel.input_params[input_idx].level = *level;
+            channel.input_params[input_idx].level.set(*level);
         }
     }
 
@@ -181,7 +217,7 @@ impl Mixer {
         let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
 
         for (channel, gain) in self.channel_params.iter_mut().zip(gain.iter()) {
-            channel.input_params[input_idx].gain = *gain;
+            channel.input_params[input_idx].gain.set(*gain);
         }
     }
 
@@ -192,79 +228,103 @@ impl Mixer {
 
     #[inline(always)]
     fn mix_input(
-        output: &mut Buffer,
-        input: &Buffer,
+        output: &mut [Sample],
+        input: &[Sample],
         gain_mod: impl Iterator<Item = Sample>,
         input_idx: u8,
-        samples: usize,
     ) {
         let input = input
             .iter()
             .zip(gain_mod)
             .map(|(sample, gain_mod)| sample * gain_mod);
 
-        copy_or_add_to_buffer(input_idx == 0, output, input.take(samples));
+        copy_or_add_to_buffer(input_idx == 0, output, input);
     }
 
     #[inline(always)]
-    fn modulate_output(
-        output: &mut Buffer,
-        gain_mod: impl Iterator<Item = Sample>,
-        samples: usize,
-    ) {
-        for (out, gain_mod) in output.iter_mut().zip(gain_mod).take(samples) {
+    fn modulate_output(output: &mut [Sample], gain_mod: impl Iterator<Item = Sample>) {
+        for (out, gain_mod) in output.iter_mut().zip(gain_mod) {
             *out *= gain_mod;
         }
     }
 
-    fn process_voice(&mut self, router: &mut VoiceRouter<'_, '_>) {
-        let channel = &self.channel_params[router.channel_idx()];
-        let voice = &mut self.voices[router.channel_idx()][router.voice_idx()];
-        let samples = router.samples();
+    fn process_voice(
+        &mut self,
+        output: &mut VoicesLayout<SamplesOutput>,
+        mut router: VoiceRouter<'_, '_, '_>,
+    ) {
+        let channel_idx = router.channel_idx();
+        let voice_idx = router.voice_idx();
+        let inputs = &self.inputs;
+        let channel = &mut self.channel_params[channel_idx];
+        let output = output[channel_idx][voice_idx].output(router.samples());
 
         for input_idx in 0..self.params.num_inputs {
             let input_params = &self.params.inputs[input_idx as usize];
-            let input_channel = &channel.input_params[input_idx as usize];
-            let input = router.buffer(Input::AudioMix(input_idx), &mut self.buffers.input);
+            let input_channel = &mut channel.input_params[input_idx as usize];
 
             match input_params.volume_type {
                 VolumeType::Db => {
-                    let level_mod =
-                        router.buffer(Input::LevelMix(input_idx), &mut self.buffers.level_mod);
-                    let gain_mod = level_mod
+                    router.buff_param(
+                        &inputs.level_mix[input_idx as usize],
+                        &mut input_channel.level,
+                        &mut self.buffers.level_mod,
+                    );
+                    let gain_mod = self
+                        .buffers
+                        .level_mod
                         .iter()
-                        .map(|level_mod| Self::to_gain(input_channel.level + level_mod));
+                        .map(|level| Self::to_gain(*level));
 
-                    Self::mix_input(&mut voice.output, input, gain_mod, input_idx, samples);
+                    Self::mix_input(
+                        output,
+                        router.buff(inputs.audio_mix[input_idx as usize].first_slot()),
+                        gain_mod,
+                        input_idx,
+                    );
                 }
                 VolumeType::Gain => {
-                    let gain_mod =
-                        router.buffer(Input::GainMix(input_idx), &mut self.buffers.level_mod);
-                    let gain_mod = gain_mod
-                        .iter()
-                        .map(|gain_mod| input_channel.gain + gain_mod);
+                    router.buff_param(
+                        &inputs.gain_mix[input_idx as usize],
+                        &mut input_channel.gain,
+                        &mut self.buffers.level_mod,
+                    );
+                    let gain_mod = self.buffers.level_mod.iter().copied();
 
-                    Self::mix_input(&mut voice.output, input, gain_mod, input_idx, samples);
+                    Self::mix_input(
+                        output,
+                        router.buff(inputs.audio_mix[input_idx as usize].first_slot()),
+                        gain_mod,
+                        input_idx,
+                    );
                 }
             }
         }
 
         match self.params.output_volume_type {
             VolumeType::Db => {
-                let level_mod = router.buffer(Input::Level, &mut self.buffers.level_mod);
-                let gain_mod = level_mod
+                router.buff_param(
+                    &inputs.level,
+                    &mut channel.output_level,
+                    &mut self.buffers.level_mod,
+                );
+                let gain_mod = self
+                    .buffers
+                    .level_mod
                     .iter()
-                    .map(|level_mod| Self::to_gain(channel.output_level + level_mod));
+                    .map(|level| Self::to_gain(*level));
 
-                Self::modulate_output(&mut voice.output, gain_mod, samples);
+                Self::modulate_output(output, gain_mod);
             }
             VolumeType::Gain => {
-                let gain_mod = router.buffer(Input::Gain, &mut self.buffers.level_mod);
-                let gain_mod = gain_mod
-                    .iter()
-                    .map(|gain_mod| channel.output_gain + gain_mod);
+                router.buff_param(
+                    &inputs.gain,
+                    &mut channel.output_gain,
+                    &mut self.buffers.level_mod,
+                );
+                let gain_mod = self.buffers.level_mod.iter().copied();
 
-                Self::modulate_output(&mut voice.output, gain_mod, samples);
+                Self::modulate_output(output, gain_mod);
             }
         }
     }
@@ -310,6 +370,16 @@ impl SynthModule for Mixer {
         DataType::Audio
     }
 
+    fn set_slots(
+        &mut self,
+        inputs: &[InputSlots],
+        spectral_inputs: &[SpectralInputSlot],
+        output_slot: usize,
+    ) {
+        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
+        self.output_slot = output_slot;
+    }
+
     fn handle_ui_events(&mut self) {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
@@ -330,19 +400,17 @@ impl SynthModule for Mixer {
         }
     }
 
-    fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
-        let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
+    fn process2(&mut self, ctx: &mut ProcessContext) {
+        ctx.for_audio(self.id, self.output_slot, |router, output| {
+            let num_active_voices = router.params().active_voices.len();
 
-        for channel_idx in 0..NUM_CHANNELS {
-            for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
-                let mut voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
+            for channel_idx in 0..NUM_CHANNELS {
+                for seq_idx in 0..num_active_voices {
+                    let voice_idx = router.params().active_voices[seq_idx];
 
-                self.process_voice(&mut voice_router);
+                    self.process_voice(output, router.for_voice(channel_idx, voice_idx, seq_idx));
+                }
             }
-        }
-    }
-
-    fn get_buffer_output(&self, voice_idx: usize, channel_idx: usize) -> &Buffer {
-        &self.voices[channel_idx][voice_idx].output
+        });
     }
 }
