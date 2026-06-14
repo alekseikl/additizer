@@ -359,7 +359,7 @@ impl Envelope {
                 Stage::Delay(curve) => {
                     match curve.next_block(
                         t_step,
-                        router.scalar_param(&inputs.delay, channel.delay, true),
+                        router.scalar_param(&inputs.delay, channel.delay, false),
                         &mut sample_from,
                         output,
                     ) {
@@ -372,7 +372,7 @@ impl Envelope {
                 Stage::Attack(curve) => {
                     match curve.next_block(
                         t_step,
-                        router.scalar_param(&inputs.attack, channel.attack, true),
+                        router.scalar_param(&inputs.attack, channel.attack, false),
                         &mut sample_from,
                         output,
                     ) {
@@ -383,7 +383,7 @@ impl Envelope {
                 Stage::Hold(curve) => {
                     match curve.next_block(
                         t_step,
-                        router.scalar_param(&inputs.hold, channel.hold, true),
+                        router.scalar_param(&inputs.hold, channel.hold, false),
                         &mut sample_from,
                         output,
                     ) {
@@ -396,7 +396,7 @@ impl Envelope {
                 Stage::Decay(curve) => {
                     match curve.next_block(
                         t_step,
-                        router.scalar_param(&inputs.decay, channel.decay, true),
+                        router.scalar_param(&inputs.decay, channel.decay, false),
                         &mut sample_from,
                         output,
                     ) {
@@ -407,7 +407,7 @@ impl Envelope {
                 Stage::Sustain => {
                     output[sample_from..].fill(
                         router
-                            .scalar_param(&inputs.sustain, channel.sustain, true)
+                            .scalar_param(&inputs.sustain, channel.sustain, false)
                             .clamp(0.0, 1.0),
                     );
                     break;
@@ -415,7 +415,7 @@ impl Envelope {
                 Stage::Release(curve) => {
                     match curve.next_block(
                         t_step,
-                        router.scalar_param(&inputs.release, channel.release, true),
+                        router.scalar_param(&inputs.release, channel.release, false),
                         &mut sample_from,
                         output,
                     ) {
@@ -438,7 +438,7 @@ impl Envelope {
 
         drop(control_output);
 
-        voice.next_frame_value = voice_output.scalar(true);
+        voice.next_frame_value = voice_output.scalar(false);
         voice.triggered = false;
 
         voice.smoother.apply_if_needed(

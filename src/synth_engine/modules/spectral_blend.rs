@@ -11,11 +11,12 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::SpectralBlendUiBridge;
 
 use crate::synth_engine::{
-    Input, ModuleId, ModuleType, Sample, StereoSample, SynthModule,
-    buffer::{SpectralBuffer, new_voices_layout},
-    routing::{DataType, MAX_VOICES, NUM_CHANNELS, Router, VoiceEvent},
-    synth_module::{ModInput, ProcessParams, VoiceRouter, VoiceRouterFactory},
-    types::SpectralOutput,
+    StereoSample,
+    buffer::{VoicesLayout, new_voices_layout},
+    outputs_arena::{self, InputSlots, ProcessContext, SpectralInputSlot, SpectralRouterType},
+    routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS, VoiceEvent},
+    synth_module::{ModInput, SynthModule},
+    types::{Sample, SpectralOutput},
 };
 
 struct ChannelParams {
@@ -31,19 +32,58 @@ impl ChannelParams {
 }
 
 #[derive(Default)]
-struct Voice {
+struct VoiceState {
     triggered: bool,
-    output: SpectralOutput,
 }
 
-type ChannelVoices = [Voice; MAX_VOICES];
+pub struct Inputs {
+    spectrum: Option<usize>,
+    spectrum_to: Option<usize>,
+    blend: InputSlots,
+}
+
+impl Default for Inputs {
+    fn default() -> Self {
+        Self {
+            spectrum: None,
+            spectrum_to: None,
+            blend: InputSlots::empty(Input::Blend),
+        }
+    }
+}
+
+impl Inputs {
+    fn from_slots(inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) -> Self {
+        let mut result = Self::default();
+
+        for input in inputs {
+            if input.input_type == Input::Blend {
+                result.blend = input.clone();
+            }
+        }
+
+        for input in spectral_inputs {
+            match input.input_type {
+                Input::Spectrum => result.spectrum = Some(input.slot),
+                Input::SpectrumTo => result.spectrum_to = Some(input.slot),
+                _ => (),
+            }
+        }
+
+        result
+    }
+}
+
+type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, SpectralRouterType>;
 
 pub struct SpectralBlend {
     id: ModuleId,
     channel_params: [ChannelParams; NUM_CHANNELS],
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
-    voices: Box<[ChannelVoices; NUM_CHANNELS]>,
+    inputs: Inputs,
+    output_slot: usize,
+    voices: VoicesLayout<VoiceState>,
 }
 
 impl SpectralBlend {
@@ -64,6 +104,8 @@ impl SpectralBlend {
             }),
             audio_end,
             ui_end: Some(ui_end),
+            inputs: Inputs::default(),
+            output_slot: 0,
             voices: new_voices_layout(),
         }
     }
@@ -77,26 +119,32 @@ impl SpectralBlend {
 
     set_stereo_param!(set_blend, blend, blend.clamp(0.0, 1.0));
 
-    fn process_voice(&mut self, router: &mut VoiceRouter<'_, '_>) {
-        let channel = &self.channel_params[router.channel_idx()];
-        let voice = &mut self.voices[router.channel_idx()][router.voice_idx()];
-        let current = !voice.triggered;
+    fn process_voice(
+        &mut self,
+        output: &mut VoicesLayout<SpectralOutput>,
+        mut router: VoiceRouter<'_, '_, '_>,
+    ) {
+        let channel_idx = router.channel_idx();
+        let voice_idx = router.voice_idx();
+        let inputs = &self.inputs;
+        let channel = &self.channel_params[channel_idx];
+        let voice = &mut self.voices[channel_idx][voice_idx];
+        let voice_output = output[channel_idx][voice_idx].advance();
 
         let blend = router
-            .scalar(Input::Blend, channel.blend, current)
+            .scalar_param(&inputs.blend, channel.blend, voice.triggered)
             .clamp(0.0, 1.0);
-        let spectrum_from = router.spectral(Input::Spectrum, current);
-        let spectrum_to = router.spectral(Input::SpectrumTo, current);
-        let output = voice.output.advance();
+        let spectrum_from = router.spectral(inputs.spectrum, voice.triggered);
+        let spectrum_to = router.spectral(inputs.spectrum_to, voice.triggered);
 
-        for (out, from, to) in izip!(output, spectrum_from, spectrum_to) {
+        for (out, from, to) in izip!(voice_output, spectrum_from, spectrum_to) {
             *out = from + (to - from) * blend;
         }
 
         if voice.triggered {
             voice.triggered = false;
 
-            self.process_voice(router);
+            self.process_voice(output, router);
         }
     }
 }
@@ -124,6 +172,16 @@ impl SynthModule for SpectralBlend {
         DataType::Spectral
     }
 
+    fn set_slots(
+        &mut self,
+        inputs: &[InputSlots],
+        spectral_inputs: &[SpectralInputSlot],
+        output_slot: usize,
+    ) {
+        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
+        self.output_slot = output_slot;
+    }
+
     fn handle_events(&mut self, events: &[VoiceEvent]) {
         for channel in self.voices.iter_mut() {
             for event in events {
@@ -146,24 +204,18 @@ impl SynthModule for SpectralBlend {
         }
     }
 
-    fn process(&mut self, process_params: &ProcessParams, router: &mut dyn Router) {
-        let mut rf = VoiceRouterFactory::new(self.id, router, process_params);
+    fn process2(&mut self, ctx: &mut ProcessContext) {
+        ctx.for_spectral(self.id, self.output_slot, |router, output| {
+            let num_active_voices = router.params().active_voices.len();
+            let spectrum_channels = router.params().spectrum_channels;
 
-        for channel_idx in (0..NUM_CHANNELS).take(process_params.spectrum_channels) {
-            for (seq_idx, voice_idx) in process_params.active_voices.iter().enumerate() {
-                let mut voice_router = rf.for_voice(*voice_idx, channel_idx, seq_idx);
+            for channel_idx in 0..spectrum_channels {
+                for seq_idx in 0..num_active_voices {
+                    let voice_idx = router.params().active_voices[seq_idx];
 
-                self.process_voice(&mut voice_router);
+                    self.process_voice(output, router.for_voice(channel_idx, voice_idx, seq_idx));
+                }
             }
-        }
-    }
-
-    fn get_spectral_output(
-        &self,
-        current: bool,
-        voice_idx: usize,
-        channel_idx: usize,
-    ) -> &SpectralBuffer {
-        self.voices[channel_idx][voice_idx].output.get(current)
+        });
     }
 }

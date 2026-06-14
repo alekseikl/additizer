@@ -823,7 +823,6 @@ fn full_patch_config_round_trips() {
 }
 
 #[test]
-#[test]
 fn engine_extended_setters_round_trip() {
     let mut engine = make_engine(
         EngineParams::default(),

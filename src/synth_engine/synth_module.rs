@@ -5,7 +5,7 @@ use crate::synth_engine::{
     buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER},
     outputs_arena::{InputSlots, ProcessContext, SpectralInputSlot},
     routing::{DataType, Input, ModuleId, ModuleType, Router, VoiceEvent},
-    smooth::{SmoothedSample, SmoothedSampleParams},
+    smooth::SmoothedSampleParams,
     types::Sample,
     voices_handler::DecayingVoice,
 };
@@ -143,10 +143,6 @@ impl<'a, 'b> VoiceRouter<'a, 'b> {
         self.factory.process_params.samples
     }
 
-    pub fn sample_rate(&self) -> Sample {
-        self.factory.process_params.sample_rate
-    }
-
     pub fn channel_idx(&self) -> usize {
         self.channel_idx
     }
@@ -167,77 +163,6 @@ impl<'a, 'b> VoiceRouter<'a, 'b> {
 
     pub fn buffer(&'a self, input: Input, buff: &'a mut Buffer) -> &'a Buffer {
         self.buffer_opt(input, buff).unwrap_or(&ZEROES_BUFFER)
-    }
-
-    pub fn buff_param(&mut self, input: Input, param: &mut SmoothedSample, buff: &mut Buffer) {
-        let params = &self.factory.process_params;
-        let buff = &mut buff[..params.samples];
-
-        if param.check_needs_smoothing(&params.smooth_params) {
-            param.smoothed_buff(buff, &params.smooth_params);
-        } else {
-            buff.fill(param.get());
-        }
-
-        if self.factory.router.add_input_to(
-            ModuleInput::new(input, self.factory.module_id),
-            self.voice_idx,
-            self.channel_idx,
-            buff,
-        ) && params.needs_update_ui
-            && self.voice_seq_idx == 0
-        {
-            self.factory.router.update_modulated_input(
-                self.factory.module_id,
-                input,
-                self.channel_idx,
-                buff[0],
-            );
-        }
-    }
-
-    pub fn update_output(&mut self, buff: &Buffer) {
-        self.factory
-            .router
-            .update_output(self.factory.module_id, self.channel_idx, buff[0]);
-    }
-
-    pub fn spectral(&self, input: Input, current: bool) -> &SpectralBuffer {
-        self.factory
-            .router
-            .get_spectral_input(
-                ModuleInput::new(input, self.factory.module_id),
-                current,
-                self.voice_idx,
-                self.channel_idx,
-            )
-            .unwrap_or(&ZEROES_SPECTRAL_BUFFER)
-    }
-
-    pub fn scalar(&mut self, input: Input, param: Sample, current: bool) -> Sample {
-        let value = self.factory.router.get_scalar_input(
-            ModuleInput::new(input, self.factory.module_id),
-            current,
-            self.voice_idx,
-            self.channel_idx,
-        );
-
-        if let Some(value) = value {
-            let value = value + param;
-
-            if self.factory.process_params.needs_update_ui && self.voice_seq_idx == 0 {
-                self.factory.router.update_modulated_input(
-                    self.factory.module_id,
-                    input,
-                    self.channel_idx,
-                    value,
-                );
-            }
-
-            value
-        } else {
-            param
-        }
     }
 }
 

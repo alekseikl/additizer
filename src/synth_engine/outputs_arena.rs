@@ -141,7 +141,7 @@ impl OutputsArena {
         slots: &[SamplesInputSrc],
         channel_idx: usize,
         voice_idx: usize,
-        next_frame: bool,
+        triggered: bool,
     ) -> Option<Sample> {
         if slots.is_empty() {
             return None;
@@ -150,11 +150,11 @@ impl OutputsArena {
         let mut result: Sample = 0.0;
 
         for slot in slots {
-            let mut value = self.samples[slot.src_slot][channel_idx][voice_idx].scalar(next_frame)
+            let mut value = self.samples[slot.src_slot][channel_idx][voice_idx].scalar(triggered)
                 * slot.amount[channel_idx];
 
             if let Some(modulated_slot) = slot.modulation_slot {
-                value *= self.samples[modulated_slot][channel_idx][voice_idx].scalar(next_frame);
+                value *= self.samples[modulated_slot][channel_idx][voice_idx].scalar(triggered);
             }
 
             result += value;
@@ -168,9 +168,9 @@ impl OutputsArena {
         slot: Option<usize>,
         channel_idx: usize,
         voice_idx: usize,
-        next_frame: bool,
+        triggered: bool,
     ) -> Option<&SpectralBuffer> {
-        slot.map(|slot| self.spectral[slot][channel_idx][voice_idx].get(next_frame))
+        slot.map(|slot| self.spectral[slot][channel_idx][voice_idx].get(triggered))
     }
 }
 
@@ -366,12 +366,12 @@ impl<'v, 'f, 'c, S: RouterDataType> VoiceRouter<'v, 'f, 'c, S> {
         self.voice_idx
     }
 
-    fn scalar_param_impl(&mut self, input: &InputSlots, param: Sample, next_frame: bool) -> Sample {
+    fn scalar_param_impl(&mut self, input: &InputSlots, param: Sample, triggered: bool) -> Sample {
         if let Some(value) = self.factory.ctx.outputs_arena.get_scalar(
             &input.slots,
             self.channel_idx,
             self.voice_idx,
-            next_frame,
+            triggered,
         ) {
             let value = value + param;
 
@@ -390,11 +390,11 @@ impl<'v, 'f, 'c, S: RouterDataType> VoiceRouter<'v, 'f, 'c, S> {
         }
     }
 
-    pub fn spectral_impl(&self, slot: Option<usize>, next_frame: bool) -> &SpectralBuffer {
+    pub fn spectral_impl(&self, slot: Option<usize>, triggered: bool) -> &SpectralBuffer {
         self.factory
             .ctx
             .outputs_arena
-            .get_spectral(slot, self.channel_idx, self.voice_idx, next_frame)
+            .get_spectral(slot, self.channel_idx, self.voice_idx, triggered)
             .unwrap_or(&ZEROES_SPECTRAL_BUFFER)
     }
 }
@@ -439,12 +439,12 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
         }
     }
 
-    pub fn scalar_param(&mut self, input: &InputSlots, param: Sample, next_frame: bool) -> Sample {
-        self.scalar_param_impl(input, param, next_frame)
+    pub fn scalar_param_t(&mut self, input: &InputSlots, param: Sample, triggered: bool) -> Sample {
+        self.scalar_param_impl(input, param, triggered)
     }
 
-    pub fn spectral(&self, slot: Option<usize>, next_frame: bool) -> &SpectralBuffer {
-        self.spectral_impl(slot, next_frame)
+    pub fn spectral_t(&self, slot: Option<usize>, triggered: bool) -> &SpectralBuffer {
+        self.spectral_impl(slot, triggered)
     }
 }
 
@@ -456,7 +456,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
         buff: &mut Buffer,
         triggered: bool,
     ) {
-        let skip = usize::from(triggered);
+        let skip = usize::from(!triggered);
         let params = &self.factory.ctx.params;
         let buff = &mut buff[skip..params.samples + 1];
 
@@ -482,17 +482,17 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
         }
     }
 
-    pub fn scalar_param(&mut self, input: &InputSlots, param: Sample, next_frame: bool) -> Sample {
-        self.scalar_param_impl(input, param, next_frame)
+    pub fn scalar_param(&mut self, input: &InputSlots, param: Sample, triggered: bool) -> Sample {
+        self.scalar_param_impl(input, param, triggered)
     }
 }
 
 impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, SpectralRouterType> {
-    pub fn scalar_param(&mut self, input: &InputSlots, param: Sample, next_frame: bool) -> Sample {
-        self.scalar_param_impl(input, param, next_frame)
+    pub fn scalar_param(&mut self, input: &InputSlots, param: Sample, triggered: bool) -> Sample {
+        self.scalar_param_impl(input, param, triggered)
     }
 
-    pub fn spectral(&self, slot: Option<usize>, next_frame: bool) -> &SpectralBuffer {
-        self.spectral_impl(slot, next_frame)
+    pub fn spectral(&self, slot: Option<usize>, triggered: bool) -> &SpectralBuffer {
+        self.spectral_impl(slot, triggered)
     }
 }

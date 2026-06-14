@@ -44,11 +44,11 @@ impl SamplesOutput {
         &self.buffer
     }
 
-    pub fn scalar(&self, next_frame: bool) -> Sample {
-        if next_frame {
-            self.next_frame_sample
-        } else {
+    pub fn scalar(&self, triggered: bool) -> Sample {
+        if triggered {
             self.this_frame_sample
+        } else {
+            self.next_frame_sample
         }
     }
 
@@ -115,8 +115,8 @@ impl Default for SpectralOutput {
 }
 
 impl SpectralOutput {
-    pub fn get(&self, next_frame: bool) -> &SpectralBuffer {
-        &self.output[(next_frame ^ self.swapped) as usize]
+    pub fn get(&self, triggered: bool) -> &SpectralBuffer {
+        &self.output[(!triggered ^ self.swapped) as usize]
     }
 
     pub fn advance(&mut self) -> &mut SpectralBuffer {

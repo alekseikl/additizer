@@ -242,18 +242,17 @@ impl SpectralFilter {
         let channel = &self.channel_params[channel_idx];
         let voice = &mut self.voices[channel_idx][voice_idx];
         let voice_output = output[channel_idx][voice_idx].advance();
-        let current = !voice.triggered;
 
         let cutoff = router
-            .scalar_param(&inputs.cutoff, channel.cutoff, current)
+            .scalar_param(&inputs.cutoff, channel.cutoff, voice.triggered)
             .clamp(-4.0, 10.0);
         let q = router
-            .scalar_param(&inputs.q, channel.q, current)
+            .scalar_param(&inputs.q, channel.q, voice.triggered)
             .clamp(0.1, 10.0);
         let drive = router
-            .scalar_param(&inputs.drive, channel.drive, current)
+            .scalar_param(&inputs.drive, channel.drive, voice.triggered)
             .min(24.0);
-        let input = router.spectral(inputs.spectrum, current);
+        let input = router.spectral(inputs.spectrum, voice.triggered);
 
         let biquad = BiquadFilter::new(db_to_gain_fast(drive), cutoff.exp2(), q);
 
