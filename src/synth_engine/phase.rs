@@ -53,9 +53,9 @@ impl Phase {
         self + Self::from_normalized(norm)
     }
 
-    pub fn advance_normalized(&mut self, norm: Sample) {
-        *self += Self::from_normalized(norm);
-    }
+    // pub fn advance_normalized(&mut self, norm: Sample) {
+    //     *self += Self::from_normalized(norm);
+    // }
 }
 
 impl Add for Phase {

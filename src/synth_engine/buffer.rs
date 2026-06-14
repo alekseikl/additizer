@@ -6,7 +6,9 @@ use crate::synth_engine::{
     types::{ComplexSample, Sample},
 };
 
-pub const BUFFER_SIZE: usize = 256;
+// One sample extra for control rate signals. Its value - first sample of the next frame.
+// Required by spectral module inputs.
+pub const BUFFER_SIZE: usize = 256 + 1;
 pub const SPECTRUM_BITS: usize = 10;
 pub const SPECTRAL_BUFFER_SIZE: usize = 1 << SPECTRUM_BITS;
 

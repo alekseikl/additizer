@@ -13,7 +13,7 @@ use crate::{
         StereoSample,
         buffer::{VoicesLayout, new_voices_layout},
         curves::{CurveFunction, Exponential, ExponentialIn, ExponentialOut},
-        outputs_arena::{self, InputSlots, ProcessContext, SamplesOutputSlot, SpectralInputSlot},
+        outputs_arena::{self, ControlRouterType, InputSlots, ProcessContext, SpectralInputSlot},
         routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS, VoiceEvent},
         smooth::Smoother,
         synth_module::{ModInput, SynthModule},
@@ -255,7 +255,7 @@ impl Inputs {
     }
 }
 
-type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, SamplesOutputSlot>;
+type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, ControlRouterType>;
 
 pub struct Envelope {
     id: ModuleId,
@@ -325,7 +325,7 @@ impl Envelope {
 
     fn process_voice(
         &mut self,
-        output: &mut VoicesLayout<SamplesOutput>,
+        output_slot: &mut VoicesLayout<SamplesOutput>,
         mut router: VoiceRouter<'_, '_, '_>,
     ) {
         let channel_idx = router.channel_idx();
@@ -336,7 +336,7 @@ impl Envelope {
         let voice = &mut self.voices[channel_idx][voice_idx];
         let samples = router.samples();
         let t_step = router.sample_rate().recip();
-        let voice_output = &mut output[channel_idx][voice_idx];
+        let voice_output = &mut output_slot[channel_idx][voice_idx];
 
         if voice.triggered {
             voice.next_frame_value = 0.0;
@@ -350,8 +350,8 @@ impl Envelope {
             voice.released = false;
         }
 
-        let mut adapter = voice_output.control_output(samples, voice.triggered);
-        let output_buf = adapter.buffer();
+        let mut control_output = voice_output.control_output(samples, voice.triggered);
+        let output = control_output.output();
         let mut sample_from = 0;
 
         loop {
@@ -361,7 +361,7 @@ impl Envelope {
                         t_step,
                         router.scalar_param(&inputs.delay, channel.delay, true),
                         &mut sample_from,
-                        output_buf,
+                        output,
                     ) {
                         CurveBlockResult::Done => Stage::Attack(
                             params.attack_curve.curve_iter(voice.next_frame_value, 1.0),
@@ -374,7 +374,7 @@ impl Envelope {
                         t_step,
                         router.scalar_param(&inputs.attack, channel.attack, true),
                         &mut sample_from,
-                        output_buf,
+                        output,
                     ) {
                         CurveBlockResult::Done => Stage::Hold(EnvelopeCurve::hold_iter()),
                         CurveBlockResult::HasMore => break,
@@ -385,7 +385,7 @@ impl Envelope {
                         t_step,
                         router.scalar_param(&inputs.hold, channel.hold, true),
                         &mut sample_from,
-                        output_buf,
+                        output,
                     ) {
                         CurveBlockResult::Done => {
                             Stage::Decay(params.decay_curve.curve_iter(1.0, channel.sustain))
@@ -398,14 +398,14 @@ impl Envelope {
                         t_step,
                         router.scalar_param(&inputs.decay, channel.decay, true),
                         &mut sample_from,
-                        output_buf,
+                        output,
                     ) {
                         CurveBlockResult::Done => Stage::Sustain,
                         CurveBlockResult::HasMore => break,
                     }
                 }
                 Stage::Sustain => {
-                    output_buf[sample_from..].fill(
+                    output[sample_from..].fill(
                         router
                             .scalar_param(&inputs.sustain, channel.sustain, true)
                             .clamp(0.0, 1.0),
@@ -417,37 +417,36 @@ impl Envelope {
                         t_step,
                         router.scalar_param(&inputs.release, channel.release, true),
                         &mut sample_from,
-                        output_buf,
+                        output,
                     ) {
                         CurveBlockResult::Done => Stage::Flush(EnvelopeCurve::flush_iter()),
                         CurveBlockResult::HasMore => break,
                     }
                 }
                 Stage::Flush(curve) => {
-                    match curve.next_block(t_step, channel.smooth, &mut sample_from, output_buf) {
+                    match curve.next_block(t_step, channel.smooth, &mut sample_from, output) {
                         CurveBlockResult::Done => Stage::Done,
                         CurveBlockResult::HasMore => break,
                     }
                 }
                 Stage::Done => {
-                    output_buf[sample_from..].fill(0.0);
+                    output[sample_from..].fill(0.0);
                     break;
                 }
             };
         }
 
-        drop(adapter);
+        drop(control_output);
 
         voice.next_frame_value = voice_output.scalar(true);
         voice.triggered = false;
 
-        if channel.smooth >= MIN_TIME_THRESHOLD {
-            voice.smoother.update(router.sample_rate(), channel.smooth);
-
-            for sample in voice_output.output().iter_mut().take(samples) {
-                *sample = voice.smoother.tick(*sample);
-            }
-        }
+        voice.smoother.apply_if_needed(
+            samples,
+            router.sample_rate(),
+            channel.smooth,
+            voice_output.output(),
+        );
     }
 }
 
@@ -539,7 +538,7 @@ impl SynthModule for Envelope {
     }
 
     fn process2(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_samples(self.id, self.output_slot, |router, output| {
+        ctx.for_control(self.id, self.output_slot, |router, output| {
             let num_active_voices = router.params().active_voices.len();
 
             for channel_idx in 0..NUM_CHANNELS {

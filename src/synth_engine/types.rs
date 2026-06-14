@@ -2,7 +2,7 @@ use realfft::num_complex::Complex;
 
 use crate::synth_engine::{
     Buffer,
-    buffer::{BUFFER_SIZE, SpectralBuffer, zero_buffer, zero_spectral_buffer},
+    buffer::{SpectralBuffer, zero_buffer, zero_spectral_buffer},
 };
 
 pub type Sample = f32;
@@ -33,26 +33,27 @@ impl ScalarOutput {
 }
 
 pub struct SamplesOutput {
-    buffer: [Sample; BUFFER_SIZE + 1],
+    buffer: Buffer,
+    this_frame_sample: Sample,
     next_frame_sample: Sample,
 }
 
 impl SamplesOutput {
     #[inline]
     pub fn buffer(&self) -> &[Sample] {
-        &self.buffer[..BUFFER_SIZE]
+        &self.buffer
     }
 
     pub fn scalar(&self, next_frame: bool) -> Sample {
         if next_frame {
             self.next_frame_sample
         } else {
-            self.buffer[0]
+            self.this_frame_sample
         }
     }
 
     pub fn output(&mut self) -> &mut [Sample] {
-        &mut self.buffer[..BUFFER_SIZE]
+        &mut self.buffer
     }
 
     pub fn control_output(&mut self, samples: usize, triggered: bool) -> ControlRateAdapter<'_> {
@@ -67,7 +68,8 @@ impl SamplesOutput {
 impl Default for SamplesOutput {
     fn default() -> Self {
         Self {
-            buffer: [0.0; BUFFER_SIZE + 1],
+            buffer: zero_buffer(),
+            this_frame_sample: 0.0,
             next_frame_sample: 0.0,
         }
     }
@@ -80,7 +82,7 @@ pub struct ControlRateAdapter<'a> {
 }
 
 impl<'a> ControlRateAdapter<'a> {
-    pub fn buffer(&mut self) -> &mut [Sample] {
+    pub fn output(&mut self) -> &mut [Sample] {
         let from = if self.triggered { 0 } else { 1 };
 
         &mut self.output.buffer[from..self.samples + 1]
@@ -93,6 +95,7 @@ impl<'a> Drop for ControlRateAdapter<'a> {
             self.output.buffer[0] = self.output.next_frame_sample;
         }
 
+        self.output.this_frame_sample = self.output.buffer[0];
         self.output.next_frame_sample = self.output.buffer[self.samples];
     }
 }

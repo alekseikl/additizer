@@ -15,7 +15,7 @@ use crate::synth_engine::{
     StereoSample,
     biquad_filter::BiquadFilter,
     buffer::{SpectralBuffer, VoicesLayout, new_voices_layout},
-    outputs_arena::{self, InputSlots, ProcessContext, SpectralInputSlot, SpectralOutputSlot},
+    outputs_arena::{self, InputSlots, ProcessContext, SpectralInputSlot, SpectralRouterType},
     routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS, VoiceEvent},
     synth_module::{ModInput, SynthModule},
     types::{ComplexSample, Sample, SpectralOutput},
@@ -99,7 +99,7 @@ impl Inputs {
     }
 }
 
-type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, SpectralOutputSlot>;
+type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, SpectralRouterType>;
 
 pub struct SpectralFilter {
     id: ModuleId,

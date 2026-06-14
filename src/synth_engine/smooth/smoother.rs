@@ -24,6 +24,22 @@ impl Smoother {
             * (-5.0 / (sample_rate * time.max(SMOOTHING_TIME_THRESHOLD))).exp2();
     }
 
+    pub fn apply_if_needed(
+        &mut self,
+        samples: usize,
+        sample_rate: Sample,
+        time: Sample,
+        buff: &mut [Sample],
+    ) {
+        if time >= SMOOTHING_TIME_THRESHOLD {
+            self.update(sample_rate, time);
+
+            for sample in buff.iter_mut().take(samples) {
+                *sample = self.tick(*sample);
+            }
+        }
+    }
+
     #[inline(always)]
     pub fn tick(&mut self, value: Sample) -> Sample {
         self.prev_value = value.mul_add(1.0 - self.smooth_mult, self.prev_value * self.smooth_mult);

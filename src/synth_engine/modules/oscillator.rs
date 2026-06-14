@@ -15,7 +15,7 @@ use crate::{
             new_voices_layout, zero_buffer,
         },
         oscillator::link::{AudioEnd, UiEnd, UiEvent, create_link_pair},
-        outputs_arena::{self, InputSlots, ProcessContext, SamplesOutputSlot, SpectralInputSlot},
+        outputs_arena::{self, InputSlots, ProcessContext, AudioRouterType, SpectralInputSlot},
         phase::Phase,
         routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS, VoiceEvent},
         smooth::SmoothedSample,
@@ -328,7 +328,7 @@ impl Inputs {
     }
 }
 
-type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, SamplesOutputSlot>;
+type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, AudioRouterType>;
 
 pub struct Oscillator {
     buffers: Buffers,
@@ -1078,7 +1078,7 @@ impl SynthModule for Oscillator {
     }
 
     fn process2(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_samples(self.id, self.output_slot, |router, output| {
+        ctx.for_audio(self.id, self.output_slot, |router, output| {
             let mono_spectrum = router.params().spectrum_channels < NUM_CHANNELS;
             let num_active_voices = router.params().active_voices.len();
 

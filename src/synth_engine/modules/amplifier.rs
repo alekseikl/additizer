@@ -13,7 +13,7 @@ pub use ui_bridge::AmplifierUiBridge;
 use crate::synth_engine::{
     StereoSample,
     buffer::{Buffer, VoicesLayout, zero_buffer},
-    outputs_arena::{self, InputSlots, ProcessContext, SamplesOutputSlot, SpectralInputSlot},
+    outputs_arena::{self, InputSlots, ProcessContext, AudioRouterType, SpectralInputSlot},
     routing::{DataType, Input, ModuleId, ModuleType, NUM_CHANNELS},
     smooth::SmoothedSample,
     synth_module::{ModInput, SynthModule},
@@ -62,7 +62,7 @@ impl Inputs {
     }
 }
 
-type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, SamplesOutputSlot>;
+type VoiceRouter<'v, 'f, 'c> = outputs_arena::VoiceRouter<'v, 'f, 'c, AudioRouterType>;
 
 struct Buffers {
     gain_mod_input: Buffer,
@@ -186,7 +186,7 @@ impl SynthModule for Amplifier {
     }
 
     fn process2(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_samples(self.id, self.output_slot, |router, output| {
+        ctx.for_audio(self.id, self.output_slot, |router, output| {
             let num_active_voices = router.params().active_voices.len();
 
             for channel_idx in 0..NUM_CHANNELS {
