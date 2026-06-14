@@ -2,11 +2,15 @@ use std::f32;
 
 use crate::{
     synth_engine::{
-        Sample, StereoSample,
+        Sample, StereoSample, VoiceEvent,
         biquad_filter::BiquadFilter,
-        buffer::{HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer},
-        routing::{DataType, ModuleId, ModuleType, NUM_CHANNELS, Router},
-        synth_module::{ModInput, ProcessParams, SynthModule},
+        buffer::{
+            HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer, VoicesLayout,
+            new_voices_layout,
+        },
+        outputs_arena::{InputSlots, ProcessContext, SpectralInputSlot},
+        routing::{DataType, ModuleId, ModuleType, NUM_CHANNELS},
+        synth_module::{ModInput, SynthModule},
         types::ComplexSample,
     },
     utils::NthElement,
@@ -73,11 +77,18 @@ impl BiquadFilter {
     }
 }
 
+#[derive(Default)]
+struct Voice {
+    triggered: bool,
+}
+
 pub struct HarmonicEditor {
     id: ModuleId,
-    outputs: [SpectralBuffer; NUM_CHANNELS],
+    harmonics: [SpectralBuffer; NUM_CHANNELS],
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
+    output_slot: usize,
+    voices: VoicesLayout<Voice>,
 }
 
 impl HarmonicEditor {
@@ -90,9 +101,9 @@ impl HarmonicEditor {
 
     pub fn from_config(config: &config::HarmonicEditorConfig) -> Self {
         let (audio_end, ui_end) = create_link_pair();
-        let mut outputs = [HARMONIC_SERIES_BUFFER; NUM_CHANNELS];
+        let mut harmonics = [HARMONIC_SERIES_BUFFER; NUM_CHANNELS];
 
-        for (channel, cfg_channel) in outputs.iter_mut().zip(&config.spectrum) {
+        for (channel, cfg_channel) in harmonics.iter_mut().zip(&config.spectrum) {
             if cfg_channel.len() == SPECTRAL_BUFFER_SIZE {
                 for (out, cfg) in channel.iter_mut().zip(cfg_channel.iter()) {
                     *out = cfg.complex();
@@ -102,16 +113,18 @@ impl HarmonicEditor {
 
         Self {
             id: config.id,
-            outputs,
+            harmonics,
             audio_end,
             ui_end: Some(ui_end),
+            output_slot: 0,
+            voices: new_voices_layout(),
         }
     }
 
     pub fn get_config(&self) -> HarmonicEditorConfig {
         HarmonicEditorConfig {
             id: self.id,
-            spectrum: self.outputs.map(|channel| {
+            spectrum: self.harmonics.map(|channel| {
                 channel
                     .iter()
                     .map(|complex| ComplexCfg::from_complex(*complex))
@@ -141,7 +154,7 @@ impl HarmonicEditor {
     pub fn set_harmonic(&mut self, harmonic_number: usize, gain: StereoSample) {
         let idx = harmonic_number.clamp(1, SPECTRAL_BUFFER_SIZE - 1);
 
-        for (spectrum, gain) in self.outputs.iter_mut().zip(gain.iter()) {
+        for (spectrum, gain) in self.harmonics.iter_mut().zip(gain.iter()) {
             spectrum[idx] = HARMONIC_SERIES_BUFFER[idx] * gain;
         }
     }
@@ -150,7 +163,7 @@ impl HarmonicEditor {
         let idx_from = params.from.clamp(1, SPECTRAL_BUFFER_SIZE - 1);
         let range = idx_from..(params.to + 1).clamp(idx_from, SPECTRAL_BUFFER_SIZE);
 
-        for (spectrum, gain) in self.outputs.iter_mut().zip(params.gain.iter()) {
+        for (spectrum, gain) in self.harmonics.iter_mut().zip(params.gain.iter()) {
             for (idx, (harmonic, initial_harmonic)) in spectrum[range.clone()]
                 .iter_mut()
                 .zip(HARMONIC_SERIES_BUFFER[range.clone()].iter())
@@ -174,7 +187,7 @@ impl HarmonicEditor {
     }
 
     pub fn apply_filter(&mut self, params: &FilterParams) {
-        for (channel_idx, spectrum) in self.outputs.iter_mut().enumerate() {
+        for (channel_idx, spectrum) in self.harmonics.iter_mut().enumerate() {
             let filter = BiquadFilter::new(
                 params.gain[channel_idx],
                 params.cutoff[channel_idx],
@@ -208,6 +221,25 @@ impl SynthModule for HarmonicEditor {
         DataType::Spectral
     }
 
+    fn set_slots(
+        &mut self,
+        _inputs: &[InputSlots],
+        _spectral_inputs: &[SpectralInputSlot],
+        output_slot: usize,
+    ) {
+        self.output_slot = output_slot;
+    }
+
+    fn handle_events(&mut self, events: &[VoiceEvent]) {
+        for channel in self.voices.iter_mut() {
+            for event in events {
+                if let VoiceEvent::Trigger { voice_idx, .. } = event {
+                    channel[*voice_idx].triggered = true;
+                }
+            }
+        }
+    }
+
     fn handle_ui_events(&mut self) {
         let mut refresh = false;
 
@@ -233,14 +265,27 @@ impl SynthModule for HarmonicEditor {
         }
     }
 
-    fn process(&mut self, _params: &ProcessParams, _router: &mut dyn Router) {}
+    fn process2(&mut self, ctx: &mut ProcessContext) {
+        ctx.for_spectral(self.id, self.output_slot, |router, output| {
+            let num_active_voices = router.params().active_voices.len();
+            let spectrum_channels = router.params().spectrum_channels;
 
-    fn get_spectral_output(
-        &self,
-        _current: bool,
-        _voice_idx: usize,
-        channel_idx: usize,
-    ) -> &SpectralBuffer {
-        &self.outputs[channel_idx]
+            for channel_idx in 0..spectrum_channels {
+                let channel_output = self.harmonics[channel_idx];
+
+                for seq_idx in 0..num_active_voices {
+                    let voice_idx = router.params().active_voices[seq_idx];
+                    let voice = &mut self.voices[channel_idx][voice_idx];
+                    let voice_output = &mut output[channel_idx][voice_idx];
+
+                    if voice.triggered {
+                        *voice_output.advance() = channel_output;
+                        voice.triggered = false;
+                    }
+
+                    *voice_output.advance() = channel_output;
+                }
+            }
+        });
     }
 }

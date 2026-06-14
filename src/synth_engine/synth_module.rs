@@ -2,7 +2,7 @@ use std::any::Any;
 
 use crate::synth_engine::{
     ModuleInput,
-    buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER},
+    buffer::{Buffer, SpectralBuffer, ZEROES_BUFFER},
     outputs_arena::{InputSlots, ProcessContext, SpectralInputSlot},
     routing::{DataType, Input, ModuleId, ModuleType, Router, VoiceEvent},
     smooth::SmoothedSampleParams,
