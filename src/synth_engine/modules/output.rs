@@ -22,17 +22,15 @@ use crate::{
 const _: () = assert!(NUM_CHANNELS == 2);
 
 struct Voice {
-    killed: bool,
-    killed_output_power: Sample,
-    killed_gain: Sample,
+    killing: bool,
+    killing_time: Sample,
 }
 
 impl Default for Voice {
     fn default() -> Self {
         Self {
-            killed: false,
-            killed_gain: 0.0,
-            killed_output_power: 0.0,
+            killing: false,
+            killing_time: 0.0,
         }
     }
 }
@@ -159,12 +157,11 @@ impl SynthModule for Output {
                     VoiceEvent::Trigger { voice_idx, .. } => {
                         let voice = &mut channel.voices[*voice_idx];
 
-                        voice.killed = false;
-                        voice.killed_gain = 1.0;
-                        voice.killed_output_power = 1.0;
+                        voice.killing = false;
+                        voice.killing_time = 0.0;
                     }
                     VoiceEvent::Kill { voice_idx } => {
-                        channel.voices[*voice_idx].killed = true;
+                        channel.voices[*voice_idx].killing = true;
                     }
                     _ => (),
                 }
@@ -173,15 +170,13 @@ impl SynthModule for Output {
     }
 
     fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {
-        const ALIVE_THRESHOLD: Sample = 0.000001;
-
         for decaying in decaying_voices.iter_mut().filter(|d| !d.is_done()) {
             decaying.reset();
 
             for channel in &self.channels {
                 let voice = &channel.voices[decaying.index()];
 
-                if !voice.killed || voice.killed_output_power > ALIVE_THRESHOLD {
+                if !voice.killing || voice.killing_time < self.kill_time {
                     decaying.mark_active();
                 }
             }
@@ -226,19 +221,19 @@ impl SynthModule for Output {
 
                 let voice = &mut self.channels[channel_idx].voices[voice_idx];
 
-                if voice.killed {
-                    let kill_time = self.kill_time.max(from_ms(4.0));
-                    let base = (-5.0 / (sample_rate * kill_time)).exp();
-                    let mut sum = 0.0;
+                if voice.killing {
+                    let power: Sample = -2.0;
+                    let curve_mult: Sample = (power.exp() - 1.0).recip();
+                    let time_mult: Sample = self.kill_time.max(from_ms(4.0)).recip();
+                    let t_step = sample_rate.recip();
 
                     for out in self.input_buffer.iter_mut().take(samples) {
-                        voice.killed_gain *= base;
-                        *out *= voice.killed_gain;
-                        sum += *out * *out;
-                    }
+                        let t = (voice.killing_time * time_mult).min(1.0);
+                        let gain = 1.0 - ((power * t).exp() - 1.0) * curve_mult;
 
-                    voice.killed_output_power =
-                        (voice.killed_output_power + sum) / (samples + 1) as Sample;
+                        *out *= gain;
+                        voice.killing_time += t_step;
+                    }
                 }
 
                 copy_or_add_to_buffer(

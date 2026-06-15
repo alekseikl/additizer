@@ -377,9 +377,9 @@ impl Envelope {
                         &mut sample_from,
                         output,
                     ) {
-                        CurveBlockResult::Done => Stage::Attack(
-                            params.attack_curve.curve_iter(voice.next_frame_value, 1.0),
-                        ),
+                        CurveBlockResult::Done => {
+                            Stage::Attack(params.attack_curve.curve_iter(0.0, 1.0))
+                        }
                         CurveBlockResult::HasMore => break,
                     }
                 }
@@ -508,6 +508,7 @@ impl SynthModule for Envelope {
                 match event {
                     VoiceEvent::Trigger { voice_idx, .. } => {
                         channel[*voice_idx].triggered = true;
+                        channel[*voice_idx].released = false;
                     }
                     VoiceEvent::Release { voice_idx, .. } => {
                         channel[*voice_idx].released = true;
