@@ -14,7 +14,7 @@ use crate::{
         buffer::{VoicesLayout, new_voices_layout},
         curves::{CurveFunction, Exponential, ExponentialIn, ExponentialOut},
         routing::{
-            ControlRouterType, DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS,
+            ControlRouterType, DataType, Input, InputSlots, ModuleId, NUM_CHANNELS,
             ProcessContext, SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceRouter,
         },
         smooth::Smoother,
@@ -467,10 +467,6 @@ impl Envelope {
 impl SynthModule for Envelope {
     fn id(&self) -> ModuleId {
         self.id
-    }
-
-    fn module_type(&self) -> ModuleType {
-        ModuleType::Envelope
     }
 
     fn inputs(&self) -> &'static [ModInput] {

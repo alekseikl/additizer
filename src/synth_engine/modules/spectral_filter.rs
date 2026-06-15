@@ -16,7 +16,7 @@ use crate::synth_engine::{
     biquad_filter::BiquadFilter,
     buffer::{SpectralBuffer, VoicesLayout, new_voices_layout},
     routing::{
-        DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS, ProcessContext,
+        DataType, Input, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
         SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent, VoiceRouter,
     },
     synth_module::{ModInput, SynthModule},
@@ -287,10 +287,6 @@ impl SpectralFilter {
 impl SynthModule for SpectralFilter {
     fn id(&self) -> ModuleId {
         self.id
-    }
-
-    fn module_type(&self) -> ModuleType {
-        ModuleType::SpectralFilter
     }
 
     fn inputs(&self) -> &'static [ModInput] {

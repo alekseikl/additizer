@@ -17,7 +17,7 @@ use crate::{
         oscillator::link::{AudioEnd, UiEnd, UiEvent, create_link_pair},
         phase::Phase,
         routing::{
-            AudioRouterType, DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS,
+            AudioRouterType, DataType, Input, InputSlots, ModuleId, NUM_CHANNELS,
             ProcessContext, SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceRouter,
         },
         smooth::SmoothedSample,
@@ -1000,10 +1000,6 @@ impl Oscillator {
 impl SynthModule for Oscillator {
     fn id(&self) -> ModuleId {
         self.id
-    }
-
-    fn module_type(&self) -> ModuleType {
-        ModuleType::Oscillator
     }
 
     fn inputs(&self) -> &'static [ModInput] {

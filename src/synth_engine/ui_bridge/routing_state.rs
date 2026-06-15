@@ -1,8 +1,9 @@
 use rustc_hash::FxHashMap;
 
 use crate::synth_engine::{
-    ModuleId, ModuleType, RoutingMap, StereoSample, SynthModule, routing::DataType,
-    synth_module::ModInput,
+    ModuleHandle, ModuleId, ModuleType, RoutingMap, StereoSample,
+    routing::DataType,
+    synth_module::{ModInput, SynthModule},
 };
 
 pub struct Module {
@@ -13,7 +14,7 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn new<M: SynthModule>(module: &M) -> Self {
+    pub(in super::super) fn new(module: &ModuleHandle) -> Self {
         Self {
             id: module.id(),
             module_type: module.module_type(),

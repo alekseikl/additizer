@@ -14,7 +14,7 @@ use crate::synth_engine::{
     StereoSample,
     buffer::{Buffer, VoicesLayout, copy_or_add_to_buffer, zero_buffer},
     routing::{
-        AudioRouterType, DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS,
+        AudioRouterType, DataType, Input, InputSlots, ModuleId, NUM_CHANNELS,
         ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter, VolumeType,
     },
     smooth::SmoothedSample,
@@ -352,10 +352,6 @@ impl Mixer {
 impl SynthModule for Mixer {
     fn id(&self) -> ModuleId {
         self.id
-    }
-
-    fn module_type(&self) -> ModuleType {
-        ModuleType::Mixer
     }
 
     fn inputs(&self) -> &'static [ModInput] {

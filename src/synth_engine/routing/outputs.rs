@@ -60,7 +60,7 @@ impl<'a> ControlRateAdapter<'a> {
     }
 
     pub fn next_frame_value(&self) -> Sample {
-        self.output.buffer[self.samples + 1]
+        self.output.buffer[self.samples]
     }
 }
 

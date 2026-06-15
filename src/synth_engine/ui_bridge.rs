@@ -1,9 +1,11 @@
 use std::ops::DerefMut;
 
+use enum_dispatch::enum_dispatch;
+
 use crate::{
     engine_factory::{EngineHandle, UiConfigHandle},
     synth_engine::{
-        Module, ModuleId, ModuleInput, ModuleType, ModuleUiBridge, OUTPUT_MODULE_ID, Sample,
+        ModuleHandle, ModuleId, ModuleInput, ModuleType, ModuleUiBridge, OUTPUT_MODULE_ID, Sample,
         StereoSample,
         amplifier::AmplifierUiBridge,
         config::EngineParams,
@@ -31,45 +33,20 @@ pub use link::{AudioEnd, UiEnd, UiEvent, UiUpdate, create_link_pair};
 pub use routing_state::{AvailableInputSource, ConnectedInputSource, RoutingState};
 use rustc_hash::FxHashMap;
 
-/// Closed-set enum over all concrete UI bridge types, enabling static dispatch.
+#[enum_dispatch(ModuleUiBridge)]
 pub enum ModuleBridge {
-    Oscillator(OscillatorUiBridge),
-    Envelope(EnvelopeUiBridge),
-    Lfo(LfoUiBridge),
-    Amplifier(AmplifierUiBridge),
-    Mixer(MixerUiBridge),
-    WaveShaper(WaveShaperUiBridge),
-    SpectralFilter(SpectralFilterUiBridge),
-    SpectralBlend(SpectralBlendUiBridge),
-    SpectralMixer(SpectralMixerUiBridge),
-    HarmonicEditor(HarmonicEditorUiBridge),
-    Expressions(ExpressionsUiBridge),
-    ExternalParam(ExternalParamUiBridge),
-}
-
-macro_rules! dispatch_bridge {
-    ($self:expr, $method:ident($($arg:expr),*)) => {
-        match $self {
-            ModuleBridge::Oscillator(b)     => b.$method($($arg),*),
-            ModuleBridge::Envelope(b)       => b.$method($($arg),*),
-            ModuleBridge::Lfo(b)            => b.$method($($arg),*),
-            ModuleBridge::Amplifier(b)      => b.$method($($arg),*),
-            ModuleBridge::Mixer(b)          => b.$method($($arg),*),
-            ModuleBridge::WaveShaper(b)     => b.$method($($arg),*),
-            ModuleBridge::SpectralFilter(b) => b.$method($($arg),*),
-            ModuleBridge::SpectralBlend(b)  => b.$method($($arg),*),
-            ModuleBridge::SpectralMixer(b)  => b.$method($($arg),*),
-            ModuleBridge::HarmonicEditor(b) => b.$method($($arg),*),
-            ModuleBridge::Expressions(b)    => b.$method($($arg),*),
-            ModuleBridge::ExternalParam(b)  => b.$method($($arg),*),
-        }
-    };
-}
-
-impl ModuleUiBridge for ModuleBridge {
-    fn update(&mut self) {
-        dispatch_bridge!(self, update())
-    }
+    Oscillator(Box<OscillatorUiBridge>),
+    Envelope(Box<EnvelopeUiBridge>),
+    Lfo(Box<LfoUiBridge>),
+    Amplifier(Box<AmplifierUiBridge>),
+    Mixer(Box<MixerUiBridge>),
+    WaveShaper(Box<WaveShaperUiBridge>),
+    SpectralFilter(Box<SpectralFilterUiBridge>),
+    SpectralBlend(Box<SpectralBlendUiBridge>),
+    SpectralMixer(Box<SpectralMixerUiBridge>),
+    HarmonicEditor(Box<HarmonicEditorUiBridge>),
+    Expressions(Box<ExpressionsUiBridge>),
+    ExternalParam(Box<ExternalParamUiBridge>),
 }
 
 #[derive(Clone, Copy, Default)]
@@ -136,35 +113,39 @@ impl UiBridge {
         let engine_ref = engine_lock.deref_mut();
 
         let bridge = match engine_ref.get_module_mut(id)? {
-            Module::Oscillator(m) => ModuleBridge::Oscillator(OscillatorUiBridge::try_new(
-                id,
-                engine.clone(),
-                m,
-            )?),
-            Module::Envelope(m) => ModuleBridge::Envelope(EnvelopeUiBridge::try_new(m)?),
-            Module::Lfo(m) => ModuleBridge::Lfo(LfoUiBridge::try_new(m)?),
-            Module::Amplifier(m) => ModuleBridge::Amplifier(AmplifierUiBridge::try_new(m)?),
-            Module::Mixer(m) => ModuleBridge::Mixer(MixerUiBridge::try_new(m)?),
-            Module::WaveShaper(m) => ModuleBridge::WaveShaper(WaveShaperUiBridge::try_new(m)?),
-            Module::SpectralFilter(m) => {
-                ModuleBridge::SpectralFilter(SpectralFilterUiBridge::try_new(m)?)
+            ModuleHandle::Oscillator(m) => ModuleBridge::Oscillator(Box::new(
+                OscillatorUiBridge::try_new(id, engine.clone(), m)?,
+            )),
+            ModuleHandle::Envelope(m) => {
+                ModuleBridge::Envelope(Box::new(EnvelopeUiBridge::try_new(m)?))
             }
-            Module::SpectralBlend(m) => {
-                ModuleBridge::SpectralBlend(SpectralBlendUiBridge::try_new(m)?)
+            ModuleHandle::Lfo(m) => ModuleBridge::Lfo(Box::new(LfoUiBridge::try_new(m)?)),
+            ModuleHandle::Amplifier(m) => {
+                ModuleBridge::Amplifier(Box::new(AmplifierUiBridge::try_new(m)?))
             }
-            Module::SpectralMixer(m) => {
-                ModuleBridge::SpectralMixer(SpectralMixerUiBridge::try_new(m)?)
+            ModuleHandle::Mixer(m) => ModuleBridge::Mixer(Box::new(MixerUiBridge::try_new(m)?)),
+            ModuleHandle::WaveShaper(m) => {
+                ModuleBridge::WaveShaper(Box::new(WaveShaperUiBridge::try_new(m)?))
             }
-            Module::HarmonicEditor(m) => ModuleBridge::HarmonicEditor(
+            ModuleHandle::SpectralFilter(m) => {
+                ModuleBridge::SpectralFilter(Box::new(SpectralFilterUiBridge::try_new(m)?))
+            }
+            ModuleHandle::SpectralBlend(m) => {
+                ModuleBridge::SpectralBlend(Box::new(SpectralBlendUiBridge::try_new(m)?))
+            }
+            ModuleHandle::SpectralMixer(m) => {
+                ModuleBridge::SpectralMixer(Box::new(SpectralMixerUiBridge::try_new(m)?))
+            }
+            ModuleHandle::HarmonicEditor(m) => ModuleBridge::HarmonicEditor(Box::new(
                 HarmonicEditorUiBridge::try_new(id, engine.clone(), m)?,
-            ),
-            Module::Expressions(m) => {
-                ModuleBridge::Expressions(ExpressionsUiBridge::try_new(m)?)
+            )),
+            ModuleHandle::Expressions(m) => {
+                ModuleBridge::Expressions(Box::new(ExpressionsUiBridge::try_new(m)?))
             }
-            Module::ExternalParam(m) => {
-                ModuleBridge::ExternalParam(ExternalParamUiBridge::try_new(m)?)
+            ModuleHandle::ExternalParam(m) => {
+                ModuleBridge::ExternalParam(Box::new(ExternalParamUiBridge::try_new(m)?))
             }
-            Module::Output(_) => return Some(()),
+            ModuleHandle::Output(_) => return Some(()),
         };
 
         bridges.insert(id, Some(bridge));
@@ -215,7 +196,10 @@ impl UiBridge {
         module_id: ModuleId,
         f: impl FnOnce(&mut Self, &mut ModuleBridge),
     ) {
-        let bridge = self.module_bridges.get_mut(&module_id).and_then(Option::take);
+        let bridge = self
+            .module_bridges
+            .get_mut(&module_id)
+            .and_then(Option::take);
 
         if let Some(mut bridge) = bridge {
             f(self, &mut bridge);
@@ -353,11 +337,7 @@ impl UiBridge {
             }
         }
 
-        for module in self
-            .module_bridges
-            .values_mut()
-            .filter_map(|m| m.as_mut())
-        {
+        for module in self.module_bridges.values_mut().filter_map(|m| m.as_mut()) {
             module.update();
         }
     }

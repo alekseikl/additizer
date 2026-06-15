@@ -5,7 +5,7 @@ use nih_plug::{params::FloatParam, util::db_to_gain_fast};
 
 use crate::{
     synth_engine::{
-        Input, ModuleId, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample, SynthModule,
+        Input, ModuleId, OUTPUT_MODULE_ID, Sample, StereoSample, SynthModule,
         buffer::{Buffer, copy_or_add_to_buffer, copy_to_buffer, zero_buffer},
         iir_decimator::IirDecimator,
         routing::{
@@ -127,10 +127,6 @@ impl Output {
 impl SynthModule for Output {
     fn id(&self) -> ModuleId {
         OUTPUT_MODULE_ID
-    }
-
-    fn module_type(&self) -> ModuleType {
-        ModuleType::Output
     }
 
     fn inputs(&self) -> &'static [ModInput] {

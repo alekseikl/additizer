@@ -14,8 +14,8 @@ use crate::synth_engine::{
     StereoSample,
     buffer::{Buffer, VoicesLayout, zero_buffer},
     routing::{
-        AudioRouterType, DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS,
-        ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter,
+        AudioRouterType, DataType, Input, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
+        SamplesOutput, SpectralInputSlot, VoiceRouter,
     },
     smooth::SmoothedSample,
     synth_module::{ModInput, SynthModule},
@@ -148,10 +148,6 @@ impl Amplifier {
 impl SynthModule for Amplifier {
     fn id(&self) -> ModuleId {
         self.id
-    }
-
-    fn module_type(&self) -> ModuleType {
-        ModuleType::Amplifier
     }
 
     fn inputs(&self) -> &'static [ModInput] {

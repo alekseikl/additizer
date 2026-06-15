@@ -11,15 +11,15 @@ use std::assert_matches;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
+    module_handle::ModuleHandle,
     modules::Output,
     routing::{
         DataType, InputSlot, InputSlots, MIN_MODULE_ID, OutputsArena, ProcessContext,
         ProcessParams, SpectralInputSlot, data_types_compatible,
     },
-    synth_module::ModInput,
+    synth_module::SynthModule,
     voices_handler::{
-        DecayingVoice, DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents,
-        VoicesHandler,
+        DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
     },
 };
 
@@ -48,7 +48,7 @@ pub use routing::{
 };
 pub use smooth::SmoothedSampleParams;
 pub use stereo_sample::StereoSample;
-pub use synth_module::{ModuleUiBridge, SynthModule};
+pub use synth_module::ModuleUiBridge;
 pub use types::Sample;
 
 mod buffer;
@@ -58,6 +58,7 @@ mod synth_module;
 mod biquad_filter;
 mod curves;
 mod iir_decimator;
+mod module_handle;
 mod modules;
 mod phase;
 mod routing;
@@ -93,96 +94,8 @@ impl ModuleInputSource {
     }
 }
 
-type ModulesMap = FxHashMap<ModuleId, Module>;
+type ModulesMap = FxHashMap<ModuleId, ModuleHandle>;
 type RoutingMap = FxHashMap<ModuleInput, Vec<ModuleInputSource>>;
-
-/// Closed-set enum over all concrete module types, enabling static dispatch.
-pub enum Module {
-    Output(Box<Output>),
-    Oscillator(Box<Oscillator>),
-    Envelope(Box<Envelope>),
-    Lfo(Box<Lfo>),
-    Amplifier(Box<Amplifier>),
-    Mixer(Box<Mixer>),
-    WaveShaper(Box<WaveShaper>),
-    SpectralFilter(Box<SpectralFilter>),
-    SpectralBlend(Box<SpectralBlend>),
-    SpectralMixer(Box<SpectralMixer>),
-    HarmonicEditor(Box<HarmonicEditor>),
-    Expressions(Box<Expressions>),
-    ExternalParam(Box<ExternalParam>),
-}
-
-macro_rules! dispatch {
-    ($self:expr, $method:ident($($arg:expr),*)) => {
-        match $self {
-            Module::Output(m)         => m.$method($($arg),*),
-            Module::Oscillator(m)     => m.$method($($arg),*),
-            Module::Envelope(m)       => m.$method($($arg),*),
-            Module::Lfo(m)            => m.$method($($arg),*),
-            Module::Amplifier(m)      => m.$method($($arg),*),
-            Module::Mixer(m)          => m.$method($($arg),*),
-            Module::WaveShaper(m)     => m.$method($($arg),*),
-            Module::SpectralFilter(m) => m.$method($($arg),*),
-            Module::SpectralBlend(m)  => m.$method($($arg),*),
-            Module::SpectralMixer(m)  => m.$method($($arg),*),
-            Module::HarmonicEditor(m) => m.$method($($arg),*),
-            Module::Expressions(m)    => m.$method($($arg),*),
-            Module::ExternalParam(m)  => m.$method($($arg),*),
-        }
-    };
-}
-
-impl SynthModule for Module {
-    fn id(&self) -> ModuleId {
-        dispatch!(self, id())
-    }
-
-    fn module_type(&self) -> ModuleType {
-        dispatch!(self, module_type())
-    }
-
-    fn inputs(&self) -> &'static [ModInput] {
-        dispatch!(self, inputs())
-    }
-
-    fn output(&self) -> DataType {
-        dispatch!(self, output())
-    }
-
-    fn output_slot(&self) -> usize {
-        dispatch!(self, output_slot())
-    }
-
-    fn set_slots(
-        &mut self,
-        inputs: &[InputSlots],
-        spectral_inputs: &[SpectralInputSlot],
-        output_slot: usize,
-    ) {
-        dispatch!(self, set_slots(inputs, spectral_inputs, output_slot))
-    }
-
-    fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
-        dispatch!(self, update_input_amount(input_type, src_slot, amount))
-    }
-
-    fn process_events(&mut self, events: &[VoiceEvent]) {
-        dispatch!(self, process_events(events))
-    }
-
-    fn process_ui_events(&mut self) {
-        dispatch!(self, process_ui_events())
-    }
-
-    fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {
-        dispatch!(self, poll_decaying_voices(decaying_voices))
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        dispatch!(self, process(ctx))
-    }
-}
 
 pub struct SynthEngine {
     next_id: ModuleId,
@@ -204,7 +117,7 @@ macro_rules! add_module_method {
     ($func_name:ident, $module_type:ident $(, $arg:ident )*) => {
         pub fn $func_name(&mut self) -> ModuleId {
             let id = self.alloc_module_id();
-            let module = Module::$module_type(Box::new($module_type::new(id $(, self.$arg() )*)));
+            let module = ModuleHandle::$module_type(Box::new($module_type::new(id $(, self.$arg() )*)));
 
             self.modules.insert(id, module);
             id
@@ -244,7 +157,7 @@ impl SynthEngine {
 
         engine.modules.insert(
             OUTPUT_MODULE_ID,
-            Module::Output(Box::new(Output::new(
+            ModuleHandle::Output(Box::new(Output::new(
                 cfg.engine.output_gain,
                 cfg.engine.voice_kill_time,
                 output_level_param,
@@ -256,35 +169,35 @@ impl SynthEngine {
         for module_cfg in cfg.modules.iter() {
             let module = match module_cfg {
                 ModuleConfig::Oscillator(cfg) => {
-                    Module::Oscillator(Box::new(Oscillator::from_config(cfg)))
+                    ModuleHandle::Oscillator(Box::new(Oscillator::from_config(cfg)))
                 }
                 ModuleConfig::Envelope(cfg) => {
-                    Module::Envelope(Box::new(Envelope::from_config(cfg)))
+                    ModuleHandle::Envelope(Box::new(Envelope::from_config(cfg)))
                 }
-                ModuleConfig::Lfo(cfg) => Module::Lfo(Box::new(Lfo::from_config(cfg))),
+                ModuleConfig::Lfo(cfg) => ModuleHandle::Lfo(Box::new(Lfo::from_config(cfg))),
                 ModuleConfig::Amplifier(cfg) => {
-                    Module::Amplifier(Box::new(Amplifier::from_config(cfg)))
+                    ModuleHandle::Amplifier(Box::new(Amplifier::from_config(cfg)))
                 }
-                ModuleConfig::Mixer(cfg) => Module::Mixer(Box::new(Mixer::from_config(cfg))),
+                ModuleConfig::Mixer(cfg) => ModuleHandle::Mixer(Box::new(Mixer::from_config(cfg))),
                 ModuleConfig::WaveShaper(cfg) => {
-                    Module::WaveShaper(Box::new(WaveShaper::from_config(cfg)))
+                    ModuleHandle::WaveShaper(Box::new(WaveShaper::from_config(cfg)))
                 }
                 ModuleConfig::SpectralFilter(cfg) => {
-                    Module::SpectralFilter(Box::new(SpectralFilter::from_config(cfg)))
+                    ModuleHandle::SpectralFilter(Box::new(SpectralFilter::from_config(cfg)))
                 }
                 ModuleConfig::SpectralBlend(cfg) => {
-                    Module::SpectralBlend(Box::new(SpectralBlend::from_config(cfg)))
+                    ModuleHandle::SpectralBlend(Box::new(SpectralBlend::from_config(cfg)))
                 }
                 ModuleConfig::SpectralMixer(cfg) => {
-                    Module::SpectralMixer(Box::new(SpectralMixer::from_config(cfg)))
+                    ModuleHandle::SpectralMixer(Box::new(SpectralMixer::from_config(cfg)))
                 }
                 ModuleConfig::HarmonicEditor(cfg) => {
-                    Module::HarmonicEditor(Box::new(HarmonicEditor::from_config(cfg)))
+                    ModuleHandle::HarmonicEditor(Box::new(HarmonicEditor::from_config(cfg)))
                 }
                 ModuleConfig::Expressions(cfg) => {
-                    Module::Expressions(Box::new(Expressions::from_config(cfg)))
+                    ModuleHandle::Expressions(Box::new(Expressions::from_config(cfg)))
                 }
-                ModuleConfig::ExternalParam(cfg) => Module::ExternalParam(Box::new(
+                ModuleConfig::ExternalParam(cfg) => ModuleHandle::ExternalParam(Box::new(
                     ExternalParam::from_config(cfg, external_params.clone()),
                 )),
             };
@@ -321,37 +234,37 @@ impl SynthEngine {
             .filter_map(|&id| {
                 let module = self.modules.get(&id)?;
                 match module {
-                    Module::Output(_) => None,
-                    Module::Oscillator(m) => {
+                    ModuleHandle::Output(_) => None,
+                    ModuleHandle::Oscillator(m) => {
                         Some(ModuleConfig::Oscillator(Box::new(m.get_config())))
                     }
-                    Module::Envelope(m) => {
+                    ModuleHandle::Envelope(m) => {
                         Some(ModuleConfig::Envelope(Box::new(m.get_config())))
                     }
-                    Module::Lfo(m) => Some(ModuleConfig::Lfo(Box::new(m.get_config()))),
-                    Module::Amplifier(m) => {
+                    ModuleHandle::Lfo(m) => Some(ModuleConfig::Lfo(Box::new(m.get_config()))),
+                    ModuleHandle::Amplifier(m) => {
                         Some(ModuleConfig::Amplifier(Box::new(m.get_config())))
                     }
-                    Module::Mixer(m) => Some(ModuleConfig::Mixer(Box::new(m.get_config()))),
-                    Module::WaveShaper(m) => {
+                    ModuleHandle::Mixer(m) => Some(ModuleConfig::Mixer(Box::new(m.get_config()))),
+                    ModuleHandle::WaveShaper(m) => {
                         Some(ModuleConfig::WaveShaper(Box::new(m.get_config())))
                     }
-                    Module::SpectralFilter(m) => {
+                    ModuleHandle::SpectralFilter(m) => {
                         Some(ModuleConfig::SpectralFilter(Box::new(m.get_config())))
                     }
-                    Module::SpectralBlend(m) => {
+                    ModuleHandle::SpectralBlend(m) => {
                         Some(ModuleConfig::SpectralBlend(Box::new(m.get_config())))
                     }
-                    Module::SpectralMixer(m) => {
+                    ModuleHandle::SpectralMixer(m) => {
                         Some(ModuleConfig::SpectralMixer(Box::new(m.get_config())))
                     }
-                    Module::HarmonicEditor(m) => {
+                    ModuleHandle::HarmonicEditor(m) => {
                         Some(ModuleConfig::HarmonicEditor(Box::new(m.get_config())))
                     }
-                    Module::Expressions(m) => {
+                    ModuleHandle::Expressions(m) => {
                         Some(ModuleConfig::Expressions(Box::new(m.get_config())))
                     }
-                    Module::ExternalParam(m) => {
+                    ModuleHandle::ExternalParam(m) => {
                         Some(ModuleConfig::ExternalParam(Box::new(m.get_config())))
                     }
                 }
@@ -426,7 +339,7 @@ impl SynthEngine {
     }
 
     pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) {
-        if let Some(Module::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID) {
+        if let Some(ModuleHandle::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID) {
             output.set_voice_kill_time(voice_kill_time);
         }
     }
@@ -441,20 +354,20 @@ impl SynthEngine {
 
     pub fn get_output_gain(&self) -> StereoSample {
         match self.modules.get(&OUTPUT_MODULE_ID) {
-            Some(Module::Output(output)) => output.get_gain(),
+            Some(ModuleHandle::Output(output)) => output.get_gain(),
             _ => StereoSample::ZERO,
         }
     }
 
     pub fn get_voice_kill_time(&self) -> Sample {
         match self.modules.get(&OUTPUT_MODULE_ID) {
-            Some(Module::Output(output)) => output.get_voice_kill_time(),
+            Some(ModuleHandle::Output(output)) => output.get_voice_kill_time(),
             _ => 0.0,
         }
     }
 
     pub fn set_output_gain(&mut self, level: StereoSample) {
-        if let Some(Module::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID) {
+        if let Some(ModuleHandle::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID) {
             output.set_gain(level);
         }
     }
@@ -726,7 +639,7 @@ impl SynthEngine {
             params: ProcessParams {
                 samples,
                 sample_rate,
-                buffer_t_step: samples as Sample / sample_rate,
+                // buffer_t_step: samples as Sample / sample_rate,
                 smooth_params: SmoothedSampleParams::new(sample_rate),
                 needs_update_ui: update_ui,
                 spectrum_channels: self.spectrum_channels,
@@ -742,7 +655,7 @@ impl SynthEngine {
             }
         }
 
-        if let Some(Module::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID) {
+        if let Some(ModuleHandle::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID) {
             output.read_output(self.oversampling, outputs);
         }
     }
@@ -774,10 +687,9 @@ impl SynthEngine {
             return self.can_be_linked_with_output(src, dst);
         }
 
-        let (Some(src_module), Some(dst_module)) = (
-            self.modules.get(src),
-            self.modules.get(&dst.module_id),
-        ) else {
+        let (Some(src_module), Some(dst_module)) =
+            (self.modules.get(src), self.modules.get(&dst.module_id))
+        else {
             return Err("Invalid node.".to_string());
         };
 
@@ -817,11 +729,11 @@ impl SynthEngine {
             .collect()
     }
 
-    pub fn get_module(&self, id: ModuleId) -> Option<&Module> {
+    pub fn get_module(&self, id: ModuleId) -> Option<&ModuleHandle> {
         self.modules.get(&id)
     }
 
-    pub fn get_module_mut(&mut self, id: ModuleId) -> Option<&mut Module> {
+    pub fn get_module_mut(&mut self, id: ModuleId) -> Option<&mut ModuleHandle> {
         self.modules.get_mut(&id)
     }
 

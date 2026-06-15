@@ -15,7 +15,7 @@ use crate::synth_engine::{
     StereoSample,
     buffer::{VoicesLayout, new_voices_layout},
     routing::{
-        DataType, Input, InputSlots, MixType, ModuleId, ModuleType, NUM_CHANNELS, ProcessContext,
+        DataType, Input, InputSlots, MixType, ModuleId, NUM_CHANNELS, ProcessContext,
         SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent, VoiceRouter, VolumeType,
     },
     synth_module::{ModInput, SynthModule},
@@ -331,10 +331,6 @@ impl SpectralMixer {
 impl SynthModule for SpectralMixer {
     fn id(&self) -> ModuleId {
         self.id
-    }
-
-    fn module_type(&self) -> ModuleType {
-        ModuleType::SpectralMixer
     }
 
     fn inputs(&self) -> &'static [ModInput] {

@@ -9,7 +9,7 @@ use crate::{
             new_voices_layout,
         },
         routing::{
-            DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS, ProcessContext,
+            DataType, Input, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
             SpectralInputSlot,
         },
         synth_module::{ModInput, SynthModule},
@@ -209,10 +209,6 @@ impl HarmonicEditor {
 impl SynthModule for HarmonicEditor {
     fn id(&self) -> ModuleId {
         self.id
-    }
-
-    fn module_type(&self) -> ModuleType {
-        ModuleType::HarmonicEditor
     }
 
     fn inputs(&self) -> &'static [ModInput] {

@@ -11,7 +11,7 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::LfoUiBridge;
 
 use crate::synth_engine::{
-    Input, ModuleId, ModuleType, Sample, StereoSample,
+    Input, ModuleId, Sample, StereoSample,
     buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
     phase::Phase,
     routing::{
@@ -300,10 +300,6 @@ impl Lfo {
 impl SynthModule for Lfo {
     fn id(&self) -> ModuleId {
         self.id
-    }
-
-    fn module_type(&self) -> ModuleType {
-        ModuleType::Lfo
     }
 
     fn inputs(&self) -> &'static [ModInput] {

@@ -8,7 +8,7 @@ pub use ui_bridge::ExpressionsUiBridge;
 
 use crate::{
     synth_engine::{
-        Expression, Input, ModuleId, ModuleType, Sample, StereoSample,
+        Expression, Input, ModuleId, Sample, StereoSample,
         buffer::{VoicesLayout, new_voices_layout},
         routing::{
             ControlRouterType, DataType, InputSlots, NUM_CHANNELS, ProcessContext, SamplesOutput,
@@ -211,10 +211,6 @@ impl Expressions {
 impl SynthModule for Expressions {
     fn id(&self) -> ModuleId {
         self.id
-    }
-
-    fn module_type(&self) -> ModuleType {
-        ModuleType::Expressions
     }
 
     fn inputs(&self) -> &'static [ModInput] {

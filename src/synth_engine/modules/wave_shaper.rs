@@ -15,7 +15,7 @@ use crate::synth_engine::{
     StereoSample,
     buffer::{Buffer, VoicesLayout, zero_buffer},
     routing::{
-        AudioRouterType, DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS,
+        AudioRouterType, DataType, Input, InputSlots, ModuleId, NUM_CHANNELS,
         ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter,
     },
     smooth::SmoothedSample,
@@ -193,10 +193,6 @@ impl WaveShaper {
 impl SynthModule for WaveShaper {
     fn id(&self) -> ModuleId {
         self.id
-    }
-
-    fn module_type(&self) -> ModuleType {
-        ModuleType::WaveShaper
     }
 
     fn inputs(&self) -> &'static [ModInput] {

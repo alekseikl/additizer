@@ -11,7 +11,7 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::ExternalParamUiBridge;
 
 use crate::synth_engine::{
-    ModuleId, ModuleType, Sample, StereoSample,
+    ModuleId, Sample, StereoSample,
     buffer::{VoicesLayout, new_voices_layout},
     routing::{
         ControlRouterType, DataType, Input, InputSlots, NUM_CHANNELS, ProcessContext,
@@ -152,10 +152,6 @@ impl ExternalParam {
 impl SynthModule for ExternalParam {
     fn id(&self) -> ModuleId {
         self.id
-    }
-
-    fn module_type(&self) -> ModuleType {
-        ModuleType::ExternalParam
     }
 
     fn inputs(&self) -> &'static [ModInput] {

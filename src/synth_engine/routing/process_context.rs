@@ -11,7 +11,7 @@ use crate::synth_engine::{
 pub struct ProcessParams<'a> {
     pub samples: usize,
     pub sample_rate: Sample,
-    pub buffer_t_step: Sample,
+    // pub buffer_t_step: Sample,
     pub needs_update_ui: bool,
     pub smooth_params: SmoothedSampleParams,
     pub spectrum_channels: usize,
