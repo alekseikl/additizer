@@ -16,10 +16,10 @@ use crate::synth_engine::{
     buffer::{VoicesLayout, new_voices_layout},
     routing::{
         DataType, Input, InputSlots, MixType, ModuleId, ModuleType, NUM_CHANNELS, ProcessContext,
-        SpectralInputSlot, SpectralRouterType, VoiceEvent, VoiceRouter, VolumeType,
+        SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent, VoiceRouter, VolumeType,
     },
     synth_module::{ModInput, SynthModule},
-    types::{ComplexSample, Sample, SpectralOutput},
+    types::{ComplexSample, Sample},
 };
 
 const MAX_VOLUME: Sample = 24.0; // dB

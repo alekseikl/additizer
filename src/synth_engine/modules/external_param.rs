@@ -15,11 +15,10 @@ use crate::synth_engine::{
     buffer::{VoicesLayout, new_voices_layout},
     routing::{
         ControlRouterType, DataType, Input, InputSlots, NUM_CHANNELS, ProcessContext,
-        SpectralInputSlot, VoiceEvent, VoiceRouter,
+        SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceRouter,
     },
     smooth::Smoother,
     synth_module::{ModInput, SynthModule},
-    types::SamplesOutput,
 };
 
 pub const NUM_FLOAT_PARAMS: usize = 4;
@@ -180,7 +179,8 @@ impl SynthModule for ExternalParam {
         self.output_slot = output_slot;
     }
 
-    fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {}
+    fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {
+    }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
         for channel in self.voices.iter_mut() {

@@ -15,11 +15,11 @@ use crate::{
         curves::{CurveFunction, Exponential, ExponentialIn, ExponentialOut},
         routing::{
             ControlRouterType, DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS,
-            ProcessContext, SpectralInputSlot, VoiceEvent, VoiceRouter,
+            ProcessContext, SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceRouter,
         },
         smooth::Smoother,
         synth_module::{ModInput, SynthModule},
-        types::{Sample, SamplesOutput},
+        types::Sample,
         voices_handler::DecayingVoice,
     },
     utils::from_ms,
@@ -450,10 +450,10 @@ impl Envelope {
             };
         }
 
-        drop(control_output);
-
-        voice.next_frame_value = voice_output.scalar(false);
+        voice.next_frame_value = control_output.next_frame_value();
         voice.triggered = false;
+
+        drop(control_output);
 
         voice.smoother.apply_if_needed(
             samples,

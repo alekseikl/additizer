@@ -17,10 +17,10 @@ use crate::synth_engine::{
     buffer::{SpectralBuffer, VoicesLayout, new_voices_layout},
     routing::{
         DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS, ProcessContext,
-        SpectralInputSlot, SpectralRouterType, VoiceEvent, VoiceRouter,
+        SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent, VoiceRouter,
     },
     synth_module::{ModInput, SynthModule},
-    types::{ComplexSample, Sample, SpectralOutput},
+    types::{ComplexSample, Sample},
 };
 
 struct Params {

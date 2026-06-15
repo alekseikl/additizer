@@ -15,14 +15,14 @@ use crate::{
             new_voices_layout, zero_buffer,
         },
         oscillator::link::{AudioEnd, UiEnd, UiEvent, create_link_pair},
+        phase::Phase,
         routing::{
             AudioRouterType, DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS,
-            ProcessContext, SpectralInputSlot, VoiceEvent, VoiceRouter,
+            ProcessContext, SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceRouter,
         },
-        phase::Phase,
         smooth::SmoothedSample,
         synth_module::{ModInput, SynthModule},
-        types::{ComplexSample, Sample, SamplesOutput},
+        types::{ComplexSample, Sample},
     },
     utils::{from_ms, pitch_to_freq, power_scale, st_to_octave},
 };

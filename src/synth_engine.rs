@@ -14,8 +14,8 @@ use topo_sort::{SortResults, TopoSort};
 use crate::synth_engine::{
     modules::Output,
     routing::{
-        DataType, InputSlots, MIN_MODULE_ID, OutputsArena, ProcessContext, SamplesInputSrc,
-        SpectralInputSlot, data_types_compatible,
+        DataType, InputSlot, InputSlots, MIN_MODULE_ID, OutputsArena, ProcessContext,
+        ProcessParams, SpectralInputSlot, data_types_compatible,
     },
     voices_handler::{
         DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
@@ -47,7 +47,7 @@ pub use routing::{
 };
 pub use smooth::SmoothedSampleParams;
 pub use stereo_sample::StereoSample;
-pub use synth_module::{ModuleUiBridge, ProcessParams, SynthModule};
+pub use synth_module::{ModuleUiBridge, SynthModule};
 pub use types::Sample;
 
 mod buffer;
@@ -863,7 +863,7 @@ impl SynthEngine {
             };
 
             for src in sources {
-                let mut input_src = SamplesInputSrc {
+                let mut input_src = InputSlot {
                     src_slot: 0,
                     modulation_slot: None,
                     amount: src.amount,

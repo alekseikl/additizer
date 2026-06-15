@@ -6,20 +6,8 @@ use crate::synth_engine::{
         DataType, Input, InputSlots, ModuleId, ModuleType, ProcessContext, SpectralInputSlot,
         VoiceEvent,
     },
-    smooth::SmoothedSampleParams,
-    types::Sample,
     voices_handler::DecayingVoice,
 };
-
-pub struct ProcessParams<'a> {
-    pub samples: usize,
-    pub sample_rate: Sample,
-    pub buffer_t_step: Sample,
-    pub needs_update_ui: bool,
-    pub smooth_params: SmoothedSampleParams,
-    pub spectrum_channels: usize,
-    pub active_voices: &'a [usize],
-}
 
 pub struct ModInput {
     pub input: Input,

@@ -11,12 +11,11 @@ use crate::{
         Expression, Input, ModuleId, ModuleType, Sample, StereoSample,
         buffer::{VoicesLayout, new_voices_layout},
         routing::{
-            ControlRouterType, DataType, InputSlots, NUM_CHANNELS, ProcessContext, SpectralInputSlot,
-            VoiceEvent, VoiceRouter,
+            ControlRouterType, DataType, InputSlots, NUM_CHANNELS, ProcessContext, SamplesOutput,
+            SpectralInputSlot, VoiceEvent, VoiceRouter,
         },
         smooth::Smoother,
         synth_module::{ModInput, SynthModule},
-        types::SamplesOutput,
     },
     utils::st_to_octave,
 };
@@ -239,7 +238,8 @@ impl SynthModule for Expressions {
         self.output_slot = output_slot;
     }
 
-    fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {}
+    fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {
+    }
 
     fn handle_events(&mut self, events: &[VoiceEvent]) {
         for (channel_idx, channel) in self.voices.iter_mut().enumerate() {

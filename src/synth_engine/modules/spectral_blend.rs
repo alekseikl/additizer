@@ -15,10 +15,10 @@ use crate::synth_engine::{
     buffer::{VoicesLayout, new_voices_layout},
     routing::{
         DataType, Input, InputSlots, ModuleId, ModuleType, NUM_CHANNELS, ProcessContext,
-        SpectralInputSlot, SpectralRouterType, VoiceEvent, VoiceRouter,
+        SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent, VoiceRouter,
     },
     synth_module::{ModInput, SynthModule},
-    types::{Sample, SpectralOutput},
+    types::Sample,
 };
 
 struct ChannelParams {

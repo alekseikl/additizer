@@ -13,14 +13,13 @@ pub use ui_bridge::LfoUiBridge;
 use crate::synth_engine::{
     Input, ModuleId, ModuleType, Sample, StereoSample,
     buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
-    routing::{
-        ControlRouterType, DataType, InputSlots, NUM_CHANNELS, ProcessContext, SpectralInputSlot,
-        VoiceEvent, VoiceRouter,
-    },
     phase::Phase,
+    routing::{
+        ControlRouterType, DataType, InputSlots, NUM_CHANNELS, ProcessContext, SamplesOutput,
+        SpectralInputSlot, VoiceEvent, VoiceRouter,
+    },
     smooth::{SmoothedSample, Smoother},
     synth_module::{ModInput, SynthModule},
-    types::SamplesOutput,
 };
 
 struct ChannelParams {
