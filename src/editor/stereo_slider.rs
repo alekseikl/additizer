@@ -2,7 +2,7 @@ use std::ops::RangeInclusive;
 
 use egui::{Color32, PointerButton, Pos2, Rect, Response, Sense, Ui, Vec2, Widget, vec2};
 
-use crate::synth_engine::{Sample, StereoSample};
+use crate::synth_engine::{Sample, StereoSample, ui_bridge::ModulatedValue};
 
 const BG_COLOR: Color32 = Color32::from_rgb(0, 0, 0);
 const LEVEL_COLOR: Color32 = Color32::from_rgb(0x0b, 0x42, 0x67);
@@ -12,7 +12,7 @@ const MODULATED_COLOR: Color32 = Color32::from_rgb(0x9a, 0x6a, 0x12);
 pub struct StereoSlider<'a> {
     units: Option<&'a str>,
     value: &'a mut StereoSample,
-    modulated: Option<StereoSample>,
+    modulated: Option<ModulatedValue>,
     range: RangeInclusive<Sample>,
     default: Option<Sample>,
     precision: usize,
@@ -100,7 +100,7 @@ impl<'a> StereoSlider<'a> {
         self
     }
 
-    pub fn modulated(mut self, value: Option<StereoSample>) -> Self {
+    pub fn modulated(mut self, value: Option<ModulatedValue>) -> Self {
         self.modulated = value;
         self
     }
@@ -205,7 +205,7 @@ impl<'a> StereoSlider<'a> {
             return;
         };
 
-        let normalized_modulated = self.normalized_value_from(&modulated);
+        let normalized_modulated = self.normalized_value_from(&modulated.value);
 
         let paint_horizontal_bar = |rect: Rect, norm_value: Sample, at_top: bool| {
             let y = if at_top {
@@ -223,29 +223,11 @@ impl<'a> StereoSlider<'a> {
             ui.painter().rect_filled(bar_rect, 0.0, MODULATED_COLOR);
         };
 
-        let paint_vertical_bar = |rect: Rect, norm_value: Sample, at_left: bool| {
-            let x = if at_left {
-                rect.left()
-            } else {
-                rect.right() - 1.0
-            };
-            let bar_rect = if norm_value < 0.0 {
-                let y = rect.bottom() - (1.0 + norm_value) * rect.height();
-                Rect::from_min_max(Pos2::new(x, y), Pos2::new(x + 1.0, rect.bottom()))
-            } else {
-                let y = rect.bottom() - norm_value * rect.height();
-                Rect::from_min_max(Pos2::new(x, y), Pos2::new(x + 1.0, rect.bottom()))
-            };
-            ui.painter().rect_filled(bar_rect, 0.0, MODULATED_COLOR);
-        };
+        let lr_rect = response.rect.split_top_bottom_at_fraction(0.5);
 
-        if self.vertical {
-            let lr_rect = response.rect.split_left_right_at_fraction(0.5);
-            paint_vertical_bar(lr_rect.0, normalized_modulated.left(), true);
-            paint_vertical_bar(lr_rect.1, normalized_modulated.right(), false);
-        } else {
-            let lr_rect = response.rect.split_top_bottom_at_fraction(0.5);
-            paint_horizontal_bar(lr_rect.0, normalized_modulated.left(), true);
+        paint_horizontal_bar(lr_rect.0, normalized_modulated.left(), true);
+
+        if modulated.is_stereo {
             paint_horizontal_bar(lr_rect.1, normalized_modulated.right(), false);
         }
     }

@@ -31,7 +31,7 @@ impl Default for EngineParams {
             block_size: MAX_BLOCK_SIZE,
             oversampling: false,
             stereo_spectrum: true,
-            voice_kill_time: from_ms(50.0),
+            voice_kill_time: from_ms(30.0),
             output_gain: 1.0.into(),
         }
     }

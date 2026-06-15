@@ -2,11 +2,13 @@ use egui::{Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
-        multi_input::MultiInput, utils::confirm_module_removal,
+        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
+        module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{
-        Input, ModuleId, amplifier::AmplifierUiBridge, ui_bridge::{ModuleBridge, UiBridge},
+        Input, ModuleId,
+        amplifier::AmplifierUiBridge,
+        ui_bridge::{ModuleBridge, UiBridge},
     },
 };
 
@@ -38,8 +40,8 @@ impl AmplifierUI {
             .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
-                ui.label("Inputs");
-                MultiInput::new(Input::Audio, module_id).show(ui, bridge);
+                ui.label("Input");
+                ui.add(DirectInput::new(bridge, Input::Audio, module_id));
                 ui.end_row();
 
                 ui.label("Gain");

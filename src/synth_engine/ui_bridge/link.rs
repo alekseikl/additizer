@@ -25,11 +25,6 @@ pub enum UiUpdate {
         channel: u8,
         value: Sample,
     },
-    Output {
-        module_id: ModuleId,
-        channel: u8,
-        value: Sample,
-    },
     VoicesStatus(VoicesStatus),
 }
 
@@ -54,16 +49,6 @@ impl AudioEnd {
             .push(UiUpdate::ModulatedInput {
                 module_id,
                 input,
-                channel,
-                value,
-            })
-            .is_ok()
-    }
-
-    pub fn update_output(&mut self, module_id: ModuleId, channel: u8, value: Sample) -> bool {
-        self.tx
-            .push(UiUpdate::Output {
-                module_id,
                 channel,
                 value,
             })

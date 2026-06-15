@@ -7,7 +7,7 @@ use egui::{
 use egui_extras::{Column, TableBuilder};
 
 use crate::{
-    editor::{ModuleUi, multi_input::MultiInput},
+    editor::{ModuleUi, direct_input::DirectInput},
     engine_factory::EngineFactory,
     presets::{PresetListItem, Presets},
     synth_engine::{Input, ModuleId, OUTPUT_MODULE_ID, SynthEngine, ui_bridge::UiBridge},
@@ -252,7 +252,7 @@ impl ModuleUi for ParamsUi {
                 ui.end_row();
 
                 ui.label("Output");
-                MultiInput::new(Input::Audio, OUTPUT_MODULE_ID).show(ui, bridge);
+                ui.add(DirectInput::new(bridge, Input::Audio, OUTPUT_MODULE_ID));
                 ui.end_row();
 
                 ui.label("Presets");

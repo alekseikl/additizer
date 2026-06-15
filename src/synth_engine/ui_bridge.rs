@@ -63,6 +63,12 @@ pub struct ModuleItem {
     pub label: String,
 }
 
+#[derive(Clone, Copy)]
+pub struct ModulatedValue {
+    pub value: StereoSample,
+    pub is_stereo: bool,
+}
+
 pub struct UiBridge {
     engine: EngineHandle,
     ui_config: UiConfigHandle,
@@ -71,7 +77,6 @@ pub struct UiBridge {
     engine_params: EngineParams,
     voices: VoicesStatus,
     modulated_inputs: FxHashMap<ModuleInput, StereoSample>,
-    outputs: FxHashMap<ModuleId, StereoSample>,
     module_bridges: FxHashMap<ModuleId, Option<ModuleBridge>>,
 }
 
@@ -99,7 +104,6 @@ impl UiBridge {
             engine_params,
             voices: VoicesStatus::default(),
             modulated_inputs: FxHashMap::default(),
-            outputs: FxHashMap::default(),
             module_bridges: bridges,
         })
     }
@@ -290,9 +294,19 @@ impl UiBridge {
             .collect()
     }
 
-    pub fn get_input_modulated_value(&self, input: ModuleInput) -> Option<StereoSample> {
-        if self.routing.routing.contains_key(&input) && self.has_active_voices() {
-            self.modulated_inputs.get(&input).copied()
+    pub fn get_input_modulated_value(&self, input: ModuleInput) -> Option<ModulatedValue> {
+        if self.routing.routing.contains_key(&input)
+            && self.has_active_voices()
+            && let Some(module) = self.routing.modules.get(&input.module_id)
+            && let Some(value) = self.modulated_inputs.get(&input).copied()
+        {
+            let is_mono =
+                module.output == DataType::Spectral && !self.engine_params.stereo_spectrum;
+
+            Some(ModulatedValue {
+                value,
+                is_stereo: !is_mono,
+            })
         } else {
             None
         }
@@ -324,14 +338,6 @@ impl UiBridge {
                     self.modulated_inputs
                         .entry(ModuleInput::new(input, module_id))
                         .or_insert(StereoSample::ZERO)[channel as usize] = value;
-                }
-                UiUpdate::Output {
-                    module_id,
-                    channel,
-                    value,
-                } => {
-                    self.outputs.entry(module_id).or_insert(StereoSample::ZERO)[channel as usize] =
-                        value;
                 }
                 UiUpdate::VoicesStatus(status) => self.voices = status,
             }

@@ -9,8 +9,7 @@ use crate::{
             new_voices_layout,
         },
         routing::{
-            DataType, Input, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
-            SpectralInputSlot,
+            DataType, Input, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext, SpectralInputSlot,
         },
         synth_module::{ModInput, SynthModule},
         types::ComplexSample,
@@ -79,9 +78,18 @@ impl BiquadFilter {
     }
 }
 
-#[derive(Default)]
 struct Voice {
     triggered: bool,
+    needs_update: bool,
+}
+
+impl Default for Voice {
+    fn default() -> Self {
+        Self {
+            triggered: false,
+            needs_update: true,
+        }
+    }
 }
 
 pub struct HarmonicEditor {
@@ -153,12 +161,22 @@ impl HarmonicEditor {
         magnitudes
     }
 
+    pub fn set_needs_update(&mut self) {
+        for channel in self.voices.iter_mut() {
+            for voice in channel.iter_mut() {
+                voice.needs_update = true;
+            }
+        }
+    }
+
     pub fn set_harmonic(&mut self, harmonic_number: usize, gain: StereoSample) {
         let idx = harmonic_number.clamp(1, SPECTRAL_BUFFER_SIZE - 1);
 
         for (spectrum, gain) in self.harmonics.iter_mut().zip(gain.iter()) {
             spectrum[idx] = HARMONIC_SERIES_BUFFER[idx] * gain;
         }
+
+        self.set_needs_update();
     }
 
     pub fn set_selected(&mut self, params: &SetParams) {
@@ -186,6 +204,8 @@ impl HarmonicEditor {
                 }
             }
         }
+
+        self.set_needs_update();
     }
 
     pub fn apply_filter(&mut self, params: &FilterParams) {
@@ -203,6 +223,8 @@ impl HarmonicEditor {
                 *out *= response;
             }
         }
+
+        self.set_needs_update();
     }
 }
 
@@ -276,14 +298,18 @@ impl SynthModule for HarmonicEditor {
                 for seq_idx in 0..num_active_voices {
                     let voice_idx = router.params().active_voices[seq_idx];
                     let voice = &mut self.voices[channel_idx][voice_idx];
-                    let voice_output = &mut output[channel_idx][voice_idx];
 
-                    if voice.triggered {
+                    if voice.needs_update {
+                        let voice_output = &mut output[channel_idx][voice_idx];
+
+                        if voice.triggered {
+                            *voice_output.advance() = self.harmonics[channel_idx];
+                            voice.triggered = false;
+                        }
+
                         *voice_output.advance() = self.harmonics[channel_idx];
-                        voice.triggered = false;
+                        voice.needs_update = false;
                     }
-
-                    *voice_output.advance() = self.harmonics[channel_idx];
                 }
             }
         });
