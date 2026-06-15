@@ -1046,7 +1046,7 @@ impl SynthModule for Oscillator {
         self.inputs.update_amount(input_type, src_slot, amount);
     }
 
-    fn handle_events(&mut self, events: &[VoiceEvent]) {
+    fn process_events(&mut self, events: &[VoiceEvent]) {
         for channel_idx in 0..NUM_CHANNELS {
             for event in events {
                 match event {
@@ -1065,7 +1065,7 @@ impl SynthModule for Oscillator {
         }
     }
 
-    fn handle_ui_events(&mut self) {
+    fn process_ui_events(&mut self) {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
                 UiEvent::InputParam { input, value } => match input {

@@ -241,7 +241,7 @@ impl SynthModule for Expressions {
     fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {
     }
 
-    fn handle_events(&mut self, events: &[VoiceEvent]) {
+    fn process_events(&mut self, events: &[VoiceEvent]) {
         for (channel_idx, channel) in self.voices.iter_mut().enumerate() {
             for event in events {
                 match event {
@@ -293,7 +293,7 @@ impl SynthModule for Expressions {
         }
     }
 
-    fn handle_ui_events(&mut self) {
+    fn process_ui_events(&mut self) {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
                 UiEvent::Expression(expression) => self.set_expression(expression),

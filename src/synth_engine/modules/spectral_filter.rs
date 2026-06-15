@@ -322,7 +322,7 @@ impl SynthModule for SpectralFilter {
         self.output_slot = output_slot;
     }
 
-    fn handle_events(&mut self, events: &[VoiceEvent]) {
+    fn process_events(&mut self, events: &[VoiceEvent]) {
         for channel in self.voices.iter_mut() {
             for event in events {
                 if let VoiceEvent::Trigger { voice_idx, .. } = event {
@@ -336,7 +336,7 @@ impl SynthModule for SpectralFilter {
         self.inputs.update_amount(input_type, src_slot, amount);
     }
 
-    fn handle_ui_events(&mut self) {
+    fn process_ui_events(&mut self) {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
                 UiEvent::InputParam { input, value } => match input {

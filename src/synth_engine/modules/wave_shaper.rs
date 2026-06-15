@@ -231,7 +231,7 @@ impl SynthModule for WaveShaper {
         self.inputs.update_amount(input_type, src_slot, amount);
     }
 
-    fn handle_ui_events(&mut self) {
+    fn process_ui_events(&mut self) {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
                 UiEvent::InputParam { input, value } => match input {

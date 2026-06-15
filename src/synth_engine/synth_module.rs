@@ -56,8 +56,8 @@ pub trait SynthModule: Any + Send {
 
     fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample);
 
-    fn handle_events(&mut self, events: &[VoiceEvent]) {}
-    fn handle_ui_events(&mut self);
+    fn process_events(&mut self, events: &[VoiceEvent]) {}
+    fn process_ui_events(&mut self);
     fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {}
 
     fn process(&mut self, ctx: &mut ProcessContext);

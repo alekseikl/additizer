@@ -182,7 +182,7 @@ impl SynthModule for ExternalParam {
     fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {
     }
 
-    fn handle_events(&mut self, events: &[VoiceEvent]) {
+    fn process_events(&mut self, events: &[VoiceEvent]) {
         for channel in self.voices.iter_mut() {
             for event in events {
                 if let VoiceEvent::Trigger { voice_idx, .. } = event {
@@ -198,7 +198,7 @@ impl SynthModule for ExternalParam {
         }
     }
 
-    fn handle_ui_events(&mut self) {
+    fn process_ui_events(&mut self) {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
                 UiEvent::SelectedParamIndex(index) => self.select_param(index),

@@ -157,9 +157,10 @@ impl SynthModule for Output {
         self.output_slot = output_slot;
     }
 
-    fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {}
+    fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {
+    }
 
-    fn handle_events(&mut self, events: &[VoiceEvent]) {
+    fn process_events(&mut self, events: &[VoiceEvent]) {
         for channel in &mut self.channels {
             for event in events {
                 match event {
@@ -195,7 +196,7 @@ impl SynthModule for Output {
         }
     }
 
-    fn handle_ui_events(&mut self) {}
+    fn process_ui_events(&mut self) {}
 
     fn process(&mut self, ctx: &mut ProcessContext) {
         let mut rf = ctx.for_output(self.id());

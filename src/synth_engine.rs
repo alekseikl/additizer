@@ -528,7 +528,7 @@ impl SynthEngine {
     fn process_voice_events(&mut self, events: &[VoiceEvent]) {
         for module_id in &self.execution_order {
             if let Some(module) = self.modules.get_module_mut(*module_id) {
-                module.handle_events(events);
+                module.process_events(events);
             }
         }
     }
@@ -595,7 +595,7 @@ impl SynthEngine {
         self.modules
             .values_mut()
             .map(|m| m.as_mut())
-            .for_each(|m| m.handle_ui_events());
+            .for_each(|m| m.process_ui_events());
     }
 
     pub fn process<'a>(
