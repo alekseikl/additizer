@@ -107,7 +107,7 @@ impl Amplifier {
             audio_end,
             ui_end: Some(ui_end),
             inputs: Inputs::default(),
-            output_slot: 0,
+            output_slot: usize::MAX,
         }
     }
 
@@ -159,7 +159,7 @@ impl SynthModule for Amplifier {
         INPUTS
     }
 
-    fn output(&self) -> DataType {
+    fn output_type(&self) -> DataType {
         DataType::Audio
     }
 
@@ -167,14 +167,12 @@ impl SynthModule for Amplifier {
         self.output_slot
     }
 
-    fn set_slots(
-        &mut self,
-        inputs: &[InputSlots],
-        spectral_inputs: &[SpectralInputSlot],
-        output_slot: usize,
-    ) {
+    fn set_output_slot(&mut self, slot: usize) {
+        self.output_slot = slot;
+    }
+
+    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) {
         self.inputs = Inputs::from_slots(inputs, spectral_inputs);
-        self.output_slot = output_slot;
     }
 
     fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {

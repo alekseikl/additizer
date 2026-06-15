@@ -44,7 +44,6 @@ struct Channel {
 
 pub struct Output {
     audio_input: Option<usize>,
-    output_slot: usize,
     gain: [SmoothedSample; NUM_CHANNELS],
     kill_time: Sample,
     ext_level_param: Arc<FloatParam>,
@@ -62,7 +61,6 @@ impl Output {
 
         Self {
             audio_input: None,
-            output_slot: 0,
             gain: [
                 SmoothedSample::new(Self::clamp_gain(gain[0])),
                 SmoothedSample::new(Self::clamp_gain(gain[1])),
@@ -135,22 +133,20 @@ impl SynthModule for Output {
         INPUTS
     }
 
-    fn output(&self) -> DataType {
+    fn output_type(&self) -> DataType {
         DataType::Audio
     }
 
     fn output_slot(&self) -> usize {
-        self.output_slot
+        usize::MAX
     }
 
-    fn set_slots(
-        &mut self,
-        inputs: &[InputSlots],
-        _spectral_inputs: &[SpectralInputSlot],
-        output_slot: usize,
-    ) {
+    fn set_output_slot(&mut self, _slot: usize) {
+        panic!("Output module doesn't have output slot.")
+    }
+
+    fn set_input_slots(&mut self, inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) {
         self.audio_input = inputs.first().and_then(|s| s.first_slot());
-        self.output_slot = output_slot;
     }
 
     fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {

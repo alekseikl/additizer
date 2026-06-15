@@ -1,10 +1,11 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::synth_engine::{
-    Sample, SpectralBuffer,
+    Sample, SpectralBuffer, SynthModule,
     buffer::{VoicesLayout, VoicesLayoutArray, add_to_buffer, new_voices_layout},
+    module_handle::ModuleHandle,
     routing::{
-        InputSlot,
+        DataType, InputSlot,
         outputs::{SamplesOutput, SpectralOutput},
     },
 };
@@ -42,6 +43,8 @@ impl<T: Default + Send> DerefMut for ArenaSlot<T> {
 pub struct OutputsArena {
     pub(super) samples: Vec<ArenaSlot<SamplesOutput>>,
     pub(super) spectral: Vec<ArenaSlot<SpectralOutput>>,
+    free_samples_slots: Vec<usize>,
+    free_spectral_slots: Vec<usize>,
 }
 
 impl OutputsArena {
@@ -49,13 +52,65 @@ impl OutputsArena {
         Self {
             samples: Vec::new(),
             spectral: Vec::new(),
+            free_samples_slots: Vec::new(),
+            free_spectral_slots: Vec::new(),
         }
     }
 
-    pub fn set_num_slots(&mut self, samples_slots: usize, spectral_slots: usize) {
-        self.samples.resize_with(samples_slots, ArenaSlot::default);
-        self.spectral
-            .resize_with(spectral_slots, ArenaSlot::default);
+    fn allocate_impl<T: Default + Send>(
+        slots: &mut Vec<ArenaSlot<T>>,
+        free_slots: &mut Vec<usize>,
+    ) -> usize {
+        if let Some(slot_idx) = free_slots.pop() {
+            slots[slot_idx].slot = Some(new_voices_layout());
+            slot_idx
+        } else {
+            slots.push(ArenaSlot::default());
+            slots.len() - 1
+        }
+    }
+
+    fn allocate_samples_slot(&mut self) -> usize {
+        Self::allocate_impl(&mut self.samples, &mut self.free_samples_slots)
+    }
+
+    fn allocate_spectral_slot(&mut self) -> usize {
+        Self::allocate_impl(&mut self.spectral, &mut self.free_spectral_slots)
+    }
+
+    fn free_impl<T: Default + Send>(
+        slots: &mut [ArenaSlot<T>],
+        free_slots: &mut Vec<usize>,
+        slot: usize,
+    ) {
+        assert!(slot < slots.len());
+
+        slots[slot].slot = None;
+        free_slots.push(slot);
+    }
+
+    fn free_samples_slot(&mut self, slot: usize) {
+        Self::free_impl(&mut self.samples, &mut self.free_samples_slots, slot);
+    }
+
+    fn free_spectral_slot(&mut self, slot: usize) {
+        Self::free_impl(&mut self.spectral, &mut self.free_spectral_slots, slot);
+    }
+
+    pub fn allocate_slot(&mut self, module: &mut ModuleHandle) {
+        match module.output_type() {
+            DataType::Audio | DataType::Control => {
+                module.set_output_slot(self.allocate_samples_slot())
+            }
+            DataType::Spectral => module.set_output_slot(self.allocate_spectral_slot()),
+        }
+    }
+
+    pub fn free_slot(&mut self, module: &ModuleHandle) {
+        match module.output_type() {
+            DataType::Audio | DataType::Control => self.free_samples_slot(module.output_slot()),
+            DataType::Spectral => self.free_spectral_slot(module.output_slot()),
+        }
     }
 
     pub(super) fn get_buff(

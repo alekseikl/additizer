@@ -19,7 +19,7 @@ impl Module {
             id: module.id(),
             module_type: module.module_type(),
             inputs: module.inputs(),
-            output: module.output(),
+            output: module.output_type(),
         }
     }
 }

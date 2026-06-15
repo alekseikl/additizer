@@ -94,7 +94,7 @@ impl ExternalParam {
             params: Params::from_config(config),
             audio_end,
             ui_end: Some(ui_end),
-            output_slot: 0,
+            output_slot: usize::MAX,
             voices: new_voices_layout(),
         }
     }
@@ -158,7 +158,7 @@ impl SynthModule for ExternalParam {
         &[]
     }
 
-    fn output(&self) -> DataType {
+    fn output_type(&self) -> DataType {
         DataType::Control
     }
 
@@ -166,14 +166,11 @@ impl SynthModule for ExternalParam {
         self.output_slot
     }
 
-    fn set_slots(
-        &mut self,
-        _inputs: &[InputSlots],
-        _spectral_inputs: &[SpectralInputSlot],
-        output_slot: usize,
-    ) {
-        self.output_slot = output_slot;
+    fn set_output_slot(&mut self, slot: usize) {
+        self.output_slot = slot;
     }
+
+    fn set_input_slots(&mut self, _inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) {}
 
     fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {
     }

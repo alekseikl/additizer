@@ -37,8 +37,8 @@ use rustc_hash::FxHashMap;
 pub enum ModuleBridge {
     Oscillator(Box<OscillatorUiBridge>),
     Envelope(Box<EnvelopeUiBridge>),
-    Lfo(Box<LfoUiBridge>),
     Amplifier(Box<AmplifierUiBridge>),
+    Lfo(Box<LfoUiBridge>),
     Mixer(Box<MixerUiBridge>),
     WaveShaper(Box<WaveShaperUiBridge>),
     SpectralFilter(Box<SpectralFilterUiBridge>),

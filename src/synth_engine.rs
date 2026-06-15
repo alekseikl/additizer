@@ -25,6 +25,7 @@ use crate::synth_engine::{
 
 pub use buffer::{Buffer, HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer};
 pub use config::{EngineConfig, EngineParams, LinkConfig, ModuleConfig};
+pub use module_handle::ModuleType;
 pub use modules::{
     Amplifier, Envelope, EnvelopeCurve, Expressions, ExternalParam, ExternalParamsBlock, Lfo,
     LfoShape, Mixer, Oscillator, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType,
@@ -43,8 +44,8 @@ pub use modules::{
     wave_shaper::{self},
 };
 pub use routing::{
-    Expression, Input, MixType, ModuleId, ModuleInput, ModuleLink, ModuleType, NUM_CHANNELS,
-    OUTPUT_MODULE_ID, VoiceEvent, VolumeType,
+    Expression, Input, MixType, ModuleId, ModuleInput, ModuleLink, NUM_CHANNELS, OUTPUT_MODULE_ID,
+    VoiceEvent, VolumeType,
 };
 pub use smooth::SmoothedSampleParams;
 pub use stereo_sample::StereoSample;
@@ -117,8 +118,9 @@ macro_rules! add_module_method {
     ($func_name:ident, $module_type:ident $(, $arg:ident )*) => {
         pub fn $func_name(&mut self) -> ModuleId {
             let id = self.alloc_module_id();
-            let module = ModuleHandle::$module_type(Box::new($module_type::new(id $(, self.$arg() )*)));
+            let mut module = ModuleHandle::$module_type(Box::new($module_type::new(id $(, self.$arg() )*)));
 
+            self.outputs_arena.allocate_slot(&mut module);
             self.modules.insert(id, module);
             id
         }
@@ -167,7 +169,7 @@ impl SynthEngine {
         let mut max_module_id = MIN_MODULE_ID;
 
         for module_cfg in cfg.modules.iter() {
-            let module = match module_cfg {
+            let mut module = match module_cfg {
                 ModuleConfig::Oscillator(cfg) => {
                     ModuleHandle::Oscillator(Box::new(Oscillator::from_config(cfg)))
                 }
@@ -212,6 +214,7 @@ impl SynthEngine {
                 max_module_id = module_id;
             }
 
+            engine.outputs_arena.allocate_slot(&mut module);
             engine.modules.insert(module_id, module);
         }
 
@@ -314,7 +317,7 @@ impl SynthEngine {
         ui_bridge::RoutingState::new(
             self.modules
                 .values()
-                .filter(|m| !matches!(m.module_type(), ModuleType::Output))
+                .filter(|m| !matches!(m, ModuleHandle::Output(_)))
                 .map(|m| (m.id(), ui_bridge::routing_state::Module::new(m)))
                 .collect(),
             self.input_sources.clone(),
@@ -398,10 +401,11 @@ impl SynthEngine {
     }
 
     pub fn remove_module(&mut self, id: ModuleId) {
-        if !self.modules.contains_key(&id) {
+        let Some(module) = self.modules.get(&id) else {
             return;
         };
 
+        self.outputs_arena.free_slot(module);
         self.modules.remove(&id);
 
         let new_links: Vec<_> = self
@@ -673,7 +677,7 @@ impl SynthEngine {
         };
 
         let is_compatible = dst.input_type == Input::Audio
-            && data_types_compatible(src_module.output(), DataType::Audio);
+            && data_types_compatible(src_module.output_type(), DataType::Audio);
 
         if !is_compatible {
             return Err("Data types mismatch.".to_string());
@@ -693,7 +697,7 @@ impl SynthEngine {
             return Err("Invalid node.".to_string());
         };
 
-        let src_data_types = src_module.output();
+        let src_data_types = src_module.output_type();
 
         let is_compatible = dst_module.inputs().iter().any(|input_info| {
             input_info.input == dst.input_type
@@ -777,9 +781,6 @@ impl SynthEngine {
             spectral_inputs: Vec<SpectralInputSlot>,
         }
 
-        let mut samples_slots = 0;
-        let mut spectral_slots = 0;
-
         let mut modules_slots: FxHashMap<_, _> = self
             .modules
             .iter()
@@ -787,35 +788,14 @@ impl SynthEngine {
                 (
                     mod_id,
                     ModuleSlots {
-                        data_type: m.output(),
-                        output_slot: 0,
+                        data_type: m.output_type(),
+                        output_slot: m.output_slot(),
                         inputs: Default::default(),
                         spectral_inputs: Default::default(),
                     },
                 )
             })
             .collect();
-
-        for mod_id in self.execution_order.iter() {
-            let mod_slots = modules_slots
-                .get_mut(mod_id)
-                .expect("module should be in place");
-
-            match mod_slots.data_type {
-                DataType::Audio | DataType::Control => {
-                    mod_slots.output_slot = samples_slots;
-                    samples_slots += 1;
-                }
-
-                DataType::Spectral => {
-                    mod_slots.output_slot = spectral_slots;
-                    spectral_slots += 1;
-                }
-            }
-        }
-
-        self.outputs_arena
-            .set_num_slots(samples_slots, spectral_slots);
 
         for (input, sources) in self.input_sources.iter() {
             if sources.len() == 1
@@ -891,11 +871,7 @@ impl SynthEngine {
                 .get_mut(module_id)
                 .expect("module should be in place");
 
-            module.set_slots(
-                &mod_slots.inputs,
-                &mod_slots.spectral_inputs,
-                mod_slots.output_slot,
-            );
+            module.set_input_slots(&mod_slots.inputs, &mod_slots.spectral_inputs);
         }
     }
 

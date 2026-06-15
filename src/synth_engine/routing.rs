@@ -22,23 +22,6 @@ pub const NUM_CHANNELS: usize = 2;
 pub const OUTPUT_MODULE_ID: ModuleId = 0;
 pub const MIN_MODULE_ID: ModuleId = 1;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
-pub enum ModuleType {
-    Output,
-    Envelope,
-    Amplifier,
-    Mixer,
-    Oscillator,
-    SpectralFilter,
-    SpectralBlend,
-    SpectralMixer,
-    HarmonicEditor,
-    ExternalParam,
-    Lfo,
-    WaveShaper,
-    Expressions,
-}
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DataType {
     Audio,

@@ -1,7 +1,6 @@
 use crate::synth_engine::{
     Amplifier, Envelope, Expressions, ExternalParam, HarmonicEditor, Input, Lfo, Mixer, ModuleId,
-    ModuleType, Oscillator, SpectralBlend, SpectralFilter, SpectralMixer, StereoSample, VoiceEvent,
-    WaveShaper,
+    Oscillator, SpectralBlend, SpectralFilter, SpectralMixer, StereoSample, VoiceEvent, WaveShaper,
     modules::Output,
     routing::{DataType, InputSlots, ProcessContext, SpectralInputSlot},
     synth_module::{ModInput, SynthModule},
@@ -9,14 +8,31 @@ use crate::synth_engine::{
 };
 use enum_dispatch::enum_dispatch;
 
+#[derive(Debug, Clone, Copy)]
+pub enum ModuleType {
+    Output,
+    Envelope,
+    Amplifier,
+    Mixer,
+    Oscillator,
+    SpectralFilter,
+    SpectralBlend,
+    SpectralMixer,
+    HarmonicEditor,
+    ExternalParam,
+    Lfo,
+    WaveShaper,
+    Expressions,
+}
+
 #[enum_dispatch(SynthModule)]
 pub enum ModuleHandle {
     Oscillator(Box<Oscillator>),
     Envelope(Box<Envelope>),
     Lfo(Box<Lfo>),
     Amplifier(Box<Amplifier>),
-    Mixer(Box<Mixer>),
     WaveShaper(Box<WaveShaper>),
+    Mixer(Box<Mixer>),
     SpectralFilter(Box<SpectralFilter>),
     SpectralBlend(Box<SpectralBlend>),
     SpectralMixer(Box<SpectralMixer>),
