@@ -12,7 +12,7 @@ use crate::{
     synth_engine::{
         ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample,
         harmonic_editor::{FilterParams, FilterType, HarmonicEditorUiBridge, SetAction, SetParams},
-        ui_bridge::UiBridge,
+        ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::NthElement,
 };
@@ -463,8 +463,10 @@ impl ModuleUi for HarmonicEditorUI {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        bridge.with_module_bridge(self.module_id, |bridge, editor_bridge| {
-            self.paint_ui(bridge, editor_bridge, ui);
+        bridge.with_module_bridge(self.module_id, |bridge, module_bridge| {
+            if let ModuleBridge::HarmonicEditor(editor_bridge) = module_bridge {
+                self.paint_ui(bridge, editor_bridge, ui);
+            }
         });
     }
 }

@@ -5,7 +5,7 @@ use crate::{
         ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
         stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
-    synth_engine::{Input, LfoShape, ModuleId, lfo::LfoUiBridge, ui_bridge::UiBridge},
+    synth_engine::{Input, LfoShape, ModuleId, lfo::LfoUiBridge, ui_bridge::{ModuleBridge, UiBridge}},
 };
 
 impl LfoShape {
@@ -159,8 +159,10 @@ impl ModuleUi for LfoUi {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        bridge.with_module_bridge(self.module_id, |bridge, lfo_bridge| {
-            self.paint_ui(bridge, lfo_bridge, ui);
+        bridge.with_module_bridge(self.module_id, |bridge, module_bridge| {
+            if let ModuleBridge::Lfo(lfo_bridge) = module_bridge {
+                self.paint_ui(bridge, lfo_bridge, ui);
+            }
         });
     }
 }

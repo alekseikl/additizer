@@ -5,7 +5,9 @@ use crate::{
         ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
         multi_input::MultiInput, utils::confirm_module_removal,
     },
-    synth_engine::{Input, ModuleId, amplifier::AmplifierUiBridge, ui_bridge::UiBridge},
+    synth_engine::{
+        Input, ModuleId, amplifier::AmplifierUiBridge, ui_bridge::{ModuleBridge, UiBridge},
+    },
 };
 
 pub struct AmplifierUI {
@@ -67,8 +69,10 @@ impl ModuleUi for AmplifierUI {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        bridge.with_module_bridge(self.module_id, |bridge, amp_bridge| {
-            self.paint_ui(bridge, amp_bridge, ui);
+        bridge.with_module_bridge(self.module_id, |bridge, module_bridge| {
+            if let ModuleBridge::Amplifier(amp_bridge) = module_bridge {
+                self.paint_ui(bridge, amp_bridge, ui);
+            }
         });
     }
 }

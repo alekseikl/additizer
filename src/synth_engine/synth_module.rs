@@ -1,5 +1,3 @@
-use std::any::Any;
-
 use crate::synth_engine::{
     StereoSample,
     routing::{
@@ -38,7 +36,7 @@ impl ModInput {
 }
 
 #[allow(unused_variables)]
-pub trait SynthModule: Any + Send {
+pub trait SynthModule: Send {
     fn id(&self) -> ModuleId;
     fn module_type(&self) -> ModuleType;
 
@@ -63,7 +61,7 @@ pub trait SynthModule: Any + Send {
     fn process(&mut self, ctx: &mut ProcessContext);
 }
 
-pub trait ModuleUiBridge: Any + Send {
+pub trait ModuleUiBridge: Send {
     fn update(&mut self);
 }
 

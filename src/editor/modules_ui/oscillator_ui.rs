@@ -9,7 +9,7 @@ use crate::{
     synth_engine::{
         Input, ModuleId, Sample, StereoSample,
         oscillator::{self, OscillatorConfig, OscillatorUiBridge, PhasesDst},
-        ui_bridge::UiBridge,
+        ui_bridge::{ModuleBridge, UiBridge},
     },
 };
 
@@ -580,8 +580,10 @@ impl ModuleUi for OscillatorUI {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        bridge.with_module_bridge(self.module_id, |bridge, osc_bridge| {
-            self.paint_ui(bridge, osc_bridge, ui)
+        bridge.with_module_bridge(self.module_id, |bridge, module_bridge| {
+            if let ModuleBridge::Oscillator(osc_bridge) = module_bridge {
+                self.paint_ui(bridge, osc_bridge, ui)
+            }
         });
     }
 }

@@ -6,7 +6,8 @@ use crate::{
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{
-        Input, ModuleId, spectral_blend::SpectralBlendUiBridge, ui_bridge::UiBridge,
+        Input, ModuleId, spectral_blend::SpectralBlendUiBridge,
+        ui_bridge::{ModuleBridge, UiBridge},
     },
 };
 
@@ -84,8 +85,10 @@ impl ModuleUi for SpectralBlendUi {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        bridge.with_module_bridge(self.module_id, |bridge, blend_bridge| {
-            self.paint_ui(bridge, blend_bridge, ui);
+        bridge.with_module_bridge(self.module_id, |bridge, module_bridge| {
+            if let ModuleBridge::SpectralBlend(blend_bridge) = module_bridge {
+                self.paint_ui(bridge, blend_bridge, ui);
+            }
         });
     }
 }

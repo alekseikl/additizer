@@ -13,7 +13,7 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn new(module: &dyn SynthModule) -> Self {
+    pub fn new<M: SynthModule>(module: &M) -> Self {
         Self {
             id: module.id(),
             module_type: module.module_type(),

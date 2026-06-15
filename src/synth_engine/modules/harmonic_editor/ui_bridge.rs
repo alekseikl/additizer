@@ -3,8 +3,8 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 
 use crate::synth_engine::{
-    ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample, SynthEngine, buffer::HARMONIC_SERIES_BUFFER,
-    synth_module::ModuleUiBridge,
+    Module, ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample, SynthEngine,
+    buffer::HARMONIC_SERIES_BUFFER, synth_module::ModuleUiBridge,
 };
 
 use super::link::{UiEnd, UiUpdate};
@@ -34,7 +34,7 @@ impl HarmonicEditorUiBridge {
     pub fn sync(&mut self) {
         let synth_lock = self.synth.lock();
 
-        if let Some(editor) = synth_lock.get_typed_module::<HarmonicEditor>(self.module_id) {
+        if let Some(Module::HarmonicEditor(editor)) = synth_lock.get_module(self.module_id) {
             self.config = editor.get_config();
         }
     }

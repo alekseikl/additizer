@@ -3,7 +3,7 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 
 use crate::synth_engine::{
-    Input, ModuleId, Sample, StereoSample, SynthEngine, synth_module::ModuleUiBridge,
+    Input, Module, ModuleId, Sample, StereoSample, SynthEngine, synth_module::ModuleUiBridge,
 };
 
 use super::{
@@ -35,7 +35,7 @@ impl OscillatorUiBridge {
     pub fn sync(&mut self) {
         let synth_lock = self.synth.lock();
 
-        if let Some(osc) = synth_lock.get_typed_module::<Oscillator>(self.module_id) {
+        if let Some(Module::Oscillator(osc)) = synth_lock.get_module(self.module_id) {
             self.config = osc.get_config();
         }
     }

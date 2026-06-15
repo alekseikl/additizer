@@ -8,7 +8,8 @@ use crate::{
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{
-        Input, Mixer, ModuleId, VolumeType, mixer::MixerUiBridge, ui_bridge::UiBridge,
+        Input, Mixer, ModuleId, VolumeType, mixer::MixerUiBridge,
+        ui_bridge::{ModuleBridge, UiBridge},
     },
 };
 
@@ -213,8 +214,10 @@ impl ModuleUi for MixerUi {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        bridge.with_module_bridge(self.module_id, |bridge, mixer_bridge| {
-            self.paint_ui(bridge, mixer_bridge, ui);
+        bridge.with_module_bridge(self.module_id, |bridge, module_bridge| {
+            if let ModuleBridge::Mixer(mixer_bridge) = module_bridge {
+                self.paint_ui(bridge, mixer_bridge, ui);
+            }
         });
     }
 }

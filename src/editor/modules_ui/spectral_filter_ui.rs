@@ -7,7 +7,7 @@ use crate::{
     },
     synth_engine::{
         Input, ModuleId, SpectralFilterType, spectral_filter::SpectralFilterUiBridge,
-        ui_bridge::UiBridge,
+        ui_bridge::{ModuleBridge, UiBridge},
     },
 };
 
@@ -166,8 +166,10 @@ impl ModuleUi for SpectralFilterUI {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        bridge.with_module_bridge(self.module_id, |bridge, filter_bridge| {
-            self.paint_ui(bridge, filter_bridge, ui);
+        bridge.with_module_bridge(self.module_id, |bridge, module_bridge| {
+            if let ModuleBridge::SpectralFilter(filter_bridge) = module_bridge {
+                self.paint_ui(bridge, filter_bridge, ui);
+            }
         });
     }
 }

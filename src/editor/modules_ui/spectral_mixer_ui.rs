@@ -9,7 +9,7 @@ use crate::{
     },
     synth_engine::{
         Input, MixType, ModuleId, SpectralMixer, VolumeType,
-        spectral_mixer::SpectralMixerUiBridge, ui_bridge::UiBridge,
+        spectral_mixer::SpectralMixerUiBridge, ui_bridge::{ModuleBridge, UiBridge},
     },
 };
 
@@ -256,8 +256,10 @@ impl ModuleUi for SpectralMixerUi {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        bridge.with_module_bridge(self.module_id, |bridge, mixer_bridge| {
-            self.paint_ui(bridge, mixer_bridge, ui);
+        bridge.with_module_bridge(self.module_id, |bridge, module_bridge| {
+            if let ModuleBridge::SpectralMixer(mixer_bridge) = module_bridge {
+                self.paint_ui(bridge, mixer_bridge, ui);
+            }
         });
     }
 }

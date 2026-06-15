@@ -245,21 +245,18 @@ fn try_new_builds_minimal_patch() {
         },
     );
 
-    assert!(
-        engine
-            .get_typed_module::<HarmonicEditor>(HARMONIC_EDITOR_ID)
-            .is_some()
-    );
-    assert!(
-        engine
-            .get_typed_module::<Oscillator>(OSCILLATOR_ID)
-            .is_some()
-    );
-    assert!(
-        engine
-            .get_typed_module::<Output>(OUTPUT_MODULE_ID)
-            .is_some()
-    );
+    assert!(matches!(
+        engine.get_module(HARMONIC_EDITOR_ID),
+        Some(Module::HarmonicEditor(_))
+    ));
+    assert!(matches!(
+        engine.get_module(OSCILLATOR_ID),
+        Some(Module::Oscillator(_))
+    ));
+    assert!(matches!(
+        engine.get_module(OUTPUT_MODULE_ID),
+        Some(Module::Output(_))
+    ));
 }
 
 #[test]
@@ -270,59 +267,50 @@ fn try_new_builds_full_patch() {
     assert_eq!(cfg.modules.len(), 16);
     assert_eq!(cfg.links.len(), 17);
 
-    assert!(engine.get_typed_module::<HarmonicEditor>(HE0_ID).is_some());
-    assert!(engine.get_typed_module::<HarmonicEditor>(HE1_ID).is_some());
-    assert!(engine.get_typed_module::<HarmonicEditor>(HE2_ID).is_some());
-    assert!(
-        engine
-            .get_typed_module::<SpectralMixer>(SPECTRAL_MIXER_ID)
-            .is_some()
-    );
-    assert!(
-        engine
-            .get_typed_module::<SpectralBlend>(SPECTRAL_BLEND_ID)
-            .is_some()
-    );
-    assert!(
-        engine
-            .get_typed_module::<SpectralFilter>(SPECTRAL_FILTER_ID)
-            .is_some()
-    );
-    assert!(
-        engine
-            .get_typed_module::<Envelope>(ENVELOPE_FILTER_ID)
-            .is_some()
-    );
-    assert!(
-        engine
-            .get_typed_module::<Envelope>(ENVELOPE_AMP_ID)
-            .is_some()
-    );
-    assert!(engine.get_typed_module::<Oscillator>(OSC0_ID).is_some());
-    assert!(engine.get_typed_module::<Oscillator>(OSC1_ID).is_some());
-    assert!(engine.get_typed_module::<Lfo>(LFO_ID).is_some());
-    assert!(engine.get_typed_module::<Mixer>(MIXER_ID).is_some());
-    assert!(engine.get_typed_module::<Amplifier>(AMPLIFIER_ID).is_some());
-    assert!(
-        engine
-            .get_typed_module::<WaveShaper>(WAVE_SHAPER_ID)
-            .is_some()
-    );
-    assert!(
-        engine
-            .get_typed_module::<ExternalParam>(EXTERNAL_PARAM_ID)
-            .is_some()
-    );
-    assert!(
-        engine
-            .get_typed_module::<Expressions>(EXPRESSIONS_ID)
-            .is_some()
-    );
-    assert!(
-        engine
-            .get_typed_module::<Output>(OUTPUT_MODULE_ID)
-            .is_some()
-    );
+    assert!(matches!(engine.get_module(HE0_ID), Some(Module::HarmonicEditor(_))));
+    assert!(matches!(engine.get_module(HE1_ID), Some(Module::HarmonicEditor(_))));
+    assert!(matches!(engine.get_module(HE2_ID), Some(Module::HarmonicEditor(_))));
+    assert!(matches!(
+        engine.get_module(SPECTRAL_MIXER_ID),
+        Some(Module::SpectralMixer(_))
+    ));
+    assert!(matches!(
+        engine.get_module(SPECTRAL_BLEND_ID),
+        Some(Module::SpectralBlend(_))
+    ));
+    assert!(matches!(
+        engine.get_module(SPECTRAL_FILTER_ID),
+        Some(Module::SpectralFilter(_))
+    ));
+    assert!(matches!(
+        engine.get_module(ENVELOPE_FILTER_ID),
+        Some(Module::Envelope(_))
+    ));
+    assert!(matches!(
+        engine.get_module(ENVELOPE_AMP_ID),
+        Some(Module::Envelope(_))
+    ));
+    assert!(matches!(engine.get_module(OSC0_ID), Some(Module::Oscillator(_))));
+    assert!(matches!(engine.get_module(OSC1_ID), Some(Module::Oscillator(_))));
+    assert!(matches!(engine.get_module(LFO_ID), Some(Module::Lfo(_))));
+    assert!(matches!(engine.get_module(MIXER_ID), Some(Module::Mixer(_))));
+    assert!(matches!(engine.get_module(AMPLIFIER_ID), Some(Module::Amplifier(_))));
+    assert!(matches!(
+        engine.get_module(WAVE_SHAPER_ID),
+        Some(Module::WaveShaper(_))
+    ));
+    assert!(matches!(
+        engine.get_module(EXTERNAL_PARAM_ID),
+        Some(Module::ExternalParam(_))
+    ));
+    assert!(matches!(
+        engine.get_module(EXPRESSIONS_ID),
+        Some(Module::Expressions(_))
+    ));
+    assert!(matches!(
+        engine.get_module(OUTPUT_MODULE_ID),
+        Some(Module::Output(_))
+    ));
 
     let order = SynthEngine::calc_execution_order(
         &cfg.links
@@ -552,12 +540,12 @@ fn add_module_at_runtime() {
         .set_direct_link(amp_id, osc_to_out)
         .expect("amp -> output");
 
-    engine
-        .get_typed_module_mut::<Amplifier>(amp_id)
-        .expect("amplifier module")
-        .set_gain(StereoSample::ONE);
+    match engine.get_module_mut(amp_id) {
+        Some(Module::Amplifier(amp)) => amp.set_gain(StereoSample::ONE),
+        _ => panic!("amplifier module"),
+    }
 
-    assert!(engine.get_typed_module::<Amplifier>(amp_id).is_some());
+    assert!(matches!(engine.get_module(amp_id), Some(Module::Amplifier(_))));
 
     engine.handle_note_on(0, 60, 1.0);
 
@@ -705,11 +693,10 @@ fn remove_module_rebuilds_routing() {
 
     engine.remove_module(HARMONIC_EDITOR_ID);
 
-    assert!(
-        engine
-            .get_typed_module::<HarmonicEditor>(HARMONIC_EDITOR_ID)
-            .is_none()
-    );
+    assert!(!matches!(
+        engine.get_module(HARMONIC_EDITOR_ID),
+        Some(Module::HarmonicEditor(_))
+    ));
     assert!(
         !engine
             .get_config()
@@ -905,10 +892,10 @@ fn add_link_connects_new_modules() {
         )
         .expect("env -> amp gain");
 
-    engine
-        .get_typed_module_mut::<Amplifier>(amp_id)
-        .expect("amplifier")
-        .set_gain(StereoSample::ONE);
+    match engine.get_module_mut(amp_id) {
+        Some(Module::Amplifier(amp)) => amp.set_gain(StereoSample::ONE),
+        _ => panic!("amplifier"),
+    }
 
     assert!(
         engine
@@ -1088,18 +1075,18 @@ fn runtime_add_all_module_types() {
     ];
 
     assert_eq!(ids.len(), 12);
-    assert!(engine.get_typed_module::<HarmonicEditor>(ids[0]).is_some());
-    assert!(engine.get_typed_module::<Oscillator>(ids[1]).is_some());
-    assert!(engine.get_typed_module::<Envelope>(ids[2]).is_some());
-    assert!(engine.get_typed_module::<Lfo>(ids[3]).is_some());
-    assert!(engine.get_typed_module::<Amplifier>(ids[4]).is_some());
-    assert!(engine.get_typed_module::<Mixer>(ids[5]).is_some());
-    assert!(engine.get_typed_module::<WaveShaper>(ids[6]).is_some());
-    assert!(engine.get_typed_module::<SpectralFilter>(ids[7]).is_some());
-    assert!(engine.get_typed_module::<SpectralBlend>(ids[8]).is_some());
-    assert!(engine.get_typed_module::<SpectralMixer>(ids[9]).is_some());
-    assert!(engine.get_typed_module::<Expressions>(ids[10]).is_some());
-    assert!(engine.get_typed_module::<ExternalParam>(ids[11]).is_some());
+    assert!(matches!(engine.get_module(ids[0]), Some(Module::HarmonicEditor(_))));
+    assert!(matches!(engine.get_module(ids[1]), Some(Module::Oscillator(_))));
+    assert!(matches!(engine.get_module(ids[2]), Some(Module::Envelope(_))));
+    assert!(matches!(engine.get_module(ids[3]), Some(Module::Lfo(_))));
+    assert!(matches!(engine.get_module(ids[4]), Some(Module::Amplifier(_))));
+    assert!(matches!(engine.get_module(ids[5]), Some(Module::Mixer(_))));
+    assert!(matches!(engine.get_module(ids[6]), Some(Module::WaveShaper(_))));
+    assert!(matches!(engine.get_module(ids[7]), Some(Module::SpectralFilter(_))));
+    assert!(matches!(engine.get_module(ids[8]), Some(Module::SpectralBlend(_))));
+    assert!(matches!(engine.get_module(ids[9]), Some(Module::SpectralMixer(_))));
+    assert!(matches!(engine.get_module(ids[10]), Some(Module::Expressions(_))));
+    assert!(matches!(engine.get_module(ids[11]), Some(Module::ExternalParam(_))));
 }
 
 #[test]

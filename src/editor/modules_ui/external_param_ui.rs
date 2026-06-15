@@ -8,7 +8,7 @@ use crate::{
     synth_engine::{
         ModuleId, StereoSample,
         external_param::{ExternalParamUiBridge, NUM_FLOAT_PARAMS},
-        ui_bridge::UiBridge,
+        ui_bridge::{ModuleBridge, UiBridge},
     },
 };
 
@@ -110,8 +110,10 @@ impl ModuleUi for ExternalParamUI {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        bridge.with_module_bridge(self.module_id, |bridge, param_bridge| {
-            self.paint_ui(bridge, param_bridge, ui);
+        bridge.with_module_bridge(self.module_id, |bridge, module_bridge| {
+            if let ModuleBridge::ExternalParam(param_bridge) = module_bridge {
+                self.paint_ui(bridge, param_bridge, ui);
+            }
         });
     }
 }

@@ -8,7 +8,7 @@ use crate::{
     synth_engine::{
         EnvelopeCurve, Input, ModuleId, Sample,
         envelope::EnvelopeUiBridge,
-        ui_bridge::UiBridge,
+        ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::from_ms,
 };
@@ -292,8 +292,10 @@ impl ModuleUi for EnvelopeUI {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        bridge.with_module_bridge(self.module_id, |bridge, env_bridge| {
-            self.paint_ui(bridge, env_bridge, ui);
+        bridge.with_module_bridge(self.module_id, |bridge, module_bridge| {
+            if let ModuleBridge::Envelope(env_bridge) = module_bridge {
+                self.paint_ui(bridge, env_bridge, ui);
+            }
         });
     }
 }

@@ -6,7 +6,8 @@ use crate::{
         utils::confirm_module_removal,
     },
     synth_engine::{
-        Expression, ModuleId, StereoSample, expressions::ExpressionsUiBridge, ui_bridge::UiBridge,
+        Expression, ModuleId, StereoSample, expressions::ExpressionsUiBridge,
+        ui_bridge::{ModuleBridge, UiBridge},
     },
 };
 
@@ -133,8 +134,10 @@ impl ModuleUi for ExpressionsUi {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        bridge.with_module_bridge(self.module_id, |bridge, expr_bridge| {
-            self.paint_ui(bridge, expr_bridge, ui);
+        bridge.with_module_bridge(self.module_id, |bridge, module_bridge| {
+            if let ModuleBridge::Expressions(expr_bridge) = module_bridge {
+                self.paint_ui(bridge, expr_bridge, ui);
+            }
         });
     }
 }
