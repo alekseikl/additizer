@@ -4,7 +4,7 @@ mod config;
 mod link;
 mod ui_bridge;
 
-pub use config::{EnvelopeConfig, EnvelopeCurve};
+pub use config::EnvelopeConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::EnvelopeUiBridge;
 
@@ -12,7 +12,7 @@ use crate::{
     synth_engine::{
         StereoSample,
         buffer::{VoicesLayout, new_voices_layout},
-        curves::{CurveFunction, Exponential, ExponentialIn, ExponentialOut},
+        curves::{CurveFunction, Exponential},
         routing::{
             ControlRouterType, DataType, Input, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
             SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceRouter,
@@ -29,18 +29,18 @@ const MIN_TIME_THRESHOLD: Sample = from_ms(0.5);
 
 struct Params {
     keep_voice_alive: bool,
-    attack_curve: EnvelopeCurve,
-    decay_curve: EnvelopeCurve,
-    release_curve: EnvelopeCurve,
+    attack_curvature: Sample,
+    decay_curvature: Sample,
+    release_curvature: Sample,
 }
 
 impl Params {
     fn from_config(c: &config::EnvelopeConfig) -> Self {
         Self {
             keep_voice_alive: c.keep_voice_alive,
-            attack_curve: c.attack_curve,
-            decay_curve: c.decay_curve,
-            release_curve: c.release_curve,
+            attack_curvature: c.attack_curvature,
+            decay_curvature: c.decay_curvature,
+            release_curvature: c.release_curvature,
         }
     }
 }
@@ -74,44 +74,29 @@ enum CurveBlockResult {
     Done,
 }
 
-trait CurveIterator {
-    fn next_block(
-        &mut self,
-        t_step: Sample,
-        time: Sample,
-        sample_from: &mut usize,
-        output: &mut [Sample],
-    ) -> CurveBlockResult;
-}
-
-type CurveBox = Box<dyn CurveIterator + Send>;
-
-struct CurveIterParams {
-    from: Sample,
-    to: Sample,
-}
-struct CurveIter<T: CurveFunction + Send> {
-    curve_fn: T,
+struct CurveIter {
+    curve_fn: Exponential,
     t: Sample,
     value_from: Sample,
     interval: Sample,
 }
 
-impl<T: CurveFunction + Send + 'static> CurveIter<T> {
-    fn iter(curve_fn: T, CurveIterParams { from, to }: CurveIterParams) -> CurveBox {
+impl CurveIter {
+    fn new(curvature: Sample, from: Sample, to: Sample) -> Self {
         let from = from.clamp(0.0, 1.0);
         let to = to.clamp(0.0, 1.0);
-
-        Box::new(Self {
-            curve_fn,
+        Self {
+            curve_fn: Exponential::new(curvature),
             t: 0.0,
             value_from: from,
             interval: to - from,
-        })
+        }
     }
-}
 
-impl<T: CurveFunction + Send + 'static> CurveIterator for CurveIter<T> {
+    fn flat(level: Sample) -> Self {
+        Self::new(0.0, level, level)
+    }
+
     fn next_block(
         &mut self,
         t_step: Sample,
@@ -147,51 +132,14 @@ impl<T: CurveFunction + Send + 'static> CurveIterator for CurveIter<T> {
     }
 }
 
-impl EnvelopeCurve {
-    fn curve_iter(&self, from: Sample, to: Sample) -> CurveBox {
-        let params = CurveIterParams { from, to };
-
-        match *self {
-            Self::Linear => CurveIter::iter(Exponential::new(0.0), params),
-            Self::Exponential { curvature } => CurveIter::iter(Exponential::new(curvature), params),
-            Self::ExponentialIn => CurveIter::iter(ExponentialIn::new(), params),
-            Self::ExponentialOut => CurveIter::iter(ExponentialOut::new(), params),
-        }
-    }
-
-    fn delay_iter(level: Sample) -> CurveBox {
-        CurveIter::iter(
-            Exponential::new(0.0),
-            CurveIterParams {
-                from: level,
-                to: level,
-            },
-        )
-    }
-
-    fn hold_iter() -> CurveBox {
-        CurveIter::iter(
-            Exponential::new(0.0),
-            CurveIterParams { from: 1.0, to: 1.0 },
-        )
-    }
-
-    fn flush_iter() -> CurveBox {
-        CurveIter::iter(
-            Exponential::new(0.0),
-            CurveIterParams { from: 0.0, to: 0.0 },
-        )
-    }
-}
-
 enum Stage {
-    Delay(CurveBox),
-    Attack(CurveBox),
-    Hold(CurveBox),
-    Decay(CurveBox),
+    Delay(CurveIter),
+    Attack(CurveIter),
+    Hold(CurveIter),
+    Decay(CurveIter),
     Sustain,
-    Release(CurveBox),
-    Flush(CurveBox),
+    Release(CurveIter),
+    Flush(CurveIter),
     Done,
 }
 
@@ -313,21 +261,21 @@ impl Envelope {
             keep_voice_alive: self.params.keep_voice_alive,
             delay: get_stereo_param!(self, delay),
             attack: get_stereo_param!(self, attack),
-            attack_curve: self.params.attack_curve,
+            attack_curvature: self.params.attack_curvature,
             hold: get_stereo_param!(self, hold),
             decay: get_stereo_param!(self, decay),
-            decay_curve: self.params.decay_curve,
+            decay_curvature: self.params.decay_curvature,
             sustain: get_stereo_param!(self, sustain),
             release: get_stereo_param!(self, release),
-            release_curve: self.params.release_curve,
+            release_curvature: self.params.release_curvature,
             smooth: get_stereo_param!(self, smooth),
         }
     }
 
     set_mono_param!(set_keep_voice_alive, keep_voice_alive, bool);
-    set_mono_param!(set_attack_curve, attack_curve, EnvelopeCurve);
-    set_mono_param!(set_decay_curve, decay_curve, EnvelopeCurve);
-    set_mono_param!(set_release_curve, release_curve, EnvelopeCurve);
+    set_mono_param!(set_attack_curvature, attack_curvature, Sample);
+    set_mono_param!(set_decay_curvature, decay_curvature, Sample);
+    set_mono_param!(set_release_curvature, release_curvature, Sample);
 
     set_stereo_param!(set_delay, delay);
     set_stereo_param!(set_attack, attack);
@@ -355,12 +303,12 @@ impl Envelope {
         if voice.triggered {
             voice.next_frame_value = 0.0;
             voice.smoother.reset(0.0);
-            voice.stage = Stage::Delay(EnvelopeCurve::delay_iter(0.0));
+            voice.stage = Stage::Delay(CurveIter::flat(0.0));
         }
 
         if voice.released {
             voice.stage =
-                Stage::Release(params.release_curve.curve_iter(voice.next_frame_value, 0.0));
+                Stage::Release(CurveIter::new(params.release_curvature, voice.next_frame_value, 0.0));
             voice.released = false;
         }
 
@@ -378,7 +326,7 @@ impl Envelope {
                         output,
                     ) {
                         CurveBlockResult::Done => {
-                            Stage::Attack(params.attack_curve.curve_iter(0.0, 1.0))
+                            Stage::Attack(CurveIter::new(params.attack_curvature, 0.0, 1.0))
                         }
                         CurveBlockResult::HasMore => break,
                     }
@@ -390,7 +338,7 @@ impl Envelope {
                         &mut sample_from,
                         output,
                     ) {
-                        CurveBlockResult::Done => Stage::Hold(EnvelopeCurve::hold_iter()),
+                        CurveBlockResult::Done => Stage::Hold(CurveIter::flat(1.0)),
                         CurveBlockResult::HasMore => break,
                     }
                 }
@@ -402,7 +350,7 @@ impl Envelope {
                         output,
                     ) {
                         CurveBlockResult::Done => {
-                            Stage::Decay(params.decay_curve.curve_iter(1.0, channel.sustain))
+                            Stage::Decay(CurveIter::new(params.decay_curvature, 1.0, channel.sustain))
                         }
                         CurveBlockResult::HasMore => break,
                     }
@@ -433,7 +381,7 @@ impl Envelope {
                         &mut sample_from,
                         output,
                     ) {
-                        CurveBlockResult::Done => Stage::Flush(EnvelopeCurve::flush_iter()),
+                        CurveBlockResult::Done => Stage::Flush(CurveIter::flat(0.0)),
                         CurveBlockResult::HasMore => break,
                     }
                 }
@@ -546,9 +494,9 @@ impl SynthModule for Envelope {
                     _ => (),
                 },
                 UiEvent::Smooth(value) => self.set_smooth(value),
-                UiEvent::AttackCurve(curve) => self.set_attack_curve(curve),
-                UiEvent::DecayCurve(curve) => self.set_decay_curve(curve),
-                UiEvent::ReleaseCurve(curve) => self.set_release_curve(curve),
+                UiEvent::AttackCurvature(value) => self.set_attack_curvature(value),
+                UiEvent::DecayCurvature(value) => self.set_decay_curvature(value),
+                UiEvent::ReleaseCurvature(value) => self.set_release_curvature(value),
                 UiEvent::KeepVoiceAlive(value) => self.set_keep_voice_alive(value),
             }
         }

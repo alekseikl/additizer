@@ -1,13 +1,11 @@
-use crate::synth_engine::{Input, StereoSample};
-
-use super::config::EnvelopeCurve;
+use crate::synth_engine::{Input, Sample, StereoSample};
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
     Smooth(StereoSample),
-    AttackCurve(EnvelopeCurve),
-    DecayCurve(EnvelopeCurve),
-    ReleaseCurve(EnvelopeCurve),
+    AttackCurvature(Sample),
+    DecayCurvature(Sample),
+    ReleaseCurvature(Sample),
     KeepVoiceAlive(bool),
 }
 
@@ -28,16 +26,16 @@ impl UiEnd {
         self.tx.push(UiEvent::Smooth(value)).is_ok()
     }
 
-    pub fn set_attack_curve(&mut self, curve: EnvelopeCurve) -> bool {
-        self.tx.push(UiEvent::AttackCurve(curve)).is_ok()
+    pub fn set_attack_curvature(&mut self, value: Sample) -> bool {
+        self.tx.push(UiEvent::AttackCurvature(value)).is_ok()
     }
 
-    pub fn set_decay_curve(&mut self, curve: EnvelopeCurve) -> bool {
-        self.tx.push(UiEvent::DecayCurve(curve)).is_ok()
+    pub fn set_decay_curvature(&mut self, value: Sample) -> bool {
+        self.tx.push(UiEvent::DecayCurvature(value)).is_ok()
     }
 
-    pub fn set_release_curve(&mut self, curve: EnvelopeCurve) -> bool {
-        self.tx.push(UiEvent::ReleaseCurve(curve)).is_ok()
+    pub fn set_release_curvature(&mut self, value: Sample) -> bool {
+        self.tx.push(UiEvent::ReleaseCurvature(value)).is_ok()
     }
 
     pub fn set_keep_voice_alive(&mut self, value: bool) -> bool {

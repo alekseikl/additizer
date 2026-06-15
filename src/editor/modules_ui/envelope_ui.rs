@@ -1,4 +1,4 @@
-use egui::{Checkbox, ComboBox, Grid, Slider, Ui};
+use egui::{Checkbox, Grid, Slider, Ui};
 
 use crate::{
     editor::{
@@ -6,7 +6,7 @@ use crate::{
         stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
     synth_engine::{
-        EnvelopeCurve, Input, ModuleId, Sample,
+        Input, ModuleId,
         envelope::EnvelopeUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -19,52 +19,6 @@ pub struct EnvelopeUI {
     label_state: Option<String>,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
-enum DisplayCurve {
-    Linear,
-    Exponential,
-    ExponentialIn,
-    ExponentialOut,
-}
-
-impl DisplayCurve {
-    fn label(&self) -> &'static str {
-        match self {
-            Self::Linear => "Linear",
-            Self::Exponential => "Exponential",
-            Self::ExponentialIn => "Exponential In",
-            Self::ExponentialOut => "Exponential Out",
-        }
-    }
-
-    fn env_curve(&self) -> EnvelopeCurve {
-        match self {
-            Self::Linear => EnvelopeCurve::Linear,
-            Self::Exponential => EnvelopeCurve::Exponential { curvature: 0.5 },
-            Self::ExponentialIn => EnvelopeCurve::ExponentialIn,
-            Self::ExponentialOut => EnvelopeCurve::ExponentialOut,
-        }
-    }
-}
-
-static CURVE_OPTIONS: &[DisplayCurve] = &[
-    DisplayCurve::Linear,
-    DisplayCurve::Exponential,
-    DisplayCurve::ExponentialIn,
-    DisplayCurve::ExponentialOut,
-];
-
-impl EnvelopeCurve {
-    fn display_curve(&self) -> DisplayCurve {
-        match self {
-            Self::Linear { .. } => DisplayCurve::Linear,
-            Self::Exponential { .. } => DisplayCurve::Exponential,
-            Self::ExponentialIn { .. } => DisplayCurve::ExponentialIn,
-            Self::ExponentialOut { .. } => DisplayCurve::ExponentialOut,
-        }
-    }
-}
-
 impl EnvelopeUI {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
@@ -72,52 +26,6 @@ impl EnvelopeUI {
             remove_confirmation: false,
             label_state: None,
         }
-    }
-
-    fn add_curve(
-        bridge: &mut EnvelopeUiBridge,
-        ui: &mut Ui,
-        label: &str,
-        env_curve: &mut EnvelopeCurve,
-        set_curve: impl FnOnce(&mut EnvelopeUiBridge, EnvelopeCurve),
-    ) -> bool {
-        let mut changed = false;
-
-        ui.label(label);
-
-        ui.horizontal(|ui| {
-            let display_curve = env_curve.display_curve();
-
-            ComboBox::from_id_salt(format!("curve-select-{}", label))
-                .selected_text(display_curve.label())
-                .show_ui(ui, |ui| {
-                    for curve in CURVE_OPTIONS {
-                        if ui
-                            .selectable_label(*curve == display_curve, curve.label())
-                            .clicked()
-                        {
-                            *env_curve = curve.env_curve();
-                            changed = true;
-                        }
-                    }
-                });
-
-            let mut add_curvature_slider = |curvature: &mut Sample| {
-                changed = changed || ui.add(Slider::new(curvature, -1.0..=1.0)).changed();
-            };
-
-            if let EnvelopeCurve::Exponential { curvature } = env_curve {
-                add_curvature_slider(curvature);
-            }
-        });
-
-        ui.end_row();
-
-        if changed {
-            set_curve(bridge, *env_curve);
-        }
-
-        changed
     }
 
     fn paint_ui(
@@ -153,6 +61,7 @@ impl EnvelopeUI {
                     env_bridge.set_param(Input::Delay, config.delay);
                 }
                 ui.end_row();
+
                 ui.label("Attack");
                 if ui
                     .add(
@@ -170,13 +79,14 @@ impl EnvelopeUI {
                 }
                 ui.end_row();
 
-                Self::add_curve(
-                    env_bridge,
-                    ui,
-                    "Attack Curve",
-                    &mut config.attack_curve,
-                    EnvelopeUiBridge::set_attack_curve,
-                );
+                ui.label("Attack Curve");
+                if ui
+                    .add(Slider::new(&mut config.attack_curvature, -1.0..=1.0))
+                    .changed()
+                {
+                    env_bridge.set_attack_curvature(config.attack_curvature);
+                }
+                ui.end_row();
 
                 ui.label("Hold");
                 if ui
@@ -204,13 +114,14 @@ impl EnvelopeUI {
                 }
                 ui.end_row();
 
-                Self::add_curve(
-                    env_bridge,
-                    ui,
-                    "Decay Curve",
-                    &mut config.decay_curve,
-                    EnvelopeUiBridge::set_decay_curve,
-                );
+                ui.label("Decay Curve");
+                if ui
+                    .add(Slider::new(&mut config.decay_curvature, -1.0..=1.0))
+                    .changed()
+                {
+                    env_bridge.set_decay_curvature(config.decay_curvature);
+                }
+                ui.end_row();
 
                 ui.label("Sustain");
                 if ui
@@ -243,13 +154,14 @@ impl EnvelopeUI {
                 }
                 ui.end_row();
 
-                Self::add_curve(
-                    env_bridge,
-                    ui,
-                    "Release Curve",
-                    &mut config.release_curve,
-                    EnvelopeUiBridge::set_release_curve,
-                );
+                ui.label("Release Curve");
+                if ui
+                    .add(Slider::new(&mut config.release_curvature, -1.0..=1.0))
+                    .changed()
+                {
+                    env_bridge.set_release_curvature(config.release_curvature);
+                }
+                ui.end_row();
 
                 ui.label("Smooth");
                 if ui

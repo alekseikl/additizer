@@ -3,8 +3,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     preset::{Preset, PresetInfo},
     synth_engine::{
-        EngineConfig, EnvelopeCurve, Input, LinkConfig, ModuleConfig, ModuleId, OUTPUT_MODULE_ID,
-        StereoSample,
+        EngineConfig, Input, LinkConfig, ModuleConfig, ModuleId, OUTPUT_MODULE_ID, StereoSample,
         amplifier::AmplifierConfig,
         envelope::EnvelopeConfig,
         harmonic_editor::HarmonicEditorConfig,
@@ -50,10 +49,9 @@ fn default_engine_config() -> EngineConfig {
         id: FILTER_ENV_ID,
         attack: 0.0.into(),
         decay: from_ms(500.0).into(),
+        decay_curvature: 0.5,
         sustain: 0.0.into(),
         release: from_ms(100.0).into(),
-        attack_curve: EnvelopeCurve::ExponentialOut,
-        decay_curve: EnvelopeCurve::ExponentialOut,
         ..EnvelopeConfig::default()
     };
 
@@ -62,7 +60,6 @@ fn default_engine_config() -> EngineConfig {
         decay: from_ms(400.0).into(),
         sustain: 0.6.into(),
         release: from_ms(300.0).into(),
-        decay_curve: EnvelopeCurve::ExponentialOut,
         smooth: from_ms(4.0).into(),
         keep_voice_alive: true,
         ..EnvelopeConfig::default()

@@ -1,7 +1,7 @@
-use crate::synth_engine::{Input, StereoSample, synth_module::ModuleUiBridge};
+use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
 
 use super::link::UiEnd;
-use super::{Envelope, EnvelopeConfig, EnvelopeCurve};
+use super::{Envelope, EnvelopeConfig};
 
 pub struct EnvelopeUiBridge {
     ui_end: UiEnd,
@@ -42,21 +42,21 @@ impl EnvelopeUiBridge {
         }
     }
 
-    pub fn set_attack_curve(&mut self, curve: EnvelopeCurve) {
-        if self.ui_end.set_attack_curve(curve) {
-            self.config.attack_curve = curve;
+    pub fn set_attack_curvature(&mut self, value: Sample) {
+        if self.ui_end.set_attack_curvature(value) {
+            self.config.attack_curvature = value;
         }
     }
 
-    pub fn set_decay_curve(&mut self, curve: EnvelopeCurve) {
-        if self.ui_end.set_decay_curve(curve) {
-            self.config.decay_curve = curve;
+    pub fn set_decay_curvature(&mut self, value: Sample) {
+        if self.ui_end.set_decay_curvature(value) {
+            self.config.decay_curvature = value;
         }
     }
 
-    pub fn set_release_curve(&mut self, curve: EnvelopeCurve) {
-        if self.ui_end.set_release_curve(curve) {
-            self.config.release_curve = curve;
+    pub fn set_release_curvature(&mut self, value: Sample) {
+        if self.ui_end.set_release_curvature(value) {
+            self.config.release_curvature = value;
         }
     }
 

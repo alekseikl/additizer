@@ -27,7 +27,7 @@ pub use buffer::{Buffer, HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralB
 pub use config::{EngineConfig, EngineParams, LinkConfig, ModuleConfig};
 pub use module_handle::ModuleType;
 pub use modules::{
-    Amplifier, Envelope, EnvelopeCurve, Expressions, ExternalParam, ExternalParamsBlock, Lfo,
+    Amplifier, Envelope, Expressions, ExternalParam, ExternalParamsBlock, Lfo,
     LfoShape, Mixer, Oscillator, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType,
     SpectralMixer, WaveShaper,
     amplifier::{self},

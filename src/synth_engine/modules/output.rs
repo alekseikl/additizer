@@ -222,7 +222,7 @@ impl SynthModule for Output {
                 let voice = &mut self.channels[channel_idx].voices[voice_idx];
 
                 if voice.killing {
-                    let power: Sample = -2.0;
+                    let power: Sample = -5.0;
                     let curve_mult: Sample = (power.exp() - 1.0).recip();
                     let time_mult: Sample = self.kill_time.max(from_ms(4.0)).recip();
                     let t_step = sample_rate.recip();
