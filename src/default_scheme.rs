@@ -24,19 +24,30 @@ const AMP_ENV_ID: ModuleId = 6;
 fn default_ui_config() -> UiConfig {
     let mut modules = FxHashMap::default();
 
-    for (id, label) in [
-        (HARMONIC_EDITOR_ID, "01 - Harmonics"),
-        (FILTER_ENV_ID, "03 - Cutoff Env"),
-        (FILTER_ID, "03 - Filter"),
-        (OSC_ID, "04 - Oscillator"),
-        (AMP_ENV_ID, "06 - Amp Envelope"),
-        (AMP_ID, "06 - Amplifier"),
+    // Layout: main signal chain across the top row (y=1), modulation sources below (y=3).
+    // Each module occupies 2 grid columns wide × 1 row tall (160×80 px per module).
+    // Column spacing of 3 gives an 80 px gap between adjacent modules.
+    //
+    //  col:  0            3               6            9            12
+    //  y=0: [HarmonicEditor]            [Oscillator]
+    //  y=1:            [SpectralFilter]             [Amplifier]  [Output]
+    //  y=2: [FilterEnv]                 [AmpEnv]
+    for (id, label, grid_x, grid_y) in [
+        (HARMONIC_EDITOR_ID, "01 - Harmonics",  0, 0),
+        (FILTER_ENV_ID,      "03 - Cutoff Env", 0, 2),
+        (FILTER_ID,          "03 - Filter",     3, 1),
+        (OSC_ID,             "04 - Oscillator", 6, 0),
+        (AMP_ENV_ID,         "06 - Amp Env",    6, 2),
+        (AMP_ID,             "06 - Amplifier",  9, 1),
+        (OUTPUT_MODULE_ID,   "Output",          12, 1),
     ] {
         modules.insert(
             id,
             UiModuleConfig {
                 id,
                 label: label.into(),
+                grid_x,
+                grid_y,
             },
         );
     }

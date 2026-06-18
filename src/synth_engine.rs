@@ -27,9 +27,9 @@ pub use buffer::{Buffer, HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralB
 pub use config::{EngineConfig, EngineParams, LinkConfig, ModuleConfig};
 pub use module_handle::ModuleType;
 pub use modules::{
-    Amplifier, Envelope, Expressions, ExternalParam, ExternalParamsBlock, Lfo,
-    LfoShape, Mixer, Oscillator, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType,
-    SpectralMixer, WaveShaper,
+    Amplifier, Envelope, Expressions, ExternalParam, ExternalParamsBlock, Lfo, LfoShape, Mixer,
+    Oscillator, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType, SpectralMixer,
+    WaveShaper,
     amplifier::{self},
     envelope::{self},
     expressions::{self},
@@ -651,10 +651,8 @@ impl SynthEngine {
             },
         };
 
-        for i in 0..self.execution_order.len() {
-            let module_id = self.execution_order[i];
-
-            if let Some(module) = self.modules.get_mut(&module_id) {
+        for module_id in &self.execution_order {
+            if let Some(module) = self.modules.get_mut(module_id) {
                 module.process(&mut ctx);
             }
         }

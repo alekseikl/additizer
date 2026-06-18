@@ -214,6 +214,32 @@ impl UiBridge {
         }
     }
 
+    /// Returns `(src_module_id, dst_module_id)` for every routing connection.
+    pub fn get_all_links(&self) -> Vec<(ModuleId, ModuleId)> {
+        self.routing
+            .routing
+            .iter()
+            .flat_map(|(dst, srcs)| srcs.iter().map(|s| (s.module_id, dst.module_id)))
+            .collect()
+    }
+
+    pub fn get_module_position(&self, module_id: ModuleId) -> (i32, i32) {
+        let ui_config = self.ui_config.lock();
+        ui_config
+            .modules
+            .get(&module_id)
+            .map(|m| (m.grid_x, m.grid_y))
+            .unwrap_or((0, 0))
+    }
+
+    pub fn set_module_position(&mut self, module_id: ModuleId, x: i32, y: i32) {
+        let mut ui_config = self.ui_config.lock();
+        if let Some(module) = ui_config.modules.get_mut(&module_id) {
+            module.grid_x = x;
+            module.grid_y = y;
+        }
+    }
+
     pub fn get_module_label(&self, module_id: ModuleId) -> String {
         let ui_config = self.ui_config.lock();
         Self::module_label(&ui_config, module_id)
@@ -374,11 +400,14 @@ impl UiBridge {
 
         let mut ui_config = self.ui_config.lock();
 
+        let grid_y = ui_config.modules.len() as i32;
         ui_config.modules.insert(
             id,
             UiModuleConfig {
                 id,
                 label: format!("{label} {id}"),
+                grid_x: 1,
+                grid_y,
             },
         );
 

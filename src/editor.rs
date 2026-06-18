@@ -26,8 +26,10 @@ mod gain_slider;
 mod modulation_input;
 mod module_label;
 mod modules_ui;
+mod routing_grid;
 mod stereo_slider;
 mod utils;
+mod waveform;
 
 pub trait ModuleUi {
     fn module_id(&self) -> Option<ModuleId>;
@@ -40,6 +42,7 @@ struct EditorState {
     engine_factory: Arc<EngineFactory>,
     ui_bridge: UiBridge,
     selected_module_ui: ModuleUIBox,
+    routing_grid: routing_grid::RoutingGrid,
 }
 
 impl EditorState {
@@ -51,6 +54,7 @@ impl EditorState {
             engine_factory: engine_factory.clone(),
             ui_bridge: bridge,
             selected_module_ui: Box::new(ParamsUi::new(engine_factory)),
+            routing_grid: Default::default(),
         }
     }
 }
@@ -236,6 +240,7 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
 
         editor_state.selected_module_ui =
             Box::new(ParamsUi::new(editor_state.engine_factory.clone()));
+        editor_state.routing_grid = Default::default();
     }
 
     let bridge = &mut editor_state.ui_bridge;
@@ -258,13 +263,9 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
     show_right_bar(ui, bridge);
 
     CentralPanel::default()
-        .frame(Frame::default().inner_margin(8.0))
+        .frame(Frame::NONE)
         .show_inside(ui, |ui| {
-            ScrollArea::vertical()
-                .auto_shrink([false, true])
-                .show(ui, |ui| {
-                    editor_state.selected_module_ui.ui(bridge, ui);
-                });
+            editor_state.routing_grid.show(bridge, ui);
         });
 }
 
