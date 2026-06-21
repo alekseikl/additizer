@@ -5,7 +5,7 @@ use enum_dispatch::enum_dispatch;
 use crate::{
     engine_factory::{EngineHandle, UiConfigHandle},
     synth_engine::{
-        ModuleHandle, ModuleId, ModuleInput, ModuleType, ModuleUiBridge, OUTPUT_MODULE_ID, Sample,
+        InputId, ModuleHandle, ModuleId, ModuleType, ModuleUiBridge, OUTPUT_MODULE_ID, Sample,
         StereoSample,
         amplifier::AmplifierUiBridge,
         config::EngineParams,
@@ -16,11 +16,11 @@ use crate::{
         lfo::LfoUiBridge,
         mixer::MixerUiBridge,
         oscillator::OscillatorUiBridge,
-        routing::{DataType, Input, data_types_compatible},
+        routing::{DataType, Input, InputSource, data_types_compatible},
         spectral_blend::SpectralBlendUiBridge,
         spectral_filter::SpectralFilterUiBridge,
         spectral_mixer::SpectralMixerUiBridge,
-        ui_bridge::ui_config::UiModuleConfig,
+        ui_bridge::{routing_state::ModuleIo, ui_config::UiModuleConfig},
         wave_shaper::WaveShaperUiBridge,
     },
 };
@@ -76,7 +76,7 @@ pub struct UiBridge {
     routing: RoutingState,
     engine_params: EngineParams,
     voices: VoicesStatus,
-    modulated_inputs: FxHashMap<ModuleInput, StereoSample>,
+    modulated_inputs: FxHashMap<InputId, StereoSample>,
     module_bridges: FxHashMap<ModuleId, Option<ModuleBridge>>,
 }
 
@@ -214,6 +214,10 @@ impl UiBridge {
         }
     }
 
+    pub fn take_modules_io(&mut self) -> Option<FxHashMap<ModuleId, ModuleIo>> {
+        self.routing.modules_io.take()
+    }
+
     /// Returns `(src_module_id, dst_module_id)` for every routing connection.
     pub fn get_all_links(&self) -> Vec<(ModuleId, ModuleId)> {
         self.routing
@@ -259,7 +263,7 @@ impl UiBridge {
         self.voices.playing + self.voices.releasing > 0
     }
 
-    pub fn get_available_input_sources(&self, input: ModuleInput) -> Vec<AvailableInputSource> {
+    pub fn get_available_input_sources(&self, input: InputId) -> Vec<AvailableInputSource> {
         let ui_config = self.ui_config.lock();
 
         let dst_data_type =
@@ -269,7 +273,7 @@ impl UiBridge {
                 && let Some(input_info) = input_module
                     .inputs
                     .iter()
-                    .find(|input_info| input_info.input == input.input_type)
+                    .find(|input_info| input_info.input_type == input.input_type)
             {
                 input_info.data_type
             } else {
@@ -281,7 +285,7 @@ impl UiBridge {
             .values()
             .filter(|module| {
                 module.id != input.module_id
-                    && data_types_compatible(module.output, dst_data_type)
+                    && data_types_compatible(module.output_type, dst_data_type)
                     && !self.is_connected_to_source(module.id, input.module_id)
             })
             .map(|module| AvailableInputSource {
@@ -291,7 +295,7 @@ impl UiBridge {
             .collect()
     }
 
-    pub fn get_connected_input_sources(&self, input: ModuleInput) -> Vec<ConnectedInputSource> {
+    pub fn get_connected_input_sources(&self, input: InputId) -> Vec<ConnectedInputSource> {
         let ui_config = self.ui_config.lock();
 
         let Some(sources) = self.routing.routing.get(&input) else {
@@ -320,14 +324,14 @@ impl UiBridge {
             .collect()
     }
 
-    pub fn get_input_modulated_value(&self, input: ModuleInput) -> Option<ModulatedValue> {
+    pub fn get_input_modulated_value(&self, input: InputId) -> Option<ModulatedValue> {
         if self.routing.routing.contains_key(&input)
             && self.has_active_voices()
             && let Some(module) = self.routing.modules.get(&input.module_id)
             && let Some(value) = self.modulated_inputs.get(&input).copied()
         {
             let is_mono =
-                module.output == DataType::Spectral && !self.engine_params.stereo_spectrum;
+                module.output_type == DataType::Spectral && !self.engine_params.stereo_spectrum;
 
             Some(ModulatedValue {
                 value,
@@ -362,7 +366,7 @@ impl UiBridge {
                     value,
                 } => {
                     self.modulated_inputs
-                        .entry(ModuleInput::new(input, module_id))
+                        .entry(InputId::new(input, module_id))
                         .or_insert(StereoSample::ZERO)[channel as usize] = value;
                 }
                 UiUpdate::VoicesStatus(status) => self.voices = status,
@@ -422,14 +426,14 @@ impl UiBridge {
         self.module_bridges.remove(&module_id);
     }
 
-    pub fn set_direct_link(&mut self, src: ModuleId, dst: ModuleInput) {
+    pub fn set_direct_link(&mut self, src: ModuleId, dst: InputId) {
         let mut synth = self.engine.lock();
 
         let _ = synth.set_direct_link(src, dst);
         self.routing = synth.get_routing_state();
     }
 
-    pub fn add_link(&mut self, src: ModuleId, dst: ModuleInput, amount: StereoSample) {
+    pub fn add_link(&mut self, src: ModuleId, dst: InputId, amount: StereoSample) {
         let mut synth = self.engine.lock();
 
         if let Err(err) = synth.add_link(src, dst, amount) {
@@ -438,7 +442,7 @@ impl UiBridge {
         self.routing = synth.get_routing_state();
     }
 
-    pub fn remove_link(&mut self, src: ModuleId, dst: ModuleInput) {
+    pub fn remove_link(&mut self, src: ModuleId, dst: InputId) {
         let mut synth = self.engine.lock();
 
         synth.remove_link(&src, &dst);
@@ -448,7 +452,7 @@ impl UiBridge {
     pub fn set_link_modulation(
         &mut self,
         src_id: ModuleId,
-        dst_input: &ModuleInput,
+        dst_input: &InputId,
         modulator_id: ModuleId,
     ) {
         let mut synth = self.engine.lock();
@@ -457,14 +461,14 @@ impl UiBridge {
         self.routing = synth.get_routing_state();
     }
 
-    pub fn remove_link_modulation(&mut self, src_id: ModuleId, dst_input: &ModuleInput) {
+    pub fn remove_link_modulation(&mut self, src_id: ModuleId, dst_input: &InputId) {
         let mut synth = self.engine.lock();
 
         synth.remove_link_modulation(src_id, dst_input);
         self.routing = synth.get_routing_state();
     }
 
-    pub fn set_link_amount(&mut self, src: ModuleId, dst: ModuleInput, amount: StereoSample) {
+    pub fn set_link_amount(&mut self, src: ModuleId, dst: InputId, amount: StereoSample) {
         if self.ui_end.set_link_amount(src, dst, amount)
             && let Some(sources) = self.routing.routing.get_mut(&dst)
             && let Some(source) = sources.iter_mut().find(|s| s.module_id == src)

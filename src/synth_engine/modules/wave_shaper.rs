@@ -15,11 +15,11 @@ use crate::synth_engine::{
     StereoSample,
     buffer::{Buffer, VoicesLayout, zero_buffer},
     routing::{
-        AudioRouterType, DataType, Input, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
-        SamplesOutput, SpectralInputSlot, VoiceRouter,
+        AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
+        ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter,
     },
     smooth::SmoothedSample,
-    synth_module::{ModInput, SynthModule},
+    synth_module::SynthModule,
 };
 
 struct Params {
@@ -195,11 +195,11 @@ impl SynthModule for WaveShaper {
         self.id
     }
 
-    fn inputs(&self) -> &'static [ModInput] {
-        static INPUTS: &[ModInput] = &[
-            ModInput::audio(Input::Audio),
-            ModInput::audio(Input::ClippingLevel),
-            ModInput::audio(Input::Distortion),
+    fn inputs(&self) -> &'static [InputMeta] {
+        static INPUTS: &[InputMeta] = &[
+            InputMeta::audio(Input::Audio),
+            InputMeta::audio(Input::ClippingLevel),
+            InputMeta::audio(Input::Distortion),
         ];
 
         INPUTS

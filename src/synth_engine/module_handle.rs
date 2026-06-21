@@ -2,8 +2,8 @@ use crate::synth_engine::{
     Amplifier, Envelope, Expressions, ExternalParam, HarmonicEditor, Input, Lfo, Mixer, ModuleId,
     Oscillator, SpectralBlend, SpectralFilter, SpectralMixer, StereoSample, VoiceEvent, WaveShaper,
     modules::Output,
-    routing::{DataType, InputSlots, ProcessContext, SpectralInputSlot},
-    synth_module::{ModInput, SynthModule},
+    routing::{DataType, InputMeta, InputSlots, ProcessContext, SpectralInputSlot},
+    synth_module::SynthModule,
     voices_handler::DecayingVoice,
 };
 use enum_dispatch::enum_dispatch;

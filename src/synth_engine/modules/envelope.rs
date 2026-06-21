@@ -14,11 +14,11 @@ use crate::{
         buffer::{VoicesLayout, new_voices_layout},
         curves::{CurveFunction, Exponential},
         routing::{
-            ControlRouterType, DataType, Input, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
-            SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceRouter,
+            ControlRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
+            ProcessContext, SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceRouter,
         },
         smooth::Smoother,
-        synth_module::{ModInput, SynthModule},
+        synth_module::SynthModule,
         types::Sample,
         voices_handler::DecayingVoice,
     },
@@ -307,8 +307,11 @@ impl Envelope {
         }
 
         if voice.released {
-            voice.stage =
-                Stage::Release(CurveIter::new(params.release_curvature, voice.next_frame_value, 0.0));
+            voice.stage = Stage::Release(CurveIter::new(
+                params.release_curvature,
+                voice.next_frame_value,
+                0.0,
+            ));
             voice.released = false;
         }
 
@@ -349,9 +352,11 @@ impl Envelope {
                         &mut sample_from,
                         output,
                     ) {
-                        CurveBlockResult::Done => {
-                            Stage::Decay(CurveIter::new(params.decay_curvature, 1.0, channel.sustain))
-                        }
+                        CurveBlockResult::Done => Stage::Decay(CurveIter::new(
+                            params.decay_curvature,
+                            1.0,
+                            channel.sustain,
+                        )),
                         CurveBlockResult::HasMore => break,
                     }
                 }
@@ -417,14 +422,14 @@ impl SynthModule for Envelope {
         self.id
     }
 
-    fn inputs(&self) -> &'static [ModInput] {
-        static INPUTS: &[ModInput] = &[
-            ModInput::control(Input::Delay),
-            ModInput::control(Input::Attack),
-            ModInput::control(Input::Hold),
-            ModInput::control(Input::Decay),
-            ModInput::control(Input::Sustain),
-            ModInput::control(Input::Release),
+    fn inputs(&self) -> &'static [InputMeta] {
+        static INPUTS: &[InputMeta] = &[
+            InputMeta::control(Input::Delay),
+            InputMeta::control(Input::Attack),
+            InputMeta::control(Input::Hold),
+            InputMeta::control(Input::Decay),
+            InputMeta::control(Input::Sustain),
+            InputMeta::control(Input::Release),
         ];
 
         INPUTS

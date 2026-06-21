@@ -17,11 +17,11 @@ use crate::{
         oscillator::link::{AudioEnd, UiEnd, UiEvent, create_link_pair},
         phase::Phase,
         routing::{
-            AudioRouterType, DataType, Input, InputSlots, ModuleId, NUM_CHANNELS,
+            AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
             ProcessContext, SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceRouter,
         },
         smooth::SmoothedSample,
-        synth_module::{ModInput, SynthModule},
+        synth_module::SynthModule,
         types::{ComplexSample, Sample},
     },
     utils::{from_ms, pitch_to_freq, power_scale, st_to_octave},
@@ -1002,19 +1002,19 @@ impl SynthModule for Oscillator {
         self.id
     }
 
-    fn inputs(&self) -> &'static [ModInput] {
-        static INPUTS: &[ModInput] = &[
-            ModInput::spectral(Input::Spectrum),
-            ModInput::control(Input::Gain),
-            ModInput::control(Input::PitchShift),
-            ModInput::audio(Input::PhaseShift),
-            ModInput::audio(Input::FrequencyShift),
-            ModInput::control(Input::Detune),
-            ModInput::control(Input::DetunePower),
-            ModInput::control(Input::Glide),
-            ModInput::control(Input::GlideSlope),
-            ModInput::control(Input::PhasesBlend),
-            ModInput::control(Input::GainsBlend),
+    fn inputs(&self) -> &'static [InputMeta] {
+        static INPUTS: &[InputMeta] = &[
+            InputMeta::spectral(Input::Spectrum),
+            InputMeta::control(Input::Gain),
+            InputMeta::control(Input::PitchShift),
+            InputMeta::audio_mixed(Input::PhaseShift),
+            InputMeta::audio_mixed(Input::FrequencyShift),
+            InputMeta::control(Input::Detune),
+            InputMeta::control(Input::DetunePower),
+            InputMeta::control(Input::Glide),
+            InputMeta::control(Input::GlideSlope),
+            InputMeta::control(Input::PhasesBlend),
+            InputMeta::control(Input::GainsBlend),
         ];
 
         INPUTS

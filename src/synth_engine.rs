@@ -6,7 +6,6 @@ use std::{
 
 use nih_plug::params::FloatParam;
 use rustc_hash::FxHashMap;
-use smallvec::SmallVec;
 use std::assert_matches;
 use topo_sort::{SortResults, TopoSort};
 
@@ -14,8 +13,8 @@ use crate::synth_engine::{
     module_handle::ModuleHandle,
     modules::Output,
     routing::{
-        DataType, InputSlot, InputSlots, MIN_MODULE_ID, OutputsArena, ProcessContext,
-        ProcessParams, SpectralInputSlot, data_types_compatible,
+        DataType, InputSlot, InputSlots, InputSource, MIN_MODULE_ID, ModuleLink, OutputsArena,
+        ProcessContext, ProcessParams, SpectralInputSlot, data_types_compatible,
     },
     synth_module::SynthModule,
     voices_handler::{
@@ -44,8 +43,8 @@ pub use modules::{
     wave_shaper::{self},
 };
 pub use routing::{
-    Expression, Input, MixType, ModuleId, ModuleInput, ModuleLink, NUM_CHANNELS, OUTPUT_MODULE_ID,
-    VoiceEvent, VolumeType,
+    Expression, Input, InputId, MixType, ModuleId, NUM_CHANNELS, OUTPUT_MODULE_ID, VoiceEvent,
+    VolumeType,
 };
 pub use smooth::SmoothedSampleParams;
 pub use stereo_sample::StereoSample;
@@ -74,29 +73,8 @@ mod tests;
 
 pub const MAX_BLOCK_SIZE: usize = 128;
 
-#[derive(Debug, Clone, Copy)]
-pub struct ModuleInputSource {
-    module_id: ModuleId,
-    amount: StereoSample,
-    modulation: Option<ModuleId>,
-}
-
-impl ModuleInputSource {
-    fn source_ids(&self) -> impl Iterator<Item = ModuleId> {
-        let mut ids: SmallVec<[ModuleId; 2]> = SmallVec::new();
-
-        ids.push(self.module_id);
-
-        if let Some(modulation) = self.modulation {
-            ids.push(modulation);
-        }
-
-        ids.into_iter()
-    }
-}
-
 type ModulesMap = FxHashMap<ModuleId, ModuleHandle>;
-type RoutingMap = FxHashMap<ModuleInput, Vec<ModuleInputSource>>;
+type RoutingMap = FxHashMap<InputId, Vec<InputSource>>;
 
 pub struct SynthEngine {
     next_id: ModuleId,
@@ -422,7 +400,7 @@ impl SynthEngine {
 
         for link in links.iter() {
             let src = link.src_id;
-            let dst = ModuleInput::new(link.dst_input, link.dst_id);
+            let dst = InputId::new(link.dst_input, link.dst_id);
 
             if self.can_be_linked(&src, &dst).is_err() {
                 return false;
@@ -443,7 +421,7 @@ impl SynthEngine {
         self.setup_routing(&new_links).is_ok()
     }
 
-    pub fn set_direct_link(&mut self, src: ModuleId, dst: ModuleInput) -> Result<(), String> {
+    pub fn set_direct_link(&mut self, src: ModuleId, dst: InputId) -> Result<(), String> {
         self.can_be_linked(&src, &dst)?;
 
         let mut new_links: Vec<_> = self
@@ -461,7 +439,7 @@ impl SynthEngine {
     pub fn add_link(
         &mut self,
         src: ModuleId,
-        dst: ModuleInput,
+        dst: InputId,
         amount: StereoSample,
     ) -> Result<(), String> {
         self.can_be_linked(&src, &dst)?;
@@ -477,7 +455,7 @@ impl SynthEngine {
         Ok(())
     }
 
-    pub fn update_link_amount(&mut self, src: &ModuleId, dst: &ModuleInput, amount: StereoSample) {
+    pub fn update_link_amount(&mut self, src: &ModuleId, dst: &InputId, amount: StereoSample) {
         if let Some(inputs) = self.input_sources.get_mut(dst)
             && let Some(input) = inputs.iter_mut().find(|input| input.module_id == *src)
             && let Some(src_slot) = self.modules.get(src).map(|m| m.output_slot())
@@ -491,7 +469,7 @@ impl SynthEngine {
     pub fn set_link_modulation(
         &mut self,
         src_id: ModuleId,
-        dst_input: &ModuleInput,
+        dst_input: &InputId,
         modulator_id: ModuleId,
     ) -> Result<(), String> {
         self.can_be_linked(&modulator_id, dst_input)?;
@@ -508,7 +486,7 @@ impl SynthEngine {
         }
     }
 
-    pub fn remove_link_modulation(&mut self, src_id: ModuleId, dst_input: &ModuleInput) {
+    pub fn remove_link_modulation(&mut self, src_id: ModuleId, dst_input: &InputId) {
         if let Some(sources) = self.input_sources.get_mut(dst_input)
             && let Some(source) = sources.iter_mut().find(|src| src.module_id == src_id)
         {
@@ -517,7 +495,7 @@ impl SynthEngine {
         }
     }
 
-    pub fn remove_link(&mut self, src: &ModuleId, dst: &ModuleInput) {
+    pub fn remove_link(&mut self, src: &ModuleId, dst: &InputId) {
         let new_links: Vec<_> = self
             .get_links()
             .into_iter()
@@ -669,7 +647,7 @@ impl SynthEngine {
         module_id
     }
 
-    fn can_be_linked_with_output(&self, src: &ModuleId, dst: &ModuleInput) -> Result<(), String> {
+    fn can_be_linked_with_output(&self, src: &ModuleId, dst: &InputId) -> Result<(), String> {
         let Some(src_module) = self.modules.get(src) else {
             return Err("Invalid node.".to_string());
         };
@@ -684,7 +662,7 @@ impl SynthEngine {
         Ok(())
     }
 
-    fn can_be_linked(&self, src: &ModuleId, dst: &ModuleInput) -> Result<(), String> {
+    fn can_be_linked(&self, src: &ModuleId, dst: &InputId) -> Result<(), String> {
         if dst.module_id == OUTPUT_MODULE_ID {
             return self.can_be_linked_with_output(src, dst);
         }
@@ -698,7 +676,7 @@ impl SynthEngine {
         let src_data_types = src_module.output_type();
 
         let is_compatible = dst_module.inputs().iter().any(|input_info| {
-            input_info.input == dst.input_type
+            input_info.input_type == dst.input_type
                 && data_types_compatible(src_data_types, input_info.data_type)
         });
 
@@ -709,7 +687,7 @@ impl SynthEngine {
         Ok(())
     }
 
-    fn already_linked(&self, src: &ModuleId, dst: &ModuleInput) -> bool {
+    fn already_linked(&self, src: &ModuleId, dst: &InputId) -> bool {
         if let Some(inputs) = self.input_sources.get(dst) {
             inputs.iter().any(|input| input.module_id == *src)
         } else {
@@ -875,14 +853,13 @@ impl SynthEngine {
 
     fn setup_routing(&mut self, links: &[ModuleLink]) -> Result<(), String> {
         let execution_order = Self::calc_execution_order(links)?;
-        let mut input_sources: FxHashMap<ModuleInput, Vec<ModuleInputSource>> =
-            FxHashMap::default();
+        let mut input_sources: FxHashMap<InputId, Vec<InputSource>> = FxHashMap::default();
 
         for link in links {
             input_sources
                 .entry(link.dst)
                 .or_default()
-                .push(ModuleInputSource {
+                .push(InputSource {
                     module_id: link.src,
                     amount: link.amount,
                     modulation: link.modulation,

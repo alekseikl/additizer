@@ -1,12 +1,12 @@
 use crate::synth_engine::{
-    Input, ModuleId, ModuleInput, Sample, StereoSample, ui_bridge::VoicesStatus,
+    Input, ModuleId, InputId, Sample, StereoSample, ui_bridge::VoicesStatus,
     voices_handler::VoicesHandlerUiState,
 };
 
 pub enum UiEvent {
     LinkAmount {
         src: ModuleId,
-        dst: ModuleInput,
+        dst: InputId,
         amount: StereoSample,
     },
     Voices(usize),
@@ -84,7 +84,7 @@ impl UiEnd {
     pub fn set_link_amount(
         &mut self,
         src: ModuleId,
-        dst: ModuleInput,
+        dst: InputId,
         amount: StereoSample,
     ) -> bool {
         self.tx

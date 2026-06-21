@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 
 use crate::synth_engine::{Sample, StereoSample};
 
@@ -65,6 +66,47 @@ pub enum Input {
     Release,
 }
 
+#[derive(Clone, Copy)]
+pub struct InputMeta {
+    pub input_type: Input,
+    pub data_type: DataType,
+    pub is_direct: bool,
+}
+
+impl InputMeta {
+    pub const fn audio(input: Input) -> Self {
+        Self {
+            input_type: input,
+            data_type: DataType::Audio,
+            is_direct: true,
+        }
+    }
+
+    pub const fn audio_mixed(input: Input) -> Self {
+        Self {
+            input_type: input,
+            data_type: DataType::Audio,
+            is_direct: false,
+        }
+    }
+
+    pub const fn control(input: Input) -> Self {
+        Self {
+            input_type: input,
+            data_type: DataType::Control,
+            is_direct: false,
+        }
+    }
+
+    pub const fn spectral(input: Input) -> Self {
+        Self {
+            input_type: input,
+            data_type: DataType::Spectral,
+            is_direct: true,
+        }
+    }
+}
+
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum Expression {
     #[default]
@@ -128,12 +170,12 @@ pub enum MixType {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
-pub struct ModuleInput {
+pub struct InputId {
     pub input_type: Input,
     pub module_id: ModuleId,
 }
 
-impl ModuleInput {
+impl InputId {
     pub fn new(input: Input, id: ModuleId) -> Self {
         Self {
             input_type: input,
@@ -143,15 +185,15 @@ impl ModuleInput {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct ModuleLink {
+pub(super) struct ModuleLink {
     pub src: ModuleId,
-    pub dst: ModuleInput,
+    pub dst: InputId,
     pub amount: StereoSample,
     pub modulation: Option<ModuleId>,
 }
 
 impl ModuleLink {
-    pub fn link(src: ModuleId, dst: ModuleInput) -> Self {
+    pub fn link(src: ModuleId, dst: InputId) -> Self {
         Self {
             src,
             dst,
@@ -160,13 +202,34 @@ impl ModuleLink {
         }
     }
 
-    pub fn scaled(src: ModuleId, dst: ModuleInput, amount: impl Into<StereoSample>) -> Self {
+    pub fn scaled(src: ModuleId, dst: InputId, amount: impl Into<StereoSample>) -> Self {
         Self {
             src,
             dst,
             amount: amount.into(),
             modulation: None,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct InputSource {
+    pub module_id: ModuleId,
+    pub amount: StereoSample,
+    pub modulation: Option<ModuleId>,
+}
+
+impl InputSource {
+    pub fn source_ids(&self) -> impl Iterator<Item = ModuleId> {
+        let mut ids: SmallVec<[ModuleId; 2]> = SmallVec::new();
+
+        ids.push(self.module_id);
+
+        if let Some(modulation) = self.modulation {
+            ids.push(modulation);
+        }
+
+        ids.into_iter()
     }
 }
 

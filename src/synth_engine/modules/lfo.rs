@@ -15,11 +15,11 @@ use crate::synth_engine::{
     buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
     phase::Phase,
     routing::{
-        ControlRouterType, DataType, InputSlots, NUM_CHANNELS, ProcessContext, SamplesOutput,
-        SpectralInputSlot, VoiceEvent, VoiceRouter,
+        ControlRouterType, DataType, InputMeta, InputSlots, NUM_CHANNELS, ProcessContext,
+        SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceRouter,
     },
     smooth::{SmoothedSample, Smoother},
-    synth_module::{ModInput, SynthModule},
+    synth_module::SynthModule,
 };
 
 struct ChannelParams {
@@ -302,11 +302,11 @@ impl SynthModule for Lfo {
         self.id
     }
 
-    fn inputs(&self) -> &'static [ModInput] {
-        static INPUTS: &[ModInput] = &[
-            ModInput::control(Input::LowFrequency),
-            ModInput::control(Input::PhaseShift),
-            ModInput::control(Input::Skew),
+    fn inputs(&self) -> &'static [InputMeta] {
+        static INPUTS: &[InputMeta] = &[
+            InputMeta::control(Input::LowFrequency),
+            InputMeta::control(Input::PhaseShift),
+            InputMeta::control(Input::Skew),
         ];
 
         INPUTS

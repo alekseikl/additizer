@@ -5,7 +5,7 @@ use egui::{ComboBox, Frame, Grid, Margin, Response, Ui, Widget};
 use crate::{
     editor::{db_slider::DbSlider, stereo_slider::StereoSlider},
     synth_engine::{
-        Input, ModuleId, ModuleInput, Sample, StereoSample,
+        Input, ModuleId, InputId, Sample, StereoSample,
         ui_bridge::{
             UiBridge,
             routing_state::{AvailableInputSource, ConnectedInputSource},
@@ -19,7 +19,7 @@ type BeforeCallback = dyn FnMut(&mut Ui, &mut UiBridge);
 pub struct ModulationInput<'a> {
     value: &'a mut StereoSample,
     bridge: &'a mut UiBridge,
-    input: ModuleInput,
+    input: InputId,
     default: Option<Sample>,
     modulation_default: Option<Sample>,
     before: Option<Box<BeforeCallback>>,
@@ -35,7 +35,7 @@ impl<'a> ModulationInput<'a> {
         Self {
             value,
             bridge,
-            input: ModuleInput::new(input, module_id),
+            input: InputId::new(input, module_id),
             default: None,
             modulation_default: None,
             before: None,

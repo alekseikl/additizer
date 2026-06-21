@@ -3,38 +3,11 @@ use enum_dispatch::enum_dispatch;
 use crate::synth_engine::{
     StereoSample,
     routing::{
-        DataType, Input, InputSlots, ModuleId, ProcessContext, SpectralInputSlot, VoiceEvent,
+        DataType, Input, InputMeta, InputSlots, ModuleId, ProcessContext, SpectralInputSlot,
+        VoiceEvent,
     },
     voices_handler::DecayingVoice,
 };
-
-pub struct ModInput {
-    pub input: Input,
-    pub data_type: DataType,
-}
-
-impl ModInput {
-    pub const fn audio(input: Input) -> Self {
-        Self {
-            input,
-            data_type: DataType::Audio,
-        }
-    }
-
-    pub const fn control(input: Input) -> Self {
-        Self {
-            input,
-            data_type: DataType::Control,
-        }
-    }
-
-    pub const fn spectral(input: Input) -> Self {
-        Self {
-            input,
-            data_type: DataType::Spectral,
-        }
-    }
-}
 
 #[enum_dispatch]
 #[auto_impl::auto_impl(Box)]
@@ -42,7 +15,7 @@ impl ModInput {
 pub(super) trait SynthModule: Send {
     fn id(&self) -> ModuleId;
 
-    fn inputs(&self) -> &'static [ModInput];
+    fn inputs(&self) -> &'static [InputMeta];
     fn output_type(&self) -> DataType;
 
     fn set_output_slot(&mut self, slot: usize);

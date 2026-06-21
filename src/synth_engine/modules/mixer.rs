@@ -14,11 +14,11 @@ use crate::synth_engine::{
     StereoSample,
     buffer::{Buffer, VoicesLayout, copy_or_add_to_buffer, zero_buffer},
     routing::{
-        AudioRouterType, DataType, Input, InputSlots, ModuleId, NUM_CHANNELS,
+        AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
         ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter, VolumeType,
     },
     smooth::SmoothedSample,
-    synth_module::{ModInput, SynthModule},
+    synth_module::SynthModule,
     types::Sample,
 };
 
@@ -354,28 +354,28 @@ impl SynthModule for Mixer {
         self.id
     }
 
-    fn inputs(&self) -> &'static [ModInput] {
-        static INPUTS: &[ModInput] = &[
-            ModInput::audio(Input::Gain),
-            ModInput::audio(Input::Level),
-            ModInput::audio(Input::AudioMix(0)),
-            ModInput::audio(Input::GainMix(0)),
-            ModInput::audio(Input::LevelMix(0)),
-            ModInput::audio(Input::AudioMix(1)),
-            ModInput::audio(Input::GainMix(1)),
-            ModInput::audio(Input::LevelMix(1)),
-            ModInput::audio(Input::AudioMix(2)),
-            ModInput::audio(Input::GainMix(2)),
-            ModInput::audio(Input::LevelMix(2)),
-            ModInput::audio(Input::AudioMix(3)),
-            ModInput::audio(Input::GainMix(3)),
-            ModInput::audio(Input::LevelMix(3)),
-            ModInput::audio(Input::AudioMix(4)),
-            ModInput::audio(Input::GainMix(4)),
-            ModInput::audio(Input::LevelMix(4)),
-            ModInput::audio(Input::AudioMix(5)),
-            ModInput::audio(Input::GainMix(5)),
-            ModInput::audio(Input::LevelMix(5)),
+    fn inputs(&self) -> &'static [InputMeta] {
+        static INPUTS: &[InputMeta] = &[
+            InputMeta::audio(Input::Gain),
+            InputMeta::audio(Input::Level),
+            InputMeta::audio(Input::AudioMix(0)),
+            InputMeta::audio(Input::GainMix(0)),
+            InputMeta::audio(Input::LevelMix(0)),
+            InputMeta::audio(Input::AudioMix(1)),
+            InputMeta::audio(Input::GainMix(1)),
+            InputMeta::audio(Input::LevelMix(1)),
+            InputMeta::audio(Input::AudioMix(2)),
+            InputMeta::audio(Input::GainMix(2)),
+            InputMeta::audio(Input::LevelMix(2)),
+            InputMeta::audio(Input::AudioMix(3)),
+            InputMeta::audio(Input::GainMix(3)),
+            InputMeta::audio(Input::LevelMix(3)),
+            InputMeta::audio(Input::AudioMix(4)),
+            InputMeta::audio(Input::GainMix(4)),
+            InputMeta::audio(Input::LevelMix(4)),
+            InputMeta::audio(Input::AudioMix(5)),
+            InputMeta::audio(Input::GainMix(5)),
+            InputMeta::audio(Input::LevelMix(5)),
         ];
 
         INPUTS

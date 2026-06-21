@@ -9,11 +9,10 @@ use crate::{
         buffer::{Buffer, copy_or_add_to_buffer, copy_to_buffer, zero_buffer},
         iir_decimator::IirDecimator,
         routing::{
-            DataType, InputSlots, MAX_VOICES, NUM_CHANNELS, ProcessContext, SpectralInputSlot,
-            VoiceEvent,
+            DataType, InputMeta, InputSlots, MAX_VOICES, NUM_CHANNELS, ProcessContext,
+            SpectralInputSlot, VoiceEvent,
         },
         smooth::{InfiniteSmoothed, SmoothedSample},
-        synth_module::ModInput,
         voices_handler::DecayingVoice,
     },
     utils::from_ms,
@@ -125,8 +124,8 @@ impl SynthModule for Output {
         OUTPUT_MODULE_ID
     }
 
-    fn inputs(&self) -> &'static [ModInput] {
-        static INPUTS: &[ModInput] = &[ModInput::audio(Input::Audio)];
+    fn inputs(&self) -> &'static [InputMeta] {
+        static INPUTS: &[InputMeta] = &[InputMeta::audio(Input::Audio)];
 
         INPUTS
     }

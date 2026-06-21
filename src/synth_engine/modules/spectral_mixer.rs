@@ -15,10 +15,10 @@ use crate::synth_engine::{
     StereoSample,
     buffer::{VoicesLayout, new_voices_layout},
     routing::{
-        DataType, Input, InputSlots, MixType, ModuleId, NUM_CHANNELS, ProcessContext,
+        DataType, Input, InputMeta, InputSlots, MixType, ModuleId, NUM_CHANNELS, ProcessContext,
         SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent, VoiceRouter, VolumeType,
     },
-    synth_module::{ModInput, SynthModule},
+    synth_module::SynthModule,
     types::{ComplexSample, Sample},
 };
 
@@ -333,28 +333,28 @@ impl SynthModule for SpectralMixer {
         self.id
     }
 
-    fn inputs(&self) -> &'static [ModInput] {
-        static INPUTS: &[ModInput] = &[
-            ModInput::control(Input::Gain),
-            ModInput::control(Input::Level),
-            ModInput::spectral(Input::SpectrumMix(0)),
-            ModInput::control(Input::GainMix(0)),
-            ModInput::control(Input::LevelMix(0)),
-            ModInput::spectral(Input::SpectrumMix(1)),
-            ModInput::control(Input::GainMix(1)),
-            ModInput::control(Input::LevelMix(1)),
-            ModInput::spectral(Input::SpectrumMix(2)),
-            ModInput::control(Input::GainMix(2)),
-            ModInput::control(Input::LevelMix(2)),
-            ModInput::spectral(Input::SpectrumMix(3)),
-            ModInput::control(Input::GainMix(3)),
-            ModInput::control(Input::LevelMix(3)),
-            ModInput::spectral(Input::SpectrumMix(4)),
-            ModInput::control(Input::GainMix(4)),
-            ModInput::control(Input::LevelMix(4)),
-            ModInput::spectral(Input::SpectrumMix(5)),
-            ModInput::control(Input::GainMix(5)),
-            ModInput::control(Input::LevelMix(5)),
+    fn inputs(&self) -> &'static [InputMeta] {
+        static INPUTS: &[InputMeta] = &[
+            InputMeta::control(Input::Gain),
+            InputMeta::control(Input::Level),
+            InputMeta::spectral(Input::SpectrumMix(0)),
+            InputMeta::control(Input::GainMix(0)),
+            InputMeta::control(Input::LevelMix(0)),
+            InputMeta::spectral(Input::SpectrumMix(1)),
+            InputMeta::control(Input::GainMix(1)),
+            InputMeta::control(Input::LevelMix(1)),
+            InputMeta::spectral(Input::SpectrumMix(2)),
+            InputMeta::control(Input::GainMix(2)),
+            InputMeta::control(Input::LevelMix(2)),
+            InputMeta::spectral(Input::SpectrumMix(3)),
+            InputMeta::control(Input::GainMix(3)),
+            InputMeta::control(Input::LevelMix(3)),
+            InputMeta::spectral(Input::SpectrumMix(4)),
+            InputMeta::control(Input::GainMix(4)),
+            InputMeta::control(Input::LevelMix(4)),
+            InputMeta::spectral(Input::SpectrumMix(5)),
+            InputMeta::control(Input::GainMix(5)),
+            InputMeta::control(Input::LevelMix(5)),
         ];
 
         INPUTS

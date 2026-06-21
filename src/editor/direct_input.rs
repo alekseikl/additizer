@@ -1,17 +1,17 @@
 use egui::{ComboBox, Response, Ui, Widget};
 
-use crate::synth_engine::{Input, ModuleId, ModuleInput, ui_bridge::UiBridge};
+use crate::synth_engine::{Input, ModuleId, InputId, ui_bridge::UiBridge};
 
 pub struct DirectInput<'a> {
     bridge: &'a mut UiBridge,
-    input: ModuleInput,
+    input: InputId,
 }
 
 impl<'a> DirectInput<'a> {
     pub fn new(bridge: &'a mut UiBridge, input: Input, module_id: ModuleId) -> Self {
         Self {
             bridge,
-            input: ModuleInput::new(input, module_id),
+            input: InputId::new(input, module_id),
         }
     }
 

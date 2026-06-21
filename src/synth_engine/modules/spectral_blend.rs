@@ -14,10 +14,10 @@ use crate::synth_engine::{
     StereoSample,
     buffer::{VoicesLayout, new_voices_layout},
     routing::{
-        DataType, Input, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
+        DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
         SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent, VoiceRouter,
     },
-    synth_module::{ModInput, SynthModule},
+    synth_module::SynthModule,
     types::Sample,
 };
 
@@ -162,11 +162,11 @@ impl SynthModule for SpectralBlend {
         self.id
     }
 
-    fn inputs(&self) -> &'static [ModInput] {
-        static INPUTS: &[ModInput] = &[
-            ModInput::spectral(Input::Spectrum),
-            ModInput::spectral(Input::SpectrumTo),
-            ModInput::control(Input::Blend),
+    fn inputs(&self) -> &'static [InputMeta] {
+        static INPUTS: &[InputMeta] = &[
+            InputMeta::spectral(Input::Spectrum),
+            InputMeta::spectral(Input::SpectrumTo),
+            InputMeta::control(Input::Blend),
         ];
 
         INPUTS
