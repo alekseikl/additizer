@@ -23,10 +23,10 @@ use crate::{
 mod db_slider;
 mod direct_input;
 mod gain_slider;
+mod grid;
 mod modulation_input;
 mod module_label;
 mod modules_ui;
-mod routing_grid;
 mod stereo_slider;
 mod utils;
 mod waveform;
@@ -42,7 +42,7 @@ struct EditorState {
     engine_factory: Arc<EngineFactory>,
     ui_bridge: UiBridge,
     selected_module_ui: ModuleUIBox,
-    routing_grid: routing_grid::RoutingGrid,
+    grid: grid::Grid,
 }
 
 impl EditorState {
@@ -54,7 +54,7 @@ impl EditorState {
             engine_factory: engine_factory.clone(),
             ui_bridge: bridge,
             selected_module_ui: Box::new(ParamsUi::new(engine_factory)),
-            routing_grid: Default::default(),
+            grid: grid::Grid::new(),
         }
     }
 }
@@ -240,7 +240,7 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
 
         editor_state.selected_module_ui =
             Box::new(ParamsUi::new(editor_state.engine_factory.clone()));
-        editor_state.routing_grid = Default::default();
+        editor_state.grid = grid::Grid::new();
     }
 
     let bridge = &mut editor_state.ui_bridge;
@@ -262,10 +262,18 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
     );
     show_right_bar(ui, bridge);
 
+    if let Some(modules_io) = bridge.take_modules_io() {
+        editor_state.grid.update_widgets(modules_io);
+    }
+
     CentralPanel::default()
         .frame(Frame::NONE)
         .show_inside(ui, |ui| {
-            editor_state.routing_grid.show(bridge, ui);
+            if editor_state.selected_module_ui.module_id().is_none() {
+                editor_state.grid.ui(ui, bridge);
+            } else {
+                editor_state.selected_module_ui.ui(bridge, ui);
+            }
         });
 }
 

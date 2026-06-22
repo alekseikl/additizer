@@ -16,7 +16,7 @@ use crate::{
         lfo::LfoUiBridge,
         mixer::MixerUiBridge,
         oscillator::OscillatorUiBridge,
-        routing::{DataType, Input, InputSource, data_types_compatible},
+        routing::{DataType, Input, data_types_compatible},
         spectral_blend::SpectralBlendUiBridge,
         spectral_filter::SpectralFilterUiBridge,
         spectral_mixer::SpectralMixerUiBridge,

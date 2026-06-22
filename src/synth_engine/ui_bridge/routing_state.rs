@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap;
 
 use crate::synth_engine::{
-    Input, ModuleHandle, ModuleId, ModuleType, RoutingMap, StereoSample,
+    InputId, ModuleHandle, ModuleId, ModuleType, RoutingMap, StereoSample,
     routing::{DataType, InputMeta, InputSource},
     synth_module::SynthModule,
 };
@@ -51,6 +51,7 @@ pub struct ModuleInput {
 pub struct ModuleIo {
     pub id: ModuleId,
     pub module_type: ModuleType,
+    pub inputs_meta: &'static [InputMeta],
     pub inputs: Vec<ModuleInput>,
     pub output_type: DataType,
 }
@@ -63,16 +64,6 @@ pub struct RoutingState {
 
 impl RoutingState {
     pub fn new(modules: FxHashMap<ModuleId, Module>, routing: RoutingMap) -> Self {
-        let meta_lookup = |module_id: ModuleId, input_type: Input| -> InputMeta {
-            let module = modules.get(&module_id).expect("module in place");
-
-            *module
-                .inputs
-                .iter()
-                .find(|meta| meta.input_type == input_type)
-                .expect("input in place")
-        };
-
         let modules_io: FxHashMap<ModuleId, ModuleIo> = modules
             .values()
             .map(|m| {
@@ -82,12 +73,18 @@ impl RoutingState {
                         id: m.id,
                         module_type: m.module_type,
                         output_type: m.output_type,
-                        inputs: routing
+                        inputs_meta: m.inputs,
+                        inputs: m
+                            .inputs
                             .iter()
-                            .filter(|(id, _)| id.module_id == m.id)
-                            .map(|(id, sources)| ModuleInput {
-                                meta: meta_lookup(m.id, id.input_type),
-                                sources: sources.clone(),
+                            .filter_map(|meta| {
+                                routing
+                                    .get(&InputId::new(meta.input_type, m.id))
+                                    .map(|s| (meta, s))
+                            })
+                            .map(|(&meta, s)| ModuleInput {
+                                meta,
+                                sources: s.clone(),
                             })
                             .collect(),
                     },
