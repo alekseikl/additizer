@@ -2,8 +2,8 @@ use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 
 use egui::{
-    Align, Color32, Id, LayerId, Layout, Order, Pos2, Rect, Response, Sense, Stroke, Ui, UiBuilder,
-    Vec2, ecolor::Hsva, lerp, vec2,
+    Align, Color32, Id, Label, LayerId, Layout, Order, Pos2, Rect, Response, Sense, Stroke, Ui,
+    UiBuilder, Vec2, ecolor::Hsva, lerp, vec2,
 };
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
 
 const C_MOD_BG: Color32 = Color32::from_rgb(28, 30, 42);
 const CORNER_RADIUS: f32 = 4.0;
-const BLOCK_MARGIN: f32 = 1.0;
+const BLOCK_MARGIN: f32 = 2.0;
 
 const IO_STRIPE_W: f32 = 16.0;
 const INPUTS_PADDING: f32 = 4.0;
@@ -46,7 +46,7 @@ impl Input {
     fn color(self) -> Color32 {
         Color32::from(Hsva {
             h: self.hue(),
-            s: 0.25,
+            s: 0.6,
             v: 0.5,
             a: 1.0,
         })
@@ -63,7 +63,7 @@ impl DataType {
 
         Color32::from(Hsva {
             h,
-            s: 0.25,
+            s: 0.6,
             v: 0.5,
             a: 1.0,
         })
@@ -95,6 +95,11 @@ pub struct GridWidget {
     /// Pixel offset applied while the widget is being dragged. Reset to zero
     /// once the drag finishes and the new grid position is committed.
     drag_offset: Vec2,
+    /// Content-space point inside the widget that the pointer grabbed, relative
+    /// to the widget's grid origin. `Some` only while a drag is in progress;
+    /// tracking the pointer in content space keeps the widget under the cursor
+    /// even as the canvas auto-scrolls.
+    drag_grab: Option<Vec2>,
     /// Screen-space wire attach point at the widget's right edge, captured
     /// during the last frame. `None` for modules without an output (e.g.
     /// `Output`).
@@ -115,6 +120,7 @@ impl GridWidget {
                 _ => Box::new(EmptyContent {}),
             },
             drag_offset: Vec2::ZERO,
+            drag_grab: None,
             output_pos: None,
             input_positions: Vec::new(),
         }
@@ -148,7 +154,14 @@ impl GridWidget {
     }
 
     pub fn is_dragging(&self) -> bool {
-        self.drag_offset != Vec2::ZERO
+        self.drag_grab.is_some()
+    }
+
+    /// Pixel offset currently applied by an in-progress drag (zero otherwise).
+    /// Lets the grid grow its scrollable content to follow a widget being
+    /// dragged toward the edges.
+    pub fn drag_offset(&self) -> Vec2 {
+        self.drag_offset
     }
 
     pub fn grid_size(&self) -> (i32, i32) {
@@ -167,9 +180,10 @@ impl GridWidget {
         let (gx, gy) = bridge.get_module_position(self.io.id);
         let (gw, gh) = self.grid_size();
         let size = vec2(gw as f32, gh as f32) * GRID_CELL_SIZE - Vec2::splat(1.0);
+        let origin = ui.min_rect().min;
         let pos = vec2(gx as f32, gy as f32) * Vec2::splat(GRID_CELL_SIZE) + Vec2::splat(1.0);
-        let max_rect = Rect::from_min_size(ui.min_rect().min + pos + self.drag_offset, size)
-            .shrink(BLOCK_MARGIN);
+        let max_rect =
+            Rect::from_min_size(origin + pos + self.drag_offset, size).shrink(BLOCK_MARGIN);
 
         let mut ui_builder = UiBuilder::new()
             .id_salt(("module-widget", self.io.id))
@@ -220,18 +234,39 @@ impl GridWidget {
             })
             .inner;
 
-        self.handle_drag(&drag, bridge, gx, gy)
+        self.handle_drag(ui, &drag, bridge, origin, pos, max_rect, gx, gy)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn handle_drag(
         &mut self,
+        ui: &mut Ui,
         drag: &Response,
         bridge: &mut UiBridge,
+        origin: Pos2,
+        base: Vec2,
+        widget_rect: Rect,
         gx: i32,
         gy: i32,
     ) -> Option<ModuleId> {
-        if drag.dragged() {
-            self.drag_offset += drag.drag_delta();
+        if drag.drag_started() {
+            // Record where inside the widget (in content space) the pointer
+            // grabbed, so the cursor stays glued to that point during the drag.
+            self.drag_grab = drag.interact_pointer_pos().map(|p| p - origin - base);
+        }
+
+        if drag.dragged()
+            && let Some(grab) = self.drag_grab
+            && let Some(pointer) = drag.interact_pointer_pos()
+        {
+            let mut offset = (pointer - origin) - base - grab;
+            // Clamp so the widget can't be dragged past the top/left edges:
+            // its grid origin must stay at or beyond (0, 0).
+            offset.x = offset.x.max(-(gx as f32) * GRID_CELL_SIZE);
+            offset.y = offset.y.max(-(gy as f32) * GRID_CELL_SIZE);
+            self.drag_offset = offset;
+
+            Self::auto_scroll(ui, widget_rect);
         }
 
         if !drag.drag_stopped() {
@@ -245,8 +280,41 @@ impl GridWidget {
 
         bridge.set_module_position(self.io.id, new_x, new_y);
         self.drag_offset = Vec2::ZERO;
+        self.drag_grab = None;
 
         Some(self.io.id)
+    }
+
+    /// Scrolls the enclosing canvas when the dragged widget crosses a viewport
+    /// edge, so it can be dragged into off-screen regions of the grid. Scroll
+    /// speed grows with how far past the edge the widget reaches.
+    fn auto_scroll(ui: &Ui, widget: Rect) {
+        const MAX_SPEED: f32 = 18.0;
+
+        let view = ui.clip_rect();
+        let mut delta = Vec2::ZERO;
+
+        let over_right = widget.right() - view.right();
+        let over_left = view.left() - widget.left();
+        let over_bottom = widget.bottom() - view.bottom();
+        let over_top = view.top() - widget.top();
+
+        if over_right > 0.0 {
+            delta.x -= over_right.min(MAX_SPEED);
+        } else if over_left > 0.0 {
+            delta.x += over_left.min(MAX_SPEED);
+        }
+
+        if over_bottom > 0.0 {
+            delta.y -= over_bottom.min(MAX_SPEED);
+        } else if over_top > 0.0 {
+            delta.y += over_top.min(MAX_SPEED);
+        }
+
+        if delta != Vec2::ZERO {
+            ui.scroll_with_delta(delta);
+            ui.ctx().request_repaint();
+        }
     }
 
     /// Draws an input stub and returns the screen-space point at the widget's
@@ -300,14 +368,9 @@ impl GridWidget {
                 [center, rect.right_center()],
                 Stroke::new(WIRE_THICKNESS, color),
             );
-            painter.circle_filled(center, radius, color);
-        } else {
-            painter.circle_stroke(
-                center,
-                radius - WIRE_THICKNESS * 0.5,
-                Stroke::new(WIRE_THICKNESS, color),
-            );
         }
+
+        painter.circle_filled(center, radius, color);
 
         rect.right_center()
     }
@@ -358,7 +421,7 @@ impl GridWidget {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
         }
 
-        ui.label(self.io.module_type.label());
+        ui.add(Label::new(self.io.module_type.label()).selectable(false));
 
         response
     }

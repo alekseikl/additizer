@@ -1,6 +1,6 @@
 use egui::{
-    Color32, Painter, Pos2, Rect, ScrollArea, Sense, Shape, Stroke, Ui, scroll_area::ScrollSource,
-    vec2,
+    Color32, Painter, Pos2, Rect, ScrollArea, Sense, Shape, Stroke, Ui, epaint::CubicBezierShape,
+    scroll_area::ScrollSource, vec2,
 };
 use rustc_hash::FxHashMap;
 
@@ -14,12 +14,14 @@ use crate::{
 
 mod grid_widget;
 
-const GRID_CELL_SIZE: f32 = 75.0;
-const VIRTUAL_W: f32 = 4000.0;
-const VIRTUAL_H: f32 = 3000.0;
+const GRID_CELL_SIZE: f32 = 77.0;
 const C_GRID: Color32 = Color32::from_rgb(52, 52, 52);
 const GRID_T: f32 = 0.5;
 const WIRE_T: f32 = 2.0;
+/// Minimum horizontal offset of a wire's Bézier control points. It makes the
+/// curve leave an output heading right and enter an input from the left, which
+/// keeps it clear of the widgets it attaches to.
+const WIRE_CTRL_MIN: f32 = 8.0;
 
 struct GridRect {
     id: ModuleId,
@@ -40,6 +42,10 @@ impl GridRect {
 
 pub struct Grid {
     widgets: Vec<GridWidget>,
+    /// Cached scrollable content size. It only grows while a widget is being
+    /// dragged (so the scrollbars don't jitter mid-drag) and is recomputed
+    /// from scratch once the drag ends.
+    content_size: egui::Vec2,
 }
 
 impl Default for Grid {
@@ -52,6 +58,7 @@ impl Grid {
     pub fn new() -> Self {
         Self {
             widgets: Vec::new(),
+            content_size: egui::Vec2::ZERO,
         }
     }
 
@@ -72,6 +79,21 @@ impl Grid {
     }
 
     pub fn ui(&mut self, ui: &mut Ui, bridge: &mut UiBridge) {
+        // Size the canvas to the widgets so the scrollbars track real content.
+        // While dragging, only grow it so the scrollbars stay stable; recompute
+        // it (allowing it to shrink) once the drag has ended. Keep half a
+        // viewport of free space past the bottom-right-most widget.
+        let extent = self.content_extent(bridge) + ui.available_size() * 0.5;
+        let dragging = self.widgets.iter().any(GridWidget::is_dragging);
+        self.content_size = if dragging {
+            self.content_size.max(extent)
+        } else {
+            extent
+        };
+
+        // Never smaller than the viewport so the grid fills the panel.
+        let content_size = self.content_size.max(ui.available_size());
+
         ScrollArea::both()
             .scroll_source(ScrollSource {
                 drag: false,
@@ -79,8 +101,7 @@ impl Grid {
             })
             .auto_shrink([true, true])
             .show(ui, |ui| {
-                let (response, painter) =
-                    ui.allocate_painter(vec2(VIRTUAL_W, VIRTUAL_H), Sense::drag());
+                let (response, painter) = ui.allocate_painter(content_size, Sense::drag());
 
                 let canvas = response.rect;
                 painter.rect_filled(canvas, 0.0, Color32::BLACK);
@@ -108,23 +129,50 @@ impl Grid {
             });
     }
 
+    /// Bottom-right extent of all widgets in canvas pixels (including any
+    /// in-progress drag), plus a padding margin. Drives the scrollable area.
+    fn content_extent(&self, bridge: &UiBridge) -> egui::Vec2 {
+        let mut extent = egui::Vec2::ZERO;
+
+        for widget in &self.widgets {
+            let (gx, gy) = bridge.get_module_position(widget.module_id());
+            let (gw, gh) = widget.grid_size();
+            let bottom_right = vec2((gx + gw) as f32, (gy + gh) as f32) * GRID_CELL_SIZE
+                + widget.drag_offset();
+
+            extent = extent.max(bottom_right);
+        }
+
+        extent
+    }
+
     /// Builds straight wire shapes from each module's output to the inputs it
     /// feeds, using the attach points captured during the current frame.
     fn wire_shapes(&self) -> Vec<Shape> {
         let outputs: FxHashMap<ModuleId, (Pos2, Color32)> = self
             .widgets
             .iter()
-            .filter_map(|widget| widget.output_anchor().map(|anchor| (widget.module_id(), anchor)))
+            .filter_map(|widget| {
+                widget
+                    .output_anchor()
+                    .map(|anchor| (widget.module_id(), anchor))
+            })
             .collect();
 
         let mut shapes = Vec::new();
         for widget in &self.widgets {
             for (src, dst_pos) in widget.input_connections() {
                 if let Some(&(src_pos, color)) = outputs.get(&src) {
-                    shapes.push(Shape::line_segment(
-                        [src_pos, dst_pos],
+                    let dx = ((dst_pos.x - src_pos.x).abs() * 0.5).max(WIRE_CTRL_MIN);
+                    let ctrl1 = src_pos + vec2(dx, 0.0);
+                    let ctrl2 = dst_pos - vec2(dx, 0.0);
+
+                    shapes.push(Shape::CubicBezier(CubicBezierShape::from_points_stroke(
+                        [src_pos, ctrl1, ctrl2, dst_pos],
+                        false,
+                        Color32::TRANSPARENT,
                         Stroke::new(WIRE_T, color),
-                    ));
+                    )));
                 }
             }
         }
