@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 
 use egui::{
     Align, Color32, Id, Label, LayerId, Layout, Order, Pos2, Rect, Response, Sense, Stroke, Ui,
-    UiBuilder, Vec2, ecolor::Hsva, lerp, vec2,
+    UiBuilder, Vec2, ecolor::Hsva, emath::GuiRounding, lerp, vec2,
 };
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
 
 const C_MOD_BG: Color32 = Color32::from_rgb(28, 30, 42);
 const CORNER_RADIUS: f32 = 4.0;
-const BLOCK_MARGIN: f32 = 2.0;
+const BLOCK_MARGIN: f32 = 3.0;
 
 const IO_STRIPE_W: f32 = 16.0;
 const INPUTS_PADDING: f32 = 4.0;
@@ -74,7 +74,7 @@ pub struct EmptyContent {}
 
 impl GridWidgetContent for EmptyContent {
     fn grid_size(&self) -> (i32, i32) {
-        (2, 1)
+        (4, 2)
     }
 
     fn ui(&mut self) {}
@@ -84,7 +84,7 @@ pub struct OutputContent {}
 
 impl GridWidgetContent for OutputContent {
     fn grid_size(&self) -> (i32, i32) {
-        (1, 1)
+        (2, 2)
     }
     fn ui(&mut self) {}
 }
@@ -134,8 +134,9 @@ impl GridWidget {
             .map(|pos| (pos, self.io.output_type.color()))
     }
 
-    /// For every incoming connection, yields the source module id paired with
-    /// the screen-space attach point (left edge) of the input it feeds into.
+    /// For every incoming connection, yields a source module id paired with the
+    /// screen-space attach point (left edge) of the input it feeds into. Both
+    /// the direct source and its optional modulation source are reported.
     pub fn input_connections(&self) -> impl Iterator<Item = (ModuleId, Pos2)> + '_ {
         self.io
             .inputs
@@ -145,7 +146,7 @@ impl GridWidget {
                 input
                     .sources
                     .iter()
-                    .map(move |source| (source.module_id, pos))
+                    .flat_map(move |source| source.source_ids().map(move |id| (id, pos)))
             })
     }
 
@@ -181,9 +182,11 @@ impl GridWidget {
         let (gw, gh) = self.grid_size();
         let size = vec2(gw as f32, gh as f32) * GRID_CELL_SIZE - Vec2::splat(1.0);
         let origin = ui.min_rect().min;
-        let pos = vec2(gx as f32, gy as f32) * Vec2::splat(GRID_CELL_SIZE) + Vec2::splat(1.0);
+        let pos = vec2(gx as f32, gy as f32) * Vec2::splat(GRID_CELL_SIZE) + vec2(0.0, 1.0);
         let max_rect =
             Rect::from_min_size(origin + pos + self.drag_offset, size).shrink(BLOCK_MARGIN);
+
+        let sz = max_rect.size();
 
         let mut ui_builder = UiBuilder::new()
             .id_salt(("module-widget", self.io.id))
@@ -342,6 +345,7 @@ impl GridWidget {
         painter.circle_filled(center, dot_size * 0.5, color);
 
         rect.left_center()
+            .round_to_pixels(ui.ctx().pixels_per_point())
     }
 
     /// Draws the output stub and returns the screen-space point at the widget's
@@ -362,6 +366,7 @@ impl GridWidget {
 
         let center = rect.center();
         let painter = ui.painter();
+        let ppt = ui.ctx().pixels_per_point();
 
         if io.output_connected {
             painter.line_segment(
@@ -372,7 +377,7 @@ impl GridWidget {
 
         painter.circle_filled(center, radius, color);
 
-        rect.right_center()
+        rect.right_center().round_to_pixels(ppt)
     }
 
     fn inputs_ui(&mut self, ui: &mut Ui) {

@@ -24,22 +24,22 @@ const AMP_ENV_ID: ModuleId = 6;
 fn default_ui_config() -> UiConfig {
     let mut modules = FxHashMap::default();
 
-    // Layout: main signal chain across the top row (y=1), modulation sources below (y=3).
-    // Each module occupies 2 grid columns wide × 1 row tall (160×80 px per module).
-    // Column spacing of 3 gives an 80 px gap between adjacent modules.
+    // Layout: main signal chain across the top row (y=2), modulation sources below (y=4).
+    // Each module occupies 4 grid columns wide × 2 rows tall (154×77 px per module).
+    // Column spacing of 6 gives a 77 px gap between adjacent modules.
     //
-    //  col:  0            3               6            9            12
-    //  y=0: [HarmonicEditor]            [Oscillator]
-    //  y=1:            [SpectralFilter]             [Amplifier]  [Output]
-    //  y=2: [FilterEnv]                 [AmpEnv]
+    //  col:  0                    6                           12                          18                24
+    //  y=0: [HarmonicEditor                      ]            [Oscillator                      ]
+    //  y=2:            [SpectralFilter                      ]             [Amplifier               ]  [Output]
+    //  y=4: [FilterEnv                           ]             [AmpEnv                            ]
     for (id, label, grid_x, grid_y) in [
         (HARMONIC_EDITOR_ID, "01 - Harmonics",  0, 0),
-        (FILTER_ENV_ID,      "03 - Cutoff Env", 0, 2),
-        (FILTER_ID,          "03 - Filter",     3, 1),
-        (OSC_ID,             "04 - Oscillator", 6, 0),
-        (AMP_ENV_ID,         "06 - Amp Env",    6, 2),
-        (AMP_ID,             "06 - Amplifier",  9, 1),
-        (OUTPUT_MODULE_ID,   "Output",          12, 1),
+        (FILTER_ENV_ID,      "03 - Cutoff Env", 0, 4),
+        (FILTER_ID,          "03 - Filter",     6, 2),
+        (OSC_ID,             "04 - Oscillator", 12, 0),
+        (AMP_ENV_ID,         "06 - Amp Env",    12, 4),
+        (AMP_ID,             "06 - Amplifier",  18, 2),
+        (OUTPUT_MODULE_ID,   "Output",          24, 2),
     ] {
         modules.insert(
             id,

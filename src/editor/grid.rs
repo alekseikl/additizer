@@ -1,6 +1,8 @@
 use egui::{
-    Color32, Painter, Pos2, Rect, ScrollArea, Sense, Shape, Stroke, Ui, epaint::CubicBezierShape,
-    scroll_area::ScrollSource, vec2,
+    Color32, Painter, Pos2, Rect, ScrollArea, Sense, Shape, Ui,
+    epaint::{CubicBezierShape, PathStroke},
+    scroll_area::ScrollSource,
+    vec2,
 };
 use rustc_hash::FxHashMap;
 
@@ -14,14 +16,20 @@ use crate::{
 
 mod grid_widget;
 
-const GRID_CELL_SIZE: f32 = 77.0;
+const GRID_CELL_SIZE: f32 = 40.0;
 const C_GRID: Color32 = Color32::from_rgb(52, 52, 52);
-const GRID_T: f32 = 0.5;
+const GRID_T: f32 = 1.0;
 const WIRE_T: f32 = 2.0;
 /// Minimum horizontal offset of a wire's Bézier control points. It makes the
 /// curve leave an output heading right and enter an input from the left, which
 /// keeps it clear of the widgets it attaches to.
 const WIRE_CTRL_MIN: f32 = 8.0;
+
+/// Compensates for egui-baseview negating horizontal wheel delta on macOS.
+#[cfg(target_os = "macos")]
+const TRACKPAD_SCROLL_MULTIPLIER: egui::Vec2 = vec2(-1.0, 1.0);
+#[cfg(not(target_os = "macos"))]
+const TRACKPAD_SCROLL_MULTIPLIER: egui::Vec2 = egui::Vec2::splat(1.0);
 
 struct GridRect {
     id: ModuleId,
@@ -99,6 +107,7 @@ impl Grid {
                 drag: false,
                 ..Default::default()
             })
+            .wheel_scroll_multiplier(TRACKPAD_SCROLL_MULTIPLIER)
             .auto_shrink([true, true])
             .show(ui, |ui| {
                 let (response, painter) = ui.allocate_painter(content_size, Sense::drag());
@@ -137,8 +146,8 @@ impl Grid {
         for widget in &self.widgets {
             let (gx, gy) = bridge.get_module_position(widget.module_id());
             let (gw, gh) = widget.grid_size();
-            let bottom_right = vec2((gx + gw) as f32, (gy + gh) as f32) * GRID_CELL_SIZE
-                + widget.drag_offset();
+            let bottom_right =
+                vec2((gx + gw) as f32, (gy + gh) as f32) * GRID_CELL_SIZE + widget.drag_offset();
 
             extent = extent.max(bottom_right);
         }
@@ -171,7 +180,7 @@ impl Grid {
                         [src_pos, ctrl1, ctrl2, dst_pos],
                         false,
                         Color32::TRANSPARENT,
-                        Stroke::new(WIRE_T, color),
+                        PathStroke::new(WIRE_T, color).middle(),
                     )));
                 }
             }
@@ -228,14 +237,14 @@ impl Grid {
 }
 
 fn paint_grid(painter: &Painter, area: Rect, origin: Pos2) {
-    let stroke = Stroke::new(GRID_T, C_GRID);
+    let stroke = PathStroke::new(GRID_T, C_GRID).inside();
 
     let x0 = origin.x + ((area.left() - origin.x) / GRID_CELL_SIZE).floor() * GRID_CELL_SIZE;
     let mut x = x0;
     while x <= area.right() {
-        painter.line_segment(
-            [Pos2::new(x, area.top()), Pos2::new(x, area.bottom())],
-            stroke,
+        painter.line(
+            vec![Pos2::new(x, area.top()), Pos2::new(x, area.bottom())],
+            stroke.clone(),
         );
         x += GRID_CELL_SIZE;
     }
@@ -243,9 +252,9 @@ fn paint_grid(painter: &Painter, area: Rect, origin: Pos2) {
     let y0 = origin.y + ((area.top() - origin.y) / GRID_CELL_SIZE).floor() * GRID_CELL_SIZE;
     let mut y = y0;
     while y <= area.bottom() {
-        painter.line_segment(
-            [Pos2::new(area.left(), y), Pos2::new(area.right(), y)],
-            stroke,
+        painter.line(
+            vec![Pos2::new(area.left(), y), Pos2::new(area.right(), y)],
+            stroke.clone(),
         );
         y += GRID_CELL_SIZE;
     }
