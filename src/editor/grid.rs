@@ -14,7 +14,7 @@ use crate::{
 
 mod grid_widget;
 
-const GRID_CELL_SIZE: f32 = 70.0;
+const GRID_CELL_SIZE: f32 = 75.0;
 const VIRTUAL_W: f32 = 4000.0;
 const VIRTUAL_H: f32 = 3000.0;
 const C_GRID: Color32 = Color32::from_rgb(52, 52, 52);

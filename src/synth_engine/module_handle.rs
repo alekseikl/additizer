@@ -25,6 +25,26 @@ pub enum ModuleType {
     Expressions,
 }
 
+impl ModuleType {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Output => "Output",
+            Self::Envelope => "Envelope",
+            Self::Amplifier => "Amplifier",
+            Self::Mixer => "Mixer",
+            Self::Oscillator => "Oscillator",
+            Self::SpectralFilter => "Spectral Filter",
+            Self::SpectralBlend => "Spectral Blend",
+            Self::SpectralMixer => "Spectral Mixer",
+            Self::HarmonicEditor => "Harmonic Editor",
+            Self::ExternalParam => "External Parameter",
+            Self::Lfo => "LFO",
+            Self::WaveShaper => "Waveshaper",
+            Self::Expressions => "Expressions",
+        }
+    }
+}
+
 #[enum_dispatch(SynthModule)]
 pub enum ModuleHandle {
     Oscillator(Box<Oscillator>),

@@ -1,4 +1,4 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::synth_engine::{
     InputId, ModuleHandle, ModuleId, ModuleType, RoutingMap, StereoSample,
@@ -54,6 +54,7 @@ pub struct ModuleIo {
     pub inputs_meta: &'static [InputMeta],
     pub inputs: Vec<ModuleInput>,
     pub output_type: DataType,
+    pub output_connected: bool,
 }
 
 pub struct RoutingState {
@@ -64,6 +65,11 @@ pub struct RoutingState {
 
 impl RoutingState {
     pub fn new(modules: FxHashMap<ModuleId, Module>, routing: RoutingMap) -> Self {
+        let connected_outputs: FxHashSet<ModuleId> = routing
+            .values()
+            .flat_map(|sources| sources.iter().flat_map(InputSource::source_ids))
+            .collect();
+
         let modules_io: FxHashMap<ModuleId, ModuleIo> = modules
             .values()
             .map(|m| {
@@ -87,6 +93,7 @@ impl RoutingState {
                                 sources: s.clone(),
                             })
                             .collect(),
+                        output_connected: connected_outputs.contains(&m.id),
                     },
                 )
             })

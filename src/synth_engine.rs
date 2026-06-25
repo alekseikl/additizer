@@ -13,7 +13,7 @@ use crate::synth_engine::{
     module_handle::ModuleHandle,
     modules::Output,
     routing::{
-        DataType, InputSlot, InputSlots, InputSource, MIN_MODULE_ID, ModuleLink, OutputsArena,
+        InputSlot, InputSlots, InputSource, MIN_MODULE_ID, ModuleLink, OutputsArena,
         ProcessContext, ProcessParams, SpectralInputSlot, data_types_compatible,
     },
     synth_module::SynthModule,
@@ -43,8 +43,8 @@ pub use modules::{
     wave_shaper::{self},
 };
 pub use routing::{
-    Expression, Input, InputId, MixType, ModuleId, NUM_CHANNELS, OUTPUT_MODULE_ID, VoiceEvent,
-    VolumeType,
+    DataType, Expression, Input, InputId, MixType, ModuleId, NUM_CHANNELS, OUTPUT_MODULE_ID,
+    VoiceEvent, VolumeType,
 };
 pub use smooth::SmoothedSampleParams;
 pub use stereo_sample::StereoSample;
