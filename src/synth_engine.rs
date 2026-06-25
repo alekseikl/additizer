@@ -295,7 +295,6 @@ impl SynthEngine {
         ui_bridge::RoutingState::new(
             self.modules
                 .values()
-                .filter(|m| !matches!(m, ModuleHandle::Output(_)))
                 .map(|m| (m.id(), ui_bridge::routing_state::Module::new(m)))
                 .collect(),
             self.input_sources.clone(),

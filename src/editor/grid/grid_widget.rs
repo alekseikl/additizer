@@ -2,14 +2,13 @@ use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 
 use egui::{
-    Align, Color32, CornerRadius, Direction, Frame, Label, Layout, Rect, RichText, Sense, Stroke,
-    StrokeKind, Ui, UiBuilder, Vec2, ecolor::Hsva, lerp, pos2, vec2,
+    Align, Color32, Layout, Rect, Sense, Stroke, Ui, UiBuilder, Vec2, ecolor::Hsva, lerp, vec2,
 };
 
 use crate::{
     editor::grid::GRID_CELL_SIZE,
     synth_engine::{
-        DataType, Input, ModuleId,
+        DataType, Input, ModuleId, ModuleType,
         ui_bridge::{
             UiBridge,
             routing_state::{ModuleInput, ModuleIo},
@@ -18,18 +17,8 @@ use crate::{
 };
 
 const C_MOD_BG: Color32 = Color32::from_rgb(28, 30, 42);
-const C_INPUT_STRIPE: Color32 = Color32::from_rgb(24, 26, 36);
-const C_INPUT_BG: Color32 = Color32::from_rgb(36, 38, 54);
-const C_INPUT_BORDER: Color32 = Color32::from_rgb(76, 80, 118);
-const C_INPUT_HOVER_BG: Color32 = Color32::from_rgb(52, 56, 78);
-const C_INPUT_HOVER_BORDER: Color32 = Color32::from_rgb(138, 150, 200);
-const C_INPUT_DOT: Color32 = Color32::from_rgb(178, 196, 242);
 const CORNER_RADIUS: f32 = 4.0;
-const INPUT_CORNER_RADIUS: f32 = 2.0;
 const BLOCK_MARGIN: f32 = 1.0;
-const INPUT_STRIPE_W: f32 = 16.0;
-const INPUT_INDICATOR_SIZE: Vec2 = vec2(9.0, 7.0);
-const INPUT_DOT_R: f32 = 2.5;
 
 const IO_STRIPE_W: f32 = 16.0;
 const INPUTS_PADDING: f32 = 4.0;
@@ -41,7 +30,7 @@ const WIRE_THICKNESS: f32 = 2.0;
 
 pub trait GridWidgetContent: Send {
     fn grid_size(&self) -> (i32, i32);
-    fn paint(&mut self);
+    fn ui(&mut self);
 }
 
 impl Input {
@@ -87,7 +76,16 @@ impl GridWidgetContent for EmptyContent {
         (2, 1)
     }
 
-    fn paint(&mut self) {}
+    fn ui(&mut self) {}
+}
+
+pub struct OutputContent {}
+
+impl GridWidgetContent for OutputContent {
+    fn grid_size(&self) -> (i32, i32) {
+        (1, 1)
+    }
+    fn ui(&mut self) {}
 }
 
 pub struct GridWidget {
@@ -97,9 +95,14 @@ pub struct GridWidget {
 
 impl GridWidget {
     pub fn new(io: ModuleIo) -> Self {
+        let module_type = io.module_type;
+
         Self {
             io,
-            content: Box::new(EmptyContent {}),
+            content: match module_type {
+                ModuleType::Output => Box::new(OutputContent {}),
+                _ => Box::new(EmptyContent {}),
+            },
         }
     }
 
@@ -241,6 +244,10 @@ impl GridWidget {
 
     fn output_ui(&self, ui: &mut Ui) {
         ui.set_min_width(IO_STRIPE_W);
+
+        if matches!(self.io.module_type, ModuleType::Output) {
+            return;
+        }
 
         let height = ui.available_height();
         let top = (height - IO_SLOT_H) * 0.5;
