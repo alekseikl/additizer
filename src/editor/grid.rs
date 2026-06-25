@@ -1,5 +1,6 @@
 use egui::{
-    Color32, Painter, Pos2, Rect, ScrollArea, Sense, Stroke, Ui, scroll_area::ScrollSource, vec2,
+    Color32, Painter, Pos2, Rect, ScrollArea, Sense, Shape, Stroke, Ui, scroll_area::ScrollSource,
+    vec2,
 };
 use rustc_hash::FxHashMap;
 
@@ -18,6 +19,7 @@ const VIRTUAL_W: f32 = 4000.0;
 const VIRTUAL_H: f32 = 3000.0;
 const C_GRID: Color32 = Color32::from_rgb(52, 52, 52);
 const GRID_T: f32 = 0.5;
+const WIRE_T: f32 = 2.0;
 
 struct GridRect {
     id: ModuleId,
@@ -84,6 +86,12 @@ impl Grid {
                 painter.rect_filled(canvas, 0.0, Color32::BLACK);
                 paint_grid(&painter, painter.clip_rect(), canvas.min);
 
+                // Reserve a paint slot for the wires up front so they render
+                // behind the modules, but fill it only after the widgets have
+                // been drawn so it uses their up-to-date (current-frame) attach
+                // points. This avoids the one-frame lag while dragging.
+                let wires = painter.add(Shape::Noop);
+
                 let mut dropped = None;
 
                 for widget in &mut self.widgets {
@@ -92,10 +100,36 @@ impl Grid {
                     }
                 }
 
+                painter.set(wires, Shape::Vec(self.wire_shapes()));
+
                 if let Some(anchor) = dropped {
                     self.resolve_overlaps(anchor, bridge);
                 }
             });
+    }
+
+    /// Builds straight wire shapes from each module's output to the inputs it
+    /// feeds, using the attach points captured during the current frame.
+    fn wire_shapes(&self) -> Vec<Shape> {
+        let outputs: FxHashMap<ModuleId, (Pos2, Color32)> = self
+            .widgets
+            .iter()
+            .filter_map(|widget| widget.output_anchor().map(|anchor| (widget.module_id(), anchor)))
+            .collect();
+
+        let mut shapes = Vec::new();
+        for widget in &self.widgets {
+            for (src, dst_pos) in widget.input_connections() {
+                if let Some(&(src_pos, color)) = outputs.get(&src) {
+                    shapes.push(Shape::line_segment(
+                        [src_pos, dst_pos],
+                        Stroke::new(WIRE_T, color),
+                    ));
+                }
+            }
+        }
+
+        shapes
     }
 
     /// After `anchor` was snapped to the grid, push every overlapping widget

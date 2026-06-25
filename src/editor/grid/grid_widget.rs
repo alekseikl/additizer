@@ -2,8 +2,8 @@ use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 
 use egui::{
-    Align, Color32, Id, LayerId, Layout, Order, Rect, Response, Sense, Stroke, Ui, UiBuilder, Vec2,
-    ecolor::Hsva, lerp, vec2,
+    Align, Color32, Id, LayerId, Layout, Order, Pos2, Rect, Response, Sense, Stroke, Ui, UiBuilder,
+    Vec2, ecolor::Hsva, lerp, vec2,
 };
 
 use crate::{
@@ -95,6 +95,13 @@ pub struct GridWidget {
     /// Pixel offset applied while the widget is being dragged. Reset to zero
     /// once the drag finishes and the new grid position is committed.
     drag_offset: Vec2,
+    /// Screen-space wire attach point at the widget's right edge, captured
+    /// during the last frame. `None` for modules without an output (e.g.
+    /// `Output`).
+    output_pos: Option<Pos2>,
+    /// Screen-space wire attach points at the widget's left edge, parallel to
+    /// `io.inputs`.
+    input_positions: Vec<Pos2>,
 }
 
 impl GridWidget {
@@ -108,7 +115,32 @@ impl GridWidget {
                 _ => Box::new(EmptyContent {}),
             },
             drag_offset: Vec2::ZERO,
+            output_pos: None,
+            input_positions: Vec::new(),
         }
+    }
+
+    /// Screen-space attach point (right edge) and color of this widget's
+    /// output, if any. Captured during the last `ui` call; `None` before the
+    /// first draw or for modules without an output.
+    pub fn output_anchor(&self) -> Option<(Pos2, Color32)> {
+        self.output_pos
+            .map(|pos| (pos, self.io.output_type.color()))
+    }
+
+    /// For every incoming connection, yields the source module id paired with
+    /// the screen-space attach point (left edge) of the input it feeds into.
+    pub fn input_connections(&self) -> impl Iterator<Item = (ModuleId, Pos2)> + '_ {
+        self.io
+            .inputs
+            .iter()
+            .zip(self.input_positions.iter())
+            .flat_map(|(input, &pos)| {
+                input
+                    .sources
+                    .iter()
+                    .map(move |source| (source.module_id, pos))
+            })
     }
 
     pub fn module_id(&self) -> ModuleId {
@@ -217,7 +249,9 @@ impl GridWidget {
         Some(self.io.id)
     }
 
-    fn draw_input(ui: &mut Ui, height: f32, input: &ModuleInput) {
+    /// Draws an input stub and returns the screen-space point at the widget's
+    /// left edge where an incoming wire should attach.
+    fn draw_input(ui: &mut Ui, height: f32, input: &ModuleInput) -> Pos2 {
         let width = ui.available_width();
         let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
         let color = input.meta.input_type.color();
@@ -233,16 +267,18 @@ impl GridWidget {
         let center = rect.center();
         let painter = ui.painter();
 
-        // painter.rect_filled(rect, 0.0, Color32::RED);
-
         painter.line_segment(
             [rect.left_center(), center],
             Stroke::new(WIRE_THICKNESS, color),
         );
         painter.circle_filled(center, dot_size * 0.5, color);
+
+        rect.left_center()
     }
 
-    fn draw_output(ui: &mut Ui, height: f32, io: &ModuleIo) {
+    /// Draws the output stub and returns the screen-space point at the widget's
+    /// right edge where an outgoing wire should attach.
+    fn draw_output(ui: &mut Ui, height: f32, io: &ModuleIo) -> Pos2 {
         let width = ui.available_width();
         let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
         let color = io.output_type.color();
@@ -256,26 +292,27 @@ impl GridWidget {
         let dot_size = lerp(IO_DOT_SIZE..=IO_DOT_SIZE_HOVER, t);
         let radius = dot_size * 0.5;
 
+        let center = rect.center();
         let painter = ui.painter();
 
         if io.output_connected {
-            let center = rect.center();
             painter.line_segment(
                 [center, rect.right_center()],
                 Stroke::new(WIRE_THICKNESS, color),
             );
             painter.circle_filled(center, radius, color);
         } else {
-            let center = rect.center();
             painter.circle_stroke(
                 center,
                 radius - WIRE_THICKNESS * 0.5,
                 Stroke::new(WIRE_THICKNESS, color),
             );
         }
+
+        rect.right_center()
     }
 
-    fn inputs_ui(&self, ui: &mut Ui) {
+    fn inputs_ui(&mut self, ui: &mut Ui) {
         let full_height = ui.available_height();
         let inputs_count = self.io.inputs.len() as f32;
         let all_spaces = full_height - 2.0 * INPUTS_PADDING - inputs_count * IO_SLOT_H;
@@ -286,22 +323,25 @@ impl GridWidget {
 
         ui.add_space(INPUTS_PADDING + item_space);
 
+        let mut positions = Vec::with_capacity(self.io.inputs.len());
         for input in self.io.inputs.iter() {
-            Self::draw_input(ui, IO_SLOT_H, input);
+            positions.push(Self::draw_input(ui, IO_SLOT_H, input));
         }
+        self.input_positions = positions;
     }
 
-    fn output_ui(&self, ui: &mut Ui) {
+    fn output_ui(&mut self, ui: &mut Ui) {
         ui.set_min_width(IO_STRIPE_W);
 
         if matches!(self.io.module_type, ModuleType::Output) {
+            self.output_pos = None;
             return;
         }
 
         let height = ui.available_height();
         let top = (height - IO_SLOT_H) * 0.5;
         ui.add_space(top);
-        Self::draw_output(ui, IO_SLOT_H, &self.io);
+        self.output_pos = Some(Self::draw_output(ui, IO_SLOT_H, &self.io));
     }
 
     fn content_ui(&self, ui: &mut Ui) -> Response {
