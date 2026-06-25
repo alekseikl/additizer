@@ -2,7 +2,8 @@ use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 
 use egui::{
-    Align, Color32, Layout, Rect, Sense, Stroke, Ui, UiBuilder, Vec2, ecolor::Hsva, lerp, vec2,
+    Align, Color32, Id, LayerId, Layout, Order, Rect, Response, Sense, Stroke, Ui, UiBuilder, Vec2,
+    ecolor::Hsva, lerp, vec2,
 };
 
 use crate::{
@@ -91,6 +92,9 @@ impl GridWidgetContent for OutputContent {
 pub struct GridWidget {
     io: ModuleIo,
     content: Box<dyn GridWidgetContent>,
+    /// Pixel offset applied while the widget is being dragged. Reset to zero
+    /// once the drag finishes and the new grid position is committed.
+    drag_offset: Vec2,
 }
 
 impl GridWidget {
@@ -103,11 +107,16 @@ impl GridWidget {
                 ModuleType::Output => Box::new(OutputContent {}),
                 _ => Box::new(EmptyContent {}),
             },
+            drag_offset: Vec2::ZERO,
         }
     }
 
     pub fn module_id(&self) -> ModuleId {
         self.io.id
+    }
+
+    pub fn is_dragging(&self) -> bool {
+        self.drag_offset != Vec2::ZERO
     }
 
     pub fn grid_size(&self) -> (i32, i32) {
@@ -122,50 +131,90 @@ impl GridWidget {
         self.io = module_io;
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, bridge: &mut UiBridge) {
+    pub fn ui(&mut self, ui: &mut Ui, bridge: &mut UiBridge) -> Option<ModuleId> {
         let (gx, gy) = bridge.get_module_position(self.io.id);
         let (gw, gh) = self.grid_size();
         let size = vec2(gw as f32, gh as f32) * GRID_CELL_SIZE - Vec2::splat(1.0);
         let pos = vec2(gx as f32, gy as f32) * Vec2::splat(GRID_CELL_SIZE) + Vec2::splat(1.0);
-        let max_rect = Rect::from_min_size(ui.min_rect().min + pos, size).shrink(BLOCK_MARGIN);
+        let max_rect = Rect::from_min_size(ui.min_rect().min + pos + self.drag_offset, size)
+            .shrink(BLOCK_MARGIN);
 
-        let ui_builder = UiBuilder::new()
+        let mut ui_builder = UiBuilder::new()
             .id_salt(("module-widget", self.io.id))
             .max_rect(max_rect)
             .layout(Layout::left_to_right(Align::Min));
 
-        ui.scope_builder(ui_builder, |ui| {
-            let full_width = ui.available_width();
-            let full_height = ui.available_height();
+        if self.is_dragging() {
+            ui_builder = ui_builder.layer_id(LayerId::new(
+                Order::Foreground,
+                Id::new(("dragged-module", self.io.id)),
+            ));
+        }
 
-            ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-            ui.painter()
-                .rect_filled(ui.max_rect(), CORNER_RADIUS, C_MOD_BG);
+        let drag = ui
+            .scope_builder(ui_builder, |ui| {
+                let full_width = ui.available_width();
+                let full_height = ui.available_height();
 
-            ui.allocate_ui_with_layout(
-                vec2(IO_STRIPE_W, full_height),
-                Layout::top_down(Align::Center),
-                |ui| {
-                    self.inputs_ui(ui);
-                },
-            );
+                ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+                ui.painter()
+                    .rect_filled(ui.max_rect(), CORNER_RADIUS, C_MOD_BG);
 
-            ui.allocate_ui_with_layout(
-                vec2(full_width - 2.0 * IO_STRIPE_W, full_height),
-                Layout::top_down(Align::Center),
-                |ui| {
-                    self.content_ui(ui);
-                },
-            );
+                ui.allocate_ui_with_layout(
+                    vec2(IO_STRIPE_W, full_height),
+                    Layout::top_down(Align::Center),
+                    |ui| {
+                        self.inputs_ui(ui);
+                    },
+                );
 
-            ui.allocate_ui_with_layout(
-                vec2(IO_STRIPE_W, full_height),
-                Layout::top_down(Align::Center),
-                |ui| {
-                    self.output_ui(ui);
-                },
-            );
-        });
+                let drag = ui
+                    .allocate_ui_with_layout(
+                        vec2(full_width - 2.0 * IO_STRIPE_W, full_height),
+                        Layout::top_down(Align::Center),
+                        |ui| self.content_ui(ui),
+                    )
+                    .inner;
+
+                ui.allocate_ui_with_layout(
+                    vec2(IO_STRIPE_W, full_height),
+                    Layout::top_down(Align::Center),
+                    |ui| {
+                        self.output_ui(ui);
+                    },
+                );
+
+                drag
+            })
+            .inner;
+
+        self.handle_drag(&drag, bridge, gx, gy)
+    }
+
+    fn handle_drag(
+        &mut self,
+        drag: &Response,
+        bridge: &mut UiBridge,
+        gx: i32,
+        gy: i32,
+    ) -> Option<ModuleId> {
+        if drag.dragged() {
+            self.drag_offset += drag.drag_delta();
+        }
+
+        if !drag.drag_stopped() {
+            return None;
+        }
+
+        let dx = (self.drag_offset.x / GRID_CELL_SIZE).round() as i32;
+        let dy = (self.drag_offset.y / GRID_CELL_SIZE).round() as i32;
+        let new_x = (gx + dx).max(0);
+        let new_y = (gy + dy).max(0);
+
+        bridge.set_module_position(self.io.id, new_x, new_y);
+        self.drag_offset = Vec2::ZERO;
+
+        Some(self.io.id)
     }
 
     fn draw_input(ui: &mut Ui, height: f32, input: &ModuleInput) {
@@ -255,8 +304,22 @@ impl GridWidget {
         Self::draw_output(ui, IO_SLOT_H, &self.io);
     }
 
-    fn content_ui(&self, ui: &mut Ui) {
-        // ui.painter().rect_filled(ui.max_rect(), 0.0, Color32::RED);
+    fn content_ui(&self, ui: &mut Ui) -> Response {
+        let rect = ui.max_rect();
+        let response = ui.interact(
+            rect,
+            ui.id().with(("drag-handle", self.io.id)),
+            Sense::drag(),
+        );
+
+        if response.dragged() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        } else if response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+        }
+
         ui.label(self.io.module_type.label());
+
+        response
     }
 }

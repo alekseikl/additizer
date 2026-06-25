@@ -1,6 +1,5 @@
 use egui::{
-    Color32, Painter, Pos2, Rect, ScrollArea, Sense, Stroke, Ui, Vec2, scroll_area::ScrollSource,
-    vec2,
+    Color32, Painter, Pos2, Rect, ScrollArea, Sense, Stroke, Ui, scroll_area::ScrollSource, vec2,
 };
 use rustc_hash::FxHashMap;
 
@@ -19,6 +18,23 @@ const VIRTUAL_W: f32 = 4000.0;
 const VIRTUAL_H: f32 = 3000.0;
 const C_GRID: Color32 = Color32::from_rgb(52, 52, 52);
 const GRID_T: f32 = 0.5;
+
+struct GridRect {
+    id: ModuleId,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+}
+
+impl GridRect {
+    fn overlaps(&self, other: &GridRect) -> bool {
+        self.x < other.x + other.w
+            && other.x < self.x + self.w
+            && self.y < other.y + other.h
+            && other.y < self.y + self.h
+    }
+}
 
 pub struct Grid {
     widgets: Vec<GridWidget>,
@@ -68,10 +84,64 @@ impl Grid {
                 painter.rect_filled(canvas, 0.0, Color32::BLACK);
                 paint_grid(&painter, painter.clip_rect(), canvas.min);
 
+                let mut dropped = None;
+
                 for widget in &mut self.widgets {
-                    widget.ui(ui, bridge);
+                    if let Some(id) = widget.ui(ui, bridge) {
+                        dropped = Some(id);
+                    }
+                }
+
+                if let Some(anchor) = dropped {
+                    self.resolve_overlaps(anchor, bridge);
                 }
             });
+    }
+
+    /// After `anchor` was snapped to the grid, push every overlapping widget
+    /// toward the bottom-right so no two widgets occupy the same cells. The
+    /// anchor stays put; other widgets only ever move right or down.
+    fn resolve_overlaps(&self, anchor: ModuleId, bridge: &mut UiBridge) {
+        let mut rects: Vec<GridRect> = self
+            .widgets
+            .iter()
+            .map(|widget| {
+                let id = widget.module_id();
+                let (x, y) = bridge.get_module_position(id);
+                let (w, h) = widget.grid_size();
+
+                GridRect { id, x, y, w, h }
+            })
+            .collect();
+
+        // The anchor is fixed; settle it first. Remaining widgets are settled in
+        // reading order (top-left first) so pushes cascade toward bottom-right.
+        let mut settled: Vec<GridRect> = Vec::with_capacity(rects.len());
+        if let Some(pos) = rects.iter().position(|r| r.id == anchor) {
+            settled.push(rects.remove(pos));
+        }
+        rects.sort_by_key(|r| (r.y, r.x));
+
+        for mut rect in rects {
+            let original = (rect.x, rect.y);
+
+            while let Some(blocker) = settled.iter().find(|s| s.overlaps(&rect)) {
+                let push_right = blocker.x + blocker.w - rect.x;
+                let push_down = blocker.y + blocker.h - rect.y;
+
+                if push_right <= push_down {
+                    rect.x = blocker.x + blocker.w;
+                } else {
+                    rect.y = blocker.y + blocker.h;
+                }
+            }
+
+            if (rect.x, rect.y) != original {
+                bridge.set_module_position(rect.id, rect.x, rect.y);
+            }
+
+            settled.push(rect);
+        }
     }
 }
 
