@@ -504,6 +504,26 @@ impl SynthEngine {
         self.setup_routing(&new_links).unwrap();
     }
 
+    pub fn remove_input_links(&mut self, dst: &InputId) {
+        let new_links: Vec<_> = self
+            .get_links()
+            .into_iter()
+            .filter(|link| link.dst != *dst)
+            .collect();
+
+        self.setup_routing(&new_links).unwrap();
+    }
+
+    pub fn remove_output_links(&mut self, src: ModuleId) {
+        let new_links: Vec<_> = self
+            .get_links()
+            .into_iter()
+            .filter(|link| link.src != src)
+            .collect();
+
+        self.setup_routing(&new_links).unwrap();
+    }
+
     fn process_voice_events(&mut self, events: &[VoiceEvent]) {
         for module_id in &self.execution_order {
             if let Some(module) = self.modules.get_mut(module_id) {

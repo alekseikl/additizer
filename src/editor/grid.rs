@@ -1,6 +1,7 @@
 use egui::{
     Color32, Painter, Pos2, Rect, ScrollArea, Sense, Shape, Ui, Vec2,
     epaint::{CubicBezierShape, PathStroke},
+    pos2,
     scroll_area::ScrollSource,
     vec2,
 };
@@ -25,7 +26,7 @@ const WIRE_MOD_T: f32 = 1.0;
 /// curve leave an output heading right and enter an input from the left, which
 /// keeps it clear of the widgets it attaches to.
 const WIRE_CTRL_MIN: f32 = 8.0;
-const C_WIRE_PREVIEW: Color32 = Color32::from_rgb(180, 180, 180);
+const WIRE_END_DOT: f32 = 8.0;
 
 /// Compensates for egui-baseview negating horizontal wheel delta on macOS.
 #[cfg(target_os = "macos")]
@@ -136,15 +137,10 @@ impl Grid {
             .auto_shrink([true, true])
             .show(ui, |ui| {
                 let (response, painter) = ui.allocate_painter(content_size, Sense::hover());
-                let canvas = response.rect;
 
-                painter.rect_filled(canvas, 0.0, Color32::BLACK);
-                Self::paint_grid(&painter, painter.clip_rect(), canvas.min);
+                Self::paint_grid(&painter, painter.clip_rect(), response.rect.min);
 
-                // Reserve a paint slot for the wires up front so they render
-                // behind the modules, but fill it only after the widgets have
-                // been drawn so it uses their up-to-date (current-frame) attach
-                // points. This avoids the one-frame lag while dragging.
+                // Reserve a paint slot for the wires.
                 let wires = painter.add(Shape::Noop);
 
                 let mut ctx = WidgetCtx {
@@ -159,6 +155,8 @@ impl Grid {
 
                 let moved_module_id = ctx.moved_module_id;
 
+                painter.set(wires, Shape::Vec(self.wire_shapes()));
+
                 if let Some(drag) = self.widgets_state.wire_drag.as_mut()
                     && let Some(dropped_at) = drag.dropped_at
                     && dropped_at < ui.ctx().cumulative_frame_nr()
@@ -166,17 +164,11 @@ impl Grid {
                     self.widgets_state.wire_drag = None;
                 }
 
-                let wire_shapes = self.wire_shapes();
-
                 if let Some(drag) = &self.widgets_state.wire_drag
                     && let Some(pointer) = ui.ctx().pointer_hover_pos()
                 {
-                    ui.painter().add(self.preview_wire_shape(drag, pointer));
+                    painter.add(self.drag_wire_shape(drag, pointer));
                 }
-
-                painter.set(wires, Shape::Vec(wire_shapes));
-
-                let _ = response;
 
                 if let Some(anchor) = moved_module_id {
                     self.resolve_overlaps(anchor, bridge);
@@ -186,8 +178,8 @@ impl Grid {
 
     /// Bottom-right extent of all widgets in canvas pixels (including any
     /// in-progress drag), plus a padding margin. Drives the scrollable area.
-    fn content_extent(&self, bridge: &UiBridge) -> egui::Vec2 {
-        let mut extent = egui::Vec2::ZERO;
+    fn content_extent(&self, bridge: &UiBridge) -> Vec2 {
+        let mut extent = Vec2::ZERO;
 
         for widget in &self.widgets {
             let pos = bridge.get_module_position(widget.module_id());
@@ -200,24 +192,24 @@ impl Grid {
         extent
     }
 
-    fn preview_wire_shape(&self, drag: &WireDragState, pointer: Pos2) -> Shape {
+    fn drag_wire_shape(&self, drag: &WireDragState, pointer: Pos2) -> Shape {
         let src_pos = drag.start_pos;
         let dst_pos = pointer;
         let output_color = drag.color;
         let dx = ((dst_pos.x - src_pos.x).abs() * 0.5).max(WIRE_CTRL_MIN);
         let ctrl1 = src_pos + vec2(dx, 0.0);
         let ctrl2 = dst_pos - vec2(dx, 0.0);
-        let stroke = PathStroke::new_uv(WIRE_T, move |_, pos| {
-            Self::wire_color_at(pos, src_pos, dst_pos, output_color, C_WIRE_PREVIEW)
-        })
-        .middle();
+        let stroke = PathStroke::new(WIRE_T, output_color).middle();
 
-        Shape::CubicBezier(CubicBezierShape::from_points_stroke(
-            [src_pos, ctrl1, ctrl2, dst_pos],
-            false,
-            Color32::TRANSPARENT,
-            stroke,
-        ))
+        Shape::Vec(vec![
+            Shape::CubicBezier(CubicBezierShape::from_points_stroke(
+                [src_pos, ctrl1, ctrl2, dst_pos],
+                false,
+                Color32::TRANSPARENT,
+                stroke,
+            )),
+            Shape::circle_filled(dst_pos, WIRE_END_DOT * 0.5, output_color),
+        ])
     }
 
     fn wire_color_at(
@@ -336,24 +328,30 @@ impl Grid {
         }
     }
 
+    fn trim_partial_cell(span: f32) -> f32 {
+        (span / GRID_CELL_SIZE).floor() * GRID_CELL_SIZE
+    }
+
     fn paint_grid(painter: &Painter, area: Rect, origin: Pos2) {
         let stroke = PathStroke::new(GRID_T, C_GRID).inside();
 
-        let x0 = origin.x + ((area.left() - origin.x) / GRID_CELL_SIZE).floor() * GRID_CELL_SIZE;
-        let mut x = x0;
+        painter.rect_filled(area, 0.0, Color32::BLACK);
+
+        let mut x = origin.x + Self::trim_partial_cell(area.left() - origin.x);
+
         while x <= area.right() {
             painter.line(
-                vec![Pos2::new(x, area.top()), Pos2::new(x, area.bottom())],
+                vec![pos2(x, area.top()), pos2(x, area.bottom())],
                 stroke.clone(),
             );
             x += GRID_CELL_SIZE;
         }
 
-        let y0 = origin.y + ((area.top() - origin.y) / GRID_CELL_SIZE).floor() * GRID_CELL_SIZE;
-        let mut y = y0;
+        let mut y = origin.y + Self::trim_partial_cell(area.top() - origin.y);
+
         while y <= area.bottom() {
             painter.line(
-                vec![Pos2::new(area.left(), y), Pos2::new(area.right(), y)],
+                vec![pos2(area.left(), y), pos2(area.right(), y)],
                 stroke.clone(),
             );
             y += GRID_CELL_SIZE;

@@ -2,14 +2,14 @@ use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 
 use egui::{
-    Align, Area, Color32, Frame, Id, Label, LayerId, Layout, Order, Pos2, Rect, Response, Sense,
-    Stroke, Ui, UiBuilder, Vec2, ecolor::Hsva, emath::GuiRounding, lerp, vec2,
+    Align, Area, Color32, Id, Label, LayerId, Layout, Modal, Order, PointerButton, Pos2, Rect,
+    Response, Sense, Stroke, Ui, UiBuilder, Vec2, ecolor::Hsva, emath::GuiRounding, lerp, vec2,
 };
 
 use crate::{
     editor::grid::{GRID_CELL_SIZE, WidgetCtx, WireDragState},
     synth_engine::{
-        DataType, Input, ModuleId, ModuleType,
+        DataType, Input, InputId, ModuleId, ModuleType,
         ui_bridge::{
             GridVec,
             routing_state::{ModuleInput, ModuleIo},
@@ -99,9 +99,7 @@ pub struct InputPoint {
 
 struct LinkRequest {
     module_id: ModuleId,
-    data_type: DataType,
     pos: Pos2,
-    opened_frame: u64,
 }
 
 pub struct GridWidget {
@@ -111,9 +109,7 @@ pub struct GridWidget {
     /// once the drag finishes and the new grid position is committed.
     drag_offset: Vec2,
     /// Content-space point inside the widget that the pointer grabbed, relative
-    /// to the widget's grid origin. `Some` only while a drag is in progress;
-    /// tracking the pointer in content space keeps the widget under the cursor
-    /// even as the canvas auto-scrolls.
+    /// to the widget's grid origin.
     drag_grab: Option<Vec2>,
     /// Screen-space wire attach point at the widget's right edge, captured
     /// during the last frame. `None` for modules without an output (e.g.
@@ -314,42 +310,28 @@ impl GridWidget {
         }
 
         let menu_id = Id::new("wire-link-menu");
-        let mut menu_response = None;
-        let mut need_close = false;
 
-        Area::new(menu_id)
-            .order(Order::Foreground)
-            .fixed_pos(req.pos)
+        let modal = Modal::new(menu_id)
+            .backdrop_color(Color32::TRANSPARENT)
+            .area(
+                Area::new(menu_id)
+                    .fixed_pos(req.pos)
+                    .order(Order::Foreground)
+                    .kind(egui::UiKind::Popup),
+            )
             .show(ui.ctx(), |ui| {
-                menu_response = Some(ui.min_rect());
-                Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.label("Connect to:");
-                    ui.separator();
-                    for input in &inputs {
-                        if ui.button(format!("{:?}", input.meta.input_type)).clicked() {
-                            ctx.bridge
-                                .connect_source(req.module_id, input.input, input.meta);
-                            need_close = true;
-                        }
+                ui.label("Connect to:");
+                ui.separator();
+                for input in &inputs {
+                    if ui.button(format!("{:?}", input.meta.input_type)).clicked() {
+                        ctx.bridge
+                            .connect_source(req.module_id, input.input, input.meta);
+                        ui.close();
                     }
-                });
+                }
             });
 
-        if need_close {
-            self.link_request = None;
-            return;
-        }
-
-        let frame = ui.ctx().cumulative_frame_nr();
-
-        if frame > req.opened_frame.saturating_add(1)
-            && ui.input(|input| input.pointer.any_click())
-            && menu_response.is_none_or(|rect| {
-                ui.ctx()
-                    .pointer_interact_pos()
-                    .is_none_or(|pos| !rect.contains(pos))
-            })
-        {
+        if modal.should_close() {
             self.link_request = None;
         }
     }
@@ -388,14 +370,25 @@ impl GridWidget {
 
     /// Draws an input stub and returns the screen-space point at the widget's
     /// left edge where an incoming wire should attach.
-    fn draw_input(ui: &mut Ui, height: f32, input: &ModuleInput) -> Pos2 {
+    fn draw_input(
+        &self,
+        ui: &mut Ui,
+        ctx: &mut WidgetCtx,
+        height: f32,
+        input: &ModuleInput,
+    ) -> Pos2 {
         let width = ui.available_width();
-        let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+        let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::click_and_drag());
         let color = input.meta.input_type.color();
+
+        if response.double_clicked_by(PointerButton::Primary) {
+            ctx.bridge
+                .remove_input_links(InputId::new(input.meta.input_type, self.io.id));
+        }
 
         let t = ui.ctx().animate_bool_with_time_and_easing(
             response.id,
-            response.hovered(),
+            response.hovered() || response.dragged(),
             0.15,
             egui::emath::easing::cubic_out,
         );
@@ -416,13 +409,17 @@ impl GridWidget {
 
     /// Draws the output stub and returns the screen-space point at the widget's
     /// right edge where an outgoing wire should attach.
-    fn draw_output(ui: &mut Ui, height: f32, io: &ModuleIo) -> (Pos2, Response) {
+    fn draw_output(&self, ui: &mut Ui, ctx: &mut WidgetCtx, height: f32) -> (Pos2, Pos2, Response) {
         let width = ui.available_width();
         let (rect, hover) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
         let drag_id = hover.id.with("output-drag");
         let hit_rect = rect.expand(6.0);
-        let response = ui.interact(hit_rect, drag_id, Sense::drag());
-        let color = io.output_type.color();
+        let response = ui.interact(hit_rect, drag_id, Sense::click_and_drag());
+        let color = self.io.output_type.color();
+
+        if response.double_clicked_by(PointerButton::Primary) {
+            ctx.bridge.remove_output_links(self.io.id);
+        }
 
         let t = ui.ctx().animate_bool_with_time_and_easing(
             response.id,
@@ -437,7 +434,7 @@ impl GridWidget {
         let painter = ui.painter();
         let ppt = ui.ctx().pixels_per_point();
 
-        if io.output_connected {
+        if self.io.output_connected {
             painter.line_segment(
                 [center, rect.right_center()],
                 Stroke::new(WIRE_THICKNESS, color),
@@ -450,7 +447,11 @@ impl GridWidget {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
         }
 
-        (rect.right_center().round_to_pixels(ppt), response)
+        (
+            rect.right_center().round_to_pixels(ppt),
+            rect.center().round_to_pixels(ppt),
+            response,
+        )
     }
 
     fn handle_inputs_dnd(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
@@ -473,9 +474,7 @@ impl GridWidget {
         {
             self.link_request = Some(LinkRequest {
                 module_id: drag.src_id,
-                data_type: drag.src_output_type,
                 pos: pointer,
-                opened_frame: ui.ctx().cumulative_frame_nr(),
             });
 
             ctx.state.wire_drag = None;
@@ -497,7 +496,7 @@ impl GridWidget {
 
         let mut positions = Vec::with_capacity(self.io.inputs.len());
         for input in self.io.inputs.iter() {
-            positions.push(Self::draw_input(ui, IO_SLOT_H, input));
+            positions.push(self.draw_input(ui, ctx, IO_SLOT_H, input));
         }
         self.input_positions = positions;
     }
@@ -512,18 +511,30 @@ impl GridWidget {
 
         let height = ui.available_height();
         let top = (height - IO_SLOT_H) * 0.5;
+
         ui.add_space(top);
-        let (pos, response) = Self::draw_output(ui, IO_SLOT_H, &self.io);
+
+        let (pos, center_pos, response) = self.draw_output(ui, ctx, IO_SLOT_H);
         self.output_pos = Some(pos);
 
         if response.drag_started() {
             ctx.state.wire_drag = Some(WireDragState {
                 src_id: self.io.id,
                 src_output_type: self.io.output_type,
-                start_pos: pos,
+                start_pos: center_pos,
                 color: self.io.output_type.color(),
                 dropped_at: None,
             });
+        } else if let Some(drag) = ctx.state.wire_drag.as_mut()
+            && drag.src_id == self.io.id
+        {
+            drag.start_pos = center_pos;
+        }
+
+        if response.dragged()
+            && let Some(pointer) = ui.ctx().pointer_interact_pos()
+        {
+            Self::auto_scroll(ui, Rect::from_center_size(pointer, vec2(16.0, 16.0)));
         }
 
         if response.drag_stopped()

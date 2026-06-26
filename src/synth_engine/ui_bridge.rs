@@ -491,6 +491,20 @@ impl UiBridge {
         self.routing = synth.get_routing_state();
     }
 
+    pub fn remove_input_links(&mut self, dst: InputId) {
+        let mut synth = self.engine.lock();
+
+        synth.remove_input_links(&dst);
+        self.routing = synth.get_routing_state();
+    }
+
+    pub fn remove_output_links(&mut self, src: ModuleId) {
+        let mut synth = self.engine.lock();
+
+        synth.remove_output_links(src);
+        self.routing = synth.get_routing_state();
+    }
+
     pub fn set_link_modulation(
         &mut self,
         src_id: ModuleId,
