@@ -11,7 +11,7 @@ use crate::{
     synth_engine::{
         DataType, Input, ModuleId, ModuleType,
         ui_bridge::{
-            UiBridge,
+            GridVec, UiBridge,
             routing_state::{ModuleInput, ModuleIo},
         },
     },
@@ -30,7 +30,7 @@ const IO_DOT_SIZE_HOVER: f32 = 10.0;
 const WIRE_THICKNESS: f32 = 2.0;
 
 pub trait GridWidgetContent: Send {
-    fn grid_size(&self) -> (i32, i32);
+    fn grid_size(&self) -> GridVec;
     fn ui(&mut self);
 }
 
@@ -46,7 +46,7 @@ impl Input {
     fn color(self) -> Color32 {
         Color32::from(Hsva {
             h: self.hue(),
-            s: 0.6,
+            s: 0.8,
             v: 0.5,
             a: 1.0,
         })
@@ -63,7 +63,7 @@ impl DataType {
 
         Color32::from(Hsva {
             h,
-            s: 0.6,
+            s: 0.8,
             v: 0.5,
             a: 1.0,
         })
@@ -73,8 +73,8 @@ impl DataType {
 pub struct EmptyContent {}
 
 impl GridWidgetContent for EmptyContent {
-    fn grid_size(&self) -> (i32, i32) {
-        (4, 2)
+    fn grid_size(&self) -> GridVec {
+        GridVec::new(4, 2)
     }
 
     fn ui(&mut self) {}
@@ -83,10 +83,17 @@ impl GridWidgetContent for EmptyContent {
 pub struct OutputContent {}
 
 impl GridWidgetContent for OutputContent {
-    fn grid_size(&self) -> (i32, i32) {
-        (2, 2)
+    fn grid_size(&self) -> GridVec {
+        GridVec { x: 2, y: 2 }
     }
     fn ui(&mut self) {}
+}
+
+pub struct InputPoint {
+    pub module_id: ModuleId,
+    pub point: Pos2,
+    pub color: Color32,
+    pub is_modulation: bool,
 }
 
 pub struct GridWidget {
@@ -126,27 +133,37 @@ impl GridWidget {
         }
     }
 
-    /// Screen-space attach point (right edge) and color of this widget's
-    /// output, if any. Captured during the last `ui` call; `None` before the
-    /// first draw or for modules without an output.
-    pub fn output_anchor(&self) -> Option<(Pos2, Color32)> {
+    /// Returns wire entry points for output
+    pub fn output_point(&self) -> Option<(Pos2, Color32)> {
         self.output_pos
             .map(|pos| (pos, self.io.output_type.color()))
     }
 
-    /// For every incoming connection, yields a source module id paired with the
-    /// screen-space attach point (left edge) of the input it feeds into. Both
-    /// the direct source and its optional modulation source are reported.
-    pub fn input_connections(&self) -> impl Iterator<Item = (ModuleId, Pos2)> + '_ {
+    /// Returns wires entry points for inputs
+    pub fn input_points(&self) -> impl Iterator<Item = InputPoint> + '_ {
         self.io
             .inputs
             .iter()
             .zip(self.input_positions.iter())
-            .flat_map(|(input, &pos)| {
-                input
-                    .sources
-                    .iter()
-                    .flat_map(move |source| source.source_ids().map(move |id| (id, pos)))
+            .flat_map(|(input, &point)| {
+                let color = input.meta.input_type.color();
+
+                input.sources.iter().flat_map(move |source| {
+                    core::iter::once(InputPoint {
+                        module_id: source.module_id,
+                        point,
+                        color,
+                        is_modulation: false,
+                    })
+                    .chain(source.modulation.into_iter().map(
+                        move |module_id| InputPoint {
+                            module_id,
+                            point,
+                            color,
+                            is_modulation: true,
+                        },
+                    ))
+                })
             })
     }
 
@@ -165,12 +182,15 @@ impl GridWidget {
         self.drag_offset
     }
 
-    pub fn grid_size(&self) -> (i32, i32) {
-        let (w, h) = self.content.grid_size();
+    pub fn grid_size(&self) -> GridVec {
+        let size = self.content.grid_size();
         // Height required by inputs
         let inputs_h = (self.io.inputs.len() as i32 + INPUTS_PER_CELL - 1) / INPUTS_PER_CELL;
 
-        (w, h.max(inputs_h))
+        GridVec {
+            x: size.x,
+            y: size.y.max(inputs_h),
+        }
     }
 
     pub fn update(&mut self, module_io: ModuleIo) {
@@ -178,18 +198,15 @@ impl GridWidget {
     }
 
     pub fn ui(&mut self, ui: &mut Ui, bridge: &mut UiBridge) -> Option<ModuleId> {
-        let (gx, gy) = bridge.get_module_position(self.io.id);
-        let (gw, gh) = self.grid_size();
-        let size = vec2(gw as f32, gh as f32) * GRID_CELL_SIZE - Vec2::splat(1.0);
+        let grid_pos = bridge.get_module_position(self.io.id);
+        let size = Vec2::from(self.grid_size()) - Vec2::splat(1.0);
+        let pos = Vec2::from(grid_pos) + vec2(0.0, 1.0);
         let origin = ui.min_rect().min;
-        let pos = vec2(gx as f32, gy as f32) * Vec2::splat(GRID_CELL_SIZE) + vec2(0.0, 1.0);
         let max_rect =
             Rect::from_min_size(origin + pos + self.drag_offset, size).shrink(BLOCK_MARGIN);
 
-        let sz = max_rect.size();
-
         let mut ui_builder = UiBuilder::new()
-            .id_salt(("module-widget", self.io.id))
+            .id(Id::new(("module-widget", self.io.id)))
             .max_rect(max_rect)
             .layout(Layout::left_to_right(Align::Min));
 
@@ -237,7 +254,7 @@ impl GridWidget {
             })
             .inner;
 
-        self.handle_drag(ui, &drag, bridge, origin, pos, max_rect, gx, gy)
+        self.handle_drag(ui, &drag, bridge, origin, pos, max_rect, grid_pos)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -249,8 +266,7 @@ impl GridWidget {
         origin: Pos2,
         base: Vec2,
         widget_rect: Rect,
-        gx: i32,
-        gy: i32,
+        grid_pos: GridVec,
     ) -> Option<ModuleId> {
         if drag.drag_started() {
             // Record where inside the widget (in content space) the pointer
@@ -262,13 +278,11 @@ impl GridWidget {
             && let Some(grab) = self.drag_grab
             && let Some(pointer) = drag.interact_pointer_pos()
         {
-            let mut offset = (pointer - origin) - base - grab;
+            let offset = (pointer - origin) - base - grab;
             // Clamp so the widget can't be dragged past the top/left edges:
             // its grid origin must stay at or beyond (0, 0).
-            offset.x = offset.x.max(-(gx as f32) * GRID_CELL_SIZE);
-            offset.y = offset.y.max(-(gy as f32) * GRID_CELL_SIZE);
-            self.drag_offset = offset;
 
+            self.drag_offset = offset.max(-Vec2::from(grid_pos));
             Self::auto_scroll(ui, widget_rect);
         }
 
@@ -278,10 +292,10 @@ impl GridWidget {
 
         let dx = (self.drag_offset.x / GRID_CELL_SIZE).round() as i32;
         let dy = (self.drag_offset.y / GRID_CELL_SIZE).round() as i32;
-        let new_x = (gx + dx).max(0);
-        let new_y = (gy + dy).max(0);
+        let new_x = (grid_pos.x + dx).max(0);
+        let new_y = (grid_pos.y + dy).max(0);
 
-        bridge.set_module_position(self.io.id, new_x, new_y);
+        bridge.set_module_position(self.io.id, GridVec { x: new_x, y: new_y });
         self.drag_offset = Vec2::ZERO;
         self.drag_grab = None;
 

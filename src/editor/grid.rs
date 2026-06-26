@@ -1,5 +1,5 @@
 use egui::{
-    Color32, Painter, Pos2, Rect, ScrollArea, Sense, Shape, Ui,
+    Color32, Painter, Pos2, Rect, ScrollArea, Sense, Shape, Ui, Vec2,
     epaint::{CubicBezierShape, PathStroke},
     scroll_area::ScrollSource,
     vec2,
@@ -10,7 +10,7 @@ use crate::{
     editor::grid::grid_widget::GridWidget,
     synth_engine::{
         ModuleId,
-        ui_bridge::{UiBridge, routing_state::ModuleIo},
+        ui_bridge::{GridVec, UiBridge, routing_state::ModuleIo},
     },
 };
 
@@ -20,6 +20,7 @@ const GRID_CELL_SIZE: f32 = 40.0;
 const C_GRID: Color32 = Color32::from_rgb(52, 52, 52);
 const GRID_T: f32 = 1.0;
 const WIRE_T: f32 = 2.0;
+const WIRE_MOD_T: f32 = 1.0;
 /// Minimum horizontal offset of a wire's Bézier control points. It makes the
 /// curve leave an output heading right and enter an input from the left, which
 /// keeps it clear of the widgets it attaches to.
@@ -30,6 +31,12 @@ const WIRE_CTRL_MIN: f32 = 8.0;
 const TRACKPAD_SCROLL_MULTIPLIER: egui::Vec2 = vec2(-1.0, 1.0);
 #[cfg(not(target_os = "macos"))]
 const TRACKPAD_SCROLL_MULTIPLIER: egui::Vec2 = egui::Vec2::splat(1.0);
+
+impl From<GridVec> for Vec2 {
+    fn from(grid: GridVec) -> Self {
+        vec2(grid.x as f32, grid.y as f32) * GRID_CELL_SIZE
+    }
+}
 
 struct GridRect {
     id: ModuleId,
@@ -93,6 +100,7 @@ impl Grid {
         // viewport of free space past the bottom-right-most widget.
         let extent = self.content_extent(bridge) + ui.available_size() * 0.5;
         let dragging = self.widgets.iter().any(GridWidget::is_dragging);
+
         self.content_size = if dragging {
             self.content_size.max(extent)
         } else {
@@ -111,10 +119,10 @@ impl Grid {
             .auto_shrink([true, true])
             .show(ui, |ui| {
                 let (response, painter) = ui.allocate_painter(content_size, Sense::drag());
-
                 let canvas = response.rect;
+
                 painter.rect_filled(canvas, 0.0, Color32::BLACK);
-                paint_grid(&painter, painter.clip_rect(), canvas.min);
+                Self::paint_grid(&painter, painter.clip_rect(), canvas.min);
 
                 // Reserve a paint slot for the wires up front so they render
                 // behind the modules, but fill it only after the widgets have
@@ -144,15 +152,32 @@ impl Grid {
         let mut extent = egui::Vec2::ZERO;
 
         for widget in &self.widgets {
-            let (gx, gy) = bridge.get_module_position(widget.module_id());
-            let (gw, gh) = widget.grid_size();
-            let bottom_right =
-                vec2((gx + gw) as f32, (gy + gh) as f32) * GRID_CELL_SIZE + widget.drag_offset();
+            let pos = bridge.get_module_position(widget.module_id());
+            let cell_extent = pos + widget.grid_size();
+            let bottom_right = Vec2::from(cell_extent) + widget.drag_offset();
 
             extent = extent.max(bottom_right);
         }
 
         extent
+    }
+
+    fn wire_color_at(
+        pos: Pos2,
+        src_pos: Pos2,
+        dst_pos: Pos2,
+        output_color: Color32,
+        input_color: Color32,
+    ) -> Color32 {
+        let seg = dst_pos - src_pos;
+        let len_sq = seg.length_sq();
+        let t = if len_sq > 0.0 {
+            (pos - src_pos).dot(seg) / len_sq
+        } else {
+            0.0
+        };
+        let blend = ((t.clamp(0.0, 1.0) - 0.75) / 0.25).clamp(0.0, 1.0);
+        output_color.lerp_to_gamma(input_color, blend)
     }
 
     /// Builds straight wire shapes from each module's output to the inputs it
@@ -163,24 +188,36 @@ impl Grid {
             .iter()
             .filter_map(|widget| {
                 widget
-                    .output_anchor()
+                    .output_point()
                     .map(|anchor| (widget.module_id(), anchor))
             })
             .collect();
 
         let mut shapes = Vec::new();
+
         for widget in &self.widgets {
-            for (src, dst_pos) in widget.input_connections() {
-                if let Some(&(src_pos, color)) = outputs.get(&src) {
+            for input in widget.input_points() {
+                if let Some(&(src_pos, output_color)) = outputs.get(&input.module_id) {
+                    let dst_pos = input.point;
+                    let input_color = input.color;
                     let dx = ((dst_pos.x - src_pos.x).abs() * 0.5).max(WIRE_CTRL_MIN);
                     let ctrl1 = src_pos + vec2(dx, 0.0);
                     let ctrl2 = dst_pos - vec2(dx, 0.0);
+                    let thickness = if input.is_modulation {
+                        WIRE_MOD_T
+                    } else {
+                        WIRE_T
+                    };
+                    let stroke = PathStroke::new_uv(thickness, move |_, pos| {
+                        Self::wire_color_at(pos, src_pos, dst_pos, output_color, input_color)
+                    })
+                    .middle();
 
                     shapes.push(Shape::CubicBezier(CubicBezierShape::from_points_stroke(
                         [src_pos, ctrl1, ctrl2, dst_pos],
                         false,
                         Color32::TRANSPARENT,
-                        PathStroke::new(WIRE_T, color).middle(),
+                        stroke,
                     )));
                 }
             }
@@ -198,8 +235,8 @@ impl Grid {
             .iter()
             .map(|widget| {
                 let id = widget.module_id();
-                let (x, y) = bridge.get_module_position(id);
-                let (w, h) = widget.grid_size();
+                let GridVec { x, y } = bridge.get_module_position(id);
+                let GridVec { x: w, y: h } = widget.grid_size();
 
                 GridRect { id, x, y, w, h }
             })
@@ -228,34 +265,34 @@ impl Grid {
             }
 
             if (rect.x, rect.y) != original {
-                bridge.set_module_position(rect.id, rect.x, rect.y);
+                bridge.set_module_position(rect.id, GridVec { x: rect.x, y: rect.y });
             }
 
             settled.push(rect);
         }
     }
-}
 
-fn paint_grid(painter: &Painter, area: Rect, origin: Pos2) {
-    let stroke = PathStroke::new(GRID_T, C_GRID).inside();
+    fn paint_grid(painter: &Painter, area: Rect, origin: Pos2) {
+        let stroke = PathStroke::new(GRID_T, C_GRID).inside();
 
-    let x0 = origin.x + ((area.left() - origin.x) / GRID_CELL_SIZE).floor() * GRID_CELL_SIZE;
-    let mut x = x0;
-    while x <= area.right() {
-        painter.line(
-            vec![Pos2::new(x, area.top()), Pos2::new(x, area.bottom())],
-            stroke.clone(),
-        );
-        x += GRID_CELL_SIZE;
-    }
+        let x0 = origin.x + ((area.left() - origin.x) / GRID_CELL_SIZE).floor() * GRID_CELL_SIZE;
+        let mut x = x0;
+        while x <= area.right() {
+            painter.line(
+                vec![Pos2::new(x, area.top()), Pos2::new(x, area.bottom())],
+                stroke.clone(),
+            );
+            x += GRID_CELL_SIZE;
+        }
 
-    let y0 = origin.y + ((area.top() - origin.y) / GRID_CELL_SIZE).floor() * GRID_CELL_SIZE;
-    let mut y = y0;
-    while y <= area.bottom() {
-        painter.line(
-            vec![Pos2::new(area.left(), y), Pos2::new(area.right(), y)],
-            stroke.clone(),
-        );
-        y += GRID_CELL_SIZE;
+        let y0 = origin.y + ((area.top() - origin.y) / GRID_CELL_SIZE).floor() * GRID_CELL_SIZE;
+        let mut y = y0;
+        while y <= area.bottom() {
+            painter.line(
+                vec![Pos2::new(area.left(), y), Pos2::new(area.right(), y)],
+                stroke.clone(),
+            );
+            y += GRID_CELL_SIZE;
+        }
     }
 }

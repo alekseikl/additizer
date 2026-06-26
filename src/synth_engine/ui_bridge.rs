@@ -29,6 +29,8 @@ mod link;
 pub mod routing_state;
 pub mod ui_config;
 
+pub use ui_config::GridVec;
+
 pub use link::{AudioEnd, UiEnd, UiEvent, UiUpdate, create_link_pair};
 pub use routing_state::{AvailableInputSource, ConnectedInputSource, RoutingState};
 use rustc_hash::FxHashMap;
@@ -227,20 +229,19 @@ impl UiBridge {
             .collect()
     }
 
-    pub fn get_module_position(&self, module_id: ModuleId) -> (i32, i32) {
+    pub fn get_module_position(&self, module_id: ModuleId) -> GridVec {
         let ui_config = self.ui_config.lock();
         ui_config
             .modules
             .get(&module_id)
-            .map(|m| (m.grid_x, m.grid_y))
-            .unwrap_or((0, 0))
+            .map(|m| m.position)
+            .unwrap_or_default()
     }
 
-    pub fn set_module_position(&mut self, module_id: ModuleId, x: i32, y: i32) {
+    pub fn set_module_position(&mut self, module_id: ModuleId, position: GridVec) {
         let mut ui_config = self.ui_config.lock();
         if let Some(module) = ui_config.modules.get_mut(&module_id) {
-            module.grid_x = x;
-            module.grid_y = y;
+            module.position = position;
         }
     }
 
@@ -410,8 +411,7 @@ impl UiBridge {
             UiModuleConfig {
                 id,
                 label: format!("{label} {id}"),
-                grid_x: 1,
-                grid_y,
+                position: GridVec { x: 1, y: grid_y },
             },
         );
 

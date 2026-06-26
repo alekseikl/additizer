@@ -9,7 +9,7 @@ use crate::{
         harmonic_editor::HarmonicEditorConfig,
         oscillator::OscillatorConfig,
         spectral_filter::SpectralFilterConfig,
-        ui_bridge::ui_config::{UiConfig, UiModuleConfig},
+        ui_bridge::{GridVec, ui_config::{UiConfig, UiModuleConfig}},
     },
     utils::{from_ms, st_to_octave},
 };
@@ -46,8 +46,7 @@ fn default_ui_config() -> UiConfig {
             UiModuleConfig {
                 id,
                 label: label.into(),
-                grid_x,
-                grid_y,
+                position: GridVec { x: grid_x, y: grid_y },
             },
         );
     }
