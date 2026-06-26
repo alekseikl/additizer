@@ -9,7 +9,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     editor::grid::grid_widget::GridWidget,
     synth_engine::{
-        ModuleId,
+        DataType, ModuleId,
         ui_bridge::{GridVec, UiBridge, routing_state::ModuleIo},
     },
 };
@@ -25,6 +25,7 @@ const WIRE_MOD_T: f32 = 1.0;
 /// curve leave an output heading right and enter an input from the left, which
 /// keeps it clear of the widgets it attaches to.
 const WIRE_CTRL_MIN: f32 = 8.0;
+const C_WIRE_PREVIEW: Color32 = Color32::from_rgb(180, 180, 180);
 
 /// Compensates for egui-baseview negating horizontal wheel delta on macOS.
 #[cfg(target_os = "macos")]
@@ -55,24 +56,39 @@ impl GridRect {
     }
 }
 
+struct WireDragState {
+    src_id: ModuleId,
+    src_output_type: DataType,
+    start_pos: Pos2,
+    color: Color32,
+    dropped_at: Option<u64>,
+}
+
+#[derive(Default)]
+struct WidgetsState {
+    wire_drag: Option<WireDragState>,
+}
+
+struct WidgetCtx<'a> {
+    bridge: &'a mut UiBridge,
+    state: &'a mut WidgetsState,
+    moved_module_id: Option<ModuleId>,
+}
+
 pub struct Grid {
     widgets: Vec<GridWidget>,
+    widgets_state: WidgetsState,
     /// Cached scrollable content size. It only grows while a widget is being
     /// dragged (so the scrollbars don't jitter mid-drag) and is recomputed
     /// from scratch once the drag ends.
     content_size: egui::Vec2,
 }
 
-impl Default for Grid {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Grid {
     pub fn new() -> Self {
         Self {
             widgets: Vec::new(),
+            widgets_state: WidgetsState::default(),
             content_size: egui::Vec2::ZERO,
         }
     }
@@ -99,7 +115,8 @@ impl Grid {
         // it (allowing it to shrink) once the drag has ended. Keep half a
         // viewport of free space past the bottom-right-most widget.
         let extent = self.content_extent(bridge) + ui.available_size() * 0.5;
-        let dragging = self.widgets.iter().any(GridWidget::is_dragging);
+        let dragging = self.widgets.iter().any(GridWidget::is_dragging)
+            || self.widgets_state.wire_drag.is_some();
 
         self.content_size = if dragging {
             self.content_size.max(extent)
@@ -118,7 +135,7 @@ impl Grid {
             .wheel_scroll_multiplier(TRACKPAD_SCROLL_MULTIPLIER)
             .auto_shrink([true, true])
             .show(ui, |ui| {
-                let (response, painter) = ui.allocate_painter(content_size, Sense::drag());
+                let (response, painter) = ui.allocate_painter(content_size, Sense::hover());
                 let canvas = response.rect;
 
                 painter.rect_filled(canvas, 0.0, Color32::BLACK);
@@ -130,17 +147,38 @@ impl Grid {
                 // points. This avoids the one-frame lag while dragging.
                 let wires = painter.add(Shape::Noop);
 
-                let mut dropped = None;
+                let mut ctx = WidgetCtx {
+                    bridge,
+                    state: &mut self.widgets_state,
+                    moved_module_id: None,
+                };
 
                 for widget in &mut self.widgets {
-                    if let Some(id) = widget.ui(ui, bridge) {
-                        dropped = Some(id);
-                    }
+                    widget.ui(ui, &mut ctx);
                 }
 
-                painter.set(wires, Shape::Vec(self.wire_shapes()));
+                let moved_module_id = ctx.moved_module_id;
 
-                if let Some(anchor) = dropped {
+                if let Some(drag) = self.widgets_state.wire_drag.as_mut()
+                    && let Some(dropped_at) = drag.dropped_at
+                    && dropped_at < ui.ctx().cumulative_frame_nr()
+                {
+                    self.widgets_state.wire_drag = None;
+                }
+
+                let wire_shapes = self.wire_shapes();
+
+                if let Some(drag) = &self.widgets_state.wire_drag
+                    && let Some(pointer) = ui.ctx().pointer_hover_pos()
+                {
+                    ui.painter().add(self.preview_wire_shape(drag, pointer));
+                }
+
+                painter.set(wires, Shape::Vec(wire_shapes));
+
+                let _ = response;
+
+                if let Some(anchor) = moved_module_id {
                     self.resolve_overlaps(anchor, bridge);
                 }
             });
@@ -160,6 +198,26 @@ impl Grid {
         }
 
         extent
+    }
+
+    fn preview_wire_shape(&self, drag: &WireDragState, pointer: Pos2) -> Shape {
+        let src_pos = drag.start_pos;
+        let dst_pos = pointer;
+        let output_color = drag.color;
+        let dx = ((dst_pos.x - src_pos.x).abs() * 0.5).max(WIRE_CTRL_MIN);
+        let ctrl1 = src_pos + vec2(dx, 0.0);
+        let ctrl2 = dst_pos - vec2(dx, 0.0);
+        let stroke = PathStroke::new_uv(WIRE_T, move |_, pos| {
+            Self::wire_color_at(pos, src_pos, dst_pos, output_color, C_WIRE_PREVIEW)
+        })
+        .middle();
+
+        Shape::CubicBezier(CubicBezierShape::from_points_stroke(
+            [src_pos, ctrl1, ctrl2, dst_pos],
+            false,
+            Color32::TRANSPARENT,
+            stroke,
+        ))
     }
 
     fn wire_color_at(
@@ -265,7 +323,13 @@ impl Grid {
             }
 
             if (rect.x, rect.y) != original {
-                bridge.set_module_position(rect.id, GridVec { x: rect.x, y: rect.y });
+                bridge.set_module_position(
+                    rect.id,
+                    GridVec {
+                        x: rect.x,
+                        y: rect.y,
+                    },
+                );
             }
 
             settled.push(rect);

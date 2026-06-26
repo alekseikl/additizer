@@ -2,16 +2,16 @@ use rustc_hash::FxHasher;
 use std::hash::{Hash, Hasher};
 
 use egui::{
-    Align, Color32, Id, Label, LayerId, Layout, Order, Pos2, Rect, Response, Sense, Stroke, Ui,
-    UiBuilder, Vec2, ecolor::Hsva, emath::GuiRounding, lerp, vec2,
+    Align, Area, Color32, Frame, Id, Label, LayerId, Layout, Order, Pos2, Rect, Response, Sense,
+    Stroke, Ui, UiBuilder, Vec2, ecolor::Hsva, emath::GuiRounding, lerp, vec2,
 };
 
 use crate::{
-    editor::grid::GRID_CELL_SIZE,
+    editor::grid::{GRID_CELL_SIZE, WidgetCtx, WireDragState},
     synth_engine::{
         DataType, Input, ModuleId, ModuleType,
         ui_bridge::{
-            GridVec, UiBridge,
+            GridVec,
             routing_state::{ModuleInput, ModuleIo},
         },
     },
@@ -28,6 +28,7 @@ const IO_SLOT_H: f32 = 16.0;
 const IO_DOT_SIZE: f32 = 8.0;
 const IO_DOT_SIZE_HOVER: f32 = 10.0;
 const WIRE_THICKNESS: f32 = 2.0;
+const C_INPUT_STRIPE_HOVER: Color32 = Color32::from_rgb(40, 42, 54);
 
 pub trait GridWidgetContent: Send {
     fn grid_size(&self) -> GridVec;
@@ -96,6 +97,13 @@ pub struct InputPoint {
     pub is_modulation: bool,
 }
 
+struct LinkRequest {
+    module_id: ModuleId,
+    data_type: DataType,
+    pos: Pos2,
+    opened_frame: u64,
+}
+
 pub struct GridWidget {
     io: ModuleIo,
     content: Box<dyn GridWidgetContent>,
@@ -114,6 +122,7 @@ pub struct GridWidget {
     /// Screen-space wire attach points at the widget's left edge, parallel to
     /// `io.inputs`.
     input_positions: Vec<Pos2>,
+    link_request: Option<LinkRequest>,
 }
 
 impl GridWidget {
@@ -130,6 +139,7 @@ impl GridWidget {
             drag_grab: None,
             output_pos: None,
             input_positions: Vec::new(),
+            link_request: None,
         }
     }
 
@@ -197,8 +207,8 @@ impl GridWidget {
         self.io = module_io;
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, bridge: &mut UiBridge) -> Option<ModuleId> {
-        let grid_pos = bridge.get_module_position(self.io.id);
+    pub fn ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
+        let grid_pos = ctx.bridge.get_module_position(self.io.id);
         let size = Vec2::from(self.grid_size()) - Vec2::splat(1.0);
         let pos = Vec2::from(grid_pos) + vec2(0.0, 1.0);
         let origin = ui.min_rect().min;
@@ -217,89 +227,131 @@ impl GridWidget {
             ));
         }
 
-        let drag = ui
-            .scope_builder(ui_builder, |ui| {
-                let full_width = ui.available_width();
-                let full_height = ui.available_height();
+        let drag = self.main_ui(ui, ui_builder, ctx);
 
-                ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-                ui.painter()
-                    .rect_filled(ui.max_rect(), CORNER_RADIUS, C_MOD_BG);
+        self.link_request_ui(ui, ctx);
 
-                ui.allocate_ui_with_layout(
-                    vec2(IO_STRIPE_W, full_height),
-                    Layout::top_down(Align::Center),
-                    |ui| {
-                        self.inputs_ui(ui);
-                    },
-                );
-
-                let drag = ui
-                    .allocate_ui_with_layout(
-                        vec2(full_width - 2.0 * IO_STRIPE_W, full_height),
-                        Layout::top_down(Align::Center),
-                        |ui| self.content_ui(ui),
-                    )
-                    .inner;
-
-                ui.allocate_ui_with_layout(
-                    vec2(IO_STRIPE_W, full_height),
-                    Layout::top_down(Align::Center),
-                    |ui| {
-                        self.output_ui(ui);
-                    },
-                );
-
-                drag
-            })
-            .inner;
-
-        self.handle_drag(ui, &drag, bridge, origin, pos, max_rect, grid_pos)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn handle_drag(
-        &mut self,
-        ui: &mut Ui,
-        drag: &Response,
-        bridge: &mut UiBridge,
-        origin: Pos2,
-        base: Vec2,
-        widget_rect: Rect,
-        grid_pos: GridVec,
-    ) -> Option<ModuleId> {
         if drag.drag_started() {
             // Record where inside the widget (in content space) the pointer
             // grabbed, so the cursor stays glued to that point during the drag.
-            self.drag_grab = drag.interact_pointer_pos().map(|p| p - origin - base);
+            self.drag_grab = drag.interact_pointer_pos().map(|p| p - origin - pos);
         }
 
         if drag.dragged()
             && let Some(grab) = self.drag_grab
             && let Some(pointer) = drag.interact_pointer_pos()
         {
-            let offset = (pointer - origin) - base - grab;
+            let offset = (pointer - origin) - pos - grab;
             // Clamp so the widget can't be dragged past the top/left edges:
             // its grid origin must stay at or beyond (0, 0).
 
             self.drag_offset = offset.max(-Vec2::from(grid_pos));
-            Self::auto_scroll(ui, widget_rect);
+            Self::auto_scroll(ui, max_rect);
         }
 
-        if !drag.drag_stopped() {
-            return None;
+        if drag.drag_stopped() {
+            let dx = (self.drag_offset.x / GRID_CELL_SIZE).round() as i32;
+            let dy = (self.drag_offset.y / GRID_CELL_SIZE).round() as i32;
+            let new_x = (grid_pos.x + dx).max(0);
+            let new_y = (grid_pos.y + dy).max(0);
+
+            ctx.bridge
+                .set_module_position(self.io.id, GridVec { x: new_x, y: new_y });
+            self.drag_offset = Vec2::ZERO;
+            self.drag_grab = None;
+            ctx.moved_module_id = Some(self.io.id);
+        }
+    }
+
+    fn main_ui(&mut self, ui: &mut Ui, ui_builder: UiBuilder, ctx: &mut WidgetCtx) -> Response {
+        ui.scope_builder(ui_builder, |ui| {
+            let full_width = ui.available_width();
+            let full_height = ui.available_height();
+
+            ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+            ui.painter()
+                .rect_filled(ui.max_rect(), CORNER_RADIUS, C_MOD_BG);
+
+            ui.allocate_ui_with_layout(
+                vec2(IO_STRIPE_W, full_height),
+                Layout::top_down(Align::Center),
+                |ui| {
+                    self.inputs_ui(ui, ctx);
+                },
+            );
+
+            let drag = ui
+                .allocate_ui_with_layout(
+                    vec2(full_width - 2.0 * IO_STRIPE_W, full_height),
+                    Layout::top_down(Align::Center),
+                    |ui| self.content_ui(ui, ctx),
+                )
+                .inner;
+
+            ui.allocate_ui_with_layout(
+                vec2(IO_STRIPE_W, full_height),
+                Layout::top_down(Align::Center),
+                |ui| {
+                    self.output_ui(ui, ctx);
+                },
+            );
+
+            drag
+        })
+        .inner
+    }
+
+    fn link_request_ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
+        let Some(req) = self.link_request.as_ref() else {
+            return;
+        };
+
+        let inputs = ctx.bridge.get_connectable_inputs(req.module_id, self.io.id);
+
+        if inputs.is_empty() {
+            self.link_request = None;
+            return;
         }
 
-        let dx = (self.drag_offset.x / GRID_CELL_SIZE).round() as i32;
-        let dy = (self.drag_offset.y / GRID_CELL_SIZE).round() as i32;
-        let new_x = (grid_pos.x + dx).max(0);
-        let new_y = (grid_pos.y + dy).max(0);
+        let menu_id = Id::new("wire-link-menu");
+        let mut menu_response = None;
+        let mut need_close = false;
 
-        bridge.set_module_position(self.io.id, GridVec { x: new_x, y: new_y });
-        self.drag_offset = Vec2::ZERO;
-        self.drag_grab = None;
+        Area::new(menu_id)
+            .order(Order::Foreground)
+            .fixed_pos(req.pos)
+            .show(ui.ctx(), |ui| {
+                menu_response = Some(ui.min_rect());
+                Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.label("Connect to:");
+                    ui.separator();
+                    for input in &inputs {
+                        if ui.button(format!("{:?}", input.meta.input_type)).clicked() {
+                            ctx.bridge
+                                .connect_source(req.module_id, input.input, input.meta);
+                            need_close = true;
+                        }
+                    }
+                });
+            });
 
-        Some(self.io.id)
+        if need_close {
+            self.link_request = None;
+            return;
+        }
+
+        let frame = ui.ctx().cumulative_frame_nr();
+
+        if frame > req.opened_frame.saturating_add(1)
+            && ui.input(|input| input.pointer.any_click())
+            && menu_response.is_none_or(|rect| {
+                ui.ctx()
+                    .pointer_interact_pos()
+                    .is_none_or(|pos| !rect.contains(pos))
+            })
+        {
+            self.link_request = None;
+        }
     }
 
     /// Scrolls the enclosing canvas when the dragged widget crosses a viewport
@@ -364,14 +416,17 @@ impl GridWidget {
 
     /// Draws the output stub and returns the screen-space point at the widget's
     /// right edge where an outgoing wire should attach.
-    fn draw_output(ui: &mut Ui, height: f32, io: &ModuleIo) -> Pos2 {
+    fn draw_output(ui: &mut Ui, height: f32, io: &ModuleIo) -> (Pos2, Response) {
         let width = ui.available_width();
-        let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+        let (rect, hover) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+        let drag_id = hover.id.with("output-drag");
+        let hit_rect = rect.expand(6.0);
+        let response = ui.interact(hit_rect, drag_id, Sense::drag());
         let color = io.output_type.color();
 
         let t = ui.ctx().animate_bool_with_time_and_easing(
             response.id,
-            response.hovered(),
+            response.hovered() || response.dragged(),
             0.15,
             egui::emath::easing::cubic_out,
         );
@@ -391,10 +446,45 @@ impl GridWidget {
 
         painter.circle_filled(center, radius, color);
 
-        rect.right_center().round_to_pixels(ppt)
+        if response.hovered() || response.dragged() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        }
+
+        (rect.right_center().round_to_pixels(ppt), response)
     }
 
-    fn inputs_ui(&mut self, ui: &mut Ui) {
+    fn handle_inputs_dnd(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
+        let Some(drag) = ctx.state.wire_drag.as_mut() else {
+            return;
+        };
+
+        if drag.src_id == self.io.id || !self.io.has_compatible_input(drag.src_output_type) {
+            return;
+        }
+
+        let stripe = ui.max_rect();
+
+        ui.painter()
+            .rect_filled(stripe, CORNER_RADIUS, C_INPUT_STRIPE_HOVER);
+
+        if drag.dropped_at.is_some()
+            && let Some(pointer) = ui.ctx().pointer_interact_pos()
+            && stripe.contains(pointer)
+        {
+            self.link_request = Some(LinkRequest {
+                module_id: drag.src_id,
+                data_type: drag.src_output_type,
+                pos: pointer,
+                opened_frame: ui.ctx().cumulative_frame_nr(),
+            });
+
+            ctx.state.wire_drag = None;
+        }
+    }
+
+    fn inputs_ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
+        self.handle_inputs_dnd(ui, ctx);
+
         let full_height = ui.available_height();
         let inputs_count = self.io.inputs.len() as f32;
         let all_spaces = full_height - 2.0 * INPUTS_PADDING - inputs_count * IO_SLOT_H;
@@ -412,7 +502,7 @@ impl GridWidget {
         self.input_positions = positions;
     }
 
-    fn output_ui(&mut self, ui: &mut Ui) {
+    fn output_ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
         ui.set_min_width(IO_STRIPE_W);
 
         if matches!(self.io.module_type, ModuleType::Output) {
@@ -423,16 +513,35 @@ impl GridWidget {
         let height = ui.available_height();
         let top = (height - IO_SLOT_H) * 0.5;
         ui.add_space(top);
-        self.output_pos = Some(Self::draw_output(ui, IO_SLOT_H, &self.io));
+        let (pos, response) = Self::draw_output(ui, IO_SLOT_H, &self.io);
+        self.output_pos = Some(pos);
+
+        if response.drag_started() {
+            ctx.state.wire_drag = Some(WireDragState {
+                src_id: self.io.id,
+                src_output_type: self.io.output_type,
+                start_pos: pos,
+                color: self.io.output_type.color(),
+                dropped_at: None,
+            });
+        }
+
+        if response.drag_stopped()
+            && let Some(drag) = ctx.state.wire_drag.as_mut()
+            && drag.src_id == self.io.id
+        {
+            drag.dropped_at = Some(ui.ctx().cumulative_frame_nr());
+        }
     }
 
-    fn content_ui(&self, ui: &mut Ui) -> Response {
+    fn content_ui(&self, ui: &mut Ui, ctx: &WidgetCtx) -> Response {
         let rect = ui.max_rect();
-        let response = ui.interact(
-            rect,
-            ui.id().with(("drag-handle", self.io.id)),
-            Sense::drag(),
-        );
+        let sense = if ctx.state.wire_drag.is_some() {
+            Sense::hover()
+        } else {
+            Sense::drag()
+        };
+        let response = ui.interact(rect, ui.id().with(("drag-handle", self.io.id)), sense);
 
         if response.dragged() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);

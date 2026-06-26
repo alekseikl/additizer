@@ -16,7 +16,7 @@ use crate::{
         lfo::LfoUiBridge,
         mixer::MixerUiBridge,
         oscillator::OscillatorUiBridge,
-        routing::{DataType, Input, data_types_compatible},
+        routing::{DataType, Input, InputMeta, data_types_compatible},
         spectral_blend::SpectralBlendUiBridge,
         spectral_filter::SpectralFilterUiBridge,
         spectral_mixer::SpectralMixerUiBridge,
@@ -69,6 +69,11 @@ pub struct ModuleItem {
 pub struct ModulatedValue {
     pub value: StereoSample,
     pub is_stereo: bool,
+}
+
+pub struct ConnectableInput {
+    pub input: InputId,
+    pub meta: InputMeta,
 }
 
 pub struct UiBridge {
@@ -262,6 +267,43 @@ impl UiBridge {
 
     pub fn has_active_voices(&self) -> bool {
         self.voices.playing + self.voices.releasing > 0
+    }
+
+    /// Inputs on `dst` that can accept a wire from `src`.
+    pub fn get_connectable_inputs(&self, src: ModuleId, dst: ModuleId) -> Vec<ConnectableInput> {
+        let Some(dst_module) = self.routing.modules.get(&dst) else {
+            return Vec::new();
+        };
+
+        dst_module
+            .inputs
+            .iter()
+            .filter_map(|meta| {
+                let input_id = InputId::new(meta.input_type, dst);
+                let can_connect = self
+                    .get_available_input_sources(input_id)
+                    .iter()
+                    .any(|available| available.src == src);
+
+                can_connect.then_some(ConnectableInput {
+                    input: input_id,
+                    meta: *meta,
+                })
+            })
+            .collect()
+    }
+
+    pub fn connect_source(&mut self, src: ModuleId, dst: InputId, meta: InputMeta) {
+        if meta.is_direct {
+            self.set_direct_link(src, dst);
+        } else {
+            let amount = if meta.data_type == DataType::Control {
+                StereoSample::ZERO
+            } else {
+                StereoSample::ONE
+            };
+            self.add_link(src, dst, amount);
+        }
     }
 
     pub fn get_available_input_sources(&self, input: InputId) -> Vec<AvailableInputSource> {

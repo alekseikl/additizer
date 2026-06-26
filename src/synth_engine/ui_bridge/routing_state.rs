@@ -2,7 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::synth_engine::{
     InputId, ModuleHandle, ModuleId, ModuleType, RoutingMap, StereoSample,
-    routing::{DataType, InputMeta, InputSource},
+    routing::{DataType, InputMeta, InputSource, data_types_compatible},
     synth_module::SynthModule,
 };
 
@@ -55,6 +55,14 @@ pub struct ModuleIo {
     pub inputs: Vec<ModuleInput>,
     pub output_type: DataType,
     pub output_connected: bool,
+}
+
+impl ModuleIo {
+    pub fn has_compatible_input(&self, data_type: DataType) -> bool {
+        self.inputs_meta
+            .iter()
+            .any(|meta| data_types_compatible(data_type, meta.data_type))
+    }
 }
 
 pub struct RoutingState {
