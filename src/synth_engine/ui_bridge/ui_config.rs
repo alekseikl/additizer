@@ -12,8 +12,17 @@ pub struct GridVec {
 }
 
 impl GridVec {
-    pub fn new(x: i32, y: i32) -> Self {
+    pub const ZERO: GridVec = GridVec::new(0, 0);
+
+    pub const fn new(x: i32, y: i32) -> Self {
         Self { x, y }
+    }
+
+    pub fn max(self, other: Self) -> Self {
+        Self {
+            x: self.x.max(other.x),
+            y: self.y.max(other.y),
+        }
     }
 }
 

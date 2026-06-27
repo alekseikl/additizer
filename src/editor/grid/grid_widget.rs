@@ -3,11 +3,14 @@ use std::hash::{Hash, Hasher};
 
 use egui::{
     Align, Area, Color32, Id, Label, LayerId, Layout, Modal, Order, PointerButton, Pos2, Rect,
-    Response, Sense, Stroke, Ui, UiBuilder, Vec2, ecolor::Hsva, emath::GuiRounding, lerp, vec2,
+    Response, Sense, Stroke, Ui, UiBuilder, Vec2,
+    ecolor::Hsva,
+    emath::{self, GuiRounding},
+    lerp, vec2,
 };
 
 use crate::{
-    editor::grid::{GRID_CELL_SIZE, WidgetCtx, WireDragState},
+    editor::grid::{WidgetCtx, WireDragState},
     synth_engine::{
         DataType, Input, InputId, ModuleId, ModuleType,
         ui_bridge::{
@@ -36,7 +39,6 @@ pub trait GridWidgetContent: Send {
 }
 
 impl Input {
-    /// Hue in [0.0, 1.0] for use with `Hsva::h`.
     fn hue(self) -> f32 {
         let mut hasher = FxHasher::default();
 
@@ -105,18 +107,13 @@ struct LinkRequest {
 pub struct GridWidget {
     io: ModuleIo,
     content: Box<dyn GridWidgetContent>,
-    /// Pixel offset applied while the widget is being dragged. Reset to zero
-    /// once the drag finishes and the new grid position is committed.
+    // Widget's DnD offset
     drag_offset: Vec2,
-    /// Content-space point inside the widget that the pointer grabbed, relative
-    /// to the widget's grid origin.
+    // DnD grab point within a widget in local widget coordinates
     drag_grab: Option<Vec2>,
-    /// Screen-space wire attach point at the widget's right edge, captured
-    /// during the last frame. `None` for modules without an output (e.g.
-    /// `Output`).
+    // Screen position of a wire output point
     output_pos: Option<Pos2>,
-    /// Screen-space wire attach points at the widget's left edge, parallel to
-    /// `io.inputs`.
+    // Screen positions of a wire input points
     input_positions: Vec<Pos2>,
     link_request: Option<LinkRequest>,
 }
@@ -139,13 +136,11 @@ impl GridWidget {
         }
     }
 
-    /// Returns wire entry points for output
     pub fn output_point(&self) -> Option<(Pos2, Color32)> {
         self.output_pos
             .map(|pos| (pos, self.io.output_type.color()))
     }
 
-    /// Returns wires entry points for inputs
     pub fn input_points(&self) -> impl Iterator<Item = InputPoint> + '_ {
         self.io
             .inputs
@@ -181,9 +176,6 @@ impl GridWidget {
         self.drag_grab.is_some()
     }
 
-    /// Pixel offset currently applied by an in-progress drag (zero otherwise).
-    /// Lets the grid grow its scrollable content to follow a widget being
-    /// dragged toward the edges.
     pub fn drag_offset(&self) -> Vec2 {
         self.drag_offset
     }
@@ -225,11 +217,7 @@ impl GridWidget {
 
         let drag = self.main_ui(ui, ui_builder, ctx);
 
-        self.link_request_ui(ui, ctx);
-
         if drag.drag_started() {
-            // Record where inside the widget (in content space) the pointer
-            // grabbed, so the cursor stays glued to that point during the drag.
             self.drag_grab = drag.interact_pointer_pos().map(|p| p - origin - pos);
         }
 
@@ -239,24 +227,22 @@ impl GridWidget {
         {
             let offset = (pointer - origin) - pos - grab;
             // Clamp so the widget can't be dragged past the top/left edges:
-            // its grid origin must stay at or beyond (0, 0).
 
             self.drag_offset = offset.max(-Vec2::from(grid_pos));
             Self::auto_scroll(ui, max_rect);
         }
 
         if drag.drag_stopped() {
-            let dx = (self.drag_offset.x / GRID_CELL_SIZE).round() as i32;
-            let dy = (self.drag_offset.y / GRID_CELL_SIZE).round() as i32;
-            let new_x = (grid_pos.x + dx).max(0);
-            let new_y = (grid_pos.y + dy).max(0);
-
-            ctx.bridge
-                .set_module_position(self.io.id, GridVec { x: new_x, y: new_y });
+            ctx.bridge.set_module_position(
+                self.io.id,
+                (grid_pos + GridVec::from_vec_rounded(self.drag_offset)).max(GridVec::ZERO),
+            );
             self.drag_offset = Vec2::ZERO;
             self.drag_grab = None;
             ctx.moved_module_id = Some(self.io.id);
         }
+
+        self.link_request_ui(ui, ctx);
     }
 
     fn main_ui(&mut self, ui: &mut Ui, ui_builder: UiBuilder, ctx: &mut WidgetCtx) -> Response {
@@ -336,9 +322,6 @@ impl GridWidget {
         }
     }
 
-    /// Scrolls the enclosing canvas when the dragged widget crosses a viewport
-    /// edge, so it can be dragged into off-screen regions of the grid. Scroll
-    /// speed grows with how far past the edge the widget reaches.
     fn auto_scroll(ui: &Ui, widget: Rect) {
         const MAX_SPEED: f32 = 18.0;
 
@@ -368,8 +351,6 @@ impl GridWidget {
         }
     }
 
-    /// Draws an input stub and returns the screen-space point at the widget's
-    /// left edge where an incoming wire should attach.
     fn draw_input(
         &self,
         ui: &mut Ui,
@@ -390,7 +371,7 @@ impl GridWidget {
             response.id,
             response.hovered() || response.dragged(),
             0.15,
-            egui::emath::easing::cubic_out,
+            emath::easing::cubic_out,
         );
         let dot_size = lerp(IO_DOT_SIZE..=IO_DOT_SIZE_HOVER, t);
 
@@ -407,8 +388,6 @@ impl GridWidget {
             .round_to_pixels(ui.ctx().pixels_per_point())
     }
 
-    /// Draws the output stub and returns the screen-space point at the widget's
-    /// right edge where an outgoing wire should attach.
     fn draw_output(&self, ui: &mut Ui, ctx: &mut WidgetCtx, height: f32) -> (Pos2, Pos2, Response) {
         let width = ui.available_width();
         let (rect, hover) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
