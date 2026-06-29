@@ -140,6 +140,7 @@ impl Grid {
         let grid_area = (self.content_size + 0.5 * viewport_size).max(viewport_size);
 
         ScrollArea::both()
+            .id_salt("module-grid-area")
             .scroll_source(ScrollSource {
                 drag: true,
                 scroll_bar: false,
