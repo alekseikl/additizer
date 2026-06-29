@@ -8,10 +8,11 @@ use rustc_hash::FxHashMap;
 use crate::{
     editor::modules_ui::{
         AmplifierUI, EnvelopeUI, ExpressionsUi, ExternalParamUI, HarmonicEditorUI, LfoUi, MixerUi,
-        OscillatorUI, ParamsUi, SpectralBlendUi, SpectralFilterUI, SpectralMixerUi, WaveShaperUi,
+        OscillatorUI, OutputUi, ParamsUi, SpectralBlendUi, SpectralFilterUI, SpectralMixerUi,
+        WaveShaperUi,
     },
     engine_factory::EngineFactory,
-    synth_engine::{ModuleId, ModuleType, OUTPUT_MODULE_ID, ui_bridge::UiBridge},
+    synth_engine::{ModuleId, ModuleType, ui_bridge::UiBridge},
 };
 
 const DETAIL_PANEL_ID: &str = "grid-module-detail";
@@ -126,20 +127,10 @@ impl EditorState {
     }
 }
 
-struct OutputUi;
-
-impl ModuleUi for OutputUi {
-    fn module_id(&self) -> Option<ModuleId> {
-        Some(OUTPUT_MODULE_ID)
-    }
-
-    fn ui(&mut self, _bridge: &mut UiBridge, _ui: &mut Ui) {}
-}
-
 impl ModuleType {
     fn ui(&self, id: ModuleId) -> ModuleUIBox {
         match self {
-            Self::Output => Box::new(OutputUi),
+            Self::Output => Box::new(OutputUi::new()),
             Self::HarmonicEditor => Box::new(HarmonicEditorUI::new(id)),
             Self::SpectralFilter => Box::new(SpectralFilterUI::new(id)),
             Self::Amplifier => Box::new(AmplifierUI::new(id)),
@@ -286,17 +277,14 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
             });
     }
 
-    let mut selected_id: Option<ModuleId> = None;
-
     CentralPanel::no_frame().show_inside(ui, |ui| {
-        selected_id = editor_state
+        if let Some(id) = editor_state
             .grid
-            .ui(ui, &mut editor_state.ui_bridge, grid_selected_id);
+            .ui(ui, &mut editor_state.ui_bridge, grid_selected_id)
+        {
+            editor_state.set_detail_view(ui, module_ui_for_id(&editor_state.ui_bridge, id));
+        }
     });
-
-    if let Some(id) = selected_id {
-        editor_state.set_detail_view(ui, module_ui_for_id(&editor_state.ui_bridge, id));
-    }
 }
 
 pub fn create_editor(

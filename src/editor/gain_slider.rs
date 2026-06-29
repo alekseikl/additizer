@@ -45,10 +45,10 @@ impl<'a> GainSlider<'a> {
         self
     }
 
-    pub fn width(mut self, width: f32) -> Self {
-        self.width = width;
-        self
-    }
+    // pub fn width(mut self, width: f32) -> Self {
+    //     self.width = width;
+    //     self
+    // }
 
     #[allow(unused)]
     pub fn horizontal(mut self) -> Self {
