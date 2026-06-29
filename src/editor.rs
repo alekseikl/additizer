@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use egui::{CentralPanel, Color32, ComboBox, Frame, Panel, ScrollArea, Stroke, Ui, Vec2, vec2};
+use egui::{CentralPanel, ComboBox, Frame, Id, Panel, ScrollArea, Ui, Vec2, vec2};
 use nih_plug::editor::Editor;
 use nih_plug_egui::{EguiState, create_egui_editor, resizable_window::ResizableWindow};
 
@@ -35,8 +35,20 @@ pub trait ModuleUi {
 
 type ModuleUIBox = Box<dyn ModuleUi + Send>;
 
-const DETAIL_SEPARATOR_T: f32 = 3.0;
-const C_DETAIL_SEPARATOR: Color32 = Color32::from_rgb(100, 102, 118);
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum DetailViewKey {
+    Params,
+    Module(ModuleId),
+}
+
+impl DetailViewKey {
+    fn from_view(view: &ModuleUIBox) -> Self {
+        match view.module_id() {
+            Some(id) => DetailViewKey::Module(id),
+            None => DetailViewKey::Params,
+        }
+    }
+}
 
 struct EditorState {
     engine_factory: Arc<EngineFactory>,
@@ -56,6 +68,10 @@ impl EditorState {
             grid_module_ui: None,
             grid: grid::Grid::new(),
         }
+    }
+
+    fn set_detail_view(&mut self, panel: Option<ModuleUIBox>) {
+        self.grid_module_ui = panel;
     }
 }
 
@@ -140,29 +156,27 @@ fn show_add_module_menu(ui: &mut Ui, bridge: &mut UiBridge) {
         });
 }
 
-fn show_top_bar(
-    ui: &mut Ui,
-    bridge: &mut UiBridge,
-    engine_factory: &Arc<EngineFactory>,
-    grid_module_ui: &mut Option<ModuleUIBox>,
-) {
+fn show_top_bar(ui: &mut Ui, editor_state: &mut EditorState) {
     Panel::top("top-bar")
         .frame(Frame::new().inner_margin(vec2(8.0, 4.0)))
         .show_inside(ui, |ui| {
             ui.horizontal(|ui| {
-                let showing_params = grid_module_ui
+                let showing_params = editor_state
+                    .grid_module_ui
                     .as_ref()
                     .is_some_and(|panel| panel.module_id().is_none());
 
                 if ui.selectable_label(showing_params, "Parameters").clicked() {
                     if showing_params {
-                        *grid_module_ui = None;
+                        editor_state.set_detail_view(None);
                     } else {
-                        *grid_module_ui = Some(Box::new(ParamsUi::new(engine_factory.clone())));
+                        editor_state.set_detail_view(Some(Box::new(ParamsUi::new(
+                            editor_state.engine_factory.clone(),
+                        ))));
                     }
                 }
 
-                show_add_module_menu(ui, bridge);
+                show_add_module_menu(ui, &mut editor_state.ui_bridge);
             });
         });
 }
@@ -201,34 +215,27 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
         )
         .unwrap();
 
-        editor_state.grid_module_ui = None;
+        editor_state.set_detail_view(None);
         editor_state.grid = grid::Grid::new();
     }
 
-    let bridge = &mut editor_state.ui_bridge;
+    editor_state.ui_bridge.update();
 
-    bridge.update();
+    if let Some(modules_io) = editor_state.ui_bridge.take_modules_io() {
+        editor_state.grid.update_widgets(modules_io);
+    }
 
-    if let Some(module_id) = editor_state
+    if editor_state
         .grid_module_ui
         .as_ref()
         .and_then(|panel| panel.module_id())
-        && !bridge.has_module_id(module_id)
+        .is_some_and(|module_id| !editor_state.ui_bridge.has_module_id(module_id))
     {
-        editor_state.grid_module_ui = None;
+        editor_state.set_detail_view(None);
     }
 
-    show_top_bar(
-        ui,
-        bridge,
-        &editor_state.engine_factory,
-        &mut editor_state.grid_module_ui,
-    );
-    show_right_bar(ui, bridge);
-
-    if let Some(modules_io) = bridge.take_modules_io() {
-        editor_state.grid.update_widgets(modules_io);
-    }
+    show_top_bar(ui, editor_state);
+    show_right_bar(ui, &mut editor_state.ui_bridge);
 
     CentralPanel::default()
         .frame(Frame::NONE)
@@ -238,14 +245,19 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
                 .as_ref()
                 .and_then(|panel| panel.module_id());
 
-            let detail_rect = if editor_state.grid_module_ui.is_some() {
-                let detail = Panel::bottom("grid-module-detail")
+            if let Some(panel) = editor_state.grid_module_ui.as_ref() {
+                let detail_key = DetailViewKey::from_view(panel);
+                let panel_id = Id::new(("grid-module-detail", detail_key));
+                let scroll_id = Id::new(("grid-module-detail-scroll", detail_key));
+
+                Panel::bottom(panel_id)
                     .resizable(true)
                     .default_size(300.0)
                     .min_size(80.0)
                     .frame(Frame::default().inner_margin(8.0))
                     .show_inside(ui, |ui| {
                         ScrollArea::vertical()
+                            .id_salt(scroll_id)
                             .auto_shrink([false, true])
                             .show(ui, |ui| {
                                 if let Some(module_ui) = &mut editor_state.grid_module_ui {
@@ -253,28 +265,20 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
                                 }
                             });
                     });
-
-                Some(detail.response.rect)
-            } else {
-                None
-            };
-
-            let opened = {
-                let bridge = &mut editor_state.ui_bridge;
-                editor_state.grid.ui(ui, bridge, grid_selected_id)
-            };
-
-            if let Some(id) = opened {
-                editor_state.grid_module_ui = module_ui_for_id(&editor_state.ui_bridge, id);
             }
 
-            if let Some(rect) = detail_rect {
-                ui.painter().hline(
-                    rect.left()..=rect.right(),
-                    rect.top() + DETAIL_SEPARATOR_T * 0.5,
-                    Stroke::new(DETAIL_SEPARATOR_T, C_DETAIL_SEPARATOR),
-                );
-            }
+            CentralPanel::no_frame().show_inside(ui, |ui| {
+                if let Some(id) = editor_state.grid.ui(
+                    ui,
+                    &mut editor_state.ui_bridge,
+                    grid_selected_id,
+                ) {
+                    editor_state.set_detail_view(module_ui_for_id(
+                        &editor_state.ui_bridge,
+                        id,
+                    ));
+                }
+            });
         });
 }
 

@@ -32,11 +32,14 @@ const IO_SLOT_H: f32 = 16.0;
 const IO_DOT_SIZE: f32 = 8.0;
 const IO_DOT_SIZE_HOVER: f32 = 10.0;
 const WIRE_THICKNESS: f32 = 2.0;
-const C_INPUT_STRIPE_HOVER: Color32 = Color32::from_rgb(40, 42, 54);
+const C_INPUT_STRIPE_HOVER: Color32 = Color32::from_rgb(52, 54, 68);
 
 pub trait GridWidgetContent: Send {
     fn grid_size(&self) -> GridVec;
-    fn ui(&mut self);
+    fn show_label(&self) -> bool {
+        true
+    }
+    fn ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx, module_id: ModuleId);
 }
 
 impl Input {
@@ -81,7 +84,7 @@ impl GridWidgetContent for EmptyContent {
         GridVec::new(4, 2)
     }
 
-    fn ui(&mut self) {}
+    fn ui(&mut self, _ui: &mut Ui, _ctx: &mut WidgetCtx, _module_id: ModuleId) {}
 }
 
 pub struct OutputContent {}
@@ -90,7 +93,16 @@ impl GridWidgetContent for OutputContent {
     fn grid_size(&self) -> GridVec {
         GridVec { x: 2, y: 2 }
     }
-    fn ui(&mut self) {}
+
+    fn show_label(&self) -> bool {
+        false
+    }
+
+    fn ui(&mut self, ui: &mut Ui, _ctx: &mut WidgetCtx, _module_id: ModuleId) {
+        ui.centered_and_justified(|ui| {
+            ui.add(Label::new("Out").selectable(false).truncate());
+        });
+    }
 }
 
 pub struct InputPoint {
@@ -529,7 +541,7 @@ impl GridWidget {
         }
     }
 
-    fn content_ui(&self, ui: &mut Ui, ctx: &mut WidgetCtx) -> Response {
+    fn content_ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) -> Response {
         let rect = ui.max_rect();
         let sense = if ctx.state.wire_drag.is_some() {
             Sense::hover()
@@ -548,7 +560,16 @@ impl GridWidget {
             ctx.opened_module_id = Some(self.io.id);
         }
 
-        ui.add(Label::new(self.io.module_type.label()).selectable(false));
+        if self.content.show_label() {
+            ui.add_space(2.0);
+            ui.add(
+                Label::new(ctx.bridge.get_module_label(self.io.id))
+                    .selectable(false)
+                    .truncate(),
+            );
+        }
+
+        self.content.ui(ui, ctx, self.io.id);
 
         response
     }

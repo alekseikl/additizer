@@ -9,7 +9,10 @@ use crate::{
         harmonic_editor::HarmonicEditorConfig,
         oscillator::OscillatorConfig,
         spectral_filter::SpectralFilterConfig,
-        ui_bridge::{GridVec, ui_config::{UiConfig, UiModuleConfig}},
+        ui_bridge::{
+            GridVec,
+            ui_config::{UiConfig, UiModuleConfig},
+        },
     },
     utils::{from_ms, st_to_octave},
 };
@@ -33,20 +36,23 @@ fn default_ui_config() -> UiConfig {
     //  y=2:            [SpectralFilter                      ]             [Amplifier               ]  [Output]
     //  y=4: [FilterEnv                           ]             [AmpEnv                            ]
     for (id, label, grid_x, grid_y) in [
-        (HARMONIC_EDITOR_ID, "01 - Harmonics",  0, 0),
-        (FILTER_ENV_ID,      "03 - Cutoff Env", 0, 4),
-        (FILTER_ID,          "03 - Filter",     6, 2),
-        (OSC_ID,             "04 - Oscillator", 12, 0),
-        (AMP_ENV_ID,         "06 - Amp Env",    12, 4),
-        (AMP_ID,             "06 - Amplifier",  18, 2),
-        (OUTPUT_MODULE_ID,   "Output",          24, 2),
+        (HARMONIC_EDITOR_ID, "Harmonics", 0, 0),
+        (FILTER_ENV_ID, "Cutoff Envelope", 0, 4),
+        (FILTER_ID, "Filter", 6, 2),
+        (OSC_ID, "Oscillator", 12, 0),
+        (AMP_ENV_ID, "Amp Envelope", 12, 4),
+        (AMP_ID, "Amplifier", 18, 2),
+        (OUTPUT_MODULE_ID, "Output", 24, 2),
     ] {
         modules.insert(
             id,
             UiModuleConfig {
                 id,
                 label: label.into(),
-                position: GridVec { x: grid_x, y: grid_y },
+                position: GridVec {
+                    x: grid_x,
+                    y: grid_y,
+                },
             },
         );
     }
