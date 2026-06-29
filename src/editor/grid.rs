@@ -2,7 +2,7 @@ use egui::{
     Color32, Painter, Pos2, Rect, ScrollArea, Sense, Shape, Ui, Vec2,
     epaint::{CubicBezierShape, PathStroke},
     pos2,
-    scroll_area::ScrollSource,
+    scroll_area::{ScrollBarVisibility, ScrollSource},
     vec2,
 };
 use rustc_hash::FxHashMap;
@@ -83,6 +83,8 @@ struct WidgetCtx<'a> {
     bridge: &'a mut UiBridge,
     state: &'a mut WidgetsState,
     moved_module_id: Option<ModuleId>,
+    selected_module_id: Option<ModuleId>,
+    opened_module_id: Option<ModuleId>,
 }
 
 pub struct Grid {
@@ -116,7 +118,12 @@ impl Grid {
             .collect();
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, bridge: &mut UiBridge) {
+    pub fn ui(
+        &mut self,
+        ui: &mut Ui,
+        bridge: &mut UiBridge,
+        selected_module_id: Option<ModuleId>,
+    ) -> Option<ModuleId> {
         let content_size = self.calc_content_size(bridge);
         let dragging = self.widgets.iter().any(GridWidget::is_dragging)
             || self.widgets_state.wire_drag.is_some();
@@ -134,10 +141,12 @@ impl Grid {
 
         ScrollArea::both()
             .scroll_source(ScrollSource {
-                drag: false,
+                drag: true,
+                scroll_bar: false,
                 ..Default::default()
             })
             .wheel_scroll_multiplier(TRACKPAD_SCROLL_MULTIPLIER)
+            .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
             .auto_shrink([true, true])
             .show(ui, |ui| {
                 let (response, painter) = ui.allocate_painter(grid_area, Sense::hover());
@@ -147,17 +156,21 @@ impl Grid {
                 // Reserve a paint slot for the wires.
                 let wires = painter.add(Shape::Noop);
 
-                let mut ctx = WidgetCtx {
-                    bridge,
-                    state: &mut self.widgets_state,
-                    moved_module_id: None,
+                let (opened_module_id, moved_module_id) = {
+                    let mut ctx = WidgetCtx {
+                        bridge,
+                        state: &mut self.widgets_state,
+                        moved_module_id: None,
+                        selected_module_id,
+                        opened_module_id: None,
+                    };
+
+                    for widget in &mut self.widgets {
+                        widget.ui(ui, &mut ctx);
+                    }
+
+                    (ctx.opened_module_id, ctx.moved_module_id)
                 };
-
-                for widget in &mut self.widgets {
-                    widget.ui(ui, &mut ctx);
-                }
-
-                let moved_module_id = ctx.moved_module_id;
 
                 painter.set(wires, Shape::Vec(self.build_wire_shapes()));
 
@@ -177,7 +190,10 @@ impl Grid {
                 if let Some(anchor) = moved_module_id {
                     self.resolve_overlaps(anchor, bridge);
                 }
-            });
+
+                opened_module_id
+            })
+            .inner
     }
 
     fn calc_content_size(&self, bridge: &UiBridge) -> Vec2 {

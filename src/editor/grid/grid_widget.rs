@@ -21,6 +21,7 @@ use crate::{
 };
 
 const C_MOD_BG: Color32 = Color32::from_rgb(28, 30, 42);
+const C_MOD_BG_SELECTED: Color32 = Color32::from_rgb(40, 42, 54);
 const CORNER_RADIUS: f32 = 4.0;
 const BLOCK_MARGIN: f32 = 3.0;
 
@@ -251,8 +252,12 @@ impl GridWidget {
             let full_height = ui.available_height();
 
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-            ui.painter()
-                .rect_filled(ui.max_rect(), CORNER_RADIUS, C_MOD_BG);
+            let bg = if ctx.selected_module_id == Some(self.io.id) {
+                C_MOD_BG_SELECTED
+            } else {
+                C_MOD_BG
+            };
+            ui.painter().rect_filled(ui.max_rect(), CORNER_RADIUS, bg);
 
             ui.allocate_ui_with_layout(
                 vec2(IO_STRIPE_W, full_height),
@@ -524,12 +529,12 @@ impl GridWidget {
         }
     }
 
-    fn content_ui(&self, ui: &mut Ui, ctx: &WidgetCtx) -> Response {
+    fn content_ui(&self, ui: &mut Ui, ctx: &mut WidgetCtx) -> Response {
         let rect = ui.max_rect();
         let sense = if ctx.state.wire_drag.is_some() {
             Sense::hover()
         } else {
-            Sense::drag()
+            Sense::click_and_drag()
         };
         let response = ui.interact(rect, ui.id().with(("drag-handle", self.io.id)), sense);
 
@@ -537,6 +542,10 @@ impl GridWidget {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         } else if response.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+        }
+
+        if response.clicked_by(PointerButton::Primary) {
+            ctx.opened_module_id = Some(self.io.id);
         }
 
         ui.add(Label::new(self.io.module_type.label()).selectable(false));

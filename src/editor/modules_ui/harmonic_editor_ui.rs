@@ -1,6 +1,6 @@
 use egui::{
-    CentralPanel, Checkbox, ComboBox, DragValue, Frame, Grid, Id, Margin, Modal, Panel, ScrollArea,
-    Sides, Ui, Vec2, style::ScrollStyle,
+    Checkbox, ComboBox, DragValue, Frame, Grid, Id, Margin, Modal, Panel, ScrollArea, Sides, Ui,
+    Vec2, style::ScrollStyle,
 };
 use nih_plug::util::db_to_gain;
 
@@ -379,81 +379,79 @@ impl HarmonicEditorUI {
                 });
             });
 
-        CentralPanel::default().show_inside(ui, |ui| {
-            ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
+        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
 
-            ui.add_space(32.0);
+        ui.add_space(32.0);
 
-            ui.horizontal(|ui| {
-                if ui.button("All to Zero").clicked() {
-                    editor_bridge.set_selected(SetParams {
-                        from: 1,
-                        to: NUM_EDITABLE_HARMONICS,
-                        n_th: None,
-                        action: SetAction::Set,
-                        gain: StereoSample::splat(0.0),
-                    });
-                }
-
-                if ui.button("All to One").clicked() {
-                    editor_bridge.set_selected(SetParams {
-                        from: 1,
-                        to: NUM_EDITABLE_HARMONICS,
-                        n_th: None,
-                        action: SetAction::Set,
-                        gain: StereoSample::splat(1.0),
-                    });
-                }
-
-                if ui.button("Keep Even").clicked() {
-                    editor_bridge.set_selected(SetParams {
-                        from: 1,
-                        to: NUM_EDITABLE_HARMONICS,
-                        n_th: Some(NthElement::new(2, 0, true)),
-                        action: SetAction::Set,
-                        gain: StereoSample::splat(0.0),
-                    });
-                }
-
-                if ui.button("Keep Odd").clicked() {
-                    editor_bridge.set_selected(SetParams {
-                        from: 1,
-                        to: NUM_EDITABLE_HARMONICS,
-                        n_th: Some(NthElement::new(2, 1, true)),
-                        action: SetAction::Set,
-                        gain: StereoSample::splat(0.0),
-                    });
-                }
-            });
-
-            ui.horizontal(|ui| {
-                if ui.button("Select and Set").clicked() {
-                    self.select_and_set_state = Some(Box::new(SelectAndSetState::default()));
-                }
-
-                if ui.button("Apply Filter").clicked() {
-                    self.apply_filter_state = Some(Box::new(ApplyFilterState::default()));
-                }
-            });
-
-            if let Some(mut state) = self.select_and_set_state.take()
-                && Self::show_select_and_set_modal(editor_bridge, ui, &mut state)
-            {
-                self.select_and_set_state.replace(state);
+        ui.horizontal(|ui| {
+            if ui.button("All to Zero").clicked() {
+                editor_bridge.set_selected(SetParams {
+                    from: 1,
+                    to: NUM_EDITABLE_HARMONICS,
+                    n_th: None,
+                    action: SetAction::Set,
+                    gain: StereoSample::splat(0.0),
+                });
             }
 
-            if let Some(mut state) = self.apply_filter_state.take()
-                && Self::show_apply_filter_modal(editor_bridge, ui, &mut state)
-            {
-                self.apply_filter_state.replace(state);
+            if ui.button("All to One").clicked() {
+                editor_bridge.set_selected(SetParams {
+                    from: 1,
+                    to: NUM_EDITABLE_HARMONICS,
+                    n_th: None,
+                    action: SetAction::Set,
+                    gain: StereoSample::splat(1.0),
+                });
             }
 
-            ui.add_space(40.0);
+            if ui.button("Keep Even").clicked() {
+                editor_bridge.set_selected(SetParams {
+                    from: 1,
+                    to: NUM_EDITABLE_HARMONICS,
+                    n_th: Some(NthElement::new(2, 0, true)),
+                    action: SetAction::Set,
+                    gain: StereoSample::splat(0.0),
+                });
+            }
 
-            if confirm_module_removal(ui, &mut self.remove_confirmation) {
-                bridge.remove_module(module_id);
+            if ui.button("Keep Odd").clicked() {
+                editor_bridge.set_selected(SetParams {
+                    from: 1,
+                    to: NUM_EDITABLE_HARMONICS,
+                    n_th: Some(NthElement::new(2, 1, true)),
+                    action: SetAction::Set,
+                    gain: StereoSample::splat(0.0),
+                });
             }
         });
+
+        ui.horizontal(|ui| {
+            if ui.button("Select and Set").clicked() {
+                self.select_and_set_state = Some(Box::new(SelectAndSetState::default()));
+            }
+
+            if ui.button("Apply Filter").clicked() {
+                self.apply_filter_state = Some(Box::new(ApplyFilterState::default()));
+            }
+        });
+
+        if let Some(mut state) = self.select_and_set_state.take()
+            && Self::show_select_and_set_modal(editor_bridge, ui, &mut state)
+        {
+            self.select_and_set_state.replace(state);
+        }
+
+        if let Some(mut state) = self.apply_filter_state.take()
+            && Self::show_apply_filter_modal(editor_bridge, ui, &mut state)
+        {
+            self.apply_filter_state.replace(state);
+        }
+
+        ui.add_space(40.0);
+
+        if confirm_module_removal(ui, &mut self.remove_confirmation) {
+            bridge.remove_module(module_id);
+        }
     }
 }
 

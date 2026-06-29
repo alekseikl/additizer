@@ -198,8 +198,8 @@ impl SynthModule for WaveShaper {
     fn inputs(&self) -> &'static [InputMeta] {
         static INPUTS: &[InputMeta] = &[
             InputMeta::audio(Input::Audio),
-            InputMeta::audio(Input::ClippingLevel),
-            InputMeta::audio(Input::Distortion),
+            InputMeta::control(Input::ClippingLevel),
+            InputMeta::control(Input::Distortion),
         ];
 
         INPUTS
