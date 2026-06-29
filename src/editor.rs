@@ -6,12 +6,9 @@ use nih_plug_egui::{EguiState, create_egui_editor, resizable_window::ResizableWi
 use rustc_hash::FxHashMap;
 
 use crate::{
-    editor::{
-        modules_ui::{
-            AmplifierUI, EnvelopeUI, ExpressionsUi, ExternalParamUI, HarmonicEditorUI, LfoUi,
-            MixerUi, OscillatorUI, ParamsUi, SpectralBlendUi, SpectralFilterUI, SpectralMixerUi,
-            WaveShaperUi,
-        },
+    editor::modules_ui::{
+        AmplifierUI, EnvelopeUI, ExpressionsUi, ExternalParamUI, HarmonicEditorUI, LfoUi, MixerUi,
+        OscillatorUI, ParamsUi, SpectralBlendUi, SpectralFilterUI, SpectralMixerUi, WaveShaperUi,
     },
     engine_factory::EngineFactory,
     synth_engine::{ModuleId, ModuleType, OUTPUT_MODULE_ID, ui_bridge::UiBridge},
@@ -222,9 +219,10 @@ fn show_top_bar(ui: &mut Ui, editor_state: &mut EditorState) {
                 if showing_params {
                     editor_state.set_detail_view(ui, None);
                 } else {
-                    editor_state.set_detail_view(ui, Some(Box::new(ParamsUi::new(
-                        editor_state.engine_factory.clone(),
-                    ))));
+                    editor_state.set_detail_view(
+                        ui,
+                        Some(Box::new(ParamsUi::new(editor_state.engine_factory.clone()))),
+                    );
                 }
             }
 
