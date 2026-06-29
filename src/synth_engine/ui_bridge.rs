@@ -71,9 +71,14 @@ pub struct ModulatedValue {
     pub is_stereo: bool,
 }
 
-pub struct ConnectableInput {
-    pub input: InputId,
-    pub meta: InputMeta,
+pub struct LinkableModulation {
+    pub module_id: ModuleId,
+    pub label: String,
+}
+
+pub struct LinkableInput {
+    pub input_type: Input,
+    pub modulations: Vec<LinkableModulation>,
 }
 
 pub struct UiBridge {
@@ -225,15 +230,6 @@ impl UiBridge {
         self.routing.modules_io.take()
     }
 
-    /// Returns `(src_module_id, dst_module_id)` for every routing connection.
-    pub fn get_all_links(&self) -> Vec<(ModuleId, ModuleId)> {
-        self.routing
-            .routing
-            .iter()
-            .flat_map(|(dst, srcs)| srcs.iter().map(|s| (s.module_id, dst.module_id)))
-            .collect()
-    }
-
     pub fn get_module_position(&self, module_id: ModuleId) -> GridVec {
         let ui_config = self.ui_config.lock();
         ui_config
@@ -269,31 +265,92 @@ impl UiBridge {
         self.voices.playing + self.voices.releasing > 0
     }
 
-    /// Inputs on `dst` that can accept a wire from `src`.
-    pub fn get_connectable_inputs(&self, src: ModuleId, dst: ModuleId) -> Vec<ConnectableInput> {
+    pub fn get_linkable_inputs(&self, src: ModuleId, dst: ModuleId) -> Vec<LinkableInput> {
         let Some(dst_module) = self.routing.modules.get(&dst) else {
             return Vec::new();
+        };
+
+        let Some(src_module) = self.routing.modules.get(&src) else {
+            return Vec::new();
+        };
+
+        let linkable: Vec<(Input, Vec<ModuleId>)> = dst_module
+            .inputs
+            .iter()
+            .filter_map(|meta| {
+                if !self.is_linkable_input(src, dst, src_module.output_type, meta) {
+                    return None;
+                }
+
+                if meta.is_direct {
+                    return Some((meta.input_type, Vec::new()));
+                }
+
+                let input_id = InputId::new(meta.input_type, dst);
+
+                let modulations = self
+                    .routing
+                    .routing
+                    .get(&input_id)
+                    .map(|sources| {
+                        sources
+                            .iter()
+                            .filter(|source| source.modulation != Some(src))
+                            .map(|source| source.module_id)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                Some((meta.input_type, modulations))
+            })
+            .collect();
+
+        let ui_config = self.ui_config.lock();
+
+        linkable
+            .into_iter()
+            .map(|(input_type, mod_source_ids)| LinkableInput {
+                input_type,
+                modulations: mod_source_ids
+                    .into_iter()
+                    .map(|module_id| LinkableModulation {
+                        module_id,
+                        label: Self::module_label(&ui_config, module_id),
+                    })
+                    .collect(),
+            })
+            .collect()
+    }
+
+    pub fn can_be_linked(&self, src: ModuleId, dst: ModuleId) -> bool {
+        let Some(dst_module) = self.routing.modules.get(&dst) else {
+            return false;
+        };
+
+        let Some(src_module) = self.routing.modules.get(&src) else {
+            return false;
         };
 
         dst_module
             .inputs
             .iter()
-            .filter_map(|meta| {
-                let input_id = InputId::new(meta.input_type, dst);
-                let can_connect = self
-                    .get_available_input_sources(input_id)
-                    .iter()
-                    .any(|available| available.src == src);
-
-                can_connect.then_some(ConnectableInput {
-                    input: input_id,
-                    meta: *meta,
-                })
-            })
-            .collect()
+            .any(|meta| self.is_linkable_input(src, dst, src_module.output_type, meta))
     }
 
-    pub fn connect_source(&mut self, src: ModuleId, dst: InputId, meta: InputMeta) {
+    pub fn create_link(&mut self, src: ModuleId, dst: InputId) {
+        let meta = if dst.module_id == OUTPUT_MODULE_ID && dst.input_type == Input::Audio {
+            InputMeta::audio(Input::Audio)
+        } else if let Some(module) = self.routing.modules.get(&dst.module_id)
+            && let Some(meta) = module
+                .inputs
+                .iter()
+                .find(|meta| meta.input_type == dst.input_type)
+        {
+            *meta
+        } else {
+            return;
+        };
+
         if meta.is_direct {
             self.set_direct_link(src, dst);
         } else {
@@ -329,7 +386,7 @@ impl UiBridge {
             .filter(|module| {
                 module.id != input.module_id
                     && data_types_compatible(module.output_type, dst_data_type)
-                    && !self.is_connected_to_source(module.id, input.module_id)
+                    && !self.has_cycle(module.id, input.module_id)
             })
             .map(|module| AvailableInputSource {
                 src: module.id,
@@ -385,11 +442,30 @@ impl UiBridge {
         }
     }
 
-    fn is_connected_to_source(&self, dst_id: ModuleId, src_id: ModuleId) -> bool {
+    fn is_linkable_input(
+        &self,
+        src: ModuleId,
+        dst: ModuleId,
+        src_output_type: DataType,
+        meta: &InputMeta,
+    ) -> bool {
+        let input_id = InputId::new(meta.input_type, dst);
+
+        src != dst
+            && data_types_compatible(src_output_type, meta.data_type)
+            && !self.has_cycle(src, dst)
+            && !self
+                .routing
+                .routing
+                .get(&input_id)
+                .is_some_and(|sources| sources.iter().any(|s| s.module_id == src))
+    }
+
+    fn has_cycle(&self, dst_id: ModuleId, src_id: ModuleId) -> bool {
         for (input, sources) in &self.routing.routing {
             if input.module_id == dst_id {
                 for source in sources.iter().flat_map(|src| src.source_ids()) {
-                    if source == src_id || self.is_connected_to_source(source, src_id) {
+                    if source == src_id || self.has_cycle(source, src_id) {
                         return true;
                     }
                 }

@@ -449,6 +449,13 @@ impl SynthEngine {
 
         let mut new_links = self.get_links();
 
+        // Disconnect src from modulations
+        for link in &mut new_links {
+            if link.dst == dst && link.modulation == Some(src) {
+                link.modulation = None;
+            }
+        }
+
         new_links.push(ModuleLink::scaled(src, dst, amount));
         self.setup_routing(&new_links)?;
         Ok(())

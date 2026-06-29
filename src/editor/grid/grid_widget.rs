@@ -305,7 +305,9 @@ impl GridWidget {
             return;
         };
 
-        let inputs = ctx.bridge.get_connectable_inputs(req.module_id, self.io.id);
+        let src = req.module_id;
+        let dst = self.io.id;
+        let inputs = ctx.bridge.get_linkable_inputs(src, dst);
 
         if inputs.is_empty() {
             self.link_request = None;
@@ -326,10 +328,25 @@ impl GridWidget {
                 ui.label("Connect to:");
                 ui.separator();
                 for input in &inputs {
-                    if ui.button(format!("{:?}", input.meta.input_type)).clicked() {
-                        ctx.bridge
-                            .connect_source(req.module_id, input.input, input.meta);
+                    let input_id = InputId::new(input.input_type, dst);
+
+                    if ui.button(format!("{:?}", input.input_type)).clicked() {
+                        ctx.bridge.create_link(src, input_id);
                         ui.close();
+                    }
+
+                    for modulation in &input.modulations {
+                        ui.horizontal(|ui| {
+                            ui.add_space(16.0);
+                            if ui.button(&modulation.label).clicked() {
+                                ctx.bridge.set_link_modulation(
+                                    modulation.module_id,
+                                    &input_id,
+                                    src,
+                                );
+                                ui.close();
+                            }
+                        });
                     }
                 }
             });
@@ -455,7 +472,7 @@ impl GridWidget {
             return;
         };
 
-        if drag.src_id == self.io.id || !self.io.has_compatible_input(drag.src_output_type) {
+        if !ctx.bridge.can_be_linked(drag.src_id, self.io.id) {
             return;
         }
 
@@ -516,7 +533,6 @@ impl GridWidget {
         if response.drag_started() {
             ctx.state.wire_drag = Some(WireDragState {
                 src_id: self.io.id,
-                src_output_type: self.io.output_type,
                 start_pos: center_pos,
                 color: self.io.output_type.color(),
                 dropped_at: None,

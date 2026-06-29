@@ -10,7 +10,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     editor::grid::grid_widget::GridWidget,
     synth_engine::{
-        DataType, ModuleId,
+        ModuleId,
         ui_bridge::{GridVec, UiBridge, routing_state::ModuleIo},
     },
 };
@@ -68,7 +68,6 @@ impl GridRect {
 
 struct WireDragState {
     src_id: ModuleId,
-    src_output_type: DataType,
     start_pos: Pos2,
     color: Color32,
     dropped_at: Option<u64>,
