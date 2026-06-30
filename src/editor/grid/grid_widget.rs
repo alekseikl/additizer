@@ -6,7 +6,7 @@ use egui::{
 };
 
 use crate::{
-    editor::grid::{WidgetCtx, WireDragState, select_input_popup::SelectInputPopup},
+    editor::grid::{WidgetCtx, WireDragState, input_tooltip, select_input_popup::SelectInputPopup},
     synth_engine::{
         InputId, ModuleId, ModuleType,
         ui_bridge::{
@@ -338,6 +338,13 @@ impl GridWidget {
             Stroke::new(WIRE_THICKNESS, color),
         );
         painter.circle_filled(center, dot_size * 0.5, color);
+
+        input_tooltip::show_above(
+            ui,
+            &response,
+            center - vec2(0.0, dot_size * 0.5),
+            input.meta.input_type.label(),
+        );
 
         rect.left_center()
             .round_to_pixels(ui.ctx().pixels_per_point())

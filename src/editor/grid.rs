@@ -16,6 +16,7 @@ use crate::{
 };
 
 mod grid_widget;
+mod input_tooltip;
 mod select_input_popup;
 
 const GRID_CELL_SIZE: f32 = 40.0;
