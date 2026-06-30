@@ -80,18 +80,23 @@ struct WidgetsState {
     wire_drag: Option<WireDragState>,
 }
 
+pub enum GridEvent {
+    Moved(ModuleId),
+    Selected(ModuleId),
+}
+
 struct WidgetCtx<'a> {
     bridge: &'a mut UiBridge,
     state: &'a mut WidgetsState,
-    moved_module_id: Option<ModuleId>,
     selected_module_id: Option<ModuleId>,
-    opened_module_id: Option<ModuleId>,
+    events: &'a mut Vec<GridEvent>,
 }
 
 pub struct Grid {
     widgets: Vec<GridWidget>,
     widgets_state: WidgetsState,
     content_size: egui::Vec2,
+    events: Vec<GridEvent>,
 }
 
 impl Grid {
@@ -100,6 +105,7 @@ impl Grid {
             widgets: Vec::new(),
             widgets_state: WidgetsState::default(),
             content_size: egui::Vec2::ZERO,
+            events: Vec::new(),
         }
     }
 
@@ -119,12 +125,76 @@ impl Grid {
             .collect();
     }
 
-    pub fn ui(
-        &mut self,
-        ui: &mut Ui,
-        bridge: &mut UiBridge,
-        selected_module_id: Option<ModuleId>,
-    ) -> Option<ModuleId> {
+    pub fn events(&self) -> &Vec<GridEvent> {
+        &self.events
+    }
+
+    fn process_events(&mut self, bridge: &mut UiBridge) {
+        for event in self.events.iter() {
+            if let GridEvent::Moved(module_id) = event {
+                self.resolve_overlaps(*module_id, bridge);
+            }
+        }
+        self.events.clear();
+    }
+
+    fn place_new_modules(&mut self, ui: &Ui, bridge: &mut UiBridge) {
+        for widget in &self.widgets {
+            let module_id = widget.module_id();
+
+            if bridge.get_module_position(module_id).x >= 0 {
+                continue;
+            }
+
+            let scroll_offset = ui.clip_rect().min - ui.min_rect().min;
+            let first_visible_column = (scroll_offset.x.max(0.0) / GRID_CELL_SIZE).ceil() as i32;
+            let first_visible_row = (scroll_offset.y.max(0.0) / GRID_CELL_SIZE).ceil() as i32;
+            let GridVec { x: w, .. } = widget.grid_size();
+            let y = self
+                .column_bottom(bridge, first_visible_column, w, module_id)
+                .max(first_visible_row)
+                + 1;
+
+            bridge.set_module_position(
+                module_id,
+                GridVec {
+                    x: first_visible_column,
+                    y,
+                },
+            );
+            self.resolve_overlaps(module_id, bridge);
+        }
+    }
+
+    fn column_bottom(&self, bridge: &UiBridge, column: i32, width: i32, skip: ModuleId) -> i32 {
+        let mut bottom = 0;
+
+        for widget in &self.widgets {
+            let id = widget.module_id();
+
+            if skip == id {
+                continue;
+            }
+
+            let GridVec { x, y } = bridge.get_module_position(id);
+
+            if x < 0 {
+                continue;
+            }
+
+            let GridVec { x: w, y: h } = widget.grid_size();
+
+            if x < column + width && column < x + w {
+                bottom = bottom.max(y + h);
+            }
+        }
+
+        bottom
+    }
+
+    pub fn ui(&mut self, ui: &mut Ui, bridge: &mut UiBridge, selected_module_id: Option<ModuleId>) {
+        self.process_events(bridge);
+
         let content_size = self.calc_content_size(bridge);
         let dragging = self.widgets.iter().any(GridWidget::is_dragging)
             || self.widgets_state.wire_drag.is_some();
@@ -151,6 +221,8 @@ impl Grid {
             .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
             .auto_shrink([true, true])
             .show(ui, |ui| {
+                self.place_new_modules(ui, bridge);
+
                 let (response, painter) = ui.allocate_painter(grid_area, Sense::hover());
 
                 Self::paint_grid(&painter, painter.clip_rect(), response.rect.min);
@@ -158,21 +230,16 @@ impl Grid {
                 // Reserve a paint slot for the wires.
                 let wires = painter.add(Shape::Noop);
 
-                let (opened_module_id, moved_module_id) = {
-                    let mut ctx = WidgetCtx {
-                        bridge,
-                        state: &mut self.widgets_state,
-                        moved_module_id: None,
-                        selected_module_id,
-                        opened_module_id: None,
-                    };
-
-                    for widget in &mut self.widgets {
-                        widget.ui(ui, &mut ctx);
-                    }
-
-                    (ctx.opened_module_id, ctx.moved_module_id)
+                let mut ctx = WidgetCtx {
+                    bridge,
+                    state: &mut self.widgets_state,
+                    events: &mut self.events,
+                    selected_module_id,
                 };
+
+                for widget in &mut self.widgets {
+                    widget.ui(ui, &mut ctx);
+                }
 
                 painter.set(wires, Shape::Vec(self.build_wire_shapes()));
 
@@ -188,14 +255,7 @@ impl Grid {
                 {
                     painter.add(self.build_drag_wire_shape(drag, pointer));
                 }
-
-                if let Some(anchor) = moved_module_id {
-                    self.resolve_overlaps(anchor, bridge);
-                }
-
-                opened_module_id
-            })
-            .inner
+            });
     }
 
     fn calc_content_size(&self, bridge: &UiBridge) -> Vec2 {

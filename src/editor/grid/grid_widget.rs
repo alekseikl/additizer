@@ -6,7 +6,9 @@ use egui::{
 };
 
 use crate::{
-    editor::grid::{WidgetCtx, WireDragState, input_tooltip, select_input_popup::SelectInputPopup},
+    editor::grid::{
+        GridEvent, WidgetCtx, WireDragState, input_tooltip, select_input_popup::SelectInputPopup,
+    },
     synth_engine::{
         InputId, ModuleId, ModuleType,
         ui_bridge::{
@@ -23,7 +25,7 @@ const BLOCK_MARGIN: f32 = 3.0;
 
 const IO_STRIPE_W: f32 = 16.0;
 const INPUTS_PADDING: f32 = 4.0;
-const INPUTS_PER_CELL: i32 = 4;
+const INPUTS_PER_CELL: i32 = 2;
 const IO_SLOT_H: f32 = 16.0;
 const IO_DOT_SIZE: f32 = 8.0;
 const IO_DOT_SIZE_HOVER: f32 = 10.0;
@@ -213,7 +215,7 @@ impl GridWidget {
             );
             self.drag_offset = Vec2::ZERO;
             self.drag_grab = None;
-            ctx.moved_module_id = Some(self.io.id);
+            ctx.events.push(GridEvent::Moved(self.io.id));
         }
 
         self.link_request_ui(ui, ctx);
@@ -272,7 +274,7 @@ impl GridWidget {
             pos: req.pos,
         };
 
-        if popup.show(ui, ctx.bridge) {
+        if popup.show(ui, ctx) {
             self.link_request = None;
         }
     }
@@ -352,10 +354,7 @@ impl GridWidget {
 
     fn draw_output(&self, ui: &mut Ui, ctx: &mut WidgetCtx, height: f32) -> (Pos2, Pos2, Response) {
         let width = ui.available_width();
-        let (rect, hover) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
-        let drag_id = hover.id.with("output-drag");
-        let hit_rect = rect.expand(6.0);
-        let response = ui.interact(hit_rect, drag_id, Sense::click_and_drag());
+        let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::click_and_drag());
         let color = self.io.output_type.color();
 
         if response.double_clicked_by(PointerButton::Primary) {
@@ -501,7 +500,7 @@ impl GridWidget {
         }
 
         if response.clicked_by(PointerButton::Primary) {
-            ctx.opened_module_id = Some(self.io.id);
+            ctx.events.push(GridEvent::Selected(self.io.id));
         }
 
         if self.content.show_label() {

@@ -3,20 +3,19 @@ use std::sync::Arc;
 use egui::{CentralPanel, ComboBox, Frame, Id, Panel, ScrollArea, Ui, Vec2, vec2};
 use nih_plug::editor::Editor;
 use nih_plug_egui::{EguiState, create_egui_editor, resizable_window::ResizableWindow};
-use rustc_hash::FxHashMap;
 
 use crate::{
-    editor::modules_ui::{
-        AmplifierUI, EnvelopeUI, ExpressionsUi, ExternalParamUI, HarmonicEditorUI, LfoUi, MixerUi,
-        OscillatorUI, OutputUi, ParamsUi, SpectralBlendUi, SpectralFilterUI, SpectralMixerUi,
-        WaveShaperUi,
+    editor::{
+        grid::GridEvent,
+        modules_ui::{
+            AmplifierUI, EnvelopeUI, ExpressionsUi, ExternalParamUI, HarmonicEditorUI, LfoUi,
+            MixerUi, OscillatorUI, OutputUi, ParamsUi, SpectralBlendUi, SpectralFilterUI,
+            SpectralMixerUi, WaveShaperUi,
+        },
     },
     engine_factory::EngineFactory,
     synth_engine::{ModuleId, ModuleType, ui_bridge::UiBridge},
 };
-
-const DETAIL_PANEL_ID: &str = "grid-module-detail";
-const DETAIL_SCROLL_ID: &str = "grid-module-detail-scroll";
 
 mod db_slider;
 mod direct_input;
@@ -36,12 +35,6 @@ pub trait ModuleUi {
 }
 
 type ModuleUIBox = Box<dyn ModuleUi + Send>;
-
-#[derive(Clone, Copy, Default)]
-struct DetailLayoutState {
-    panel: Option<egui::PanelState>,
-    scroll: Option<egui::scroll_area::State>,
-}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum DetailViewKey {
@@ -63,7 +56,6 @@ struct EditorState {
     ui_bridge: UiBridge,
     grid_module_ui: Option<ModuleUIBox>,
     grid: grid::Grid,
-    detail_layout_by_key: FxHashMap<DetailViewKey, DetailLayoutState>,
 }
 
 impl EditorState {
@@ -76,55 +68,7 @@ impl EditorState {
             ui_bridge: bridge,
             grid_module_ui: None,
             grid: grid::Grid::new(),
-            detail_layout_by_key: FxHashMap::default(),
         }
-    }
-
-    fn set_detail_view(&mut self, ui: &Ui, panel: Option<ModuleUIBox>) {
-        let old_key = self.grid_module_ui.as_ref().map(DetailViewKey::from_view);
-        let new_key = panel.as_ref().map(DetailViewKey::from_view);
-
-        if old_key != new_key {
-            self.save_detail_layout(ui, old_key);
-            self.restore_detail_layout(ui, new_key);
-        }
-
-        self.grid_module_ui = panel;
-    }
-
-    fn save_detail_layout(&mut self, ui: &Ui, key: Option<DetailViewKey>) {
-        let Some(key) = key else {
-            return;
-        };
-
-        let panel_id = Id::new(DETAIL_PANEL_ID);
-        let scroll_id = Id::new(DETAIL_SCROLL_ID);
-        let state = DetailLayoutState {
-            panel: egui::PanelState::load(ui.ctx(), panel_id),
-            scroll: egui::scroll_area::State::load(ui.ctx(), scroll_id),
-        };
-
-        self.detail_layout_by_key.insert(key, state);
-    }
-
-    fn restore_detail_layout(&self, ui: &Ui, key: Option<DetailViewKey>) {
-        let panel_id = Id::new(DETAIL_PANEL_ID);
-        let scroll_id = Id::new(DETAIL_SCROLL_ID);
-        let state = key.and_then(|key| self.detail_layout_by_key.get(&key).copied());
-
-        ui.ctx().data_mut(|data| {
-            if let Some(panel) = state.and_then(|state| state.panel) {
-                data.insert_persisted(panel_id, panel);
-            } else {
-                data.remove::<egui::PanelState>(panel_id);
-            }
-
-            if let Some(scroll) = state.and_then(|state| state.scroll) {
-                data.insert_persisted(scroll_id, scroll);
-            } else {
-                data.remove::<egui::scroll_area::State>(scroll_id);
-            }
-        });
     }
 }
 
@@ -209,12 +153,10 @@ fn show_top_bar(ui: &mut Ui, editor_state: &mut EditorState) {
 
             if ui.selectable_label(showing_params, "Parameters").clicked() {
                 if showing_params {
-                    editor_state.set_detail_view(ui, None);
+                    editor_state.grid_module_ui = None;
                 } else {
-                    editor_state.set_detail_view(
-                        ui,
-                        Some(Box::new(ParamsUi::new(editor_state.engine_factory.clone()))),
-                    );
+                    editor_state.grid_module_ui =
+                        Some(Box::new(ParamsUi::new(editor_state.engine_factory.clone())));
                 }
             }
 
@@ -234,7 +176,7 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
         )
         .unwrap();
 
-        editor_state.set_detail_view(ui, None);
+        editor_state.grid_module_ui = None;
         editor_state.grid = grid::Grid::new();
     }
 
@@ -250,7 +192,13 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
         .and_then(|panel| panel.module_id())
         .is_some_and(|module_id| !editor_state.ui_bridge.has_module_id(module_id))
     {
-        editor_state.set_detail_view(ui, None);
+        editor_state.grid_module_ui = None;
+    }
+
+    for event in editor_state.grid.events() {
+        if let GridEvent::Selected(module_id) = event {
+            editor_state.grid_module_ui = module_ui_for_id(&editor_state.ui_bridge, *module_id);
+        }
     }
 
     show_top_bar(ui, editor_state);
@@ -260,15 +208,16 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
         .as_ref()
         .and_then(|panel| panel.module_id());
 
-    if editor_state.grid_module_ui.is_some() {
-        Panel::bottom(DETAIL_PANEL_ID)
+    if let Some(panel) = editor_state.grid_module_ui.as_ref() {
+        let detail_key = DetailViewKey::from_view(panel);
+
+        Panel::bottom(Id::new(("grid-module-detail", detail_key)))
             .resizable(true)
             .default_size(300.0)
             .min_size(80.0)
             .frame(Frame::default().inner_margin(8.0))
             .show_inside(ui, |ui| {
                 ScrollArea::vertical()
-                    .id_salt(DETAIL_SCROLL_ID)
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                         if let Some(module_ui) = &mut editor_state.grid_module_ui {
@@ -279,12 +228,9 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
     }
 
     CentralPanel::no_frame().show_inside(ui, |ui| {
-        if let Some(id) = editor_state
+        editor_state
             .grid
-            .ui(ui, &mut editor_state.ui_bridge, grid_selected_id)
-        {
-            editor_state.set_detail_view(ui, module_ui_for_id(&editor_state.ui_bridge, id));
-        }
+            .ui(ui, &mut editor_state.ui_bridge, grid_selected_id);
     });
 }
 
@@ -296,7 +242,9 @@ pub fn create_editor(
         Arc::clone(&egui_state),
         EditorState::new(factory),
         Default::default(),
-        |_egui_ctx, _queue, _editor_state| {},
+        |egui_ctx, _queue, _editor_state| {
+            egui_ctx.global_style_mut(|style| style.debug.warn_if_rect_changes_id = false);
+        },
         move |egui_ctx, _setter, _queue, editor_state| {
             ResizableWindow::new("res-wind")
                 .min_size(Vec2::new(640.0, 480.0))

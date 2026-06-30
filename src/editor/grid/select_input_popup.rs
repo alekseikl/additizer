@@ -4,10 +4,8 @@ use egui::{
     PopupKind, Pos2, Response, RichText, Sense, TextStyle, Ui, UiBuilder, vec2,
 };
 
-use crate::synth_engine::{
-    InputId, ModuleId,
-    ui_bridge::{LinkableInput, UiBridge},
-};
+use crate::editor::grid::{GridEvent, WidgetCtx};
+use crate::synth_engine::{InputId, ModuleId, ui_bridge::LinkableInput};
 
 const IO_DOT_SIZE: f32 = 8.0;
 const MENU_INDENT: f32 = 8.0;
@@ -28,8 +26,8 @@ pub struct SelectInputPopup {
 
 impl SelectInputPopup {
     /// Returns `true` if the link request should be cleared.
-    pub fn show(&self, ui: &mut Ui, bridge: &mut UiBridge) -> bool {
-        let inputs = bridge.get_linkable_inputs(self.src, self.dst);
+    pub fn show(&self, ui: &mut Ui, ctx: &mut WidgetCtx) -> bool {
+        let inputs = ctx.bridge.get_linkable_inputs(self.src, self.dst);
 
         if inputs.is_empty() {
             return true;
@@ -68,7 +66,8 @@ impl SelectInputPopup {
                     )
                     .clicked()
                     {
-                        bridge.create_link(self.src, input_id);
+                        ctx.bridge.create_link(self.src, input_id);
+                        ctx.events.push(GridEvent::Moved(self.dst));
                         ui.close();
                     }
                     row += 1;
@@ -87,7 +86,11 @@ impl SelectInputPopup {
                         )
                         .clicked()
                         {
-                            bridge.set_link_modulation(modulation.module_id, &input_id, self.src);
+                            ctx.bridge.set_link_modulation(
+                                modulation.module_id,
+                                &input_id,
+                                self.src,
+                            );
                             ui.close();
                         }
                         row += 1;

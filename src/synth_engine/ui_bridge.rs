@@ -523,13 +523,12 @@ impl UiBridge {
 
         let mut ui_config = self.ui_config.lock();
 
-        let grid_y = ui_config.modules.len() as i32;
         ui_config.modules.insert(
             id,
             UiModuleConfig {
                 id,
-                label: format!("{label} {id}"),
-                position: GridVec { x: 1, y: grid_y },
+                label: label.into(),
+                position: GridVec { x: -1, y: 0 },
             },
         );
 
