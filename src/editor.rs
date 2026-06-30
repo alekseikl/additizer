@@ -25,6 +25,7 @@ mod grid;
 mod modulation_input;
 mod module_label;
 mod modules_ui;
+mod routing_ui_ext;
 mod stereo_slider;
 mod utils;
 mod waveform;

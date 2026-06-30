@@ -1,18 +1,14 @@
-use rustc_hash::FxHasher;
-use std::hash::{Hash, Hasher};
-
 use egui::{
-    Align, Area, Color32, Id, Label, LayerId, Layout, Modal, Order, PointerButton, Pos2, Rect,
-    Response, Sense, Stroke, Ui, UiBuilder, Vec2,
-    ecolor::Hsva,
+    Align, Color32, Id, Label, LayerId, Layout, Order, PointerButton, Pos2, Rect, Response, Sense,
+    Stroke, Ui, UiBuilder, Vec2,
     emath::{self, GuiRounding},
     lerp, vec2,
 };
 
 use crate::{
-    editor::grid::{WidgetCtx, WireDragState},
+    editor::grid::{WidgetCtx, WireDragState, select_input_popup::SelectInputPopup},
     synth_engine::{
-        DataType, Input, InputId, ModuleId, ModuleType,
+        InputId, ModuleId, ModuleType,
         ui_bridge::{
             GridVec,
             routing_state::{ModuleInput, ModuleIo},
@@ -40,41 +36,6 @@ pub trait GridWidgetContent: Send {
         true
     }
     fn ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx, module_id: ModuleId);
-}
-
-impl Input {
-    fn hue(self) -> f32 {
-        let mut hasher = FxHasher::default();
-
-        self.hash(&mut hasher);
-        hasher.finish() as f32 / u64::MAX as f32
-    }
-
-    fn color(self) -> Color32 {
-        Color32::from(Hsva {
-            h: self.hue(),
-            s: 0.8,
-            v: 0.5,
-            a: 1.0,
-        })
-    }
-}
-
-impl DataType {
-    fn color(self) -> Color32 {
-        let h = match self {
-            DataType::Audio => 0.58,
-            DataType::Control => 0.36,
-            DataType::Spectral => 0.84,
-        };
-
-        Color32::from(Hsva {
-            h,
-            s: 0.8,
-            v: 0.5,
-            a: 1.0,
-        })
-    }
 }
 
 pub struct EmptyContent {}
@@ -305,53 +266,13 @@ impl GridWidget {
             return;
         };
 
-        let src = req.module_id;
-        let dst = self.io.id;
-        let inputs = ctx.bridge.get_linkable_inputs(src, dst);
+        let popup = SelectInputPopup {
+            src: req.module_id,
+            dst: self.io.id,
+            pos: req.pos,
+        };
 
-        if inputs.is_empty() {
-            self.link_request = None;
-            return;
-        }
-
-        let menu_id = Id::new("wire-link-menu");
-
-        let modal = Modal::new(menu_id)
-            .backdrop_color(Color32::TRANSPARENT)
-            .area(
-                Area::new(menu_id)
-                    .fixed_pos(req.pos)
-                    .order(Order::Foreground)
-                    .kind(egui::UiKind::Popup),
-            )
-            .show(ui.ctx(), |ui| {
-                ui.label("Connect to:");
-                ui.separator();
-                for input in &inputs {
-                    let input_id = InputId::new(input.input_type, dst);
-
-                    if ui.button(format!("{:?}", input.input_type)).clicked() {
-                        ctx.bridge.create_link(src, input_id);
-                        ui.close();
-                    }
-
-                    for modulation in &input.modulations {
-                        ui.horizontal(|ui| {
-                            ui.add_space(16.0);
-                            if ui.button(&modulation.label).clicked() {
-                                ctx.bridge.set_link_modulation(
-                                    modulation.module_id,
-                                    &input_id,
-                                    src,
-                                );
-                                ui.close();
-                            }
-                        });
-                    }
-                }
-            });
-
-        if modal.should_close() {
+        if popup.show(ui, ctx.bridge) {
             self.link_request = None;
         }
     }

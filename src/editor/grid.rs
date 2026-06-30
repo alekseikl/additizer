@@ -16,6 +16,7 @@ use crate::{
 };
 
 mod grid_widget;
+mod select_input_popup;
 
 const GRID_CELL_SIZE: f32 = 40.0;
 const C_GRID: Color32 = Color32::from_rgb(52, 52, 52);
