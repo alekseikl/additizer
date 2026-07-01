@@ -1,4 +1,9 @@
-use crate::synth_engine::{Input, Sample, StereoSample, oscillator::PhasesDst};
+use triple_buffer::triple_buffer;
+
+use crate::synth_engine::{
+    Input, Sample, StereoSample,
+    oscillator::{PhasesDst, WAVEFORM_SIZE},
+};
 
 pub enum UiEvent {
     InputParam {
@@ -44,14 +49,20 @@ pub enum UiUpdate {
     RefreshState,
 }
 
+pub const DISPLAY_WAVEFORM_SIZE: usize = WAVEFORM_SIZE + 1;
+
+pub type DisplayWaveform = [Sample; DISPLAY_WAVEFORM_SIZE];
+
 pub struct UiEnd {
     rx: rtrb::Consumer<UiUpdate>,
     tx: rtrb::Producer<UiEvent>,
+    waveform: triple_buffer::Output<Box<DisplayWaveform>>,
 }
 
 impl UiEnd {
-    pub fn new(rx: rtrb::Consumer<UiUpdate>, tx: rtrb::Producer<UiEvent>) -> Self {
-        Self { rx, tx }
+    pub fn get_waveform(&mut self) -> &DisplayWaveform {
+        self.waveform.update();
+        self.waveform.output_buffer()
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
@@ -128,13 +139,10 @@ impl UiEnd {
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
     tx: rtrb::Producer<UiUpdate>,
+    waveform: triple_buffer::Input<Box<DisplayWaveform>>,
 }
 
 impl AudioEnd {
-    pub fn new(rx: rtrb::Consumer<UiEvent>, tx: rtrb::Producer<UiUpdate>) -> Self {
-        Self { rx, tx }
-    }
-
     pub fn pop_event(&mut self) -> Option<UiEvent> {
         self.rx.pop().ok()
     }
@@ -142,14 +150,28 @@ impl AudioEnd {
     pub fn push_refresh_state(&mut self) -> bool {
         self.tx.push(UiUpdate::RefreshState).is_ok()
     }
+
+    pub fn update_waveform(&mut self, wf: &[Sample]) {
+        self.waveform.input_buffer_mut().copy_from_slice(wf);
+        self.waveform.publish();
+    }
 }
 
 pub fn create_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(512);
     let (to_ui_tx, from_audio_rx) = rtrb::RingBuffer::<UiUpdate>::new(128);
+    let (waveform_input, waveform_output) = triple_buffer(&Box::new([0.0; DISPLAY_WAVEFORM_SIZE]));
 
     (
-        AudioEnd::new(from_ui_rx, to_ui_tx),
-        UiEnd::new(from_audio_rx, to_audio_tx),
+        AudioEnd {
+            rx: from_ui_rx,
+            tx: to_ui_tx,
+            waveform: waveform_input,
+        },
+        UiEnd {
+            rx: from_audio_rx,
+            tx: to_audio_tx,
+            waveform: waveform_output,
+        },
     )
 }

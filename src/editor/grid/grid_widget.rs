@@ -7,7 +7,8 @@ use egui::{
 
 use crate::{
     editor::grid::{
-        GridEvent, WidgetCtx, WireDragState, input_tooltip, select_input_popup::SelectInputPopup,
+        GridEvent, WidgetCtx, WireDragState, grid_widget::oscillator_widget::OscillatorWidget,
+        input_tooltip, select_input_popup::SelectInputPopup,
     },
     synth_engine::{
         InputId, ModuleId, ModuleType,
@@ -17,6 +18,8 @@ use crate::{
         },
     },
 };
+
+mod oscillator_widget;
 
 const C_MOD_BG: Color32 = Color32::from_rgb(28, 30, 42);
 const C_MOD_BG_SELECTED: Color32 = Color32::from_rgb(40, 42, 54);
@@ -33,20 +36,20 @@ const WIRE_THICKNESS: f32 = 2.0;
 const C_INPUT_STRIPE_HOVER: Color32 = Color32::from_rgb(52, 54, 68);
 
 pub trait GridWidgetContent: Send {
-    fn grid_size(&self) -> GridVec;
+    fn grid_size(&self) -> GridVec {
+        GridVec::new(4, 2)
+    }
+
     fn show_label(&self) -> bool {
         true
     }
+
     fn ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx, module_id: ModuleId);
 }
 
 pub struct EmptyContent {}
 
 impl GridWidgetContent for EmptyContent {
-    fn grid_size(&self) -> GridVec {
-        GridVec::new(4, 2)
-    }
-
     fn ui(&mut self, _ui: &mut Ui, _ctx: &mut WidgetCtx, _module_id: ModuleId) {}
 }
 
@@ -101,6 +104,7 @@ impl GridWidget {
         Self {
             io,
             content: match module_type {
+                ModuleType::Oscillator => Box::new(OscillatorWidget {}),
                 ModuleType::Output => Box::new(OutputContent {}),
                 _ => Box::new(EmptyContent {}),
             },

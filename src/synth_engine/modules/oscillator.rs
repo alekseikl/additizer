@@ -539,9 +539,14 @@ impl Oscillator {
         self.audio_end.push_refresh_state();
     }
 
-    #[inline(always)]
+    #[inline]
     fn get_wave_slice_mut(wave_buff: &mut WaveformBuffer) -> &mut [Sample] {
         &mut wave_buff[WAVEFORM_PAD_LEFT..(WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT)]
+    }
+
+    #[inline]
+    fn get_display_wave_slice(wave_buff: &WaveformBuffer) -> &[Sample] {
+        &wave_buff[WAVEFORM_PAD_LEFT..(WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT + 1)]
     }
 
     #[inline(always)]
@@ -900,6 +905,11 @@ impl Oscillator {
         } else {
             (&voice_buffers.wave_buffers.1, &voice_buffers.wave_buffers.0)
         };
+
+        if router.need_update_ui() {
+            self.audio_end
+                .update_waveform(Self::get_display_wave_slice(wave_from));
+        }
 
         Self::process_unison(self.params.unison, channel, inputs, voice, &mut router);
         Self::process_glide(channel, inputs, buffers, voice, &mut router);

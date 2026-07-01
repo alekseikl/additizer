@@ -1,57 +1,44 @@
-use egui::{
-    Color32, Mesh, Painter, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Vec2,
-};
+use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke};
 
-pub const WAVEFORM_LEN: usize = 2048;
+pub const WAVEFORM_LEN: usize = 2049;
 pub type WaveformBuffer = [f32; WAVEFORM_LEN];
 
-// Vital default skin (default.vitalskin).
-const BG_COLOR: Color32 = Color32::from_rgb(0x1d, 0x21, 0x25);
-const STROKE_COLOR: Color32 = Color32::from_rgb(0xaa, 0x88, 0xff);
-const LINE_WIDTH: f32 = 2.0;
+// pub static ZERO_WAVEFORM: WaveformBuffer = [0.0; WAVEFORM_LEN];
+
+const STROKE_COLOR: Color32 = Color32::from_rgb(0xff, 0xb0, 0x00);
+const LINE_WIDTH: f32 = 1.0;
 
 fn fill_top_color() -> Color32 {
-    Color32::from_rgba_unmultiplied(0x9f, 0x88, 0xff, 0x47)
+    Color32::from_rgba_unmultiplied(0xff, 0xb0, 0x00, 0x47)
 }
 
 fn fill_center_color() -> Color32 {
-    Color32::from_rgba_unmultiplied(0x9f, 0x88, 0xff, 0x66)
+    Color32::from_rgba_unmultiplied(0xff, 0xb0, 0x00, 0x66)
 }
 
-/// Display options aligned with Vital's `WaveSourceEditor` / oscilloscope widgets.
 #[derive(Clone, Copy, Debug)]
 pub struct WaveformOptions {
-    /// Connect the last sample back to the first, as Vital does for wavetable frames.
     pub loop_closed: bool,
-    /// Clamp samples to ±1.0 before mapping (Vital's wavetable editor range).
-    pub clamp_amplitude: bool,
+    pub normalize: bool,
 }
 
 impl Default for WaveformOptions {
     fn default() -> Self {
         Self {
-            loop_closed: true,
-            clamp_amplitude: true,
+            loop_closed: false,
+            normalize: true,
         }
     }
 }
 
-fn clamp_sample(sample: f32, clamp_amplitude: bool) -> f32 {
-    if clamp_amplitude {
-        sample.clamp(-1.0, 1.0)
-    } else {
-        sample
-    }
-}
-
 /// Linearly interpolate `waveform` at normalized position `t` in `[0, 1]`.
-fn sample_at(waveform: &WaveformBuffer, t: f32, clamp_amplitude: bool) -> f32 {
+fn sample_at(waveform: &WaveformBuffer, t: f32) -> f32 {
     let last = waveform.len() - 1;
     let pos = t * last as f32;
     let index = pos.floor() as usize;
     let frac = pos - index as f32;
-    let from = clamp_sample(waveform[index], clamp_amplitude);
-    let to = clamp_sample(waveform[index.saturating_add(1).min(last)], clamp_amplitude);
+    let from = waveform[index];
+    let to = waveform[index.saturating_add(1).min(last)];
     from + (to - from) * frac
 }
 
@@ -59,18 +46,35 @@ fn sample_to_y(rect: Rect, sample: f32) -> f32 {
     rect.center().y - sample * rect.height() * 0.5
 }
 
-fn build_curve_points(rect: Rect, waveform: &WaveformBuffer, options: WaveformOptions) -> Vec<Pos2> {
+fn build_curve_points(rect: Rect, waveform: &WaveformBuffer) -> Vec<Pos2> {
     let columns = rect.width().ceil().max(2.0) as usize;
     let mut points = Vec::with_capacity(columns);
 
     for column in 0..columns {
         let t = column as f32 / (columns - 1) as f32;
         let x = rect.left() + t * rect.width();
-        let y = sample_to_y(rect, sample_at(waveform, t, options.clamp_amplitude));
+        let y = sample_to_y(rect, sample_at(waveform, t));
         points.push(Pos2::new(x, y));
     }
 
     points
+}
+
+/// Scale the curve's vertical deviation from the center so its peak fills the view.
+fn normalize_points(rect: Rect, points: &mut [Pos2]) {
+    let center_y = rect.center().y;
+    let peak = points
+        .iter()
+        .fold(0.0_f32, |acc, p| acc.max((p.y - center_y).abs()));
+
+    if peak <= 1e-6 {
+        return;
+    }
+
+    let scale = rect.height() * 0.5 / peak;
+    for p in points.iter_mut() {
+        p.y = center_y + (p.y - center_y) * scale;
+    }
 }
 
 fn paint_fill(painter: &Painter, rect: Rect, points: &[Pos2], options: WaveformOptions) {
@@ -128,13 +132,10 @@ fn paint_stroke(painter: &Painter, points: &[Pos2], options: WaveformOptions) {
     }
 }
 
-/// Paints a single-cycle waveform in Vital's wavetable style:
-/// fixed ±1 amplitude, linear interpolation, center-line fill, and lavender stroke.
 pub fn paint_waveform(painter: &Painter, rect: Rect, waveform: &WaveformBuffer) {
     paint_waveform_with_options(painter, rect, waveform, WaveformOptions::default());
 }
 
-/// Paints a waveform with explicit Vital-style options.
 pub fn paint_waveform_with_options(
     painter: &Painter,
     rect: Rect,
@@ -145,42 +146,24 @@ pub fn paint_waveform_with_options(
         return;
     }
 
-    painter.rect_filled(rect, 0.0, BG_COLOR);
     painter.hline(
         rect.x_range(),
         rect.center().y,
         Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, 32)),
     );
 
-    let points = build_curve_points(rect, waveform, options);
+    let mut points = build_curve_points(rect, waveform);
+    if options.normalize {
+        normalize_points(rect, &mut points);
+    }
     paint_fill(painter, rect, &points, options);
     paint_stroke(painter, &points, options);
-}
-
-/// Allocates space in the layout and paints `waveform` into it.
-pub fn draw_waveform(ui: &mut Ui, waveform: &WaveformBuffer, desired_size: Vec2) -> Response {
-    draw_waveform_with_options(ui, waveform, desired_size, WaveformOptions::default())
-}
-
-/// Allocates space in the layout and paints `waveform` with explicit options.
-pub fn draw_waveform_with_options(
-    ui: &mut Ui,
-    waveform: &WaveformBuffer,
-    desired_size: Vec2,
-    options: WaveformOptions,
-) -> Response {
-    let response = ui.allocate_response(desired_size, Sense::hover());
-
-    if ui.is_rect_visible(response.rect) {
-        paint_waveform_with_options(ui.painter(), response.rect, waveform, options);
-    }
-
-    response
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use egui::Vec2;
 
     #[test]
     fn sample_at_endpoints_match_buffer() {
@@ -188,8 +171,24 @@ mod tests {
         waveform[0] = 1.0;
         waveform[WAVEFORM_LEN - 1] = -1.0;
 
-        let options = WaveformOptions::default();
-        assert!((sample_at(&waveform, 0.0, options.clamp_amplitude) - 1.0).abs() < f32::EPSILON);
-        assert!((sample_at(&waveform, 1.0, options.clamp_amplitude) + 1.0).abs() < f32::EPSILON);
+        assert!((sample_at(&waveform, 0.0) - 1.0).abs() < f32::EPSILON);
+        assert!((sample_at(&waveform, 1.0) + 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn normalizes_points_to_fill_height() {
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(4.0, 100.0));
+        let center_y = rect.center().y;
+        let mut points = vec![
+            Pos2::new(0.0, center_y - 10.0),
+            Pos2::new(1.0, center_y + 20.0),
+            Pos2::new(2.0, center_y - 5.0),
+        ];
+
+        normalize_points(rect, &mut points);
+
+        // The peak deviation (20.0) should now reach half the height (50.0).
+        assert!((points[1].y - (center_y + 50.0)).abs() < f32::EPSILON);
+        assert!((points[0].y - (center_y - 25.0)).abs() < f32::EPSILON);
     }
 }

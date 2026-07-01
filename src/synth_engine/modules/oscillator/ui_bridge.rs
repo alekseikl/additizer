@@ -3,7 +3,8 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 
 use crate::synth_engine::{
-    Input, ModuleHandle, ModuleId, Sample, StereoSample, SynthEngine, synth_module::ModuleUiBridge,
+    Input, ModuleHandle, ModuleId, Sample, StereoSample, SynthEngine,
+    oscillator::link::DisplayWaveform, synth_module::ModuleUiBridge,
 };
 
 use super::{
@@ -42,6 +43,10 @@ impl OscillatorUiBridge {
 
     pub fn config(&self) -> &OscillatorConfig {
         &self.config
+    }
+
+    pub fn get_waveform(&mut self) -> &DisplayWaveform {
+        self.ui_end.get_waveform()
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {

@@ -136,6 +136,10 @@ impl<'v, 'f, 'c, S: RouterDataType> VoiceRouter<'v, 'f, 'c, S> {
         self.voice_idx
     }
 
+    pub fn need_update_ui(&self) -> bool {
+        self.seq_idx == 0 && self.channel_idx == 0 && self.factory.params().needs_update_ui
+    }
+
     fn buff_impl(&mut self, slot: Option<usize>) -> &[Sample] {
         self.factory
             .ctx
