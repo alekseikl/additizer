@@ -242,8 +242,9 @@ pub fn create_editor(
         Arc::clone(&egui_state),
         EditorState::new(factory),
         Default::default(),
-        |egui_ctx, _queue, _editor_state| {
-            egui_ctx.global_style_mut(|style| style.debug.warn_if_rect_changes_id = false);
+        |_egui_ctx, _queue, _editor_state| {
+            #[cfg(debug_assertions)]
+            _egui_ctx.global_style_mut(|style| style.debug.warn_if_rect_changes_id = false);
         },
         move |egui_ctx, _setter, _queue, editor_state| {
             ResizableWindow::new("res-wind")
