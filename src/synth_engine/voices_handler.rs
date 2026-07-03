@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{cmp::Reverse, collections::VecDeque};
 
 use nih_plug::nih_log;
 use smallvec::SmallVec;
@@ -32,11 +32,13 @@ struct PlayingNote {
     id: NoteId,
     voice_idx: VoiceIdx,
     velocity: u8,
+    seq_idx: u32,
 }
 
 struct ReleasingNote {
     id: NoteId,
     voice_idx: VoiceIdx,
+    seq_idx: u32,
 }
 
 pub struct DecayingVoice {
@@ -157,6 +159,7 @@ pub struct VoicesHandler {
     releasing_notes: VecDeque<ReleasingNote>,
     killing_voices: VecDeque<VoiceIdx>,
     free_voices: SmallVec<[VoiceIdx; MAX_VOICES]>,
+    seq_idx: u32,
 }
 
 impl VoicesHandler {
@@ -169,6 +172,7 @@ impl VoicesHandler {
             releasing_notes: VecDeque::with_capacity(MAX_VOICES),
             killing_voices: VecDeque::with_capacity(MAX_VOICES),
             free_voices: SmallVec::from_iter((0..(MAX_VOICES as u8)).rev()),
+            seq_idx: 0,
         }
     }
 
@@ -207,7 +211,9 @@ impl VoicesHandler {
             id: note,
             voice_idx,
             velocity,
+            seq_idx: self.seq_idx,
         });
+        self.seq_idx = self.seq_idx.wrapping_add(1);
         events.restart(voice_idx, prev_voice_idx, note, velocity);
     }
 
@@ -222,7 +228,9 @@ impl VoicesHandler {
             id: note_id,
             voice_idx,
             velocity,
+            seq_idx: self.seq_idx,
         });
+        self.seq_idx = self.seq_idx.wrapping_add(1);
         events.update(voice_idx, note_id, velocity);
     }
 
@@ -401,6 +409,7 @@ impl VoicesHandler {
         self.releasing_notes.push_front(ReleasingNote {
             id: playing.id,
             voice_idx: playing.voice_idx,
+            seq_idx: playing.seq_idx,
         });
         events.release(playing.voice_idx, velocity);
 
@@ -506,8 +515,23 @@ impl VoicesHandler {
     }
 
     pub fn get_playing_voices(&mut self, playing_voices: &mut PlayingVoices) {
-        playing_voices.extend(self.playing_notes.iter().map(|p| p.voice_idx as usize));
-        playing_voices.extend(self.releasing_notes.iter().map(|r| r.voice_idx as usize));
+        // Latest voice should be first in array
+        let mut playing_and_releasing: SmallVec<[(u8, u32); MAX_VOICES]> = SmallVec::new();
+
+        playing_and_releasing.extend(self.playing_notes.iter().map(|p| (p.voice_idx, p.seq_idx)));
+        playing_and_releasing.extend(
+            self.releasing_notes
+                .iter()
+                .map(|p| (p.voice_idx, p.seq_idx)),
+        );
+
+        playing_and_releasing.sort_unstable_by_key(|&(_, seq_idx)| Reverse(seq_idx));
+
+        playing_voices.extend(
+            playing_and_releasing
+                .iter()
+                .map(|&(voice_idx, _)| voice_idx as usize),
+        );
         playing_voices.extend(self.killing_voices.iter().map(|k| *k as usize));
     }
 }
