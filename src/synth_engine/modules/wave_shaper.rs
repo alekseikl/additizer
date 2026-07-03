@@ -12,7 +12,7 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::WaveShaperUiBridge;
 
 use crate::synth_engine::{
-    StereoSample,
+    SmoothedSampleParams, StereoSample,
     buffer::{Buffer, VoicesLayout, zero_buffer},
     routing::{
         AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
@@ -45,6 +45,11 @@ impl ChannelParams {
             distortion: c.distortion[channel_idx].into(),
             clipping_level: c.clipping_level[channel_idx].into(),
         }
+    }
+
+    pub fn advance_smoothers(&mut self, smooth_params: &SmoothedSampleParams, samples: usize) {
+        self.distortion.advance(smooth_params, samples);
+        self.clipping_level.advance(smooth_params, samples);
     }
 }
 
@@ -248,6 +253,9 @@ impl SynthModule for WaveShaper {
 
                     self.process_voice(output, router.for_voice(channel_idx, voice_idx, seq_idx));
                 }
+
+                self.channel_params[channel_idx]
+                    .advance_smoothers(&router.params().smooth_params, router.params().samples);
             }
         });
     }

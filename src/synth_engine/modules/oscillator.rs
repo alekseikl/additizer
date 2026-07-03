@@ -9,7 +9,7 @@ use wide::f32x4;
 
 use crate::{
     synth_engine::{
-        StereoSample,
+        SmoothedSampleParams, StereoSample,
         buffer::{
             Buffer, SPECTRUM_BITS, SpectralBuffer, VoicesLayout, add_buffer_value,
             new_voices_layout, zero_buffer,
@@ -127,6 +127,13 @@ impl ChannelParams {
                 gain_to: c.unison[i].gain_to[channel_idx],
             }),
         }
+    }
+
+    pub fn advance_smoothers(&mut self, smooth_params: &SmoothedSampleParams, samples: usize) {
+        self.gain.advance(smooth_params, samples);
+        self.pitch_shift.advance(smooth_params, samples);
+        self.phase_shift.advance(smooth_params, samples);
+        self.frequency_shift.advance(smooth_params, samples);
     }
 }
 
@@ -1122,6 +1129,9 @@ impl SynthModule for Oscillator {
                         router.for_voice(channel_idx, voice_idx, seq_idx),
                     );
                 }
+
+                self.channel_params[channel_idx]
+                    .advance_smoothers(&router.params().smooth_params, router.params().samples);
             }
         });
     }

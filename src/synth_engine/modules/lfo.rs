@@ -11,7 +11,7 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::LfoUiBridge;
 
 use crate::synth_engine::{
-    Input, ModuleId, Sample, StereoSample,
+    Input, ModuleId, Sample, SmoothedSampleParams, StereoSample,
     buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
     phase::Phase,
     routing::{
@@ -37,6 +37,12 @@ impl ChannelParams {
             skew: c.skew[channel_idx].into(),
             smooth_time: c.smooth_time[channel_idx],
         }
+    }
+
+    pub fn advance_smoothers(&mut self, smooth_params: &SmoothedSampleParams, samples: usize) {
+        self.frequency.advance(smooth_params, samples);
+        self.phase_shift.advance(smooth_params, samples);
+        self.skew.advance(smooth_params, samples);
     }
 }
 
@@ -385,6 +391,9 @@ impl SynthModule for Lfo {
 
                     self.process_voice(output, router.for_voice(channel_idx, voice_idx, seq_idx));
                 }
+
+                self.channel_params[channel_idx]
+                    .advance_smoothers(&router.params().smooth_params, router.params().samples);
             }
         });
     }

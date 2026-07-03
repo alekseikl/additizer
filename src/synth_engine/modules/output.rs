@@ -190,6 +190,10 @@ impl SynthModule for Output {
 
         if num_active_voices == 0 {
             self.output.iter_mut().for_each(|output| output.fill(0.0));
+            // Advance gain parameter smoother
+            self.gain
+                .iter_mut()
+                .for_each(|gain| gain.advance(&rf.params().smooth_params, rf.params().samples));
             return;
         }
 
@@ -268,6 +272,9 @@ impl SynthModule for Output {
                     samples,
                 );
             }
+
+            // Advance gain parameter smoother
+            gain.advance(&rf.params().smooth_params, rf.params().samples);
         }
     }
 }

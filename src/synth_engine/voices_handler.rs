@@ -272,6 +272,8 @@ impl VoicesHandler {
     }
 
     fn note_on_polyphonic(&mut self, new_note: NoteId, velocity: u8, events: &mut VoiceEvents) {
+        let mut prev_voice_idx = None;
+
         // Kill same releasing note
         if let Some(idx) = self
             .releasing_notes
@@ -281,6 +283,7 @@ impl VoicesHandler {
             let voice_idx = self.releasing_notes.remove(idx).unwrap().voice_idx;
 
             self.kill_voice(voice_idx, events);
+            prev_voice_idx = Some(voice_idx);
         }
 
         // All available voices have been occupied, kill the oldest one
@@ -307,7 +310,7 @@ impl VoicesHandler {
             self.kill_voice(voice_idx, events);
         }
 
-        self.grab_and_restart_voice(None, new_note, velocity, events);
+        self.grab_and_restart_voice(prev_voice_idx, new_note, velocity, events);
     }
 
     fn note_on_impl(&mut self, channel: u8, note: u8, velocity: u8, events: &mut VoiceEvents) {

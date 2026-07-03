@@ -47,40 +47,55 @@ impl SmoothedSample {
         self.steps = 0;
     }
 
-    pub fn check_needs_smoothing(&mut self, params: &SmoothedSampleParams) -> bool {
-        let need = self.steps < params.smooth_steps;
+    pub fn check_needs_smoothing(&self, params: &SmoothedSampleParams) -> bool {
+        self.steps < params.smooth_steps
+    }
 
-        if !need {
+    pub fn advance(&mut self, params: &SmoothedSampleParams, samples: usize) {
+        if self.steps < params.smooth_steps {
+            // Instead of sharing smoothing result across voices via buffer - calculate it again
+            // for every voice and at the advance stage.
+            // Since this is a rare operation initiated by the UI, it wont't hurt performance.
+            let rev_smooth_mult = 1.0 - params.smooth_mult;
+
+            for _ in 0..samples {
+                self.prev_value = self
+                    .value
+                    .mul_add(rev_smooth_mult, self.prev_value * params.smooth_mult);
+            }
+
+            self.steps = self.steps.wrapping_add(samples as u32);
+        } else {
+            // Set u32::MAX to indicate for set() method that smoothing has been finished
             self.steps = u32::MAX;
         }
-
-        need
     }
 
-    pub fn smoothed_buff(&mut self, buff: &mut [Sample], params: &SmoothedSampleParams) {
+    pub fn smoothed_buff(&self, buff: &mut [Sample], params: &SmoothedSampleParams) {
         let rev_smooth_mult = 1.0 - params.smooth_mult;
+        let mut prev_value = self.prev_value;
 
         for out in buff.iter_mut() {
-            self.prev_value = self
+            prev_value = self
                 .value
-                .mul_add(rev_smooth_mult, self.prev_value * params.smooth_mult);
-            *out = self.prev_value;
+                .mul_add(rev_smooth_mult, prev_value * params.smooth_mult);
+            *out = prev_value;
         }
-
-        self.steps = self.steps.wrapping_add(buff.len() as u32);
     }
 
-    pub fn smoothed_iter(&mut self, params: &SmoothedSampleParams) -> SmoothedSampleIter<'_> {
+    pub fn smoothed_iter(&self, params: &SmoothedSampleParams) -> SmoothedSampleIter<'_> {
         SmoothedSampleIter {
             smoother: self,
             smooth_mult: params.smooth_mult,
+            prev_value: self.prev_value,
         }
     }
 }
 
 pub struct SmoothedSampleIter<'a> {
-    smoother: &'a mut SmoothedSample,
+    smoother: &'a SmoothedSample,
     smooth_mult: Sample,
+    prev_value: Sample,
 }
 
 impl Iterator for SmoothedSampleIter<'_> {
@@ -88,12 +103,11 @@ impl Iterator for SmoothedSampleIter<'_> {
 
     #[inline(always)]
     fn next(&mut self) -> Option<Sample> {
-        self.smoother.prev_value = self.smoother.value.mul_add(
-            1.0 - self.smooth_mult,
-            self.smoother.prev_value * self.smooth_mult,
-        );
-        self.smoother.steps = self.smoother.steps.wrapping_add(1);
-        Some(self.smoother.prev_value)
+        self.prev_value = self
+            .smoother
+            .value
+            .mul_add(1.0 - self.smooth_mult, self.prev_value * self.smooth_mult);
+        Some(self.prev_value)
     }
 }
 

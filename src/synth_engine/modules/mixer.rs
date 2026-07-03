@@ -11,7 +11,7 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::MixerUiBridge;
 
 use crate::synth_engine::{
-    StereoSample,
+    SmoothedSampleParams, StereoSample,
     buffer::{Buffer, VoicesLayout, copy_or_add_to_buffer, zero_buffer},
     routing::{
         AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
@@ -45,6 +45,16 @@ impl ChannelParams {
             output_level: c.output_level[channel_idx].into(),
             output_gain: c.output_gain[channel_idx].into(),
         }
+    }
+
+    pub fn advance_smoothers(&mut self, smooth_params: &SmoothedSampleParams, samples: usize) {
+        for input in &mut self.input_params {
+            input.level.advance(smooth_params, samples);
+            input.gain.advance(smooth_params, samples);
+        }
+
+        self.output_level.advance(smooth_params, samples);
+        self.output_gain.advance(smooth_params, samples);
     }
 }
 
@@ -431,6 +441,9 @@ impl SynthModule for Mixer {
 
                     self.process_voice(output, router.for_voice(channel_idx, voice_idx, seq_idx));
                 }
+
+                self.channel_params[channel_idx]
+                    .advance_smoothers(&router.params().smooth_params, router.params().samples);
             }
         });
     }
