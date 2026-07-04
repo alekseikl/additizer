@@ -442,6 +442,21 @@ impl UiBridge {
         }
     }
 
+    pub fn apply_modulation(
+        &self,
+        module_id: ModuleId,
+        input: Input,
+        param: &mut StereoSample,
+    ) {
+        if let Some(modulated) = self.get_input_modulated_value(InputId::new(input, module_id)) {
+            *param = if modulated.is_stereo {
+                modulated.value
+            } else {
+                StereoSample::splat(modulated.value.left())
+            };
+        }
+    }
+
     fn is_linkable_input(
         &self,
         src: ModuleId,

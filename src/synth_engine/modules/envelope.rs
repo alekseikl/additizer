@@ -69,6 +69,18 @@ impl ChannelParams {
     }
 }
 
+#[derive(Clone, Copy, Default)]
+pub enum EnvelopePhase {
+    Delay(Sample),
+    Attack(Sample),
+    Hold(Sample),
+    Decay(Sample),
+    Sustain,
+    Release(Sample),
+    #[default]
+    Done,
+}
+
 enum CurveBlockResult {
     HasMore,
     Done,
@@ -77,6 +89,7 @@ enum CurveBlockResult {
 struct CurveIter {
     curve_fn: Exponential,
     t: Sample,
+    phase: Sample, // t normalized to stage time
     value_from: Sample,
     interval: Sample,
 }
@@ -88,6 +101,7 @@ impl CurveIter {
         Self {
             curve_fn: Exponential::new(curvature),
             t: 0.0,
+            phase: 0.0,
             value_from: from,
             interval: to - from,
         }
@@ -123,6 +137,7 @@ impl CurveIter {
         }
 
         *sample_from += samples;
+        self.phase = self.t * time_recip;
 
         if samples < output.len() {
             CurveBlockResult::Done
@@ -141,6 +156,21 @@ enum Stage {
     Release(CurveIter),
     Flush(CurveIter),
     Done,
+}
+
+impl Stage {
+    fn phase(&self) -> EnvelopePhase {
+        match self {
+            Self::Delay(iter) => EnvelopePhase::Delay(iter.phase),
+            Self::Attack(iter) => EnvelopePhase::Attack(iter.phase),
+            Self::Hold(iter) => EnvelopePhase::Hold(iter.phase),
+            Self::Decay(iter) => EnvelopePhase::Decay(iter.phase),
+            Self::Sustain => EnvelopePhase::Sustain,
+            Self::Release(iter) => EnvelopePhase::Release(iter.phase),
+            Self::Flush(_) => EnvelopePhase::Done,
+            Self::Done => EnvelopePhase::Done,
+        }
+    }
 }
 
 struct VoiceState {
@@ -407,6 +437,10 @@ impl Envelope {
         voice.triggered = false;
 
         drop(control_output);
+
+        if router.need_update_ui_mono() {
+            self.audio_end.update_phase(voice.stage.phase());
+        }
 
         voice.smoother.apply_if_needed(
             samples,

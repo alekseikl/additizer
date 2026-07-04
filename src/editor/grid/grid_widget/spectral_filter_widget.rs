@@ -4,7 +4,7 @@ use nih_plug::util::db_to_gain_fast;
 use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
-        Input, InputId, ModuleId, Sample, SpectralFilterType, StereoSample,
+        Input, ModuleId, Sample, SpectralFilterType,
         biquad_filter::{Biquad, BiquadParams, FilterImpl, Rolloff},
         spectral_filter::SpectralFilterUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
@@ -46,9 +46,9 @@ impl SpectralFilterWidget {
 
         let mut config = filter_bridge.config().clone();
 
-        Self::apply_modulation(bridge, module_id, Input::Cutoff, &mut config.cutoff);
-        Self::apply_modulation(bridge, module_id, Input::Q, &mut config.q);
-        Self::apply_modulation(bridge, module_id, Input::Drive, &mut config.drive);
+        bridge.apply_modulation(module_id, Input::Cutoff, &mut config.cutoff);
+        bridge.apply_modulation(module_id, Input::Q, &mut config.q);
+        bridge.apply_modulation(module_id, Input::Drive, &mut config.drive);
 
         let biquad_params = BiquadParams {
             cutoff: config.cutoff[0].clamp(-4.0, 10.0).exp2(),
@@ -143,21 +143,6 @@ impl SpectralFilterWidget {
         }
 
         painter.add(Shape::mesh(mesh));
-    }
-
-    fn apply_modulation(
-        bridge: &UiBridge,
-        module_id: ModuleId,
-        input: Input,
-        param: &mut StereoSample,
-    ) {
-        if let Some(modulated) = bridge.get_input_modulated_value(InputId::new(input, module_id)) {
-            *param = if modulated.is_stereo {
-                modulated.value
-            } else {
-                StereoSample::splat(modulated.value.left())
-            };
-        }
     }
 }
 

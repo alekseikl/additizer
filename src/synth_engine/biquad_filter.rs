@@ -1,6 +1,6 @@
 use std::f32;
 
-use crate::synth_engine::{Sample, buffer::SPECTRAL_BUFFER_SIZE, types::ComplexSample};
+use crate::synth_engine::{Sample, types::ComplexSample};
 
 const TAU: Sample = f32::consts::TAU;
 
@@ -319,67 +319,5 @@ impl<T: FilterImpl> Biquad<T> {
                 }
             }
         }
-    }
-}
-
-pub struct BiquadFilter {
-    gain: Sample,
-    cutoff: Sample,
-    q: Sample,
-}
-
-impl BiquadFilter {
-    pub fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
-        Self { gain, cutoff, q }
-    }
-
-    pub fn low_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
-        let filter = LowPass::new(self.gain, self.cutoff, self.q);
-
-        (0..SPECTRAL_BUFFER_SIZE).map(move |i| filter.at(i as Sample))
-    }
-
-    pub fn low_pass_at(&self, freq: Sample) -> ComplexSample {
-        LowPass::new(self.gain, self.cutoff, self.q).at(freq)
-    }
-
-    pub fn high_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
-        let filter = HighPass::new(self.gain, self.cutoff, self.q);
-
-        (0..SPECTRAL_BUFFER_SIZE).map(move |i| filter.at(i as Sample))
-    }
-
-    pub fn high_pass_at(&self, freq: Sample) -> ComplexSample {
-        HighPass::new(self.gain, self.cutoff, self.q).at(freq)
-    }
-
-    pub fn peaking(&self) -> impl Iterator<Item = ComplexSample> + 'static {
-        let filter = Peaking::new(self.gain, self.cutoff, self.q);
-
-        (0..SPECTRAL_BUFFER_SIZE).map(move |i| filter.at(i as Sample))
-    }
-
-    pub fn peaking_at(&self, freq: Sample) -> ComplexSample {
-        Peaking::new(self.gain, self.cutoff, self.q).at(freq)
-    }
-
-    pub fn band_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
-        let filter = BandPass::new(self.gain, self.cutoff, self.q);
-
-        (0..SPECTRAL_BUFFER_SIZE).map(move |i| filter.at(i as Sample))
-    }
-
-    pub fn band_pass_at(&self, freq: Sample) -> ComplexSample {
-        BandPass::new(self.gain, self.cutoff, self.q).at(freq)
-    }
-
-    pub fn band_stop(&self) -> impl Iterator<Item = ComplexSample> + 'static {
-        let filter = BandStop::new(self.gain, self.cutoff, self.q);
-
-        (0..SPECTRAL_BUFFER_SIZE).map(move |i| filter.at(i as Sample))
-    }
-
-    pub fn band_stop_at(&self, freq: Sample) -> ComplexSample {
-        BandStop::new(self.gain, self.cutoff, self.q).at(freq)
     }
 }

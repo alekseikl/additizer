@@ -909,7 +909,7 @@ impl Oscillator {
             (&voice_buffers.wave_buffers.1, &voice_buffers.wave_buffers.0)
         };
 
-        if router.need_update_ui() {
+        if router.need_update_ui_mono() {
             let spectrum = router.spectral(inputs.spectrum, false);
             self.audio_end
                 .update_spectrum(&spectrum[..DISPLAY_SPECTRUM_SIZE]);

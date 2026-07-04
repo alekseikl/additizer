@@ -1,4 +1,8 @@
+use triple_buffer::triple_buffer;
+
 use crate::synth_engine::{Input, Sample, StereoSample};
+
+use super::EnvelopePhase;
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
@@ -11,11 +15,12 @@ pub enum UiEvent {
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
+    phase: triple_buffer::Output<EnvelopePhase>,
 }
 
 impl UiEnd {
-    pub fn new(tx: rtrb::Producer<UiEvent>) -> Self {
-        Self { tx }
+    pub fn get_phase(&mut self) -> EnvelopePhase {
+        *self.phase.read()
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
@@ -45,20 +50,31 @@ impl UiEnd {
 
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
+    phase: triple_buffer::Input<EnvelopePhase>,
 }
 
 impl AudioEnd {
-    pub fn new(rx: rtrb::Consumer<UiEvent>) -> Self {
-        Self { rx }
-    }
-
     pub fn pop_event(&mut self) -> Option<UiEvent> {
         self.rx.pop().ok()
+    }
+
+    pub fn update_phase(&mut self, phase: EnvelopePhase) {
+        self.phase.write(phase);
     }
 }
 
 pub fn create_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(128);
+    let (phase_input, phase_output) = triple_buffer(&EnvelopePhase::default());
 
-    (AudioEnd::new(from_ui_rx), UiEnd::new(to_audio_tx))
+    (
+        AudioEnd {
+            rx: from_ui_rx,
+            phase: phase_input,
+        },
+        UiEnd {
+            tx: to_audio_tx,
+            phase: phase_output,
+        },
+    )
 }

@@ -1,3 +1,4 @@
+use crate::synth_engine::envelope::EnvelopePhase;
 use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
 
 use super::link::UiEnd;
@@ -18,6 +19,10 @@ impl EnvelopeUiBridge {
 
     pub fn config(&self) -> &EnvelopeConfig {
         &self.config
+    }
+
+    pub fn get_phase(&mut self) -> EnvelopePhase {
+        self.ui_end.get_phase()
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {

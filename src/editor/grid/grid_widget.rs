@@ -7,7 +7,8 @@ use egui::{
 
 use crate::{
     editor::grid::{
-        GridEvent, WidgetCtx, WireDragState, grid_widget::oscillator_widget::OscillatorWidget,
+        GridEvent, WidgetCtx, WireDragState, grid_widget::envelope_widget::EnvelopeWidget,
+        grid_widget::oscillator_widget::OscillatorWidget,
         grid_widget::spectral_filter_widget::SpectralFilterWidget, input_tooltip,
         select_input_popup::SelectInputPopup,
     },
@@ -20,6 +21,7 @@ use crate::{
     },
 };
 
+mod envelope_widget;
 mod oscillator_widget;
 mod spectral_filter_widget;
 
@@ -108,6 +110,7 @@ impl GridWidget {
             content: match module_type {
                 ModuleType::Oscillator => Box::new(OscillatorWidget::default()),
                 ModuleType::SpectralFilter => Box::new(SpectralFilterWidget {}),
+                ModuleType::Envelope => Box::new(EnvelopeWidget {}),
                 ModuleType::Output => Box::new(OutputContent {}),
                 _ => Box::new(EmptyContent {}),
             },
