@@ -4,6 +4,324 @@ use crate::synth_engine::{Sample, buffer::SPECTRAL_BUFFER_SIZE, types::ComplexSa
 
 const TAU: Sample = f32::consts::TAU;
 
+pub trait FilterImpl: Clone + Copy + 'static {
+    fn at(&self, freq: Sample) -> ComplexSample;
+
+    fn into_iter(self, size: usize) -> impl Iterator<Item = ComplexSample> + 'static {
+        (0..size).map(move |i| self.at(i as Sample))
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct LowPass {
+    numerator: Sample,
+    w_squared: Sample,
+    w_q: Sample,
+}
+
+impl LowPass {
+    pub fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+        let w = cutoff * TAU;
+        let w_squared = w * w;
+
+        Self {
+            numerator: gain * w_squared,
+            w_squared,
+            w_q: w / q,
+        }
+    }
+}
+
+impl FilterImpl for LowPass {
+    fn at(&self, freq: Sample) -> ComplexSample {
+        let x = freq * TAU;
+
+        self.numerator / ComplexSample::new(self.w_squared - x * x, self.w_q * x)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct HighPass {
+    neg_gain: Sample,
+    w_squared: Sample,
+    w_q: Sample,
+}
+
+impl HighPass {
+    pub fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+        let w = cutoff * TAU;
+
+        Self {
+            neg_gain: -gain,
+            w_squared: w * w,
+            w_q: w / q,
+        }
+    }
+}
+
+impl FilterImpl for HighPass {
+    fn at(&self, freq: Sample) -> ComplexSample {
+        let x = freq * TAU;
+        let x_squared = x * x;
+
+        (self.neg_gain * x_squared) / ComplexSample::new(self.w_squared - x_squared, self.w_q * x)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Peaking {
+    w_squared: Sample,
+    wa_q: Sample,
+    w_aq: Sample,
+}
+
+impl Peaking {
+    pub fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+        let w = cutoff * TAU;
+
+        Self {
+            w_squared: w * w,
+            wa_q: (w * gain) / q,
+            w_aq: w / (gain * q),
+        }
+    }
+}
+
+impl FilterImpl for Peaking {
+    fn at(&self, freq: Sample) -> ComplexSample {
+        let x = freq * TAU;
+        let wx_diff = self.w_squared - x * x;
+
+        ComplexSample::new(wx_diff, self.wa_q * x) / ComplexSample::new(wx_diff, self.w_aq * x)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct BandPass {
+    gain: Sample,
+    w_squared: Sample,
+    w_q: Sample,
+}
+
+impl BandPass {
+    pub fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+        let w = cutoff * TAU;
+
+        Self {
+            gain,
+            w_squared: w * w,
+            w_q: w / q,
+        }
+    }
+}
+
+impl FilterImpl for BandPass {
+    fn at(&self, freq: Sample) -> ComplexSample {
+        let x = freq * TAU;
+        let wx_q = self.w_q * x;
+
+        ComplexSample::new(0.0, self.gain * wx_q) / ComplexSample::new(self.w_squared - x * x, wx_q)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct BandStop {
+    gain: Sample,
+    w_squared: Sample,
+    w_q: Sample,
+}
+
+impl BandStop {
+    pub fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+        let w = cutoff * TAU;
+
+        Self {
+            gain,
+            w_squared: w * w,
+            w_q: w / q,
+        }
+    }
+}
+
+impl FilterImpl for BandStop {
+    fn at(&self, freq: Sample) -> ComplexSample {
+        let x = freq * TAU;
+        let wx_diff = self.w_squared - x * x;
+
+        (self.gain * wx_diff) / ComplexSample::new(wx_diff, self.w_q * x)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum Rolloff {
+    Db12,
+    Db18,
+    Db24,
+}
+
+pub struct BiquadParams {
+    pub cutoff: Sample,
+    pub q: Sample,
+    pub gain: Sample,
+    pub rolloff: Rolloff,
+    pub linear_phase: bool,
+}
+
+pub struct Biquad<T: FilterImpl> {
+    filter_impl: T,
+    rolloff: Rolloff,
+    linear_phase: bool,
+}
+
+impl Biquad<LowPass> {
+    pub fn new(params: &BiquadParams) -> Self {
+        Self {
+            filter_impl: LowPass::new(params.gain, params.cutoff, params.q),
+            rolloff: params.rolloff,
+            linear_phase: params.linear_phase,
+        }
+    }
+}
+
+impl Biquad<HighPass> {
+    pub fn new(params: &BiquadParams) -> Self {
+        Self {
+            filter_impl: HighPass::new(params.gain, params.cutoff, params.q),
+            rolloff: params.rolloff,
+            linear_phase: params.linear_phase,
+        }
+    }
+}
+
+impl Biquad<Peaking> {
+    pub fn new(params: &BiquadParams) -> Self {
+        Self {
+            filter_impl: Peaking::new(params.gain, params.cutoff, params.q),
+            rolloff: params.rolloff,
+            linear_phase: params.linear_phase,
+        }
+    }
+}
+
+impl Biquad<BandPass> {
+    pub fn new(params: &BiquadParams) -> Self {
+        Self {
+            filter_impl: BandPass::new(params.gain, params.cutoff, params.q),
+            rolloff: params.rolloff,
+            linear_phase: params.linear_phase,
+        }
+    }
+}
+
+impl Biquad<BandStop> {
+    pub fn new(params: &BiquadParams) -> Self {
+        Self {
+            filter_impl: BandStop::new(params.gain, params.cutoff, params.q),
+            rolloff: params.rolloff,
+            linear_phase: params.linear_phase,
+        }
+    }
+}
+
+impl<T: FilterImpl> Biquad<T> {
+    fn apply_12_db(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
+        input * self.filter_impl.at(freq)
+    }
+
+    fn apply_12_db_linear(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
+        input * self.filter_impl.at(freq).norm()
+    }
+
+    fn apply_18_db(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
+        input * self.filter_impl.at(freq).powf(1.5)
+    }
+
+    fn apply_18_db_linear(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
+        input * self.filter_impl.at(freq).norm().powf(1.5)
+    }
+
+    fn apply_24_db(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
+        let response = self.filter_impl.at(freq);
+
+        input * response * response
+    }
+
+    fn apply_24_db_linear(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
+        let response = self.filter_impl.at(freq).norm();
+
+        input * response * response
+    }
+
+    fn apply_impl<'a>(
+        &self,
+        input: impl Iterator<Item = &'a ComplexSample>,
+        output: impl Iterator<Item = &'a mut ComplexSample>,
+        f: impl Fn(&Self, Sample, &ComplexSample) -> ComplexSample,
+    ) {
+        for (i, (output, input)) in output.zip(input).enumerate() {
+            *output = f(self, i as Sample, input);
+        }
+    }
+
+    pub fn apply_response<'a>(
+        &self,
+        input: impl Iterator<Item = &'a ComplexSample>,
+        output: impl Iterator<Item = &'a mut ComplexSample>,
+    ) {
+        match self.rolloff {
+            Rolloff::Db12 => {
+                if self.linear_phase {
+                    self.apply_impl(input, output, Self::apply_12_db_linear)
+                } else {
+                    self.apply_impl(input, output, Self::apply_12_db)
+                }
+            }
+            Rolloff::Db18 => {
+                if self.linear_phase {
+                    self.apply_impl(input, output, Self::apply_18_db_linear)
+                } else {
+                    self.apply_impl(input, output, Self::apply_18_db)
+                }
+            }
+            Rolloff::Db24 => {
+                if self.linear_phase {
+                    self.apply_impl(input, output, Self::apply_24_db_linear)
+                } else {
+                    self.apply_impl(input, output, Self::apply_24_db)
+                }
+            }
+        }
+    }
+
+    pub fn response_at(&self, freq: Sample) -> ComplexSample {
+        let one = ComplexSample::new(1.0, 0.0);
+
+        match self.rolloff {
+            Rolloff::Db12 => {
+                if self.linear_phase {
+                    self.apply_12_db_linear(freq, &one)
+                } else {
+                    self.apply_12_db(freq, &one)
+                }
+            }
+            Rolloff::Db18 => {
+                if self.linear_phase {
+                    self.apply_18_db_linear(freq, &one)
+                } else {
+                    self.apply_18_db(freq, &one)
+                }
+            }
+            Rolloff::Db24 => {
+                if self.linear_phase {
+                    self.apply_24_db_linear(freq, &one)
+                } else {
+                    self.apply_24_db(freq, &one)
+                }
+            }
+        }
+    }
+}
+
 pub struct BiquadFilter {
     gain: Sample,
     cutoff: Sample,
@@ -16,73 +334,52 @@ impl BiquadFilter {
     }
 
     pub fn low_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
-        let w = self.cutoff * TAU;
-        let w_squared = w * w;
-        let w_q = w / self.q;
-        let numerator = self.gain * w_squared;
+        let filter = LowPass::new(self.gain, self.cutoff, self.q);
 
-        (0..SPECTRAL_BUFFER_SIZE).map(move |i| {
-            let x = i as Sample * TAU;
+        (0..SPECTRAL_BUFFER_SIZE).map(move |i| filter.at(i as Sample))
+    }
 
-            numerator / ComplexSample::new(w_squared - x * x, w_q * x)
-        })
+    pub fn low_pass_at(&self, freq: Sample) -> ComplexSample {
+        LowPass::new(self.gain, self.cutoff, self.q).at(freq)
     }
 
     pub fn high_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
-        let w = self.cutoff * TAU;
-        let neg_g = -self.gain;
-        let w_squared = w * w;
-        let w_q = w / self.q;
+        let filter = HighPass::new(self.gain, self.cutoff, self.q);
 
-        (0..SPECTRAL_BUFFER_SIZE).map(move |i| {
-            let x = i as Sample * TAU;
-            let x_squared = x * x;
+        (0..SPECTRAL_BUFFER_SIZE).map(move |i| filter.at(i as Sample))
+    }
 
-            (neg_g * x_squared) / ComplexSample::new(w_squared - x_squared, w_q * x)
-        })
+    pub fn high_pass_at(&self, freq: Sample) -> ComplexSample {
+        HighPass::new(self.gain, self.cutoff, self.q).at(freq)
     }
 
     pub fn peaking(&self) -> impl Iterator<Item = ComplexSample> + 'static {
-        let w = self.cutoff * TAU;
-        let a = self.gain;
-        let w_squared = w * w;
-        let wa_q = (w * a) / self.q;
-        let w_aq = w / (a * self.q);
+        let filter = Peaking::new(self.gain, self.cutoff, self.q);
 
-        (0..SPECTRAL_BUFFER_SIZE).map(move |i| {
-            let x = i as Sample * TAU;
-            let wx_diff = w_squared - x * x;
+        (0..SPECTRAL_BUFFER_SIZE).map(move |i| filter.at(i as Sample))
+    }
 
-            ComplexSample::new(wx_diff, wa_q * x) / ComplexSample::new(wx_diff, w_aq * x)
-        })
+    pub fn peaking_at(&self, freq: Sample) -> ComplexSample {
+        Peaking::new(self.gain, self.cutoff, self.q).at(freq)
     }
 
     pub fn band_pass(&self) -> impl Iterator<Item = ComplexSample> + 'static {
-        let a = self.gain;
-        let w = self.cutoff * TAU;
-        let w_squared = w * w;
-        let w_q = w / self.q;
+        let filter = BandPass::new(self.gain, self.cutoff, self.q);
 
-        (0..SPECTRAL_BUFFER_SIZE).map(move |i| {
-            let x = i as Sample * TAU;
-            let x_squared = x * x;
-            let wx_q = w_q * x;
+        (0..SPECTRAL_BUFFER_SIZE).map(move |i| filter.at(i as Sample))
+    }
 
-            ComplexSample::new(0.0, a * wx_q) / ComplexSample::new(w_squared - x_squared, wx_q)
-        })
+    pub fn band_pass_at(&self, freq: Sample) -> ComplexSample {
+        BandPass::new(self.gain, self.cutoff, self.q).at(freq)
     }
 
     pub fn band_stop(&self) -> impl Iterator<Item = ComplexSample> + 'static {
-        let a = self.gain;
-        let w = self.cutoff * TAU;
-        let w_squared = w * w;
-        let w_q = w / self.q;
+        let filter = BandStop::new(self.gain, self.cutoff, self.q);
 
-        (0..SPECTRAL_BUFFER_SIZE).map(move |i| {
-            let x = i as Sample * TAU;
-            let wx_diff = w_squared - x * x;
+        (0..SPECTRAL_BUFFER_SIZE).map(move |i| filter.at(i as Sample))
+    }
 
-            (a * wx_diff) / ComplexSample::new(wx_diff, w_q * x)
-        })
+    pub fn band_stop_at(&self, freq: Sample) -> ComplexSample {
+        BandStop::new(self.gain, self.cutoff, self.q).at(freq)
     }
 }

@@ -1,6 +1,5 @@
 use std::array;
 
-use itertools::izip;
 use nih_plug::util::db_to_gain_fast;
 
 mod config;
@@ -13,8 +12,8 @@ pub use ui_bridge::SpectralFilterUiBridge;
 
 use crate::synth_engine::{
     StereoSample,
-    biquad_filter::BiquadFilter,
-    buffer::{SpectralBuffer, VoicesLayout, new_voices_layout},
+    biquad_filter::{Biquad, BiquadParams, Rolloff},
+    buffer::{VoicesLayout, new_voices_layout},
     routing::{
         DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
         SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent, VoiceRouter,
@@ -168,76 +167,43 @@ impl SpectralFilter {
     set_stereo_param!(set_q, q, q.clamp(0.1, 10.0));
     set_stereo_param!(set_drive, drive);
 
-    fn apply_response(
-        output: &mut SpectralBuffer,
-        input: &SpectralBuffer,
-        response: impl Iterator<Item = ComplexSample>,
-        fourth_order: bool,
-        linear_phase: bool,
+    fn apply_filter<'a>(
+        params: &Params,
+        cutoff: Sample,
+        q: Sample,
+        drive: Sample,
+        input: impl Iterator<Item = &'a ComplexSample>,
+        output: impl Iterator<Item = &'a mut ComplexSample>,
     ) {
-        fn apply(
-            output: &mut SpectralBuffer,
-            input: &SpectralBuffer,
-            response: impl Iterator<Item = ComplexSample>,
-            transform: impl Fn(ComplexSample, ComplexSample) -> ComplexSample,
-        ) {
-            for (out, input, response) in izip!(output, input, response) {
-                *out = transform(*input, response);
-            }
-        }
+        use crate::synth_engine::biquad_filter::{BandPass, BandStop, HighPass, LowPass, Peaking};
 
-        if linear_phase {
-            if fourth_order {
-                apply(output, input, response, |input, response| {
-                    let magnitude = response.norm();
-
-                    input * (magnitude * magnitude)
-                });
+        let biquad_params = BiquadParams {
+            cutoff: cutoff.exp2(),
+            q,
+            gain: db_to_gain_fast(drive),
+            rolloff: if params.fourth_order {
+                Rolloff::Db24
             } else {
-                apply(output, input, response, |i, r| i * r.norm());
-            }
-        } else if fourth_order {
-            apply(output, input, response, |i, r| i * r * r);
-        } else {
-            apply(output, input, response, |i, r| i * r);
-        }
-    }
+                Rolloff::Db12
+            },
+            linear_phase: params.linear_phase,
+        };
 
-    fn apply_biquad(
-        output: &mut SpectralBuffer,
-        input: &SpectralBuffer,
-        filter_type: SpectralFilterType,
-        biquad: &BiquadFilter,
-        fourth_order: bool,
-        linear_phase: bool,
-    ) {
-        match filter_type {
+        match params.filter_type {
             SpectralFilterType::LowPass => {
-                Self::apply_response(output, input, biquad.low_pass(), fourth_order, linear_phase)
+                Biquad::<LowPass>::new(&biquad_params).apply_response(input, output)
             }
-            SpectralFilterType::HighPass => Self::apply_response(
-                output,
-                input,
-                biquad.high_pass(),
-                fourth_order,
-                linear_phase,
-            ),
-            SpectralFilterType::BandPass => Self::apply_response(
-                output,
-                input,
-                biquad.band_pass(),
-                fourth_order,
-                linear_phase,
-            ),
-            SpectralFilterType::BandStop => Self::apply_response(
-                output,
-                input,
-                biquad.band_stop(),
-                fourth_order,
-                linear_phase,
-            ),
+            SpectralFilterType::HighPass => {
+                Biquad::<HighPass>::new(&biquad_params).apply_response(input, output)
+            }
+            SpectralFilterType::BandPass => {
+                Biquad::<BandPass>::new(&biquad_params).apply_response(input, output)
+            }
+            SpectralFilterType::BandStop => {
+                Biquad::<BandStop>::new(&biquad_params).apply_response(input, output)
+            }
             SpectralFilterType::Peaking => {
-                Self::apply_response(output, input, biquad.peaking(), fourth_order, linear_phase)
+                Biquad::<Peaking>::new(&biquad_params).apply_response(input, output)
             }
         }
     }
@@ -265,15 +231,13 @@ impl SpectralFilter {
             .min(24.0);
         let input = router.spectral(inputs.spectrum, voice.triggered);
 
-        let biquad = BiquadFilter::new(db_to_gain_fast(drive), cutoff.exp2(), q);
-
-        Self::apply_biquad(
-            voice_output,
-            input,
-            self.params.filter_type,
-            &biquad,
-            self.params.fourth_order,
-            self.params.linear_phase,
+        Self::apply_filter(
+            &self.params,
+            cutoff,
+            q,
+            drive,
+            input.iter(),
+            voice_output.iter_mut(),
         );
 
         if voice.triggered {

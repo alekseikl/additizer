@@ -30,9 +30,6 @@ impl OscillatorWidget {
 
             waveform::paint_waveform(painter, rect, waveform);
         }
-
-        // Keep the preview live while a voice is being processed.
-        ui.ctx().request_repaint();
     }
 }
 

@@ -11,7 +11,7 @@ use crate::{
     utils::note_to_pitch,
 };
 
-pub const MAX_AVAILABLE_VOICES: usize = MAX_VOICES - 8;
+pub const MAX_AVAILABLE_VOICES: usize = MAX_VOICES - 4;
 
 type VoiceIdx = u8;
 

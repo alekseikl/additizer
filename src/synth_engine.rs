@@ -55,7 +55,7 @@ mod buffer;
 mod config;
 #[macro_use]
 mod synth_module;
-mod biquad_filter;
+pub mod biquad_filter;
 mod curves;
 mod iir_decimator;
 mod module_handle;

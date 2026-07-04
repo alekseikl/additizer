@@ -8,7 +8,8 @@ use egui::{
 use crate::{
     editor::grid::{
         GridEvent, WidgetCtx, WireDragState, grid_widget::oscillator_widget::OscillatorWidget,
-        input_tooltip, select_input_popup::SelectInputPopup,
+        grid_widget::spectral_filter_widget::SpectralFilterWidget, input_tooltip,
+        select_input_popup::SelectInputPopup,
     },
     synth_engine::{
         InputId, ModuleId, ModuleType,
@@ -20,6 +21,7 @@ use crate::{
 };
 
 mod oscillator_widget;
+mod spectral_filter_widget;
 
 const C_MOD_BG: Color32 = Color32::from_rgb(28, 30, 42);
 const C_MOD_BG_SELECTED: Color32 = Color32::from_rgb(40, 42, 54);
@@ -105,6 +107,7 @@ impl GridWidget {
             io,
             content: match module_type {
                 ModuleType::Oscillator => Box::new(OscillatorWidget {}),
+                ModuleType::SpectralFilter => Box::new(SpectralFilterWidget {}),
                 ModuleType::Output => Box::new(OutputContent {}),
                 _ => Box::new(EmptyContent {}),
             },

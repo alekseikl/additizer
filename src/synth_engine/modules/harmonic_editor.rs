@@ -3,7 +3,7 @@ use std::f32;
 use crate::{
     synth_engine::{
         Sample, StereoSample, VoiceEvent,
-        biquad_filter::BiquadFilter,
+        biquad_filter::{BandPass, BandStop, FilterImpl, HighPass, LowPass, Peaking},
         buffer::{
             HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer, VoicesLayout,
             new_voices_layout,
@@ -13,7 +13,6 @@ use crate::{
             SpectralInputSlot,
         },
         synth_module::SynthModule,
-        types::ComplexSample,
     },
     utils::NthElement,
 };
@@ -58,24 +57,12 @@ pub struct FilterParams {
     pub gain: StereoSample,
 }
 
-impl BiquadFilter {
-    fn iter_for_type(
-        &self,
-        filter_type: FilterType,
-        order: Sample,
-    ) -> impl Iterator<Item = ComplexSample> {
-        let order = order.clamp(1.0, 8.0);
-        let power = order / 2.0;
-
-        let iter: Box<dyn Iterator<Item = ComplexSample>> = match filter_type {
-            FilterType::LowPass => Box::new(self.low_pass()),
-            FilterType::HighPass => Box::new(self.high_pass()),
-            FilterType::BandPass => Box::new(self.band_pass()),
-            FilterType::BandStop => Box::new(self.band_stop()),
-            FilterType::Peaking => Box::new(self.peaking()),
-        };
-
-        iter.map(move |response| response.powf(power))
+fn apply_filter_response(spectrum: &mut SpectralBuffer, filter: impl FilterImpl, power: Sample) {
+    for (out, response) in spectrum
+        .iter_mut()
+        .zip(filter.into_iter(SPECTRAL_BUFFER_SIZE))
+    {
+        *out *= response.powf(power);
     }
 }
 
@@ -211,17 +198,27 @@ impl HarmonicEditor {
 
     pub fn apply_filter(&mut self, params: &FilterParams) {
         for (channel_idx, spectrum) in self.harmonics.iter_mut().enumerate() {
-            let filter = BiquadFilter::new(
-                params.gain[channel_idx],
-                params.cutoff[channel_idx],
-                params.q[channel_idx],
-            );
+            let gain = params.gain[channel_idx];
+            let cutoff = params.cutoff[channel_idx];
+            let q = params.q[channel_idx];
+            let power = params.filter_order[channel_idx].clamp(1.0, 8.0) / 2.0;
 
-            let filter_iter =
-                filter.iter_for_type(params.filter_type, params.filter_order[channel_idx]);
-
-            for (out, response) in spectrum.iter_mut().zip(filter_iter) {
-                *out *= response;
+            match params.filter_type {
+                FilterType::LowPass => {
+                    apply_filter_response(spectrum, LowPass::new(gain, cutoff, q), power)
+                }
+                FilterType::HighPass => {
+                    apply_filter_response(spectrum, HighPass::new(gain, cutoff, q), power)
+                }
+                FilterType::BandPass => {
+                    apply_filter_response(spectrum, BandPass::new(gain, cutoff, q), power)
+                }
+                FilterType::BandStop => {
+                    apply_filter_response(spectrum, BandStop::new(gain, cutoff, q), power)
+                }
+                FilterType::Peaking => {
+                    apply_filter_response(spectrum, Peaking::new(gain, cutoff, q), power)
+                }
             }
         }
 
