@@ -12,7 +12,7 @@ pub use ui_bridge::SpectralFilterUiBridge;
 
 use crate::synth_engine::{
     StereoSample,
-    biquad_filter::{Biquad, BiquadParams, Rolloff},
+    biquad_filter::{Biquad, BiquadParams, FilterPole},
     buffer::{VoicesLayout, new_voices_layout},
     routing::{
         DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
@@ -181,10 +181,10 @@ impl SpectralFilter {
             cutoff: cutoff.exp2(),
             q,
             gain: db_to_gain_fast(drive),
-            rolloff: if params.fourth_order {
-                Rolloff::Db24
+            pole: if params.fourth_order {
+                FilterPole::Pole4
             } else {
-                Rolloff::Db12
+                FilterPole::Pole2
             },
             linear_phase: params.linear_phase,
         };

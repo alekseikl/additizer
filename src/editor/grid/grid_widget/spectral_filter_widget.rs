@@ -5,7 +5,7 @@ use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
         Input, ModuleId, Sample, SpectralFilterType,
-        biquad_filter::{Biquad, BiquadParams, FilterImpl, Rolloff},
+        biquad_filter::{Biquad, BiquadParams, FilterImpl, FilterPole},
         spectral_filter::SpectralFilterUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -54,10 +54,10 @@ impl SpectralFilterWidget {
             cutoff: config.cutoff[0].clamp(-4.0, 10.0).exp2(),
             q: config.q[0].clamp(0.1, 10.0),
             gain: db_to_gain_fast(config.drive[0].min(24.0)),
-            rolloff: if config.fourth_order {
-                Rolloff::Db24
+            pole: if config.fourth_order {
+                FilterPole::Pole4
             } else {
-                Rolloff::Db12
+                FilterPole::Pole2
             },
             linear_phase: config.linear_phase,
         };

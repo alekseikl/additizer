@@ -153,23 +153,23 @@ impl FilterImpl for BandStop {
 }
 
 #[derive(Clone, Copy)]
-pub enum Rolloff {
-    Db12,
-    Db18,
-    Db24,
+pub enum FilterPole {
+    Pole2,
+    Pole3,
+    Pole4,
 }
 
 pub struct BiquadParams {
     pub cutoff: Sample,
     pub q: Sample,
     pub gain: Sample,
-    pub rolloff: Rolloff,
+    pub pole: FilterPole,
     pub linear_phase: bool,
 }
 
 pub struct Biquad<T: FilterImpl> {
     filter_impl: T,
-    rolloff: Rolloff,
+    pole: FilterPole,
     linear_phase: bool,
 }
 
@@ -177,7 +177,7 @@ impl Biquad<LowPass> {
     pub fn new(params: &BiquadParams) -> Self {
         Self {
             filter_impl: LowPass::new(params.gain, params.cutoff, params.q),
-            rolloff: params.rolloff,
+            pole: params.pole,
             linear_phase: params.linear_phase,
         }
     }
@@ -187,7 +187,7 @@ impl Biquad<HighPass> {
     pub fn new(params: &BiquadParams) -> Self {
         Self {
             filter_impl: HighPass::new(params.gain, params.cutoff, params.q),
-            rolloff: params.rolloff,
+            pole: params.pole,
             linear_phase: params.linear_phase,
         }
     }
@@ -197,7 +197,7 @@ impl Biquad<Peaking> {
     pub fn new(params: &BiquadParams) -> Self {
         Self {
             filter_impl: Peaking::new(params.gain, params.cutoff, params.q),
-            rolloff: params.rolloff,
+            pole: params.pole,
             linear_phase: params.linear_phase,
         }
     }
@@ -207,7 +207,7 @@ impl Biquad<BandPass> {
     pub fn new(params: &BiquadParams) -> Self {
         Self {
             filter_impl: BandPass::new(params.gain, params.cutoff, params.q),
-            rolloff: params.rolloff,
+            pole: params.pole,
             linear_phase: params.linear_phase,
         }
     }
@@ -217,36 +217,36 @@ impl Biquad<BandStop> {
     pub fn new(params: &BiquadParams) -> Self {
         Self {
             filter_impl: BandStop::new(params.gain, params.cutoff, params.q),
-            rolloff: params.rolloff,
+            pole: params.pole,
             linear_phase: params.linear_phase,
         }
     }
 }
 
 impl<T: FilterImpl> Biquad<T> {
-    fn apply_12_db(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
+    fn apply_2_pole(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
         input * self.filter_impl.at(freq)
     }
 
-    fn apply_12_db_linear(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
+    fn apply_2_pole_linear(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
         input * self.filter_impl.at(freq).norm()
     }
 
-    fn apply_18_db(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
+    fn apply_3_pole(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
         input * self.filter_impl.at(freq).powf(1.5)
     }
 
-    fn apply_18_db_linear(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
+    fn apply_3_pole_linear(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
         input * self.filter_impl.at(freq).norm().powf(1.5)
     }
 
-    fn apply_24_db(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
+    fn apply_4_pole(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
         let response = self.filter_impl.at(freq);
 
         input * response * response
     }
 
-    fn apply_24_db_linear(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
+    fn apply_4_pole_linear(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
         let response = self.filter_impl.at(freq).norm();
 
         input * response * response
@@ -268,26 +268,26 @@ impl<T: FilterImpl> Biquad<T> {
         input: impl Iterator<Item = &'a ComplexSample>,
         output: impl Iterator<Item = &'a mut ComplexSample>,
     ) {
-        match self.rolloff {
-            Rolloff::Db12 => {
+        match self.pole {
+            FilterPole::Pole2 => {
                 if self.linear_phase {
-                    self.apply_impl(input, output, Self::apply_12_db_linear)
+                    self.apply_impl(input, output, Self::apply_2_pole_linear)
                 } else {
-                    self.apply_impl(input, output, Self::apply_12_db)
+                    self.apply_impl(input, output, Self::apply_2_pole)
                 }
             }
-            Rolloff::Db18 => {
+            FilterPole::Pole3 => {
                 if self.linear_phase {
-                    self.apply_impl(input, output, Self::apply_18_db_linear)
+                    self.apply_impl(input, output, Self::apply_3_pole_linear)
                 } else {
-                    self.apply_impl(input, output, Self::apply_18_db)
+                    self.apply_impl(input, output, Self::apply_3_pole)
                 }
             }
-            Rolloff::Db24 => {
+            FilterPole::Pole4 => {
                 if self.linear_phase {
-                    self.apply_impl(input, output, Self::apply_24_db_linear)
+                    self.apply_impl(input, output, Self::apply_4_pole_linear)
                 } else {
-                    self.apply_impl(input, output, Self::apply_24_db)
+                    self.apply_impl(input, output, Self::apply_4_pole)
                 }
             }
         }
@@ -296,26 +296,26 @@ impl<T: FilterImpl> Biquad<T> {
     pub fn response_at(&self, freq: Sample) -> ComplexSample {
         let one = ComplexSample::new(1.0, 0.0);
 
-        match self.rolloff {
-            Rolloff::Db12 => {
+        match self.pole {
+            FilterPole::Pole2 => {
                 if self.linear_phase {
-                    self.apply_12_db_linear(freq, &one)
+                    self.apply_2_pole_linear(freq, &one)
                 } else {
-                    self.apply_12_db(freq, &one)
+                    self.apply_2_pole(freq, &one)
                 }
             }
-            Rolloff::Db18 => {
+            FilterPole::Pole3 => {
                 if self.linear_phase {
-                    self.apply_18_db_linear(freq, &one)
+                    self.apply_3_pole_linear(freq, &one)
                 } else {
-                    self.apply_18_db(freq, &one)
+                    self.apply_3_pole(freq, &one)
                 }
             }
-            Rolloff::Db24 => {
+            FilterPole::Pole4 => {
                 if self.linear_phase {
-                    self.apply_24_db_linear(freq, &one)
+                    self.apply_4_pole_linear(freq, &one)
                 } else {
-                    self.apply_24_db(freq, &one)
+                    self.apply_4_pole(freq, &one)
                 }
             }
         }
