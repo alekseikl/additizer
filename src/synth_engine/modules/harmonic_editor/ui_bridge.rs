@@ -54,7 +54,7 @@ impl HarmonicEditorUiBridge {
             for (channel, gain) in self.config.spectrum.iter_mut().zip(gain.iter()) {
                 if idx < channel.len() {
                     channel[idx] =
-                        super::config::ComplexCfg::from_complex(HARMONIC_SERIES_BUFFER[idx] * gain);
+                        super::ComplexCfg::from_complex(HARMONIC_SERIES_BUFFER[idx] * gain);
                 }
             }
         }
@@ -80,4 +80,3 @@ impl ModuleUiBridge for HarmonicEditorUiBridge {
         }
     }
 }
-

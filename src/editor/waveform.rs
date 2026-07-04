@@ -1,14 +1,25 @@
-use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke};
+use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, ecolor::Hsva};
 
-const STROKE_COLOR: Color32 = Color32::from_rgb(0xff, 0xb0, 0x00);
+const STROKE_COLOR: Hsva = Hsva {
+    h: 0.03,
+    s: 0.9,
+    v: 1.0,
+    a: 1.0,
+};
 const LINE_WIDTH: f32 = 1.0;
 
 fn fill_top_color() -> Color32 {
-    Color32::from_rgba_unmultiplied(0xff, 0xb0, 0x00, 0x47)
+    Color32::from(Hsva {
+        a: 0x47 as f32 / 255.0,
+        ..STROKE_COLOR
+    })
 }
 
 fn fill_center_color() -> Color32 {
-    Color32::from_rgba_unmultiplied(0xff, 0xb0, 0x00, 0x66)
+    Color32::from(Hsva {
+        a: 0x66 as f32 / 255.0,
+        ..STROKE_COLOR
+    })
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -118,13 +129,13 @@ fn paint_stroke(painter: &Painter, points: &[Pos2], options: WaveformOptions) {
         return;
     }
 
-    let stroke = Stroke::new(LINE_WIDTH, STROKE_COLOR);
+    let stroke = Stroke::new(LINE_WIDTH, Color32::from(STROKE_COLOR));
     painter.line(points.to_vec(), stroke);
 
     if options.loop_closed {
         painter.line_segment(
             [*points.last().unwrap(), points[0]],
-            Stroke::new(LINE_WIDTH, STROKE_COLOR),
+            Stroke::new(LINE_WIDTH, Color32::from(STROKE_COLOR)),
         );
     }
 }
