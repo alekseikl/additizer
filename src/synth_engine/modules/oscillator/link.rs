@@ -1,8 +1,7 @@
 use triple_buffer::triple_buffer;
 
 use crate::synth_engine::{
-    Input, Sample, StereoSample,
-    oscillator::{PhasesDst, WAVEFORM_SIZE},
+    Input, Sample, StereoSample, oscillator::PhasesDst, types::ComplexSample,
 };
 
 pub enum UiEvent {
@@ -49,20 +48,20 @@ pub enum UiUpdate {
     RefreshState,
 }
 
-pub const DISPLAY_WAVEFORM_SIZE: usize = WAVEFORM_SIZE + 1;
+pub const DISPLAY_SPECTRUM_SIZE: usize = 512;
 
-pub type DisplayWaveform = [Sample; DISPLAY_WAVEFORM_SIZE];
+pub type DisplaySpectrum = [ComplexSample; DISPLAY_SPECTRUM_SIZE];
 
 pub struct UiEnd {
     rx: rtrb::Consumer<UiUpdate>,
     tx: rtrb::Producer<UiEvent>,
-    waveform: triple_buffer::Output<Box<DisplayWaveform>>,
+    spectrum: triple_buffer::Output<Box<DisplaySpectrum>>,
 }
 
 impl UiEnd {
-    pub fn get_waveform(&mut self) -> &DisplayWaveform {
-        self.waveform.update();
-        self.waveform.output_buffer()
+    pub fn get_spectrum(&mut self) -> &DisplaySpectrum {
+        self.spectrum.update();
+        self.spectrum.output_buffer()
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
@@ -139,7 +138,7 @@ impl UiEnd {
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
     tx: rtrb::Producer<UiUpdate>,
-    waveform: triple_buffer::Input<Box<DisplayWaveform>>,
+    spectrum: triple_buffer::Input<Box<DisplaySpectrum>>,
 }
 
 impl AudioEnd {
@@ -151,27 +150,28 @@ impl AudioEnd {
         self.tx.push(UiUpdate::RefreshState).is_ok()
     }
 
-    pub fn update_waveform(&mut self, wf: &[Sample]) {
-        self.waveform.input_buffer_mut().copy_from_slice(wf);
-        self.waveform.publish();
+    pub fn update_spectrum(&mut self, spectrum: &[ComplexSample]) {
+        self.spectrum.input_buffer_mut().copy_from_slice(spectrum);
+        self.spectrum.publish();
     }
 }
 
 pub fn create_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(512);
     let (to_ui_tx, from_audio_rx) = rtrb::RingBuffer::<UiUpdate>::new(128);
-    let (waveform_input, waveform_output) = triple_buffer(&Box::new([0.0; DISPLAY_WAVEFORM_SIZE]));
+    let (spectrum_input, spectrum_output) =
+        triple_buffer(&Box::new([ComplexSample::ZERO; DISPLAY_SPECTRUM_SIZE]));
 
     (
         AudioEnd {
             rx: from_ui_rx,
             tx: to_ui_tx,
-            waveform: waveform_input,
+            spectrum: spectrum_input,
         },
         UiEnd {
             rx: from_audio_rx,
             tx: to_audio_tx,
-            waveform: waveform_output,
+            spectrum: spectrum_output,
         },
     )
 }

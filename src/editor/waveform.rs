@@ -1,10 +1,5 @@
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke};
 
-pub const WAVEFORM_LEN: usize = 2049;
-pub type WaveformBuffer = [f32; WAVEFORM_LEN];
-
-// pub static ZERO_WAVEFORM: WaveformBuffer = [0.0; WAVEFORM_LEN];
-
 const STROKE_COLOR: Color32 = Color32::from_rgb(0xff, 0xb0, 0x00);
 const LINE_WIDTH: f32 = 1.0;
 
@@ -32,7 +27,7 @@ impl Default for WaveformOptions {
 }
 
 /// Linearly interpolate `waveform` at normalized position `t` in `[0, 1]`.
-fn sample_at(waveform: &WaveformBuffer, t: f32) -> f32 {
+fn sample_at(waveform: &[f32], t: f32) -> f32 {
     let last = waveform.len() - 1;
     let pos = t * last as f32;
     let index = pos.floor() as usize;
@@ -46,18 +41,20 @@ fn sample_to_y(rect: Rect, sample: f32) -> f32 {
     rect.center().y - sample * rect.height() * 0.5
 }
 
-fn build_curve_points(rect: Rect, waveform: &WaveformBuffer) -> Vec<Pos2> {
+fn build_curve_points(rect: Rect, waveform: &[f32]) -> Vec<Pos2> {
     let columns = rect.width().ceil().max(2.0) as usize;
-    let mut points = Vec::with_capacity(columns);
+    let t_mult = ((columns - 1) as f32).recip();
 
-    for column in 0..columns {
-        let t = column as f32 / (columns - 1) as f32;
-        let x = rect.left() + t * rect.width();
-        let y = sample_to_y(rect, sample_at(waveform, t));
-        points.push(Pos2::new(x, y));
-    }
+    (0..columns)
+        .map(|column| {
+            let t = column as f32 * t_mult;
 
-    points
+            Pos2::new(
+                rect.left() + t * rect.width(),
+                sample_to_y(rect, sample_at(waveform, t)),
+            )
+        })
+        .collect()
 }
 
 /// Scale the curve's vertical deviation from the center so its peak fills the view.
@@ -132,14 +129,14 @@ fn paint_stroke(painter: &Painter, points: &[Pos2], options: WaveformOptions) {
     }
 }
 
-pub fn paint_waveform(painter: &Painter, rect: Rect, waveform: &WaveformBuffer) {
+pub fn paint_waveform(painter: &Painter, rect: Rect, waveform: &[f32]) {
     paint_waveform_with_options(painter, rect, waveform, WaveformOptions::default());
 }
 
 pub fn paint_waveform_with_options(
     painter: &Painter,
     rect: Rect,
-    waveform: &WaveformBuffer,
+    waveform: &[f32],
     options: WaveformOptions,
 ) {
     if !rect.is_positive() {
@@ -167,9 +164,9 @@ mod tests {
 
     #[test]
     fn sample_at_endpoints_match_buffer() {
-        let mut waveform = [0.0f32; WAVEFORM_LEN];
+        let mut waveform = [0.0f32; 8];
         waveform[0] = 1.0;
-        waveform[WAVEFORM_LEN - 1] = -1.0;
+        waveform[7] = -1.0;
 
         assert!((sample_at(&waveform, 0.0) - 1.0).abs() < f32::EPSILON);
         assert!((sample_at(&waveform, 1.0) + 1.0).abs() < f32::EPSILON);

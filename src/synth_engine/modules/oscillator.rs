@@ -35,6 +35,7 @@ mod ui_bridge;
 mod tests;
 
 pub use config::OscillatorConfig;
+pub use link::DISPLAY_SPECTRUM_SIZE;
 pub use ui_bridge::OscillatorUiBridge;
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
@@ -551,11 +552,6 @@ impl Oscillator {
         &mut wave_buff[WAVEFORM_PAD_LEFT..(WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT)]
     }
 
-    #[inline]
-    fn get_display_wave_slice(wave_buff: &WaveformBuffer) -> &[Sample] {
-        &wave_buff[WAVEFORM_PAD_LEFT..(WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT + 1)]
-    }
-
     #[inline(always)]
     fn load_segment(wave_buffer: &WaveformBuffer, idx: usize) -> f32x4 {
         let s = &wave_buffer[idx..idx + 4];
@@ -914,8 +910,9 @@ impl Oscillator {
         };
 
         if router.need_update_ui() {
+            let spectrum = router.spectral(inputs.spectrum, false);
             self.audio_end
-                .update_waveform(Self::get_display_wave_slice(wave_from));
+                .update_spectrum(&spectrum[..DISPLAY_SPECTRUM_SIZE]);
         }
 
         Self::process_unison(self.params.unison, channel, inputs, voice, &mut router);

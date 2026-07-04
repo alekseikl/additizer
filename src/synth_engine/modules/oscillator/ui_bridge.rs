@@ -4,7 +4,7 @@ use parking_lot::Mutex;
 
 use crate::synth_engine::{
     Input, ModuleHandle, ModuleId, Sample, StereoSample, SynthEngine,
-    oscillator::link::DisplayWaveform, synth_module::ModuleUiBridge,
+    oscillator::link::DisplaySpectrum, synth_module::ModuleUiBridge,
 };
 
 use super::{
@@ -45,8 +45,8 @@ impl OscillatorUiBridge {
         &self.config
     }
 
-    pub fn get_waveform(&mut self) -> &DisplayWaveform {
-        self.ui_end.get_waveform()
+    pub fn get_spectrum(&mut self) -> &DisplaySpectrum {
+        self.ui_end.get_spectrum()
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {

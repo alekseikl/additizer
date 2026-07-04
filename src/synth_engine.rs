@@ -49,7 +49,7 @@ pub use routing::{
 pub use smooth::SmoothedSampleParams;
 pub use stereo_sample::StereoSample;
 pub use synth_module::ModuleUiBridge;
-pub use types::Sample;
+pub use types::{ComplexSample, Sample};
 
 mod buffer;
 mod config;

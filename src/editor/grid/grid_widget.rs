@@ -106,7 +106,7 @@ impl GridWidget {
         Self {
             io,
             content: match module_type {
-                ModuleType::Oscillator => Box::new(OscillatorWidget {}),
+                ModuleType::Oscillator => Box::new(OscillatorWidget::default()),
                 ModuleType::SpectralFilter => Box::new(SpectralFilterWidget {}),
                 ModuleType::Output => Box::new(OutputContent {}),
                 _ => Box::new(EmptyContent {}),
