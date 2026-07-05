@@ -18,10 +18,10 @@ use crate::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
             ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter,
         },
+        level_ballistics::LevelBallistics,
         smooth::SmoothedSample,
         synth_module::SynthModule,
     },
-    utils::rms_volume,
 };
 
 struct ChannelParams {
@@ -90,6 +90,7 @@ pub struct Amplifier {
     ui_end: Option<UiEnd>,
     inputs: Inputs,
     output_slot: usize,
+    out_volume_ballistics: [LevelBallistics; NUM_CHANNELS],
 }
 
 impl Amplifier {
@@ -115,6 +116,7 @@ impl Amplifier {
             ui_end: Some(ui_end),
             inputs: Inputs::default(),
             output_slot: usize::MAX,
+            out_volume_ballistics: [LevelBallistics::default(); NUM_CHANNELS],
         }
     }
 
@@ -153,8 +155,11 @@ impl Amplifier {
         }
 
         if router.need_update_ui() {
-            self.audio_end
-                .update_out_volume(channel_idx, rms_volume(output));
+            let level = self.out_volume_ballistics[channel_idx].process(
+                output,
+                router.sample_rate(),
+            );
+            self.audio_end.update_out_volume(channel_idx, level);
         }
     }
 }

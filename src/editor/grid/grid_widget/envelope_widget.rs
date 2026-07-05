@@ -173,9 +173,12 @@ impl EnvelopeWidget {
                 shape.delay + shape.attack * t,
                 Self::curve_value(t, shape.attack_curvature, 0.0, 1.0),
             ),
-            EnvelopePhase::Hold(t) => {
-                Self::to_pos(rect, total, shape.delay + shape.attack + shape.hold * t, 1.0)
-            }
+            EnvelopePhase::Hold(t) => Self::to_pos(
+                rect,
+                total,
+                shape.delay + shape.attack + shape.hold * t,
+                1.0,
+            ),
             EnvelopePhase::Decay(t) => Self::to_pos(
                 rect,
                 total,

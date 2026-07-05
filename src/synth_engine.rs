@@ -17,12 +17,12 @@ use crate::{
             InputSlot, InputSlots, InputSource, MIN_MODULE_ID, ModuleLink, OutputsArena,
             ProcessContext, ProcessParams, SpectralInputSlot, data_types_compatible,
         },
+        level_ballistics::StereoLevelBallistics,
         synth_module::SynthModule,
         voices_handler::{
             DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
         },
     },
-    utils::rms_volume,
 };
 
 pub use buffer::{Buffer, HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer};
@@ -61,6 +61,7 @@ mod synth_module;
 pub mod biquad_filter;
 mod curves;
 mod iir_decimator;
+mod level_ballistics;
 mod module_handle;
 mod modules;
 mod phase;
@@ -93,6 +94,7 @@ pub struct SynthEngine {
     audio_end: ui_bridge::AudioEnd,
     ui_end: Option<ui_bridge::UiEnd>,
     outputs_arena: OutputsArena,
+    out_volume_ballistics: StereoLevelBallistics,
 }
 
 macro_rules! add_module_method {
@@ -136,6 +138,7 @@ impl SynthEngine {
             audio_end,
             ui_end: Some(ui_end),
             outputs_arena: OutputsArena::new(),
+            out_volume_ballistics: StereoLevelBallistics::default(),
         };
 
         engine.modules.insert(
@@ -664,11 +667,13 @@ impl SynthEngine {
 
             if update_ui {
                 let (left, right) = outputs.split_at_mut(1);
+                let levels = self.out_volume_ballistics.process(
+                    [left[0], right[0]],
+                    self.host_sample_rate,
+                );
 
-                self.audio_end.update_out_volume(StereoSample::new(
-                    rms_volume(left[0]),
-                    rms_volume(right[0]),
-                ));
+                self.audio_end
+                    .update_out_volume(StereoSample::from_iter(levels));
             }
         }
     }
