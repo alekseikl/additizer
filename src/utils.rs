@@ -32,6 +32,15 @@ pub fn power_scale(value: Sample, power: Sample) -> Sample {
     }
 }
 
+#[inline]
+pub fn rms_volume(buff: &[Sample]) -> Sample {
+    if buff.is_empty() {
+        return 0.0;
+    }
+
+    (buff.iter().map(|s| s * s).sum::<Sample>() / buff.len() as Sample).sqrt()
+}
+
 pub struct NthElement {
     mul: isize,
     add: isize,

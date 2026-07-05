@@ -232,13 +232,19 @@ impl Plugin for Additizer {
         impl<'a, 'b> BlocksHandler<'a, 'b> {
             #[inline]
             fn process_single_block(&mut self, sample_from: usize, samples: usize) {
+                let [left, right] = self.buffer.as_slice() else {
+                    return;
+                };
+
+                let mut channel_outputs = [
+                    &mut left[sample_from..sample_from + samples],
+                    &mut right[sample_from..sample_from + samples],
+                ];
+
                 self.synth.process(
                     samples,
                     self.update_ui && self.iteration & 1 == 0,
-                    self.buffer
-                        .as_slice()
-                        .iter_mut()
-                        .map(|buff| &mut buff[sample_from..sample_from + samples]),
+                    &mut channel_outputs,
                 );
                 self.iteration += 1;
             }

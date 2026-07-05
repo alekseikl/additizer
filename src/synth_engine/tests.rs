@@ -114,7 +114,7 @@ fn process_block_with_ui(
     engine.process(
         samples,
         update_ui,
-        [&mut left[..], &mut right[..]].into_iter(),
+        &mut [&mut left[..], &mut right[..]],
     );
 
     (left, right)

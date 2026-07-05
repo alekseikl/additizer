@@ -7,9 +7,11 @@ use egui::{
 
 use crate::{
     editor::grid::{
-        GridEvent, WidgetCtx, WireDragState, grid_widget::envelope_widget::EnvelopeWidget,
+        GridEvent, WidgetCtx, WireDragState, grid_widget::amplifier_widger::AmplifierWidget,
+        grid_widget::envelope_widget::EnvelopeWidget,
         grid_widget::harmonic_editor_widget::HarmonicEditorWidget,
         grid_widget::oscillator_widget::OscillatorWidget,
+        grid_widget::output_widget::OutputWidget,
         grid_widget::spectral_filter_widget::SpectralFilterWidget, input_tooltip,
         select_input_popup::SelectInputPopup,
     },
@@ -22,9 +24,11 @@ use crate::{
     },
 };
 
+mod amplifier_widger;
 mod envelope_widget;
 mod harmonic_editor_widget;
 mod oscillator_widget;
+mod output_widget;
 mod spectral_filter_widget;
 
 const C_MOD_BG: Color32 = Color32::from_rgb(28, 30, 42);
@@ -57,24 +61,6 @@ pub struct EmptyContent {}
 
 impl GridWidgetContent for EmptyContent {
     fn ui(&mut self, _ui: &mut Ui, _ctx: &mut WidgetCtx, _module_id: ModuleId) {}
-}
-
-pub struct OutputContent {}
-
-impl GridWidgetContent for OutputContent {
-    fn grid_size(&self) -> GridVec {
-        GridVec { x: 2, y: 2 }
-    }
-
-    fn show_label(&self) -> bool {
-        false
-    }
-
-    fn ui(&mut self, ui: &mut Ui, _ctx: &mut WidgetCtx, _module_id: ModuleId) {
-        ui.centered_and_justified(|ui| {
-            ui.add(Label::new("Out").selectable(false).truncate());
-        });
-    }
 }
 
 pub struct InputPoint {
@@ -111,10 +97,11 @@ impl GridWidget {
             io,
             content: match module_type {
                 ModuleType::Oscillator => Box::new(OscillatorWidget::default()),
+                ModuleType::Amplifier => Box::new(AmplifierWidget::default()),
                 ModuleType::SpectralFilter => Box::new(SpectralFilterWidget {}),
                 ModuleType::Envelope => Box::new(EnvelopeWidget {}),
                 ModuleType::HarmonicEditor => Box::new(HarmonicEditorWidget {}),
-                ModuleType::Output => Box::new(OutputContent {}),
+                ModuleType::Output => Box::new(OutputWidget::default()),
                 _ => Box::new(EmptyContent {}),
             },
             drag_offset: Vec2::ZERO,
@@ -523,6 +510,7 @@ impl GridWidget {
                     .selectable(false)
                     .truncate(),
             );
+            ui.add_space(2.0);
         }
 
         self.content.ui(ui, ctx, self.io.id);

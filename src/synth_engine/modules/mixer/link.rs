@@ -1,9 +1,15 @@
 use crate::synth_engine::{Input, StereoSample, VolumeType};
 
 pub enum UiEvent {
-    InputParam { input: Input, value: StereoSample },
+    InputParam {
+        input: Input,
+        value: StereoSample,
+    },
     NumInputs(u8),
-    InputVolumeType { input_idx: u8, volume_type: VolumeType },
+    InputVolumeType {
+        input_idx: u8,
+        volume_type: VolumeType,
+    },
     OutputVolumeType(VolumeType),
 }
 

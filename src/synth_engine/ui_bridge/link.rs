@@ -1,3 +1,5 @@
+use triple_buffer::triple_buffer;
+
 use crate::synth_engine::{
     Input, ModuleId, InputId, Sample, StereoSample, ui_bridge::VoicesStatus,
     voices_handler::VoicesHandlerUiState,
@@ -31,13 +33,10 @@ pub enum UiUpdate {
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
     tx: rtrb::Producer<UiUpdate>,
+    out_volume: triple_buffer::Input<StereoSample>,
 }
 
 impl AudioEnd {
-    pub fn new(rx: rtrb::Consumer<UiEvent>, tx: rtrb::Producer<UiUpdate>) -> Self {
-        Self { rx, tx }
-    }
-
     pub fn update_modulated_input(
         &mut self,
         module_id: ModuleId,
@@ -69,16 +68,22 @@ impl AudioEnd {
     pub fn pop_event(&mut self) -> Option<UiEvent> {
         self.rx.pop().ok()
     }
+
+    pub fn update_out_volume(&mut self, out_volume: StereoSample) {
+        *self.out_volume.input_buffer_mut() = out_volume;
+        self.out_volume.publish();
+    }
 }
 
 pub struct UiEnd {
     rx: rtrb::Consumer<UiUpdate>,
     tx: rtrb::Producer<UiEvent>,
+    out_volume: triple_buffer::Output<StereoSample>,
 }
 
 impl UiEnd {
-    pub fn new(rx: rtrb::Consumer<UiUpdate>, tx: rtrb::Producer<UiEvent>) -> Self {
-        Self { rx, tx }
+    pub fn get_out_volume(&mut self) -> StereoSample {
+        *self.out_volume.read()
     }
 
     pub fn set_link_amount(
@@ -132,9 +137,18 @@ impl UiEnd {
 pub fn create_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(512);
     let (to_ui_tx, from_audio_rx) = rtrb::RingBuffer::<UiUpdate>::new(128);
+    let (out_volume_input, out_volume_output) = triple_buffer(&StereoSample::ZERO);
 
     (
-        AudioEnd::new(from_ui_rx, to_ui_tx),
-        UiEnd::new(from_audio_rx, to_audio_tx),
+        AudioEnd {
+            rx: from_ui_rx,
+            tx: to_ui_tx,
+            out_volume: out_volume_input,
+        },
+        UiEnd {
+            rx: from_audio_rx,
+            tx: to_audio_tx,
+            out_volume: out_volume_output,
+        },
     )
 }

@@ -224,28 +224,34 @@ impl Biquad<BandStop> {
 }
 
 impl<T: FilterImpl> Biquad<T> {
+    #[inline]
     fn apply_2_pole(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
         input * self.filter_impl.at(freq)
     }
 
+    #[inline]
     fn apply_2_pole_linear(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
         input * self.filter_impl.at(freq).norm()
     }
 
+    #[inline]
     fn apply_3_pole(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
         input * self.filter_impl.at(freq).powf(1.5)
     }
 
+    #[inline]
     fn apply_3_pole_linear(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
         input * self.filter_impl.at(freq).norm().powf(1.5)
     }
 
+    #[inline]
     fn apply_4_pole(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
         let response = self.filter_impl.at(freq);
 
         input * response * response
     }
 
+    #[inline]
     fn apply_4_pole_linear(&self, freq: Sample, input: &ComplexSample) -> ComplexSample {
         let response = self.filter_impl.at(freq).norm();
 

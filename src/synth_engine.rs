@@ -9,17 +9,20 @@ use rustc_hash::FxHashMap;
 use std::assert_matches;
 use topo_sort::{SortResults, TopoSort};
 
-use crate::synth_engine::{
-    module_handle::ModuleHandle,
-    modules::Output,
-    routing::{
-        InputSlot, InputSlots, InputSource, MIN_MODULE_ID, ModuleLink, OutputsArena,
-        ProcessContext, ProcessParams, SpectralInputSlot, data_types_compatible,
+use crate::{
+    synth_engine::{
+        module_handle::ModuleHandle,
+        modules::Output,
+        routing::{
+            InputSlot, InputSlots, InputSource, MIN_MODULE_ID, ModuleLink, OutputsArena,
+            ProcessContext, ProcessParams, SpectralInputSlot, data_types_compatible,
+        },
+        synth_module::SynthModule,
+        voices_handler::{
+            DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
+        },
     },
-    synth_module::SynthModule,
-    voices_handler::{
-        DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
-    },
+    utils::rms_volume,
 };
 
 pub use buffer::{Buffer, HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer};
@@ -46,7 +49,7 @@ pub use routing::{
     DataType, Expression, Input, InputId, MixType, ModuleId, NUM_CHANNELS, OUTPUT_MODULE_ID,
     VoiceEvent, VolumeType,
 };
-pub use smooth::SmoothedSampleParams;
+pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
 pub use synth_module::ModuleUiBridge;
 pub use types::{ComplexSample, Sample};
@@ -603,12 +606,7 @@ impl SynthEngine {
             .for_each(|m| m.process_ui_events());
     }
 
-    pub fn process<'a>(
-        &mut self,
-        samples: usize,
-        update_ui: bool,
-        outputs: impl Iterator<Item = &'a mut [f32]>,
-    ) {
+    pub fn process(&mut self, samples: usize, update_ui: bool, outputs: &mut [&mut [f32]]) {
         self.handle_ui_events();
 
         {
@@ -663,6 +661,15 @@ impl SynthEngine {
 
         if let Some(ModuleHandle::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID) {
             output.read_output(self.oversampling, outputs);
+
+            if update_ui {
+                let (left, right) = outputs.split_at_mut(1);
+
+                self.audio_end.update_out_volume(StereoSample::new(
+                    rms_volume(left[0]),
+                    rms_volume(right[0]),
+                ));
+            }
         }
     }
 

@@ -136,6 +136,10 @@ impl<'v, 'f, 'c, S: RouterDataType> VoiceRouter<'v, 'f, 'c, S> {
         self.voice_idx
     }
 
+    pub fn need_update_ui(&self) -> bool {
+        self.seq_idx == 0 && self.factory.params().needs_update_ui
+    }
+
     pub fn need_update_ui_mono(&self) -> bool {
         self.seq_idx == 0 && self.channel_idx == 0 && self.factory.params().needs_update_ui
     }
@@ -157,7 +161,7 @@ impl<'v, 'f, 'c, S: RouterDataType> VoiceRouter<'v, 'f, 'c, S> {
         ) {
             let value = value + param;
 
-            if self.factory.ctx.params.needs_update_ui && self.seq_idx == 0 {
+            if self.need_update_ui() {
                 self.factory.ctx.audio_end.update_modulated_input(
                     self.factory.module_id,
                     input.input_type,

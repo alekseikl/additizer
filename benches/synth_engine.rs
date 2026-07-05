@@ -90,7 +90,7 @@ fn process_block(engine: &mut SynthEngine, samples: usize) -> [Sample; MAX_BLOCK
     engine.process(
         samples,
         false,
-        [&mut left[..samples], &mut right[..samples]].into_iter(),
+        &mut [&mut left[..samples], &mut right[..samples]],
     );
 
     left

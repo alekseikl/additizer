@@ -10,15 +10,18 @@ pub use config::AmplifierConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::AmplifierUiBridge;
 
-use crate::synth_engine::{
-    SmoothedSampleParams, StereoSample,
-    buffer::{Buffer, VoicesLayout, zero_buffer},
-    routing::{
-        AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-        ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter,
+use crate::{
+    synth_engine::{
+        SmoothedSampleParams, StereoSample,
+        buffer::{Buffer, VoicesLayout, zero_buffer},
+        routing::{
+            AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
+            ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter,
+        },
+        smooth::SmoothedSample,
+        synth_module::SynthModule,
     },
-    smooth::SmoothedSample,
-    synth_module::SynthModule,
+    utils::rms_volume,
 };
 
 struct ChannelParams {
@@ -143,8 +146,15 @@ impl Amplifier {
 
         let input = router.buff(inputs.audio);
 
-        for (out, input, modulation) in izip!(output, input, &self.buffers.gain_mod_input) {
+        for (out, input, modulation) in
+            izip!(output.iter_mut(), input, &self.buffers.gain_mod_input)
+        {
             *out = input * modulation;
+        }
+
+        if router.need_update_ui() {
+            self.audio_end
+                .update_out_volume(channel_idx, rms_volume(output));
         }
     }
 }

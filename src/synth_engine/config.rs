@@ -32,7 +32,7 @@ impl Default for EngineParams {
             oversampling: false,
             stereo_spectrum: true,
             voice_kill_time: from_ms(30.0),
-            output_gain: 1.0.into(),
+            output_gain: 0.5.into(),
         }
     }
 }

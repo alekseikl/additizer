@@ -99,18 +99,13 @@ impl Output {
         self.kill_time = Self::clamp_kill_time(kill_time)
     }
 
-    pub fn read_output<'a>(
-        &mut self,
-        oversampling: bool,
-        mut outputs: impl Iterator<Item = &'a mut [f32]>,
-    ) {
+    pub fn read_output(&mut self, oversampling: bool, outputs: &mut [&mut [f32]]) {
         if oversampling {
-            self.decimator.process(
-                [&self.output[0], &self.output[1]],
-                [outputs.next().unwrap(), outputs.next().unwrap()],
-            );
+            let (left, right) = outputs.split_at_mut(1);
+            self.decimator
+                .process([&self.output[0], &self.output[1]], [left[0], right[0]]);
         } else {
-            for (out, aggregated) in outputs.zip(self.output.iter()) {
+            for (out, aggregated) in outputs.iter_mut().zip(self.output.iter()) {
                 for (out, aggregated) in out.iter_mut().zip(aggregated.iter()) {
                     *out = *aggregated;
                 }

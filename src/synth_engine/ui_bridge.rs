@@ -664,4 +664,8 @@ impl UiBridge {
             self.engine_params.output_gain = output_gain;
         }
     }
+
+    pub fn get_out_volume(&mut self) -> StereoSample {
+        self.ui_end.get_out_volume()
+    }
 }
