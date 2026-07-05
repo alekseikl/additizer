@@ -1,7 +1,7 @@
 use triple_buffer::triple_buffer;
 
 use crate::synth_engine::{
-    Input, ModuleId, InputId, Sample, StereoSample, ui_bridge::VoicesStatus,
+    Input, InputId, ModuleId, Sample, StereoSample, ui_bridge::VoicesStatus,
     voices_handler::VoicesHandlerUiState,
 };
 
@@ -86,12 +86,7 @@ impl UiEnd {
         *self.out_volume.read()
     }
 
-    pub fn set_link_amount(
-        &mut self,
-        src: ModuleId,
-        dst: InputId,
-        amount: StereoSample,
-    ) -> bool {
+    pub fn set_link_amount(&mut self, src: ModuleId, dst: InputId, amount: StereoSample) -> bool {
         self.tx
             .push(UiEvent::LinkAmount { src, dst, amount })
             .is_ok()

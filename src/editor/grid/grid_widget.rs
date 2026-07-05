@@ -7,11 +7,10 @@ use egui::{
 
 use crate::{
     editor::grid::{
-        GridEvent, WidgetCtx, WireDragState, grid_widget::amplifier_widger::AmplifierWidget,
+        GridEvent, WidgetCtx, WireDragState, grid_widget::amplifier_widget::AmplifierWidget,
         grid_widget::envelope_widget::EnvelopeWidget,
         grid_widget::harmonic_editor_widget::HarmonicEditorWidget,
-        grid_widget::oscillator_widget::OscillatorWidget,
-        grid_widget::output_widget::OutputWidget,
+        grid_widget::oscillator_widget::OscillatorWidget, grid_widget::output_widget::OutputWidget,
         grid_widget::spectral_filter_widget::SpectralFilterWidget, input_tooltip,
         select_input_popup::SelectInputPopup,
     },
@@ -24,7 +23,7 @@ use crate::{
     },
 };
 
-mod amplifier_widger;
+mod amplifier_widget;
 mod envelope_widget;
 mod harmonic_editor_widget;
 mod oscillator_widget;
