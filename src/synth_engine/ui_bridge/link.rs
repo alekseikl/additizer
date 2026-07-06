@@ -26,6 +26,7 @@ pub enum UiUpdate {
         input: Input,
         channel: u8,
         value: Sample,
+        normalized_value: Sample,
     },
     VoicesStatus(VoicesStatus),
 }
@@ -43,6 +44,7 @@ impl AudioEnd {
         input: Input,
         channel: u8,
         value: Sample,
+        normalized_value: Sample,
     ) -> bool {
         self.tx
             .push(UiUpdate::ModulatedInput {
@@ -50,6 +52,7 @@ impl AudioEnd {
                 input,
                 channel,
                 value,
+                normalized_value,
             })
             .is_ok()
     }

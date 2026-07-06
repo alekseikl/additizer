@@ -68,6 +68,7 @@ pub struct ModuleItem {
 #[derive(Clone, Copy)]
 pub struct ModulatedValue {
     pub value: StereoSample,
+    pub normalized: StereoSample,
     pub is_stereo: bool,
 }
 
@@ -81,6 +82,12 @@ pub struct LinkableInput {
     pub modulations: Vec<LinkableModulation>,
 }
 
+#[derive(Default, Clone, Copy)]
+struct ModulatedInput {
+    value: StereoSample,
+    normalized: StereoSample,
+}
+
 pub struct UiBridge {
     engine: EngineHandle,
     ui_config: UiConfigHandle,
@@ -88,7 +95,7 @@ pub struct UiBridge {
     routing: RoutingState,
     engine_params: EngineParams,
     voices: VoicesStatus,
-    modulated_inputs: FxHashMap<InputId, StereoSample>,
+    modulated_inputs: FxHashMap<InputId, ModulatedInput>,
     module_bridges: FxHashMap<ModuleId, Option<ModuleBridge>>,
 }
 
@@ -428,13 +435,14 @@ impl UiBridge {
         if self.routing.routing.contains_key(&input)
             && self.has_active_voices()
             && let Some(module) = self.routing.modules.get(&input.module_id)
-            && let Some(value) = self.modulated_inputs.get(&input).copied()
+            && let Some(modulated) = self.modulated_inputs.get(&input).copied()
         {
             let is_mono =
                 module.output_type == DataType::Spectral && !self.engine_params.stereo_spectrum;
 
             Some(ModulatedValue {
-                value,
+                value: modulated.value,
+                normalized: modulated.normalized,
                 is_stereo: !is_mono,
             })
         } else {
@@ -493,10 +501,16 @@ impl UiBridge {
                     input,
                     channel,
                     value,
+                    normalized_value,
                 } => {
-                    self.modulated_inputs
+                    let channel_idx = channel as usize;
+                    let modulated = self
+                        .modulated_inputs
                         .entry(InputId::new(input, module_id))
-                        .or_insert(StereoSample::ZERO)[channel as usize] = value;
+                        .or_default();
+
+                    modulated.value[channel_idx] = value;
+                    modulated.normalized[channel_idx] = normalized_value;
                 }
                 UiUpdate::VoicesStatus(status) => self.voices = status,
             }

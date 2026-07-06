@@ -153,13 +153,13 @@ impl<'v, 'f, 'c, S: RouterDataType> VoiceRouter<'v, 'f, 'c, S> {
     }
 
     fn scalar_param_impl(&mut self, input: &InputSlots, param: Sample, triggered: bool) -> Sample {
-        if let Some(value) = self.factory.ctx.outputs_arena.get_scalar(
+        if let Some(modulated_amount) = self.factory.ctx.outputs_arena.get_scalar(
             &input.slots,
             self.channel_idx,
             self.voice_idx,
             triggered,
         ) {
-            let value = value + param;
+            let value = param + modulated_amount;
 
             if self.need_update_ui() {
                 self.factory.ctx.audio_end.update_modulated_input(
@@ -167,6 +167,7 @@ impl<'v, 'f, 'c, S: RouterDataType> VoiceRouter<'v, 'f, 'c, S> {
                     input.input_type,
                     self.channel_idx as u8,
                     value,
+                    input.normalized_modulated(self.channel_idx, modulated_amount),
                 );
             }
 
@@ -212,11 +213,14 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
             0,
             buff,
         ) {
+            let value = buff[0];
+
             self.factory.ctx.audio_end.update_modulated_input(
                 self.factory.module_id,
                 input.input_type,
                 self.channel_idx as u8,
-                buff[0],
+                value,
+                input.normalized_modulated(self.channel_idx, value - param.get()),
             );
         }
     }
@@ -238,7 +242,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
         buff: &mut Buffer,
         triggered: bool,
     ) {
-        let skip = usize::from(!triggered);
+        let skip = usize::from(!triggered); // Samples to skip
         let params = &self.factory.ctx.params;
         let buff = &mut buff[skip..params.samples + 1];
 
@@ -255,11 +259,14 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
             skip,
             buff,
         ) {
+            let value = buff[skip];
+
             self.factory.ctx.audio_end.update_modulated_input(
                 self.factory.module_id,
                 input.input_type,
                 self.channel_idx as u8,
-                buff[skip],
+                value,
+                input.normalized_modulated(self.channel_idx, value - param.get()),
             );
         }
     }

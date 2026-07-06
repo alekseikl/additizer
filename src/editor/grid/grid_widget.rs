@@ -15,7 +15,7 @@ use crate::{
         select_input_popup::SelectInputPopup,
     },
     synth_engine::{
-        InputId, ModuleId, ModuleType,
+        DataType, InputId, ModuleId, ModuleType,
         ui_bridge::{
             GridVec,
             routing_state::{ModuleInput, ModuleIo},
@@ -307,6 +307,27 @@ impl GridWidget {
         }
     }
 
+    fn modulated_dot_color(ctx: &WidgetCtx, module_id: ModuleId, input: &ModuleInput) -> Color32 {
+        let base = input.meta.input_type.color();
+
+        if input.meta.data_type != DataType::Control {
+            return base;
+        }
+
+        let blend = ctx
+            .bridge
+            .get_input_modulated_value(InputId::new(input.meta.input_type, module_id))
+            .map(|modulated| {
+                modulated
+                    .normalized
+                    .left()
+                    .max(modulated.normalized.right())
+            })
+            .unwrap_or(0.0);
+
+        base.lerp_to_gamma(Color32::WHITE, blend)
+    }
+
     fn draw_input(
         &self,
         ui: &mut Ui,
@@ -316,7 +337,8 @@ impl GridWidget {
     ) -> Pos2 {
         let width = ui.available_width();
         let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::click_and_drag());
-        let color = input.meta.input_type.color();
+        let wire_color = input.meta.input_type.color();
+        let dot_color = Self::modulated_dot_color(ctx, self.io.id, input);
 
         if response.double_clicked_by(PointerButton::Primary) {
             ctx.bridge
@@ -336,9 +358,9 @@ impl GridWidget {
 
         painter.line_segment(
             [rect.left_center(), center],
-            Stroke::new(WIRE_THICKNESS, color),
+            Stroke::new(WIRE_THICKNESS, wire_color),
         );
-        painter.circle_filled(center, dot_size * 0.5, color);
+        painter.circle_filled(center, dot_size * 0.5, dot_color);
 
         input_tooltip::show_above(
             ui,

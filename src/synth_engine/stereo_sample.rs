@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::iter::Sum;
 use std::ops::{Add, Div, Index, IndexMut, Mul, Sub};
 
 use crate::synth_engine::{Sample, routing::NUM_CHANNELS};
@@ -75,6 +76,12 @@ impl StereoSample {
     }
 }
 
+impl Default for StereoSample {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
+
 impl Index<usize> for StereoSample {
     type Output = Sample;
 
@@ -122,6 +129,12 @@ stereo_op! {Add, add, +}
 stereo_op! {Sub, sub, -}
 stereo_op! {Mul, mul, *}
 stereo_op! {Div, div, /}
+
+impl Sum for StereoSample {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Self::ZERO, |acc, item| acc + item)
+    }
+}
 
 impl From<f32> for StereoSample {
     fn from(value: f32) -> Self {

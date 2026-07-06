@@ -267,6 +267,13 @@ impl InputSlots {
             src.amount = amount
         }
     }
+
+    // Modulated input value projected into [0.0, 1.0] range for control rate input indicator
+    pub fn normalized_modulated(&self, channel_idx: usize, modulated_amount: Sample) -> Sample {
+        let max_mod_amount: Sample = self.slots.iter().map(|s| s.amount[channel_idx]).sum();
+
+        (modulated_amount / max_mod_amount).clamp(0.0, 1.0)
+    }
 }
 
 pub struct SpectralInputSlot {
