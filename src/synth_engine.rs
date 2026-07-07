@@ -9,19 +9,17 @@ use rustc_hash::FxHashMap;
 use std::assert_matches;
 use topo_sort::{SortResults, TopoSort};
 
-use crate::{
-    synth_engine::{
-        module_handle::ModuleHandle,
-        modules::Output,
-        routing::{
-            InputSlot, InputSlots, InputSource, MIN_MODULE_ID, ModuleLink, OutputsArena,
-            ProcessContext, ProcessParams, SpectralInputSlot, data_types_compatible,
-        },
-        level_ballistics::StereoLevelBallistics,
-        synth_module::SynthModule,
-        voices_handler::{
-            DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
-        },
+use crate::synth_engine::{
+    level_ballistics::StereoLevelBallistics,
+    module_handle::ModuleHandle,
+    modules::Output,
+    routing::{
+        InputSlot, InputSlots, InputSource, MIN_MODULE_ID, ModuleLink, OutputsArena,
+        ProcessContext, ProcessParams, SpectralInputSlot, data_types_compatible,
+    },
+    synth_module::SynthModule,
+    voices_handler::{
+        DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
     },
 };
 
@@ -60,6 +58,7 @@ mod config;
 mod synth_module;
 pub mod biquad_filter;
 mod curves;
+pub mod filters;
 mod iir_decimator;
 mod level_ballistics;
 mod module_handle;
@@ -667,10 +666,9 @@ impl SynthEngine {
 
             if update_ui {
                 let (left, right) = outputs.split_at_mut(1);
-                let levels = self.out_volume_ballistics.process(
-                    [left[0], right[0]],
-                    self.host_sample_rate,
-                );
+                let levels = self
+                    .out_volume_ballistics
+                    .process([left[0], right[0]], self.host_sample_rate);
 
                 self.audio_end
                     .update_out_volume(StereoSample::from_iter(levels));
