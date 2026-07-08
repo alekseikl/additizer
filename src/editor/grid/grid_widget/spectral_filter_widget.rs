@@ -55,6 +55,8 @@ impl SpectralFilterWidget {
                 drive: config.drive[0].min(24.0),
                 cutoff: config.cutoff[0].clamp(-4.0, 10.0),
                 resonance: config.resonance[0].clamp(MIN_RESONANCE, MAX_RESONANCE),
+                q_limit_to: config.q_limit_to[0],
+                q_limit_curve: config.q_limit_curve[0],
                 linear_phase: config.linear_phase,
             },
         );

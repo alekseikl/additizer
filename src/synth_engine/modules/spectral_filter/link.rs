@@ -4,6 +4,8 @@ pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
     FilterType(FilterType),
     LinearPhase(bool),
+    QLimitTo(StereoSample),
+    QLimitCurve(StereoSample),
 }
 
 pub struct UiEnd {
@@ -25,6 +27,14 @@ impl UiEnd {
 
     pub fn set_linear_phase(&mut self, value: bool) -> bool {
         self.tx.push(UiEvent::LinearPhase(value)).is_ok()
+    }
+
+    pub fn set_q_limit_to(&mut self, value: StereoSample) -> bool {
+        self.tx.push(UiEvent::QLimitTo(value)).is_ok()
+    }
+
+    pub fn set_q_limit_curve(&mut self, value: StereoSample) -> bool {
+        self.tx.push(UiEvent::QLimitCurve(value)).is_ok()
     }
 }
 

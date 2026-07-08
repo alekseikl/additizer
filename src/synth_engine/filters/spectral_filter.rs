@@ -3,12 +3,15 @@ use std::f32;
 use nih_plug::util::db_to_gain_fast;
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::{ComplexSample, Sample};
+use crate::{
+    synth_engine::{ComplexSample, Sample},
+    utils::{power_scale, st_to_octave},
+};
 
 const TAU: Sample = f32::consts::TAU;
 
 pub trait FilterImpl: Clone + Copy + 'static {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self;
+    fn new(gain: Sample, cutoff_freq: Sample, q: Sample) -> Self;
     fn at(&self, freq: Sample) -> ComplexSample;
 }
 
@@ -279,8 +282,10 @@ impl FilterType {
 
 pub struct FilterParams {
     pub drive: Sample,
-    pub cutoff: Sample,
+    pub cutoff: Sample, // Octaves
     pub resonance: Sample,
+    pub q_limit_to: Sample,    // Octaves. Before this point Q is limited.
+    pub q_limit_curve: Sample, // [0.0-1.0]
     pub linear_phase: bool,
 }
 
@@ -291,36 +296,50 @@ pub const MIN_CUTOFF: Sample = -4.0;
 pub const MAX_CUTOFF: Sample = 10.0;
 const MIN_Q: Sample = 0.01;
 const MAX_Q: Sample = 16.0;
-
-pub fn resonance_to_q(resonance: Sample) -> Sample {
-    let resonance = resonance.clamp(MIN_RESONANCE, MAX_RESONANCE);
-
-    if resonance > 0.0 {
-        BUTTERWORTH_Q + (MAX_Q - BUTTERWORTH_Q) * resonance
-    } else {
-        MIN_Q + (BUTTERWORTH_Q - MIN_Q) * (1.0 + resonance)
-    }
-}
+const MIN_Q_LIMIT: Sample = 0.0;
+const MAX_Q_LIMIT: Sample = 10.0;
+const MAX_Q_LIMIT_POWER: Sample = 10.0;
 
 pub struct SpectralFilter {
     filter_type: FilterType,
     gain: Sample,
-    cutoff: Sample,
+    cutoff_freq: Sample,
     q: Sample,
     linear_phase: bool,
 }
 
 impl SpectralFilter {
     pub fn new(filter_type: FilterType, params: FilterParams) -> Self {
-        let resonance = params.resonance.clamp(MIN_RESONANCE, MAX_RESONANCE);
-
         Self {
             filter_type,
             gain: db_to_gain_fast(params.drive.min(MAX_DRIVE)),
-            cutoff: params.cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF).exp2(),
-            q: resonance_to_q(resonance),
+            cutoff_freq: params.cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF).exp2(),
+            q: Self::q_from_params(&params),
             linear_phase: params.linear_phase,
         }
+    }
+
+    fn q_from_params(params: &FilterParams) -> Sample {
+        let resonance = params.resonance.clamp(MIN_RESONANCE, MAX_RESONANCE);
+        let q_limit_to = params.q_limit_to.clamp(MIN_Q_LIMIT, MAX_Q_LIMIT);
+
+        let q = if resonance > 0.0 {
+            BUTTERWORTH_Q + (MAX_Q - BUTTERWORTH_Q) * resonance.powf(3.0)
+        } else {
+            MIN_Q + (BUTTERWORTH_Q - MIN_Q) * (1.0 + resonance)
+        };
+
+        let butterworth_excess = q - BUTTERWORTH_Q;
+
+        if q_limit_to < st_to_octave(1.0) || butterworth_excess <= 0.0 || params.cutoff > q_limit_to
+        {
+            return q;
+        }
+
+        let q_limit_curve = params.q_limit_curve.clamp(0.0, 1.0) * MAX_Q_LIMIT_POWER;
+        let t = params.cutoff.max(0.0) / q_limit_to;
+
+        BUTTERWORTH_Q + butterworth_excess * power_scale(t, q_limit_curve)
     }
 
     pub fn apply_response(&self, input: &[ComplexSample], output: &mut [ComplexSample]) {
@@ -353,7 +372,7 @@ impl SpectralFilter {
 
     fn response_impl<T: FilterImpl>(&self, freq: Sample) -> ComplexSample {
         let one = ComplexSample::new(1.0, 0.0);
-        let response = T::new(self.gain, self.cutoff, self.q).at(freq);
+        let response = T::new(self.gain, self.cutoff_freq, self.q).at(freq);
 
         if self.linear_phase {
             one * response.norm()
@@ -363,7 +382,7 @@ impl SpectralFilter {
     }
 
     fn apply_impl<T: FilterImpl>(&self, input: &[ComplexSample], output: &mut [ComplexSample]) {
-        let filter_impl = T::new(self.gain, self.cutoff, self.q);
+        let filter_impl = T::new(self.gain, self.cutoff_freq, self.q);
 
         if self.linear_phase {
             for (i, (out, &inp)) in output.iter_mut().zip(input).enumerate() {

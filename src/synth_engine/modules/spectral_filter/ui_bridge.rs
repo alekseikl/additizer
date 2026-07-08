@@ -1,4 +1,6 @@
-use crate::synth_engine::{Input, StereoSample, filters::spectral_filter::FilterType, synth_module::ModuleUiBridge};
+use crate::synth_engine::{
+    Input, StereoSample, filters::spectral_filter::FilterType, synth_module::ModuleUiBridge,
+};
 
 use super::link::UiEnd;
 use super::{SpectralFilter, SpectralFilterConfig};
@@ -42,6 +44,18 @@ impl SpectralFilterUiBridge {
     pub fn set_linear_phase(&mut self, value: bool) {
         if self.ui_end.set_linear_phase(value) {
             self.config.linear_phase = value;
+        }
+    }
+
+    pub fn set_q_limit_to(&mut self, value: StereoSample) {
+        if self.ui_end.set_q_limit_to(value) {
+            self.config.q_limit_to = value;
+        }
+    }
+
+    pub fn set_q_limit_curve(&mut self, value: StereoSample) {
+        if self.ui_end.set_q_limit_curve(value) {
+            self.config.q_limit_curve = value;
         }
     }
 }

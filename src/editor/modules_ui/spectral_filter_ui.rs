@@ -3,12 +3,15 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 use crate::{
     editor::{
         ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
-        module_label::ModuleLabel, utils::confirm_module_removal,
+        module_label::ModuleLabel, stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
     synth_engine::{
-        Input, ModuleId, filters::spectral_filter::FilterType,
-        spectral_filter::SpectralFilterUiBridge, ui_bridge::{ModuleBridge, UiBridge},
+        Input, ModuleId,
+        filters::spectral_filter::FilterType,
+        spectral_filter::SpectralFilterUiBridge,
+        ui_bridge::{ModuleBridge, UiBridge},
     },
+    utils::st_to_octave,
 };
 
 pub struct SpectralFilterUI {
@@ -110,6 +113,36 @@ impl SpectralFilterUI {
                     .changed()
                 {
                     filter_bridge.set_param(Input::Drive, config.drive);
+                }
+                ui.end_row();
+
+                ui.label("Q Limit To");
+                if ui
+                    .add(
+                        StereoSlider::new(&mut config.q_limit_to)
+                            .range(0.0..=10.0)
+                            .display_scale(12.0)
+                            .default_value(st_to_octave(12.0))
+                            .precision(2)
+                            .units(" st"),
+                    )
+                    .changed()
+                {
+                    filter_bridge.set_q_limit_to(config.q_limit_to);
+                }
+                ui.end_row();
+
+                ui.label("Q Limit Curve");
+                if ui
+                    .add(
+                        StereoSlider::new(&mut config.q_limit_curve)
+                            .range(0.0..=1.0)
+                            .default_value(0.5)
+                            .precision(2),
+                    )
+                    .changed()
+                {
+                    filter_bridge.set_q_limit_curve(config.q_limit_curve);
                 }
                 ui.end_row();
 

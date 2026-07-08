@@ -20,7 +20,7 @@ use crate::synth_engine::{
         SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent, VoiceRouter,
     },
     synth_module::SynthModule,
-    types::{ComplexSample, Sample},
+    types::Sample,
 };
 
 struct Params {
@@ -41,6 +41,8 @@ struct ChannelParams {
     cutoff: Sample,
     resonance: Sample,
     drive: Sample,
+    q_limit_to: Sample,
+    q_limit_curve: Sample,
 }
 
 impl ChannelParams {
@@ -49,6 +51,8 @@ impl ChannelParams {
             cutoff: c.cutoff[channel_idx],
             resonance: c.resonance[channel_idx],
             drive: c.drive[channel_idx],
+            q_limit_to: c.q_limit_to[channel_idx],
+            q_limit_curve: c.q_limit_curve[channel_idx],
         }
     }
 }
@@ -151,6 +155,8 @@ impl SpectralFilter {
             id: self.id,
             filter_type: self.params.filter_type,
             linear_phase: self.params.linear_phase,
+            q_limit_to: get_stereo_param!(self, q_limit_to),
+            q_limit_curve: get_stereo_param!(self, q_limit_curve),
             cutoff: get_stereo_param!(self, cutoff),
             resonance: get_stereo_param!(self, resonance),
             drive: get_stereo_param!(self, drive),
@@ -167,28 +173,12 @@ impl SpectralFilter {
         resonance.clamp(MIN_RESONANCE, MAX_RESONANCE)
     );
     set_stereo_param!(set_drive, drive);
-
-    fn apply_filter(
-        filter_type: FilterType,
-        params: &Params,
-        cutoff: Sample,
-        resonance: Sample,
-        drive: Sample,
-        input: &[ComplexSample],
-        output: &mut [ComplexSample],
-    ) {
-        let filter = SpectralFilterEngine::new(
-            filter_type,
-            FilterParams {
-                drive,
-                cutoff,
-                resonance,
-                linear_phase: params.linear_phase,
-            },
-        );
-
-        filter.apply_response(input, output);
-    }
+    set_stereo_param!(set_q_limit_to, q_limit_to, q_limit_to.clamp(0.0, 10.0));
+    set_stereo_param!(
+        set_q_limit_curve,
+        q_limit_curve,
+        q_limit_curve.clamp(0.0, 1.0)
+    );
 
     fn process_voice(
         &mut self,
@@ -213,15 +203,19 @@ impl SpectralFilter {
             .min(24.0);
         let input = router.spectral(inputs.spectrum, voice.triggered);
 
-        Self::apply_filter(
+        let filter = SpectralFilterEngine::new(
             self.params.filter_type,
-            &self.params,
-            cutoff,
-            resonance,
-            drive,
-            input,
-            voice_output,
+            FilterParams {
+                drive,
+                cutoff,
+                resonance,
+                q_limit_to: channel.q_limit_to,
+                q_limit_curve: channel.q_limit_curve,
+                linear_phase: self.params.linear_phase,
+            },
         );
+
+        filter.apply_response(input, voice_output);
 
         if voice.triggered {
             voice.triggered = false;
@@ -288,6 +282,8 @@ impl SynthModule for SpectralFilter {
                 },
                 UiEvent::FilterType(filter_type) => self.set_filter_type(filter_type),
                 UiEvent::LinearPhase(value) => self.set_linear_phase(value),
+                UiEvent::QLimitTo(value) => self.set_q_limit_to(value),
+                UiEvent::QLimitCurve(value) => self.set_q_limit_curve(value),
             }
         }
     }
