@@ -1,19 +1,20 @@
 use std::array;
 
-use nih_plug::util::db_to_gain_fast;
-
 mod config;
 mod link;
 mod ui_bridge;
 
-pub use config::{SpectralFilterConfig, SpectralFilterType};
+pub use config::SpectralFilterConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::SpectralFilterUiBridge;
 
 use crate::synth_engine::{
     StereoSample,
-    biquad_filter::{Biquad, BiquadParams, FilterPole},
     buffer::{VoicesLayout, new_voices_layout},
+    filters::spectral_filter::{
+        FilterParams, FilterType, MAX_RESONANCE, MIN_RESONANCE,
+        SpectralFilter as SpectralFilterEngine,
+    },
     routing::{
         DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
         SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent, VoiceRouter,
@@ -23,8 +24,7 @@ use crate::synth_engine::{
 };
 
 struct Params {
-    filter_type: SpectralFilterType,
-    fourth_order: bool,
+    filter_type: FilterType,
     linear_phase: bool,
 }
 
@@ -32,7 +32,6 @@ impl Params {
     fn from_config(c: &config::SpectralFilterConfig) -> Self {
         Self {
             filter_type: c.filter_type,
-            fourth_order: c.fourth_order,
             linear_phase: c.linear_phase,
         }
     }
@@ -40,7 +39,7 @@ impl Params {
 
 struct ChannelParams {
     cutoff: Sample,
-    q: Sample,
+    resonance: Sample,
     drive: Sample,
 }
 
@@ -48,7 +47,7 @@ impl ChannelParams {
     fn from_config(c: &SpectralFilterConfig, channel_idx: usize) -> Self {
         Self {
             cutoff: c.cutoff[channel_idx],
-            q: c.q[channel_idx],
+            resonance: c.resonance[channel_idx],
             drive: c.drive[channel_idx],
         }
     }
@@ -62,7 +61,7 @@ struct VoiceState {
 pub struct Inputs {
     spectrum: Option<usize>,
     cutoff: InputSlots,
-    q: InputSlots,
+    resonance: InputSlots,
     drive: InputSlots,
 }
 
@@ -71,7 +70,7 @@ impl Default for Inputs {
         Self {
             spectrum: None,
             cutoff: InputSlots::empty(Input::Cutoff),
-            q: InputSlots::empty(Input::Q),
+            resonance: InputSlots::empty(Input::Resonance),
             drive: InputSlots::empty(Input::Drive),
         }
     }
@@ -84,7 +83,7 @@ impl Inputs {
         for input in inputs {
             match input.input_type {
                 Input::Cutoff => result.cutoff = input.clone(),
-                Input::Q => result.q = input.clone(),
+                Input::Resonance => result.resonance = input.clone(),
                 Input::Drive => result.drive = input.clone(),
                 _ => (),
             }
@@ -102,7 +101,7 @@ impl Inputs {
     fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
         match input_type {
             Input::Cutoff => self.cutoff.update_amount(src_slot, amount),
-            Input::Q => self.q.update_amount(src_slot, amount),
+            Input::Resonance => self.resonance.update_amount(src_slot, amount),
             Input::Drive => self.drive.update_amount(src_slot, amount),
             _ => (),
         }
@@ -151,61 +150,44 @@ impl SpectralFilter {
         SpectralFilterConfig {
             id: self.id,
             filter_type: self.params.filter_type,
-            fourth_order: self.params.fourth_order,
             linear_phase: self.params.linear_phase,
             cutoff: get_stereo_param!(self, cutoff),
-            q: get_stereo_param!(self, q),
+            resonance: get_stereo_param!(self, resonance),
             drive: get_stereo_param!(self, drive),
         }
     }
 
-    set_mono_param!(set_filter_type, filter_type, SpectralFilterType);
-    set_mono_param!(set_fourth_order, fourth_order, bool);
+    set_mono_param!(set_filter_type, filter_type, FilterType);
     set_mono_param!(set_linear_phase, linear_phase, bool);
 
     set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
-    set_stereo_param!(set_q, q, q.clamp(0.1, 10.0));
+    set_stereo_param!(
+        set_resonance,
+        resonance,
+        resonance.clamp(MIN_RESONANCE, MAX_RESONANCE)
+    );
     set_stereo_param!(set_drive, drive);
 
-    fn apply_filter<'a>(
+    fn apply_filter(
+        filter_type: FilterType,
         params: &Params,
         cutoff: Sample,
-        q: Sample,
+        resonance: Sample,
         drive: Sample,
-        input: impl Iterator<Item = &'a ComplexSample>,
-        output: impl Iterator<Item = &'a mut ComplexSample>,
+        input: &[ComplexSample],
+        output: &mut [ComplexSample],
     ) {
-        use crate::synth_engine::biquad_filter::{BandPass, BandStop, HighPass, LowPass, Peaking};
-
-        let biquad_params = BiquadParams {
-            cutoff: cutoff.exp2(),
-            q,
-            gain: db_to_gain_fast(drive),
-            pole: if params.fourth_order {
-                FilterPole::Pole4
-            } else {
-                FilterPole::Pole2
+        let filter = SpectralFilterEngine::new(
+            filter_type,
+            FilterParams {
+                drive,
+                cutoff,
+                resonance,
+                linear_phase: params.linear_phase,
             },
-            linear_phase: params.linear_phase,
-        };
+        );
 
-        match params.filter_type {
-            SpectralFilterType::LowPass => {
-                Biquad::<LowPass>::new(&biquad_params).apply_response(input, output)
-            }
-            SpectralFilterType::HighPass => {
-                Biquad::<HighPass>::new(&biquad_params).apply_response(input, output)
-            }
-            SpectralFilterType::BandPass => {
-                Biquad::<BandPass>::new(&biquad_params).apply_response(input, output)
-            }
-            SpectralFilterType::BandStop => {
-                Biquad::<BandStop>::new(&biquad_params).apply_response(input, output)
-            }
-            SpectralFilterType::Peaking => {
-                Biquad::<Peaking>::new(&biquad_params).apply_response(input, output)
-            }
-        }
+        filter.apply_response(input, output);
     }
 
     fn process_voice(
@@ -223,21 +205,22 @@ impl SpectralFilter {
         let cutoff = router
             .scalar_param(&inputs.cutoff, channel.cutoff, voice.triggered)
             .clamp(-4.0, 10.0);
-        let q = router
-            .scalar_param(&inputs.q, channel.q, voice.triggered)
-            .clamp(0.1, 10.0);
+        let resonance = router
+            .scalar_param(&inputs.resonance, channel.resonance, voice.triggered)
+            .clamp(MIN_RESONANCE, MAX_RESONANCE);
         let drive = router
             .scalar_param(&inputs.drive, channel.drive, voice.triggered)
             .min(24.0);
         let input = router.spectral(inputs.spectrum, voice.triggered);
 
         Self::apply_filter(
+            self.params.filter_type,
             &self.params,
             cutoff,
-            q,
+            resonance,
             drive,
-            input.iter(),
-            voice_output.iter_mut(),
+            input,
+            voice_output,
         );
 
         if voice.triggered {
@@ -257,7 +240,7 @@ impl SynthModule for SpectralFilter {
         static INPUTS: &[InputMeta] = &[
             InputMeta::spectral(Input::Spectrum),
             InputMeta::control(Input::Cutoff),
-            InputMeta::control(Input::Q),
+            InputMeta::control(Input::Resonance),
             InputMeta::control(Input::Drive),
         ];
 
@@ -299,12 +282,11 @@ impl SynthModule for SpectralFilter {
             match event {
                 UiEvent::InputParam { input, value } => match input {
                     Input::Cutoff => self.set_cutoff(value),
-                    Input::Q => self.set_q(value),
+                    Input::Resonance => self.set_resonance(value),
                     Input::Drive => self.set_drive(value),
                     _ => (),
                 },
                 UiEvent::FilterType(filter_type) => self.set_filter_type(filter_type),
-                UiEvent::FourthOrder(value) => self.set_fourth_order(value),
                 UiEvent::LinearPhase(value) => self.set_linear_phase(value),
             }
         }

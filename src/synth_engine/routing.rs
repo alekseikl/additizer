@@ -55,7 +55,7 @@ pub enum Input {
     GainsBlend,
     LowFrequency,
     Cutoff,
-    Q,
+    Resonance,
     Drive, // dB
     Skew,
     Delay,

@@ -1,6 +1,7 @@
 use std::f32;
 
 use nih_plug::util::db_to_gain_fast;
+use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{ComplexSample, Sample};
 
@@ -40,36 +41,24 @@ impl FilterImpl for LowPass12 {
 
 #[derive(Clone, Copy)]
 pub struct LowPass18 {
-    numerator: Sample,
-    w_squared: Sample,
+    biquad: LowPass12,
     w: Sample,
-    w_q: Sample,
 }
 
 impl FilterImpl for LowPass18 {
     fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
-        let w = cutoff * TAU;
-        let w_squared = w * w;
-
         Self {
-            numerator: gain * w_squared * w,
-            w_squared,
-            w,
-            w_q: w / q,
+            biquad: LowPass12::new(gain, cutoff, q),
+            w: cutoff * TAU,
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
         let x = freq * TAU;
-        let x_squared = x * x;
-        let wx_diff = self.w_squared - x_squared;
+        let one_pole = self.w / ComplexSample::new(self.w, x);
 
-        self.numerator
-            / ComplexSample::new(
-                self.w * wx_diff - self.w_q * x_squared,
-                x * (self.w + self.w_q * wx_diff),
-            )
+        one_pole * self.biquad.at(freq)
     }
 }
 
@@ -77,36 +66,21 @@ const BUTTERWORTH_Q: Sample = f32::consts::FRAC_1_SQRT_2;
 
 #[derive(Clone, Copy)]
 pub struct LowPass24 {
-    numerator: Sample,
-    w_squared: Sample,
-    w_q1: Sample,
-    w_q2: Sample,
+    butterworth_section: LowPass12,
+    user_section: LowPass12,
 }
 
 impl FilterImpl for LowPass24 {
     fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
-        let w = cutoff * TAU;
-        let w_squared = w * w;
-
         Self {
-            numerator: gain * w_squared * w_squared,
-            w_squared,
-            w_q1: w / BUTTERWORTH_Q,
-            w_q2: w / q,
+            butterworth_section: LowPass12::new(1.0, cutoff, BUTTERWORTH_Q),
+            user_section: LowPass12::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        let x = freq * TAU;
-        let x_squared = x * x;
-        let wx_diff = self.w_squared - x_squared;
-
-        self.numerator
-            / ComplexSample::new(
-                wx_diff * wx_diff - self.w_q1 * self.w_q2 * x_squared,
-                wx_diff * x * (self.w_q1 + self.w_q2),
-            )
+        self.butterworth_section.at(freq) * self.user_section.at(freq)
     }
 }
 
@@ -139,70 +113,44 @@ impl FilterImpl for HighPass12 {
 
 #[derive(Clone, Copy)]
 pub struct HighPass18 {
-    neg_gain: Sample,
-    w_squared: Sample,
+    biquad: HighPass12,
     w: Sample,
-    w_q: Sample,
 }
 
 impl FilterImpl for HighPass18 {
     fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
-        let w = cutoff * TAU;
-
         Self {
-            neg_gain: -gain,
-            w_squared: w * w,
-            w,
-            w_q: w / q,
+            biquad: HighPass12::new(gain, cutoff, q),
+            w: cutoff * TAU,
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
         let x = freq * TAU;
-        let x_squared = x * x;
-        let wx_diff = self.w_squared - x_squared;
+        let one_pole = ComplexSample::new(0.0, x) / ComplexSample::new(self.w, x);
 
-        ComplexSample::new(0.0, self.neg_gain * x_squared * x)
-            / ComplexSample::new(
-                self.w * wx_diff - self.w_q * x_squared,
-                x * (self.w + self.w_q * wx_diff),
-            )
+        one_pole * self.biquad.at(freq)
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct HighPass24 {
-    neg_gain: Sample,
-    w_squared: Sample,
-    w_q1: Sample,
-    w_q2: Sample,
+    butterworth_section: HighPass12,
+    user_section: HighPass12,
 }
 
 impl FilterImpl for HighPass24 {
     fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
-        let w = cutoff * TAU;
-
         Self {
-            neg_gain: -gain,
-            w_squared: w * w,
-            w_q1: w / BUTTERWORTH_Q,
-            w_q2: w / q,
+            butterworth_section: HighPass12::new(1.0, cutoff, BUTTERWORTH_Q),
+            user_section: HighPass12::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        let x = freq * TAU;
-        let x_squared = x * x;
-        let x_fourth = x_squared * x_squared;
-        let wx_diff = self.w_squared - x_squared;
-
-        (-self.neg_gain * x_fourth)
-            / ComplexSample::new(
-                wx_diff * wx_diff - self.w_q1 * self.w_q2 * x_squared,
-                wx_diff * x * (self.w_q1 + self.w_q2),
-            )
+        self.butterworth_section.at(freq) * self.user_section.at(freq)
     }
 }
 
@@ -287,7 +235,9 @@ impl FilterImpl for Notch {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum FilterType {
+    #[default]
     LowPass12,
     LowPass18,
     LowPass24,
@@ -297,6 +247,34 @@ pub enum FilterType {
     BandPass,
     Peaking,
     Notch,
+}
+
+impl FilterType {
+    pub const ALL: [Self; 9] = [
+        Self::LowPass12,
+        Self::LowPass18,
+        Self::LowPass24,
+        Self::HighPass12,
+        Self::HighPass18,
+        Self::HighPass24,
+        Self::BandPass,
+        Self::Peaking,
+        Self::Notch,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::LowPass12 => "Lowpass 12",
+            Self::LowPass18 => "Lowpass 18",
+            Self::LowPass24 => "Lowpass 24",
+            Self::HighPass12 => "Highpass 12",
+            Self::HighPass18 => "Highpass 18",
+            Self::HighPass24 => "Highpass 24",
+            Self::BandPass => "Bandpass",
+            Self::Peaking => "Peaking",
+            Self::Notch => "Notch",
+        }
+    }
 }
 
 pub struct FilterParams {
@@ -309,10 +287,20 @@ pub struct FilterParams {
 pub const MAX_DRIVE: Sample = 40.0;
 pub const MIN_RESONANCE: Sample = -1.0;
 pub const MAX_RESONANCE: Sample = 1.0;
-pub const MIN_CUTOFF: Sample = -2.0;
+pub const MIN_CUTOFF: Sample = -4.0;
 pub const MAX_CUTOFF: Sample = 10.0;
 const MIN_Q: Sample = 0.01;
 const MAX_Q: Sample = 16.0;
+
+pub fn resonance_to_q(resonance: Sample) -> Sample {
+    let resonance = resonance.clamp(MIN_RESONANCE, MAX_RESONANCE);
+
+    if resonance > 0.0 {
+        BUTTERWORTH_Q + (MAX_Q - BUTTERWORTH_Q) * resonance
+    } else {
+        MIN_Q + (BUTTERWORTH_Q - MIN_Q) * (1.0 + resonance)
+    }
+}
 
 pub struct SpectralFilter {
     filter_type: FilterType,
@@ -328,13 +316,9 @@ impl SpectralFilter {
 
         Self {
             filter_type,
-            gain: db_to_gain_fast(params.drive.max(MAX_DRIVE)),
-            cutoff: params.cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF),
-            q: if resonance > 0.0 {
-                BUTTERWORTH_Q + (MAX_Q - BUTTERWORTH_Q) * resonance
-            } else {
-                MIN_Q + (BUTTERWORTH_Q - MIN_Q) * -resonance
-            },
+            gain: db_to_gain_fast(params.drive.min(MAX_DRIVE)),
+            cutoff: params.cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF).exp2(),
+            q: resonance_to_q(resonance),
             linear_phase: params.linear_phase,
         }
     }
@@ -350,6 +334,31 @@ impl SpectralFilter {
             FilterType::BandPass => self.apply_impl::<BandPass>(input, output),
             FilterType::Peaking => self.apply_impl::<Peaking>(input, output),
             FilterType::Notch => self.apply_impl::<Notch>(input, output),
+        }
+    }
+
+    pub fn response_at(&self, freq: Sample) -> ComplexSample {
+        match self.filter_type {
+            FilterType::LowPass12 => self.response_impl::<LowPass12>(freq),
+            FilterType::LowPass18 => self.response_impl::<LowPass18>(freq),
+            FilterType::LowPass24 => self.response_impl::<LowPass24>(freq),
+            FilterType::HighPass12 => self.response_impl::<HighPass12>(freq),
+            FilterType::HighPass18 => self.response_impl::<HighPass18>(freq),
+            FilterType::HighPass24 => self.response_impl::<HighPass24>(freq),
+            FilterType::BandPass => self.response_impl::<BandPass>(freq),
+            FilterType::Peaking => self.response_impl::<Peaking>(freq),
+            FilterType::Notch => self.response_impl::<Notch>(freq),
+        }
+    }
+
+    fn response_impl<T: FilterImpl>(&self, freq: Sample) -> ComplexSample {
+        let one = ComplexSample::new(1.0, 0.0);
+        let response = T::new(self.gain, self.cutoff, self.q).at(freq);
+
+        if self.linear_phase {
+            one * response.norm()
+        } else {
+            one * response
         }
     }
 

@@ -6,22 +6,10 @@ use crate::{
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{
-        Input, ModuleId, SpectralFilterType, spectral_filter::SpectralFilterUiBridge,
-        ui_bridge::{ModuleBridge, UiBridge},
+        Input, ModuleId, filters::spectral_filter::FilterType,
+        spectral_filter::SpectralFilterUiBridge, ui_bridge::{ModuleBridge, UiBridge},
     },
 };
-
-impl SpectralFilterType {
-    fn label(&self) -> &'static str {
-        match self {
-            Self::LowPass => "Lowpass",
-            Self::HighPass => "Highpass",
-            Self::BandPass => "Bandpass",
-            Self::BandStop => "Bandstop",
-            Self::Peaking => "Peaking",
-        }
-    }
-}
 
 pub struct SpectralFilterUI {
     module_id: ModuleId,
@@ -68,24 +56,16 @@ impl SpectralFilterUI {
                 ComboBox::from_id_salt("spectral-filter-type")
                     .selected_text(config.filter_type.label())
                     .show_ui(ui, |ui| {
-                        const TYPE_OPTIONS: &[SpectralFilterType] = &[
-                            SpectralFilterType::LowPass,
-                            SpectralFilterType::HighPass,
-                            SpectralFilterType::BandPass,
-                            SpectralFilterType::BandStop,
-                            SpectralFilterType::Peaking,
-                        ];
-
-                        for filter_type in TYPE_OPTIONS {
+                        for filter_type in FilterType::ALL {
                             if ui
                                 .selectable_value(
                                     &mut config.filter_type,
-                                    *filter_type,
+                                    filter_type,
                                     filter_type.label(),
                                 )
                                 .clicked()
                             {
-                                filter_bridge.set_filter_type(*filter_type);
+                                filter_bridge.set_filter_type(filter_type);
                             }
                         }
                     });
@@ -105,17 +85,17 @@ impl SpectralFilterUI {
                 }
                 ui.end_row();
 
-                ui.label("Q");
+                ui.label("Resonance");
                 if ui
                     .add(ModulationInput::new(
-                        &mut config.q,
+                        &mut config.resonance,
                         bridge,
-                        Input::Q,
+                        Input::Resonance,
                         module_id,
                     ))
                     .changed()
                 {
-                    filter_bridge.set_param(Input::Q, config.q);
+                    filter_bridge.set_param(Input::Resonance, config.resonance);
                 }
                 ui.end_row();
 
@@ -130,15 +110,6 @@ impl SpectralFilterUI {
                     .changed()
                 {
                     filter_bridge.set_param(Input::Drive, config.drive);
-                }
-                ui.end_row();
-
-                ui.label("Fourth order");
-                if ui
-                    .add(Checkbox::without_text(&mut config.fourth_order))
-                    .changed()
-                {
-                    filter_bridge.set_fourth_order(config.fourth_order);
                 }
                 ui.end_row();
 

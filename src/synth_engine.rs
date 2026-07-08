@@ -28,7 +28,7 @@ pub use config::{EngineConfig, EngineParams, LinkConfig, ModuleConfig};
 pub use module_handle::ModuleType;
 pub use modules::{
     Amplifier, Envelope, Expressions, ExternalParam, ExternalParamsBlock, Lfo, LfoShape, Mixer,
-    Oscillator, ShaperType, SpectralBlend, SpectralFilter, SpectralFilterType, SpectralMixer,
+    Oscillator, ShaperType, SpectralBlend, SpectralFilter, FilterType, SpectralMixer,
     WaveShaper,
     amplifier::{self},
     envelope::{self},

@@ -1,11 +1,8 @@
-use crate::synth_engine::{Input, StereoSample};
-
-use super::config::SpectralFilterType;
+use crate::synth_engine::{Input, StereoSample, filters::spectral_filter::FilterType};
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
-    FilterType(SpectralFilterType),
-    FourthOrder(bool),
+    FilterType(FilterType),
     LinearPhase(bool),
 }
 
@@ -22,12 +19,8 @@ impl UiEnd {
         self.tx.push(UiEvent::InputParam { input, value }).is_ok()
     }
 
-    pub fn set_filter_type(&mut self, filter_type: SpectralFilterType) -> bool {
+    pub fn set_filter_type(&mut self, filter_type: FilterType) -> bool {
         self.tx.push(UiEvent::FilterType(filter_type)).is_ok()
-    }
-
-    pub fn set_fourth_order(&mut self, value: bool) -> bool {
-        self.tx.push(UiEvent::FourthOrder(value)).is_ok()
     }
 
     pub fn set_linear_phase(&mut self, value: bool) -> bool {

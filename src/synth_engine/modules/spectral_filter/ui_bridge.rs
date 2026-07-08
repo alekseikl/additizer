@@ -1,7 +1,7 @@
-use crate::synth_engine::{Input, StereoSample, synth_module::ModuleUiBridge};
+use crate::synth_engine::{Input, StereoSample, filters::spectral_filter::FilterType, synth_module::ModuleUiBridge};
 
 use super::link::UiEnd;
-use super::{SpectralFilter, SpectralFilterConfig, SpectralFilterType};
+use super::{SpectralFilter, SpectralFilterConfig};
 
 pub struct SpectralFilterUiBridge {
     ui_end: UiEnd,
@@ -27,21 +27,15 @@ impl SpectralFilterUiBridge {
 
         match input {
             Input::Cutoff => self.config.cutoff = value,
-            Input::Q => self.config.q = value,
+            Input::Resonance => self.config.resonance = value,
             Input::Drive => self.config.drive = value,
             _ => (),
         }
     }
 
-    pub fn set_filter_type(&mut self, filter_type: SpectralFilterType) {
+    pub fn set_filter_type(&mut self, filter_type: FilterType) {
         if self.ui_end.set_filter_type(filter_type) {
             self.config.filter_type = filter_type;
-        }
-    }
-
-    pub fn set_fourth_order(&mut self, value: bool) {
-        if self.ui_end.set_fourth_order(value) {
-            self.config.fourth_order = value;
         }
     }
 

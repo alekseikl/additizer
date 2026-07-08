@@ -1,11 +1,12 @@
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, epaint::PathStroke};
-use nih_plug::util::db_to_gain_fast;
 
 use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
-        Input, ModuleId, Sample, SpectralFilterType,
-        biquad_filter::{Biquad, BiquadParams, FilterImpl, FilterPole},
+        Input, ModuleId, Sample,
+        filters::spectral_filter::{
+            FilterParams, MAX_RESONANCE, MIN_RESONANCE, SpectralFilter as SpectralFilterEngine,
+        },
         spectral_filter::SpectralFilterUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -34,8 +35,6 @@ impl SpectralFilterWidget {
         filter_bridge: &mut SpectralFilterUiBridge,
         module_id: ModuleId,
     ) {
-        use crate::synth_engine::biquad_filter::{BandPass, BandStop, HighPass, LowPass, Peaking};
-
         let size = ui.available_size();
         let response = ui.allocate_response(size, egui::Sense::hover());
         let rect = response.rect.shrink2(egui::vec2(0.0, PADDING));
@@ -47,43 +46,23 @@ impl SpectralFilterWidget {
         let mut config = filter_bridge.config().clone();
 
         bridge.apply_modulation(module_id, Input::Cutoff, &mut config.cutoff);
-        bridge.apply_modulation(module_id, Input::Q, &mut config.q);
+        bridge.apply_modulation(module_id, Input::Resonance, &mut config.resonance);
         bridge.apply_modulation(module_id, Input::Drive, &mut config.drive);
 
-        let biquad_params = BiquadParams {
-            cutoff: config.cutoff[0].clamp(-4.0, 10.0).exp2(),
-            q: config.q[0].clamp(0.1, 10.0),
-            gain: db_to_gain_fast(config.drive[0].min(24.0)),
-            pole: if config.fourth_order {
-                FilterPole::Pole4
-            } else {
-                FilterPole::Pole2
+        let filter = SpectralFilterEngine::new(
+            config.filter_type,
+            FilterParams {
+                drive: config.drive[0].min(24.0),
+                cutoff: config.cutoff[0].clamp(-4.0, 10.0),
+                resonance: config.resonance[0].clamp(MIN_RESONANCE, MAX_RESONANCE),
+                linear_phase: config.linear_phase,
             },
-            linear_phase: config.linear_phase,
-        };
+        );
 
-        let painter = ui.painter();
-
-        match config.filter_type {
-            SpectralFilterType::LowPass => {
-                Self::paint_response(painter, rect, &Biquad::<LowPass>::new(&biquad_params))
-            }
-            SpectralFilterType::HighPass => {
-                Self::paint_response(painter, rect, &Biquad::<HighPass>::new(&biquad_params))
-            }
-            SpectralFilterType::BandPass => {
-                Self::paint_response(painter, rect, &Biquad::<BandPass>::new(&biquad_params))
-            }
-            SpectralFilterType::BandStop => {
-                Self::paint_response(painter, rect, &Biquad::<BandStop>::new(&biquad_params))
-            }
-            SpectralFilterType::Peaking => {
-                Self::paint_response(painter, rect, &Biquad::<Peaking>::new(&biquad_params))
-            }
-        }
+        Self::paint_response(ui.painter(), rect, &filter);
     }
 
-    fn curve_points<T: FilterImpl>(rect: Rect, filter: &Biquad<T>) -> Vec<Pos2> {
+    fn curve_points(rect: Rect, filter: &SpectralFilterEngine) -> Vec<Pos2> {
         const DB_RANGE_MULT: f32 = (MAX_DB - MIN_DB).recip();
         let columns = rect.width().ceil().max(2.0) as usize;
         let t_mult = ((columns - 1) as f32).recip();
@@ -103,12 +82,12 @@ impl SpectralFilterWidget {
             .collect()
     }
 
-    fn paint_response<T: FilterImpl>(painter: &Painter, rect: Rect, biquad: &Biquad<T>) {
+    fn paint_response(painter: &Painter, rect: Rect, filter: &SpectralFilterEngine) {
         let painter = painter.with_clip_rect(Rect::from_min_max(
             rect.left_top(),
             Pos2::new(rect.right(), rect.bottom() - LINE_WIDTH),
         ));
-        let points = Self::curve_points(rect, biquad);
+        let points = Self::curve_points(rect, filter);
 
         Self::paint_fill(&painter, rect, &points);
         Self::paint_stroke(&painter, &points);

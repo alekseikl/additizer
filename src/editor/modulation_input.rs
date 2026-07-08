@@ -77,10 +77,9 @@ impl<'a> ModulationInput<'a> {
                 .default_value(0.0)
                 .precision(2)
                 .units(" st"),
-            Input::Q => slider
-                .range(0.1..=10.0)
-                .default_value(0.707)
-                .skew(1.8)
+            Input::Resonance => slider
+                .range(-1.0..=1.0)
+                .default_value(0.0)
                 .precision(2),
             Input::Detune => slider
                 .range(0.0..=st_to_octave(1.0))
@@ -187,11 +186,10 @@ impl<'a> ModulationInput<'a> {
                 .precision(2)
                 .allow_inverse()
                 .units(" st"),
-            Input::Q => slider
-                .range(0.0..=10.0)
+            Input::Resonance => slider
+                .range(-1.0..=1.0)
                 .default_value(0.0)
                 .precision(2)
-                .skew(1.8)
                 .allow_inverse(),
             Input::Detune => slider
                 .range(0.0..=st_to_octave(1.0))
