@@ -61,5 +61,7 @@ impl SpectralFilterUiBridge {
 }
 
 impl ModuleUiBridge for SpectralFilterUiBridge {
-    fn update(&mut self) {}
+    fn update(&mut self) -> bool {
+        false
+    }
 }

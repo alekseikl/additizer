@@ -73,5 +73,7 @@ impl EnvelopeUiBridge {
 }
 
 impl ModuleUiBridge for EnvelopeUiBridge {
-    fn update(&mut self) {}
+    fn update(&mut self) -> bool {
+        false
+    }
 }

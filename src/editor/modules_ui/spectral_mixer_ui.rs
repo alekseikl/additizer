@@ -9,7 +9,8 @@ use crate::{
     },
     synth_engine::{
         Input, MixType, ModuleId, SpectralMixer, VolumeType,
-        spectral_mixer::SpectralMixerUiBridge, ui_bridge::{ModuleBridge, UiBridge},
+        spectral_mixer::SpectralMixerUiBridge,
+        ui_bridge::{ModuleBridge, UiBridge},
     },
 };
 
@@ -50,11 +51,7 @@ impl SpectralMixerUi {
         let volume_type_change = Rc::new(Cell::new(None));
         let output_volume_type_change = Rc::new(Cell::new(None));
 
-        ui.add(ModuleLabel::new(
-            &mut self.label_state,
-            bridge,
-            module_id,
-        ));
+        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
 
         ui.add_space(20.0);
 
@@ -93,7 +90,7 @@ impl SpectralMixerUi {
                     ui.label(format!("Input {}", input_idx + 1));
                     if ui
                         .add(
-                        ModulationInput::new(&mut value, bridge, input, module_id).before(
+                            ModulationInput::new(&mut value, bridge, input, module_id).before(
                                 move |ui, bridge| {
                                     if input_idx > 0 {
                                         let mix_type_ref = &mut mix_type;
@@ -117,10 +114,8 @@ impl SpectralMixerUi {
                                                         )
                                                         .clicked()
                                                     {
-                                                        mix_type_change.set(Some((
-                                                            input_idx,
-                                                            *mix_type_item,
-                                                        )));
+                                                        mix_type_change
+                                                            .set(Some((input_idx, *mix_type_item)));
                                                     }
                                                 }
                                             });
@@ -150,10 +145,8 @@ impl SpectralMixerUi {
                                                     )
                                                     .clicked()
                                                 {
-                                                    volume_type_change.set(Some((
-                                                        input_idx,
-                                                        *vol_type_item,
-                                                    )));
+                                                    volume_type_change
+                                                        .set(Some((input_idx, *vol_type_item)));
                                                 }
                                             }
                                         });
@@ -208,8 +201,7 @@ impl SpectralMixerUi {
                                                 )
                                                 .clicked()
                                             {
-                                                output_volume_type_change
-                                                    .set(Some(*vol_type_item));
+                                                output_volume_type_change.set(Some(*vol_type_item));
                                             }
                                         }
                                     });

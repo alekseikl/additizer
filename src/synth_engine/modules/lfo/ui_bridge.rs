@@ -59,5 +59,7 @@ impl LfoUiBridge {
 }
 
 impl ModuleUiBridge for LfoUiBridge {
-    fn update(&mut self) {}
+    fn update(&mut self) -> bool {
+        false
+    }
 }

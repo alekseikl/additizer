@@ -40,5 +40,7 @@ impl ExpressionsUiBridge {
 }
 
 impl ModuleUiBridge for ExpressionsUiBridge {
-    fn update(&mut self) {}
+    fn update(&mut self) -> bool {
+        false
+    }
 }

@@ -40,5 +40,7 @@ impl ExternalParamUiBridge {
 }
 
 impl ModuleUiBridge for ExternalParamUiBridge {
-    fn update(&mut self) {}
+    fn update(&mut self) -> bool {
+        false
+    }
 }

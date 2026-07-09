@@ -32,5 +32,7 @@ impl AmplifierUiBridge {
 }
 
 impl ModuleUiBridge for AmplifierUiBridge {
-    fn update(&mut self) {}
+    fn update(&mut self) -> bool {
+        false
+    }
 }

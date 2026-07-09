@@ -70,7 +70,7 @@ impl HarmonicEditorUiBridge {
 }
 
 impl ModuleUiBridge for HarmonicEditorUiBridge {
-    fn update(&mut self) {
+    fn update(&mut self) -> bool {
         while let Some(update) = self.ui_end.pop_update() {
             match update {
                 UiUpdate::RefreshState => {
@@ -78,5 +78,7 @@ impl ModuleUiBridge for HarmonicEditorUiBridge {
                 }
             }
         }
+
+        false
     }
 }

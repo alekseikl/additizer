@@ -516,9 +516,19 @@ impl UiBridge {
             }
         }
 
+        let mut routing_refresh = false;
+
         for module in self.module_bridges.values_mut().filter_map(|m| m.as_mut()) {
-            module.update();
+            routing_refresh |= module.update();
         }
+
+        if routing_refresh {
+            self.update_routing();
+        }
+    }
+
+    pub fn update_routing(&mut self) {
+        self.routing = self.engine.lock().get_routing_state();
     }
 
     pub fn add_module(&mut self, module_type: ModuleType) -> ModuleId {

@@ -357,7 +357,9 @@ impl SynthModule for SpectralMixer {
             InputMeta::control(Input::LevelMix(5)),
         ];
 
-        INPUTS
+        let inputs_len = 2 + 3 * self.params.num_inputs as usize;
+
+        &INPUTS[..inputs_len]
     }
 
     fn output_type(&self) -> DataType {
@@ -400,7 +402,10 @@ impl SynthModule for SpectralMixer {
                     Input::LevelMix(idx) => self.set_input_level(idx, value),
                     _ => (),
                 },
-                UiEvent::NumInputs(num_inputs) => self.set_num_inputs(num_inputs),
+                UiEvent::NumInputs(num_inputs) => {
+                    self.set_num_inputs(num_inputs);
+                    self.audio_end.refresh_routing();
+                }
                 UiEvent::MixType {
                     input_idx,
                     mix_type,

@@ -2,7 +2,7 @@ use crate::synth_engine::{
     Input, MixType, StereoSample, VolumeType, synth_module::ModuleUiBridge,
 };
 
-use super::link::UiEnd;
+use super::link::{UiEnd, UiUpdate};
 use super::{SpectralMixer, SpectralMixerConfig};
 
 pub struct SpectralMixerUiBridge {
@@ -62,5 +62,15 @@ impl SpectralMixerUiBridge {
 }
 
 impl ModuleUiBridge for SpectralMixerUiBridge {
-    fn update(&mut self) {}
+    fn update(&mut self) -> bool {
+        let mut routing_refresh = false;
+
+        while let Some(update) = self.ui_end.pop_update() {
+            match update {
+                UiUpdate::RefreshRouting => routing_refresh = true,
+            }
+        }
+
+        routing_refresh
+    }
 }

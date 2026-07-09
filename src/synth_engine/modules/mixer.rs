@@ -366,29 +366,31 @@ impl SynthModule for Mixer {
 
     fn inputs(&self) -> &'static [InputMeta] {
         static INPUTS: &[InputMeta] = &[
-            InputMeta::audio(Input::Gain),
-            InputMeta::audio(Input::Level),
+            InputMeta::control(Input::Gain),
+            InputMeta::control(Input::Level),
             InputMeta::audio(Input::AudioMix(0)),
-            InputMeta::audio(Input::GainMix(0)),
-            InputMeta::audio(Input::LevelMix(0)),
+            InputMeta::control(Input::GainMix(0)),
+            InputMeta::control(Input::LevelMix(0)),
             InputMeta::audio(Input::AudioMix(1)),
-            InputMeta::audio(Input::GainMix(1)),
-            InputMeta::audio(Input::LevelMix(1)),
+            InputMeta::control(Input::GainMix(1)),
+            InputMeta::control(Input::LevelMix(1)),
             InputMeta::audio(Input::AudioMix(2)),
-            InputMeta::audio(Input::GainMix(2)),
-            InputMeta::audio(Input::LevelMix(2)),
+            InputMeta::control(Input::GainMix(2)),
+            InputMeta::control(Input::LevelMix(2)),
             InputMeta::audio(Input::AudioMix(3)),
-            InputMeta::audio(Input::GainMix(3)),
-            InputMeta::audio(Input::LevelMix(3)),
+            InputMeta::control(Input::GainMix(3)),
+            InputMeta::control(Input::LevelMix(3)),
             InputMeta::audio(Input::AudioMix(4)),
-            InputMeta::audio(Input::GainMix(4)),
-            InputMeta::audio(Input::LevelMix(4)),
+            InputMeta::control(Input::GainMix(4)),
+            InputMeta::control(Input::LevelMix(4)),
             InputMeta::audio(Input::AudioMix(5)),
-            InputMeta::audio(Input::GainMix(5)),
-            InputMeta::audio(Input::LevelMix(5)),
+            InputMeta::control(Input::GainMix(5)),
+            InputMeta::control(Input::LevelMix(5)),
         ];
 
-        INPUTS
+        let inputs_len = 2 + 3 * self.params.num_inputs as usize;
+
+        &INPUTS[..inputs_len]
     }
 
     fn output_type(&self) -> DataType {
@@ -421,7 +423,10 @@ impl SynthModule for Mixer {
                     Input::LevelMix(idx) => self.set_input_level(idx, value),
                     _ => (),
                 },
-                UiEvent::NumInputs(num_inputs) => self.set_num_inputs(num_inputs),
+                UiEvent::NumInputs(num_inputs) => {
+                    self.set_num_inputs(num_inputs);
+                    self.audio_end.refresh_routing();
+                }
                 UiEvent::InputVolumeType {
                     input_idx,
                     volume_type,
@@ -439,7 +444,10 @@ impl SynthModule for Mixer {
                 for seq_idx in 0..num_active_voices {
                     let playing_voice = router.params().active_voices[seq_idx];
 
-                    self.process_voice(output, router.for_voice(channel_idx, playing_voice, seq_idx));
+                    self.process_voice(
+                        output,
+                        router.for_voice(channel_idx, playing_voice, seq_idx),
+                    );
                 }
 
                 self.channel_params[channel_idx]

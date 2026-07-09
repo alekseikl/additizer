@@ -18,11 +18,11 @@ impl Input {
     pub fn label(&self) -> String {
         match self {
             Self::Audio => "Audio".to_string(),
-            Self::AudioMix(idx) => format!("Audio Mix {}", idx + 1),
+            Self::AudioMix(idx) => format!("Audio #{}", idx + 1),
             Self::Gain => "Gain".to_string(),
-            Self::GainMix(idx) => format!("Gain Mix {}", idx + 1),
+            Self::GainMix(idx) => format!("Gain #{}", idx + 1),
             Self::Level => "Level".to_string(),
-            Self::LevelMix(idx) => format!("Level Mix {}", idx + 1),
+            Self::LevelMix(idx) => format!("Level #{}", idx + 1),
             Self::Distortion => "Distortion".to_string(),
             Self::ClippingLevel => "Clipping Level".to_string(),
             Self::PitchShift => "Pitch Shift".to_string(),
@@ -33,7 +33,7 @@ impl Input {
             Self::PhaseShift => "Phase Shift".to_string(),
             Self::FrequencyShift => "Frequency Shift".to_string(),
             Self::Spectrum => "Spectrum".to_string(),
-            Self::SpectrumMix(idx) => format!("Spectrum Mix {}", idx + 1),
+            Self::SpectrumMix(idx) => format!("Spectrum #{}", idx + 1),
             Self::SpectrumTo => "Spectrum To".to_string(),
             Self::Blend => "Blend".to_string(),
             Self::PhasesBlend => "Phases Blend".to_string(),

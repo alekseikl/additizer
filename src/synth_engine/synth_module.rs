@@ -35,7 +35,8 @@ pub(super) trait SynthModule: Send {
 #[enum_dispatch]
 #[auto_impl::auto_impl(Box)]
 pub trait ModuleUiBridge: Send {
-    fn update(&mut self);
+    // Return true when routing needs to be update
+    fn update(&mut self) -> bool;
 }
 
 macro_rules! set_mono_param {

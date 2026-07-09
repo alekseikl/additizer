@@ -40,5 +40,7 @@ impl WaveShaperUiBridge {
 }
 
 impl ModuleUiBridge for WaveShaperUiBridge {
-    fn update(&mut self) {}
+    fn update(&mut self) -> bool {
+        false
+    }
 }
