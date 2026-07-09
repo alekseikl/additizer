@@ -668,6 +668,12 @@ impl UiBridge {
         }
     }
 
+    pub fn set_bandwidth(&mut self, bandwidth: usize) {
+        if self.ui_end.set_bandwidth(bandwidth) {
+            self.engine_params.bandwidth = bandwidth;
+        }
+    }
+
     pub fn set_output_gain(&mut self, output_gain: StereoSample) {
         if self.ui_end.set_output_gain(output_gain) {
             self.engine_params.output_gain = output_gain;

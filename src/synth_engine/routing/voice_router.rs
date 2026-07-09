@@ -186,7 +186,15 @@ impl<'v, 'f, 'c, S: RouterDataType> VoiceRouter<'v, 'f, 'c, S> {
             .get_spectral(slot, self.channel_idx, self.voice_idx(), triggered)
             .unwrap_or(&ZEROES_SPECTRAL_BUFFER);
 
-        &buff[..buff.len().min(self.playing_voice.harmonics_limit())]
+        let bandwidth = self.factory.params().bandwidth;
+
+        let bandwidth = if bandwidth == 0 {
+            self.playing_voice.note_bandwidth()
+        } else {
+            bandwidth + 1 // Add DC
+        };
+
+        &buff[..buff.len().min(bandwidth)]
     }
 }
 

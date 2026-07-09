@@ -24,11 +24,11 @@ use crate::synth_engine::{
 };
 
 pub use buffer::{Buffer, HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer};
-pub use config::{EngineConfig, EngineParams, LinkConfig, ModuleConfig};
+pub use config::{EngineConfig, EngineParams, LinkConfig, MAX_BANDWIDTH, ModuleConfig};
 pub use module_handle::ModuleType;
 pub use modules::{
-    Amplifier, Envelope, Expressions, ExternalParam, ExternalParamsBlock, Lfo, LfoShape, Mixer,
-    Oscillator, ShaperType, SpectralBlend, SpectralFilter, FilterType, SpectralMixer,
+    Amplifier, Envelope, Expressions, ExternalParam, ExternalParamsBlock, FilterType, Lfo,
+    LfoShape, Mixer, Oscillator, ShaperType, SpectralBlend, SpectralFilter, SpectralMixer,
     WaveShaper,
     amplifier::{self},
     envelope::{self},
@@ -84,6 +84,7 @@ pub struct SynthEngine {
     host_sample_rate: f32,
     block_size: usize,
     oversampling: bool,
+    bandwidth: usize,
     spectrum_channels: usize,
     modules: ModulesMap,
     input_sources: RoutingMap,
@@ -125,6 +126,7 @@ impl SynthEngine {
             host_sample_rate,
             block_size: Self::clamp_block_size(cfg.engine.block_size),
             oversampling: cfg.engine.oversampling,
+            bandwidth: Self::clamp_bandwidth(cfg.engine.bandwidth),
             spectrum_channels: Self::stereo_spectrum_channels(cfg.engine.stereo_spectrum),
             modules: ModulesMap::default(),
             input_sources: RoutingMap::default(),
@@ -293,6 +295,7 @@ impl SynthEngine {
             stereo_spectrum: self.spectrum_channels == NUM_CHANNELS,
             voice_kill_time: self.get_voice_kill_time(),
             output_gain: self.get_output_gain(),
+            bandwidth: self.bandwidth,
         }
     }
 
@@ -337,6 +340,10 @@ impl SynthEngine {
         self.spectrum_channels = Self::stereo_spectrum_channels(stereo_spectrum);
     }
 
+    pub fn set_bandwidth(&mut self, bandwidth: usize) {
+        self.bandwidth = Self::clamp_bandwidth(bandwidth);
+    }
+
     pub fn get_output_gain(&self) -> StereoSample {
         match self.modules.get(&OUTPUT_MODULE_ID) {
             Some(ModuleHandle::Output(output)) => output.get_gain(),
@@ -363,6 +370,10 @@ impl SynthEngine {
 
     fn clamp_block_size(block_size: usize) -> usize {
         (block_size).clamp(4, MAX_BLOCK_SIZE)
+    }
+
+    fn clamp_bandwidth(bandwidth: usize) -> usize {
+        bandwidth.clamp(0, MAX_BANDWIDTH)
     }
 
     add_module_method!(add_oscillator, Oscillator);
@@ -599,6 +610,7 @@ impl SynthEngine {
                 UiEvent::StereoSpectrum(stereo_spectrum) => {
                     self.set_stereo_spectrum(stereo_spectrum);
                 }
+                UiEvent::Bandwidth(bandwidth) => self.set_bandwidth(bandwidth),
                 UiEvent::OutputGain(output_gain) => self.set_output_gain(output_gain),
             }
         }
@@ -647,10 +659,10 @@ impl SynthEngine {
             params: ProcessParams {
                 samples,
                 sample_rate,
-                // buffer_t_step: samples as Sample / sample_rate,
                 smooth_params: SmoothedSampleParams::new(sample_rate),
                 needs_update_ui: update_ui,
                 spectrum_channels: self.spectrum_channels,
+                bandwidth: self.bandwidth,
                 active_voices: &playing_voices,
             },
         };

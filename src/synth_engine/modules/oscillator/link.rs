@@ -154,7 +154,7 @@ impl AudioEnd {
         let input_buff = self.spectrum.input_buffer_mut();
         let len = spectrum.len().min(DISPLAY_SPECTRUM_SIZE);
 
-        input_buff[..len].copy_from_slice(spectrum);
+        input_buff[..len].copy_from_slice(&spectrum[..len]);
         input_buff[len..].fill(ComplexSample::ZERO);
         self.spectrum.publish();
     }

@@ -80,7 +80,7 @@ impl DecayingVoice {
 #[derive(Clone, Copy)]
 pub struct PlayingVoice {
     voice_idx: VoiceIdx,
-    harmonics_limit: u16,
+    note_bandwidth: u16,
 }
 
 impl PlayingVoice {
@@ -89,7 +89,7 @@ impl PlayingVoice {
 
         Self {
             voice_idx,
-            harmonics_limit: (BAND_LIMIT_FREQUENCY / frequency).floor() as u16 + 1,
+            note_bandwidth: (BAND_LIMIT_FREQUENCY / frequency).floor() as u16 + 1,
         }
     }
 
@@ -97,8 +97,8 @@ impl PlayingVoice {
         self.voice_idx as usize
     }
 
-    pub fn harmonics_limit(&self) -> usize {
-        self.harmonics_limit as usize
+    pub fn note_bandwidth(&self) -> usize {
+        self.note_bandwidth as usize
     }
 }
 

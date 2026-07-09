@@ -5,7 +5,7 @@ use egui::{ComboBox, Frame, Grid, Margin, Response, Ui, Widget};
 use crate::{
     editor::{db_slider::DbSlider, stereo_slider::StereoSlider},
     synth_engine::{
-        Input, ModuleId, InputId, Sample, StereoSample,
+        Input, InputId, ModuleId, Sample, StereoSample,
         ui_bridge::{
             UiBridge,
             routing_state::{AvailableInputSource, ConnectedInputSource},
@@ -77,10 +77,7 @@ impl<'a> ModulationInput<'a> {
                 .default_value(0.0)
                 .precision(2)
                 .units(" st"),
-            Input::Resonance => slider
-                .range(-1.0..=1.0)
-                .default_value(0.0)
-                .precision(2),
+            Input::Resonance => slider.range(-1.0..=1.0).default_value(0.0).precision(2),
             Input::Detune => slider
                 .range(0.0..=st_to_octave(1.0))
                 .display_scale(1200.0)
@@ -180,7 +177,7 @@ impl<'a> ModulationInput<'a> {
                 .precision(2)
                 .allow_inverse(),
             Input::Cutoff => slider
-                .range(0.0..=8.0)
+                .range(0.0..=10.0)
                 .display_scale(12.0)
                 .default_value(0.0)
                 .precision(2)

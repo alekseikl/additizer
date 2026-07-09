@@ -17,6 +17,7 @@ pub enum UiEvent {
     VoiceKillTime(Sample),
     Oversampling(bool),
     StereoSpectrum(bool),
+    Bandwidth(usize),
     OutputGain(StereoSample),
 }
 
@@ -121,6 +122,10 @@ impl UiEnd {
         self.tx
             .push(UiEvent::StereoSpectrum(stereo_spectrum))
             .is_ok()
+    }
+
+    pub fn set_bandwidth(&mut self, bandwidth: usize) -> bool {
+        self.tx.push(UiEvent::Bandwidth(bandwidth)).is_ok()
     }
 
     pub fn set_output_gain(&mut self, output_gain: StereoSample) -> bool {

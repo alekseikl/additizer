@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::{
-        Input, MAX_BLOCK_SIZE, Sample, StereoSample, amplifier::AmplifierConfig,
-        envelope::EnvelopeConfig, expressions::ExpressionsConfig,
+        Input, MAX_BLOCK_SIZE, SPECTRAL_BUFFER_SIZE, Sample, StereoSample,
+        amplifier::AmplifierConfig, envelope::EnvelopeConfig, expressions::ExpressionsConfig,
         external_param::ExternalParamConfig, harmonic_editor::HarmonicEditorConfig, lfo::LfoConfig,
         mixer::MixerConfig, oscillator::OscillatorConfig, routing::ModuleId,
         spectral_blend::SpectralBlendConfig, spectral_filter::SpectralFilterConfig,
@@ -21,6 +21,7 @@ pub struct EngineParams {
     pub stereo_spectrum: bool,
     pub voice_kill_time: Sample,
     pub output_gain: StereoSample,
+    pub bandwidth: usize,
 }
 
 impl Default for EngineParams {
@@ -33,9 +34,12 @@ impl Default for EngineParams {
             stereo_spectrum: true,
             voice_kill_time: from_ms(30.0),
             output_gain: 0.5.into(),
+            bandwidth: 0,
         }
     }
 }
+
+pub const MAX_BANDWIDTH: usize = SPECTRAL_BUFFER_SIZE - 1;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct LinkConfig {

@@ -593,7 +593,7 @@ impl Oscillator {
         frequency: f32,
         sample_rate: f32,
         spectral_buff: &[ComplexSample],
-        tmp_spectral_buff: &mut DftBuffer,
+        dft_buff: &mut DftBuffer,
         scratch_buff: &mut DftBuffer,
         out_wave_buff: &mut WaveformBuffer,
     ) {
@@ -603,12 +603,12 @@ impl Oscillator {
         let cutoff_index =
             ((max_frequency / frequency).floor() as usize + 1).min(spectral_buff.len());
 
-        tmp_spectral_buff[..cutoff_index].copy_from_slice(&spectral_buff[..cutoff_index]);
-        tmp_spectral_buff[cutoff_index..].fill(ComplexSample::ZERO);
+        dft_buff[..cutoff_index].copy_from_slice(&spectral_buff[..cutoff_index]);
+        dft_buff[cutoff_index..].fill(ComplexSample::ZERO);
 
         inverse_fft
             .process_with_scratch(
-                tmp_spectral_buff,
+                dft_buff,
                 Self::get_wave_slice_mut(out_wave_buff),
                 scratch_buff,
             )
@@ -923,7 +923,7 @@ impl Oscillator {
         let freq_phase_mult = Phase::freq_phase_mult(router.sample_rate());
         let buff_t_mult = (samples as f32).recip();
 
-        for (out, pitch, phase_shift, freq_shift, gain, sample_idx) in izip!(
+        for (out, &pitch, &phase_shift, freq_shift, gain, sample_idx) in izip!(
             output,
             &buffers.pitch,
             &buffers.phase_shift,
@@ -933,8 +933,8 @@ impl Oscillator {
         ) {
             let mut sample_acc = f32x4::splat(0.0);
             let buff_t = sample_idx as Sample * buff_t_mult;
-            let phase_shift = Phase::from_normalized(*phase_shift);
-            let pitch_phase_inc = pitch_to_freq(*pitch) * freq_phase_mult;
+            let phase_shift = Phase::from_normalized(phase_shift);
+            let pitch_phase_inc = pitch_to_freq(pitch) * freq_phase_mult;
             let freq_phase_inc = freq_shift * freq_phase_mult;
 
             for (phase, uv) in voice
