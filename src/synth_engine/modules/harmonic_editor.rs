@@ -294,7 +294,7 @@ impl SynthModule for HarmonicEditor {
 
             for channel_idx in 0..spectrum_channels {
                 for seq_idx in 0..num_active_voices {
-                    let voice_idx = router.params().active_voices[seq_idx];
+                    let voice_idx = router.params().active_voices[seq_idx].voice_idx();
                     let voice = &mut self.voices[channel_idx][voice_idx];
 
                     if voice.needs_update {

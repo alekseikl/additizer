@@ -11,8 +11,7 @@ use crate::{
     synth_engine::{
         SmoothedSampleParams, StereoSample,
         buffer::{
-            Buffer, SPECTRUM_BITS, SpectralBuffer, VoicesLayout, add_buffer_value,
-            new_voices_layout, zero_buffer,
+            Buffer, SPECTRUM_BITS, VoicesLayout, add_buffer_value, new_voices_layout, zero_buffer,
         },
         oscillator::link::{AudioEnd, UiEnd, UiEvent, create_link_pair},
         phase::Phase,
@@ -593,7 +592,7 @@ impl Oscillator {
         inverse_fft: &dyn ComplexToReal<Sample>,
         frequency: f32,
         sample_rate: f32,
-        spectral_buff: &SpectralBuffer,
+        spectral_buff: &[ComplexSample],
         tmp_spectral_buff: &mut DftBuffer,
         scratch_buff: &mut DftBuffer,
         out_wave_buff: &mut WaveformBuffer,
@@ -910,9 +909,8 @@ impl Oscillator {
         };
 
         if router.need_update_ui_mono() {
-            let spectrum = router.spectral(inputs.spectrum, false);
             self.audio_end
-                .update_spectrum(&spectrum[..DISPLAY_SPECTRUM_SIZE]);
+                .update_spectrum(router.spectral(inputs.spectrum, false));
         }
 
         Self::process_unison(self.params.unison, channel, inputs, voice, &mut router);
@@ -1118,12 +1116,12 @@ impl SynthModule for Oscillator {
 
             for channel_idx in 0..NUM_CHANNELS {
                 for seq_idx in 0..num_active_voices {
-                    let voice_idx = router.params().active_voices[seq_idx];
+                    let playing_voice = router.params().active_voices[seq_idx];
 
                     self.process_voice(
                         mono_spectrum,
                         output,
-                        router.for_voice(channel_idx, voice_idx, seq_idx),
+                        router.for_voice(channel_idx, playing_voice, seq_idx),
                     );
                 }
 

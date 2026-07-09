@@ -284,7 +284,7 @@ impl SpectralMixer {
 
             let iter = voice_output
                 .iter_mut()
-                .zip(spectrum.map(|input| input * gain));
+                .zip(spectrum.iter().map(|input| input * gain));
 
             if input_idx == 0 {
                 iter.for_each(|(out, input)| *out = input);
@@ -421,9 +421,12 @@ impl SynthModule for SpectralMixer {
 
             for channel_idx in 0..spectrum_channels {
                 for seq_idx in 0..num_active_voices {
-                    let voice_idx = router.params().active_voices[seq_idx];
+                    let playing_voice = router.params().active_voices[seq_idx];
 
-                    self.process_voice(output, router.for_voice(channel_idx, voice_idx, seq_idx));
+                    self.process_voice(
+                        output,
+                        router.for_voice(channel_idx, playing_voice, seq_idx),
+                    );
                 }
             }
         });

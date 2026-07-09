@@ -1,8 +1,9 @@
 use crate::synth_engine::{
-    Buffer, ModuleId, ProcessParams, Sample, SpectralBuffer,
+    Buffer, ComplexSample, ModuleId, ProcessParams, Sample,
     buffer::{VoicesLayout, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER},
     routing::{InputSlots, ProcessContext, SamplesOutput, SpectralOutput},
     smooth::SmoothedSample,
+    voices_handler::PlayingVoice,
 };
 
 pub trait RouterDataType {}
@@ -43,7 +44,7 @@ impl<'f, 'c, S: RouterDataType> RouterFactory<'f, 'c, S> {
     pub fn for_voice<'voice>(
         &'voice mut self,
         channel_idx: usize,
-        voice_idx: usize,
+        playing_voice: PlayingVoice,
         seq_idx: usize,
     ) -> VoiceRouter<'voice, 'f, 'c, S>
     where
@@ -52,7 +53,7 @@ impl<'f, 'c, S: RouterDataType> RouterFactory<'f, 'c, S> {
         VoiceRouter {
             factory: self,
             channel_idx,
-            voice_idx,
+            playing_voice,
             seq_idx,
         }
     }
@@ -115,7 +116,7 @@ impl<'f, 'c> RouterFactory<'f, 'c, SpectralRouterType> {
 pub struct VoiceRouter<'v, 'f, 'c, S: RouterDataType> {
     factory: &'v mut RouterFactory<'f, 'c, S>,
     channel_idx: usize,
-    voice_idx: usize,
+    playing_voice: PlayingVoice,
     seq_idx: usize,
 }
 
@@ -133,7 +134,7 @@ impl<'v, 'f, 'c, S: RouterDataType> VoiceRouter<'v, 'f, 'c, S> {
     }
 
     pub fn voice_idx(&self) -> usize {
-        self.voice_idx
+        self.playing_voice.voice_idx()
     }
 
     pub fn need_update_ui(&self) -> bool {
@@ -148,7 +149,7 @@ impl<'v, 'f, 'c, S: RouterDataType> VoiceRouter<'v, 'f, 'c, S> {
         self.factory
             .ctx
             .outputs_arena
-            .get_buff(slot, self.channel_idx, self.voice_idx)
+            .get_buff(slot, self.channel_idx, self.voice_idx())
             .unwrap_or(&ZEROES_BUFFER)
     }
 
@@ -156,7 +157,7 @@ impl<'v, 'f, 'c, S: RouterDataType> VoiceRouter<'v, 'f, 'c, S> {
         if let Some(modulated_amount) = self.factory.ctx.outputs_arena.get_scalar(
             &input.slots,
             self.channel_idx,
-            self.voice_idx,
+            self.voice_idx(),
             triggered,
         ) {
             let value = param + modulated_amount;
@@ -177,12 +178,15 @@ impl<'v, 'f, 'c, S: RouterDataType> VoiceRouter<'v, 'f, 'c, S> {
         }
     }
 
-    fn spectral_impl(&self, slot: Option<usize>, triggered: bool) -> &SpectralBuffer {
-        self.factory
+    fn spectral_impl(&self, slot: Option<usize>, triggered: bool) -> &[ComplexSample] {
+        let buff = self
+            .factory
             .ctx
             .outputs_arena
-            .get_spectral(slot, self.channel_idx, self.voice_idx, triggered)
-            .unwrap_or(&ZEROES_SPECTRAL_BUFFER)
+            .get_spectral(slot, self.channel_idx, self.voice_idx(), triggered)
+            .unwrap_or(&ZEROES_SPECTRAL_BUFFER);
+
+        &buff[..buff.len().min(self.playing_voice.harmonics_limit())]
     }
 }
 
@@ -209,7 +213,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
         if self.factory.ctx.outputs_arena.add_buff_to(
             &input.slots,
             self.channel_idx,
-            self.voice_idx,
+            self.voice_idx(),
             0,
             buff,
         ) {
@@ -229,7 +233,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
         self.scalar_param_impl(input, param, triggered)
     }
 
-    pub fn spectral(&self, slot: Option<usize>, triggered: bool) -> &SpectralBuffer {
+    pub fn spectral(&self, slot: Option<usize>, triggered: bool) -> &[ComplexSample] {
         self.spectral_impl(slot, triggered)
     }
 }
@@ -255,7 +259,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
         if self.factory.ctx.outputs_arena.add_buff_to(
             &input.slots,
             self.channel_idx,
-            self.voice_idx,
+            self.voice_idx(),
             skip,
             buff,
         ) {
@@ -281,7 +285,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, SpectralRouterType> {
         self.scalar_param_impl(input, param, triggered)
     }
 
-    pub fn spectral(&self, slot: Option<usize>, triggered: bool) -> &SpectralBuffer {
+    pub fn spectral(&self, slot: Option<usize>, triggered: bool) -> &[ComplexSample] {
         self.spectral_impl(slot, triggered)
     }
 }

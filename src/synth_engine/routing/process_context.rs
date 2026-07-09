@@ -6,6 +6,7 @@ use crate::synth_engine::{
         SamplesOutput, SpectralOutput, SpectralRouterType,
     },
     ui_bridge::AudioEnd,
+    voices_handler::PlayingVoice,
 };
 
 pub struct ProcessParams<'a> {
@@ -15,7 +16,7 @@ pub struct ProcessParams<'a> {
     pub needs_update_ui: bool,
     pub smooth_params: SmoothedSampleParams,
     pub spectrum_channels: usize,
-    pub active_voices: &'a [usize],
+    pub active_voices: &'a [PlayingVoice],
 }
 
 pub struct ProcessContext<'c> {

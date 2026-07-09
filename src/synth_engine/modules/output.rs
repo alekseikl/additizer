@@ -209,15 +209,15 @@ impl SynthModule for Output {
             self.output.iter_mut().zip(self.gain.iter_mut()).enumerate()
         {
             for seq_idx in 0..num_active_voices {
-                let voice_idx = rf.params().active_voices[seq_idx];
-                let mut router = rf.for_voice(channel_idx, voice_idx, seq_idx);
+                let playing_voice = rf.params().active_voices[seq_idx];
+                let mut router = rf.for_voice(channel_idx, playing_voice, seq_idx);
 
                 copy_to_buffer(
                     &mut self.input_buffer[..samples],
                     router.buff(self.audio_input).iter().copied(),
                 );
 
-                let voice = &mut self.channels[channel_idx].voices[voice_idx];
+                let voice = &mut self.channels[channel_idx].voices[playing_voice.voice_idx()];
 
                 if voice.killing {
                     let power: Sample = -5.0;

@@ -371,13 +371,12 @@ impl SpectralFilter {
     }
 
     fn response_impl<T: FilterImpl>(&self, freq: Sample) -> ComplexSample {
-        let one = ComplexSample::new(1.0, 0.0);
         let response = T::new(self.gain, self.cutoff_freq, self.q).at(freq);
 
         if self.linear_phase {
-            one * response.norm()
+            ComplexSample::new(response.norm(), 0.0)
         } else {
-            one * response
+            response
         }
     }
 
@@ -385,11 +384,13 @@ impl SpectralFilter {
         let filter_impl = T::new(self.gain, self.cutoff_freq, self.q);
 
         if self.linear_phase {
-            for (i, (out, &inp)) in output.iter_mut().zip(input).enumerate() {
+            //Skip DC
+            for (i, (out, &inp)) in output.iter_mut().zip(input).enumerate().skip(1) {
                 *out = inp * filter_impl.at(i as Sample).norm();
             }
         } else {
-            for (i, (out, &inp)) in output.iter_mut().zip(input).enumerate() {
+            //Skip DC
+            for (i, (out, &inp)) in output.iter_mut().zip(input).enumerate().skip(1) {
                 *out = inp * filter_impl.at(i as Sample);
             }
         }
