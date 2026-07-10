@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
+use crate::synth_engine::ComplexSample;
 use crate::synth_engine::{
     ModuleHandle, ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample, SynthEngine,
     buffer::HARMONIC_SERIES_BUFFER, synth_module::ModuleUiBridge,
@@ -10,11 +11,15 @@ use crate::synth_engine::{
 use super::link::{UiEnd, UiUpdate};
 use super::{FilterParams, HarmonicEditor, HarmonicEditorConfig, SetParams};
 
+const DISPLAY_SPECTRUM_SIZE: usize = 256;
+type DisplaySpectrum = [ComplexSample; DISPLAY_SPECTRUM_SIZE];
+
 pub struct HarmonicEditorUiBridge {
     synth: Arc<Mutex<SynthEngine>>,
     module_id: ModuleId,
     ui_end: UiEnd,
     config: HarmonicEditorConfig,
+    display_spectrum: DisplaySpectrum,
 }
 
 impl HarmonicEditorUiBridge {
@@ -28,6 +33,7 @@ impl HarmonicEditorUiBridge {
             module_id,
             ui_end: editor.ui_end.take()?,
             config: editor.get_config(),
+            display_spectrum: [ComplexSample::ZERO; DISPLAY_SPECTRUM_SIZE],
         })
     }
 
@@ -39,12 +45,22 @@ impl HarmonicEditorUiBridge {
         }
     }
 
-    // pub fn config(&self) -> &Config {
-    //     &self.config
-    // }
-
     pub fn harmonics(&self) -> Vec<StereoSample> {
         HarmonicEditor::harmonics_from_config(&self.config)
+    }
+
+    pub fn get_spectrum(&mut self) -> &[ComplexSample] {
+        let left = &self.config.spectrum[0];
+
+        for (dst, src) in self.display_spectrum.iter_mut().zip(left.iter()) {
+            *dst = src.complex();
+        }
+
+        if left.len() < DISPLAY_SPECTRUM_SIZE {
+            self.display_spectrum[left.len()..].fill(ComplexSample::ZERO);
+        }
+
+        &self.display_spectrum
     }
 
     pub fn set_harmonic(&mut self, harmonic_number: usize, gain: StereoSample) {

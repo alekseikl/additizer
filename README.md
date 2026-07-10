@@ -21,7 +21,7 @@ Every slider in the UI is stereo, and each channel can be adjusted by dragging w
 - `Mixer`: Mixes multiple audio inputs with per-input level/gain and output volume control.
 - `Waveshaper`: Wave shaping distortion (hard clip or sigmoid) with drive and clipping level.
 - `Amplifier`: Simple gain modulation for input signal.
-- `External Parameter`: Exposes host/plugin parameters as modulation sources with smoothing or sample-and-hold.
+- `External Parameter`: Exposes host/plugin parameters as modulation sources with smoothing.
 - `Expressions`: Uses MPE as modulation sources.
 
 ## Build

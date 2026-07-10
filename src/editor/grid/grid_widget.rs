@@ -11,6 +11,7 @@ use crate::{
         grid_widget::envelope_widget::EnvelopeWidget,
         grid_widget::harmonic_editor_widget::HarmonicEditorWidget,
         grid_widget::oscillator_widget::OscillatorWidget, grid_widget::output_widget::OutputWidget,
+        grid_widget::spectral_blend_widget::SpectralBlendWidget,
         grid_widget::spectral_filter_widget::SpectralFilterWidget, input_tooltip,
         select_input_popup::SelectInputPopup,
     },
@@ -28,6 +29,7 @@ mod envelope_widget;
 mod harmonic_editor_widget;
 mod oscillator_widget;
 mod output_widget;
+mod spectral_blend_widget;
 mod spectral_filter_widget;
 
 const C_MOD_BG: Color32 = Color32::from_rgb(28, 30, 42);
@@ -100,6 +102,7 @@ impl GridWidget {
                 ModuleType::SpectralFilter => Box::new(SpectralFilterWidget {}),
                 ModuleType::Envelope => Box::new(EnvelopeWidget {}),
                 ModuleType::HarmonicEditor => Box::new(HarmonicEditorWidget {}),
+                ModuleType::SpectralBlend => Box::new(SpectralBlendWidget {}),
                 ModuleType::Output => Box::new(OutputWidget::default()),
                 _ => Box::new(EmptyContent {}),
             },

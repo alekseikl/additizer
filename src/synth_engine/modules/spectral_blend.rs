@@ -8,6 +8,7 @@ mod ui_bridge;
 
 pub use config::SpectralBlendConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
+pub use link::{DISPLAY_SPECTRUM_SIZE, DisplaySpectrum};
 pub use ui_bridge::SpectralBlendUiBridge;
 
 use crate::synth_engine::{
@@ -145,8 +146,12 @@ impl SpectralBlend {
         let spectrum_from = router.spectral(inputs.spectrum, voice.triggered);
         let spectrum_to = router.spectral(inputs.spectrum_to, voice.triggered);
 
-        for (out, from, to) in izip!(voice_output, spectrum_from, spectrum_to) {
+        for (out, from, to) in izip!(&mut *voice_output, spectrum_from, spectrum_to) {
             *out = from + (to - from) * blend;
+        }
+
+        if router.need_update_ui_mono() {
+            self.audio_end.update_spectrum(voice_output);
         }
 
         if voice.triggered {

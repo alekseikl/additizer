@@ -19,6 +19,7 @@ use crate::{
 
 mod db_slider;
 mod direct_input;
+mod gain_bars;
 mod gain_slider;
 mod grid;
 mod modulation_input;
