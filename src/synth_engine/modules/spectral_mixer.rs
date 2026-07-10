@@ -320,6 +320,10 @@ impl SpectralMixer {
             *out *= output_gain;
         }
 
+        if router.need_update_ui_mono() {
+            self.audio_end.update_spectrum(voice_output);
+        }
+
         if voice.triggered {
             voice.triggered = false;
 

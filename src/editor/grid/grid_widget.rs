@@ -12,7 +12,8 @@ use crate::{
         grid_widget::harmonic_editor_widget::HarmonicEditorWidget,
         grid_widget::oscillator_widget::OscillatorWidget, grid_widget::output_widget::OutputWidget,
         grid_widget::spectral_blend_widget::SpectralBlendWidget,
-        grid_widget::spectral_filter_widget::SpectralFilterWidget, input_tooltip,
+        grid_widget::spectral_filter_widget::SpectralFilterWidget,
+        grid_widget::spectral_mixer_widget::SpectralMixerWidget, input_tooltip,
         select_input_popup::SelectInputPopup,
     },
     synth_engine::{
@@ -31,6 +32,7 @@ mod oscillator_widget;
 mod output_widget;
 mod spectral_blend_widget;
 mod spectral_filter_widget;
+mod spectral_mixer_widget;
 
 const C_MOD_BG: Color32 = Color32::from_rgb(28, 30, 42);
 const C_MOD_BG_SELECTED: Color32 = Color32::from_rgb(40, 42, 54);
@@ -103,6 +105,7 @@ impl GridWidget {
                 ModuleType::Envelope => Box::new(EnvelopeWidget {}),
                 ModuleType::HarmonicEditor => Box::new(HarmonicEditorWidget {}),
                 ModuleType::SpectralBlend => Box::new(SpectralBlendWidget {}),
+                ModuleType::SpectralMixer => Box::new(SpectralMixerWidget {}),
                 ModuleType::Output => Box::new(OutputWidget::default()),
                 _ => Box::new(EmptyContent {}),
             },

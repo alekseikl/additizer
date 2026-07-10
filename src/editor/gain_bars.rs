@@ -10,8 +10,9 @@ const BAR_GAP: f32 = 1.0;
 const BAR_STRIDE: f32 = BAR_WIDTH + BAR_GAP;
 
 const MAX_DBS: Sample = 24.0;
+const MIN_DBS: Sample = -48.0;
 const MID_POINT: Sample = 0.75;
-const SKEW_FACTOR: Sample = 2.0;
+const SKEW_FACTOR: Sample = 1.0;
 
 const ATTENUATED_COLOR: Hsva = Hsva {
     h: 0.567,
@@ -26,8 +27,6 @@ const AMPLIFIED_COLOR: Hsva = Hsva {
     a: 1.0,
 };
 
-/// Recovers linear gain from a harmonic-series frequency bin (see
-/// `HarmonicEditor::harmonics_from_config`).
 fn bin_to_gain(harmonic_idx: usize, bin: ComplexSample) -> Sample {
     let value = harmonic_idx as Sample * PI * bin.norm();
     let almost_one = (value - 1.0).abs() < Sample::EPSILON;
@@ -39,10 +38,10 @@ fn gain_to_normalized(gain: Sample) -> Sample {
     let dbs = nih_plug::util::gain_to_db(gain);
 
     if dbs > 0.0 {
-        let normalized = dbs / MAX_DBS;
+        let normalized = (dbs / MAX_DBS).clamp(0.0, 1.0);
         MID_POINT + (1.0 - MID_POINT) * normalized.powf(SKEW_FACTOR.recip())
     } else {
-        let normalized = dbs / nih_plug::util::MINUS_INFINITY_DB;
+        let normalized = (dbs / MIN_DBS).clamp(0.0, 1.0);
         MID_POINT * (1.0 - normalized.powf(SKEW_FACTOR.recip()))
     }
 }
