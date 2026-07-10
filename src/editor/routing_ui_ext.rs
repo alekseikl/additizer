@@ -1,6 +1,6 @@
 use egui::{Color32, ecolor::Hsva};
 
-use crate::synth_engine::{DataType, Input};
+use crate::synth_engine::{DataType, Input, ModuleType};
 
 const IO_COLOR_S: f32 = 0.8;
 const IO_COLOR_V: f32 = 0.5;
@@ -105,5 +105,29 @@ impl DataType {
 
     pub fn color(&self) -> Color32 {
         color_from_hue(self.hue())
+    }
+}
+
+impl ModuleType {
+    pub fn input_label(self, input: Input) -> String {
+        match self {
+            Self::Mixer => match input {
+                Input::Gain => "Output gain".into(),
+                Input::Level => "Output level (dB)".into(),
+                Input::AudioMix(i) => format!("Audio In #{}", i + 1),
+                Input::GainMix(i) => format!("Input #{} gain", i + 1),
+                Input::LevelMix(i) => format!("Input #{} level (dB)", i + 1),
+                _ => input.label(),
+            },
+            Self::SpectralMixer => match input {
+                Input::Gain => "Output gain".into(),
+                Input::Level => "Output level (dB)".into(),
+                Input::SpectrumMix(i) => format!("Spectrum In #{}", i + 1),
+                Input::GainMix(i) => format!("Input #{} gain", i + 1),
+                Input::LevelMix(i) => format!("Input #{} level (dB)", i + 1),
+                _ => input.label(),
+            },
+            _ => input.label(),
+        }
     }
 }

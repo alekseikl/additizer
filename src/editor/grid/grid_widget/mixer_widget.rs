@@ -1,7 +1,7 @@
 use crate::{
     editor::{grid::WidgetCtx, volume_meter::VolumeMeter},
     synth_engine::{
-        Input, ModuleId, StereoSample,
+        ModuleId, StereoSample,
         mixer::MixerUiBridge,
         ui_bridge::{GridVec, ModuleBridge},
     },
@@ -56,16 +56,5 @@ impl GridWidgetContent for MixerWidget {
                     self.mixer_ui(ui, has_active_voices, mixer_bridge);
                 }
             });
-    }
-
-    fn input_label(&self, input: Input) -> String {
-        match input {
-            Input::Gain => "Output gain".into(),
-            Input::Level => "Output level (dB)".into(),
-            Input::AudioMix(i) => format!("Audio In #{}", i + 1),
-            Input::GainMix(i) => format!("Input #{} gain ", i + 1),
-            Input::LevelMix(i) => format!("Input #{} level (dB) ", i + 1),
-            _ => input.label(),
-        }
     }
 }

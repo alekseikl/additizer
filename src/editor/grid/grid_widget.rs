@@ -20,7 +20,7 @@ use crate::{
         select_input_popup::SelectInputPopup,
     },
     synth_engine::{
-        DataType, Input, InputId, ModuleId, ModuleType,
+        DataType, InputId, ModuleId, ModuleType,
         ui_bridge::{
             GridVec,
             routing_state::{ModuleInput, ModuleIo},
@@ -59,10 +59,6 @@ pub trait GridWidgetContent: Send {
 
     fn show_label(&self) -> bool {
         true
-    }
-
-    fn input_label(&self, input: Input) -> String {
-        input.label()
     }
 
     fn ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx, module_id: ModuleId);
@@ -288,7 +284,7 @@ impl GridWidget {
             pos: req.pos,
         };
 
-        if popup.show(ui, ctx, self.content.as_ref()) {
+        if popup.show(ui, ctx, self.io.module_type) {
             self.link_request = None;
         }
     }
@@ -381,7 +377,7 @@ impl GridWidget {
             ui,
             &response,
             center - vec2(0.0, dot_size * 0.5),
-            self.content.input_label(input.meta.input_type),
+            self.io.module_type.input_label(input.meta.input_type),
         );
 
         rect.left_center()

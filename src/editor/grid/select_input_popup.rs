@@ -5,9 +5,7 @@ use egui::{
 };
 
 use crate::editor::grid::{GridEvent, WidgetCtx};
-use crate::synth_engine::{InputId, ModuleId, ui_bridge::LinkableInput};
-
-use super::grid_widget::GridWidgetContent;
+use crate::synth_engine::{InputId, ModuleId, ModuleType, ui_bridge::LinkableInput};
 
 const IO_DOT_SIZE: f32 = 8.0;
 const MENU_INDENT: f32 = 8.0;
@@ -28,7 +26,7 @@ pub struct SelectInputPopup {
 
 impl SelectInputPopup {
     /// Returns `true` if the link request should be cleared.
-    pub fn show(&self, ui: &mut Ui, ctx: &mut WidgetCtx, content: &dyn GridWidgetContent) -> bool {
+    pub fn show(&self, ui: &mut Ui, ctx: &mut WidgetCtx, module_type: ModuleType) -> bool {
         let inputs = ctx.bridge.get_linkable_inputs(self.src, self.dst);
 
         if inputs.is_empty() {
@@ -45,7 +43,7 @@ impl SelectInputPopup {
             .gap(0.0)
             .frame(Frame::menu(ui.style()).inner_margin(Margin::ZERO))
             .show(|ui| {
-                ui.set_width(content_width(ui, &inputs, content).max(MIN_MENU_WIDTH));
+                ui.set_width(content_width(ui, &inputs, module_type).max(MIN_MENU_WIDTH));
                 ui.spacing_mut().item_spacing.y = 0.0;
 
                 let row_count: usize = inputs.iter().map(|input| 1 + input.modulations.len()).sum();
@@ -54,7 +52,7 @@ impl SelectInputPopup {
                 for input in &inputs {
                     let input_id = InputId::new(input.input_type, self.dst);
                     let color = input.input_type.color();
-                    let label = content.input_label(input.input_type);
+                    let label = module_type.input_label(input.input_type);
                     let is_first = row == 0;
                     let is_last = row + 1 == row_count;
 
@@ -133,11 +131,11 @@ fn row_content_width(ui: &Ui, label: &str, indent: f32, icon: MenuItemIcon) -> f
         + text_width(ui, label)
 }
 
-fn content_width(ui: &Ui, inputs: &[LinkableInput], content: &dyn GridWidgetContent) -> f32 {
+fn content_width(ui: &Ui, inputs: &[LinkableInput], module_type: ModuleType) -> f32 {
     inputs
         .iter()
         .flat_map(|input| {
-            let label = content.input_label(input.input_type);
+            let label = module_type.input_label(input.input_type);
             std::iter::once(row_content_width(
                 ui,
                 &label,
