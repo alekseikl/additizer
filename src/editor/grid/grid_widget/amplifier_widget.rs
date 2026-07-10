@@ -1,9 +1,5 @@
 use crate::{
-    editor::{
-        grid::WidgetCtx,
-        stereo_smoother::StereoSmoother,
-        volume_meter,
-    },
+    editor::{grid::WidgetCtx, stereo_smoother::StereoSmoother, volume_meter},
     synth_engine::{
         ModuleId, Sample, StereoSample,
         amplifier::AmplifierUiBridge,
