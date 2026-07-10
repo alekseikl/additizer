@@ -9,7 +9,7 @@ use crate::synth_engine::{
 pub struct Module {
     pub id: ModuleId,
     pub module_type: ModuleType,
-    pub inputs: &'static [InputMeta],
+    pub inputs: Vec<InputMeta>,
     pub output_type: DataType,
 }
 
@@ -18,7 +18,7 @@ impl Module {
         Self {
             id: module.id(),
             module_type: module.module_type(),
-            inputs: module.inputs(),
+            inputs: module.inputs().to_vec(),
             output_type: module.output_type(),
         }
     }
@@ -51,7 +51,7 @@ pub struct ModuleInput {
 pub struct ModuleIo {
     pub id: ModuleId,
     pub module_type: ModuleType,
-    pub inputs_meta: &'static [InputMeta],
+    pub inputs_meta: Vec<InputMeta>,
     pub inputs: Vec<ModuleInput>,
     pub output_type: DataType,
     pub output_connected: bool,
@@ -79,7 +79,7 @@ impl RoutingState {
                         id: m.id,
                         module_type: m.module_type,
                         output_type: m.output_type,
-                        inputs_meta: m.inputs,
+                        inputs_meta: m.inputs.to_vec(),
                         inputs: m
                             .inputs
                             .iter()

@@ -15,7 +15,7 @@ use crate::synth_engine::{
 pub(super) trait SynthModule: Send {
     fn id(&self) -> ModuleId;
 
-    fn inputs(&self) -> &'static [InputMeta];
+    fn inputs(&self) -> &[InputMeta];
     fn output_type(&self) -> DataType;
 
     fn set_output_slot(&mut self, slot: usize);

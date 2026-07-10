@@ -7,6 +7,8 @@ use egui::{
 use crate::editor::grid::{GridEvent, WidgetCtx};
 use crate::synth_engine::{InputId, ModuleId, ui_bridge::LinkableInput};
 
+use super::grid_widget::GridWidgetContent;
+
 const IO_DOT_SIZE: f32 = 8.0;
 const MENU_INDENT: f32 = 8.0;
 const MENU_CONTENT_PAD: f32 = 6.0;
@@ -26,7 +28,7 @@ pub struct SelectInputPopup {
 
 impl SelectInputPopup {
     /// Returns `true` if the link request should be cleared.
-    pub fn show(&self, ui: &mut Ui, ctx: &mut WidgetCtx) -> bool {
+    pub fn show(&self, ui: &mut Ui, ctx: &mut WidgetCtx, content: &dyn GridWidgetContent) -> bool {
         let inputs = ctx.bridge.get_linkable_inputs(self.src, self.dst);
 
         if inputs.is_empty() {
@@ -43,7 +45,7 @@ impl SelectInputPopup {
             .gap(0.0)
             .frame(Frame::menu(ui.style()).inner_margin(Margin::ZERO))
             .show(|ui| {
-                ui.set_width(content_width(ui, &inputs).max(MIN_MENU_WIDTH));
+                ui.set_width(content_width(ui, &inputs, content).max(MIN_MENU_WIDTH));
                 ui.spacing_mut().item_spacing.y = 0.0;
 
                 let row_count: usize = inputs.iter().map(|input| 1 + input.modulations.len()).sum();
@@ -52,7 +54,7 @@ impl SelectInputPopup {
                 for input in &inputs {
                     let input_id = InputId::new(input.input_type, self.dst);
                     let color = input.input_type.color();
-                    let label = input.input_type.label();
+                    let label = content.input_label(input.input_type);
                     let is_first = row == 0;
                     let is_last = row + 1 == row_count;
 
@@ -131,11 +133,11 @@ fn row_content_width(ui: &Ui, label: &str, indent: f32, icon: MenuItemIcon) -> f
         + text_width(ui, label)
 }
 
-fn content_width(ui: &Ui, inputs: &[LinkableInput]) -> f32 {
+fn content_width(ui: &Ui, inputs: &[LinkableInput], content: &dyn GridWidgetContent) -> f32 {
     inputs
         .iter()
         .flat_map(|input| {
-            let label = input.input_type.label();
+            let label = content.input_label(input.input_type);
             std::iter::once(row_content_width(
                 ui,
                 &label,

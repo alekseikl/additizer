@@ -166,6 +166,7 @@ pub struct Mixer {
     ui_end: Option<UiEnd>,
     inputs: Inputs,
     output_slot: usize,
+    inputs_meta: Vec<InputMeta>,
     out_volume_ballistics: [LevelBallistics; NUM_CHANNELS],
 }
 
@@ -182,7 +183,7 @@ impl Mixer {
     pub fn from_config(config: &config::MixerConfig) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
-        Self {
+        let mut result = Self {
             id: config.id,
             params: Params::from_config(config),
             channel_params: array::from_fn(|channel_idx| {
@@ -193,8 +194,11 @@ impl Mixer {
             ui_end: Some(ui_end),
             inputs: Inputs::default(),
             output_slot: usize::MAX,
+            inputs_meta: Vec::with_capacity(1 + 2 * MAX_INPUTS as usize),
             out_volume_ballistics: [LevelBallistics::default(); NUM_CHANNELS],
-        }
+        };
+        result.build_inputs_meta();
+        result
     }
 
     pub fn get_config(&self) -> MixerConfig {
@@ -220,21 +224,23 @@ impl Mixer {
         }
     }
 
-    set_mono_param!(
-        set_num_inputs,
-        num_inputs,
-        u8,
-        num_inputs.clamp(1, MAX_INPUTS)
-    );
-
-    set_mono_param!(set_output_volume_type, output_volume_type, VolumeType);
-
     set_smoothed_param!(set_output_level, output_level);
     set_smoothed_param!(set_output_gain, output_gain);
+
+    pub fn set_num_inputs(&mut self, num_inputs: u8) {
+        self.params.num_inputs = num_inputs.clamp(1, MAX_INPUTS);
+        self.build_inputs_meta();
+    }
 
     pub fn set_volume_type(&mut self, input_idx: u8, volume_type: VolumeType) {
         let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
         self.params.inputs[input_idx].volume_type = volume_type;
+        self.build_inputs_meta();
+    }
+
+    pub fn set_output_volume_type(&mut self, output_volume_type: VolumeType) {
+        self.params.output_volume_type = output_volume_type;
+        self.build_inputs_meta();
     }
 
     pub fn set_input_level(&mut self, input_idx: u8, level: StereoSample) {
@@ -250,6 +256,29 @@ impl Mixer {
 
         for (channel, gain) in self.channel_params.iter_mut().zip(gain.iter()) {
             channel.input_params[input_idx].gain.set(*gain);
+        }
+    }
+
+    fn build_inputs_meta(&mut self) {
+        self.inputs_meta.clear();
+
+        for input_idx in 0..self.params.num_inputs {
+            self.inputs_meta
+                .push(InputMeta::audio(Input::AudioMix(input_idx)));
+
+            match self.params.inputs[input_idx as usize].volume_type {
+                VolumeType::Db => self
+                    .inputs_meta
+                    .push(InputMeta::control(Input::LevelMix(input_idx))),
+                VolumeType::Gain => self
+                    .inputs_meta
+                    .push(InputMeta::control(Input::GainMix(input_idx))),
+            }
+        }
+
+        match self.params.output_volume_type {
+            VolumeType::Db => self.inputs_meta.push(InputMeta::control(Input::Level)),
+            VolumeType::Gain => self.inputs_meta.push(InputMeta::control(Input::Gain)),
         }
     }
 
@@ -361,10 +390,8 @@ impl Mixer {
         }
 
         if router.need_update_ui() {
-            let level = self.out_volume_ballistics[channel_idx].process(
-                output,
-                router.sample_rate(),
-            );
+            let level =
+                self.out_volume_ballistics[channel_idx].process(output, router.sample_rate());
             self.audio_end.update_out_volume(channel_idx, level);
         }
     }
@@ -375,33 +402,8 @@ impl SynthModule for Mixer {
         self.id
     }
 
-    fn inputs(&self) -> &'static [InputMeta] {
-        static INPUTS: &[InputMeta] = &[
-            InputMeta::control(Input::Gain),
-            InputMeta::control(Input::Level),
-            InputMeta::audio(Input::AudioMix(0)),
-            InputMeta::control(Input::GainMix(0)),
-            InputMeta::control(Input::LevelMix(0)),
-            InputMeta::audio(Input::AudioMix(1)),
-            InputMeta::control(Input::GainMix(1)),
-            InputMeta::control(Input::LevelMix(1)),
-            InputMeta::audio(Input::AudioMix(2)),
-            InputMeta::control(Input::GainMix(2)),
-            InputMeta::control(Input::LevelMix(2)),
-            InputMeta::audio(Input::AudioMix(3)),
-            InputMeta::control(Input::GainMix(3)),
-            InputMeta::control(Input::LevelMix(3)),
-            InputMeta::audio(Input::AudioMix(4)),
-            InputMeta::control(Input::GainMix(4)),
-            InputMeta::control(Input::LevelMix(4)),
-            InputMeta::audio(Input::AudioMix(5)),
-            InputMeta::control(Input::GainMix(5)),
-            InputMeta::control(Input::LevelMix(5)),
-        ];
-
-        let inputs_len = 2 + 3 * self.params.num_inputs as usize;
-
-        &INPUTS[..inputs_len]
+    fn inputs(&self) -> &[InputMeta] {
+        &self.inputs_meta
     }
 
     fn output_type(&self) -> DataType {
@@ -441,8 +443,14 @@ impl SynthModule for Mixer {
                 UiEvent::InputVolumeType {
                     input_idx,
                     volume_type,
-                } => self.set_volume_type(input_idx, volume_type),
-                UiEvent::OutputVolumeType(volume_type) => self.set_output_volume_type(volume_type),
+                } => {
+                    self.set_volume_type(input_idx, volume_type);
+                    self.audio_end.refresh_routing();
+                }
+                UiEvent::OutputVolumeType(volume_type) => {
+                    self.set_output_volume_type(volume_type);
+                    self.audio_end.refresh_routing();
+                }
             }
         }
     }

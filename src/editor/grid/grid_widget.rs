@@ -7,18 +7,20 @@ use egui::{
 
 use crate::{
     editor::grid::{
-        GridEvent, WidgetCtx, WireDragState, grid_widget::amplifier_widget::AmplifierWidget,
-        grid_widget::envelope_widget::EnvelopeWidget,
-        grid_widget::harmonic_editor_widget::HarmonicEditorWidget,
-        grid_widget::mixer_widget::MixerWidget, grid_widget::oscillator_widget::OscillatorWidget,
-        grid_widget::output_widget::OutputWidget,
-        grid_widget::spectral_blend_widget::SpectralBlendWidget,
-        grid_widget::spectral_filter_widget::SpectralFilterWidget,
-        grid_widget::spectral_mixer_widget::SpectralMixerWidget, input_tooltip,
+        GridEvent, WidgetCtx, WireDragState,
+        grid_widget::{
+            amplifier_widget::AmplifierWidget, envelope_widget::EnvelopeWidget,
+            harmonic_editor_widget::HarmonicEditorWidget, mixer_widget::MixerWidget,
+            oscillator_widget::OscillatorWidget, output_widget::OutputWidget,
+            spectral_blend_widget::SpectralBlendWidget,
+            spectral_filter_widget::SpectralFilterWidget,
+            spectral_mixer_widget::SpectralMixerWidget,
+        },
+        input_tooltip,
         select_input_popup::SelectInputPopup,
     },
     synth_engine::{
-        DataType, InputId, ModuleId, ModuleType,
+        DataType, Input, InputId, ModuleId, ModuleType,
         ui_bridge::{
             GridVec,
             routing_state::{ModuleInput, ModuleIo},
@@ -57,6 +59,10 @@ pub trait GridWidgetContent: Send {
 
     fn show_label(&self) -> bool {
         true
+    }
+
+    fn input_label(&self, input: Input) -> String {
+        input.label()
     }
 
     fn ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx, module_id: ModuleId);
@@ -282,7 +288,7 @@ impl GridWidget {
             pos: req.pos,
         };
 
-        if popup.show(ui, ctx) {
+        if popup.show(ui, ctx, self.content.as_ref()) {
             self.link_request = None;
         }
     }
@@ -375,7 +381,7 @@ impl GridWidget {
             ui,
             &response,
             center - vec2(0.0, dot_size * 0.5),
-            input.meta.input_type.label(),
+            self.content.input_label(input.meta.input_type),
         );
 
         rect.left_center()
