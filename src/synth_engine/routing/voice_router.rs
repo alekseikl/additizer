@@ -224,7 +224,8 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
             self.voice_idx(),
             0,
             buff,
-        ) {
+        ) && self.need_update_ui()
+        {
             let value = buff[0];
 
             self.factory.ctx.audio_end.update_modulated_input(

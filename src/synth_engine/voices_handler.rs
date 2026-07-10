@@ -77,7 +77,7 @@ impl DecayingVoice {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct PlayingVoice {
     voice_idx: VoiceIdx,
     note_bandwidth: u16,
