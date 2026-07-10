@@ -13,6 +13,7 @@ pub use ui_bridge::MixerUiBridge;
 use crate::synth_engine::{
     SmoothedSampleParams, StereoSample,
     buffer::{Buffer, VoicesLayout, copy_or_add_to_buffer, zero_buffer},
+    level_ballistics::LevelBallistics,
     routing::{
         AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
         ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter, VolumeType,
@@ -165,6 +166,7 @@ pub struct Mixer {
     ui_end: Option<UiEnd>,
     inputs: Inputs,
     output_slot: usize,
+    out_volume_ballistics: [LevelBallistics; NUM_CHANNELS],
 }
 
 impl Mixer {
@@ -191,6 +193,7 @@ impl Mixer {
             ui_end: Some(ui_end),
             inputs: Inputs::default(),
             output_slot: usize::MAX,
+            out_volume_ballistics: [LevelBallistics::default(); NUM_CHANNELS],
         }
     }
 
@@ -355,6 +358,14 @@ impl Mixer {
 
                 Self::modulate_output(output, gain_mod);
             }
+        }
+
+        if router.need_update_ui() {
+            let level = self.out_volume_ballistics[channel_idx].process(
+                output,
+                router.sample_rate(),
+            );
+            self.audio_end.update_out_volume(channel_idx, level);
         }
     }
 }

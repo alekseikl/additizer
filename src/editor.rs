@@ -27,7 +27,6 @@ mod module_label;
 mod modules_ui;
 mod routing_ui_ext;
 mod stereo_slider;
-mod stereo_smoother;
 mod utils;
 mod volume_meter;
 mod waveform;

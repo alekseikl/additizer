@@ -2,7 +2,7 @@ use crate::{
     editor::{grid::WidgetCtx, volume_meter::VolumeMeter},
     synth_engine::{
         ModuleId, StereoSample,
-        amplifier::AmplifierUiBridge,
+        mixer::MixerUiBridge,
         ui_bridge::{GridVec, ModuleBridge},
     },
 };
@@ -12,16 +12,16 @@ use super::GridWidgetContent;
 const PADDING: f32 = 4.0;
 
 #[derive(Default)]
-pub struct AmplifierWidget {
+pub struct MixerWidget {
     volume_meter: VolumeMeter,
 }
 
-impl AmplifierWidget {
-    fn amplifier_ui(
+impl MixerWidget {
+    fn mixer_ui(
         &mut self,
         ui: &mut egui::Ui,
         has_active_voices: bool,
-        amp_bridge: &mut AmplifierUiBridge,
+        mixer_bridge: &mut MixerUiBridge,
     ) {
         let size = ui.available_size();
         let response = ui.allocate_response(size, egui::Sense::hover());
@@ -32,7 +32,7 @@ impl AmplifierWidget {
         }
 
         let volume = if has_active_voices {
-            amp_bridge.get_out_volume()
+            mixer_bridge.get_out_volume()
         } else {
             StereoSample::ZERO
         };
@@ -42,7 +42,7 @@ impl AmplifierWidget {
     }
 }
 
-impl GridWidgetContent for AmplifierWidget {
+impl GridWidgetContent for MixerWidget {
     fn grid_size(&self) -> GridVec {
         GridVec::new(3, 2)
     }
@@ -52,8 +52,8 @@ impl GridWidgetContent for AmplifierWidget {
 
         ctx.bridge
             .with_module_bridge(module_id, |_bridge, module_bridge| {
-                if let ModuleBridge::Amplifier(amp_bridge) = module_bridge {
-                    self.amplifier_ui(ui, has_active_voices, amp_bridge);
+                if let ModuleBridge::Mixer(mixer_bridge) = module_bridge {
+                    self.mixer_ui(ui, has_active_voices, mixer_bridge);
                 }
             });
     }

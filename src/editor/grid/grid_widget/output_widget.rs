@@ -1,11 +1,7 @@
 use crate::{
-    editor::{
-        grid::WidgetCtx,
-        stereo_smoother::StereoSmoother,
-        volume_meter,
-    },
+    editor::{grid::WidgetCtx, volume_meter::VolumeMeter},
     synth_engine::{
-        ModuleId, Sample, StereoSample,
+        ModuleId,
         ui_bridge::{GridVec, UiBridge},
     },
 };
@@ -13,18 +9,10 @@ use crate::{
 use super::GridWidgetContent;
 
 const PADDING: f32 = 8.0;
-const VOLUME_SMOOTH_TIME: Sample = 0.15;
 
+#[derive(Default)]
 pub struct OutputWidget {
-    volume_smoother: StereoSmoother,
-}
-
-impl Default for OutputWidget {
-    fn default() -> Self {
-        Self {
-            volume_smoother: StereoSmoother::new(StereoSample::ZERO, VOLUME_SMOOTH_TIME),
-        }
-    }
+    volume_meter: VolumeMeter,
 }
 
 impl OutputWidget {
@@ -37,9 +25,11 @@ impl OutputWidget {
             return;
         }
 
-        let volume = self.volume_smoother.tick(bridge.get_out_volume());
-
-        volume_meter::paint_stereo(&ui.painter().with_clip_rect(rect), rect, volume);
+        self.volume_meter.paint_stereo(
+            &ui.painter().with_clip_rect(rect),
+            rect,
+            bridge.get_out_volume(),
+        );
     }
 }
 

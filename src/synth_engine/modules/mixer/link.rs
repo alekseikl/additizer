@@ -1,4 +1,6 @@
-use crate::synth_engine::{Input, StereoSample, VolumeType};
+use triple_buffer::triple_buffer;
+
+use crate::synth_engine::{Input, NUM_CHANNELS, Sample, StereoSample, VolumeType};
 
 pub enum UiEvent {
     InputParam {
@@ -20,11 +22,12 @@ pub enum UiUpdate {
 pub struct UiEnd {
     rx: rtrb::Consumer<UiUpdate>,
     tx: rtrb::Producer<UiEvent>,
+    out_volume: triple_buffer::Output<StereoSample>,
 }
 
 impl UiEnd {
-    pub fn new(rx: rtrb::Consumer<UiUpdate>, tx: rtrb::Producer<UiEvent>) -> Self {
-        Self { rx, tx }
+    pub fn get_out_volume(&mut self) -> StereoSample {
+        *self.out_volume.read()
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
@@ -56,13 +59,10 @@ impl UiEnd {
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
     tx: rtrb::Producer<UiUpdate>,
+    out_volume: triple_buffer::Input<StereoSample>,
 }
 
 impl AudioEnd {
-    pub fn new(rx: rtrb::Consumer<UiEvent>, tx: rtrb::Producer<UiUpdate>) -> Self {
-        Self { rx, tx }
-    }
-
     pub fn pop_event(&mut self) -> Option<UiEvent> {
         self.rx.pop().ok()
     }
@@ -70,14 +70,31 @@ impl AudioEnd {
     pub fn refresh_routing(&mut self) -> bool {
         self.tx.push(UiUpdate::RefreshRouting).is_ok()
     }
+
+    pub fn update_out_volume(&mut self, channel_idx: usize, out_volume: Sample) {
+        self.out_volume.input_buffer_mut()[channel_idx] = out_volume;
+
+        if channel_idx == NUM_CHANNELS - 1 {
+            self.out_volume.publish();
+        }
+    }
 }
 
 pub fn create_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(256);
     let (to_ui_tx, from_audio_rx) = rtrb::RingBuffer::<UiUpdate>::new(128);
+    let (out_volume_input, out_volume_output) = triple_buffer(&StereoSample::ZERO);
 
     (
-        AudioEnd::new(from_ui_rx, to_ui_tx),
-        UiEnd::new(from_audio_rx, to_audio_tx),
+        AudioEnd {
+            rx: from_ui_rx,
+            tx: to_ui_tx,
+            out_volume: out_volume_input,
+        },
+        UiEnd {
+            rx: from_audio_rx,
+            tx: to_audio_tx,
+            out_volume: out_volume_output,
+        },
     )
 }
