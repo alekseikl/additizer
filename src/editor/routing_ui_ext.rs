@@ -122,7 +122,7 @@ impl ModuleType {
             Self::SpectralMixer => match input {
                 Input::Gain => "Output gain".into(),
                 Input::Level => "Output level (dB)".into(),
-                Input::SpectrumMix(i) => format!("Spectrum In #{}", i + 1),
+                Input::SpectrumMix(i) => format!("Spectral In #{}", i + 1),
                 Input::GainMix(i) => format!("Input #{} gain", i + 1),
                 Input::LevelMix(i) => format!("Input #{} level (dB)", i + 1),
                 _ => input.label(),
