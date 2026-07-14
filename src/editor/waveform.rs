@@ -1,6 +1,6 @@
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, ecolor::Hsva};
 
-const STROKE_COLOR: Hsva = Hsva {
+const DEFAULT_STROKE_COLOR: Hsva = Hsva {
     h: 0.03,
     s: 0.9,
     v: 1.0,
@@ -8,24 +8,17 @@ const STROKE_COLOR: Hsva = Hsva {
 };
 const LINE_WIDTH: f32 = 1.0;
 
-fn fill_top_color() -> Color32 {
-    Color32::from(Hsva {
-        a: 0x47 as f32 / 255.0,
-        ..STROKE_COLOR
-    })
-}
-
-fn fill_center_color() -> Color32 {
-    Color32::from(Hsva {
-        a: 0x66 as f32 / 255.0,
-        ..STROKE_COLOR
-    })
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct WaveformOptions {
     pub loop_closed: bool,
     pub normalize: bool,
+    /// Stroke / tint color for the waveform.
+    pub color: Color32,
+    /// When true, paint the under-curve fill (oscillator default).
+    pub fill: bool,
+    /// When true, samples are in [-1, 1] with zero at the center (default).
+    /// When false, samples are in [0, 1] with zero at the bottom (full height).
+    pub bipolar: bool,
 }
 
 impl Default for WaveformOptions {
@@ -33,39 +26,49 @@ impl Default for WaveformOptions {
         Self {
             loop_closed: false,
             normalize: true,
+            color: Color32::from(DEFAULT_STROKE_COLOR),
+            fill: true,
+            bipolar: true,
         }
     }
 }
 
-/// Linearly interpolate `waveform` at normalized position `t` in `[0, 1]`.
+/// Sample a period-unwrapped buffer at normalized phase `t` in `[0, 1]`, wrapping
+/// so `t = 0` and `t = 1` both hit `waveform[0]` and the last→first edge interpolates.
 fn sample_at(waveform: &[f32], t: f32) -> f32 {
-    let last = waveform.len() - 1;
-    let pos = t * last as f32;
-    let index = pos.floor() as usize;
-    let frac = pos - index as f32;
+    let n = waveform.len();
+    debug_assert!(n >= 2);
+
+    let pos = t.rem_euclid(1.0) * n as f32;
+    let index = pos.floor() as usize % n;
+    let frac = pos - pos.floor();
     let from = waveform[index];
-    let to = waveform[index.saturating_add(1).min(last)];
+    let to = waveform[(index + 1) % n];
     from + (to - from) * frac
 }
 
-fn sample_to_y(rect: Rect, sample: f32) -> f32 {
-    rect.center().y - sample * rect.height() * 0.5
+fn sample_to_y(rect: Rect, sample: f32, bipolar: bool) -> f32 {
+    if bipolar {
+        rect.center().y - sample * rect.height() * 0.5
+    } else {
+        rect.bottom() - sample.clamp(0.0, 1.0) * rect.height()
+    }
 }
 
-fn build_curve_points(rect: Rect, waveform: &[f32]) -> Vec<Pos2> {
+fn build_curve_points(rect: Rect, waveform: &[f32], bipolar: bool) -> Vec<Pos2> {
     let columns = rect.width().ceil().max(2.0) as usize;
-    let t_mult = ((columns - 1) as f32).recip();
+    let t_mult = (columns as f32).recip();
+    let mut points = Vec::with_capacity(columns + 1);
 
-    (0..columns)
-        .map(|column| {
-            let t = column as f32 * t_mult;
+    for i in 0..=columns {
+        let t = i as f32 * t_mult;
+        points.push(Pos2::new(
+            rect.left() + t * rect.width(),
+            sample_to_y(rect, sample_at(waveform, t), bipolar),
+        ));
+    }
 
-            Pos2::new(
-                rect.left() + t * rect.width(),
-                sample_to_y(rect, sample_at(waveform, t)),
-            )
-        })
-        .collect()
+    points
 }
 
 /// Scale the curve's vertical deviation from the center so its peak fills the view.
@@ -85,29 +88,37 @@ fn normalize_points(rect: Rect, points: &mut [Pos2]) {
     }
 }
 
+fn with_alpha(color: Color32, alpha: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
+}
+
 fn paint_fill(painter: &Painter, rect: Rect, points: &[Pos2], options: WaveformOptions) {
     if points.len() < 2 {
         return;
     }
 
-    let center_y = rect.center().y;
+    let baseline_y = if options.bipolar {
+        rect.center().y
+    } else {
+        rect.bottom()
+    };
     let mut mesh = Mesh::default();
 
-    let fill_top = fill_top_color();
-    let fill_center = fill_center_color();
+    let fill_edge = with_alpha(options.color, 0x47);
+    let fill_base = with_alpha(options.color, 0x66);
 
     let mut add_segment = |a: Pos2, b: Pos2| {
-        let ca = Pos2::new(a.x, center_y);
-        let cb = Pos2::new(b.x, center_y);
+        let ca = Pos2::new(a.x, baseline_y);
+        let cb = Pos2::new(b.x, baseline_y);
 
         let i_a = mesh.vertices.len() as u32;
-        mesh.colored_vertex(a, fill_top);
+        mesh.colored_vertex(a, fill_edge);
         let i_b = mesh.vertices.len() as u32;
-        mesh.colored_vertex(b, fill_top);
+        mesh.colored_vertex(b, fill_edge);
         let i_cb = mesh.vertices.len() as u32;
-        mesh.colored_vertex(cb, fill_center);
+        mesh.colored_vertex(cb, fill_base);
         let i_ca = mesh.vertices.len() as u32;
-        mesh.colored_vertex(ca, fill_center);
+        mesh.colored_vertex(ca, fill_base);
 
         mesh.add_triangle(i_a, i_b, i_cb);
         mesh.add_triangle(i_a, i_cb, i_ca);
@@ -129,13 +140,13 @@ fn paint_stroke(painter: &Painter, points: &[Pos2], options: WaveformOptions) {
         return;
     }
 
-    let stroke = Stroke::new(LINE_WIDTH, Color32::from(STROKE_COLOR));
+    let stroke = Stroke::new(LINE_WIDTH, options.color);
     painter.line(points.to_vec(), stroke);
 
     if options.loop_closed {
         painter.line_segment(
             [*points.last().unwrap(), points[0]],
-            Stroke::new(LINE_WIDTH, Color32::from(STROKE_COLOR)),
+            Stroke::new(LINE_WIDTH, options.color),
         );
     }
 }
@@ -150,21 +161,25 @@ pub fn paint_waveform_with_options(
     waveform: &[f32],
     options: WaveformOptions,
 ) {
-    if !rect.is_positive() {
+    if !rect.is_positive() || waveform.len() < 2 {
         return;
     }
 
-    painter.hline(
-        rect.x_range(),
-        rect.center().y,
-        Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, 32)),
-    );
+    if options.bipolar {
+        painter.hline(
+            rect.x_range(),
+            rect.center().y,
+            Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, 32)),
+        );
+    }
 
-    let mut points = build_curve_points(rect, waveform);
+    let mut points = build_curve_points(rect, waveform, options.bipolar);
     if options.normalize {
         normalize_points(rect, &mut points);
     }
-    paint_fill(painter, rect, &points, options);
+    if options.fill {
+        paint_fill(painter, rect, &points, options);
+    }
     paint_stroke(painter, &points, options);
 }
 
@@ -174,13 +189,16 @@ mod tests {
     use egui::Vec2;
 
     #[test]
-    fn sample_at_endpoints_match_buffer() {
-        let mut waveform = [0.0f32; 8];
-        waveform[0] = 1.0;
-        waveform[7] = -1.0;
+    fn sample_at_wraps_period() {
+        let waveform = [1.0f32, 0.0, -1.0, 0.5];
 
         assert!((sample_at(&waveform, 0.0) - 1.0).abs() < f32::EPSILON);
-        assert!((sample_at(&waveform, 1.0) + 1.0).abs() < f32::EPSILON);
+        assert!((sample_at(&waveform, 1.0) - 1.0).abs() < f32::EPSILON);
+
+        // Midway between last and first sample on the wrap edge.
+        let edge = sample_at(&waveform, 1.0 - 0.5 / waveform.len() as f32);
+        let expected = (0.5 + 1.0) * 0.5;
+        assert!((edge - expected).abs() < 1e-5);
     }
 
     #[test]
@@ -198,5 +216,21 @@ mod tests {
         // The peak deviation (20.0) should now reach half the height (50.0).
         assert!((points[1].y - (center_y + 50.0)).abs() < f32::EPSILON);
         assert!((points[0].y - (center_y - 25.0)).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn unipolar_maps_zero_to_bottom_one_to_top() {
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(100.0, 50.0));
+        assert!((sample_to_y(rect, 0.0, false) - rect.bottom()).abs() < f32::EPSILON);
+        assert!((sample_to_y(rect, 1.0, false) - rect.top()).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn unwrapped_buffer_endpoints_match() {
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(10.0, 100.0));
+        let waveform = [0.5f32, -0.2, -0.8, 0.1];
+        let points = build_curve_points(rect, &waveform, true);
+
+        assert!((points[0].y - points[points.len() - 1].y).abs() < f32::EPSILON);
     }
 }

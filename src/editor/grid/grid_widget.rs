@@ -10,9 +10,9 @@ use crate::{
         GridEvent, WidgetCtx, WireDragState,
         grid_widget::{
             amplifier_widget::AmplifierWidget, envelope_widget::EnvelopeWidget,
-            harmonic_editor_widget::HarmonicEditorWidget, mixer_widget::MixerWidget,
-            oscillator_widget::OscillatorWidget, output_widget::OutputWidget,
-            spectral_blend_widget::SpectralBlendWidget,
+            harmonic_editor_widget::HarmonicEditorWidget, lfo_widget::LfoWidget,
+            mixer_widget::MixerWidget, oscillator_widget::OscillatorWidget,
+            output_widget::OutputWidget, spectral_blend_widget::SpectralBlendWidget,
             spectral_filter_widget::SpectralFilterWidget,
             spectral_mixer_widget::SpectralMixerWidget,
         },
@@ -31,6 +31,7 @@ use crate::{
 mod amplifier_widget;
 mod envelope_widget;
 mod harmonic_editor_widget;
+mod lfo_widget;
 mod mixer_widget;
 mod oscillator_widget;
 mod output_widget;
@@ -108,6 +109,7 @@ impl GridWidget {
                 ModuleType::Mixer => Box::new(MixerWidget::default()),
                 ModuleType::SpectralFilter => Box::new(SpectralFilterWidget {}),
                 ModuleType::Envelope => Box::new(EnvelopeWidget {}),
+                ModuleType::Lfo => Box::new(LfoWidget::default()),
                 ModuleType::HarmonicEditor => Box::new(HarmonicEditorWidget {}),
                 ModuleType::SpectralBlend => Box::new(SpectralBlendWidget {}),
                 ModuleType::SpectralMixer => Box::new(SpectralMixerWidget {}),

@@ -15,14 +15,13 @@ use super::GridWidgetContent;
 
 const WAVE_PADDING: f32 = 4.0;
 const DISPLAY_WAVEFORM_SIZE: usize = DISPLAY_SPECTRUM_SIZE * 2;
-const DISPLAY_WAVEFORM_LEN: usize = DISPLAY_WAVEFORM_SIZE + 1;
 const DISPLAY_DFT_SIZE: usize = DISPLAY_WAVEFORM_SIZE / 2 + 1;
 
 pub struct OscillatorWidget {
     inverse_fft: Arc<dyn ComplexToReal<Sample>>,
     dft_buff: Box<[ComplexSample; DISPLAY_DFT_SIZE]>,
     scratch_buff: Box<[ComplexSample; DISPLAY_DFT_SIZE]>,
-    waveform: Box<[Sample; DISPLAY_WAVEFORM_LEN]>,
+    waveform: Box<[Sample; DISPLAY_WAVEFORM_SIZE]>,
 }
 
 impl Default for OscillatorWidget {
@@ -31,7 +30,7 @@ impl Default for OscillatorWidget {
             inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(DISPLAY_WAVEFORM_SIZE),
             dft_buff: Box::new([ComplexSample::ZERO; DISPLAY_DFT_SIZE]),
             scratch_buff: Box::new([ComplexSample::ZERO; DISPLAY_DFT_SIZE]),
-            waveform: Box::new([0.0; DISPLAY_WAVEFORM_LEN]),
+            waveform: Box::new([0.0; DISPLAY_WAVEFORM_SIZE]),
         }
     }
 }
@@ -44,11 +43,10 @@ impl OscillatorWidget {
         self.inverse_fft
             .process_with_scratch(
                 self.dft_buff.as_mut_slice(),
-                &mut self.waveform[..DISPLAY_WAVEFORM_SIZE],
+                self.waveform.as_mut_slice(),
                 self.scratch_buff.as_mut_slice(),
             )
             .unwrap();
-        self.waveform[DISPLAY_WAVEFORM_SIZE] = self.waveform[0];
     }
 
     fn osc_ui(

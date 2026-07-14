@@ -228,6 +228,24 @@ impl Lfo {
         Sample::from(bipolar) * value.mul_add(2.0, -1.0) + Sample::from(!bipolar) * value
     }
 
+    /// Evaluate the LFO curve at normalized phase `t` ∈ [0, 1].
+    pub fn evaluate(
+        shape: LfoShape,
+        t: Sample,
+        phase_shift: Sample,
+        skew: Sample,
+        bipolar: bool,
+    ) -> Sample {
+        let arg = Phase::from_normalized(t.clamp(0.0, 1.0))
+            .add_normalized(phase_shift.clamp(-1.0, 1.0))
+            .normalized();
+
+        Self::apply_bipolar(
+            Self::shape_function(shape)(Self::skew_arg(arg, skew.clamp(0.0, 1.0))),
+            bipolar,
+        )
+    }
+
     fn process_voice(
         &mut self,
         output_slot: &mut VoicesLayout<SamplesOutput>,
