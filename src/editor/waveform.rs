@@ -24,7 +24,7 @@ pub struct WaveformOptions {
 impl Default for WaveformOptions {
     fn default() -> Self {
         Self {
-            loop_closed: false,
+            loop_closed: true,
             normalize: true,
             color: Color32::from(DEFAULT_STROKE_COLOR),
             fill: true,
@@ -33,18 +33,56 @@ impl Default for WaveformOptions {
     }
 }
 
-/// Sample a period-unwrapped buffer at normalized phase `t` in `[0, 1]`, wrapping
-/// so `t = 0` and `t = 1` both hit `waveform[0]` and the last→first edge interpolates.
-fn sample_at(waveform: &[f32], t: f32) -> f32 {
+/// Uniform Catmull–Rom interpolate between `p1` and `p2` (`t` in `[0, 1]`).
+fn catmull_rom(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
+    let t2 = t * t;
+    let t3 = t2 * t;
+
+    0.5 * ((2.0 * p1)
+        + (-p0 + p2) * t
+        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+        + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3)
+}
+
+fn wrap_sample_pos(waveform: &[f32], t: f32) -> (usize, f32) {
     let n = waveform.len();
     debug_assert!(n >= 2);
 
     let pos = t.rem_euclid(1.0) * n as f32;
     let index = pos.floor() as usize % n;
     let frac = pos - pos.floor();
+    (index, frac)
+}
+
+/// Linear interp across a period-unwrapped buffer (wraps last→first).
+#[allow(dead_code)]
+fn sample_at_linear(waveform: &[f32], t: f32) -> f32 {
+    let n = waveform.len();
+    let (index, frac) = wrap_sample_pos(waveform, t);
     let from = waveform[index];
     let to = waveform[(index + 1) % n];
     from + (to - from) * frac
+}
+
+/// Catmull–Rom interp across a period-unwrapped buffer (wraps across the period).
+#[allow(dead_code)]
+fn sample_at_catmull_rom(waveform: &[f32], t: f32) -> f32 {
+    let n = waveform.len();
+    let (index, frac) = wrap_sample_pos(waveform, t);
+
+    let p0 = waveform[(index + n - 1) % n];
+    let p1 = waveform[index];
+    let p2 = waveform[(index + 1) % n];
+    let p3 = waveform[(index + 2) % n];
+
+    catmull_rom(p0, p1, p2, p3, frac)
+}
+
+/// Sample a period-unwrapped buffer at normalized phase `t` in `[0, 1]`.
+/// Swap the active line to compare linear vs Catmull–Rom.
+fn sample_at(waveform: &[f32], t: f32) -> f32 {
+    sample_at_linear(waveform, t)
+    // sample_at_catmull_rom(waveform, t)
 }
 
 fn sample_to_y(rect: Rect, sample: f32, bipolar: bool) -> f32 {
@@ -55,12 +93,14 @@ fn sample_to_y(rect: Rect, sample: f32, bipolar: bool) -> f32 {
     }
 }
 
-fn build_curve_points(rect: Rect, waveform: &[f32], bipolar: bool) -> Vec<Pos2> {
+fn build_curve_points(rect: Rect, waveform: &[f32], bipolar: bool, loop_closed: bool) -> Vec<Pos2> {
     let columns = rect.width().ceil().max(2.0) as usize;
     let t_mult = (columns as f32).recip();
-    let mut points = Vec::with_capacity(columns + 1);
+    // Open curves omit t = 1.0 so sampling does not wrap back to the first sample.
+    let end = if loop_closed { columns } else { columns - 1 };
+    let mut points = Vec::with_capacity(end + 1);
 
-    for i in 0..=columns {
+    for i in 0..=end {
         let t = i as f32 * t_mult;
         points.push(Pos2::new(
             rect.left() + t * rect.width(),
@@ -165,15 +205,15 @@ pub fn paint_waveform_with_options(
         return;
     }
 
-    if options.bipolar {
-        painter.hline(
-            rect.x_range(),
-            rect.center().y,
-            Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, 32)),
-        );
-    }
+    // if options.bipolar {
+    //     painter.hline(
+    //         rect.x_range(),
+    //         rect.center().y,
+    //         Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, 32)),
+    //     );
+    // }
 
-    let mut points = build_curve_points(rect, waveform, options.bipolar);
+    let mut points = build_curve_points(rect, waveform, options.bipolar, options.loop_closed);
     if options.normalize {
         normalize_points(rect, &mut points);
     }
@@ -191,14 +231,20 @@ mod tests {
     #[test]
     fn sample_at_wraps_period() {
         let waveform = [1.0f32, 0.0, -1.0, 0.5];
+        let t_mid = 1.0 - 0.5 / waveform.len() as f32;
 
-        assert!((sample_at(&waveform, 0.0) - 1.0).abs() < f32::EPSILON);
-        assert!((sample_at(&waveform, 1.0) - 1.0).abs() < f32::EPSILON);
+        assert!((sample_at_linear(&waveform, 0.0) - 1.0).abs() < f32::EPSILON);
+        assert!((sample_at_linear(&waveform, 1.0) - 1.0).abs() < f32::EPSILON);
+        assert!((sample_at_catmull_rom(&waveform, 0.0) - 1.0).abs() < f32::EPSILON);
+        assert!((sample_at_catmull_rom(&waveform, 1.0) - 1.0).abs() < f32::EPSILON);
 
-        // Midway between last and first sample on the wrap edge.
-        let edge = sample_at(&waveform, 1.0 - 0.5 / waveform.len() as f32);
-        let expected = (0.5 + 1.0) * 0.5;
-        assert!((edge - expected).abs() < 1e-5);
+        let linear_mid = sample_at_linear(&waveform, t_mid);
+        assert!((linear_mid - 0.75).abs() < 1e-5);
+
+        let catmull_mid = sample_at_catmull_rom(&waveform, t_mid);
+        let expected = catmull_rom(-1.0, 0.5, 1.0, 0.0, 0.5);
+        assert!((catmull_mid - expected).abs() < 1e-5);
+        assert!((linear_mid - catmull_mid).abs() > 1e-3);
     }
 
     #[test]
@@ -226,11 +272,21 @@ mod tests {
     }
 
     #[test]
-    fn unwrapped_buffer_endpoints_match() {
+    fn closed_curve_endpoints_match() {
         let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(10.0, 100.0));
         let waveform = [0.5f32, -0.2, -0.8, 0.1];
-        let points = build_curve_points(rect, &waveform, true);
+        let points = build_curve_points(rect, &waveform, true, true);
 
         assert!((points[0].y - points[points.len() - 1].y).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn open_curve_omits_period_end() {
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(10.0, 100.0));
+        let waveform = [0.5f32, -0.2, -0.8, 0.1];
+        let points = build_curve_points(rect, &waveform, true, false);
+
+        assert_eq!(points.len(), 10);
+        assert!((points.last().unwrap().x - (rect.left() + 0.9 * rect.width())).abs() < 1e-5);
     }
 }

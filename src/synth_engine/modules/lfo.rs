@@ -312,6 +312,10 @@ impl Lfo {
             voice.triggered = false;
         }
 
+        if router.need_update_ui_mono() {
+            self.audio_end.update_phase(voice.phase.normalized());
+        }
+
         voice.smoother.apply_if_needed(
             samples,
             sample_rate,

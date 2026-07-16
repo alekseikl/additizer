@@ -1,4 +1,4 @@
-use crate::synth_engine::{Input, StereoSample, synth_module::ModuleUiBridge};
+use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
 
 use super::link::UiEnd;
 use super::{Lfo, LfoConfig, LfoShape};
@@ -18,6 +18,10 @@ impl LfoUiBridge {
 
     pub fn config(&self) -> &LfoConfig {
         &self.config
+    }
+
+    pub fn get_phase(&mut self) -> Sample {
+        self.ui_end.get_phase()
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
