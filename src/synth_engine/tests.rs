@@ -340,6 +340,7 @@ fn try_new_builds_full_patch() {
                 ModuleLink::scaled(l.src_id, InputId::new(l.dst_input, l.dst_id), l.amount)
             })
             .collect::<Vec<_>>(),
+        [],
     )
     .expect("full patch execution order");
 
@@ -519,7 +520,7 @@ fn execution_order_rejects_cycles() {
         ModuleLink::link(2, InputId::new(Input::Audio, 1)),
     ];
 
-    assert!(SynthEngine::calc_execution_order(&links).is_err());
+    assert!(SynthEngine::calc_execution_order(&links, []).is_err());
 }
 
 #[test]
@@ -535,9 +536,39 @@ fn execution_order_places_output_last() {
         ),
     ];
 
-    let order = SynthEngine::calc_execution_order(&links).expect("valid graph");
+    let order = SynthEngine::calc_execution_order(&links, []).expect("valid graph");
     assert_eq!(*order.last().unwrap(), OUTPUT_MODULE_ID);
     assert_eq!(order.len(), 3);
+}
+
+#[test]
+fn execution_order_includes_unlinked_modules() {
+    let links = vec![ModuleLink::link(
+        OSCILLATOR_ID,
+        InputId::new(Input::Audio, OUTPUT_MODULE_ID),
+    )];
+
+    let order = SynthEngine::calc_execution_order(&links, [LFO_ID, OSCILLATOR_ID, OUTPUT_MODULE_ID])
+        .expect("valid graph");
+
+    assert!(order.contains(&LFO_ID));
+    assert!(order.contains(&OSCILLATOR_ID));
+    assert_eq!(*order.last().unwrap(), OUTPUT_MODULE_ID);
+}
+
+#[test]
+fn add_module_appends_to_execution_order() {
+    let mut engine = make_engine(
+        EngineParams::default(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            ..OscillatorConfig::default()
+        },
+    );
+
+    let lfo_id = engine.add_lfo();
+    assert_eq!(*engine.execution_order.last().unwrap(), lfo_id);
+    assert!(engine.execution_order.contains(&OUTPUT_MODULE_ID));
 }
 
 #[test]
@@ -995,6 +1026,7 @@ fn link_modulation_in_preset_builds() {
                 ModuleLink::scaled(l.src_id, InputId::new(l.dst_input, l.dst_id), l.amount)
             })
             .collect::<Vec<_>>(),
+        [],
     )
     .expect("execution order");
 
@@ -1229,7 +1261,7 @@ fn execution_order_accounts_for_link_modulation() {
         ),
     ];
 
-    let order = SynthEngine::calc_execution_order(&links).expect("valid order");
+    let order = SynthEngine::calc_execution_order(&links, []).expect("valid order");
     let lfo_pos = order.iter().position(|&id| id == LFO_ID).unwrap();
     let amp_pos = order.iter().position(|&id| id == AMPLIFIER_ID).unwrap();
     assert!(lfo_pos < amp_pos);

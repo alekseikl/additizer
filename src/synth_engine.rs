@@ -105,6 +105,7 @@ macro_rules! add_module_method {
 
             self.outputs_arena.allocate_slot(&mut module);
             self.modules.insert(id, module);
+            self.execution_order.push(id);
             id
         }
     };
@@ -765,8 +766,15 @@ impl SynthEngine {
         self.modules.get_mut(&id)
     }
 
-    fn calc_execution_order(links: &[ModuleLink]) -> Result<Vec<ModuleId>, String> {
+    fn calc_execution_order(
+        links: &[ModuleLink],
+        all_modules: impl IntoIterator<Item = ModuleId>,
+    ) -> Result<Vec<ModuleId>, String> {
         let mut dependents: HashMap<ModuleId, HashSet<ModuleId>> = HashMap::new();
+
+        for id in all_modules {
+            dependents.entry(id).or_default();
+        }
 
         for link in links {
             let src_node = link.src;
@@ -784,15 +792,7 @@ impl SynthEngine {
         let topo_sort = TopoSort::from_map(dependents);
 
         match topo_sort.into_vec_nodes() {
-            SortResults::Full(nodes) => {
-                let mut order: Vec<_> = nodes
-                    .into_iter()
-                    .filter(|id| *id != OUTPUT_MODULE_ID)
-                    .collect();
-
-                order.push(OUTPUT_MODULE_ID);
-                Ok(order)
-            }
+            SortResults::Full(nodes) => Ok(nodes),
             SortResults::Partial(_) => Err("Cycles detected!".to_string()),
         }
     }
@@ -900,7 +900,7 @@ impl SynthEngine {
     }
 
     fn setup_routing(&mut self, links: &[ModuleLink]) -> Result<(), String> {
-        let execution_order = Self::calc_execution_order(links)?;
+        let execution_order = Self::calc_execution_order(links, self.modules.keys().copied())?;
         let mut input_sources: FxHashMap<InputId, Vec<InputSource>> = FxHashMap::default();
 
         for link in links {
