@@ -120,7 +120,7 @@ impl SynthModule for Output {
     }
 
     fn inputs(&self) -> &'static [InputMeta] {
-        static INPUTS: &[InputMeta] = &[InputMeta::audio(Input::Audio)];
+        static INPUTS: &[InputMeta] = &[InputMeta::direct_audio(Input::Audio)];
 
         INPUTS
     }

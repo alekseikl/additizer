@@ -264,7 +264,7 @@ impl Mixer {
 
         for input_idx in 0..self.params.num_inputs {
             self.inputs_meta
-                .push(InputMeta::audio(Input::AudioMix(input_idx)));
+                .push(InputMeta::direct_audio(Input::AudioMix(input_idx)));
 
             match self.params.inputs[input_idx as usize].volume_type {
                 VolumeType::Db => self

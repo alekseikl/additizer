@@ -16,7 +16,7 @@ use crate::{
         lfo::LfoUiBridge,
         mixer::MixerUiBridge,
         oscillator::OscillatorUiBridge,
-        routing::{DataType, Input, InputMeta, data_types_compatible},
+        routing::{DataType, Input, InputMeta, InputSource, data_types_compatible},
         spectral_blend::SpectralBlendUiBridge,
         spectral_filter::SpectralFilterUiBridge,
         spectral_mixer::SpectralMixerUiBridge,
@@ -299,12 +299,13 @@ impl UiBridge {
                     .routing
                     .routing
                     .get(&input_id)
-                    .map(|sources| {
-                        sources
+                    .map(|sources| match sources {
+                        InputSource::Mixed(mixed) => mixed
                             .iter()
                             .filter(|source| source.modulation != Some(src))
                             .map(|source| source.module_id)
-                            .collect()
+                            .collect(),
+                        InputSource::Direct(_) => Vec::new(),
                     })
                     .unwrap_or_default();
 
@@ -346,7 +347,7 @@ impl UiBridge {
 
     pub fn create_link(&mut self, src: ModuleId, dst: InputId) {
         let meta = if dst.module_id == OUTPUT_MODULE_ID && dst.input_type == Input::Audio {
-            InputMeta::audio(Input::Audio)
+            InputMeta::direct_audio(Input::Audio)
         } else if let Some(module) = self.routing.modules.get(&dst.module_id)
             && let Some(meta) = module
                 .inputs
@@ -409,26 +410,35 @@ impl UiBridge {
             return Vec::new();
         };
 
-        sources
-            .iter()
-            .filter_map(|source| {
-                self.routing
-                    .modules
-                    .get(&source.module_id)
-                    .map(|module| (module, source))
-            })
-            .map(|(_module, source)| ConnectedInputSource {
-                src: source.module_id,
-                amount: source.amount,
-                label: Self::module_label(&ui_config, source.module_id),
-                modulation: source
-                    .modulation
-                    .map(|modulation| routing_state::InputModulation {
-                        src: modulation,
-                        label: Self::module_label(&ui_config, modulation),
+        match sources {
+            InputSource::Direct(module_id) => {
+                if !self.routing.modules.contains_key(module_id) {
+                    return Vec::new();
+                }
+
+                vec![ConnectedInputSource {
+                    src: *module_id,
+                    amount: StereoSample::ONE,
+                    label: Self::module_label(&ui_config, *module_id),
+                    modulation: None,
+                }]
+            }
+            InputSource::Mixed(mixed) => mixed
+                .iter()
+                .filter(|source| self.routing.modules.contains_key(&source.module_id))
+                .map(|source| ConnectedInputSource {
+                    src: source.module_id,
+                    amount: source.amount,
+                    label: Self::module_label(&ui_config, source.module_id),
+                    modulation: source.modulation.map(|modulation| {
+                        routing_state::InputModulation {
+                            src: modulation,
+                            label: Self::module_label(&ui_config, modulation),
+                        }
                     }),
-            })
-            .collect()
+                })
+                .collect(),
+        }
     }
 
     pub fn get_input_modulated_value(&self, input: InputId) -> Option<ModulatedValue> {
@@ -476,13 +486,13 @@ impl UiBridge {
                 .routing
                 .routing
                 .get(&input_id)
-                .is_some_and(|sources| sources.iter().any(|s| s.module_id == src))
+                .is_some_and(|sources| sources.contains_module(src))
     }
 
     fn has_cycle(&self, dst_id: ModuleId, src_id: ModuleId) -> bool {
         for (input, sources) in &self.routing.routing {
             if input.module_id == dst_id {
-                for source in sources.iter().flat_map(|src| src.source_ids()) {
+                for source in sources.source_ids() {
                     if source == src_id || self.has_cycle(source, src_id) {
                         return true;
                     }
@@ -587,7 +597,7 @@ impl UiBridge {
     pub fn add_link(&mut self, src: ModuleId, dst: InputId, amount: StereoSample) {
         let mut synth = self.engine.lock();
 
-        if let Err(err) = synth.add_link(src, dst, amount) {
+        if let Err(err) = synth.add_mixed_link(src, dst, amount) {
             println!("Failed to add link: {err}");
         }
         self.routing = synth.get_routing_state();
@@ -636,9 +646,8 @@ impl UiBridge {
     pub fn set_link_amount(&mut self, src: ModuleId, dst: InputId, amount: StereoSample) {
         if self.ui_end.set_link_amount(src, dst, amount)
             && let Some(sources) = self.routing.routing.get_mut(&dst)
-            && let Some(source) = sources.iter_mut().find(|s| s.module_id == src)
         {
-            source.amount = amount;
+            sources.update_amount(src, amount);
         }
     }
 

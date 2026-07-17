@@ -14,7 +14,7 @@ use crate::synth_engine::{
     module_handle::ModuleHandle,
     modules::Output,
     routing::{
-        InputSlot, InputSlots, InputSource, MIN_MODULE_ID, ModuleLink, OutputsArena,
+        InputMeta, InputSlot, InputSlots, MIN_MODULE_ID, MixedSource, ModuleLink, OutputsArena,
         ProcessContext, ProcessParams, SpectralInputSlot, data_types_compatible,
     },
     synth_module::SynthModule,
@@ -44,8 +44,8 @@ pub use modules::{
     wave_shaper::{self},
 };
 pub use routing::{
-    DataType, Expression, Input, InputId, MixType, ModuleId, NUM_CHANNELS, OUTPUT_MODULE_ID,
-    VoiceEvent, VolumeType,
+    DataType, Expression, Input, InputId, InputSource, MixType, ModuleId, NUM_CHANNELS,
+    OUTPUT_MODULE_ID, VoiceEvent, VolumeType,
 };
 pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
@@ -77,7 +77,7 @@ mod tests;
 pub const MAX_BLOCK_SIZE: usize = 128;
 
 type ModulesMap = FxHashMap<ModuleId, ModuleHandle>;
-type RoutingMap = FxHashMap<InputId, Vec<InputSource>>;
+type RoutingMap = FxHashMap<InputId, InputSource>;
 
 pub struct SynthEngine {
     next_id: ModuleId,
@@ -266,13 +266,7 @@ impl SynthEngine {
             links: self
                 .get_links()
                 .into_iter()
-                .map(|link| LinkConfig {
-                    src_id: link.src,
-                    dst_id: link.dst.module_id,
-                    dst_input: link.dst.input_type,
-                    amount: link.amount,
-                    modulator_id: link.modulation,
-                })
+                .map(|link| link.config())
                 .collect(),
         }
     }
@@ -405,10 +399,10 @@ impl SynthEngine {
         let new_links: Vec<_> = self
             .get_links()
             .into_iter()
-            .filter(|link| link.src != id && link.dst.module_id != id)
+            .filter(|link| link.src() != id && link.dst().module_id != id)
             .map(|mut link| {
-                if link.modulation == Some(id) {
-                    link.modulation = None;
+                if link.modulation() == Some(id) {
+                    link.clear_modulation();
                 }
                 link
             })
@@ -422,32 +416,28 @@ impl SynthEngine {
         let mut new_links = self.get_links();
 
         for link in links.iter() {
-            let src = link.src_id;
-            let dst = InputId::new(link.dst_input, link.dst_id);
+            let src = link.src_id();
+            let dst = InputId::new(link.dst_input(), link.dst_id());
 
-            if self.can_be_linked(&src, &dst).is_err() {
-                return false;
-            }
-
-            if let Some(modulator_id) = link.modulator_id
-                && self.can_be_linked(&modulator_id, &dst).is_err()
+            if self.can_be_linked(&src, &dst).is_err()
+                || link
+                    .modulator_id()
+                    .is_some_and(|id| self.can_be_linked(&id, &dst).is_err())
+                || self
+                    .input_meta_for(&dst)
+                    .is_none_or(|meta| matches!(link, LinkConfig::Direct { .. }) != meta.is_direct)
             {
                 return false;
             }
 
             if new_links
                 .iter()
-                .any(|existing| existing.src == src && existing.dst == dst)
+                .any(|existing| existing.src() == src && existing.dst() == dst)
             {
                 continue;
             }
 
-            new_links.push(ModuleLink {
-                src,
-                dst,
-                amount: link.amount,
-                modulation: link.modulator_id,
-            });
+            new_links.push(ModuleLink::from_config(link));
         }
 
         self.setup_routing(&new_links).is_ok()
@@ -456,19 +446,27 @@ impl SynthEngine {
     pub fn set_direct_link(&mut self, src: ModuleId, dst: InputId) -> Result<(), String> {
         self.can_be_linked(&src, &dst)?;
 
+        let Some(meta) = self.input_meta_for(&dst) else {
+            return Err("Invalid destination input.".to_string());
+        };
+
+        if !meta.is_direct {
+            return Err("Mixed inputs require add_mixed_link.".to_string());
+        }
+
         let mut new_links: Vec<_> = self
             .get_links()
             .iter()
-            .filter(|link| link.dst != dst)
+            .filter(|link| link.dst() != dst)
             .copied()
             .collect();
 
-        new_links.push(ModuleLink::link(src, dst));
+        new_links.push(ModuleLink::direct(src, dst));
         self.setup_routing(&new_links)?;
         Ok(())
     }
 
-    pub fn add_link(
+    pub fn add_mixed_link(
         &mut self,
         src: ModuleId,
         dst: InputId,
@@ -476,31 +474,36 @@ impl SynthEngine {
     ) -> Result<(), String> {
         self.can_be_linked(&src, &dst)?;
 
-        if self.already_linked(&src, &dst) {
-            return Ok(());
+        let Some(meta) = self.input_meta_for(&dst) else {
+            return Err("Invalid destination input.".to_string());
+        };
+
+        if meta.is_direct {
+            return Err("Direct inputs require set_direct_link.".to_string());
         }
 
         let mut new_links = self.get_links();
 
-        // Disconnect src from modulations
+        // Disconnect src from modulations on this destination
         for link in &mut new_links {
-            if link.dst == dst && link.modulation == Some(src) {
-                link.modulation = None;
+            if link.dst() == dst && link.modulation() == Some(src) {
+                link.clear_modulation();
             }
         }
 
-        new_links.push(ModuleLink::scaled(src, dst, amount));
+        new_links.retain(|link| !(link.src() == src && link.dst() == dst));
+        new_links.push(ModuleLink::mixed(src, dst, amount));
+
         self.setup_routing(&new_links)?;
         Ok(())
     }
 
     pub fn update_link_amount(&mut self, src: &ModuleId, dst: &InputId, amount: StereoSample) {
         if let Some(inputs) = self.input_sources.get_mut(dst)
-            && let Some(input) = inputs.iter_mut().find(|input| input.module_id == *src)
+            && inputs.update_amount(*src, amount)
             && let Some(src_slot) = self.modules.get(src).map(|m| m.output_slot())
             && let Some(dst_module) = self.modules.get_mut(&dst.module_id)
         {
-            input.amount = amount;
             dst_module.update_input_amount(dst.input_type, src_slot, amount);
         }
     }
@@ -520,9 +523,12 @@ impl SynthEngine {
         let mut new_links = self.get_links();
         let link = new_links
             .iter_mut()
-            .find(|link| link.src == src_id && link.dst == *dst_input)
+            .find(|link| link.src() == src_id && link.dst() == *dst_input)
             .expect("link checked above");
-        link.modulation = Some(modulator_id);
+
+        if !link.set_modulation(modulator_id) {
+            return Err("Direct links cannot be modulated.".to_string());
+        }
 
         self.setup_routing(&new_links)?;
         Ok(())
@@ -530,9 +536,8 @@ impl SynthEngine {
 
     pub fn remove_link_modulation(&mut self, src_id: ModuleId, dst_input: &InputId) {
         if let Some(sources) = self.input_sources.get_mut(dst_input)
-            && let Some(source) = sources.iter_mut().find(|src| src.module_id == src_id)
+            && sources.clear_modulation(src_id)
         {
-            source.modulation = None;
             self.setup_routing(&self.get_links())
                 .expect("routing should be consistent after a modulation is removed");
         }
@@ -542,7 +547,7 @@ impl SynthEngine {
         let new_links: Vec<_> = self
             .get_links()
             .into_iter()
-            .filter(|link| !(link.src == *src && link.dst == *dst))
+            .filter(|link| !(link.src() == *src && link.dst() == *dst))
             .collect();
 
         self.setup_routing(&new_links)
@@ -553,7 +558,7 @@ impl SynthEngine {
         let new_links: Vec<_> = self
             .get_links()
             .into_iter()
-            .filter(|link| link.dst != *dst)
+            .filter(|link| link.dst() != *dst)
             .collect();
 
         self.setup_routing(&new_links)
@@ -564,10 +569,10 @@ impl SynthEngine {
         let new_links: Vec<_> = self
             .get_links()
             .into_iter()
-            .filter(|link| link.src != src)
+            .filter(|link| link.src() != src)
             .map(|mut link| {
-                if link.modulation == Some(src) {
-                    link.modulation = None;
+                if link.modulation() == Some(src) {
+                    link.clear_modulation();
                 }
                 link
             })
@@ -725,37 +730,18 @@ impl SynthEngine {
         module_id
     }
 
-    fn can_be_linked_with_output(&self, src: &ModuleId, dst: &InputId) -> Result<(), String> {
-        let Some(src_module) = self.modules.get(src) else {
-            return Err("Invalid node.".to_string());
-        };
-
-        let is_compatible = dst.input_type == Input::Audio
-            && data_types_compatible(src_module.output_type(), DataType::Audio);
-
-        if !is_compatible {
-            return Err("Data types mismatch.".to_string());
-        }
-
-        Ok(())
-    }
-
     fn can_be_linked(&self, src: &ModuleId, dst: &InputId) -> Result<(), String> {
-        if dst.module_id == OUTPUT_MODULE_ID {
-            return self.can_be_linked_with_output(src, dst);
-        }
-
         let (Some(src_module), Some(dst_module)) =
             (self.modules.get(src), self.modules.get(&dst.module_id))
         else {
             return Err("Invalid node.".to_string());
         };
 
-        let src_data_types = src_module.output_type();
+        let src_data_type = src_module.output_type();
 
         let is_compatible = dst_module.inputs().iter().any(|input_info| {
             input_info.input_type == dst.input_type
-                && data_types_compatible(src_data_types, input_info.data_type)
+                && data_types_compatible(src_data_type, input_info.data_type)
         });
 
         if !is_compatible {
@@ -766,25 +752,25 @@ impl SynthEngine {
     }
 
     fn already_linked(&self, src: &ModuleId, dst: &InputId) -> bool {
-        if let Some(inputs) = self.input_sources.get(dst) {
-            inputs.iter().any(|input| input.module_id == *src)
-        } else {
-            false
-        }
+        self.input_sources
+            .get(dst)
+            .is_some_and(|inputs| inputs.contains_module(*src))
     }
 
     fn get_links(&self) -> Vec<ModuleLink> {
         self.input_sources
             .iter()
-            .flat_map(|(dst, sources)| {
-                sources.iter().map(|src| ModuleLink {
-                    dst: *dst,
-                    src: src.module_id,
-                    amount: src.amount,
-                    modulation: src.modulation,
-                })
-            })
+            .flat_map(|(dst, sources)| sources.links(*dst))
             .collect()
+    }
+
+    fn input_meta_for(&self, dst: &InputId) -> Option<InputMeta> {
+        self.modules
+            .get(&dst.module_id)?
+            .inputs()
+            .iter()
+            .find(|meta| meta.input_type == dst.input_type)
+            .copied()
     }
 
     pub fn get_module(&self, id: ModuleId) -> Option<&ModuleHandle> {
@@ -806,13 +792,13 @@ impl SynthEngine {
         }
 
         for link in links {
-            let src_node = link.src;
-            let dst_node = link.dst.module_id;
+            let src_node = link.src();
+            let dst_node = link.dst().module_id;
 
             dependents.entry(dst_node).or_default().insert(src_node);
             dependents.entry(src_node).or_default();
 
-            if let Some(modulation) = link.modulation {
+            if let Some(modulation) = link.modulation() {
                 dependents.entry(dst_node).or_default().insert(modulation);
                 dependents.entry(modulation).or_default();
             }
@@ -851,74 +837,83 @@ impl SynthEngine {
             .collect();
 
         for (input, sources) in self.input_sources.iter() {
-            let has_spectral = sources.iter().any(|src| {
-                modules_slots
-                    .get(&src.module_id)
-                    .is_some_and(|m| m.data_type == DataType::Spectral)
-            });
-
-            if has_spectral {
-                // Spectral inputs are direct/single-source only; ignore invalid multi-source wiring.
-                if sources.len() == 1 {
+            match sources {
+                InputSource::Direct(module_id) => {
                     let src_output_slot = modules_slots
-                        .get(&sources[0].module_id)
+                        .get(module_id)
                         .expect("should be in place")
                         .output_slot;
+                    let src_data_type = modules_slots
+                        .get(module_id)
+                        .expect("should be in place")
+                        .data_type;
 
                     let dst_module = modules_slots
                         .get_mut(&input.module_id)
                         .expect("should be in place");
 
-                    dst_module.spectral_inputs.push(SpectralInputSlot {
-                        input_type: input.input_type,
-                        slot: src_output_slot,
-                    });
+                    if src_data_type == DataType::Spectral {
+                        dst_module.spectral_inputs.push(SpectralInputSlot {
+                            input_type: input.input_type,
+                            slot: src_output_slot,
+                        });
+                    } else {
+                        assert_matches!(src_data_type, DataType::Audio | DataType::Control);
+
+                        dst_module.inputs.push(InputSlots {
+                            input_type: input.input_type,
+                            slots: vec![InputSlot {
+                                src_slot: src_output_slot,
+                                modulation_slot: None,
+                                amount: StereoSample::ONE,
+                            }],
+                        });
+                    }
                 }
+                InputSource::Mixed(mixed) => {
+                    let mut input_slots = InputSlots {
+                        input_type: input.input_type,
+                        slots: Vec::new(),
+                    };
 
-                continue;
-            }
+                    for src in mixed {
+                        let mut input_src = InputSlot {
+                            src_slot: 0,
+                            modulation_slot: None,
+                            amount: src.amount,
+                        };
 
-            let mut input_slots = InputSlots {
-                input_type: input.input_type,
-                slots: Vec::new(),
-            };
+                        let src_module = modules_slots
+                            .get(&src.module_id)
+                            .expect("should be in place");
 
-            for src in sources {
-                let mut input_src = InputSlot {
-                    src_slot: 0,
-                    modulation_slot: None,
-                    amount: src.amount,
-                };
+                        assert_matches!(src_module.data_type, DataType::Audio | DataType::Control);
 
-                let src_module = modules_slots
-                    .get(&src.module_id)
-                    .expect("should be in place");
+                        input_src.src_slot = src_module.output_slot;
 
-                assert_matches!(src_module.data_type, DataType::Audio | DataType::Control);
+                        if let Some(modulation_src) = src.modulation {
+                            let modulation_module = modules_slots
+                                .get(&modulation_src)
+                                .expect("should be in place");
 
-                input_src.src_slot = src_module.output_slot;
+                            assert_matches!(
+                                modulation_module.data_type,
+                                DataType::Audio | DataType::Control
+                            );
 
-                if let Some(modulation_src) = src.modulation {
-                    let modulation_module = modules_slots
-                        .get(&modulation_src)
+                            input_src.modulation_slot = Some(modulation_module.output_slot);
+                        }
+
+                        input_slots.slots.push(input_src);
+                    }
+
+                    let dst_module = modules_slots
+                        .get_mut(&input.module_id)
                         .expect("should be in place");
 
-                    assert_matches!(
-                        modulation_module.data_type,
-                        DataType::Audio | DataType::Control
-                    );
-
-                    input_src.modulation_slot = Some(modulation_module.output_slot);
+                    dst_module.inputs.push(input_slots);
                 }
-
-                input_slots.slots.push(input_src);
             }
-
-            let dst_module = modules_slots
-                .get_mut(&input.module_id)
-                .expect("should be in place");
-
-            dst_module.inputs.push(input_slots);
         }
 
         for (module_id, mod_slots) in modules_slots.iter() {
@@ -933,20 +928,36 @@ impl SynthEngine {
 
     fn setup_routing(&mut self, links: &[ModuleLink]) -> Result<(), String> {
         let execution_order = Self::calc_execution_order(links, self.modules.keys().copied())?;
-        let mut input_sources: FxHashMap<InputId, Vec<InputSource>> = FxHashMap::default();
+        let mut routing_map = RoutingMap::default();
 
         for link in links {
-            input_sources
-                .entry(link.dst)
-                .or_default()
-                .push(InputSource {
-                    module_id: link.src,
-                    amount: link.amount,
-                    modulation: link.modulation,
-                });
+            match link {
+                ModuleLink::Direct { src, dst } => {
+                    routing_map.insert(*dst, InputSource::Direct(*src));
+                }
+                ModuleLink::Mixed {
+                    src,
+                    dst,
+                    amount,
+                    modulation,
+                } => {
+                    let InputSource::Mixed(sources) = routing_map
+                        .entry(*dst)
+                        .or_insert(InputSource::Mixed(Vec::new()))
+                    else {
+                        return Err("routing error".into());
+                    };
+
+                    sources.push(MixedSource {
+                        module_id: *src,
+                        amount: *amount,
+                        modulation: *modulation,
+                    });
+                }
+            }
         }
 
-        self.input_sources = input_sources;
+        self.input_sources = routing_map;
         self.execution_order = execution_order;
         self.setup_slots();
         Ok(())

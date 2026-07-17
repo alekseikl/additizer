@@ -44,7 +44,7 @@ pub struct ConnectedInputSource {
 
 pub struct ModuleInput {
     pub meta: InputMeta,
-    pub sources: Vec<InputSource>,
+    pub sources: InputSource,
 }
 
 // Module inputs/outputs supposed to be owned by widget
@@ -67,7 +67,7 @@ impl RoutingState {
     pub fn new(modules: FxHashMap<ModuleId, Module>, routing: RoutingMap) -> Self {
         let connected_outputs: FxHashSet<ModuleId> = routing
             .values()
-            .flat_map(|sources| sources.iter().flat_map(InputSource::source_ids))
+            .flat_map(|sources| sources.source_ids())
             .collect();
 
         let modules_io: FxHashMap<ModuleId, ModuleIo> = modules

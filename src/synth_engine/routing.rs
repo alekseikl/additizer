@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
-use crate::synth_engine::{Sample, StereoSample};
+use crate::synth_engine::{Sample, StereoSample, config::LinkConfig};
 
 mod outputs;
 mod outputs_arena;
@@ -74,7 +74,7 @@ pub struct InputMeta {
 }
 
 impl InputMeta {
-    pub const fn audio(input: Input) -> Self {
+    pub const fn direct_audio(input: Input) -> Self {
         Self {
             input_type: input,
             data_type: DataType::Audio,
@@ -82,7 +82,7 @@ impl InputMeta {
         }
     }
 
-    pub const fn audio_mixed(input: Input) -> Self {
+    pub const fn audio(input: Input) -> Self {
         Self {
             input_type: input,
             data_type: DataType::Audio,
@@ -185,41 +185,127 @@ impl InputId {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub(super) struct ModuleLink {
-    pub src: ModuleId,
-    pub dst: InputId,
-    pub amount: StereoSample,
-    pub modulation: Option<ModuleId>,
+pub(super) enum ModuleLink {
+    Direct {
+        src: ModuleId,
+        dst: InputId,
+    },
+    Mixed {
+        src: ModuleId,
+        dst: InputId,
+        amount: StereoSample,
+        modulation: Option<ModuleId>,
+    },
 }
 
 impl ModuleLink {
-    pub fn link(src: ModuleId, dst: InputId) -> Self {
-        Self {
-            src,
-            dst,
-            amount: StereoSample::ONE,
-            modulation: None,
-        }
+    pub fn direct(src: ModuleId, dst: InputId) -> Self {
+        Self::Direct { src, dst }
     }
 
-    pub fn scaled(src: ModuleId, dst: InputId, amount: impl Into<StereoSample>) -> Self {
-        Self {
+    pub fn mixed(src: ModuleId, dst: InputId, amount: impl Into<StereoSample>) -> Self {
+        Self::Mixed {
             src,
             dst,
             amount: amount.into(),
             modulation: None,
         }
     }
+
+    pub fn mixed_modulated(
+        src: ModuleId,
+        dst: InputId,
+        amount: impl Into<StereoSample>,
+        modulation: Option<ModuleId>,
+    ) -> Self {
+        Self::Mixed {
+            src,
+            dst,
+            amount: amount.into(),
+            modulation,
+        }
+    }
+
+    pub fn src(&self) -> ModuleId {
+        match self {
+            Self::Direct { src, .. } | Self::Mixed { src, .. } => *src,
+        }
+    }
+
+    pub fn dst(&self) -> InputId {
+        match self {
+            Self::Direct { dst, .. } | Self::Mixed { dst, .. } => *dst,
+        }
+    }
+
+    pub fn modulation(&self) -> Option<ModuleId> {
+        match self {
+            Self::Direct { .. } => None,
+            Self::Mixed { modulation, .. } => *modulation,
+        }
+    }
+
+    pub fn clear_modulation(&mut self) {
+        if let Self::Mixed { modulation, .. } = self {
+            *modulation = None;
+        }
+    }
+
+    pub fn set_modulation(&mut self, modulator_id: ModuleId) -> bool {
+        match self {
+            Self::Mixed { modulation, .. } => {
+                *modulation = Some(modulator_id);
+                true
+            }
+            Self::Direct { .. } => false,
+        }
+    }
+
+    pub fn from_config(config: &LinkConfig) -> Self {
+        match *config {
+            LinkConfig::Direct {
+                src_id,
+                dst_id,
+                dst_input,
+            } => Self::direct(src_id, InputId::new(dst_input, dst_id)),
+            LinkConfig::Mixed {
+                src_id,
+                dst_id,
+                dst_input,
+                amount,
+                modulator_id,
+            } => Self::mixed_modulated(
+                src_id,
+                InputId::new(dst_input, dst_id),
+                amount,
+                modulator_id,
+            ),
+        }
+    }
+
+    pub fn config(&self) -> LinkConfig {
+        match *self {
+            Self::Direct { src, dst } => LinkConfig::direct(src, dst.module_id, dst.input_type),
+            Self::Mixed {
+                src,
+                dst,
+                amount,
+                modulation,
+            } => {
+                LinkConfig::mixed_modulated(src, dst.module_id, dst.input_type, amount, modulation)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct InputSource {
+pub struct MixedSource {
     pub module_id: ModuleId,
     pub amount: StereoSample,
     pub modulation: Option<ModuleId>,
 }
 
-impl InputSource {
+impl MixedSource {
     pub fn source_ids(&self) -> impl Iterator<Item = ModuleId> {
         let mut ids: SmallVec<[ModuleId; 2]> = SmallVec::new();
 
@@ -230,6 +316,77 @@ impl InputSource {
         }
 
         ids.into_iter()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum InputSource {
+    Direct(ModuleId),
+    Mixed(Vec<MixedSource>),
+}
+
+impl InputSource {
+    pub fn source_ids(&self) -> impl Iterator<Item = ModuleId> + '_ {
+        let direct = match self {
+            Self::Direct(id) => Some(*id),
+            Self::Mixed(_) => None,
+        };
+        let mixed = match self {
+            Self::Direct(_) => None,
+            Self::Mixed(sources) => Some(sources.iter().flat_map(MixedSource::source_ids)),
+        };
+
+        direct.into_iter().chain(mixed.into_iter().flatten())
+    }
+
+    pub fn contains_module(&self, module_id: ModuleId) -> bool {
+        match self {
+            Self::Direct(id) => *id == module_id,
+            Self::Mixed(sources) => sources.iter().any(|s| s.module_id == module_id),
+        }
+    }
+
+    pub(super) fn links(&self, dst: InputId) -> impl Iterator<Item = ModuleLink> + '_ {
+        let direct = match self {
+            Self::Direct(src) => Some(ModuleLink::direct(*src, dst)),
+            Self::Mixed(_) => None,
+        };
+        let mixed = match self {
+            Self::Direct(_) => None,
+            Self::Mixed(sources) => Some(sources.iter().map(move |src| {
+                ModuleLink::mixed_modulated(src.module_id, dst, src.amount, src.modulation)
+            })),
+        };
+
+        direct.into_iter().chain(mixed.into_iter().flatten())
+    }
+
+    pub fn update_amount(&mut self, src: ModuleId, amount: StereoSample) -> bool {
+        match self {
+            Self::Mixed(sources) => {
+                if let Some(source) = sources.iter_mut().find(|s| s.module_id == src) {
+                    source.amount = amount;
+                    true
+                } else {
+                    false
+                }
+            }
+            Self::Direct(_) => false,
+        }
+    }
+
+    pub fn clear_modulation(&mut self, src: ModuleId) -> bool {
+        match self {
+            Self::Mixed(sources) => {
+                if let Some(source) = sources.iter_mut().find(|s| s.module_id == src) {
+                    source.modulation = None;
+                    true
+                } else {
+                    false
+                }
+            }
+            Self::Direct(_) => false,
+        }
     }
 }
 

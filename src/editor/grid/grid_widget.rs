@@ -20,7 +20,7 @@ use crate::{
         select_input_popup::SelectInputPopup,
     },
     synth_engine::{
-        DataType, InputId, ModuleId, ModuleType,
+        DataType, InputId, InputSource, ModuleId, ModuleType,
         ui_bridge::{
             GridVec,
             routing_state::{ModuleInput, ModuleIo},
@@ -136,23 +136,39 @@ impl GridWidget {
             .zip(self.input_positions.iter())
             .flat_map(|(input, &point)| {
                 let color = input.meta.input_type.color();
+                let mut points = Vec::new();
 
-                input.sources.iter().flat_map(move |source| {
-                    core::iter::once(InputPoint {
-                        module_id: source.module_id,
-                        point,
-                        color,
-                        is_modulation: false,
-                    })
-                    .chain(source.modulation.into_iter().map(
-                        move |module_id| InputPoint {
-                            module_id,
+                match &input.sources {
+                    InputSource::Direct(module_id) => {
+                        points.push(InputPoint {
+                            module_id: *module_id,
                             point,
                             color,
-                            is_modulation: true,
-                        },
-                    ))
-                })
+                            is_modulation: false,
+                        });
+                    }
+                    InputSource::Mixed(sources) => {
+                        for source in sources {
+                            points.push(InputPoint {
+                                module_id: source.module_id,
+                                point,
+                                color,
+                                is_modulation: false,
+                            });
+
+                            if let Some(module_id) = source.modulation {
+                                points.push(InputPoint {
+                                    module_id,
+                                    point,
+                                    color,
+                                    is_modulation: true,
+                                });
+                            }
+                        }
+                    }
+                }
+
+                points
             })
     }
 

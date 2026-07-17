@@ -10,18 +10,16 @@ pub use config::AmplifierConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::AmplifierUiBridge;
 
-use crate::{
-    synth_engine::{
-        SmoothedSampleParams, StereoSample,
-        buffer::{Buffer, VoicesLayout, zero_buffer},
-        routing::{
-            AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-            ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter,
-        },
-        level_ballistics::LevelBallistics,
-        smooth::SmoothedSample,
-        synth_module::SynthModule,
+use crate::synth_engine::{
+    SmoothedSampleParams, StereoSample,
+    buffer::{Buffer, VoicesLayout, zero_buffer},
+    level_ballistics::LevelBallistics,
+    routing::{
+        AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
+        ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter,
     },
+    smooth::SmoothedSample,
+    synth_module::SynthModule,
 };
 
 struct ChannelParams {
@@ -155,10 +153,8 @@ impl Amplifier {
         }
 
         if router.need_update_ui() {
-            let level = self.out_volume_ballistics[channel_idx].process(
-                output,
-                router.sample_rate(),
-            );
+            let level =
+                self.out_volume_ballistics[channel_idx].process(output, router.sample_rate());
             self.audio_end.update_out_volume(channel_idx, level);
         }
     }
@@ -171,7 +167,7 @@ impl SynthModule for Amplifier {
 
     fn inputs(&self) -> &'static [InputMeta] {
         static INPUTS: &[InputMeta] = &[
-            InputMeta::audio(Input::Audio),
+            InputMeta::direct_audio(Input::Audio),
             InputMeta::control(Input::Gain),
         ];
 
@@ -218,7 +214,10 @@ impl SynthModule for Amplifier {
                 for seq_idx in 0..num_active_voices {
                     let playing_voice = router.params().active_voices[seq_idx];
 
-                    self.process_voice(output, router.for_voice(channel_idx, playing_voice, seq_idx));
+                    self.process_voice(
+                        output,
+                        router.for_voice(channel_idx, playing_voice, seq_idx),
+                    );
                 }
 
                 self.channel_params[channel_idx]

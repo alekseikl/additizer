@@ -51,20 +51,8 @@ fn minimal_engine_config(engine: EngineParams, osc: OscillatorConfig) -> EngineC
             ModuleConfig::Oscillator(Box::new(osc)),
         ],
         links: vec![
-            LinkConfig {
-                src_id: HARMONIC_EDITOR_ID,
-                dst_id: OSCILLATOR_ID,
-                dst_input: Input::Spectrum,
-                amount: StereoSample::ONE,
-                modulator_id: None,
-            },
-            LinkConfig {
-                src_id: OSCILLATOR_ID,
-                dst_id: OUTPUT_MODULE_ID,
-                dst_input: Input::Audio,
-                amount: StereoSample::ONE,
-                modulator_id: None,
-            },
+            LinkConfig::direct(HARMONIC_EDITOR_ID, OSCILLATOR_ID, Input::Spectrum),
+            LinkConfig::direct(OSCILLATOR_ID, OUTPUT_MODULE_ID, Input::Audio),
         ],
     }
 }

@@ -73,20 +73,8 @@ fn minimal_engine_config(engine: EngineParams, osc: OscillatorConfig) -> EngineC
             ModuleConfig::Oscillator(Box::new(osc)),
         ],
         links: vec![
-            LinkConfig {
-                src_id: HARMONIC_EDITOR_ID,
-                dst_id: OSCILLATOR_ID,
-                dst_input: Input::Spectrum,
-                amount: StereoSample::ONE,
-                modulator_id: None,
-            },
-            LinkConfig {
-                src_id: OSCILLATOR_ID,
-                dst_id: OUTPUT_MODULE_ID,
-                dst_input: Input::Audio,
-                amount: StereoSample::ONE,
-                modulator_id: None,
-            },
+            LinkConfig::direct(HARMONIC_EDITOR_ID, OSCILLATOR_ID, Input::Spectrum),
+            LinkConfig::direct(OSCILLATOR_ID, OUTPUT_MODULE_ID, Input::Audio),
         ],
     }
 }
@@ -111,11 +99,7 @@ fn process_block_with_ui(
     let mut left = vec![0.0; samples];
     let mut right = vec![0.0; samples];
 
-    engine.process(
-        samples,
-        update_ui,
-        &mut [&mut left[..], &mut right[..]],
-    );
+    engine.process(samples, update_ui, &mut [&mut left[..], &mut right[..]]);
 
     (left, right)
 }
@@ -125,12 +109,13 @@ fn rms(samples: &[Sample]) -> Sample {
 }
 
 fn link(src_id: ModuleId, dst_id: ModuleId, dst_input: Input) -> LinkConfig {
-    LinkConfig {
-        src_id,
-        dst_id,
-        dst_input,
-        amount: StereoSample::ONE,
-        modulator_id: None,
+    match dst_input {
+        Input::Audio
+        | Input::AudioMix(_)
+        | Input::Spectrum
+        | Input::SpectrumMix(_)
+        | Input::SpectrumTo => LinkConfig::direct(src_id, dst_id, dst_input),
+        _ => LinkConfig::mixed(src_id, dst_id, dst_input, StereoSample::ONE),
     }
 }
 
@@ -307,7 +292,10 @@ fn try_new_builds_full_patch() {
         engine.get_module(OSC1_ID),
         Some(ModuleHandle::Oscillator(_))
     ));
-    assert!(matches!(engine.get_module(LFO_ID), Some(ModuleHandle::Lfo(_))));
+    assert!(matches!(
+        engine.get_module(LFO_ID),
+        Some(ModuleHandle::Lfo(_))
+    ));
     assert!(matches!(
         engine.get_module(MIXER_ID),
         Some(ModuleHandle::Mixer(_))
@@ -336,9 +324,7 @@ fn try_new_builds_full_patch() {
     let order = SynthEngine::calc_execution_order(
         &cfg.links
             .iter()
-            .map(|l| {
-                ModuleLink::scaled(l.src_id, InputId::new(l.dst_input, l.dst_id), l.amount)
-            })
+            .map(ModuleLink::from_config)
             .collect::<Vec<_>>(),
         [],
     )
@@ -400,14 +386,12 @@ fn try_new_rejects_invalid_link() {
                 ..OscillatorConfig::default()
             })),
         ],
-        links: vec![LinkConfig {
+        links: vec![LinkConfig::direct(
             // Harmonic editor outputs spectrum, not audio — cannot feed the output module directly.
-            src_id: HARMONIC_EDITOR_ID,
-            dst_id: OUTPUT_MODULE_ID,
-            dst_input: Input::Audio,
-            amount: StereoSample::ONE,
-            modulator_id: None,
-        }],
+            HARMONIC_EDITOR_ID,
+            OUTPUT_MODULE_ID,
+            Input::Audio,
+        )],
     };
 
     assert!(SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE).is_none());
@@ -419,9 +403,9 @@ fn try_new_rejects_missing_modulator() {
     let modulated = config
         .links
         .iter()
-        .position(|link| link.src_id == ENVELOPE_AMP_ID && link.dst_id == AMPLIFIER_ID)
+        .position(|link| link.src_id() == ENVELOPE_AMP_ID && link.dst_id() == AMPLIFIER_ID)
         .expect("env -> amp link");
-    config.links[modulated].modulator_id = Some(9999);
+    config.links[modulated].set_modulator_id(Some(9999));
 
     let (volume, external_params) = test_deps();
     assert!(SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE).is_none());
@@ -433,33 +417,33 @@ fn try_new_rejects_incompatible_modulator() {
     let modulated = config
         .links
         .iter()
-        .position(|link| link.src_id == ENVELOPE_AMP_ID && link.dst_id == AMPLIFIER_ID)
+        .position(|link| link.src_id() == ENVELOPE_AMP_ID && link.dst_id() == AMPLIFIER_ID)
         .expect("env -> amp link");
     // Spectral source cannot modulate a control (gain) input.
-    config.links[modulated].modulator_id = Some(HE0_ID);
+    config.links[modulated].set_modulator_id(Some(HE0_ID));
 
     let (volume, external_params) = test_deps();
     assert!(SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE).is_none());
 }
 
 #[test]
-fn setup_slots_ignores_multiple_spectral_sources() {
+fn setup_routing_keeps_last_spectral_source() {
     let mut config = full_patch_engine_config(EngineParams::default());
     config.links.push(link(HE1_ID, OSC1_ID, Input::Spectrum));
 
     let (volume, external_params) = test_deps();
     let mut engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
-        .expect("multiple spectral sources are ignored, not rejected");
+        .expect("extra spectral sources collapse to one");
 
-    assert_eq!(
-        engine
-            .get_config()
-            .links
-            .iter()
-            .filter(|link| link.dst_id == OSC1_ID && link.dst_input == Input::Spectrum)
-            .count(),
-        2
-    );
+    let cfg = engine.get_config();
+    let spectrum_links: Vec<_> = cfg
+        .links
+        .iter()
+        .filter(|link| link.dst_id() == OSC1_ID && link.dst_input() == Input::Spectrum)
+        .collect();
+
+    assert_eq!(spectrum_links.len(), 1);
+    assert_eq!(spectrum_links[0].src_id(), HE1_ID);
 
     engine.handle_note_on(0, 60, 1.0);
     let (left, right) = process_block(&mut engine, 64);
@@ -467,23 +451,44 @@ fn setup_slots_ignores_multiple_spectral_sources() {
 }
 
 #[test]
-fn add_link_ignores_second_spectral_source_in_slots() {
+fn add_link_rejects_direct_input() {
+    let mut engine = make_engine(
+        EngineParams::default(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            ..OscillatorConfig::default()
+        },
+    );
+
+    let err = engine
+        .add_mixed_link(
+            HARMONIC_EDITOR_ID,
+            InputId::new(Input::Spectrum, OSCILLATOR_ID),
+            StereoSample::ONE,
+        )
+        .expect_err("spectrum is a direct input");
+
+    assert!(err.contains("Direct") || err.contains("set_direct_link"));
+}
+
+#[test]
+fn set_direct_link_replaces_spectral_source() {
     let mut engine = make_full_patch_engine(EngineParams::default());
     let dst = InputId::new(Input::Spectrum, OSC1_ID);
 
     engine
-        .add_link(HE1_ID, dst, StereoSample::ONE)
-        .expect("second spectral source kept in routing map");
+        .set_direct_link(HE1_ID, dst)
+        .expect("second spectral source replaces the first");
 
-    assert_eq!(
-        engine
-            .get_config()
-            .links
-            .iter()
-            .filter(|link| link.dst_id == OSC1_ID && link.dst_input == Input::Spectrum)
-            .count(),
-        2
-    );
+    let cfg = engine.get_config();
+    let spectrum_links: Vec<_> = cfg
+        .links
+        .iter()
+        .filter(|link| link.dst_id() == OSC1_ID && link.dst_input() == Input::Spectrum)
+        .collect();
+
+    assert_eq!(spectrum_links.len(), 1);
+    assert_eq!(spectrum_links[0].src_id(), HE1_ID);
 
     engine.handle_note_on(0, 60, 1.0);
     let (left, _) = process_block(&mut engine, 64);
@@ -593,8 +598,8 @@ fn output_gain_setters() {
 #[test]
 fn execution_order_rejects_cycles() {
     let links = vec![
-        ModuleLink::link(1, InputId::new(Input::Audio, 2)),
-        ModuleLink::link(2, InputId::new(Input::Audio, 1)),
+        ModuleLink::direct(1, InputId::new(Input::Audio, 2)),
+        ModuleLink::direct(2, InputId::new(Input::Audio, 1)),
     ];
 
     assert!(SynthEngine::calc_execution_order(&links, []).is_err());
@@ -603,14 +608,11 @@ fn execution_order_rejects_cycles() {
 #[test]
 fn execution_order_places_output_last() {
     let links = vec![
-        ModuleLink::link(
+        ModuleLink::direct(
             HARMONIC_EDITOR_ID,
             InputId::new(Input::Spectrum, OSCILLATOR_ID),
         ),
-        ModuleLink::link(
-            OSCILLATOR_ID,
-            InputId::new(Input::Audio, OUTPUT_MODULE_ID),
-        ),
+        ModuleLink::direct(OSCILLATOR_ID, InputId::new(Input::Audio, OUTPUT_MODULE_ID)),
     ];
 
     let order = SynthEngine::calc_execution_order(&links, []).expect("valid graph");
@@ -620,17 +622,22 @@ fn execution_order_places_output_last() {
 
 #[test]
 fn execution_order_includes_unlinked_modules() {
-    let links = vec![ModuleLink::link(
+    let links = vec![ModuleLink::direct(
         OSCILLATOR_ID,
         InputId::new(Input::Audio, OUTPUT_MODULE_ID),
     )];
 
-    let order = SynthEngine::calc_execution_order(&links, [LFO_ID, OSCILLATOR_ID, OUTPUT_MODULE_ID])
-        .expect("valid graph");
+    let order =
+        SynthEngine::calc_execution_order(&links, [LFO_ID, OSCILLATOR_ID, OUTPUT_MODULE_ID])
+            .expect("valid graph");
 
     assert!(order.contains(&LFO_ID));
     assert!(order.contains(&OSCILLATOR_ID));
-    assert_eq!(*order.last().unwrap(), OUTPUT_MODULE_ID);
+    assert!(order.contains(&OUTPUT_MODULE_ID));
+    assert!(
+        order.iter().position(|&id| id == OSCILLATOR_ID).unwrap()
+            < order.iter().position(|&id| id == OUTPUT_MODULE_ID).unwrap()
+    );
 }
 
 #[test]
@@ -686,7 +693,7 @@ fn add_module_at_runtime() {
 }
 
 #[test]
-fn add_link_is_idempotent() {
+fn add_link_overrides_existing_link() {
     let mut engine = make_engine(
         EngineParams::default(),
         OscillatorConfig {
@@ -695,24 +702,26 @@ fn add_link_is_idempotent() {
         },
     );
 
-    let dst = InputId::new(Input::Spectrum, OSCILLATOR_ID);
+    let lfo_id = engine.add_lfo();
+    let dst = InputId::new(Input::Gain, OSCILLATOR_ID);
 
     engine
-        .add_link(HARMONIC_EDITOR_ID, dst, StereoSample::ONE)
+        .add_mixed_link(lfo_id, dst, StereoSample::ONE)
         .expect("first link");
     engine
-        .add_link(HARMONIC_EDITOR_ID, dst, StereoSample::ONE)
-        .expect("duplicate link");
+        .add_mixed_link(lfo_id, dst, StereoSample::splat(0.25))
+        .expect("override link");
 
-    assert_eq!(
-        engine
-            .get_config()
-            .links
-            .iter()
-            .filter(|link| link.src_id == HARMONIC_EDITOR_ID && link.dst_id == OSCILLATOR_ID)
-            .count(),
-        1
-    );
+    let cfg = engine.get_config();
+    let links: Vec<_> = cfg
+        .links
+        .iter()
+        .filter(|link| link.src_id() == lfo_id && link.dst_id() == OSCILLATOR_ID)
+        .collect();
+
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].amount(), StereoSample::splat(0.25));
+    assert!(links[0].modulator_id().is_none());
 }
 
 #[test]
@@ -737,14 +746,14 @@ fn set_direct_link_replaces_existing_source() {
             .get_config()
             .links
             .iter()
-            .any(|link| link.src_id == harmonic_b && link.dst_id == OSCILLATOR_ID)
+            .any(|link| link.src_id() == harmonic_b && link.dst_id() == OSCILLATOR_ID)
     );
     assert!(
         !engine
             .get_config()
             .links
             .iter()
-            .any(|link| link.src_id == HARMONIC_EDITOR_ID && link.dst_id == OSCILLATOR_ID)
+            .any(|link| link.src_id() == HARMONIC_EDITOR_ID && link.dst_id() == OSCILLATOR_ID)
     );
 }
 
@@ -766,7 +775,7 @@ fn remove_link_disconnects_modules() {
             .get_config()
             .links
             .iter()
-            .any(|link| link.src_id == HARMONIC_EDITOR_ID && link.dst_id == OSCILLATOR_ID)
+            .any(|link| link.src_id() == HARMONIC_EDITOR_ID && link.dst_id() == OSCILLATOR_ID)
     );
 }
 
@@ -780,17 +789,21 @@ fn update_link_amount_changes_routing() {
         },
     );
 
-    let dst = InputId::new(Input::Spectrum, OSCILLATOR_ID);
-    engine.update_link_amount(&HARMONIC_EDITOR_ID, &dst, StereoSample::splat(0.5));
+    let lfo_id = engine.add_lfo();
+    let dst = InputId::new(Input::Gain, OSCILLATOR_ID);
+    engine
+        .add_mixed_link(lfo_id, dst, StereoSample::ONE)
+        .expect("gain modulation link");
+    engine.update_link_amount(&lfo_id, &dst, StereoSample::splat(0.5));
 
     let cfg = engine.get_config();
     let link = cfg
         .links
         .iter()
-        .find(|link| link.src_id == HARMONIC_EDITOR_ID && link.dst_id == OSCILLATOR_ID)
-        .expect("harmonic -> osc link");
+        .find(|link| link.src_id() == lfo_id && link.dst_id() == OSCILLATOR_ID)
+        .expect("lfo -> osc gain link");
 
-    assert_eq!(link.amount, StereoSample::splat(0.5));
+    assert_eq!(link.amount(), StereoSample::splat(0.5));
 }
 
 #[test]
@@ -834,7 +847,7 @@ fn remove_module_rebuilds_routing() {
             .get_config()
             .links
             .iter()
-            .any(|link| link.src_id == HARMONIC_EDITOR_ID)
+            .any(|link| link.src_id() == HARMONIC_EDITOR_ID)
     );
 }
 
@@ -853,9 +866,9 @@ fn remove_module_clears_modulation_source() {
     let link = cfg
         .links
         .iter()
-        .find(|link| link.src_id == ENVELOPE_AMP_ID && link.dst_id == AMPLIFIER_ID)
+        .find(|link| link.src_id() == ENVELOPE_AMP_ID && link.dst_id() == AMPLIFIER_ID)
         .expect("env -> amp gain link kept");
-    assert!(link.modulator_id.is_none());
+    assert!(link.modulator_id().is_none());
     assert!(engine.get_module(LFO_ID).is_none());
 }
 
@@ -874,11 +887,11 @@ fn remove_output_links_clears_modulation_source() {
     let link = cfg
         .links
         .iter()
-        .find(|link| link.src_id == ENVELOPE_AMP_ID && link.dst_id == AMPLIFIER_ID)
+        .find(|link| link.src_id() == ENVELOPE_AMP_ID && link.dst_id() == AMPLIFIER_ID)
         .expect("env -> amp gain link kept");
-    assert!(link.modulator_id.is_none());
+    assert!(link.modulator_id().is_none());
     assert!(
-        !cfg.links.iter().any(|link| link.src_id == LFO_ID),
+        !cfg.links.iter().any(|link| link.src_id() == LFO_ID),
         "direct lfo outputs removed"
     );
     assert!(engine.get_module(LFO_ID).is_some());
@@ -1006,8 +1019,12 @@ fn engine_extended_setters_round_trip() {
     engine.set_stereo_spectrum(false);
     engine.set_output_gain(StereoSample::splat(0.5));
 
-    let dst = InputId::new(Input::Spectrum, OSCILLATOR_ID);
-    engine.update_link_amount(&HARMONIC_EDITOR_ID, &dst, StereoSample::splat(0.25));
+    let lfo_id = engine.add_lfo();
+    let dst = InputId::new(Input::Gain, OSCILLATOR_ID);
+    engine
+        .add_mixed_link(lfo_id, dst, StereoSample::ONE)
+        .expect("gain link");
+    engine.update_link_amount(&lfo_id, &dst, StereoSample::splat(0.25));
 
     let cfg = engine.get_config();
     assert_eq!(cfg.engine.num_voices, 3);
@@ -1021,9 +1038,9 @@ fn engine_extended_setters_round_trip() {
     let link = cfg
         .links
         .iter()
-        .find(|link| link.src_id == HARMONIC_EDITOR_ID && link.dst_id == OSCILLATOR_ID)
-        .expect("harmonic -> osc link");
-    assert_eq!(link.amount, StereoSample::splat(0.25));
+        .find(|link| link.src_id() == lfo_id && link.dst_id() == OSCILLATOR_ID)
+        .expect("lfo -> osc gain link");
+    assert_eq!(link.amount(), StereoSample::splat(0.25));
 }
 
 #[test]
@@ -1063,11 +1080,7 @@ fn add_link_connects_new_modules() {
         .set_direct_link(amp_id, osc_to_out)
         .expect("amp -> output");
     engine
-        .add_link(
-            env_id,
-            InputId::new(Input::Gain, amp_id),
-            StereoSample::ONE,
-        )
+        .add_mixed_link(env_id, InputId::new(Input::Gain, amp_id), StereoSample::ONE)
         .expect("env -> amp gain");
 
     match engine.get_module_mut(amp_id) {
@@ -1080,7 +1093,7 @@ fn add_link_connects_new_modules() {
             .get_config()
             .links
             .iter()
-            .any(|link| link.src_id == env_id && link.dst_id == amp_id)
+            .any(|link| link.src_id() == env_id && link.dst_id() == amp_id)
     );
 
     engine.handle_note_on(0, 60, 1.0);
@@ -1101,9 +1114,9 @@ fn link_modulation_round_trips_in_config() {
     let link = cfg
         .links
         .iter()
-        .find(|link| link.src_id == ENVELOPE_AMP_ID && link.dst_id == AMPLIFIER_ID)
+        .find(|link| link.src_id() == ENVELOPE_AMP_ID && link.dst_id() == AMPLIFIER_ID)
         .expect("env -> amp gain");
-    assert_eq!(link.modulator_id, Some(LFO_ID));
+    assert_eq!(link.modulator_id(), Some(LFO_ID));
 
     engine.remove_link_modulation(ENVELOPE_AMP_ID, &gain_dst);
 
@@ -1111,28 +1124,27 @@ fn link_modulation_round_trips_in_config() {
     let link = cfg
         .links
         .iter()
-        .find(|link| link.src_id == ENVELOPE_AMP_ID && link.dst_id == AMPLIFIER_ID)
+        .find(|link| link.src_id() == ENVELOPE_AMP_ID && link.dst_id() == AMPLIFIER_ID)
         .expect("env -> amp gain");
-    assert!(link.modulator_id.is_none());
+    assert!(link.modulator_id().is_none());
 }
 
 #[test]
 fn link_modulation_in_preset_builds() {
     let mut config = full_patch_engine_config(EngineParams::default());
-    config.links.push(LinkConfig {
-        src_id: LFO_ID,
-        dst_id: OSC1_ID,
-        dst_input: Input::PitchShift,
-        amount: StereoSample::splat(0.5),
-        modulator_id: None,
-    });
+    config.links.push(LinkConfig::mixed(
+        LFO_ID,
+        OSC1_ID,
+        Input::PitchShift,
+        StereoSample::splat(0.5),
+    ));
 
     let modulated = config
         .links
         .iter()
-        .position(|link| link.src_id == ENVELOPE_AMP_ID && link.dst_id == AMPLIFIER_ID)
+        .position(|link| link.src_id() == ENVELOPE_AMP_ID && link.dst_id() == AMPLIFIER_ID)
         .expect("env -> amp link");
-    config.links[modulated].modulator_id = Some(LFO_ID);
+    config.links[modulated].set_modulator_id(Some(LFO_ID));
 
     config.links.push(config.links[modulated].clone());
 
@@ -1144,18 +1156,15 @@ fn link_modulation_in_preset_builds() {
     let env_amp_links: Vec<_> = cfg
         .links
         .iter()
-        .filter(|link| link.src_id == ENVELOPE_AMP_ID && link.dst_id == AMPLIFIER_ID)
+        .filter(|link| link.src_id() == ENVELOPE_AMP_ID && link.dst_id() == AMPLIFIER_ID)
         .collect();
     assert_eq!(env_amp_links.len(), 1);
-    assert_eq!(env_amp_links[0].modulator_id, Some(LFO_ID));
+    assert_eq!(env_amp_links[0].modulator_id(), Some(LFO_ID));
 
     let order = SynthEngine::calc_execution_order(
-        &cfg
-            .links
+        &cfg.links
             .iter()
-            .map(|l| {
-                ModuleLink::scaled(l.src_id, InputId::new(l.dst_input, l.dst_id), l.amount)
-            })
+            .map(ModuleLink::from_config)
             .collect::<Vec<_>>(),
         [],
     )
@@ -1187,7 +1196,7 @@ fn set_config_links_dedupes_duplicate_preset_links() {
         .links
         .iter()
         .filter(|l| {
-            l.src_id == OSC0_ID && l.dst_id == MIXER_ID && l.dst_input == Input::AudioMix(0)
+            l.src_id() == OSC0_ID && l.dst_id() == MIXER_ID && l.dst_input() == Input::AudioMix(0)
         })
         .count();
     assert_eq!(count, 1);
@@ -1214,10 +1223,10 @@ fn set_link_modulation_cycle_leaves_state_unchanged() {
     // filter_env <- amp_env, and lfo <- filter_env; modulating the first link with the
     // lfo would require filter_env <-> lfo and must be rejected without mutating state.
     engine
-        .add_link(ENVELOPE_AMP_ID, filter_attack, StereoSample::ONE)
+        .add_mixed_link(ENVELOPE_AMP_ID, filter_attack, StereoSample::ONE)
         .expect("amp env -> filter env attack");
     engine
-        .add_link(ENVELOPE_FILTER_ID, lfo_skew, StereoSample::ONE)
+        .add_mixed_link(ENVELOPE_FILTER_ID, lfo_skew, StereoSample::ONE)
         .expect("filter env -> lfo skew");
 
     let err = engine
@@ -1231,16 +1240,16 @@ fn set_link_modulation_cycle_leaves_state_unchanged() {
         .links
         .iter()
         .find(|link| {
-            link.src_id == ENVELOPE_AMP_ID
-                && link.dst_id == ENVELOPE_FILTER_ID
-                && link.dst_input == Input::Attack
+            link.src_id() == ENVELOPE_AMP_ID
+                && link.dst_id() == ENVELOPE_FILTER_ID
+                && link.dst_input() == Input::Attack
         })
         .expect("amp env -> filter env link kept");
-    assert!(link.modulator_id.is_none());
+    assert!(link.modulator_id().is_none());
 }
 
 #[test]
-fn dual_audio_sources_mix_at_output() {
+fn dual_audio_sources_mix_via_mixer() {
     let mut engine = make_engine(
         EngineParams {
             num_voices: 2,
@@ -1254,15 +1263,19 @@ fn dual_audio_sources_mix_at_output() {
 
     let osc_b = engine.add_oscillator();
     let harmonic_b = engine.add_harmonic_editor();
+    let mixer_id = engine.add_mixer();
     let out_audio = InputId::new(Input::Audio, OUTPUT_MODULE_ID);
 
     engine.remove_link(&OSCILLATOR_ID, &out_audio);
     engine
-        .add_link(OSCILLATOR_ID, out_audio, StereoSample::splat(0.5))
-        .expect("osc a -> output");
+        .set_direct_link(OSCILLATOR_ID, InputId::new(Input::AudioMix(0), mixer_id))
+        .expect("osc a -> mixer");
     engine
-        .add_link(osc_b, out_audio, StereoSample::splat(0.5))
-        .expect("osc b -> output");
+        .set_direct_link(osc_b, InputId::new(Input::AudioMix(1), mixer_id))
+        .expect("osc b -> mixer");
+    engine
+        .set_direct_link(mixer_id, out_audio)
+        .expect("mixer -> output");
     engine
         .set_direct_link(harmonic_b, InputId::new(Input::Spectrum, osc_b))
         .expect("harmonic b -> osc b");
@@ -1330,12 +1343,18 @@ fn runtime_add_all_module_types() {
         engine.get_module(ids[2]),
         Some(ModuleHandle::Envelope(_))
     ));
-    assert!(matches!(engine.get_module(ids[3]), Some(ModuleHandle::Lfo(_))));
+    assert!(matches!(
+        engine.get_module(ids[3]),
+        Some(ModuleHandle::Lfo(_))
+    ));
     assert!(matches!(
         engine.get_module(ids[4]),
         Some(ModuleHandle::Amplifier(_))
     ));
-    assert!(matches!(engine.get_module(ids[5]), Some(ModuleHandle::Mixer(_))));
+    assert!(matches!(
+        engine.get_module(ids[5]),
+        Some(ModuleHandle::Mixer(_))
+    ));
     assert!(matches!(
         engine.get_module(ids[6]),
         Some(ModuleHandle::WaveShaper(_))
@@ -1387,9 +1406,9 @@ fn link_rejects_invalid_module_id() {
         },
     );
 
-    let dst = InputId::new(Input::Spectrum, OSCILLATOR_ID);
+    let dst = InputId::new(Input::Gain, OSCILLATOR_ID);
     let err = engine
-        .add_link(9999, dst, StereoSample::ONE)
+        .add_mixed_link(9999, dst, StereoSample::ONE)
         .expect_err("unknown source module");
 
     assert!(err.contains("Invalid") || err.contains("mismatch"));
@@ -1435,17 +1454,18 @@ fn oversampling_and_mono_spectrum_process() {
 #[test]
 fn execution_order_accounts_for_link_modulation() {
     let links = vec![
-        ModuleLink::link(LFO_ID, InputId::new(Input::Gain, AMPLIFIER_ID)),
-        ModuleLink {
-            src: ENVELOPE_AMP_ID,
-            dst: InputId::new(Input::Gain, AMPLIFIER_ID),
-            amount: StereoSample::ONE,
-            modulation: Some(LFO_ID),
-        },
-        ModuleLink::link(
-            AMPLIFIER_ID,
-            InputId::new(Input::Audio, OUTPUT_MODULE_ID),
+        ModuleLink::mixed(
+            LFO_ID,
+            InputId::new(Input::Gain, AMPLIFIER_ID),
+            StereoSample::ONE,
         ),
+        ModuleLink::mixed_modulated(
+            ENVELOPE_AMP_ID,
+            InputId::new(Input::Gain, AMPLIFIER_ID),
+            StereoSample::ONE,
+            Some(LFO_ID),
+        ),
+        ModuleLink::direct(AMPLIFIER_ID, InputId::new(Input::Audio, OUTPUT_MODULE_ID)),
     ];
 
     let order = SynthEngine::calc_execution_order(&links, []).expect("valid order");

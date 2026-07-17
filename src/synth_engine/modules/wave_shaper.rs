@@ -202,7 +202,7 @@ impl SynthModule for WaveShaper {
 
     fn inputs(&self) -> &'static [InputMeta] {
         static INPUTS: &[InputMeta] = &[
-            InputMeta::audio(Input::Audio),
+            InputMeta::direct_audio(Input::Audio),
             InputMeta::control(Input::ClippingLevel),
             InputMeta::control(Input::Distortion),
         ];
@@ -251,7 +251,10 @@ impl SynthModule for WaveShaper {
                 for seq_idx in 0..num_active_voices {
                     let playing_voice = router.params().active_voices[seq_idx];
 
-                    self.process_voice(output, router.for_voice(channel_idx, playing_voice, seq_idx));
+                    self.process_voice(
+                        output,
+                        router.for_voice(channel_idx, playing_voice, seq_idx),
+                    );
                 }
 
                 self.channel_params[channel_idx]
