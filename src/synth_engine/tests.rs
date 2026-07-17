@@ -414,6 +414,83 @@ fn try_new_rejects_invalid_link() {
 }
 
 #[test]
+fn try_new_rejects_missing_modulator() {
+    let mut config = full_patch_engine_config(EngineParams::default());
+    let modulated = config
+        .links
+        .iter()
+        .position(|link| link.src_id == ENVELOPE_AMP_ID && link.dst_id == AMPLIFIER_ID)
+        .expect("env -> amp link");
+    config.links[modulated].modulator_id = Some(9999);
+
+    let (volume, external_params) = test_deps();
+    assert!(SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE).is_none());
+}
+
+#[test]
+fn try_new_rejects_incompatible_modulator() {
+    let mut config = full_patch_engine_config(EngineParams::default());
+    let modulated = config
+        .links
+        .iter()
+        .position(|link| link.src_id == ENVELOPE_AMP_ID && link.dst_id == AMPLIFIER_ID)
+        .expect("env -> amp link");
+    // Spectral source cannot modulate a control (gain) input.
+    config.links[modulated].modulator_id = Some(HE0_ID);
+
+    let (volume, external_params) = test_deps();
+    assert!(SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE).is_none());
+}
+
+#[test]
+fn setup_slots_ignores_multiple_spectral_sources() {
+    let mut config = full_patch_engine_config(EngineParams::default());
+    config.links.push(link(HE1_ID, OSC1_ID, Input::Spectrum));
+
+    let (volume, external_params) = test_deps();
+    let mut engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+        .expect("multiple spectral sources are ignored, not rejected");
+
+    assert_eq!(
+        engine
+            .get_config()
+            .links
+            .iter()
+            .filter(|link| link.dst_id == OSC1_ID && link.dst_input == Input::Spectrum)
+            .count(),
+        2
+    );
+
+    engine.handle_note_on(0, 60, 1.0);
+    let (left, right) = process_block(&mut engine, 64);
+    assert!(left.iter().chain(right.iter()).all(|s| s.is_finite()));
+}
+
+#[test]
+fn add_link_ignores_second_spectral_source_in_slots() {
+    let mut engine = make_full_patch_engine(EngineParams::default());
+    let dst = InputId::new(Input::Spectrum, OSC1_ID);
+
+    engine
+        .add_link(HE1_ID, dst, StereoSample::ONE)
+        .expect("second spectral source kept in routing map");
+
+    assert_eq!(
+        engine
+            .get_config()
+            .links
+            .iter()
+            .filter(|link| link.dst_id == OSC1_ID && link.dst_input == Input::Spectrum)
+            .count(),
+        2
+    );
+
+    engine.handle_note_on(0, 60, 1.0);
+    let (left, _) = process_block(&mut engine, 64);
+    assert!(left.iter().all(|s| s.is_finite()));
+}
+
+#[test]
 fn config_round_trips_minimal_patch() {
     let engine = make_engine(
         EngineParams {
@@ -761,6 +838,52 @@ fn remove_module_rebuilds_routing() {
     );
 }
 
+#[test]
+fn remove_module_clears_modulation_source() {
+    let mut engine = make_full_patch_engine(EngineParams::default());
+    let gain_dst = InputId::new(Input::Gain, AMPLIFIER_ID);
+
+    engine
+        .set_link_modulation(ENVELOPE_AMP_ID, &gain_dst, LFO_ID)
+        .expect("attach lfo as gain modulator");
+
+    engine.remove_module(LFO_ID);
+
+    let cfg = engine.get_config();
+    let link = cfg
+        .links
+        .iter()
+        .find(|link| link.src_id == ENVELOPE_AMP_ID && link.dst_id == AMPLIFIER_ID)
+        .expect("env -> amp gain link kept");
+    assert!(link.modulator_id.is_none());
+    assert!(engine.get_module(LFO_ID).is_none());
+}
+
+#[test]
+fn remove_output_links_clears_modulation_source() {
+    let mut engine = make_full_patch_engine(EngineParams::default());
+    let gain_dst = InputId::new(Input::Gain, AMPLIFIER_ID);
+
+    engine
+        .set_link_modulation(ENVELOPE_AMP_ID, &gain_dst, LFO_ID)
+        .expect("attach lfo as gain modulator");
+
+    engine.remove_output_links(LFO_ID);
+
+    let cfg = engine.get_config();
+    let link = cfg
+        .links
+        .iter()
+        .find(|link| link.src_id == ENVELOPE_AMP_ID && link.dst_id == AMPLIFIER_ID)
+        .expect("env -> amp gain link kept");
+    assert!(link.modulator_id.is_none());
+    assert!(
+        !cfg.links.iter().any(|link| link.src_id == LFO_ID),
+        "direct lfo outputs removed"
+    );
+    assert!(engine.get_module(LFO_ID).is_some());
+}
+
 // ---- Process & MIDI ----
 
 #[test]
@@ -1017,9 +1140,17 @@ fn link_modulation_in_preset_builds() {
     let mut engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
         .expect("modulated preset");
 
+    let cfg = engine.get_config();
+    let env_amp_links: Vec<_> = cfg
+        .links
+        .iter()
+        .filter(|link| link.src_id == ENVELOPE_AMP_ID && link.dst_id == AMPLIFIER_ID)
+        .collect();
+    assert_eq!(env_amp_links.len(), 1);
+    assert_eq!(env_amp_links[0].modulator_id, Some(LFO_ID));
+
     let order = SynthEngine::calc_execution_order(
-        &engine
-            .get_config()
+        &cfg
             .links
             .iter()
             .map(|l| {
@@ -1041,6 +1172,28 @@ fn link_modulation_in_preset_builds() {
 }
 
 #[test]
+fn set_config_links_dedupes_duplicate_preset_links() {
+    let mut config = full_patch_engine_config(EngineParams::default());
+    let osc_out = link(OSC0_ID, MIXER_ID, Input::AudioMix(0));
+    config.links.push(osc_out.clone());
+    config.links.push(osc_out);
+
+    let (volume, external_params) = test_deps();
+    let engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+        .expect("duplicate links should be skipped");
+
+    let count = engine
+        .get_config()
+        .links
+        .iter()
+        .filter(|l| {
+            l.src_id == OSC0_ID && l.dst_id == MIXER_ID && l.dst_input == Input::AudioMix(0)
+        })
+        .count();
+    assert_eq!(count, 1);
+}
+
+#[test]
 fn set_link_modulation_rejects_unknown_link() {
     let engine = make_full_patch_engine(EngineParams::default());
     let mut engine = engine;
@@ -1050,6 +1203,40 @@ fn set_link_modulation_rejects_unknown_link() {
         .expect_err("harmonic editor is not wired to amp gain");
 
     assert!(err.contains("Invalid"));
+}
+
+#[test]
+fn set_link_modulation_cycle_leaves_state_unchanged() {
+    let mut engine = make_full_patch_engine(EngineParams::default());
+    let filter_attack = InputId::new(Input::Attack, ENVELOPE_FILTER_ID);
+    let lfo_skew = InputId::new(Input::Skew, LFO_ID);
+
+    // filter_env <- amp_env, and lfo <- filter_env; modulating the first link with the
+    // lfo would require filter_env <-> lfo and must be rejected without mutating state.
+    engine
+        .add_link(ENVELOPE_AMP_ID, filter_attack, StereoSample::ONE)
+        .expect("amp env -> filter env attack");
+    engine
+        .add_link(ENVELOPE_FILTER_ID, lfo_skew, StereoSample::ONE)
+        .expect("filter env -> lfo skew");
+
+    let err = engine
+        .set_link_modulation(ENVELOPE_AMP_ID, &filter_attack, LFO_ID)
+        .expect_err("lfo modulation would cycle through filter env");
+
+    assert!(err.contains("Cycles"));
+
+    let cfg = engine.get_config();
+    let link = cfg
+        .links
+        .iter()
+        .find(|link| {
+            link.src_id == ENVELOPE_AMP_ID
+                && link.dst_id == ENVELOPE_FILTER_ID
+                && link.dst_input == Input::Attack
+        })
+        .expect("amp env -> filter env link kept");
+    assert!(link.modulator_id.is_none());
 }
 
 #[test]
