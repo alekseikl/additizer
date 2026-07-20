@@ -15,7 +15,7 @@ use crate::{
 use super::GridWidgetContent;
 
 const PADDING: f32 = 4.0;
-const DISPLAY_SAMPLES: usize = 256;
+const DISPLAY_SAMPLES: usize = 1024;
 const PHASE_RADIUS: f32 = 3.5;
 const WAVE_COLOR: Color32 = Color32::from_rgb(0x4a, 0xb0, 0xff);
 

@@ -66,10 +66,10 @@ impl SpectralFilterWidget {
 
     fn curve_points(rect: Rect, filter: &SpectralFilterEngine) -> Vec<Pos2> {
         const DB_RANGE_MULT: f32 = (MAX_DB - MIN_DB).recip();
-        let columns = rect.width().ceil().max(2.0) as usize;
-        let t_mult = ((columns - 1) as f32).recip();
+        const COLUMNS: usize = 512;
+        let t_mult = ((COLUMNS - 1) as f32).recip();
 
-        (0..columns)
+        (0..COLUMNS)
             .map(|column| {
                 let t = column as f32 * t_mult;
                 let freq = (MIN_LOG2_FREQ + t * (MAX_LOG2_FREQ - MIN_LOG2_FREQ)).exp2();
