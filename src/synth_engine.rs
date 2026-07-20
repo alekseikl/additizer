@@ -14,7 +14,7 @@ use crate::synth_engine::{
     module_handle::ModuleHandle,
     modules::Output,
     routing::{
-        InputMeta, InputSlot, InputSlots, MIN_MODULE_ID, MixedSource, ModuleLink, OutputsArena,
+        InputSlot, InputSlots, MIN_MODULE_ID, MixedSource, ModuleLink, OutputsArena,
         ProcessContext, ProcessParams, SpectralInputSlot, data_types_compatible,
     },
     synth_module::SynthModule,
@@ -418,14 +418,12 @@ impl SynthEngine {
         for link in links.iter() {
             let src = link.src_id();
             let dst = InputId::new(link.dst_input(), link.dst_id());
+            let directly = matches!(link, LinkConfig::Direct { .. });
 
-            if self.can_be_linked(&src, &dst).is_err()
+            if self.can_be_linked(src, dst, directly).is_err()
                 || link
                     .modulator_id()
-                    .is_some_and(|id| self.can_be_linked(&id, &dst).is_err())
-                || self
-                    .input_meta_for(&dst)
-                    .is_none_or(|meta| matches!(link, LinkConfig::Direct { .. }) != meta.is_direct)
+                    .is_some_and(|id| self.can_be_linked(id, dst, false).is_err())
             {
                 return false;
             }
@@ -444,15 +442,7 @@ impl SynthEngine {
     }
 
     pub fn set_direct_link(&mut self, src: ModuleId, dst: InputId) -> Result<(), String> {
-        self.can_be_linked(&src, &dst)?;
-
-        let Some(meta) = self.input_meta_for(&dst) else {
-            return Err("Invalid destination input.".to_string());
-        };
-
-        if !meta.is_direct {
-            return Err("Mixed inputs require add_mixed_link.".to_string());
-        }
+        self.can_be_linked(src, dst, true)?;
 
         let mut new_links: Vec<_> = self
             .get_links()
@@ -472,15 +462,7 @@ impl SynthEngine {
         dst: InputId,
         amount: StereoSample,
     ) -> Result<(), String> {
-        self.can_be_linked(&src, &dst)?;
-
-        let Some(meta) = self.input_meta_for(&dst) else {
-            return Err("Invalid destination input.".to_string());
-        };
-
-        if meta.is_direct {
-            return Err("Direct inputs require set_direct_link.".to_string());
-        }
+        self.can_be_linked(src, dst, false)?;
 
         let mut new_links = self.get_links();
 
@@ -514,7 +496,7 @@ impl SynthEngine {
         dst_input: &InputId,
         modulator_id: ModuleId,
     ) -> Result<(), String> {
-        self.can_be_linked(&modulator_id, dst_input)?;
+        self.can_be_linked(modulator_id, *dst_input, false)?;
 
         if !self.already_linked(&src_id, dst_input) {
             return Err("Invalid node.".to_string());
@@ -730,21 +712,30 @@ impl SynthEngine {
         module_id
     }
 
-    fn can_be_linked(&self, src: &ModuleId, dst: &InputId) -> Result<(), String> {
+    fn can_be_linked(&self, src: ModuleId, dst: InputId, directly: bool) -> Result<(), String> {
         let (Some(src_module), Some(dst_module)) =
-            (self.modules.get(src), self.modules.get(&dst.module_id))
+            (self.modules.get(&src), self.modules.get(&dst.module_id))
         else {
             return Err("Invalid node.".to_string());
         };
 
-        let src_data_type = src_module.output_type();
+        let Some(meta) = dst_module
+            .inputs()
+            .iter()
+            .find(|meta| meta.input_type == dst.input_type)
+        else {
+            return Err("Invalid destination input.".to_string());
+        };
 
-        let is_compatible = dst_module.inputs().iter().any(|input_info| {
-            input_info.input_type == dst.input_type
-                && data_types_compatible(src_data_type, input_info.data_type)
-        });
+        if meta.is_direct != directly {
+            return Err(if directly {
+                "Mixed inputs require add_mixed_link.".to_string()
+            } else {
+                "Direct inputs require set_direct_link.".to_string()
+            });
+        }
 
-        if !is_compatible {
+        if !data_types_compatible(src_module.output_type(), meta.data_type) {
             return Err("Data types mismatch.".to_string());
         }
 
@@ -762,15 +753,6 @@ impl SynthEngine {
             .iter()
             .flat_map(|(dst, sources)| sources.links(*dst))
             .collect()
-    }
-
-    fn input_meta_for(&self, dst: &InputId) -> Option<InputMeta> {
-        self.modules
-            .get(&dst.module_id)?
-            .inputs()
-            .iter()
-            .find(|meta| meta.input_type == dst.input_type)
-            .copied()
     }
 
     pub fn get_module(&self, id: ModuleId) -> Option<&ModuleHandle> {

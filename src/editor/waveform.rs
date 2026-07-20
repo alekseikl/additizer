@@ -168,10 +168,6 @@ fn paint_fill(painter: &Painter, rect: Rect, points: &[Pos2], options: WaveformO
         add_segment(window[0], window[1]);
     }
 
-    if options.loop_closed {
-        add_segment(*points.last().unwrap(), points[0]);
-    }
-
     painter.add(Shape::mesh(mesh));
 }
 
@@ -182,13 +178,6 @@ fn paint_stroke(painter: &Painter, points: &[Pos2], options: WaveformOptions) {
 
     let stroke = Stroke::new(LINE_WIDTH, options.color);
     painter.line(points.to_vec(), stroke);
-
-    if options.loop_closed {
-        painter.line_segment(
-            [*points.last().unwrap(), points[0]],
-            Stroke::new(LINE_WIDTH, options.color),
-        );
-    }
 }
 
 pub fn paint_waveform(painter: &Painter, rect: Rect, waveform: &[f32]) {
