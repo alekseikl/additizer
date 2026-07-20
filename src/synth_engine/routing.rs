@@ -226,6 +226,10 @@ impl ModuleLink {
         }
     }
 
+    pub fn is_direct(&self) -> bool {
+        matches!(self, Self::Direct { .. })
+    }
+
     pub fn src(&self) -> ModuleId {
         match self {
             Self::Direct { src, .. } | Self::Mixed { src, .. } => *src,
@@ -246,19 +250,25 @@ impl ModuleLink {
     }
 
     pub fn clear_modulation(&mut self) {
+        if self.is_direct() {
+            return;
+        }
+
         if let Self::Mixed { modulation, .. } = self {
             *modulation = None;
         }
     }
 
     pub fn set_modulation(&mut self, modulator_id: ModuleId) -> bool {
-        match self {
-            Self::Mixed { modulation, .. } => {
-                *modulation = Some(modulator_id);
-                true
-            }
-            Self::Direct { .. } => false,
+        if self.is_direct() {
+            return false;
         }
+
+        if let Self::Mixed { modulation, .. } = self {
+            *modulation = Some(modulator_id);
+        }
+
+        true
     }
 
     pub fn from_config(config: &LinkConfig) -> Self {

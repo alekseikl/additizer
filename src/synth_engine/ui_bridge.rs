@@ -1,6 +1,7 @@
 use std::ops::DerefMut;
 
 use enum_dispatch::enum_dispatch;
+use nih_plug::nih_log;
 
 use crate::{
     engine_factory::{EngineHandle, UiConfigHandle},
@@ -538,7 +539,12 @@ impl UiBridge {
     }
 
     pub fn update_routing(&mut self) {
-        self.routing = self.engine.lock().get_routing_state();
+        let mut engine = self.engine.lock();
+
+        if engine.refresh_routing().is_err() {
+            nih_log!("Failed to refresh routing");
+        }
+        self.routing = engine.get_routing_state();
     }
 
     pub fn add_module(&mut self, module_type: ModuleType) -> ModuleId {

@@ -427,8 +427,9 @@ fn try_new_rejects_incompatible_modulator() {
 }
 
 #[test]
-fn setup_routing_keeps_last_spectral_source() {
+fn set_config_links_direct_exclusivity_keeps_last_source() {
     let mut config = full_patch_engine_config(EngineParams::default());
+    // full_patch already has HE0 -> OSC1.Spectrum; a later Direct replaces it.
     config.links.push(link(HE1_ID, OSC1_ID, Input::Spectrum));
 
     let (volume, external_params) = test_deps();
@@ -448,6 +449,32 @@ fn setup_routing_keeps_last_spectral_source() {
     engine.handle_note_on(0, 60, 1.0);
     let (left, right) = process_block(&mut engine, 64);
     assert!(left.iter().chain(right.iter()).all(|s| s.is_finite()));
+}
+
+#[test]
+fn set_config_links_skips_mixed_kind_on_direct_input() {
+    let mut config = full_patch_engine_config(EngineParams::default());
+    config.links.push(LinkConfig::mixed(
+        HE1_ID,
+        OSC1_ID,
+        Input::Spectrum,
+        StereoSample::ONE,
+    ));
+
+    let (volume, external_params) = test_deps();
+    let engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+        .expect("wrong-kind mixed link should be skipped");
+
+    let cfg = engine.get_config();
+    let spectrum_links: Vec<_> = cfg
+        .links
+        .iter()
+        .filter(|link| link.dst_id() == OSC1_ID && link.dst_input() == Input::Spectrum)
+        .collect();
+
+    assert_eq!(spectrum_links.len(), 1);
+    assert_eq!(spectrum_links[0].src_id(), HE0_ID);
+    assert!(matches!(spectrum_links[0], LinkConfig::Direct { .. }));
 }
 
 #[test]
@@ -1200,6 +1227,36 @@ fn set_config_links_dedupes_duplicate_preset_links() {
         })
         .count();
     assert_eq!(count, 1);
+}
+
+#[test]
+fn refresh_routing_drops_links_to_removed_inputs() {
+    let mut engine = make_full_patch_engine(EngineParams::default());
+
+    assert!(engine.get_config().links.iter().any(|link| {
+        link.src_id() == OSC1_ID
+            && link.dst_id() == MIXER_ID
+            && link.dst_input() == Input::AudioMix(1)
+    }));
+
+    match engine.get_module_mut(MIXER_ID) {
+        Some(ModuleHandle::Mixer(mixer)) => mixer.set_num_inputs(1),
+        _ => panic!("expected mixer"),
+    }
+
+    engine
+        .refresh_routing()
+        .expect("routing should rebuild after input meta shrink");
+
+    let cfg = engine.get_config();
+    assert!(cfg.links.iter().any(|link| {
+        link.src_id() == OSC0_ID
+            && link.dst_id() == MIXER_ID
+            && link.dst_input() == Input::AudioMix(0)
+    }));
+    assert!(cfg.links.iter().all(|link| {
+        !(link.dst_id() == MIXER_ID && link.dst_input() == Input::AudioMix(1))
+    }));
 }
 
 #[test]

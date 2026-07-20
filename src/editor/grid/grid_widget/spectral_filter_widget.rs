@@ -1,4 +1,5 @@
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, epaint::PathStroke};
+use nih_plug::util::gain_to_db_fast;
 
 use crate::{
     editor::grid::WidgetCtx,
@@ -78,7 +79,7 @@ impl SpectralFilterWidget {
         let point_at = |col: f32| -> Pos2 {
             let t = col * t_mult;
             let freq = (MIN_LOG2_FREQ + t * log2_range).exp2();
-            let db = 20.0 * filter.response_at(freq).norm().max(1e-6).log10();
+            let db = gain_to_db_fast(filter.response_at(freq).norm());
             let y_t = ((db - MIN_DB) * DB_RANGE_MULT).clamp(0.0, 1.0);
 
             Pos2::new(

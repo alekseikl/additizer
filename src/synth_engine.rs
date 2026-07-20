@@ -415,30 +415,64 @@ impl SynthEngine {
     fn set_config_links(&mut self, links: &[LinkConfig]) -> bool {
         let mut new_links = self.get_links();
 
-        for link in links.iter() {
+        for link in links {
             let src = link.src_id();
             let dst = InputId::new(link.dst_input(), link.dst_id());
-            let directly = matches!(link, LinkConfig::Direct { .. });
+            let directly = link.is_direct();
 
             if self.can_be_linked(src, dst, directly).is_err()
                 || link
                     .modulator_id()
                     .is_some_and(|id| self.can_be_linked(id, dst, false).is_err())
-            {
-                return false;
-            }
-
-            if new_links
-                .iter()
-                .any(|existing| existing.src() == src && existing.dst() == dst)
+                || new_links
+                    .iter()
+                    .any(|existing| existing.src() == src && existing.dst() == dst)
             {
                 continue;
+            }
+
+            if directly {
+                new_links.retain(|existing| existing.dst() != dst);
+            } else {
+                for existing in &mut new_links {
+                    if existing.dst() == dst && existing.modulation() == Some(src) {
+                        existing.clear_modulation();
+                    }
+                }
             }
 
             new_links.push(ModuleLink::from_config(link));
         }
 
         self.setup_routing(&new_links).is_ok()
+    }
+
+    /// Re-validate current links against live `inputs()` and rebuild routing via `setup_routing`.
+    pub fn refresh_routing(&mut self) -> Result<(), String> {
+        let new_links: Vec<_> = self
+            .get_links()
+            .into_iter()
+            .filter_map(|mut link| {
+                if self
+                    .can_be_linked(link.src(), link.dst(), link.is_direct())
+                    .is_err()
+                {
+                    return None;
+                }
+
+                if let Some(modulator_id) = link.modulation()
+                    && self
+                        .can_be_linked(modulator_id, link.dst(), false)
+                        .is_err()
+                {
+                    link.clear_modulation();
+                }
+
+                Some(link)
+            })
+            .collect();
+
+        self.setup_routing(&new_links)
     }
 
     pub fn set_direct_link(&mut self, src: ModuleId, dst: InputId) -> Result<(), String> {

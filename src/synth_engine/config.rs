@@ -97,6 +97,10 @@ impl LinkConfig {
         }
     }
 
+    pub fn is_direct(&self) -> bool {
+        matches!(self, Self::Direct { .. })
+    }
+
     pub fn src_id(&self) -> ModuleId {
         match self {
             Self::Direct { src_id, .. } | Self::Mixed { src_id, .. } => *src_id,
