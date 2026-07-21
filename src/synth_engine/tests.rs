@@ -372,7 +372,7 @@ fn try_new_rejects_duplicate_module_id() {
 }
 
 #[test]
-fn try_new_rejects_invalid_link() {
+fn try_new_skips_invalid_link() {
     let (volume, external_params) = test_deps();
     let config = EngineConfig {
         engine: EngineParams::default(),
@@ -394,11 +394,20 @@ fn try_new_rejects_invalid_link() {
         )],
     };
 
-    assert!(SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE).is_none());
+    let engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+        .expect("invalid links are skipped on load");
+
+    assert!(
+        engine
+            .get_config()
+            .links
+            .iter()
+            .all(|link| !(link.src_id() == HARMONIC_EDITOR_ID && link.dst_id() == OUTPUT_MODULE_ID))
+    );
 }
 
 #[test]
-fn try_new_rejects_missing_modulator() {
+fn try_new_skips_link_with_missing_modulator() {
     let mut config = full_patch_engine_config(EngineParams::default());
     let modulated = config
         .links
@@ -408,11 +417,21 @@ fn try_new_rejects_missing_modulator() {
     config.links[modulated].set_modulator_id(Some(9999));
 
     let (volume, external_params) = test_deps();
-    assert!(SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE).is_none());
+    let engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+        .expect("bad modulator skips that preset link");
+
+    assert!(
+        engine.get_config().links.iter().all(|link| {
+            !(link.src_id() == ENVELOPE_AMP_ID
+                && link.dst_id() == AMPLIFIER_ID
+                && link.dst_input() == Input::Gain)
+        }),
+        "env -> amp gain link with invalid modulator must be skipped"
+    );
 }
 
 #[test]
-fn try_new_rejects_incompatible_modulator() {
+fn try_new_skips_link_with_incompatible_modulator() {
     let mut config = full_patch_engine_config(EngineParams::default());
     let modulated = config
         .links
@@ -423,7 +442,14 @@ fn try_new_rejects_incompatible_modulator() {
     config.links[modulated].set_modulator_id(Some(HE0_ID));
 
     let (volume, external_params) = test_deps();
-    assert!(SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE).is_none());
+    let engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+        .expect("incompatible modulator skips that preset link");
+
+    assert!(engine.get_config().links.iter().all(|link| {
+        !(link.src_id() == ENVELOPE_AMP_ID
+            && link.dst_id() == AMPLIFIER_ID
+            && link.dst_input() == Input::Gain)
+    }));
 }
 
 #[test]
@@ -851,6 +877,146 @@ fn link_rejects_type_mismatch() {
         .expect_err("spectral source cannot drive audio output");
 
     assert!(err.contains("mismatch") || err.contains("Invalid"));
+}
+
+#[test]
+fn set_direct_link_rejects_mixed_input() {
+    let mut engine = make_engine(
+        EngineParams::default(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            ..OscillatorConfig::default()
+        },
+    );
+    let lfo_id = engine.add_lfo();
+
+    let err = engine
+        .set_direct_link(lfo_id, InputId::new(Input::Gain, OSCILLATOR_ID))
+        .expect_err("gain is a mixed input");
+
+    assert!(err.contains("Mixed") || err.contains("add_mixed_link"));
+}
+
+#[test]
+fn add_mixed_link_allows_control_into_audio_input() {
+    let mut engine = make_engine(
+        EngineParams::default(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            ..OscillatorConfig::default()
+        },
+    );
+    let lfo_id = engine.add_lfo();
+
+    engine
+        .add_mixed_link(
+            lfo_id,
+            InputId::new(Input::PhaseShift, OSCILLATOR_ID),
+            StereoSample::ONE,
+        )
+        .expect("control may drive mixed audio PhaseShift");
+}
+
+#[test]
+fn add_mixed_link_rejects_audio_into_control() {
+    let mut engine = make_engine(
+        EngineParams::default(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            ..OscillatorConfig::default()
+        },
+    );
+    let env_id = engine.add_envelope();
+
+    let err = engine
+        .add_mixed_link(
+            OSCILLATOR_ID,
+            InputId::new(Input::Attack, env_id),
+            StereoSample::ONE,
+        )
+        .expect_err("audio cannot drive control Attack");
+
+    assert!(err.contains("mismatch") || err.contains("Data types"));
+}
+
+#[test]
+fn add_mixed_link_clears_src_as_modulator_on_same_dst() {
+    let mut engine = make_full_patch_engine(EngineParams::default());
+    let gain = InputId::new(Input::Gain, AMPLIFIER_ID);
+
+    engine
+        .set_link_modulation(ENVELOPE_AMP_ID, &gain, LFO_ID)
+        .expect("lfo modulates amp-env -> gain");
+
+    engine
+        .add_mixed_link(LFO_ID, gain, StereoSample::splat(0.5))
+        .expect("lfo becomes a gain source");
+
+    let cfg = engine.get_config();
+    let env_link = cfg
+        .links
+        .iter()
+        .find(|link| link.src_id() == ENVELOPE_AMP_ID && link.dst_input() == Input::Gain)
+        .expect("env -> gain kept");
+    assert!(env_link.modulator_id().is_none());
+
+    let lfo_link = cfg
+        .links
+        .iter()
+        .find(|link| link.src_id() == LFO_ID && link.dst_input() == Input::Gain)
+        .expect("lfo -> gain");
+    assert!(lfo_link.modulator_id().is_none());
+}
+
+#[test]
+fn set_link_modulation_rejects_direct_edge() {
+    let mut engine = make_engine(
+        EngineParams::default(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            ..OscillatorConfig::default()
+        },
+    );
+    let lfo_id = engine.add_lfo();
+    let spectrum = InputId::new(Input::Spectrum, OSCILLATOR_ID);
+
+    let err = engine
+        .set_link_modulation(HARMONIC_EDITOR_ID, &spectrum, lfo_id)
+        .expect_err("direct spectrum link cannot be modulated");
+
+    assert!(err.contains("Direct") || err.contains("modulat") || err.contains("Invalid"));
+}
+
+#[test]
+fn cyclic_direct_links_rejected() {
+    let mut engine = make_engine(
+        EngineParams::default(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            ..OscillatorConfig::default()
+        },
+    );
+    let amp_a = engine.add_amplifier();
+    let amp_b = engine.add_amplifier();
+
+    engine
+        .set_direct_link(amp_a, InputId::new(Input::Audio, amp_b))
+        .expect("a -> b");
+
+    let err = engine
+        .set_direct_link(amp_b, InputId::new(Input::Audio, amp_a))
+        .expect_err("b -> a would cycle");
+
+    assert!(err.contains("Cycles"));
+
+    // First link must remain after the failed update.
+    assert!(
+        engine
+            .get_config()
+            .links
+            .iter()
+            .any(|link| link.src_id() == amp_a && link.dst_id() == amp_b)
+    );
 }
 
 #[test]

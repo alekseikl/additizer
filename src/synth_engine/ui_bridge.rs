@@ -331,7 +331,18 @@ impl UiBridge {
             .collect()
     }
 
-    pub fn can_be_linked(&self, src: ModuleId, dst: ModuleId) -> bool {
+    /// Cache-side check: whether `src` can connect to any input on `dst`.
+    ///
+    /// Not the same as `SynthEngine::can_be_linked` (which validates a specific
+    /// `InputId` + link kind). Safe to call without locking the engine.
+    ///
+    /// Direct inputs that already have another source still count as linkable —
+    /// `set_direct_link` replaces the prior source.
+    pub fn has_linkable_input(&self, src: ModuleId, dst: ModuleId) -> bool {
+        if src == dst {
+            return false;
+        }
+
         let Some(dst_module) = self.routing.modules.get(&dst) else {
             return false;
         };
@@ -347,18 +358,17 @@ impl UiBridge {
     }
 
     pub fn create_link(&mut self, src: ModuleId, dst: InputId) {
-        let meta = if dst.module_id == OUTPUT_MODULE_ID && dst.input_type == Input::Audio {
-            InputMeta::direct_audio(Input::Audio)
-        } else if let Some(module) = self.routing.modules.get(&dst.module_id)
-            && let Some(meta) = module
-                .inputs
-                .iter()
-                .find(|meta| meta.input_type == dst.input_type)
-        {
-            *meta
-        } else {
+        let Some(module) = self.routing.modules.get(&dst.module_id) else {
             return;
         };
+        let Some(meta) = module
+            .inputs
+            .iter()
+            .find(|meta| meta.input_type == dst.input_type)
+        else {
+            return;
+        };
+        let meta = *meta;
 
         if meta.is_direct {
             self.set_direct_link(src, dst);
@@ -375,27 +385,22 @@ impl UiBridge {
     pub fn get_available_input_sources(&self, input: InputId) -> Vec<AvailableInputSource> {
         let ui_config = self.ui_config.lock();
 
-        let dst_data_type =
-            if input.module_id == OUTPUT_MODULE_ID && input.input_type == Input::Audio {
-                DataType::Audio
-            } else if let Some(input_module) = self.routing.modules.get(&input.module_id)
-                && let Some(input_info) = input_module
-                    .inputs
-                    .iter()
-                    .find(|input_info| input_info.input_type == input.input_type)
-            {
-                input_info.data_type
-            } else {
-                return Vec::new();
-            };
+        let Some(input_module) = self.routing.modules.get(&input.module_id) else {
+            return Vec::new();
+        };
+        let Some(meta) = input_module
+            .inputs
+            .iter()
+            .find(|input_info| input_info.input_type == input.input_type)
+        else {
+            return Vec::new();
+        };
 
         self.routing
             .modules
             .values()
             .filter(|module| {
-                module.id != input.module_id
-                    && data_types_compatible(module.output_type, dst_data_type)
-                    && !self.has_cycle(module.id, input.module_id)
+                self.is_linkable_input(module.id, input.module_id, module.output_type, meta)
             })
             .map(|module| AvailableInputSource {
                 src: module.id,
@@ -471,6 +476,11 @@ impl UiBridge {
         }
     }
 
+    /// Whether `src` may target this destination input (types, self-link, cycle,
+    /// and not already a Mixed/Direct source on that exact input).
+    ///
+    /// For Direct inputs, a *different* module still returns true when another
+    /// source is already connected — the engine replaces rather than stacking.
     fn is_linkable_input(
         &self,
         src: ModuleId,
@@ -596,7 +606,9 @@ impl UiBridge {
     pub fn set_direct_link(&mut self, src: ModuleId, dst: InputId) {
         let mut synth = self.engine.lock();
 
-        let _ = synth.set_direct_link(src, dst);
+        if let Err(err) = synth.set_direct_link(src, dst) {
+            nih_log!("Failed to set direct link: {err}");
+        }
         self.routing = synth.get_routing_state();
     }
 
@@ -604,7 +616,7 @@ impl UiBridge {
         let mut synth = self.engine.lock();
 
         if let Err(err) = synth.add_mixed_link(src, dst, amount) {
-            println!("Failed to add link: {err}");
+            nih_log!("Failed to add link: {err}");
         }
         self.routing = synth.get_routing_state();
     }
@@ -638,7 +650,9 @@ impl UiBridge {
     ) {
         let mut synth = self.engine.lock();
 
-        let _ = synth.set_link_modulation(src_id, dst_input, modulator_id);
+        if let Err(err) = synth.set_link_modulation(src_id, dst_input, modulator_id) {
+            nih_log!("Failed to set link modulation: {err}");
+        }
         self.routing = synth.get_routing_state();
     }
 
@@ -709,3 +723,6 @@ impl UiBridge {
         self.ui_end.get_out_volume()
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -449,7 +449,7 @@ impl GridWidget {
             return;
         };
 
-        if !ctx.bridge.can_be_linked(drag.src_id, self.io.id) {
+        if !ctx.bridge.has_linkable_input(drag.src_id, self.io.id) {
             return;
         }
 
