@@ -93,7 +93,7 @@ impl LfoWidget {
             rect,
             &self.waveform,
             WaveformOptions {
-                loop_closed: false,
+                close_period: false,
                 normalize: false,
                 color: WAVE_COLOR,
                 fill: true,

@@ -561,7 +561,7 @@ impl UiBridge {
             ModuleType::SpectralMixer => (synth.add_spectral_mixer(), "SpectralMixer"),
             ModuleType::HarmonicEditor => (synth.add_harmonic_editor(), "HarmonicEditor"),
             ModuleType::ExternalParam => (synth.add_external_param(), "ExternalParam"),
-            ModuleType::Lfo => (synth.add_lfo(), "Lfo"),
+            ModuleType::Lfo => (synth.add_lfo(), "LFO"),
             ModuleType::WaveShaper => (synth.add_wave_shaper(), "WaveShaper"),
             ModuleType::Expressions => (synth.add_expressions(), "Expressions"),
         };

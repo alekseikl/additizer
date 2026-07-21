@@ -10,7 +10,8 @@ const LINE_WIDTH: f32 = 1.0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct WaveformOptions {
-    pub loop_closed: bool,
+    /// When true, append a point at t = 1 that wraps to the first sample.
+    pub close_period: bool,
     pub normalize: bool,
     /// Stroke / tint color for the waveform.
     pub color: Color32,
@@ -24,32 +25,13 @@ pub struct WaveformOptions {
 impl Default for WaveformOptions {
     fn default() -> Self {
         Self {
-            loop_closed: true,
+            close_period: true,
             normalize: true,
             color: Color32::from(DEFAULT_STROKE_COLOR),
             fill: true,
             bipolar: true,
         }
     }
-}
-
-fn wrap_sample_pos(waveform: &[f32], t: f32) -> (usize, f32) {
-    let n = waveform.len();
-    debug_assert!(n >= 2);
-
-    let pos = t.rem_euclid(1.0) * n as f32;
-    let index = pos.floor() as usize % n;
-    let frac = pos - pos.floor();
-    (index, frac)
-}
-
-/// Linear interp across a period-unwrapped buffer (wraps last→first).
-fn sample_at(waveform: &[f32], t: f32) -> f32 {
-    let n = waveform.len();
-    let (index, frac) = wrap_sample_pos(waveform, t);
-    let from = waveform[index];
-    let to = waveform[(index + 1) % n];
-    from + (to - from) * frac
 }
 
 fn sample_to_y(rect: Rect, sample: f32, bipolar: bool) -> f32 {
@@ -60,18 +42,22 @@ fn sample_to_y(rect: Rect, sample: f32, bipolar: bool) -> f32 {
     }
 }
 
-fn build_curve_points(rect: Rect, waveform: &[f32], bipolar: bool, loop_closed: bool) -> Vec<Pos2> {
-    let columns = waveform.len();
-    let t_mult = (columns as f32).recip();
-    // Open curves omit t = 1.0 so sampling does not wrap back to the first sample.
-    let end = if loop_closed { columns } else { columns - 1 };
+fn build_curve_points(
+    rect: Rect,
+    waveform: &[f32],
+    bipolar: bool,
+    close_period: bool,
+) -> Vec<Pos2> {
+    let n = waveform.len();
+    let t_mult = (n as f32).recip();
+    let end = if close_period { n } else { n - 1 };
     let mut points = Vec::with_capacity(end + 1);
 
     for i in 0..=end {
         let t = i as f32 * t_mult;
         points.push(Pos2::new(
             rect.left() + t * rect.width(),
-            sample_to_y(rect, sample_at(waveform, t), bipolar),
+            sample_to_y(rect, waveform[i % n], bipolar),
         ));
     }
 
@@ -143,8 +129,7 @@ fn paint_stroke(painter: &Painter, points: &[Pos2], options: WaveformOptions) {
         return;
     }
 
-    let stroke = Stroke::new(LINE_WIDTH, options.color);
-    painter.line(points.to_vec(), stroke);
+    painter.line(points.to_vec(), Stroke::new(LINE_WIDTH, options.color));
 }
 
 pub fn paint_waveform(painter: &Painter, rect: Rect, waveform: &[f32]) {
@@ -161,21 +146,16 @@ pub fn paint_waveform_with_options(
         return;
     }
 
-    // if options.bipolar {
-    //     painter.hline(
-    //         rect.x_range(),
-    //         rect.center().y,
-    //         Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, 32)),
-    //     );
-    // }
+    let mut points = build_curve_points(rect, waveform, options.bipolar, options.close_period);
 
-    let mut points = build_curve_points(rect, waveform, options.bipolar, options.loop_closed);
     if options.normalize {
         normalize_points(rect, &mut points);
     }
+
     if options.fill {
         paint_fill(painter, rect, &points, options);
     }
+
     paint_stroke(painter, &points, options);
 }
 
@@ -183,18 +163,6 @@ pub fn paint_waveform_with_options(
 mod tests {
     use super::*;
     use egui::Vec2;
-
-    #[test]
-    fn sample_at_wraps_period() {
-        let waveform = [1.0f32, 0.0, -1.0, 0.5];
-        let t_mid = 1.0 - 0.5 / waveform.len() as f32;
-
-        assert!((sample_at(&waveform, 0.0) - 1.0).abs() < f32::EPSILON);
-        assert!((sample_at(&waveform, 1.0) - 1.0).abs() < f32::EPSILON);
-
-        let linear_mid = sample_at(&waveform, t_mid);
-        assert!((linear_mid - 0.75).abs() < 1e-5);
-    }
 
     #[test]
     fn normalizes_points_to_fill_height() {
@@ -221,7 +189,7 @@ mod tests {
     }
 
     #[test]
-    fn closed_curve_endpoints_match() {
+    fn close_period_endpoints_match() {
         let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(10.0, 100.0));
         let waveform = [0.5f32, -0.2, -0.8, 0.1];
         let points = build_curve_points(rect, &waveform, true, true);
@@ -230,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn open_curve_omits_period_end() {
+    fn open_period_omits_wrap() {
         let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(10.0, 100.0));
         let waveform = [0.5f32, -0.2, -0.8, 0.1];
         let points = build_curve_points(rect, &waveform, true, false);
