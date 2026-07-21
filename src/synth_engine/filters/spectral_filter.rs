@@ -69,21 +69,21 @@ const BUTTERWORTH_Q: Sample = f32::consts::FRAC_1_SQRT_2;
 
 #[derive(Clone, Copy)]
 pub struct LowPass24 {
-    butterworth_section: LowPass12,
-    user_section: LowPass12,
+    butterworth: LowPass12,
+    resonant: LowPass12,
 }
 
 impl FilterImpl for LowPass24 {
     fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
         Self {
-            butterworth_section: LowPass12::new(1.0, cutoff, BUTTERWORTH_Q),
-            user_section: LowPass12::new(gain, cutoff, q),
+            butterworth: LowPass12::new(1.0, cutoff, BUTTERWORTH_Q),
+            resonant: LowPass12::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        self.butterworth_section.at(freq) * self.user_section.at(freq)
+        self.butterworth.at(freq) * self.resonant.at(freq)
     }
 }
 
@@ -139,32 +139,32 @@ impl FilterImpl for HighPass18 {
 
 #[derive(Clone, Copy)]
 pub struct HighPass24 {
-    butterworth_section: HighPass12,
-    user_section: HighPass12,
+    butterworth: HighPass12,
+    resonant: HighPass12,
 }
 
 impl FilterImpl for HighPass24 {
     fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
         Self {
-            butterworth_section: HighPass12::new(1.0, cutoff, BUTTERWORTH_Q),
-            user_section: HighPass12::new(gain, cutoff, q),
+            butterworth: HighPass12::new(1.0, cutoff, BUTTERWORTH_Q),
+            resonant: HighPass12::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        self.butterworth_section.at(freq) * self.user_section.at(freq)
+        self.butterworth.at(freq) * self.resonant.at(freq)
     }
 }
 
 #[derive(Clone, Copy)]
-pub struct BandPass {
+pub struct BandPass6 {
     gain: Sample,
     w_squared: Sample,
     w_q: Sample,
 }
 
-impl FilterImpl for BandPass {
+impl FilterImpl for BandPass6 {
     fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
         let w = cutoff * TAU;
 
@@ -181,6 +181,71 @@ impl FilterImpl for BandPass {
         let wx_q = self.w_q * x;
 
         ComplexSample::new(0.0, self.gain * wx_q) / ComplexSample::new(self.w_squared - x * x, wx_q)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct BandPass12 {
+    butterworth: BandPass6,
+    resonant: BandPass6,
+}
+
+impl FilterImpl for BandPass12 {
+    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+        Self {
+            butterworth: BandPass6::new(1.0, cutoff, BUTTERWORTH_Q),
+            resonant: BandPass6::new(gain, cutoff, q),
+        }
+    }
+
+    #[inline]
+    fn at(&self, freq: Sample) -> ComplexSample {
+        self.butterworth.at(freq) * self.resonant.at(freq)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct BandPass18 {
+    butterworth: BandPass6,
+    resonant: BandPass6,
+}
+
+impl FilterImpl for BandPass18 {
+    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+        Self {
+            butterworth: BandPass6::new(1.0, cutoff, BUTTERWORTH_Q),
+            resonant: BandPass6::new(gain, cutoff, q),
+        }
+    }
+
+    #[inline]
+    fn at(&self, freq: Sample) -> ComplexSample {
+        let butterworth = self.butterworth.at(freq);
+
+        butterworth * butterworth * self.resonant.at(freq)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct BandPass24 {
+    butterworth: BandPass6,
+    resonant: BandPass6,
+}
+
+impl FilterImpl for BandPass24 {
+    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+        Self {
+            butterworth: BandPass6::new(1.0, cutoff, BUTTERWORTH_Q),
+            resonant: BandPass6::new(gain, cutoff, q),
+        }
+    }
+
+    #[inline]
+    fn at(&self, freq: Sample) -> ComplexSample {
+        let butterworth = self.butterworth.at(freq);
+        let butterworth_sq = butterworth * butterworth;
+
+        butterworth_sq * butterworth * self.resonant.at(freq)
     }
 }
 
@@ -247,20 +312,27 @@ pub enum FilterType {
     HighPass12,
     HighPass18,
     HighPass24,
-    BandPass,
+    #[serde(alias = "BandPass")]
+    BandPass6,
+    BandPass12,
+    BandPass18,
+    BandPass24,
     Peaking,
     Notch,
 }
 
 impl FilterType {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 12] = [
         Self::LowPass12,
         Self::LowPass18,
         Self::LowPass24,
         Self::HighPass12,
         Self::HighPass18,
         Self::HighPass24,
-        Self::BandPass,
+        Self::BandPass6,
+        Self::BandPass12,
+        Self::BandPass18,
+        Self::BandPass24,
         Self::Peaking,
         Self::Notch,
     ];
@@ -273,7 +345,10 @@ impl FilterType {
             Self::HighPass12 => "Highpass 12",
             Self::HighPass18 => "Highpass 18",
             Self::HighPass24 => "Highpass 24",
-            Self::BandPass => "Bandpass",
+            Self::BandPass6 => "Bandpass 6",
+            Self::BandPass12 => "Bandpass 12",
+            Self::BandPass18 => "Bandpass 18",
+            Self::BandPass24 => "Bandpass 24",
             Self::Peaking => "Peaking",
             Self::Notch => "Notch",
         }
@@ -350,7 +425,10 @@ impl SpectralFilter {
             FilterType::HighPass12 => self.apply_impl::<HighPass12>(input, output),
             FilterType::HighPass18 => self.apply_impl::<HighPass18>(input, output),
             FilterType::HighPass24 => self.apply_impl::<HighPass24>(input, output),
-            FilterType::BandPass => self.apply_impl::<BandPass>(input, output),
+            FilterType::BandPass6 => self.apply_impl::<BandPass6>(input, output),
+            FilterType::BandPass12 => self.apply_impl::<BandPass12>(input, output),
+            FilterType::BandPass18 => self.apply_impl::<BandPass18>(input, output),
+            FilterType::BandPass24 => self.apply_impl::<BandPass24>(input, output),
             FilterType::Peaking => self.apply_impl::<Peaking>(input, output),
             FilterType::Notch => self.apply_impl::<Notch>(input, output),
         }
@@ -364,7 +442,10 @@ impl SpectralFilter {
             FilterType::HighPass12 => self.response_impl::<HighPass12>(freq),
             FilterType::HighPass18 => self.response_impl::<HighPass18>(freq),
             FilterType::HighPass24 => self.response_impl::<HighPass24>(freq),
-            FilterType::BandPass => self.response_impl::<BandPass>(freq),
+            FilterType::BandPass6 => self.response_impl::<BandPass6>(freq),
+            FilterType::BandPass12 => self.response_impl::<BandPass12>(freq),
+            FilterType::BandPass18 => self.response_impl::<BandPass18>(freq),
+            FilterType::BandPass24 => self.response_impl::<BandPass24>(freq),
             FilterType::Peaking => self.response_impl::<Peaking>(freq),
             FilterType::Notch => self.response_impl::<Notch>(freq),
         }
