@@ -28,20 +28,11 @@ impl EnvelopeUI {
         }
     }
 
-    fn paint_ui(
-        &mut self,
-        bridge: &mut UiBridge,
-        env_bridge: &mut EnvelopeUiBridge,
-        ui: &mut Ui,
-    ) {
+    fn paint_ui(&mut self, bridge: &mut UiBridge, env_bridge: &mut EnvelopeUiBridge, ui: &mut Ui) {
         let module_id = self.module_id;
         let mut config = env_bridge.config().clone();
 
-        ui.add(ModuleLabel::new(
-            &mut self.label_state,
-            bridge,
-            module_id,
-        ));
+        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
 
         ui.add_space(20.0);
 
@@ -65,13 +56,8 @@ impl EnvelopeUI {
                 ui.label("Attack");
                 if ui
                     .add(
-                        ModulationInput::new(
-                            &mut config.attack,
-                            bridge,
-                            Input::Attack,
-                            module_id,
-                        )
-                        .default(from_ms(0.0)),
+                        ModulationInput::new(&mut config.attack, bridge, Input::Attack, module_id)
+                            .default(from_ms(0.0)),
                     )
                     .changed()
                 {

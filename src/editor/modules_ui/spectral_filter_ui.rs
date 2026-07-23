@@ -3,7 +3,8 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 use crate::{
     editor::{
         ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
-        module_label::ModuleLabel, stereo_slider::StereoSlider, utils::confirm_module_removal,
+        module_label::ModuleLabel, slider, stereo_slider::StereoSlider,
+        utils::confirm_module_removal,
     },
     synth_engine::{
         Input, ModuleId,
@@ -38,11 +39,7 @@ impl SpectralFilterUI {
         let module_id = self.module_id;
         let mut config = filter_bridge.config().clone();
 
-        ui.add(ModuleLabel::new(
-            &mut self.label_state,
-            bridge,
-            module_id,
-        ));
+        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
 
         ui.add_space(20.0);
 
@@ -86,6 +83,26 @@ impl SpectralFilterUI {
                 {
                     filter_bridge.set_param(Input::Cutoff, config.cutoff);
                 }
+                ui.end_row();
+
+                ui.label("Cutoff");
+                if ui
+                    .add(
+                        slider::Slider::stereo(
+                            &mut config.cutoff,
+                            st_to_octave(-24.0)..=st_to_octave(120.0),
+                            Some(st_to_octave(-96.0)),
+                        )
+                            .over(st_to_octave(96.0))
+                            .units(slider::Units::Octaves)
+                            .default(0.0)
+                            .skew(1.1),
+                    )
+                    .changed()
+                {
+                    filter_bridge.set_param(Input::Cutoff, config.cutoff);
+                }
+
                 ui.end_row();
 
                 ui.label("Resonance");
