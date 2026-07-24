@@ -93,16 +93,34 @@ impl SpectralFilterUI {
                             st_to_octave(-24.0)..=st_to_octave(120.0),
                             Some(st_to_octave(-96.0)),
                         )
-                            .over(st_to_octave(96.0))
-                            .units(slider::Units::Octaves)
-                            .default(0.0)
-                            .skew(1.1),
+                        .over(st_to_octave(96.0))
+                        .units(slider::Units::Octaves)
+                        .default(0.0)
+                        .skew(1.1),
                     )
                     .changed()
                 {
                     filter_bridge.set_param(Input::Cutoff, config.cutoff);
                 }
+                ui.end_row();
 
+                ui.label("Cutoff mono");
+                if ui
+                    .add(
+                        slider::Slider::mono(
+                            &mut config.cutoff[0],
+                            st_to_octave(-24.0)..=st_to_octave(120.0),
+                            Some(st_to_octave(-96.0)),
+                        )
+                        .over(st_to_octave(96.0))
+                        .units(slider::Units::Octaves)
+                        .default(0.0)
+                        .skew(1.1),
+                    )
+                    .changed()
+                {
+                    filter_bridge.set_param(Input::Cutoff, config.cutoff);
+                }
                 ui.end_row();
 
                 ui.label("Resonance");
