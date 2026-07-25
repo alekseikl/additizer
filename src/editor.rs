@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use egui::{CentralPanel, ComboBox, Frame, Id, Panel, ScrollArea, Ui, Vec2, vec2};
+use egui::{
+    CentralPanel, ComboBox, FontData, FontDefinitions, FontFamily, Frame, Id, Panel, ScrollArea,
+    Ui, Vec2, vec2,
+};
 use nih_plug::editor::Editor;
 use nih_plug_egui::{EguiState, create_egui_editor, resizable_window::ResizableWindow};
 
@@ -248,6 +251,8 @@ pub fn create_editor(
         |_egui_ctx, _queue, _editor_state| {
             #[cfg(debug_assertions)]
             _egui_ctx.global_style_mut(|style| style.debug.warn_if_rect_changes_id = false);
+
+            install_fonts(_egui_ctx);
         },
         move |egui_ctx, _setter, _queue, editor_state| {
             ResizableWindow::new("res-wind")
@@ -257,4 +262,22 @@ pub fn create_editor(
                 });
         },
     )
+}
+
+/// Registers the bundled bold font as a `FontFamily::Name("Bold")` family so widgets
+/// can request true bold glyphs (egui's default bundle only ships Ubuntu-Light).
+fn install_fonts(ctx: &egui::Context) {
+    let mut fonts = FontDefinitions::default();
+
+    fonts.font_data.insert(
+        "Ubuntu-Bold".into(),
+        Arc::new(FontData::from_static(include_bytes!(
+            "../assets/fonts/Ubuntu-Bold.ttf"
+        ))),
+    );
+    fonts
+        .families
+        .insert(FontFamily::Name("Bold".into()), vec!["Ubuntu-Bold".into()]);
+
+    ctx.set_fonts(fonts);
 }

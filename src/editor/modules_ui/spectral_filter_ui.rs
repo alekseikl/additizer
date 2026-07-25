@@ -123,6 +123,28 @@ impl SpectralFilterUI {
                 }
                 ui.end_row();
 
+                ui.label("Cutoff vert");
+                if ui
+                    .add(
+                        slider::Slider::stereo(
+                            &mut config.cutoff,
+                            st_to_octave(-24.0)..=st_to_octave(120.0),
+                            Some(st_to_octave(-96.0)),
+                        )
+                        .over(st_to_octave(96.0))
+                        .units(slider::Units::Octaves)
+                        .vertical()
+                        .thickness(10.0)
+                        .length(100.0)
+                        .default(0.0)
+                        .skew(1.1),
+                    )
+                    .changed()
+                {
+                    filter_bridge.set_param(Input::Cutoff, config.cutoff);
+                }
+                ui.end_row();
+
                 ui.label("Resonance");
                 if ui
                     .add(ModulationInput::new(
