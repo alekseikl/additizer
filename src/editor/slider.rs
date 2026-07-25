@@ -1,8 +1,8 @@
 use std::ops::RangeInclusive;
 
 use egui::{
-    Color32, CornerRadius, Painter, PointerButton, Pos2, Rect, Response, Sense, Shape, Ui, Vec2,
-    Widget, ecolor::Hsva, epaint::PathStroke, vec2,
+    Color32, Painter, PointerButton, Pos2, Rect, Response, Sense, Shape, Ui, Widget, ecolor::Hsva,
+    epaint::PathStroke, vec2,
 };
 
 use crate::synth_engine::{Sample, StereoSample};
@@ -28,6 +28,20 @@ const CORNER_RADIUS: f32 = 4.0;
 /// Width of the bright leading tip marker at the fill's edge.
 const TIP_WIDTH: f32 = 1.0;
 
+/// Which horizontal edges of a bar have rounded corners.
+#[derive(Clone, Copy)]
+struct RoundedEdges {
+    top: bool,
+    bottom: bool,
+}
+
+impl RoundedEdges {
+    const ALL: Self = Self {
+        top: true,
+        bottom: true,
+    };
+}
+
 /// Vertical inset from a rounded corner at `dist_from_edge` from that edge.
 fn corner_inset(radius: f32, dist_from_edge: f32) -> f32 {
     if radius <= 0.0 || dist_from_edge >= radius {
@@ -39,32 +53,26 @@ fn corner_inset(radius: f32, dist_from_edge: f32) -> f32 {
 }
 
 /// Top/bottom y of the rounded track silhouette at absolute `x`.
-fn edge_ys(rect: Rect, corners: CornerRadius, x: f32) -> (f32, f32) {
+fn edge_ys(rect: Rect, rounded: RoundedEdges, x: f32) -> (f32, f32) {
     let d_left = x - rect.left();
     let d_right = rect.right() - x;
+    let inset = corner_inset(CORNER_RADIUS, d_left).max(corner_inset(CORNER_RADIUS, d_right));
 
-    let top_inset =
-        corner_inset(corners.nw as f32, d_left).max(corner_inset(corners.ne as f32, d_right));
-    let bottom_inset =
-        corner_inset(corners.sw as f32, d_left).max(corner_inset(corners.se as f32, d_right));
+    let top = rect.top() + if rounded.top { inset } else { 0.0 };
+    let bottom = rect.bottom() - if rounded.bottom { inset } else { 0.0 };
 
-    (rect.top() + top_inset, rect.bottom() - bottom_inset)
+    (top, bottom)
 }
 
 /// Sample density per pixel column in rounded zones (smoother arc edges).
 const ROUNDED_SAMPLES_PER_COLUMN: usize = 4;
 
 /// Sample x positions along `[x0, x1]` matching rounded-track density.
-fn sample_xs(rect: Rect, corners: CornerRadius, x0: f32, x1: f32) -> Vec<f32> {
-    if x1 <= x0 {
-        return Vec::new();
-    }
-
-    let width = rect.width();
-    let left_r = (corners.nw as f32).max(corners.sw as f32).min(width * 0.5);
-    let right_r = (corners.ne as f32).max(corners.se as f32).min(width * 0.5);
-    let round_left_end = rect.left() + left_r;
-    let round_right_start = rect.right() - right_r;
+///
+/// Every bar shape has radius `CORNER_RADIUS` on both the left and right side,
+/// so the rounded x-zones are the same regardless of which corners are rounded.
+fn sample_xs(rect: Rect, x0: f32, x1: f32) -> Vec<f32> {
+    let radius = CORNER_RADIUS.min(rect.width() * 0.5);
 
     let mut xs = Vec::new();
     let mut push_x = |x: f32| {
@@ -79,37 +87,19 @@ fn sample_xs(rect: Rect, corners: CornerRadius, x0: f32, x1: f32) -> Vec<f32> {
         if right <= left {
             return;
         }
-        if !rounded {
-            push_x(left);
-            push_x(right);
-            return;
-        }
-
-        let mut x = left;
-        while x < right {
-            let col_end = (x.floor() + 1.0).min(right);
-            let step = (col_end - x) / ROUNDED_SAMPLES_PER_COLUMN as f32;
-            let mut sub = x;
-            for _ in 0..ROUNDED_SAMPLES_PER_COLUMN {
-                push_x(sub);
-                sub = (sub + step).min(col_end);
-            }
-            push_x(col_end);
-            x = col_end;
+        let segments = if rounded {
+            ((right - left) * ROUNDED_SAMPLES_PER_COLUMN as f32).ceil() as usize
+        } else {
+            1
+        };
+        for i in 0..=segments {
+            push_x(left + (right - left) * i as f32 / segments as f32);
         }
     };
 
-    append_range(rect.left(), round_left_end.min(rect.right()), left_r > 0.0);
-    append_range(
-        round_left_end.max(rect.left()),
-        round_right_start.min(rect.right()),
-        false,
-    );
-    append_range(
-        round_right_start.max(rect.left()),
-        rect.right(),
-        right_r > 0.0,
-    );
+    append_range(rect.left(), rect.left() + radius, true);
+    append_range(rect.left() + radius, rect.right() - radius, false);
+    append_range(rect.right() - radius, rect.right(), true);
 
     xs
 }
@@ -117,21 +107,15 @@ fn sample_xs(rect: Rect, corners: CornerRadius, x0: f32, x1: f32) -> Vec<f32> {
 /// Closed outline (clockwise: top L→R, bottom R→L) for a horizontal track segment.
 ///
 /// `position` and `length` are in track-local pixels in `[0, rect.width()]`.
-fn segment_geometry(rect: Rect, corners: CornerRadius, position: f32, length: f32) -> Vec<Pos2> {
+fn segment_geometry(rect: Rect, rounded: RoundedEdges, position: f32, length: f32) -> Vec<Pos2> {
+    if !rect.is_positive() {
+        return Vec::new();
+    }
+
     let width = rect.width();
-
-    if width <= 0.0 || length <= 0.0 || !rect.is_positive() {
-        return Vec::new();
-    }
-
-    let start = position.clamp(0.0, width);
-    let end = (position + length).clamp(0.0, width);
-
-    if end <= start {
-        return Vec::new();
-    }
-
-    let xs = sample_xs(rect, corners, rect.left() + start, rect.left() + end);
+    let x0 = rect.left() + position.clamp(0.0, width);
+    let x1 = rect.left() + (position + length).clamp(0.0, width);
+    let xs = sample_xs(rect, x0, x1);
 
     if xs.len() < 2 {
         return Vec::new();
@@ -140,12 +124,12 @@ fn segment_geometry(rect: Rect, corners: CornerRadius, position: f32, length: f3
     let mut points = Vec::with_capacity(xs.len() * 2);
 
     for &x in &xs {
-        let (top, _) = edge_ys(rect, corners, x);
+        let (top, _) = edge_ys(rect, rounded, x);
         points.push(Pos2::new(x, top));
     }
 
     for &x in xs.iter().rev() {
-        let (_, bottom) = edge_ys(rect, corners, x);
+        let (_, bottom) = edge_ys(rect, rounded, x);
         points.push(Pos2::new(x, bottom));
     }
     points
@@ -154,12 +138,12 @@ fn segment_geometry(rect: Rect, corners: CornerRadius, position: f32, length: f3
 fn paint_segment(
     painter: &Painter,
     rect: Rect,
-    corners: CornerRadius,
+    rounded: RoundedEdges,
     position: f32,
     length: f32,
     color: Color32,
 ) {
-    let points = segment_geometry(rect, corners, position, length);
+    let points = segment_geometry(rect, rounded, position, length);
 
     if points.len() < 3 {
         return;
@@ -168,8 +152,8 @@ fn paint_segment(
     painter.add(Shape::convex_polygon(points, color, PathStroke::NONE));
 }
 
-fn paint_track_stroke(painter: &Painter, rect: Rect, corners: CornerRadius, color: Color32) {
-    let points = segment_geometry(rect, corners, 0.0, rect.width());
+fn paint_track_stroke(painter: &Painter, rect: Rect, color: Color32) {
+    let points = segment_geometry(rect, RoundedEdges::ALL, 0.0, rect.width());
     if points.len() < 3 {
         return;
     }
@@ -324,10 +308,6 @@ impl<'a> Slider<'a> {
         self.range.end().abs().max(self.range.start().abs())
     }
 
-    fn pre_normalize(&self, value: Sample) -> Sample {
-        value * self.pre_normalize_scale().recip()
-    }
-
     fn skew_normalized(&self, normalized: Sample) -> Sample {
         normalized.abs().powf(self.skew.recip()) * normalized.signum()
     }
@@ -338,7 +318,7 @@ impl<'a> Slider<'a> {
 
     /// Value space → skew domain: pre-normalize by range scale, then skew around zero.
     fn to_skew_domain(&self, value: Sample) -> Sample {
-        self.skew_normalized(self.pre_normalize(value))
+        self.skew_normalized(value / self.pre_normalize_scale())
     }
 
     fn value_to_normalized(&self, value: Sample) -> Sample {
@@ -350,10 +330,10 @@ impl<'a> Slider<'a> {
         // 3) map skewed value onto the slider range / screen
         if value >= *self.range.start() {
             let skewed_to = self.to_skew_domain(*self.range.end());
-            ((skewed - skewed_from) * (skewed_to - skewed_from).recip()).clamp(0.0, 1.0)
+            ((skewed - skewed_from) / (skewed_to - skewed_from)).clamp(0.0, 1.0)
         } else if let Some(inverse_to) = self.inverse_to {
             let skewed_inverse = self.to_skew_domain(inverse_to);
-            ((skewed - skewed_from) * (skewed_from - skewed_inverse).recip()).clamp(-1.0, 0.0)
+            ((skewed - skewed_from) / (skewed_from - skewed_inverse)).clamp(-1.0, 0.0)
         } else {
             0.0
         }
@@ -383,15 +363,17 @@ impl<'a> Slider<'a> {
         }
     }
 
-    fn update_normalized_value(&mut self, response: &mut Response, normalized: StereoSample) {
-        let left = self.normalized_to_value(normalized.left());
-        let right = self.normalized_to_value(normalized.right());
-
+    fn set_value(&mut self, response: &mut Response, new_value: StereoSample) {
         match &mut self.value {
-            Value::Mono(value) => **value = left,
-            Value::Stereo(value) => **value = StereoSample::new(left, right),
+            Value::Mono(value) => **value = new_value.left(),
+            Value::Stereo(value) => **value = new_value,
         }
         response.mark_changed();
+    }
+
+    fn update_normalized_value(&mut self, response: &mut Response, normalized: StereoSample) {
+        let new_value = normalized.map(|sample| self.normalized_to_value(sample));
+        self.set_value(response, new_value);
     }
 
     fn is_mono(&self) -> bool {
@@ -402,122 +384,76 @@ impl<'a> Slider<'a> {
         matches!(self.value, Value::Stereo(_))
     }
 
-    fn paint_bar(&self, painter: &Painter, rect: Rect, norm_value: Sample, corners: CornerRadius) {
+    fn paint_bar(&self, painter: &Painter, rect: Rect, norm_value: Sample, rounded: RoundedEdges) {
         let width = rect.width();
-
-        if norm_value < 0.0 {
-            let length = -norm_value * width;
-            let position = width - length;
-
-            if length <= 0.0 {
-                return;
-            }
-
-            paint_segment(
-                painter,
-                rect,
-                corners,
-                position,
-                length,
-                Color32::from(INVERSE_LEVEL_COLOR),
-            );
-
-            paint_segment(
-                painter,
-                rect,
-                corners,
-                position,
-                TIP_WIDTH,
-                Color32::from(INVERSE_LEVEL_TIP_COLOR),
-            );
-            return;
-        }
-
-        let length = norm_value * width;
+        let length = norm_value.abs() * width;
 
         if length <= 0.0 {
             return;
         }
 
+        if norm_value < 0.0 {
+            let position = width - length;
+            let color = Color32::from(INVERSE_LEVEL_COLOR);
+            let tip_color = Color32::from(INVERSE_LEVEL_TIP_COLOR);
+
+            paint_segment(painter, rect, rounded, position, length, color);
+            paint_segment(painter, rect, rounded, position, TIP_WIDTH, tip_color);
+            return;
+        }
+
+        // The `over` zone is painted by filling the whole bar in the over color,
+        // then repainting `[0, over_norm]` in the normal color on top.
         let over_norm = self
             .over_from
-            .map(|over_from| self.value_to_normalized(over_from));
+            .map(|over_from| self.value_to_normalized(over_from))
+            .filter(|&over| norm_value > over);
 
-        let (body_color, tip_color) = if over_norm.is_some_and(|over| norm_value > over) {
+        let (body_color, tip_color) = if over_norm.is_some() {
             (OVER_COLOR, OVER_TIP_COLOR)
         } else {
             (LEVEL_COLOR, LEVEL_TIP_COLOR)
         };
 
-        paint_segment(
-            painter,
-            rect,
-            corners,
-            0.0,
-            length,
-            Color32::from(body_color),
-        );
+        paint_segment(painter, rect, rounded, 0.0, length, body_color.into());
 
-        if let Some(over_norm) = over_norm
-            && norm_value > over_norm
-        {
-            let over_len = over_norm * width;
-
-            if over_len > 0.0 {
-                paint_segment(
-                    painter,
-                    rect,
-                    corners,
-                    0.0,
-                    over_len,
-                    Color32::from(LEVEL_COLOR),
-                );
-            }
+        if let Some(over_norm) = over_norm {
+            paint_segment(
+                painter,
+                rect,
+                rounded,
+                0.0,
+                over_norm * width,
+                Color32::from(LEVEL_COLOR),
+            );
         }
 
         paint_segment(
             painter,
             rect,
-            corners,
+            rounded,
             length - TIP_WIDTH,
             TIP_WIDTH,
-            Color32::from(tip_color),
+            tip_color.into(),
         );
     }
 
     fn paint_bars(&self, painter: &Painter, rect: Rect, normalized_value: StereoSample) {
-        let r = CORNER_RADIUS as u8;
-
         if self.is_stereo() {
-            let lr_rect = rect.split_top_bottom_at_fraction(0.5);
+            let (top, bottom) = rect.split_top_bottom_at_fraction(0.5);
+            let top_rounded = RoundedEdges {
+                top: true,
+                bottom: false,
+            };
+            let bottom_rounded = RoundedEdges {
+                top: false,
+                bottom: true,
+            };
 
-            self.paint_bar(
-                painter,
-                lr_rect.0,
-                normalized_value.left(),
-                CornerRadius {
-                    nw: r,
-                    ne: r,
-                    ..CornerRadius::ZERO
-                },
-            );
-            self.paint_bar(
-                painter,
-                lr_rect.1,
-                normalized_value.right(),
-                CornerRadius {
-                    sw: r,
-                    se: r,
-                    ..CornerRadius::ZERO
-                },
-            );
+            self.paint_bar(painter, top, normalized_value.left(), top_rounded);
+            self.paint_bar(painter, bottom, normalized_value.right(), bottom_rounded);
         } else {
-            self.paint_bar(
-                painter,
-                rect,
-                normalized_value.left(),
-                CornerRadius::same(r),
-            );
+            self.paint_bar(painter, rect, normalized_value.left(), RoundedEdges::ALL);
         }
     }
 
@@ -553,9 +489,18 @@ impl<'a> Slider<'a> {
                     normalized_value + StereoSample::splat(normalized_delta),
                 );
             } else if self.is_stereo() && response.dragged_by(PointerButton::Secondary) {
-                let delta = if let Some(pos) = response.interact_pointer_pos()
-                    && pos.y >= response.rect.center().y
+                let is_right = if response.drag_started()
+                    && let Some(pos) = response.interact_pointer_pos()
                 {
+                    let is_right = pos.y >= response.rect.center().y;
+
+                    ui.memory_mut(|mem| mem.data.insert_temp(response.id, is_right));
+                    is_right
+                } else {
+                    ui.memory(|mem| mem.data.get_temp(response.id).unwrap_or(false))
+                };
+
+                let delta = if is_right {
                     StereoSample::new(0.0, normalized_delta)
                 } else {
                     StereoSample::new(normalized_delta, 0.0)
@@ -565,15 +510,10 @@ impl<'a> Slider<'a> {
         } else if response.double_clicked_by(PointerButton::Primary)
             && let Some(default) = self.default
         {
-            match &mut self.value {
-                Value::Mono(value) => **value = default,
-                Value::Stereo(value) => **value = StereoSample::splat(default),
-            }
-            response.mark_changed();
+            self.set_value(&mut response, StereoSample::splat(default));
         }
 
         if ui.is_rect_visible(response.rect) {
-            let corners = CornerRadius::same(CORNER_RADIUS as u8);
             let painter = ui.painter();
 
             painter.rect_filled(response.rect, CORNER_RADIUS, Color32::from(BG_COLOR));
@@ -584,7 +524,7 @@ impl<'a> Slider<'a> {
                 normalized_value,
             );
 
-            paint_track_stroke(painter, response.rect, corners, Color32::from(BORDER_COLOR));
+            paint_track_stroke(painter, response.rect, Color32::from(BORDER_COLOR));
         }
 
         response.on_hover_text_at_pointer(self.format_label())
