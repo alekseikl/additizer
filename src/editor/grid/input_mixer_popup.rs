@@ -1,7 +1,8 @@
 use egui::containers::menu::menu_style;
 use egui::{
-    Align, Area, FontFamily, FontId, Frame, Grid, Id, Label, LayerId, Layout, Margin, Order, Popup,
-    PopupCloseBehavior, PopupKind, Pos2, Sense, TextFormat, TextStyle, Ui,
+    Align, Area, Color32, FontFamily, FontId, Frame, Grid, Id, Label, LayerId, Layout, Margin,
+    Order, Popup, PopupCloseBehavior, PopupKind, Pos2, Response, RichText, Sense, TextFormat,
+    TextStyle, Ui,
     text::{LayoutJob, TextWrapping},
     vec2,
 };
@@ -22,6 +23,8 @@ const MAX_LABEL_WIDTH: f32 = 200.0;
 const SLIDER_LENGTH: f32 = 160.0;
 const IO_DOT_SIZE: f32 = 8.0;
 const REMOVE_ICON: &str = "❌";
+const REMOVE_TINT: Color32 = Color32::from_rgb(0xe0, 0x6a, 0x6a);
+const MULTIPLY_TINT: Color32 = Color32::from_rgb(0xff, 0xb0, 0x00);
 
 pub struct InputMixerPopup {
     pub module_id: ModuleId,
@@ -138,18 +141,27 @@ impl InputMixerPopup {
             ui.add(Label::new(&src.label).truncate());
 
             if let Some(modulation) = src.modulation.as_ref() {
+                ui.add_space(0.5);
+
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                     ui.spacing_mut().item_spacing = vec2(2.0, 0.0);
 
-                    ui.add_space(4.0);
-                    ui.add(Label::new(format!("× {}", modulation.label)).truncate());
-                    if ui
-                        .button(REMOVE_ICON)
-                        .on_hover_text("Remove Modulation")
-                        .clicked()
-                    {
-                        ctx.bridge.remove_link_modulation(src.src, &input_id);
-                    }
+                    ui.label(RichText::new("×").color(MULTIPLY_TINT));
+                    ui.add(Label::new(&modulation.label).truncate());
+                    Frame::NONE
+                        .inner_margin(Margin {
+                            top: -1,
+                            bottom: 1,
+                            ..Default::default()
+                        })
+                        .show(ui, |ui| {
+                            if remove_button(ui)
+                                .on_hover_text("Remove Modulation")
+                                .clicked()
+                            {
+                                ctx.bridge.remove_link_modulation(src.src, &input_id);
+                            }
+                        });
                 });
             }
         });
@@ -161,16 +173,16 @@ impl InputMixerPopup {
             ctx.bridge.set_link_amount(src.src, input_id, amount);
         }
 
-        if ui
-            .button(REMOVE_ICON)
-            .on_hover_text("Remove Link")
-            .clicked()
-        {
+        if remove_button(ui).on_hover_text("Remove Link").clicked() {
             ctx.bridge.remove_link(src.src, input_id);
         }
 
         ui.end_row();
     }
+}
+
+fn remove_button(ui: &mut Ui) -> Response {
+    ui.button(RichText::new(REMOVE_ICON).color(REMOVE_TINT))
 }
 
 fn amount_slider<'a>(input: Input, amount: &'a mut StereoSample) -> Slider<'a> {
