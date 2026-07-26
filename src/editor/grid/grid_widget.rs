@@ -8,6 +8,7 @@ use egui::{
 use crate::{
     editor::grid::{
         GridEvent, WidgetCtx, WireDragState,
+        input_mixer_popup::InputMixerPopup,
         grid_widget::{
             amplifier_widget::AmplifierWidget, envelope_widget::EnvelopeWidget,
             harmonic_editor_widget::HarmonicEditorWidget, lfo_widget::LfoWidget,
@@ -20,7 +21,7 @@ use crate::{
         select_input_popup::SelectInputPopup,
     },
     synth_engine::{
-        DataType, InputId, InputSource, ModuleId, ModuleType,
+        DataType, Input, InputId, InputSource, ModuleId, ModuleType,
         ui_bridge::{
             GridVec,
             routing_state::{ModuleInput, ModuleIo},
@@ -83,6 +84,11 @@ struct LinkRequest {
     pos: Pos2,
 }
 
+struct EditInputRequest {
+    input: Input,
+    pos: Pos2,
+}
+
 pub struct GridWidget {
     io: ModuleIo,
     content: Box<dyn GridWidgetContent>,
@@ -95,6 +101,7 @@ pub struct GridWidget {
     // Screen positions of a wire input points
     input_positions: Vec<Pos2>,
     link_request: Option<LinkRequest>,
+    edit_input: Option<EditInputRequest>,
 }
 
 impl GridWidget {
@@ -121,6 +128,7 @@ impl GridWidget {
             output_pos: None,
             input_positions: Vec::new(),
             link_request: None,
+            edit_input: None,
         }
     }
 
@@ -247,6 +255,7 @@ impl GridWidget {
         }
 
         self.link_request_ui(ui, ctx);
+        self.edit_input_ui(ui, ctx);
     }
 
     fn main_ui(&mut self, ui: &mut Ui, ui_builder: UiBuilder, ctx: &mut WidgetCtx) -> Response {
@@ -307,6 +316,23 @@ impl GridWidget {
         }
     }
 
+    fn edit_input_ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
+        let Some(req) = self.edit_input.as_ref() else {
+            return;
+        };
+
+        let popup = InputMixerPopup {
+            module_id: self.io.id,
+            module_type: self.io.module_type,
+            input: req.input,
+            pos: req.pos,
+        };
+
+        if popup.show(ui, ctx) {
+            self.edit_input = None;
+        }
+    }
+
     fn auto_scroll(ui: &Ui, widget: Rect) {
         const MAX_SPEED: f32 = 18.0;
 
@@ -363,15 +389,25 @@ impl GridWidget {
         ctx: &mut WidgetCtx,
         height: f32,
         input: &ModuleInput,
-    ) -> Pos2 {
+    ) -> (Pos2, Option<EditInputRequest>) {
         let width = ui.available_width();
         let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::click_and_drag());
         let wire_color = input.meta.input_type.color();
         let dot_color = Self::modulated_dot_color(ctx, self.io.id, input);
+        let mut edit_request = None;
 
         if response.double_clicked_by(PointerButton::Primary) {
             ctx.bridge
                 .remove_input_links(InputId::new(input.meta.input_type, self.io.id));
+        } else if response.clicked_by(PointerButton::Primary) && !input.meta.is_direct {
+            let input_id = InputId::new(input.meta.input_type, self.io.id);
+
+            if !ctx.bridge.get_connected_input_sources(input_id).is_empty() {
+                edit_request = Some(EditInputRequest {
+                    input: input.meta.input_type,
+                    pos: response.interact_pointer_pos().unwrap_or(rect.center()),
+                });
+            }
         }
 
         let t = ui.ctx().animate_bool_with_time_and_easing(
@@ -398,8 +434,11 @@ impl GridWidget {
             self.io.module_type.input_label(input.meta.input_type),
         );
 
-        rect.left_center()
-            .round_to_pixels(ui.ctx().pixels_per_point())
+        (
+            rect.left_center()
+                .round_to_pixels(ui.ctx().pixels_per_point()),
+            edit_request,
+        )
     }
 
     fn draw_output(&self, ui: &mut Ui, ctx: &mut WidgetCtx, height: f32) -> (Pos2, Pos2, Response) {
@@ -485,10 +524,21 @@ impl GridWidget {
         ui.add_space(INPUTS_PADDING + item_space);
 
         let mut positions = Vec::with_capacity(self.io.inputs.len());
-        for input in self.io.inputs.iter() {
-            positions.push(self.draw_input(ui, ctx, IO_SLOT_H, input));
+        let mut edit_request = None;
+
+        for i in 0..self.io.inputs.len() {
+            let (pos, request) = self.draw_input(ui, ctx, IO_SLOT_H, &self.io.inputs[i]);
+            positions.push(pos);
+            if request.is_some() {
+                edit_request = request;
+            }
         }
+
         self.input_positions = positions;
+
+        if let Some(edit_request) = edit_request {
+            self.edit_input = Some(edit_request);
+        }
     }
 
     fn output_ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
