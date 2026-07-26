@@ -8,13 +8,10 @@ use egui::{
 };
 
 use crate::{
-    editor::{
-        grid::WidgetCtx,
-        slider::{self, Slider},
-    },
+    editor::slider::{self, Slider},
     synth_engine::{
         Input, InputId, ModuleId, ModuleType, StereoSample,
-        ui_bridge::routing_state::ConnectedInputSource,
+        ui_bridge::{UiBridge, routing_state::ConnectedInputSource},
     },
     utils::st_to_octave,
 };
@@ -35,9 +32,9 @@ pub struct InputMixerPopup {
 
 impl InputMixerPopup {
     /// Returns `true` if the edit request should be cleared.
-    pub fn show(&self, ui: &mut Ui, ctx: &mut WidgetCtx) -> bool {
+    pub fn show(&self, ui: &mut Ui, bridge: &mut UiBridge) -> bool {
         let input_id = InputId::new(self.input, self.module_id);
-        let connected = ctx.bridge.get_connected_input_sources(input_id);
+        let connected = bridge.get_connected_input_sources(input_id);
 
         if connected.is_empty() {
             return true;
@@ -64,10 +61,10 @@ impl InputMixerPopup {
             .gap(0.0)
             .frame(Frame::popup(ui.style()).inner_margin(Margin::same(8)))
             .show(|ui| {
-                self.title_ui(ui, ctx);
+                self.title_ui(ui, bridge);
                 ui.add_space(8.0);
 
-                let connected = ctx.bridge.get_connected_input_sources(input_id);
+                let connected = bridge.get_connected_input_sources(input_id);
 
                 Grid::new(("input-mixer-links", self.module_id, self.input))
                     .num_columns(3)
@@ -76,7 +73,7 @@ impl InputMixerPopup {
                     .striped(false)
                     .show(ui, |ui| {
                         for src in &connected {
-                            self.link_rows(ui, ctx, input_id, src);
+                            self.link_rows(ui, bridge, input_id, src);
                         }
                     });
             })
@@ -92,7 +89,7 @@ impl InputMixerPopup {
         popup.response.should_close()
     }
 
-    fn title_ui(&self, ui: &mut Ui, ctx: &WidgetCtx) {
+    fn title_ui(&self, ui: &mut Ui, bridge: &UiBridge) {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing = vec2(6.0, 0.0);
 
@@ -115,7 +112,7 @@ impl InputMixerPopup {
                 },
             );
             job.append(
-                &format!(" ({})", ctx.bridge.get_module_label(self.module_id)),
+                &format!(" ({})", bridge.get_module_label(self.module_id)),
                 0.0,
                 TextFormat {
                     font_id: FontId::new(size, FontFamily::Proportional),
@@ -131,23 +128,22 @@ impl InputMixerPopup {
     fn link_rows(
         &self,
         ui: &mut Ui,
-        ctx: &mut WidgetCtx,
+        bridge: &mut UiBridge,
         input_id: InputId,
         src: &ConnectedInputSource,
     ) {
-        ui.vertical(|ui| {
+        ui.with_layout(Layout::top_down(Align::Max), |ui| {
             ui.set_max_width(MAX_LABEL_WIDTH);
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
             ui.add(Label::new(&src.label).truncate());
 
             if let Some(modulation) = src.modulation.as_ref() {
                 ui.add_space(0.5);
-
-                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                ui.horizontal_centered(|ui| {
                     ui.spacing_mut().item_spacing = vec2(2.0, 0.0);
 
-                    ui.label(RichText::new("×").color(MULTIPLY_TINT));
                     ui.add(Label::new(&modulation.label).truncate());
+
                     Frame::NONE
                         .inner_margin(Margin {
                             top: -1,
@@ -155,11 +151,12 @@ impl InputMixerPopup {
                             ..Default::default()
                         })
                         .show(ui, |ui| {
-                            if remove_button(ui)
+                            if ui
+                                .button(RichText::new("×").color(MULTIPLY_TINT))
                                 .on_hover_text("Remove Modulation")
                                 .clicked()
                             {
-                                ctx.bridge.remove_link_modulation(src.src, &input_id);
+                                bridge.remove_link_modulation(src.src, &input_id);
                             }
                         });
                 });
@@ -170,11 +167,11 @@ impl InputMixerPopup {
         let slider_response = ui.add(amount_slider(self.input, &mut amount));
 
         if slider_response.changed() {
-            ctx.bridge.set_link_amount(src.src, input_id, amount);
+            bridge.set_link_amount(src.src, input_id, amount);
         }
 
         if remove_button(ui).on_hover_text("Remove Link").clicked() {
-            ctx.bridge.remove_link(src.src, input_id);
+            bridge.remove_link(src.src, input_id);
         }
 
         ui.end_row();

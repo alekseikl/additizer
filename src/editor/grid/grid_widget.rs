@@ -328,7 +328,7 @@ impl GridWidget {
             pos: req.pos,
         };
 
-        if popup.show(ui, ctx) {
+        if popup.show(ui, ctx.bridge) {
             self.edit_input = None;
         }
     }
