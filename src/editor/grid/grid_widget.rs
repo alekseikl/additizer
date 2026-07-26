@@ -8,7 +8,6 @@ use egui::{
 use crate::{
     editor::grid::{
         GridEvent, WidgetCtx, WireDragState,
-        input_mixer_popup::InputMixerPopup,
         grid_widget::{
             amplifier_widget::AmplifierWidget, envelope_widget::EnvelopeWidget,
             harmonic_editor_widget::HarmonicEditorWidget, lfo_widget::LfoWidget,
@@ -17,8 +16,10 @@ use crate::{
             spectral_filter_widget::SpectralFilterWidget,
             spectral_mixer_widget::SpectralMixerWidget,
         },
+        input_mixer_popup::InputMixerPopup,
         input_tooltip,
-        select_input_popup::SelectInputPopup,
+        link_amount_popup::LinkAmountPopup,
+        select_input_popup::{SelectInputPopup, ShowResult},
     },
     synth_engine::{
         DataType, Input, InputId, InputSource, ModuleId, ModuleType,
@@ -89,6 +90,12 @@ struct EditInputRequest {
     pos: Pos2,
 }
 
+struct LinkAmountRequest {
+    src: ModuleId,
+    input: Input,
+    pos: Pos2,
+}
+
 pub struct GridWidget {
     io: ModuleIo,
     content: Box<dyn GridWidgetContent>,
@@ -101,6 +108,7 @@ pub struct GridWidget {
     // Screen positions of a wire input points
     input_positions: Vec<Pos2>,
     link_request: Option<LinkRequest>,
+    link_amount: Option<LinkAmountRequest>,
     edit_input: Option<EditInputRequest>,
 }
 
@@ -128,6 +136,7 @@ impl GridWidget {
             output_pos: None,
             input_positions: Vec::new(),
             link_request: None,
+            link_amount: None,
             edit_input: None,
         }
     }
@@ -255,6 +264,7 @@ impl GridWidget {
         }
 
         self.link_request_ui(ui, ctx);
+        self.link_amount_ui(ui, ctx);
         self.edit_input_ui(ui, ctx);
     }
 
@@ -311,8 +321,35 @@ impl GridWidget {
             pos: req.pos,
         };
 
-        if popup.show(ui, ctx, self.io.module_type) {
-            self.link_request = None;
+        match popup.show(ui, ctx, self.io.module_type) {
+            ShowResult::MixedSelected(input) => {
+                self.link_amount = Some(LinkAmountRequest {
+                    src: req.module_id,
+                    input,
+                    pos: req.pos,
+                });
+                self.link_request = None;
+            }
+            ShowResult::Closed => self.link_request = None,
+            ShowResult::KeepVisible => {}
+        }
+    }
+
+    fn link_amount_ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
+        let Some(req) = self.link_amount.as_ref() else {
+            return;
+        };
+
+        let popup = LinkAmountPopup {
+            src: req.src,
+            module_id: self.io.id,
+            module_type: self.io.module_type,
+            input: req.input,
+            pos: req.pos,
+        };
+
+        if popup.show(ui, ctx.bridge) {
+            self.link_amount = None;
         }
     }
 

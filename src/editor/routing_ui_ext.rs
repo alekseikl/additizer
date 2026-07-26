@@ -1,6 +1,10 @@
 use egui::{Color32, ecolor::Hsva};
 
-use crate::synth_engine::{DataType, Input, ModuleType};
+use crate::{
+    editor::slider::{self, Slider},
+    synth_engine::{DataType, Input, ModuleType, StereoSample},
+    utils::st_to_octave,
+};
 
 const IO_COLOR_S: f32 = 0.8;
 const IO_COLOR_V: f32 = 0.5;
@@ -91,6 +95,72 @@ impl Input {
 
     pub fn color(&self) -> Color32 {
         color_from_hue(self.hue())
+    }
+
+    pub fn amount_slider<'a>(&self, amount: &'a mut StereoSample) -> Slider<'a> {
+        match self {
+            Self::Gain | Self::GainMix(_) => {
+                Slider::stereo(amount, 0.0..=1.0, Some(-1.0)).default(0.0)
+            }
+            Self::Level | Self::LevelMix(_) => Slider::stereo(amount, 0.0..=100.0, Some(-100.0))
+                .default(0.0)
+                .skew(2.0)
+                .units(slider::Units::Db),
+            Self::Drive | Self::ClippingLevel => Slider::stereo(amount, 0.0..=24.0, Some(-24.0))
+                .default(0.0)
+                .units(slider::Units::Db),
+            Self::Distortion => Slider::stereo(amount, 0.0..=48.0, Some(-48.0))
+                .default(0.0)
+                .units(slider::Units::Db),
+            Self::Blend | Self::GainsBlend | Self::PhasesBlend => {
+                Slider::stereo(amount, 0.0..=1.0, Some(-1.0)).default(0.0)
+            }
+            Self::Cutoff => Slider::stereo(amount, 0.0..=10.0, Some(-10.0))
+                .default(0.0)
+                .units(slider::Units::Octaves),
+            Self::Resonance => Slider::stereo(amount, -1.0..=1.0, None).default(0.0),
+            Self::Detune => {
+                Slider::stereo(amount, 0.0..=st_to_octave(1.0), Some(-st_to_octave(1.0)))
+                    .default(st_to_octave(0.2))
+                    .units(slider::Units::Octaves)
+            }
+            Self::DetunePower => Slider::stereo(amount, 0.0..=5.0, Some(-5.0)).default(0.0),
+            Self::PitchShift => Slider::stereo(amount, 0.0..=8.0, Some(-8.0))
+                .skew(1.8)
+                .default(1.0)
+                .units(slider::Units::Octaves),
+            Self::Glide => Slider::stereo(amount, 0.0..=5.0, Some(-5.0))
+                .default(0.0)
+                .skew(2.0)
+                .units(slider::Units::Time),
+            Self::GlideSlope => Slider::stereo(amount, 0.0..=1.0, Some(-1.0))
+                .default(0.0)
+                .units(slider::Units::Percents),
+            Self::PhaseShift => Slider::stereo(amount, 0.0..=1.0, Some(-1.0)).default(0.0),
+            Self::FrequencyShift => Slider::stereo(amount, 0.0..=880.0, Some(-880.0))
+                .default(0.0)
+                .skew(2.0)
+                .units(slider::Units::Frequency),
+            Self::LowFrequency => Slider::stereo(amount, 0.0..=100.0, Some(-100.0))
+                .default(1.0)
+                .skew(1.8)
+                .units(slider::Units::Frequency),
+            Self::Skew => Slider::stereo(amount, 0.0..=1.0, Some(-1.0)).default(0.0),
+            Self::Sustain => Slider::stereo(amount, 0.0..=1.0, None)
+                .default(0.5)
+                .units(slider::Units::Percents),
+            Self::Delay | Self::Attack | Self::Hold | Self::Decay | Self::Release => {
+                Slider::stereo(amount, 0.0..=8.0, Some(-8.0))
+                    .default(0.0)
+                    .skew(2.0)
+                    .units(slider::Units::Time)
+            }
+            Self::Audio
+            | Self::AudioMix(_)
+            | Self::Spectrum
+            | Self::SpectrumTo
+            | Self::SpectrumMix(_) => Slider::stereo(amount, 0.0..=1.0, None),
+        }
     }
 }
 

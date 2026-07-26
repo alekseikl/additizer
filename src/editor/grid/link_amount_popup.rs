@@ -1,42 +1,38 @@
 use egui::containers::menu::menu_style;
 use egui::{
-    Align, Area, Color32, FontFamily, FontId, Frame, Grid, Id, Label, LayerId, Layout, Margin,
-    Order, Popup, PopupCloseBehavior, PopupKind, Pos2, Response, RichText, Sense, TextFormat,
-    TextStyle, Ui,
+    Align, Area, FontFamily, FontId, Frame, Grid, Id, Label, LayerId, Layout, Margin, Order, Popup,
+    PopupCloseBehavior, PopupKind, Pos2, Sense, TextFormat, TextStyle, Ui,
     text::{LayoutJob, TextWrapping},
     vec2,
 };
 
-use crate::synth_engine::{
-    Input, InputId, ModuleId, ModuleType,
-    ui_bridge::{UiBridge, routing_state::ConnectedInputSource},
-};
+use crate::synth_engine::{Input, InputId, ModuleId, ModuleType, ui_bridge::UiBridge};
 
 const MAX_LABEL_WIDTH: f32 = 200.0;
 const IO_DOT_SIZE: f32 = 8.0;
-const REMOVE_ICON: &str = "❌";
-const REMOVE_TINT: Color32 = Color32::from_rgb(0xe0, 0x6a, 0x6a);
-const MULTIPLY_TINT: Color32 = Color32::from_rgb(0xff, 0xb0, 0x00);
 
-pub struct InputMixerPopup {
+pub struct LinkAmountPopup {
+    pub src: ModuleId,
     pub module_id: ModuleId,
     pub module_type: ModuleType,
     pub input: Input,
     pub pos: Pos2,
 }
 
-impl InputMixerPopup {
-    /// Returns `true` if the edit request should be cleared.
+impl LinkAmountPopup {
+    /// Returns `true` if the popup request should be cleared.
     pub fn show(&self, ui: &mut Ui, bridge: &mut UiBridge) -> bool {
         let input_id = InputId::new(self.input, self.module_id);
-        let connected = bridge.get_connected_input_sources(input_id);
-
-        if connected.is_empty() {
+        let Some(src) = bridge
+            .get_connected_input_sources(input_id)
+            .into_iter()
+            .find(|src| src.src == self.src)
+        else {
             return true;
-        }
+        };
 
         let ctx_egui = ui.ctx().clone();
-        let menu_id = Id::new(("input-mixer-menu", self.module_id, self.input));
+        let menu_id = Id::new(("link-amount-menu", self.module_id, self.input, self.src));
         let backdrop_id = menu_id.with("backdrop");
         let screen = ctx_egui.content_rect();
 
@@ -59,17 +55,26 @@ impl InputMixerPopup {
                 self.title_ui(ui, bridge);
                 ui.add_space(8.0);
 
-                let connected = bridge.get_connected_input_sources(input_id);
-
-                Grid::new(("input-mixer-links", self.module_id, self.input))
-                    .num_columns(3)
+                Grid::new(("link-amount-row", self.module_id, self.input, self.src))
+                    .num_columns(2)
                     .spacing([8.0, 4.0])
                     .min_col_width(0.0)
                     .striped(false)
                     .show(ui, |ui| {
-                        for src in &connected {
-                            self.link_rows(ui, bridge, input_id, src);
+                        ui.with_layout(Layout::top_down(Align::Max), |ui| {
+                            ui.set_max_width(MAX_LABEL_WIDTH);
+                            ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+                            ui.add(Label::new(&src.label).truncate());
+                        });
+
+                        let mut amount = src.amount;
+                        let slider_response = ui.add(self.input.amount_slider(&mut amount));
+
+                        if slider_response.changed() {
+                            bridge.set_link_amount(self.src, input_id, amount);
                         }
+
+                        ui.end_row();
                     });
             })
         else {
@@ -119,60 +124,4 @@ impl InputMixerPopup {
             ui.add(Label::new(job).truncate());
         });
     }
-
-    fn link_rows(
-        &self,
-        ui: &mut Ui,
-        bridge: &mut UiBridge,
-        input_id: InputId,
-        src: &ConnectedInputSource,
-    ) {
-        ui.with_layout(Layout::top_down(Align::Max), |ui| {
-            ui.set_max_width(MAX_LABEL_WIDTH);
-            ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-            ui.add(Label::new(&src.label).truncate());
-
-            if let Some(modulation) = src.modulation.as_ref() {
-                ui.add_space(0.5);
-                ui.horizontal_centered(|ui| {
-                    ui.spacing_mut().item_spacing = vec2(2.0, 0.0);
-
-                    ui.add(Label::new(&modulation.label).truncate());
-
-                    Frame::NONE
-                        .inner_margin(Margin {
-                            top: -1,
-                            bottom: 1,
-                            ..Default::default()
-                        })
-                        .show(ui, |ui| {
-                            if ui
-                                .button(RichText::new("×").color(MULTIPLY_TINT))
-                                .on_hover_text("Remove Modulation")
-                                .clicked()
-                            {
-                                bridge.remove_link_modulation(src.src, &input_id);
-                            }
-                        });
-                });
-            }
-        });
-
-        let mut amount = src.amount;
-        let slider_response = ui.add(self.input.amount_slider(&mut amount));
-
-        if slider_response.changed() {
-            bridge.set_link_amount(src.src, input_id, amount);
-        }
-
-        if remove_button(ui).on_hover_text("Disconnect").clicked() {
-            bridge.remove_link(src.src, input_id);
-        }
-
-        ui.end_row();
-    }
-}
-
-fn remove_button(ui: &mut Ui) -> Response {
-    ui.button(RichText::new(REMOVE_ICON).color(REMOVE_TINT))
 }

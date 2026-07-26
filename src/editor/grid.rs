@@ -16,6 +16,7 @@ use crate::{
 };
 
 mod input_mixer_popup;
+mod link_amount_popup;
 mod grid_widget;
 mod input_tooltip;
 mod select_input_popup;

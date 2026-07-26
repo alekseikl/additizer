@@ -80,6 +80,7 @@ pub struct LinkableModulation {
 
 pub struct LinkableInput {
     pub input_type: Input,
+    pub is_direct: bool,
     pub modulations: Vec<LinkableModulation>,
 }
 
@@ -282,7 +283,7 @@ impl UiBridge {
             return Vec::new();
         };
 
-        let linkable: Vec<(Input, Vec<ModuleId>)> = dst_module
+        let linkable: Vec<(Input, bool, Vec<ModuleId>)> = dst_module
             .inputs
             .iter()
             .filter_map(|meta| {
@@ -290,27 +291,26 @@ impl UiBridge {
                     return None;
                 }
 
-                if meta.is_direct {
-                    return Some((meta.input_type, Vec::new()));
-                }
+                let modulations = if meta.is_direct {
+                    Vec::new()
+                } else {
+                    let input_id = InputId::new(meta.input_type, dst);
 
-                let input_id = InputId::new(meta.input_type, dst);
+                    self.routing
+                        .routing
+                        .get(&input_id)
+                        .map(|sources| match sources {
+                            InputSource::Mixed(mixed) => mixed
+                                .iter()
+                                .filter(|source| source.modulation != Some(src))
+                                .map(|source| source.module_id)
+                                .collect(),
+                            InputSource::Direct(_) => Vec::new(),
+                        })
+                        .unwrap_or_default()
+                };
 
-                let modulations = self
-                    .routing
-                    .routing
-                    .get(&input_id)
-                    .map(|sources| match sources {
-                        InputSource::Mixed(mixed) => mixed
-                            .iter()
-                            .filter(|source| source.modulation != Some(src))
-                            .map(|source| source.module_id)
-                            .collect(),
-                        InputSource::Direct(_) => Vec::new(),
-                    })
-                    .unwrap_or_default();
-
-                Some((meta.input_type, modulations))
+                Some((meta.input_type, meta.is_direct, modulations))
             })
             .collect();
 
@@ -318,8 +318,9 @@ impl UiBridge {
 
         linkable
             .into_iter()
-            .map(|(input_type, mod_source_ids)| LinkableInput {
+            .map(|(input_type, is_direct, mod_source_ids)| LinkableInput {
                 input_type,
+                is_direct,
                 modulations: mod_source_ids
                     .into_iter()
                     .map(|module_id| LinkableModulation {

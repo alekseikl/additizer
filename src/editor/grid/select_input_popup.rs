@@ -1,21 +1,28 @@
 use egui::containers::menu::menu_style;
 use egui::{
     Align, Color32, CornerRadius, Frame, Id, Label, LayerId, Layout, Margin, Order, Popup,
-    PopupKind, Pos2, Response, RichText, Sense, TextStyle, Ui, UiBuilder, vec2,
+    PopupKind, Pos2, Rect, Response, RichText, Sense, Ui, UiBuilder, vec2,
 };
 
 use crate::editor::grid::{GridEvent, WidgetCtx};
+use crate::synth_engine::Input;
 use crate::synth_engine::{InputId, ModuleId, ModuleType, ui_bridge::LinkableInput};
 
 const IO_DOT_SIZE: f32 = 8.0;
-const MENU_INDENT: f32 = 8.0;
-const MENU_CONTENT_PAD: f32 = 6.0;
-const MIN_MENU_WIDTH: f32 = 100.0;
-const LINK_ICON: &str = "\u{2194}";
+const MENU_INDENT: i8 = 8;
+const MENU_CONTENT_PAD: i8 = 6;
+const MAX_ROW_WIDTH: f32 = 250.0;
+const MULTIPLY_TINT: Color32 = Color32::from_rgb(0xff, 0xb0, 0x00);
 
 enum MenuItemIcon {
     InputDot(Color32),
     Link,
+}
+
+pub enum ShowResult {
+    MixedSelected(Input),
+    Closed,
+    KeepVisible,
 }
 
 pub struct SelectInputPopup {
@@ -25,16 +32,16 @@ pub struct SelectInputPopup {
 }
 
 impl SelectInputPopup {
-    /// Returns `true` if the link request should be cleared.
-    pub fn show(&self, ui: &mut Ui, ctx: &mut WidgetCtx, module_type: ModuleType) -> bool {
+    pub fn show(&self, ui: &mut Ui, ctx: &mut WidgetCtx, module_type: ModuleType) -> ShowResult {
         let inputs = ctx.bridge.get_linkable_inputs(self.src, self.dst);
 
         if inputs.is_empty() {
-            return true;
+            return ShowResult::Closed;
         }
 
         let menu_id = Id::new(("wire-link-menu", self.dst, self.src));
         let layer_id = LayerId::new(Order::Foreground, menu_id);
+        let mut selected = None;
 
         let Some(popup) = Popup::new(menu_id, ui.ctx().clone(), self.pos, layer_id)
             .kind(PopupKind::Menu)
@@ -43,178 +50,189 @@ impl SelectInputPopup {
             .gap(0.0)
             .frame(Frame::menu(ui.style()).inner_margin(Margin::ZERO))
             .show(|ui| {
-                ui.set_width(content_width(ui, &inputs, module_type).max(MIN_MENU_WIDTH));
                 ui.spacing_mut().item_spacing.y = 0.0;
 
-                let row_count: usize = inputs.iter().map(|input| 1 + input.modulations.len()).sum();
-                let mut row = 0;
+                let mut measuring = ui.new_child(UiBuilder::new().sizing_pass().invisible());
+                self.rows(&mut measuring, ctx, module_type, &inputs, None);
 
-                for input in &inputs {
-                    let input_id = InputId::new(input.input_type, self.dst);
-                    let color = input.input_type.color();
-                    let label = module_type.input_label(input.input_type);
-                    let is_first = row == 0;
-                    let is_last = row + 1 == row_count;
-
-                    if menu_item(
-                        ui,
-                        &label,
-                        MenuItemIcon::InputDot(color),
-                        0.0,
-                        is_first,
-                        is_last,
-                    )
-                    .clicked()
-                    {
-                        ctx.bridge.create_link(self.src, input_id);
-                        ctx.events.push(GridEvent::Moved(self.dst));
-                        ui.close();
-                    }
-                    row += 1;
-
-                    for modulation in &input.modulations {
-                        let is_first = row == 0;
-                        let is_last = row + 1 == row_count;
-
-                        if menu_item(
-                            ui,
-                            &modulation.label,
-                            MenuItemIcon::Link,
-                            MENU_INDENT,
-                            is_first,
-                            is_last,
-                        )
-                        .clicked()
-                        {
-                            ctx.bridge.set_link_modulation(
-                                modulation.module_id,
-                                &input_id,
-                                self.src,
-                            );
-                            ui.close();
-                        }
-                        row += 1;
-                    }
-                }
+                let row_width = measuring.min_rect().width();
+                selected = self.rows(ui, ctx, module_type, &inputs, Some(row_width));
             })
         else {
-            return true;
+            return ShowResult::Closed;
         };
 
-        popup.response.should_close()
+        if let Some(input) = selected {
+            return ShowResult::MixedSelected(input);
+        }
+
+        if popup.response.should_close() {
+            ShowResult::Closed
+        } else {
+            ShowResult::KeepVisible
+        }
     }
-}
 
-fn text_width(ui: &Ui, label: &str) -> f32 {
-    ui.painter()
-        .layout_no_wrap(
-            label.to_owned(),
-            TextStyle::Body.resolve(ui.style()),
-            ui.visuals().text_color(),
-        )
-        .size()
-        .x
-}
+    fn rows(
+        &self,
+        ui: &mut Ui,
+        ctx: &mut WidgetCtx,
+        module_type: ModuleType,
+        inputs: &[LinkableInput],
+        row_width: Option<f32>,
+    ) -> Option<Input> {
+        let row_count: usize = inputs.iter().map(|input| 1 + input.modulations.len()).sum();
+        let mut row = 0;
 
-fn icon_width(ui: &Ui, icon: MenuItemIcon) -> f32 {
-    match icon {
-        MenuItemIcon::InputDot(_) => IO_DOT_SIZE,
-        MenuItemIcon::Link => text_width(ui, LINK_ICON),
-    }
-}
-
-fn row_content_width(ui: &Ui, label: &str, indent: f32, icon: MenuItemIcon) -> f32 {
-    2.0 * MENU_CONTENT_PAD
-        + indent
-        + icon_width(ui, icon)
-        + ui.spacing().item_spacing.x
-        + text_width(ui, label)
-}
-
-fn content_width(ui: &Ui, inputs: &[LinkableInput], module_type: ModuleType) -> f32 {
-    inputs
-        .iter()
-        .flat_map(|input| {
+        for input in inputs {
+            let input_id = InputId::new(input.input_type, self.dst);
+            let color = input.input_type.color();
             let label = module_type.input_label(input.input_type);
-            std::iter::once(row_content_width(
+            let is_first = row == 0;
+            let is_last = row + 1 == row_count;
+
+            if Self::menu_item(
                 ui,
                 &label,
-                0.0,
-                MenuItemIcon::InputDot(input.input_type.color()),
-            ))
-            .chain(
-                input
-                    .modulations
-                    .iter()
-                    .map(|m| row_content_width(ui, &m.label, MENU_INDENT, MenuItemIcon::Link)),
+                MenuItemIcon::InputDot(color),
+                0,
+                row_width,
+                is_first,
+                is_last,
             )
-        })
-        .fold(0.0, f32::max)
-}
+            .clicked()
+            {
+                ctx.bridge.create_link(self.src, input_id);
+                ctx.events.push(GridEvent::Moved(self.dst));
+                ui.close();
 
-fn highlight_radius(ui: &Ui, is_first: bool, is_last: bool) -> CornerRadius {
-    let radius = ui.visuals().menu_corner_radius;
-
-    match (is_first, is_last) {
-        (true, true) => radius,
-        (true, false) => CornerRadius {
-            nw: radius.nw - 1,
-            ne: radius.ne - 1,
-            sw: 0,
-            se: 0,
-        },
-        (false, true) => CornerRadius {
-            nw: 0,
-            ne: 0,
-            sw: radius.sw - 1,
-            se: radius.se - 1,
-        },
-        (false, false) => CornerRadius::ZERO,
-    }
-}
-
-fn menu_item(
-    ui: &mut Ui,
-    label: &str,
-    icon: MenuItemIcon,
-    indent: f32,
-    is_first: bool,
-    is_last: bool,
-) -> Response {
-    let row_height = ui.spacing().interact_size.y;
-    let row_width = ui.min_rect().width();
-
-    let (rect, response) = ui.allocate_exact_size(vec2(row_width, row_height), Sense::click());
-    let visuals = ui.style().interact(&response);
-    let text_color = visuals.text_color();
-
-    if ui.is_rect_visible(rect) && visuals.weak_bg_fill != Color32::TRANSPARENT {
-        ui.painter().rect_filled(
-            rect,
-            highlight_radius(ui, is_first, is_last),
-            visuals.weak_bg_fill,
-        );
-    }
-
-    ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
-        ui.horizontal(|ui| {
-            ui.add_space(MENU_CONTENT_PAD + indent);
-
-            match icon {
-                MenuItemIcon::InputDot(color) => {
-                    let (dot_rect, _) =
-                        ui.allocate_exact_size(vec2(IO_DOT_SIZE, row_height), Sense::empty());
-                    ui.painter()
-                        .circle_filled(dot_rect.center(), IO_DOT_SIZE * 0.5, color);
-                }
-                MenuItemIcon::Link => {
-                    ui.add(Label::new(LINK_ICON).selectable(false));
+                if !input.is_direct {
+                    return Some(input.input_type);
                 }
             }
+            row += 1;
 
-            ui.add(Label::new(RichText::new(label).color(text_color)).selectable(false));
-        });
-    });
+            for modulation in &input.modulations {
+                let is_first = row == 0;
+                let is_last = row + 1 == row_count;
 
-    response
+                if Self::menu_item(
+                    ui,
+                    &modulation.label,
+                    MenuItemIcon::Link,
+                    MENU_INDENT,
+                    row_width,
+                    is_first,
+                    is_last,
+                )
+                .clicked()
+                {
+                    ctx.bridge
+                        .set_link_modulation(modulation.module_id, &input_id, self.src);
+                    ui.close();
+                }
+                row += 1;
+            }
+        }
+
+        None
+    }
+
+    fn highlight_radius(ui: &Ui, is_first: bool, is_last: bool) -> CornerRadius {
+        let radius = ui.visuals().menu_corner_radius;
+
+        match (is_first, is_last) {
+            (true, true) => radius,
+            (true, false) => CornerRadius {
+                nw: radius.nw - 1,
+                ne: radius.ne - 1,
+                sw: 0,
+                se: 0,
+            },
+            (false, true) => CornerRadius {
+                nw: 0,
+                ne: 0,
+                sw: radius.sw - 1,
+                se: radius.se - 1,
+            },
+            (false, false) => CornerRadius::ZERO,
+        }
+    }
+
+    /// `row_width` is `None` while measuring, in which case the row takes the width of its content.
+    fn menu_item(
+        ui: &mut Ui,
+        label: &str,
+        icon: MenuItemIcon,
+        indent: i8,
+        row_width: Option<f32>,
+        is_first: bool,
+        is_last: bool,
+    ) -> Response {
+        let row_height = ui.spacing().interact_size.y;
+
+        let (rect, response) = ui.allocate_exact_size(
+            vec2(row_width.unwrap_or_default(), row_height),
+            Sense::click(),
+        );
+        let visuals = ui.style().interact(&response);
+        let text_color = visuals.text_color();
+
+        if ui.is_rect_visible(rect) && visuals.weak_bg_fill != Color32::TRANSPARENT {
+            ui.painter().rect_filled(
+                rect,
+                Self::highlight_radius(ui, is_first, is_last),
+                visuals.weak_bg_fill,
+            );
+        }
+
+        let content_rect = match row_width {
+            Some(_) => rect,
+            None => Rect::from_min_size(rect.min, vec2(MAX_ROW_WIDTH, row_height)),
+        };
+
+        ui.scope_builder(
+            UiBuilder::new()
+                .max_rect(content_rect)
+                .layout(Layout::left_to_right(Align::Center)),
+            |ui| {
+                Frame::NONE
+                    .inner_margin(Margin {
+                        left: MENU_CONTENT_PAD + indent,
+                        right: MENU_CONTENT_PAD,
+                        top: 0,
+                        bottom: 0,
+                    })
+                    .show(ui, |ui| {
+                        match icon {
+                            MenuItemIcon::InputDot(color) => {
+                                let (dot_rect, _) = ui.allocate_exact_size(
+                                    vec2(IO_DOT_SIZE, row_height),
+                                    Sense::empty(),
+                                );
+                                ui.painter().circle_filled(
+                                    dot_rect.center(),
+                                    IO_DOT_SIZE * 0.5,
+                                    color,
+                                );
+                            }
+                            MenuItemIcon::Link => {
+                                ui.add(
+                                    Label::new(RichText::new("×").color(MULTIPLY_TINT))
+                                        .selectable(false),
+                                );
+                            }
+                        }
+
+                        ui.add(
+                            Label::new(RichText::new(label).color(text_color))
+                                .truncate()
+                                .selectable(false),
+                        );
+                    });
+            },
+        );
+
+        response
+    }
 }
