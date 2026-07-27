@@ -98,10 +98,12 @@ impl Input {
     }
 
     pub fn amount_slider<'a>(&self, amount: &'a mut StereoSample) -> Slider<'a> {
+        fn bipolar<'a>(amount: &'a mut StereoSample) -> Slider<'a> {
+            Slider::stereo(amount, 0.0..=1.0, Some(-1.0)).default(0.0)
+        }
+
         match self {
-            Self::Gain | Self::GainMix(_) => {
-                Slider::stereo(amount, 0.0..=1.0, Some(-1.0)).default(0.0)
-            }
+            Self::Gain | Self::GainMix(_) => bipolar(amount),
             Self::Level | Self::LevelMix(_) => Slider::stereo(amount, 0.0..=100.0, Some(-100.0))
                 .default(0.0)
                 .skew(2.0)
@@ -112,13 +114,11 @@ impl Input {
             Self::Distortion => Slider::stereo(amount, 0.0..=48.0, Some(-48.0))
                 .default(0.0)
                 .units(slider::Units::Db),
-            Self::Blend | Self::GainsBlend | Self::PhasesBlend => {
-                Slider::stereo(amount, 0.0..=1.0, Some(-1.0)).default(0.0)
-            }
+            Self::Blend | Self::GainsBlend | Self::PhasesBlend => bipolar(amount),
             Self::Cutoff => Slider::stereo(amount, 0.0..=10.0, Some(-10.0))
                 .default(0.0)
                 .units(slider::Units::Octaves),
-            Self::Resonance => Slider::stereo(amount, -1.0..=1.0, None).default(0.0),
+            Self::Resonance => bipolar(amount),
             Self::Detune => {
                 Slider::stereo(amount, 0.0..=st_to_octave(1.0), Some(-st_to_octave(1.0)))
                     .default(st_to_octave(0.2))
@@ -133,10 +133,8 @@ impl Input {
                 .default(0.0)
                 .skew(2.0)
                 .units(slider::Units::Time),
-            Self::GlideSlope => Slider::stereo(amount, 0.0..=1.0, Some(-1.0))
-                .default(0.0)
-                .units(slider::Units::Percents),
-            Self::PhaseShift => Slider::stereo(amount, 0.0..=1.0, Some(-1.0)).default(0.0),
+            Self::GlideSlope => bipolar(amount),
+            Self::PhaseShift => bipolar(amount),
             Self::FrequencyShift => Slider::stereo(amount, 0.0..=880.0, Some(-880.0))
                 .default(0.0)
                 .skew(2.0)
@@ -145,10 +143,10 @@ impl Input {
                 .default(1.0)
                 .skew(1.8)
                 .units(slider::Units::Frequency),
-            Self::Skew => Slider::stereo(amount, 0.0..=1.0, Some(-1.0)).default(0.0),
-            Self::Sustain => Slider::stereo(amount, 0.0..=1.0, None)
-                .default(0.5)
-                .units(slider::Units::Percents),
+            Self::Skew => bipolar(amount),
+            Self::Sustain => {
+                Slider::stereo(amount, 0.0..=1.0, None).units(slider::Units::Normalized)
+            }
             Self::Delay | Self::Attack | Self::Hold | Self::Decay | Self::Release => {
                 Slider::stereo(amount, 0.0..=8.0, Some(-8.0))
                     .default(0.0)
@@ -159,7 +157,7 @@ impl Input {
             | Self::AudioMix(_)
             | Self::Spectrum
             | Self::SpectrumTo
-            | Self::SpectrumMix(_) => Slider::stereo(amount, 0.0..=1.0, None),
+            | Self::SpectrumMix(_) => bipolar(amount),
         }
     }
 }

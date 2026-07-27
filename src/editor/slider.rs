@@ -132,7 +132,7 @@ fn corner_inset(radius: f32, dist_from_edge: f32) -> f32 {
 const ROUNDED_SAMPLES_PER_COLUMN: usize = 4;
 
 pub enum Units {
-    Percents,
+    Normalized,
     Db,
     Octaves,
     Frequency,
@@ -143,7 +143,7 @@ impl Units {
     pub fn format(&self, value: Sample) -> String {
         match self {
             Self::Db => format!("{:+.1} dB", value),
-            Self::Percents => format!("{:.0}%", value * 100.0),
+            Self::Normalized => format!("{:.0}%", value * 100.0),
             Self::Octaves => {
                 let st = value * 12.0;
 
@@ -222,7 +222,7 @@ impl<'a> Slider<'a> {
             range,
             inverse_to,
             over_from: None,
-            units: Units::Percents,
+            units: Units::Normalized,
             skew: 1.0,
             default: None,
             length: 160.0,

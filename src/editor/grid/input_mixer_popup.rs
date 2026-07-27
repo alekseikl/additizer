@@ -84,7 +84,7 @@ impl InputMixerPopup {
         popup.response.should_close()
     }
 
-    fn title_ui(&self, ui: &mut Ui, bridge: &UiBridge) {
+    fn title_ui(&self, ui: &mut Ui, bridge: &mut UiBridge) {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing = vec2(6.0, 0.0);
 
@@ -117,6 +117,11 @@ impl InputMixerPopup {
             );
             job.wrap = TextWrapping::truncate_at_width(MAX_LABEL_WIDTH);
             ui.add(Label::new(job).truncate());
+
+            if remove_button(ui).on_hover_text("Disconnect All").clicked() {
+                bridge.remove_input_links(InputId::new(self.input, self.module_id));
+                ui.close();
+            }
         });
     }
 

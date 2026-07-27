@@ -433,10 +433,10 @@ impl GridWidget {
         let dot_color = Self::modulated_dot_color(ctx, self.io.id, input);
         let mut edit_request = None;
 
-        if response.double_clicked_by(PointerButton::Primary) {
+        if input.meta.is_direct && response.double_clicked_by(PointerButton::Primary) {
             ctx.bridge
                 .remove_input_links(InputId::new(input.meta.input_type, self.io.id));
-        } else if response.clicked_by(PointerButton::Primary) && !input.meta.is_direct {
+        } else if !input.meta.is_direct && response.clicked_by(PointerButton::Primary) {
             let input_id = InputId::new(input.meta.input_type, self.io.id);
 
             if !ctx.bridge.get_connected_input_sources(input_id).is_empty() {
