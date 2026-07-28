@@ -388,18 +388,6 @@ impl<'a> Slider<'a> {
         Self::corner_inset(CORNER_RADIUS, d_start).max(Self::corner_inset(CORNER_RADIUS, d_end))
     }
 
-    /// Across-axis low (top/left) bound of the rounded track silhouette at `along_screen`.
-    fn edge_low(&self, rect: Rect, rounded: RoundedEdges, along_screen: f32) -> f32 {
-        let inset = self.corner_inset_at(rect, along_screen);
-        self.orientation.across_low(rect) + if rounded.low { inset } else { 0.0 }
-    }
-
-    /// Across-axis high (bottom/right) bound of the rounded track silhouette at `along_screen`.
-    fn edge_high(&self, rect: Rect, rounded: RoundedEdges, along_screen: f32) -> f32 {
-        let inset = self.corner_inset_at(rect, along_screen);
-        self.orientation.across_high(rect) - if rounded.high { inset } else { 0.0 }
-    }
-
     /// Sample track positions along `[p0, p1]` (in `[0, span]`) matching rounded-track density.
     ///
     /// Every bar shape has radius `CORNER_RADIUS` on both ends of the track, so the
@@ -440,10 +428,7 @@ impl<'a> Slider<'a> {
     }
 
     /// Closed clockwise outline for a track segment.
-    ///
-    /// `position` and `length` are in track-local pixels in `[0, span]`. Returns `None`
-    /// when the rect is degenerate or too few points are produced for a polygon.
-    fn segment_geometry(
+    fn segment_outline(
         &self,
         rect: Rect,
         rounded: RoundedEdges,
@@ -458,20 +443,36 @@ impl<'a> Slider<'a> {
         let span = o.along_span(rect);
         let p0 = position.clamp(0.0, span);
         let p1 = (position + length).clamp(0.0, span);
-        let ts = self.sample_track_positions(rect, p0, p1);
 
-        let mut points = Vec::with_capacity(ts.len() * 2);
-
-        for &t in &ts {
-            let along = o.along_screen(rect, t);
-            let low = self.edge_low(rect, rounded, along);
-            points.push(o.point(along, low));
+        if p1 <= p0 {
+            return None;
         }
 
-        for &t in ts.iter().rev() {
-            let along = o.along_screen(rect, t);
-            let high = self.edge_high(rect, rounded, along);
-            points.push(o.point(along, high));
+        let ts = self.sample_track_positions(rect, p0, p1);
+        let mut points = Vec::with_capacity(ts.len() * 2 + 4);
+
+        let low = o.across_low(rect);
+
+        if rounded.low {
+            for &t in &ts {
+                let along = o.along_screen(rect, t);
+                points.push(o.point(along, low + self.corner_inset_at(rect, along)));
+            }
+        } else {
+            points.push(o.point(o.along_screen(rect, p0), low));
+            points.push(o.point(o.along_screen(rect, p1), low));
+        }
+
+        let high = o.across_high(rect);
+
+        if rounded.high {
+            for &t in ts.iter().rev() {
+                let along = o.along_screen(rect, t);
+                points.push(o.point(along, high - self.corner_inset_at(rect, along)));
+            }
+        } else {
+            points.push(o.point(o.along_screen(rect, p1), high));
+            points.push(o.point(o.along_screen(rect, p0), high));
         }
 
         (points.len() >= 3).then_some(points)
@@ -479,7 +480,7 @@ impl<'a> Slider<'a> {
 
     fn paint_track_stroke(&self, painter: &Painter, rect: Rect, color: Color32) {
         let span = self.orientation.along_span(rect);
-        if let Some(points) = self.segment_geometry(rect, RoundedEdges::ALL, 0.0, span) {
+        if let Some(points) = self.segment_outline(rect, RoundedEdges::ALL, 0.0, span) {
             painter.add(Shape::closed_line(
                 points,
                 PathStroke::new(BORDER_WIDTH, color).middle(),
@@ -531,28 +532,34 @@ impl<'a> Slider<'a> {
             (abs_position, visible_tip_width)
         };
 
-        if let Some(points) = self.segment_geometry(rect, rounded, position, length) {
-            let mut mesh = Mesh::with_texture(TextureId::default());
-
-            self.append_fan(&mut mesh, &points, color);
-            painter.add(Shape::mesh(mesh));
-        }
+        let mut mesh = Mesh::with_texture(TextureId::default());
+        self.append_segment(&mut mesh, rect, rounded, position, length, color);
+        painter.add(Shape::mesh(mesh));
     }
 
     fn paint_mono_bar(&self, painter: &Painter, rect: Rect, end_norm: Sample) {
         let mut mesh = Mesh::with_texture(TextureId::default());
 
-        self.append_segment_fan(&mut mesh, rect, RoundedEdges::ALL, 0.0, end_norm);
+        self.append_bar_part(&mut mesh, rect, RoundedEdges::ALL, 0.0, end_norm);
         painter.add(Shape::mesh(mesh));
     }
 
-    /// Appends a convex polygon's outline as a triangle fan to `mesh`, all vertices colored `color`.
-    fn append_fan(&self, mesh: &mut Mesh, points: &[Pos2], color: Color32) {
-        if points.len() < 3 {
+    /// Appends a filled track segment as a triangle fan to `mesh`.
+    fn append_segment(
+        &self,
+        mesh: &mut Mesh,
+        rect: Rect,
+        rounded: RoundedEdges,
+        position: f32,
+        length: f32,
+        color: Color32,
+    ) {
+        let Some(points) = self.segment_outline(rect, rounded, position, length) else {
             return;
-        }
+        };
+
         let base = mesh.vertices.len() as u32;
-        for &p in points {
+        for &p in &points {
             mesh.vertices.push(Vertex::untextured(p, color));
         }
         let n = points.len() as u32;
@@ -562,7 +569,7 @@ impl<'a> Slider<'a> {
     }
 
     /// Appends the body fill `[start_norm, end_norm]` (and its `over`-zone repaint) to `mesh`.
-    fn append_segment_fan(
+    fn append_bar_part(
         &self,
         mesh: &mut Mesh,
         rect: Rect,
@@ -585,9 +592,7 @@ impl<'a> Slider<'a> {
             (start_norm.abs() * span, self.bar_color(end_norm))
         };
 
-        if let Some(points) = self.segment_geometry(rect, rounded, position, length) {
-            self.append_fan(mesh, &points, body_color);
-        }
+        self.append_segment(mesh, rect, rounded, position, length, body_color);
 
         if end_norm >= 0.0
             && let Some(over_norm) = self
@@ -596,11 +601,14 @@ impl<'a> Slider<'a> {
                 .filter(|&over| end_norm > over)
         {
             let over_pos = (over_norm * span).max(position);
-            if let Some(points) =
-                self.segment_geometry(rect, rounded, position, (over_pos - position).min(length))
-            {
-                self.append_fan(mesh, &points, Color32::from(LEVEL_COLOR));
-            }
+            self.append_segment(
+                mesh,
+                rect,
+                rounded,
+                position,
+                (over_pos - position).min(length),
+                Color32::from(LEVEL_COLOR),
+            );
         }
     }
 
@@ -623,15 +631,15 @@ impl<'a> Slider<'a> {
 
             let mut mesh = Mesh::with_texture(TextureId::default());
 
-            self.append_segment_fan(&mut mesh, rect, RoundedEdges::ALL, 0.0, common);
-            self.append_segment_fan(&mut mesh, excess_rect, excess_rounded, common, excess);
+            self.append_bar_part(&mut mesh, rect, RoundedEdges::ALL, 0.0, common);
+            self.append_bar_part(&mut mesh, excess_rect, excess_rounded, common, excess);
             painter.add(Shape::mesh(mesh));
         } else {
             // Mixed signs: bars don't overlap, fall back to two independent per-half bars.
             let mut mesh = Mesh::with_texture(TextureId::default());
 
-            self.append_segment_fan(&mut mesh, first_rect, RoundedEdges::FIRST, 0.0, left);
-            self.append_segment_fan(&mut mesh, second_rect, RoundedEdges::SECOND, 0.0, right);
+            self.append_bar_part(&mut mesh, first_rect, RoundedEdges::FIRST, 0.0, left);
+            self.append_bar_part(&mut mesh, second_rect, RoundedEdges::SECOND, 0.0, right);
             painter.add(Shape::mesh(mesh));
         };
     }
