@@ -21,32 +21,30 @@ impl StereoSample {
         Self { channels: [lr, lr] }
     }
 
-    #[inline]
+    pub fn channels(&self) -> &[Sample; NUM_CHANNELS] {
+        &self.channels
+    }
+
     pub fn left(&self) -> Sample {
         self.channels[0]
     }
 
-    #[inline]
     pub fn right(&self) -> Sample {
         self.channels[1]
     }
 
-    #[inline]
     pub fn set_left(&mut self, left: Sample) {
         self.channels[0] = left;
     }
 
-    #[inline]
     pub fn set_right(&mut self, right: Sample) {
         self.channels[1] = right;
     }
 
-    #[inline]
     pub fn iter(&self) -> impl Iterator<Item = &Sample> {
         self.channels.iter()
     }
 
-    #[inline]
     pub fn map(&self, f: impl FnMut(Sample) -> Sample) -> Self {
         Self {
             channels: self.channels.map(f),

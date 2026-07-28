@@ -2,8 +2,11 @@ use std::ops::RangeInclusive;
 
 use egui::{
     Color32, FontFamily, FontId, Id, LayerId, Mesh, Order, Painter, PointerButton, Pos2, Rect,
-    Response, Sense, Shape, Stroke, StrokeKind, TextureId, Ui, Widget, ecolor::Hsva,
-    epaint::PathStroke, epaint::Vertex, vec2,
+    Response, Sense, Shape, Stroke, StrokeKind, TextureId, Ui, Widget,
+    ecolor::Hsva,
+    emath::GuiRounding,
+    epaint::{PathStroke, Vertex},
+    vec2,
 };
 
 use crate::synth_engine::{Sample, StereoSample};
@@ -16,7 +19,7 @@ const BG_COLOR: Hsva = hsva(0.115, 0.05, 0.01, 1.0);
 const BORDER_COLOR: Hsva = hsva(0.115, 0.35, 0.2, 1.0);
 
 const LEVEL_COLOR: Hsva = hsva(0.1, 0.8, 0.15, 1.0);
-const LEVEL_TIP_COLOR: Hsva = hsva(0.1, 0.8, 0.5, 1.0);
+const LEVEL_TIP_COLOR: Hsva = hsva(0.1, 0.8, 0.4, 1.0);
 
 const INVERSE_LEVEL_COLOR: Hsva = hsva(0.06, 0.8, 0.15, 1.0);
 const INVERSE_LEVEL_TIP_COLOR: Hsva = hsva(0.06, 0.8, 0.5, 1.0);
@@ -26,11 +29,8 @@ const OVER_TIP_COLOR: Hsva = hsva(0.03, 0.8, 0.5, 1.0);
 
 const CORNER_RADIUS: f32 = 4.0;
 
-/// Width of the bright leading tip marker at the fill's edge.
-const TIP_WIDTH: f32 = 1.0;
-
-/// Width of the modulated-value overlay tip marker (stereo sliders only).
-const MODULATED_TIP_WIDTH: f32 = 2.0;
+const BORDER_WIDTH: f32 = 1.0;
+const TIP_WIDTH: f32 = 2.0;
 
 const LABEL_TEXT_COLOR: Hsva = hsva(0.115, 0.05, 0.5, 1.0);
 const LABEL_PADDING: f32 = 6.0;
@@ -95,6 +95,14 @@ impl Orientation {
             Self::Vertical => Pos2::new(across, along_screen),
         }
     }
+
+    /// Split `rect` into the two stereo channel halves (first = left, second = right).
+    fn split_channels(self, rect: Rect) -> (Rect, Rect) {
+        match self {
+            Self::Horizontal => rect.split_top_bottom_at_fraction(0.5),
+            Self::Vertical => rect.split_left_right_at_fraction(0.5),
+        }
+    }
 }
 
 /// Which across-axis edges of a bar have rounded corners.
@@ -119,16 +127,6 @@ impl RoundedEdges {
         low: false,
         high: true,
     };
-}
-
-/// Vertical inset from a rounded corner at `dist_from_edge` from that edge.
-fn corner_inset(radius: f32, dist_from_edge: f32) -> f32 {
-    if radius <= 0.0 || dist_from_edge >= radius {
-        return 0.0;
-    }
-
-    let penetration = radius - dist_from_edge.max(0.0);
-    radius - (radius * radius - penetration * penetration).sqrt()
 }
 
 /// Sample density per track column in rounded zones (smoother arc edges).
@@ -372,12 +370,22 @@ impl<'a> Slider<'a> {
         matches!(self.value, Value::Stereo(_))
     }
 
+    /// Across-axis inset from a rounded corner at `dist_from_edge` from that edge.
+    fn corner_inset(radius: f32, dist_from_edge: f32) -> f32 {
+        if radius <= 0.0 || dist_from_edge >= radius {
+            return 0.0;
+        }
+
+        let penetration = radius - dist_from_edge.max(0.0);
+        radius - (radius * radius - penetration * penetration).sqrt()
+    }
+
     /// Inset at `along_screen` from the rounded corners at the track's along-axis ends.
     fn corner_inset_at(&self, rect: Rect, along_screen: f32) -> f32 {
         let o = self.orientation;
         let d_start = o.dist_from_start(rect, along_screen);
         let d_end = o.dist_from_end(rect, along_screen);
-        corner_inset(CORNER_RADIUS, d_start).max(corner_inset(CORNER_RADIUS, d_end))
+        Self::corner_inset(CORNER_RADIUS, d_start).max(Self::corner_inset(CORNER_RADIUS, d_end))
     }
 
     /// Across-axis low (top/left) bound of the rounded track silhouette at `along_screen`.
@@ -474,18 +482,18 @@ impl<'a> Slider<'a> {
         if let Some(points) = self.segment_geometry(rect, RoundedEdges::ALL, 0.0, span) {
             painter.add(Shape::closed_line(
                 points,
-                PathStroke::new(1.0, color).inside(),
+                PathStroke::new(BORDER_WIDTH, color).middle(),
             ));
         }
     }
 
-    fn bar_body_color(&self, end_norm: Sample) -> Color32 {
-        if end_norm < 0.0 {
+    fn bar_color(&self, norm_value: Sample) -> Color32 {
+        if norm_value < 0.0 {
             Color32::from(INVERSE_LEVEL_COLOR)
         } else if self
             .over_from
             .map(|over_from| self.value_to_normalized(over_from))
-            .is_some_and(|over| end_norm > over)
+            .is_some_and(|over| norm_value > over)
         {
             Color32::from(OVER_COLOR)
         } else {
@@ -493,13 +501,13 @@ impl<'a> Slider<'a> {
         }
     }
 
-    fn bar_tip_color(&self, end_norm: Sample) -> Color32 {
-        if end_norm < 0.0 {
+    fn tip_color(&self, norm_value: Sample) -> Color32 {
+        if norm_value < 0.0 {
             Color32::from(INVERSE_LEVEL_TIP_COLOR)
         } else if self
             .over_from
             .map(|over_from| self.value_to_normalized(over_from))
-            .is_some_and(|over| end_norm > over)
+            .is_some_and(|over| norm_value > over)
         {
             Color32::from(OVER_TIP_COLOR)
         } else {
@@ -507,117 +515,35 @@ impl<'a> Slider<'a> {
         }
     }
 
-    /// Paints a colored tip marker per stereo channel at the modulated value's leading
-    /// edge, drawn over the regular bars. Reuses `paint_tip` geometry so the marker follows
-    /// the track's rounded silhouette; colors come from the volume-meter palette (green for
-    /// a regular positive level, red for the over zone, yellow for inverse).
-    fn paint_modulated_tips(&self, painter: &Painter, rect: Rect, norm_modulated: StereoSample) {
-        let (first_rect, second_rect) = match self.orientation {
-            Orientation::Horizontal => rect.split_top_bottom_at_fraction(0.5),
-            Orientation::Vertical => rect.split_left_right_at_fraction(0.5),
-        };
-
-        for (half_rect, rounded, norm) in [
-            (first_rect, RoundedEdges::FIRST, norm_modulated.left()),
-            (second_rect, RoundedEdges::SECOND, norm_modulated.right()),
-        ] {
-            let color = if norm < 0.0 {
-                super::volume_meter::YELLOW
-            } else if self
-                .over_from
-                .map(|over_from| self.value_to_normalized(over_from))
-                .is_some_and(|over| norm > over)
-            {
-                super::volume_meter::RED
-            } else {
-                super::volume_meter::GREEN
-            };
-
-            self.paint_tip(painter, half_rect, norm, rounded, color, MODULATED_TIP_WIDTH);
-        }
-    }
-
-    /// Paints the body fill `[start_norm, end_norm]` (no tip), with `over`-zone repaint,
-    /// as a single `Shape::mesh`.
-    fn paint_bar_body(
-        &self,
-        painter: &Painter,
-        rect: Rect,
-        start_norm: Sample,
-        end_norm: Sample,
-        rounded: RoundedEdges,
-    ) {
-        let mut mesh = Mesh::with_texture(TextureId::default());
-
-        self.append_body_fan(&mut mesh, rect, rounded, start_norm, end_norm);
-
-        if !mesh.indices.is_empty() {
-            painter.add(Shape::mesh(mesh));
-        }
-    }
-
-    /// Paints the bright tip marker at the leading edge of `end_norm` as a single `Shape::mesh`.
-    fn paint_bar_tip(
-        &self,
-        painter: &Painter,
-        rect: Rect,
-        end_norm: Sample,
-        rounded: RoundedEdges,
-    ) {
-        self.paint_tip(painter, rect, end_norm, rounded, self.bar_tip_color(end_norm), TIP_WIDTH);
-    }
-
-    /// Tip marker geometry shared by the regular bar tip and the modulated-value overlay.
-    /// `color` overrides the slider's own tip palette (used to paint the modulated tip with
-    /// the volume-meter palette); `width` is the marker's along-axis thickness.
-    fn paint_tip(
-        &self,
-        painter: &Painter,
-        rect: Rect,
-        end_norm: Sample,
-        rounded: RoundedEdges,
-        color: Color32,
-        width: f32,
-    ) {
+    fn paint_tip(&self, painter: &Painter, rect: Rect, norm_value: Sample, rounded: RoundedEdges) {
+        let color = self.tip_color(norm_value);
         let span = self.orientation.along_span(rect);
-        let position = if end_norm < 0.0 {
-            span - end_norm.abs() * span
+        let abs_position = norm_value.abs() * span;
+        let visible_tip_width = if (0.0..TIP_WIDTH).contains(&abs_position) {
+            abs_position
         } else {
-            (end_norm * span - width).max(0.0)
+            TIP_WIDTH
         };
 
-        let mut mesh = Mesh::with_texture(TextureId::default());
+        let (position, length) = if norm_value < 0.0 {
+            (span - abs_position - visible_tip_width, TIP_WIDTH)
+        } else {
+            (abs_position, visible_tip_width)
+        };
 
-        if let Some(points) = self.segment_geometry(rect, rounded, position, width) {
+        if let Some(points) = self.segment_geometry(rect, rounded, position, length) {
+            let mut mesh = Mesh::with_texture(TextureId::default());
+
             self.append_fan(&mut mesh, &points, color);
-        }
-
-        if !mesh.indices.is_empty() {
             painter.add(Shape::mesh(mesh));
         }
     }
 
-    /// Paints the bar filling `[start_norm, end_norm]` (normalized, both in `[-1, 1]`).
-    ///
-    /// `start_norm == 0.0` reproduces the original full-from-bottom behavior. The `over`
-    /// zone repaint is shifted to stay relative to `start_norm`.
-    fn paint_bar(
-        &self,
-        painter: &Painter,
-        rect: Rect,
-        start_norm: Sample,
-        end_norm: Sample,
-        rounded: RoundedEdges,
-    ) {
-        let span = self.orientation.along_span(rect);
-        let length = (end_norm - start_norm).abs() * span;
+    fn paint_mono_bar(&self, painter: &Painter, rect: Rect, end_norm: Sample) {
+        let mut mesh = Mesh::with_texture(TextureId::default());
 
-        if length <= 0.0 {
-            return;
-        }
-
-        self.paint_bar_body(painter, rect, start_norm, end_norm, rounded);
-        self.paint_bar_tip(painter, rect, end_norm, rounded);
+        self.append_segment_fan(&mut mesh, rect, RoundedEdges::ALL, 0.0, end_norm);
+        painter.add(Shape::mesh(mesh));
     }
 
     /// Appends a convex polygon's outline as a triangle fan to `mesh`, all vertices colored `color`.
@@ -636,7 +562,7 @@ impl<'a> Slider<'a> {
     }
 
     /// Appends the body fill `[start_norm, end_norm]` (and its `over`-zone repaint) to `mesh`.
-    fn append_body_fan(
+    fn append_segment_fan(
         &self,
         mesh: &mut Mesh,
         rect: Rect,
@@ -651,13 +577,12 @@ impl<'a> Slider<'a> {
         }
 
         let (position, body_color) = if end_norm < 0.0 {
-            // Inverse: see `paint_bar_body` for the screen-space mapping.
             (
                 span - start_norm.abs().max(end_norm.abs()) * span,
                 Color32::from(INVERSE_LEVEL_COLOR),
             )
         } else {
-            (start_norm.abs() * span, self.bar_body_color(end_norm))
+            (start_norm.abs() * span, self.bar_color(end_norm))
         };
 
         if let Some(points) = self.segment_geometry(rect, rounded, position, length) {
@@ -679,74 +604,61 @@ impl<'a> Slider<'a> {
         }
     }
 
-    /// Paints the combined stereo body (common full-width + excess on the taller channel's half)
-    /// as a single mesh. For positive values the taller bar is `max(L,R)`; for inverse (both
-    /// negative) the taller bar is `min(L,R)` (more negative reaches further).
-    fn paint_combined_body(
-        &self,
-        painter: &Painter,
-        rect: Rect,
-        first_rect: Rect,
-        second_rect: Rect,
-        left: Sample,
-        right: Sample,
-    ) {
-        // `common` is the value whose bar is fully covered by the other (the shorter bar);
-        // `excess` is the value whose bar sticks out (the taller bar).
-        let (common, excess, excess_on_first) = if (left >= 0.0) == (right >= 0.0) {
-            // Same sign: positive -> common = min, excess = max; inverse -> common = max, excess = min.
-            if left >= 0.0 {
+    fn paint_stereo_bars(&self, painter: &Painter, rect: Rect, norm_value: StereoSample) {
+        let [left, right] = *norm_value.channels();
+        let (first_rect, second_rect) = self.orientation.split_channels(rect);
+
+        if (left >= 0.0) == (right >= 0.0) {
+            let (common, excess, excess_on_left) = if left >= 0.0 {
                 (left.min(right), left.max(right), left > right)
             } else {
                 (left.max(right), left.min(right), left < right)
-            }
-        } else {
-            // Mixed signs: bars don't overlap, fall back to two independent per-half bodies.
+            };
+
+            let (excess_rect, excess_rounded) = if excess_on_left {
+                (first_rect, RoundedEdges::FIRST)
+            } else {
+                (second_rect, RoundedEdges::SECOND)
+            };
+
             let mut mesh = Mesh::with_texture(TextureId::default());
-            self.append_body_fan(&mut mesh, first_rect, RoundedEdges::FIRST, 0.0, left);
-            self.append_body_fan(&mut mesh, second_rect, RoundedEdges::SECOND, 0.0, right);
+
+            self.append_segment_fan(&mut mesh, rect, RoundedEdges::ALL, 0.0, common);
+            self.append_segment_fan(&mut mesh, excess_rect, excess_rounded, common, excess);
             painter.add(Shape::mesh(mesh));
-            return;
-        };
-
-        let (excess_rect, excess_rounded) = if excess_on_first {
-            (first_rect, RoundedEdges::FIRST)
         } else {
-            (second_rect, RoundedEdges::SECOND)
-        };
+            // Mixed signs: bars don't overlap, fall back to two independent per-half bars.
+            let mut mesh = Mesh::with_texture(TextureId::default());
 
-        let mut mesh = Mesh::with_texture(TextureId::default());
-        self.append_body_fan(&mut mesh, rect, RoundedEdges::ALL, 0.0, common);
-        self.append_body_fan(&mut mesh, excess_rect, excess_rounded, common, excess);
-        painter.add(Shape::mesh(mesh));
+            self.append_segment_fan(&mut mesh, first_rect, RoundedEdges::FIRST, 0.0, left);
+            self.append_segment_fan(&mut mesh, second_rect, RoundedEdges::SECOND, 0.0, right);
+            painter.add(Shape::mesh(mesh));
+        };
     }
 
     fn paint_bars(&self, painter: &Painter, rect: Rect, norm_value: StereoSample) {
         if self.is_stereo() {
-            let (first_rect, second_rect) = match self.orientation {
-                Orientation::Horizontal => rect.split_top_bottom_at_fraction(0.5),
-                Orientation::Vertical => rect.split_left_right_at_fraction(0.5),
+            self.paint_stereo_bars(painter, rect, norm_value);
+
+            let [left, right] = if let Some(modulated) = self.modulated_value {
+                *modulated.map(|v| self.value_to_normalized(v)).channels()
+            } else {
+                *norm_value.channels()
             };
 
-            let left = norm_value.left();
-            let right = norm_value.right();
-
             if left == right {
-                // Equal channels: render as a single mono bar (with tip).
-                self.paint_bar(painter, rect, 0.0, left, RoundedEdges::ALL);
+                self.paint_tip(painter, rect, left, RoundedEdges::ALL);
             } else {
-                // Combined body (common + excess) as a single geometry, then separate tips.
-                self.paint_combined_body(painter, rect, first_rect, second_rect, left, right);
-                self.paint_bar_tip(painter, first_rect, left, RoundedEdges::FIRST);
-                self.paint_bar_tip(painter, second_rect, right, RoundedEdges::SECOND);
-            }
+                let (first_rect, second_rect) = self.orientation.split_channels(rect);
 
-            if let Some(modulated) = self.modulated_value {
-                let norm_modulated = modulated.map(|v| self.value_to_normalized(v));
-                self.paint_modulated_tips(painter, rect, norm_modulated);
+                self.paint_tip(painter, first_rect, left, RoundedEdges::FIRST);
+                self.paint_tip(painter, second_rect, right, RoundedEdges::SECOND);
             }
         } else {
-            self.paint_bar(painter, rect, 0.0, norm_value.left(), RoundedEdges::ALL);
+            let norm_value = norm_value.left();
+
+            self.paint_mono_bar(painter, rect, norm_value);
+            self.paint_tip(painter, rect, norm_value, RoundedEdges::ALL);
         }
     }
 
@@ -762,12 +674,7 @@ impl<'a> Slider<'a> {
         }
     }
 
-    /// Floating value label shown while dragging, as long as the cursor stays over the slider.
-    ///
-    /// Horizontal: above the track, left-aligned; falls below when it would clip the screen top.
-    /// Vertical: to the right of the track, top-aligned; falls to the left when it would clip the
-    /// screen right edge. Painted on the `Order::Foreground` layer so it sits above siblings.
-    fn paint_drag_label(&self, ui: &Ui, slider_rect: Rect) {
+    fn paint_label(&self, ui: &Ui, slider_rect: Rect) {
         let text = self.format_label();
         let text_color = Color32::from(LABEL_TEXT_COLOR);
         let bg_color = Color32::from(BG_COLOR);
@@ -822,20 +729,20 @@ impl<'a> Slider<'a> {
         fg_painter.galley(box_rect.min + padding, galley, text_color);
     }
 
-    /// Whether the floating value label should be shown right now.
     fn label_visible(&self, ui: &Ui, response: &Response) -> bool {
         let now = ui.input(|i| i.time);
-        let button_down = response.is_pointer_button_down_on();
+        let button_down_on = response.is_pointer_button_down_on();
+        let button_down = ui.input(|i| i.pointer.primary_down() || i.pointer.secondary_down());
         let contains = response.contains_pointer();
         let state_id = response.id.with("label-state");
 
         ui.memory_mut(|mem| {
             let state = mem.data.get_temp_mut_or_default::<LabelState>(state_id);
 
-            if button_down {
+            if button_down_on {
                 state.visible = true;
                 state.hover_since = None;
-            } else if !contains {
+            } else if !contains || button_down {
                 state.visible = false;
                 state.hover_since = None;
             } else {
@@ -859,7 +766,6 @@ impl<'a> Slider<'a> {
         if response.dragged() {
             let mut normalized_delta = match self.orientation {
                 Orientation::Horizontal => response.drag_delta().x / response.rect.width(),
-                // Dragging up should increase the value; screen y grows downward.
                 Orientation::Vertical => -response.drag_delta().y / response.rect.height(),
             };
 
@@ -904,24 +810,15 @@ impl<'a> Slider<'a> {
 
         if ui.is_rect_visible(response.rect) {
             let painter = ui.painter();
+            let rect = response.rect.round_to_pixel_center(ui.pixels_per_point());
 
-            painter.rect_filled(response.rect, CORNER_RADIUS, Color32::from(BG_COLOR));
-
-            let clip_shrink = match self.orientation {
-                Orientation::Horizontal => vec2(1.0, 0.0),
-                Orientation::Vertical => vec2(0.0, 1.0),
-            };
-            self.paint_bars(
-                &painter.with_clip_rect(response.rect.shrink2(clip_shrink)),
-                response.rect,
-                normalized_value,
-            );
-
-            self.paint_track_stroke(painter, response.rect, Color32::from(BORDER_COLOR));
+            painter.rect_filled(rect, CORNER_RADIUS, Color32::from(BG_COLOR));
+            self.paint_bars(painter, rect, normalized_value);
+            self.paint_track_stroke(painter, rect, Color32::from(BORDER_COLOR));
         }
 
         if self.label_visible(ui, &response) {
-            self.paint_drag_label(ui, response.rect);
+            self.paint_label(ui, response.rect);
         }
 
         response

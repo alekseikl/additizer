@@ -180,7 +180,7 @@ impl Input {
                 .over(8.0)
                 .default(0.0)
                 .units(slider::Units::Octaves),
-            Self::Resonance => Slider::stereo(value, 0.0..=1.0, Some(-1.0)),
+            Self::Resonance => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
             Self::Detune => Slider::stereo(value, 0.0..=from_st(1.0), None)
                 .default(from_st(0.2))
                 .units(slider::Units::Octaves),

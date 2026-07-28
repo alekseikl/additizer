@@ -142,11 +142,11 @@ impl SpectralFilterUI {
 
                 ui.label("Resonance");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.resonance,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::Resonance,
                         module_id,
+                        &mut config.resonance,
+                        bridge,
                     ))
                     .changed()
                 {
