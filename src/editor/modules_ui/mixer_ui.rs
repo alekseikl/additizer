@@ -8,7 +8,8 @@ use crate::{
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{
-        Input, Mixer, ModuleId, VolumeType, mixer::MixerUiBridge,
+        Input, Mixer, ModuleId, VolumeType,
+        mixer::MixerUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
 };
@@ -28,22 +29,13 @@ impl MixerUi {
         }
     }
 
-    fn paint_ui(
-        &mut self,
-        bridge: &mut UiBridge,
-        mixer_bridge: &mut MixerUiBridge,
-        ui: &mut Ui,
-    ) {
+    fn paint_ui(&mut self, bridge: &mut UiBridge, mixer_bridge: &mut MixerUiBridge, ui: &mut Ui) {
         let module_id = self.module_id;
         let mut config = mixer_bridge.config().clone();
         let input_volume_type_change = Rc::new(Cell::new(None));
         let output_volume_type_change = Rc::new(Cell::new(None));
 
-        ui.add(ModuleLabel::new(
-            &mut self.label_state,
-            bridge,
-            module_id,
-        ));
+        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
 
         ui.add_space(20.0);
 
@@ -103,10 +95,8 @@ impl MixerUi {
                                                     )
                                                     .clicked()
                                                 {
-                                                    input_volume_type_change.set(Some((
-                                                        input_idx,
-                                                        *vol_type_item,
-                                                    )));
+                                                    input_volume_type_change
+                                                        .set(Some((input_idx, *vol_type_item)));
                                                 }
                                             }
                                         });
@@ -165,8 +155,7 @@ impl MixerUi {
                                                 )
                                                 .clicked()
                                             {
-                                                output_volume_type_change
-                                                    .set(Some(*vol_type_item));
+                                                output_volume_type_change.set(Some(*vol_type_item));
                                             }
                                         }
                                     });

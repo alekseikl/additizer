@@ -1,6 +1,6 @@
 use egui::{ComboBox, Response, Ui, Widget};
 
-use crate::synth_engine::{Input, ModuleId, InputId, ui_bridge::UiBridge};
+use crate::synth_engine::{Input, InputId, ModuleId, ui_bridge::UiBridge};
 
 pub struct DirectInput<'a> {
     bridge: &'a mut UiBridge,

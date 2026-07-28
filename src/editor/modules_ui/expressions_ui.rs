@@ -6,7 +6,8 @@ use crate::{
         utils::confirm_module_removal,
     },
     synth_engine::{
-        Expression, ModuleId, StereoSample, expressions::ExpressionsUiBridge,
+        Expression, ModuleId, StereoSample,
+        expressions::ExpressionsUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
 };
@@ -48,11 +49,7 @@ impl ExpressionsUi {
         let module_id = self.module_id;
         let mut config = expr_bridge.config().clone();
 
-        ui.add(ModuleLabel::new(
-            &mut self.label_state,
-            bridge,
-            module_id,
-        ));
+        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
 
         ui.add_space(20.0);
 

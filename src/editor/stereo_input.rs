@@ -1,6 +1,21 @@
-use egui::{Response, Ui, Widget};
+use egui::{Id, Pos2, Response, Sense, Ui, Widget, emath, lerp, vec2};
 
-use crate::synth_engine::{Input, InputId, ModuleId, StereoSample, ui_bridge::UiBridge};
+use crate::{
+    editor::grid::input_mixer_popup::InputMixerPopup,
+    synth_engine::{
+        Input, InputId, ModuleId, ModuleType, StereoSample,
+        ui_bridge::{ModulatedValue, UiBridge},
+    },
+};
+
+const IO_DOT_SIZE: f32 = 8.0;
+const IO_DOT_SIZE_HOVER: f32 = 10.0;
+
+#[derive(Clone, Copy)]
+struct MixerOpen {
+    pos: Pos2,
+    module_type: ModuleType,
+}
 
 pub struct StereoInput<'a> {
     input: InputId,
@@ -23,13 +38,73 @@ impl<'a> StereoInput<'a> {
     }
 }
 
+impl StereoInput<'_> {
+    fn module_type(&self) -> Option<ModuleType> {
+        self.bridge
+            .get_modules()
+            .into_iter()
+            .find(|m| m.id == self.input.module_id)
+            .map(|m| m.module_type)
+    }
+
+    fn add_circle(&self, ui: &mut Ui, modulated: Option<&ModulatedValue>) -> Option<Pos2> {
+        let (rect, response) =
+            ui.allocate_exact_size(vec2(IO_DOT_SIZE_HOVER, IO_DOT_SIZE_HOVER), Sense::click());
+
+        let t = ui.ctx().animate_bool_with_time_and_easing(
+            response.id,
+            response.hovered(),
+            0.15,
+            emath::easing::cubic_out,
+        );
+        let dot_size = lerp(IO_DOT_SIZE..=IO_DOT_SIZE_HOVER, t);
+        let blend = modulated
+            .map(|m| m.normalized.left().max(m.normalized.right()))
+            .unwrap_or(0.0);
+        let dot_color = self
+            .input
+            .input_type
+            .color()
+            .lerp_to_gamma(egui::Color32::WHITE, blend);
+
+        ui.painter()
+            .circle_filled(rect.center(), dot_size * 0.5, dot_color);
+
+        response.clicked().then(|| rect.center())
+    }
+
+    fn mixer_popup_ui(&mut self, ui: &mut Ui, popup_id: Id) {
+        let Some(open) = ui
+            .ctx()
+            .data(|d| d.get_temp::<Option<MixerOpen>>(popup_id))
+            .flatten()
+        else {
+            return;
+        };
+
+        let popup = InputMixerPopup {
+            module_id: self.input.module_id,
+            module_type: open.module_type,
+            input: self.input.input_type,
+            pos: open.pos,
+        };
+
+        if popup.show(ui, self.bridge) {
+            ui.ctx()
+                .data_mut(|d| d.insert_temp(popup_id, None::<MixerOpen>));
+        }
+    }
+}
+
 impl Widget for StereoInput<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        ui.horizontal(|ui| {
+        ui.horizontal_centered(|ui| {
             let modulated = self.bridge.get_input_modulated_value(self.input);
+
+            let has_connected_sources = self.bridge.has_connected_input_sources(self.input);
             let mut slider = self.input.input_type.param_slider(self.value);
 
-            if let Some(modulated) = modulated {
+            if let Some(modulated) = modulated.as_ref() {
                 if modulated.is_stereo {
                     slider = slider.modulated(modulated.value);
                 } else {
@@ -37,7 +112,21 @@ impl Widget for StereoInput<'_> {
                 }
             }
 
-            ui.add(slider)
+            let response = ui.add(slider);
+            let mixer_popup_id = response.id.with("stereo-input-mixer");
+
+            if has_connected_sources
+                && let Some(pos) = self.add_circle(ui, modulated.as_ref())
+                && let Some(module_type) = self.module_type()
+            {
+                ui.data_mut(|d| {
+                    d.insert_temp(mixer_popup_id, Some(MixerOpen { pos, module_type }));
+                });
+            }
+
+            self.mixer_popup_ui(ui, mixer_popup_id);
+
+            response
         })
         .inner
     }

@@ -36,11 +36,7 @@ impl ExternalParamUI {
         let module_id = self.module_id;
         let mut config = param_bridge.config().clone();
 
-        ui.add(ModuleLabel::new(
-            &mut self.label_state,
-            bridge,
-            module_id,
-        ));
+        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
 
         ui.add_space(20.0);
 

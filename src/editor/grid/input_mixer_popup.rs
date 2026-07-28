@@ -97,6 +97,7 @@ impl InputMixerPopup {
             let size = TextStyle::Body.resolve(ui.style()).size;
             let color = ui.visuals().text_color();
             let mut job = LayoutJob::default();
+
             job.append(
                 &self.module_type.input_label(self.input),
                 0.0,

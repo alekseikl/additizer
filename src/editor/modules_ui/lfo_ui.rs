@@ -5,7 +5,11 @@ use crate::{
         ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
         stereo_slider::StereoSlider, utils::confirm_module_removal,
     },
-    synth_engine::{Input, LfoShape, ModuleId, lfo::LfoUiBridge, ui_bridge::{ModuleBridge, UiBridge}},
+    synth_engine::{
+        Input, LfoShape, ModuleId,
+        lfo::LfoUiBridge,
+        ui_bridge::{ModuleBridge, UiBridge},
+    },
 };
 
 impl LfoShape {
@@ -39,11 +43,7 @@ impl LfoUi {
         let module_id = self.module_id;
         let mut config = lfo_bridge.config().clone();
 
-        ui.add(ModuleLabel::new(
-            &mut self.label_state,
-            bridge,
-            module_id,
-        ));
+        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
 
         ui.add_space(20.0);
 

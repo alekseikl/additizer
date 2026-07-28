@@ -12,16 +12,16 @@ pub mod spectral_filter;
 pub mod spectral_mixer;
 pub mod wave_shaper;
 
+pub use crate::synth_engine::filters::spectral_filter::FilterType;
 pub use amplifier::Amplifier;
 pub use envelope::Envelope;
 pub use expressions::Expressions;
 pub use external_param::{ExternalParam, ExternalParamsBlock};
 pub use lfo::{Lfo, LfoShape};
 pub use mixer::Mixer;
+pub use oscillator::Oscillator;
 pub use output::Output;
 pub use spectral_blend::SpectralBlend;
 pub use spectral_filter::SpectralFilter;
-pub use crate::synth_engine::filters::spectral_filter::FilterType;
 pub use spectral_mixer::SpectralMixer;
-pub use oscillator::Oscillator;
 pub use wave_shaper::{ShaperType, WaveShaper};

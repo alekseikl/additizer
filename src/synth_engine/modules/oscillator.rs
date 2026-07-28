@@ -23,7 +23,7 @@ use crate::{
         synth_module::SynthModule,
         types::{ComplexSample, Sample},
     },
-    utils::{from_ms, pitch_to_freq, power_scale, from_st},
+    utils::{from_ms, from_st, pitch_to_freq, power_scale},
 };
 
 mod config;

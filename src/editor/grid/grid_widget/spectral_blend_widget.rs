@@ -1,8 +1,6 @@
 use crate::{
     editor::{gain_bars, grid::WidgetCtx},
-    synth_engine::{
-        ModuleId, spectral_blend::SpectralBlendUiBridge, ui_bridge::ModuleBridge,
-    },
+    synth_engine::{ModuleId, spectral_blend::SpectralBlendUiBridge, ui_bridge::ModuleBridge},
 };
 
 use super::GridWidgetContent;

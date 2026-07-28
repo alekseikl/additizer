@@ -362,10 +362,6 @@ impl<'a> Slider<'a> {
         self.set_value(response, new_value);
     }
 
-    fn is_mono(&self) -> bool {
-        matches!(self.value, Value::Mono(_))
-    }
-
     fn is_stereo(&self) -> bool {
         matches!(self.value, Value::Stereo(_))
     }
@@ -389,9 +385,6 @@ impl<'a> Slider<'a> {
     }
 
     /// Sample track positions along `[p0, p1]` (in `[0, span]`) matching rounded-track density.
-    ///
-    /// Every bar shape has radius `CORNER_RADIUS` on both ends of the track, so the
-    /// rounded zones are the same regardless of which across-axis corners are rounded.
     fn sample_track_positions(&self, rect: Rect, p0: f32, p1: f32) -> Vec<f32> {
         let o = self.orientation;
         let span = o.along_span(rect);
@@ -744,8 +737,8 @@ impl<'a> Slider<'a> {
         let contains = response.contains_pointer();
         let state_id = response.id.with("label-state");
 
-        ui.memory_mut(|mem| {
-            let state = mem.data.get_temp_mut_or_default::<LabelState>(state_id);
+        ui.data_mut(|d| {
+            let state = d.get_temp_mut_or_default::<LabelState>(state_id);
 
             if button_down_on {
                 state.visible = true;
@@ -782,7 +775,7 @@ impl<'a> Slider<'a> {
             }
 
             if response.dragged_by(PointerButton::Primary)
-                || (self.is_mono() && response.dragged_by(PointerButton::Secondary))
+                || (!self.is_stereo() && response.dragged_by(PointerButton::Secondary))
             {
                 self.update_normalized_value(
                     &mut response,
@@ -797,10 +790,10 @@ impl<'a> Slider<'a> {
                         Orientation::Vertical => pos.x >= response.rect.center().x,
                     };
 
-                    ui.memory_mut(|mem| mem.data.insert_temp(response.id, is_right));
+                    ui.data_mut(|d| d.insert_temp(response.id, is_right));
                     is_right
                 } else {
-                    ui.memory(|mem| mem.data.get_temp(response.id).unwrap_or(false))
+                    ui.data(|d| d.get_temp(response.id).unwrap_or(false))
                 };
 
                 let delta = if is_right {

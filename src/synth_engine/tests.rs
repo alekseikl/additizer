@@ -1420,9 +1420,11 @@ fn refresh_routing_drops_links_to_removed_inputs() {
             && link.dst_id() == MIXER_ID
             && link.dst_input() == Input::AudioMix(0)
     }));
-    assert!(cfg.links.iter().all(|link| {
-        !(link.dst_id() == MIXER_ID && link.dst_input() == Input::AudioMix(1))
-    }));
+    assert!(
+        cfg.links
+            .iter()
+            .all(|link| { !(link.dst_id() == MIXER_ID && link.dst_input() == Input::AudioMix(1)) })
+    );
 }
 
 #[test]

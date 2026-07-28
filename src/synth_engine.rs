@@ -461,9 +461,7 @@ impl SynthEngine {
                 }
 
                 if let Some(modulator_id) = link.modulation()
-                    && self
-                        .can_be_linked(modulator_id, link.dst(), false)
-                        .is_err()
+                    && self.can_be_linked(modulator_id, link.dst(), false).is_err()
                 {
                     link.clear_modulation();
                 }

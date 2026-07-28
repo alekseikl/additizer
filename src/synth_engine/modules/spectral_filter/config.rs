@@ -1,10 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    synth_engine::{
-        ModuleId, StereoSample,
-        filters::spectral_filter::FilterType,
-    },
+    synth_engine::{ModuleId, StereoSample, filters::spectral_filter::FilterType},
     utils::from_st,
 };
 

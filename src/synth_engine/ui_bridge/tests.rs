@@ -8,7 +8,8 @@ use crate::{
     synth_engine::{
         EngineConfig, EngineParams, ExternalParamsBlock, Input, InputId, LinkConfig, ModuleConfig,
         ModuleId, OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
-        harmonic_editor::HarmonicEditorConfig, oscillator::OscillatorConfig,
+        harmonic_editor::HarmonicEditorConfig,
+        oscillator::OscillatorConfig,
         ui_bridge::{
             UiBridge,
             ui_config::{UiConfig, UiModuleConfig},
@@ -124,9 +125,7 @@ fn get_available_input_sources_excludes_already_connected() {
 
     let available = bridge.get_available_input_sources(spectrum);
     assert!(
-        available
-            .iter()
-            .all(|src| src.src != HARMONIC_EDITOR_ID),
+        available.iter().all(|src| src.src != HARMONIC_EDITOR_ID),
         "connected harmonic editor must not appear as available"
     );
 }

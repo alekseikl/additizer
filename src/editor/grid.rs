@@ -15,10 +15,10 @@ use crate::{
     },
 };
 
-mod input_mixer_popup;
-mod link_amount_popup;
 mod grid_widget;
-mod input_tooltip;
+pub(super) mod input_mixer_popup;
+pub(super) mod input_tooltip;
+mod link_amount_popup;
 mod select_input_popup;
 
 const GRID_CELL_SIZE: f32 = 40.0;

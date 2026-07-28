@@ -549,7 +549,10 @@ impl SynthModule for Envelope {
                 for seq_idx in 0..num_active_voices {
                     let playing_voice = router.params().active_voices[seq_idx];
 
-                    self.process_voice(output, router.for_voice(channel_idx, playing_voice, seq_idx));
+                    self.process_voice(
+                        output,
+                        router.for_voice(channel_idx, playing_voice, seq_idx),
+                    );
                 }
             }
         });

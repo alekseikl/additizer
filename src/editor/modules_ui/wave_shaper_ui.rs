@@ -6,8 +6,9 @@ use crate::{
         module_label::ModuleLabel, utils::confirm_module_removal,
     },
     synth_engine::{
-        Input, ModuleId, ShaperType, wave_shaper::WaveShaperUiBridge,
+        Input, ModuleId, ShaperType,
         ui_bridge::{ModuleBridge, UiBridge},
+        wave_shaper::WaveShaperUiBridge,
     },
 };
 
@@ -44,11 +45,7 @@ impl WaveShaperUi {
         let module_id = self.module_id;
         let mut config = shaper_bridge.config().clone();
 
-        ui.add(ModuleLabel::new(
-            &mut self.label_state,
-            bridge,
-            module_id,
-        ));
+        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
 
         ui.add_space(20.0);
 
