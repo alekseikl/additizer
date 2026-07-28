@@ -332,13 +332,7 @@ impl UiBridge {
             .collect()
     }
 
-    /// Cache-side check: whether `src` can connect to any input on `dst`.
-    ///
-    /// Not the same as `SynthEngine::can_be_linked` (which validates a specific
-    /// `InputId` + link kind). Safe to call without locking the engine.
-    ///
-    /// Direct inputs that already have another source still count as linkable —
-    /// `set_direct_link` replaces the prior source.
+    /// Whether `src` can connect to any input on `dst`.
     pub fn has_linkable_input(&self, src: ModuleId, dst: ModuleId) -> bool {
         if src == dst {
             return false;
@@ -374,12 +368,7 @@ impl UiBridge {
         if meta.is_direct {
             self.set_direct_link(src, dst);
         } else {
-            let amount = if meta.data_type == DataType::Control {
-                StereoSample::ZERO
-            } else {
-                StereoSample::ONE
-            };
-            self.add_link(src, dst, amount);
+            self.add_link(src, dst, StereoSample::ZERO);
         }
     }
 
@@ -408,6 +397,10 @@ impl UiBridge {
                 label: Self::module_label(&ui_config, module.id),
             })
             .collect()
+    }
+
+    pub fn has_connected_input_sources(&self, input: InputId) -> bool {
+        self.routing.routing.contains_key(&input)
     }
 
     pub fn get_connected_input_sources(&self, input: InputId) -> Vec<ConnectedInputSource> {
@@ -477,11 +470,7 @@ impl UiBridge {
         }
     }
 
-    /// Whether `src` may target this destination input (types, self-link, cycle,
-    /// and not already a Mixed/Direct source on that exact input).
-    ///
-    /// For Direct inputs, a *different* module still returns true when another
-    /// source is already connected — the engine replaces rather than stacking.
+    // Whether `src` may target this destination input
     fn is_linkable_input(
         &self,
         src: ModuleId,

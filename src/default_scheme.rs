@@ -14,7 +14,7 @@ use crate::{
             ui_config::{UiConfig, UiModuleConfig},
         },
     },
-    utils::{from_ms, st_to_octave},
+    utils::{from_ms, from_st},
 };
 
 const HARMONIC_EDITOR_ID: ModuleId = 1;
@@ -108,12 +108,7 @@ fn default_engine_config() -> EngineConfig {
         ],
         links: vec![
             LinkConfig::direct(HARMONIC_EDITOR_ID, FILTER_ID, Input::Spectrum),
-            LinkConfig::mixed(
-                FILTER_ENV_ID,
-                FILTER_ID,
-                Input::Cutoff,
-                st_to_octave(64.0),
-            ),
+            LinkConfig::mixed(FILTER_ENV_ID, FILTER_ID, Input::Cutoff, from_st(64.0)),
             LinkConfig::direct(FILTER_ID, OSC_ID, Input::Spectrum),
             LinkConfig::direct(OSC_ID, AMP_ID, Input::Audio),
             LinkConfig::mixed(AMP_ENV_ID, AMP_ID, Input::Gain, StereoSample::ONE),

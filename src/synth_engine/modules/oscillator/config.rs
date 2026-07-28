@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::{ModuleId, Sample, StereoSample, oscillator::MAX_UNISON_VOICES},
-    utils::st_to_octave,
+    utils::from_st,
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -64,7 +64,7 @@ impl Default for OscillatorConfig {
             steal_phase: false,
             gain: 1.0.into(),
             pitch_shift: 0.0.into(),
-            detune: st_to_octave(0.2).into(),
+            detune: from_st(0.2).into(),
             detune_power: 0.0.into(),
             glide: 0.0.into(),
             glide_slope: 0.0.into(),

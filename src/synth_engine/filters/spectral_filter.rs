@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::{ComplexSample, Sample},
-    utils::{power_scale, st_to_octave},
+    utils::{power_scale, from_st},
 };
 
 const TAU: Sample = f32::consts::TAU;
@@ -406,7 +406,7 @@ impl SpectralFilter {
 
         let butterworth_excess = q - BUTTERWORTH_Q;
 
-        if q_limit_to < st_to_octave(1.0) || butterworth_excess <= 0.0 || params.cutoff > q_limit_to
+        if q_limit_to < from_st(1.0) || butterworth_excess <= 0.0 || params.cutoff > q_limit_to
         {
             return q;
         }

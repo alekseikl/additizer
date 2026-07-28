@@ -191,8 +191,8 @@ impl<'v, 'f, 'c, S: RouterDataType> VoiceRouter<'v, 'f, 'c, S> {
         let bandwidth = if bandwidth == 0 {
             self.playing_voice.note_bandwidth()
         } else {
-            bandwidth + 1 // Add DC
-        };
+            bandwidth
+        } + 1; // Add DC
 
         &buff[..buff.len().min(bandwidth)]
     }

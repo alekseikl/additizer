@@ -89,7 +89,7 @@ impl PlayingVoice {
 
         Self {
             voice_idx,
-            note_bandwidth: (BAND_LIMIT_FREQUENCY / frequency).floor() as u16 + 1,
+            note_bandwidth: (BAND_LIMIT_FREQUENCY / frequency).floor() as u16,
         }
     }
 

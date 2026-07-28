@@ -11,7 +11,7 @@ use crate::{
             routing_state::{AvailableInputSource, ConnectedInputSource},
         },
     },
-    utils::st_to_octave,
+    utils::from_st,
 };
 
 type BeforeCallback = dyn FnMut(&mut Ui, &mut UiBridge);
@@ -79,13 +79,13 @@ impl<'a> ModulationInput<'a> {
                 .units(" st"),
             Input::Resonance => slider.range(-1.0..=1.0).default_value(0.0).precision(2),
             Input::Detune => slider
-                .range(0.0..=st_to_octave(1.0))
+                .range(0.0..=from_st(1.0))
                 .display_scale(1200.0)
-                .default_value(st_to_octave(0.2))
+                .default_value(from_st(0.2))
                 .units(" cents"),
             Input::DetunePower => slider.range(0.0..=5.0).default_value(0.0).allow_inverse(),
             Input::PitchShift => slider
-                .range(0.0..=st_to_octave(60.0))
+                .range(0.0..=from_st(60.0))
                 .skew(1.6)
                 .display_scale(12.0)
                 .default_value(0.0)
@@ -189,9 +189,9 @@ impl<'a> ModulationInput<'a> {
                 .precision(2)
                 .allow_inverse(),
             Input::Detune => slider
-                .range(0.0..=st_to_octave(1.0))
+                .range(0.0..=from_st(1.0))
                 .display_scale(1200.0)
-                .default_value(st_to_octave(0.2))
+                .default_value(from_st(0.2))
                 .allow_inverse()
                 .units(" cents"),
             Input::DetunePower => slider.range(0.0..=5.0).default_value(0.0).allow_inverse(),

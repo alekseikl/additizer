@@ -12,10 +12,10 @@ const LINEAR_MAX_DB: Sample = 0.0;
 const VOLUME_SMOOTH_TIME: Sample = 0.15;
 const UI_SAMPLE_RATE: Sample = 60.0;
 
-const OFF_COLOR: Color32 = Color32::from_rgb(36, 38, 50);
-const GREEN: Color32 = Color32::from_rgb(0x06, 0xaa, 0x1c);
-const YELLOW: Color32 = Color32::from_rgb(0xff, 0xcc, 0x00);
-const RED: Color32 = Color32::from_rgb(0xe0, 0x30, 0x30);
+pub(crate) const OFF_COLOR: Color32 = Color32::from_rgb(36, 38, 50);
+pub(crate) const GREEN: Color32 = Color32::from_rgb(0x06, 0xaa, 0x1c);
+pub(crate) const YELLOW: Color32 = Color32::from_rgb(0xff, 0xcc, 0x00);
+pub(crate) const RED: Color32 = Color32::from_rgb(0xe0, 0x30, 0x30);
 
 #[derive(Default)]
 struct VolumeSmoother {

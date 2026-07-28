@@ -19,7 +19,7 @@ pub fn pitch_to_freq(pitch: Sample) -> Sample {
 }
 
 #[inline(always)]
-pub const fn st_to_octave(st: Sample) -> Sample {
+pub const fn from_st(st: Sample) -> Sample {
     st * ST_TO_OCTAVE_MULT
 }
 

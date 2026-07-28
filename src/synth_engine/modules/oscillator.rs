@@ -23,7 +23,7 @@ use crate::{
         synth_module::SynthModule,
         types::{ComplexSample, Sample},
     },
-    utils::{from_ms, pitch_to_freq, power_scale, st_to_octave},
+    utils::{from_ms, pitch_to_freq, power_scale, from_st},
 };
 
 mod config;
@@ -436,9 +436,9 @@ impl Oscillator {
     set_smoothed_param!(
         set_pitch_shift,
         pitch_shift,
-        pitch_shift.clamp(st_to_octave(-60.0), st_to_octave(60.0))
+        pitch_shift.clamp(from_st(-60.0), from_st(60.0))
     );
-    set_stereo_param!(set_detune, detune, detune.clamp(0.0, st_to_octave(1.0)));
+    set_stereo_param!(set_detune, detune, detune.clamp(0.0, from_st(1.0)));
     set_stereo_param!(
         set_detune_power,
         detune_power,
@@ -581,13 +581,6 @@ impl Oscillator {
         poly * c
     }
 
-    #[inline(always)]
-    fn wrap_wave_buffer(wave_buff: &mut WaveformBuffer) {
-        wave_buff[0] = wave_buff[WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT - 1];
-        wave_buff[WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT] = wave_buff[WAVEFORM_PAD_LEFT];
-        wave_buff[WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT + 1] = wave_buff[WAVEFORM_PAD_LEFT + 1];
-    }
-
     fn build_wave(
         inverse_fft: &dyn ComplexToReal<Sample>,
         frequency: f32,
@@ -612,8 +605,12 @@ impl Oscillator {
                 Self::get_wave_slice_mut(out_wave_buff),
                 scratch_buff,
             )
-            .unwrap();
-        Self::wrap_wave_buffer(out_wave_buff);
+            .expect("ifft should succeed");
+
+        out_wave_buff[0] = out_wave_buff[WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT - 1];
+        out_wave_buff[WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT] = out_wave_buff[WAVEFORM_PAD_LEFT];
+        out_wave_buff[WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT + 1] =
+            out_wave_buff[WAVEFORM_PAD_LEFT + 1];
     }
 
     fn build_waveforms(

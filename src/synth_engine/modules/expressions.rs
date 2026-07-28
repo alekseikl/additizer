@@ -17,7 +17,7 @@ use crate::{
         smooth::Smoother,
         synth_module::SynthModule,
     },
-    utils::st_to_octave,
+    utils::from_st,
 };
 
 struct Params {
@@ -99,7 +99,7 @@ impl Expressions {
 
     fn transform_value(expression: Expression, channel_idx: usize, value: Sample) -> Sample {
         match expression {
-            Expression::Pitch => st_to_octave(value),
+            Expression::Pitch => from_st(value),
             Expression::Pan => {
                 if channel_idx == 0 {
                     if value > 0.0 { 1.0 - value } else { 1.0 }

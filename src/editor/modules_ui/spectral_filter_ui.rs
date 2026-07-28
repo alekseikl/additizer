@@ -3,7 +3,7 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 use crate::{
     editor::{
         ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
-        module_label::ModuleLabel, slider, stereo_slider::StereoSlider,
+        module_label::ModuleLabel, slider, stereo_input::StereoInput, stereo_slider::StereoSlider,
         utils::confirm_module_removal,
     },
     synth_engine::{
@@ -12,7 +12,7 @@ use crate::{
         spectral_filter::SpectralFilterUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
-    utils::st_to_octave,
+    utils::from_st,
 };
 
 pub struct SpectralFilterUI {
@@ -87,17 +87,12 @@ impl SpectralFilterUI {
 
                 ui.label("Cutoff");
                 if ui
-                    .add(
-                        slider::Slider::stereo(
-                            &mut config.cutoff,
-                            st_to_octave(-24.0)..=st_to_octave(120.0),
-                            Some(st_to_octave(-96.0)),
-                        )
-                        .over(st_to_octave(96.0))
-                        .units(slider::Units::Octaves)
-                        .default(0.0)
-                        .skew(1.1),
-                    )
+                    .add(StereoInput::new(
+                        Input::Cutoff,
+                        module_id,
+                        &mut config.cutoff,
+                        bridge,
+                    ))
                     .changed()
                 {
                     filter_bridge.set_param(Input::Cutoff, config.cutoff);
@@ -109,10 +104,10 @@ impl SpectralFilterUI {
                     .add(
                         slider::Slider::mono(
                             &mut config.cutoff[0],
-                            st_to_octave(-24.0)..=st_to_octave(120.0),
-                            Some(st_to_octave(-96.0)),
+                            from_st(-24.0)..=from_st(120.0),
+                            Some(from_st(-96.0)),
                         )
-                        .over(st_to_octave(96.0))
+                        .over(from_st(96.0))
                         .units(slider::Units::Octaves)
                         .default(0.0)
                         .skew(1.1),
@@ -128,10 +123,10 @@ impl SpectralFilterUI {
                     .add(
                         slider::Slider::stereo(
                             &mut config.cutoff,
-                            st_to_octave(-24.0)..=st_to_octave(120.0),
-                            Some(st_to_octave(-96.0)),
+                            from_st(-24.0)..=from_st(120.0),
+                            Some(from_st(-96.0)),
                         )
-                        .over(st_to_octave(96.0))
+                        .over(from_st(96.0))
                         .units(slider::Units::Octaves)
                         .vertical()
                         .thickness(10.0)
@@ -179,7 +174,7 @@ impl SpectralFilterUI {
                         StereoSlider::new(&mut config.q_limit_to)
                             .range(0.0..=10.0)
                             .display_scale(12.0)
-                            .default_value(st_to_octave(12.0))
+                            .default_value(from_st(12.0))
                             .precision(2)
                             .units(" st"),
                     )

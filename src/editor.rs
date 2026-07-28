@@ -30,6 +30,7 @@ mod module_label;
 mod modules_ui;
 mod routing_ui_ext;
 mod slider;
+mod stereo_input;
 mod stereo_slider;
 mod utils;
 mod volume_meter;

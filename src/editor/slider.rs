@@ -29,6 +29,9 @@ const CORNER_RADIUS: f32 = 4.0;
 /// Width of the bright leading tip marker at the fill's edge.
 const TIP_WIDTH: f32 = 1.0;
 
+/// Width of the modulated-value overlay tip marker (stereo sliders only).
+const MODULATED_TIP_WIDTH: f32 = 2.0;
+
 const LABEL_TEXT_COLOR: Hsva = hsva(0.115, 0.05, 0.5, 1.0);
 const LABEL_PADDING: f32 = 6.0;
 const LABEL_MARGIN: f32 = 1.0;
@@ -189,7 +192,6 @@ enum Value<'a> {
     Stereo(&'a mut StereoSample),
 }
 
-/// Persistent label visibility state (stored in egui memory, keyed by slider id).
 #[derive(Default, Clone)]
 struct LabelState {
     visible: bool,
@@ -198,6 +200,7 @@ struct LabelState {
 
 pub struct Slider<'a> {
     value: Value<'a>,
+    modulated_value: Option<StereoSample>,
     range: RangeInclusive<Sample>,
     inverse_to: Option<Sample>,
     over_from: Option<Sample>,
@@ -219,6 +222,7 @@ impl<'a> Slider<'a> {
 
         Self {
             value,
+            modulated_value: None,
             range,
             inverse_to,
             over_from: None,
@@ -245,6 +249,11 @@ impl<'a> Slider<'a> {
         inverse_to: Option<Sample>,
     ) -> Self {
         Self::new(Value::Stereo(value), range, inverse_to)
+    }
+
+    pub fn modulated(mut self, value: StereoSample) -> Self {
+        self.modulated_value = Some(value);
+        self
     }
 
     pub fn over(mut self, over_from: Sample) -> Self {
@@ -498,6 +507,36 @@ impl<'a> Slider<'a> {
         }
     }
 
+    /// Paints a colored tip marker per stereo channel at the modulated value's leading
+    /// edge, drawn over the regular bars. Reuses `paint_tip` geometry so the marker follows
+    /// the track's rounded silhouette; colors come from the volume-meter palette (green for
+    /// a regular positive level, red for the over zone, yellow for inverse).
+    fn paint_modulated_tips(&self, painter: &Painter, rect: Rect, norm_modulated: StereoSample) {
+        let (first_rect, second_rect) = match self.orientation {
+            Orientation::Horizontal => rect.split_top_bottom_at_fraction(0.5),
+            Orientation::Vertical => rect.split_left_right_at_fraction(0.5),
+        };
+
+        for (half_rect, rounded, norm) in [
+            (first_rect, RoundedEdges::FIRST, norm_modulated.left()),
+            (second_rect, RoundedEdges::SECOND, norm_modulated.right()),
+        ] {
+            let color = if norm < 0.0 {
+                super::volume_meter::YELLOW
+            } else if self
+                .over_from
+                .map(|over_from| self.value_to_normalized(over_from))
+                .is_some_and(|over| norm > over)
+            {
+                super::volume_meter::RED
+            } else {
+                super::volume_meter::GREEN
+            };
+
+            self.paint_tip(painter, half_rect, norm, rounded, color, MODULATED_TIP_WIDTH);
+        }
+    }
+
     /// Paints the body fill `[start_norm, end_norm]` (no tip), with `over`-zone repaint,
     /// as a single `Shape::mesh`.
     fn paint_bar_body(
@@ -525,18 +564,32 @@ impl<'a> Slider<'a> {
         end_norm: Sample,
         rounded: RoundedEdges,
     ) {
+        self.paint_tip(painter, rect, end_norm, rounded, self.bar_tip_color(end_norm), TIP_WIDTH);
+    }
+
+    /// Tip marker geometry shared by the regular bar tip and the modulated-value overlay.
+    /// `color` overrides the slider's own tip palette (used to paint the modulated tip with
+    /// the volume-meter palette); `width` is the marker's along-axis thickness.
+    fn paint_tip(
+        &self,
+        painter: &Painter,
+        rect: Rect,
+        end_norm: Sample,
+        rounded: RoundedEdges,
+        color: Color32,
+        width: f32,
+    ) {
         let span = self.orientation.along_span(rect);
-        let tip_color = self.bar_tip_color(end_norm);
         let position = if end_norm < 0.0 {
             span - end_norm.abs() * span
         } else {
-            (end_norm * span - TIP_WIDTH).max(0.0)
+            (end_norm * span - width).max(0.0)
         };
 
         let mut mesh = Mesh::with_texture(TextureId::default());
 
-        if let Some(points) = self.segment_geometry(rect, rounded, position, TIP_WIDTH) {
-            self.append_fan(&mut mesh, &points, tip_color);
+        if let Some(points) = self.segment_geometry(rect, rounded, position, width) {
+            self.append_fan(&mut mesh, &points, color);
         }
 
         if !mesh.indices.is_empty() {
@@ -687,6 +740,11 @@ impl<'a> Slider<'a> {
                 self.paint_bar_tip(painter, first_rect, left, RoundedEdges::FIRST);
                 self.paint_bar_tip(painter, second_rect, right, RoundedEdges::SECOND);
             }
+
+            if let Some(modulated) = self.modulated_value {
+                let norm_modulated = modulated.map(|v| self.value_to_normalized(v));
+                self.paint_modulated_tips(painter, rect, norm_modulated);
+            }
         } else {
             self.paint_bar(painter, rect, 0.0, norm_value.left(), RoundedEdges::ALL);
         }
@@ -765,10 +823,6 @@ impl<'a> Slider<'a> {
     }
 
     /// Whether the floating value label should be shown right now.
-    ///
-    /// The label appears on click (any button), stays through the drag, and remains until the
-    /// cursor leaves the slider after the drag ends. It also appears after the cursor hovers the
-    /// slider for `HOVER_DELAY` without clicking.
     fn label_visible(&self, ui: &Ui, response: &Response) -> bool {
         let now = ui.input(|i| i.time);
         let button_down = response.is_pointer_button_down_on();
@@ -866,9 +920,6 @@ impl<'a> Slider<'a> {
             self.paint_track_stroke(painter, response.rect, Color32::from(BORDER_COLOR));
         }
 
-        // Label appears on click (any button), stays through the drag, and remains
-        // until the cursor leaves the slider after the drag ends. It also appears
-        // after the cursor hovers the slider for `HOVER_DELAY` without clicking.
         if self.label_visible(ui, &response) {
             self.paint_drag_label(ui, response.rect);
         }

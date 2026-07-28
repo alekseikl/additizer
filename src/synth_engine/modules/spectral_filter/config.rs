@@ -5,7 +5,7 @@ use crate::{
         ModuleId, StereoSample,
         filters::spectral_filter::FilterType,
     },
-    utils::st_to_octave,
+    utils::from_st,
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -26,7 +26,7 @@ impl Default for SpectralFilterConfig {
             id: -1,
             filter_type: FilterType::default(),
             linear_phase: true,
-            q_limit_to: st_to_octave(12.0).into(),
+            q_limit_to: from_st(12.0).into(),
             q_limit_curve: 0.5.into(),
             cutoff: 1.0.into(),
             resonance: 0.0.into(),
