@@ -4,8 +4,8 @@ use egui::{ComboBox, Grid, Slider, Ui};
 
 use crate::{
     editor::{
-        direct_input::DirectInput, module_label::ModuleLabel, stereo_input::StereoInput,
-        utils::confirm_module_removal, ModuleUi,
+        module_label::ModuleLabel, stereo_input::StereoInput, utils::confirm_module_removal,
+        ModuleUi,
     },
     synth_engine::{
         mixer::MixerUiBridge,
@@ -69,12 +69,6 @@ impl MixerUi {
                     ui.label(format!("Input {}", input_idx + 1));
                     let response = ui
                         .horizontal(|ui| {
-                            ui.add(DirectInput::new(
-                                bridge,
-                                Input::AudioMix(input_idx),
-                                module_id,
-                            ));
-
                             ComboBox::from_id_salt(format!("volume-type-{}", input_idx))
                                 .selected_text(volume_type.label())
                                 .width(0.0)

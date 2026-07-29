@@ -3,7 +3,6 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 use crate::{
     editor::{
         ModuleUi,
-        direct_input::DirectInput,
         module_label::ModuleLabel,
         slider::{self, Slider},
         stereo_input::StereoInput,
@@ -51,10 +50,6 @@ impl SpectralFilterUI {
             .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
-                ui.label("Input");
-                ui.add(DirectInput::new(bridge, Input::Spectrum, module_id));
-                ui.end_row();
-
                 ui.label("Type");
                 ComboBox::from_id_salt("spectral-filter-type")
                     .selected_text(config.filter_type.label())

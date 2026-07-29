@@ -2,8 +2,8 @@ use egui::{ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        direct_input::DirectInput, module_label::ModuleLabel, stereo_input::StereoInput,
-        utils::confirm_module_removal, ModuleUi,
+        module_label::ModuleLabel, stereo_input::StereoInput, utils::confirm_module_removal,
+        ModuleUi,
     },
     synth_engine::{
         ui_bridge::{ModuleBridge, UiBridge},
@@ -54,10 +54,6 @@ impl WaveShaperUi {
             .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
-                ui.label("Input");
-                ui.add(DirectInput::new(bridge, Input::Audio, module_id));
-                ui.end_row();
-
                 ui.label("Type");
                 ComboBox::from_id_salt("waveshaper-type")
                     .selected_text(config.shaper_type.label())

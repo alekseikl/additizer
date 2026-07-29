@@ -2,7 +2,7 @@ use egui::{Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, direct_input::DirectInput, module_label::ModuleLabel, stereo_input::StereoInput,
+        ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput,
         utils::confirm_module_removal,
     },
     synth_engine::{
@@ -40,10 +40,6 @@ impl AmplifierUI {
             .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
-                ui.label("Input");
-                ui.add(DirectInput::new(bridge, Input::Audio, module_id));
-                ui.end_row();
-
                 ui.label("Gain");
                 if ui
                     .add(

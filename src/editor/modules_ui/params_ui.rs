@@ -7,12 +7,10 @@ use egui::{
 use egui_extras::{Column, TableBuilder};
 
 use crate::{
-    editor::{ModuleUi, direct_input::DirectInput},
+    editor::ModuleUi,
     engine_factory::EngineFactory,
     presets::{PresetListItem, Presets},
-    synth_engine::{
-        Input, MAX_BANDWIDTH, ModuleId, OUTPUT_MODULE_ID, SynthEngine, ui_bridge::UiBridge,
-    },
+    synth_engine::{MAX_BANDWIDTH, ModuleId, SynthEngine, ui_bridge::UiBridge},
     utils::from_ms,
 };
 
@@ -276,10 +274,6 @@ impl ModuleUi for ParamsUi {
                         bridge.set_bandwidth(if note_based { 0 } else { MAX_BANDWIDTH });
                     }
                 });
-                ui.end_row();
-
-                ui.label("Output");
-                ui.add(DirectInput::new(bridge, Input::Audio, OUTPUT_MODULE_ID));
                 ui.end_row();
 
                 ui.label("Presets");

@@ -2,8 +2,8 @@ use egui::{Grid, Ui};
 
 use crate::{
     editor::{
-        direct_input::DirectInput, module_label::ModuleLabel, stereo_input::StereoInput,
-        utils::confirm_module_removal, ModuleUi,
+        module_label::ModuleLabel, stereo_input::StereoInput, utils::confirm_module_removal,
+        ModuleUi,
     },
     synth_engine::{
         spectral_blend::SpectralBlendUiBridge,
@@ -45,14 +45,6 @@ impl SpectralBlendUi {
             .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
-                ui.label("From");
-                ui.add(DirectInput::new(bridge, Input::Spectrum, module_id));
-                ui.end_row();
-
-                ui.label("To");
-                ui.add(DirectInput::new(bridge, Input::SpectrumTo, module_id));
-                ui.end_row();
-
                 ui.label("Blend");
                 if ui
                     .add(StereoInput::new(

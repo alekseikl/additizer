@@ -68,17 +68,6 @@ impl<'a> GainSlider<'a> {
         self
     }
 
-    pub fn mid_point(mut self, mid_point: Sample) -> Self {
-        self.mid_point = mid_point;
-        self
-    }
-
-    #[allow(unused)]
-    pub fn skew(mut self, skew_factor: Sample) -> Self {
-        self.skew_factor = skew_factor;
-        self
-    }
-
     fn gain_to_normalized(&self, gain: f32) -> f32 {
         let dbs = nih_plug::util::gain_to_db(gain);
 

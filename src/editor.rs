@@ -20,18 +20,14 @@ use crate::{
     synth_engine::{ModuleId, ModuleType, ui_bridge::UiBridge},
 };
 
-mod db_slider;
-mod direct_input;
 mod gain_bars;
 mod gain_slider;
 mod grid;
-mod modulation_input;
 mod module_label;
 mod modules_ui;
 mod routing_ui_ext;
 mod slider;
 mod stereo_input;
-mod stereo_slider;
 mod utils;
 mod volume_meter;
 mod waveform;

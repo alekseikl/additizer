@@ -4,8 +4,8 @@ use egui::{ComboBox, Grid, Slider, Ui};
 
 use crate::{
     editor::{
-        direct_input::DirectInput, module_label::ModuleLabel, stereo_input::StereoInput,
-        utils::confirm_module_removal, ModuleUi,
+        module_label::ModuleLabel, stereo_input::StereoInput, utils::confirm_module_removal,
+        ModuleUi,
     },
     synth_engine::{
         spectral_mixer::SpectralMixerUiBridge,
@@ -113,12 +113,6 @@ impl SpectralMixerUi {
                                         }
                                     });
                             }
-
-                            ui.add(DirectInput::new(
-                                bridge,
-                                Input::SpectrumMix(input_idx),
-                                module_id,
-                            ));
 
                             ComboBox::from_id_salt(format!("volume-type-{}", input_idx))
                                 .selected_text(volume_type.label())
