@@ -4,13 +4,13 @@ use egui::{ComboBox, Grid, Slider, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
-        module_label::ModuleLabel, utils::confirm_module_removal,
+        direct_input::DirectInput, module_label::ModuleLabel, stereo_input::StereoInput,
+        utils::confirm_module_removal, ModuleUi,
     },
     synth_engine::{
-        Input, Mixer, ModuleId, VolumeType,
         mixer::MixerUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
+        Input, Mixer, ModuleId, VolumeType,
     },
 };
 
@@ -67,44 +67,40 @@ impl MixerUi {
                     };
 
                     ui.label(format!("Input {}", input_idx + 1));
-                    if ui
-                        .add(
-                            ModulationInput::new(&mut value, bridge, input, module_id).before(
-                                move |ui, bridge| {
-                                    ui.add(DirectInput::new(
-                                        bridge,
-                                        Input::AudioMix(input_idx),
-                                        module_id,
-                                    ));
+                    let response = ui
+                        .horizontal(|ui| {
+                            ui.add(DirectInput::new(
+                                bridge,
+                                Input::AudioMix(input_idx),
+                                module_id,
+                            ));
 
-                                    let volume_type_ref = &mut volume_type;
+                            ComboBox::from_id_salt(format!("volume-type-{}", input_idx))
+                                .selected_text(volume_type.label())
+                                .width(0.0)
+                                .show_ui(ui, |ui| {
+                                    const TYPE_OPTIONS: &[VolumeType] =
+                                        &[VolumeType::Gain, VolumeType::Db];
 
-                                    ComboBox::from_id_salt(format!("volume-type-{}", input_idx))
-                                        .selected_text(volume_type_ref.label())
-                                        .width(0.0)
-                                        .show_ui(ui, |ui| {
-                                            const TYPE_OPTIONS: &[VolumeType] =
-                                                &[VolumeType::Gain, VolumeType::Db];
+                                    for vol_type_item in TYPE_OPTIONS {
+                                        if ui
+                                            .selectable_value(
+                                                &mut volume_type,
+                                                *vol_type_item,
+                                                vol_type_item.label(),
+                                            )
+                                            .clicked()
+                                        {
+                                            input_volume_type_change
+                                                .set(Some((input_idx, *vol_type_item)));
+                                        }
+                                    }
+                                });
 
-                                            for vol_type_item in TYPE_OPTIONS {
-                                                if ui
-                                                    .selectable_value(
-                                                        volume_type_ref,
-                                                        *vol_type_item,
-                                                        vol_type_item.label(),
-                                                    )
-                                                    .clicked()
-                                                {
-                                                    input_volume_type_change
-                                                        .set(Some((input_idx, *vol_type_item)));
-                                                }
-                                            }
-                                        });
-                                },
-                            ),
-                        )
-                        .changed()
-                    {
+                            ui.add(StereoInput::new(input, module_id, &mut value, bridge))
+                        })
+                        .inner;
+                    if response.changed() {
                         match volume_type {
                             VolumeType::Db => {
                                 mixer_bridge.set_param(Input::LevelMix(input_idx), value);
@@ -135,34 +131,38 @@ impl MixerUi {
 
                 ui.label("Output");
                 let output_volume_type_change = Rc::clone(&output_volume_type_change);
-                if ui
-                    .add(
-                        ModulationInput::new(&mut output_value, bridge, output_input, module_id)
-                            .before(move |ui, _bridge| {
-                                ComboBox::from_id_salt("volume-type-output")
-                                    .selected_text(output_volume_type.label())
-                                    .width(0.0)
-                                    .show_ui(ui, |ui| {
-                                        const TYPE_OPTIONS: &[VolumeType] =
-                                            &[VolumeType::Gain, VolumeType::Db];
+                let response = ui
+                    .horizontal(|ui| {
+                        ComboBox::from_id_salt("volume-type-output")
+                            .selected_text(output_volume_type.label())
+                            .width(0.0)
+                            .show_ui(ui, |ui| {
+                                const TYPE_OPTIONS: &[VolumeType] =
+                                    &[VolumeType::Gain, VolumeType::Db];
 
-                                        for vol_type_item in TYPE_OPTIONS {
-                                            if ui
-                                                .selectable_value(
-                                                    &mut output_volume_type,
-                                                    *vol_type_item,
-                                                    vol_type_item.label(),
-                                                )
-                                                .clicked()
-                                            {
-                                                output_volume_type_change.set(Some(*vol_type_item));
-                                            }
-                                        }
-                                    });
-                            }),
-                    )
-                    .changed()
-                {
+                                for vol_type_item in TYPE_OPTIONS {
+                                    if ui
+                                        .selectable_value(
+                                            &mut output_volume_type,
+                                            *vol_type_item,
+                                            vol_type_item.label(),
+                                        )
+                                        .clicked()
+                                    {
+                                        output_volume_type_change.set(Some(*vol_type_item));
+                                    }
+                                }
+                            });
+
+                        ui.add(StereoInput::new(
+                            output_input,
+                            module_id,
+                            &mut output_value,
+                            bridge,
+                        ))
+                    })
+                    .inner;
+                if response.changed() {
                     match output_volume_type {
                         VolumeType::Db => {
                             mixer_bridge.set_param(Input::Level, output_value);

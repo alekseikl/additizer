@@ -2,8 +2,9 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
-        stereo_slider::StereoSlider, utils::confirm_module_removal,
+        ModuleUi, module_label::ModuleLabel,
+        slider::{self, Slider},
+        stereo_input::StereoInput, utils::confirm_module_removal,
     },
     synth_engine::{
         Input, LfoShape, ModuleId,
@@ -69,11 +70,11 @@ impl LfoUi {
 
                 ui.label("Skew");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.skew,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::Skew,
                         module_id,
+                        &mut config.skew,
+                        bridge,
                     ))
                     .changed()
                 {
@@ -83,11 +84,11 @@ impl LfoUi {
 
                 ui.label("Frequency");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.frequency,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::LowFrequency,
                         module_id,
+                        &mut config.frequency,
+                        bridge,
                     ))
                     .changed()
                 {
@@ -97,11 +98,11 @@ impl LfoUi {
 
                 ui.label("Phase shift");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.phase_shift,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::PhaseShift,
                         module_id,
+                        &mut config.phase_shift,
+                        bridge,
                     ))
                     .changed()
                 {
@@ -112,13 +113,10 @@ impl LfoUi {
                 ui.label("Smooth");
                 if ui
                     .add(
-                        StereoSlider::new(&mut config.smooth_time)
-                            .range(0.0..=0.1)
-                            .display_scale(1000.0)
-                            .default_value(0.0)
+                        Slider::stereo(&mut config.smooth_time, 0.0..=0.1, None)
+                            .default(0.0)
                             .skew(1.2)
-                            .precision(1)
-                            .units(" ms"),
+                            .units(slider::Units::Time),
                     )
                     .changed()
                 {

@@ -2,14 +2,17 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, module_label::ModuleLabel, stereo_slider::StereoSlider,
+        ModuleUi,
+        module_label::ModuleLabel,
+        slider::{self, Slider},
         utils::confirm_module_removal,
     },
     synth_engine::{
-        Expression, ModuleId, StereoSample,
+        Expression, ModuleId,
         expressions::ExpressionsUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
+    utils::from_ms,
 };
 
 impl Expression {
@@ -58,8 +61,6 @@ impl ExpressionsUi {
             .spacing([40.0, 24.0])
             .striped(true)
             .show(ui, |ui| {
-                let mut smooth = StereoSample::splat(config.smooth);
-
                 ui.label("Expression");
                 ComboBox::from_id_salt("expressions-combo")
                     .selected_text(config.expression.label())
@@ -102,17 +103,14 @@ impl ExpressionsUi {
                 ui.label("Smooth");
                 if ui
                     .add(
-                        StereoSlider::new(&mut smooth)
-                            .range(0.0..=0.05)
-                            .display_scale(1000.0)
-                            .default_value(0.0)
+                        Slider::mono(&mut config.smooth, 0.0..=0.05, None)
+                            .default(from_ms(4.0))
                             .skew(1.2)
-                            .precision(1)
-                            .units(" ms"),
+                            .units(slider::Units::Time),
                     )
                     .changed()
                 {
-                    expr_bridge.set_smooth(smooth.left());
+                    expr_bridge.set_smooth(config.smooth);
                 }
                 ui.end_row();
             });

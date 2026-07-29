@@ -1,16 +1,18 @@
-use egui::{Checkbox, Grid, Slider, Ui};
+use egui::{Checkbox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, modulation_input::ModulationInput, module_label::ModuleLabel,
-        stereo_slider::StereoSlider, utils::confirm_module_removal,
+        ModuleUi,
+        module_label::ModuleLabel,
+        slider::{self, Slider},
+        stereo_input::StereoInput,
+        utils::confirm_module_removal,
     },
     synth_engine::{
         Input, ModuleId,
         envelope::EnvelopeUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
-    utils::from_ms,
 };
 
 pub struct EnvelopeUI {
@@ -43,10 +45,12 @@ impl EnvelopeUI {
             .show(ui, |ui| {
                 ui.label("Delay");
                 if ui
-                    .add(
-                        ModulationInput::new(&mut config.delay, bridge, Input::Delay, module_id)
-                            .default(from_ms(0.0)),
-                    )
+                    .add(StereoInput::new(
+                        Input::Delay,
+                        module_id,
+                        &mut config.delay,
+                        bridge,
+                    ))
                     .changed()
                 {
                     env_bridge.set_param(Input::Delay, config.delay);
@@ -55,10 +59,12 @@ impl EnvelopeUI {
 
                 ui.label("Attack");
                 if ui
-                    .add(
-                        ModulationInput::new(&mut config.attack, bridge, Input::Attack, module_id)
-                            .default(from_ms(0.0)),
-                    )
+                    .add(StereoInput::new(
+                        Input::Attack,
+                        module_id,
+                        &mut config.attack,
+                        bridge,
+                    ))
                     .changed()
                 {
                     env_bridge.set_param(Input::Attack, config.attack);
@@ -67,7 +73,11 @@ impl EnvelopeUI {
 
                 ui.label("Attack Curve");
                 if ui
-                    .add(Slider::new(&mut config.attack_curvature, -1.0..=1.0))
+                    .add(Slider::mono(
+                        &mut config.attack_curvature,
+                        0.0..=1.0,
+                        Some(-1.0),
+                    ))
                     .changed()
                 {
                     env_bridge.set_attack_curvature(config.attack_curvature);
@@ -76,11 +86,11 @@ impl EnvelopeUI {
 
                 ui.label("Hold");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.hold,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::Hold,
                         module_id,
+                        &mut config.hold,
+                        bridge,
                     ))
                     .changed()
                 {
@@ -90,10 +100,12 @@ impl EnvelopeUI {
 
                 ui.label("Decay");
                 if ui
-                    .add(
-                        ModulationInput::new(&mut config.decay, bridge, Input::Decay, module_id)
-                            .default(from_ms(150.0)),
-                    )
+                    .add(StereoInput::new(
+                        Input::Decay,
+                        module_id,
+                        &mut config.decay,
+                        bridge,
+                    ))
                     .changed()
                 {
                     env_bridge.set_param(Input::Decay, config.decay);
@@ -102,7 +114,11 @@ impl EnvelopeUI {
 
                 ui.label("Decay Curve");
                 if ui
-                    .add(Slider::new(&mut config.decay_curvature, -1.0..=1.0))
+                    .add(Slider::mono(
+                        &mut config.decay_curvature,
+                        0.0..=1.0,
+                        Some(-1.0),
+                    ))
                     .changed()
                 {
                     env_bridge.set_decay_curvature(config.decay_curvature);
@@ -111,11 +127,11 @@ impl EnvelopeUI {
 
                 ui.label("Sustain");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.sustain,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::Sustain,
                         module_id,
+                        &mut config.sustain,
+                        bridge,
                     ))
                     .changed()
                 {
@@ -125,15 +141,12 @@ impl EnvelopeUI {
 
                 ui.label("Release");
                 if ui
-                    .add(
-                        ModulationInput::new(
-                            &mut config.release,
-                            bridge,
-                            Input::Release,
-                            module_id,
-                        )
-                        .default(from_ms(250.0)),
-                    )
+                    .add(StereoInput::new(
+                        Input::Release,
+                        module_id,
+                        &mut config.release,
+                        bridge,
+                    ))
                     .changed()
                 {
                     env_bridge.set_param(Input::Release, config.release);
@@ -142,7 +155,11 @@ impl EnvelopeUI {
 
                 ui.label("Release Curve");
                 if ui
-                    .add(Slider::new(&mut config.release_curvature, -1.0..=1.0))
+                    .add(Slider::mono(
+                        &mut config.release_curvature,
+                        0.0..=1.0,
+                        Some(-1.0),
+                    ))
                     .changed()
                 {
                     env_bridge.set_release_curvature(config.release_curvature);
@@ -152,13 +169,10 @@ impl EnvelopeUI {
                 ui.label("Smooth");
                 if ui
                     .add(
-                        StereoSlider::new(&mut config.smooth)
-                            .range(0.0..=0.1)
-                            .display_scale(1000.0)
-                            .default_value(0.0)
+                        Slider::stereo(&mut config.smooth, 0.0..=0.1, None)
+                            .default(0.0)
                             .skew(1.2)
-                            .precision(1)
-                            .units(" ms"),
+                            .units(slider::Units::Time),
                     )
                     .changed()
                 {

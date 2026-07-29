@@ -6,7 +6,10 @@ use nih_plug::util::db_to_gain;
 
 use crate::{
     editor::{
-        ModuleUi, gain_slider::GainSlider, module_label::ModuleLabel, stereo_slider::StereoSlider,
+        ModuleUi,
+        gain_slider::GainSlider,
+        module_label::ModuleLabel,
+        slider::{self, Slider},
         utils::confirm_module_removal,
     },
     synth_engine::{
@@ -185,11 +188,10 @@ impl HarmonicEditorUI {
 
                     ui.label("Volume");
                     ui.add(
-                        StereoSlider::new(&mut state.volume)
-                            .range(-100.0..=40.0)
-                            .default_value(0.0)
+                        Slider::stereo(&mut state.volume, -100.0..=40.0, None)
+                            .default(0.0)
                             .skew(1.6)
-                            .units("dB"),
+                            .units(slider::Units::Db),
                     );
                     ui.end_row();
                 });
@@ -269,42 +271,31 @@ impl HarmonicEditorUI {
                     ui.end_row();
 
                     ui.label("Order");
-                    ui.add(
-                        StereoSlider::new(&mut state.order)
-                            .range(1.0..=8.0)
-                            .default_value(4.0),
-                    );
+                    ui.add(Slider::stereo(&mut state.order, 1.0..=8.0, None).default(4.0));
                     ui.end_row();
 
                     ui.label("Cutoff");
                     ui.add(
-                        StereoSlider::new(&mut state.cutoff)
-                            .range(-4.0..=10.0)
-                            .display_scale(12.0)
-                            .default_value(0.0)
-                            .precision(2)
-                            .units(" st"),
+                        Slider::stereo(&mut state.cutoff, -4.0..=10.0, None)
+                            .default(0.0)
+                            .units(slider::Units::Octaves),
                     );
                     ui.end_row();
 
                     ui.label("Q");
                     ui.add(
-                        StereoSlider::new(&mut state.q)
-                            .range(0.1..=10.0)
-                            .default_value(0.707)
-                            .skew(1.8)
-                            .precision(2),
+                        Slider::stereo(&mut state.q, 0.1..=10.0, None)
+                            .default(0.707)
+                            .skew(1.8),
                     );
                     ui.end_row();
 
                     ui.label("Gain");
                     ui.add(
-                        StereoSlider::new(&mut state.gain)
-                            .range(0.0..=24.0)
-                            .default_value(0.0)
+                        Slider::stereo(&mut state.gain, 0.0..=24.0, Some(-24.0))
+                            .default(0.0)
                             .skew(1.6)
-                            .allow_inverse()
-                            .units(" dB"),
+                            .units(slider::Units::Db),
                     );
                     ui.end_row();
                 });

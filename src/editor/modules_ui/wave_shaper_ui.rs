@@ -2,13 +2,13 @@ use egui::{ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
-        module_label::ModuleLabel, utils::confirm_module_removal,
+        direct_input::DirectInput, module_label::ModuleLabel, stereo_input::StereoInput,
+        utils::confirm_module_removal, ModuleUi,
     },
     synth_engine::{
-        Input, ModuleId, ShaperType,
         ui_bridge::{ModuleBridge, UiBridge},
         wave_shaper::WaveShaperUiBridge,
+        Input, ModuleId, ShaperType,
     },
 };
 
@@ -82,11 +82,11 @@ impl WaveShaperUi {
 
                 ui.label("Distortion");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.distortion,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::Distortion,
                         module_id,
+                        &mut config.distortion,
+                        bridge,
                     ))
                     .changed()
                 {
@@ -96,11 +96,11 @@ impl WaveShaperUi {
 
                 ui.label("Clipping level");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.clipping_level,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::ClippingLevel,
                         module_id,
+                        &mut config.clipping_level,
+                        bridge,
                     ))
                     .changed()
                 {

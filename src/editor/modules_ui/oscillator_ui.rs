@@ -1,10 +1,11 @@
 use egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
+use nih_plug::util::{db_to_gain, gain_to_db};
 
 use crate::{
     editor::{
-        ModuleUi, db_slider::DbSlider, direct_input::DirectInput, gain_slider::GainSlider,
-        modulation_input::ModulationInput, module_label::ModuleLabel, stereo_slider::StereoSlider,
-        utils::confirm_module_removal,
+        ModuleUi, direct_input::DirectInput, module_label::ModuleLabel,
+        slider::{self, Slider},
+        stereo_input::StereoInput, utils::confirm_module_removal,
     },
     synth_engine::{
         Input, ModuleId, Sample, StereoSample,
@@ -71,15 +72,16 @@ impl OscillatorUI {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Center");
-                    ui.add(
-                        StereoSlider::new(&mut state.center)
-                            .default_value(0.5)
-                            .precision(2),
-                    );
+                    ui.add(Slider::stereo(&mut state.center, 0.0..=1.0, None).default(0.5));
                     ui.end_row();
 
                     ui.label("Level");
-                    ui.add(DbSlider::new(&mut state.level).max_dbs(6.0));
+                    ui.add(
+                        Slider::stereo(&mut state.level, -48.0..=6.0, None)
+                            .over(0.0)
+                            .units(slider::Units::Db)
+                            .default(0.0),
+                    );
                     ui.end_row();
                 });
 
@@ -118,35 +120,23 @@ impl OscillatorUI {
             ui.add_space(20.0);
             ui.set_width(440.0);
 
-            let mut from = state.from.into();
-            let mut to = state.to.into();
-            let mut stereo_spread = state.stereo_spread.into();
-
             Grid::new("randomize_phases-grid")
                 .num_columns(2)
                 .spacing([40.0, 24.0])
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("From");
-                    ui.add(StereoSlider::new(&mut from).default_value(0.0).precision(2));
+                    ui.add(Slider::mono(&mut state.from, 0.0..=1.0, None).default(0.0));
                     ui.end_row();
 
                     ui.label("To");
-                    ui.add(StereoSlider::new(&mut to).default_value(1.0).precision(2));
+                    ui.add(Slider::mono(&mut state.to, 0.0..=1.0, None).default(1.0));
                     ui.end_row();
 
                     ui.label("Stereo spread");
-                    ui.add(
-                        StereoSlider::new(&mut stereo_spread)
-                            .default_value(1.0)
-                            .precision(2),
-                    );
+                    ui.add(Slider::mono(&mut state.stereo_spread, 0.0..=1.0, None).default(1.0));
                     ui.end_row();
                 });
-
-            state.from = from.left();
-            state.to = to.left();
-            state.stereo_spread = stereo_spread.left();
 
             ui.add_space(40.0);
 
@@ -194,12 +184,11 @@ impl OscillatorUI {
                 for (voice_idx, mut phase) in phases.enumerate() {
                     if ui
                         .add(
-                            StereoSlider::new(&mut phase)
+                            Slider::stereo(&mut phase, 0.0..=1.0, None)
                                 .vertical()
                                 .thickness(12.0)
                                 .length(100.0)
-                                .precision(2)
-                                .default_value(0.0),
+                                .default(0.0),
                         )
                         .changed()
                     {
@@ -220,19 +209,23 @@ impl OscillatorUI {
 
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
-                for (voice_idx, mut gain) in gains.enumerate() {
+                for (voice_idx, gain) in gains.enumerate() {
+                    let mut gain_db = gain.map(gain_to_db);
+
                     if ui
                         .add(
-                            GainSlider::new(&mut gain)
-                                .label(&format!("{}", voice_idx + 1))
-                                .max_dbs(6.0)
-                                .mid_point(0.8)
+                            Slider::stereo(&mut gain_db, -48.0..=6.0, None)
+                                .over(0.0)
+                                .units(slider::Units::Db)
+                                .vertical()
+                                .thickness(12.0)
+                                .length(100.0)
                                 .skew(2.0)
-                                .height(100.0),
+                                .default(0.0),
                         )
                         .changed()
                     {
-                        result = Some((voice_idx, gain));
+                        result = Some((voice_idx, gain_db.map(db_to_gain)));
                     }
                 }
             });
@@ -330,11 +323,11 @@ impl OscillatorUI {
 
         ui.label("Phases Blend");
         if ui
-            .add(ModulationInput::new(
-                &mut config.phases_blend,
-                synth_bridge,
+            .add(StereoInput::new(
                 Input::PhasesBlend,
                 module_id,
+                &mut config.phases_blend,
+                synth_bridge,
             ))
             .changed()
         {
@@ -376,11 +369,11 @@ impl OscillatorUI {
 
         ui.label("Levels Blend");
         if ui
-            .add(ModulationInput::new(
-                &mut config.gains_blend,
-                synth_bridge,
+            .add(StereoInput::new(
                 Input::GainsBlend,
                 module_id,
+                &mut config.gains_blend,
+                synth_bridge,
             ))
             .changed()
         {
@@ -414,11 +407,11 @@ impl OscillatorUI {
 
                 ui.label("Gain");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.gain,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::Gain,
                         module_id,
+                        &mut config.gain,
+                        bridge,
                     ))
                     .changed()
                 {
@@ -428,11 +421,11 @@ impl OscillatorUI {
 
                 ui.label("Pitch shift");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.pitch_shift,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::PitchShift,
                         module_id,
+                        &mut config.pitch_shift,
+                        bridge,
                     ))
                     .changed()
                 {
@@ -442,11 +435,11 @@ impl OscillatorUI {
 
                 ui.label("Phase shift");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.phase_shift,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::PhaseShift,
                         module_id,
+                        &mut config.phase_shift,
+                        bridge,
                     ))
                     .changed()
                 {
@@ -456,11 +449,11 @@ impl OscillatorUI {
 
                 ui.label("Frequency shift");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.frequency_shift,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::FrequencyShift,
                         module_id,
+                        &mut config.frequency_shift,
+                        bridge,
                     ))
                     .changed()
                 {
@@ -470,11 +463,11 @@ impl OscillatorUI {
 
                 ui.label("Detune");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.detune,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::Detune,
                         module_id,
+                        &mut config.detune,
+                        bridge,
                     ))
                     .changed()
                 {
@@ -484,11 +477,11 @@ impl OscillatorUI {
 
                 ui.label("Detune power");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.detune_power,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::DetunePower,
                         module_id,
+                        &mut config.detune_power,
+                        bridge,
                     ))
                     .changed()
                 {
@@ -498,11 +491,11 @@ impl OscillatorUI {
 
                 ui.label("Glide");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.glide,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::Glide,
                         module_id,
+                        &mut config.glide,
+                        bridge,
                     ))
                     .changed()
                 {
@@ -512,11 +505,11 @@ impl OscillatorUI {
 
                 ui.label("Glide Slope");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.glide_slope,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::GlideSlope,
                         module_id,
+                        &mut config.glide_slope,
+                        bridge,
                     ))
                     .changed()
                 {

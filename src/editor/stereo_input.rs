@@ -3,7 +3,7 @@ use egui::{Id, Pos2, Response, Sense, Ui, Widget, emath, lerp, vec2};
 use crate::{
     editor::grid::input_mixer_popup::InputMixerPopup,
     synth_engine::{
-        Input, InputId, ModuleId, ModuleType, StereoSample,
+        Input, InputId, ModuleId, ModuleType, Sample, StereoSample,
         ui_bridge::{ModulatedValue, UiBridge},
     },
 };
@@ -21,6 +21,7 @@ pub struct StereoInput<'a> {
     input: InputId,
     value: &'a mut StereoSample,
     bridge: &'a mut UiBridge,
+    default: Option<Sample>,
 }
 
 impl<'a> StereoInput<'a> {
@@ -34,7 +35,13 @@ impl<'a> StereoInput<'a> {
             input: InputId::new(input, module_id),
             value,
             bridge,
+            default: None,
         }
+    }
+
+    pub fn default(mut self, default: Sample) -> Self {
+        self.default = Some(default);
+        self
     }
 }
 
@@ -103,6 +110,10 @@ impl Widget for StereoInput<'_> {
 
             let has_connected_sources = self.bridge.has_connected_input_sources(self.input);
             let mut slider = self.input.input_type.param_slider(self.value);
+
+            if let Some(default) = self.default {
+                slider = slider.default(default);
+            }
 
             if let Some(modulated) = modulated.as_ref() {
                 if modulated.is_stereo {

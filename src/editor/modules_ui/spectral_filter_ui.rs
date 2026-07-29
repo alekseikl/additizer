@@ -2,8 +2,11 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
-        module_label::ModuleLabel, slider, stereo_input::StereoInput, stereo_slider::StereoSlider,
+        ModuleUi,
+        direct_input::DirectInput,
+        module_label::ModuleLabel,
+        slider::{self, Slider},
+        stereo_input::StereoInput,
         utils::confirm_module_removal,
     },
     synth_engine::{
@@ -73,67 +76,12 @@ impl SpectralFilterUI {
 
                 ui.label("Cutoff");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.cutoff,
-                        bridge,
-                        Input::Cutoff,
-                        module_id,
-                    ))
-                    .changed()
-                {
-                    filter_bridge.set_param(Input::Cutoff, config.cutoff);
-                }
-                ui.end_row();
-
-                ui.label("Cutoff");
-                if ui
                     .add(StereoInput::new(
                         Input::Cutoff,
                         module_id,
                         &mut config.cutoff,
                         bridge,
                     ))
-                    .changed()
-                {
-                    filter_bridge.set_param(Input::Cutoff, config.cutoff);
-                }
-                ui.end_row();
-
-                ui.label("Cutoff mono");
-                if ui
-                    .add(
-                        slider::Slider::mono(
-                            &mut config.cutoff[0],
-                            from_st(-24.0)..=from_st(120.0),
-                            Some(from_st(-96.0)),
-                        )
-                        .over(from_st(96.0))
-                        .units(slider::Units::Octaves)
-                        .default(0.0)
-                        .skew(1.1),
-                    )
-                    .changed()
-                {
-                    filter_bridge.set_param(Input::Cutoff, config.cutoff);
-                }
-                ui.end_row();
-
-                ui.label("Cutoff vert");
-                if ui
-                    .add(
-                        slider::Slider::stereo(
-                            &mut config.cutoff,
-                            from_st(-24.0)..=from_st(120.0),
-                            Some(from_st(-96.0)),
-                        )
-                        .over(from_st(96.0))
-                        .units(slider::Units::Octaves)
-                        .vertical()
-                        .thickness(10.0)
-                        .length(100.0)
-                        .default(0.0)
-                        .skew(1.1),
-                    )
                     .changed()
                 {
                     filter_bridge.set_param(Input::Cutoff, config.cutoff);
@@ -156,11 +104,11 @@ impl SpectralFilterUI {
 
                 ui.label("Drive");
                 if ui
-                    .add(ModulationInput::new(
-                        &mut config.drive,
-                        bridge,
+                    .add(StereoInput::new(
                         Input::Drive,
                         module_id,
+                        &mut config.drive,
+                        bridge,
                     ))
                     .changed()
                 {
@@ -171,12 +119,9 @@ impl SpectralFilterUI {
                 ui.label("Q Limit To");
                 if ui
                     .add(
-                        StereoSlider::new(&mut config.q_limit_to)
-                            .range(0.0..=10.0)
-                            .display_scale(12.0)
-                            .default_value(from_st(12.0))
-                            .precision(2)
-                            .units(" st"),
+                        Slider::stereo(&mut config.q_limit_to, 0.0..=10.0, None)
+                            .default(from_st(12.0))
+                            .units(slider::Units::Octaves),
                     )
                     .changed()
                 {
@@ -186,12 +131,7 @@ impl SpectralFilterUI {
 
                 ui.label("Q Limit Curve");
                 if ui
-                    .add(
-                        StereoSlider::new(&mut config.q_limit_curve)
-                            .range(0.0..=1.0)
-                            .default_value(0.5)
-                            .precision(2),
-                    )
+                    .add(Slider::stereo(&mut config.q_limit_curve, 0.0..=1.0, None).default(0.5))
                     .changed()
                 {
                     filter_bridge.set_q_limit_curve(config.q_limit_curve);

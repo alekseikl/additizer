@@ -164,11 +164,13 @@ impl Input {
             Self::Gain | Self::GainMix(_) => {
                 Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(1.0)
             }
-            Self::Level | Self::LevelMix(_) => Slider::stereo(value, 0.0..=1.0, None)
+            Self::Level | Self::LevelMix(_) => Slider::stereo(value, -48.0..=24.0, None)
                 .default(0.0)
-                .over(0.0),
-            Self::Drive | Self::ClippingLevel => Slider::stereo(value, 0.0..=24.0, Some(-24.0))
+                .over(0.0)
+                .units(slider::Units::Db),
+            Self::Drive | Self::ClippingLevel => Slider::stereo(value, -24.0..=24.0, None)
                 .default(0.0)
+                .over(0.0)
                 .units(slider::Units::Db),
             Self::Distortion => Slider::stereo(value, 0.0..=40.0, None)
                 .default(0.0)
@@ -184,7 +186,7 @@ impl Input {
             Self::Detune => Slider::stereo(value, 0.0..=from_st(1.0), None)
                 .default(from_st(0.2))
                 .units(slider::Units::Octaves),
-            Self::DetunePower => Slider::stereo(value, 0.0..=1.0, Some(-1.0)),
+            Self::DetunePower => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
             Self::PitchShift => Slider::stereo(value, 0.0..=8.0, Some(-8.0))
                 .skew(1.8)
                 .default(0.0)
@@ -193,8 +195,8 @@ impl Input {
                 .default(0.0)
                 .skew(2.0)
                 .units(slider::Units::Time),
-            Self::GlideSlope => Slider::stereo(value, 0.0..=1.0, Some(-1.0)),
-            Self::PhaseShift => Slider::stereo(value, 0.0..=1.0, Some(-1.0)),
+            Self::GlideSlope => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
+            Self::PhaseShift => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
             Self::FrequencyShift => Slider::stereo(value, 0.0..=1_000.0, Some(-1_000.0))
                 .default(0.0)
                 .skew(2.0)

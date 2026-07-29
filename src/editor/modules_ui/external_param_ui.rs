@@ -2,11 +2,13 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, module_label::ModuleLabel, stereo_slider::StereoSlider,
+        ModuleUi,
+        module_label::ModuleLabel,
+        slider::{self, Slider},
         utils::confirm_module_removal,
     },
     synth_engine::{
-        ModuleId, StereoSample,
+        ModuleId,
         external_param::{ExternalParamUiBridge, NUM_FLOAT_PARAMS},
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -63,22 +65,17 @@ impl ExternalParamUI {
                     });
                 ui.end_row();
 
-                let mut smooth = StereoSample::splat(config.smooth);
-
                 ui.label("Smooth");
                 if ui
                     .add(
-                        StereoSlider::new(&mut smooth)
-                            .range(0.0..=0.05)
-                            .display_scale(1000.0)
-                            .default_value(0.0)
+                        Slider::mono(&mut config.smooth, 0.0..=0.05, None)
+                            .default(4.0)
                             .skew(1.2)
-                            .precision(1)
-                            .units(" ms"),
+                            .units(slider::Units::Time),
                     )
                     .changed()
                 {
-                    param_bridge.set_smooth(smooth.left());
+                    param_bridge.set_smooth(config.smooth);
                 }
                 ui.end_row();
 

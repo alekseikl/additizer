@@ -2,8 +2,8 @@ use egui::{Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, direct_input::DirectInput, modulation_input::ModulationInput,
-        module_label::ModuleLabel, utils::confirm_module_removal,
+        ModuleUi, direct_input::DirectInput, module_label::ModuleLabel, stereo_input::StereoInput,
+        utils::confirm_module_removal,
     },
     synth_engine::{
         Input, ModuleId,
@@ -47,8 +47,8 @@ impl AmplifierUI {
                 ui.label("Gain");
                 if ui
                     .add(
-                        ModulationInput::new(&mut config.gain, bridge, Input::Gain, module_id)
-                            .modulation_default(1.0),
+                        StereoInput::new(Input::Gain, module_id, &mut config.gain, bridge)
+                            .default(0.0),
                     )
                     .changed()
                 {

@@ -2,7 +2,10 @@ use egui::{Grid, Ui};
 use nih_plug::util::{db_to_gain, gain_to_db};
 
 use crate::{
-    editor::{ModuleUi, db_slider::DbSlider},
+    editor::{
+        ModuleUi,
+        slider::{self, Slider},
+    },
     synth_engine::{ModuleId, OUTPUT_MODULE_ID, StereoSample, ui_bridge::UiBridge},
 };
 
@@ -32,7 +35,14 @@ impl OutputUi {
             .show(ui, |ui| {
                 ui.label("Volume");
                 if ui
-                    .add(DbSlider::new(&mut gain_db).max_dbs(6.0).width(200.0))
+                    .add(
+                        Slider::stereo(&mut gain_db, -100.0..=6.0, None)
+                            .default(0.0)
+                            .over(0.0)
+                            .skew(1.6)
+                            .units(slider::Units::Db)
+                            .length(200.0),
+                    )
                     .changed()
                 {
                     bridge.set_output_gain(gain_db.iter().copied().map(db_to_gain).collect());
