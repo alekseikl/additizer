@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use egui::{
-    CentralPanel, ComboBox, FontData, FontDefinitions, FontFamily, Frame, Id, Panel, ScrollArea,
-    Ui, Vec2, vec2,
+    CentralPanel, ComboBox, FontData, FontDefinitions, FontFamily, Frame, Id, Margin, Panel,
+    ScrollArea, Ui, Vec2, vec2,
 };
 use nih_plug::editor::Editor;
 use nih_plug_egui::{EguiState, create_egui_editor, resizable_window::ResizableWindow};
@@ -218,13 +218,21 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
             .resizable(true)
             .default_size(300.0)
             .min_size(80.0)
-            .frame(Frame::default().inner_margin(8.0))
             .show_inside(ui, |ui| {
                 ScrollArea::vertical()
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                         if let Some(module_ui) = &mut editor_state.grid_module_ui {
-                            module_ui.ui(&mut editor_state.ui_bridge, ui);
+                            Frame::NONE
+                                .inner_margin(Margin {
+                                    left: 16,
+                                    right: 16,
+                                    top: 8,
+                                    bottom: 16,
+                                })
+                                .show(ui, |ui| {
+                                    module_ui.ui(&mut editor_state.ui_bridge, ui);
+                                });
                         }
                     });
             });

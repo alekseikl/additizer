@@ -10,7 +10,6 @@ use crate::{
         gain_slider::GainSlider,
         module_label::ModuleLabel,
         slider::{self, Slider},
-        utils::confirm_module_removal,
     },
     synth_engine::{
         ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample,
@@ -91,7 +90,6 @@ impl Default for ApplyFilterState {
 
 pub struct HarmonicEditorUI {
     module_id: ModuleId,
-    remove_confirmation: bool,
     label_state: Option<String>,
     select_and_set_state: Option<Box<SelectAndSetState>>,
     apply_filter_state: Option<Box<ApplyFilterState>>,
@@ -101,7 +99,6 @@ impl HarmonicEditorUI {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            remove_confirmation: false,
             label_state: None,
             select_and_set_state: None,
             apply_filter_state: None,
@@ -436,12 +433,6 @@ impl HarmonicEditorUI {
             && Self::show_apply_filter_modal(editor_bridge, ui, &mut state)
         {
             self.apply_filter_state.replace(state);
-        }
-
-        ui.add_space(40.0);
-
-        if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(module_id);
         }
     }
 }

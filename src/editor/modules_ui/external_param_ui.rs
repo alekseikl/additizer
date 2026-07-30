@@ -5,7 +5,6 @@ use crate::{
         ModuleUi,
         module_label::ModuleLabel,
         slider::{self, Slider},
-        utils::confirm_module_removal,
     },
     synth_engine::{
         ModuleId,
@@ -16,7 +15,6 @@ use crate::{
 
 pub struct ExternalParamUI {
     module_id: ModuleId,
-    remove_confirmation: bool,
     label_state: Option<String>,
 }
 
@@ -24,7 +22,6 @@ impl ExternalParamUI {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            remove_confirmation: false,
             label_state: None,
         }
     }
@@ -88,12 +85,6 @@ impl ExternalParamUI {
                 }
                 ui.end_row();
             });
-
-        ui.add_space(40.0);
-
-        if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(module_id);
-        }
     }
 }
 

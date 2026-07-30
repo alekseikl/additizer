@@ -5,7 +5,6 @@ use crate::{
         ModuleUi,
         module_label::ModuleLabel,
         slider::{self, Slider},
-        utils::confirm_module_removal,
     },
     synth_engine::{
         Expression, ModuleId,
@@ -30,7 +29,6 @@ impl Expression {
 
 pub struct ExpressionsUi {
     module_id: ModuleId,
-    remove_confirmation: bool,
     label_state: Option<String>,
 }
 
@@ -38,7 +36,6 @@ impl ExpressionsUi {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            remove_confirmation: false,
             label_state: None,
         }
     }
@@ -114,12 +111,6 @@ impl ExpressionsUi {
                 }
                 ui.end_row();
             });
-
-        ui.add_space(40.0);
-
-        if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(module_id);
-        }
     }
 }
 

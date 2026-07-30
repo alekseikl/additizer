@@ -1,10 +1,7 @@
 use egui::{Grid, Ui};
 
 use crate::{
-    editor::{
-        ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput,
-        utils::confirm_module_removal,
-    },
+    editor::{ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput},
     synth_engine::{
         Input, ModuleId,
         amplifier::AmplifierUiBridge,
@@ -14,7 +11,6 @@ use crate::{
 
 pub struct AmplifierUI {
     module_id: ModuleId,
-    remove_confirmation: bool,
     module_label: Option<String>,
 }
 
@@ -22,7 +18,6 @@ impl AmplifierUI {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            remove_confirmation: false,
             module_label: None,
         }
     }
@@ -52,12 +47,6 @@ impl AmplifierUI {
                 }
                 ui.end_row();
             });
-
-        ui.add_space(40.0);
-
-        if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(module_id);
-        }
     }
 }
 

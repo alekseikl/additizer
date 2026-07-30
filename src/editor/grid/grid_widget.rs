@@ -22,7 +22,7 @@ use crate::{
         select_input_popup::{SelectInputPopup, ShowResult},
     },
     synth_engine::{
-        DataType, Input, InputId, InputSource, ModuleId, ModuleType,
+        Input, InputId, InputSource, ModuleId, ModuleType,
         ui_bridge::{
             GridVec,
             routing_state::{ModuleInput, ModuleIo},
@@ -305,9 +305,26 @@ impl GridWidget {
                 },
             );
 
+            self.context_menu_ui(&drag, ctx);
+
             drag
         })
         .inner
+    }
+
+    fn context_menu_ui(&self, response: &Response, ctx: &mut WidgetCtx) {
+        if matches!(self.io.module_type, ModuleType::Output) {
+            return;
+        }
+
+        let module_id = self.io.id;
+
+        response.context_menu(|ui| {
+            if ui.button("Remove Module").clicked() {
+                ctx.bridge.remove_module(module_id);
+                ui.close();
+            }
+        });
     }
 
     fn link_request_ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
@@ -403,7 +420,7 @@ impl GridWidget {
     fn modulated_dot_color(ctx: &WidgetCtx, module_id: ModuleId, input: &ModuleInput) -> Color32 {
         let base = input.meta.input_type.color();
 
-        if input.meta.data_type != DataType::Control {
+        if input.meta.is_direct {
             return base;
         }
 

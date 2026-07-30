@@ -432,7 +432,7 @@ impl Oscillator {
     );
     set_mono_param!(set_steal_phase, steal_phase, bool);
 
-    set_smoothed_param!(set_gain, gain, gain.clamp(0.0, 1.0));
+    set_smoothed_param!(set_gain, gain, gain.clamp(-1.0, 1.0));
     set_smoothed_param!(
         set_pitch_shift,
         pitch_shift,
@@ -442,7 +442,7 @@ impl Oscillator {
     set_stereo_param!(
         set_detune_power,
         detune_power,
-        detune_power.clamp(-5.0, 5.0)
+        detune_power.clamp(-1.0, 1.0)
     );
 
     set_stereo_param!(set_glide, glide, glide.clamp(0.0, MAX_GLIDE));
@@ -693,7 +693,8 @@ impl Oscillator {
 
             let detune_power = router
                 .scalar_param(&inputs.detune_power, channel.detune_power, triggered)
-                .clamp(-MAX_DETUNE_POWER, MAX_DETUNE_POWER);
+                .clamp(-1.0, 1.0)
+                * MAX_DETUNE_POWER;
 
             let phases_blend = router
                 .scalar_param(&inputs.phases_blend, channel.phases_blend, triggered)

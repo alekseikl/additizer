@@ -49,8 +49,6 @@ impl OutputUi {
                 }
                 ui.end_row();
             });
-
-        ui.add_space(8.0);
     }
 }
 

@@ -6,7 +6,6 @@ use crate::{
         module_label::ModuleLabel,
         slider::{self, Slider},
         stereo_input::StereoInput,
-        utils::confirm_module_removal,
     },
     synth_engine::{
         Input, LfoShape, ModuleId,
@@ -29,7 +28,6 @@ static SHAPE_OPTIONS: &[LfoShape] = &[LfoShape::Triangle, LfoShape::Square, LfoS
 
 pub struct LfoUi {
     module_id: ModuleId,
-    remove_confirmation: bool,
     label_state: Option<String>,
 }
 
@@ -37,7 +35,6 @@ impl LfoUi {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            remove_confirmation: false,
             label_state: None,
         }
     }
@@ -146,12 +143,6 @@ impl LfoUi {
                 }
                 ui.end_row();
             });
-
-        ui.add_space(40.0);
-
-        if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(module_id);
-        }
     }
 }
 

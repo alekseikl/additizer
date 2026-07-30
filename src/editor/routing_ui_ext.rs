@@ -178,8 +178,7 @@ impl Input {
             Self::Blend | Self::GainsBlend | Self::PhasesBlend => {
                 Slider::stereo(value, 0.0..=1.0, None).default(0.0)
             }
-            Self::Cutoff => Slider::stereo(value, -2.0..=10.0, Some(-10.0))
-                .over(8.0)
+            Self::Cutoff => Slider::stereo(value, -2.0..=10.0, None)
                 .default(0.0)
                 .units(slider::Units::Octaves),
             Self::Resonance => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),

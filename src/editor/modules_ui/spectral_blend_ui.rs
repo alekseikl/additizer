@@ -1,10 +1,7 @@
 use egui::{Grid, Ui};
 
 use crate::{
-    editor::{
-        module_label::ModuleLabel, stereo_input::StereoInput, utils::confirm_module_removal,
-        ModuleUi,
-    },
+    editor::{module_label::ModuleLabel, stereo_input::StereoInput, ModuleUi},
     synth_engine::{
         spectral_blend::SpectralBlendUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
@@ -14,7 +11,6 @@ use crate::{
 
 pub struct SpectralBlendUi {
     module_id: ModuleId,
-    remove_confirmation: bool,
     label_state: Option<String>,
 }
 
@@ -22,7 +18,6 @@ impl SpectralBlendUi {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            remove_confirmation: false,
             label_state: None,
         }
     }
@@ -59,12 +54,6 @@ impl SpectralBlendUi {
                 }
                 ui.end_row();
             });
-
-        ui.add_space(40.0);
-
-        if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(module_id);
-        }
     }
 }
 

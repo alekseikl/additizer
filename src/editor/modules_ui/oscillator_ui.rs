@@ -7,7 +7,6 @@ use crate::{
         module_label::ModuleLabel,
         slider::{self, Slider},
         stereo_input::StereoInput,
-        utils::confirm_module_removal,
     },
     synth_engine::{
         Input, ModuleId, Sample, StereoSample,
@@ -36,7 +35,6 @@ struct UnisonState {
 
 pub struct OscillatorUI {
     module_id: ModuleId,
-    remove_confirmation: bool,
     label_state: Option<String>,
     unison_state: UnisonState,
 }
@@ -45,7 +43,6 @@ impl OscillatorUI {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            remove_confirmation: false,
             label_state: None,
             unison_state: UnisonState {
                 gain_shape_state: None,
@@ -567,8 +564,6 @@ impl OscillatorUI {
                 });
         }
 
-        ui.add_space(40.0);
-
         if let Some(mut state) = self.unison_state.gain_shape_state.take()
             && Self::show_gain_shape_modal(osc_bridge, ui, &mut state)
         {
@@ -579,10 +574,6 @@ impl OscillatorUI {
             && Self::show_randomize_phases_modal(osc_bridge, ui, &mut state)
         {
             self.unison_state.randomize_phase_state.replace(state);
-        }
-
-        if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(module_id);
         }
     }
 }

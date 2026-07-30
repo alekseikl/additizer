@@ -1,10 +1,7 @@
 use egui::{ComboBox, Grid, Ui};
 
 use crate::{
-    editor::{
-        module_label::ModuleLabel, stereo_input::StereoInput, utils::confirm_module_removal,
-        ModuleUi,
-    },
+    editor::{module_label::ModuleLabel, stereo_input::StereoInput, ModuleUi},
     synth_engine::{
         ui_bridge::{ModuleBridge, UiBridge},
         wave_shaper::WaveShaperUiBridge,
@@ -23,7 +20,6 @@ impl ShaperType {
 
 pub struct WaveShaperUi {
     module_id: ModuleId,
-    remove_confirmation: bool,
     label_state: Option<String>,
 }
 
@@ -31,7 +27,6 @@ impl WaveShaperUi {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            remove_confirmation: false,
             label_state: None,
         }
     }
@@ -104,12 +99,6 @@ impl WaveShaperUi {
                 }
                 ui.end_row();
             });
-
-        ui.add_space(40.0);
-
-        if confirm_module_removal(ui, &mut self.remove_confirmation) {
-            bridge.remove_module(module_id);
-        }
     }
 }
 
