@@ -250,7 +250,7 @@ impl GridWidget {
             // Clamp so the widget can't be dragged past the top/left edges:
 
             self.drag_offset = offset.max(-Vec2::from(grid_pos));
-            Self::auto_scroll(ui, max_rect);
+            Self::auto_scroll(ui, pointer);
         }
 
         if drag.drag_stopped() {
@@ -370,9 +370,10 @@ impl GridWidget {
         }
     }
 
-    fn auto_scroll(ui: &Ui, widget: Rect) {
+    fn auto_scroll(ui: &Ui, pointer: Pos2) {
         const MAX_SPEED: f32 = 18.0;
 
+        let widget = Rect::from_center_size(pointer, vec2(32.0, 32.0));
         let view = ui.clip_rect();
         let mut delta = Vec2::ZERO;
 
@@ -610,7 +611,7 @@ impl GridWidget {
         if response.dragged()
             && let Some(pointer) = ui.ctx().pointer_interact_pos()
         {
-            Self::auto_scroll(ui, Rect::from_center_size(pointer, vec2(16.0, 16.0)));
+            Self::auto_scroll(ui, pointer);
         }
 
         if response.drag_stopped()
