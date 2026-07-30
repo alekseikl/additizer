@@ -1,4 +1,4 @@
-use egui::{Checkbox, ComboBox, Grid, Ui};
+use egui::{Align, Checkbox, ComboBox, Grid, Layout, Ui};
 
 use crate::{
     editor::{
@@ -45,12 +45,17 @@ impl SpectralFilterUI {
 
         ui.add_space(20.0);
 
+        let right_label = |ui: &mut Ui, text: &str| {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.label(text);
+            });
+        };
+
         Grid::new("sf_grid")
-            .num_columns(2)
-            .spacing([40.0, 24.0])
-            .striped(true)
+            .num_columns(4)
+            .spacing([8.0, 8.0])
             .show(ui, |ui| {
-                ui.label("Type");
+                right_label(ui, "Type");
                 ComboBox::from_id_salt("spectral-filter-type")
                     .selected_text(config.filter_type.label())
                     .show_ui(ui, |ui| {
@@ -67,9 +72,8 @@ impl SpectralFilterUI {
                             }
                         }
                     });
-                ui.end_row();
 
-                ui.label("Cutoff");
+                right_label(ui, "Cutoff");
                 if ui
                     .add(StereoInput::new(
                         Input::Cutoff,
@@ -83,7 +87,7 @@ impl SpectralFilterUI {
                 }
                 ui.end_row();
 
-                ui.label("Resonance");
+                right_label(ui, "Resonance");
                 if ui
                     .add(StereoInput::new(
                         Input::Resonance,
@@ -95,9 +99,8 @@ impl SpectralFilterUI {
                 {
                     filter_bridge.set_param(Input::Resonance, config.resonance);
                 }
-                ui.end_row();
 
-                ui.label("Drive");
+                right_label(ui, "Drive");
                 if ui
                     .add(StereoInput::new(
                         Input::Drive,
@@ -111,7 +114,7 @@ impl SpectralFilterUI {
                 }
                 ui.end_row();
 
-                ui.label("Q Limit To");
+                right_label(ui, "Q Limit");
                 if ui
                     .add(
                         Slider::stereo(&mut config.q_limit_to, 0.0..=10.0, None)
@@ -122,9 +125,8 @@ impl SpectralFilterUI {
                 {
                     filter_bridge.set_q_limit_to(config.q_limit_to);
                 }
-                ui.end_row();
 
-                ui.label("Q Limit Curve");
+                right_label(ui, "Q Curve");
                 if ui
                     .add(Slider::stereo(&mut config.q_limit_curve, 0.0..=1.0, None).default(0.5))
                     .changed()
@@ -133,7 +135,7 @@ impl SpectralFilterUI {
                 }
                 ui.end_row();
 
-                ui.label("Linear phase");
+                right_label(ui, "Linear");
                 if ui
                     .add(Checkbox::without_text(&mut config.linear_phase))
                     .changed()

@@ -126,16 +126,19 @@ impl Widget for StereoInput<'_> {
             let response = ui.add(slider);
             let mixer_popup_id = response.id.with("stereo-input-mixer");
 
-            if has_connected_sources
-                && let Some(pos) = self.add_circle(ui, modulated.as_ref())
-                && let Some(module_type) = self.module_type()
-            {
-                ui.data_mut(|d| {
-                    d.insert_temp(mixer_popup_id, Some(MixerOpen { pos, module_type }));
-                });
-            }
+            if has_connected_sources {
+                if let Some(pos) = self.add_circle(ui, modulated.as_ref())
+                    && let Some(module_type) = self.module_type()
+                {
+                    ui.data_mut(|d| {
+                        d.insert_temp(mixer_popup_id, Some(MixerOpen { pos, module_type }));
+                    });
+                }
 
-            self.mixer_popup_ui(ui, mixer_popup_id);
+                self.mixer_popup_ui(ui, mixer_popup_id);
+            } else {
+                ui.allocate_exact_size(vec2(IO_DOT_SIZE_HOVER, IO_DOT_SIZE_HOVER), Sense::hover());
+            }
 
             response
         })
