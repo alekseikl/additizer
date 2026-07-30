@@ -1,11 +1,13 @@
-use egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
+use egui::{Align, Checkbox, DragValue, Grid, Id, Layout, Modal, Sides, Ui};
 use nih_plug::util::{db_to_gain, gain_to_db};
 
 use crate::{
     editor::{
-        ModuleUi, module_label::ModuleLabel,
+        ModuleUi,
+        module_label::ModuleLabel,
         slider::{self, Slider},
-        stereo_input::StereoInput, utils::confirm_module_removal,
+        stereo_input::StereoInput,
+        utils::confirm_module_removal,
     },
     synth_engine::{
         Input, ModuleId, Sample, StereoSample,
@@ -28,8 +30,6 @@ struct RandomizePhaseState {
 }
 
 struct UnisonState {
-    phases_shift_to: bool,
-    gains_to: bool,
     gain_shape_state: Option<Box<GainShapeState>>,
     randomize_phase_state: Option<Box<RandomizePhaseState>>,
 }
@@ -48,8 +48,6 @@ impl OscillatorUI {
             remove_confirmation: false,
             label_state: None,
             unison_state: UnisonState {
-                phases_shift_to: false,
-                gains_to: false,
                 gain_shape_state: None,
                 randomize_phase_state: None,
             },
@@ -179,23 +177,21 @@ impl OscillatorUI {
     ) -> Option<(usize, StereoSample)> {
         let mut result = None;
 
-        ui.vertical(|ui| {
-            ui.horizontal(|ui| {
-                for (voice_idx, mut phase) in phases.enumerate() {
-                    if ui
-                        .add(
-                            Slider::stereo(&mut phase, 0.0..=1.0, None)
-                                .vertical()
-                                .thickness(12.0)
-                                .length(100.0)
-                                .default(0.0),
-                        )
-                        .changed()
-                    {
-                        result = Some((voice_idx, phase));
-                    }
+        ui.horizontal(|ui| {
+            for (voice_idx, mut phase) in phases.enumerate() {
+                if ui
+                    .add(
+                        Slider::stereo(&mut phase, 0.0..=1.0, None)
+                            .vertical()
+                            .thickness(12.0)
+                            .length(100.0)
+                            .default(0.0),
+                    )
+                    .changed()
+                {
+                    result = Some((voice_idx, phase));
                 }
-            });
+            }
         });
 
         result
@@ -244,22 +240,6 @@ impl OscillatorUI {
     ) {
         let unison = config.unison_voices;
 
-        let from_to_toggle = |ui: &mut Ui, toggle: &mut bool| {
-            if *toggle {
-                if ui.button("From").clicked() {
-                    *toggle = false;
-                }
-                ui.label("->");
-                ui.label("To");
-            } else {
-                ui.label("From");
-                ui.label("->");
-                if ui.button("To").clicked() {
-                    *toggle = true;
-                }
-            }
-        };
-
         ui.label("Initial Phase");
         ui.vertical(|ui| {
             if let Some((voice_idx, phase)) =
@@ -285,38 +265,50 @@ impl OscillatorUI {
         ui.label("Phase Shift");
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
-                from_to_toggle(ui, &mut unison_state.phases_shift_to);
-            });
+                ui.vertical(|ui| {
+                    if let Some((voice_idx, phase)) =
+                        Self::show_phases(ui, (0..unison).map(|i| config.unison[i].phase_shift))
+                    {
+                        config.unison[voice_idx].phase_shift = phase;
+                        bridge.set_unison_phase_shift(voice_idx, phase);
+                    }
 
-            ui.vertical(|ui| {
-                if unison_state.phases_shift_to {
+                    ui.add_space(8.0);
+
+                    if ui.button("Randomize").clicked() {
+                        unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
+                            from: 0.0,
+                            to: 1.0,
+                            stereo_spread: 0.1,
+                            dst: PhasesDst::From,
+                        }));
+                    }
+                });
+
+                ui.vertical(|ui| {
+                    ui.add_space(40.0);
+                    ui.label("->");
+                });
+
+                ui.vertical(|ui| {
                     if let Some((voice_idx, phase)) =
                         Self::show_phases(ui, (0..unison).map(|i| config.unison[i].phase_shift_to))
                     {
                         config.unison[voice_idx].phase_shift_to = phase;
                         bridge.set_unison_phase_shift_to(voice_idx, phase);
                     }
-                } else if let Some((voice_idx, phase)) =
-                    Self::show_phases(ui, (0..unison).map(|i| config.unison[i].phase_shift))
-                {
-                    config.unison[voice_idx].phase_shift = phase;
-                    bridge.set_unison_phase_shift(voice_idx, phase);
-                }
 
-                ui.add_space(8.0);
+                    ui.add_space(8.0);
 
-                if ui.button("Randomize").clicked() {
-                    unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
-                        from: 0.0,
-                        to: 1.0,
-                        stereo_spread: 0.1,
-                        dst: if unison_state.phases_shift_to {
-                            PhasesDst::To
-                        } else {
-                            PhasesDst::From
-                        },
-                    }));
-                }
+                    if ui.button("Randomize").clicked() {
+                        unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
+                            from: 0.0,
+                            to: 1.0,
+                            stereo_spread: 0.1,
+                            dst: PhasesDst::To,
+                        }));
+                    }
+                });
             });
         });
         ui.end_row();
@@ -338,32 +330,51 @@ impl OscillatorUI {
         ui.label("Levels");
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
-                from_to_toggle(ui, &mut unison_state.gains_to);
+                ui.vertical(|ui| {
+                    if let Some((voice_idx, gain)) =
+                        Self::show_gains(ui, (0..unison).map(|i| config.unison[i].gain))
+                    {
+                        config.unison[voice_idx].gain = gain;
+                        bridge.set_unison_gain(voice_idx, gain);
+                    }
+
+                    ui.add_space(8.0);
+
+                    if ui.button("Shape").clicked() {
+                        unison_state.gain_shape_state = Some(Box::new(GainShapeState {
+                            center: 0.5.into(),
+                            level: (-24.0).into(),
+                            to: false,
+                        }));
+                    }
+                });
+
+                ui.vertical(|ui| {
+                    ui.add_space(40.0);
+                    ui.label("->");
+                });
+
+                ui.vertical(|ui| {
+                    if let Some((voice_idx, gain)) =
+                        Self::show_gains(ui, (0..unison).map(|i| config.unison[i].gain_to))
+                    {
+                        config.unison[voice_idx].gain_to = gain;
+                        bridge.set_unison_gain_to(voice_idx, gain);
+                    }
+
+                    ui.add_space(8.0);
+
+                    if ui.button("Shape").clicked() {
+                        unison_state.gain_shape_state = Some(Box::new(GainShapeState {
+                            center: 0.5.into(),
+                            level: (-24.0).into(),
+                            to: true,
+                        }));
+                    }
+                });
+
+                ui.add_space(8.0);
             });
-
-            if unison_state.gains_to {
-                if let Some((voice_idx, gain)) =
-                    Self::show_gains(ui, (0..unison).map(|i| config.unison[i].gain_to))
-                {
-                    config.unison[voice_idx].gain_to = gain;
-                    bridge.set_unison_gain_to(voice_idx, gain);
-                }
-            } else if let Some((voice_idx, gain)) =
-                Self::show_gains(ui, (0..unison).map(|i| config.unison[i].gain))
-            {
-                config.unison[voice_idx].gain = gain;
-                bridge.set_unison_gain(voice_idx, gain);
-            }
-
-            ui.add_space(8.0);
-
-            if ui.button("Shape").clicked() {
-                unison_state.gain_shape_state = Some(Box::new(GainShapeState {
-                    center: 0.5.into(),
-                    level: (-24.0).into(),
-                    to: unison_state.gains_to,
-                }));
-            }
         });
         ui.end_row();
 
@@ -396,26 +407,35 @@ impl OscillatorUI {
 
         let mut config = osc_bridge.config().clone();
 
-        Grid::new("osc_grid")
-            .num_columns(2)
-            .spacing([40.0, 24.0])
-            .striped(true)
-            .show(ui, |ui| {
-                ui.label("Gain");
-                if ui
-                    .add(StereoInput::new(
-                        Input::Gain,
-                        module_id,
-                        &mut config.gain,
-                        bridge,
-                    ))
-                    .changed()
-                {
-                    osc_bridge.set_param(Input::Gain, config.gain);
-                }
-                ui.end_row();
+        let label = |ui: &mut Ui, text: &str| {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.label(text);
+            });
+        };
 
-                ui.label("Pitch shift");
+        Grid::new("osc_grid")
+            .num_columns(4)
+            .spacing([8.0, 8.0])
+            .show(ui, |ui| {
+                label(ui, "Gain");
+
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(StereoInput::new(
+                            Input::Gain,
+                            module_id,
+                            &mut config.gain,
+                            bridge,
+                        ))
+                        .changed()
+                    {
+                        osc_bridge.set_param(Input::Gain, config.gain);
+                    }
+
+                    ui.add_space(8.0);
+                });
+
+                label(ui, "Pitch shift");
                 if ui
                     .add(StereoInput::new(
                         Input::PitchShift,
@@ -429,7 +449,7 @@ impl OscillatorUI {
                 }
                 ui.end_row();
 
-                ui.label("Phase shift");
+                label(ui, "Phase shift");
                 if ui
                     .add(StereoInput::new(
                         Input::PhaseShift,
@@ -441,9 +461,8 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_param(Input::PhaseShift, config.phase_shift);
                 }
-                ui.end_row();
 
-                ui.label("Frequency shift");
+                label(ui, "Frequency shift");
                 if ui
                     .add(StereoInput::new(
                         Input::FrequencyShift,
@@ -457,7 +476,7 @@ impl OscillatorUI {
                 }
                 ui.end_row();
 
-                ui.label("Detune");
+                label(ui, "Detune");
                 if ui
                     .add(StereoInput::new(
                         Input::Detune,
@@ -469,9 +488,8 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_param(Input::Detune, config.detune);
                 }
-                ui.end_row();
 
-                ui.label("Detune power");
+                label(ui, "Detune power");
                 if ui
                     .add(StereoInput::new(
                         Input::DetunePower,
@@ -485,7 +503,7 @@ impl OscillatorUI {
                 }
                 ui.end_row();
 
-                ui.label("Glide");
+                label(ui, "Glide");
                 if ui
                     .add(StereoInput::new(
                         Input::Glide,
@@ -497,9 +515,8 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_param(Input::Glide, config.glide);
                 }
-                ui.end_row();
 
-                ui.label("Glide Slope");
+                label(ui, "Glide Slope");
                 if ui
                     .add(StereoInput::new(
                         Input::GlideSlope,
@@ -513,7 +530,15 @@ impl OscillatorUI {
                 }
                 ui.end_row();
 
-                ui.label("Steal phase");
+                label(ui, "Unison");
+                if ui
+                    .add(DragValue::new(&mut config.unison_voices).range(1..=16))
+                    .changed()
+                {
+                    osc_bridge.set_unison(config.unison_voices);
+                }
+
+                label(ui, "Steal phase");
                 if ui
                     .add(Checkbox::without_text(&mut config.steal_phase))
                     .changed()
@@ -521,17 +546,16 @@ impl OscillatorUI {
                     osc_bridge.set_steal_phase(config.steal_phase);
                 }
                 ui.end_row();
+            });
 
-                ui.label("Unison");
-                if ui
-                    .add(DragValue::new(&mut config.unison_voices).range(1..=16))
-                    .changed()
-                {
-                    osc_bridge.set_unison(config.unison_voices);
-                }
-                ui.end_row();
+        if config.unison_voices > 1 {
+            ui.add_space(32.0);
 
-                if config.unison_voices > 1 {
+            Grid::new("osc_unison_grid")
+                .num_columns(2)
+                .spacing([24.0, 24.0])
+                .striped(true)
+                .show(ui, |ui| {
                     Self::show_unison_section(
                         self.module_id,
                         bridge,
@@ -540,8 +564,8 @@ impl OscillatorUI {
                         &mut self.unison_state,
                         ui,
                     );
-                }
-            });
+                });
+        }
 
         ui.add_space(40.0);
 

@@ -1,4 +1,4 @@
-use egui::{Checkbox, Grid, Ui};
+use egui::{Align, Checkbox, Grid, Layout, Ui};
 
 use crate::{
     editor::{
@@ -38,12 +38,17 @@ impl EnvelopeUI {
 
         ui.add_space(20.0);
 
+        let label = |ui: &mut Ui, text: &str| {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.label(text);
+            });
+        };
+
         Grid::new("env_grid")
-            .num_columns(2)
-            .spacing([40.0, 24.0])
-            .striped(true)
+            .num_columns(4)
+            .spacing([8.0, 8.0])
             .show(ui, |ui| {
-                ui.label("Delay");
+                label(ui, "Delay");
                 if ui
                     .add(StereoInput::new(
                         Input::Delay,
@@ -55,36 +60,8 @@ impl EnvelopeUI {
                 {
                     env_bridge.set_param(Input::Delay, config.delay);
                 }
-                ui.end_row();
 
-                ui.label("Attack");
-                if ui
-                    .add(StereoInput::new(
-                        Input::Attack,
-                        module_id,
-                        &mut config.attack,
-                        bridge,
-                    ))
-                    .changed()
-                {
-                    env_bridge.set_param(Input::Attack, config.attack);
-                }
-                ui.end_row();
-
-                ui.label("Attack Curve");
-                if ui
-                    .add(Slider::mono(
-                        &mut config.attack_curvature,
-                        0.0..=1.0,
-                        Some(-1.0),
-                    ))
-                    .changed()
-                {
-                    env_bridge.set_attack_curvature(config.attack_curvature);
-                }
-                ui.end_row();
-
-                ui.label("Hold");
+                label(ui, "Hold");
                 if ui
                     .add(StereoInput::new(
                         Input::Hold,
@@ -98,7 +75,33 @@ impl EnvelopeUI {
                 }
                 ui.end_row();
 
-                ui.label("Decay");
+                label(ui, "Attack");
+                if ui
+                    .add(StereoInput::new(
+                        Input::Attack,
+                        module_id,
+                        &mut config.attack,
+                        bridge,
+                    ))
+                    .changed()
+                {
+                    env_bridge.set_param(Input::Attack, config.attack);
+                }
+
+                label(ui, "Attack Curve");
+                if ui
+                    .add(Slider::mono(
+                        &mut config.attack_curvature,
+                        0.0..=1.0,
+                        Some(-1.0),
+                    ))
+                    .changed()
+                {
+                    env_bridge.set_attack_curvature(config.attack_curvature);
+                }
+                ui.end_row();
+
+                label(ui, "Decay");
                 if ui
                     .add(StereoInput::new(
                         Input::Decay,
@@ -110,9 +113,8 @@ impl EnvelopeUI {
                 {
                     env_bridge.set_param(Input::Decay, config.decay);
                 }
-                ui.end_row();
 
-                ui.label("Decay Curve");
+                label(ui, "Decay Curve");
                 if ui
                     .add(Slider::mono(
                         &mut config.decay_curvature,
@@ -125,7 +127,7 @@ impl EnvelopeUI {
                 }
                 ui.end_row();
 
-                ui.label("Sustain");
+                label(ui, "Sustain");
                 if ui
                     .add(StereoInput::new(
                         Input::Sustain,
@@ -137,36 +139,8 @@ impl EnvelopeUI {
                 {
                     env_bridge.set_param(Input::Sustain, config.sustain);
                 }
-                ui.end_row();
 
-                ui.label("Release");
-                if ui
-                    .add(StereoInput::new(
-                        Input::Release,
-                        module_id,
-                        &mut config.release,
-                        bridge,
-                    ))
-                    .changed()
-                {
-                    env_bridge.set_param(Input::Release, config.release);
-                }
-                ui.end_row();
-
-                ui.label("Release Curve");
-                if ui
-                    .add(Slider::mono(
-                        &mut config.release_curvature,
-                        0.0..=1.0,
-                        Some(-1.0),
-                    ))
-                    .changed()
-                {
-                    env_bridge.set_release_curvature(config.release_curvature);
-                }
-                ui.end_row();
-
-                ui.label("Smooth");
+                label(ui, "Smooth");
                 if ui
                     .add(
                         Slider::stereo(&mut config.smooth, 0.0..=0.1, None)
@@ -180,7 +154,33 @@ impl EnvelopeUI {
                 }
                 ui.end_row();
 
-                ui.label("Keep voice alive");
+                label(ui, "Release");
+                if ui
+                    .add(StereoInput::new(
+                        Input::Release,
+                        module_id,
+                        &mut config.release,
+                        bridge,
+                    ))
+                    .changed()
+                {
+                    env_bridge.set_param(Input::Release, config.release);
+                }
+
+                label(ui, "Release Curve");
+                if ui
+                    .add(Slider::mono(
+                        &mut config.release_curvature,
+                        0.0..=1.0,
+                        Some(-1.0),
+                    ))
+                    .changed()
+                {
+                    env_bridge.set_release_curvature(config.release_curvature);
+                }
+                ui.end_row();
+
+                label(ui, "Keep voice alive");
                 if ui
                     .add(Checkbox::without_text(&mut config.keep_voice_alive))
                     .changed()

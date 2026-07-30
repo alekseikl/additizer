@@ -1,10 +1,12 @@
-use egui::{Checkbox, ComboBox, Grid, Ui};
+use egui::{Align, Checkbox, ComboBox, Grid, Layout, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, module_label::ModuleLabel,
+        ModuleUi,
+        module_label::ModuleLabel,
         slider::{self, Slider},
-        stereo_input::StereoInput, utils::confirm_module_removal,
+        stereo_input::StereoInput,
+        utils::confirm_module_removal,
     },
     synth_engine::{
         Input, LfoShape, ModuleId,
@@ -48,12 +50,17 @@ impl LfoUi {
 
         ui.add_space(20.0);
 
+        let label = |ui: &mut Ui, text: &str| {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.label(text);
+            });
+        };
+
         Grid::new("lfo_grid")
-            .num_columns(2)
-            .spacing([40.0, 24.0])
-            .striped(true)
+            .num_columns(4)
+            .spacing([8.0, 8.0])
             .show(ui, |ui| {
-                ui.label("Shape");
+                label(ui, "Shape");
                 ComboBox::from_id_salt("shape-select")
                     .selected_text(config.shape.label())
                     .show_ui(ui, |ui| {
@@ -66,9 +73,8 @@ impl LfoUi {
                             }
                         }
                     });
-                ui.end_row();
 
-                ui.label("Skew");
+                label(ui, "Skew");
                 if ui
                     .add(StereoInput::new(
                         Input::Skew,
@@ -82,7 +88,7 @@ impl LfoUi {
                 }
                 ui.end_row();
 
-                ui.label("Frequency");
+                label(ui, "Frequency");
                 if ui
                     .add(StereoInput::new(
                         Input::LowFrequency,
@@ -94,9 +100,8 @@ impl LfoUi {
                 {
                     lfo_bridge.set_param(Input::LowFrequency, config.frequency);
                 }
-                ui.end_row();
 
-                ui.label("Phase shift");
+                label(ui, "Phase shift");
                 if ui
                     .add(StereoInput::new(
                         Input::PhaseShift,
@@ -110,7 +115,7 @@ impl LfoUi {
                 }
                 ui.end_row();
 
-                ui.label("Smooth");
+                label(ui, "Smooth");
                 if ui
                     .add(
                         Slider::stereo(&mut config.smooth_time, 0.0..=0.1, None)
@@ -122,9 +127,8 @@ impl LfoUi {
                 {
                     lfo_bridge.set_smooth_time(config.smooth_time);
                 }
-                ui.end_row();
 
-                ui.label("Bipolar");
+                label(ui, "Bipolar");
                 if ui
                     .add(Checkbox::without_text(&mut config.bipolar))
                     .changed()
@@ -133,7 +137,7 @@ impl LfoUi {
                 }
                 ui.end_row();
 
-                ui.label("Steal phase");
+                label(ui, "Steal phase");
                 if ui
                     .add(Checkbox::without_text(&mut config.steal_phase))
                     .changed()
