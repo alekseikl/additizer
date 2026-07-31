@@ -190,24 +190,34 @@ impl UiBridge {
         &self.voices
     }
 
-    fn module_label(ui_config: &ui_config::UiConfig, module_id: ModuleId) -> String {
+    pub fn display_module_label(&self, module_id: ModuleId) -> String {
+        let Some(module_type) = self.routing.modules.get(&module_id).map(|m| m.module_type) else {
+            return String::new();
+        };
+
+        let ui_config = self.ui_config.lock();
+
         ui_config
             .modules
             .get(&module_id)
-            .map(|module| module.label.clone())
-            .unwrap_or_default()
+            .map(|module| {
+                if module.label.is_empty() {
+                    module_type.default_label().into()
+                } else {
+                    module.label.clone()
+                }
+            })
+            .unwrap_or_else(|| module_type.default_label().into())
     }
 
     pub fn get_modules(&self) -> Vec<ModuleItem> {
-        let ui_config = self.ui_config.lock();
-
         self.routing
             .modules
             .values()
             .map(|m| ModuleItem {
                 id: m.id,
                 module_type: m.module_type,
-                label: Self::module_label(&ui_config, m.id),
+                label: self.display_module_label(m.id),
             })
             .collect()
     }
@@ -257,7 +267,12 @@ impl UiBridge {
 
     pub fn get_module_label(&self, module_id: ModuleId) -> String {
         let ui_config = self.ui_config.lock();
-        Self::module_label(&ui_config, module_id)
+
+        ui_config
+            .modules
+            .get(&module_id)
+            .map(|module| module.label.clone())
+            .unwrap_or_default()
     }
 
     pub fn set_module_label(&mut self, module_id: ModuleId, label: String) {
@@ -314,8 +329,6 @@ impl UiBridge {
             })
             .collect();
 
-        let ui_config = self.ui_config.lock();
-
         linkable
             .into_iter()
             .map(|(input_type, is_direct, mod_source_ids)| LinkableInput {
@@ -325,7 +338,7 @@ impl UiBridge {
                     .into_iter()
                     .map(|module_id| LinkableModulation {
                         module_id,
-                        label: Self::module_label(&ui_config, module_id),
+                        label: self.display_module_label(module_id),
                     })
                     .collect(),
             })
@@ -373,8 +386,6 @@ impl UiBridge {
     }
 
     pub fn get_available_input_sources(&self, input: InputId) -> Vec<AvailableInputSource> {
-        let ui_config = self.ui_config.lock();
-
         let Some(input_module) = self.routing.modules.get(&input.module_id) else {
             return Vec::new();
         };
@@ -394,7 +405,7 @@ impl UiBridge {
             })
             .map(|module| AvailableInputSource {
                 src: module.id,
-                label: Self::module_label(&ui_config, module.id),
+                label: self.display_module_label(module.id),
             })
             .collect()
     }
@@ -404,8 +415,6 @@ impl UiBridge {
     }
 
     pub fn get_connected_input_sources(&self, input: InputId) -> Vec<ConnectedInputSource> {
-        let ui_config = self.ui_config.lock();
-
         let Some(sources) = self.routing.routing.get(&input) else {
             return Vec::new();
         };
@@ -419,7 +428,7 @@ impl UiBridge {
                 vec![ConnectedInputSource {
                     src: *module_id,
                     amount: StereoSample::ONE,
-                    label: Self::module_label(&ui_config, *module_id),
+                    label: self.display_module_label(*module_id),
                     modulation: None,
                 }]
             }
@@ -429,11 +438,11 @@ impl UiBridge {
                 .map(|source| ConnectedInputSource {
                     src: source.module_id,
                     amount: source.amount,
-                    label: Self::module_label(&ui_config, source.module_id),
+                    label: self.display_module_label(source.module_id),
                     modulation: source.modulation.map(|modulation| {
                         routing_state::InputModulation {
                             src: modulation,
-                            label: Self::module_label(&ui_config, modulation),
+                            label: self.display_module_label(modulation),
                         }
                     }),
                 })

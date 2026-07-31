@@ -112,7 +112,7 @@ impl LinkAmountPopup {
                 },
             );
             job.append(
-                &format!(" ({})", bridge.get_module_label(self.module_id)),
+                &format!(" ({})", bridge.display_module_label(self.module_id)),
                 0.0,
                 TextFormat {
                     font_id: FontId::new(size, FontFamily::Proportional),

@@ -1,14 +1,16 @@
+use egui::Label;
+
 use crate::{
     editor::{grid::WidgetCtx, volume_meter::VolumeMeter},
     synth_engine::{
-        ModuleId,
+        ModuleId, ModuleType,
         ui_bridge::{GridVec, UiBridge},
     },
 };
 
 use super::GridWidgetContent;
 
-const PADDING: f32 = 8.0;
+const PADDING: f32 = 4.0;
 
 #[derive(Default)]
 pub struct OutputWidget {
@@ -17,6 +19,10 @@ pub struct OutputWidget {
 
 impl OutputWidget {
     fn output_ui(&mut self, ui: &mut egui::Ui, bridge: &mut UiBridge) {
+        ui.add_space(2.0);
+        ui.add(Label::new("Out").selectable(false).truncate())
+            .on_hover_text(ModuleType::Output.default_label());
+
         let size = ui.available_size();
         let response = ui.allocate_response(size, egui::Sense::hover());
         let rect = response.rect.shrink2(egui::vec2(0.0, PADDING));

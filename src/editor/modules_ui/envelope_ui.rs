@@ -36,17 +36,21 @@ impl EnvelopeUI {
             .spacing([8.0, 8.0])
             .show(ui, |ui| {
                 ui.label("Delay");
-                if ui
-                    .add(StereoInput::new(
-                        Input::Delay,
-                        module_id,
-                        &mut config.delay,
-                        bridge,
-                    ))
-                    .changed()
-                {
-                    env_bridge.set_param(Input::Delay, config.delay);
-                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(StereoInput::new(
+                            Input::Delay,
+                            module_id,
+                            &mut config.delay,
+                            bridge,
+                        ))
+                        .changed()
+                    {
+                        env_bridge.set_param(Input::Delay, config.delay);
+                    }
+
+                    ui.add_space(8.0);
+                });
 
                 ui.label("Hold");
                 if ui

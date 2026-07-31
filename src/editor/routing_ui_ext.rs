@@ -42,7 +42,7 @@ impl Input {
             Self::Blend => "Blend".to_string(),
             Self::PhasesBlend => "Phases Blend".to_string(),
             Self::GainsBlend => "Gains Blend".to_string(),
-            Self::LowFrequency => "Low Frequency".to_string(),
+            Self::LowFrequency => "Frequency".to_string(),
             Self::Cutoff => "Cutoff".to_string(),
             Self::Resonance => "Resonance".to_string(),
             Self::Drive => "Drive".to_string(),

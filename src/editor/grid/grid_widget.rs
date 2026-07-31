@@ -659,7 +659,7 @@ impl GridWidget {
         }
 
         if self.content.show_label() {
-            let mut label = ctx.bridge.get_module_label(self.io.id);
+            let mut label = ctx.bridge.display_module_label(self.io.id);
 
             if label.is_empty() {
                 label = self.io.module_type.default_label().into();
