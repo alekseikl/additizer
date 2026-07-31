@@ -9,6 +9,7 @@ mod ui_bridge;
 
 pub use config::{MAX_INPUTS, SpectralMixerConfig};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
+pub use link::DISPLAY_SPECTRUM_SIZE;
 pub use ui_bridge::SpectralMixerUiBridge;
 
 use crate::synth_engine::{

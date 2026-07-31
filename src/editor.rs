@@ -20,7 +20,6 @@ use crate::{
     synth_engine::{ModuleId, ModuleType, ui_bridge::UiBridge},
 };
 
-mod gain_bars;
 mod gain_slider;
 mod grid;
 mod module_label;

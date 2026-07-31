@@ -11,7 +11,7 @@ use crate::synth_engine::{
 use super::link::{UiEnd, UiUpdate};
 use super::{FilterParams, HarmonicEditor, HarmonicEditorConfig, SetParams};
 
-const DISPLAY_SPECTRUM_SIZE: usize = 256;
+pub const DISPLAY_SPECTRUM_SIZE: usize = 512;
 type DisplaySpectrum = [ComplexSample; DISPLAY_SPECTRUM_SIZE];
 
 pub struct HarmonicEditorUiBridge {

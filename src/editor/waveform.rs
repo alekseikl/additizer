@@ -1,4 +1,64 @@
+use std::sync::Arc;
+
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, ecolor::Hsva};
+use realfft::{ComplexToReal, RealFftPlanner};
+
+use crate::synth_engine::{ComplexSample, Sample};
+
+/// Pre-allocated inverse-FFT state that turns a display spectrum into a time-domain
+/// waveform for grid tiles (oscillator, harmonic editor, …).
+pub struct WaveformBuilder {
+    spectrum_size: usize,
+    inverse_fft: Arc<dyn ComplexToReal<Sample>>,
+    dft_buff: Box<[ComplexSample]>,
+    scratch_buff: Box<[ComplexSample]>,
+    waveform: Box<[Sample]>,
+}
+
+impl WaveformBuilder {
+    pub fn new(spectrum_size: usize) -> Self {
+        let waveform_size = spectrum_size * 2;
+        let dft_size = waveform_size / 2 + 1;
+
+        Self {
+            spectrum_size,
+            inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(waveform_size),
+            dft_buff: vec![ComplexSample::ZERO; dft_size].into_boxed_slice(),
+            scratch_buff: vec![ComplexSample::ZERO; dft_size].into_boxed_slice(),
+            waveform: vec![0.0; waveform_size].into_boxed_slice(),
+        }
+    }
+
+    /// Rebuilds the time-domain waveform from `spectrum` (truncated/zero-padded to the
+    /// builder's spectrum size) and returns a view of the samples.
+    pub fn build(&mut self, spectrum: &[ComplexSample]) -> &[Sample] {
+        let len = spectrum.len().min(self.spectrum_size);
+
+        self.dft_buff[..len].copy_from_slice(&spectrum[..len]);
+        self.dft_buff[len..].fill(ComplexSample::ZERO);
+
+        self.inverse_fft
+            .process_with_scratch(
+                self.dft_buff.as_mut(),
+                self.waveform.as_mut(),
+                self.scratch_buff.as_mut(),
+            )
+            .unwrap();
+
+        &self.waveform
+    }
+
+    pub fn build_and_paint(
+        &mut self,
+        painter: &Painter,
+        rect: Rect,
+        spectrum: &[ComplexSample],
+        options: WaveformOptions,
+    ) {
+        self.build(spectrum);
+        paint_waveform_with_options(painter, rect, &self.waveform, options);
+    }
+}
 
 const DEFAULT_STROKE_COLOR: Hsva = Hsva {
     h: 0.03,
@@ -130,10 +190,6 @@ fn paint_stroke(painter: &Painter, points: &[Pos2], options: WaveformOptions) {
     }
 
     painter.line(points.to_vec(), Stroke::new(LINE_WIDTH, options.color));
-}
-
-pub fn paint_waveform(painter: &Painter, rect: Rect, waveform: &[f32]) {
-    paint_waveform_with_options(painter, rect, waveform, WaveformOptions::default());
 }
 
 pub fn paint_waveform_with_options(

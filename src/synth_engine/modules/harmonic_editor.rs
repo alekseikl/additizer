@@ -23,7 +23,7 @@ mod ui_bridge;
 
 pub use config::{ComplexCfg, HarmonicEditorConfig};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::HarmonicEditorUiBridge;
+pub use ui_bridge::{DISPLAY_SPECTRUM_SIZE, HarmonicEditorUiBridge};
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum SetAction {
