@@ -659,12 +659,14 @@ impl GridWidget {
         }
 
         if self.content.show_label() {
+            let mut label = ctx.bridge.get_module_label(self.io.id);
+
+            if label.is_empty() {
+                label = self.io.module_type.default_label().into();
+            }
+
             ui.add_space(2.0);
-            ui.add(
-                Label::new(ctx.bridge.get_module_label(self.io.id))
-                    .selectable(false)
-                    .truncate(),
-            );
+            ui.add(Label::new(label).selectable(false).truncate());
             ui.add_space(2.0);
         }
 

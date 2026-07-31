@@ -7,7 +7,7 @@ use crate::{
         slider::{self, Slider},
     },
     synth_engine::{
-        Expression, ModuleId,
+        Expression, ModuleId, ModuleType,
         expressions::ExpressionsUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -29,15 +29,11 @@ impl Expression {
 
 pub struct ExpressionsUi {
     module_id: ModuleId,
-    label_state: Option<String>,
 }
 
 impl ExpressionsUi {
     pub fn new(module_id: ModuleId) -> Self {
-        Self {
-            module_id,
-            label_state: None,
-        }
+        Self { module_id }
     }
 
     fn paint_ui(
@@ -49,9 +45,9 @@ impl ExpressionsUi {
         let module_id = self.module_id;
         let mut config = expr_bridge.config().clone();
 
-        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
+        ui.add(ModuleLabel::new(module_id, ModuleType::Expressions, bridge));
 
-        ui.add_space(20.0);
+        ui.add_space(16.0);
 
         Grid::new("expressions-grid")
             .num_columns(2)

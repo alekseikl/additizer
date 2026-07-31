@@ -12,7 +12,7 @@ use crate::{
         slider::{self, Slider},
     },
     synth_engine::{
-        ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample,
+        ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, StereoSample,
         harmonic_editor::{FilterParams, FilterType, HarmonicEditorUiBridge, SetAction, SetParams},
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -90,7 +90,6 @@ impl Default for ApplyFilterState {
 
 pub struct HarmonicEditorUI {
     module_id: ModuleId,
-    label_state: Option<String>,
     select_and_set_state: Option<Box<SelectAndSetState>>,
     apply_filter_state: Option<Box<ApplyFilterState>>,
 }
@@ -99,7 +98,6 @@ impl HarmonicEditorUI {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            label_state: None,
             select_and_set_state: None,
             apply_filter_state: None,
         }
@@ -367,9 +365,9 @@ impl HarmonicEditorUI {
                 });
             });
 
-        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
+        ui.add(ModuleLabel::new(module_id, ModuleType::HarmonicEditor, bridge));
 
-        ui.add_space(32.0);
+        ui.add_space(16.0);
 
         ui.horizontal(|ui| {
             if ui.button("All to Zero").clicked() {

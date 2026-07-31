@@ -7,7 +7,7 @@ use crate::{
         slider::{self, Slider},
     },
     synth_engine::{
-        ModuleId,
+        ModuleId, ModuleType,
         external_param::{ExternalParamUiBridge, NUM_FLOAT_PARAMS},
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -15,15 +15,11 @@ use crate::{
 
 pub struct ExternalParamUI {
     module_id: ModuleId,
-    label_state: Option<String>,
 }
 
 impl ExternalParamUI {
     pub fn new(module_id: ModuleId) -> Self {
-        Self {
-            module_id,
-            label_state: None,
-        }
+        Self { module_id }
     }
 
     fn paint_ui(
@@ -35,9 +31,13 @@ impl ExternalParamUI {
         let module_id = self.module_id;
         let mut config = param_bridge.config().clone();
 
-        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
+        ui.add(ModuleLabel::new(
+            module_id,
+            ModuleType::ExternalParam,
+            bridge,
+        ));
 
-        ui.add_space(20.0);
+        ui.add_space(16.0);
 
         Grid::new("ext-param-grid")
             .num_columns(2)

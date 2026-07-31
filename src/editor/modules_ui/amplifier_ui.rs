@@ -3,7 +3,7 @@ use egui::{Grid, Ui};
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput},
     synth_engine::{
-        Input, ModuleId,
+        Input, ModuleId, ModuleType,
         amplifier::AmplifierUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -11,24 +11,20 @@ use crate::{
 
 pub struct AmplifierUI {
     module_id: ModuleId,
-    module_label: Option<String>,
 }
 
 impl AmplifierUI {
     pub fn new(module_id: ModuleId) -> Self {
-        Self {
-            module_id,
-            module_label: None,
-        }
+        Self { module_id }
     }
 
     fn paint_ui(&mut self, bridge: &mut UiBridge, amp_bridge: &mut AmplifierUiBridge, ui: &mut Ui) {
         let module_id = self.module_id;
         let mut config = amp_bridge.config().clone();
 
-        ui.add(ModuleLabel::new(&mut self.module_label, bridge, module_id));
+        ui.add(ModuleLabel::new(module_id, ModuleType::Amplifier, bridge));
 
-        ui.add_space(20.0);
+        ui.add_space(16.0);
 
         Grid::new("amp_grid")
             .num_columns(2)

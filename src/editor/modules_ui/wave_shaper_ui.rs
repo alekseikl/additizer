@@ -5,7 +5,7 @@ use crate::{
     synth_engine::{
         ui_bridge::{ModuleBridge, UiBridge},
         wave_shaper::WaveShaperUiBridge,
-        Input, ModuleId, ShaperType,
+        Input, ModuleId, ModuleType, ShaperType,
     },
 };
 
@@ -20,15 +20,11 @@ impl ShaperType {
 
 pub struct WaveShaperUi {
     module_id: ModuleId,
-    label_state: Option<String>,
 }
 
 impl WaveShaperUi {
     pub fn new(module_id: ModuleId) -> Self {
-        Self {
-            module_id,
-            label_state: None,
-        }
+        Self { module_id }
     }
 
     fn paint_ui(
@@ -40,9 +36,9 @@ impl WaveShaperUi {
         let module_id = self.module_id;
         let mut config = shaper_bridge.config().clone();
 
-        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
+        ui.add(ModuleLabel::new(module_id, ModuleType::WaveShaper, bridge));
 
-        ui.add_space(20.0);
+        ui.add_space(16.0);
 
         Grid::new("waveshaper_grid")
             .num_columns(2)

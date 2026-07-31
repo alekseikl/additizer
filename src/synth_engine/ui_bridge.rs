@@ -550,20 +550,20 @@ impl UiBridge {
     pub fn add_module(&mut self, module_type: ModuleType) -> ModuleId {
         let mut synth = self.engine.lock();
 
-        let (id, label) = match module_type {
-            ModuleType::Output => (OUTPUT_MODULE_ID, "Output"),
-            ModuleType::Amplifier => (synth.add_amplifier(), "Amplifier"),
-            ModuleType::Envelope => (synth.add_envelope(), "Envelope"),
-            ModuleType::Mixer => (synth.add_mixer(), "Mixer"),
-            ModuleType::Oscillator => (synth.add_oscillator(), "Oscillator"),
-            ModuleType::SpectralFilter => (synth.add_spectral_filter(), "SpectralFilter"),
-            ModuleType::SpectralBlend => (synth.add_spectral_blend(), "SpectralBlend"),
-            ModuleType::SpectralMixer => (synth.add_spectral_mixer(), "SpectralMixer"),
-            ModuleType::HarmonicEditor => (synth.add_harmonic_editor(), "HarmonicEditor"),
-            ModuleType::ExternalParam => (synth.add_external_param(), "ExternalParam"),
-            ModuleType::Lfo => (synth.add_lfo(), "LFO"),
-            ModuleType::WaveShaper => (synth.add_wave_shaper(), "WaveShaper"),
-            ModuleType::Expressions => (synth.add_expressions(), "Expressions"),
+        let id = match module_type {
+            ModuleType::Output => OUTPUT_MODULE_ID,
+            ModuleType::Amplifier => synth.add_amplifier(),
+            ModuleType::Envelope => synth.add_envelope(),
+            ModuleType::Mixer => synth.add_mixer(),
+            ModuleType::Oscillator => synth.add_oscillator(),
+            ModuleType::SpectralFilter => synth.add_spectral_filter(),
+            ModuleType::SpectralBlend => synth.add_spectral_blend(),
+            ModuleType::SpectralMixer => synth.add_spectral_mixer(),
+            ModuleType::HarmonicEditor => synth.add_harmonic_editor(),
+            ModuleType::ExternalParam => synth.add_external_param(),
+            ModuleType::Lfo => synth.add_lfo(),
+            ModuleType::WaveShaper => synth.add_wave_shaper(),
+            ModuleType::Expressions => synth.add_expressions(),
         };
 
         self.routing = synth.get_routing_state();
@@ -577,7 +577,7 @@ impl UiBridge {
             id,
             UiModuleConfig {
                 id,
-                label: label.into(),
+                label: "".into(),
                 position: GridVec { x: -1, y: 0 },
             },
         );

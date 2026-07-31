@@ -7,7 +7,7 @@ use crate::{
     synth_engine::{
         spectral_mixer::SpectralMixerUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
-        Input, MixType, ModuleId, SpectralMixer, VolumeType,
+        Input, MixType, ModuleId, ModuleType, SpectralMixer, VolumeType,
     },
 };
 
@@ -23,15 +23,11 @@ impl MixType {
 
 pub struct SpectralMixerUi {
     module_id: ModuleId,
-    label_state: Option<String>,
 }
 
 impl SpectralMixerUi {
     pub fn new(module_id: ModuleId) -> Self {
-        Self {
-            module_id,
-            label_state: None,
-        }
+        Self { module_id }
     }
 
     fn paint_ui(
@@ -46,9 +42,9 @@ impl SpectralMixerUi {
         let volume_type_change = Rc::new(Cell::new(None));
         let output_volume_type_change = Rc::new(Cell::new(None));
 
-        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
+        ui.add(ModuleLabel::new(module_id, ModuleType::SpectralMixer, bridge));
 
-        ui.add_space(20.0);
+        ui.add_space(16.0);
 
         Grid::new("spectral_mixer_grid")
             .num_columns(2)

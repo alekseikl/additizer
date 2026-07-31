@@ -1,4 +1,4 @@
-use egui::{Align, Checkbox, DragValue, Grid, Id, Layout, Modal, Sides, Ui};
+use egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
 use nih_plug::util::{db_to_gain, gain_to_db};
 
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
         stereo_input::StereoInput,
     },
     synth_engine::{
-        Input, ModuleId, Sample, StereoSample,
+        Input, ModuleId, ModuleType, Sample, StereoSample,
         oscillator::{self, OscillatorConfig, OscillatorUiBridge, PhasesDst},
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -35,7 +35,6 @@ struct UnisonState {
 
 pub struct OscillatorUI {
     module_id: ModuleId,
-    label_state: Option<String>,
     unison_state: UnisonState,
 }
 
@@ -43,7 +42,6 @@ impl OscillatorUI {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            label_state: None,
             unison_state: UnisonState {
                 gain_shape_state: None,
                 randomize_phase_state: None,
@@ -398,23 +396,17 @@ impl OscillatorUI {
     ) {
         let module_id = self.module_id;
 
-        ui.add(ModuleLabel::new(&mut self.label_state, bridge, module_id));
+        ui.add(ModuleLabel::new(module_id, ModuleType::Oscillator, bridge));
 
-        ui.add_space(20.0);
+        ui.add_space(16.0);
 
         let mut config = osc_bridge.config().clone();
-
-        let label = |ui: &mut Ui, text: &str| {
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.label(text);
-            });
-        };
 
         Grid::new("osc_grid")
             .num_columns(4)
             .spacing([8.0, 8.0])
             .show(ui, |ui| {
-                label(ui, "Gain");
+                ui.label("Gain");
 
                 ui.horizontal(|ui| {
                     if ui
@@ -432,7 +424,7 @@ impl OscillatorUI {
                     ui.add_space(8.0);
                 });
 
-                label(ui, "Pitch shift");
+                ui.label("Pitch shift");
                 if ui
                     .add(StereoInput::new(
                         Input::PitchShift,
@@ -446,7 +438,7 @@ impl OscillatorUI {
                 }
                 ui.end_row();
 
-                label(ui, "Phase shift");
+                ui.label("Phase shift");
                 if ui
                     .add(StereoInput::new(
                         Input::PhaseShift,
@@ -459,7 +451,7 @@ impl OscillatorUI {
                     osc_bridge.set_param(Input::PhaseShift, config.phase_shift);
                 }
 
-                label(ui, "Frequency shift");
+                ui.label("Frequency shift");
                 if ui
                     .add(StereoInput::new(
                         Input::FrequencyShift,
@@ -473,7 +465,7 @@ impl OscillatorUI {
                 }
                 ui.end_row();
 
-                label(ui, "Detune");
+                ui.label("Detune");
                 if ui
                     .add(StereoInput::new(
                         Input::Detune,
@@ -486,7 +478,7 @@ impl OscillatorUI {
                     osc_bridge.set_param(Input::Detune, config.detune);
                 }
 
-                label(ui, "Detune power");
+                ui.label("Detune power");
                 if ui
                     .add(StereoInput::new(
                         Input::DetunePower,
@@ -500,7 +492,7 @@ impl OscillatorUI {
                 }
                 ui.end_row();
 
-                label(ui, "Glide");
+                ui.label("Glide");
                 if ui
                     .add(StereoInput::new(
                         Input::Glide,
@@ -513,7 +505,7 @@ impl OscillatorUI {
                     osc_bridge.set_param(Input::Glide, config.glide);
                 }
 
-                label(ui, "Glide Slope");
+                ui.label("Glide Slope");
                 if ui
                     .add(StereoInput::new(
                         Input::GlideSlope,
@@ -527,7 +519,7 @@ impl OscillatorUI {
                 }
                 ui.end_row();
 
-                label(ui, "Unison");
+                ui.label("Unison");
                 if ui
                     .add(DragValue::new(&mut config.unison_voices).range(1..=16))
                     .changed()
@@ -535,7 +527,7 @@ impl OscillatorUI {
                     osc_bridge.set_unison(config.unison_voices);
                 }
 
-                label(ui, "Steal phase");
+                ui.label("Steal phase");
                 if ui
                     .add(Checkbox::without_text(&mut config.steal_phase))
                     .changed()

@@ -238,6 +238,24 @@ impl DataType {
 }
 
 impl ModuleType {
+    pub fn default_label(self) -> &'static str {
+        match self {
+            Self::Output => "Output",
+            Self::Amplifier => "Amplifier",
+            Self::Envelope => "Envelope",
+            Self::Mixer => "Mixer",
+            Self::Oscillator => "Oscillator",
+            Self::SpectralFilter => "Spectral Filter",
+            Self::SpectralBlend => "Spectral Blend",
+            Self::SpectralMixer => "Spectral Mixer",
+            Self::HarmonicEditor => "Harmonics",
+            Self::ExternalParam => "Ext Param",
+            Self::Lfo => "LFO",
+            Self::WaveShaper => "Waveshaper",
+            Self::Expressions => "Expressions",
+        }
+    }
+
     pub fn input_label(self, input: Input) -> String {
         match self {
             Self::Mixer => match input {

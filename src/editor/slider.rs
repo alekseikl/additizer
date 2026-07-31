@@ -11,12 +11,10 @@ use egui::{
 
 use crate::synth_engine::{Sample, StereoSample};
 
-const fn hsva(h: f32, s: f32, v: f32, a: f32) -> Hsva {
-    Hsva { h, s, v, a }
-}
+use super::utils::hsva;
 
 const BG_COLOR: Hsva = hsva(0.115, 0.05, 0.01, 1.0);
-const BORDER_COLOR: Hsva = hsva(0.115, 0.35, 0.2, 1.0);
+const BORDER_COLOR: Hsva = hsva(0.115, 0.05, 0.2, 1.0);
 
 const LEVEL_COLOR: Hsva = hsva(0.1, 0.8, 0.15, 1.0);
 const LEVEL_TIP_COLOR: Hsva = hsva(0.1, 0.8, 0.4, 1.0);
@@ -27,7 +25,7 @@ const INVERSE_LEVEL_TIP_COLOR: Hsva = hsva(0.06, 0.8, 0.5, 1.0);
 const OVER_COLOR: Hsva = hsva(0.03, 0.8, 0.15, 1.0);
 const OVER_TIP_COLOR: Hsva = hsva(0.03, 0.8, 0.5, 1.0);
 
-const CORNER_RADIUS: f32 = 4.0;
+const CORNER_RADIUS: f32 = 2.0;
 
 const BORDER_WIDTH: f32 = 1.0;
 const TIP_WIDTH: f32 = 2.0;
