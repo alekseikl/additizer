@@ -8,13 +8,17 @@ use egui::{
 use rustc_hash::FxHashMap;
 
 use crate::{
-    editor::{add_module_items, grid::grid_widget::GridWidget},
+    editor::grid::{
+        add_module_popup::{AddModulePopup, AddResult},
+        grid_widget::GridWidget,
+    },
     synth_engine::{
         ModuleId,
         ui_bridge::{GridVec, UiBridge, routing_state::ModuleIo},
     },
 };
 
+mod add_module_popup;
 mod grid_widget;
 pub(super) mod input_mixer_popup;
 pub(super) mod input_tooltip;
@@ -104,8 +108,7 @@ pub struct Grid {
     widgets_state: WidgetsState,
     content_size: egui::Vec2,
     events: Vec<GridEvent>,
-    /// Cell the "Add Module" context menu was opened on.
-    add_module_cell: GridVec,
+    open_add_module: Option<(GridVec, Pos2)>,
 }
 
 impl Grid {
@@ -115,7 +118,7 @@ impl Grid {
             widgets_state: WidgetsState::default(),
             content_size: egui::Vec2::ZERO,
             events: Vec::new(),
-            add_module_cell: GridVec::ZERO,
+            open_add_module: None,
         }
     }
 
@@ -180,7 +183,7 @@ impl Grid {
                 let (response, painter) = ui.allocate_painter(grid_area, Sense::click());
 
                 Self::paint_grid(&painter, painter.clip_rect(), response.rect.min);
-                self.add_module_menu(&response, bridge);
+                self.add_module_menu(&response, ui, bridge);
 
                 // Reserve a paint slot for the wires.
                 let wires = painter.add(Shape::Noop);
@@ -214,33 +217,32 @@ impl Grid {
     }
 
     /// Right-click menu adding a module at the clicked cell.
-    fn add_module_menu(&mut self, response: &Response, bridge: &mut UiBridge) {
+    fn add_module_menu(&mut self, response: &Response, ui: &mut Ui, bridge: &mut UiBridge) {
         if response.secondary_clicked()
             && let Some(pointer) = response.interact_pointer_pos()
         {
-            self.add_module_cell =
-                GridVec::from_vec_floor(pointer - response.rect.min).max(GridVec::ZERO);
+            let cell = GridVec::from_vec_floor(pointer - response.rect.min).max(GridVec::ZERO);
+
+            self.open_add_module = if self.cell_occupied(bridge, cell) {
+                None
+            } else {
+                Some((cell, pointer))
+            };
         }
 
-        let cell = self.add_module_cell;
+        if let Some((cell, pos)) = self.open_add_module {
+            let popup = AddModulePopup { pos };
 
-        if self.cell_occupied(bridge, cell) {
-            return;
-        }
-
-        let events = &mut self.events;
-
-        response.context_menu(|ui| {
-            ui.label("Add Module");
-            ui.separator();
-
-            if let Some(module_type) = add_module_items(ui) {
-                let module_id = bridge.add_module(module_type, cell);
-
-                events.push(GridEvent::Moved(module_id));
-                ui.close();
+            match popup.show(response, ui) {
+                AddResult::Selected(module_type) => {
+                    let module_id = bridge.add_module(module_type, cell);
+                    self.events.push(GridEvent::Moved(module_id));
+                    self.open_add_module = None;
+                }
+                AddResult::Close => self.open_add_module = None,
+                AddResult::KeepVisible => {}
             }
-        });
+        }
     }
 
     fn cell_occupied(&self, bridge: &UiBridge, cell: GridVec) -> bool {

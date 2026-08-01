@@ -102,33 +102,6 @@ fn module_ui_for_id(bridge: &UiBridge, id: ModuleId) -> Option<ModuleUIBox> {
         .map(|module| module.module_type.ui(module.id))
 }
 
-const ADDABLE_MODULES: [ModuleType; 12] = [
-    ModuleType::HarmonicEditor,
-    ModuleType::Oscillator,
-    ModuleType::Envelope,
-    ModuleType::Lfo,
-    ModuleType::SpectralFilter,
-    ModuleType::SpectralBlend,
-    ModuleType::SpectralMixer,
-    ModuleType::ExternalParam,
-    ModuleType::Expressions,
-    ModuleType::WaveShaper,
-    ModuleType::Amplifier,
-    ModuleType::Mixer,
-];
-
-fn add_module_items(ui: &mut Ui) -> Option<ModuleType> {
-    let mut clicked = None;
-
-    for module_type in ADDABLE_MODULES {
-        if ui.selectable_label(false, module_type.label()).clicked() {
-            clicked = Some(module_type);
-        }
-    }
-
-    clicked
-}
-
 fn show_top_bar(ui: &mut Ui, editor_state: &mut EditorState) {
     Frame::new().inner_margin(vec2(8.0, 4.0)).show(ui, |ui| {
         ui.horizontal(|ui| {
