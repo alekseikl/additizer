@@ -1,4 +1,4 @@
-use egui::{Id, Pos2, Response, Sense, Ui, Widget, emath, lerp, vec2};
+use egui::{Response, Sense, Ui, Widget, emath, lerp, vec2};
 
 use crate::{
     editor::grid::input_mixer_popup::InputMixerPopup,
@@ -10,12 +10,6 @@ use crate::{
 
 const IO_DOT_SIZE: f32 = 8.0;
 const IO_DOT_SIZE_HOVER: f32 = 10.0;
-
-#[derive(Clone, Copy)]
-struct MixerOpen {
-    pos: Pos2,
-    module_type: ModuleType,
-}
 
 pub struct StereoInput<'a> {
     input: InputId,
@@ -54,9 +48,39 @@ impl StereoInput<'_> {
             .map(|m| m.module_type)
     }
 
-    fn add_circle(&self, ui: &mut Ui, modulated: Option<&ModulatedValue>) -> Option<Pos2> {
+    fn add_circle(&mut self, ui: &mut Ui, modulated: Option<&ModulatedValue>) {
+        if !self.bridge.has_connected_input_sources(self.input) {
+            ui.allocate_exact_size(vec2(IO_DOT_SIZE_HOVER, IO_DOT_SIZE_HOVER), Sense::hover());
+            return;
+        }
+
         let (rect, response) =
             ui.allocate_exact_size(vec2(IO_DOT_SIZE_HOVER, IO_DOT_SIZE_HOVER), Sense::click());
+        let mixer_id = response.id;
+
+        if response.clicked() {
+            ui.data_mut(|d| d.insert_temp(mixer_id, true));
+        }
+
+        let is_open = ui
+            .ctx()
+            .data_mut(|d| d.remove_temp(mixer_id).unwrap_or_default());
+
+        let still_open = if is_open && let Some(module_type) = self.module_type() {
+            let popup = InputMixerPopup {
+                module_id: self.input.module_id,
+                module_type,
+                input: self.input.input_type,
+            };
+
+            !popup.show(&response, ui, self.bridge)
+        } else {
+            false
+        };
+
+        if still_open {
+            ui.data_mut(|d| d.insert_temp(mixer_id, true));
+        }
 
         let t = ui.ctx().animate_bool_with_time_and_easing(
             response.id,
@@ -76,30 +100,6 @@ impl StereoInput<'_> {
 
         ui.painter()
             .circle_filled(rect.center(), dot_size * 0.5, dot_color);
-
-        response.clicked().then(|| rect.center())
-    }
-
-    fn mixer_popup_ui(&mut self, ui: &mut Ui, popup_id: Id) {
-        let Some(open) = ui
-            .ctx()
-            .data(|d| d.get_temp::<Option<MixerOpen>>(popup_id))
-            .flatten()
-        else {
-            return;
-        };
-
-        let popup = InputMixerPopup {
-            module_id: self.input.module_id,
-            module_type: open.module_type,
-            input: self.input.input_type,
-            pos: open.pos,
-        };
-
-        if popup.show(ui, self.bridge) {
-            ui.ctx()
-                .data_mut(|d| d.insert_temp(popup_id, None::<MixerOpen>));
-        }
     }
 }
 
@@ -107,8 +107,6 @@ impl Widget for StereoInput<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {
         ui.horizontal_centered(|ui| {
             let modulated = self.bridge.get_input_modulated_value(self.input);
-
-            let has_connected_sources = self.bridge.has_connected_input_sources(self.input);
             let mut slider = self.input.input_type.param_slider(self.value);
 
             if let Some(default) = self.default {
@@ -124,21 +122,8 @@ impl Widget for StereoInput<'_> {
             }
 
             let response = ui.add(slider);
-            let mixer_popup_id = response.id.with("stereo-input-mixer");
 
-            if has_connected_sources {
-                if let Some(pos) = self.add_circle(ui, modulated.as_ref())
-                    && let Some(module_type) = self.module_type()
-                {
-                    ui.data_mut(|d| {
-                        d.insert_temp(mixer_popup_id, Some(MixerOpen { pos, module_type }));
-                    });
-                }
-
-                self.mixer_popup_ui(ui, mixer_popup_id);
-            } else {
-                ui.allocate_exact_size(vec2(IO_DOT_SIZE_HOVER, IO_DOT_SIZE_HOVER), Sense::hover());
-            }
+            self.add_circle(ui, modulated.as_ref());
 
             response
         })

@@ -1,8 +1,7 @@
 use egui::containers::menu::menu_style;
 use egui::{
-    Align, Area, Color32, FontFamily, FontId, Frame, Grid, Id, Label, LayerId, Layout, Margin,
-    Order, Popup, PopupCloseBehavior, PopupKind, Pos2, Response, RichText, Sense, TextFormat,
-    TextStyle, Ui,
+    Align, Color32, FontFamily, FontId, Frame, Grid, Label, Layout, Margin, Popup,
+    PopupCloseBehavior, PopupKind, Response, RichText, Sense, TextFormat, TextStyle, Ui,
     text::{LayoutJob, TextWrapping},
     vec2,
 };
@@ -22,12 +21,11 @@ pub struct InputMixerPopup {
     pub module_id: ModuleId,
     pub module_type: ModuleType,
     pub input: Input,
-    pub pos: Pos2,
 }
 
 impl InputMixerPopup {
-    /// Returns `true` if the edit request should be cleared.
-    pub fn show(&self, ui: &mut Ui, bridge: &mut UiBridge) -> bool {
+    /// Returns `true` on popup close
+    pub fn show(&self, response: &Response, ui: &mut Ui, bridge: &mut UiBridge) -> bool {
         let input_id = InputId::new(self.input, self.module_id);
         let connected = bridge.get_connected_input_sources(input_id);
 
@@ -35,22 +33,7 @@ impl InputMixerPopup {
             return true;
         }
 
-        let ctx_egui = ui.ctx().clone();
-        let menu_id = Id::new(("input-mixer-menu", self.module_id, self.input));
-        let backdrop_id = menu_id.with("backdrop");
-        let screen = ctx_egui.content_rect();
-
-        Area::new(backdrop_id)
-            .order(Order::Foreground)
-            .fixed_pos(screen.min)
-            .sense(Sense::click_and_drag())
-            .show(&ctx_egui, |ui| {
-                let (rect, _) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
-                ui.painter()
-                    .rect_filled(rect, 0.0, Color32::from_black_alpha(100));
-            });
-
-        let Some(popup) = Popup::new(menu_id, ctx_egui.clone(), self.pos, ui.layer_id())
+        let Some(popup) = Popup::from_response(response)
             .kind(PopupKind::Popup)
             .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
             .layout(Layout::top_down(Align::Min))
@@ -73,15 +56,14 @@ impl InputMixerPopup {
                             self.link_rows(ui, bridge, input_id, src);
                         }
                     });
+
+                if !ui.is_rect_visible(response.rect) {
+                    ui.close();
+                }
             })
         else {
             return true;
         };
-
-        ctx_egui.set_sublayer(
-            LayerId::new(Order::Foreground, backdrop_id),
-            LayerId::new(Order::Foreground, menu_id),
-        );
 
         popup.response.should_close()
     }
@@ -121,7 +103,10 @@ impl InputMixerPopup {
             job.wrap = TextWrapping::truncate_at_width(MAX_LABEL_WIDTH);
             ui.add(Label::new(job).truncate());
 
-            if remove_button(ui).on_hover_text("Disconnect All").clicked() {
+            if Self::remove_button(ui)
+                .on_hover_text("Disconnect All")
+                .clicked()
+            {
                 bridge.remove_input_links(InputId::new(self.input, self.module_id));
                 ui.close();
             }
@@ -173,14 +158,14 @@ impl InputMixerPopup {
             bridge.set_link_amount(src.src, input_id, amount);
         }
 
-        if remove_button(ui).on_hover_text("Disconnect").clicked() {
+        if Self::remove_button(ui).on_hover_text("Disconnect").clicked() {
             bridge.remove_link(src.src, input_id);
         }
 
         ui.end_row();
     }
-}
 
-fn remove_button(ui: &mut Ui) -> Response {
-    ui.button(RichText::new(REMOVE_ICON).color(REMOVE_TINT))
+    fn remove_button(ui: &mut Ui) -> Response {
+        ui.button(RichText::new(REMOVE_ICON).color(REMOVE_TINT))
+    }
 }
