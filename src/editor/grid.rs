@@ -22,7 +22,7 @@ mod link_amount_popup;
 mod select_input_popup;
 
 const GRID_CELL_SIZE: f32 = 40.0;
-const C_GRID: Color32 = Color32::from_rgb(52, 52, 52);
+const C_GRID: Color32 = Color32::from_rgb(25, 25, 25);
 const GRID_T: f32 = 1.0;
 const WIRE_T: f32 = 2.0;
 const WIRE_MOD_T: f32 = 1.0;

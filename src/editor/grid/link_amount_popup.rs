@@ -1,7 +1,7 @@
 use egui::containers::menu::menu_style;
 use egui::{
-    Align, Area, FontFamily, FontId, Frame, Grid, Id, Label, LayerId, Layout, Margin, Order, Popup,
-    PopupCloseBehavior, PopupKind, Pos2, Sense, TextFormat, TextStyle, Ui,
+    Align, FontFamily, FontId, Frame, Grid, Label, Layout, Margin, Popup, PopupCloseBehavior,
+    PopupKind, Response, Sense, TextFormat, TextStyle, Ui,
     text::{LayoutJob, TextWrapping},
     vec2,
 };
@@ -16,12 +16,11 @@ pub struct LinkAmountPopup {
     pub module_id: ModuleId,
     pub module_type: ModuleType,
     pub input: Input,
-    pub pos: Pos2,
 }
 
 impl LinkAmountPopup {
-    /// Returns `true` if the popup request should be cleared.
-    pub fn show(&self, ui: &mut Ui, bridge: &mut UiBridge) -> bool {
+    /// Returns `true` on popup close
+    pub fn show(&self, response: &Response, ui: &mut Ui, bridge: &mut UiBridge) -> bool {
         let input_id = InputId::new(self.input, self.module_id);
         let Some(src) = bridge
             .get_connected_input_sources(input_id)
@@ -31,20 +30,7 @@ impl LinkAmountPopup {
             return true;
         };
 
-        let ctx_egui = ui.ctx().clone();
-        let menu_id = Id::new(("link-amount-menu", self.module_id, self.input, self.src));
-        let backdrop_id = menu_id.with("backdrop");
-        let screen = ctx_egui.content_rect();
-
-        Area::new(backdrop_id)
-            .order(Order::Foreground)
-            .fixed_pos(screen.min)
-            .sense(Sense::click_and_drag())
-            .show(&ctx_egui, |ui| {
-                ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
-            });
-
-        let Some(popup) = Popup::new(menu_id, ctx_egui.clone(), self.pos, ui.layer_id())
+        let Some(popup) = Popup::from_response(response)
             .kind(PopupKind::Popup)
             .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
             .layout(Layout::top_down(Align::Min))
@@ -80,11 +66,6 @@ impl LinkAmountPopup {
         else {
             return true;
         };
-
-        ctx_egui.set_sublayer(
-            LayerId::new(Order::Foreground, backdrop_id),
-            LayerId::new(Order::Foreground, menu_id),
-        );
 
         popup.response.should_close()
     }

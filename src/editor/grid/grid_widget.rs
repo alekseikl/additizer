@@ -80,15 +80,9 @@ pub struct InputPoint {
     pub is_modulation: bool,
 }
 
-struct LinkRequest {
-    module_id: ModuleId,
-    pos: Pos2,
-}
-
-struct LinkAmountRequest {
+struct LinkAmount {
     src: ModuleId,
     input: Input,
-    pos: Pos2,
 }
 
 pub struct GridWidget {
@@ -102,8 +96,8 @@ pub struct GridWidget {
     output_pos: Option<Pos2>,
     // Screen positions of a wire input points
     input_positions: Vec<Pos2>,
-    link_request: Option<LinkRequest>,
-    link_amount: Option<LinkAmountRequest>,
+    open_input_select: Option<ModuleId>,
+    open_link_amount: Option<LinkAmount>,
     open_input_mixer: Option<Input>,
 }
 
@@ -130,8 +124,8 @@ impl GridWidget {
             drag_grab: None,
             output_pos: None,
             input_positions: Vec::new(),
-            link_request: None,
-            link_amount: None,
+            open_input_select: None,
+            open_link_amount: None,
             open_input_mixer: None,
         }
     }
@@ -235,6 +229,9 @@ impl GridWidget {
 
         if drag.drag_started() {
             self.drag_grab = drag.interact_pointer_pos().map(|p| p - origin - pos);
+            self.open_input_mixer = None;
+            self.open_input_select = None;
+            self.open_link_amount = None;
         }
 
         if drag.dragged()
@@ -257,9 +254,6 @@ impl GridWidget {
             self.drag_grab = None;
             ctx.events.push(GridEvent::Moved(self.io.id));
         }
-
-        self.link_request_ui(ui, ctx);
-        self.link_amount_ui(ui, ctx);
     }
 
     fn main_ui(&mut self, ui: &mut Ui, ui_builder: UiBuilder, ctx: &mut WidgetCtx) -> Response {
@@ -319,49 +313,6 @@ impl GridWidget {
                 ui.close();
             }
         });
-    }
-
-    fn link_request_ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
-        let Some(req) = self.link_request.as_ref() else {
-            return;
-        };
-
-        let popup = SelectInputPopup {
-            src: req.module_id,
-            dst: self.io.id,
-            pos: req.pos,
-        };
-
-        match popup.show(ui, ctx, self.io.module_type) {
-            ShowResult::MixedSelected(input) => {
-                self.link_amount = Some(LinkAmountRequest {
-                    src: req.module_id,
-                    input,
-                    pos: req.pos,
-                });
-                self.link_request = None;
-            }
-            ShowResult::Closed => self.link_request = None,
-            ShowResult::KeepVisible => {}
-        }
-    }
-
-    fn link_amount_ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
-        let Some(req) = self.link_amount.as_ref() else {
-            return;
-        };
-
-        let popup = LinkAmountPopup {
-            src: req.src,
-            module_id: self.io.id,
-            module_type: self.io.module_type,
-            input: req.input,
-            pos: req.pos,
-        };
-
-        if popup.show(ui, ctx.bridge) {
-            self.link_amount = None;
-        }
     }
 
     fn auto_scroll(ui: &Ui, pointer: Pos2) {
@@ -427,6 +378,7 @@ impl GridWidget {
         let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::click_and_drag());
         let wire_color = input.meta.input_type.color();
         let dot_color = Self::modulated_dot_color(ctx, self.io.id, input);
+        let viewport = ui.ctx().viewport_rect();
 
         if input.meta.is_direct && response.double_clicked_by(PointerButton::Primary) {
             ctx.bridge
@@ -444,8 +396,23 @@ impl GridWidget {
                 input: open_input,
             };
 
-            if mixer.show(&response, ui, ctx.bridge) {
+            if !viewport.intersects(response.rect) || mixer.show(&response, ui, ctx.bridge) {
                 self.open_input_mixer = None;
+            }
+        }
+
+        if let Some(req) = self.open_link_amount.as_ref()
+            && req.input == input.meta.input_type
+        {
+            let popup = LinkAmountPopup {
+                src: req.src,
+                module_id: self.io.id,
+                module_type: self.io.module_type,
+                input: req.input,
+            };
+
+            if !viewport.intersects(response.rect) || popup.show(&response, ui, ctx.bridge) {
+                self.open_link_amount = None;
             }
         }
 
@@ -537,16 +504,16 @@ impl GridWidget {
             && let Some(pointer) = ui.ctx().pointer_interact_pos()
             && stripe.contains(pointer)
         {
-            self.link_request = Some(LinkRequest {
-                module_id: drag.src_id,
-                pos: pointer,
-            });
-
+            self.open_input_select = Some(drag.src_id);
             ctx.state.wire_drag = None;
         }
     }
 
     fn inputs_ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
+        let viewport = ui.ctx().viewport_rect();
+        let stripe_response =
+            ui.interact(ui.max_rect(), ui.id().with("inputs-stripe"), Sense::hover());
+
         self.handle_inputs_dnd(ui, ctx);
 
         let full_height = ui.available_height();
@@ -566,6 +533,25 @@ impl GridWidget {
         }
 
         self.input_positions = positions;
+
+        if !viewport.intersects(stripe_response.rect) {
+            self.open_input_select = None;
+        } else if let Some(src) = self.open_input_select {
+            let popup = SelectInputPopup {
+                src,
+                dst: self.io.id,
+                module_type: self.io.module_type,
+            };
+
+            match popup.show(&stripe_response, ui, ctx) {
+                ShowResult::MixedSelected(input) => {
+                    self.open_link_amount = Some(LinkAmount { src, input });
+                    self.open_input_select = None;
+                }
+                ShowResult::Closed => self.open_input_select = None,
+                ShowResult::KeepVisible => {}
+            }
+        }
     }
 
     fn output_ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {

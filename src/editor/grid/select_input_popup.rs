@@ -1,7 +1,7 @@
 use egui::containers::menu::menu_style;
 use egui::{
-    Align, Color32, CornerRadius, Frame, Id, Label, LayerId, Layout, Margin, Order, Popup,
-    PopupKind, Pos2, Rect, Response, RichText, Sense, Ui, UiBuilder, vec2,
+    Align, Color32, CornerRadius, Frame, Label, Layout, Margin, Popup, PopupCloseBehavior,
+    PopupKind, Rect, RectAlign, Response, RichText, Sense, Ui, UiBuilder, vec2,
 };
 
 use crate::editor::grid::{GridEvent, WidgetCtx};
@@ -28,24 +28,24 @@ pub enum ShowResult {
 pub struct SelectInputPopup {
     pub src: ModuleId,
     pub dst: ModuleId,
-    pub pos: Pos2,
+    pub module_type: ModuleType,
 }
 
 impl SelectInputPopup {
-    pub fn show(&self, ui: &mut Ui, ctx: &mut WidgetCtx, module_type: ModuleType) -> ShowResult {
+    pub fn show(&self, response: &Response, ui: &mut Ui, ctx: &mut WidgetCtx) -> ShowResult {
         let inputs = ctx.bridge.get_linkable_inputs(self.src, self.dst);
 
         if inputs.is_empty() {
             return ShowResult::Closed;
         }
 
-        let menu_id = Id::new(("wire-link-menu", self.dst, self.src));
-        let layer_id = LayerId::new(Order::Foreground, menu_id);
         let mut selected = None;
 
-        let Some(popup) = Popup::new(menu_id, ui.ctx().clone(), self.pos, layer_id)
+        let Some(popup) = Popup::from_response(response)
             .kind(PopupKind::Menu)
+            .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
             .layout(Layout::top_down_justified(Align::Min))
+            .align(RectAlign::RIGHT_START)
             .style(menu_style)
             .gap(0.0)
             .frame(Frame::menu(ui.style()).inner_margin(Margin::ZERO))
@@ -53,10 +53,10 @@ impl SelectInputPopup {
                 ui.spacing_mut().item_spacing.y = 0.0;
 
                 let mut measuring = ui.new_child(UiBuilder::new().sizing_pass().invisible());
-                self.rows(&mut measuring, ctx, module_type, &inputs, None);
+                self.rows(&mut measuring, ctx, &inputs, None);
 
                 let row_width = measuring.min_rect().width();
-                selected = self.rows(ui, ctx, module_type, &inputs, Some(row_width));
+                selected = self.rows(ui, ctx, &inputs, Some(row_width));
             })
         else {
             return ShowResult::Closed;
@@ -77,7 +77,6 @@ impl SelectInputPopup {
         &self,
         ui: &mut Ui,
         ctx: &mut WidgetCtx,
-        module_type: ModuleType,
         inputs: &[LinkableInput],
         row_width: Option<f32>,
     ) -> Option<Input> {
@@ -87,7 +86,7 @@ impl SelectInputPopup {
         for input in inputs {
             let input_id = InputId::new(input.input_type, self.dst);
             let color = input.input_type.color();
-            let label = module_type.input_label(input.input_type);
+            let label = self.module_type.input_label(input.input_type);
             let is_first = row == 0;
             let is_last = row + 1 == row_count;
 

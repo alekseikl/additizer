@@ -56,10 +56,6 @@ impl InputMixerPopup {
                             self.link_rows(ui, bridge, input_id, src);
                         }
                     });
-
-                if !ui.is_rect_visible(response.rect) {
-                    ui.close();
-                }
             })
         else {
             return true;
@@ -158,7 +154,10 @@ impl InputMixerPopup {
             bridge.set_link_amount(src.src, input_id, amount);
         }
 
-        if Self::remove_button(ui).on_hover_text("Disconnect").clicked() {
+        if Self::remove_button(ui)
+            .on_hover_text("Disconnect")
+            .clicked()
+        {
             bridge.remove_link(src.src, input_id);
         }
 
