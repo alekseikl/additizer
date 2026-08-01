@@ -45,7 +45,9 @@ impl InputMixerPopup {
             .fixed_pos(screen.min)
             .sense(Sense::click_and_drag())
             .show(&ctx_egui, |ui| {
-                ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
+                let (rect, _) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
+                ui.painter()
+                    .rect_filled(rect, 0.0, Color32::from_black_alpha(100));
             });
 
         let Some(popup) = Popup::new(menu_id, ctx_egui.clone(), self.pos, ui.layer_id())

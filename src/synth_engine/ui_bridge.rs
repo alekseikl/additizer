@@ -556,7 +556,7 @@ impl UiBridge {
         self.routing = engine.get_routing_state();
     }
 
-    pub fn add_module(&mut self, module_type: ModuleType) -> ModuleId {
+    pub fn add_module(&mut self, module_type: ModuleType, pos: GridVec) -> ModuleId {
         let mut synth = self.engine.lock();
 
         let id = match module_type {
@@ -587,7 +587,7 @@ impl UiBridge {
             UiModuleConfig {
                 id,
                 label: "".into(),
-                position: GridVec { x: -1, y: 0 },
+                position: pos,
             },
         );
 

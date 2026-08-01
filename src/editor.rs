@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use egui::{
-    CentralPanel, ComboBox, FontData, FontDefinitions, FontFamily, Frame, Id, Margin, Panel,
-    ScrollArea, Ui, Vec2, vec2,
+    CentralPanel, FontData, FontDefinitions, FontFamily, Frame, Id, Margin, Panel, ScrollArea, Ui,
+    Vec2, vec2,
 };
 use nih_plug::editor::Editor;
 use nih_plug_egui::{EguiState, create_egui_editor, resizable_window::ResizableWindow};
@@ -102,47 +102,31 @@ fn module_ui_for_id(bridge: &UiBridge, id: ModuleId) -> Option<ModuleUIBox> {
         .map(|module| module.module_type.ui(module.id))
 }
 
-fn show_add_module_menu(ui: &mut Ui, bridge: &mut UiBridge) {
-    ComboBox::from_id_salt("add-module-dropdown")
-        .selected_text("Add Module")
-        .show_ui(ui, |ui| {
-            if ui.selectable_label(false, "Harmonic Editor").clicked() {
-                bridge.add_module(ModuleType::HarmonicEditor);
-            }
-            if ui.selectable_label(false, "Oscillator").clicked() {
-                bridge.add_module(ModuleType::Oscillator);
-            }
-            if ui.selectable_label(false, "Envelope").clicked() {
-                bridge.add_module(ModuleType::Envelope);
-            }
-            if ui.selectable_label(false, "LFO").clicked() {
-                bridge.add_module(ModuleType::Lfo);
-            }
-            if ui.selectable_label(false, "Spectral Filter").clicked() {
-                bridge.add_module(ModuleType::SpectralFilter);
-            }
-            if ui.selectable_label(false, "Spectral Blend").clicked() {
-                bridge.add_module(ModuleType::SpectralBlend);
-            }
-            if ui.selectable_label(false, "Spectral Mixer").clicked() {
-                bridge.add_module(ModuleType::SpectralMixer);
-            }
-            if ui.selectable_label(false, "External Parameter").clicked() {
-                bridge.add_module(ModuleType::ExternalParam);
-            }
-            if ui.selectable_label(false, "Expressions").clicked() {
-                bridge.add_module(ModuleType::Expressions);
-            }
-            if ui.selectable_label(false, "Waveshaper").clicked() {
-                bridge.add_module(ModuleType::WaveShaper);
-            }
-            if ui.selectable_label(false, "Amplifier").clicked() {
-                bridge.add_module(ModuleType::Amplifier);
-            }
-            if ui.selectable_label(false, "Mixer").clicked() {
-                bridge.add_module(ModuleType::Mixer);
-            }
-        });
+const ADDABLE_MODULES: [ModuleType; 12] = [
+    ModuleType::HarmonicEditor,
+    ModuleType::Oscillator,
+    ModuleType::Envelope,
+    ModuleType::Lfo,
+    ModuleType::SpectralFilter,
+    ModuleType::SpectralBlend,
+    ModuleType::SpectralMixer,
+    ModuleType::ExternalParam,
+    ModuleType::Expressions,
+    ModuleType::WaveShaper,
+    ModuleType::Amplifier,
+    ModuleType::Mixer,
+];
+
+fn add_module_items(ui: &mut Ui) -> Option<ModuleType> {
+    let mut clicked = None;
+
+    for module_type in ADDABLE_MODULES {
+        if ui.selectable_label(false, module_type.label()).clicked() {
+            clicked = Some(module_type);
+        }
+    }
+
+    clicked
 }
 
 fn show_top_bar(ui: &mut Ui, editor_state: &mut EditorState) {
@@ -161,8 +145,6 @@ fn show_top_bar(ui: &mut Ui, editor_state: &mut EditorState) {
                         Some(Box::new(ParamsUi::new(editor_state.engine_factory.clone())));
                 }
             }
-
-            show_add_module_menu(ui, &mut editor_state.ui_bridge);
         });
     });
 }

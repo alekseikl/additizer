@@ -1,5 +1,5 @@
 use egui::{
-    Color32, Painter, Pos2, Rect, ScrollArea, Sense, Shape, Ui, Vec2,
+    Color32, Painter, Pos2, Rect, Response, ScrollArea, Sense, Shape, Ui, Vec2,
     epaint::{CubicBezierShape, PathStroke},
     pos2,
     scroll_area::{ScrollBarVisibility, ScrollSource},
@@ -8,7 +8,7 @@ use egui::{
 use rustc_hash::FxHashMap;
 
 use crate::{
-    editor::grid::grid_widget::GridWidget,
+    editor::{add_module_items, grid::grid_widget::GridWidget},
     synth_engine::{
         ModuleId,
         ui_bridge::{GridVec, UiBridge, routing_state::ModuleIo},
@@ -26,9 +26,7 @@ const C_GRID: Color32 = Color32::from_rgb(52, 52, 52);
 const GRID_T: f32 = 1.0;
 const WIRE_T: f32 = 2.0;
 const WIRE_MOD_T: f32 = 1.0;
-/// Minimum horizontal offset of a wire's Bézier control points. It makes the
-/// curve leave an output heading right and enter an input from the left, which
-/// keeps it clear of the widgets it attaches to.
+/// Minimum horizontal offset of a wire's Bézier control points.
 const WIRE_CTRL_MIN: f32 = 8.0;
 const WIRE_END_DOT: f32 = 8.0;
 
@@ -49,6 +47,13 @@ impl GridVec {
         Self {
             x: (value.x / GRID_CELL_SIZE).round() as i32,
             y: (value.y / GRID_CELL_SIZE).round() as i32,
+        }
+    }
+
+    fn from_vec_floor(value: Vec2) -> Self {
+        Self {
+            x: (value.x / GRID_CELL_SIZE).floor() as i32,
+            y: (value.y / GRID_CELL_SIZE).floor() as i32,
         }
     }
 }
@@ -99,6 +104,8 @@ pub struct Grid {
     widgets_state: WidgetsState,
     content_size: egui::Vec2,
     events: Vec<GridEvent>,
+    /// Cell the "Add Module" context menu was opened on.
+    add_module_cell: GridVec,
 }
 
 impl Grid {
@@ -108,6 +115,7 @@ impl Grid {
             widgets_state: WidgetsState::default(),
             content_size: egui::Vec2::ZERO,
             events: Vec::new(),
+            add_module_cell: GridVec::ZERO,
         }
     }
 
@@ -140,60 +148,6 @@ impl Grid {
         self.events.clear();
     }
 
-    fn place_new_modules(&mut self, ui: &Ui, bridge: &mut UiBridge) {
-        for widget in &self.widgets {
-            let module_id = widget.module_id();
-
-            if bridge.get_module_position(module_id).x >= 0 {
-                continue;
-            }
-
-            let scroll_offset = ui.clip_rect().min - ui.min_rect().min;
-            let first_visible_column = (scroll_offset.x.max(0.0) / GRID_CELL_SIZE).ceil() as i32;
-            let first_visible_row = (scroll_offset.y.max(0.0) / GRID_CELL_SIZE).ceil() as i32;
-            let GridVec { x: w, .. } = widget.grid_size();
-            let y = self
-                .column_bottom(bridge, first_visible_column, w, module_id)
-                .max(first_visible_row)
-                + 1;
-
-            bridge.set_module_position(
-                module_id,
-                GridVec {
-                    x: first_visible_column,
-                    y,
-                },
-            );
-            self.resolve_overlaps(module_id, bridge);
-        }
-    }
-
-    fn column_bottom(&self, bridge: &UiBridge, column: i32, width: i32, skip: ModuleId) -> i32 {
-        let mut bottom = 0;
-
-        for widget in &self.widgets {
-            let id = widget.module_id();
-
-            if skip == id {
-                continue;
-            }
-
-            let GridVec { x, y } = bridge.get_module_position(id);
-
-            if x < 0 {
-                continue;
-            }
-
-            let GridVec { x: w, y: h } = widget.grid_size();
-
-            if x < column + width && column < x + w {
-                bottom = bottom.max(y + h);
-            }
-        }
-
-        bottom
-    }
-
     pub fn ui(&mut self, ui: &mut Ui, bridge: &mut UiBridge, selected_module_id: Option<ModuleId>) {
         self.process_events(bridge);
 
@@ -223,11 +177,10 @@ impl Grid {
             .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
             .auto_shrink([true, true])
             .show(ui, |ui| {
-                self.place_new_modules(ui, bridge);
-
-                let (response, painter) = ui.allocate_painter(grid_area, Sense::hover());
+                let (response, painter) = ui.allocate_painter(grid_area, Sense::click());
 
                 Self::paint_grid(&painter, painter.clip_rect(), response.rect.min);
+                self.add_module_menu(&response, bridge);
 
                 // Reserve a paint slot for the wires.
                 let wires = painter.add(Shape::Noop);
@@ -258,6 +211,45 @@ impl Grid {
                     painter.add(self.build_drag_wire_shape(drag, pointer));
                 }
             });
+    }
+
+    /// Right-click menu adding a module at the clicked cell.
+    fn add_module_menu(&mut self, response: &Response, bridge: &mut UiBridge) {
+        if response.secondary_clicked()
+            && let Some(pointer) = response.interact_pointer_pos()
+        {
+            self.add_module_cell =
+                GridVec::from_vec_floor(pointer - response.rect.min).max(GridVec::ZERO);
+        }
+
+        let cell = self.add_module_cell;
+
+        if self.cell_occupied(bridge, cell) {
+            return;
+        }
+
+        let events = &mut self.events;
+
+        response.context_menu(|ui| {
+            ui.label("Add Module");
+            ui.separator();
+
+            if let Some(module_type) = add_module_items(ui) {
+                let module_id = bridge.add_module(module_type, cell);
+
+                events.push(GridEvent::Moved(module_id));
+                ui.close();
+            }
+        });
+    }
+
+    fn cell_occupied(&self, bridge: &UiBridge, cell: GridVec) -> bool {
+        self.widgets.iter().any(|widget| {
+            let pos = bridge.get_module_position(widget.module_id());
+            let size = widget.grid_size();
+
+            (pos.x..pos.x + size.x).contains(&cell.x) && (pos.y..pos.y + size.y).contains(&cell.y)
+        })
     }
 
     fn calc_content_size(&self, bridge: &UiBridge) -> Vec2 {
