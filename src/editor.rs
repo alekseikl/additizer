@@ -140,7 +140,9 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
     editor_state.ui_bridge.update();
 
     if let Some(modules_io) = editor_state.ui_bridge.take_modules_io() {
-        editor_state.grid.update_widgets(modules_io);
+        editor_state
+            .grid
+            .update_widgets(modules_io, &mut editor_state.ui_bridge);
     }
 
     if editor_state

@@ -71,6 +71,14 @@ struct GridRect {
 }
 
 impl GridRect {
+    fn right(&self) -> i32 {
+        self.x + self.w
+    }
+
+    fn bottom(&self) -> i32 {
+        self.y + self.h
+    }
+
     fn overlaps(&self, other: &GridRect) -> bool {
         self.x < other.x + other.w
             && other.x < self.x + self.w
@@ -109,6 +117,7 @@ pub struct Grid {
     content_size: egui::Vec2,
     events: Vec<GridEvent>,
     open_add_module: Option<(GridVec, Pos2)>,
+    added_module_id: Option<ModuleId>,
 }
 
 impl Grid {
@@ -119,10 +128,15 @@ impl Grid {
             content_size: egui::Vec2::ZERO,
             events: Vec::new(),
             open_add_module: None,
+            added_module_id: None,
         }
     }
 
-    pub fn update_widgets(&mut self, modules_io: FxHashMap<ModuleId, ModuleIo>) {
+    pub fn update_widgets(
+        &mut self,
+        modules_io: FxHashMap<ModuleId, ModuleIo>,
+        bridge: &mut UiBridge,
+    ) {
         let mut widgets_by_id: FxHashMap<ModuleId, GridWidget> =
             self.widgets.drain(..).map(|w| (w.module_id(), w)).collect();
 
@@ -136,6 +150,10 @@ impl Grid {
                 None => GridWidget::new(module_io),
             })
             .collect();
+
+        let added_mod_id = self.added_module_id.take();
+
+        self.resolve_overlaps(added_mod_id, bridge);
     }
 
     pub fn events(&self) -> &Vec<GridEvent> {
@@ -145,7 +163,7 @@ impl Grid {
     fn process_events(&mut self, bridge: &mut UiBridge) {
         for event in self.events.iter() {
             if let GridEvent::Moved(module_id) = event {
-                self.resolve_overlaps(*module_id, bridge);
+                self.resolve_overlaps(Some(*module_id), bridge);
             }
         }
         self.events.clear();
@@ -235,8 +253,7 @@ impl Grid {
 
             match popup.show(response, ui) {
                 AddResult::Selected(module_type) => {
-                    let module_id = bridge.add_module(module_type, cell);
-                    self.events.push(GridEvent::Moved(module_id));
+                    self.added_module_id = Some(bridge.add_module(module_type, cell));
                     self.open_add_module = None;
                 }
                 AddResult::Close => self.open_add_module = None,
@@ -350,10 +367,7 @@ impl Grid {
         shapes
     }
 
-    /// After `anchor` was snapped to the grid, push every overlapping widget
-    /// toward the bottom-right so no two widgets occupy the same cells. The
-    /// anchor stays put; other widgets only ever move right or down.
-    fn resolve_overlaps(&self, anchor: ModuleId, bridge: &mut UiBridge) {
+    fn resolve_overlaps(&self, anchor: Option<ModuleId>, bridge: &mut UiBridge) {
         let mut rects: Vec<GridRect> = self
             .widgets
             .iter()
@@ -369,7 +383,9 @@ impl Grid {
         // The anchor is fixed; settle it first. Remaining widgets are settled in
         // reading order (top-left first) so pushes cascade toward bottom-right.
         let mut settled: Vec<GridRect> = Vec::with_capacity(rects.len());
-        if let Some(pos) = rects.iter().position(|r| r.id == anchor) {
+        if let Some(anchor) = anchor
+            && let Some(pos) = rects.iter().position(|r| r.id == anchor)
+        {
             settled.push(rects.remove(pos));
         }
         rects.sort_by_key(|r| (r.y, r.x));
@@ -378,13 +394,22 @@ impl Grid {
             let original = (rect.x, rect.y);
 
             while let Some(blocker) = settled.iter().find(|s| s.overlaps(&rect)) {
-                let push_right = blocker.x + blocker.w - rect.x;
-                let push_down = blocker.y + blocker.h - rect.y;
+                let dir_x = (rect.x - blocker.x).max(0);
+                let dir_y = (rect.y - blocker.y).max(0);
 
-                if push_right <= push_down {
-                    rect.x = blocker.x + blocker.w;
+                if dir_x > dir_y {
+                    rect.x = blocker.right();
+                } else if dir_y > dir_x {
+                    rect.y = blocker.bottom();
                 } else {
-                    rect.y = blocker.y + blocker.h;
+                    let push_right = blocker.right() - rect.x;
+                    let push_down = blocker.bottom() - rect.y;
+
+                    if push_right <= push_down {
+                        rect.x = blocker.right();
+                    } else {
+                        rect.y = blocker.bottom();
+                    }
                 }
             }
 
