@@ -10,7 +10,7 @@ pub struct ExternalParamConfig {
     pub id: ModuleId,
     pub selected_param_index: usize,
     pub smooth: Sample,
-    pub sample_and_hold: bool,
+    pub sample_on_trigger: bool,
 }
 
 impl Default for ExternalParamConfig {
@@ -19,7 +19,7 @@ impl Default for ExternalParamConfig {
             id: -1,
             selected_param_index: 0,
             smooth: from_ms(2.0),
-            sample_and_hold: false,
+            sample_on_trigger: false,
         }
     }
 }

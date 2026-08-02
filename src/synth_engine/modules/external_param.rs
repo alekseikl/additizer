@@ -11,11 +11,11 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::ExternalParamUiBridge;
 
 use crate::synth_engine::{
-    ModuleId, Sample, StereoSample,
+    ModuleId, Sample,
     buffer::{VoicesLayout, new_voices_layout},
     routing::{
-        ControlRouterType, DataType, Input, InputMeta, InputSlots, NUM_CHANNELS, ProcessContext,
-        SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceRouter,
+        ControlRouterType, DataType, InputMeta, NUM_CHANNELS, ProcessContext, SamplesOutput,
+        VoiceEvent, VoiceRouter,
     },
     smooth::Smoother,
     synth_module::SynthModule,
@@ -30,7 +30,7 @@ pub struct ExternalParamsBlock {
 struct Params {
     selected_param_index: usize,
     smooth: Sample,
-    sample_and_hold: bool,
+    sample_on_trigger: bool,
 }
 
 impl Params {
@@ -38,7 +38,7 @@ impl Params {
         Self {
             selected_param_index: c.selected_param_index.min(NUM_FLOAT_PARAMS - 1),
             smooth: c.smooth,
-            sample_and_hold: c.sample_and_hold,
+            sample_on_trigger: c.sample_on_trigger,
         }
     }
 }
@@ -104,7 +104,7 @@ impl ExternalParam {
             id: self.id,
             selected_param_index: self.params.selected_param_index,
             smooth: self.params.smooth,
-            sample_and_hold: self.params.sample_and_hold,
+            sample_on_trigger: self.params.sample_on_trigger,
         }
     }
 
@@ -115,7 +115,7 @@ impl ExternalParam {
         selected_param_index.min(NUM_FLOAT_PARAMS - 1)
     );
     set_mono_param!(set_smooth, smooth, Sample);
-    set_mono_param!(set_sample_and_hold, sample_and_hold, bool);
+    set_mono_param!(set_sample_on_trigger, sample_on_trigger, bool);
 
     fn process_voice(
         &mut self,
@@ -128,7 +128,7 @@ impl ExternalParam {
         let samples = router.samples();
         let voice_output = &mut output_slot[channel_idx][voice_idx];
 
-        let param_value = if self.params.sample_and_hold {
+        let param_value = if self.params.sample_on_trigger {
             voice.value_at_trigger
         } else {
             self.params_block.float_params[self.params.selected_param_index].value()
@@ -170,11 +170,6 @@ impl SynthModule for ExternalParam {
         self.output_slot = slot;
     }
 
-    fn set_input_slots(&mut self, _inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) {}
-
-    fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {
-    }
-
     fn process_events(&mut self, events: &[VoiceEvent]) {
         for channel in self.voices.iter_mut() {
             for event in events {
@@ -196,7 +191,7 @@ impl SynthModule for ExternalParam {
             match event {
                 UiEvent::SelectedParamIndex(index) => self.select_param(index),
                 UiEvent::Smooth(value) => self.set_smooth(value),
-                UiEvent::SampleAndHold(value) => self.set_sample_and_hold(value),
+                UiEvent::SampleOnTrigger(value) => self.set_sample_on_trigger(value),
             }
         }
     }

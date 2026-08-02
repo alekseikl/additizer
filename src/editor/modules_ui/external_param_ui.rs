@@ -78,10 +78,10 @@ impl ExternalParamUI {
 
                 ui.label("Sample and Hold");
                 if ui
-                    .add(Checkbox::without_text(&mut config.sample_and_hold))
+                    .add(Checkbox::without_text(&mut config.sample_on_trigger))
                     .changed()
                 {
-                    param_bridge.set_sample_and_hold(config.sample_and_hold);
+                    param_bridge.set_sample_and_hold(config.sample_on_trigger);
                 }
                 ui.end_row();
             });

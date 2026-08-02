@@ -101,13 +101,12 @@ impl Expressions {
         match expression {
             Expression::Pitch => from_st(value),
             Expression::Pan => {
-                if channel_idx == 0 {
-                    if value > 0.0 { 1.0 - value } else { 1.0 }
-                } else if value < 0.0 {
-                    1.0 + value
+                let t = if channel_idx == 0 {
+                    1.0 - value
                 } else {
-                    1.0
-                }
+                    1.0 + value
+                };
+                (t * std::f32::consts::FRAC_PI_4).sin() * std::f32::consts::SQRT_2
             }
             _ => value,
         }

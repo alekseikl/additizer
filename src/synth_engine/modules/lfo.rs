@@ -284,8 +284,6 @@ impl Lfo {
         let shape_func = Self::shape_function(params.shape);
         let freq_phase_mult = Phase::freq_phase_mult(sample_rate);
 
-        voice.smoother.update(sample_rate, channel.smooth_time);
-
         for (out, frequency, phase_shift, skew) in izip!(
             control_output.output().iter_mut(),
             &self.buffers.frequency,

@@ -255,9 +255,9 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
         buff: &mut Buffer,
         triggered: bool,
     ) {
-        let skip = usize::from(!triggered); // Samples to skip
+        let skip = usize::from(!triggered);
         let params = &self.factory.ctx.params;
-        let buff = &mut buff[skip..params.samples + 1];
+        let buff = &mut buff[..params.samples + 1 - skip];
 
         if param.check_needs_smoothing(&params.smooth_params) {
             param.smoothed_buff(buff, &params.smooth_params);
@@ -272,7 +272,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
             skip,
             buff,
         ) {
-            let value = buff[skip];
+            let value = buff[0];
 
             self.factory.ctx.audio_end.update_modulated_input(
                 self.factory.module_id,

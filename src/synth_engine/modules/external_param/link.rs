@@ -3,7 +3,7 @@ use crate::synth_engine::Sample;
 pub enum UiEvent {
     SelectedParamIndex(usize),
     Smooth(Sample),
-    SampleAndHold(bool),
+    SampleOnTrigger(bool),
 }
 
 pub struct UiEnd {
@@ -24,7 +24,7 @@ impl UiEnd {
     }
 
     pub fn set_sample_and_hold(&mut self, value: bool) -> bool {
-        self.tx.push(UiEvent::SampleAndHold(value)).is_ok()
+        self.tx.push(UiEvent::SampleOnTrigger(value)).is_ok()
     }
 }
 

@@ -34,7 +34,7 @@ impl ExternalParamUiBridge {
 
     pub fn set_sample_and_hold(&mut self, value: bool) {
         if self.ui_end.set_sample_and_hold(value) {
-            self.config.sample_and_hold = value;
+            self.config.sample_on_trigger = value;
         }
     }
 }

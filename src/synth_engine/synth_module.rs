@@ -20,10 +20,9 @@ pub(super) trait SynthModule: Send {
 
     fn set_output_slot(&mut self, slot: usize);
     fn output_slot(&self) -> usize;
+    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) {}
 
-    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]);
-
-    fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample);
+    fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {}
 
     fn process_events(&mut self, events: &[VoiceEvent]) {}
     fn process_ui_events(&mut self);
