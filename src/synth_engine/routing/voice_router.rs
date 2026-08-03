@@ -245,6 +245,17 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
     pub fn spectral(&self, slot: Option<usize>, triggered: bool) -> &[ComplexSample] {
         self.spectral_impl(slot, triggered)
     }
+
+    pub fn param_stationary_at(
+        &self,
+        input: &InputSlots,
+        param: &SmoothedSample,
+        value: Sample,
+    ) -> bool {
+        !param.check_needs_smoothing(&self.factory.ctx.params.smooth_params)
+            && (param.get() - value).abs() < 1e-6
+            && input.is_empty()
+    }
 }
 
 impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {

@@ -23,7 +23,7 @@ use crate::{
         synth_module::SynthModule,
         types::{ComplexSample, Sample},
     },
-    utils::{from_ms, from_st, pitch_to_freq, power_scale},
+    utils::{from_ms, from_st, pan_gain, pitch_to_freq, power_scale},
 };
 
 mod config;
@@ -93,6 +93,7 @@ impl Default for UnisonParams {
 }
 
 struct ChannelParams {
+    pan: SmoothedSample,
     gain: SmoothedSample,
     pitch_shift: SmoothedSample, //Octaves
     detune: Sample,              //Octaves
@@ -109,6 +110,7 @@ struct ChannelParams {
 impl ChannelParams {
     fn from_config(c: &OscillatorConfig, channel_idx: usize) -> Self {
         Self {
+            pan: c.pan[channel_idx].into(),
             gain: c.gain[channel_idx].into(),
             pitch_shift: c.pitch_shift[channel_idx].into(),
             detune: c.detune[channel_idx],
@@ -130,6 +132,7 @@ impl ChannelParams {
     }
 
     pub fn advance_smoothers(&mut self, smooth_params: &SmoothedSampleParams, samples: usize) {
+        self.pan.advance(smooth_params, samples);
         self.gain.advance(smooth_params, samples);
         self.pitch_shift.advance(smooth_params, samples);
         self.phase_shift.advance(smooth_params, samples);
@@ -225,6 +228,7 @@ impl Default for VoiceBuffers {
 struct Buffers {
     tmp_spectral: DftBuffer,
     scratch: DftBuffer,
+    pan: Buffer,
     gain: Buffer,
     pitch: Buffer,
     phase_shift: Buffer,
@@ -236,6 +240,7 @@ impl Default for Buffers {
         Self {
             tmp_spectral: zero_dft_buffer(),
             scratch: zero_dft_buffer(),
+            pan: zero_buffer(),
             gain: zero_buffer(),
             pitch: zero_buffer(),
             phase_shift: zero_buffer(),
@@ -277,6 +282,7 @@ pub enum PhasesDst {
 
 pub struct Inputs {
     spectrum: Option<usize>,
+    pan: InputSlots,
     gain: InputSlots,
     pitch_shift: InputSlots,
     phase_shift: InputSlots,
@@ -293,16 +299,17 @@ impl Default for Inputs {
     fn default() -> Self {
         Self {
             spectrum: None,
-            gain: InputSlots::empty(Input::Gain),
-            pitch_shift: InputSlots::empty(Input::PitchShift),
-            phase_shift: InputSlots::empty(Input::PhaseShift),
-            freq_shift: InputSlots::empty(Input::FrequencyShift),
-            detune: InputSlots::empty(Input::Detune),
-            detune_power: InputSlots::empty(Input::DetunePower),
-            glide: InputSlots::empty(Input::Glide),
-            glide_slope: InputSlots::empty(Input::GlideSlope),
-            phases_blend: InputSlots::empty(Input::PhasesBlend),
-            gains_blend: InputSlots::empty(Input::GainsBlend),
+            pan: InputSlots::new(Input::Pan),
+            gain: InputSlots::new(Input::Gain),
+            pitch_shift: InputSlots::new(Input::PitchShift),
+            phase_shift: InputSlots::new(Input::PhaseShift),
+            freq_shift: InputSlots::new(Input::FrequencyShift),
+            detune: InputSlots::new(Input::Detune),
+            detune_power: InputSlots::new(Input::DetunePower),
+            glide: InputSlots::new(Input::Glide),
+            glide_slope: InputSlots::new(Input::GlideSlope),
+            phases_blend: InputSlots::new(Input::PhasesBlend),
+            gains_blend: InputSlots::new(Input::GainsBlend),
         }
     }
 }
@@ -313,6 +320,7 @@ impl Inputs {
 
         for input in inputs {
             match input.input_type {
+                Input::Pan => result.pan = input.clone(),
                 Input::Gain => result.gain = input.clone(),
                 Input::PitchShift => result.pitch_shift = input.clone(),
                 Input::PhaseShift => result.phase_shift = input.clone(),
@@ -338,6 +346,7 @@ impl Inputs {
 
     fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
         match input_type {
+            Input::Pan => self.pan.update_amount(src_slot, amount),
             Input::Gain => self.gain.update_amount(src_slot, amount),
             Input::PitchShift => self.pitch_shift.update_amount(src_slot, amount),
             Input::PhaseShift => self.phase_shift.update_amount(src_slot, amount),
@@ -404,6 +413,7 @@ impl Oscillator {
             id: self.id,
             unison_voices: self.params.unison,
             steal_phase: self.params.steal_phase,
+            pan: get_smoothed_param!(self, pan),
             gain: get_smoothed_param!(self, gain),
             pitch_shift: get_smoothed_param!(self, pitch_shift),
             detune: get_stereo_param!(self, detune),
@@ -432,6 +442,7 @@ impl Oscillator {
     );
     set_mono_param!(set_steal_phase, steal_phase, bool);
 
+    set_smoothed_param!(set_pan, pan, pan.clamp(-1.0, 1.0));
     set_smoothed_param!(set_gain, gain, gain.clamp(-1.0, 1.0));
     set_smoothed_param!(
         set_pitch_shift,
@@ -862,8 +873,6 @@ impl Oscillator {
         let output = output[channel_idx][voice_idx].output(router.samples());
         let samples = router.samples();
 
-        router.buff_param(&inputs.gain, &mut channel.gain, &mut buffers.gain);
-
         router.buff_param(
             &inputs.pitch_shift,
             &mut channel.pitch_shift,
@@ -919,18 +928,16 @@ impl Oscillator {
         }
 
         let freq_phase_mult = Phase::freq_phase_mult(router.sample_rate());
-        let buff_t_mult = (samples as f32).recip();
+        let buff_t_inc = (samples as f32).recip();
+        let mut buff_t = 0.0;
 
-        for (out, &pitch, &phase_shift, freq_shift, gain, sample_idx) in izip!(
-            output,
+        for (out, &pitch, &phase_shift, freq_shift) in izip!(
+            output.iter_mut(),
             &buffers.pitch,
             &buffers.phase_shift,
             &buffers.frequency_shift,
-            &buffers.gain,
-            0..samples
         ) {
             let mut sample_acc = f32x4::splat(0.0);
-            let buff_t = sample_idx as Sample * buff_t_mult;
             let phase_shift = Phase::from_normalized(phase_shift);
             let pitch_phase_inc = pitch_to_freq(pitch) * freq_phase_mult;
             let freq_phase_inc = freq_shift * freq_phase_mult;
@@ -952,7 +959,24 @@ impl Oscillator {
                 *phase += pitch_phase_inc.mul_add(uv.rate.interpolate(buff_t), freq_phase_inc);
             }
 
-            *out = sample_acc.reduce_add() * gain * voice.unison_gain.interpolate(buff_t);
+            *out = sample_acc.reduce_add() * voice.unison_gain.interpolate(buff_t);
+            buff_t += buff_t_inc;
+        }
+
+        if !router.param_stationary_at(&inputs.pan, &channel.pan, 0.0) {
+            router.buff_param(&inputs.pan, &mut channel.pan, &mut buffers.pan);
+
+            for (out, &pan) in output.iter_mut().zip(&buffers.pan) {
+                *out *= pan_gain(pan, channel_idx);
+            }
+        }
+
+        if !router.param_stationary_at(&inputs.gain, &channel.gain, 1.0) {
+            router.buff_param(&inputs.gain, &mut channel.gain, &mut buffers.gain);
+
+            for (out, gain) in output.iter_mut().zip(&buffers.gain) {
+                *out *= gain;
+            }
         }
     }
 
@@ -1016,6 +1040,7 @@ impl SynthModule for Oscillator {
         static INPUTS: &[InputMeta] = &[
             InputMeta::spectral(Input::Spectrum),
             InputMeta::control(Input::Gain),
+            InputMeta::control(Input::Pan),
             InputMeta::control(Input::PitchShift),
             InputMeta::audio(Input::PhaseShift),
             InputMeta::audio(Input::FrequencyShift),
@@ -1073,6 +1098,7 @@ impl SynthModule for Oscillator {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
                 UiEvent::InputParam { input, value } => match input {
+                    Input::Pan => self.set_pan(value),
                     Input::Gain => self.set_gain(value),
                     Input::PitchShift => self.set_pitch_shift(value),
                     Input::PhaseShift => self.set_phase_shift(value),

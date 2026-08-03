@@ -52,6 +52,7 @@ impl OscillatorUiBridge {
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
         if self.ui_end.set_param(input, value) {
             match input {
+                Input::Pan => self.config.pan = value,
                 Input::Gain => self.config.gain = value,
                 Input::PitchShift => self.config.pitch_shift = value,
                 Input::PhaseShift => self.config.phase_shift = value,

@@ -205,12 +205,12 @@ pub struct Inputs {
 impl Default for Inputs {
     fn default() -> Self {
         Self {
-            delay: InputSlots::empty(Input::Delay),
-            attack: InputSlots::empty(Input::Attack),
-            hold: InputSlots::empty(Input::Hold),
-            decay: InputSlots::empty(Input::Decay),
-            sustain: InputSlots::empty(Input::Sustain),
-            release: InputSlots::empty(Input::Release),
+            delay: InputSlots::new(Input::Delay),
+            attack: InputSlots::new(Input::Attack),
+            hold: InputSlots::new(Input::Hold),
+            decay: InputSlots::new(Input::Decay),
+            sustain: InputSlots::new(Input::Sustain),
+            release: InputSlots::new(Input::Release),
         }
     }
 }

@@ -17,7 +17,7 @@ use crate::{
         smooth::Smoother,
         synth_module::SynthModule,
     },
-    utils::from_st,
+    utils::{from_st, pan_gain},
 };
 
 struct Params {
@@ -100,14 +100,7 @@ impl Expressions {
     fn transform_value(expression: Expression, channel_idx: usize, value: Sample) -> Sample {
         match expression {
             Expression::Pitch => from_st(value),
-            Expression::Pan => {
-                let t = if channel_idx == 0 {
-                    1.0 - value
-                } else {
-                    1.0 + value
-                };
-                (t * std::f32::consts::FRAC_PI_4).sin() * std::f32::consts::SQRT_2
-            }
+            Expression::Pan => pan_gain(value, channel_idx),
             _ => value,
         }
     }

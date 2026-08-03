@@ -32,6 +32,13 @@ pub fn power_scale(value: Sample, power: Sample) -> Sample {
     }
 }
 
+/// Constant-power pan law: `pan` in [-1, 1] → per-channel gain.
+#[inline(always)]
+pub fn pan_gain(pan: Sample, channel_idx: usize) -> Sample {
+    let t = 1.0 + pan * (2.0 * channel_idx as Sample - 1.0);
+    (t * std::f32::consts::FRAC_PI_4).sin() * std::f32::consts::SQRT_2
+}
+
 pub struct NthElement {
     mul: isize,
     add: isize,

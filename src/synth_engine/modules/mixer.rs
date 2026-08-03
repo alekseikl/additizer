@@ -92,11 +92,11 @@ pub struct Inputs {
 impl Default for Inputs {
     fn default() -> Self {
         Self {
-            gain: InputSlots::empty(Input::Gain),
-            level: InputSlots::empty(Input::Level),
-            audio_mix: array::from_fn(|idx| InputSlots::empty(Input::AudioMix(idx as u8))),
-            gain_mix: array::from_fn(|idx| InputSlots::empty(Input::GainMix(idx as u8))),
-            level_mix: array::from_fn(|idx| InputSlots::empty(Input::LevelMix(idx as u8))),
+            gain: InputSlots::new(Input::Gain),
+            level: InputSlots::new(Input::Level),
+            audio_mix: array::from_fn(|idx| InputSlots::new(Input::AudioMix(idx as u8))),
+            gain_mix: array::from_fn(|idx| InputSlots::new(Input::GainMix(idx as u8))),
+            level_mix: array::from_fn(|idx| InputSlots::new(Input::LevelMix(idx as u8))),
         }
     }
 }

@@ -63,8 +63,8 @@ impl Default for Inputs {
     fn default() -> Self {
         Self {
             audio: None,
-            distortion: InputSlots::empty(Input::Distortion),
-            clipping_level: InputSlots::empty(Input::ClippingLevel),
+            distortion: InputSlots::new(Input::Distortion),
+            clipping_level: InputSlots::new(Input::ClippingLevel),
         }
     }
 }

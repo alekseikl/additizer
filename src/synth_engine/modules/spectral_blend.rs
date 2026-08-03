@@ -50,7 +50,7 @@ impl Default for Inputs {
         Self {
             spectrum: None,
             spectrum_to: None,
-            blend: InputSlots::empty(Input::Blend),
+            blend: InputSlots::new(Input::Blend),
         }
     }
 }

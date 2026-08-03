@@ -87,9 +87,9 @@ pub struct Inputs {
 impl Default for Inputs {
     fn default() -> Self {
         Self {
-            frequency: InputSlots::empty(Input::LowFrequency),
-            phase_shift: InputSlots::empty(Input::PhaseShift),
-            skew: InputSlots::empty(Input::Skew),
+            frequency: InputSlots::new(Input::LowFrequency),
+            phase_shift: InputSlots::new(Input::PhaseShift),
+            skew: InputSlots::new(Input::Skew),
         }
     }
 }

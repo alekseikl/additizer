@@ -73,9 +73,9 @@ impl Default for Inputs {
     fn default() -> Self {
         Self {
             spectrum: None,
-            cutoff: InputSlots::empty(Input::Cutoff),
-            resonance: InputSlots::empty(Input::Resonance),
-            drive: InputSlots::empty(Input::Drive),
+            cutoff: InputSlots::new(Input::Cutoff),
+            resonance: InputSlots::new(Input::Resonance),
+            drive: InputSlots::new(Input::Drive),
         }
     }
 }

@@ -8,8 +8,8 @@ mod link;
 mod ui_bridge;
 
 pub use config::{MAX_INPUTS, SpectralMixerConfig};
-use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use link::DISPLAY_SPECTRUM_SIZE;
+use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::SpectralMixerUiBridge;
 
 use crate::synth_engine::{
@@ -89,11 +89,11 @@ pub struct Inputs {
 impl Default for Inputs {
     fn default() -> Self {
         Self {
-            gain: InputSlots::empty(Input::Gain),
-            level: InputSlots::empty(Input::Level),
+            gain: InputSlots::new(Input::Gain),
+            level: InputSlots::new(Input::Level),
             spectrum_mix: [None; MAX_INPUTS as usize],
-            gain_mix: array::from_fn(|idx| InputSlots::empty(Input::GainMix(idx as u8))),
-            level_mix: array::from_fn(|idx| InputSlots::empty(Input::LevelMix(idx as u8))),
+            gain_mix: array::from_fn(|idx| InputSlots::new(Input::GainMix(idx as u8))),
+            level_mix: array::from_fn(|idx| InputSlots::new(Input::LevelMix(idx as u8))),
         }
     }
 }

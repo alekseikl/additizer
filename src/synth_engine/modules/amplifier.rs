@@ -47,7 +47,7 @@ impl Default for Inputs {
     fn default() -> Self {
         Self {
             audio: None,
-            gain: InputSlots::empty(Input::Gain),
+            gain: InputSlots::new(Input::Gain),
         }
     }
 }

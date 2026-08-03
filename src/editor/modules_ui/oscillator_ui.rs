@@ -424,6 +424,20 @@ impl OscillatorUI {
                     ui.add_space(8.0);
                 });
 
+                ui.label("Pan");
+                if ui
+                    .add(StereoInput::new(
+                        Input::Pan,
+                        module_id,
+                        &mut config.pan,
+                        bridge,
+                    ))
+                    .changed()
+                {
+                    osc_bridge.set_param(Input::Pan, config.pan);
+                }
+                ui.end_row();
+
                 ui.label("Pitch shift");
                 if ui
                     .add(StereoInput::new(
@@ -436,7 +450,6 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_param(Input::PitchShift, config.pitch_shift);
                 }
-                ui.end_row();
 
                 ui.label("Phase shift");
                 if ui
@@ -450,8 +463,9 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_param(Input::PhaseShift, config.phase_shift);
                 }
+                ui.end_row();
 
-                ui.label("Frequency shift");
+                ui.label("Freq shift");
                 if ui
                     .add(StereoInput::new(
                         Input::FrequencyShift,

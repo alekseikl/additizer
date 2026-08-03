@@ -27,6 +27,7 @@ impl Input {
             Self::GainMix(idx) => format!("Gain #{}", idx + 1),
             Self::Level => "Level".to_string(),
             Self::LevelMix(idx) => format!("Level #{}", idx + 1),
+            Self::Pan => "Pan".to_string(),
             Self::Distortion => "Distortion".to_string(),
             Self::ClippingLevel => "Clipping Level".to_string(),
             Self::PitchShift => "Pitch Shift".to_string(),
@@ -64,6 +65,7 @@ impl Input {
             Self::GainMix(idx) => 0.10 + *idx as f32 * 0.012,
             Self::Level => 0.14,
             Self::LevelMix(idx) => 0.14 + *idx as f32 * 0.012,
+            Self::Pan => 0.05,
             Self::Distortion => 0.02,
             Self::ClippingLevel => 0.04,
             Self::Drive => 0.06,
@@ -108,6 +110,7 @@ impl Input {
                 .default(0.0)
                 .skew(2.0)
                 .units(slider::Units::Db),
+            Self::Pan => Slider::stereo(amount, 0.0..=1.0, Some(-1.0)),
             Self::Drive | Self::ClippingLevel => Slider::stereo(amount, 0.0..=24.0, Some(-24.0))
                 .default(0.0)
                 .units(slider::Units::Db),
@@ -168,6 +171,7 @@ impl Input {
                 .default(0.0)
                 .over(0.0)
                 .units(slider::Units::Db),
+            Self::Pan => Slider::stereo(value, -1.0..=1.0, None).default(0.0),
             Self::Drive | Self::ClippingLevel => Slider::stereo(value, -24.0..=24.0, None)
                 .default(0.0)
                 .over(0.0)

@@ -38,6 +38,7 @@ pub enum Input {
     GainMix(u8),
     Level,         // dB
     LevelMix(u8),  // dB
+    Pan,           // [-1.0, 1.0]
     Distortion,    // dB
     ClippingLevel, // dB
     PitchShift,
@@ -418,11 +419,15 @@ pub struct InputSlots {
 }
 
 impl InputSlots {
-    pub fn empty(input_type: Input) -> Self {
+    pub fn new(input: Input) -> Self {
         Self {
-            input_type,
+            input_type: input,
             slots: Vec::new(),
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.slots.is_empty()
     }
 
     pub fn first_slot(&self) -> Option<usize> {
@@ -444,7 +449,7 @@ impl InputSlots {
             .sum::<Sample>()
             + Sample::EPSILON;
 
-        (modulated_amount / max_mod_amount).clamp(0.0, 1.0)
+        (modulated_amount / max_mod_amount).clamp(-1.0, 1.0).abs()
     }
 }
 
