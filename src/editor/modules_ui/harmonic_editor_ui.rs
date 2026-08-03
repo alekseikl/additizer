@@ -2,8 +2,6 @@ use egui::{
     Checkbox, ComboBox, DragValue, Frame, Grid, Id, Margin, Modal, Panel, ScrollArea, Sides, Ui,
     Vec2, style::ScrollStyle,
 };
-use nih_plug::util::db_to_gain;
-
 use crate::{
     editor::{
         ModuleUi,
@@ -16,7 +14,7 @@ use crate::{
         harmonic_editor::{FilterParams, FilterType, HarmonicEditorUiBridge, SetAction, SetParams},
         ui_bridge::{ModuleBridge, UiBridge},
     },
-    utils::NthElement,
+    utils::{NthElement, db_to_gain},
 };
 
 const NUM_EDITABLE_HARMONICS: usize = SPECTRAL_BUFFER_SIZE - 1;

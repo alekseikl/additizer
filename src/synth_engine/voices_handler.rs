@@ -1,6 +1,5 @@
 use std::{cmp::Reverse, collections::VecDeque};
 
-use nih_plug::nih_log;
 use smallvec::SmallVec;
 
 use crate::{
@@ -8,7 +7,7 @@ use crate::{
         Expression, Sample,
         routing::{MAX_VOICES, VoiceEvent},
     },
-    utils::{note_to_pitch, pitch_to_freq},
+    utils::{log, note_to_pitch, pitch_to_freq},
 };
 
 pub const MAX_AVAILABLE_VOICES: usize = MAX_VOICES - 4;
@@ -364,7 +363,7 @@ impl VoicesHandler {
                 .iter()
                 .any(|playing| playing.id == new_note)
         {
-            nih_log!("Already pressed note came: {:?}", new_note);
+            log!("Already pressed note came: {:?}", new_note);
             return;
         }
 
@@ -411,7 +410,7 @@ impl VoicesHandler {
             .iter()
             .position(|playing| playing.id == note_id)
         else {
-            nih_log!("Unknown note lifted: {:?}", note_id);
+            log!("Unknown note lifted: {:?}", note_id);
             return;
         };
 

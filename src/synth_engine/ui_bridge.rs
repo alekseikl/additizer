@@ -1,7 +1,6 @@
 use std::ops::DerefMut;
 
 use enum_dispatch::enum_dispatch;
-use nih_plug::nih_log;
 
 use crate::{
     engine_factory::{EngineHandle, UiConfigHandle},
@@ -24,6 +23,7 @@ use crate::{
         ui_bridge::{routing_state::ModuleIo, ui_config::UiModuleConfig},
         wave_shaper::WaveShaperUiBridge,
     },
+    utils::log,
 };
 
 mod link;
@@ -551,7 +551,7 @@ impl UiBridge {
         let mut engine = self.engine.lock();
 
         if engine.refresh_routing().is_err() {
-            nih_log!("Failed to refresh routing");
+            log!("Failed to refresh routing");
         }
         self.routing = engine.get_routing_state();
     }
@@ -606,7 +606,7 @@ impl UiBridge {
         let mut synth = self.engine.lock();
 
         if let Err(err) = synth.set_direct_link(src, dst) {
-            nih_log!("Failed to set direct link: {err}");
+            log!("Failed to set direct link: {err}");
         }
         self.routing = synth.get_routing_state();
     }
@@ -615,7 +615,7 @@ impl UiBridge {
         let mut synth = self.engine.lock();
 
         if let Err(err) = synth.add_mixed_link(src, dst, amount) {
-            nih_log!("Failed to add link: {err}");
+            log!("Failed to add link: {err}");
         }
         self.routing = synth.get_routing_state();
     }
@@ -650,7 +650,7 @@ impl UiBridge {
         let mut synth = self.engine.lock();
 
         if let Err(err) = synth.set_link_modulation(src_id, dst_input, modulator_id) {
-            nih_log!("Failed to set link modulation: {err}");
+            log!("Failed to set link modulation: {err}");
         }
         self.routing = synth.get_routing_state();
     }

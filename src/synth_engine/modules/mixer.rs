@@ -1,6 +1,20 @@
 use std::array;
 
-use nih_plug::util::db_to_gain_fast;
+use crate::{
+    synth_engine::{
+        SmoothedSampleParams, StereoSample,
+        buffer::{Buffer, VoicesLayout, copy_or_add_to_buffer, zero_buffer},
+        level_ballistics::LevelBallistics,
+        routing::{
+            AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
+            ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter, VolumeType,
+        },
+        smooth::SmoothedSample,
+        synth_module::SynthModule,
+        types::Sample,
+    },
+    utils::db_to_gain_fast,
+};
 
 mod config;
 mod link;
@@ -9,19 +23,6 @@ mod ui_bridge;
 pub use config::{MAX_INPUTS, MixerConfig};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::MixerUiBridge;
-
-use crate::synth_engine::{
-    SmoothedSampleParams, StereoSample,
-    buffer::{Buffer, VoicesLayout, copy_or_add_to_buffer, zero_buffer},
-    level_ballistics::LevelBallistics,
-    routing::{
-        AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-        ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter, VolumeType,
-    },
-    smooth::SmoothedSample,
-    synth_module::SynthModule,
-    types::Sample,
-};
 
 const MAX_VOLUME: Sample = 24.0; // dB
 

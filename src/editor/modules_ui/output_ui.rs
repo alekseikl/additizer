@@ -1,5 +1,4 @@
 use egui::{Grid, Ui};
-use nih_plug::util::{db_to_gain, gain_to_db};
 
 use crate::{
     editor::{
@@ -7,6 +6,7 @@ use crate::{
         slider::{self, Slider},
     },
     synth_engine::{ModuleId, OUTPUT_MODULE_ID, StereoSample, ui_bridge::UiBridge},
+    utils::{db_to_gain, gain_to_db},
 };
 
 pub struct OutputUi;

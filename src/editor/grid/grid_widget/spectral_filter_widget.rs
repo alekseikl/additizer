@@ -1,5 +1,4 @@
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, epaint::PathStroke};
-use nih_plug::util::gain_to_db_fast;
 
 use crate::{
     editor::grid::WidgetCtx,
@@ -11,6 +10,7 @@ use crate::{
         spectral_filter::SpectralFilterUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
+    utils::gain_to_db_fast,
 };
 
 use super::GridWidgetContent;

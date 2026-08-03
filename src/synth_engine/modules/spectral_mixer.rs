@@ -1,7 +1,20 @@
 use core::f32;
 use std::array;
 
-use nih_plug::util::db_to_gain_fast;
+use crate::{
+    synth_engine::{
+        StereoSample,
+        buffer::{VoicesLayout, new_voices_layout},
+        routing::{
+            DataType, Input, InputMeta, InputSlots, MixType, ModuleId, NUM_CHANNELS, ProcessContext,
+            SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent, VoiceRouter,
+            VolumeType,
+        },
+        synth_module::SynthModule,
+        types::{ComplexSample, Sample},
+    },
+    utils::db_to_gain_fast,
+};
 
 mod config;
 mod link;
@@ -11,17 +24,6 @@ pub use config::{MAX_INPUTS, SpectralMixerConfig};
 pub use link::DISPLAY_SPECTRUM_SIZE;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::SpectralMixerUiBridge;
-
-use crate::synth_engine::{
-    StereoSample,
-    buffer::{VoicesLayout, new_voices_layout},
-    routing::{
-        DataType, Input, InputMeta, InputSlots, MixType, ModuleId, NUM_CHANNELS, ProcessContext,
-        SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent, VoiceRouter, VolumeType,
-    },
-    synth_module::SynthModule,
-    types::{ComplexSample, Sample},
-};
 
 const MAX_VOLUME: Sample = 24.0; // dB
 

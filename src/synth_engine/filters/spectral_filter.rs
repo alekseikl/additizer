@@ -1,11 +1,10 @@
 use std::f32;
 
-use nih_plug::util::db_to_gain_fast;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::{ComplexSample, Sample},
-    utils::{from_st, power_scale},
+    utils::{db_to_gain_fast, from_st, power_scale},
 };
 
 const TAU: Sample = f32::consts::TAU;

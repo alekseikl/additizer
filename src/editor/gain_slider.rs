@@ -1,7 +1,9 @@
 use egui::{Color32, PointerButton, Rect, Response, Sense, Ui, Widget, pos2, vec2};
-use nih_plug::util::MINUS_INFINITY_DB;
 
-use crate::synth_engine::{Sample, StereoSample};
+use crate::{
+    synth_engine::{Sample, StereoSample},
+    utils::{MINUS_INFINITY_DB, db_to_gain, gain_to_db},
+};
 
 const BG_COLOR: Color32 = Color32::from_rgb(0, 0, 0);
 const ATTENUATED_COLOR: Color32 = Color32::from_rgb(0x0b, 0x42, 0x67);
@@ -69,14 +71,14 @@ impl<'a> GainSlider<'a> {
     }
 
     fn gain_to_normalized(&self, gain: f32) -> f32 {
-        let dbs = nih_plug::util::gain_to_db(gain);
+        let dbs = gain_to_db(gain);
 
         if dbs > 0.0 {
             let normalized = dbs / self.max_dbs;
 
             self.mid_point + (1.0 - self.mid_point) * normalized.powf(self.skew_factor.recip())
         } else {
-            let normalized = dbs / nih_plug::util::MINUS_INFINITY_DB;
+            let normalized = dbs / MINUS_INFINITY_DB;
 
             self.mid_point * (1.0 - normalized.powf(self.skew_factor.recip()))
         }
@@ -90,10 +92,10 @@ impl<'a> GainSlider<'a> {
         } else {
             let normalized = 1.0 - norm / self.mid_point;
 
-            nih_plug::util::MINUS_INFINITY_DB * normalized.powf(self.skew_factor)
+            MINUS_INFINITY_DB * normalized.powf(self.skew_factor)
         };
 
-        nih_plug::util::db_to_gain(dbs)
+        db_to_gain(dbs)
     }
 
     fn fill_gain_rect(&self, ui: &mut Ui, gain: f32, rect: Rect) {
@@ -155,13 +157,13 @@ impl<'a> GainSlider<'a> {
     }
 
     fn gain_to_db_string(gain: f32) -> String {
-        let dbs = nih_plug::util::gain_to_db(gain);
+        let dbs = gain_to_db(gain);
         if dbs <= MINUS_INFINITY_DB {
             "-Inf dB".to_string()
         } else if dbs == 0.0 {
             "0 dB".to_string()
         } else {
-            format!("{:+.1} dB", nih_plug::util::gain_to_db(gain))
+            format!("{:+.1} dB", gain_to_db(gain))
         }
     }
 

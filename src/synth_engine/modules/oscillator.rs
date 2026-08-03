@@ -1,7 +1,6 @@
 use std::{array, convert::identity, f32, sync::Arc};
 
 use itertools::izip;
-use nih_plug::util::db_to_gain;
 use rand::RngExt;
 use rand_pcg::Pcg32;
 use realfft::{ComplexToReal, RealFftPlanner};
@@ -23,7 +22,7 @@ use crate::{
         synth_module::SynthModule,
         types::{ComplexSample, Sample},
     },
-    utils::{from_ms, from_st, pan_gain, pitch_to_freq, power_scale},
+    utils::{db_to_gain, from_ms, from_st, pan_gain, pitch_to_freq, power_scale},
 };
 
 mod config;

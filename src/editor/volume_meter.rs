@@ -1,6 +1,9 @@
 use egui::{Color32, Painter, Pos2, Rect};
 
-use crate::synth_engine::{NUM_CHANNELS, Sample, Smoother, StereoSample};
+use crate::{
+    synth_engine::{NUM_CHANNELS, Sample, Smoother, StereoSample},
+    utils::gain_to_db,
+};
 
 const BAR_GAP: f32 = 6.0;
 const NUM_SEGMENTS: usize = 12;
@@ -89,7 +92,7 @@ impl VolumeMeter {
             return MIN_DB;
         }
 
-        nih_plug::util::gain_to_db(level).max(MIN_DB)
+        gain_to_db(level).max(MIN_DB)
     }
 
     fn segment_brightness(segment_idx: usize, db: Sample) -> Sample {

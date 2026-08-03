@@ -1,6 +1,4 @@
 use egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
-use nih_plug::util::{db_to_gain, gain_to_db};
-
 use crate::{
     editor::{
         ModuleUi,
@@ -13,6 +11,7 @@ use crate::{
         oscillator::{self, OscillatorConfig, OscillatorUiBridge, PhasesDst},
         ui_bridge::{ModuleBridge, UiBridge},
     },
+    utils::{db_to_gain, gain_to_db},
 };
 
 struct GainShapeState {

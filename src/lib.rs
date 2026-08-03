@@ -109,7 +109,7 @@ impl<'a, C: ProcessContext<Additizer>> EventReorderer<'a, C> {
 
 impl Additizer {
     fn process_event(synth: &mut SynthEngine, event: NoteEvent<()>) {
-        // nih_log!("Event: {:?}", event);
+        // log!("Event: {:?}", event);
 
         match event {
             NoteEvent::NoteOn {

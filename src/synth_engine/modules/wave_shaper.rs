@@ -1,7 +1,20 @@
 use std::array;
 
 use itertools::izip;
-use nih_plug::util::db_to_gain_fast;
+
+use crate::{
+    synth_engine::{
+        SmoothedSampleParams, StereoSample,
+        buffer::{Buffer, VoicesLayout, zero_buffer},
+        routing::{
+            AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
+            ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter,
+        },
+        smooth::SmoothedSample,
+        synth_module::SynthModule,
+    },
+    utils::db_to_gain_fast,
+};
 
 mod config;
 mod link;
@@ -10,17 +23,6 @@ mod ui_bridge;
 pub use config::{ShaperType, WaveShaperConfig};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::WaveShaperUiBridge;
-
-use crate::synth_engine::{
-    SmoothedSampleParams, StereoSample,
-    buffer::{Buffer, VoicesLayout, zero_buffer},
-    routing::{
-        AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-        ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter,
-    },
-    smooth::SmoothedSample,
-    synth_module::SynthModule,
-};
 
 struct Params {
     shaper_type: ShaperType,

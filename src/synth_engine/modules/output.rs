@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use itertools::izip;
-use nih_plug::{params::FloatParam, util::db_to_gain_fast};
+use nih_plug::params::FloatParam;
 
 use crate::{
     synth_engine::{
@@ -15,7 +15,7 @@ use crate::{
         smooth::{InfiniteSmoothed, SmoothedSample},
         voices_handler::DecayingVoice,
     },
-    utils::from_ms,
+    utils::{db_to_gain_fast, from_ms},
 };
 
 const _: () = assert!(NUM_CHANNELS == 2);
