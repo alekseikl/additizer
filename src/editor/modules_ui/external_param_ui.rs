@@ -11,6 +11,7 @@ use crate::{
         external_param::{ExternalParamUiBridge, NUM_FLOAT_PARAMS},
         ui_bridge::{ModuleBridge, UiBridge},
     },
+    utils::from_ms,
 };
 
 pub struct ExternalParamUI {
@@ -40,33 +41,36 @@ impl ExternalParamUI {
         ui.add_space(16.0);
 
         Grid::new("ext-param-grid")
-            .num_columns(2)
-            .spacing([40.0, 24.0])
-            .striped(true)
+            .num_columns(4)
+            .spacing([8.0, 8.0])
             .show(ui, |ui| {
                 ui.label("Input");
-                ComboBox::from_id_salt("ext-param-select")
-                    .selected_text(format!("Param #{}", config.selected_param_index + 1))
-                    .show_ui(ui, |ui| {
-                        for i in 0..NUM_FLOAT_PARAMS {
-                            if ui
-                                .selectable_label(
-                                    i == config.selected_param_index,
-                                    format!("Param #{}", i + 1),
-                                )
-                                .clicked()
-                            {
-                                param_bridge.select_param(i);
+                ui.horizontal(|ui| {
+                    ComboBox::from_id_salt("ext-param-select")
+                        .selected_text(format!("Param #{}", config.selected_param_index + 1))
+                        .show_ui(ui, |ui| {
+                            for i in 0..NUM_FLOAT_PARAMS {
+                                if ui
+                                    .selectable_value(
+                                        &mut config.selected_param_index,
+                                        i,
+                                        format!("Param #{}", i + 1),
+                                    )
+                                    .clicked()
+                                {
+                                    param_bridge.select_param(i);
+                                }
                             }
-                        }
-                    });
-                ui.end_row();
+                        });
+
+                    ui.add_space(8.0);
+                });
 
                 ui.label("Smooth");
                 if ui
                     .add(
                         Slider::mono(&mut config.smooth, 0.0..=0.05, None)
-                            .default(4.0)
+                            .default(from_ms(4.0))
                             .skew(1.2)
                             .units(slider::Units::Time),
                     )
@@ -76,12 +80,22 @@ impl ExternalParamUI {
                 }
                 ui.end_row();
 
-                ui.label("Sample and Hold");
+                ui.label("Hold")
+                    .on_hover_text("Hold a value copied on trigger");
                 if ui
                     .add(Checkbox::without_text(&mut config.sample_on_trigger))
                     .changed()
                 {
                     param_bridge.set_sample_on_trigger(config.sample_on_trigger);
+                }
+
+                ui.label("Make Bipolar")
+                    .on_hover_text("Remaps [0, 1] into [-1, 1]");
+                if ui
+                    .add(Checkbox::without_text(&mut config.make_bipolar))
+                    .changed()
+                {
+                    param_bridge.set_make_bipolar(config.make_bipolar);
                 }
                 ui.end_row();
             });

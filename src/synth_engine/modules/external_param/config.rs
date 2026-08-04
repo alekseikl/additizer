@@ -11,6 +11,8 @@ pub struct ExternalParamConfig {
     pub selected_param_index: usize,
     pub smooth: Sample,
     pub sample_on_trigger: bool,
+    #[serde(default)]
+    pub make_bipolar: bool,
 }
 
 impl Default for ExternalParamConfig {
@@ -20,6 +22,7 @@ impl Default for ExternalParamConfig {
             selected_param_index: 0,
             smooth: from_ms(2.0),
             sample_on_trigger: false,
+            make_bipolar: false,
         }
     }
 }

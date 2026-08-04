@@ -37,7 +37,7 @@ impl ModuleType {
             Self::SpectralBlend => "Spectral Blend",
             Self::SpectralMixer => "Spectral Mixer",
             Self::HarmonicEditor => "Harmonic Editor",
-            Self::ExternalParam => "External Parameter",
+            Self::ExternalParam => "Ext Parameter",
             Self::Lfo => "LFO",
             Self::WaveShaper => "Waveshaper",
             Self::Expressions => "Expressions",

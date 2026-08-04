@@ -6,6 +6,7 @@ pub enum UiEvent {
     SelectedParamIndex(usize),
     Smooth(Sample),
     SampleOnTrigger(bool),
+    MakeBipolar(bool),
 }
 
 pub struct UiEnd {
@@ -32,6 +33,10 @@ impl UiEnd {
 
     pub fn set_sample_on_trigger(&mut self, value: bool) -> bool {
         self.tx.push(UiEvent::SampleOnTrigger(value)).is_ok()
+    }
+
+    pub fn set_make_bipolar(&mut self, value: bool) -> bool {
+        self.tx.push(UiEvent::MakeBipolar(value)).is_ok()
     }
 }
 

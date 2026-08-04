@@ -31,6 +31,7 @@ struct Params {
     selected_param_index: usize,
     smooth: Sample,
     sample_on_trigger: bool,
+    make_bipolar: bool,
 }
 
 impl Params {
@@ -39,6 +40,7 @@ impl Params {
             selected_param_index: c.selected_param_index.min(NUM_FLOAT_PARAMS - 1),
             smooth: c.smooth,
             sample_on_trigger: c.sample_on_trigger,
+            make_bipolar: c.make_bipolar,
         }
     }
 }
@@ -107,6 +109,7 @@ impl ExternalParam {
             selected_param_index: self.params.selected_param_index,
             smooth: self.params.smooth,
             sample_on_trigger: self.params.sample_on_trigger,
+            make_bipolar: self.params.make_bipolar,
         }
     }
 
@@ -118,6 +121,7 @@ impl ExternalParam {
     );
     set_mono_param!(set_smooth, smooth, Sample);
     set_mono_param!(set_sample_on_trigger, sample_on_trigger, bool);
+    set_mono_param!(set_make_bipolar, make_bipolar, bool);
 
     fn process_voice(
         &mut self,
@@ -193,6 +197,7 @@ impl SynthModule for ExternalParam {
                 UiEvent::SelectedParamIndex(index) => self.select_param(index),
                 UiEvent::Smooth(value) => self.set_smooth(value),
                 UiEvent::SampleOnTrigger(value) => self.set_sample_on_trigger(value),
+                UiEvent::MakeBipolar(value) => self.set_make_bipolar(value),
             }
         }
     }
@@ -200,14 +205,19 @@ impl SynthModule for ExternalParam {
     fn process(&mut self, ctx: &mut ProcessContext) {
         ctx.for_control(self.id, self.output_slot, |router, output| {
             let num_active_voices = router.params().active_voices.len();
+            let samples = router.params().samples;
             let param = &self.params_block.float_params[self.params.selected_param_index];
 
-            param
-                .smoothed
-                .next_block(&mut self.mono_buff, router.params().samples);
+            param.smoothed.next_block(&mut self.mono_buff, samples);
 
             if router.params().needs_update_ui {
                 self.audio_end.update_value(self.mono_buff[0]);
+            }
+
+            if self.params.make_bipolar {
+                for sample in &mut self.mono_buff[..samples] {
+                    *sample = *sample * 2.0 - 1.0;
+                }
             }
 
             for channel_idx in 0..NUM_CHANNELS {

@@ -41,6 +41,12 @@ impl ExternalParamUiBridge {
             self.config.sample_on_trigger = value;
         }
     }
+
+    pub fn set_make_bipolar(&mut self, value: bool) {
+        if self.ui_end.set_make_bipolar(value) {
+            self.config.make_bipolar = value;
+        }
+    }
 }
 
 impl ModuleUiBridge for ExternalParamUiBridge {
