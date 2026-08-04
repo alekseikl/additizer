@@ -81,7 +81,7 @@ impl ExternalParamUI {
                     .add(Checkbox::without_text(&mut config.sample_on_trigger))
                     .changed()
                 {
-                    param_bridge.set_sample_and_hold(config.sample_on_trigger);
+                    param_bridge.set_sample_on_trigger(config.sample_on_trigger);
                 }
                 ui.end_row();
             });

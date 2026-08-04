@@ -11,8 +11,8 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::ExternalParamUiBridge;
 
 use crate::synth_engine::{
-    ModuleId, Sample,
-    buffer::{VoicesLayout, new_voices_layout},
+    Buffer, ModuleId, Sample,
+    buffer::{VoicesLayout, new_voices_layout, zero_buffer},
     routing::{
         ControlRouterType, DataType, InputMeta, NUM_CHANNELS, ProcessContext, SamplesOutput,
         VoiceEvent, VoiceRouter,
@@ -68,6 +68,7 @@ pub struct ExternalParam {
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
     output_slot: usize,
+    mono_buff: Buffer,
     voices: VoicesLayout<VoiceState>,
 }
 
@@ -95,6 +96,7 @@ impl ExternalParam {
             audio_end,
             ui_end: Some(ui_end),
             output_slot: usize::MAX,
+            mono_buff: zero_buffer(),
             voices: new_voices_layout(),
         }
     }
@@ -127,16 +129,21 @@ impl ExternalParam {
         let voice = &mut self.voices[channel_idx][voice_idx];
         let samples = router.samples();
         let voice_output = &mut output_slot[channel_idx][voice_idx];
+        let mono = &self.mono_buff[..samples];
 
-        let param_value = if self.params.sample_on_trigger {
-            voice.value_at_trigger
+        if self.params.sample_on_trigger {
+            if voice.triggered {
+                voice.value_at_trigger = mono[0];
+            }
+
+            voice_output.fill_with_ext_control_value(samples, voice.value_at_trigger);
         } else {
-            self.params_block.float_params[self.params.selected_param_index].value()
-        };
+            voice_output.fill_with_ext_control(mono);
+        }
 
-        let mut control_output = voice_output.control_output(samples, voice.triggered);
-        control_output.output().fill(param_value);
-        drop(control_output);
+        if voice.triggered {
+            voice.smoother.reset(mono[0]);
+        }
 
         voice.triggered = false;
 
@@ -174,13 +181,7 @@ impl SynthModule for ExternalParam {
         for channel in self.voices.iter_mut() {
             for event in events {
                 if let VoiceEvent::Trigger { voice_idx, .. } = event {
-                    let param_value =
-                        self.params_block.float_params[self.params.selected_param_index].value();
-                    let voice = &mut channel[*voice_idx];
-
-                    voice.triggered = true;
-                    voice.value_at_trigger = param_value;
-                    voice.smoother.reset(param_value);
+                    channel[*voice_idx].triggered = true;
                 }
             }
         }
@@ -199,6 +200,15 @@ impl SynthModule for ExternalParam {
     fn process(&mut self, ctx: &mut ProcessContext) {
         ctx.for_control(self.id, self.output_slot, |router, output| {
             let num_active_voices = router.params().active_voices.len();
+            let param = &self.params_block.float_params[self.params.selected_param_index];
+
+            param
+                .smoothed
+                .next_block(&mut self.mono_buff, router.params().samples);
+
+            if router.params().needs_update_ui {
+                self.audio_end.update_value(self.mono_buff[0]);
+            }
 
             for channel_idx in 0..NUM_CHANNELS {
                 for seq_idx in 0..num_active_voices {

@@ -10,6 +10,7 @@ use crate::{
         GridEvent, WidgetCtx, WireDragState,
         grid_widget::{
             amplifier_widget::AmplifierWidget, envelope_widget::EnvelopeWidget,
+            external_param_widget::ExternalParamWidget,
             harmonic_editor_widget::HarmonicEditorWidget, lfo_widget::LfoWidget,
             mixer_widget::MixerWidget, oscillator_widget::OscillatorWidget,
             output_widget::OutputWidget, spectral_blend_widget::SpectralBlendWidget,
@@ -32,6 +33,7 @@ use crate::{
 
 mod amplifier_widget;
 mod envelope_widget;
+mod external_param_widget;
 mod harmonic_editor_widget;
 mod lfo_widget;
 mod mixer_widget;
@@ -118,6 +120,7 @@ impl GridWidget {
                 ModuleType::SpectralBlend => Box::new(SpectralBlendWidget::default()),
                 ModuleType::SpectralMixer => Box::new(SpectralMixerWidget::default()),
                 ModuleType::Output => Box::new(OutputWidget::default()),
+                ModuleType::ExternalParam => Box::new(ExternalParamWidget::default()),
                 _ => Box::new(EmptyContent {}),
             },
             drag_offset: Vec2::ZERO,

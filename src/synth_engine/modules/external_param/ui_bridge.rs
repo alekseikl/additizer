@@ -20,6 +20,10 @@ impl ExternalParamUiBridge {
         &self.config
     }
 
+    pub fn get_value(&mut self) -> Sample {
+        self.ui_end.get_value()
+    }
+
     pub fn select_param(&mut self, index: usize) {
         if self.ui_end.select_param(index) {
             self.config.selected_param_index = index.min(NUM_FLOAT_PARAMS - 1);
@@ -32,8 +36,8 @@ impl ExternalParamUiBridge {
         }
     }
 
-    pub fn set_sample_and_hold(&mut self, value: bool) {
-        if self.ui_end.set_sample_and_hold(value) {
+    pub fn set_sample_on_trigger(&mut self, value: bool) {
+        if self.ui_end.set_sample_on_trigger(value) {
             self.config.sample_on_trigger = value;
         }
     }

@@ -1,7 +1,7 @@
-use egui::Label;
+use egui::{Rect, Vec2, emath::GuiRounding};
 
 use crate::{
-    editor::{grid::WidgetCtx, volume_meter::VolumeMeter},
+    editor::{fit_label::FitLabel, grid::WidgetCtx, volume_meter::VolumeMeter},
     synth_engine::{
         ModuleId, StereoSample,
         amplifier::AmplifierUiBridge,
@@ -11,7 +11,7 @@ use crate::{
 
 use super::GridWidgetContent;
 
-const PADDING: f32 = 4.0;
+const VERT_PADDING: Vec2 = egui::vec2(4.0, 6.0);
 
 #[derive(Default)]
 pub struct AmplifierWidget {
@@ -27,12 +27,15 @@ impl AmplifierWidget {
         amp_bridge: &mut AmplifierUiBridge,
     ) {
         ui.add_space(2.0);
-        ui.add(Label::new("Amp").selectable(false).truncate())
-            .on_hover_text(label);
+        ui.add(FitLabel::new(&label, "Amp"));
 
         let size = ui.available_size();
         let response = ui.allocate_response(size, egui::Sense::hover());
-        let rect = response.rect.shrink2(egui::vec2(0.0, PADDING));
+        let rect = Rect::from_min_max(
+            response.rect.left_top() + egui::vec2(0.0, VERT_PADDING.x),
+            response.rect.right_bottom() - egui::vec2(0.0, VERT_PADDING.y),
+        )
+        .round_to_pixels(ui.pixels_per_point());
 
         if !rect.is_positive() || !ui.is_rect_visible(rect) {
             return;

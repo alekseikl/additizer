@@ -5,7 +5,6 @@ use crate::synth_engine::{
 
 pub struct SamplesOutput {
     buffer: Buffer,
-    this_frame_sample: Sample,
     next_frame_sample: Sample,
 }
 
@@ -17,7 +16,7 @@ impl SamplesOutput {
 
     pub(super) fn scalar(&self, triggered: bool) -> Sample {
         if triggered {
-            self.this_frame_sample
+            self.buffer[0]
         } else {
             self.next_frame_sample
         }
@@ -34,13 +33,27 @@ impl SamplesOutput {
             triggered,
         }
     }
+
+    // Fill buffer with the external control-rate signal that doesn't run 1 sample ahead.
+    pub fn fill_with_ext_control(&mut self, buff: &[Sample]) {
+        let len = buff.len();
+        let last = buff[len - 1];
+
+        self.buffer[..len].copy_from_slice(buff);
+        self.buffer[len] = last;
+        self.next_frame_sample = last;
+    }
+
+    pub fn fill_with_ext_control_value(&mut self, samples: usize, value: Sample) {
+        self.buffer[..samples + 1].fill(value);
+        self.next_frame_sample = value;
+    }
 }
 
 impl Default for SamplesOutput {
     fn default() -> Self {
         Self {
             buffer: zero_buffer(),
-            this_frame_sample: 0.0,
             next_frame_sample: 0.0,
         }
     }
@@ -70,7 +83,6 @@ impl<'a> Drop for ControlRateAdapter<'a> {
             self.output.buffer[0] = self.output.next_frame_sample;
         }
 
-        self.output.this_frame_sample = self.output.buffer[0];
         self.output.next_frame_sample = self.output.buffer[self.samples];
     }
 }
