@@ -627,12 +627,19 @@ impl SynthEngine {
         channel: u8,
         note: u8,
         expression: Expression,
+        timing: usize, // In-block offset
         value: Sample,
     ) {
         let mut voice_events = VoiceEvents::new();
 
-        self.voices_handler
-            .handle_expression(channel, note, expression, value, &mut voice_events);
+        self.voices_handler.handle_expression(
+            channel,
+            note,
+            expression,
+            timing,
+            value,
+            &mut voice_events,
+        );
 
         self.process_voice_events(voice_events.events());
     }

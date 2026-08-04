@@ -20,6 +20,10 @@ impl ExpressionsUiBridge {
         &self.config
     }
 
+    pub fn get_value(&mut self) -> Sample {
+        self.ui_end.get_value()
+    }
+
     pub fn set_expression(&mut self, expression: Expression) {
         if self.ui_end.set_expression(expression) {
             self.config.expression = expression;

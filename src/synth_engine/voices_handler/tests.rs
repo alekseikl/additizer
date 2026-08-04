@@ -447,14 +447,18 @@ fn expression_on_playing_note() {
     let mut ev = events();
 
     h.handle_note_on(0, 60, 1.0, &mut ev);
-    h.handle_expression(0, 60, Expression::Pitch, 0.5, &mut ev);
+    h.handle_expression(0, 60, Expression::Pitch, 0, 0.5, &mut ev);
 
     assert_eq!(ev.events().len(), 2);
     match &ev.events()[1] {
         VoiceEvent::Expression {
-            expression, value, ..
+            expression,
+            timing,
+            value,
+            ..
         } => {
             assert_eq!(*expression, Expression::Pitch);
+            assert_eq!(*timing, 0);
             assert_eq!(*value, 0.5);
         }
         _ => panic!("expected Expression event"),
@@ -471,8 +475,21 @@ fn expression_on_releasing_note() {
     assert_eq!(h.get_ui_state().releasing, 1);
 
     let len_before = ev.events().len();
-    h.handle_expression(0, 60, Expression::Pressure, 0.3, &mut ev);
-    assert_eq!(ev.events().len(), len_before);
+    h.handle_expression(0, 60, Expression::Pressure, 0, 0.3, &mut ev);
+    assert_eq!(ev.events().len(), len_before + 1);
+    match &ev.events()[len_before] {
+        VoiceEvent::Expression {
+            expression,
+            timing,
+            value,
+            ..
+        } => {
+            assert_eq!(*expression, Expression::Pressure);
+            assert_eq!(*timing, 0);
+            assert_eq!(*value, 0.3);
+        }
+        _ => panic!("expected Expression event"),
+    }
 }
 
 #[test]
@@ -480,7 +497,7 @@ fn expression_on_unknown_note_is_noop() {
     let mut h = handler(4);
     let mut ev = events();
 
-    h.handle_expression(0, 60, Expression::Gain, 0.5, &mut ev);
+    h.handle_expression(0, 60, Expression::Gain, 0, 0.5, &mut ev);
     assert!(ev.events().is_empty());
 }
 

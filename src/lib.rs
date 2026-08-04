@@ -76,10 +76,10 @@ impl<'a, C: ProcessContext<Additizer>> EventReorderer<'a, C> {
 
     fn priority(event: &NoteEvent<()>) -> u8 {
         match event {
-            NoteEvent::Choke { .. } => 3,
+            NoteEvent::Choke { .. } => 3, // Highest priority
             NoteEvent::NoteOff { .. } => 2,
             NoteEvent::NoteOn { .. } => 1,
-            _ => 0,
+            _ => 0, // Lowest priority
         }
     }
 
@@ -108,7 +108,7 @@ impl<'a, C: ProcessContext<Additizer>> EventReorderer<'a, C> {
 }
 
 impl Additizer {
-    fn process_event(synth: &mut SynthEngine, event: NoteEvent<()>) {
+    fn process_event(synth: &mut SynthEngine, event: NoteEvent<()>, block_start: usize) {
         // log!("Event: {:?}", event);
 
         match event {
@@ -132,41 +132,79 @@ impl Additizer {
                 synth.handle_choke(channel, note);
             }
             NoteEvent::PolyVolume {
+                timing,
                 channel,
                 note,
                 gain,
                 ..
             } => {
-                synth.handle_note_expression(channel, note, Expression::Gain, gain);
+                synth.handle_note_expression(
+                    channel,
+                    note,
+                    Expression::Gain,
+                    timing as usize - block_start,
+                    gain,
+                );
             }
             NoteEvent::PolyPan {
-                channel, note, pan, ..
+                timing,
+                channel,
+                note,
+                pan,
+                ..
             } => {
-                synth.handle_note_expression(channel, note, Expression::Pan, pan);
+                synth.handle_note_expression(
+                    channel,
+                    note,
+                    Expression::Pan,
+                    timing as usize - block_start,
+                    pan,
+                );
             }
             NoteEvent::PolyTuning {
+                timing,
                 channel,
                 note,
                 tuning,
                 ..
             } => {
-                synth.handle_note_expression(channel, note, Expression::Pitch, tuning);
+                synth.handle_note_expression(
+                    channel,
+                    note,
+                    Expression::Pitch,
+                    timing as usize - block_start,
+                    tuning,
+                );
             }
             NoteEvent::PolyBrightness {
+                timing,
                 channel,
                 note,
                 brightness,
                 ..
             } => {
-                synth.handle_note_expression(channel, note, Expression::Timbre, brightness);
+                synth.handle_note_expression(
+                    channel,
+                    note,
+                    Expression::Timbre,
+                    timing as usize - block_start,
+                    brightness,
+                );
             }
             NoteEvent::PolyPressure {
+                timing,
                 channel,
                 note,
                 pressure,
                 ..
             } => {
-                synth.handle_note_expression(channel, note, Expression::Pressure, pressure);
+                synth.handle_note_expression(
+                    channel,
+                    note,
+                    Expression::Pressure,
+                    timing as usize - block_start,
+                    pressure,
+                );
             }
             _ => (),
         }
@@ -225,7 +263,6 @@ impl Plugin for Additizer {
             buffer: &'a mut Buffer<'b>,
             synth: &'a mut SynthEngine,
             desired_block_size: usize,
-            iteration: usize,
             update_ui: bool,
         }
 
@@ -241,12 +278,8 @@ impl Plugin for Additizer {
                     &mut right[sample_from..sample_from + samples],
                 ];
 
-                self.synth.process(
-                    samples,
-                    self.update_ui && self.iteration & 1 == 0,
-                    &mut channel_outputs,
-                );
-                self.iteration += 1;
+                self.synth
+                    .process(samples, self.update_ui, &mut channel_outputs);
             }
 
             fn process(&mut self, mut sample_from: usize, sample_to: usize) -> usize {
@@ -289,7 +322,6 @@ impl Plugin for Additizer {
                 buffer,
                 synth: &mut synth,
                 desired_block_size,
-                iteration: 0,
                 update_ui: self.params.editor_state.is_open(),
             };
 
@@ -305,7 +337,7 @@ impl Plugin for Additizer {
                     sample_from = blocks_handler.process(sample_from, sample_to);
                 }
 
-                Self::process_event(blocks_handler.synth, event);
+                Self::process_event(blocks_handler.synth, event, sample_from);
             }
 
             blocks_handler.process_all(sample_from, total_samples);

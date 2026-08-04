@@ -8,16 +8,13 @@ pub use ui_bridge::ExpressionsUiBridge;
 
 use crate::{
     synth_engine::{
-        Expression, Input, ModuleId, Sample, StereoSample,
-        buffer::{VoicesLayout, new_voices_layout},
-        routing::{
-            ControlRouterType, DataType, InputMeta, InputSlots, NUM_CHANNELS, ProcessContext,
-            SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceRouter,
-        },
+        Buffer, Expression, ModuleId, Sample,
+        buffer::{MonoVoicesLayout, VoicesLayout, new_mono_voices_layout, zero_buffer},
+        routing::{DataType, InputMeta, ProcessContext, SamplesOutput, VoiceEvent},
         smooth::Smoother,
         synth_module::SynthModule,
     },
-    utils::{from_st, pan_gain},
+    utils::from_st,
 };
 
 struct Params {
@@ -36,23 +33,35 @@ impl Params {
     }
 }
 
-struct VoiceState {
+struct Voice {
     triggered: bool,
-    value: Sample,
+    change_at: usize,
+    buffer: Buffer,
     smoother: Smoother,
 }
 
-impl Default for VoiceState {
+impl Voice {
+    fn set_value_at(&mut self, value: Sample, at: usize) {
+        if at > self.change_at {
+            let prev = self.buffer[self.change_at];
+            self.buffer[self.change_at + 1..at].fill(prev);
+        }
+
+        self.buffer[at] = value;
+        self.change_at = at;
+    }
+}
+
+impl Default for Voice {
     fn default() -> Self {
         Self {
             triggered: false,
-            value: 0.0,
+            change_at: 0,
+            buffer: zero_buffer(),
             smoother: Smoother::default(),
         }
     }
 }
-
-type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, ControlRouterType>;
 
 pub struct Expressions {
     id: ModuleId,
@@ -60,7 +69,7 @@ pub struct Expressions {
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
     output_slot: usize,
-    voices: VoicesLayout<VoiceState>,
+    mono_voices: MonoVoicesLayout<Voice>,
 }
 
 impl Expressions {
@@ -80,7 +89,7 @@ impl Expressions {
             audio_end,
             ui_end: Some(ui_end),
             output_slot: usize::MAX,
-            voices: new_voices_layout(),
+            mono_voices: new_mono_voices_layout(),
         }
     }
 
@@ -97,10 +106,9 @@ impl Expressions {
     set_mono_param!(set_use_release_velocity, use_release_velocity, bool);
     set_mono_param!(set_smooth, smooth, Sample);
 
-    fn transform_value(expression: Expression, channel_idx: usize, value: Sample) -> Sample {
+    fn transform_value(expression: Expression, value: Sample) -> Sample {
         match expression {
             Expression::Pitch => from_st(value),
-            Expression::Pan => pan_gain(value, channel_idx),
             _ => value,
         }
     }
@@ -112,91 +120,71 @@ impl Expressions {
         }
     }
 
-    fn handle_trigger(
-        channel_idx: usize,
-        voice: &mut VoiceState,
-        params: &Params,
-        velocity: Sample,
-    ) {
-        if matches!(params.expression, Expression::Velocity) {
-            voice.value = velocity;
-            voice.smoother.reset(velocity);
-            voice.triggered = false;
-        } else {
-            let default_value = Self::default_value(params.expression);
-            let value = Self::transform_value(params.expression, channel_idx, default_value);
-
-            voice.value = value;
-            voice.smoother.reset(value);
-            voice.triggered = true;
+    fn normalize_display_value(expression: Expression, value: Sample) -> Sample {
+        let abs = value.abs();
+        match expression {
+            // Stored as from_st(semitones); normalize |[-128, 128]| → [0, 1]
+            Expression::Pitch => (abs / from_st(128.0)).clamp(0.0, 1.0),
+            _ => abs.clamp(0.0, 1.0),
         }
     }
 
-    fn handle_update(
-        channel_idx: usize,
-        voice: &mut VoiceState,
-        params: &Params,
-        velocity: Sample,
-    ) {
-        if matches!(params.expression, Expression::Velocity) {
-            voice.value = velocity;
+    fn handle_trigger(voice: &mut Voice, params: &Params, velocity: Sample) {
+        let value = if matches!(params.expression, Expression::Velocity) {
+            velocity
         } else {
-            let default_value = Self::default_value(params.expression);
-            let value = Self::transform_value(params.expression, channel_idx, default_value);
+            Self::default_value(params.expression)
+        };
 
-            voice.value = value;
-        }
+        voice.triggered = true;
+        voice.set_value_at(value, 0);
+        voice.smoother.reset(value);
     }
 
-    fn handle_release(voice: &mut VoiceState, params: &Params, velocity: Sample) {
+    fn handle_update(voice: &mut Voice, params: &Params, velocity: Sample) {
+        let value = if matches!(params.expression, Expression::Velocity) {
+            velocity
+        } else {
+            Self::default_value(params.expression)
+        };
+
+        voice.set_value_at(value, 0);
+    }
+
+    fn handle_release(voice: &mut Voice, params: &Params, velocity: Sample) {
         if matches!(params.expression, Expression::Velocity) && params.use_release_velocity {
-            voice.value = velocity;
+            voice.set_value_at(velocity, 0);
         }
     }
 
-    fn handle_expression(
-        channel_idx: usize,
-        voice: &mut VoiceState,
-        expression: Expression,
-        value: Sample,
-    ) {
-        let value = Self::transform_value(expression, channel_idx, value);
-
-        if voice.triggered {
-            voice.value = value;
-            voice.smoother.reset(value);
-            voice.triggered = false;
-        } else {
-            voice.value = value;
-        }
+    fn handle_expression(voice: &mut Voice, expression: Expression, timing: usize, value: Sample) {
+        voice.set_value_at(Self::transform_value(expression, value), timing);
     }
 
     fn process_voice(
         &mut self,
         output_slot: &mut VoicesLayout<SamplesOutput>,
-        router: Router<'_, '_, '_>,
+        voice_idx: usize,
+        samples: usize,
+        sample_rate: Sample,
     ) {
-        let channel_idx = router.channel_idx();
-        let voice_idx = router.voice_idx();
-        let voice = &mut self.voices[channel_idx][voice_idx];
-        let samples = router.samples();
-        let voice_output = &mut output_slot[channel_idx][voice_idx];
-        let triggered = voice.triggered;
+        let voice = &mut self.mono_voices[voice_idx];
+        let last_value = voice.buffer[voice.change_at];
+        let mono_buff = &mut voice.buffer[..samples];
 
-        let mut control_output = voice_output.control_output(samples, triggered);
-        control_output.output().fill(voice.value);
-        drop(control_output);
-
-        if triggered {
-            voice.triggered = false;
+        if voice.change_at + 1 < samples {
+            mono_buff[voice.change_at + 1..samples].fill(last_value);
         }
 
-        voice.smoother.apply_if_needed(
-            samples,
-            router.sample_rate(),
-            self.params.smooth,
-            voice_output.output(samples),
-        );
+        voice
+            .smoother
+            .apply_if_needed(samples, sample_rate, self.params.smooth, mono_buff);
+
+        output_slot[0][voice_idx].fill_with_ext_control(mono_buff);
+        output_slot[1][voice_idx].fill_with_ext_control(mono_buff);
+
+        voice.set_value_at(last_value, 0);
+        voice.triggered = false;
     }
 }
 
@@ -221,59 +209,40 @@ impl SynthModule for Expressions {
         self.output_slot = slot;
     }
 
-    fn set_input_slots(&mut self, _inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) {}
-
-    fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {
-    }
-
     fn process_events(&mut self, events: &[VoiceEvent]) {
-        for (channel_idx, channel) in self.voices.iter_mut().enumerate() {
-            for event in events {
-                match event {
-                    VoiceEvent::Trigger {
-                        voice_idx,
-                        velocity,
-                        ..
-                    } => {
-                        Self::handle_trigger(
-                            channel_idx,
-                            &mut channel[*voice_idx],
-                            &self.params,
-                            *velocity,
-                        );
-                    }
-                    VoiceEvent::Update {
-                        voice_idx,
-                        velocity,
-                        ..
-                    } => {
-                        Self::handle_update(
-                            channel_idx,
-                            &mut channel[*voice_idx],
-                            &self.params,
-                            *velocity,
-                        );
-                    }
-                    VoiceEvent::Release {
-                        voice_idx,
-                        velocity,
-                    } => {
-                        Self::handle_release(&mut channel[*voice_idx], &self.params, *velocity);
-                    }
-                    VoiceEvent::Expression {
-                        voice_idx,
-                        expression,
-                        value,
-                    } if *expression == self.params.expression => {
-                        Self::handle_expression(
-                            channel_idx,
-                            &mut channel[*voice_idx],
-                            *expression,
-                            *value,
-                        );
-                    }
-                    _ => (),
+        let voices = &mut self.mono_voices;
+
+        for event in events {
+            match event {
+                VoiceEvent::Trigger {
+                    voice_idx,
+                    velocity,
+                    ..
+                } => {
+                    Self::handle_trigger(&mut voices[*voice_idx], &self.params, *velocity);
                 }
+                VoiceEvent::Update {
+                    voice_idx,
+                    velocity,
+                    ..
+                } => {
+                    Self::handle_update(&mut voices[*voice_idx], &self.params, *velocity);
+                }
+                VoiceEvent::Release {
+                    voice_idx,
+                    velocity,
+                } => {
+                    Self::handle_release(&mut voices[*voice_idx], &self.params, *velocity);
+                }
+                VoiceEvent::Expression {
+                    voice_idx,
+                    expression,
+                    timing,
+                    value,
+                } if *expression == self.params.expression => {
+                    Self::handle_expression(&mut voices[*voice_idx], *expression, *timing, *value);
+                }
+                _ => (),
             }
         }
     }
@@ -290,17 +259,26 @@ impl SynthModule for Expressions {
 
     fn process(&mut self, ctx: &mut ProcessContext) {
         ctx.for_control(self.id, self.output_slot, |router, output| {
-            let num_active_voices = router.params().active_voices.len();
+            for playing_voice in router.params().active_voices.iter() {
+                self.process_voice(
+                    output,
+                    playing_voice.voice_idx(),
+                    router.params().samples,
+                    router.params().sample_rate,
+                );
+            }
 
-            for channel_idx in 0..NUM_CHANNELS {
-                for seq_idx in 0..num_active_voices {
-                    let playing_voice = router.params().active_voices[seq_idx];
-
-                    self.process_voice(
-                        output,
-                        router.for_voice(channel_idx, playing_voice, seq_idx),
-                    );
-                }
+            if router.params().needs_update_ui {
+                let display_value = router
+                    .params()
+                    .active_voices
+                    .first()
+                    .map(|v| self.mono_voices[v.voice_idx()].buffer[0])
+                    .unwrap_or(0.0);
+                self.audio_end.update_value(Self::normalize_display_value(
+                    self.params.expression,
+                    display_value,
+                ));
             }
         });
     }

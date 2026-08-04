@@ -163,10 +163,17 @@ impl VoiceEvents {
         });
     }
 
-    fn expression(&mut self, voice_idx: VoiceIdx, expression: Expression, value: Sample) {
+    fn expression(
+        &mut self,
+        voice_idx: VoiceIdx,
+        expression: Expression,
+        timing: usize,
+        value: Sample,
+    ) {
         self.events.push(VoiceEvent::Expression {
             voice_idx: voice_idx as usize,
             expression,
+            timing,
             value,
         });
     }
@@ -478,18 +485,26 @@ impl VoicesHandler {
         channel: u8,
         note: u8,
         expression: Expression,
+        timing: usize,
         value: Sample,
         events: &mut VoiceEvents,
     ) {
         let note_id = NoteId { channel, note };
 
-        if let Some(voice_idx) = self
+        let voice_idx = self
             .playing_notes
             .iter()
             .find(|p| p.id == note_id)
             .map(|p| p.voice_idx)
-        {
-            events.expression(voice_idx, expression, value);
+            .or_else(|| {
+                self.releasing_notes
+                    .iter()
+                    .find(|r| r.id == note_id)
+                    .map(|r| r.voice_idx)
+            });
+
+        if let Some(voice_idx) = voice_idx {
+            events.expression(voice_idx, expression, timing, value);
         }
     }
 

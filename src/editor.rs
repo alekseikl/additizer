@@ -5,7 +5,9 @@ use egui::{
     Vec2, vec2,
 };
 use nih_plug::editor::Editor;
-use nih_plug_egui::{EguiState, create_egui_editor, resizable_window::ResizableWindow};
+use nih_plug_egui::{
+    EguiSettings, EguiState, GlConfig, create_egui_editor, resizable_window::ResizableWindow,
+};
 
 use crate::{
     editor::{
@@ -29,6 +31,7 @@ mod routing_ui_ext;
 mod slider;
 mod stereo_input;
 mod utils;
+mod control_meter;
 mod volume_meter;
 mod waveform;
 
@@ -209,7 +212,13 @@ pub fn create_editor(
     create_egui_editor(
         Arc::clone(&egui_state),
         EditorState::new(factory),
-        Default::default(),
+        EguiSettings {
+            gl_config: GlConfig {
+                vsync: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
         |_egui_ctx, _queue, _editor_state| {
             #[cfg(debug_assertions)]
             _egui_ctx.global_style_mut(|style| style.debug.warn_if_rect_changes_id = false);

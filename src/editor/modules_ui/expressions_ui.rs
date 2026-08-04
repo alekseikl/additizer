@@ -50,48 +50,39 @@ impl ExpressionsUi {
         ui.add_space(16.0);
 
         Grid::new("expressions-grid")
-            .num_columns(2)
-            .spacing([40.0, 24.0])
-            .striped(true)
+            .num_columns(4)
+            .spacing([8.0, 8.0])
             .show(ui, |ui| {
                 ui.label("Expression");
-                ComboBox::from_id_salt("expressions-combo")
-                    .selected_text(config.expression.label())
-                    .show_ui(ui, |ui| {
-                        const TYPE_OPTIONS: &[Expression] = &[
-                            Expression::Velocity,
-                            Expression::Gain,
-                            Expression::Pan,
-                            Expression::Pitch,
-                            Expression::Timbre,
-                            Expression::Pressure,
-                        ];
+                ui.horizontal(|ui| {
+                    ComboBox::from_id_salt("expressions-combo")
+                        .selected_text(config.expression.label())
+                        .show_ui(ui, |ui| {
+                            const TYPE_OPTIONS: &[Expression] = &[
+                                Expression::Velocity,
+                                Expression::Gain,
+                                Expression::Pan,
+                                Expression::Pitch,
+                                Expression::Timbre,
+                                Expression::Pressure,
+                            ];
 
-                        for expression in TYPE_OPTIONS {
-                            if ui
-                                .selectable_value(
-                                    &mut config.expression,
-                                    *expression,
-                                    expression.label(),
-                                )
-                                .clicked()
-                            {
-                                expr_bridge.set_expression(*expression);
+                            for expression in TYPE_OPTIONS {
+                                if ui
+                                    .selectable_value(
+                                        &mut config.expression,
+                                        *expression,
+                                        expression.label(),
+                                    )
+                                    .clicked()
+                                {
+                                    expr_bridge.set_expression(*expression);
+                                }
                             }
-                        }
-                    });
-                ui.end_row();
+                        });
 
-                if matches!(config.expression, Expression::Velocity) {
-                    ui.label("Use Release velocity");
-                    if ui
-                        .add(Checkbox::without_text(&mut config.use_release_velocity))
-                        .changed()
-                    {
-                        expr_bridge.set_use_release_velocity(config.use_release_velocity);
-                    }
-                    ui.end_row();
-                }
+                    ui.add_space(8.0);
+                });
 
                 ui.label("Smooth");
                 if ui
@@ -106,6 +97,17 @@ impl ExpressionsUi {
                     expr_bridge.set_smooth(config.smooth);
                 }
                 ui.end_row();
+
+                if matches!(config.expression, Expression::Velocity) {
+                    ui.label("Use Release velocity");
+                    if ui
+                        .add(Checkbox::without_text(&mut config.use_release_velocity))
+                        .changed()
+                    {
+                        expr_bridge.set_use_release_velocity(config.use_release_velocity);
+                    }
+                    ui.end_row();
+                }
             });
     }
 }

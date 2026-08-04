@@ -4,7 +4,7 @@ use crate::{
     editor::{control_meter::ControlMeter, fit_label::FitLabel, grid::WidgetCtx},
     synth_engine::{
         ModuleId,
-        external_param::ExternalParamUiBridge,
+        expressions::ExpressionsUiBridge,
         ui_bridge::{GridVec, ModuleBridge},
     },
 };
@@ -14,19 +14,19 @@ use super::GridWidgetContent;
 const VERT_PADDING: Vec2 = egui::vec2(4.0, 6.0);
 
 #[derive(Default)]
-pub struct ExternalParamWidget {
+pub struct ExpressionsWidget {
     control_meter: ControlMeter,
 }
 
-impl ExternalParamWidget {
-    fn external_param_ui(
+impl ExpressionsWidget {
+    fn expressions_ui(
         &mut self,
         ui: &mut egui::Ui,
         label: String,
-        param_bridge: &mut ExternalParamUiBridge,
+        expr_bridge: &mut ExpressionsUiBridge,
     ) {
         ui.add_space(2.0);
-        ui.add(FitLabel::new(&label, "Ext"));
+        ui.add(FitLabel::new(&label, "Exp"));
 
         let size = ui.available_size();
         let response = ui.allocate_response(size, egui::Sense::hover());
@@ -43,12 +43,12 @@ impl ExternalParamWidget {
         self.control_meter.paint_mono(
             &ui.painter().with_clip_rect(rect),
             rect,
-            param_bridge.get_value().clamp(0.0, 1.0),
+            expr_bridge.get_value(),
         );
     }
 }
 
-impl GridWidgetContent for ExternalParamWidget {
+impl GridWidgetContent for ExpressionsWidget {
     fn grid_size(&self) -> GridVec {
         GridVec::new(2, 2)
     }
@@ -62,8 +62,8 @@ impl GridWidgetContent for ExternalParamWidget {
 
         ctx.bridge
             .with_module_bridge(module_id, |_bridge, module_bridge| {
-                if let ModuleBridge::ExternalParam(param_bridge) = module_bridge {
-                    self.external_param_ui(ui, label, param_bridge);
+                if let ModuleBridge::Expressions(expr_bridge) = module_bridge {
+                    self.expressions_ui(ui, label, expr_bridge);
                 }
             });
     }

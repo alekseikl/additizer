@@ -49,10 +49,9 @@ pub const fn harmonic_series_buffer() -> SpectralBuffer {
 pub type VoicesLayoutArray<T> = [[T; MAX_VOICES]; NUM_CHANNELS];
 pub type VoicesLayout<T> = Box<VoicesLayoutArray<T>>;
 
-/// Stereo channel layout `[[U; N]; NUM_CHANNELS]`, heap-allocated.
-///
-/// Each inner `U` is [`Default`]-initialized in place so callers never materialize
-/// a full `[U; N]` (potentially hundreds of KB) on the stack.
+pub type MonoVoicesLayoutArray<T> = [T; MAX_VOICES];
+pub type MonoVoicesLayout<T> = Box<MonoVoicesLayoutArray<T>>;
+
 pub fn new_voices_layout<U: Default + Send>() -> VoicesLayout<U> {
     let mut channels: Box<[MaybeUninit<[U; MAX_VOICES]>; NUM_CHANNELS]> =
         Box::new([const { MaybeUninit::uninit() }; NUM_CHANNELS]);
@@ -62,6 +61,12 @@ pub fn new_voices_layout<U: Default + Send>() -> VoicesLayout<U> {
     }
 
     unsafe { Box::from_raw(Box::into_raw(channels).cast::<[[U; MAX_VOICES]; NUM_CHANNELS]>()) }
+}
+
+pub fn new_mono_voices_layout<U: Default + Send>() -> MonoVoicesLayout<U> {
+    let mut voices: Box<MaybeUninit<[U; MAX_VOICES]>> = Box::new(MaybeUninit::uninit());
+    init_array_in_place::<U, MAX_VOICES>(voices.as_mut_ptr());
+    unsafe { Box::from_raw(Box::into_raw(voices).cast::<[U; MAX_VOICES]>()) }
 }
 
 fn init_array_in_place<U: Default, const N: usize>(dst: *mut [U; N]) {

@@ -128,7 +128,7 @@ impl Input {
             Self::DetunePower => Slider::stereo(amount, 0.0..=5.0, Some(-5.0)).default(0.0),
             Self::PitchShift => Slider::stereo(amount, 0.0..=8.0, Some(-8.0))
                 .skew(1.8)
-                .default(0.0)
+                .default(1.0)
                 .units(slider::Units::Octaves),
             Self::Glide => Slider::stereo(amount, 0.0..=5.0, Some(-5.0))
                 .default(0.0)
@@ -142,7 +142,7 @@ impl Input {
                 .units(slider::Units::Frequency),
             Self::LowFrequency => Slider::stereo(amount, 0.0..=100.0, Some(-100.0))
                 .default(0.0)
-                .skew(1.8)
+                .skew(3.0)
                 .units(slider::Units::Frequency),
             Self::Skew => bipolar(amount),
             Self::Sustain => {
@@ -206,7 +206,7 @@ impl Input {
                 .units(slider::Units::Frequency),
             Self::LowFrequency => Slider::stereo(value, 0.0..=100.0, Some(-100.0))
                 .default(1.0)
-                .skew(1.8)
+                .skew(3.0)
                 .units(slider::Units::Frequency),
             Self::Skew => Slider::stereo(value, 0.0..=1.0, None).default(0.5),
             Self::Sustain => Slider::stereo(value, 0.0..=1.0, None)

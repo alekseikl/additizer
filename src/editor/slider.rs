@@ -645,7 +645,7 @@ impl<'a> Slider<'a> {
                 *norm_value.channels()
             };
 
-            if left == right {
+            if (left - right).abs() < 1e-6 {
                 self.paint_tip(painter, rect, left, RoundedEdges::ALL);
             } else {
                 let (first_rect, second_rect) = self.orientation.split_channels(rect);

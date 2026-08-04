@@ -111,12 +111,12 @@ impl InputMeta {
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum Expression {
     #[default]
-    Velocity,
-    Gain,
-    Pan,
-    Pitch,
-    Timbre,
-    Pressure,
+    Velocity, // [0, 1]
+    Gain,     // voltage gain ratio, 1.0 = unity
+    Pan,      // [-1, 1]
+    Pitch,    // semitones, [-128, 128]
+    Timbre,   // [0, 1]
+    Pressure, // [0, 1]
 }
 
 #[derive(Debug)]
@@ -142,6 +142,7 @@ pub enum VoiceEvent {
     Expression {
         voice_idx: usize,
         expression: Expression,
+        timing: usize, // In-block sample offset
         value: Sample,
     },
 }

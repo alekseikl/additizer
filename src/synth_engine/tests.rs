@@ -1647,7 +1647,7 @@ fn handle_note_expression_and_choke_process() {
     });
 
     engine.handle_note_on(0, 60, 0.5);
-    engine.handle_note_expression(0, 60, Expression::Velocity, 1.0);
+    engine.handle_note_expression(0, 60, Expression::Velocity, 0, 1.0);
     process_block(&mut engine, 64);
 
     engine.handle_choke(0, 60);
