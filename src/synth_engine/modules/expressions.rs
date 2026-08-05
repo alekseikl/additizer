@@ -121,11 +121,10 @@ impl Expressions {
     }
 
     fn normalize_display_value(expression: Expression, value: Sample) -> Sample {
-        let abs = value.abs();
         match expression {
-            // Stored as from_st(semitones); normalize |[-128, 128]| → [0, 1]
-            Expression::Pitch => (abs / from_st(128.0)).clamp(0.0, 1.0),
-            _ => abs.clamp(0.0, 1.0),
+            Expression::Pitch => (value.abs() / from_st(12.0)).clamp(0.0, 1.0),
+            Expression::Pan => ((value + 1.0) * 0.5).clamp(0.0, 1.0),
+            _ => value.abs().clamp(0.0, 1.0),
         }
     }
 
