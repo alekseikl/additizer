@@ -17,7 +17,8 @@ use crate::synth_engine::{
     },
     routing::{
         DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
-        SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent, VoiceRouter,
+        RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent,
+        VoiceTarget,
     },
     synth_module::SynthModule,
     types::Sample,
@@ -55,11 +56,6 @@ impl ChannelParams {
             q_limit_curve: c.q_limit_curve[channel_idx],
         }
     }
-}
-
-#[derive(Default)]
-struct VoiceState {
-    triggered: bool,
 }
 
 pub struct Inputs {
@@ -112,8 +108,6 @@ impl Inputs {
     }
 }
 
-type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, SpectralRouterType>;
-
 pub struct SpectralFilter {
     id: ModuleId,
     params: Params,
@@ -122,7 +116,7 @@ pub struct SpectralFilter {
     ui_end: Option<UiEnd>,
     inputs: Inputs,
     output_slot: usize,
-    voices: VoicesLayout<VoiceState>,
+    triggers: VoicesLayout<Option<usize>>,
 }
 
 impl SpectralFilter {
@@ -146,7 +140,7 @@ impl SpectralFilter {
             ui_end: Some(ui_end),
             inputs: Inputs::default(),
             output_slot: usize::MAX,
-            voices: new_voices_layout(),
+            triggers: new_voices_layout(),
         }
     }
 
@@ -182,26 +176,20 @@ impl SpectralFilter {
 
     fn process_voice(
         &mut self,
-        output: &mut VoicesLayout<SpectralOutput>,
-        mut router: Router<'_, '_, '_>,
-    ) {
-        let channel_idx = router.channel_idx();
-        let voice_idx = router.voice_idx();
+        target: VoiceTarget,
+        outputs: &mut VoicesLayout<SpectralOutput>,
+        rf: &mut RouterFactory<SpectralRouterType>,
+    ) -> bool {
+        let (mut router, mut voice_output) = rf.for_voice2(&target, &mut self.triggers, outputs);
         let inputs = &self.inputs;
-        let channel = &self.channel_params[channel_idx];
-        let voice = &mut self.voices[channel_idx][voice_idx];
-        let voice_output = output[channel_idx][voice_idx].advance();
+        let channel = &self.channel_params[target.channel_idx];
 
-        let cutoff = router
-            .scalar_param(&inputs.cutoff, channel.cutoff, voice.triggered)
-            .clamp(-4.0, 10.0);
+        let cutoff = router.scalar(&inputs.cutoff, channel.cutoff).clamp(-4.0, 10.0);
         let resonance = router
-            .scalar_param(&inputs.resonance, channel.resonance, voice.triggered)
+            .scalar(&inputs.resonance, channel.resonance)
             .clamp(MIN_RESONANCE, MAX_RESONANCE);
-        let drive = router
-            .scalar_param(&inputs.drive, channel.drive, voice.triggered)
-            .min(24.0);
-        let input = router.spectral(inputs.spectrum, voice.triggered);
+        let drive = router.scalar(&inputs.drive, channel.drive).min(24.0);
+        let input = router.spectral(inputs.spectrum);
 
         let filter = SpectralFilterEngine::new(
             self.params.filter_type,
@@ -215,13 +203,9 @@ impl SpectralFilter {
             },
         );
 
-        filter.apply_response(input, voice_output);
+        filter.apply_response(input, voice_output.output());
 
-        if voice.triggered {
-            voice.triggered = false;
-
-            self.process_voice(output, router);
-        }
+        router.triggered()
     }
 }
 
@@ -258,10 +242,13 @@ impl SynthModule for SpectralFilter {
     }
 
     fn process_events(&mut self, events: &[VoiceEvent]) {
-        for channel in self.voices.iter_mut() {
+        for trigger_channel in self.triggers.iter_mut() {
             for event in events {
-                if let VoiceEvent::Trigger { voice_idx, .. } = event {
-                    channel[*voice_idx].triggered = true;
+                if let VoiceEvent::Trigger {
+                    voice_idx, offset, ..
+                } = event
+                {
+                    trigger_channel[*voice_idx] = Some(*offset);
                 }
             }
         }
@@ -289,20 +276,8 @@ impl SynthModule for SpectralFilter {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_spectral(self.id, self.output_slot, |router, output| {
-            let num_active_voices = router.params().active_voices.len();
-            let spectrum_channels = router.params().spectrum_channels;
-
-            for channel_idx in 0..spectrum_channels {
-                for seq_idx in 0..num_active_voices {
-                    let playing_voice = router.params().active_voices[seq_idx];
-
-                    self.process_voice(
-                        output,
-                        router.for_voice(channel_idx, playing_voice, seq_idx),
-                    );
-                }
-            }
+        ctx.for_spectral2(self.id, self.output_slot, |rf, target, outputs| {
+            self.process_voice(target, outputs, rf)
         });
     }
 }

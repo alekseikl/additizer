@@ -10,7 +10,7 @@ use crate::{
         },
         routing::{
             DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
-            SpectralInputSlot,
+            RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceTarget,
         },
         synth_module::SynthModule,
     },
@@ -66,17 +66,14 @@ fn apply_filter_response(spectrum: &mut SpectralBuffer, filter: impl FilterImpl,
     }
 }
 
+#[derive(Clone, Copy)]
 struct Voice {
-    triggered: bool,
     needs_update: bool,
 }
 
 impl Default for Voice {
     fn default() -> Self {
-        Self {
-            triggered: false,
-            needs_update: true,
-        }
+        Self { needs_update: true }
     }
 }
 
@@ -87,6 +84,7 @@ pub struct HarmonicEditor {
     ui_end: Option<UiEnd>,
     output_slot: usize,
     voices: VoicesLayout<Voice>,
+    triggers: VoicesLayout<Option<usize>>,
 }
 
 impl HarmonicEditor {
@@ -116,6 +114,7 @@ impl HarmonicEditor {
             ui_end: Some(ui_end),
             output_slot: usize::MAX,
             voices: new_voices_layout(),
+            triggers: new_voices_layout(),
         }
     }
 
@@ -224,6 +223,31 @@ impl HarmonicEditor {
 
         self.set_needs_update();
     }
+
+    fn process_voice(
+        &mut self,
+        target: VoiceTarget,
+        outputs: &mut VoicesLayout<SpectralOutput>,
+        rf: &mut RouterFactory<SpectralRouterType>,
+    ) -> bool {
+        let voice = &mut self.voices[target.channel_idx][target.voice_idx];
+
+        if !voice.needs_update {
+            return false;
+        }
+
+        let (router, mut voice_output) = rf.for_voice2(&target, &mut self.triggers, outputs);
+        let out = voice_output.output();
+        let triggered = router.triggered();
+
+        out.copy_from_slice(&self.harmonics[target.channel_idx][..out.len()]);
+
+        if !triggered {
+            voice.needs_update = false;
+        }
+
+        triggered
+    }
 }
 
 impl SynthModule for HarmonicEditor {
@@ -253,10 +277,13 @@ impl SynthModule for HarmonicEditor {
     }
 
     fn process_events(&mut self, events: &[VoiceEvent]) {
-        for channel in self.voices.iter_mut() {
+        for trigger_channel in self.triggers.iter_mut() {
             for event in events {
-                if let VoiceEvent::Trigger { voice_idx, .. } = event {
-                    channel[*voice_idx].triggered = true;
+                if let VoiceEvent::Trigger {
+                    voice_idx, offset, ..
+                } = event
+                {
+                    trigger_channel[*voice_idx] = Some(*offset);
                 }
             }
         }
@@ -288,28 +315,8 @@ impl SynthModule for HarmonicEditor {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_spectral(self.id, self.output_slot, |router, output| {
-            let num_active_voices = router.params().active_voices.len();
-            let spectrum_channels = router.params().spectrum_channels;
-
-            for channel_idx in 0..spectrum_channels {
-                for seq_idx in 0..num_active_voices {
-                    let voice_idx = router.params().active_voices[seq_idx].voice_idx();
-                    let voice = &mut self.voices[channel_idx][voice_idx];
-
-                    if voice.needs_update {
-                        let voice_output = &mut output[channel_idx][voice_idx];
-
-                        if voice.triggered {
-                            *voice_output.advance() = self.harmonics[channel_idx];
-                            voice.triggered = false;
-                        }
-
-                        *voice_output.advance() = self.harmonics[channel_idx];
-                        voice.needs_update = false;
-                    }
-                }
-            }
+        ctx.for_spectral2(self.id, self.output_slot, |rf, target, outputs| {
+            self.process_voice(target, outputs, rf)
         });
     }
 }
