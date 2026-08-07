@@ -93,6 +93,99 @@ fn stage_time(time: Sample) -> Sample {
     if time < MIN_TIME_THRESHOLD { 0.0 } else { time }
 }
 
+struct FillStage {
+    t: Sample,
+    release: Option<Sample>,
+    delay: Sample,
+    attack: Sample,
+    hold: Sample,
+    decay: Sample,
+    sustain: Sample,
+    release_time: Sample,
+    t_step: Sample,
+    attack_curve: Exponential,
+    decay_curve: Exponential,
+    release_curve: Exponential,
+}
+
+impl FillStage {
+    fn samples_until(&self, end: Sample, max: usize) -> usize {
+        (((end - self.t).max(0.0) / self.t_step) as usize).min(max)
+    }
+
+    fn fill_curve(
+        &self,
+        out: &mut [Sample],
+        mut local_t: Sample,
+        duration: Sample,
+        from: Sample,
+        to: Sample,
+        curve: &Exponential,
+    ) {
+        let recip = duration.recip();
+        let interval = to - from;
+
+        for sample in out {
+            *sample = interval.mul_add(curve.calc(local_t * recip), from);
+            local_t += self.t_step;
+        }
+    }
+
+    /// Fills the current envelope stage into `out`.
+    /// Returns `(samples_written, stage_end)` — `stage_end` is used to snap `t`
+    /// forward when a timed stage has a sub-sample remainder (`samples_written == 0`).
+    fn fill(&self, out: &mut [Sample]) -> (usize, Option<Sample>) {
+        let max = out.len();
+        let t = self.t;
+
+        if let Some(from) = self.release {
+            return if t < self.release_time {
+                let n = self.samples_until(self.release_time, max);
+                let out = &mut out[..n];
+                self.fill_curve(out, t, self.release_time, from, 0.0, &self.release_curve);
+                (n, Some(self.release_time))
+            } else {
+                out.fill(0.0);
+                (max, None)
+            };
+        }
+
+        let attack_end = self.delay + self.attack;
+        let hold_end = attack_end + self.hold;
+        let decay_end = hold_end + self.decay;
+
+        if t < self.delay {
+            let n = self.samples_until(self.delay, max);
+            out[..n].fill(0.0);
+            (n, Some(self.delay))
+        } else if t < attack_end {
+            let n = self.samples_until(attack_end, max);
+            let out = &mut out[..n];
+            let local_t = t - self.delay;
+            self.fill_curve(out, local_t, self.attack, 0.0, 1.0, &self.attack_curve);
+            (n, Some(attack_end))
+        } else if t < hold_end {
+            let n = self.samples_until(hold_end, max);
+            out[..n].fill(1.0);
+            (n, Some(hold_end))
+        } else if t < decay_end {
+            let n = self.samples_until(decay_end, max);
+            self.fill_curve(
+                &mut out[..n],
+                t - hold_end,
+                self.decay,
+                1.0,
+                self.sustain,
+                &self.decay_curve,
+            );
+            (n, Some(decay_end))
+        } else {
+            out.fill(self.sustain);
+            (max, None)
+        }
+    }
+}
+
 struct Voice {
     /// Seconds since trigger, or since release started once `release` is set.
     t: Sample,
@@ -100,6 +193,7 @@ struct Voice {
     release: Option<Sample>,
     /// Pending release event from `process_events`.
     released: Option<usize>,
+    /// Last written envelope sample; also the release start level.
     next_frame_value: Sample,
     done: bool,
 }
@@ -265,57 +359,59 @@ impl Envelope {
             .take()
             .map(|offset| router.sample_idx(offset));
 
-        let delay = stage_time(router.scalar(&inputs.delay, channel.delay));
-        let attack = stage_time(router.scalar(&inputs.attack, channel.attack));
-        let hold = stage_time(router.scalar(&inputs.hold, channel.hold));
-        let decay = stage_time(router.scalar(&inputs.decay, channel.decay));
-        let sustain = router
-            .scalar(&inputs.sustain, channel.sustain)
-            .clamp(0.0, 1.0);
-        let release_time = stage_time(router.scalar(&inputs.release, channel.release));
+        let mut fill = FillStage {
+            t: voice.t,
+            release: voice.release,
+            delay: stage_time(router.scalar(&inputs.delay, channel.delay)),
+            attack: stage_time(router.scalar(&inputs.attack, channel.attack)),
+            hold: stage_time(router.scalar(&inputs.hold, channel.hold)),
+            decay: stage_time(router.scalar(&inputs.decay, channel.decay)),
+            sustain: router
+                .scalar(&inputs.sustain, channel.sustain)
+                .clamp(0.0, 1.0),
+            release_time: stage_time(router.scalar(&inputs.release, channel.release)),
+            t_step,
+            attack_curve: Exponential::new(params.attack_curvature),
+            decay_curve: Exponential::new(params.decay_curvature),
+            release_curve: Exponential::new(params.release_curvature),
+        };
 
-        let attack_end = delay + attack;
-        let hold_end = attack_end + hold;
-        let decay_end = hold_end + decay;
+        {
+            let mut sample_idx = 0;
+            let output = router.output();
+            let len = output.len();
 
-        let attack_curve = Exponential::new(params.attack_curvature);
-        let decay_curve = Exponential::new(params.decay_curvature);
-        let release_curve = Exponential::new(params.release_curvature);
-
-        for (idx, out) in router.output().iter_mut().enumerate() {
-            let t = voice.t;
-
-            let value = if let Some(from) = voice.release {
-                if t < release_time {
-                    from * (1.0 - release_curve.calc(t / release_time))
-                } else {
-                    0.0
+            while sample_idx < len {
+                if release_idx == Some(sample_idx) && fill.release.is_none() {
+                    fill.release = Some(voice.next_frame_value);
+                    fill.t = 0.0;
                 }
-            } else if t < delay {
-                0.0
-            } else if t < attack_end {
-                attack_curve.calc((t - delay) / attack)
-            } else if t < hold_end {
-                1.0
-            } else if t < decay_end {
-                (sustain - 1.0).mul_add(decay_curve.calc((t - hold_end) / decay), 1.0)
-            } else {
-                sustain
-            };
 
-            if release_idx == Some(idx) {
-                voice.release = Some(value);
-                voice.t = 0.0;
+                let limit = if fill.release.is_none() {
+                    release_idx.unwrap_or(len)
+                } else {
+                    len
+                };
+
+                let (n, stage_end) = fill.fill(&mut output[sample_idx..limit]);
+
+                if n == 0 {
+                    // Sub-sample remainder of a stage — snap to its boundary.
+                    if let Some(end) = stage_end {
+                        fill.t = end;
+                    }
+                    continue;
+                }
+
+                voice.next_frame_value = output[sample_idx + n - 1];
+                fill.t += n as Sample * fill.t_step;
+                sample_idx += n;
             }
-
-            *out = value;
-            voice.t += t_step;
         }
 
-        voice.next_frame_value = *router.output().last().expect("output isn't empty");
-        voice.done = voice
-            .release
-            .is_some_and(|_| voice.t >= release_time);
+        voice.t = fill.t;
+        voice.release = fill.release;
+        voice.done = fill.release.is_some_and(|_| fill.t >= fill.release_time);
 
         if router.need_update_ui_mono() {
             self.audio_end.update_phase(EnvelopePhase {
