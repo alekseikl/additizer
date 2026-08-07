@@ -133,33 +133,38 @@ impl VoiceEvents {
         prev_voice_idx: Option<VoiceIdx>,
         note_id: NoteId,
         velocity: u8,
+        offset: usize,
     ) {
         self.events.push(VoiceEvent::Trigger {
             voice_idx: voice_idx as usize,
             prev_voice_idx: prev_voice_idx.map(|idx| idx as usize),
             pitch: Self::note_to_pitch(note_id.note),
             velocity: Self::to_float_velocity(velocity),
+            offset,
         });
     }
 
-    fn update(&mut self, voice_idx: VoiceIdx, note_id: NoteId, velocity: u8) {
+    fn update(&mut self, voice_idx: VoiceIdx, note_id: NoteId, velocity: u8, offset: usize) {
         self.events.push(VoiceEvent::Update {
             voice_idx: voice_idx as usize,
             pitch: Self::note_to_pitch(note_id.note),
             velocity: Self::to_float_velocity(velocity),
+            offset,
         });
     }
 
-    fn release(&mut self, voice_idx: VoiceIdx, velocity: u8) {
+    fn release(&mut self, voice_idx: VoiceIdx, velocity: u8, offset: usize) {
         self.events.push(VoiceEvent::Release {
             voice_idx: voice_idx as usize,
             velocity: Self::to_float_velocity(velocity),
+            offset,
         });
     }
 
-    fn kill(&mut self, voice_idx: VoiceIdx) {
+    fn kill(&mut self, voice_idx: VoiceIdx, offset: usize) {
         self.events.push(VoiceEvent::Kill {
             voice_idx: voice_idx as usize,
+            offset,
         });
     }
 
@@ -167,13 +172,13 @@ impl VoiceEvents {
         &mut self,
         voice_idx: VoiceIdx,
         expression: Expression,
-        timing: usize,
+        offset: usize,
         value: Sample,
     ) {
         self.events.push(VoiceEvent::Expression {
             voice_idx: voice_idx as usize,
             expression,
-            timing,
+            offset,
             value,
         });
     }
@@ -222,6 +227,7 @@ impl VoicesHandler {
         prev_voice_idx: Option<VoiceIdx>,
         note: NoteId,
         velocity: u8,
+        offset: usize,
         events: &mut VoiceEvents,
     ) {
         let Some(voice_idx) = self
@@ -251,7 +257,7 @@ impl VoicesHandler {
             seq_idx: self.seq_idx,
         });
         self.seq_idx = self.seq_idx.wrapping_add(1);
-        events.restart(voice_idx, prev_voice_idx, note, velocity);
+        events.restart(voice_idx, prev_voice_idx, note, velocity, offset);
     }
 
     fn apply_legato(
@@ -259,6 +265,7 @@ impl VoicesHandler {
         voice_idx: VoiceIdx,
         note_id: NoteId,
         velocity: u8,
+        offset: usize,
         events: &mut VoiceEvents,
     ) {
         self.playing_notes.push_front(PlayingNote {
@@ -268,16 +275,28 @@ impl VoicesHandler {
             seq_idx: self.seq_idx,
         });
         self.seq_idx = self.seq_idx.wrapping_add(1);
-        events.update(voice_idx, note_id, velocity);
+        events.update(voice_idx, note_id, velocity, offset);
     }
 
-    fn kill_voice(&mut self, voice_idx: VoiceIdx, note: u8, events: &mut VoiceEvents) {
+    fn kill_voice(
+        &mut self,
+        voice_idx: VoiceIdx,
+        note: u8,
+        offset: usize,
+        events: &mut VoiceEvents,
+    ) {
         self.killing_voices
             .push_front(KillingVoice { voice_idx, note });
-        events.kill(voice_idx);
+        events.kill(voice_idx, offset);
     }
 
-    fn note_on_monophonic(&mut self, new_note: NoteId, velocity: u8, events: &mut VoiceEvents) {
+    fn note_on_monophonic(
+        &mut self,
+        new_note: NoteId,
+        velocity: u8,
+        offset: usize,
+        events: &mut VoiceEvents,
+    ) {
         // Kill releasing note on same channel
         if let Some(releasing_idx) = self
             .releasing_notes
@@ -287,8 +306,8 @@ impl VoicesHandler {
             let ReleasingNote { voice_idx, id, .. } =
                 self.releasing_notes.remove(releasing_idx).unwrap();
 
-            self.kill_voice(voice_idx, id.note, events);
-            self.grab_and_restart_voice(Some(voice_idx), new_note, velocity, events);
+            self.kill_voice(voice_idx, id.note, offset, events);
+            self.grab_and_restart_voice(Some(voice_idx), new_note, velocity, offset, events);
 
         // Kill playing note on same channel
         } else if let Some(playing_idx) = self
@@ -304,17 +323,29 @@ impl VoicesHandler {
             });
 
             if self.legato {
-                self.apply_legato(playing.voice_idx, new_note, velocity, events);
+                self.apply_legato(playing.voice_idx, new_note, velocity, offset, events);
             } else {
-                self.kill_voice(playing.voice_idx, playing.id.note, events);
-                self.grab_and_restart_voice(Some(playing.voice_idx), new_note, velocity, events);
+                self.kill_voice(playing.voice_idx, playing.id.note, offset, events);
+                self.grab_and_restart_voice(
+                    Some(playing.voice_idx),
+                    new_note,
+                    velocity,
+                    offset,
+                    events,
+                );
             }
         } else {
-            self.grab_and_restart_voice(None, new_note, velocity, events);
+            self.grab_and_restart_voice(None, new_note, velocity, offset, events);
         }
     }
 
-    fn note_on_polyphonic(&mut self, new_note: NoteId, velocity: u8, events: &mut VoiceEvents) {
+    fn note_on_polyphonic(
+        &mut self,
+        new_note: NoteId,
+        velocity: u8,
+        offset: usize,
+        events: &mut VoiceEvents,
+    ) {
         let mut prev_voice_idx = None;
 
         // Kill same releasing note
@@ -325,7 +356,7 @@ impl VoicesHandler {
         {
             let ReleasingNote { id, voice_idx, .. } = self.releasing_notes.remove(idx).unwrap();
 
-            self.kill_voice(voice_idx, id.note, events);
+            self.kill_voice(voice_idx, id.note, offset, events);
             prev_voice_idx = Some(voice_idx);
         }
 
@@ -350,13 +381,20 @@ impl VoicesHandler {
                 panic!("note_on_polyphonic(): Note processing error")
             };
 
-            self.kill_voice(voice_idx, note, events);
+            self.kill_voice(voice_idx, note, offset, events);
         }
 
-        self.grab_and_restart_voice(prev_voice_idx, new_note, velocity, events);
+        self.grab_and_restart_voice(prev_voice_idx, new_note, velocity, offset, events);
     }
 
-    fn note_on_impl(&mut self, channel: u8, note: u8, velocity: u8, events: &mut VoiceEvents) {
+    fn note_on_impl(
+        &mut self,
+        channel: u8,
+        note: u8,
+        velocity: u8,
+        offset: usize,
+        events: &mut VoiceEvents,
+    ) {
         let new_note = NoteId { channel, note };
         let monophonic = self.num_voices == 1;
 
@@ -375,9 +413,9 @@ impl VoicesHandler {
         }
 
         if monophonic {
-            self.note_on_monophonic(new_note, velocity, events);
+            self.note_on_monophonic(new_note, velocity, offset, events);
         } else {
-            self.note_on_polyphonic(new_note, velocity, events);
+            self.note_on_polyphonic(new_note, velocity, offset, events);
         }
     }
 
@@ -386,9 +424,16 @@ impl VoicesHandler {
         channel: u8,
         note: u8,
         velocity: f32,
+        offset: usize,
         events: &mut VoiceEvents,
     ) {
-        self.note_on_impl(channel, note, Self::to_int_velocity(velocity), events);
+        self.note_on_impl(
+            channel,
+            note,
+            Self::to_int_velocity(velocity),
+            offset,
+            events,
+        );
     }
 
     pub fn handle_note_off(
@@ -396,6 +441,7 @@ impl VoicesHandler {
         channel: u8,
         note: u8,
         velocity: f32,
+        offset: usize,
         events: &mut VoiceEvents,
     ) {
         let note_id = NoteId { channel, note };
@@ -436,6 +482,7 @@ impl VoicesHandler {
                 playing.voice_idx,
                 waiting_note.id,
                 waiting_note.velocity,
+                offset,
                 events,
             );
             return;
@@ -446,13 +493,14 @@ impl VoicesHandler {
             voice_idx: playing.voice_idx,
             seq_idx: playing.seq_idx,
         });
-        events.release(playing.voice_idx, velocity);
+        events.release(playing.voice_idx, velocity, offset);
 
         if let Some(waiting_note) = self.waiting_notes.pop() {
             self.note_on_impl(
                 waiting_note.id.channel,
                 waiting_note.id.note,
                 waiting_note.velocity,
+                offset,
                 events,
             );
         }
@@ -485,7 +533,7 @@ impl VoicesHandler {
         channel: u8,
         note: u8,
         expression: Expression,
-        timing: usize,
+        offset: usize,
         value: Sample,
         events: &mut VoiceEvents,
     ) {
@@ -504,7 +552,7 @@ impl VoicesHandler {
             });
 
         if let Some(voice_idx) = voice_idx {
-            events.expression(voice_idx, expression, timing, value);
+            events.expression(voice_idx, expression, offset, value);
         }
     }
 

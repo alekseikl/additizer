@@ -140,9 +140,9 @@ impl ExternalParam {
                 voice.value_at_trigger = mono[0];
             }
 
-            voice_output.fill_with_ext_control_value(samples, voice.value_at_trigger);
+            voice_output.fill_with_ext_control_value(0, samples, voice.value_at_trigger);
         } else {
-            voice_output.fill_with_ext_control(mono);
+            voice_output.fill_with_ext_control(0, mono);
         }
 
         if voice.triggered {

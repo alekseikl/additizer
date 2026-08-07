@@ -9,6 +9,13 @@ use crate::synth_engine::{
     voices_handler::DecayingVoice,
 };
 
+pub use additizer_derive::ModuleVoice;
+
+pub trait ModuleVoice: Send {
+    fn triggered(&self) -> Option<usize>;
+    fn clear_triggered(&mut self);
+}
+
 #[enum_dispatch]
 #[auto_impl::auto_impl(Box)]
 #[allow(unused_variables)]

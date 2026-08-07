@@ -179,8 +179,8 @@ impl Expressions {
             .smoother
             .apply_if_needed(samples, sample_rate, self.params.smooth, mono_buff);
 
-        output_slot[0][voice_idx].fill_with_ext_control(mono_buff);
-        output_slot[1][voice_idx].fill_with_ext_control(mono_buff);
+        output_slot[0][voice_idx].fill_with_ext_control(0, mono_buff);
+        output_slot[1][voice_idx].fill_with_ext_control(0, mono_buff);
 
         voice.set_value_at(last_value, 0);
         voice.triggered = false;
@@ -230,13 +230,14 @@ impl SynthModule for Expressions {
                 VoiceEvent::Release {
                     voice_idx,
                     velocity,
+                    ..
                 } => {
                     Self::handle_release(&mut voices[*voice_idx], &self.params, *velocity);
                 }
                 VoiceEvent::Expression {
                     voice_idx,
                     expression,
-                    timing,
+                    offset: timing,
                     value,
                 } if *expression == self.params.expression => {
                     Self::handle_expression(&mut voices[*voice_idx], *expression, *timing, *value);

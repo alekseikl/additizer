@@ -127,7 +127,7 @@ impl OutputsArena {
         slots: &[InputSlot],
         channel_idx: usize,
         voice_idx: usize,
-        skip: usize,
+        offset: usize,
         result: &mut [Sample], // Number of samples is controlled but result slice length
     ) -> bool {
         if slots.is_empty() {
@@ -139,14 +139,14 @@ impl OutputsArena {
             let input = self.samples[slot.src_slot][channel_idx][voice_idx]
                 .buffer()
                 .iter()
-                .skip(skip)
+                .skip(offset)
                 .map(|sample| sample * amount);
 
             if let Some(modulation_slot) = slot.modulation_slot {
                 let input_mod = self.samples[modulation_slot][channel_idx][voice_idx]
                     .buffer()
                     .iter()
-                    .skip(skip);
+                    .skip(offset);
 
                 add_to_buffer(
                     result,
@@ -167,7 +167,7 @@ impl OutputsArena {
         slots: &[InputSlot],
         channel_idx: usize,
         voice_idx: usize,
-        triggered: bool,
+        this_frame: Option<usize>,
     ) -> Option<Sample> {
         if slots.is_empty() {
             return None;
@@ -176,11 +176,11 @@ impl OutputsArena {
         let mut result: Sample = 0.0;
 
         for slot in slots {
-            let mut value = self.samples[slot.src_slot][channel_idx][voice_idx].scalar(triggered)
+            let mut value = self.samples[slot.src_slot][channel_idx][voice_idx].scalar(this_frame)
                 * slot.amount[channel_idx];
 
             if let Some(modulated_slot) = slot.modulation_slot {
-                value *= self.samples[modulated_slot][channel_idx][voice_idx].scalar(triggered);
+                value *= self.samples[modulated_slot][channel_idx][voice_idx].scalar(this_frame);
             }
 
             result += value;
@@ -194,8 +194,8 @@ impl OutputsArena {
         slot: Option<usize>,
         channel_idx: usize,
         voice_idx: usize,
-        triggered: bool,
+        this_frame: bool,
     ) -> Option<&SpectralBuffer> {
-        slot.map(|slot| self.spectral[slot][channel_idx][voice_idx].get(triggered))
+        slot.map(|slot| self.spectral[slot][channel_idx][voice_idx].get(this_frame))
     }
 }

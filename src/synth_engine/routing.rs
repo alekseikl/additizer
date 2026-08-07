@@ -10,10 +10,10 @@ mod voice_router;
 
 pub use outputs::{SamplesOutput, SpectralOutput};
 pub use outputs_arena::OutputsArena;
-pub use process_context::{ProcessContext, ProcessParams};
+pub use process_context::{ProcessContext, ProcessParams, VoiceTarget};
 pub use voice_router::{
     AudioRouterType, ControlRouterType, OutputRouterType, RouterFactory, SpectralRouterType,
-    VoiceRouter,
+    VoiceRouter, VoiceRouter2,
 };
 
 pub type ModuleId = i32;
@@ -126,23 +126,27 @@ pub enum VoiceEvent {
         prev_voice_idx: Option<usize>,
         pitch: Sample,
         velocity: Sample,
+        offset: usize, // In-block sample offset
     },
     Update {
         voice_idx: usize,
         pitch: Sample,
         velocity: Sample,
+        offset: usize, // In-block sample offset
     },
     Release {
         voice_idx: usize,
         velocity: Sample,
+        offset: usize, // In-block sample offset
     },
     Kill {
         voice_idx: usize,
+        offset: usize, // In-block sample offset
     },
     Expression {
         voice_idx: usize,
         expression: Expression,
-        timing: usize, // In-block sample offset
+        offset: usize, // In-block sample offset
         value: Sample,
     },
 }

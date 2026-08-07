@@ -67,7 +67,7 @@ fn make_engine(engine: EngineParams, osc: OscillatorConfig) -> SynthEngine {
 
 fn trigger_notes(engine: &mut SynthEngine, count: usize) {
     for i in 0..count {
-        engine.handle_note_on(0, (60 + i) as u8, 1.0);
+        engine.handle_note_on(0, (60 + i) as u8, 1.0, 0);
     }
 }
 

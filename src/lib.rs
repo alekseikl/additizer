@@ -49,16 +49,6 @@ impl Default for Additizer {
     }
 }
 
-trait EventUtils {
-    fn is_barrier(&self) -> bool;
-}
-
-impl EventUtils for NoteEvent<()> {
-    fn is_barrier(&self) -> bool {
-        matches!(self, NoteEvent::NoteOn { .. } | NoteEvent::NoteOff { .. })
-    }
-}
-
 struct EventReorderer<'a, C: ProcessContext<Additizer>> {
     context: &'a mut C,
     buffer: SmallVec<[NoteEvent<()>; 32]>,
@@ -113,20 +103,22 @@ impl Additizer {
 
         match event {
             NoteEvent::NoteOn {
+                timing,
                 channel,
                 note,
                 velocity,
                 ..
             } => {
-                synth.handle_note_on(channel, note, velocity);
+                synth.handle_note_on(channel, note, velocity, timing as usize - block_start);
             }
             NoteEvent::NoteOff {
+                timing,
                 channel,
                 note,
                 velocity,
                 ..
             } => {
-                synth.handle_note_off(channel, note, velocity);
+                synth.handle_note_off(channel, note, velocity, timing as usize - block_start);
             }
             NoteEvent::Choke { channel, note, .. } => {
                 synth.handle_choke(channel, note);
@@ -259,51 +251,6 @@ impl Plugin for Additizer {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        struct BlocksHandler<'a, 'b> {
-            buffer: &'a mut Buffer<'b>,
-            synth: &'a mut SynthEngine,
-            desired_block_size: usize,
-            update_ui: bool,
-        }
-
-        impl<'a, 'b> BlocksHandler<'a, 'b> {
-            #[inline]
-            fn process_single_block(&mut self, sample_from: usize, samples: usize) {
-                let [left, right] = self.buffer.as_slice() else {
-                    return;
-                };
-
-                let mut channel_outputs = [
-                    &mut left[sample_from..sample_from + samples],
-                    &mut right[sample_from..sample_from + samples],
-                ];
-
-                self.synth
-                    .process(samples, self.update_ui, &mut channel_outputs);
-            }
-
-            fn process(&mut self, mut sample_from: usize, sample_to: usize) -> usize {
-                while sample_to - sample_from >= self.desired_block_size {
-                    self.process_single_block(sample_from, self.desired_block_size);
-                    sample_from += self.desired_block_size;
-                }
-
-                sample_from
-            }
-
-            #[inline]
-            fn process_all(&mut self, mut sample_from: usize, sample_to: usize) -> usize {
-                while sample_from < sample_to {
-                    let samples = self.desired_block_size.min(sample_to - sample_from);
-
-                    self.process_single_block(sample_from, samples);
-                    sample_from += samples;
-                }
-
-                sample_from
-            }
-        }
-
         if self
             .engine
             .as_ref()
@@ -315,32 +262,27 @@ impl Plugin for Additizer {
         let mut synth = self.engine.as_deref().unwrap().lock();
 
         assert_no_alloc::assert_no_alloc(|| {
-            let total_samples = buffer.samples();
-            let desired_block_size = synth.block_size();
-
-            let mut blocks_handler = BlocksHandler {
-                buffer,
-                synth: &mut synth,
-                desired_block_size,
-                update_ui: self.params.editor_state.is_open(),
-            };
+            let block_size = synth.block_size();
+            let update_ui = self.params.editor_state.is_open();
 
             let mut events = EventReorderer::new(context);
-            let mut sample_from = 0usize;
+            let mut next_event = events.next_event();
 
-            while let Some(event) = events.next_event() {
-                let sample_to = event.timing() as usize;
+            for (block_start, block) in buffer.iter_blocks(block_size) {
+                let samples = block.samples();
+                let sample_to = block_start + samples;
 
-                if sample_to > sample_from && event.is_barrier() {
-                    sample_from = blocks_handler.process_all(sample_from, sample_to);
-                } else if sample_to - sample_from >= desired_block_size {
-                    sample_from = blocks_handler.process(sample_from, sample_to);
+                while let Some(event) =
+                    next_event.take_if(|event| (event.timing() as usize) < sample_to)
+                {
+                    Self::process_event(&mut synth, event, block_start);
+                    next_event = events.next_event();
                 }
 
-                Self::process_event(blocks_handler.synth, event, sample_from);
+                let mut channels = block.into_iter();
+                let mut channel_outputs = [channels.next().unwrap(), channels.next().unwrap()];
+                synth.process(samples, update_ui, &mut channel_outputs);
             }
-
-            blocks_handler.process_all(sample_from, total_samples);
         });
 
         ProcessStatus::KeepAlive

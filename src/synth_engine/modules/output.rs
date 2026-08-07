@@ -154,7 +154,7 @@ impl SynthModule for Output {
                         voice.killing = false;
                         voice.killing_time = 0.0;
                     }
-                    VoiceEvent::Kill { voice_idx } => {
+                    VoiceEvent::Kill { voice_idx, .. } => {
                         channel.voices[*voice_idx].killing = true;
                     }
                     _ => (),

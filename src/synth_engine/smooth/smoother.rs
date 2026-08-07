@@ -40,6 +40,16 @@ impl Smoother {
         }
     }
 
+    pub fn apply_if_needed2(&mut self, sample_rate: Sample, time: Sample, buff: &mut [Sample]) {
+        if time >= SMOOTHING_TIME_THRESHOLD {
+            self.update(sample_rate, time);
+
+            for sample in buff.iter_mut() {
+                *sample = self.tick(*sample);
+            }
+        }
+    }
+
     #[inline(always)]
     pub fn tick(&mut self, value: Sample) -> Sample {
         self.prev_value = value.mul_add(1.0 - self.smooth_mult, self.prev_value * self.smooth_mult);

@@ -26,6 +26,14 @@ pub struct ProcessContext<'c> {
     pub params: ProcessParams<'c>,
 }
 
+#[derive(Clone, Copy)]
+pub struct VoiceTarget {
+    pub channel_idx: usize,
+    pub voice_idx: usize,
+    pub note_bandwidth: usize,
+    pub is_last: bool,
+}
+
 impl<'c> ProcessContext<'c> {
     pub fn for_audio<'f>(
         &'f mut self,
@@ -45,6 +53,28 @@ impl<'c> ProcessContext<'c> {
         .with_output_slot(f);
     }
 
+    pub fn for_audio2<'f>(
+        &'f mut self,
+        module_id: ModuleId,
+        output_slot: usize,
+        f: impl FnMut(
+            &mut RouterFactory<'f, 'c, AudioRouterType>,
+            VoiceTarget,
+            &mut VoicesLayout<SamplesOutput>,
+        ),
+    ) where
+        'c: 'f,
+    {
+        RouterFactory {
+            ctx: self,
+            module_id,
+            data_type: AudioRouterType {
+                samples_slot: output_slot,
+            },
+        }
+        .with_output_slot2(f);
+    }
+
     pub fn for_control<'f>(
         &'f mut self,
         module_id: ModuleId,
@@ -61,6 +91,28 @@ impl<'c> ProcessContext<'c> {
             },
         }
         .with_output_slot(f);
+    }
+
+    pub fn for_control2<'f>(
+        &'f mut self,
+        module_id: ModuleId,
+        output_slot: usize,
+        f: impl FnMut(
+            &mut RouterFactory<'f, 'c, ControlRouterType>,
+            VoiceTarget,
+            &mut VoicesLayout<SamplesOutput>,
+        ),
+    ) where
+        'c: 'f,
+    {
+        RouterFactory {
+            ctx: self,
+            module_id,
+            data_type: ControlRouterType {
+                samples_slot: output_slot,
+            },
+        }
+        .with_output_slot2(f);
     }
 
     pub fn for_spectral<'f>(

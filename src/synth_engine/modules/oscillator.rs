@@ -16,7 +16,8 @@ use crate::{
         phase::Phase,
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-            ProcessContext, SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceRouter,
+            ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent,
+            VoiceRouter2, VoiceTarget,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
@@ -188,8 +189,7 @@ impl Default for UnisonVoice {
     }
 }
 
-struct VoiceState {
-    triggered: bool,
+struct Voice {
     pitch: Sample, // Octave units
     glide: Option<Glide>,
     unison_gain: Interpolated,
@@ -197,10 +197,9 @@ struct VoiceState {
     phases: [Phase; MAX_UNISON_VOICES],
 }
 
-impl Default for VoiceState {
+impl Default for Voice {
     fn default() -> Self {
         Self {
-            triggered: false,
             pitch: 0.0,
             glide: None,
             phases: Default::default(),
@@ -361,7 +360,7 @@ impl Inputs {
     }
 }
 
-type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, AudioRouterType>;
+type Router<'v, 'f, 'c> = VoiceRouter2<'v, 'f, 'c, AudioRouterType>;
 
 pub struct Oscillator {
     buffers: Buffers,
@@ -374,7 +373,8 @@ pub struct Oscillator {
     ui_end: Option<UiEnd>,
     inputs: Inputs,
     output_slot: usize,
-    voices: VoicesLayout<VoiceState>,
+    voices: VoicesLayout<Voice>,
+    triggers: VoicesLayout<Option<usize>>,
     voice_buffers: VoicesLayout<VoiceBuffers>,
 }
 
@@ -403,6 +403,7 @@ impl Oscillator {
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             voices: new_voices_layout(),
+            triggers: new_voices_layout(),
             voice_buffers: new_voices_layout(),
         }
     }
@@ -628,10 +629,9 @@ impl Oscillator {
         inputs: &Inputs,
         voice_buffers: &mut VoiceBuffers,
         buffers: &mut Buffers,
-        triggered: bool,
         router: &Router<'_, '_, '_>,
     ) {
-        if triggered {
+        if router.triggered() {
             let spectrum_from = router.spectral(inputs.spectrum, true);
 
             Self::build_wave(
@@ -672,7 +672,7 @@ impl Oscillator {
         unison: usize,
         channel: &ChannelParams,
         inputs: &Inputs,
-        voice: &mut VoiceState,
+        voice: &mut Voice,
         router: &mut Router<'_, '_, '_>,
     ) {
         const MAX_DETUNE: Sample = 1.0;
@@ -692,26 +692,26 @@ impl Oscillator {
 
         fn calc_update(
             unison: usize,
-            triggered: bool,
+            this_frame: bool,
             channel: &ChannelParams,
             inputs: &Inputs,
             router: &mut Router<'_, '_, '_>,
         ) -> impl Iterator<Item = StateUpdate> {
             let detune = router
-                .scalar_param(&inputs.detune, channel.detune, triggered)
+                .scalar(&inputs.detune, channel.detune, this_frame)
                 .clamp(0.0, MAX_DETUNE);
 
             let detune_power = router
-                .scalar_param(&inputs.detune_power, channel.detune_power, triggered)
+                .scalar(&inputs.detune_power, channel.detune_power, this_frame)
                 .clamp(-1.0, 1.0)
                 * MAX_DETUNE_POWER;
 
             let phases_blend = router
-                .scalar_param(&inputs.phases_blend, channel.phases_blend, triggered)
+                .scalar(&inputs.phases_blend, channel.phases_blend, this_frame)
                 .clamp(0.0, 1.0);
 
             let gains_blend = router
-                .scalar_param(&inputs.gains_blend, channel.gains_blend, triggered)
+                .scalar(&inputs.gains_blend, channel.gains_blend, this_frame)
                 .clamp(0.0, 1.0);
 
             let center = 0.5 * (unison - 1) as Sample;
@@ -744,7 +744,7 @@ impl Oscillator {
                 .recip()
         }
 
-        if voice.triggered {
+        if router.triggered() {
             for (state, update) in izip!(
                 &mut voice.unison,
                 calc_update(unison, true, channel, inputs, router)
@@ -788,7 +788,7 @@ impl Oscillator {
         channel: &ChannelParams,
         inputs: &Inputs,
         buffers: &mut Buffers,
-        voice: &mut VoiceState,
+        voice: &mut Voice,
         router: &mut Router<'_, '_, '_>,
     ) {
         const GLIDE_TIME_THRESHOLD: Sample = from_ms(1.0);
@@ -802,7 +802,7 @@ impl Oscillator {
         };
 
         let glide_time = router
-            .scalar_param(&inputs.glide, channel.glide, false)
+            .scalar(&inputs.glide, channel.glide, true)
             .clamp(0.0, MAX_GLIDE);
         let time_left = glide_time - glide.t;
 
@@ -812,7 +812,7 @@ impl Oscillator {
         }
 
         let glide_slope = router
-            .scalar_param(&inputs.glide_slope, channel.glide_slope, false)
+            .scalar(&inputs.glide_slope, channel.glide_slope, true)
             .clamp(-1.0, 1.0);
         let glide_power = -glide_slope * GLIDE_POWER_MAX;
         let t_step = router.sample_rate().recip();
@@ -859,20 +859,21 @@ impl Oscillator {
 
     fn process_voice(
         &mut self,
-        mono_spectrum: bool,
-        output: &mut VoicesLayout<SamplesOutput>,
-        mut router: Router<'_, '_, '_>,
+        target: VoiceTarget,
+        outputs: &mut VoicesLayout<SamplesOutput>,
+        rf: &mut RouterFactory<AudioRouterType>,
     ) {
-        let channel_idx = router.channel_idx();
-        let voice_idx = router.voice_idx();
+        let mono_spectrum = rf.params().spectrum_channels < NUM_CHANNELS;
+        let channel_idx = target.channel_idx;
+        let voice_idx = target.voice_idx;
+        let mut router = rf.for_voice2(target, &mut self.triggers, outputs);
         let inputs = &self.inputs;
         let buffers = &mut self.buffers;
         let channel = &mut self.channel_params[channel_idx];
         let voice = &mut self.voices[channel_idx][voice_idx];
-        let output = output[channel_idx][voice_idx].output(router.samples());
         let samples = router.samples();
 
-        router.buff_param(
+        router.param(
             &inputs.pitch_shift,
             &mut channel.pitch_shift,
             &mut buffers.pitch,
@@ -880,13 +881,13 @@ impl Oscillator {
 
         add_buffer_value(&mut buffers.pitch[..samples], voice.pitch);
 
-        router.buff_param(
+        router.param(
             &inputs.phase_shift,
             &mut channel.phase_shift,
             &mut buffers.phase_shift,
         );
 
-        router.buff_param(
+        router.param(
             &inputs.freq_shift,
             &mut channel.frequency_shift,
             &mut buffers.frequency_shift,
@@ -897,14 +898,7 @@ impl Oscillator {
         } else {
             let vb = &mut self.voice_buffers[channel_idx][voice_idx];
 
-            Self::build_waveforms(
-                self.inverse_fft.as_ref(),
-                inputs,
-                vb,
-                buffers,
-                voice.triggered,
-                &router,
-            );
+            Self::build_waveforms(self.inverse_fft.as_ref(), inputs, vb, buffers, &router);
             vb
         };
 
@@ -922,16 +916,12 @@ impl Oscillator {
         Self::process_unison(self.params.unison, channel, inputs, voice, &mut router);
         Self::process_glide(channel, inputs, buffers, voice, &mut router);
 
-        if voice.triggered {
-            voice.triggered = false;
-        }
-
         let freq_phase_mult = Phase::freq_phase_mult(router.sample_rate());
         let buff_t_inc = (samples as f32).recip();
         let mut buff_t = 0.0;
 
         for (out, &pitch, &phase_shift, freq_shift) in izip!(
-            output.iter_mut(),
+            router.output(),
             &buffers.pitch,
             &buffers.phase_shift,
             &buffers.frequency_shift,
@@ -963,17 +953,17 @@ impl Oscillator {
         }
 
         if !router.param_stationary_at(&inputs.pan, &channel.pan, 0.0) {
-            router.buff_param(&inputs.pan, &mut channel.pan, &mut buffers.pan);
+            router.param(&inputs.pan, &mut channel.pan, &mut buffers.pan);
 
-            for (out, &pan) in output.iter_mut().zip(&buffers.pan) {
+            for (out, &pan) in router.output().iter_mut().zip(&buffers.pan) {
                 *out *= pan_gain(pan, channel_idx);
             }
         }
 
         if !router.param_stationary_at(&inputs.gain, &channel.gain, 1.0) {
-            router.buff_param(&inputs.gain, &mut channel.gain, &mut buffers.gain);
+            router.param(&inputs.gain, &mut channel.gain, &mut buffers.gain);
 
-            for (out, gain) in output.iter_mut().zip(&buffers.gain) {
+            for (out, gain) in router.output().iter_mut().zip(&buffers.gain) {
                 *out *= gain;
             }
         }
@@ -985,9 +975,11 @@ impl Oscillator {
         prev_voice_idx: Option<usize>,
         voice_idx: usize,
         pitch: Sample,
+        offset: usize,
     ) {
         let channel = &self.channel_params[channel_idx];
         let voices = &mut self.voices[channel_idx];
+        let trigger = &mut self.triggers[channel_idx][voice_idx];
 
         if let Some(prev_voice_idx) = prev_voice_idx {
             let prev_voice_state = &voices[prev_voice_idx];
@@ -1004,7 +996,7 @@ impl Oscillator {
         let voice = &mut voices[voice_idx];
 
         voice.pitch = pitch;
-        voice.triggered = true;
+        *trigger = Some(offset);
 
         if let Some(prev_voice_idx) = prev_voice_idx
             && self.params.steal_phase
@@ -1082,8 +1074,15 @@ impl SynthModule for Oscillator {
                         voice_idx,
                         prev_voice_idx,
                         pitch,
+                        offset,
                         ..
-                    } => self.handle_trigger(channel_idx, *prev_voice_idx, *voice_idx, *pitch),
+                    } => self.handle_trigger(
+                        channel_idx,
+                        *prev_voice_idx,
+                        *voice_idx,
+                        *pitch,
+                        *offset,
+                    ),
                     VoiceEvent::Update {
                         voice_idx, pitch, ..
                     } => self.handle_update(channel_idx, *voice_idx, *pitch),
@@ -1133,24 +1132,13 @@ impl SynthModule for Oscillator {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_audio(self.id, self.output_slot, |router, output| {
-            let mono_spectrum = router.params().spectrum_channels < NUM_CHANNELS;
-            let num_active_voices = router.params().active_voices.len();
-
-            for channel_idx in 0..NUM_CHANNELS {
-                for seq_idx in 0..num_active_voices {
-                    let playing_voice = router.params().active_voices[seq_idx];
-
-                    self.process_voice(
-                        mono_spectrum,
-                        output,
-                        router.for_voice(channel_idx, playing_voice, seq_idx),
-                    );
-                }
-
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&router.params().smooth_params, router.params().samples);
-            }
+        ctx.for_audio2(self.id, self.output_slot, |rf, target, outputs| {
+            self.process_voice(target, outputs, rf);
         });
+
+        for channel_idx in 0..NUM_CHANNELS {
+            self.channel_params[channel_idx]
+                .advance_smoothers(&ctx.params.smooth_params, ctx.params.samples);
+        }
     }
 }

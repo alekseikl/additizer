@@ -15,6 +15,7 @@ dependencies = [
 name = "additizer"
 version = "0.1.0"
 dependencies = [
+ "additizer_derive",
  "arc-swap",
  "assert_no_alloc",
  "atomic_float",
@@ -42,6 +43,15 @@ dependencies = [
  "topo_sort",
  "triple_buffer",
  "wide",
+]
+
+[[package]]
+name = "additizer_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.107",
 ]
 
 [[package]]

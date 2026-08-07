@@ -4,8 +4,8 @@ use crate::synth_engine::{
 };
 
 pub struct SamplesOutput {
-    buffer: Buffer,
-    next_frame_sample: Sample,
+    pub(super) buffer: Buffer,
+    pub(super) next_frame_sample: Sample,
 }
 
 impl SamplesOutput {
@@ -14,9 +14,9 @@ impl SamplesOutput {
         &self.buffer
     }
 
-    pub(super) fn scalar(&self, triggered: bool) -> Sample {
-        if triggered {
-            self.buffer[0]
+    pub(super) fn scalar(&self, this_frame: Option<usize>) -> Sample {
+        if let Some(offset) = this_frame {
+            self.buffer[offset]
         } else {
             self.next_frame_sample
         }
@@ -35,17 +35,17 @@ impl SamplesOutput {
     }
 
     // Fill buffer with the external control-rate signal that doesn't run 1 sample ahead.
-    pub fn fill_with_ext_control(&mut self, buff: &[Sample]) {
-        let len = buff.len();
-        let last = buff[len - 1];
+    pub fn fill_with_ext_control(&mut self, offset: usize, in_buff: &[Sample]) {
+        let len = in_buff.len();
+        let last = in_buff[len - 1];
 
-        self.buffer[..len].copy_from_slice(buff);
-        self.buffer[len] = last;
+        self.buffer[offset..offset + len].copy_from_slice(in_buff);
+        self.buffer[offset + len] = last;
         self.next_frame_sample = last;
     }
 
-    pub fn fill_with_ext_control_value(&mut self, samples: usize, value: Sample) {
-        self.buffer[..samples + 1].fill(value);
+    pub fn fill_with_ext_control_value(&mut self, offset: usize, samples: usize, value: Sample) {
+        self.buffer[offset..samples + 1].fill(value);
         self.next_frame_sample = value;
     }
 }
@@ -70,10 +70,6 @@ impl<'a> ControlRateAdapter<'a> {
         let from = if self.triggered { 0 } else { 1 };
 
         &mut self.output.buffer[from..self.samples + 1]
-    }
-
-    pub fn next_frame_value(&self) -> Sample {
-        self.output.buffer[self.samples]
     }
 }
 
@@ -102,8 +98,12 @@ impl Default for SpectralOutput {
 }
 
 impl SpectralOutput {
-    pub(super) fn get(&self, triggered: bool) -> &SpectralBuffer {
-        &self.output[(!triggered ^ self.swapped) as usize]
+    pub(super) fn get(&self, this_frame: bool) -> &SpectralBuffer {
+        &self.output[(!this_frame ^ self.swapped) as usize]
+    }
+
+    pub(super) fn buff(&mut self) -> &mut SpectralBuffer {
+        &mut self.output[self.swapped as usize]
     }
 
     pub fn advance(&mut self) -> &mut SpectralBuffer {

@@ -604,20 +604,20 @@ impl SynthEngine {
         }
     }
 
-    pub fn handle_note_on(&mut self, channel: u8, note: u8, velocity: f32) {
+    pub fn handle_note_on(&mut self, channel: u8, note: u8, velocity: f32, offset: usize) {
         let mut voice_events = VoiceEvents::new();
 
         self.voices_handler
-            .handle_note_on(channel, note, velocity, &mut voice_events);
+            .handle_note_on(channel, note, velocity, offset, &mut voice_events);
 
         self.process_voice_events(voice_events.events());
     }
 
-    pub fn handle_note_off(&mut self, channel: u8, note: u8, velocity: f32) {
+    pub fn handle_note_off(&mut self, channel: u8, note: u8, velocity: f32, offset: usize) {
         let mut voice_events = VoiceEvents::new();
 
         self.voices_handler
-            .handle_note_off(channel, note, velocity, &mut voice_events);
+            .handle_note_off(channel, note, velocity, offset, &mut voice_events);
 
         self.process_voice_events(voice_events.events());
     }
@@ -627,7 +627,7 @@ impl SynthEngine {
         channel: u8,
         note: u8,
         expression: Expression,
-        timing: usize, // In-block offset
+        offset: usize, // In-block offset
         value: Sample,
     ) {
         let mut voice_events = VoiceEvents::new();
@@ -636,7 +636,7 @@ impl SynthEngine {
             channel,
             note,
             expression,
-            timing,
+            offset,
             value,
             &mut voice_events,
         );
