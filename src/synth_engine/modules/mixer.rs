@@ -3,11 +3,12 @@ use std::array;
 use crate::{
     synth_engine::{
         SmoothedSampleParams, StereoSample,
-        buffer::{Buffer, VoicesLayout, copy_or_add_to_buffer, zero_buffer},
+        buffer::{Buffer, VoicesLayout, copy_or_add_to_buffer, new_voices_layout, zero_buffer},
         level_ballistics::LevelBallistics,
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-            ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter, VolumeType,
+            ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent,
+            VoiceTarget, VolumeType,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
@@ -85,7 +86,7 @@ impl Params {
 pub struct Inputs {
     gain: InputSlots,
     level: InputSlots,
-    audio_mix: [InputSlots; MAX_INPUTS as usize],
+    audio_mix: [Option<usize>; MAX_INPUTS as usize],
     gain_mix: [InputSlots; MAX_INPUTS as usize],
     level_mix: [InputSlots; MAX_INPUTS as usize],
 }
@@ -95,7 +96,7 @@ impl Default for Inputs {
         Self {
             gain: InputSlots::new(Input::Gain),
             level: InputSlots::new(Input::Level),
-            audio_mix: array::from_fn(|idx| InputSlots::new(Input::AudioMix(idx as u8))),
+            audio_mix: [None; MAX_INPUTS as usize],
             gain_mix: array::from_fn(|idx| InputSlots::new(Input::GainMix(idx as u8))),
             level_mix: array::from_fn(|idx| InputSlots::new(Input::LevelMix(idx as u8))),
         }
@@ -117,7 +118,7 @@ impl Inputs {
                     result.level_mix[idx as usize] = input.clone();
                 }
                 Input::AudioMix(idx) if idx < MAX_INPUTS => {
-                    result.audio_mix[idx as usize] = input.clone();
+                    result.audio_mix[idx as usize] = input.slots.first().map(|s| s.src_slot);
                 }
                 _ => (),
             }
@@ -136,15 +137,10 @@ impl Inputs {
             Input::LevelMix(idx) if idx < MAX_INPUTS => {
                 self.level_mix[idx as usize].update_amount(src_slot, amount);
             }
-            Input::AudioMix(idx) if idx < MAX_INPUTS => {
-                self.audio_mix[idx as usize].update_amount(src_slot, amount);
-            }
             _ => (),
         }
     }
 }
-
-type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, AudioRouterType>;
 
 struct Buffers {
     level_mod: Buffer,
@@ -167,6 +163,7 @@ pub struct Mixer {
     ui_end: Option<UiEnd>,
     inputs: Inputs,
     output_slot: usize,
+    triggers: VoicesLayout<Option<usize>>,
     inputs_meta: Vec<InputMeta>,
     out_volume_ballistics: [LevelBallistics; NUM_CHANNELS],
 }
@@ -195,6 +192,7 @@ impl Mixer {
             ui_end: Some(ui_end),
             inputs: Inputs::default(),
             output_slot: usize::MAX,
+            triggers: new_voices_layout(),
             inputs_meta: Vec::with_capacity(1 + 2 * MAX_INPUTS as usize),
             out_volume_ballistics: [LevelBallistics::default(); NUM_CHANNELS],
         };
@@ -312,14 +310,14 @@ impl Mixer {
 
     fn process_voice(
         &mut self,
-        output: &mut VoicesLayout<SamplesOutput>,
-        mut router: Router<'_, '_, '_>,
+        target: VoiceTarget,
+        outputs: &mut VoicesLayout<SamplesOutput>,
+        rf: &mut RouterFactory<AudioRouterType>,
     ) {
-        let channel_idx = router.channel_idx();
-        let voice_idx = router.voice_idx();
+        let (mut router, mut voice_output) = rf.for_voice2(&target, &mut self.triggers, outputs);
         let inputs = &self.inputs;
-        let channel = &mut self.channel_params[channel_idx];
-        let output = output[channel_idx][voice_idx].output(router.samples());
+        let channel = &mut self.channel_params[target.channel_idx];
+        let output = voice_output.output();
 
         for input_idx in 0..self.params.num_inputs {
             let input_params = &self.params.inputs[input_idx as usize];
@@ -327,7 +325,7 @@ impl Mixer {
 
             match input_params.volume_type {
                 VolumeType::Db => {
-                    router.buff_param(
+                    router.param(
                         &inputs.level_mix[input_idx as usize],
                         &mut input_channel.level,
                         &mut self.buffers.level_mod,
@@ -340,13 +338,13 @@ impl Mixer {
 
                     Self::mix_input(
                         output,
-                        router.buff(inputs.audio_mix[input_idx as usize].first_slot()),
+                        router.direct(inputs.audio_mix[input_idx as usize]),
                         gain_mod,
                         input_idx,
                     );
                 }
                 VolumeType::Gain => {
-                    router.buff_param(
+                    router.param(
                         &inputs.gain_mix[input_idx as usize],
                         &mut input_channel.gain,
                         &mut self.buffers.level_mod,
@@ -355,7 +353,7 @@ impl Mixer {
 
                     Self::mix_input(
                         output,
-                        router.buff(inputs.audio_mix[input_idx as usize].first_slot()),
+                        router.direct(inputs.audio_mix[input_idx as usize]),
                         gain_mod,
                         input_idx,
                     );
@@ -365,7 +363,7 @@ impl Mixer {
 
         match self.params.output_volume_type {
             VolumeType::Db => {
-                router.buff_param(
+                router.param(
                     &inputs.level,
                     &mut channel.output_level,
                     &mut self.buffers.level_mod,
@@ -379,7 +377,7 @@ impl Mixer {
                 Self::modulate_output(output, gain_mod);
             }
             VolumeType::Gain => {
-                router.buff_param(
+                router.param(
                     &inputs.gain,
                     &mut channel.output_gain,
                     &mut self.buffers.level_mod,
@@ -391,9 +389,10 @@ impl Mixer {
         }
 
         if router.need_update_ui() {
-            let level =
-                self.out_volume_ballistics[channel_idx].process(output, router.sample_rate());
-            self.audio_end.update_out_volume(channel_idx, level);
+            let level = self.out_volume_ballistics[target.channel_idx]
+                .process(output, router.sample_rate());
+            self.audio_end
+                .update_out_volume(target.channel_idx, level);
         }
     }
 }
@@ -427,6 +426,19 @@ impl SynthModule for Mixer {
         self.inputs.update_amount(input_type, src_slot, amount);
     }
 
+    fn process_events(&mut self, events: &[VoiceEvent]) {
+        for trigger_channel in self.triggers.iter_mut() {
+            for event in events {
+                if let VoiceEvent::Trigger {
+                    voice_idx, offset, ..
+                } = event
+                {
+                    trigger_channel[*voice_idx] = Some(*offset);
+                }
+            }
+        }
+    }
+
     fn process_ui_events(&mut self) {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
@@ -457,22 +469,13 @@ impl SynthModule for Mixer {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_audio(self.id, self.output_slot, |router, output| {
-            let num_active_voices = router.params().active_voices.len();
-
-            for channel_idx in 0..NUM_CHANNELS {
-                for seq_idx in 0..num_active_voices {
-                    let playing_voice = router.params().active_voices[seq_idx];
-
-                    self.process_voice(
-                        output,
-                        router.for_voice(channel_idx, playing_voice, seq_idx),
-                    );
-                }
-
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&router.params().smooth_params, router.params().samples);
-            }
+        ctx.for_audio2(self.id, self.output_slot, |rf, target, outputs| {
+            self.process_voice(target, outputs, rf);
         });
+
+        for channel_idx in 0..NUM_CHANNELS {
+            self.channel_params[channel_idx]
+                .advance_smoothers(&ctx.params.smooth_params, ctx.params.samples);
+        }
     }
 }

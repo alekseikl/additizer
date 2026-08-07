@@ -12,11 +12,11 @@ pub use ui_bridge::AmplifierUiBridge;
 
 use crate::synth_engine::{
     SmoothedSampleParams, StereoSample,
-    buffer::{Buffer, VoicesLayout, zero_buffer},
+    buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
     level_ballistics::LevelBallistics,
     routing::{
         AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-        ProcessContext, SamplesOutput, SpectralInputSlot, VoiceRouter,
+        ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceTarget,
     },
     smooth::SmoothedSample,
     synth_module::SynthModule,
@@ -74,8 +74,6 @@ impl Inputs {
     }
 }
 
-type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, AudioRouterType>;
-
 struct Buffers {
     gain_mod_input: Buffer,
 }
@@ -88,6 +86,7 @@ pub struct Amplifier {
     ui_end: Option<UiEnd>,
     inputs: Inputs,
     output_slot: usize,
+    triggers: VoicesLayout<Option<usize>>,
     out_volume_ballistics: [LevelBallistics; NUM_CHANNELS],
 }
 
@@ -114,6 +113,7 @@ impl Amplifier {
             ui_end: Some(ui_end),
             inputs: Inputs::default(),
             output_slot: usize::MAX,
+            triggers: new_voices_layout(),
             out_volume_ballistics: [LevelBallistics::default(); NUM_CHANNELS],
         }
     }
@@ -129,22 +129,22 @@ impl Amplifier {
 
     fn process_voice(
         &mut self,
-        output: &mut VoicesLayout<SamplesOutput>,
-        mut router: Router<'_, '_, '_>,
+        target: VoiceTarget,
+        outputs: &mut VoicesLayout<SamplesOutput>,
+        rf: &mut RouterFactory<AudioRouterType>,
     ) {
-        let channel_idx = router.channel_idx();
-        let voice_idx = router.voice_idx();
+        let (mut router, mut voice_output) = rf.for_voice2(&target, &mut self.triggers, outputs);
         let inputs = &self.inputs;
-        let channel = &mut self.channel_params[channel_idx];
-        let output = output[channel_idx][voice_idx].output(router.samples());
+        let channel = &mut self.channel_params[target.channel_idx];
 
-        router.buff_param(
+        router.param(
             &inputs.gain,
             &mut channel.gain,
             &mut self.buffers.gain_mod_input,
         );
 
-        let input = router.buff(inputs.audio);
+        let input = router.direct(inputs.audio);
+        let output = voice_output.output();
 
         for (out, input, modulation) in
             izip!(output.iter_mut(), input, &self.buffers.gain_mod_input)
@@ -153,9 +153,10 @@ impl Amplifier {
         }
 
         if router.need_update_ui() {
-            let level =
-                self.out_volume_ballistics[channel_idx].process(output, router.sample_rate());
-            self.audio_end.update_out_volume(channel_idx, level);
+            let level = self.out_volume_ballistics[target.channel_idx]
+                .process(output, router.sample_rate());
+            self.audio_end
+                .update_out_volume(target.channel_idx, level);
         }
     }
 }
@@ -194,6 +195,19 @@ impl SynthModule for Amplifier {
         self.inputs.update_amount(input_type, src_slot, amount);
     }
 
+    fn process_events(&mut self, events: &[VoiceEvent]) {
+        for trigger_channel in self.triggers.iter_mut() {
+            for event in events {
+                if let VoiceEvent::Trigger {
+                    voice_idx, offset, ..
+                } = event
+                {
+                    trigger_channel[*voice_idx] = Some(*offset);
+                }
+            }
+        }
+    }
+
     fn process_ui_events(&mut self) {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
@@ -207,22 +221,13 @@ impl SynthModule for Amplifier {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_audio(self.id, self.output_slot, |router, output| {
-            let num_active_voices = router.params().active_voices.len();
-
-            for channel_idx in 0..NUM_CHANNELS {
-                for seq_idx in 0..num_active_voices {
-                    let playing_voice = router.params().active_voices[seq_idx];
-
-                    self.process_voice(
-                        output,
-                        router.for_voice(channel_idx, playing_voice, seq_idx),
-                    );
-                }
-
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&router.params().smooth_params, router.params().samples);
-            }
+        ctx.for_audio2(self.id, self.output_slot, |rf, target, outputs| {
+            self.process_voice(target, outputs, rf);
         });
+
+        for channel_idx in 0..NUM_CHANNELS {
+            self.channel_params[channel_idx]
+                .advance_smoothers(&ctx.params.smooth_params, ctx.params.samples);
+        }
     }
 }

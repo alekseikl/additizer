@@ -16,7 +16,7 @@ use crate::synth_engine::{
     phase::Phase,
     routing::{
         ControlRouterType, DataType, InputMeta, InputSlots, NUM_CHANNELS, ProcessContext,
-        SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceRouter,
+        RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceTarget,
     },
     smooth::{SmoothedSample, Smoother},
     synth_module::SynthModule,
@@ -64,7 +64,6 @@ impl Params {
 
 struct VoiceState {
     phase: Phase,
-    triggered: bool,
     smoother: Smoother,
 }
 
@@ -72,7 +71,6 @@ impl Default for VoiceState {
     fn default() -> Self {
         Self {
             phase: Phase::ZERO,
-            triggered: false,
             smoother: Smoother::default(),
         }
     }
@@ -120,8 +118,6 @@ impl Inputs {
     }
 }
 
-type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, ControlRouterType>;
-
 struct Buffers {
     frequency: Buffer,
     phase_shift: Buffer,
@@ -137,6 +133,7 @@ pub struct Lfo {
     ui_end: Option<UiEnd>,
     inputs: Inputs,
     output_slot: usize,
+    triggers: VoicesLayout<Option<usize>>,
     voices: VoicesLayout<VoiceState>,
 }
 
@@ -166,6 +163,7 @@ impl Lfo {
             ui_end: Some(ui_end),
             inputs: Inputs::default(),
             output_slot: usize::MAX,
+            triggers: new_voices_layout(),
             voices: new_voices_layout(),
         }
     }
@@ -248,44 +246,36 @@ impl Lfo {
 
     fn process_voice(
         &mut self,
-        output_slot: &mut VoicesLayout<SamplesOutput>,
-        mut router: Router<'_, '_, '_>,
+        target: VoiceTarget,
+        outputs: &mut VoicesLayout<SamplesOutput>,
+        rf: &mut RouterFactory<ControlRouterType>,
     ) {
-        let channel_idx = router.channel_idx();
-        let voice_idx = router.voice_idx();
+        let channel_idx = target.channel_idx;
+        let voice_idx = target.voice_idx;
+        let (mut router, mut voice_output) = rf.for_voice2(&target, &mut self.triggers, outputs);
         let inputs = &self.inputs;
         let params = &self.params;
         let channel = &mut self.channel_params[channel_idx];
         let voice = &mut self.voices[channel_idx][voice_idx];
-        let samples = router.samples();
         let sample_rate = router.sample_rate();
-        let voice_output = &mut output_slot[channel_idx][voice_idx];
 
-        router.buff_param(
+        router.param(
             &inputs.frequency,
             &mut channel.frequency,
             &mut self.buffers.frequency,
-            voice.triggered,
         );
-        router.buff_param(
+        router.param(
             &inputs.phase_shift,
             &mut channel.phase_shift,
             &mut self.buffers.phase_shift,
-            voice.triggered,
         );
-        router.buff_param(
-            &inputs.skew,
-            &mut channel.skew,
-            &mut self.buffers.skew,
-            voice.triggered,
-        );
+        router.param(&inputs.skew, &mut channel.skew, &mut self.buffers.skew);
 
-        let mut control_output = voice_output.control_output(samples, voice.triggered);
         let shape_func = Self::shape_function(params.shape);
         let freq_phase_mult = Phase::freq_phase_mult(sample_rate);
 
         for (out, frequency, phase_shift, skew) in izip!(
-            control_output.output().iter_mut(),
+            voice_output.output().iter_mut(),
             &self.buffers.frequency,
             &self.buffers.phase_shift,
             &self.buffers.skew,
@@ -303,22 +293,18 @@ impl Lfo {
             voice.phase += *frequency * freq_phase_mult;
         }
 
-        drop(control_output);
-
-        if voice.triggered {
+        if router.triggered() {
             voice.smoother.reset(0.0);
-            voice.triggered = false;
         }
 
         if router.need_update_ui_mono() {
             self.audio_end.update_phase(voice.phase.normalized());
         }
 
-        voice.smoother.apply_if_needed(
-            samples,
+        voice.smoother.apply_if_needed2(
             sample_rate,
             channel.smooth_time,
-            voice_output.output(samples),
+            voice_output.audio_output(),
         );
     }
 }
@@ -359,11 +345,12 @@ impl SynthModule for Lfo {
     }
 
     fn process_events(&mut self, events: &[VoiceEvent]) {
-        for channel in self.voices.iter_mut() {
+        for (channel, trigger_channel) in self.voices.iter_mut().zip(self.triggers.iter_mut()) {
             for event in events {
                 if let VoiceEvent::Trigger {
                     voice_idx,
                     prev_voice_idx,
+                    offset,
                     ..
                 } = event
                 {
@@ -375,10 +362,8 @@ impl SynthModule for Lfo {
                         Phase::ZERO
                     };
 
-                    let voice = &mut channel[*voice_idx];
-
-                    voice.triggered = true;
-                    voice.phase = phase;
+                    channel[*voice_idx].phase = phase;
+                    trigger_channel[*voice_idx] = Some(*offset);
                 }
             }
         }
@@ -402,22 +387,13 @@ impl SynthModule for Lfo {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_control(self.id, self.output_slot, |router, output| {
-            let num_active_voices = router.params().active_voices.len();
-
-            for channel_idx in 0..NUM_CHANNELS {
-                for seq_idx in 0..num_active_voices {
-                    let playing_voice = router.params().active_voices[seq_idx];
-
-                    self.process_voice(
-                        output,
-                        router.for_voice(channel_idx, playing_voice, seq_idx),
-                    );
-                }
-
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&router.params().smooth_params, router.params().samples);
-            }
+        ctx.for_control2(self.id, self.output_slot, |rf, target, outputs| {
+            self.process_voice(target, outputs, rf);
         });
+
+        for channel_idx in 0..NUM_CHANNELS {
+            self.channel_params[channel_idx]
+                .advance_smoothers(&ctx.params.smooth_params, ctx.params.samples);
+        }
     }
 }
