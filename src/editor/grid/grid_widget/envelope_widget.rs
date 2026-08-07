@@ -163,41 +163,49 @@ impl EnvelopeWidget {
     }
 
     fn phase_pos(rect: Rect, shape: &EnvelopeShape, phase: EnvelopePhase) -> Option<Pos2> {
-        let total = shape.total_time();
+        if phase.done {
+            return None;
+        }
 
-        Some(match phase {
-            EnvelopePhase::Delay(t) => Self::to_pos(rect, total, shape.delay * t, 0.0),
-            EnvelopePhase::Attack(t) => Self::to_pos(
-                rect,
-                total,
-                shape.delay + shape.attack * t,
-                Self::curve_value(t, shape.attack_curvature, 0.0, 1.0),
-            ),
-            EnvelopePhase::Hold(t) => Self::to_pos(
-                rect,
-                total,
-                shape.delay + shape.attack + shape.hold * t,
-                1.0,
-            ),
-            EnvelopePhase::Decay(t) => Self::to_pos(
-                rect,
-                total,
-                shape.delay + shape.attack + shape.hold + shape.decay * t,
-                Self::curve_value(t, shape.decay_curvature, 1.0, shape.sustain),
-            ),
-            EnvelopePhase::Sustain => Self::to_pos(
-                rect,
-                total,
-                shape.delay + shape.attack + shape.hold + shape.decay,
-                shape.sustain,
-            ),
-            EnvelopePhase::Release(t) => Self::to_pos(
-                rect,
-                total,
-                shape.delay + shape.attack + shape.hold + shape.decay + shape.release * t,
-                Self::curve_value(t, shape.release_curvature, shape.sustain, 0.0),
-            ),
-            EnvelopePhase::Done => return None,
+        let total = shape.total_time();
+        let delay_end = shape.delay;
+        let attack_end = delay_end + shape.attack;
+        let hold_end = attack_end + shape.hold;
+        let decay_end = hold_end + shape.decay;
+
+        Some(if phase.released {
+            let local = if shape.release > 0.0 {
+                (phase.t / shape.release).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+
+            let value = Self::curve_value(local, shape.release_curvature, shape.sustain, 0.0);
+            Self::to_pos(rect, total, decay_end + shape.release * local, value)
+        } else if phase.t < delay_end {
+            Self::to_pos(rect, total, phase.t, 0.0)
+        } else if phase.t < attack_end {
+            let local = if shape.attack > 0.0 {
+                (phase.t - delay_end) / shape.attack
+            } else {
+                1.0
+            };
+
+            let value = Self::curve_value(local, shape.attack_curvature, 0.0, 1.0);
+            Self::to_pos(rect, total, phase.t, value)
+        } else if phase.t < hold_end {
+            Self::to_pos(rect, total, phase.t, 1.0)
+        } else if phase.t < decay_end {
+            let local = if shape.decay > 0.0 {
+                (phase.t - hold_end) / shape.decay
+            } else {
+                1.0
+            };
+
+            let value = Self::curve_value(local, shape.decay_curvature, 1.0, shape.sustain);
+            Self::to_pos(rect, total, phase.t, value)
+        } else {
+            Self::to_pos(rect, total, decay_end, shape.sustain)
         })
     }
 

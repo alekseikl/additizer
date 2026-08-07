@@ -743,6 +743,11 @@ impl<'v, 'f, 'c> VoiceRouter2<'v, 'f, 'c, ControlRouterType> {
         self.ext.triggered
     }
 
+    /// Maps an in-block sample offset to an index into [`Self::output`].
+    pub fn sample_idx(&self, offset: usize) -> usize {
+        offset.saturating_sub(self.ext.offset)
+    }
+
     pub fn param(&mut self, input: &InputSlots, param: &mut SmoothedSample, buff: &mut Buffer) {
         let buff = &mut buff[..self.samples()];
         let smooth_params = &self.factory.ctx.params.smooth_params;

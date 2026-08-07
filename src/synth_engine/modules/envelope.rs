@@ -18,7 +18,6 @@ use crate::{
             ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent,
             VoiceTarget,
         },
-        smooth::Smoother,
         synth_module::SynthModule,
         types::Sample,
         voices_handler::DecayingVoice,
@@ -70,124 +69,49 @@ impl ChannelParams {
     }
 }
 
-#[derive(Clone, Copy, Default)]
-pub enum EnvelopePhase {
-    Delay(Sample),
-    Attack(Sample),
-    Hold(Sample),
-    Decay(Sample),
-    Sustain,
-    Release(Sample),
-    #[default]
-    Done,
+/// Voice clock state published to the UI for painting the phase marker.
+#[derive(Clone, Copy)]
+pub struct EnvelopePhase {
+    /// Seconds since trigger, or since release started once [`Self::released`].
+    pub t: Sample,
+    pub released: bool,
+    pub done: bool,
 }
 
-enum CurveBlockResult {
-    HasMore,
-    Done,
-}
-
-struct CurveIter {
-    curve_fn: Exponential,
-    t: Sample,
-    phase: Sample, // t normalized to stage time
-    value_from: Sample,
-    interval: Sample,
-}
-
-impl CurveIter {
-    fn new(curvature: Sample, from: Sample, to: Sample) -> Self {
-        let from = from.clamp(0.0, 1.0);
-        let to = to.clamp(0.0, 1.0);
+impl Default for EnvelopePhase {
+    fn default() -> Self {
         Self {
-            curve_fn: Exponential::new(curvature),
             t: 0.0,
-            phase: 0.0,
-            value_from: from,
-            interval: to - from,
-        }
-    }
-
-    fn flat(level: Sample) -> Self {
-        Self::new(0.0, level, level)
-    }
-
-    fn next_block(
-        &mut self,
-        t_step: Sample,
-        time: Sample,
-        sample_from: &mut usize,
-        output: &mut [Sample],
-    ) -> CurveBlockResult {
-        if time < MIN_TIME_THRESHOLD {
-            return CurveBlockResult::Done;
-        }
-
-        let output = &mut output[*sample_from..];
-
-        let samples = output
-            .len()
-            .min(((time - self.t).max(0.0) / t_step) as usize);
-        let time_recip = time.recip();
-
-        for out in output.iter_mut().take(samples) {
-            *out = self
-                .interval
-                .mul_add(self.curve_fn.calc(self.t * time_recip), self.value_from);
-            self.t += t_step;
-        }
-
-        *sample_from += samples;
-        self.phase = self.t * time_recip;
-
-        if samples < output.len() {
-            CurveBlockResult::Done
-        } else {
-            CurveBlockResult::HasMore
+            released: false,
+            done: true,
         }
     }
 }
 
-enum Stage {
-    Delay(CurveIter),
-    Attack(CurveIter),
-    Hold(CurveIter),
-    Decay(CurveIter),
-    Sustain,
-    Release(CurveIter),
-    Flush(CurveIter),
-    Done,
-}
-
-impl Stage {
-    fn phase(&self) -> EnvelopePhase {
-        match self {
-            Self::Delay(iter) => EnvelopePhase::Delay(iter.phase),
-            Self::Attack(iter) => EnvelopePhase::Attack(iter.phase),
-            Self::Hold(iter) => EnvelopePhase::Hold(iter.phase),
-            Self::Decay(iter) => EnvelopePhase::Decay(iter.phase),
-            Self::Sustain => EnvelopePhase::Sustain,
-            Self::Release(iter) => EnvelopePhase::Release(iter.phase),
-            Self::Flush(_) => EnvelopePhase::Done,
-            Self::Done => EnvelopePhase::Done,
-        }
-    }
+/// Stage times shorter than [`MIN_TIME_THRESHOLD`] collapse to zero length.
+fn stage_time(time: Sample) -> Sample {
+    if time < MIN_TIME_THRESHOLD { 0.0 } else { time }
 }
 
 struct Voice {
-    stage: Stage,
+    /// Seconds since trigger, or since release started once `release` is set.
+    t: Sample,
+    /// Envelope value at which the release started.
+    release: Option<Sample>,
+    /// Pending release event from `process_events`.
     released: Option<usize>,
     next_frame_value: Sample,
-    smoother: Smoother,
+    done: bool,
 }
 
 impl Default for Voice {
     fn default() -> Self {
         Self {
-            stage: Stage::Done,
+            t: 0.0,
+            release: None,
             released: None,
             next_frame_value: 0.0,
-            smoother: Smoother::default(),
+            done: true,
         }
     }
 }
@@ -325,126 +249,81 @@ impl Envelope {
         let mut router = rf.for_voice2(target, &mut self.triggers, outputs);
         let inputs = &self.inputs;
         let params = &self.params;
-        let channel = &mut self.channel_params[channel_idx];
+        let channel = &self.channel_params[channel_idx];
         let voice = &mut self.voices[channel_idx][voice_idx];
         let t_step = router.sample_rate().recip();
 
         if router.triggered() {
+            voice.t = 0.0;
+            voice.release = None;
             voice.next_frame_value = 0.0;
-            voice.smoother.reset(0.0);
-            voice.stage = Stage::Delay(CurveIter::flat(0.0));
+            voice.done = false;
         }
 
-        if voice.released.is_some() {
-            voice.stage = Stage::Release(CurveIter::new(
-                params.release_curvature,
-                voice.next_frame_value,
-                0.0,
-            ));
-            voice.released = None;
-        }
+        let release_idx = voice
+            .released
+            .take()
+            .map(|offset| router.sample_idx(offset));
 
-        let mut sample_from = 0;
+        let delay = stage_time(router.scalar(&inputs.delay, channel.delay));
+        let attack = stage_time(router.scalar(&inputs.attack, channel.attack));
+        let hold = stage_time(router.scalar(&inputs.hold, channel.hold));
+        let decay = stage_time(router.scalar(&inputs.decay, channel.decay));
+        let sustain = router
+            .scalar(&inputs.sustain, channel.sustain)
+            .clamp(0.0, 1.0);
+        let release_time = stage_time(router.scalar(&inputs.release, channel.release));
 
-        loop {
-            voice.stage = match &mut voice.stage {
-                Stage::Delay(curve) => {
-                    match curve.next_block(
-                        t_step,
-                        router.scalar(&inputs.delay, channel.delay),
-                        &mut sample_from,
-                        router.output(),
-                    ) {
-                        CurveBlockResult::Done => {
-                            Stage::Attack(CurveIter::new(params.attack_curvature, 0.0, 1.0))
-                        }
-                        CurveBlockResult::HasMore => break,
-                    }
+        let attack_end = delay + attack;
+        let hold_end = attack_end + hold;
+        let decay_end = hold_end + decay;
+
+        let attack_curve = Exponential::new(params.attack_curvature);
+        let decay_curve = Exponential::new(params.decay_curvature);
+        let release_curve = Exponential::new(params.release_curvature);
+
+        for (idx, out) in router.output().iter_mut().enumerate() {
+            let t = voice.t;
+
+            let value = if let Some(from) = voice.release {
+                if t < release_time {
+                    from * (1.0 - release_curve.calc(t / release_time))
+                } else {
+                    0.0
                 }
-                Stage::Attack(curve) => {
-                    match curve.next_block(
-                        t_step,
-                        router.scalar(&inputs.attack, channel.attack),
-                        &mut sample_from,
-                        router.output(),
-                    ) {
-                        CurveBlockResult::Done => Stage::Hold(CurveIter::flat(1.0)),
-                        CurveBlockResult::HasMore => break,
-                    }
-                }
-                Stage::Hold(curve) => {
-                    match curve.next_block(
-                        t_step,
-                        router.scalar(&inputs.hold, channel.hold),
-                        &mut sample_from,
-                        router.output(),
-                    ) {
-                        CurveBlockResult::Done => Stage::Decay(CurveIter::new(
-                            params.decay_curvature,
-                            1.0,
-                            channel.sustain,
-                        )),
-                        CurveBlockResult::HasMore => break,
-                    }
-                }
-                Stage::Decay(curve) => {
-                    match curve.next_block(
-                        t_step,
-                        router.scalar(&inputs.decay, channel.decay),
-                        &mut sample_from,
-                        router.output(),
-                    ) {
-                        CurveBlockResult::Done => Stage::Sustain,
-                        CurveBlockResult::HasMore => break,
-                    }
-                }
-                Stage::Sustain => {
-                    let sustain = router
-                        .scalar(&inputs.sustain, channel.sustain)
-                        .clamp(0.0, 1.0);
-                    router.output()[sample_from..].fill(sustain);
-                    break;
-                }
-                Stage::Release(curve) => {
-                    match curve.next_block(
-                        t_step,
-                        router.scalar(&inputs.release, channel.release),
-                        &mut sample_from,
-                        router.output(),
-                    ) {
-                        CurveBlockResult::Done => Stage::Flush(CurveIter::flat(0.0)),
-                        CurveBlockResult::HasMore => break,
-                    }
-                }
-                Stage::Flush(curve) => {
-                    match curve.next_block(
-                        t_step,
-                        channel.smooth,
-                        &mut sample_from,
-                        router.output(),
-                    ) {
-                        CurveBlockResult::Done => Stage::Done,
-                        CurveBlockResult::HasMore => break,
-                    }
-                }
-                Stage::Done => {
-                    router.output()[sample_from..].fill(0.0);
-                    break;
-                }
+            } else if t < delay {
+                0.0
+            } else if t < attack_end {
+                attack_curve.calc((t - delay) / attack)
+            } else if t < hold_end {
+                1.0
+            } else if t < decay_end {
+                (sustain - 1.0).mul_add(decay_curve.calc((t - hold_end) / decay), 1.0)
+            } else {
+                sustain
             };
+
+            if release_idx == Some(idx) {
+                voice.release = Some(value);
+                voice.t = 0.0;
+            }
+
+            *out = value;
+            voice.t += t_step;
         }
 
         voice.next_frame_value = *router.output().last().expect("output isn't empty");
+        voice.done = voice
+            .release
+            .is_some_and(|_| voice.t >= release_time);
 
         if router.need_update_ui_mono() {
-            self.audio_end.update_phase(voice.stage.phase());
+            self.audio_end.update_phase(EnvelopePhase {
+                t: voice.t,
+                released: voice.release.is_some(),
+                done: voice.done,
+            });
         }
-
-        voice.smoother.apply_if_needed2(
-            router.sample_rate(),
-            channel.smooth,
-            router.audio_output(),
-        );
     }
 }
 
@@ -514,7 +393,7 @@ impl SynthModule for Envelope {
                     let voice = &channel[decaying.index()];
                     let trigger = trigger_channel[decaying.index()];
 
-                    if !matches!(voice.stage, Stage::Done) || trigger.is_some() {
+                    if !voice.done || trigger.is_some() {
                         decaying.mark_active();
                     }
                 }
