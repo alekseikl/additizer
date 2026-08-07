@@ -252,7 +252,7 @@ impl Lfo {
     ) {
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
-        let (mut router, mut voice_output) = rf.for_voice2(&target, &mut self.triggers, outputs);
+        let (mut router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
         let inputs = &self.inputs;
         let params = &self.params;
         let channel = &mut self.channel_params[channel_idx];
@@ -387,7 +387,7 @@ impl SynthModule for Lfo {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_control2(self.id, self.output_slot, |rf, target, outputs| {
+        ctx.for_control(self.id, self.output_slot, |rf, target, outputs| {
             self.process_voice(target, outputs, rf);
         });
 

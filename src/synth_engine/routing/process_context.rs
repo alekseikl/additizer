@@ -39,24 +39,6 @@ impl<'c> ProcessContext<'c> {
         &'f mut self,
         module_id: ModuleId,
         output_slot: usize,
-        f: impl FnOnce(&mut RouterFactory<'f, 'c, AudioRouterType>, &mut VoicesLayout<SamplesOutput>),
-    ) where
-        'c: 'f,
-    {
-        RouterFactory {
-            ctx: self,
-            module_id,
-            data_type: AudioRouterType {
-                samples_slot: output_slot,
-            },
-        }
-        .with_output_slot(f);
-    }
-
-    pub fn for_audio2<'f>(
-        &'f mut self,
-        module_id: ModuleId,
-        output_slot: usize,
         f: impl FnMut(
             &mut RouterFactory<'f, 'c, AudioRouterType>,
             VoiceTarget,
@@ -72,28 +54,10 @@ impl<'c> ProcessContext<'c> {
                 samples_slot: output_slot,
             },
         }
-        .with_output_slot2(f);
-    }
-
-    pub fn for_control<'f>(
-        &'f mut self,
-        module_id: ModuleId,
-        output_slot: usize,
-        f: impl FnOnce(&mut RouterFactory<'f, 'c, ControlRouterType>, &mut VoicesLayout<SamplesOutput>),
-    ) where
-        'c: 'f,
-    {
-        RouterFactory {
-            ctx: self,
-            module_id,
-            data_type: ControlRouterType {
-                samples_slot: output_slot,
-            },
-        }
         .with_output_slot(f);
     }
 
-    pub fn for_control2<'f>(
+    pub fn for_control<'f>(
         &'f mut self,
         module_id: ModuleId,
         output_slot: usize,
@@ -112,31 +76,10 @@ impl<'c> ProcessContext<'c> {
                 samples_slot: output_slot,
             },
         }
-        .with_output_slot2(f);
-    }
-
-    pub fn for_spectral<'f>(
-        &'f mut self,
-        module_id: ModuleId,
-        output_slot: usize,
-        f: impl FnOnce(
-            &mut RouterFactory<'f, 'c, SpectralRouterType>,
-            &mut VoicesLayout<SpectralOutput>,
-        ),
-    ) where
-        'c: 'f,
-    {
-        RouterFactory {
-            ctx: self,
-            module_id,
-            data_type: SpectralRouterType {
-                spectral_slot: output_slot,
-            },
-        }
         .with_output_slot(f);
     }
 
-    pub fn for_spectral2<'f>(
+    pub fn for_spectral<'f>(
         &'f mut self,
         module_id: ModuleId,
         output_slot: usize,
@@ -155,7 +98,7 @@ impl<'c> ProcessContext<'c> {
                 spectral_slot: output_slot,
             },
         }
-        .with_output_slot2(f);
+        .with_output_slot(f);
     }
 
     pub fn for_output<'f>(

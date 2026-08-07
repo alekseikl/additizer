@@ -5,7 +5,6 @@ use crate::synth_engine::{
         InputSlots, ProcessContext, SamplesOutput, SpectralOutput, process_context::VoiceTarget,
     },
     smooth::SmoothedSample,
-    voices_handler::PlayingVoice,
 };
 
 pub trait RouterDataType {
@@ -141,43 +140,10 @@ impl<'f, 'c, D: RouterDataType> RouterFactory<'f, 'c, D> {
 
         bandwidth + 1 // Add DC
     }
-
-    pub fn for_voice<'voice>(
-        &'voice mut self,
-        channel_idx: usize,
-        playing_voice: PlayingVoice,
-        seq_idx: usize,
-    ) -> VoiceRouter<'voice, 'f, 'c, D>
-    where
-        'f: 'voice,
-    {
-        VoiceRouter {
-            factory: self,
-            channel_idx,
-            playing_voice,
-            seq_idx,
-        }
-    }
 }
 
 impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
     pub fn with_output_slot(
-        &mut self,
-        f: impl FnOnce(&mut Self, &mut VoicesLayout<SamplesOutput>),
-    ) {
-        let mut slot = self.ctx.outputs_arena.samples[self.data_type.samples_slot]
-            .slot
-            .take()
-            .expect("slot should be in place");
-
-        f(self, &mut slot);
-
-        self.ctx.outputs_arena.samples[self.data_type.samples_slot]
-            .slot
-            .replace(slot);
-    }
-
-    pub fn with_output_slot2(
         &mut self,
         mut f: impl FnMut(&mut Self, VoiceTarget, &mut VoicesLayout<SamplesOutput>),
     ) {
@@ -204,13 +170,13 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
             .replace(slot);
     }
 
-    pub fn for_voice2<'voice>(
+    pub fn for_voice<'voice>(
         &'voice mut self,
         target: &'voice VoiceTarget,
         triggers: &'voice mut VoicesLayout<Option<usize>>,
         outputs: &'voice mut VoicesLayout<SamplesOutput>,
     ) -> (
-        VoiceRouter2<'voice, 'f, 'c, AudioRouterType>,
+        VoiceRouter<'voice, 'f, 'c, AudioRouterType>,
         VoiceOutput<'voice, AudioRouterType>,
     )
     where
@@ -218,6 +184,7 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
     {
         let triggered = triggers[target.channel_idx][target.voice_idx];
         let samples = self.params().samples;
+        // Audio is sample-aligned: no trigger → offset 0; else silence [0..offset].
         let state = AudioVoiceState {
             offset: triggered.unwrap_or(0),
             bandwidth: self.bandwidth(target.note_bandwidth),
@@ -229,7 +196,7 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
         }
 
         (
-            VoiceRouter2 {
+            VoiceRouter {
                 factory: self,
                 target,
                 state,
@@ -248,22 +215,6 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
 impl<'f, 'c> RouterFactory<'f, 'c, ControlRouterType> {
     pub fn with_output_slot(
         &mut self,
-        f: impl FnOnce(&mut Self, &mut VoicesLayout<SamplesOutput>),
-    ) {
-        let mut slot = self.ctx.outputs_arena.samples[self.data_type.samples_slot]
-            .slot
-            .take()
-            .expect("slot should be in place");
-
-        f(self, &mut slot);
-
-        self.ctx.outputs_arena.samples[self.data_type.samples_slot]
-            .slot
-            .replace(slot);
-    }
-
-    pub fn with_output_slot2(
-        &mut self,
         mut f: impl FnMut(&mut Self, VoiceTarget, &mut VoicesLayout<SamplesOutput>),
     ) {
         let mut slot = self.ctx.outputs_arena.samples[self.data_type.samples_slot]
@@ -289,13 +240,13 @@ impl<'f, 'c> RouterFactory<'f, 'c, ControlRouterType> {
             .replace(slot);
     }
 
-    pub fn for_voice2<'voice>(
+    pub fn for_voice<'voice>(
         &'voice mut self,
         target: &'voice VoiceTarget,
         triggers: &'voice mut VoicesLayout<Option<usize>>,
         outputs: &'voice mut VoicesLayout<SamplesOutput>,
     ) -> (
-        VoiceRouter2<'voice, 'f, 'c, ControlRouterType>,
+        VoiceRouter<'voice, 'f, 'c, ControlRouterType>,
         VoiceOutput<'voice, ControlRouterType>,
     )
     where
@@ -304,6 +255,8 @@ impl<'f, 'c> RouterFactory<'f, 'c, ControlRouterType> {
         let triggered = triggers[target.channel_idx][target.voice_idx];
         let samples = self.params().samples;
         let output = &mut outputs[target.channel_idx][target.voice_idx];
+        // Control runs 1 sample ahead: no trigger → offset 1 (seed buffer[0]);
+        // Some(0) is a real note-on at sample 0, distinct from the non-trigger case.
         let state = ControlVoiceState {
             offset: triggered.unwrap_or(1),
             triggered: triggered.is_some(),
@@ -316,7 +269,7 @@ impl<'f, 'c> RouterFactory<'f, 'c, ControlRouterType> {
         }
 
         (
-            VoiceRouter2 {
+            VoiceRouter {
                 factory: self,
                 target,
                 state,
@@ -334,22 +287,6 @@ impl<'f, 'c> RouterFactory<'f, 'c, ControlRouterType> {
 
 impl<'f, 'c> RouterFactory<'f, 'c, SpectralRouterType> {
     pub fn with_output_slot(
-        &mut self,
-        f: impl FnOnce(&mut Self, &mut VoicesLayout<SpectralOutput>),
-    ) {
-        let mut slot = self.ctx.outputs_arena.spectral[self.data_type.spectral_slot]
-            .slot
-            .take()
-            .expect("slot should be in place");
-
-        f(self, &mut slot);
-
-        self.ctx.outputs_arena.spectral[self.data_type.spectral_slot]
-            .slot
-            .replace(slot);
-    }
-
-    pub fn with_output_slot2(
         &mut self,
         mut f: impl FnMut(&mut Self, VoiceTarget, &mut VoicesLayout<SpectralOutput>) -> bool,
     ) {
@@ -378,13 +315,13 @@ impl<'f, 'c> RouterFactory<'f, 'c, SpectralRouterType> {
             .replace(slot);
     }
 
-    pub fn for_voice2<'voice>(
+    pub fn for_voice<'voice>(
         &'voice mut self,
         target: &'voice VoiceTarget,
         triggers: &'voice mut VoicesLayout<Option<usize>>,
         outputs: &'voice mut VoicesLayout<SpectralOutput>,
     ) -> (
-        VoiceRouter2<'voice, 'f, 'c, SpectralRouterType>,
+        VoiceRouter<'voice, 'f, 'c, SpectralRouterType>,
         VoiceOutput<'voice, SpectralRouterType>,
     )
     where
@@ -392,13 +329,15 @@ impl<'f, 'c> RouterFactory<'f, 'c, SpectralRouterType> {
     {
         let triggered = triggers[target.channel_idx][target.voice_idx];
         let samples = self.params().samples;
+        // Spectral is block-rate: Option<offset> indexes control scalars and marks
+        // this_frame for dual-buffer reads; sample offset does not slice the spectrum.
         let state = SpectralVoiceState {
             bandwidth: self.bandwidth(target.note_bandwidth),
             triggered,
         };
 
         (
-            VoiceRouter2 {
+            VoiceRouter {
                 factory: self,
                 target,
                 state,
@@ -415,14 +354,14 @@ impl<'f, 'c> RouterFactory<'f, 'c, SpectralRouterType> {
 }
 
 impl<'f, 'c> RouterFactory<'f, 'c, OutputRouterType> {
-    pub fn for_voice2<'voice>(
+    pub fn for_voice<'voice>(
         &'voice mut self,
         target: &'voice VoiceTarget,
-    ) -> VoiceRouter2<'voice, 'f, 'c, OutputRouterType>
+    ) -> VoiceRouter<'voice, 'f, 'c, OutputRouterType>
     where
         'f: 'voice,
     {
-        VoiceRouter2 {
+        VoiceRouter {
             factory: self,
             target,
             state: OutputVoiceState,
@@ -430,211 +369,7 @@ impl<'f, 'c> RouterFactory<'f, 'c, OutputRouterType> {
     }
 }
 
-pub struct VoiceRouter<'v, 'f, 'c, S: RouterDataType> {
-    factory: &'v mut RouterFactory<'f, 'c, S>,
-    channel_idx: usize,
-    playing_voice: PlayingVoice,
-    seq_idx: usize,
-}
-
-impl<'v, 'f, 'c, S: RouterDataType> VoiceRouter<'v, 'f, 'c, S> {
-    pub fn samples(&self) -> usize {
-        self.factory.ctx.params.samples
-    }
-
-    pub fn sample_rate(&self) -> Sample {
-        self.factory.ctx.params.sample_rate
-    }
-
-    pub fn channel_idx(&self) -> usize {
-        self.channel_idx
-    }
-
-    pub fn voice_idx(&self) -> usize {
-        self.playing_voice.voice_idx()
-    }
-
-    pub fn need_update_ui(&self) -> bool {
-        self.seq_idx == 0 && self.factory.params().needs_update_ui
-    }
-
-    pub fn need_update_ui_mono(&self) -> bool {
-        self.seq_idx == 0 && self.channel_idx == 0 && self.factory.params().needs_update_ui
-    }
-
-    fn buff_impl(&mut self, slot: Option<usize>) -> &[Sample] {
-        self.factory
-            .ctx
-            .outputs_arena
-            .get_buff(slot, self.channel_idx, self.voice_idx())
-            .unwrap_or(&ZEROES_BUFFER)
-    }
-
-    fn scalar_param_impl(&mut self, input: &InputSlots, param: Sample, triggered: bool) -> Sample {
-        if let Some(modulated_amount) = self.factory.ctx.outputs_arena.get_scalar(
-            &input.slots,
-            self.channel_idx,
-            self.voice_idx(),
-            triggered.then_some(0),
-        ) {
-            let value = param + modulated_amount;
-
-            if self.need_update_ui() {
-                self.factory.ctx.audio_end.update_modulated_input(
-                    self.factory.module_id,
-                    input.input_type,
-                    self.channel_idx as u8,
-                    value,
-                    input.normalized_modulated(self.channel_idx, modulated_amount),
-                );
-            }
-
-            value
-        } else {
-            param
-        }
-    }
-
-    fn spectral_impl(&self, slot: Option<usize>, triggered: bool) -> &[ComplexSample] {
-        let buff = self
-            .factory
-            .ctx
-            .outputs_arena
-            .get_spectral(slot, self.channel_idx, self.voice_idx(), triggered)
-            .unwrap_or(&ZEROES_SPECTRAL_BUFFER);
-
-        let bandwidth = self.factory.params().bandwidth;
-
-        let bandwidth = if bandwidth == 0 {
-            self.playing_voice.note_bandwidth()
-        } else {
-            bandwidth
-        } + 1; // Add DC
-
-        &buff[..buff.len().min(bandwidth)]
-    }
-}
-
-impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
-    pub fn buff(&mut self, slot: Option<usize>) -> &[Sample] {
-        self.buff_impl(slot)
-    }
-
-    pub fn buff_param(
-        &mut self,
-        input: &InputSlots,
-        param: &mut SmoothedSample,
-        buff: &mut Buffer,
-    ) {
-        let params = &self.factory.ctx.params;
-        let buff = &mut buff[..params.samples];
-
-        if param.check_needs_smoothing(&params.smooth_params) {
-            param.smoothed_buff(buff, &params.smooth_params);
-        } else {
-            buff.fill(param.get());
-        }
-
-        if self.factory.ctx.outputs_arena.add_buff_to(
-            &input.slots,
-            self.channel_idx,
-            self.voice_idx(),
-            0,
-            buff,
-        ) && self.need_update_ui()
-        {
-            let value = buff[0];
-
-            self.factory.ctx.audio_end.update_modulated_input(
-                self.factory.module_id,
-                input.input_type,
-                self.channel_idx as u8,
-                value,
-                input.normalized_modulated(self.channel_idx, value - param.get()),
-            );
-        }
-    }
-
-    pub fn scalar_param(&mut self, input: &InputSlots, param: Sample, triggered: bool) -> Sample {
-        self.scalar_param_impl(input, param, triggered)
-    }
-
-    pub fn spectral(&self, slot: Option<usize>, triggered: bool) -> &[ComplexSample] {
-        self.spectral_impl(slot, triggered)
-    }
-
-    pub fn param_stationary_at(
-        &self,
-        input: &InputSlots,
-        param: &SmoothedSample,
-        value: Sample,
-    ) -> bool {
-        !param.check_needs_smoothing(&self.factory.ctx.params.smooth_params)
-            && (param.get() - value).abs() < 1e-6
-            && input.is_empty()
-    }
-}
-
-impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
-    pub fn buff_param(
-        &mut self,
-        input: &InputSlots,
-        param: &mut SmoothedSample,
-        buff: &mut Buffer,
-        triggered: bool,
-    ) {
-        let skip = usize::from(!triggered);
-        let params = &self.factory.ctx.params;
-        let buff = &mut buff[..params.samples + 1 - skip];
-
-        if param.check_needs_smoothing(&params.smooth_params) {
-            param.smoothed_buff(buff, &params.smooth_params);
-        } else {
-            buff.fill(param.get());
-        }
-
-        if self.factory.ctx.outputs_arena.add_buff_to(
-            &input.slots,
-            self.channel_idx,
-            self.voice_idx(),
-            skip,
-            buff,
-        ) {
-            let value = buff[0];
-
-            self.factory.ctx.audio_end.update_modulated_input(
-                self.factory.module_id,
-                input.input_type,
-                self.channel_idx as u8,
-                value,
-                input.normalized_modulated(self.channel_idx, value - param.get()),
-            );
-        }
-    }
-
-    pub fn scalar_param(&mut self, input: &InputSlots, param: Sample, triggered: bool) -> Sample {
-        self.scalar_param_impl(input, param, triggered)
-    }
-}
-
-impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, SpectralRouterType> {
-    pub fn scalar_param(&mut self, input: &InputSlots, param: Sample, triggered: bool) -> Sample {
-        self.scalar_param_impl(input, param, triggered)
-    }
-
-    pub fn spectral(&self, slot: Option<usize>, triggered: bool) -> &[ComplexSample] {
-        self.spectral_impl(slot, triggered)
-    }
-}
-
-impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, OutputRouterType> {
-    pub fn buff(&mut self, slot: Option<usize>) -> &[Sample] {
-        self.buff_impl(slot)
-    }
-}
-
-//================================
-pub struct VoiceRouter2<'v, 'f, 'c, D: RouterDataType> {
+pub struct VoiceRouter<'v, 'f, 'c, D: RouterDataType> {
     factory: &'v mut RouterFactory<'f, 'c, D>,
     target: &'v VoiceTarget,
     state: D::VoiceState,
@@ -648,17 +383,9 @@ pub struct VoiceOutput<'v, D: RouterDataType> {
     samples: usize,
 }
 
-impl<'v, 'f, 'c, D: RouterDataType> VoiceRouter2<'v, 'f, 'c, D> {
+impl<'v, 'f, 'c, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D> {
     pub fn sample_rate(&self) -> Sample {
         self.factory.ctx.params.sample_rate
-    }
-
-    pub fn channel_idx(&self) -> usize {
-        self.target.channel_idx
-    }
-
-    pub fn voice_idx(&self) -> usize {
-        self.target.voice_idx
     }
 
     pub fn need_update_ui(&self) -> bool {
@@ -721,7 +448,7 @@ impl<'v, 'f, 'c, D: RouterDataType> VoiceRouter2<'v, 'f, 'c, D> {
     }
 }
 
-impl<'v, 'f, 'c> VoiceRouter2<'v, 'f, 'c, AudioRouterType> {
+impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
     pub fn samples(&self) -> usize {
         self.factory.ctx.params.samples - self.state.offset
     }
@@ -795,9 +522,13 @@ impl<'v> VoiceOutput<'v, AudioRouterType> {
     }
 }
 
-impl<'v, 'f, 'c> VoiceRouter2<'v, 'f, 'c, ControlRouterType> {
+impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
     pub fn samples(&self) -> usize {
         self.factory.ctx.params.samples - self.state.offset + 1
+    }
+
+    pub fn offset(&self) -> usize {
+        self.state.offset
     }
 
     pub fn triggered(&self) -> bool {
@@ -805,7 +536,7 @@ impl<'v, 'f, 'c> VoiceRouter2<'v, 'f, 'c, ControlRouterType> {
     }
 
     /// Maps an in-block sample offset to an index into [`VoiceOutput::output`].
-    pub fn sample_idx(&self, offset: usize) -> usize {
+    pub fn block_to_voice_offset(&self, offset: usize) -> usize {
         offset.saturating_sub(self.state.offset)
     }
 
@@ -859,9 +590,39 @@ impl<'v> VoiceOutput<'v, ControlRouterType> {
         &mut self.outputs[self.target.channel_idx][self.target.voice_idx].buffer
             [offset..self.samples]
     }
+
+    /// External control sources are not written 1 sample ahead.
+    /// in_buff is aligned with processing block.
+    pub fn fill_with_ext_control(&mut self, in_buff: &[Sample]) {
+        let offset = if self.state.triggered {
+            self.state.offset
+        } else {
+            0
+        };
+        let in_buff = &in_buff[offset.min(in_buff.len())..];
+        let len = in_buff.len();
+        let last = in_buff[len - 1];
+        let output = &mut self.outputs[self.target.channel_idx][self.target.voice_idx];
+
+        output.buffer[offset..offset + len].copy_from_slice(in_buff);
+        output.buffer[offset + len] = last;
+        output.next_frame_sample = last;
+    }
+
+    pub fn fill_with_ext_control_value(&mut self, value: Sample) {
+        let offset = if self.state.triggered {
+            self.state.offset
+        } else {
+            0
+        };
+        let output = &mut self.outputs[self.target.channel_idx][self.target.voice_idx];
+
+        output.buffer[offset..self.samples + 1].fill(value);
+        output.next_frame_sample = value;
+    }
 }
 
-impl<'v, 'f, 'c> VoiceRouter2<'v, 'f, 'c, SpectralRouterType> {
+impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, SpectralRouterType> {
     pub fn triggered(&self) -> bool {
         self.state.triggered.is_some()
     }
@@ -896,12 +657,8 @@ impl<'v, D: RouterDataType> Drop for VoiceOutput<'v, D> {
     }
 }
 
-impl<'v, 'f, 'c> VoiceRouter2<'v, 'f, 'c, OutputRouterType> {
-    pub fn samples(&self) -> usize {
-        self.factory.ctx.params.samples
-    }
-
-    fn direct(&mut self, slot: Option<usize>) -> &[Sample] {
+impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, OutputRouterType> {
+    pub fn direct(&mut self, slot: Option<usize>) -> &[Sample] {
         let ctx = &self.factory.ctx;
 
         &ctx.outputs_arena

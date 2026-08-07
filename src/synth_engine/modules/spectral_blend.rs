@@ -128,7 +128,7 @@ impl SpectralBlend {
         outputs: &mut VoicesLayout<SpectralOutput>,
         rf: &mut RouterFactory<SpectralRouterType>,
     ) -> bool {
-        let (mut router, mut voice_output) = rf.for_voice2(&target, &mut self.triggers, outputs);
+        let (mut router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
         let inputs = &self.inputs;
         let channel = &self.channel_params[target.channel_idx];
 
@@ -209,7 +209,7 @@ impl SynthModule for SpectralBlend {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_spectral2(self.id, self.output_slot, |rf, target, outputs| {
+        ctx.for_spectral(self.id, self.output_slot, |rf, target, outputs| {
             self.process_voice(target, outputs, rf)
         });
     }

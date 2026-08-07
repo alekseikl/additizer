@@ -10,7 +10,7 @@ use crate::{
         iir_decimator::IirDecimator,
         routing::{
             DataType, InputMeta, InputSlots, MAX_VOICES, NUM_CHANNELS, ProcessContext,
-            SpectralInputSlot, VoiceEvent,
+            SpectralInputSlot, VoiceEvent, VoiceTarget,
         },
         smooth::{InfiniteSmoothed, SmoothedSample},
         voices_handler::DecayingVoice,
@@ -209,15 +209,21 @@ impl SynthModule for Output {
             self.output.iter_mut().zip(self.gain.iter_mut()).enumerate()
         {
             for seq_idx in 0..num_active_voices {
-                let playing_voice = rf.params().active_voices[seq_idx];
-                let mut router = rf.for_voice(channel_idx, playing_voice, seq_idx);
+                let playing = rf.params().active_voices[seq_idx];
+                let target = VoiceTarget {
+                    channel_idx,
+                    voice_idx: playing.voice_idx(),
+                    note_bandwidth: playing.note_bandwidth(),
+                    is_last: seq_idx == 0,
+                };
+                let mut router = rf.for_voice(&target);
 
                 copy_to_buffer(
                     &mut self.input_buffer[..samples],
-                    router.buff(self.audio_input).iter().copied(),
+                    router.direct(self.audio_input).iter().copied(),
                 );
 
-                let voice = &mut self.channels[channel_idx].voices[playing_voice.voice_idx()];
+                let voice = &mut self.channels[channel_idx].voices[target.voice_idx];
 
                 if voice.killing {
                     let power: Sample = -5.0;

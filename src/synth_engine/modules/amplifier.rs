@@ -133,7 +133,7 @@ impl Amplifier {
         outputs: &mut VoicesLayout<SamplesOutput>,
         rf: &mut RouterFactory<AudioRouterType>,
     ) {
-        let (mut router, mut voice_output) = rf.for_voice2(&target, &mut self.triggers, outputs);
+        let (mut router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
         let inputs = &self.inputs;
         let channel = &mut self.channel_params[target.channel_idx];
 
@@ -155,8 +155,7 @@ impl Amplifier {
         if router.need_update_ui() {
             let level = self.out_volume_ballistics[target.channel_idx]
                 .process(output, router.sample_rate());
-            self.audio_end
-                .update_out_volume(target.channel_idx, level);
+            self.audio_end.update_out_volume(target.channel_idx, level);
         }
     }
 }
@@ -221,7 +220,7 @@ impl SynthModule for Amplifier {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_audio2(self.id, self.output_slot, |rf, target, outputs| {
+        ctx.for_audio(self.id, self.output_slot, |rf, target, outputs| {
             self.process_voice(target, outputs, rf);
         });
 

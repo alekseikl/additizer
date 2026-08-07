@@ -340,7 +340,7 @@ impl Envelope {
     ) {
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
-        let (mut router, mut voice_output) = rf.for_voice2(&target, &mut self.triggers, outputs);
+        let (mut router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
         let inputs = &self.inputs;
         let params = &self.params;
         let channel = &self.channel_params[channel_idx];
@@ -357,7 +357,7 @@ impl Envelope {
         let release_idx = voice
             .released
             .take()
-            .map(|offset| router.sample_idx(offset));
+            .map(|offset| router.block_to_voice_offset(offset));
 
         let mut fill = FillStage {
             t: voice.t,
@@ -517,7 +517,7 @@ impl SynthModule for Envelope {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_control2(self.id, self.output_slot, |rf, target, outputs| {
+        ctx.for_control(self.id, self.output_slot, |rf, target, outputs| {
             self.process_voice(target, outputs, rf);
         });
     }

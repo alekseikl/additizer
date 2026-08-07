@@ -14,8 +14,8 @@ use crate::synth_engine::{
     Buffer, ModuleId, Sample,
     buffer::{VoicesLayout, new_voices_layout, zero_buffer},
     routing::{
-        ControlRouterType, DataType, InputMeta, NUM_CHANNELS, ProcessContext, SamplesOutput,
-        VoiceEvent, VoiceRouter,
+        ControlRouterType, DataType, InputMeta, ProcessContext, RouterFactory, SamplesOutput,
+        VoiceEvent, VoiceTarget,
     },
     smooth::Smoother,
     synth_module::SynthModule,
@@ -46,7 +46,6 @@ impl Params {
 }
 
 struct VoiceState {
-    triggered: bool,
     value_at_trigger: Sample,
     smoother: Smoother,
 }
@@ -54,14 +53,11 @@ struct VoiceState {
 impl Default for VoiceState {
     fn default() -> Self {
         Self {
-            triggered: false,
             value_at_trigger: 0.0,
             smoother: Smoother::default(),
         }
     }
 }
-
-type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, ControlRouterType>;
 
 pub struct ExternalParam {
     id: ModuleId,
@@ -71,6 +67,7 @@ pub struct ExternalParam {
     ui_end: Option<UiEnd>,
     output_slot: usize,
     mono_buff: Buffer,
+    triggers: VoicesLayout<Option<usize>>,
     voices: VoicesLayout<VoiceState>,
 }
 
@@ -99,6 +96,7 @@ impl ExternalParam {
             ui_end: Some(ui_end),
             output_slot: usize::MAX,
             mono_buff: zero_buffer(),
+            triggers: new_voices_layout(),
             voices: new_voices_layout(),
         }
     }
@@ -125,37 +123,37 @@ impl ExternalParam {
 
     fn process_voice(
         &mut self,
-        output_slot: &mut VoicesLayout<SamplesOutput>,
-        router: Router<'_, '_, '_>,
+        target: VoiceTarget,
+        outputs: &mut VoicesLayout<SamplesOutput>,
+        rf: &mut RouterFactory<ControlRouterType>,
     ) {
-        let channel_idx = router.channel_idx();
-        let voice_idx = router.voice_idx();
-        let voice = &mut self.voices[channel_idx][voice_idx];
-        let samples = router.samples();
-        let voice_output = &mut output_slot[channel_idx][voice_idx];
-        let mono = &self.mono_buff[..samples];
+        let block_samples = rf.params().samples;
+        let (router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
+        let voice = &mut self.voices[target.channel_idx][target.voice_idx];
+        let sample_rate = router.sample_rate();
+        let mono = &self.mono_buff[..block_samples];
 
-        if self.params.sample_on_trigger {
-            if voice.triggered {
-                voice.value_at_trigger = mono[0];
+        if router.triggered() {
+            let idx = router.offset().min(block_samples.saturating_sub(1));
+            let value = mono[idx];
+
+            if self.params.sample_on_trigger {
+                voice.value_at_trigger = value;
             }
 
-            voice_output.fill_with_ext_control_value(0, samples, voice.value_at_trigger);
+            voice.smoother.reset(value);
+        }
+
+        if self.params.sample_on_trigger {
+            voice_output.fill_with_ext_control_value(voice.value_at_trigger);
         } else {
-            voice_output.fill_with_ext_control(0, mono);
+            voice_output.fill_with_ext_control(mono);
         }
 
-        if voice.triggered {
-            voice.smoother.reset(mono[0]);
-        }
-
-        voice.triggered = false;
-
-        voice.smoother.apply_if_needed(
-            samples,
-            router.sample_rate(),
+        voice.smoother.apply_if_needed2(
+            sample_rate,
             self.params.smooth,
-            voice_output.output(samples),
+            voice_output.audio_output(),
         );
     }
 }
@@ -182,10 +180,13 @@ impl SynthModule for ExternalParam {
     }
 
     fn process_events(&mut self, events: &[VoiceEvent]) {
-        for channel in self.voices.iter_mut() {
+        for trigger_channel in self.triggers.iter_mut() {
             for event in events {
-                if let VoiceEvent::Trigger { voice_idx, .. } = event {
-                    channel[*voice_idx].triggered = true;
+                if let VoiceEvent::Trigger {
+                    voice_idx, offset, ..
+                } = event
+                {
+                    trigger_channel[*voice_idx] = Some(*offset);
                 }
             }
         }
@@ -203,33 +204,23 @@ impl SynthModule for ExternalParam {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_control(self.id, self.output_slot, |router, output| {
-            let num_active_voices = router.params().active_voices.len();
-            let samples = router.params().samples;
-            let param = &self.params_block.float_params[self.params.selected_param_index];
+        let samples = ctx.params.samples;
+        let param = &self.params_block.float_params[self.params.selected_param_index];
 
-            param.smoothed.next_block(&mut self.mono_buff, samples);
+        param.smoothed.next_block(&mut self.mono_buff, samples);
 
-            if router.params().needs_update_ui {
-                self.audio_end.update_value(self.mono_buff[0]);
+        if ctx.params.needs_update_ui {
+            self.audio_end.update_value(self.mono_buff[0]);
+        }
+
+        if self.params.make_bipolar {
+            for sample in &mut self.mono_buff[..samples] {
+                *sample = *sample * 2.0 - 1.0;
             }
+        }
 
-            if self.params.make_bipolar {
-                for sample in &mut self.mono_buff[..samples] {
-                    *sample = *sample * 2.0 - 1.0;
-                }
-            }
-
-            for channel_idx in 0..NUM_CHANNELS {
-                for seq_idx in 0..num_active_voices {
-                    let playing_voice = router.params().active_voices[seq_idx];
-
-                    self.process_voice(
-                        output,
-                        router.for_voice(channel_idx, playing_voice, seq_idx),
-                    );
-                }
-            }
+        ctx.for_control(self.id, self.output_slot, |rf, target, outputs| {
+            self.process_voice(target, outputs, rf);
         });
     }
 }

@@ -6,9 +6,9 @@ use crate::{
         StereoSample,
         buffer::{VoicesLayout, new_voices_layout},
         routing::{
-            DataType, Input, InputMeta, InputSlots, MixType, ModuleId, NUM_CHANNELS, ProcessContext,
-            RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent,
-            VoiceTarget, VolumeType,
+            DataType, Input, InputMeta, InputSlots, MixType, ModuleId, NUM_CHANNELS,
+            ProcessContext, RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType,
+            VoiceEvent, VoiceTarget, VolumeType,
         },
         synth_module::SynthModule,
         types::{ComplexSample, Sample},
@@ -279,7 +279,7 @@ impl SpectralMixer {
         outputs: &mut VoicesLayout<SpectralOutput>,
         rf: &mut RouterFactory<SpectralRouterType>,
     ) -> bool {
-        let (mut router, mut voice_output) = rf.for_voice2(&target, &mut self.triggers, outputs);
+        let (mut router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
         let inputs = &self.inputs;
         let channel = &self.channel_params[target.channel_idx];
         let voice_output = voice_output.output();
@@ -291,10 +291,9 @@ impl SpectralMixer {
             let input_channel = &channel.input_params[input_idx as usize];
 
             let gain = match input_params.volume_type {
-                VolumeType::Db => Self::to_gain(router.scalar(
-                    &inputs.level_mix[input_idx as usize],
-                    input_channel.level,
-                )),
+                VolumeType::Db => Self::to_gain(
+                    router.scalar(&inputs.level_mix[input_idx as usize], input_channel.level),
+                ),
                 VolumeType::Gain => {
                     router.scalar(&inputs.gain_mix[input_idx as usize], input_channel.gain)
                 }
@@ -418,7 +417,7 @@ impl SynthModule for SpectralMixer {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_spectral2(self.id, self.output_slot, |rf, target, outputs| {
+        ctx.for_spectral(self.id, self.output_slot, |rf, target, outputs| {
             self.process_voice(target, outputs, rf)
         });
     }

@@ -233,10 +233,11 @@ impl HarmonicEditor {
         let voice = &mut self.voices[target.channel_idx][target.voice_idx];
 
         if !voice.needs_update {
+            self.triggers[target.channel_idx][target.voice_idx] = None;
             return false;
         }
 
-        let (router, mut voice_output) = rf.for_voice2(&target, &mut self.triggers, outputs);
+        let (router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
         let out = voice_output.output();
         let triggered = router.triggered();
 
@@ -315,7 +316,7 @@ impl SynthModule for HarmonicEditor {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_spectral2(self.id, self.output_slot, |rf, target, outputs| {
+        ctx.for_spectral(self.id, self.output_slot, |rf, target, outputs| {
             self.process_voice(target, outputs, rf)
         });
     }

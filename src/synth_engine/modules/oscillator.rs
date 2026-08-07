@@ -17,7 +17,7 @@ use crate::{
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
             ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent,
-            VoiceRouter2, VoiceTarget,
+            VoiceRouter, VoiceTarget,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
@@ -360,7 +360,7 @@ impl Inputs {
     }
 }
 
-type Router<'v, 'f, 'c> = VoiceRouter2<'v, 'f, 'c, AudioRouterType>;
+type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, AudioRouterType>;
 
 pub struct Oscillator {
     buffers: Buffers,
@@ -866,7 +866,7 @@ impl Oscillator {
         let mono_spectrum = rf.params().spectrum_channels < NUM_CHANNELS;
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
-        let (mut router, mut voice_output) = rf.for_voice2(&target, &mut self.triggers, outputs);
+        let (mut router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
         let inputs = &self.inputs;
         let buffers = &mut self.buffers;
         let channel = &mut self.channel_params[channel_idx];
@@ -1133,7 +1133,7 @@ impl SynthModule for Oscillator {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_audio2(self.id, self.output_slot, |rf, target, outputs| {
+        ctx.for_audio(self.id, self.output_slot, |rf, target, outputs| {
             self.process_voice(target, outputs, rf);
         });
 
