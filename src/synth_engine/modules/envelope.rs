@@ -340,7 +340,7 @@ impl Envelope {
     ) {
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
-        let mut router = rf.for_voice2(target, &mut self.triggers, outputs);
+        let (mut router, mut voice_output) = rf.for_voice2(&target, &mut self.triggers, outputs);
         let inputs = &self.inputs;
         let params = &self.params;
         let channel = &self.channel_params[channel_idx];
@@ -376,37 +376,35 @@ impl Envelope {
             release_curve: Exponential::new(params.release_curvature),
         };
 
-        {
-            let mut sample_idx = 0;
-            let output = router.output();
-            let len = output.len();
+        let mut sample_idx = 0;
+        let output = voice_output.output();
+        let len = output.len();
 
-            while sample_idx < len {
-                if release_idx == Some(sample_idx) && fill.release.is_none() {
-                    fill.release = Some(voice.next_frame_value);
-                    fill.t = 0.0;
-                }
-
-                let limit = if fill.release.is_none() {
-                    release_idx.unwrap_or(len)
-                } else {
-                    len
-                };
-
-                let (n, stage_end) = fill.fill(&mut output[sample_idx..limit]);
-
-                if n == 0 {
-                    // Sub-sample remainder of a stage — snap to its boundary.
-                    if let Some(end) = stage_end {
-                        fill.t = end;
-                    }
-                    continue;
-                }
-
-                voice.next_frame_value = output[sample_idx + n - 1];
-                fill.t += n as Sample * fill.t_step;
-                sample_idx += n;
+        while sample_idx < len {
+            if release_idx == Some(sample_idx) && fill.release.is_none() {
+                fill.release = Some(voice.next_frame_value);
+                fill.t = 0.0;
             }
+
+            let limit = if fill.release.is_none() {
+                release_idx.unwrap_or(len)
+            } else {
+                len
+            };
+
+            let (n, stage_end) = fill.fill(&mut output[sample_idx..limit]);
+
+            if n == 0 {
+                // Sub-sample remainder of a stage — snap to its boundary.
+                if let Some(end) = stage_end {
+                    fill.t = end;
+                }
+                continue;
+            }
+
+            voice.next_frame_value = output[sample_idx + n - 1];
+            fill.t += n as Sample * fill.t_step;
+            sample_idx += n;
         }
 
         voice.t = fill.t;

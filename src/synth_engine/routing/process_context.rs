@@ -136,6 +136,28 @@ impl<'c> ProcessContext<'c> {
         .with_output_slot(f);
     }
 
+    pub fn for_spectral2<'f>(
+        &'f mut self,
+        module_id: ModuleId,
+        output_slot: usize,
+        f: impl FnMut(
+            &mut RouterFactory<'f, 'c, SpectralRouterType>,
+            VoiceTarget,
+            &mut VoicesLayout<SpectralOutput>,
+        ) -> bool,
+    ) where
+        'c: 'f,
+    {
+        RouterFactory {
+            ctx: self,
+            module_id,
+            data_type: SpectralRouterType {
+                spectral_slot: output_slot,
+            },
+        }
+        .with_output_slot2(f);
+    }
+
     pub fn for_output<'f>(
         &'f mut self,
         module_id: ModuleId,

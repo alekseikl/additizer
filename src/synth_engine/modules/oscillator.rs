@@ -866,7 +866,7 @@ impl Oscillator {
         let mono_spectrum = rf.params().spectrum_channels < NUM_CHANNELS;
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
-        let mut router = rf.for_voice2(target, &mut self.triggers, outputs);
+        let (mut router, mut voice_output) = rf.for_voice2(&target, &mut self.triggers, outputs);
         let inputs = &self.inputs;
         let buffers = &mut self.buffers;
         let channel = &mut self.channel_params[channel_idx];
@@ -919,9 +919,10 @@ impl Oscillator {
         let freq_phase_mult = Phase::freq_phase_mult(router.sample_rate());
         let buff_t_inc = (samples as f32).recip();
         let mut buff_t = 0.0;
+        let output = voice_output.output();
 
         for (out, &pitch, &phase_shift, freq_shift) in izip!(
-            router.output(),
+            output.iter_mut(),
             &buffers.pitch,
             &buffers.phase_shift,
             &buffers.frequency_shift,
@@ -955,7 +956,7 @@ impl Oscillator {
         if !router.param_stationary_at(&inputs.pan, &channel.pan, 0.0) {
             router.param(&inputs.pan, &mut channel.pan, &mut buffers.pan);
 
-            for (out, &pan) in router.output().iter_mut().zip(&buffers.pan) {
+            for (out, &pan) in output.iter_mut().zip(&buffers.pan) {
                 *out *= pan_gain(pan, channel_idx);
             }
         }
@@ -963,7 +964,7 @@ impl Oscillator {
         if !router.param_stationary_at(&inputs.gain, &channel.gain, 1.0) {
             router.param(&inputs.gain, &mut channel.gain, &mut buffers.gain);
 
-            for (out, gain) in router.output().iter_mut().zip(&buffers.gain) {
+            for (out, gain) in output.iter_mut().zip(&buffers.gain) {
                 *out *= gain;
             }
         }

@@ -13,7 +13,7 @@ pub use outputs_arena::OutputsArena;
 pub use process_context::{ProcessContext, ProcessParams, VoiceTarget};
 pub use voice_router::{
     AudioRouterType, ControlRouterType, OutputRouterType, RouterFactory, SpectralRouterType,
-    VoiceRouter, VoiceRouter2,
+    VoiceOutput, VoiceRouter, VoiceRouter2,
 };
 
 pub type ModuleId = i32;
