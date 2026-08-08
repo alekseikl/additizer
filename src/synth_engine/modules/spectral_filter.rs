@@ -10,15 +10,14 @@ pub use ui_bridge::SpectralFilterUiBridge;
 
 use crate::synth_engine::{
     StereoSample,
-    buffer::{VoicesLayout, new_voices_layout},
+    buffer::VoicesLayout,
     filters::spectral_filter::{
         FilterParams, FilterType, MAX_RESONANCE, MIN_RESONANCE,
         SpectralFilter as SpectralFilterEngine,
     },
     routing::{
         DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
-        RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceEvent,
-        VoiceTarget,
+        RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceTarget,
     },
     synth_module::SynthModule,
     types::Sample,
@@ -116,7 +115,6 @@ pub struct SpectralFilter {
     ui_end: Option<UiEnd>,
     inputs: Inputs,
     output_slot: usize,
-    triggers: VoicesLayout<Option<usize>>,
 }
 
 impl SpectralFilter {
@@ -140,7 +138,6 @@ impl SpectralFilter {
             ui_end: Some(ui_end),
             inputs: Inputs::default(),
             output_slot: usize::MAX,
-            triggers: new_voices_layout(),
         }
     }
 
@@ -176,11 +173,11 @@ impl SpectralFilter {
 
     fn process_voice(
         &mut self,
-        target: VoiceTarget,
+        target: &VoiceTarget,
         outputs: &mut VoicesLayout<SpectralOutput>,
         rf: &mut RouterFactory<SpectralRouterType>,
-    ) -> bool {
-        let (mut router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
+    ) {
+        let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
         let channel = &self.channel_params[target.channel_idx];
 
@@ -206,8 +203,6 @@ impl SpectralFilter {
         );
 
         filter.apply_response(input, voice_output.output());
-
-        router.triggered()
     }
 }
 
@@ -243,19 +238,6 @@ impl SynthModule for SpectralFilter {
         self.inputs = Inputs::from_slots(inputs, spectral_inputs);
     }
 
-    fn process_events(&mut self, events: &[VoiceEvent]) {
-        for trigger_channel in self.triggers.iter_mut() {
-            for event in events {
-                if let VoiceEvent::Trigger {
-                    voice_idx, offset, ..
-                } = event
-                {
-                    trigger_channel[*voice_idx] = Some(*offset);
-                }
-            }
-        }
-    }
-
     fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
         self.inputs.update_amount(input_type, src_slot, amount);
     }
@@ -279,7 +261,7 @@ impl SynthModule for SpectralFilter {
 
     fn process(&mut self, ctx: &mut ProcessContext) {
         ctx.for_spectral(self.id, self.output_slot, |rf, target, outputs| {
-            self.process_voice(target, outputs, rf)
+            self.process_voice(target, outputs, rf);
         });
     }
 }

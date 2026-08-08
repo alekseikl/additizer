@@ -272,7 +272,6 @@ pub struct Envelope {
     ui_end: Option<UiEnd>,
     inputs: Inputs,
     output_slot: usize,
-    triggers: VoicesLayout<Option<usize>>,
     voices: VoicesLayout<Voice>,
 }
 
@@ -297,7 +296,6 @@ impl Envelope {
             ui_end: Some(ui_end),
             inputs: Inputs::default(),
             output_slot: usize::MAX,
-            triggers: new_voices_layout(),
             voices: new_voices_layout(),
         }
     }
@@ -334,13 +332,13 @@ impl Envelope {
 
     fn process_voice(
         &mut self,
-        target: VoiceTarget,
+        target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
         rf: &mut RouterFactory<ControlRouterType>,
     ) {
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
-        let (mut router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
+        let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
         let params = &self.params;
         let channel = &self.channel_params[channel_idx];
@@ -460,14 +458,12 @@ impl SynthModule for Envelope {
     }
 
     fn process_events(&mut self, events: &[VoiceEvent]) {
-        for (channel, trigger_channel) in self.voices.iter_mut().zip(self.triggers.iter_mut()) {
+        for channel in self.voices.iter_mut() {
             for event in events {
                 match event {
-                    VoiceEvent::Trigger {
-                        voice_idx, offset, ..
-                    } => {
-                        trigger_channel[*voice_idx] = Some(*offset);
+                    VoiceEvent::Trigger { voice_idx, .. } => {
                         channel[*voice_idx].released = None;
+                        channel[*voice_idx].done = false;
                     }
                     VoiceEvent::Release {
                         voice_idx, offset, ..
@@ -483,11 +479,10 @@ impl SynthModule for Envelope {
     fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {
         if self.params.keep_voice_alive {
             for decaying in decaying_voices.iter_mut().filter(|d| d.is_done()) {
-                for (channel, trigger_channel) in self.voices.iter().zip(self.triggers.iter()) {
+                for channel in self.voices.iter() {
                     let voice = &channel[decaying.index()];
-                    let trigger = trigger_channel[decaying.index()];
 
-                    if !voice.done || trigger.is_some() {
+                    if !voice.done {
                         decaying.mark_active();
                     }
                 }

@@ -133,7 +133,6 @@ pub struct Lfo {
     ui_end: Option<UiEnd>,
     inputs: Inputs,
     output_slot: usize,
-    triggers: VoicesLayout<Option<usize>>,
     voices: VoicesLayout<VoiceState>,
 }
 
@@ -163,7 +162,6 @@ impl Lfo {
             ui_end: Some(ui_end),
             inputs: Inputs::default(),
             output_slot: usize::MAX,
-            triggers: new_voices_layout(),
             voices: new_voices_layout(),
         }
     }
@@ -246,13 +244,13 @@ impl Lfo {
 
     fn process_voice(
         &mut self,
-        target: VoiceTarget,
+        target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
         rf: &mut RouterFactory<ControlRouterType>,
     ) {
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
-        let (mut router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
+        let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
         let params = &self.params;
         let channel = &mut self.channel_params[channel_idx];
@@ -345,12 +343,11 @@ impl SynthModule for Lfo {
     }
 
     fn process_events(&mut self, events: &[VoiceEvent]) {
-        for (channel, trigger_channel) in self.voices.iter_mut().zip(self.triggers.iter_mut()) {
+        for channel in self.voices.iter_mut() {
             for event in events {
                 if let VoiceEvent::Trigger {
                     voice_idx,
                     prev_voice_idx,
-                    offset,
                     ..
                 } = event
                 {
@@ -363,7 +360,6 @@ impl SynthModule for Lfo {
                     };
 
                     channel[*voice_idx].phase = phase;
-                    trigger_channel[*voice_idx] = Some(*offset);
                 }
             }
         }

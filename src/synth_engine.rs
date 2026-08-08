@@ -742,6 +742,8 @@ impl SynthEngine {
                     .update_out_volume(StereoSample::from_iter(levels));
             }
         }
+
+        self.voices_handler.reset_triggers();
     }
 
     fn alloc_module_id(&mut self) -> ModuleId {

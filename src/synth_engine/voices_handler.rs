@@ -5,6 +5,7 @@ use smallvec::SmallVec;
 use crate::{
     synth_engine::{
         Expression, Sample,
+        buffer::{MonoVoicesLayout, new_mono_voices_layout},
         routing::{MAX_VOICES, VoiceEvent},
     },
     utils::{log, note_to_pitch, pitch_to_freq},
@@ -80,6 +81,7 @@ impl DecayingVoice {
 pub struct PlayingVoice {
     voice_idx: VoiceIdx,
     note_bandwidth: u16,
+    triggered: Option<u16>,
 }
 
 impl PlayingVoice {
@@ -89,6 +91,7 @@ impl PlayingVoice {
         Self {
             voice_idx,
             note_bandwidth: (BAND_LIMIT_FREQUENCY / frequency).floor() as u16,
+            triggered: None,
         }
     }
 
@@ -98,6 +101,10 @@ impl PlayingVoice {
 
     pub fn note_bandwidth(&self) -> usize {
         self.note_bandwidth as usize
+    }
+
+    pub fn triggered(&self) -> Option<usize> {
+        self.triggered.map(|offset| offset as usize)
     }
 }
 
@@ -201,6 +208,7 @@ pub struct VoicesHandler {
     releasing_notes: VecDeque<ReleasingNote>,
     killing_voices: VecDeque<KillingVoice>,
     free_voices: SmallVec<[VoiceIdx; MAX_VOICES]>,
+    triggers: MonoVoicesLayout<Option<u16>>,
     seq_idx: u32,
 }
 
@@ -214,6 +222,7 @@ impl VoicesHandler {
             releasing_notes: VecDeque::with_capacity(MAX_VOICES),
             killing_voices: VecDeque::with_capacity(MAX_VOICES),
             free_voices: SmallVec::from_iter((0..(MAX_VOICES as u8)).rev()),
+            triggers: new_mono_voices_layout(),
             seq_idx: 0,
         }
     }
@@ -257,6 +266,7 @@ impl VoicesHandler {
             seq_idx: self.seq_idx,
         });
         self.seq_idx = self.seq_idx.wrapping_add(1);
+        self.triggers[voice_idx as usize] = Some(offset as u16);
         events.restart(voice_idx, prev_voice_idx, note, velocity, offset);
     }
 
@@ -417,6 +427,10 @@ impl VoicesHandler {
         } else {
             self.note_on_polyphonic(new_note, velocity, offset, events);
         }
+    }
+
+    pub fn reset_triggers(&mut self) {
+        self.triggers.fill(None);
     }
 
     pub fn handle_note_on(
@@ -635,6 +649,10 @@ impl VoicesHandler {
                 .iter()
                 .map(|k| PlayingVoice::new(k.voice_idx, k.note)),
         );
+
+        for playing in playing_voices.iter_mut() {
+            playing.triggered = self.triggers[playing.voice_idx()];
+        }
     }
 }
 

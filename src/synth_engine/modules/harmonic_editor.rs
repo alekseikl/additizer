@@ -2,7 +2,7 @@ use std::f32;
 
 use crate::{
     synth_engine::{
-        Sample, StereoSample, VoiceEvent,
+        Sample, StereoSample,
         biquad_filter::{BandPass, BandStop, FilterImpl, HighPass, LowPass, Peaking},
         buffer::{
             HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer, VoicesLayout,
@@ -84,7 +84,6 @@ pub struct HarmonicEditor {
     ui_end: Option<UiEnd>,
     output_slot: usize,
     voices: VoicesLayout<Voice>,
-    triggers: VoicesLayout<Option<usize>>,
 }
 
 impl HarmonicEditor {
@@ -114,7 +113,6 @@ impl HarmonicEditor {
             ui_end: Some(ui_end),
             output_slot: usize::MAX,
             voices: new_voices_layout(),
-            triggers: new_voices_layout(),
         }
     }
 
@@ -226,28 +224,24 @@ impl HarmonicEditor {
 
     fn process_voice(
         &mut self,
-        target: VoiceTarget,
+        target: &VoiceTarget,
         outputs: &mut VoicesLayout<SpectralOutput>,
         rf: &mut RouterFactory<SpectralRouterType>,
-    ) -> bool {
+    ) {
         let voice = &mut self.voices[target.channel_idx][target.voice_idx];
 
         if !voice.needs_update {
-            self.triggers[target.channel_idx][target.voice_idx] = None;
-            return false;
+            return;
         }
 
-        let (router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
+        let (router, mut voice_output) = rf.for_voice(target, outputs);
         let out = voice_output.output();
-        let triggered = router.triggered();
 
         out.copy_from_slice(&self.harmonics[target.channel_idx][..out.len()]);
 
-        if !triggered {
+        if !router.triggered() {
             voice.needs_update = false;
         }
-
-        triggered
     }
 }
 
@@ -277,19 +271,6 @@ impl SynthModule for HarmonicEditor {
     fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {
     }
 
-    fn process_events(&mut self, events: &[VoiceEvent]) {
-        for trigger_channel in self.triggers.iter_mut() {
-            for event in events {
-                if let VoiceEvent::Trigger {
-                    voice_idx, offset, ..
-                } = event
-                {
-                    trigger_channel[*voice_idx] = Some(*offset);
-                }
-            }
-        }
-    }
-
     fn process_ui_events(&mut self) {
         let mut refresh = false;
 
@@ -317,7 +298,7 @@ impl SynthModule for HarmonicEditor {
 
     fn process(&mut self, ctx: &mut ProcessContext) {
         ctx.for_spectral(self.id, self.output_slot, |rf, target, outputs| {
-            self.process_voice(target, outputs, rf)
+            self.process_voice(target, outputs, rf);
         });
     }
 }

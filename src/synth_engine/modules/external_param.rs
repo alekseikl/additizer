@@ -15,7 +15,7 @@ use crate::synth_engine::{
     buffer::{VoicesLayout, new_voices_layout, zero_buffer},
     routing::{
         ControlRouterType, DataType, InputMeta, ProcessContext, RouterFactory, SamplesOutput,
-        VoiceEvent, VoiceTarget,
+        VoiceTarget,
     },
     smooth::Smoother,
     synth_module::SynthModule,
@@ -67,7 +67,6 @@ pub struct ExternalParam {
     ui_end: Option<UiEnd>,
     output_slot: usize,
     mono_buff: Buffer,
-    triggers: VoicesLayout<Option<usize>>,
     voices: VoicesLayout<VoiceState>,
 }
 
@@ -96,7 +95,6 @@ impl ExternalParam {
             ui_end: Some(ui_end),
             output_slot: usize::MAX,
             mono_buff: zero_buffer(),
-            triggers: new_voices_layout(),
             voices: new_voices_layout(),
         }
     }
@@ -123,12 +121,12 @@ impl ExternalParam {
 
     fn process_voice(
         &mut self,
-        target: VoiceTarget,
+        target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
         rf: &mut RouterFactory<ControlRouterType>,
     ) {
         let block_samples = rf.params().samples;
-        let (router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
+        let (router, mut voice_output) = rf.for_voice(target, outputs);
         let voice = &mut self.voices[target.channel_idx][target.voice_idx];
         let sample_rate = router.sample_rate();
         let mono = &self.mono_buff[..block_samples];
@@ -177,19 +175,6 @@ impl SynthModule for ExternalParam {
 
     fn set_output_slot(&mut self, slot: usize) {
         self.output_slot = slot;
-    }
-
-    fn process_events(&mut self, events: &[VoiceEvent]) {
-        for trigger_channel in self.triggers.iter_mut() {
-            for event in events {
-                if let VoiceEvent::Trigger {
-                    voice_idx, offset, ..
-                } = event
-                {
-                    trigger_channel[*voice_idx] = Some(*offset);
-                }
-            }
-        }
     }
 
     fn process_ui_events(&mut self) {

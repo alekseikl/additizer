@@ -374,7 +374,6 @@ pub struct Oscillator {
     inputs: Inputs,
     output_slot: usize,
     voices: VoicesLayout<Voice>,
-    triggers: VoicesLayout<Option<usize>>,
     voice_buffers: VoicesLayout<VoiceBuffers>,
 }
 
@@ -403,7 +402,6 @@ impl Oscillator {
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             voices: new_voices_layout(),
-            triggers: new_voices_layout(),
             voice_buffers: new_voices_layout(),
         }
     }
@@ -859,14 +857,14 @@ impl Oscillator {
 
     fn process_voice(
         &mut self,
-        target: VoiceTarget,
+        target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
         rf: &mut RouterFactory<AudioRouterType>,
     ) {
         let mono_spectrum = rf.params().spectrum_channels < NUM_CHANNELS;
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
-        let (mut router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
+        let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
         let buffers = &mut self.buffers;
         let channel = &mut self.channel_params[channel_idx];
@@ -976,11 +974,9 @@ impl Oscillator {
         prev_voice_idx: Option<usize>,
         voice_idx: usize,
         pitch: Sample,
-        offset: usize,
     ) {
         let channel = &self.channel_params[channel_idx];
         let voices = &mut self.voices[channel_idx];
-        let trigger = &mut self.triggers[channel_idx][voice_idx];
 
         if let Some(prev_voice_idx) = prev_voice_idx {
             let prev_voice_state = &voices[prev_voice_idx];
@@ -997,7 +993,6 @@ impl Oscillator {
         let voice = &mut voices[voice_idx];
 
         voice.pitch = pitch;
-        *trigger = Some(offset);
 
         if let Some(prev_voice_idx) = prev_voice_idx
             && self.params.steal_phase
@@ -1075,14 +1070,12 @@ impl SynthModule for Oscillator {
                         voice_idx,
                         prev_voice_idx,
                         pitch,
-                        offset,
                         ..
                     } => self.handle_trigger(
                         channel_idx,
                         *prev_voice_idx,
                         *voice_idx,
                         *pitch,
-                        *offset,
                     ),
                     VoiceEvent::Update {
                         voice_idx, pitch, ..

@@ -4,11 +4,11 @@ use std::array;
 use crate::{
     synth_engine::{
         StereoSample,
-        buffer::{VoicesLayout, new_voices_layout},
+        buffer::VoicesLayout,
         routing::{
             DataType, Input, InputMeta, InputSlots, MixType, ModuleId, NUM_CHANNELS,
             ProcessContext, RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType,
-            VoiceEvent, VoiceTarget, VolumeType,
+            VoiceTarget, VolumeType,
         },
         synth_module::SynthModule,
         types::{ComplexSample, Sample},
@@ -148,7 +148,6 @@ pub struct SpectralMixer {
     inputs: Inputs,
     output_slot: usize,
     inputs_meta: Vec<InputMeta>,
-    triggers: VoicesLayout<Option<usize>>,
 }
 
 impl SpectralMixer {
@@ -175,7 +174,6 @@ impl SpectralMixer {
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             inputs_meta: Vec::with_capacity(1 + 2 * MAX_INPUTS as usize),
-            triggers: new_voices_layout(),
         };
         result.build_inputs_meta();
         result
@@ -275,11 +273,11 @@ impl SpectralMixer {
 
     fn process_voice(
         &mut self,
-        target: VoiceTarget,
+        target: &VoiceTarget,
         outputs: &mut VoicesLayout<SpectralOutput>,
         rf: &mut RouterFactory<SpectralRouterType>,
-    ) -> bool {
-        let (mut router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
+    ) {
+        let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
         let channel = &self.channel_params[target.channel_idx];
         let voice_output = voice_output.output();
@@ -336,8 +334,6 @@ impl SpectralMixer {
         if router.need_update_ui_mono() {
             self.audio_end.update_spectrum(voice_output);
         }
-
-        router.triggered()
     }
 }
 
@@ -368,19 +364,6 @@ impl SynthModule for SpectralMixer {
 
     fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
         self.inputs.update_amount(input_type, src_slot, amount);
-    }
-
-    fn process_events(&mut self, events: &[VoiceEvent]) {
-        for trigger_channel in self.triggers.iter_mut() {
-            for event in events {
-                if let VoiceEvent::Trigger {
-                    voice_idx, offset, ..
-                } = event
-                {
-                    trigger_channel[*voice_idx] = Some(*offset);
-                }
-            }
-        }
     }
 
     fn process_ui_events(&mut self) {
@@ -418,7 +401,7 @@ impl SynthModule for SpectralMixer {
 
     fn process(&mut self, ctx: &mut ProcessContext) {
         ctx.for_spectral(self.id, self.output_slot, |rf, target, outputs| {
-            self.process_voice(target, outputs, rf)
+            self.process_voice(target, outputs, rf);
         });
     }
 }

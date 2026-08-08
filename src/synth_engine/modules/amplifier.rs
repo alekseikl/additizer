@@ -12,11 +12,11 @@ pub use ui_bridge::AmplifierUiBridge;
 
 use crate::synth_engine::{
     SmoothedSampleParams, StereoSample,
-    buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
+    buffer::{Buffer, VoicesLayout, zero_buffer},
     level_ballistics::LevelBallistics,
     routing::{
         AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-        ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent, VoiceTarget,
+        ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceTarget,
     },
     smooth::SmoothedSample,
     synth_module::SynthModule,
@@ -86,7 +86,6 @@ pub struct Amplifier {
     ui_end: Option<UiEnd>,
     inputs: Inputs,
     output_slot: usize,
-    triggers: VoicesLayout<Option<usize>>,
     out_volume_ballistics: [LevelBallistics; NUM_CHANNELS],
 }
 
@@ -113,7 +112,6 @@ impl Amplifier {
             ui_end: Some(ui_end),
             inputs: Inputs::default(),
             output_slot: usize::MAX,
-            triggers: new_voices_layout(),
             out_volume_ballistics: [LevelBallistics::default(); NUM_CHANNELS],
         }
     }
@@ -129,11 +127,11 @@ impl Amplifier {
 
     fn process_voice(
         &mut self,
-        target: VoiceTarget,
+        target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
         rf: &mut RouterFactory<AudioRouterType>,
     ) {
-        let (mut router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
+        let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
         let channel = &mut self.channel_params[target.channel_idx];
 
@@ -192,19 +190,6 @@ impl SynthModule for Amplifier {
 
     fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
         self.inputs.update_amount(input_type, src_slot, amount);
-    }
-
-    fn process_events(&mut self, events: &[VoiceEvent]) {
-        for trigger_channel in self.triggers.iter_mut() {
-            for event in events {
-                if let VoiceEvent::Trigger {
-                    voice_idx, offset, ..
-                } = event
-                {
-                    trigger_channel[*voice_idx] = Some(*offset);
-                }
-            }
-        }
     }
 
     fn process_ui_events(&mut self) {

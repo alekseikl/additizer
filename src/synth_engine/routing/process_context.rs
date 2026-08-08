@@ -31,7 +31,20 @@ pub struct VoiceTarget {
     pub channel_idx: usize,
     pub voice_idx: usize,
     pub note_bandwidth: usize,
+    pub triggered: Option<usize>,
     pub is_last: bool,
+}
+
+impl VoiceTarget {
+    pub fn new(channel_idx: usize, voice: &PlayingVoice, seq_idx: usize) -> Self {
+        VoiceTarget {
+            channel_idx,
+            voice_idx: voice.voice_idx(),
+            note_bandwidth: voice.note_bandwidth(),
+            triggered: voice.triggered(),
+            is_last: seq_idx == 0,
+        }
+    }
 }
 
 impl<'c> ProcessContext<'c> {
@@ -41,7 +54,7 @@ impl<'c> ProcessContext<'c> {
         output_slot: usize,
         f: impl FnMut(
             &mut RouterFactory<'f, 'c, AudioRouterType>,
-            VoiceTarget,
+            &VoiceTarget,
             &mut VoicesLayout<SamplesOutput>,
         ),
     ) where
@@ -63,7 +76,7 @@ impl<'c> ProcessContext<'c> {
         output_slot: usize,
         f: impl FnMut(
             &mut RouterFactory<'f, 'c, ControlRouterType>,
-            VoiceTarget,
+            &VoiceTarget,
             &mut VoicesLayout<SamplesOutput>,
         ),
     ) where
@@ -85,9 +98,9 @@ impl<'c> ProcessContext<'c> {
         output_slot: usize,
         f: impl FnMut(
             &mut RouterFactory<'f, 'c, SpectralRouterType>,
-            VoiceTarget,
+            &VoiceTarget,
             &mut VoicesLayout<SpectralOutput>,
-        ) -> bool,
+        ),
     ) where
         'c: 'f,
     {

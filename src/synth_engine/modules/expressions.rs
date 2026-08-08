@@ -9,9 +9,7 @@ pub use ui_bridge::ExpressionsUiBridge;
 use crate::{
     synth_engine::{
         Buffer, Expression, ModuleId, Sample,
-        buffer::{
-            MonoVoicesLayout, VoicesLayout, new_mono_voices_layout, new_voices_layout, zero_buffer,
-        },
+        buffer::{MonoVoicesLayout, VoicesLayout, new_mono_voices_layout, zero_buffer},
         routing::{
             ControlRouterType, DataType, InputMeta, ProcessContext, RouterFactory, SamplesOutput,
             VoiceEvent, VoiceTarget,
@@ -72,7 +70,6 @@ pub struct Expressions {
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
     output_slot: usize,
-    triggers: VoicesLayout<Option<usize>>,
     mono_voices: MonoVoicesLayout<Voice>,
 }
 
@@ -93,7 +90,6 @@ impl Expressions {
             audio_end,
             ui_end: Some(ui_end),
             output_slot: usize::MAX,
-            triggers: new_voices_layout(),
             mono_voices: new_mono_voices_layout(),
         }
     }
@@ -166,12 +162,12 @@ impl Expressions {
 
     fn process_voice(
         &mut self,
-        target: VoiceTarget,
+        target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
         rf: &mut RouterFactory<ControlRouterType>,
     ) {
         let block_samples = rf.params().samples;
-        let (router, mut voice_output) = rf.for_voice(&target, &mut self.triggers, outputs);
+        let (router, mut voice_output) = rf.for_voice(target, outputs);
         let voice = &mut self.mono_voices[target.voice_idx];
         let sample_rate = router.sample_rate();
 
@@ -234,10 +230,6 @@ impl SynthModule for Expressions {
                         *velocity,
                         *offset,
                     );
-
-                    for trigger_channel in self.triggers.iter_mut() {
-                        trigger_channel[*voice_idx] = Some(*offset);
-                    }
                 }
                 VoiceEvent::Update {
                     voice_idx,
