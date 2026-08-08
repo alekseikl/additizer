@@ -180,12 +180,9 @@ impl Expressions {
                 mono_buff[voice.change_at + 1..block_samples].fill(last_value);
             }
 
-            voice.smoother.apply_if_needed(
-                block_samples,
-                sample_rate,
-                self.params.smooth,
-                mono_buff,
-            );
+            voice
+                .smoother
+                .apply_if_needed(sample_rate, self.params.smooth, mono_buff);
 
             voice.set_value_at(last_value, 0);
         }

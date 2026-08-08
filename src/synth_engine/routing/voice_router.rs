@@ -495,7 +495,7 @@ impl<'v> VoiceOutput<'v, AudioRouterType> {
 }
 
 impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
-    pub fn samples(&self) -> usize {
+    fn samples(&self) -> usize {
         self.factory.ctx.params.samples - self.state.offset + 1
     }
 

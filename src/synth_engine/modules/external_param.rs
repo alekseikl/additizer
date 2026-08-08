@@ -148,7 +148,7 @@ impl ExternalParam {
             voice_output.fill_with_ext_control(mono);
         }
 
-        voice.smoother.apply_if_needed2(
+        voice.smoother.apply_if_needed(
             sample_rate,
             self.params.smooth,
             voice_output.audio_output(),

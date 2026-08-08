@@ -234,14 +234,15 @@ impl HarmonicEditor {
             return;
         }
 
-        let (router, mut voice_output) = rf.for_voice(target, outputs);
-        let out = voice_output.output();
+        // Push updated harmonics twice for this frame and next frame
+        for _ in 0..2 {
+            let (_, mut voice_output) = rf.for_voice(target, outputs);
+            let out = voice_output.output();
 
-        out.copy_from_slice(&self.harmonics[target.channel_idx][..out.len()]);
-
-        if !router.triggered() {
-            voice.needs_update = false;
+            out.copy_from_slice(&self.harmonics[target.channel_idx][..out.len()]);
         }
+
+        voice.needs_update = false;
     }
 }
 
