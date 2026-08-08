@@ -22,6 +22,8 @@ const _: () = assert!(NUM_CHANNELS == 2);
 
 struct Voice {
     killing: bool,
+    /// In-block sample index where the kill fade starts; taken on the next process.
+    killing_offset: Option<usize>,
     killing_time: Sample,
 }
 
@@ -29,6 +31,7 @@ impl Default for Voice {
     fn default() -> Self {
         Self {
             killing: false,
+            killing_offset: None,
             killing_time: 0.0,
         }
     }
@@ -152,10 +155,14 @@ impl SynthModule for Output {
                         let voice = &mut channel.voices[*voice_idx];
 
                         voice.killing = false;
+                        voice.killing_offset = None;
                         voice.killing_time = 0.0;
                     }
-                    VoiceEvent::Kill { voice_idx, .. } => {
-                        channel.voices[*voice_idx].killing = true;
+                    VoiceEvent::Kill { voice_idx, offset } => {
+                        let voice = &mut channel.voices[*voice_idx];
+
+                        voice.killing = true;
+                        voice.killing_offset = Some(*offset);
                     }
                     _ => (),
                 }
@@ -221,12 +228,13 @@ impl SynthModule for Output {
                 let voice = &mut self.channels[channel_idx].voices[target.voice_idx];
 
                 if voice.killing {
+                    let start = voice.killing_offset.take().unwrap_or(0).min(samples);
                     let power: Sample = -5.0;
                     let curve_mult: Sample = (power.exp() - 1.0).recip();
                     let time_mult: Sample = self.kill_time.max(from_ms(4.0)).recip();
                     let t_step = sample_rate.recip();
 
-                    for out in self.input_buffer.iter_mut().take(samples) {
+                    for out in self.input_buffer[..samples].iter_mut().skip(start) {
                         let t = (voice.killing_time * time_mult).min(1.0);
                         let gain = 1.0 - ((power * t).exp() - 1.0) * curve_mult;
 
