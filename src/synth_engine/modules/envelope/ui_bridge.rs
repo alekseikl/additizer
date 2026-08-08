@@ -41,12 +41,6 @@ impl EnvelopeUiBridge {
         }
     }
 
-    pub fn set_smooth(&mut self, value: StereoSample) {
-        if self.ui_end.set_smooth(value) {
-            self.config.smooth = value;
-        }
-    }
-
     pub fn set_attack_curvature(&mut self, value: Sample) {
         if self.ui_end.set_attack_curvature(value) {
             self.config.attack_curvature = value;

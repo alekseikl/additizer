@@ -52,7 +52,6 @@ struct ChannelParams {
     decay: Sample,
     sustain: Sample,
     release: Sample,
-    smooth: Sample,
 }
 
 impl ChannelParams {
@@ -64,7 +63,6 @@ impl ChannelParams {
             decay: c.decay[channel_idx],
             sustain: c.sustain[channel_idx],
             release: c.release[channel_idx],
-            smooth: c.smooth[channel_idx],
         }
     }
 }
@@ -313,7 +311,6 @@ impl Envelope {
             sustain: get_stereo_param!(self, sustain),
             release: get_stereo_param!(self, release),
             release_curvature: self.params.release_curvature,
-            smooth: get_stereo_param!(self, smooth),
         }
     }
 
@@ -328,7 +325,6 @@ impl Envelope {
     set_stereo_param!(set_decay, decay);
     set_stereo_param!(set_sustain, sustain);
     set_stereo_param!(set_release, release);
-    set_stereo_param!(set_smooth, smooth);
 
     fn process_voice(
         &mut self,
@@ -502,7 +498,6 @@ impl SynthModule for Envelope {
                     Input::Release => self.set_release(value),
                     _ => (),
                 },
-                UiEvent::Smooth(value) => self.set_smooth(value),
                 UiEvent::AttackCurvature(value) => self.set_attack_curvature(value),
                 UiEvent::DecayCurvature(value) => self.set_decay_curvature(value),
                 UiEvent::ReleaseCurvature(value) => self.set_release_curvature(value),

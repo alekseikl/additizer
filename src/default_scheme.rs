@@ -73,10 +73,10 @@ fn default_engine_config() -> EngineConfig {
 
     let amp_env = EnvelopeConfig {
         id: AMP_ENV_ID,
+        attack: from_ms(2.0).into(),
         decay: from_ms(400.0).into(),
         sustain: 0.6.into(),
         release: from_ms(300.0).into(),
-        smooth: from_ms(4.0).into(),
         keep_voice_alive: true,
         ..EnvelopeConfig::default()
     };

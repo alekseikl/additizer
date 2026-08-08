@@ -18,7 +18,6 @@ pub struct EnvelopeConfig {
     pub sustain: StereoSample,
     pub release: StereoSample,
     pub release_curvature: Sample,
-    pub smooth: StereoSample,
 }
 
 impl Default for EnvelopeConfig {
@@ -35,7 +34,6 @@ impl Default for EnvelopeConfig {
             sustain: 1.0.into(),
             release: from_ms(300.0).into(),
             release_curvature: 0.2,
-            smooth: 0.0.into(),
         }
     }
 }

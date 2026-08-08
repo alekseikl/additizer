@@ -4,7 +4,7 @@ use crate::{
     editor::{
         ModuleUi,
         module_label::ModuleLabel,
-        slider::{self, Slider},
+        slider::Slider,
         stereo_input::StereoInput,
     },
     synth_engine::{
@@ -129,19 +129,6 @@ impl EnvelopeUI {
                     .changed()
                 {
                     env_bridge.set_param(Input::Sustain, config.sustain);
-                }
-
-                ui.label("Smooth");
-                if ui
-                    .add(
-                        Slider::stereo(&mut config.smooth, 0.0..=0.1, None)
-                            .default(0.0)
-                            .skew(1.2)
-                            .units(slider::Units::Time),
-                    )
-                    .changed()
-                {
-                    env_bridge.set_smooth(config.smooth);
                 }
                 ui.end_row();
 

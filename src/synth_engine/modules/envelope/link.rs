@@ -6,7 +6,6 @@ use super::EnvelopePhase;
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
-    Smooth(StereoSample),
     AttackCurvature(Sample),
     DecayCurvature(Sample),
     ReleaseCurvature(Sample),
@@ -25,10 +24,6 @@ impl UiEnd {
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
         self.tx.push(UiEvent::InputParam { input, value }).is_ok()
-    }
-
-    pub fn set_smooth(&mut self, value: StereoSample) -> bool {
-        self.tx.push(UiEvent::Smooth(value)).is_ok()
     }
 
     pub fn set_attack_curvature(&mut self, value: Sample) -> bool {
