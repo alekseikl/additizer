@@ -552,17 +552,6 @@ impl<'v> VoiceOutput<'v, ControlRouterType> {
             [self.state.offset..self.samples + 1]
     }
 
-    pub fn audio_output(&mut self) -> &mut [Sample] {
-        let offset = if self.state.triggered {
-            self.state.offset
-        } else {
-            0
-        };
-
-        &mut self.outputs[self.target.channel_idx][self.target.voice_idx].buffer
-            [offset..self.samples]
-    }
-
     /// External control sources are not written 1 sample ahead.
     /// in_buff is aligned with processing block.
     pub fn fill_with_ext_control(&mut self, in_buff: &[Sample]) {
@@ -595,10 +584,6 @@ impl<'v> VoiceOutput<'v, ControlRouterType> {
 }
 
 impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, SpectralRouterType> {
-    pub fn triggered(&self) -> bool {
-        self.state.triggered.is_some()
-    }
-
     pub fn scalar(&mut self, input: &InputSlots, param: Sample) -> Sample {
         self.scalar_param_impl(input, param, self.state.triggered)
     }

@@ -302,7 +302,7 @@ impl Lfo {
         voice.smoother.apply_if_needed(
             sample_rate,
             channel.smooth_time,
-            voice_output.audio_output(),
+            voice_output.output(),
         );
     }
 }

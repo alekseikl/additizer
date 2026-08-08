@@ -47,14 +47,12 @@ impl Params {
 
 struct VoiceState {
     value_at_trigger: Sample,
-    smoother: Smoother,
 }
 
 impl Default for VoiceState {
     fn default() -> Self {
         Self {
             value_at_trigger: 0.0,
-            smoother: Smoother::default(),
         }
     }
 }
@@ -67,6 +65,7 @@ pub struct ExternalParam {
     ui_end: Option<UiEnd>,
     output_slot: usize,
     mono_buff: Buffer,
+    smoother: Smoother,
     voices: VoicesLayout<VoiceState>,
 }
 
@@ -95,6 +94,7 @@ impl ExternalParam {
             ui_end: Some(ui_end),
             output_slot: usize::MAX,
             mono_buff: zero_buffer(),
+            smoother: Smoother::default(),
             voices: new_voices_layout(),
         }
     }
@@ -128,7 +128,6 @@ impl ExternalParam {
         let block_samples = rf.params().samples;
         let (router, mut voice_output) = rf.for_voice(target, outputs);
         let voice = &mut self.voices[target.channel_idx][target.voice_idx];
-        let sample_rate = router.sample_rate();
         let mono = &self.mono_buff[..block_samples];
 
         if router.triggered() {
@@ -138,8 +137,6 @@ impl ExternalParam {
             if self.params.sample_on_trigger {
                 voice.value_at_trigger = value;
             }
-
-            voice.smoother.reset(value);
         }
 
         if self.params.sample_on_trigger {
@@ -147,12 +144,6 @@ impl ExternalParam {
         } else {
             voice_output.fill_with_ext_control(mono);
         }
-
-        voice.smoother.apply_if_needed(
-            sample_rate,
-            self.params.smooth,
-            voice_output.audio_output(),
-        );
     }
 }
 
@@ -193,6 +184,12 @@ impl SynthModule for ExternalParam {
         let param = &self.params_block.float_params[self.params.selected_param_index];
 
         param.smoothed.next_block(&mut self.mono_buff, samples);
+
+        self.smoother.apply_if_needed(
+            ctx.params.sample_rate,
+            self.params.smooth,
+            &mut self.mono_buff[..samples],
+        );
 
         if ctx.params.needs_update_ui {
             self.audio_end.update_value(self.mono_buff[0]);

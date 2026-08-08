@@ -331,6 +331,15 @@ impl SynthEngine {
         self.oversampling = oversampling;
     }
 
+    /// Map a host-buffer sample offset into the internal (possibly oversampled) block.
+    fn to_internal_offset(&self, host_offset: usize) -> usize {
+        if self.oversampling {
+            host_offset * 2
+        } else {
+            host_offset
+        }
+    }
+
     pub fn set_stereo_spectrum(&mut self, stereo_spectrum: bool) {
         self.spectrum_channels = Self::stereo_spectrum_channels(stereo_spectrum);
     }
@@ -606,6 +615,7 @@ impl SynthEngine {
 
     pub fn handle_note_on(&mut self, channel: u8, note: u8, velocity: f32, offset: usize) {
         let mut voice_events = VoiceEvents::new();
+        let offset = self.to_internal_offset(offset);
 
         self.voices_handler
             .handle_note_on(channel, note, velocity, offset, &mut voice_events);
@@ -615,6 +625,7 @@ impl SynthEngine {
 
     pub fn handle_note_off(&mut self, channel: u8, note: u8, velocity: f32, offset: usize) {
         let mut voice_events = VoiceEvents::new();
+        let offset = self.to_internal_offset(offset);
 
         self.voices_handler
             .handle_note_off(channel, note, velocity, offset, &mut voice_events);
@@ -627,10 +638,11 @@ impl SynthEngine {
         channel: u8,
         note: u8,
         expression: Expression,
-        offset: usize, // In-block offset
+        offset: usize, // In-block host-sample offset
         value: Sample,
     ) {
         let mut voice_events = VoiceEvents::new();
+        let offset = self.to_internal_offset(offset);
 
         self.voices_handler.handle_expression(
             channel,
