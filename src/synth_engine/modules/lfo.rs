@@ -259,15 +259,15 @@ impl Lfo {
 
         router.param(
             &inputs.frequency,
-            &mut channel.frequency,
+            &channel.frequency,
             &mut self.buffers.frequency,
         );
         router.param(
             &inputs.phase_shift,
-            &mut channel.phase_shift,
+            &channel.phase_shift,
             &mut self.buffers.phase_shift,
         );
-        router.param(&inputs.skew, &mut channel.skew, &mut self.buffers.skew);
+        router.param(&inputs.skew, &channel.skew, &mut self.buffers.skew);
 
         let shape_func = Self::shape_function(params.shape);
         let freq_phase_mult = Phase::freq_phase_mult(sample_rate);

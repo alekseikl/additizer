@@ -325,7 +325,7 @@ impl Mixer {
                 VolumeType::Db => {
                     router.param(
                         &inputs.level_mix[input_idx as usize],
-                        &mut input_channel.level,
+                        &input_channel.level,
                         &mut self.buffers.level_mod,
                     );
                     let gain_mod = self
@@ -344,7 +344,7 @@ impl Mixer {
                 VolumeType::Gain => {
                     router.param(
                         &inputs.gain_mix[input_idx as usize],
-                        &mut input_channel.gain,
+                        &input_channel.gain,
                         &mut self.buffers.level_mod,
                     );
                     let gain_mod = self.buffers.level_mod.iter().copied();
@@ -363,7 +363,7 @@ impl Mixer {
             VolumeType::Db => {
                 router.param(
                     &inputs.level,
-                    &mut channel.output_level,
+                    &channel.output_level,
                     &mut self.buffers.level_mod,
                 );
                 let gain_mod = self
@@ -377,7 +377,7 @@ impl Mixer {
             VolumeType::Gain => {
                 router.param(
                     &inputs.gain,
-                    &mut channel.output_gain,
+                    &channel.output_gain,
                     &mut self.buffers.level_mod,
                 );
                 let gain_mod = self.buffers.level_mod.iter().copied();

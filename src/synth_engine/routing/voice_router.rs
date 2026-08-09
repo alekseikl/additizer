@@ -437,7 +437,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
             .unwrap_or(&ZEROES_BUFFER)[self.state.offset..ctx.params.samples]
     }
 
-    pub fn param(&mut self, input: &InputSlots, param: &mut SmoothedSample, buff: &mut Buffer) {
+    pub fn param(&mut self, input: &InputSlots, param: &SmoothedSample, buff: &mut Buffer) {
         let buff = &mut buff[..self.samples()];
         let smooth_params = &self.factory.ctx.params.smooth_params;
 
@@ -512,7 +512,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
         offset.saturating_sub(self.state.offset)
     }
 
-    pub fn param(&mut self, input: &InputSlots, param: &mut SmoothedSample, buff: &mut Buffer) {
+    pub fn param(&mut self, input: &InputSlots, param: &SmoothedSample, buff: &mut Buffer) {
         let buff = &mut buff[..self.samples()];
         let smooth_params = &self.factory.ctx.params.smooth_params;
 

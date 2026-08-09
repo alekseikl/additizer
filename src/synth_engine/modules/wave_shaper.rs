@@ -166,12 +166,12 @@ impl WaveShaper {
 
         router.param(
             &inputs.clipping_level,
-            &mut channel.clipping_level,
+            &channel.clipping_level,
             &mut self.buffers.clipping_level_mod_input,
         );
         router.param(
             &inputs.distortion,
-            &mut channel.distortion,
+            &channel.distortion,
             &mut self.buffers.distortion_mod_input,
         );
 

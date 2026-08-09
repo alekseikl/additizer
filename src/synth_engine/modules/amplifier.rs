@@ -137,7 +137,7 @@ impl Amplifier {
 
         router.param(
             &inputs.gain,
-            &mut channel.gain,
+            &channel.gain,
             &mut self.buffers.gain_mod_input,
         );
 

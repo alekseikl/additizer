@@ -873,7 +873,7 @@ impl Oscillator {
 
         router.param(
             &inputs.pitch_shift,
-            &mut channel.pitch_shift,
+            &channel.pitch_shift,
             &mut buffers.pitch,
         );
 
@@ -881,13 +881,13 @@ impl Oscillator {
 
         router.param(
             &inputs.phase_shift,
-            &mut channel.phase_shift,
+            &channel.phase_shift,
             &mut buffers.phase_shift,
         );
 
         router.param(
             &inputs.freq_shift,
-            &mut channel.frequency_shift,
+            &channel.frequency_shift,
             &mut buffers.frequency_shift,
         );
 
@@ -925,7 +925,7 @@ impl Oscillator {
             &buffers.phase_shift,
             &buffers.frequency_shift,
         ) {
-            let mut sample_acc = f32x4::splat(0.0);
+            let mut sample_acc = f32x4::ZERO;
             let phase_shift = Phase::from_normalized(phase_shift);
             let pitch_phase_inc = pitch_to_freq(pitch) * freq_phase_mult;
             let freq_phase_inc = freq_shift * freq_phase_mult;
@@ -952,7 +952,7 @@ impl Oscillator {
         }
 
         if !router.param_stationary_at(&inputs.pan, &channel.pan, 0.0) {
-            router.param(&inputs.pan, &mut channel.pan, &mut buffers.pan);
+            router.param(&inputs.pan, &channel.pan, &mut buffers.pan);
 
             for (out, &pan) in output.iter_mut().zip(&buffers.pan) {
                 *out *= pan_gain(pan, channel_idx);
@@ -960,7 +960,7 @@ impl Oscillator {
         }
 
         if !router.param_stationary_at(&inputs.gain, &channel.gain, 1.0) {
-            router.param(&inputs.gain, &mut channel.gain, &mut buffers.gain);
+            router.param(&inputs.gain, &channel.gain, &mut buffers.gain);
 
             for (out, gain) in output.iter_mut().zip(&buffers.gain) {
                 *out *= gain;
@@ -1071,12 +1071,7 @@ impl SynthModule for Oscillator {
                         prev_voice_idx,
                         pitch,
                         ..
-                    } => self.handle_trigger(
-                        channel_idx,
-                        *prev_voice_idx,
-                        *voice_idx,
-                        *pitch,
-                    ),
+                    } => self.handle_trigger(channel_idx, *prev_voice_idx, *voice_idx, *pitch),
                     VoiceEvent::Update {
                         voice_idx, pitch, ..
                     } => self.handle_update(channel_idx, *voice_idx, *pitch),
