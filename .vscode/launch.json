@@ -11,8 +11,8 @@
             "program": "${workspaceFolder}/target/debug/additizer",
             "args": [
                 "--midi-input",
-            //    "MidiKeys"
-                "Keystation Mini 32 MK3"
+               "MidiKeys"
+                // "Keystation Mini 32 MK3"
             ],
             "cwd": "${workspaceFolder}"
         },

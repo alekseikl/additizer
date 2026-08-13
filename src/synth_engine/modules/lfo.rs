@@ -299,11 +299,9 @@ impl Lfo {
             self.audio_end.update_phase(voice.phase.normalized());
         }
 
-        voice.smoother.apply_if_needed(
-            sample_rate,
-            channel.smooth_time,
-            voice_output.output(),
-        );
+        voice
+            .smoother
+            .apply_if_needed(sample_rate, channel.smooth_time, voice_output.output());
     }
 }
 

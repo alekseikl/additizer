@@ -1,12 +1,7 @@
 use egui::{Checkbox, Grid, Ui};
 
 use crate::{
-    editor::{
-        ModuleUi,
-        module_label::ModuleLabel,
-        slider::Slider,
-        stereo_input::StereoInput,
-    },
+    editor::{ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput},
     synth_engine::{
         Input, ModuleId, ModuleType,
         envelope::EnvelopeUiBridge,

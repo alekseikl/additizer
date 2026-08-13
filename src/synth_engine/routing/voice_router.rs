@@ -449,6 +449,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
 
         if self.factory.ctx.outputs_arena.add_buff_to(
             &input.slots,
+            false,
             self.target.channel_idx,
             self.target.voice_idx,
             self.state.offset,
@@ -524,6 +525,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
 
         if self.factory.ctx.outputs_arena.add_buff_to(
             &input.slots,
+            true,
             self.target.channel_idx,
             self.target.voice_idx,
             self.state.offset,

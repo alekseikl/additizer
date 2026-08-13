@@ -43,8 +43,7 @@ impl AddModulePopup {
             .sense(Sense::click_and_drag())
             .show(&ctx, |ui| {
                 let (rect, _) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
-                ui.painter()
-                    .rect_filled(rect, 0.0, Color32::TRANSPARENT);
+                ui.painter().rect_filled(rect, 0.0, Color32::TRANSPARENT);
             });
 
         let Some(popup) = Popup::from_response(response)

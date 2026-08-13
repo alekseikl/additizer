@@ -1,7 +1,3 @@
-use egui::{
-    Checkbox, ComboBox, DragValue, Frame, Grid, Id, Margin, Modal, Panel, ScrollArea, Sides, Ui,
-    Vec2, style::ScrollStyle,
-};
 use crate::{
     editor::{
         ModuleUi,
@@ -15,6 +11,10 @@ use crate::{
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{NthElement, db_to_gain},
+};
+use egui::{
+    Checkbox, ComboBox, DragValue, Frame, Grid, Id, Margin, Modal, Panel, ScrollArea, Sides, Ui,
+    Vec2, style::ScrollStyle,
 };
 
 const NUM_EDITABLE_HARMONICS: usize = SPECTRAL_BUFFER_SIZE - 1;
@@ -363,7 +363,11 @@ impl HarmonicEditorUI {
                 });
             });
 
-        ui.add(ModuleLabel::new(module_id, ModuleType::HarmonicEditor, bridge));
+        ui.add(ModuleLabel::new(
+            module_id,
+            ModuleType::HarmonicEditor,
+            bridge,
+        ));
 
         ui.add_space(16.0);
 

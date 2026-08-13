@@ -12,12 +12,14 @@ use crate::synth_engine::{
 
 pub(super) struct ArenaSlot<T: Default + Send> {
     pub(super) slot: Option<VoicesLayout<T>>,
+    pub(super) is_control: bool,
 }
 
 impl<T: Default + Send> Default for ArenaSlot<T> {
     fn default() -> Self {
         Self {
             slot: Some(new_voices_layout()),
+            is_control: false,
         }
     }
 }
@@ -70,8 +72,10 @@ impl OutputsArena {
         }
     }
 
-    fn allocate_samples_slot(&mut self) -> usize {
-        Self::allocate_impl(&mut self.samples, &mut self.free_samples_slots)
+    fn allocate_samples_slot(&mut self, is_control: bool) -> usize {
+        let slot_idx = Self::allocate_impl(&mut self.samples, &mut self.free_samples_slots);
+        self.samples[slot_idx].is_control = is_control;
+        slot_idx
     }
 
     fn allocate_spectral_slot(&mut self) -> usize {
@@ -99,9 +103,8 @@ impl OutputsArena {
 
     pub fn allocate_slot(&mut self, module: &mut ModuleHandle) {
         match module.output_type() {
-            DataType::Audio | DataType::Control => {
-                module.set_output_slot(self.allocate_samples_slot())
-            }
+            DataType::Audio => module.set_output_slot(self.allocate_samples_slot(false)),
+            DataType::Control => module.set_output_slot(self.allocate_samples_slot(true)),
             DataType::Spectral => module.set_output_slot(self.allocate_spectral_slot()),
         }
     }
@@ -122,9 +125,17 @@ impl OutputsArena {
         slot.map(|slot| self.samples[slot][channel_idx][voice_idx].buffer())
     }
 
+    fn assert_control_rate(&self, slot: usize) {
+        assert!(
+            self.samples[slot].is_control,
+            "control-rate read of audio-rate output slot {slot}"
+        );
+    }
+
     pub(super) fn add_buff_to(
         &self,
         slots: &[InputSlot],
+        is_control: bool,
         channel_idx: usize,
         voice_idx: usize,
         offset: usize,
@@ -135,6 +146,13 @@ impl OutputsArena {
         }
 
         for slot in slots {
+            if is_control {
+                self.assert_control_rate(slot.src_slot);
+                if let Some(modulation_slot) = slot.modulation_slot {
+                    self.assert_control_rate(modulation_slot);
+                }
+            }
+
             let amount = slot.amount[channel_idx];
             let input = self.samples[slot.src_slot][channel_idx][voice_idx]
                 .buffer()
@@ -162,6 +180,17 @@ impl OutputsArena {
         true
     }
 
+    fn control_scalar(
+        &self,
+        slot: usize,
+        channel_idx: usize,
+        voice_idx: usize,
+        this_frame: Option<usize>,
+    ) -> Sample {
+        self.assert_control_rate(slot);
+        self.samples[slot][channel_idx][voice_idx].scalar(this_frame)
+    }
+
     pub(super) fn get_scalar(
         &self,
         slots: &[InputSlot],
@@ -176,11 +205,11 @@ impl OutputsArena {
         let mut result: Sample = 0.0;
 
         for slot in slots {
-            let mut value = self.samples[slot.src_slot][channel_idx][voice_idx].scalar(this_frame)
+            let mut value = self.control_scalar(slot.src_slot, channel_idx, voice_idx, this_frame)
                 * slot.amount[channel_idx];
 
             if let Some(modulated_slot) = slot.modulation_slot {
-                value *= self.samples[modulated_slot][channel_idx][voice_idx].scalar(this_frame);
+                value *= self.control_scalar(modulated_slot, channel_idx, voice_idx, this_frame);
             }
 
             result += value;
@@ -199,3 +228,6 @@ impl OutputsArena {
         slot.map(|slot| self.spectral[slot][channel_idx][voice_idx].get(this_frame))
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -1,4 +1,3 @@
-use egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
 use crate::{
     editor::{
         ModuleUi,
@@ -13,6 +12,7 @@ use crate::{
     },
     utils::{db_to_gain, gain_to_db},
 };
+use egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
 
 struct GainShapeState {
     center: StereoSample,

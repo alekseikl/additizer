@@ -1,11 +1,11 @@
 use egui::{ComboBox, Grid, Ui};
 
 use crate::{
-    editor::{module_label::ModuleLabel, stereo_input::StereoInput, ModuleUi},
+    editor::{ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput},
     synth_engine::{
+        Input, ModuleId, ModuleType, ShaperType,
         ui_bridge::{ModuleBridge, UiBridge},
         wave_shaper::WaveShaperUiBridge,
-        Input, ModuleId, ModuleType, ShaperType,
     },
 };
 

@@ -22,6 +22,7 @@ use crate::{
     synth_engine::{ModuleId, ModuleType, ui_bridge::UiBridge},
 };
 
+mod control_meter;
 mod fit_label;
 mod gain_slider;
 mod grid;
@@ -31,7 +32,6 @@ mod routing_ui_ext;
 mod slider;
 mod stereo_input;
 mod utils;
-mod control_meter;
 mod volume_meter;
 mod waveform;
 

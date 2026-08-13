@@ -34,7 +34,11 @@ impl SpectralFilterUI {
         let module_id = self.module_id;
         let mut config = filter_bridge.config().clone();
 
-        ui.add(ModuleLabel::new(module_id, ModuleType::SpectralFilter, bridge));
+        ui.add(ModuleLabel::new(
+            module_id,
+            ModuleType::SpectralFilter,
+            bridge,
+        ));
 
         ui.add_space(16.0);
 

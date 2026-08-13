@@ -1,11 +1,11 @@
 use egui::{Grid, Ui};
 
 use crate::{
-    editor::{module_label::ModuleLabel, stereo_input::StereoInput, ModuleUi},
+    editor::{ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput},
     synth_engine::{
+        Input, ModuleId, ModuleType,
         spectral_blend::SpectralBlendUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
-        Input, ModuleId, ModuleType,
     },
 };
 
@@ -27,7 +27,11 @@ impl SpectralBlendUi {
         let module_id = self.module_id;
         let mut config = blend_bridge.config().clone();
 
-        ui.add(ModuleLabel::new(module_id, ModuleType::SpectralBlend, bridge));
+        ui.add(ModuleLabel::new(
+            module_id,
+            ModuleType::SpectralBlend,
+            bridge,
+        ));
 
         ui.add_space(16.0);
 
