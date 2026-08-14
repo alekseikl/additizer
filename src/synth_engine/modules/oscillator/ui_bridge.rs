@@ -80,6 +80,12 @@ impl OscillatorUiBridge {
         }
     }
 
+    pub fn set_phase_random(&mut self, phase_random: Sample) {
+        if self.ui_end.set_phase_random(phase_random) {
+            self.config.phase_random = phase_random;
+        }
+    }
+
     pub fn set_unison_initial_phase(&mut self, idx: usize, value: StereoSample) {
         if self.ui_end.set_unison_initial_phase(idx, value) {
             self.config.unison[idx].initial_phase = value;

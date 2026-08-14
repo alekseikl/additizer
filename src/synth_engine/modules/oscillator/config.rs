@@ -32,6 +32,8 @@ pub struct OscillatorConfig {
     pub unison_voices: usize,
     pub steal_phase: bool,
     #[serde(default)]
+    pub phase_random: Sample,
+    #[serde(default)]
     pub pan: StereoSample,
     pub gain: StereoSample,
     pub pitch_shift: StereoSample,
@@ -64,6 +66,7 @@ impl Default for OscillatorConfig {
             id: -1,
             unison_voices: 1,
             steal_phase: false,
+            phase_random: 0.0,
             pan: 0.0.into(),
             gain: 1.0.into(),
             pitch_shift: 0.0.into(),

@@ -31,6 +31,7 @@ pub enum UiEvent {
         value: StereoSample,
     },
     StealPhase(bool),
+    PhaseRandom(Sample),
     ApplyUnisonLevelShape {
         center: StereoSample,
         level: StereoSample,
@@ -74,6 +75,10 @@ impl UiEnd {
 
     pub fn set_steal_phase(&mut self, steal_phase: bool) -> bool {
         self.tx.push(UiEvent::StealPhase(steal_phase)).is_ok()
+    }
+
+    pub fn set_phase_random(&mut self, phase_random: Sample) -> bool {
+        self.tx.push(UiEvent::PhaseRandom(phase_random)).is_ok()
     }
 
     pub fn set_unison_initial_phase(&mut self, idx: usize, value: StereoSample) -> bool {

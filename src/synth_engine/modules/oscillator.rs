@@ -61,6 +61,7 @@ const fn zero_dft_buffer() -> DftBuffer {
 struct Params {
     unison: usize,
     steal_phase: bool,
+    phase_random: Sample, // [0.0, 1.0]
 }
 
 impl Params {
@@ -68,6 +69,7 @@ impl Params {
         Self {
             unison: c.unison_voices,
             steal_phase: c.steal_phase,
+            phase_random: c.phase_random,
         }
     }
 }
@@ -411,6 +413,7 @@ impl Oscillator {
             id: self.id,
             unison_voices: self.params.unison,
             steal_phase: self.params.steal_phase,
+            phase_random: self.params.phase_random,
             pan: get_smoothed_param!(self, pan),
             gain: get_smoothed_param!(self, gain),
             pitch_shift: get_smoothed_param!(self, pitch_shift),
@@ -439,6 +442,12 @@ impl Oscillator {
         unison.clamp(1, MAX_UNISON_VOICES)
     );
     set_mono_param!(set_steal_phase, steal_phase, bool);
+    set_mono_param!(
+        set_phase_random,
+        phase_random,
+        Sample,
+        phase_random.clamp(0.0, 1.0)
+    );
 
     set_smoothed_param!(set_pan, pan, pan.clamp(-1.0, 1.0));
     set_smoothed_param!(set_gain, gain, gain.clamp(-1.0, 1.0));
@@ -998,6 +1007,15 @@ impl Oscillator {
             && self.params.steal_phase
         {
             voices[voice_idx].phases = voices[prev_voice_idx].phases;
+        } else if self.params.phase_random > 1e-6 {
+            for (phase, unison_voice, random) in izip!(
+                voice.phases.iter_mut(),
+                channel.unison.iter(),
+                (&mut self.random).random_iter::<Sample>()
+            ) {
+                *phase = Phase::from_normalized(unison_voice.initial_phase)
+                    .add_normalized((random - 0.5) * self.params.phase_random);
+            }
         } else {
             for (phase, unison_voice) in voice.phases.iter_mut().zip(&channel.unison) {
                 *phase = Phase::from_normalized(unison_voice.initial_phase);
@@ -1105,6 +1123,7 @@ impl SynthModule for Oscillator {
                 UiEvent::UnisonGain { idx, value } => self.set_unison_gain(idx, value),
                 UiEvent::UnisonGainTo { idx, value } => self.set_unison_gain_to(idx, value),
                 UiEvent::StealPhase(steal_phase) => self.set_steal_phase(steal_phase),
+                UiEvent::PhaseRandom(phase_random) => self.set_phase_random(phase_random),
                 UiEvent::ApplyUnisonLevelShape { center, level, to } => {
                     self.apply_unison_level_shape(center, level, to);
                 }
