@@ -50,18 +50,6 @@ pub struct OscillatorConfig {
 
 impl Default for OscillatorConfig {
     fn default() -> Self {
-        static INITIAL_PHASES: [Sample; MAX_UNISON_VOICES] = [
-            0.0, 0.9068176, 0.6544455, 0.26577616, 0.24667478, 0.12834072, 0.5805929, 0.55541587,
-            0.58291245, 0.03298676, 0.8845756, 0.96093744, 0.42001683, 0.63606197, 0.28810132,
-            0.5167134,
-        ];
-
-        let mut unison = <[UnisonConfig; MAX_UNISON_VOICES]>::default();
-
-        for (voice, phase) in unison.iter_mut().zip(&INITIAL_PHASES) {
-            voice.initial_phase = StereoSample::splat(*phase);
-        }
-
         Self {
             id: -1,
             unison_voices: 1,
@@ -78,7 +66,7 @@ impl Default for OscillatorConfig {
             frequency_shift: 0.0.into(),
             phases_blend: 0.0.into(),
             gains_blend: 0.0.into(),
-            unison,
+            unison: Default::default(),
         }
     }
 }

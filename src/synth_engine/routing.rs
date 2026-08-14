@@ -23,6 +23,9 @@ pub const NUM_CHANNELS: usize = 2;
 pub const OUTPUT_MODULE_ID: ModuleId = 0;
 pub const MIN_MODULE_ID: ModuleId = 1;
 
+pub const LEFT_CHANNEL: usize = 0;
+pub const RIGHT_CHANNEL: usize = 1;
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DataType {
     Audio,

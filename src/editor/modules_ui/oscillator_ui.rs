@@ -447,6 +447,19 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_param(Input::PitchShift, config.pitch_shift);
                 }
+                ui.label("Freq shift");
+                if ui
+                    .add(StereoInput::new(
+                        Input::FrequencyShift,
+                        module_id,
+                        &mut config.frequency_shift,
+                        bridge,
+                    ))
+                    .changed()
+                {
+                    osc_bridge.set_param(Input::FrequencyShift, config.frequency_shift);
+                }
+                ui.end_row();
 
                 ui.label("Phase shift");
                 if ui
@@ -460,20 +473,15 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_param(Input::PhaseShift, config.phase_shift);
                 }
-                ui.end_row();
 
-                ui.label("Freq shift");
+                ui.label("Phase rand").on_hover_text("Phases randomization");
                 if ui
-                    .add(StereoInput::new(
-                        Input::FrequencyShift,
-                        module_id,
-                        &mut config.frequency_shift,
-                        bridge,
-                    ))
+                    .add(Slider::mono(&mut config.phase_random, 0.0..=1.0, None).default(0.0))
                     .changed()
                 {
-                    osc_bridge.set_param(Input::FrequencyShift, config.frequency_shift);
+                    osc_bridge.set_phase_random(config.phase_random);
                 }
+
                 ui.end_row();
 
                 ui.label("Detune");
@@ -544,15 +552,6 @@ impl OscillatorUI {
                     .changed()
                 {
                     osc_bridge.set_steal_phase(config.steal_phase);
-                }
-                ui.end_row();
-
-                ui.label("Phase random");
-                if ui
-                    .add(Slider::mono(&mut config.phase_random, 0.0..=1.0, None).default(0.0))
-                    .changed()
-                {
-                    osc_bridge.set_phase_random(config.phase_random);
                 }
                 ui.end_row();
             });

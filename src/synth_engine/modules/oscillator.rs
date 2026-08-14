@@ -15,9 +15,9 @@ use crate::{
         oscillator::link::{AudioEnd, UiEnd, UiEvent, create_link_pair},
         phase::Phase,
         routing::{
-            AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-            ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent,
-            VoiceRouter, VoiceTarget,
+            AudioRouterType, DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, ModuleId,
+            NUM_CHANNELS, ProcessContext, RIGHT_CHANNEL, RouterFactory, SamplesOutput,
+            SpectralInputSlot, VoiceEvent, VoiceRouter, VoiceTarget,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
@@ -999,6 +999,7 @@ impl Oscillator {
             voices[voice_idx].glide = None;
         }
 
+        let unison = self.params.unison;
         let voice = &mut voices[voice_idx];
 
         voice.pitch = pitch;
@@ -1012,12 +1013,21 @@ impl Oscillator {
                 voice.phases.iter_mut(),
                 channel.unison.iter(),
                 (&mut self.random).random_iter::<Sample>()
-            ) {
+            )
+            .take(unison)
+            {
                 *phase = Phase::from_normalized(unison_voice.initial_phase)
                     .add_normalized((random - 0.5) * self.params.phase_random);
             }
+
+            if unison & 1 == 1 && channel_idx == RIGHT_CHANNEL {
+                let center = unison / 2;
+
+                self.voices[channel_idx][voice_idx].phases[center] =
+                    self.voices[LEFT_CHANNEL][voice_idx].phases[center];
+            }
         } else {
-            for (phase, unison_voice) in voice.phases.iter_mut().zip(&channel.unison) {
+            for (phase, unison_voice) in voice.phases.iter_mut().zip(&channel.unison).take(unison) {
                 *phase = Phase::from_normalized(unison_voice.initial_phase);
             }
         }
