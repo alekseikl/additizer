@@ -874,12 +874,16 @@ impl<'a> Slider<'a> {
         let button_down_on = response.is_pointer_button_down_on();
         let button_down = ui.input(|i| i.pointer.primary_down() || i.pointer.secondary_down());
         let contains = response.contains_pointer();
+        let menu_open = response.context_menu_opened();
         let state_id = response.id.with("label-state");
 
         ui.data_mut(|d| {
             let state = d.get_temp_mut_or_default::<LabelState>(state_id);
 
-            if button_down_on {
+            if menu_open {
+                state.visible = false;
+                state.hover_since = None;
+            } else if button_down_on {
                 state.visible = true;
                 state.hover_since = None;
             } else if !contains || button_down {

@@ -22,7 +22,7 @@ impl Default for SpectralFilterConfig {
         Self {
             id: -1,
             filter_type: FilterType::default(),
-            linear_phase: true,
+            linear_phase: false,
             q_limit_to: from_st(12.0).into(),
             q_limit_curve: 0.5.into(),
             cutoff: 1.0.into(),
