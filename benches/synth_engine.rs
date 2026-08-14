@@ -7,7 +7,7 @@ use additizer::synth_engine::{
     oscillator::{MAX_UNISON_VOICES, OscillatorConfig},
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use nih_plug::prelude::*;
+use nice_plug::prelude::*;
 
 const SAMPLE_RATE: Sample = 48_000.0;
 const HARMONIC_EDITOR_ID: ModuleId = 1;

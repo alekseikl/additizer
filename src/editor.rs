@@ -4,9 +4,10 @@ use egui::{
     CentralPanel, FontData, FontDefinitions, FontFamily, Frame, Id, Margin, Panel, ScrollArea, Ui,
     Vec2, vec2,
 };
-use nih_plug::editor::Editor;
-use nih_plug_egui::{
-    EguiSettings, EguiState, GlConfig, create_egui_editor, resizable_window::ResizableWindow,
+use nice_plug::editor::Editor;
+use nice_plug_egui::{
+    EguiNiceSettings, EguiState, GlConfig, GraphicsConfig, create_egui_editor,
+    resizable_window::ResizableWindow,
 };
 
 use crate::{
@@ -43,7 +44,7 @@ pub trait ModuleUi {
 
 type ModuleUIBox = Box<dyn ModuleUi + Send>;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum DetailViewKey {
     Params,
     Module(ModuleId),
@@ -179,7 +180,7 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
             .resizable(true)
             .default_size(300.0)
             .min_size(80.0)
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 ScrollArea::vertical()
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
@@ -199,7 +200,7 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
             });
     }
 
-    CentralPanel::no_frame().show_inside(ui, |ui| {
+    CentralPanel::no_frame().show(ui, |ui| {
         editor_state
             .grid
             .ui(ui, &mut editor_state.ui_bridge, grid_selected_id);
@@ -213,9 +214,12 @@ pub fn create_editor(
     create_egui_editor(
         Arc::clone(&egui_state),
         EditorState::new(factory),
-        EguiSettings {
-            gl_config: GlConfig {
-                vsync: true,
+        EguiNiceSettings {
+            graphics: GraphicsConfig {
+                gl_config: GlConfig {
+                    vsync: true,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             ..Default::default()
@@ -226,10 +230,10 @@ pub fn create_editor(
 
             install_fonts(_egui_ctx);
         },
-        move |egui_ctx, _setter, _queue, editor_state| {
+        move |ui, _setter, _queue, editor_state| {
             ResizableWindow::new("res-wind")
                 .min_size(Vec2::new(640.0, 480.0))
-                .show(egui_ctx, egui_state.as_ref(), |ui| {
+                .show(ui, |ui| {
                     show_editor(ui, editor_state);
                 });
         },

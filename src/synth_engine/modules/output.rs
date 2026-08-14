@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use itertools::izip;
-use nih_plug::params::FloatParam;
+use nice_plug::params::FloatParam;
 
 use crate::{
     synth_engine::{

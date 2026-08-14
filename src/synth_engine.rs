@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use nih_plug::params::FloatParam;
+use nice_plug::params::FloatParam;
 use rustc_hash::FxHashMap;
 use std::assert_matches;
 use topo_sort::{SortResults, TopoSort};

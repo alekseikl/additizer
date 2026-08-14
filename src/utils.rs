@@ -4,31 +4,31 @@ const ST_TO_OCTAVE_MULT: Sample = 12.0f32.recip();
 
 macro_rules! log {
     ($($args:tt)*) => {
-        ::nih_plug::nih_log!($($args)*)
+        ::nice_plug::nice_log!($($args)*)
     };
 }
 pub(crate) use log;
 
-pub const MINUS_INFINITY_DB: f32 = nih_plug::util::MINUS_INFINITY_DB;
+pub const MINUS_INFINITY_DB: f32 = nice_plug::util::MINUS_INFINITY_DB;
 
 #[inline]
 pub fn db_to_gain(dbs: f32) -> f32 {
-    nih_plug::util::db_to_gain(dbs)
+    nice_plug::util::db_to_gain(dbs)
 }
 
 #[inline]
 pub fn gain_to_db(gain: f32) -> f32 {
-    nih_plug::util::gain_to_db(gain)
+    nice_plug::util::gain_to_db(gain)
 }
 
 #[inline]
 pub fn db_to_gain_fast(dbs: f32) -> f32 {
-    nih_plug::util::db_to_gain_fast(dbs)
+    nice_plug::util::db_to_gain_fast(dbs)
 }
 
 #[inline]
 pub fn gain_to_db_fast(gain: f32) -> f32 {
-    nih_plug::util::gain_to_db_fast(gain)
+    nice_plug::util::gain_to_db_fast(gain)
 }
 
 #[inline]

@@ -2,7 +2,7 @@ use std::sync::{Arc, atomic::Ordering};
 
 use arc_swap::ArcSwap;
 use atomic_float::AtomicF32;
-use nih_plug::params::FloatParam;
+use nice_plug::params::FloatParam;
 use parking_lot::Mutex;
 
 use crate::{

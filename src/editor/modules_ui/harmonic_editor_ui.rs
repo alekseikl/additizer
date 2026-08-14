@@ -334,7 +334,7 @@ impl HarmonicEditorUI {
                 right: 0,
                 bottom: 8,
             }))
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 ScrollArea::horizontal().show(ui, |ui| {
                     ui.horizontal_top(|ui| {
                         let mut harmonics = editor_bridge.harmonics();

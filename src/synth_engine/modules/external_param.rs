@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use nih_plug::params::FloatParam;
+use nice_plug::params::FloatParam;
 
 mod config;
 mod link;

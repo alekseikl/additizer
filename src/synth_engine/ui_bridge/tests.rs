@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use nih_plug::prelude::*;
+use nice_plug::prelude::*;
 use parking_lot::Mutex;
 
 use crate::{

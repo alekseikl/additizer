@@ -2,7 +2,7 @@ use egui::{
     Color32, Painter, Pos2, Rect, Response, ScrollArea, Sense, Shape, Ui, Vec2,
     epaint::{CubicBezierShape, PathStroke},
     pos2,
-    scroll_area::{ScrollBarVisibility, ScrollSource},
+    scroll_area::{DragScroll, ScrollBarVisibility, ScrollSource},
     vec2,
 };
 use rustc_hash::FxHashMap;
@@ -190,7 +190,7 @@ impl Grid {
         ScrollArea::both()
             .id_salt("module-grid-area")
             .scroll_source(ScrollSource {
-                drag: true,
+                drag: DragScroll::Always,
                 scroll_bar: false,
                 ..Default::default()
             })

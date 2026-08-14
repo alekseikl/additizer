@@ -17,7 +17,7 @@ use crate::engine_factory::{EngineFactory, EngineHandle};
 use crate::params::AdditizerParams;
 use crate::synth_engine::{Expression, ExternalParamsBlock, SynthEngine};
 pub use egui;
-use nih_plug::prelude::*;
+use nice_plug::prelude::*;
 use std::sync::Arc;
 
 pub struct Additizer {
@@ -310,5 +310,5 @@ impl ClapPlugin for Additizer {
 //     ];
 // }
 
-nih_export_clap!(Additizer);
-// nih_export_vst3!(Additizer);
+nice_export_clap!(Additizer);
+// nice_export_vst3!(Additizer);

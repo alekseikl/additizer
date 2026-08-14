@@ -1,5 +1,5 @@
 use additizer::Additizer;
-use nih_plug::prelude::*;
+use nice_plug::prelude::*;
 
 fn first_midi_input_name() -> Option<String> {
     let midi = midir::MidiInput::new("additizer").ok()?;
@@ -17,5 +17,5 @@ fn main() {
         args.push(name);
     }
 
-    nih_export_standalone_with_args::<Additizer, _>(args);
+    nice_export_standalone_with_args::<Additizer, _>(args);
 }

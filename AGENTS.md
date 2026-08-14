@@ -5,8 +5,8 @@ Guidance for AI agents working in this repository. Read this before making chang
 ## Project overview
 
 Additizer is a **modular synthesizer plugin** written in Rust. It builds as a
-CLAP plugin (`cdylib`) and a standalone app, using the [`nih-plug`](https://github.com/robbert-vdh/nih-plug)
-framework with an `egui`-based editor (`nih_plug_egui`, OpenGL via `baseview`).
+CLAP plugin (`cdylib`) and a standalone app, using the [`nice-plug`](https://codeberg.org/RustAudio/nice-plug)
+framework with an `egui`-based editor (`nice_plug_egui`, OpenGL via `baseview`).
 
 The synth is a graph of **modules**. Some process audio in the time domain (oscillator,
 mixer, amplifier, waveshaper, output), others operate on spectra (harmonic editor, spectral
@@ -18,8 +18,8 @@ module list and `docs/module-routing-rules.md` for link/modulation rules.
 ## Commands
 
 ```shell
-# Build the standalone app + CLAP bundle into ./target/bundled (requires cargo-nih-plug)
-cargo nih-plug bundle additizer --release
+# Build the standalone app + CLAP bundle into ./target/bundled (requires cargo-nice-plug)
+cargo nice-plug bundle additizer --release
 
 # Run standalone, choosing a MIDI input device by name
 cargo run --release -- --midi-input "Keystation Mini 32 MK3"
@@ -58,7 +58,7 @@ uses `VoiceRouter` / `ProcessContext` (`src/synth_engine/routing/`).
 
 **Presets / persistence:** `EngineConfig` + `UiConfig` are `serde`-serializable
 (`src/synth_engine/config.rs`, `src/synth_engine/ui_bridge/ui_config.rs`, `src/preset.rs`,
-`src/presets.rs`). nih-plug persists them via `PresetWrapper` in `src/params.rs`.
+`src/presets.rs`). nice-plug persists them via `PresetWrapper` in `src/params.rs`.
 `default_scheme.rs` builds the default patch.
 
 **Engine params** (`EngineParams` in `config.rs`): polyphony, legato, block size, oversampling,

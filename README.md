@@ -29,7 +29,7 @@ Every slider in the UI is stereo, and each channel can be adjusted by dragging w
 To build the standalone app and the CLAP plugin in `./target/bundled`:
 
 ```shell
-cargo nih-plug bundle additizer --release
+cargo nice-plug bundle additizer --release
 ```
 
 ## Run

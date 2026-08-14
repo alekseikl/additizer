@@ -1,6 +1,7 @@
-use nih_plug::params::persist::PersistentField;
-use nih_plug::prelude::*;
-use nih_plug_egui::EguiState;
+use nice_plug::editor::dpi::LogicalSize;
+use nice_plug::params::persist::PersistentField;
+use nice_plug::prelude::*;
+use nice_plug_egui::EguiState;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
@@ -33,7 +34,7 @@ pub struct AdditizerParams {
 impl Default for AdditizerParams {
     fn default() -> Self {
         Self {
-            editor_state: EguiState::from_size(900, 600),
+            editor_state: EguiState::from_size(LogicalSize::new(900.0, 600.0)),
             config: PresetWrapper::new(),
             volume: Arc::new(
                 FloatParam::new(
