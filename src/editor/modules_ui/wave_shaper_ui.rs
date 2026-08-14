@@ -10,6 +10,8 @@ use crate::{
 };
 
 impl ShaperType {
+    const ALL: [Self; 2] = [Self::HardClip, Self::Sigmoid];
+
     fn label(&self) -> &'static str {
         match self {
             Self::HardClip => "Hard Clip",
@@ -18,11 +20,11 @@ impl ShaperType {
     }
 }
 
-pub struct WaveShaperUi {
+pub struct WaveShaperUI {
     module_id: ModuleId,
 }
 
-impl WaveShaperUi {
+impl WaveShaperUI {
     pub fn new(module_id: ModuleId) -> Self {
         Self { module_id }
     }
@@ -41,27 +43,23 @@ impl WaveShaperUi {
         ui.add_space(16.0);
 
         Grid::new("waveshaper_grid")
-            .num_columns(2)
-            .spacing([40.0, 24.0])
-            .striped(true)
+            .num_columns(4)
+            .spacing([8.0, 8.0])
             .show(ui, |ui| {
                 ui.label("Type");
                 ComboBox::from_id_salt("waveshaper-type")
                     .selected_text(config.shaper_type.label())
                     .show_ui(ui, |ui| {
-                        const TYPE_OPTIONS: &[ShaperType] =
-                            &[ShaperType::HardClip, ShaperType::Sigmoid];
-
-                        for shaper_type in TYPE_OPTIONS {
+                        for shaper_type in ShaperType::ALL {
                             if ui
                                 .selectable_value(
                                     &mut config.shaper_type,
-                                    *shaper_type,
+                                    shaper_type,
                                     shaper_type.label(),
                                 )
                                 .clicked()
                             {
-                                shaper_bridge.set_shaper_type(*shaper_type);
+                                shaper_bridge.set_shaper_type(shaper_type);
                             }
                         }
                     });
@@ -79,7 +77,6 @@ impl WaveShaperUi {
                 {
                     shaper_bridge.set_param(Input::Distortion, config.distortion);
                 }
-                ui.end_row();
 
                 ui.label("Clipping level");
                 if ui
@@ -98,7 +95,7 @@ impl WaveShaperUi {
     }
 }
 
-impl ModuleUi for WaveShaperUi {
+impl ModuleUi for WaveShaperUI {
     fn module_id(&self) -> Option<ModuleId> {
         Some(self.module_id)
     }

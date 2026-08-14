@@ -1,6 +1,6 @@
 use egui::{
     Align, Color32, Id, Label, LayerId, Layout, Order, PointerButton, Pos2, Rect, Response, Sense,
-    Stroke, Ui, UiBuilder, Vec2,
+    Stroke, StrokeKind, Ui, UiBuilder, Vec2,
     emath::{self, GuiRounding},
     lerp, vec2,
 };
@@ -46,7 +46,7 @@ mod spectral_mixer_widget;
 mod wave_shaper_widget;
 
 const C_MOD_BG: Color32 = Color32::from_rgb(28, 30, 42);
-const C_MOD_BG_SELECTED: Color32 = Color32::from_rgb(40, 42, 54);
+const C_MOD_STROKE_SELECTED: Color32 = Color32::from_gray(60);
 const CORNER_RADIUS: f32 = 4.0;
 const BLOCK_MARGIN: f32 = 3.0;
 
@@ -262,12 +262,17 @@ impl GridWidget {
             let full_height = ui.available_height();
 
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-            let bg = if ctx.selected_module_id == Some(self.io.id) {
-                C_MOD_BG_SELECTED
-            } else {
-                C_MOD_BG
-            };
-            ui.painter().rect_filled(ui.max_rect(), CORNER_RADIUS, bg);
+            ui.painter()
+                .rect_filled(ui.max_rect(), CORNER_RADIUS, C_MOD_BG);
+
+            if ctx.selected_module_id == Some(self.io.id) {
+                ui.painter().rect_stroke(
+                    ui.max_rect(),
+                    CORNER_RADIUS,
+                    Stroke::new(1.0, C_MOD_STROKE_SELECTED),
+                    StrokeKind::Inside,
+                );
+            }
 
             ui.allocate_ui_with_layout(
                 vec2(IO_STRIPE_W, full_height),

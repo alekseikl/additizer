@@ -26,4 +26,4 @@ pub use params_ui::ParamsUi;
 pub use spectral_blend_ui::SpectralBlendUi;
 pub use spectral_filter_ui::SpectralFilterUI;
 pub use spectral_mixer_ui::SpectralMixerUi;
-pub use wave_shaper_ui::WaveShaperUi;
+pub use wave_shaper_ui::WaveShaperUI;

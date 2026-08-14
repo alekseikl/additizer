@@ -16,7 +16,7 @@ const PADDING: f32 = 4.0;
 const BOTTOM_PADDING: f32 = 2.0;
 const LINE_WIDTH: f32 = 2.0;
 const GRID_LINE_WIDTH: f32 = 1.0;
-const SAMPLES: usize = 128;
+const SAMPLES: usize = 256;
 const STROKE_COLOR: Color32 = Color32::from_rgb(0xe0, 0x6a, 0x6a);
 const GRID_COLOR: Color32 = Color32::from_gray(80);
 

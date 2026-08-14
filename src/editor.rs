@@ -15,7 +15,7 @@ use crate::{
         modules_ui::{
             AmplifierUI, EnvelopeUI, ExpressionsUi, ExternalParamUI, HarmonicEditorUI, LfoUi,
             MixerUi, OscillatorUI, OutputUi, ParamsUi, SpectralBlendUi, SpectralFilterUI,
-            SpectralMixerUi, WaveShaperUi,
+            SpectralMixerUi, WaveShaperUI,
         },
     },
     engine_factory::EngineFactory,
@@ -92,7 +92,7 @@ impl ModuleType {
             Self::Lfo => Box::new(LfoUi::new(id)),
             Self::SpectralBlend => Box::new(SpectralBlendUi::new(id)),
             Self::SpectralMixer => Box::new(SpectralMixerUi::new(id)),
-            Self::WaveShaper => Box::new(WaveShaperUi::new(id)),
+            Self::WaveShaper => Box::new(WaveShaperUI::new(id)),
             Self::Expressions => Box::new(ExpressionsUi::new(id)),
         }
     }
