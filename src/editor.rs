@@ -31,6 +31,7 @@ mod modules_ui;
 mod routing_ui_ext;
 mod slider;
 mod stereo_input;
+mod units;
 mod utils;
 mod volume_meter;
 mod waveform;

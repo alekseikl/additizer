@@ -1,10 +1,7 @@
 use egui::{Grid, Ui};
 
 use crate::{
-    editor::{
-        ModuleUi,
-        slider::{self, Slider},
-    },
+    editor::{ModuleUi, slider::Slider, units::Units},
     synth_engine::{ModuleId, OUTPUT_MODULE_ID, StereoSample, ui_bridge::UiBridge},
     utils::{db_to_gain, gain_to_db},
 };
@@ -40,7 +37,7 @@ impl OutputUi {
                             .default(0.0)
                             .over(0.0)
                             .skew(1.6)
-                            .units(slider::Units::Db)
+                            .units(Units::Db)
                             .length(200.0),
                     )
                     .changed()

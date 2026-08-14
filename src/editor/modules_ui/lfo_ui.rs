@@ -2,10 +2,8 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi,
-        module_label::ModuleLabel,
-        slider::{self, Slider},
-        stereo_input::StereoInput,
+        ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput,
+        units::Units,
     },
     synth_engine::{
         Input, LfoShape, ModuleId, ModuleType,
@@ -112,7 +110,7 @@ impl LfoUi {
                         Slider::stereo(&mut config.smooth_time, 0.0..=0.1, None)
                             .default(0.0)
                             .skew(1.2)
-                            .units(slider::Units::Time),
+                            .units(Units::Time),
                     )
                     .changed()
                 {

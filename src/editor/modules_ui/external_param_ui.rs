@@ -1,11 +1,7 @@
 use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
-    editor::{
-        ModuleUi,
-        module_label::ModuleLabel,
-        slider::{self, Slider},
-    },
+    editor::{ModuleUi, module_label::ModuleLabel, slider::Slider, units::Units},
     synth_engine::{
         ModuleId, ModuleType,
         external_param::{ExternalParamUiBridge, NUM_FLOAT_PARAMS},
@@ -72,7 +68,7 @@ impl ExternalParamUI {
                         Slider::mono(&mut config.smooth, 0.0..=0.05, None)
                             .default(from_ms(4.0))
                             .skew(1.2)
-                            .units(slider::Units::Time),
+                            .units(Units::Time),
                     )
                     .changed()
                 {

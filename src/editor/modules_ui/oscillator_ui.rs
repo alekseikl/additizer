@@ -1,9 +1,7 @@
 use crate::{
     editor::{
-        ModuleUi,
-        module_label::ModuleLabel,
-        slider::{self, Slider},
-        stereo_input::StereoInput,
+        ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput,
+        units::Units,
     },
     synth_engine::{
         Input, ModuleId, ModuleType, Sample, StereoSample,
@@ -71,7 +69,7 @@ impl OscillatorUI {
                     ui.add(
                         Slider::stereo(&mut state.level, -48.0..=6.0, None)
                             .over(0.0)
-                            .units(slider::Units::Db)
+                            .units(Units::Db)
                             .default(0.0),
                     );
                     ui.end_row();
@@ -206,7 +204,7 @@ impl OscillatorUI {
                         .add(
                             Slider::stereo(&mut gain_db, -48.0..=6.0, None)
                                 .over(0.0)
-                                .units(slider::Units::Db)
+                                .units(Units::Db)
                                 .vertical()
                                 .thickness(12.0)
                                 .length(100.0)

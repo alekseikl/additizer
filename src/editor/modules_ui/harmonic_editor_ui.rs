@@ -1,9 +1,6 @@
 use crate::{
     editor::{
-        ModuleUi,
-        gain_slider::GainSlider,
-        module_label::ModuleLabel,
-        slider::{self, Slider},
+        ModuleUi, gain_slider::GainSlider, module_label::ModuleLabel, slider::Slider, units::Units,
     },
     synth_engine::{
         ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, StereoSample,
@@ -184,7 +181,7 @@ impl HarmonicEditorUI {
                         Slider::stereo(&mut state.volume, -100.0..=40.0, None)
                             .default(0.0)
                             .skew(1.6)
-                            .units(slider::Units::Db),
+                            .units(Units::Db),
                     );
                     ui.end_row();
                 });
@@ -271,7 +268,7 @@ impl HarmonicEditorUI {
                     ui.add(
                         Slider::stereo(&mut state.cutoff, -4.0..=10.0, None)
                             .default(0.0)
-                            .units(slider::Units::Octaves),
+                            .units(Units::Octaves),
                     );
                     ui.end_row();
 
@@ -288,7 +285,7 @@ impl HarmonicEditorUI {
                         Slider::stereo(&mut state.gain, 0.0..=24.0, Some(-24.0))
                             .default(0.0)
                             .skew(1.6)
-                            .units(slider::Units::Db),
+                            .units(Units::Db),
                     );
                     ui.end_row();
                 });

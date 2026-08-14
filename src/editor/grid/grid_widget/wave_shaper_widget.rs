@@ -47,8 +47,8 @@ impl WaveShaperWidget {
         bridge.apply_modulation(module_id, Input::Distortion, &mut config.distortion);
         bridge.apply_modulation(module_id, Input::ClippingLevel, &mut config.clipping_level);
 
-        let gain = db_to_gain_fast(config.distortion[0].clamp(0.0, 48.0));
-        let clipping_gain = db_to_gain_fast(config.clipping_level[0].min(24.0));
+        let gain = db_to_gain_fast(config.distortion[0]);
+        let clipping_gain = db_to_gain_fast(config.clipping_level[0]);
         let points = Self::curve_points(square, config.shaper_type, gain, clipping_gain);
         let painter = ui.painter();
 

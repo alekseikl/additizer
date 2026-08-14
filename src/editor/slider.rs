@@ -1,17 +1,19 @@
 use std::ops::RangeInclusive;
 
 use egui::{
-    Color32, FontFamily, FontId, Id, LayerId, Mesh, Order, Painter, PointerButton, Pos2, Rect,
-    Response, Sense, Shape, Stroke, StrokeKind, TextureId, Ui, Widget,
+    Align2, Area, Color32, FontFamily, FontId, Id, Key, LayerId, Margin, Mesh, Order, Painter,
+    PointerButton, Pos2, Rect, Response, Sense, Shape, Stroke, StrokeKind, TextEdit, TextureId, Ui,
+    Widget,
     ecolor::Hsva,
     emath::GuiRounding,
     epaint::{PathStroke, Vertex},
+    text::CCursorRange,
     vec2,
 };
 
 use crate::synth_engine::{Sample, StereoSample};
 
-use super::utils::hsva;
+use super::{units::Units, utils::hsva};
 
 const BG_COLOR: Hsva = hsva(0.115, 0.05, 0.01, 1.0);
 const BORDER_COLOR: Hsva = hsva(0.115, 0.05, 0.2, 1.0);
@@ -130,59 +132,6 @@ impl RoundedEdges {
 /// Sample density per track column in rounded zones (smoother arc edges).
 const ROUNDED_SAMPLES_PER_COLUMN: usize = 4;
 
-pub enum Units {
-    Normalized,
-    Db,
-    Octaves,
-    Frequency,
-    Time,
-}
-
-impl Units {
-    pub fn format(&self, value: Sample) -> String {
-        match self {
-            Self::Db => format!("{:+.1} dB", value),
-            Self::Normalized => format!("{:.0}%", value * 100.0),
-            Self::Octaves => {
-                let st = value * 12.0;
-
-                if st == 0.0 {
-                    "0 st".to_string()
-                } else if st.abs() < 1.0 {
-                    format!("{:.0} cents", value * 1_200.0)
-                } else {
-                    format!("{:.2} st", st)
-                }
-            }
-            Self::Frequency => {
-                if value.abs() > 1_000.0 {
-                    format!("{:.2} kHz", value / 1_000.0)
-                } else {
-                    let precision = if value.abs() < 1.0 {
-                        2
-                    } else if value.abs() < 10.0 {
-                        1
-                    } else {
-                        0
-                    };
-                    format!("{0:.1$} Hz", value, precision)
-                }
-            }
-            Self::Time => {
-                let ms = value * 1_000.0;
-
-                if ms.abs() < 10.0 {
-                    format!("{:.1} ms", ms)
-                } else if ms.abs() < 1_000.0 {
-                    format!("{:.0} ms", ms)
-                } else {
-                    format!("{:.2} s", value)
-                }
-            }
-        }
-    }
-}
-
 enum Value<'a> {
     Mono(&'a mut Sample),
     Stereo(&'a mut StereoSample),
@@ -192,6 +141,12 @@ enum Value<'a> {
 struct LabelState {
     visible: bool,
     hover_since: Option<f64>,
+}
+
+#[derive(Clone, Default)]
+struct EnterState {
+    text: String,
+    request_focus: bool,
 }
 
 pub struct Slider<'a> {
@@ -362,6 +317,180 @@ impl<'a> Slider<'a> {
 
     fn is_stereo(&self) -> bool {
         matches!(self.value, Value::Stereo(_))
+    }
+
+    fn value_min(&self) -> Sample {
+        *self.range.start()
+    }
+
+    fn stereo_value(&self) -> StereoSample {
+        match &self.value {
+            Value::Mono(value) => StereoSample::splat(**value),
+            Value::Stereo(value) => **value,
+        }
+    }
+
+    fn context_menu(&mut self, ui: &Ui, response: &mut Response) {
+        let min = self.value_min();
+        let current = self.stereo_value();
+        let mut new_value = None;
+        let mut enter = false;
+
+        response.context_menu(|ui| {
+            if ui.button("Enter").clicked() {
+                enter = true;
+                ui.close();
+            }
+
+            if self.inverse_to.is_some() && ui.button("Min").clicked() {
+                new_value = Some(StereoSample::splat(min));
+                ui.close();
+            }
+
+            if let Some(default) = self.default
+                && ui.button("Default").clicked()
+            {
+                new_value = Some(StereoSample::splat(default));
+                ui.close();
+            }
+
+            if self.is_stereo() {
+                ui.separator();
+
+                if ui.button("L -> R").clicked() {
+                    new_value = Some(StereoSample::splat(current.left()));
+                    ui.close();
+                }
+
+                if ui.button("R -> L").clicked() {
+                    new_value = Some(StereoSample::splat(current.right()));
+                    ui.close();
+                }
+            }
+        });
+
+        if enter {
+            ui.data_mut(|d| {
+                d.insert_temp(
+                    response.id.with("enter"),
+                    EnterState {
+                        text: self.format_edit_text(),
+                        request_focus: true,
+                    },
+                );
+            });
+        }
+
+        if let Some(new_value) = new_value {
+            self.set_value(response, new_value);
+        }
+    }
+
+    fn parse_entered(&self, text: &str) -> Option<StereoSample> {
+        let parsed = self.units.parse(text, self.is_stereo())?;
+        let min = self.inverse_to.unwrap_or(*self.range.start());
+        let max = *self.range.end();
+        Some(parsed.clamp(min, max))
+    }
+
+    fn enter_anchor(&self, ui: &Ui, slider_rect: Rect) -> (Align2, Pos2) {
+        let screen = ui.ctx().content_rect();
+
+        match self.orientation {
+            Orientation::Horizontal => {
+                let above = slider_rect.top() - LABEL_MARGIN;
+                if above >= screen.top() + 20.0 {
+                    (Align2::LEFT_BOTTOM, Pos2::new(slider_rect.left(), above))
+                } else {
+                    (
+                        Align2::LEFT_TOP,
+                        Pos2::new(slider_rect.left(), slider_rect.bottom() + LABEL_MARGIN),
+                    )
+                }
+            }
+            Orientation::Vertical => {
+                let right = slider_rect.right() + LABEL_MARGIN;
+                if right + 96.0 <= screen.right() {
+                    (Align2::LEFT_TOP, Pos2::new(right, slider_rect.top()))
+                } else {
+                    (
+                        Align2::RIGHT_TOP,
+                        Pos2::new(slider_rect.left() - LABEL_MARGIN, slider_rect.top()),
+                    )
+                }
+            }
+        }
+    }
+
+    fn show_enter_input(&mut self, ui: &mut Ui, response: &mut Response) -> bool {
+        let state_id = response.id.with("enter");
+        let Some(mut state) = ui.data_mut(|d| d.remove_temp::<EnterState>(state_id)) else {
+            return false;
+        };
+
+        let (pivot, pos) = self.enter_anchor(ui, response.rect);
+        let font = FontId::new(11.0, FontFamily::Name("Bold".into()));
+        let text_id = response.id.with("enter-text");
+        let text_color = Color32::from(LABEL_TEXT_COLOR);
+        let bg_color = Color32::from(BG_COLOR);
+        let border_color = Color32::from(BORDER_COLOR);
+
+        let mut output = Area::new(response.id.with("enter-area"))
+            .order(Order::Foreground)
+            .fixed_pos(pos)
+            .pivot(pivot)
+            .show(ui.ctx(), |ui| {
+                ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(1.0, border_color);
+                ui.visuals_mut().widgets.hovered.bg_stroke = Stroke::new(1.0, border_color);
+                ui.visuals_mut().widgets.active.bg_stroke = Stroke::new(1.0, border_color);
+
+                TextEdit::singleline(&mut state.text)
+                    .id(text_id)
+                    .desired_width(160.0)
+                    .font(font)
+                    .text_color(text_color)
+                    .background_color(bg_color)
+                    .margin(Margin::symmetric(
+                        LABEL_PADDING as i8,
+                        (LABEL_PADDING * 0.5) as i8,
+                    ))
+                    .show(ui)
+            })
+            .inner;
+
+        if state.request_focus {
+            output.response.request_focus();
+            output
+                .state
+                .cursor
+                .set_char_range(Some(CCursorRange::one(output.galley.end())));
+            output.state.store(ui.ctx(), output.response.id);
+            state.request_focus = false;
+        }
+
+        let lost_focus = output.response.lost_focus();
+        let enter = ui.input(|i| i.key_pressed(Key::Enter));
+        let escape = ui.input(|i| i.key_pressed(Key::Escape));
+
+        if lost_focus && escape {
+            return true;
+        }
+
+        if lost_focus {
+            if let Some(value) = self.parse_entered(&state.text) {
+                self.set_value(response, value);
+                return true;
+            }
+
+            if enter {
+                output.response.request_focus();
+            } else {
+                return true;
+            }
+        }
+
+        ui.data_mut(|d| d.insert_temp(state_id, state));
+        true
     }
 
     /// Across-axis inset from a rounded corner at `dist_from_edge` from that edge.
@@ -673,6 +802,18 @@ impl<'a> Slider<'a> {
         }
     }
 
+    fn format_edit_text(&self) -> String {
+        match &self.value {
+            Value::Mono(value) => self.units.format_input(**value),
+            Value::Stereo(value) if value.left() != value.right() => format!(
+                "{}, {}",
+                self.units.format_input(value.left()),
+                self.units.format_input(value.right())
+            ),
+            Value::Stereo(value) => self.units.format_input(value.left()),
+        }
+    }
+
     fn paint_label(&self, ui: &Ui, slider_rect: Rect) {
         let text = self.format_label();
         let text_color = Color32::from(LABEL_TEXT_COLOR);
@@ -816,7 +957,9 @@ impl<'a> Slider<'a> {
             self.paint_track_stroke(painter, rect, Color32::from(BORDER_COLOR));
         }
 
-        if self.label_visible(ui, &response) {
+        self.context_menu(ui, &mut response);
+
+        if !self.show_enter_input(ui, &mut response) && self.label_visible(ui, &response) {
             self.paint_label(ui, response.rect);
         }
 

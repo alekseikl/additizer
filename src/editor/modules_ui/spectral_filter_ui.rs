@@ -2,10 +2,8 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi,
-        module_label::ModuleLabel,
-        slider::{self, Slider},
-        stereo_input::StereoInput,
+        ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput,
+        units::Units,
     },
     synth_engine::{
         Input, ModuleId, ModuleType,
@@ -114,7 +112,7 @@ impl SpectralFilterUI {
                     .add(
                         Slider::stereo(&mut config.q_limit_to, 0.0..=10.0, None)
                             .default(from_st(12.0))
-                            .units(slider::Units::Octaves),
+                            .units(Units::Octaves),
                     )
                     .changed()
                 {
