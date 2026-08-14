@@ -15,7 +15,7 @@ use crate::{
             mixer_widget::MixerWidget, oscillator_widget::OscillatorWidget,
             output_widget::OutputWidget, spectral_blend_widget::SpectralBlendWidget,
             spectral_filter_widget::SpectralFilterWidget,
-            spectral_mixer_widget::SpectralMixerWidget,
+            spectral_mixer_widget::SpectralMixerWidget, wave_shaper_widget::WaveShaperWidget,
         },
         input_mixer_popup::InputMixerPopup,
         input_tooltip,
@@ -43,6 +43,7 @@ mod output_widget;
 mod spectral_blend_widget;
 mod spectral_filter_widget;
 mod spectral_mixer_widget;
+mod wave_shaper_widget;
 
 const C_MOD_BG: Color32 = Color32::from_rgb(28, 30, 42);
 const C_MOD_BG_SELECTED: Color32 = Color32::from_rgb(40, 42, 54);
@@ -68,12 +69,6 @@ pub trait GridWidgetContent: Send {
     }
 
     fn ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx, module_id: ModuleId);
-}
-
-pub struct EmptyContent {}
-
-impl GridWidgetContent for EmptyContent {
-    fn ui(&mut self, _ui: &mut Ui, _ctx: &mut WidgetCtx, _module_id: ModuleId) {}
 }
 
 pub struct InputPoint {
@@ -123,7 +118,7 @@ impl GridWidget {
                 ModuleType::Output => Box::new(OutputWidget::default()),
                 ModuleType::ExternalParam => Box::new(ExternalParamWidget::default()),
                 ModuleType::Expressions => Box::new(ExpressionsWidget::default()),
-                _ => Box::new(EmptyContent {}),
+                ModuleType::WaveShaper => Box::new(WaveShaperWidget {}),
             },
             drag_offset: Vec2::ZERO,
             drag_grab: None,

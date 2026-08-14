@@ -4,7 +4,7 @@ use itertools::izip;
 
 use crate::{
     synth_engine::{
-        SmoothedSampleParams, StereoSample,
+        Sample, SmoothedSampleParams, StereoSample,
         buffer::{Buffer, VoicesLayout, zero_buffer},
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
@@ -26,6 +26,15 @@ pub use ui_bridge::WaveShaperUiBridge;
 
 struct Params {
     shaper_type: ShaperType,
+}
+
+impl ShaperType {
+    pub fn apply(self, input: Sample, gain: Sample, clipping_gain: Sample) -> Sample {
+        match self {
+            Self::HardClip => (input * gain).clamp(-clipping_gain, clipping_gain),
+            Self::Sigmoid => clipping_gain * (input * gain / clipping_gain).tanh(),
+        }
+    }
 }
 
 impl Params {
@@ -184,12 +193,7 @@ impl WaveShaper {
             let clipping_gain = db_to_gain_fast(clipping_level_mod.min(24.0));
             let gain = db_to_gain_fast(distortion_mod.clamp(0.0, 48.0));
 
-            match self.params.shaper_type {
-                ShaperType::HardClip => {
-                    *out = (input * gain).clamp(-clipping_gain, clipping_gain);
-                }
-                ShaperType::Sigmoid => *out = clipping_gain * (input * gain / clipping_gain).tanh(),
-            }
+            *out = self.params.shaper_type.apply(*input, gain, clipping_gain);
         }
     }
 }
