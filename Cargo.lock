@@ -28,6 +28,7 @@ dependencies = [
  "egui_extras",
  "enum_dispatch",
  "itertools 0.14.0",
+ "midir",
  "nih_plug",
  "nih_plug_egui",
  "parking_lot",

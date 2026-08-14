@@ -291,7 +291,7 @@ impl Plugin for Additizer {
 
 impl ClapPlugin for Additizer {
     const CLAP_ID: &'static str = concatcp!("com.alekseikl.additizer", env!("GIT_COMMIT_SUFFIX"));
-    const CLAP_DESCRIPTION: Option<&'static str> = Some("Additive synthesizer");
+    const CLAP_DESCRIPTION: Option<&'static str> = Some("Modular synthesizer");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
     const CLAP_FEATURES: &'static [ClapFeature] = &[

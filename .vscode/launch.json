@@ -10,8 +10,8 @@
             "name": "Debug",
             "program": "${workspaceFolder}/target/debug/additizer",
             "args": [
-                "--midi-input",
-               "MidiKeys"
+                // "--midi-input",
+            //    "MidiKeys"
                 // "Keystation Mini 32 MK3"
             ],
             "cwd": "${workspaceFolder}"

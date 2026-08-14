@@ -40,6 +40,7 @@ crossbeam-utils = "0.8.21"
 enum_dispatch = "0.3"
 auto_impl = "1.3"
 triple_buffer = "9.0.0"
+midir = "0.11"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
