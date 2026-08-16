@@ -1060,7 +1060,223 @@ fn choke_killing_only_note_terminates() {
     assert_eq!(terminated[0].host_id, Some(1));
 }
 
-// ---- handle_expression ----
+// ---- choke_all_voices ----
+
+fn assert_all_voices_free(h: &VoicesHandler) {
+    let ui = h.get_ui_state();
+    assert_eq!(ui.playing, 0);
+    assert_eq!(ui.releasing, 0);
+    assert_eq!(ui.killing, 0);
+    assert_eq!(ui.waiting, 0);
+    assert_eq!(h.free_voices.len(), MAX_VOICES);
+
+    let mut idxs = h.free_voices.clone();
+    idxs.sort_unstable();
+    idxs.dedup();
+    assert_eq!(idxs.len(), MAX_VOICES);
+    assert_eq!(idxs[0], 0);
+    assert_eq!(idxs[MAX_VOICES - 1], (MAX_VOICES - 1) as u8);
+}
+
+#[test]
+fn choke_all_voices_returns_all_slots_and_terminates() {
+    let mut h = handler(2);
+    let mut ev = events();
+
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: Some(1),
+        },
+        0,
+        &mut ev,
+    );
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: Some(2),
+        },
+        0,
+        &mut ev,
+    );
+    h.handle_note_off(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: Some(2),
+        },
+        0,
+        &mut ev,
+    );
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 67,
+            velocity: 1.0,
+            host_id: Some(3),
+        },
+        0,
+        &mut ev,
+    );
+
+    let ui = h.get_ui_state();
+    assert_eq!(ui.playing, 2);
+    assert_eq!(ui.releasing, 0);
+    assert_eq!(ui.killing, 1);
+    assert_eq!(ui.waiting, 0);
+
+    h.choke_all_voices();
+    assert_all_voices_free(&h);
+
+    let mut terminated = flush_terminated(&mut h, &[]);
+    terminated.sort_by_key(|n| n.note);
+    assert_eq!(terminated.len(), 3);
+    assert_eq!(terminated[0].note, 60);
+    assert_eq!(terminated[0].host_id, Some(1));
+    assert_eq!(terminated[1].note, 64);
+    assert_eq!(terminated[1].host_id, Some(2));
+    assert_eq!(terminated[2].note, 67);
+    assert_eq!(terminated[2].host_id, Some(3));
+}
+
+#[test]
+fn choke_all_voices_stolen_note_terminates_once() {
+    let mut h = handler(2);
+    let mut ev = events();
+
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: Some(1),
+        },
+        0,
+        &mut ev,
+    );
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: Some(2),
+        },
+        0,
+        &mut ev,
+    );
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 67,
+            velocity: 1.0,
+            host_id: Some(3),
+        },
+        0,
+        &mut ev,
+    );
+
+    assert_eq!(h.get_ui_state().waiting, 1);
+    assert_eq!(h.get_ui_state().killing, 1);
+
+    h.choke_all_voices();
+    assert_all_voices_free(&h);
+
+    let mut terminated = flush_terminated(&mut h, &[]);
+    terminated.sort_by_key(|n| n.note);
+    assert_eq!(terminated.len(), 3);
+    assert_eq!(terminated[0].note, 60);
+    assert_eq!(terminated[0].host_id, Some(1));
+    assert_eq!(terminated[1].note, 64);
+    assert_eq!(terminated[1].host_id, Some(2));
+    assert_eq!(terminated[2].note, 67);
+    assert_eq!(terminated[2].host_id, Some(3));
+}
+
+#[test]
+fn choke_all_voices_allows_retrigger() {
+    let mut h = handler(4);
+    let mut ev = events();
+
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: Some(1),
+        },
+        0,
+        &mut ev,
+    );
+
+    h.choke_all_voices();
+    let _ = flush_terminated(&mut h, &[]);
+
+    ev = events();
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: Some(2),
+        },
+        0,
+        &mut ev,
+    );
+
+    let ui = h.get_ui_state();
+    assert_eq!(ui.playing, 1);
+    assert_eq!(ui.waiting, 0);
+    assert_eq!(count_by_kind(&ev).0, 1);
+}
+
+#[test]
+fn choke_all_voices_terminates_waiting_only_note() {
+    let mut h = handler(1);
+    let mut ev = events();
+
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: Some(1),
+        },
+        0,
+        &mut ev,
+    );
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: Some(2),
+        },
+        0,
+        &mut ev,
+    );
+
+    let mut decaying = DecayingVoices::new();
+    h.get_decaying_voices(&mut decaying);
+    assert!(flush_terminated(&mut h, &decaying).is_empty());
+    assert_eq!(h.get_ui_state().waiting, 1);
+    assert_eq!(h.get_ui_state().killing, 0);
+
+    h.choke_all_voices();
+    assert_all_voices_free(&h);
+
+    let mut terminated = flush_terminated(&mut h, &[]);
+    terminated.sort_by_key(|n| n.note);
+    assert_eq!(terminated.len(), 2);
+    assert_eq!(terminated[0].note, 60);
+    assert_eq!(terminated[0].host_id, Some(1));
+    assert_eq!(terminated[1].note, 64);
+    assert_eq!(terminated[1].host_id, Some(2));
+}
 
 #[test]
 fn expression_on_playing_note() {

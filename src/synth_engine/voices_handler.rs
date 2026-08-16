@@ -447,6 +447,29 @@ impl VoicesHandler {
         }
     }
 
+    pub fn choke_all_voices(&mut self) {
+        for playing in self.playing.drain(..) {
+            self.terminate.push(playing.note);
+            self.free_voices.push(playing.voice_idx);
+        }
+
+        for releasing in self.releasing.drain(..) {
+            self.terminate.push(releasing.note);
+            self.free_voices.push(releasing.voice_idx);
+        }
+
+        for killing in self.killing.drain(..) {
+            if !self.waiting.iter().any(|w| w.is_same(&killing.note)) {
+                self.terminate.push(killing.note);
+            }
+            self.free_voices.push(killing.voice_idx);
+        }
+
+        for waiting in self.waiting.drain(..) {
+            self.terminate.push(waiting);
+        }
+    }
+
     pub fn handle_expression(
         &mut self,
         note: Note,

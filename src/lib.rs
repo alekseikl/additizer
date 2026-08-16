@@ -296,7 +296,9 @@ impl Plugin for Additizer {
         true
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        self.engine.as_deref().unwrap().lock().reset();
+    }
 
     fn process(
         &mut self,

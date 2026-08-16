@@ -44,8 +44,8 @@ pub use modules::{
     wave_shaper::{self},
 };
 pub use routing::{
-    DataType, Expression, Input, InputId, InputSource, MAX_VOICES, MixType, ModuleId,
-    NUM_CHANNELS, OUTPUT_MODULE_ID, VoiceEvent, VolumeType,
+    DataType, Expression, Input, InputId, InputSource, MAX_VOICES, MixType, ModuleId, NUM_CHANNELS,
+    OUTPUT_MODULE_ID, VoiceEvent, VolumeType,
 };
 pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
@@ -303,6 +303,10 @@ impl SynthEngine {
                 .collect(),
             self.input_sources.clone(),
         )
+    }
+
+    pub fn reset(&mut self) {
+        self.voices_handler.choke_all_voices();
     }
 
     pub fn set_num_voices(&mut self, num_voices: usize) {
