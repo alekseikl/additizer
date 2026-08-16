@@ -151,7 +151,7 @@ impl SynthModule for Output {
         for channel in &mut self.channels {
             for event in events {
                 match event {
-                    VoiceEvent::Trigger { voice_idx, .. } => {
+                    VoiceEvent::Reset { voice_idx, .. } => {
                         let voice = &mut channel.voices[*voice_idx];
 
                         voice.killing = false;

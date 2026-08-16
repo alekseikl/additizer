@@ -1094,7 +1094,7 @@ impl SynthModule for Oscillator {
         for channel_idx in 0..NUM_CHANNELS {
             for event in events {
                 match event {
-                    VoiceEvent::Trigger {
+                    VoiceEvent::Reset {
                         voice_idx,
                         prev_voice_idx,
                         pitch,

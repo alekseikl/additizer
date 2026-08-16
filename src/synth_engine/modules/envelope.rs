@@ -457,7 +457,7 @@ impl SynthModule for Envelope {
         for channel in self.voices.iter_mut() {
             for event in events {
                 match event {
-                    VoiceEvent::Trigger { voice_idx, .. } => {
+                    VoiceEvent::Reset { voice_idx, .. } => {
                         channel[*voice_idx].released = None;
                         channel[*voice_idx].done = false;
                     }

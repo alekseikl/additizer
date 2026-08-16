@@ -124,7 +124,7 @@ pub enum Expression {
 
 #[derive(Debug)]
 pub enum VoiceEvent {
-    Trigger {
+    Reset {
         voice_idx: usize,
         prev_voice_idx: Option<usize>,
         pitch: Sample,

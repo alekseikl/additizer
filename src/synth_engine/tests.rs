@@ -98,8 +98,14 @@ fn process_block_with_ui(
 ) -> (Vec<Sample>, Vec<Sample>) {
     let mut left = vec![0.0; samples];
     let mut right = vec![0.0; samples];
+    let mut terminated = Vec::new();
 
-    engine.process(samples, update_ui, &mut [&mut left[..], &mut right[..]]);
+    engine.process(
+        samples,
+        update_ui,
+        &mut terminated,
+        &mut [&mut left[..], &mut right[..]],
+    );
 
     (left, right)
 }
@@ -340,7 +346,15 @@ fn full_patch_produces_audio() {
         ..EngineParams::default()
     });
 
-    engine.handle_note_on(0, 60, 1.0, 0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
 
     let (left, right) = process_block(&mut engine, 64);
 
@@ -472,7 +486,15 @@ fn set_config_links_direct_exclusivity_keeps_last_source() {
     assert_eq!(spectrum_links.len(), 1);
     assert_eq!(spectrum_links[0].src_id(), HE1_ID);
 
-    engine.handle_note_on(0, 60, 1.0, 0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
     let (left, right) = process_block(&mut engine, 64);
     assert!(left.iter().chain(right.iter()).all(|s| s.is_finite()));
 }
@@ -543,7 +565,15 @@ fn set_direct_link_replaces_spectral_source() {
     assert_eq!(spectrum_links.len(), 1);
     assert_eq!(spectrum_links[0].src_id(), HE1_ID);
 
-    engine.handle_note_on(0, 60, 1.0, 0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
     let (left, _) = process_block(&mut engine, 64);
     assert!(left.iter().all(|s| s.is_finite()));
 }
@@ -739,7 +769,15 @@ fn add_module_at_runtime() {
         Some(ModuleHandle::Amplifier(_))
     ));
 
-    engine.handle_note_on(0, 60, 1.0, 0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
 
     let (left, _right) = process_block(&mut engine, 64);
     assert!(rms(&left) > 1e-6);
@@ -1118,7 +1156,15 @@ fn process_produces_audio_after_note_on() {
         },
     );
 
-    engine.handle_note_on(0, 60, 1.0, 0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
 
     let (left, right) = process_block(&mut engine, 64);
 
@@ -1140,16 +1186,87 @@ fn note_on_off_and_retrigger_processes() {
         },
     );
 
-    engine.handle_note_on(0, 60, 1.0, 0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
     process_block(&mut engine, 64);
 
-    engine.handle_note_off(0, 60, 0.0, 0);
+    engine.handle_note_off(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 0.0,
+            host_id: None,
+        },
+        0,
+    );
     let (left, _) = process_block(&mut engine, 64);
     assert!(left.iter().all(|s| s.is_finite()));
 
-    engine.handle_note_on(0, 64, 1.0, 0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
     let (left, _) = process_block(&mut engine, 64);
     assert!(rms(&left) > 1e-6);
+}
+
+#[test]
+fn process_reports_terminated_notes() {
+    let mut engine = make_engine(
+        EngineParams::default(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            ..OscillatorConfig::default()
+        },
+    );
+
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: Some(9),
+        },
+        0,
+    );
+    process_block(&mut engine, 64);
+
+    engine.handle_note_off(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 0.0,
+            host_id: Some(9),
+        },
+        0,
+    );
+
+    let mut left = vec![0.0; 64];
+    let mut right = vec![0.0; 64];
+    let mut terminated = Vec::new();
+    engine.process(
+        64,
+        false,
+        &mut terminated,
+        &mut [&mut left[..], &mut right[..]],
+    );
+
+    assert_eq!(terminated.len(), 1);
+    assert_eq!(terminated[0].channel, 0);
+    assert_eq!(terminated[0].note, 60);
+    assert_eq!(terminated[0].host_id, Some(9));
 }
 
 #[test]
@@ -1165,9 +1282,33 @@ fn polyphonic_notes_mix_to_output() {
         },
     );
 
-    engine.handle_note_on(0, 60, 1.0, 0);
-    engine.handle_note_on(0, 64, 1.0, 0);
-    engine.handle_note_on(0, 67, 1.0, 0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 67,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
 
     let (left, _) = process_block(&mut engine, 64);
     assert!(rms(&left) > 1e-6);
@@ -1246,7 +1387,15 @@ fn process_with_update_ui_runs() {
         },
     );
 
-    engine.handle_note_on(0, 60, 1.0, 0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
     let (left, _) = process_block_with_ui(&mut engine, 64, true);
     assert!(rms(&left) > 1e-6);
 }
@@ -1289,7 +1438,15 @@ fn add_link_connects_new_modules() {
             .any(|link| link.src_id() == env_id && link.dst_id() == amp_id)
     );
 
-    engine.handle_note_on(0, 60, 1.0, 0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
     let (left, _) = process_block(&mut engine, 64);
     assert!(rms(&left) > 1e-6);
 }
@@ -1368,7 +1525,15 @@ fn link_modulation_in_preset_builds() {
             < order.iter().position(|&id| id == AMPLIFIER_ID).unwrap()
     );
 
-    engine.handle_note_on(0, 60, 1.0, 0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
     let (left, _) = process_block(&mut engine, 64);
     assert!(rms(&left) > 1e-6);
 }
@@ -1505,8 +1670,24 @@ fn dual_audio_sources_mix_via_mixer() {
         .set_direct_link(harmonic_b, InputId::new(Input::Spectrum, osc_b))
         .expect("harmonic b -> osc b");
 
-    engine.handle_note_on(0, 60, 1.0, 0);
-    engine.handle_note_on(0, 64, 1.0, 0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
 
     let (left, _) = process_block(&mut engine, 64);
     assert!(rms(&left) > 1e-6);
@@ -1525,7 +1706,15 @@ fn non_unity_link_amount_processes() {
     let dst = InputId::new(Input::Spectrum, OSCILLATOR_ID);
     engine.update_link_amount(&HARMONIC_EDITOR_ID, &dst, StereoSample::splat(0.5));
 
-    engine.handle_note_on(0, 60, 1.0, 0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
     let (left, _) = process_block(&mut engine, 64);
     assert!(rms(&left) > 1e-6);
 }
@@ -1646,11 +1835,34 @@ fn handle_note_expression_and_choke_process() {
         ..EngineParams::default()
     });
 
-    engine.handle_note_on(0, 60, 0.5, 0);
-    engine.handle_note_expression(0, 60, Expression::Velocity, 0, 1.0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 0.5,
+            host_id: None,
+        },
+        0,
+    );
+    engine.handle_note_expression(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 0.0,
+            host_id: None,
+        },
+        Expression::Velocity,
+        0,
+        1.0,
+    );
     process_block(&mut engine, 64);
 
-    engine.handle_choke(0, 60);
+    engine.handle_choke(Note {
+        channel: 0,
+        note: 60,
+        velocity: 0.0,
+        host_id: None,
+    });
     let (left, _) = process_block(&mut engine, 64);
     assert!(left.iter().all(|s| s.is_finite()));
 }
@@ -1669,7 +1881,15 @@ fn oversampling_and_mono_spectrum_process() {
     );
 
     engine.set_oversampling(true);
-    engine.handle_note_on(0, 60, 1.0, 0);
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
 
     let (left, right) = process_block(&mut engine, 64);
     assert!(rms(&left) > 1e-6);

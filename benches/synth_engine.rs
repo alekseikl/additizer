@@ -2,7 +2,8 @@ use std::{hint::black_box, sync::Arc};
 
 use additizer::synth_engine::{
     EngineConfig, EngineParams, ExternalParamsBlock, Input, LinkConfig, MAX_BLOCK_SIZE,
-    ModuleConfig, ModuleId, NUM_CHANNELS, OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
+    ModuleConfig, ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Sample, StereoSample,
+    SynthEngine,
     harmonic_editor::HarmonicEditorConfig,
     oscillator::{MAX_UNISON_VOICES, OscillatorConfig},
 };
@@ -67,7 +68,15 @@ fn make_engine(engine: EngineParams, osc: OscillatorConfig) -> SynthEngine {
 
 fn trigger_notes(engine: &mut SynthEngine, count: usize) {
     for i in 0..count {
-        engine.handle_note_on(0, (60 + i) as u8, 1.0, 0);
+        engine.handle_note_on(
+            Note {
+                channel: 0,
+                note: (60 + i) as u8,
+                velocity: 1.0,
+                host_id: None,
+            },
+            0,
+        );
     }
 }
 
@@ -75,9 +84,11 @@ fn process_block(engine: &mut SynthEngine, samples: usize) -> [Sample; MAX_BLOCK
     let mut left = [0.0; MAX_BLOCK_SIZE];
     let mut right = [0.0; MAX_BLOCK_SIZE];
 
+    let mut terminated = Vec::new();
     engine.process(
         samples,
         false,
+        &mut terminated,
         &mut [&mut left[..samples], &mut right[..samples]],
     );
 

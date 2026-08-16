@@ -44,13 +44,14 @@ pub use modules::{
     wave_shaper::{self},
 };
 pub use routing::{
-    DataType, Expression, Input, InputId, InputSource, MixType, ModuleId, NUM_CHANNELS,
-    OUTPUT_MODULE_ID, VoiceEvent, VolumeType,
+    DataType, Expression, Input, InputId, InputSource, MAX_VOICES, MixType, ModuleId,
+    NUM_CHANNELS, OUTPUT_MODULE_ID, VoiceEvent, VolumeType,
 };
 pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
 pub use synth_module::ModuleUiBridge;
 pub use types::{ComplexSample, Sample};
+pub use voices_handler::Note;
 
 mod buffer;
 mod config;
@@ -613,30 +614,29 @@ impl SynthEngine {
         }
     }
 
-    pub fn handle_note_on(&mut self, channel: u8, note: u8, velocity: f32, offset: usize) {
+    pub fn handle_note_on(&mut self, note: Note, offset: usize) {
         let mut voice_events = VoiceEvents::new();
         let offset = self.to_internal_offset(offset);
 
         self.voices_handler
-            .handle_note_on(channel, note, velocity, offset, &mut voice_events);
+            .handle_note_on(note, offset, &mut voice_events);
 
         self.process_voice_events(voice_events.events());
     }
 
-    pub fn handle_note_off(&mut self, channel: u8, note: u8, velocity: f32, offset: usize) {
+    pub fn handle_note_off(&mut self, note: Note, offset: usize) {
         let mut voice_events = VoiceEvents::new();
         let offset = self.to_internal_offset(offset);
 
         self.voices_handler
-            .handle_note_off(channel, note, velocity, offset, &mut voice_events);
+            .handle_note_off(note, offset, &mut voice_events);
 
         self.process_voice_events(voice_events.events());
     }
 
     pub fn handle_note_expression(
         &mut self,
-        channel: u8,
-        note: u8,
+        note: Note,
         expression: Expression,
         offset: usize, // In-block host-sample offset
         value: Sample,
@@ -644,20 +644,14 @@ impl SynthEngine {
         let mut voice_events = VoiceEvents::new();
         let offset = self.to_internal_offset(offset);
 
-        self.voices_handler.handle_expression(
-            channel,
-            note,
-            expression,
-            offset,
-            value,
-            &mut voice_events,
-        );
+        self.voices_handler
+            .handle_expression(note, expression, offset, value, &mut voice_events);
 
         self.process_voice_events(voice_events.events());
     }
 
-    pub fn handle_choke(&mut self, channel: u8, note: u8) {
-        self.voices_handler.handle_choke(channel, note);
+    pub fn handle_choke(&mut self, note: Note) {
+        self.voices_handler.handle_choke(note);
     }
 
     fn handle_ui_events(&mut self) {
@@ -688,7 +682,13 @@ impl SynthEngine {
             .for_each(|m| m.process_ui_events());
     }
 
-    pub fn process(&mut self, samples: usize, update_ui: bool, outputs: &mut [&mut [f32]]) {
+    pub fn process(
+        &mut self,
+        samples: usize,
+        update_ui: bool,
+        terminated_notes: &mut Vec<Note>,
+        outputs: &mut [&mut [f32]],
+    ) {
         self.handle_ui_events();
 
         {
@@ -702,7 +702,8 @@ impl SynthEngine {
                 .filter_map(|id| self.modules.get(id))
                 .for_each(|module| module.poll_decaying_voices(&mut decaying_voices));
 
-            self.voices_handler.update_decaying_voices(&decaying_voices);
+            self.voices_handler
+                .update_decaying_voices(&decaying_voices, terminated_notes);
         }
 
         if update_ui {

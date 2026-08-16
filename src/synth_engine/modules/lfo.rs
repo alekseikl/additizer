@@ -343,7 +343,7 @@ impl SynthModule for Lfo {
     fn process_events(&mut self, events: &[VoiceEvent]) {
         for channel in self.voices.iter_mut() {
             for event in events {
-                if let VoiceEvent::Trigger {
+                if let VoiceEvent::Reset {
                     voice_idx,
                     prev_voice_idx,
                     ..

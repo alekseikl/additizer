@@ -215,7 +215,7 @@ impl SynthModule for Expressions {
     fn process_events(&mut self, events: &[VoiceEvent]) {
         for event in events {
             match event {
-                VoiceEvent::Trigger {
+                VoiceEvent::Reset {
                     voice_idx,
                     velocity,
                     offset,
