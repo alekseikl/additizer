@@ -1,7 +1,6 @@
 #![allow(clippy::new_without_default)]
 
 use const_format::concatcp;
-use smallvec::SmallVec;
 
 mod default_scheme;
 mod editor;
@@ -16,6 +15,7 @@ use crate::editor::create_editor;
 use crate::engine_factory::{EngineFactory, EngineHandle};
 use crate::params::AdditizerParams;
 use crate::synth_engine::{Expression, ExternalParamsBlock, MAX_VOICES, Note, SynthEngine};
+use crate::utils::log;
 pub use egui;
 use nice_plug::prelude::*;
 use std::sync::Arc;
@@ -48,58 +48,6 @@ impl Default for Additizer {
             factory,
             terminated_notes: Vec::with_capacity(128),
         }
-    }
-}
-
-struct EventReorderer<'a, C: ProcessContext<Additizer>> {
-    context: &'a mut C,
-    buffer: SmallVec<[NoteEvent<()>; 32]>,
-    stashed: Option<NoteEvent<()>>,
-}
-
-impl<'a, C: ProcessContext<Additizer>> EventReorderer<'a, C> {
-    fn new(context: &'a mut C) -> Self {
-        Self {
-            context,
-            buffer: SmallVec::new(),
-            stashed: None,
-        }
-    }
-
-    fn ctx(&mut self) -> &mut C {
-        self.context
-    }
-
-    fn priority(event: &NoteEvent<()>) -> u8 {
-        match event {
-            NoteEvent::Choke { .. } => 3, // Highest priority
-            NoteEvent::NoteOff { .. } => 2,
-            NoteEvent::NoteOn { .. } => 1,
-            _ => 0, // Lowest priority
-        }
-    }
-
-    fn next_event(&mut self) -> Option<NoteEvent<()>> {
-        if !self.buffer.is_empty() {
-            return self.buffer.pop();
-        }
-
-        let first = self.stashed.take().or_else(|| self.context.next_event())?;
-        let current_timing = first.timing();
-
-        self.buffer.push(first);
-
-        while let Some(event) = self.context.next_event() {
-            if event.timing() == current_timing {
-                self.buffer.push(event);
-            } else {
-                self.stashed.replace(event);
-                break;
-            }
-        }
-
-        self.buffer.sort_by_key(Self::priority);
-        self.buffer.pop()
     }
 }
 
@@ -320,8 +268,7 @@ impl Plugin for Additizer {
             let block_size = synth.block_size();
             let update_ui = self.params.editor_state.is_open();
 
-            let mut events = EventReorderer::new(context);
-            let mut next_event = events.next_event();
+            let mut next_event = context.next_event();
 
             for (block_start, block) in buffer.iter_blocks(block_size) {
                 let samples = block.samples();
@@ -331,7 +278,7 @@ impl Plugin for Additizer {
                     next_event.take_if(|event| (event.timing() as usize) < sample_to)
                 {
                     Self::process_event(&mut synth, event, block_start);
-                    next_event = events.next_event();
+                    next_event = context.next_event();
                 }
 
                 let mut channels = block.into_iter();
@@ -345,7 +292,7 @@ impl Plugin for Additizer {
                 );
 
                 for note in self.terminated_notes.drain(..) {
-                    events.ctx().send_event(NoteEvent::VoiceTerminated {
+                    context.send_event(NoteEvent::VoiceTerminated {
                         timing: sample_to as u32,
                         voice_id: note.host_id,
                         channel: note.channel,
