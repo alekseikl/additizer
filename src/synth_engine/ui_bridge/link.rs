@@ -2,7 +2,7 @@ use triple_buffer::triple_buffer;
 
 use crate::synth_engine::{
     Input, InputId, ModuleId, Sample, StereoSample, ui_bridge::VoicesStatus,
-    voices_handler::VoicesHandlerUiState,
+    voices_handler::VoicesHandlerMetrics,
 };
 
 pub enum UiEvent {
@@ -58,7 +58,7 @@ impl AudioEnd {
             .is_ok()
     }
 
-    pub fn update_voices_status(&mut self, d: &VoicesHandlerUiState) -> bool {
+    pub fn update_voices_status(&mut self, d: &VoicesHandlerMetrics) -> bool {
         self.tx
             .push(UiUpdate::VoicesStatus(VoicesStatus {
                 waiting_notes: d.waiting as u8,

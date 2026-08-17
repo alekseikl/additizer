@@ -5,7 +5,16 @@ use nice_plug_egui::EguiState;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
-use crate::{default_scheme::build_default_preset, engine_factory::EngineFactory, preset::Preset};
+use crate::{
+    default_scheme::build_default_preset, engine_factory::EngineFactory, preset::Preset,
+    synth_engine::external_param::NUM_FLOAT_PARAMS,
+};
+
+#[derive(Params)]
+pub struct FloatParamSlot {
+    #[id = "ctrl"]
+    pub param: Arc<FloatParam>,
+}
 
 #[derive(Params)]
 pub struct AdditizerParams {
@@ -18,17 +27,8 @@ pub struct AdditizerParams {
     #[id = "volume"]
     pub volume: Arc<FloatParam>,
 
-    #[id = "float-param-1"]
-    pub float_param_1: Arc<FloatParam>,
-
-    #[id = "float-param-2"]
-    pub float_param_2: Arc<FloatParam>,
-
-    #[id = "float-param-3"]
-    pub float_param_3: Arc<FloatParam>,
-
-    #[id = "float-param-4"]
-    pub float_param_4: Arc<FloatParam>,
+    #[nested(array)]
+    pub float_params: [FloatParamSlot; NUM_FLOAT_PARAMS],
 }
 
 impl Default for AdditizerParams {
@@ -51,26 +51,18 @@ impl Default for AdditizerParams {
                 .with_step_size(0.01)
                 .with_unit(" dB"),
             ),
-            float_param_1: Arc::new(FloatParam::new(
-                "Float Param 1",
-                0.0,
-                FloatRange::Linear { min: 0.0, max: 1.0 },
-            )),
-            float_param_2: Arc::new(FloatParam::new(
-                "Float Param 2",
-                0.0,
-                FloatRange::Linear { min: 0.0, max: 1.0 },
-            )),
-            float_param_3: Arc::new(FloatParam::new(
-                "Float Param 3",
-                0.0,
-                FloatRange::Linear { min: 0.0, max: 1.0 },
-            )),
-            float_param_4: Arc::new(FloatParam::new(
-                "Float Param 4",
-                0.0,
-                FloatRange::Linear { min: 0.0, max: 1.0 },
-            )),
+            float_params: std::array::from_fn(|i| {
+                let param = FloatParam::new(
+                    format!("Ctrl {}", i + 1),
+                    0.0,
+                    FloatRange::Linear { min: 0.0, max: 1.0 },
+                )
+                .with_poly_modulation_id(i as u32);
+
+                FloatParamSlot {
+                    param: Arc::new(param),
+                }
+            }),
         }
     }
 }

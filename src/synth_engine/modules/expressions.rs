@@ -11,8 +11,8 @@ use crate::{
         Buffer, Expression, ModuleId, Sample,
         buffer::{MonoVoicesLayout, VoicesLayout, new_mono_voices_layout, zero_buffer},
         routing::{
-            ControlRouterType, DataType, InputMeta, ProcessContext, RouterFactory, SamplesOutput,
-            VoiceEvent, VoiceTarget,
+            ControlRouterType, DataType, ExpressionEvent, InputMeta, ProcessContext, RouterFactory,
+            SamplesOutput, VoiceEvent, VoiceTarget,
         },
         smooth::Smoother,
         synth_module::SynthModule,
@@ -156,8 +156,14 @@ impl Expressions {
         }
     }
 
-    fn handle_expression(voice: &mut Voice, expression: Expression, timing: usize, value: Sample) {
-        voice.set_value_at(Self::transform_value(expression, value), timing);
+    pub fn process_expression(&mut self, e: &ExpressionEvent) {
+        if e.expression != self.params.expression {
+            return;
+        }
+
+        let voice = &mut self.mono_voices[e.voice_idx];
+
+        voice.set_value_at(Self::transform_value(e.expression, e.value), e.offset);
     }
 
     fn process_voice(
@@ -244,19 +250,6 @@ impl SynthModule for Expressions {
                         &mut self.mono_voices[*voice_idx],
                         &self.params,
                         *velocity,
-                    );
-                }
-                VoiceEvent::Expression {
-                    voice_idx,
-                    expression,
-                    offset: timing,
-                    value,
-                } if *expression == self.params.expression => {
-                    Self::handle_expression(
-                        &mut self.mono_voices[*voice_idx],
-                        *expression,
-                        *timing,
-                        *value,
                     );
                 }
                 _ => (),

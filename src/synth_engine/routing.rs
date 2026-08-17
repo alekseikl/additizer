@@ -146,12 +146,13 @@ pub enum VoiceEvent {
         voice_idx: usize,
         offset: usize, // In-block sample offset
     },
-    Expression {
-        voice_idx: usize,
-        expression: Expression,
-        offset: usize, // In-block sample offset
-        value: Sample,
-    },
+}
+
+pub struct ExpressionEvent {
+    pub voice_idx: usize,
+    pub expression: Expression,
+    pub offset: usize, // In-block sample offset
+    pub value: Sample,
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]

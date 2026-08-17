@@ -6,7 +6,7 @@ use crate::{
     synth_engine::{
         Expression, Sample,
         buffer::{MonoVoicesLayout, new_mono_voices_layout},
-        routing::{MAX_VOICES, VoiceEvent},
+        routing::{ExpressionEvent, MAX_VOICES, VoiceEvent},
     },
     utils::{log, note_to_pitch, pitch_to_freq},
 };
@@ -159,24 +159,9 @@ impl VoiceEvents {
             offset,
         });
     }
-
-    fn expression(
-        &mut self,
-        voice_idx: VoiceIdx,
-        expression: Expression,
-        offset: usize,
-        value: Sample,
-    ) {
-        self.events.push(VoiceEvent::Expression {
-            voice_idx: voice_idx as usize,
-            expression,
-            offset,
-            value,
-        });
-    }
 }
 
-pub struct VoicesHandlerUiState {
+pub struct VoicesHandlerMetrics {
     pub num_voices: usize,
     pub legato: bool,
     pub waiting: usize,
@@ -214,7 +199,7 @@ impl VoicesHandler {
         }
     }
 
-    fn grab_and_reset_voice(
+    fn grab_and_reset(
         &mut self,
         prev_voice_idx: Option<VoiceIdx>,
         note: Note,
@@ -233,7 +218,7 @@ impl VoicesHandler {
             self.waiting.push(playing.note);
             playing.voice_idx
         } else {
-            panic!("grab_and_reset_voice(): Note processing error")
+            panic!("grab_and_reset(): Note processing error")
         };
 
         self.playing.push_front(PlayingNote {
@@ -246,13 +231,7 @@ impl VoicesHandler {
         events.reset(voice_idx, prev_voice_idx, note, offset);
     }
 
-    fn apply_legato(
-        &mut self,
-        voice_idx: VoiceIdx,
-        note: Note,
-        offset: usize,
-        events: &mut VoiceEvents,
-    ) {
+    fn legato(&mut self, voice_idx: VoiceIdx, note: Note, offset: usize, events: &mut VoiceEvents) {
         self.playing.push_front(PlayingNote {
             note,
             voice_idx,
@@ -268,7 +247,7 @@ impl VoicesHandler {
         }
     }
 
-    fn kill_voice(&mut self, playing: PlayingNote, offset: usize, events: &mut VoiceEvents) {
+    fn kill(&mut self, playing: PlayingNote, offset: usize, events: &mut VoiceEvents) {
         self.killing.push_front(playing);
         events.kill(playing.voice_idx, offset);
     }
@@ -285,10 +264,10 @@ impl VoicesHandler {
             self.waiting.push(playing.note);
 
             if self.legato {
-                self.apply_legato(playing.voice_idx, new_note, offset, events);
+                self.legato(playing.voice_idx, new_note, offset, events);
             } else {
-                self.kill_voice(playing, offset, events);
-                self.grab_and_reset_voice(Some(playing.voice_idx), new_note, offset, events);
+                self.kill(playing, offset, events);
+                self.grab_and_reset(Some(playing.voice_idx), new_note, offset, events);
             }
         }
         // Kill releasing note on same channel
@@ -299,10 +278,10 @@ impl VoicesHandler {
         {
             let releasing = self.releasing.remove(releasing_idx).unwrap();
 
-            self.kill_voice(releasing, offset, events);
-            self.grab_and_reset_voice(Some(releasing.voice_idx), new_note, offset, events);
+            self.kill(releasing, offset, events);
+            self.grab_and_reset(Some(releasing.voice_idx), new_note, offset, events);
         } else {
-            self.grab_and_reset_voice(None, new_note, offset, events);
+            self.grab_and_reset(None, new_note, offset, events);
         }
     }
 
@@ -317,21 +296,21 @@ impl VoicesHandler {
         {
             let releasing = self.releasing.remove(idx).unwrap();
 
-            self.kill_voice(releasing, offset, events);
+            self.kill(releasing, offset, events);
             prev_voice_idx = Some(releasing.voice_idx);
         }
 
         // All available voices have been occupied, kill the oldest one
         if self.playing.len() + self.releasing.len() >= self.num_voices {
             if let Some(releasing) = self.releasing.pop_back() {
-                self.kill_voice(releasing, offset, events);
+                self.kill(releasing, offset, events);
             } else if let Some(playing) = self.playing.pop_back() {
                 self.waiting.push(playing.note);
-                self.kill_voice(playing, offset, events);
+                self.kill(playing, offset, events);
             }
         }
 
-        self.grab_and_reset_voice(prev_voice_idx, new_note, offset, events);
+        self.grab_and_reset(prev_voice_idx, new_note, offset, events);
     }
 
     fn note_on_impl(&mut self, new_note: Note, offset: usize, events: &mut VoiceEvents) {
@@ -403,7 +382,7 @@ impl VoicesHandler {
             let waiting_note = self.waiting.remove(waiting_idx);
 
             self.terminate.push(playing.note);
-            self.apply_legato(playing.voice_idx, waiting_note, offset, events);
+            self.legato(playing.voice_idx, waiting_note, offset, events);
             return;
         }
 
@@ -476,8 +455,7 @@ impl VoicesHandler {
         expression: Expression,
         offset: usize,
         value: Sample,
-        events: &mut VoiceEvents,
-    ) {
+    ) -> Option<ExpressionEvent> {
         let voice_idx = self
             .playing
             .iter()
@@ -490,9 +468,12 @@ impl VoicesHandler {
                     .map(|r| r.voice_idx)
             });
 
-        if let Some(voice_idx) = voice_idx {
-            events.expression(voice_idx, expression, offset, value);
-        }
+        voice_idx.map(|voice_idx| ExpressionEvent {
+            voice_idx: voice_idx as usize,
+            expression,
+            offset,
+            value,
+        })
     }
 
     pub fn set_num_voices(&mut self, num_voices: usize) {
@@ -503,8 +484,8 @@ impl VoicesHandler {
         self.legato = legato;
     }
 
-    pub fn get_ui_state(&self) -> VoicesHandlerUiState {
-        VoicesHandlerUiState {
+    pub fn get_metrics(&self) -> VoicesHandlerMetrics {
+        VoicesHandlerMetrics {
             num_voices: self.num_voices,
             legato: self.legato,
             waiting: self.waiting.len(),

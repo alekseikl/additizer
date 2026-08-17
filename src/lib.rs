@@ -32,12 +32,7 @@ impl Default for Additizer {
         let params = Arc::new(AdditizerParams::default());
 
         let external_params = Arc::new(ExternalParamsBlock {
-            float_params: [
-                params.float_param_1.clone(),
-                params.float_param_2.clone(),
-                params.float_param_3.clone(),
-                params.float_param_4.clone(),
-            ],
+            float_params: std::array::from_fn(|i| params.float_params[i].param.clone()),
         });
 
         let factory = Arc::new(EngineFactory::new(params.volume.clone(), external_params));
@@ -53,7 +48,7 @@ impl Default for Additizer {
 
 impl Additizer {
     fn process_event(synth: &mut SynthEngine, event: NoteEvent<()>, block_start: usize) {
-        // log!("Event: {:?}", event);
+        log!("Event: {:?}", event);
 
         match event {
             NoteEvent::NoteOn {

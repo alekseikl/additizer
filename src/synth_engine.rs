@@ -281,7 +281,7 @@ impl SynthEngine {
     }
 
     fn get_engine_params(&self) -> EngineParams {
-        let voices = self.voices_handler.get_ui_state();
+        let voices = self.voices_handler.get_metrics();
 
         EngineParams {
             num_voices: voices.num_voices,
@@ -610,14 +610,6 @@ impl SynthEngine {
             .expect("routing should be consistent after links are removed");
     }
 
-    fn process_voice_events(&mut self, events: &[VoiceEvent]) {
-        for module_id in &self.execution_order {
-            if let Some(module) = self.modules.get_mut(module_id) {
-                module.process_events(events);
-            }
-        }
-    }
-
     pub fn handle_note_on(&mut self, note: Note, offset: usize) {
         let mut voice_events = VoiceEvents::new();
         let offset = self.to_internal_offset(offset);
@@ -625,7 +617,9 @@ impl SynthEngine {
         self.voices_handler
             .handle_note_on(note, offset, &mut voice_events);
 
-        self.process_voice_events(voice_events.events());
+        self.modules
+            .values_mut()
+            .for_each(|m| m.process_events(voice_events.events()));
     }
 
     pub fn handle_note_off(&mut self, note: Note, offset: usize) {
@@ -635,7 +629,9 @@ impl SynthEngine {
         self.voices_handler
             .handle_note_off(note, offset, &mut voice_events);
 
-        self.process_voice_events(voice_events.events());
+        self.modules
+            .values_mut()
+            .for_each(|m| m.process_events(voice_events.events()));
     }
 
     pub fn handle_note_expression(
@@ -645,13 +641,18 @@ impl SynthEngine {
         offset: usize, // In-block host-sample offset
         value: Sample,
     ) {
-        let mut voice_events = VoiceEvents::new();
         let offset = self.to_internal_offset(offset);
 
-        self.voices_handler
-            .handle_expression(note, expression, offset, value, &mut voice_events);
-
-        self.process_voice_events(voice_events.events());
+        if let Some(event) = self
+            .voices_handler
+            .handle_expression(note, expression, offset, value)
+        {
+            self.modules.values_mut().for_each(|m| {
+                if let ModuleHandle::Expressions(module) = m {
+                    module.process_expression(&event);
+                }
+            });
+        }
     }
 
     pub fn handle_choke(&mut self, note: Note) {
@@ -712,7 +713,7 @@ impl SynthEngine {
 
         if update_ui {
             self.audio_end
-                .update_voices_status(&self.voices_handler.get_ui_state());
+                .update_voices_status(&self.voices_handler.get_metrics());
         }
 
         let mut playing_voices = PlayingVoices::new();

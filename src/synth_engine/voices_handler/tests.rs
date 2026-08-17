@@ -31,18 +31,17 @@ fn trigger_indices(ev: &VoiceEvents) -> Vec<usize> {
         .collect()
 }
 
-fn count_by_kind(ev: &VoiceEvents) -> (usize, usize, usize, usize, usize) {
-    let (mut trig, mut upd, mut rel, mut kill, mut expr) = (0, 0, 0, 0, 0);
+fn count_by_kind(ev: &VoiceEvents) -> (usize, usize, usize, usize) {
+    let (mut trig, mut upd, mut rel, mut kill) = (0, 0, 0, 0);
     for e in ev.events() {
         match e {
             VoiceEvent::Reset { .. } => trig += 1,
             VoiceEvent::Update { .. } => upd += 1,
             VoiceEvent::Release { .. } => rel += 1,
             VoiceEvent::Kill { .. } => kill += 1,
-            VoiceEvent::Expression { .. } => expr += 1,
         }
     }
-    (trig, upd, rel, kill, expr)
+    (trig, upd, rel, kill)
 }
 
 // ---- Construction & setters ----
@@ -50,7 +49,7 @@ fn count_by_kind(ev: &VoiceEvents) -> (usize, usize, usize, usize, usize) {
 #[test]
 fn new_defaults() {
     let h = VoicesHandler::new(1, false);
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.num_voices, 1);
     assert!(!ui.legato);
     assert_eq!(ui.waiting, 0);
@@ -64,13 +63,13 @@ fn set_num_voices_clamps() {
     let mut h = VoicesHandler::new(1, false);
 
     h.set_num_voices(0);
-    assert_eq!(h.get_ui_state().num_voices, 1);
+    assert_eq!(h.get_metrics().num_voices, 1);
 
     h.set_num_voices(999);
-    assert_eq!(h.get_ui_state().num_voices, MAX_AVAILABLE_VOICES);
+    assert_eq!(h.get_metrics().num_voices, MAX_AVAILABLE_VOICES);
 
     h.set_num_voices(8);
-    assert_eq!(h.get_ui_state().num_voices, 8);
+    assert_eq!(h.get_metrics().num_voices, 8);
 }
 
 #[test]
@@ -109,7 +108,7 @@ fn poly_single_note_on() {
         &mut ev,
     );
 
-    let (trig, _, _, _, _) = count_by_kind(&ev);
+    let (trig, _, _, _) = count_by_kind(&ev);
     assert_eq!(trig, 1);
     match &ev.events()[0] {
         VoiceEvent::Reset {
@@ -124,7 +123,7 @@ fn poly_single_note_on() {
         }
         _ => panic!("expected Reset"),
     }
-    assert_eq!(h.get_ui_state().playing, 1);
+    assert_eq!(h.get_metrics().playing, 1);
 }
 
 #[test]
@@ -163,7 +162,7 @@ fn poly_multiple_notes_get_unique_voices() {
         &mut ev,
     );
 
-    assert_eq!(h.get_ui_state().playing, 3);
+    assert_eq!(h.get_metrics().playing, 3);
 
     let mut indices = trigger_indices(&ev);
     let orig_len = indices.len();
@@ -199,7 +198,7 @@ fn poly_duplicate_note_ignored() {
     );
 
     assert_eq!(ev.events().len(), 1);
-    assert_eq!(h.get_ui_state().playing, 1);
+    assert_eq!(h.get_metrics().playing, 1);
 }
 
 #[test]
@@ -238,11 +237,11 @@ fn poly_voice_stealing_when_full() {
         &mut ev,
     );
 
-    let (trig, _, _, kill, _) = count_by_kind(&ev);
+    let (trig, _, _, kill) = count_by_kind(&ev);
     assert_eq!(trig, 3);
     assert_eq!(kill, 1);
 
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.playing, 2);
     assert_eq!(ui.waiting, 1);
 }
@@ -283,7 +282,7 @@ fn poly_steals_releasing_before_playing() {
         &mut ev,
     );
 
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.releasing, 1);
 
@@ -298,7 +297,7 @@ fn poly_steals_releasing_before_playing() {
         &mut ev,
     );
 
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.playing, 2);
     assert_eq!(ui.waiting, 0);
 }
@@ -320,6 +319,7 @@ fn poly_note_off_releases() {
         0,
         &mut ev,
     );
+    ev = events();
     h.handle_note_off(
         Note {
             channel: 0,
@@ -331,10 +331,10 @@ fn poly_note_off_releases() {
         &mut ev,
     );
 
-    let (_, _, rel, _, _) = count_by_kind(&ev);
+    let (_, _, rel, _) = count_by_kind(&ev);
     assert_eq!(rel, 1);
 
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.playing, 0);
     assert_eq!(ui.releasing, 1);
 }
@@ -393,7 +393,7 @@ fn poly_note_off_activates_waiting_note() {
         &mut ev,
     );
 
-    assert_eq!(h.get_ui_state().waiting, 1);
+    assert_eq!(h.get_metrics().waiting, 1);
 
     h.handle_note_off(
         Note {
@@ -406,7 +406,7 @@ fn poly_note_off_activates_waiting_note() {
         &mut ev,
     );
 
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.waiting, 0);
     assert_eq!(ui.playing, 2);
 }
@@ -438,7 +438,7 @@ fn poly_retrigger_releasing_note() {
         0,
         &mut ev,
     );
-    assert_eq!(h.get_ui_state().releasing, 1);
+    assert_eq!(h.get_metrics().releasing, 1);
 
     h.handle_note_on(
         Note {
@@ -451,7 +451,7 @@ fn poly_retrigger_releasing_note() {
         &mut ev,
     );
 
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.releasing, 0);
 }
@@ -484,7 +484,7 @@ fn mono_note_on_replaces_playing() {
         &mut ev,
     );
 
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.waiting, 1);
 }
@@ -515,7 +515,7 @@ fn mono_no_legato_kills_and_retriggers() {
         &mut ev,
     );
 
-    let (trig, _, _, kill, _) = count_by_kind(&ev);
+    let (trig, _, _, kill) = count_by_kind(&ev);
     assert_eq!(kill, 1);
     assert_eq!(trig, 2);
 }
@@ -545,7 +545,7 @@ fn mono_note_on_kills_releasing_on_same_channel() {
         0,
         &mut ev,
     );
-    assert_eq!(h.get_ui_state().releasing, 1);
+    assert_eq!(h.get_metrics().releasing, 1);
 
     h.handle_note_on(
         Note {
@@ -558,7 +558,7 @@ fn mono_note_on_kills_releasing_on_same_channel() {
         &mut ev,
     );
 
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.releasing, 0);
 }
@@ -592,7 +592,7 @@ fn mono_legato_updates_instead_of_retriggering() {
         &mut ev,
     );
 
-    let (trig, upd, _, kill, _) = count_by_kind(&ev);
+    let (trig, upd, _, kill) = count_by_kind(&ev);
     assert_eq!(trig, 1);
     assert_eq!(upd, 1);
     assert_eq!(kill, 0);
@@ -642,7 +642,7 @@ fn mono_legato_note_off_returns_to_previous() {
         &mut ev,
     );
 
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.waiting, 0);
     assert_eq!(ui.releasing, 0);
@@ -697,7 +697,7 @@ fn mono_legato_three_notes_unwind() {
         &mut ev,
     );
 
-    assert_eq!(h.get_ui_state().waiting, 2);
+    assert_eq!(h.get_metrics().waiting, 2);
 
     h.handle_note_off(
         Note {
@@ -729,6 +729,7 @@ fn mono_legato_three_notes_unwind() {
         _ => panic!("expected Update"),
     }
 
+    ev = events();
     h.handle_note_off(
         Note {
             channel: 0,
@@ -739,9 +740,9 @@ fn mono_legato_three_notes_unwind() {
         0,
         &mut ev,
     );
-    let (_, _, rel, _, _) = count_by_kind(&ev);
+    let (_, _, rel, _) = count_by_kind(&ev);
     assert!(rel >= 1);
-    assert_eq!(h.get_ui_state().playing, 0);
+    assert_eq!(h.get_metrics().playing, 0);
 }
 
 // ---- Waiting note removal ----
@@ -785,7 +786,7 @@ fn note_off_waiting_note_just_removes() {
     );
 
     assert_eq!(ev.events().len(), before_len);
-    assert_eq!(h.get_ui_state().waiting, 0);
+    assert_eq!(h.get_metrics().waiting, 0);
 }
 
 // ---- handle_choke ----
@@ -814,7 +815,7 @@ fn choke_playing_note_frees_voice() {
         host_id: Some(7),
     });
 
-    assert_eq!(h.get_ui_state().playing, 0);
+    assert_eq!(h.get_metrics().playing, 0);
     assert_eq!(h.free_voices.len(), free_before + 1);
 
     let terminated = flush_terminated(&mut h, &[]);
@@ -857,7 +858,7 @@ fn choke_releasing_note_frees_voice() {
         host_id: Some(8),
     });
 
-    assert_eq!(h.get_ui_state().releasing, 0);
+    assert_eq!(h.get_metrics().releasing, 0);
     assert_eq!(h.free_voices.len(), free_before + 1);
 
     let terminated = flush_terminated(&mut h, &[]);
@@ -916,8 +917,8 @@ fn choke_stolen_waiting_note_terminates_and_does_not_resound() {
         &mut ev,
     );
 
-    assert_eq!(h.get_ui_state().waiting, 1);
-    assert_eq!(h.get_ui_state().killing, 1);
+    assert_eq!(h.get_metrics().waiting, 1);
+    assert_eq!(h.get_metrics().killing, 1);
 
     h.handle_choke(Note {
         channel: 0,
@@ -926,8 +927,8 @@ fn choke_stolen_waiting_note_terminates_and_does_not_resound() {
         host_id: Some(1),
     });
 
-    assert_eq!(h.get_ui_state().waiting, 0);
-    assert_eq!(h.get_ui_state().killing, 0);
+    assert_eq!(h.get_metrics().waiting, 0);
+    assert_eq!(h.get_metrics().killing, 0);
 
     let terminated = flush_terminated(&mut h, &[]);
     assert_eq!(terminated.len(), 1);
@@ -945,7 +946,7 @@ fn choke_stolen_waiting_note_terminates_and_does_not_resound() {
         &mut ev,
     );
 
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.waiting, 0);
     assert_eq!(ui.playing, 1);
 }
@@ -980,8 +981,8 @@ fn choke_waiting_only_note_terminates() {
     h.get_decaying_voices(&mut decaying);
     let terminated = flush_terminated(&mut h, &decaying);
     assert!(terminated.is_empty());
-    assert_eq!(h.get_ui_state().waiting, 1);
-    assert_eq!(h.get_ui_state().killing, 0);
+    assert_eq!(h.get_metrics().waiting, 1);
+    assert_eq!(h.get_metrics().killing, 0);
 
     h.handle_choke(Note {
         channel: 0,
@@ -990,7 +991,7 @@ fn choke_waiting_only_note_terminates() {
         host_id: Some(1),
     });
 
-    assert_eq!(h.get_ui_state().waiting, 0);
+    assert_eq!(h.get_metrics().waiting, 0);
     let terminated = flush_terminated(&mut h, &[]);
     assert_eq!(terminated.len(), 1);
     assert_eq!(terminated[0].note, 60);
@@ -1043,8 +1044,8 @@ fn choke_killing_only_note_terminates() {
         &mut ev,
     );
 
-    assert_eq!(h.get_ui_state().killing, 1);
-    assert_eq!(h.get_ui_state().waiting, 0);
+    assert_eq!(h.get_metrics().killing, 1);
+    assert_eq!(h.get_metrics().waiting, 0);
 
     h.handle_choke(Note {
         channel: 0,
@@ -1053,7 +1054,7 @@ fn choke_killing_only_note_terminates() {
         host_id: Some(1),
     });
 
-    assert_eq!(h.get_ui_state().killing, 0);
+    assert_eq!(h.get_metrics().killing, 0);
     let terminated = flush_terminated(&mut h, &[]);
     assert_eq!(terminated.len(), 1);
     assert_eq!(terminated[0].note, 60);
@@ -1063,7 +1064,7 @@ fn choke_killing_only_note_terminates() {
 // ---- choke_all_voices ----
 
 fn assert_all_voices_free(h: &VoicesHandler) {
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.playing, 0);
     assert_eq!(ui.releasing, 0);
     assert_eq!(ui.killing, 0);
@@ -1124,7 +1125,7 @@ fn choke_all_voices_returns_all_slots_and_terminates() {
         &mut ev,
     );
 
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.playing, 2);
     assert_eq!(ui.releasing, 0);
     assert_eq!(ui.killing, 1);
@@ -1180,8 +1181,8 @@ fn choke_all_voices_stolen_note_terminates_once() {
         &mut ev,
     );
 
-    assert_eq!(h.get_ui_state().waiting, 1);
-    assert_eq!(h.get_ui_state().killing, 1);
+    assert_eq!(h.get_metrics().waiting, 1);
+    assert_eq!(h.get_metrics().killing, 1);
 
     h.choke_all_voices();
     assert_all_voices_free(&h);
@@ -1228,7 +1229,7 @@ fn choke_all_voices_allows_retrigger() {
         &mut ev,
     );
 
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.waiting, 0);
     assert_eq!(count_by_kind(&ev).0, 1);
@@ -1263,8 +1264,8 @@ fn choke_all_voices_terminates_waiting_only_note() {
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
     assert!(flush_terminated(&mut h, &decaying).is_empty());
-    assert_eq!(h.get_ui_state().waiting, 1);
-    assert_eq!(h.get_ui_state().killing, 0);
+    assert_eq!(h.get_metrics().waiting, 1);
+    assert_eq!(h.get_metrics().killing, 0);
 
     h.choke_all_voices();
     assert_all_voices_free(&h);
@@ -1293,33 +1294,23 @@ fn expression_on_playing_note() {
         0,
         &mut ev,
     );
-    h.handle_expression(
-        Note {
-            channel: 0,
-            note: 60,
-            velocity: 0.0,
-            host_id: None,
-        },
-        Expression::Pitch,
-        0,
-        0.5,
-        &mut ev,
-    );
+    let event = h
+        .handle_expression(
+            Note {
+                channel: 0,
+                note: 60,
+                velocity: 0.0,
+                host_id: None,
+            },
+            Expression::Pitch,
+            0,
+            0.5,
+        )
+        .expect("expression on playing note");
 
-    assert_eq!(ev.events().len(), 2);
-    match &ev.events()[1] {
-        VoiceEvent::Expression {
-            expression,
-            offset: timing,
-            value,
-            ..
-        } => {
-            assert_eq!(*expression, Expression::Pitch);
-            assert_eq!(*timing, 0);
-            assert_eq!(*value, 0.5);
-        }
-        _ => panic!("expected Expression event"),
-    }
+    assert_eq!(event.expression, Expression::Pitch);
+    assert_eq!(event.offset, 0);
+    assert_eq!(event.value, 0.5);
 }
 
 #[test]
@@ -1347,55 +1338,45 @@ fn expression_on_releasing_note() {
         0,
         &mut ev,
     );
-    assert_eq!(h.get_ui_state().releasing, 1);
+    assert_eq!(h.get_metrics().releasing, 1);
 
-    let len_before = ev.events().len();
-    h.handle_expression(
-        Note {
-            channel: 0,
-            note: 60,
-            velocity: 0.0,
-            host_id: None,
-        },
-        Expression::Pressure,
-        0,
-        0.3,
-        &mut ev,
-    );
-    assert_eq!(ev.events().len(), len_before + 1);
-    match &ev.events()[len_before] {
-        VoiceEvent::Expression {
-            expression,
-            offset: timing,
-            value,
-            ..
-        } => {
-            assert_eq!(*expression, Expression::Pressure);
-            assert_eq!(*timing, 0);
-            assert_eq!(*value, 0.3);
-        }
-        _ => panic!("expected Expression event"),
-    }
+    let event = h
+        .handle_expression(
+            Note {
+                channel: 0,
+                note: 60,
+                velocity: 0.0,
+                host_id: None,
+            },
+            Expression::Pressure,
+            0,
+            0.3,
+        )
+        .expect("expression on releasing note");
+
+    assert_eq!(event.expression, Expression::Pressure);
+    assert_eq!(event.offset, 0);
+    assert_eq!(event.value, 0.3);
 }
 
 #[test]
 fn expression_on_unknown_note_is_noop() {
     let mut h = handler(4);
-    let mut ev = events();
 
-    h.handle_expression(
-        Note {
-            channel: 0,
-            note: 60,
-            velocity: 0.0,
-            host_id: None,
-        },
-        Expression::Gain,
-        0,
-        0.5,
-        &mut ev,
+    assert!(
+        h.handle_expression(
+            Note {
+                channel: 0,
+                note: 60,
+                velocity: 0.0,
+                host_id: None,
+            },
+            Expression::Gain,
+            0,
+            0.5,
+        )
+        .is_none()
     );
-    assert!(ev.events().is_empty());
 }
 
 // ---- DecayingVoice lifecycle ----
@@ -1474,7 +1455,7 @@ fn get_decaying_voices_includes_killing() {
 
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
-    assert_eq!(decaying.len(), h.get_ui_state().killing);
+    assert_eq!(decaying.len(), h.get_metrics().killing);
 }
 
 // ---- update_decaying_voices ----
@@ -1511,7 +1492,7 @@ fn update_decaying_voices_frees_done() {
 
     let terminated = flush_terminated(&mut h, &decaying);
 
-    assert_eq!(h.get_ui_state().releasing, 0);
+    assert_eq!(h.get_metrics().releasing, 0);
     assert_eq!(h.free_voices.len(), free_before + 1);
     assert_eq!(terminated.len(), 1);
     assert_eq!(terminated[0].note, 60);
@@ -1551,7 +1532,7 @@ fn update_decaying_voices_keeps_active() {
     let free_before = h.free_voices.len();
     let terminated = flush_terminated(&mut h, &decaying);
 
-    assert_eq!(h.get_ui_state().releasing, 1);
+    assert_eq!(h.get_metrics().releasing, 1);
     assert_eq!(h.free_voices.len(), free_before);
     assert!(terminated.is_empty());
 }
@@ -1582,14 +1563,14 @@ fn update_decaying_voices_frees_killing() {
         &mut ev,
     );
 
-    let killing_before = h.get_ui_state().killing;
+    let killing_before = h.get_metrics().killing;
     let free_before = h.free_voices.len();
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
 
     let terminated = flush_terminated(&mut h, &decaying);
 
-    assert_eq!(h.get_ui_state().killing, 0);
+    assert_eq!(h.get_metrics().killing, 0);
     assert_eq!(h.free_voices.len(), free_before + killing_before);
     // The killed note is still waiting, so it must not be reported as terminated.
     assert!(terminated.is_empty());
@@ -1630,7 +1611,7 @@ fn waiting_note_off_terminates() {
         0,
         &mut ev,
     );
-    assert_eq!(h.get_ui_state().waiting, 1);
+    assert_eq!(h.get_metrics().waiting, 1);
 
     h.handle_note_off(
         Note {
@@ -1643,8 +1624,8 @@ fn waiting_note_off_terminates() {
         &mut ev,
     );
 
-    assert_eq!(h.get_ui_state().waiting, 0);
-    assert_eq!(h.get_ui_state().playing, 2);
+    assert_eq!(h.get_metrics().waiting, 0);
+    assert_eq!(h.get_metrics().playing, 2);
 
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
@@ -1691,8 +1672,8 @@ fn restored_waiting_note_terminates_when_old_kill_completes() {
         &mut ev,
     );
 
-    assert_eq!(h.get_ui_state().playing, 1);
-    assert_eq!(h.get_ui_state().waiting, 0);
+    assert_eq!(h.get_metrics().playing, 1);
+    assert_eq!(h.get_metrics().waiting, 0);
 
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
@@ -1756,8 +1737,8 @@ fn stolen_releasing_note_terminates_when_kill_completes() {
         &mut ev,
     );
 
-    assert_eq!(h.get_ui_state().killing, 1);
-    assert_eq!(h.get_ui_state().waiting, 0);
+    assert_eq!(h.get_metrics().killing, 1);
+    assert_eq!(h.get_metrics().waiting, 0);
 
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
@@ -1766,7 +1747,7 @@ fn stolen_releasing_note_terminates_when_kill_completes() {
     assert_eq!(terminated.len(), 1);
     assert_eq!(terminated[0].note, 60);
     assert_eq!(terminated[0].host_id, Some(1));
-    assert_eq!(h.get_ui_state().killing, 0);
+    assert_eq!(h.get_metrics().killing, 0);
 }
 
 #[test]
@@ -1794,14 +1775,14 @@ fn waiting_note_off_after_kill_then_terminates() {
         0,
         &mut ev,
     );
-    assert_eq!(h.get_ui_state().waiting, 1);
-    assert_eq!(h.get_ui_state().killing, 1);
+    assert_eq!(h.get_metrics().waiting, 1);
+    assert_eq!(h.get_metrics().killing, 1);
 
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
     let terminated = flush_terminated(&mut h, &decaying);
     assert!(terminated.is_empty());
-    assert_eq!(h.get_ui_state().killing, 0);
+    assert_eq!(h.get_metrics().killing, 0);
 
     h.handle_note_off(
         Note {
@@ -1893,7 +1874,7 @@ fn get_playing_voices_includes_killing() {
     let mut playing = PlayingVoices::new();
     h.get_playing_voices(&mut playing);
 
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(playing.len(), ui.playing + ui.releasing + ui.killing);
 }
 
@@ -1925,7 +1906,7 @@ fn different_channels_same_note_are_independent() {
         &mut ev,
     );
 
-    assert_eq!(h.get_ui_state().playing, 2);
+    assert_eq!(h.get_metrics().playing, 2);
 
     h.handle_note_off(
         Note {
@@ -1937,8 +1918,8 @@ fn different_channels_same_note_are_independent() {
         0,
         &mut ev,
     );
-    assert_eq!(h.get_ui_state().playing, 1);
-    assert_eq!(h.get_ui_state().releasing, 1);
+    assert_eq!(h.get_metrics().playing, 1);
+    assert_eq!(h.get_metrics().releasing, 1);
 }
 
 #[test]
@@ -1969,7 +1950,7 @@ fn mono_different_channel_does_not_steal() {
 
     // Channel 1 has no prior note, so it grabs a voice independently
     // (monophonic stealing is per-channel)
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert!(ui.playing >= 1);
 }
 
@@ -2026,8 +2007,8 @@ fn voice_reuse_after_full_lifecycle() {
     let terminated = flush_terminated(&mut h, &decaying);
 
     assert_eq!(h.free_voices.len(), free_after_two + 2);
-    assert_eq!(h.get_ui_state().releasing, 0);
-    assert_eq!(h.get_ui_state().playing, 0);
+    assert_eq!(h.get_metrics().releasing, 0);
+    assert_eq!(h.get_metrics().playing, 0);
     assert_eq!(terminated.len(), 2);
 }
 
@@ -2078,7 +2059,7 @@ fn get_ui_data_reflects_complex_state() {
         &mut ev,
     );
 
-    let ui = h.get_ui_state();
+    let ui = h.get_metrics();
     assert_eq!(ui.num_voices, 4);
     assert!(ui.legato);
     assert!(ui.playing + ui.waiting + ui.releasing + ui.killing > 0);
