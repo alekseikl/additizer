@@ -1,7 +1,3 @@
-use std::sync::Arc;
-
-use nice_plug::params::FloatParam;
-
 mod config;
 mod link;
 mod ui_bridge;
@@ -21,11 +17,7 @@ use crate::synth_engine::{
     synth_module::SynthModule,
 };
 
-pub const NUM_FLOAT_PARAMS: usize = 4;
-
-pub struct ExternalParamsBlock {
-    pub float_params: [Arc<FloatParam>; NUM_FLOAT_PARAMS],
-}
+pub const NUM_EXT_PARAMS: usize = 4;
 
 struct Params {
     selected_param_index: usize,
@@ -37,7 +29,7 @@ struct Params {
 impl Params {
     fn from_config(c: &config::ExternalParamConfig) -> Self {
         Self {
-            selected_param_index: c.selected_param_index.min(NUM_FLOAT_PARAMS - 1),
+            selected_param_index: c.selected_param_index.min(NUM_EXT_PARAMS - 1),
             smooth: c.smooth,
             sample_on_trigger: c.sample_on_trigger,
             make_bipolar: c.make_bipolar,
@@ -59,8 +51,8 @@ impl Default for VoiceState {
 
 pub struct ExternalParam {
     id: ModuleId,
-    params_block: Arc<ExternalParamsBlock>,
     params: Params,
+    values: [Sample; NUM_EXT_PARAMS],
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
     output_slot: usize,
@@ -70,26 +62,20 @@ pub struct ExternalParam {
 }
 
 impl ExternalParam {
-    pub fn new(id: ModuleId, params_block: Arc<ExternalParamsBlock>) -> Self {
-        Self::from_config(
-            &ExternalParamConfig {
-                id,
-                ..ExternalParamConfig::default()
-            },
-            params_block,
-        )
+    pub fn new(id: ModuleId) -> Self {
+        Self::from_config(&ExternalParamConfig {
+            id,
+            ..ExternalParamConfig::default()
+        })
     }
 
-    pub fn from_config(
-        config: &config::ExternalParamConfig,
-        params_block: Arc<ExternalParamsBlock>,
-    ) -> Self {
+    pub fn from_config(config: &config::ExternalParamConfig) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
         Self {
             id: config.id,
-            params_block,
             params: Params::from_config(config),
+            values: [0.0; NUM_EXT_PARAMS],
             audio_end,
             ui_end: Some(ui_end),
             output_slot: usize::MAX,
@@ -113,11 +99,15 @@ impl ExternalParam {
         select_param,
         selected_param_index,
         usize,
-        selected_param_index.min(NUM_FLOAT_PARAMS - 1)
+        selected_param_index.min(NUM_EXT_PARAMS - 1)
     );
     set_mono_param!(set_smooth, smooth, Sample);
     set_mono_param!(set_sample_on_trigger, sample_on_trigger, bool);
     set_mono_param!(set_make_bipolar, make_bipolar, bool);
+
+    pub fn set_values(&mut self, values: &[Sample; NUM_EXT_PARAMS]) {
+        self.values = *values;
+    }
 
     fn process_voice(
         &mut self,
@@ -181,9 +171,9 @@ impl SynthModule for ExternalParam {
 
     fn process(&mut self, ctx: &mut ProcessContext) {
         let samples = ctx.params.samples;
-        let param = &self.params_block.float_params[self.params.selected_param_index];
+        let value = self.values[self.params.selected_param_index];
 
-        param.smoothed.next_block(&mut self.mono_buff, samples);
+        self.mono_buff[..samples].fill(value);
 
         self.smoother.apply_if_needed(
             ctx.params.sample_rate,

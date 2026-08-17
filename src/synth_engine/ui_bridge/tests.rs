@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
-use nice_plug::prelude::*;
 use parking_lot::Mutex;
 
 use crate::{
     engine_factory::{EngineHandle, UiConfigHandle},
     synth_engine::{
-        EngineConfig, EngineParams, ExternalParamsBlock, Input, InputId, LinkConfig, ModuleConfig,
+        EngineConfig, EngineParams, Input, InputId, LinkConfig, ModuleConfig,
         ModuleId, OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
         harmonic_editor::HarmonicEditorConfig,
         oscillator::OscillatorConfig,
@@ -21,35 +20,7 @@ const SAMPLE_RATE: Sample = 48_000.0;
 const HARMONIC_EDITOR_ID: ModuleId = 1;
 const OSCILLATOR_ID: ModuleId = 2;
 
-fn test_deps() -> (Arc<FloatParam>, Arc<ExternalParamsBlock>) {
-    let volume = Arc::new(FloatParam::new(
-        "Volume",
-        0.0,
-        FloatRange::Linear { min: 0.0, max: 1.0 },
-    ));
-
-    let float_param = |name: &str| {
-        Arc::new(FloatParam::new(
-            name,
-            0.0,
-            FloatRange::Linear { min: 0.0, max: 1.0 },
-        ))
-    };
-
-    let external_params = Arc::new(ExternalParamsBlock {
-        float_params: [
-            float_param("Float Param 1"),
-            float_param("Float Param 2"),
-            float_param("Float Param 3"),
-            float_param("Float Param 4"),
-        ],
-    });
-
-    (volume, external_params)
-}
-
 fn minimal_engine() -> SynthEngine {
-    let (volume, external_params) = test_deps();
     let config = EngineConfig {
         engine: EngineParams::default(),
         modules: vec![
@@ -68,7 +39,7 @@ fn minimal_engine() -> SynthEngine {
         ],
     };
 
-    SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE).expect("valid engine")
+    SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid engine")
 }
 
 fn make_bridge(engine: SynthEngine) -> UiBridge {

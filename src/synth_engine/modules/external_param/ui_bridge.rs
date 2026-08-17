@@ -1,7 +1,7 @@
 use crate::synth_engine::{Sample, synth_module::ModuleUiBridge};
 
 use super::link::UiEnd;
-use super::{ExternalParam, ExternalParamConfig, NUM_FLOAT_PARAMS};
+use super::{ExternalParam, ExternalParamConfig, NUM_EXT_PARAMS};
 
 pub struct ExternalParamUiBridge {
     ui_end: UiEnd,
@@ -26,7 +26,7 @@ impl ExternalParamUiBridge {
 
     pub fn select_param(&mut self, index: usize) {
         if self.ui_end.select_param(index) {
-            self.config.selected_param_index = index.min(NUM_FLOAT_PARAMS - 1);
+            self.config.selected_param_index = index.min(NUM_EXT_PARAMS - 1);
         }
     }
 

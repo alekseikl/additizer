@@ -7,13 +7,13 @@ use std::sync::Arc;
 
 use crate::{
     default_scheme::build_default_preset, engine_factory::EngineFactory, preset::Preset,
-    synth_engine::external_param::NUM_FLOAT_PARAMS,
+    synth_engine::external_param::NUM_EXT_PARAMS,
 };
 
 #[derive(Params)]
-pub struct FloatParamSlot {
+pub struct ExtParam {
     #[id = "ctrl"]
-    pub param: Arc<FloatParam>,
+    pub value: FloatParam,
 }
 
 #[derive(Params)]
@@ -24,11 +24,8 @@ pub struct AdditizerParams {
     #[persist = "plugin-preset"]
     pub config: PresetWrapper,
 
-    #[id = "volume"]
-    pub volume: Arc<FloatParam>,
-
     #[nested(array)]
-    pub float_params: [FloatParamSlot; NUM_FLOAT_PARAMS],
+    pub ext_params: [ExtParam; NUM_EXT_PARAMS],
 }
 
 impl Default for AdditizerParams {
@@ -36,32 +33,13 @@ impl Default for AdditizerParams {
         Self {
             editor_state: EguiState::from_size(LogicalSize::new(900.0, 600.0)),
             config: PresetWrapper::new(),
-            volume: Arc::new(
-                FloatParam::new(
-                    "Volume",
-                    0.0,
-                    FloatRange::SymmetricalSkewed {
-                        min: util::MINUS_INFINITY_DB,
-                        max: 6.0,
-                        factor: FloatRange::skew_factor(-1.0),
-                        center: 0.0,
-                    },
-                )
-                .with_smoother(SmoothingStyle::Linear(3.0))
-                .with_step_size(0.01)
-                .with_unit(" dB"),
-            ),
-            float_params: std::array::from_fn(|i| {
-                let param = FloatParam::new(
+            ext_params: std::array::from_fn(|i| ExtParam {
+                value: FloatParam::new(
                     format!("Ctrl {}", i + 1),
                     0.0,
                     FloatRange::Linear { min: 0.0, max: 1.0 },
                 )
-                .with_poly_modulation_id(i as u32);
-
-                FloatParamSlot {
-                    param: Arc::new(param),
-                }
+                .with_poly_modulation_id(i as u32),
             }),
         }
     }

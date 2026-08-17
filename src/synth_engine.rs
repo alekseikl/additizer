@@ -1,15 +1,12 @@
 use core::f32;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
-use nice_plug::params::FloatParam;
 use rustc_hash::FxHashMap;
 use std::assert_matches;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
+    external_param::NUM_EXT_PARAMS,
     level_ballistics::StereoLevelBallistics,
     module_handle::ModuleHandle,
     modules::Output,
@@ -27,7 +24,7 @@ pub use buffer::{Buffer, HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralB
 pub use config::{EngineConfig, EngineParams, LinkConfig, MAX_BANDWIDTH, ModuleConfig};
 pub use module_handle::ModuleType;
 pub use modules::{
-    Amplifier, Envelope, Expressions, ExternalParam, ExternalParamsBlock, FilterType, Lfo,
+    Amplifier, Envelope, Expressions, ExternalParam, FilterType, Lfo,
     LfoShape, Mixer, Oscillator, ShaperType, SpectralBlend, SpectralFilter, SpectralMixer,
     WaveShaper,
     amplifier::{self},
@@ -91,7 +88,6 @@ pub struct SynthEngine {
     input_sources: RoutingMap,
     execution_order: Vec<ModuleId>,
     voices_handler: VoicesHandler,
-    external_params: Option<Arc<ExternalParamsBlock>>,
     audio_end: ui_bridge::AudioEnd,
     ui_end: Option<ui_bridge::UiEnd>,
     outputs_arena: OutputsArena,
@@ -115,12 +111,7 @@ macro_rules! add_module_method {
 impl SynthEngine {
     pub const AVAILABLE_VOICES: usize = MAX_AVAILABLE_VOICES;
 
-    pub fn try_new(
-        cfg: &EngineConfig,
-        output_level_param: Arc<FloatParam>,
-        external_params: Arc<ExternalParamsBlock>,
-        host_sample_rate: Sample,
-    ) -> Option<Self> {
+    pub fn try_new(cfg: &EngineConfig, host_sample_rate: Sample) -> Option<Self> {
         let (audio_end, ui_end) = ui_bridge::create_link_pair();
 
         let mut engine = Self {
@@ -137,7 +128,6 @@ impl SynthEngine {
                 Self::clamp_num_voices(cfg.engine.num_voices),
                 cfg.engine.legato,
             ),
-            external_params: Some(external_params.clone()),
             audio_end,
             ui_end: Some(ui_end),
             outputs_arena: OutputsArena::new(),
@@ -149,7 +139,6 @@ impl SynthEngine {
             ModuleHandle::Output(Box::new(Output::new(
                 cfg.engine.output_gain,
                 cfg.engine.voice_kill_time,
-                output_level_param,
             ))),
         );
 
@@ -186,9 +175,9 @@ impl SynthEngine {
                 ModuleConfig::Expressions(cfg) => {
                     ModuleHandle::Expressions(Box::new(Expressions::from_config(cfg)))
                 }
-                ModuleConfig::ExternalParam(cfg) => ModuleHandle::ExternalParam(Box::new(
-                    ExternalParam::from_config(cfg, external_params.clone()),
-                )),
+                ModuleConfig::ExternalParam(cfg) => {
+                    ModuleHandle::ExternalParam(Box::new(ExternalParam::from_config(cfg)))
+                }
             };
 
             let module_id = module.id();
@@ -396,11 +385,7 @@ impl SynthEngine {
     add_module_method!(add_spectral_mixer, SpectralMixer);
     add_module_method!(add_harmonic_editor, HarmonicEditor);
     add_module_method!(add_expressions, Expressions);
-    add_module_method!(add_external_param, ExternalParam, get_external_params);
-
-    fn get_external_params(&self) -> Arc<ExternalParamsBlock> {
-        Arc::clone(self.external_params.as_ref().unwrap())
-    }
+    add_module_method!(add_external_param, ExternalParam);
 
     pub fn remove_module(&mut self, id: ModuleId) {
         let Some(module) = self.modules.get(&id) else {
@@ -653,6 +638,14 @@ impl SynthEngine {
                 }
             });
         }
+    }
+
+    pub fn set_ext_param_values(&mut self, values: &[Sample; NUM_EXT_PARAMS]) {
+        self.modules.values_mut().for_each(|m| {
+            if let ModuleHandle::ExternalParam(module) = m {
+                module.set_values(values);
+            }
+        });
     }
 
     pub fn handle_choke(&mut self, note: Note) {

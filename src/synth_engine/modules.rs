@@ -16,7 +16,7 @@ pub use crate::synth_engine::filters::spectral_filter::FilterType;
 pub use amplifier::Amplifier;
 pub use envelope::Envelope;
 pub use expressions::Expressions;
-pub use external_param::{ExternalParam, ExternalParamsBlock};
+pub use external_param::ExternalParam;
 pub use lfo::{Lfo, LfoShape};
 pub use mixer::Mixer;
 pub use oscillator::Oscillator;

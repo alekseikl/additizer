@@ -1,8 +1,3 @@
-use std::sync::Arc;
-
-use itertools::izip;
-use nice_plug::params::FloatParam;
-
 use crate::{
     synth_engine::{
         Input, ModuleId, OUTPUT_MODULE_ID, Sample, StereoSample, SynthModule,
@@ -12,10 +7,10 @@ use crate::{
             DataType, InputMeta, InputSlots, MAX_VOICES, NUM_CHANNELS, ProcessContext,
             SpectralInputSlot, VoiceEvent, VoiceTarget,
         },
-        smooth::{InfiniteSmoothed, SmoothedSample},
+        smooth::SmoothedSample,
         voices_handler::DecayingVoice,
     },
-    utils::{db_to_gain_fast, from_ms},
+    utils::from_ms,
 };
 
 const _: () = assert!(NUM_CHANNELS == 2);
@@ -46,19 +41,14 @@ pub struct Output {
     audio_input: Option<usize>,
     gain: [SmoothedSample; NUM_CHANNELS],
     kill_time: Sample,
-    ext_level_param: Arc<FloatParam>,
-    ext_gain_smoothed: InfiniteSmoothed,
     channels: [Channel; NUM_CHANNELS],
     input_buffer: Buffer,
-    ext_gain_buffer: Buffer,
     output: [Buffer; NUM_CHANNELS],
     decimator: IirDecimator,
 }
 
 impl Output {
-    pub fn new(gain: StereoSample, kill_time: Sample, level_param: Arc<FloatParam>) -> Self {
-        let ext_gain = db_to_gain_fast(level_param.value());
-
+    pub fn new(gain: StereoSample, kill_time: Sample) -> Self {
         Self {
             audio_input: None,
             gain: [
@@ -66,11 +56,8 @@ impl Output {
                 SmoothedSample::new(Self::clamp_gain(gain[1])),
             ],
             kill_time: Self::clamp_kill_time(kill_time),
-            ext_level_param: level_param,
-            ext_gain_smoothed: ext_gain.into(),
             channels: Default::default(),
             input_buffer: zero_buffer(),
-            ext_gain_buffer: zero_buffer(),
             output: [zero_buffer(), zero_buffer()],
             decimator: IirDecimator::new(),
         }
@@ -202,16 +189,6 @@ impl SynthModule for Output {
         let sample_rate = rf.params().sample_rate;
         let samples = rf.params().samples;
 
-        self.ext_gain_smoothed
-            .set(db_to_gain_fast(self.ext_level_param.value()));
-
-        copy_to_buffer(
-            &mut self.ext_gain_buffer,
-            self.ext_gain_smoothed
-                .iter(InfiniteSmoothed::smooth_mult(sample_rate, from_ms(4.0)))
-                .take(samples),
-        );
-
         for (channel_idx, (output, gain)) in
             self.output.iter_mut().zip(self.gain.iter_mut()).enumerate()
         {
@@ -253,11 +230,10 @@ impl SynthModule for Output {
             fn apply_volume<'a>(
                 output: impl Iterator<Item = &'a mut Sample>,
                 gain: impl Iterator<Item = Sample>,
-                ext_gain: impl Iterator<Item = &'a Sample>,
                 samples: usize,
             ) {
-                for (out, gain, gain_ext) in izip!(output, gain, ext_gain).take(samples) {
-                    *out *= gain * gain_ext;
+                for (out, gain) in output.zip(gain).take(samples) {
+                    *out *= gain;
                 }
             }
 
@@ -265,14 +241,12 @@ impl SynthModule for Output {
                 apply_volume(
                     output.iter_mut(),
                     gain.smoothed_iter(&rf.params().smooth_params),
-                    self.ext_gain_buffer.iter(),
                     samples,
                 );
             } else {
                 apply_volume(
                     output.iter_mut(),
                     std::iter::repeat(gain.get()),
-                    self.ext_gain_buffer.iter(),
                     samples,
                 );
             }

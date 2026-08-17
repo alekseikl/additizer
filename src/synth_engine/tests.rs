@@ -1,7 +1,3 @@
-use std::sync::Arc;
-
-use nice_plug::prelude::*;
-
 use super::*;
 use crate::{
     synth_engine::{
@@ -35,33 +31,6 @@ const WAVE_SHAPER_ID: ModuleId = 14;
 const EXTERNAL_PARAM_ID: ModuleId = 15;
 const EXPRESSIONS_ID: ModuleId = 16;
 
-fn test_deps() -> (Arc<FloatParam>, Arc<ExternalParamsBlock>) {
-    let volume = Arc::new(FloatParam::new(
-        "Volume",
-        0.0,
-        FloatRange::Linear { min: 0.0, max: 1.0 },
-    ));
-
-    let float_param = |name: &str| {
-        Arc::new(FloatParam::new(
-            name,
-            0.0,
-            FloatRange::Linear { min: 0.0, max: 1.0 },
-        ))
-    };
-
-    let external_params = Arc::new(ExternalParamsBlock {
-        float_params: [
-            float_param("Float Param 1"),
-            float_param("Float Param 2"),
-            float_param("Float Param 3"),
-            float_param("Float Param 4"),
-        ],
-    });
-
-    (volume, external_params)
-}
-
 fn minimal_engine_config(engine: EngineParams, osc: OscillatorConfig) -> EngineConfig {
     EngineConfig {
         engine,
@@ -80,10 +49,9 @@ fn minimal_engine_config(engine: EngineParams, osc: OscillatorConfig) -> EngineC
 }
 
 fn make_engine(engine: EngineParams, osc: OscillatorConfig) -> SynthEngine {
-    let (volume, external_params) = test_deps();
     let config = minimal_engine_config(engine, osc);
 
-    SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+    SynthEngine::try_new(&config, SAMPLE_RATE)
         .expect("valid engine config")
 }
 
@@ -217,10 +185,9 @@ fn full_patch_engine_config(engine: EngineParams) -> EngineConfig {
 }
 
 fn make_full_patch_engine(engine: EngineParams) -> SynthEngine {
-    let (volume, external_params) = test_deps();
     let config = full_patch_engine_config(engine);
 
-    SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+    SynthEngine::try_new(&config, SAMPLE_RATE)
         .expect("valid full patch config")
 }
 
@@ -366,7 +333,6 @@ fn full_patch_produces_audio() {
 
 #[test]
 fn try_new_rejects_duplicate_module_id() {
-    let (volume, external_params) = test_deps();
     let config = EngineConfig {
         engine: EngineParams::default(),
         modules: vec![
@@ -382,12 +348,11 @@ fn try_new_rejects_duplicate_module_id() {
         links: vec![],
     };
 
-    assert!(SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE).is_none());
+    assert!(SynthEngine::try_new(&config, SAMPLE_RATE).is_none());
 }
 
 #[test]
 fn try_new_skips_invalid_link() {
-    let (volume, external_params) = test_deps();
     let config = EngineConfig {
         engine: EngineParams::default(),
         modules: vec![
@@ -408,7 +373,7 @@ fn try_new_skips_invalid_link() {
         )],
     };
 
-    let engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+    let engine = SynthEngine::try_new(&config, SAMPLE_RATE)
         .expect("invalid links are skipped on load");
 
     assert!(
@@ -430,8 +395,7 @@ fn try_new_skips_link_with_missing_modulator() {
         .expect("env -> amp link");
     config.links[modulated].set_modulator_id(Some(9999));
 
-    let (volume, external_params) = test_deps();
-    let engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+    let engine = SynthEngine::try_new(&config, SAMPLE_RATE)
         .expect("bad modulator skips that preset link");
 
     assert!(
@@ -455,8 +419,7 @@ fn try_new_skips_link_with_incompatible_modulator() {
     // Spectral source cannot modulate a control (gain) input.
     config.links[modulated].set_modulator_id(Some(HE0_ID));
 
-    let (volume, external_params) = test_deps();
-    let engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+    let engine = SynthEngine::try_new(&config, SAMPLE_RATE)
         .expect("incompatible modulator skips that preset link");
 
     assert!(engine.get_config().links.iter().all(|link| {
@@ -472,8 +435,7 @@ fn set_config_links_direct_exclusivity_keeps_last_source() {
     // full_patch already has HE0 -> OSC1.Spectrum; a later Direct replaces it.
     config.links.push(link(HE1_ID, OSC1_ID, Input::Spectrum));
 
-    let (volume, external_params) = test_deps();
-    let mut engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+    let mut engine = SynthEngine::try_new(&config, SAMPLE_RATE)
         .expect("extra spectral sources collapse to one");
 
     let cfg = engine.get_config();
@@ -509,8 +471,7 @@ fn set_config_links_skips_mixed_kind_on_direct_input() {
         StereoSample::ONE,
     ));
 
-    let (volume, external_params) = test_deps();
-    let engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+    let engine = SynthEngine::try_new(&config, SAMPLE_RATE)
         .expect("wrong-kind mixed link should be skipped");
 
     let cfg = engine.get_config();
@@ -1324,9 +1285,7 @@ fn full_patch_config_round_trips() {
         ..EngineParams::default()
     });
     let cfg = engine.get_config();
-    let (volume, external_params) = test_deps();
-
-    let rebuilt = SynthEngine::try_new(&cfg, volume, external_params, SAMPLE_RATE)
+    let rebuilt = SynthEngine::try_new(&cfg, SAMPLE_RATE)
         .expect("full patch config deserializes");
 
     assert_eq!(rebuilt.get_config().modules.len(), cfg.modules.len());
@@ -1498,8 +1457,7 @@ fn link_modulation_in_preset_builds() {
 
     config.links.push(config.links[modulated].clone());
 
-    let (volume, external_params) = test_deps();
-    let mut engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+    let mut engine = SynthEngine::try_new(&config, SAMPLE_RATE)
         .expect("modulated preset");
 
     let cfg = engine.get_config();
@@ -1545,8 +1503,7 @@ fn set_config_links_dedupes_duplicate_preset_links() {
     config.links.push(osc_out.clone());
     config.links.push(osc_out);
 
-    let (volume, external_params) = test_deps();
-    let engine = SynthEngine::try_new(&config, volume, external_params, SAMPLE_RATE)
+    let engine = SynthEngine::try_new(&config, SAMPLE_RATE)
         .expect("duplicate links should be skipped");
 
     let count = engine

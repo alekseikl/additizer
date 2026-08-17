@@ -14,7 +14,7 @@ mod utils;
 use crate::editor::create_editor;
 use crate::engine_factory::{EngineFactory, EngineHandle};
 use crate::params::AdditizerParams;
-use crate::synth_engine::{Expression, ExternalParamsBlock, MAX_VOICES, Note, SynthEngine};
+use crate::synth_engine::{Expression, MAX_VOICES, Note, SynthEngine};
 use crate::utils::log;
 pub use egui;
 use nice_plug::prelude::*;
@@ -30,12 +30,7 @@ pub struct Additizer {
 impl Default for Additizer {
     fn default() -> Self {
         let params = Arc::new(AdditizerParams::default());
-
-        let external_params = Arc::new(ExternalParamsBlock {
-            float_params: std::array::from_fn(|i| params.float_params[i].param.clone()),
-        });
-
-        let factory = Arc::new(EngineFactory::new(params.volume.clone(), external_params));
+        let factory = Arc::new(EngineFactory::new());
 
         Self {
             params,
@@ -257,7 +252,15 @@ impl Plugin for Additizer {
             self.engine = Some(self.factory.get_engine());
         }
 
+        let ext_values = self
+            .params
+            .ext_params
+            .each_ref()
+            .map(|param| param.value.modulated_normalized_value());
+
         let mut synth = self.engine.as_deref().unwrap().lock();
+
+        synth.set_ext_param_values(&ext_values);
 
         assert_no_alloc::assert_no_alloc(|| {
             let block_size = synth.block_size();

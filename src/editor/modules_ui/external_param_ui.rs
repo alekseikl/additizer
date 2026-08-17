@@ -4,7 +4,7 @@ use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, slider::Slider, units::Units},
     synth_engine::{
         ModuleId, ModuleType,
-        external_param::{ExternalParamUiBridge, NUM_FLOAT_PARAMS},
+        external_param::{ExternalParamUiBridge, NUM_EXT_PARAMS},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::from_ms,
@@ -45,7 +45,7 @@ impl ExternalParamUI {
                     ComboBox::from_id_salt("ext-param-select")
                         .selected_text(format!("Param #{}", config.selected_param_index + 1))
                         .show_ui(ui, |ui| {
-                            for i in 0..NUM_FLOAT_PARAMS {
+                            for i in 0..NUM_EXT_PARAMS {
                                 if ui
                                     .selectable_value(
                                         &mut config.selected_param_index,
