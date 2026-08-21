@@ -51,8 +51,7 @@ fn minimal_engine_config(engine: EngineParams, osc: OscillatorConfig) -> EngineC
 fn make_engine(engine: EngineParams, osc: OscillatorConfig) -> SynthEngine {
     let config = minimal_engine_config(engine, osc);
 
-    SynthEngine::try_new(&config, SAMPLE_RATE)
-        .expect("valid engine config")
+    SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid engine config")
 }
 
 fn process_block(engine: &mut SynthEngine, samples: usize) -> (Vec<Sample>, Vec<Sample>) {
@@ -72,7 +71,7 @@ fn process_block_with_ui(
         samples,
         update_ui,
         &mut terminated,
-        &mut [&mut left[..], &mut right[..]],
+        [&mut left[..], &mut right[..]],
     );
 
     (left, right)
@@ -187,8 +186,7 @@ fn full_patch_engine_config(engine: EngineParams) -> EngineConfig {
 fn make_full_patch_engine(engine: EngineParams) -> SynthEngine {
     let config = full_patch_engine_config(engine);
 
-    SynthEngine::try_new(&config, SAMPLE_RATE)
-        .expect("valid full patch config")
+    SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid full patch config")
 }
 
 // ---- Construction ----
@@ -373,8 +371,8 @@ fn try_new_skips_invalid_link() {
         )],
     };
 
-    let engine = SynthEngine::try_new(&config, SAMPLE_RATE)
-        .expect("invalid links are skipped on load");
+    let engine =
+        SynthEngine::try_new(&config, SAMPLE_RATE).expect("invalid links are skipped on load");
 
     assert!(
         engine
@@ -395,8 +393,8 @@ fn try_new_skips_link_with_missing_modulator() {
         .expect("env -> amp link");
     config.links[modulated].set_modulator_id(Some(9999));
 
-    let engine = SynthEngine::try_new(&config, SAMPLE_RATE)
-        .expect("bad modulator skips that preset link");
+    let engine =
+        SynthEngine::try_new(&config, SAMPLE_RATE).expect("bad modulator skips that preset link");
 
     assert!(
         engine.get_config().links.iter().all(|link| {
@@ -435,8 +433,8 @@ fn set_config_links_direct_exclusivity_keeps_last_source() {
     // full_patch already has HE0 -> OSC1.Spectrum; a later Direct replaces it.
     config.links.push(link(HE1_ID, OSC1_ID, Input::Spectrum));
 
-    let mut engine = SynthEngine::try_new(&config, SAMPLE_RATE)
-        .expect("extra spectral sources collapse to one");
+    let mut engine =
+        SynthEngine::try_new(&config, SAMPLE_RATE).expect("extra spectral sources collapse to one");
 
     let cfg = engine.get_config();
     let spectrum_links: Vec<_> = cfg
@@ -1221,7 +1219,7 @@ fn process_reports_terminated_notes() {
         64,
         false,
         &mut terminated,
-        &mut [&mut left[..], &mut right[..]],
+        [&mut left[..], &mut right[..]],
     );
 
     assert_eq!(terminated.len(), 1);
@@ -1285,8 +1283,7 @@ fn full_patch_config_round_trips() {
         ..EngineParams::default()
     });
     let cfg = engine.get_config();
-    let rebuilt = SynthEngine::try_new(&cfg, SAMPLE_RATE)
-        .expect("full patch config deserializes");
+    let rebuilt = SynthEngine::try_new(&cfg, SAMPLE_RATE).expect("full patch config deserializes");
 
     assert_eq!(rebuilt.get_config().modules.len(), cfg.modules.len());
     assert_eq!(rebuilt.get_config().links.len(), cfg.links.len());
@@ -1457,8 +1454,7 @@ fn link_modulation_in_preset_builds() {
 
     config.links.push(config.links[modulated].clone());
 
-    let mut engine = SynthEngine::try_new(&config, SAMPLE_RATE)
-        .expect("modulated preset");
+    let mut engine = SynthEngine::try_new(&config, SAMPLE_RATE).expect("modulated preset");
 
     let cfg = engine.get_config();
     let env_amp_links: Vec<_> = cfg
@@ -1503,8 +1499,8 @@ fn set_config_links_dedupes_duplicate_preset_links() {
     config.links.push(osc_out.clone());
     config.links.push(osc_out);
 
-    let engine = SynthEngine::try_new(&config, SAMPLE_RATE)
-        .expect("duplicate links should be skipped");
+    let engine =
+        SynthEngine::try_new(&config, SAMPLE_RATE).expect("duplicate links should be skipped");
 
     let count = engine
         .get_config()

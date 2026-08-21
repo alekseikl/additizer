@@ -79,6 +79,45 @@ fn init_array_in_place<U: Default, const N: usize>(dst: *mut [U; N]) {
     }
 }
 
+pub struct ValueBuffer {
+    change_at: usize,
+    buffer: Buffer,
+}
+
+impl Default for ValueBuffer {
+    fn default() -> Self {
+        Self {
+            change_at: 0,
+            buffer: zero_buffer(),
+        }
+    }
+}
+
+impl ValueBuffer {
+    pub fn set(&mut self, value: Sample, at: usize) {
+        if at > self.change_at {
+            let prev = self.buffer[self.change_at];
+            self.buffer[self.change_at + 1..at].fill(prev);
+        }
+
+        self.buffer[at] = value;
+        self.change_at = at;
+    }
+
+    pub fn read_and_reset(&mut self, out: &mut [Sample]) {
+        let filled_len = self.change_at + 1;
+        let copy_len = filled_len.min(out.len());
+
+        out[..copy_len].copy_from_slice(&self.buffer[..copy_len]);
+
+        if out.len() > filled_len {
+            out[filled_len..].fill(self.buffer[self.change_at]);
+        }
+
+        self.set(self.buffer[self.change_at], 0);
+    }
+}
+
 pub fn copy_to_buffer(buff: &mut [Sample], iter: impl Iterator<Item = Sample>) {
     buff.iter_mut()
         .zip(iter)

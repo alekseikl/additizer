@@ -89,7 +89,7 @@ impl Output {
         self.kill_time = Self::clamp_kill_time(kill_time)
     }
 
-    pub fn read_output(&mut self, oversampling: bool, outputs: &mut [&mut [f32]]) {
+    pub fn read_output(&mut self, oversampling: bool, outputs: &mut [&mut [f32]; NUM_CHANNELS]) {
         if oversampling {
             let (left, right) = outputs.split_at_mut(1);
             self.decimator
@@ -244,11 +244,7 @@ impl SynthModule for Output {
                     samples,
                 );
             } else {
-                apply_volume(
-                    output.iter_mut(),
-                    std::iter::repeat(gain.get()),
-                    samples,
-                );
+                apply_volume(output.iter_mut(), std::iter::repeat(gain.get()), samples);
             }
 
             // Advance gain parameter smoother

@@ -500,10 +500,6 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
         self.factory.ctx.params.samples - self.state.offset + 1
     }
 
-    pub fn offset(&self) -> usize {
-        self.state.offset
-    }
-
     pub fn triggered(&self) -> bool {
         self.state.triggered
     }
@@ -570,18 +566,6 @@ impl<'v> VoiceOutput<'v, ControlRouterType> {
         output.buffer[offset..offset + len].copy_from_slice(in_buff);
         output.buffer[offset + len] = last;
         output.next_frame_sample = last;
-    }
-
-    pub fn fill_with_ext_control_value(&mut self, value: Sample) {
-        let offset = if self.state.triggered {
-            self.state.offset
-        } else {
-            0
-        };
-        let output = &mut self.outputs[self.target.channel_idx][self.target.voice_idx];
-
-        output.buffer[offset..self.samples + 1].fill(value);
-        output.next_frame_sample = value;
     }
 }
 

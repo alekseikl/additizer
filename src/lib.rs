@@ -5,6 +5,7 @@ use const_format::concatcp;
 mod default_scheme;
 mod editor;
 mod engine_factory;
+mod host_events;
 mod params;
 mod preset;
 mod presets;
@@ -14,8 +15,7 @@ mod utils;
 use crate::editor::create_editor;
 use crate::engine_factory::{EngineFactory, EngineHandle};
 use crate::params::AdditizerParams;
-use crate::synth_engine::{Expression, MAX_VOICES, Note, SynthEngine};
-use crate::utils::log;
+use crate::synth_engine::{MAX_VOICES, Note};
 pub use egui;
 use nice_plug::prelude::*;
 use std::sync::Arc;
@@ -41,158 +41,6 @@ impl Default for Additizer {
     }
 }
 
-impl Additizer {
-    fn process_event(synth: &mut SynthEngine, event: NoteEvent<()>, block_start: usize) {
-        log!("Event: {:?}", event);
-
-        match event {
-            NoteEvent::NoteOn {
-                timing,
-                voice_id,
-                channel,
-                note,
-                velocity,
-            } => {
-                synth.handle_note_on(
-                    Note {
-                        channel,
-                        note,
-                        velocity,
-                        host_id: voice_id,
-                    },
-                    timing as usize - block_start,
-                );
-            }
-            NoteEvent::NoteOff {
-                timing,
-                voice_id,
-                channel,
-                note,
-                velocity,
-            } => {
-                synth.handle_note_off(
-                    Note {
-                        channel,
-                        note,
-                        velocity,
-                        host_id: voice_id,
-                    },
-                    timing as usize - block_start,
-                );
-            }
-            NoteEvent::Choke {
-                voice_id,
-                channel,
-                note,
-                ..
-            } => {
-                synth.handle_choke(Note {
-                    channel,
-                    note,
-                    velocity: 0.0,
-                    host_id: voice_id,
-                });
-            }
-            NoteEvent::PolyVolume {
-                timing,
-                voice_id,
-                channel,
-                note,
-                gain,
-            } => {
-                synth.handle_note_expression(
-                    Note {
-                        channel,
-                        note,
-                        velocity: 0.0,
-                        host_id: voice_id,
-                    },
-                    Expression::Gain,
-                    timing as usize - block_start,
-                    gain,
-                );
-            }
-            NoteEvent::PolyPan {
-                timing,
-                voice_id,
-                channel,
-                note,
-                pan,
-            } => {
-                synth.handle_note_expression(
-                    Note {
-                        channel,
-                        note,
-                        velocity: 0.0,
-                        host_id: voice_id,
-                    },
-                    Expression::Pan,
-                    timing as usize - block_start,
-                    pan,
-                );
-            }
-            NoteEvent::PolyTuning {
-                timing,
-                voice_id,
-                channel,
-                note,
-                tuning,
-            } => {
-                synth.handle_note_expression(
-                    Note {
-                        channel,
-                        note,
-                        velocity: 0.0,
-                        host_id: voice_id,
-                    },
-                    Expression::Pitch,
-                    timing as usize - block_start,
-                    tuning,
-                );
-            }
-            NoteEvent::PolyBrightness {
-                timing,
-                voice_id,
-                channel,
-                note,
-                brightness,
-            } => {
-                synth.handle_note_expression(
-                    Note {
-                        channel,
-                        note,
-                        velocity: 0.0,
-                        host_id: voice_id,
-                    },
-                    Expression::Timbre,
-                    timing as usize - block_start,
-                    brightness,
-                );
-            }
-            NoteEvent::PolyPressure {
-                timing,
-                voice_id,
-                channel,
-                note,
-                pressure,
-            } => {
-                synth.handle_note_expression(
-                    Note {
-                        channel,
-                        note,
-                        velocity: 0.0,
-                        host_id: voice_id,
-                    },
-                    Expression::Pressure,
-                    timing as usize - block_start,
-                    pressure,
-                );
-            }
-            _ => (),
-        }
-    }
-}
-
 impl Plugin for Additizer {
     const NAME: &'static str = concatcp!("Additizer", env!("GIT_COMMIT_SUFFIX"));
     const VENDOR: &'static str = "Alexey Klyotzin";
@@ -208,6 +56,8 @@ impl Plugin for Additizer {
     }];
 
     const MIDI_INPUT: MidiConfig = MidiConfig::MidiCCs;
+
+    // Don't split a buffer
     const SAMPLE_ACCURATE_AUTOMATION: bool = false;
 
     type SysExMessage = ();
@@ -258,15 +108,15 @@ impl Plugin for Additizer {
             .each_ref()
             .map(|param| param.value.modulated_normalized_value());
 
+        // Mutex is contended only when routing is changed from the UI.
         let mut synth = self.engine.as_deref().unwrap().lock();
-
-        synth.set_ext_param_values(&ext_values);
 
         assert_no_alloc::assert_no_alloc(|| {
             let block_size = synth.block_size();
             let update_ui = self.params.editor_state.is_open();
-
             let mut next_event = context.next_event();
+
+            synth.set_automation_values(&ext_values);
 
             for (block_start, block) in buffer.iter_blocks(block_size) {
                 let samples = block.samples();
@@ -275,18 +125,17 @@ impl Plugin for Additizer {
                 while let Some(event) =
                     next_event.take_if(|event| (event.timing() as usize) < sample_to)
                 {
-                    Self::process_event(&mut synth, event, block_start);
+                    host_events::process_event(&mut synth, event, block_start);
                     next_event = context.next_event();
                 }
 
                 let mut channels = block.into_iter();
-                let mut channel_outputs = [channels.next().unwrap(), channels.next().unwrap()];
 
                 synth.process(
                     samples,
                     update_ui,
                     &mut self.terminated_notes,
-                    &mut channel_outputs,
+                    [channels.next().unwrap(), channels.next().unwrap()],
                 );
 
                 for note in self.terminated_notes.drain(..) {

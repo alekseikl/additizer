@@ -1,9 +1,8 @@
 use std::hint::black_box;
 
 use additizer::synth_engine::{
-    EngineConfig, EngineParams, Input, LinkConfig, MAX_BLOCK_SIZE,
-    ModuleConfig, ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Sample, StereoSample,
-    SynthEngine,
+    EngineConfig, EngineParams, Input, LinkConfig, MAX_BLOCK_SIZE, ModuleConfig, ModuleId,
+    NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
     harmonic_editor::HarmonicEditorConfig,
     oscillator::{MAX_UNISON_VOICES, OscillatorConfig},
 };
@@ -33,8 +32,7 @@ fn minimal_engine_config(engine: EngineParams, osc: OscillatorConfig) -> EngineC
 fn make_engine(engine: EngineParams, osc: OscillatorConfig) -> SynthEngine {
     let config = minimal_engine_config(engine, osc);
 
-    SynthEngine::try_new(&config, SAMPLE_RATE)
-        .expect("valid engine config")
+    SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid engine config")
 }
 
 fn trigger_notes(engine: &mut SynthEngine, count: usize) {
@@ -60,7 +58,7 @@ fn process_block(engine: &mut SynthEngine, samples: usize) -> [Sample; MAX_BLOCK
         samples,
         false,
         &mut terminated,
-        &mut [&mut left[..samples], &mut right[..samples]],
+        [&mut left[..samples], &mut right[..samples]],
     );
 
     left

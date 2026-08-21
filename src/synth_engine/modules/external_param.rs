@@ -8,10 +8,10 @@ pub use ui_bridge::ExternalParamUiBridge;
 
 use crate::synth_engine::{
     Buffer, ModuleId, Sample,
-    buffer::{VoicesLayout, new_voices_layout, zero_buffer},
+    buffer::{MonoVoicesLayout, ValueBuffer, VoicesLayout, new_mono_voices_layout, zero_buffer},
     routing::{
         ControlRouterType, DataType, InputMeta, ProcessContext, RouterFactory, SamplesOutput,
-        VoiceTarget,
+        VoiceEvent, VoiceTarget,
     },
     smooth::Smoother,
     synth_module::SynthModule,
@@ -37,14 +37,20 @@ impl Params {
     }
 }
 
-struct VoiceState {
+struct Voice {
+    values: ValueBuffer,
     value_at_trigger: Sample,
+    buffer: Buffer,
+    smoother: Smoother,
 }
 
-impl Default for VoiceState {
+impl Default for Voice {
     fn default() -> Self {
         Self {
+            values: ValueBuffer::default(),
             value_at_trigger: 0.0,
+            buffer: zero_buffer(),
+            smoother: Smoother::default(),
         }
     }
 }
@@ -52,13 +58,12 @@ impl Default for VoiceState {
 pub struct ExternalParam {
     id: ModuleId,
     params: Params,
-    values: [Sample; NUM_EXT_PARAMS],
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
     output_slot: usize,
+    values: ValueBuffer,
     mono_buff: Buffer,
-    smoother: Smoother,
-    voices: VoicesLayout<VoiceState>,
+    voices: MonoVoicesLayout<Voice>,
 }
 
 impl ExternalParam {
@@ -75,13 +80,12 @@ impl ExternalParam {
         Self {
             id: config.id,
             params: Params::from_config(config),
-            values: [0.0; NUM_EXT_PARAMS],
             audio_end,
             ui_end: Some(ui_end),
             output_slot: usize::MAX,
+            values: ValueBuffer::default(),
             mono_buff: zero_buffer(),
-            smoother: Smoother::default(),
-            voices: new_voices_layout(),
+            voices: new_mono_voices_layout(),
         }
     }
 
@@ -106,7 +110,25 @@ impl ExternalParam {
     set_mono_param!(set_make_bipolar, make_bipolar, bool);
 
     pub fn set_values(&mut self, values: &[Sample; NUM_EXT_PARAMS]) {
-        self.values = *values;
+        self.values.set(values[self.params.selected_param_index], 0);
+    }
+
+    pub fn handle_mono_automation(&mut self, param_idx: usize, offset: usize, value: Sample) {
+        if param_idx == self.params.selected_param_index {
+            self.values.set(value, offset);
+        }
+    }
+
+    pub fn handle_poly_modulation(
+        &mut self,
+        param_idx: usize,
+        voice_idx: usize,
+        offset: usize,
+        value_offset: Sample,
+    ) {
+        if param_idx == self.params.selected_param_index {
+            self.voices[voice_idx].values.set(value_offset, offset);
+        }
     }
 
     fn process_voice(
@@ -116,24 +138,52 @@ impl ExternalParam {
         rf: &mut RouterFactory<ControlRouterType>,
     ) {
         let block_samples = rf.params().samples;
+        let sample_rate = rf.params().sample_rate;
+        let voice = &mut self.voices[target.voice_idx];
         let (router, mut voice_output) = rf.for_voice(target, outputs);
-        let voice = &mut self.voices[target.channel_idx][target.voice_idx];
-        let mono = &self.mono_buff[..block_samples];
 
-        if router.triggered() {
-            let idx = router.offset().min(block_samples.saturating_sub(1));
-            let value = mono[idx];
+        // Mono voice state is shared across channels; prepare it once.
+        if target.channel_idx == 0 {
+            let buff = &mut voice.buffer[..block_samples];
+            let mono = &self.mono_buff[..block_samples];
+
+            voice.values.read_and_reset(buff);
+
+            for (out, &mono_value) in buff.iter_mut().zip(mono) {
+                *out = (mono_value + *out).clamp(0.0, 1.0);
+            }
 
             if self.params.sample_on_trigger {
-                voice.value_at_trigger = value;
+                if let Some(offset) = target.triggered {
+                    voice.value_at_trigger = buff[offset];
+                }
+
+                buff.fill(voice.value_at_trigger);
+            }
+
+            let offset = if let Some(offset) = target.triggered {
+                voice.smoother.reset(buff[offset]);
+                offset
+            } else {
+                0
+            };
+
+            voice
+                .smoother
+                .apply_if_needed(sample_rate, self.params.smooth, &mut buff[offset..]);
+
+            if router.need_update_ui() {
+                self.audio_end.update_value(buff[offset]);
+            }
+
+            if self.params.make_bipolar {
+                for sample in &mut buff[offset..] {
+                    *sample = *sample * 2.0 - 1.0;
+                }
             }
         }
 
-        if self.params.sample_on_trigger {
-            voice_output.fill_with_ext_control_value(voice.value_at_trigger);
-        } else {
-            voice_output.fill_with_ext_control(mono);
-        }
+        voice_output.fill_with_ext_control(&voice.buffer[..block_samples]);
     }
 }
 
@@ -158,6 +208,14 @@ impl SynthModule for ExternalParam {
         self.output_slot = slot;
     }
 
+    fn process_events(&mut self, events: &[VoiceEvent]) {
+        for event in events {
+            if let VoiceEvent::Reset { voice_idx, .. } = event {
+                self.voices[*voice_idx].values.set(0.0, 0);
+            }
+        }
+    }
+
     fn process_ui_events(&mut self) {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
@@ -171,28 +229,15 @@ impl SynthModule for ExternalParam {
 
     fn process(&mut self, ctx: &mut ProcessContext) {
         let samples = ctx.params.samples;
-        let value = self.values[self.params.selected_param_index];
 
-        self.mono_buff[..samples].fill(value);
-
-        self.smoother.apply_if_needed(
-            ctx.params.sample_rate,
-            self.params.smooth,
-            &mut self.mono_buff[..samples],
-        );
-
-        if ctx.params.needs_update_ui {
-            self.audio_end.update_value(self.mono_buff[0]);
-        }
-
-        if self.params.make_bipolar {
-            for sample in &mut self.mono_buff[..samples] {
-                *sample = *sample * 2.0 - 1.0;
-            }
-        }
+        self.values.read_and_reset(&mut self.mono_buff[..samples]);
 
         ctx.for_control(self.id, self.output_slot, |rf, target, outputs| {
             self.process_voice(target, outputs, rf);
         });
+
+        if ctx.params.needs_update_ui && ctx.params.active_voices.is_empty() {
+            self.audio_end.update_value(self.mono_buff[0]);
+        }
     }
 }

@@ -24,9 +24,8 @@ pub use buffer::{Buffer, HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralB
 pub use config::{EngineConfig, EngineParams, LinkConfig, MAX_BANDWIDTH, ModuleConfig};
 pub use module_handle::ModuleType;
 pub use modules::{
-    Amplifier, Envelope, Expressions, ExternalParam, FilterType, Lfo,
-    LfoShape, Mixer, Oscillator, ShaperType, SpectralBlend, SpectralFilter, SpectralMixer,
-    WaveShaper,
+    Amplifier, Envelope, Expressions, ExternalParam, FilterType, Lfo, LfoShape, Mixer, Oscillator,
+    ShaperType, SpectralBlend, SpectralFilter, SpectralMixer, WaveShaper,
     amplifier::{self},
     envelope::{self},
     expressions::{self},
@@ -640,10 +639,48 @@ impl SynthEngine {
         }
     }
 
-    pub fn set_ext_param_values(&mut self, values: &[Sample; NUM_EXT_PARAMS]) {
+    pub fn set_automation_values(&mut self, values: &[Sample; NUM_EXT_PARAMS]) {
         self.modules.values_mut().for_each(|m| {
             if let ModuleHandle::ExternalParam(module) = m {
                 module.set_values(values);
+            }
+        });
+    }
+
+    pub fn handle_mono_automation(&mut self, param_idx: usize, offset: usize, value: Sample) {
+        if param_idx >= NUM_EXT_PARAMS {
+            return;
+        }
+
+        let offset = self.to_internal_offset(offset);
+
+        self.modules.values_mut().for_each(|m| {
+            if let ModuleHandle::ExternalParam(module) = m {
+                module.handle_mono_automation(param_idx, offset, value);
+            }
+        });
+    }
+
+    pub fn handle_poly_modulation(
+        &mut self,
+        param_idx: usize,
+        voice_id: i32,
+        offset: usize,
+        value_offset: Sample,
+    ) {
+        if param_idx >= NUM_EXT_PARAMS {
+            return;
+        }
+
+        let Some(voice_idx) = self.voices_handler.voice_idx_for_host_id(voice_id) else {
+            return;
+        };
+
+        let offset = self.to_internal_offset(offset);
+
+        self.modules.values_mut().for_each(|m| {
+            if let ModuleHandle::ExternalParam(module) = m {
+                module.handle_poly_modulation(param_idx, voice_idx, offset, value_offset);
             }
         });
     }
@@ -685,7 +722,7 @@ impl SynthEngine {
         samples: usize,
         update_ui: bool,
         terminated_notes: &mut Vec<Note>,
-        outputs: &mut [&mut [f32]],
+        mut outputs: [&mut [f32]; NUM_CHANNELS],
     ) {
         self.handle_ui_events();
 
@@ -741,7 +778,7 @@ impl SynthEngine {
         }
 
         if let Some(ModuleHandle::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID) {
-            output.read_output(self.oversampling, outputs);
+            output.read_output(self.oversampling, &mut outputs);
 
             if update_ui {
                 let (left, right) = outputs.split_at_mut(1);

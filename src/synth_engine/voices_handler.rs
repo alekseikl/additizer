@@ -476,6 +476,15 @@ impl VoicesHandler {
         })
     }
 
+    pub fn voice_idx_for_host_id(&self, host_id: i32) -> Option<usize> {
+        self.playing
+            .iter()
+            .chain(self.releasing.iter())
+            .chain(self.killing.iter())
+            .find(|note| note.note.host_id == Some(host_id))
+            .map(|note| note.voice_idx as usize)
+    }
+
     pub fn set_num_voices(&mut self, num_voices: usize) {
         self.num_voices = num_voices.clamp(1, MAX_AVAILABLE_VOICES);
     }

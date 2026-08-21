@@ -5,8 +5,8 @@ use parking_lot::Mutex;
 use crate::{
     engine_factory::{EngineHandle, UiConfigHandle},
     synth_engine::{
-        EngineConfig, EngineParams, Input, InputId, LinkConfig, ModuleConfig,
-        ModuleId, OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
+        EngineConfig, EngineParams, Input, InputId, LinkConfig, ModuleConfig, ModuleId,
+        OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
         harmonic_editor::HarmonicEditorConfig,
         oscillator::OscillatorConfig,
         ui_bridge::{
