@@ -109,6 +109,7 @@ impl ExternalParam {
     set_mono_param!(set_sample_on_trigger, sample_on_trigger, bool);
     set_mono_param!(set_make_bipolar, make_bipolar, bool);
 
+    // Set parameters values at the beginning of a block
     pub fn set_values(&mut self, values: &[Sample; NUM_EXT_PARAMS]) {
         self.values.set(values[self.params.selected_param_index], 0);
     }

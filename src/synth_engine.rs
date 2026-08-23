@@ -76,6 +76,14 @@ pub const MAX_BLOCK_SIZE: usize = 128;
 type ModulesMap = FxHashMap<ModuleId, ModuleHandle>;
 type RoutingMap = FxHashMap<InputId, InputSource>;
 
+#[derive(Clone, Copy)]
+struct PendingPolyModulation {
+    param_idx: usize,
+    host_id: i32,
+    offset: usize,
+    value_offset: Sample,
+}
+
 pub struct SynthEngine {
     next_id: ModuleId,
     host_sample_rate: f32,
@@ -91,6 +99,7 @@ pub struct SynthEngine {
     ui_end: Option<ui_bridge::UiEnd>,
     outputs_arena: OutputsArena,
     out_volume_ballistics: StereoLevelBallistics,
+    pending_poly_modulations: Vec<PendingPolyModulation>,
 }
 
 macro_rules! add_module_method {
@@ -131,6 +140,7 @@ impl SynthEngine {
             ui_end: Some(ui_end),
             outputs_arena: OutputsArena::new(),
             out_volume_ballistics: StereoLevelBallistics::default(),
+            pending_poly_modulations: Vec::with_capacity(64),
         };
 
         engine.modules.insert(
@@ -604,6 +614,10 @@ impl SynthEngine {
         self.modules
             .values_mut()
             .for_each(|m| m.process_events(voice_events.events()));
+
+        if let Some(host_id) = note.host_id {
+            self.apply_pending_poly_modulations(host_id);
+        }
     }
 
     pub fn handle_note_off(&mut self, note: Note, offset: usize) {
@@ -664,7 +678,7 @@ impl SynthEngine {
     pub fn handle_poly_modulation(
         &mut self,
         param_idx: usize,
-        voice_id: i32,
+        host_id: i32,
         offset: usize,
         value_offset: Sample,
     ) {
@@ -672,10 +686,47 @@ impl SynthEngine {
             return;
         }
 
-        let Some(voice_idx) = self.voices_handler.voice_idx_for_host_id(voice_id) else {
+        let Some(voice_idx) = self.voices_handler.voice_idx_for_host_id(host_id) else {
+            self.pending_poly_modulations.push(PendingPolyModulation {
+                param_idx,
+                host_id,
+                offset,
+                value_offset,
+            });
             return;
         };
 
+        self.apply_poly_modulation(param_idx, voice_idx, offset, value_offset);
+    }
+
+    fn apply_pending_poly_modulations(&mut self, host_id: i32) {
+        let Some(voice_idx) = self.voices_handler.voice_idx_for_host_id(host_id) else {
+            return;
+        };
+
+        let mut i = 0;
+        while i < self.pending_poly_modulations.len() {
+            if self.pending_poly_modulations[i].host_id == host_id {
+                let event = self.pending_poly_modulations.remove(i);
+                self.apply_poly_modulation(
+                    event.param_idx,
+                    voice_idx,
+                    event.offset,
+                    event.value_offset,
+                );
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    fn apply_poly_modulation(
+        &mut self,
+        param_idx: usize,
+        voice_idx: usize,
+        offset: usize,
+        value_offset: Sample,
+    ) {
         let offset = self.to_internal_offset(offset);
 
         self.modules.values_mut().for_each(|m| {
@@ -792,6 +843,7 @@ impl SynthEngine {
         }
 
         self.voices_handler.reset_triggers();
+        self.pending_poly_modulations.clear();
     }
 
     fn alloc_module_id(&mut self) -> ModuleId {
