@@ -13,6 +13,8 @@ pub struct ExternalParamConfig {
     pub sample_on_trigger: bool,
     #[serde(default)]
     pub make_bipolar: bool,
+    #[serde(default)]
+    pub polyphonic: bool,
 }
 
 impl Default for ExternalParamConfig {
@@ -23,6 +25,7 @@ impl Default for ExternalParamConfig {
             smooth: from_ms(2.0),
             sample_on_trigger: false,
             make_bipolar: false,
+            polyphonic: false,
         }
     }
 }

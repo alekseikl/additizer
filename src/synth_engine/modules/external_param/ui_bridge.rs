@@ -47,6 +47,12 @@ impl ExternalParamUiBridge {
             self.config.make_bipolar = value;
         }
     }
+
+    pub fn set_polyphonic(&mut self, value: bool) {
+        if self.ui_end.set_polyphonic(value) {
+            self.config.polyphonic = value;
+        }
+    }
 }
 
 impl ModuleUiBridge for ExternalParamUiBridge {

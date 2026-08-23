@@ -15,7 +15,8 @@ mod utils;
 use crate::editor::create_editor;
 use crate::engine_factory::{EngineFactory, EngineHandle};
 use crate::params::AdditizerParams;
-use crate::synth_engine::{MAX_VOICES, Note};
+use crate::synth_engine::{MAX_VOICES, Note, external_param::ParamValue};
+use crate::utils::log;
 pub use egui;
 use nice_plug::prelude::*;
 use std::sync::Arc;
@@ -102,21 +103,24 @@ impl Plugin for Additizer {
             self.engine = Some(self.factory.get_engine());
         }
 
-        let ext_values = self
-            .params
-            .ext_params
-            .each_ref()
-            .map(|param| param.value.modulated_normalized_value());
+        let param_values = self.params.ext_params.each_ref().map(|param| ParamValue {
+            unmodulated: param.value.unmodulated_normalized_value(),
+            modulated: param.value.modulated_normalized_value(),
+        });
 
         // Mutex is contended only when routing is changed from the UI.
         let mut synth = self.engine.as_deref().unwrap().lock();
+
+        if synth.has_playing() {
+            log!("ext_param 0: {:?}", param_values[0]);
+        }
 
         assert_no_alloc::assert_no_alloc(|| {
             let block_size = synth.block_size();
             let update_ui = self.params.editor_state.is_open();
             let mut next_event = context.next_event();
 
-            synth.set_automation_values(&ext_values);
+            synth.set_automation_values(&param_values);
 
             for (block_start, block) in buffer.iter_blocks(block_size) {
                 let samples = block.samples();
@@ -125,7 +129,7 @@ impl Plugin for Additizer {
                 while let Some(event) =
                     next_event.take_if(|event| (event.timing() as usize) < sample_to)
                 {
-                    host_events::process_event(&mut synth, event, block_start);
+                    host_events::process_event(&mut synth, event, block_start, &param_values);
                     next_event = context.next_event();
                 }
 

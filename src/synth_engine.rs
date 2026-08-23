@@ -6,7 +6,7 @@ use std::assert_matches;
 use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
-    external_param::NUM_EXT_PARAMS,
+    external_param::{NUM_EXT_PARAMS, ParamValue},
     level_ballistics::StereoLevelBallistics,
     module_handle::ModuleHandle,
     modules::Output,
@@ -276,6 +276,10 @@ impl SynthEngine {
         } else {
             self.host_sample_rate
         }
+    }
+
+    pub fn has_playing(&self) -> bool {
+        self.voices_handler.get_metrics().playing > 0
     }
 
     fn get_engine_params(&self) -> EngineParams {
@@ -653,7 +657,7 @@ impl SynthEngine {
         }
     }
 
-    pub fn set_automation_values(&mut self, values: &[Sample; NUM_EXT_PARAMS]) {
+    pub fn set_automation_values(&mut self, values: &[ParamValue; NUM_EXT_PARAMS]) {
         self.modules.values_mut().for_each(|m| {
             if let ModuleHandle::ExternalParam(module) = m {
                 module.set_values(values);
@@ -661,7 +665,13 @@ impl SynthEngine {
         });
     }
 
-    pub fn handle_mono_automation(&mut self, param_idx: usize, offset: usize, value: Sample) {
+    pub fn handle_mono_automation(
+        &mut self,
+        param_idx: usize,
+        offset: usize,
+        value: Sample,
+        param_values: &[ParamValue; NUM_EXT_PARAMS],
+    ) {
         if param_idx >= NUM_EXT_PARAMS {
             return;
         }
@@ -670,7 +680,7 @@ impl SynthEngine {
 
         self.modules.values_mut().for_each(|m| {
             if let ModuleHandle::ExternalParam(module) = m {
-                module.handle_mono_automation(param_idx, offset, value);
+                module.handle_mono_automation(param_idx, offset, value, param_values);
             }
         });
     }

@@ -94,6 +94,16 @@ impl ExternalParamUI {
                     param_bridge.set_make_bipolar(config.make_bipolar);
                 }
                 ui.end_row();
+
+                ui.label("Polyphonic")
+                    .on_hover_text("Apply per-voice poly modulation from the host");
+                if ui
+                    .add(Checkbox::without_text(&mut config.polyphonic))
+                    .changed()
+                {
+                    param_bridge.set_polyphonic(config.polyphonic);
+                }
+                ui.end_row();
             });
     }
 }

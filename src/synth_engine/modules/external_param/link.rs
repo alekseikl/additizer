@@ -7,6 +7,7 @@ pub enum UiEvent {
     Smooth(Sample),
     SampleOnTrigger(bool),
     MakeBipolar(bool),
+    Polyphonic(bool),
 }
 
 pub struct UiEnd {
@@ -37,6 +38,10 @@ impl UiEnd {
 
     pub fn set_make_bipolar(&mut self, value: bool) -> bool {
         self.tx.push(UiEvent::MakeBipolar(value)).is_ok()
+    }
+
+    pub fn set_polyphonic(&mut self, value: bool) -> bool {
+        self.tx.push(UiEvent::Polyphonic(value)).is_ok()
     }
 }
 

@@ -19,11 +19,18 @@ use crate::synth_engine::{
 
 pub const NUM_EXT_PARAMS: usize = 4;
 
+#[derive(Debug, Clone, Copy)]
+pub struct ParamValue {
+    pub unmodulated: Sample,
+    pub modulated: Sample,
+}
+
 struct Params {
     selected_param_index: usize,
     smooth: Sample,
     sample_on_trigger: bool,
     make_bipolar: bool,
+    polyphonic: bool,
 }
 
 impl Params {
@@ -33,6 +40,7 @@ impl Params {
             smooth: c.smooth,
             sample_on_trigger: c.sample_on_trigger,
             make_bipolar: c.make_bipolar,
+            polyphonic: c.polyphonic,
         }
     }
 }
@@ -96,6 +104,7 @@ impl ExternalParam {
             smooth: self.params.smooth,
             sample_on_trigger: self.params.sample_on_trigger,
             make_bipolar: self.params.make_bipolar,
+            polyphonic: self.params.polyphonic,
         }
     }
 
@@ -108,15 +117,36 @@ impl ExternalParam {
     set_mono_param!(set_smooth, smooth, Sample);
     set_mono_param!(set_sample_on_trigger, sample_on_trigger, bool);
     set_mono_param!(set_make_bipolar, make_bipolar, bool);
+    set_mono_param!(set_polyphonic, polyphonic, bool);
 
     // Set parameters values at the beginning of a block
-    pub fn set_values(&mut self, values: &[Sample; NUM_EXT_PARAMS]) {
-        self.values.set(values[self.params.selected_param_index], 0);
+    pub fn set_values(&mut self, values: &[ParamValue; NUM_EXT_PARAMS]) {
+        let value = &values[self.params.selected_param_index];
+        let value = if self.params.polyphonic {
+            value.unmodulated
+        } else {
+            value.modulated
+        };
+
+        self.values.set(value, 0);
     }
 
-    pub fn handle_mono_automation(&mut self, param_idx: usize, offset: usize, value: Sample) {
+    pub fn handle_mono_automation(
+        &mut self,
+        param_idx: usize,
+        offset: usize,
+        value: Sample,
+        param_values: &[ParamValue; NUM_EXT_PARAMS],
+    ) {
         if param_idx == self.params.selected_param_index {
-            self.values.set(value, offset);
+            if self.params.polyphonic {
+                self.values.set(value, offset);
+            } else {
+                let param = param_values[self.params.selected_param_index];
+
+                self.values
+                    .set(value + (param.modulated - param.unmodulated), offset);
+            }
         }
     }
 
@@ -127,7 +157,7 @@ impl ExternalParam {
         offset: usize,
         value_offset: Sample,
     ) {
-        if param_idx == self.params.selected_param_index {
+        if self.params.polyphonic && param_idx == self.params.selected_param_index {
             self.voices[voice_idx].values.set(value_offset, offset);
         }
     }
@@ -224,6 +254,7 @@ impl SynthModule for ExternalParam {
                 UiEvent::Smooth(value) => self.set_smooth(value),
                 UiEvent::SampleOnTrigger(value) => self.set_sample_on_trigger(value),
                 UiEvent::MakeBipolar(value) => self.set_make_bipolar(value),
+                UiEvent::Polyphonic(value) => self.set_polyphonic(value),
             }
         }
     }
