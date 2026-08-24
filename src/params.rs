@@ -16,6 +16,16 @@ pub struct ExtParam {
     pub value: FloatParam,
 }
 
+impl ExtParam {
+    pub fn unmodulated(&self) -> f32 {
+        self.value.unmodulated_normalized_value()
+    }
+
+    pub fn modulated(&self) -> f32 {
+        self.value.modulated_normalized_value()
+    }
+}
+
 #[derive(Params)]
 pub struct AdditizerParams {
     #[persist = "editor-state"]

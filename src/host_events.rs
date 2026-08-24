@@ -1,9 +1,7 @@
 use crate::{
-    synth_engine::{
-        Expression, Note, SynthEngine,
-        external_param::{NUM_EXT_PARAMS, ParamValue},
-    },
-    utils::log,
+    params::ExtParam,
+    synth_engine::{Expression, Note, SynthEngine, external_param::NUM_EXT_PARAMS},
+    // utils::log,
 };
 use nice_plug::prelude::NoteEvent;
 
@@ -11,9 +9,9 @@ pub fn process_event(
     synth: &mut SynthEngine,
     event: NoteEvent<()>,
     block_start: usize,
-    param_values: &[ParamValue; NUM_EXT_PARAMS],
+    params: &[ExtParam; NUM_EXT_PARAMS],
 ) {
-    log!("Event: {:?}", event);
+    // log!("Event: {:?}", event);
 
     match event {
         NoteEvent::NoteOn {
@@ -180,7 +178,7 @@ pub fn process_event(
                 poly_modulation_id as usize,
                 timing as usize - block_start,
                 normalized_value,
-                param_values,
+                params,
             );
         }
         _ => (),

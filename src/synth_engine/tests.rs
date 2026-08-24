@@ -1215,12 +1215,7 @@ fn process_reports_terminated_notes() {
     let mut left = vec![0.0; 64];
     let mut right = vec![0.0; 64];
     let mut terminated = Vec::new();
-    engine.process(
-        64,
-        false,
-        &mut terminated,
-        [&mut left[..], &mut right[..]],
-    );
+    engine.process(64, false, &mut terminated, [&mut left[..], &mut right[..]]);
 
     assert_eq!(terminated.len(), 1);
     assert_eq!(terminated[0].channel, 0);

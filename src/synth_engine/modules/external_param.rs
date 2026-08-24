@@ -6,6 +6,7 @@ pub use config::ExternalParamConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::ExternalParamUiBridge;
 
+use crate::params::ExtParam;
 use crate::synth_engine::{
     Buffer, ModuleId, Sample,
     buffer::{MonoVoicesLayout, ValueBuffer, VoicesLayout, new_mono_voices_layout, zero_buffer},
@@ -18,12 +19,6 @@ use crate::synth_engine::{
 };
 
 pub const NUM_EXT_PARAMS: usize = 4;
-
-#[derive(Debug, Clone, Copy)]
-pub struct ParamValue {
-    pub unmodulated: Sample,
-    pub modulated: Sample,
-}
 
 struct Params {
     selected_param_index: usize,
@@ -120,12 +115,12 @@ impl ExternalParam {
     set_mono_param!(set_polyphonic, polyphonic, bool);
 
     // Set parameters values at the beginning of a block
-    pub fn set_values(&mut self, values: &[ParamValue; NUM_EXT_PARAMS]) {
-        let value = &values[self.params.selected_param_index];
+    pub fn set_values(&mut self, values: &[ExtParam; NUM_EXT_PARAMS]) {
+        let param = &values[self.params.selected_param_index];
         let value = if self.params.polyphonic {
-            value.unmodulated
+            param.unmodulated()
         } else {
-            value.modulated
+            param.modulated()
         };
 
         self.values.set(value, 0);
@@ -136,16 +131,16 @@ impl ExternalParam {
         param_idx: usize,
         offset: usize,
         value: Sample,
-        param_values: &[ParamValue; NUM_EXT_PARAMS],
+        params: &[ExtParam; NUM_EXT_PARAMS],
     ) {
         if param_idx == self.params.selected_param_index {
             if self.params.polyphonic {
                 self.values.set(value, offset);
             } else {
-                let param = param_values[self.params.selected_param_index];
+                let param = &params[self.params.selected_param_index];
 
                 self.values
-                    .set(value + (param.modulated - param.unmodulated), offset);
+                    .set(value + (param.modulated() - param.unmodulated()), offset);
             }
         }
     }
