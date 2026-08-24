@@ -30,7 +30,7 @@ const C_GRID: Color32 = Color32::from_rgb(25, 25, 25);
 const GRID_T: f32 = 1.0;
 const WIRE_T: f32 = 2.0;
 const WIRE_MOD_T: f32 = 1.0;
-/// Minimum horizontal offset of a wire's Bézier control points.
+/// Minimum horizontal offset of a backward wire's Bézier control points.
 const WIRE_CTRL_MIN: f32 = 8.0;
 const WIRE_END_DOT: f32 = 8.0;
 
@@ -289,20 +289,30 @@ impl Grid {
         let src_pos = drag.start_pos;
         let dst_pos = pointer;
         let output_color = drag.color;
-        let dx = ((dst_pos.x - src_pos.x).abs() * 0.5).max(WIRE_CTRL_MIN);
-        let ctrl1 = src_pos + vec2(dx, 0.0);
-        let ctrl2 = dst_pos - vec2(dx, 0.0);
         let stroke = PathStroke::new(WIRE_T, output_color).middle();
 
         Shape::Vec(vec![
-            Shape::CubicBezier(CubicBezierShape::from_points_stroke(
-                [src_pos, ctrl1, ctrl2, dst_pos],
-                false,
-                Color32::TRANSPARENT,
-                stroke,
-            )),
+            Self::wire_shape(src_pos, dst_pos, stroke),
             Shape::circle_filled(dst_pos, WIRE_END_DOT * 0.5, output_color),
         ])
+    }
+
+    fn wire_shape(src: Pos2, dst: Pos2, stroke: PathStroke) -> Shape {
+        if (src.y - dst.y).abs() < 0.1 {
+            return Shape::line(vec![src, dst], stroke);
+        }
+
+        let mut dx = (dst.x - src.x).abs() * 0.5;
+        if dst.x < src.x {
+            dx = dx.max(WIRE_CTRL_MIN);
+        }
+
+        Shape::CubicBezier(CubicBezierShape::from_points_stroke(
+            [src, src + vec2(dx, 0.0), dst - vec2(dx, 0.0), dst],
+            false,
+            Color32::TRANSPARENT,
+            stroke,
+        ))
     }
 
     fn wire_color_at(
@@ -341,9 +351,6 @@ impl Grid {
                 if let Some(&(src_pos, output_color)) = outputs.get(&input.module_id) {
                     let dst_pos = input.point;
                     let input_color = input.color;
-                    let dx = ((dst_pos.x - src_pos.x).abs() * 0.5).max(WIRE_CTRL_MIN);
-                    let ctrl1 = src_pos + vec2(dx, 0.0);
-                    let ctrl2 = dst_pos - vec2(dx, 0.0);
                     let thickness = if input.is_modulation {
                         WIRE_MOD_T
                     } else {
@@ -354,12 +361,7 @@ impl Grid {
                     })
                     .middle();
 
-                    shapes.push(Shape::CubicBezier(CubicBezierShape::from_points_stroke(
-                        [src_pos, ctrl1, ctrl2, dst_pos],
-                        false,
-                        Color32::TRANSPARENT,
-                        stroke,
-                    )));
+                    shapes.push(Self::wire_shape(src_pos, dst_pos, stroke));
                 }
             }
         }
