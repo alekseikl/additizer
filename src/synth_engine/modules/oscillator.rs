@@ -1026,10 +1026,12 @@ impl Oscillator {
                 self.voices[channel_idx][voice_idx].phases[center] =
                     self.voices[LEFT_CHANNEL][voice_idx].phases[center];
             }
-        } else {
+        } else if unison > 1 {
             for (phase, unison_voice) in voice.phases.iter_mut().zip(&channel.unison).take(unison) {
                 *phase = Phase::from_normalized(unison_voice.initial_phase);
             }
+        } else {
+            voice.phases[0] = Phase::ZERO;
         }
     }
 

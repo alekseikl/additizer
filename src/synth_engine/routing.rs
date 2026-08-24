@@ -26,7 +26,7 @@ pub const MIN_MODULE_ID: ModuleId = 1;
 pub const LEFT_CHANNEL: usize = 0;
 pub const RIGHT_CHANNEL: usize = 1;
 
-pub const UI_TO_AUDIO_RING_CAPACITY: usize = 128;
+pub const UI_TO_AUDIO_RING_CAPACITY: usize = 64;
 pub const AUDIO_TO_UI_RING_CAPACITY: usize = 64;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

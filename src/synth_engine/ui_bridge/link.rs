@@ -1,9 +1,12 @@
 use triple_buffer::triple_buffer;
 
 use crate::synth_engine::{
-    AUDIO_TO_UI_RING_CAPACITY, Input, InputId, ModuleId, Sample, StereoSample,
-    UI_TO_AUDIO_RING_CAPACITY, ui_bridge::VoicesStatus, voices_handler::VoicesHandlerMetrics,
+    Input, InputId, ModuleId, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY,
+    ui_bridge::VoicesStatus, voices_handler::VoicesHandlerMetrics,
 };
+
+// Use larger capacity than for modules for the inputs telemetry
+pub const AUDIO_TO_UI_RING_CAPACITY: usize = 512;
 
 pub enum UiEvent {
     LinkAmount {
