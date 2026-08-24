@@ -438,6 +438,10 @@ impl GridWidget {
         );
         painter.circle_filled(center, dot_size * 0.5, dot_color);
 
+        if response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+
         input_tooltip::show_above(
             ui,
             &response,
@@ -480,8 +484,10 @@ impl GridWidget {
 
         painter.circle_filled(center, radius, color);
 
-        if response.hovered() || response.dragged() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        if response.dragged() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        } else if response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
 
         (
@@ -614,7 +620,7 @@ impl GridWidget {
         if response.dragged() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         } else if response.hovered() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
 
         if response.clicked_by(PointerButton::Primary) {
