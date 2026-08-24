@@ -1,4 +1,6 @@
-use crate::synth_engine::{Input, StereoSample, filters::spectral_filter::FilterType};
+use crate::synth_engine::{
+    Input, StereoSample, UI_TO_AUDIO_RING_CAPACITY, filters::spectral_filter::FilterType,
+};
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
@@ -53,7 +55,7 @@ impl AudioEnd {
 }
 
 pub fn create_link_pair() -> (AudioEnd, UiEnd) {
-    let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(128);
+    let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
 
     (AudioEnd::new(from_ui_rx), UiEnd::new(to_audio_tx))
 }

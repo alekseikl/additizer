@@ -1,6 +1,6 @@
 use triple_buffer::triple_buffer;
 
-use crate::synth_engine::{Expression, Sample};
+use crate::synth_engine::{Expression, Sample, UI_TO_AUDIO_RING_CAPACITY};
 
 pub enum UiEvent {
     Expression(Expression),
@@ -55,7 +55,7 @@ impl AudioEnd {
 }
 
 pub fn create_link_pair() -> (AudioEnd, UiEnd) {
-    let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(128);
+    let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
     let (value_input, value_output) = triple_buffer(&0.0);
 
     (

@@ -1,6 +1,9 @@
 use triple_buffer::triple_buffer;
 
-use crate::synth_engine::{Input, MixType, StereoSample, VolumeType, types::ComplexSample};
+use crate::synth_engine::{
+    AUDIO_TO_UI_RING_CAPACITY, Input, MixType, StereoSample, UI_TO_AUDIO_RING_CAPACITY, VolumeType,
+    types::ComplexSample,
+};
 
 pub enum UiEvent {
     InputParam {
@@ -100,8 +103,8 @@ impl AudioEnd {
 }
 
 pub fn create_link_pair() -> (AudioEnd, UiEnd) {
-    let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(256);
-    let (to_ui_tx, from_audio_rx) = rtrb::RingBuffer::<UiUpdate>::new(128);
+    let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
+    let (to_ui_tx, from_audio_rx) = rtrb::RingBuffer::<UiUpdate>::new(AUDIO_TO_UI_RING_CAPACITY);
     let (spectrum_input, spectrum_output) =
         triple_buffer(&Box::new([ComplexSample::ZERO; DISPLAY_SPECTRUM_SIZE]));
 

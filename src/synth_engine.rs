@@ -41,8 +41,9 @@ pub use modules::{
     wave_shaper::{self},
 };
 pub use routing::{
-    DataType, Expression, Input, InputId, InputSource, MAX_VOICES, MixType, ModuleId, NUM_CHANNELS,
-    OUTPUT_MODULE_ID, VoiceEvent, VolumeType,
+    AUDIO_TO_UI_RING_CAPACITY, DataType, Expression, Input, InputId, InputSource, MAX_VOICES,
+    MixType, ModuleId, NUM_CHANNELS, OUTPUT_MODULE_ID, UI_TO_AUDIO_RING_CAPACITY, VoiceEvent,
+    VolumeType,
 };
 pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
