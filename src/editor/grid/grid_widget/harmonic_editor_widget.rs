@@ -6,8 +6,7 @@ use crate::{
         waveform::{WaveformBuilder, WaveformOptions},
     },
     synth_engine::{
-        DISPLAY_SPECTRUM_SIZE, ModuleId,
-        harmonic_editor::HarmonicEditorUiBridge,
+        DISPLAY_SPECTRUM_SIZE, ModuleId, harmonic_editor::HarmonicEditorUiBridge,
         ui_bridge::ModuleBridge,
     },
 };
@@ -45,7 +44,7 @@ impl HarmonicEditorWidget {
             self.waveform.build_and_paint(
                 painter,
                 rect,
-                editor_bridge.get_spectrum(),
+                editor_bridge.get_display_spectrum(),
                 WaveformOptions {
                     color: WAVE_COLOR.into(),
                     ..Default::default()

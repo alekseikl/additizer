@@ -3,12 +3,10 @@ use std::array;
 use triple_buffer::triple_buffer;
 
 use crate::synth_engine::{
-    AUDIO_TO_UI_RING_CAPACITY, ComplexSample, DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, NUM_CHANNELS,
-    SPECTRAL_BUFFER_SIZE, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY,
-    buffer::copy_to_display_spectrum,
+    ComplexSample, DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, NUM_CHANNELS, SPECTRAL_BUFFER_SIZE,
+    Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY, buffer::copy_to_display_spectrum,
+    harmonic_editor::EditRequest,
 };
-
-use super::SetParams;
 
 #[derive(Clone)]
 pub struct Harmonics {
@@ -25,20 +23,28 @@ impl Default for Harmonics {
     }
 }
 
-pub enum UiEvent {
-    SetHarmonic {
-        harmonic_number: usize,
-        gain: StereoSample,
-    },
-    SetSelected(SetParams),
+impl Harmonics {
+    pub fn amplitude(&self, index: usize) -> StereoSample {
+        StereoSample::new(self.amplitudes[0][index], self.amplitudes[1][index])
+    }
+
+    pub fn set_amplitude(&mut self, index: usize, gain: StereoSample) {
+        for (amplitudes, &gain) in self.amplitudes.iter_mut().zip(gain.iter()) {
+            amplitudes[index] = gain;
+        }
+    }
 }
 
-pub enum UiUpdate {
-    RefreshState,
+pub enum UiEvent {
+    SetAmplitude { index: u32, gain: StereoSample },
+    SetPhase { index: u32, phase: StereoSample },
+    Clear,
+    ResetSawtooth,
+    EditRequest(EditRequest),
+    ApplyDraft,
 }
 
 pub struct UiEnd {
-    rx: rtrb::Consumer<UiUpdate>,
     tx: rtrb::Producer<UiEvent>,
     display_spectrum: triple_buffer::Output<Box<DisplaySpectrum>>,
     harmonics: triple_buffer::Output<Harmonics>,
@@ -50,32 +56,48 @@ impl UiEnd {
         self.display_spectrum.output_buffer()
     }
 
-    pub fn get_harmonics(&mut self) -> &Harmonics {
+    pub fn get_harmonics_mut(&mut self) -> &mut Harmonics {
         self.harmonics.update();
-        self.harmonics.output_buffer()
+        self.harmonics.output_buffer_mut()
     }
 
-    pub fn set_harmonic(&mut self, harmonic_number: usize, gain: StereoSample) -> bool {
+    pub fn set_amplitude(&mut self, index: usize, gain: StereoSample) -> bool {
         self.tx
-            .push(UiEvent::SetHarmonic {
-                harmonic_number,
+            .push(UiEvent::SetAmplitude {
+                index: index as u32,
                 gain,
             })
             .is_ok()
     }
 
-    pub fn set_selected(&mut self, params: SetParams) -> bool {
-        self.tx.push(UiEvent::SetSelected(params)).is_ok()
+    pub fn set_phase(&mut self, index: usize, phase: StereoSample) -> bool {
+        self.tx
+            .push(UiEvent::SetPhase {
+                index: index as u32,
+                phase,
+            })
+            .is_ok()
     }
 
-    pub fn pop_update(&mut self) -> Option<UiUpdate> {
-        self.rx.pop().ok()
+    pub fn clear(&mut self) -> bool {
+        self.tx.push(UiEvent::Clear).is_ok()
+    }
+
+    pub fn reset_sawtooth(&mut self) -> bool {
+        self.tx.push(UiEvent::ResetSawtooth).is_ok()
+    }
+
+    pub fn edit_request(&mut self, request: EditRequest) -> bool {
+        self.tx.push(UiEvent::EditRequest(request)).is_ok()
+    }
+
+    pub fn apply_draft(&mut self) -> bool {
+        self.tx.push(UiEvent::ApplyDraft).is_ok()
     }
 }
 
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
-    tx: rtrb::Producer<UiUpdate>,
     display_spectrum: triple_buffer::Input<Box<DisplaySpectrum>>,
     harmonics: triple_buffer::Input<Harmonics>,
 }
@@ -83,10 +105,6 @@ pub struct AudioEnd {
 impl AudioEnd {
     pub fn pop_event(&mut self) -> Option<UiEvent> {
         self.rx.pop().ok()
-    }
-
-    pub fn push_refresh_state(&mut self) -> bool {
-        self.tx.push(UiUpdate::RefreshState).is_ok()
     }
 
     pub fn update_display_spectrum(&mut self, spectrum: &[ComplexSample]) {
@@ -115,7 +133,6 @@ impl AudioEnd {
 
 pub fn create_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
-    let (to_ui_tx, from_audio_rx) = rtrb::RingBuffer::<UiUpdate>::new(AUDIO_TO_UI_RING_CAPACITY);
     let (display_spectrum_input, display_spectrum_output) =
         triple_buffer(&Box::new([ComplexSample::ZERO; DISPLAY_SPECTRUM_SIZE]));
     let (harmonics_input, harmonics_output) = triple_buffer(&Harmonics::default());
@@ -123,12 +140,10 @@ pub fn create_link_pair() -> (AudioEnd, UiEnd) {
     (
         AudioEnd {
             rx: from_ui_rx,
-            tx: to_ui_tx,
             display_spectrum: display_spectrum_input,
             harmonics: harmonics_input,
         },
         UiEnd {
-            rx: from_audio_rx,
             tx: to_audio_tx,
             display_spectrum: display_spectrum_output,
             harmonics: harmonics_output,

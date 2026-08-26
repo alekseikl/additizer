@@ -1,93 +1,42 @@
-use std::sync::Arc;
+use crate::synth_engine::{ComplexSample, StereoSample, synth_module::ModuleUiBridge};
 
-use parking_lot::Mutex;
-
-use crate::synth_engine::{
-    ComplexSample, DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, ModuleHandle, ModuleId,
-    SPECTRAL_BUFFER_SIZE, StereoSample, SynthEngine, buffer::HARMONIC_SERIES_BUFFER,
-    synth_module::ModuleUiBridge,
-};
-
-use super::link::{UiEnd, UiUpdate};
-use super::{HarmonicEditor, HarmonicEditorConfig, SetParams};
+use super::link::UiEnd;
+use super::{HarmonicEditor, Harmonics};
 
 pub struct HarmonicEditorUiBridge {
-    synth: Arc<Mutex<SynthEngine>>,
-    module_id: ModuleId,
     ui_end: UiEnd,
-    config: HarmonicEditorConfig,
-    display_spectrum: DisplaySpectrum,
 }
 
 impl HarmonicEditorUiBridge {
-    pub fn try_new(
-        module_id: ModuleId,
-        synth: Arc<Mutex<SynthEngine>>,
-        editor: &mut HarmonicEditor,
-    ) -> Option<Self> {
+    pub fn try_new(editor: &mut HarmonicEditor) -> Option<Self> {
         Some(Self {
-            synth,
-            module_id,
             ui_end: editor.ui_end.take()?,
-            config: editor.get_config(),
-            display_spectrum: [ComplexSample::ZERO; DISPLAY_SPECTRUM_SIZE],
         })
     }
 
-    pub fn sync(&mut self) {
-        let synth_lock = self.synth.lock();
-
-        if let Some(ModuleHandle::HarmonicEditor(editor)) = synth_lock.get_module(self.module_id) {
-            self.config = editor.get_config();
-        }
+    pub fn harmonics_mut(&mut self) -> &mut Harmonics {
+        self.ui_end.get_harmonics_mut()
     }
 
-    pub fn harmonics(&self) -> Vec<StereoSample> {
-        HarmonicEditor::harmonics_from_config(&self.config)
-    }
-
-    pub fn get_spectrum(&mut self) -> &[ComplexSample] {
-        // let left = &self.config.spectrum[0];
-
-        // for (dst, src) in self.display_spectrum.iter_mut().zip(left.iter()) {
-        //     *dst = src.complex();
-        // }
-
-        // if left.len() < DISPLAY_SPECTRUM_SIZE {
-        //     self.display_spectrum[left.len()..].fill(ComplexSample::ZERO);
-        // }
-
-        &self.display_spectrum
+    pub fn get_display_spectrum(&mut self) -> &[ComplexSample] {
+        self.ui_end.get_display_spectrum()
     }
 
     pub fn set_harmonic(&mut self, harmonic_number: usize, gain: StereoSample) {
-        // if self.ui_end.set_harmonic(harmonic_number, gain) {
-        //     let idx = harmonic_number.clamp(1, SPECTRAL_BUFFER_SIZE - 1);
-
-        //     for (channel, gain) in self.config.spectrum.iter_mut().zip(gain.iter()) {
-        //         if idx < channel.len() {
-        //             channel[idx] =
-        //                 super::ComplexCfg::from_complex(HARMONIC_SERIES_BUFFER[idx] * gain);
-        //         }
-        //     }
-        // }
+        self.ui_end.set_amplitude(harmonic_number, gain);
     }
 
-    pub fn set_selected(&mut self, params: SetParams) {
-        self.ui_end.set_selected(params);
+    pub fn clear(&mut self) {
+        self.ui_end.clear();
+    }
+
+    pub fn reset_sawtooth(&mut self) {
+        self.ui_end.reset_sawtooth();
     }
 }
 
 impl ModuleUiBridge for HarmonicEditorUiBridge {
     fn update(&mut self) -> bool {
-        while let Some(update) = self.ui_end.pop_update() {
-            match update {
-                UiUpdate::RefreshState => {
-                    self.sync();
-                }
-            }
-        }
-
         false
     }
 }

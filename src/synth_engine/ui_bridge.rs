@@ -161,9 +161,9 @@ impl UiBridge {
             ModuleHandle::SpectralMixer(m) => {
                 ModuleBridge::SpectralMixer(Box::new(SpectralMixerUiBridge::try_new(m)?))
             }
-            ModuleHandle::HarmonicEditor(m) => ModuleBridge::HarmonicEditor(Box::new(
-                HarmonicEditorUiBridge::try_new(id, engine.clone(), m)?,
-            )),
+            ModuleHandle::HarmonicEditor(m) => {
+                ModuleBridge::HarmonicEditor(Box::new(HarmonicEditorUiBridge::try_new(m)?))
+            }
             ModuleHandle::Expressions(m) => {
                 ModuleBridge::Expressions(Box::new(ExpressionsUiBridge::try_new(m)?))
             }

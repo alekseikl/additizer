@@ -3,16 +3,11 @@ use std::array;
 use crate::{
     synth_engine::{
         ComplexSample, Sample, StereoSample,
-        biquad_filter::{BandPass, BandStop, FilterImpl, HighPass, LowPass, Peaking},
-        buffer::{
-            DC_OFFSET, HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer, VoicesLayout,
-            new_voices_layout, zero_spectral_buffer,
-        },
+        buffer::{DC_OFFSET, SPECTRAL_BUFFER_SIZE, SpectralBuffer, VoicesLayout},
         harmonic_editor::config::fill_default_harmonics,
         routing::{
-            DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, ModuleId, NUM_CHANNELS,
-            ProcessContext, RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType,
-            VoiceTarget,
+            DataType, InputMeta, LEFT_CHANNEL, ModuleId, NUM_CHANNELS, ProcessContext,
+            RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget,
         },
         synth_module::SynthModule,
     },
@@ -24,10 +19,11 @@ mod link;
 mod ui_bridge;
 
 pub use config::HarmonicEditorConfig;
+pub use link::Harmonics;
+pub use ui_bridge::HarmonicEditorUiBridge;
+
 use itertools::izip;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-use realfft::num_traits::ConstZero;
-pub use ui_bridge::HarmonicEditorUiBridge;
 
 const DB_LIMIT: Sample = 48.0;
 
@@ -44,20 +40,6 @@ pub enum EditRequest {
         add: u8,
         gain: StereoSample,
     },
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum SetAction {
-    Set,
-    Multiple,
-}
-
-pub struct SetParams {
-    pub from: usize, // One based index
-    pub to: usize,
-    pub n_th: Option<NthElement>,
-    pub action: SetAction,
-    pub gain: StereoSample,
 }
 
 pub struct HarmonicEditor {
@@ -126,6 +108,9 @@ impl HarmonicEditor {
 
         editor.rebuild_harmonics();
         editor
+            .audio_end
+            .publish_harmonics(&editor.amplitudes, &editor.phases);
+        editor
     }
 
     pub fn get_config(&self) -> HarmonicEditorConfig {
@@ -181,18 +166,6 @@ impl HarmonicEditor {
 
         self.audio_end
             .update_display_spectrum(&*self.output_harmonics[LEFT_CHANNEL]);
-    }
-
-    pub fn harmonics_from_config(config: &HarmonicEditorConfig) -> Vec<StereoSample> {
-        let mut magnitudes = vec![StereoSample::ZERO; SPECTRAL_BUFFER_SIZE];
-
-        for (channel_idx, channel) in config.amplitudes.iter().enumerate() {
-            for (magnitude, amplitude) in magnitudes.iter_mut().zip(channel.iter()) {
-                magnitude[channel_idx] = *amplitude;
-            }
-        }
-
-        magnitudes
     }
 
     pub fn set_amplitude(&mut self, idx: usize, amplitude: StereoSample) {
@@ -299,8 +272,6 @@ impl HarmonicEditor {
             .publish_harmonics(&self.amplitudes, &self.phases);
     }
 
-    pub fn set_selected(&mut self, params: &SetParams) {}
-
     fn process_voice(
         &mut self,
         target: &VoiceTarget,
@@ -336,23 +307,28 @@ impl SynthModule for HarmonicEditor {
     }
 
     fn process_ui_events(&mut self) {
-        let mut refresh = false;
-
         while let Some(event) = self.audio_end.pop_event() {
             match event {
-                UiEvent::SetHarmonic {
-                    harmonic_number,
-                    gain,
-                } => self.set_amplitude(harmonic_number, gain),
-                UiEvent::SetSelected(params) => {
-                    self.set_selected(&params);
-                    refresh = true;
+                UiEvent::SetAmplitude { index, gain } => {
+                    self.set_amplitude(index as usize, gain);
+                }
+                UiEvent::SetPhase { index, phase } => {
+                    self.set_phase(index as usize, phase);
+                }
+                UiEvent::Clear => {
+                    self.clear();
+                }
+                UiEvent::ResetSawtooth => {
+                    self.reset_saw();
+                }
+                UiEvent::EditRequest(request) => {
+                    self.apply_edit_request(request);
+                    self.rebuild_harmonics();
+                }
+                UiEvent::ApplyDraft => {
+                    self.apply_draft();
                 }
             }
-        }
-
-        if refresh {
-            self.audio_end.push_refresh_state();
         }
     }
 
