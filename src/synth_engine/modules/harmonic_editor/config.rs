@@ -1,55 +1,52 @@
+use std::array;
+
 use serde::{Deserialize, Serialize};
 
 use crate::synth_engine::{
     ModuleId, Sample,
-    buffer::{HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE},
+    buffer::{DC_OFFSET, SPECTRAL_BUFFER_SIZE},
     routing::NUM_CHANNELS,
-    types::ComplexSample,
 };
-
-#[derive(Default, Clone, Copy, Serialize, Deserialize)]
-pub struct ComplexCfg {
-    pub re: Sample,
-    pub im: Sample,
-}
-
-impl ComplexCfg {
-    pub fn from_complex(complex: ComplexSample) -> Self {
-        Self {
-            re: complex.re,
-            im: complex.im,
-        }
-    }
-
-    pub fn complex(&self) -> ComplexSample {
-        ComplexSample::new(self.re, self.im)
-    }
-}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct HarmonicEditorConfig {
     pub id: ModuleId,
-    pub spectrum: [Vec<ComplexCfg>; NUM_CHANNELS],
+    pub amplitudes: [Vec<Sample>; NUM_CHANNELS],
+    pub phases: [Vec<Sample>; NUM_CHANNELS],
 }
 
 impl Default for HarmonicEditorConfig {
     fn default() -> Self {
-        let mut cfg = Self {
-            id: -1,
-            spectrum: Default::default(),
-        };
+        let mut amplitudes: [Vec<Sample>; NUM_CHANNELS] =
+            array::from_fn(|_| vec![0.0; SPECTRAL_BUFFER_SIZE]);
+        let mut phases: [Vec<Sample>; NUM_CHANNELS] =
+            array::from_fn(|_| vec![0.0; SPECTRAL_BUFFER_SIZE]);
 
-        let harmonic_series = &HARMONIC_SERIES_BUFFER;
-
-        for channel in &mut cfg.spectrum {
-            channel.extend(
-                harmonic_series
-                    .iter()
-                    .take(SPECTRAL_BUFFER_SIZE)
-                    .map(|c| ComplexCfg::from_complex(*c)),
-            );
+        for (amplitudes, phases) in amplitudes.iter_mut().zip(phases.iter_mut()) {
+            fill_default_harmonics(amplitudes.iter_mut(), phases.iter_mut());
         }
 
-        cfg
+        Self {
+            id: -1,
+            amplitudes,
+            phases,
+        }
+    }
+}
+
+pub(super) fn fill_default_harmonics<'a>(
+    mut amplitudes: impl Iterator<Item = &'a mut Sample>,
+    mut phases: impl Iterator<Item = &'a mut Sample>,
+) {
+    if let (Some(dc_amp), Some(dc_phase)) = (amplitudes.next(), phases.next()) {
+        *dc_amp = 0.0;
+        *dc_phase = 0.0;
+    }
+
+    for (idx, (amp, phase)) in amplitudes.zip(phases).enumerate() {
+        let idx = idx + DC_OFFSET;
+
+        *amp = 1.0;
+        *phase = if idx & 1 == 0 { 0.0 } else { 0.5 };
     }
 }

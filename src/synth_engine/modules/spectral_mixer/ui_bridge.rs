@@ -1,6 +1,8 @@
-use crate::synth_engine::{Input, MixType, StereoSample, VolumeType, synth_module::ModuleUiBridge};
+use crate::synth_engine::{
+    DisplaySpectrum, Input, MixType, StereoSample, VolumeType, synth_module::ModuleUiBridge,
+};
 
-use super::link::{DisplaySpectrum, UiEnd, UiUpdate};
+use super::link::{UiEnd, UiUpdate};
 use super::{SpectralMixer, SpectralMixerConfig};
 
 pub struct SpectralMixerUiBridge {

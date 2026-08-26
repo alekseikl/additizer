@@ -34,7 +34,6 @@ mod ui_bridge;
 mod tests;
 
 pub use config::OscillatorConfig;
-pub use link::DISPLAY_SPECTRUM_SIZE;
 pub use ui_bridge::OscillatorUiBridge;
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;

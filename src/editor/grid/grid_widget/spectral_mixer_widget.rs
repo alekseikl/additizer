@@ -6,8 +6,8 @@ use crate::{
         waveform::{WaveformBuilder, WaveformOptions},
     },
     synth_engine::{
-        ModuleId,
-        spectral_mixer::{DISPLAY_SPECTRUM_SIZE, SpectralMixerUiBridge},
+        DISPLAY_SPECTRUM_SIZE, ModuleId,
+        spectral_mixer::SpectralMixerUiBridge,
         ui_bridge::ModuleBridge,
     },
 };

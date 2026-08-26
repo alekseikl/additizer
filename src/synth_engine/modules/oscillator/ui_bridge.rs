@@ -3,8 +3,8 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 
 use crate::synth_engine::{
-    Input, ModuleHandle, ModuleId, Sample, StereoSample, SynthEngine,
-    oscillator::link::DisplaySpectrum, synth_module::ModuleUiBridge,
+    DisplaySpectrum, Input, ModuleHandle, ModuleId, Sample, StereoSample, SynthEngine,
+    synth_module::ModuleUiBridge,
 };
 
 use super::{

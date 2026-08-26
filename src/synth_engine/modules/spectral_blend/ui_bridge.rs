@@ -1,6 +1,6 @@
-use crate::synth_engine::{Input, StereoSample, synth_module::ModuleUiBridge};
+use crate::synth_engine::{DisplaySpectrum, Input, StereoSample, synth_module::ModuleUiBridge};
 
-use super::link::{DisplaySpectrum, UiEnd};
+use super::link::UiEnd;
 use super::{SpectralBlend, SpectralBlendConfig};
 
 pub struct SpectralBlendUiBridge {

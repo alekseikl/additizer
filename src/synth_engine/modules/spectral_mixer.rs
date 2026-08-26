@@ -21,7 +21,6 @@ mod link;
 mod ui_bridge;
 
 pub use config::{MAX_INPUTS, SpectralMixerConfig};
-pub use link::DISPLAY_SPECTRUM_SIZE;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::SpectralMixerUiBridge;
 

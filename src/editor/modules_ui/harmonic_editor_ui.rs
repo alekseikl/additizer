@@ -4,7 +4,7 @@ use crate::{
     },
     synth_engine::{
         ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, StereoSample,
-        harmonic_editor::{FilterParams, FilterType, HarmonicEditorUiBridge, SetAction, SetParams},
+        harmonic_editor::{HarmonicEditorUiBridge, SetAction, SetParams},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{NthElement, db_to_gain},
@@ -21,18 +21,6 @@ impl SetAction {
         match self {
             Self::Set => "Set",
             Self::Multiple => "Multiple",
-        }
-    }
-}
-
-impl FilterType {
-    fn label(&self) -> &'static str {
-        match self {
-            Self::LowPass => "Lowpass",
-            Self::HighPass => "Highpass",
-            Self::BandPass => "Bandpass",
-            Self::BandStop => "Bandstop",
-            Self::Peaking => "Peaking",
         }
     }
 }
@@ -63,30 +51,9 @@ impl Default for SelectAndSetState {
     }
 }
 
-struct ApplyFilterState {
-    filter_type: FilterType,
-    order: StereoSample,
-    cutoff: StereoSample,
-    q: StereoSample,
-    gain: StereoSample,
-}
-
-impl Default for ApplyFilterState {
-    fn default() -> Self {
-        Self {
-            filter_type: FilterType::LowPass,
-            order: 4.0.into(),
-            cutoff: 0.0.into(),
-            q: 0.707.into(),
-            gain: 0.0.into(),
-        }
-    }
-}
-
 pub struct HarmonicEditorUI {
     module_id: ModuleId,
     select_and_set_state: Option<Box<SelectAndSetState>>,
-    apply_filter_state: Option<Box<ApplyFilterState>>,
 }
 
 impl HarmonicEditorUI {
@@ -94,7 +61,6 @@ impl HarmonicEditorUI {
         Self {
             module_id,
             select_and_set_state: None,
-            apply_filter_state: None,
         }
     }
 
@@ -211,110 +177,6 @@ impl HarmonicEditorUI {
         !modal.should_close()
     }
 
-    fn apply_filter(bridge: &mut HarmonicEditorUiBridge, state: &ApplyFilterState) {
-        bridge.apply_filter(FilterParams {
-            filter_type: state.filter_type,
-            filter_order: state.order,
-            cutoff: state.cutoff.iter().map(|octave| octave.exp2()).collect(),
-            q: state.q,
-            gain: state
-                .gain
-                .iter()
-                .map(|volume| db_to_gain(*volume))
-                .collect(),
-        });
-    }
-
-    fn show_apply_filter_modal(
-        bridge: &mut HarmonicEditorUiBridge,
-        ui: &mut Ui,
-        state: &mut ApplyFilterState,
-    ) -> bool {
-        let modal = Modal::new(Id::new("apply-filter-modal")).show(ui.ctx(), |ui| {
-            ui.set_width(440.0);
-
-            Grid::new("set-and-select-modal")
-                .num_columns(2)
-                .spacing([40.0, 24.0])
-                .striped(true)
-                .show(ui, |ui| {
-                    ui.label("Type");
-                    ComboBox::from_id_salt("apply-filter-type")
-                        .selected_text(state.filter_type.label())
-                        .show_ui(ui, |ui| {
-                            const TYPE_OPTIONS: &[FilterType] = &[
-                                FilterType::LowPass,
-                                FilterType::HighPass,
-                                FilterType::BandPass,
-                                FilterType::BandStop,
-                                FilterType::Peaking,
-                            ];
-
-                            for filter_type in TYPE_OPTIONS {
-                                ui.selectable_value(
-                                    &mut state.filter_type,
-                                    *filter_type,
-                                    filter_type.label(),
-                                );
-                            }
-                        });
-                    ui.end_row();
-
-                    ui.label("Order");
-                    ui.add(Slider::stereo(&mut state.order, 1.0..=8.0, None).default(4.0));
-                    ui.end_row();
-
-                    ui.label("Cutoff");
-                    ui.add(
-                        Slider::stereo(&mut state.cutoff, -4.0..=10.0, None)
-                            .default(0.0)
-                            .units(Units::Octaves),
-                    );
-                    ui.end_row();
-
-                    ui.label("Q");
-                    ui.add(
-                        Slider::stereo(&mut state.q, 0.1..=10.0, None)
-                            .default(0.707)
-                            .skew(1.8),
-                    );
-                    ui.end_row();
-
-                    ui.label("Gain");
-                    ui.add(
-                        Slider::stereo(&mut state.gain, 0.0..=24.0, Some(-24.0))
-                            .default(0.0)
-                            .skew(1.6)
-                            .units(Units::Db),
-                    );
-                    ui.end_row();
-                });
-
-            ui.add_space(40.0);
-
-            Sides::new().show(
-                ui,
-                |_ui| {},
-                |ui| {
-                    if ui.button("Ok").clicked() {
-                        Self::apply_filter(bridge, state);
-                        ui.close();
-                    }
-
-                    if ui.button("Apply").clicked() {
-                        Self::apply_filter(bridge, state);
-                    }
-
-                    if ui.button("Cancel").clicked() {
-                        ui.close();
-                    }
-                },
-            );
-        });
-
-        !modal.should_close()
-    }
-
     fn paint_ui(
         &mut self,
         bridge: &mut UiBridge,
@@ -414,22 +276,12 @@ impl HarmonicEditorUI {
             if ui.button("Select and Set").clicked() {
                 self.select_and_set_state = Some(Box::new(SelectAndSetState::default()));
             }
-
-            if ui.button("Apply Filter").clicked() {
-                self.apply_filter_state = Some(Box::new(ApplyFilterState::default()));
-            }
         });
 
         if let Some(mut state) = self.select_and_set_state.take()
             && Self::show_select_and_set_modal(editor_bridge, ui, &mut state)
         {
             self.select_and_set_state.replace(state);
-        }
-
-        if let Some(mut state) = self.apply_filter_state.take()
-            && Self::show_apply_filter_modal(editor_bridge, ui, &mut state)
-        {
-            self.apply_filter_state.replace(state);
         }
     }
 }

@@ -1,29 +1,50 @@
-use std::f32;
+use std::array;
 
 use crate::{
     synth_engine::{
-        Sample, StereoSample,
+        ComplexSample, Sample, StereoSample,
         biquad_filter::{BandPass, BandStop, FilterImpl, HighPass, LowPass, Peaking},
         buffer::{
-            HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer, VoicesLayout,
-            new_voices_layout,
+            DC_OFFSET, HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE, SpectralBuffer, VoicesLayout,
+            new_voices_layout, zero_spectral_buffer,
         },
+        harmonic_editor::config::fill_default_harmonics,
         routing::{
-            DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
-            RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceTarget,
+            DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, ModuleId, NUM_CHANNELS,
+            ProcessContext, RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType,
+            VoiceTarget,
         },
         synth_module::SynthModule,
     },
-    utils::NthElement,
+    utils::{NthElement, db_to_gain},
 };
 
 mod config;
 mod link;
 mod ui_bridge;
 
-pub use config::{ComplexCfg, HarmonicEditorConfig};
+pub use config::HarmonicEditorConfig;
+use itertools::izip;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::{DISPLAY_SPECTRUM_SIZE, HarmonicEditorUiBridge};
+use realfft::num_traits::ConstZero;
+pub use ui_bridge::HarmonicEditorUiBridge;
+
+const DB_LIMIT: Sample = 48.0;
+
+pub enum EditRequest {
+    Range {
+        harmonic_from: u16,
+        harmonic_to: u16,
+        gain: StereoSample,
+    },
+    NthElement {
+        harmonic_from: u16,
+        harmonic_to: u16,
+        mul: u8,
+        add: u8,
+        gain: StereoSample,
+    },
+}
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum SetAction {
@@ -39,51 +60,16 @@ pub struct SetParams {
     pub gain: StereoSample,
 }
 
-#[derive(Clone, Copy, PartialEq)]
-pub enum FilterType {
-    LowPass,
-    HighPass,
-    BandPass,
-    BandStop,
-    Peaking,
-}
-
-#[derive(Clone, Copy)]
-pub struct FilterParams {
-    pub filter_type: FilterType,
-    pub filter_order: StereoSample,
-    pub cutoff: StereoSample,
-    pub q: StereoSample,
-    pub gain: StereoSample,
-}
-
-fn apply_filter_response(spectrum: &mut SpectralBuffer, filter: impl FilterImpl, power: Sample) {
-    for (out, response) in spectrum
-        .iter_mut()
-        .zip(filter.into_iter(SPECTRAL_BUFFER_SIZE))
-    {
-        *out *= response.powf(power);
-    }
-}
-
-#[derive(Clone, Copy)]
-struct Voice {
-    needs_update: bool,
-}
-
-impl Default for Voice {
-    fn default() -> Self {
-        Self { needs_update: true }
-    }
-}
-
 pub struct HarmonicEditor {
     id: ModuleId,
-    harmonics: [SpectralBuffer; NUM_CHANNELS],
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
     output_slot: usize,
-    voices: VoicesLayout<Voice>,
+    amplitudes: [Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+    phases: [Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+    amplitudes_draft: [Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+    draft_enabled: bool,
+    output_harmonics: [Box<SpectralBuffer>; NUM_CHANNELS],
 }
 
 impl HarmonicEditor {
@@ -96,131 +82,224 @@ impl HarmonicEditor {
 
     pub fn from_config(config: &config::HarmonicEditorConfig) -> Self {
         let (audio_end, ui_end) = create_link_pair();
-        let mut harmonics = [HARMONIC_SERIES_BUFFER; NUM_CHANNELS];
 
-        for (channel, cfg_channel) in harmonics.iter_mut().zip(&config.spectrum) {
-            if cfg_channel.len() == SPECTRAL_BUFFER_SIZE {
-                for (out, cfg) in channel.iter_mut().zip(cfg_channel.iter()) {
-                    *out = cfg.complex();
-                }
+        let mut amplitudes = array::from_fn(|_| Box::new([0.0; SPECTRAL_BUFFER_SIZE]));
+        let mut phases = array::from_fn(|_| Box::new([0.0; SPECTRAL_BUFFER_SIZE]));
+
+        let gain_limit = db_to_gain(DB_LIMIT);
+
+        for (amplitudes, phases, cfg_amplitudes, cfg_phases) in izip!(
+            amplitudes.iter_mut(),
+            phases.iter_mut(),
+            config.amplitudes.iter(),
+            config.phases.iter()
+        ) {
+            for (amp, phase, &cfg_amp, &cfg_phase) in izip!(
+                amplitudes.iter_mut(),
+                phases.iter_mut(),
+                cfg_amplitudes.iter(),
+                cfg_phases.iter()
+            )
+            .skip(DC_OFFSET)
+            {
+                *amp = cfg_amp.min(gain_limit);
+                *phase = cfg_phase;
             }
         }
 
-        Self {
+        let amplitudes_draft = array::from_fn(|_| Box::new([0.0; SPECTRAL_BUFFER_SIZE]));
+
+        let output_harmonics =
+            array::from_fn(|_| Box::new([ComplexSample::ZERO; SPECTRAL_BUFFER_SIZE]));
+
+        let mut editor = Self {
             id: config.id,
-            harmonics,
             audio_end,
             ui_end: Some(ui_end),
             output_slot: usize::MAX,
-            voices: new_voices_layout(),
-        }
+            amplitudes,
+            phases,
+            amplitudes_draft,
+            draft_enabled: false,
+            output_harmonics,
+        };
+
+        editor.rebuild_harmonics();
+        editor
     }
 
     pub fn get_config(&self) -> HarmonicEditorConfig {
         HarmonicEditorConfig {
             id: self.id,
-            spectrum: self.harmonics.map(|channel| {
-                channel
-                    .iter()
-                    .map(|complex| ComplexCfg::from_complex(*complex))
-                    .collect()
-            }),
+            amplitudes: array::from_fn(|c| Vec::from_iter(self.amplitudes[c].iter().copied())),
+            phases: array::from_fn(|c| Vec::from_iter(self.phases[c].iter().copied())),
         }
+    }
+
+    fn frequency_bin(idx: usize, amp: Sample, phase: Sample) -> ComplexSample {
+        ComplexSample::from_polar(
+            amp / (idx as Sample * std::f32::consts::PI),
+            (phase + 0.25) * std::f32::consts::TAU,
+        )
+    }
+
+    fn rebuild_harmonics(&mut self) {
+        let amplitudes = if self.draft_enabled {
+            self.amplitudes_draft.iter()
+        } else {
+            self.amplitudes.iter()
+        };
+
+        for (harmonics, amplitudes, phases) in izip!(
+            self.output_harmonics.iter_mut(),
+            amplitudes,
+            self.phases.iter()
+        ) {
+            for (idx, (bin, &amp, &phase)) in
+                izip!(harmonics.iter_mut(), amplitudes.iter(), phases.iter())
+                    .enumerate()
+                    .skip(DC_OFFSET)
+            {
+                *bin = Self::frequency_bin(idx, amp, phase);
+            }
+        }
+
+        self.audio_end
+            .update_display_spectrum(&*self.output_harmonics[LEFT_CHANNEL]);
+    }
+
+    fn rebuild_harmonic(&mut self, idx: usize) {
+        assert!((DC_OFFSET..SPECTRAL_BUFFER_SIZE).contains(&idx));
+
+        for (harmonics, amplitudes, phases) in izip!(
+            self.output_harmonics.iter_mut(),
+            self.amplitudes.iter(),
+            self.phases.iter()
+        ) {
+            harmonics[idx] = Self::frequency_bin(idx, amplitudes[idx], phases[idx]);
+        }
+
+        self.audio_end
+            .update_display_spectrum(&*self.output_harmonics[LEFT_CHANNEL]);
     }
 
     pub fn harmonics_from_config(config: &HarmonicEditorConfig) -> Vec<StereoSample> {
         let mut magnitudes = vec![StereoSample::ZERO; SPECTRAL_BUFFER_SIZE];
 
-        for (channel_idx, channel) in config.spectrum.iter().enumerate() {
-            for (harmonic_idx, (magnitude, harmonic)) in
-                magnitudes.iter_mut().zip(channel.iter()).enumerate()
-            {
-                let value = harmonic_idx as Sample * f32::consts::PI * harmonic.complex().norm();
-                let almost_one = (value - 1.0).abs() < Sample::EPSILON;
-
-                magnitude[channel_idx] =
-                    Sample::from(almost_one) * 1.0 + Sample::from(!almost_one) * value;
+        for (channel_idx, channel) in config.amplitudes.iter().enumerate() {
+            for (magnitude, amplitude) in magnitudes.iter_mut().zip(channel.iter()) {
+                magnitude[channel_idx] = *amplitude;
             }
         }
 
         magnitudes
     }
 
-    pub fn set_needs_update(&mut self) {
-        for channel in self.voices.iter_mut() {
-            for voice in channel.iter_mut() {
-                voice.needs_update = true;
+    pub fn set_amplitude(&mut self, idx: usize, amplitude: StereoSample) {
+        for (amplitudes, &amplitude) in izip!(self.amplitudes.iter_mut(), amplitude.iter()) {
+            amplitudes[idx] = amplitude.min(db_to_gain(DB_LIMIT));
+        }
+
+        self.rebuild_harmonic(idx);
+    }
+
+    pub fn set_phase(&mut self, idx: usize, phase: StereoSample) {
+        for (phases, &phase) in izip!(self.phases.iter_mut(), phase.iter()) {
+            phases[idx] = phase.clamp(0.0, 1.0);
+        }
+
+        self.rebuild_harmonic(idx);
+    }
+
+    pub fn apply_draft(&mut self) {
+        for (amplitudes, amplitudes_draft) in
+            izip!(self.amplitudes.iter_mut(), self.amplitudes_draft.iter())
+        {
+            amplitudes.copy_from_slice(amplitudes_draft.as_slice());
+        }
+
+        self.draft_enabled = false;
+        self.rebuild_harmonics();
+        self.audio_end
+            .publish_harmonics(&self.amplitudes, &self.phases);
+    }
+
+    fn apply_range_set(
+        &mut self,
+        harmonic_from: usize,
+        harmonic_to: usize,
+        n_th: Option<NthElement>,
+        gain: StereoSample,
+    ) {
+        let from = harmonic_from.clamp(DC_OFFSET, SPECTRAL_BUFFER_SIZE - 1);
+        let to = harmonic_to.clamp(from, SPECTRAL_BUFFER_SIZE - 1);
+        let gain_limit = db_to_gain(DB_LIMIT);
+
+        for (amplitudes_draft, &gain) in izip!(self.amplitudes_draft.iter_mut(), gain.iter()) {
+            let gain = gain.min(gain_limit);
+
+            for (offset, amp) in amplitudes_draft[from..=to].iter_mut().enumerate() {
+                let harmonic_idx = from + offset;
+
+                if n_th.as_ref().is_none_or(|n_th| n_th.matches(harmonic_idx)) {
+                    *amp = gain;
+                }
             }
         }
     }
 
-    pub fn set_harmonic(&mut self, harmonic_number: usize, gain: StereoSample) {
-        let idx = harmonic_number.clamp(1, SPECTRAL_BUFFER_SIZE - 1);
-
-        for (spectrum, gain) in self.harmonics.iter_mut().zip(gain.iter()) {
-            spectrum[idx] = HARMONIC_SERIES_BUFFER[idx] * gain;
+    pub fn apply_edit_request(&mut self, request: EditRequest) {
+        for amplitudes_draft in self.amplitudes_draft.iter_mut() {
+            amplitudes_draft.fill(0.0);
         }
+        self.draft_enabled = true;
 
-        self.set_needs_update();
-    }
-
-    pub fn set_selected(&mut self, params: &SetParams) {
-        let idx_from = params.from.clamp(1, SPECTRAL_BUFFER_SIZE - 1);
-        let range = idx_from..(params.to + 1).clamp(idx_from, SPECTRAL_BUFFER_SIZE);
-
-        for (spectrum, gain) in self.harmonics.iter_mut().zip(params.gain.iter()) {
-            for (idx, (harmonic, initial_harmonic)) in spectrum[range.clone()]
-                .iter_mut()
-                .zip(HARMONIC_SERIES_BUFFER[range.clone()].iter())
-                .enumerate()
-            {
-                let matches = params
-                    .n_th
-                    .as_ref()
-                    .is_none_or(|n_th| n_th.matches(idx_from - 1 + idx));
-
-                if !matches {
-                    continue;
-                }
-
-                match params.action {
-                    SetAction::Set => *harmonic = *initial_harmonic * gain,
-                    SetAction::Multiple => *harmonic *= gain,
-                }
+        match request {
+            EditRequest::Range {
+                harmonic_from,
+                harmonic_to,
+                gain,
+            } => {
+                self.apply_range_set(harmonic_from as usize, harmonic_to as usize, None, gain);
+            }
+            EditRequest::NthElement {
+                harmonic_from,
+                harmonic_to,
+                mul,
+                add,
+                gain,
+            } => {
+                self.apply_range_set(
+                    harmonic_from as usize,
+                    harmonic_to as usize,
+                    Some(NthElement::new(mul as isize, add as isize, false)),
+                    gain,
+                );
             }
         }
-
-        self.set_needs_update();
     }
 
-    pub fn apply_filter(&mut self, params: &FilterParams) {
-        for (channel_idx, spectrum) in self.harmonics.iter_mut().enumerate() {
-            let gain = params.gain[channel_idx];
-            let cutoff = params.cutoff[channel_idx];
-            let q = params.q[channel_idx];
-            let power = params.filter_order[channel_idx].clamp(1.0, 8.0) / 2.0;
-
-            match params.filter_type {
-                FilterType::LowPass => {
-                    apply_filter_response(spectrum, LowPass::new(gain, cutoff, q), power)
-                }
-                FilterType::HighPass => {
-                    apply_filter_response(spectrum, HighPass::new(gain, cutoff, q), power)
-                }
-                FilterType::BandPass => {
-                    apply_filter_response(spectrum, BandPass::new(gain, cutoff, q), power)
-                }
-                FilterType::BandStop => {
-                    apply_filter_response(spectrum, BandStop::new(gain, cutoff, q), power)
-                }
-                FilterType::Peaking => {
-                    apply_filter_response(spectrum, Peaking::new(gain, cutoff, q), power)
-                }
-            }
+    pub fn clear(&mut self) {
+        for amplitudes in self.amplitudes.iter_mut() {
+            amplitudes.fill(0.0);
         }
 
-        self.set_needs_update();
+        self.rebuild_harmonics();
+        self.audio_end
+            .publish_harmonics(&self.amplitudes, &self.phases);
     }
+
+    pub fn reset_saw(&mut self) {
+        for (amplitudes, phases) in izip!(self.amplitudes.iter_mut(), self.phases.iter_mut()) {
+            fill_default_harmonics(amplitudes.iter_mut(), phases.iter_mut());
+        }
+
+        self.rebuild_harmonics();
+        self.audio_end
+            .publish_harmonics(&self.amplitudes, &self.phases);
+    }
+
+    pub fn set_selected(&mut self, params: &SetParams) {}
 
     fn process_voice(
         &mut self,
@@ -231,7 +310,7 @@ impl HarmonicEditor {
         let (_, mut voice_output) = rf.for_voice(target, outputs);
         let out = voice_output.output();
 
-        out.copy_from_slice(&self.harmonics[target.channel_idx][..out.len()]);
+        out.copy_from_slice(&self.output_harmonics[target.channel_idx][..out.len()]);
     }
 }
 
@@ -256,11 +335,6 @@ impl SynthModule for HarmonicEditor {
         self.output_slot = slot;
     }
 
-    fn set_input_slots(&mut self, _inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) {}
-
-    fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {
-    }
-
     fn process_ui_events(&mut self) {
         let mut refresh = false;
 
@@ -269,13 +343,9 @@ impl SynthModule for HarmonicEditor {
                 UiEvent::SetHarmonic {
                     harmonic_number,
                     gain,
-                } => self.set_harmonic(harmonic_number, gain),
+                } => self.set_amplitude(harmonic_number, gain),
                 UiEvent::SetSelected(params) => {
                     self.set_selected(&params);
-                    refresh = true;
-                }
-                UiEvent::ApplyFilter(params) => {
-                    self.apply_filter(&params);
                     refresh = true;
                 }
             }

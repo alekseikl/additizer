@@ -1,8 +1,8 @@
 use triple_buffer::triple_buffer;
 
 use crate::synth_engine::{
-    AUDIO_TO_UI_RING_CAPACITY, Input, MixType, StereoSample, UI_TO_AUDIO_RING_CAPACITY, VolumeType,
-    types::ComplexSample,
+    AUDIO_TO_UI_RING_CAPACITY, DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, Input, MixType, StereoSample,
+    UI_TO_AUDIO_RING_CAPACITY, VolumeType, buffer::copy_to_display_spectrum, types::ComplexSample,
 };
 
 pub enum UiEvent {
@@ -25,10 +25,6 @@ pub enum UiEvent {
 pub enum UiUpdate {
     RefreshRouting,
 }
-
-pub const DISPLAY_SPECTRUM_SIZE: usize = 256;
-
-pub type DisplaySpectrum = [ComplexSample; DISPLAY_SPECTRUM_SIZE];
 
 pub struct UiEnd {
     rx: rtrb::Consumer<UiUpdate>,
@@ -93,11 +89,7 @@ impl AudioEnd {
     }
 
     pub fn update_spectrum(&mut self, spectrum: &[ComplexSample]) {
-        let input_buff = self.spectrum.input_buffer_mut();
-        let len = spectrum.len().min(DISPLAY_SPECTRUM_SIZE);
-
-        input_buff[..len].copy_from_slice(&spectrum[..len]);
-        input_buff[len..].fill(ComplexSample::ZERO);
+        copy_to_display_spectrum(self.spectrum.input_buffer_mut(), spectrum);
         self.spectrum.publish();
     }
 }

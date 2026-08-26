@@ -2,17 +2,14 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use crate::synth_engine::ComplexSample;
 use crate::synth_engine::{
-    ModuleHandle, ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample, SynthEngine,
-    buffer::HARMONIC_SERIES_BUFFER, synth_module::ModuleUiBridge,
+    ComplexSample, DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, ModuleHandle, ModuleId,
+    SPECTRAL_BUFFER_SIZE, StereoSample, SynthEngine, buffer::HARMONIC_SERIES_BUFFER,
+    synth_module::ModuleUiBridge,
 };
 
 use super::link::{UiEnd, UiUpdate};
-use super::{FilterParams, HarmonicEditor, HarmonicEditorConfig, SetParams};
-
-pub const DISPLAY_SPECTRUM_SIZE: usize = 512;
-type DisplaySpectrum = [ComplexSample; DISPLAY_SPECTRUM_SIZE];
+use super::{HarmonicEditor, HarmonicEditorConfig, SetParams};
 
 pub struct HarmonicEditorUiBridge {
     synth: Arc<Mutex<SynthEngine>>,
@@ -50,38 +47,34 @@ impl HarmonicEditorUiBridge {
     }
 
     pub fn get_spectrum(&mut self) -> &[ComplexSample] {
-        let left = &self.config.spectrum[0];
+        // let left = &self.config.spectrum[0];
 
-        for (dst, src) in self.display_spectrum.iter_mut().zip(left.iter()) {
-            *dst = src.complex();
-        }
+        // for (dst, src) in self.display_spectrum.iter_mut().zip(left.iter()) {
+        //     *dst = src.complex();
+        // }
 
-        if left.len() < DISPLAY_SPECTRUM_SIZE {
-            self.display_spectrum[left.len()..].fill(ComplexSample::ZERO);
-        }
+        // if left.len() < DISPLAY_SPECTRUM_SIZE {
+        //     self.display_spectrum[left.len()..].fill(ComplexSample::ZERO);
+        // }
 
         &self.display_spectrum
     }
 
     pub fn set_harmonic(&mut self, harmonic_number: usize, gain: StereoSample) {
-        if self.ui_end.set_harmonic(harmonic_number, gain) {
-            let idx = harmonic_number.clamp(1, SPECTRAL_BUFFER_SIZE - 1);
+        // if self.ui_end.set_harmonic(harmonic_number, gain) {
+        //     let idx = harmonic_number.clamp(1, SPECTRAL_BUFFER_SIZE - 1);
 
-            for (channel, gain) in self.config.spectrum.iter_mut().zip(gain.iter()) {
-                if idx < channel.len() {
-                    channel[idx] =
-                        super::ComplexCfg::from_complex(HARMONIC_SERIES_BUFFER[idx] * gain);
-                }
-            }
-        }
+        //     for (channel, gain) in self.config.spectrum.iter_mut().zip(gain.iter()) {
+        //         if idx < channel.len() {
+        //             channel[idx] =
+        //                 super::ComplexCfg::from_complex(HARMONIC_SERIES_BUFFER[idx] * gain);
+        //         }
+        //     }
+        // }
     }
 
     pub fn set_selected(&mut self, params: SetParams) {
         self.ui_end.set_selected(params);
-    }
-
-    pub fn apply_filter(&mut self, params: FilterParams) {
-        self.ui_end.apply_filter(params);
     }
 }
 

@@ -6,8 +6,8 @@ use crate::{
         waveform::{WaveformBuilder, WaveformOptions},
     },
     synth_engine::{
-        ModuleId,
-        harmonic_editor::{DISPLAY_SPECTRUM_SIZE, HarmonicEditorUiBridge},
+        DISPLAY_SPECTRUM_SIZE, ModuleId,
+        harmonic_editor::HarmonicEditorUiBridge,
         ui_bridge::ModuleBridge,
     },
 };

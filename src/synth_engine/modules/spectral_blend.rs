@@ -8,7 +8,6 @@ mod ui_bridge;
 
 pub use config::SpectralBlendConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use link::{DISPLAY_SPECTRUM_SIZE, DisplaySpectrum};
 pub use ui_bridge::SpectralBlendUiBridge;
 
 use crate::synth_engine::{

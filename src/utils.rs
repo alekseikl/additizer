@@ -79,14 +79,13 @@ impl NthElement {
         Self { mul, add, inverted }
     }
 
-    pub fn matches(&self, idx: usize) -> bool {
-        let i = idx as isize + 1;
+    pub fn matches(&self, harmonic: usize) -> bool {
+        let harmonic = harmonic as isize;
         let result = if self.mul == 0 {
-            i == self.add
+            harmonic == self.add
         } else {
-            let scaled = (i - self.add) as f32 / self.mul as f32;
-
-            scaled >= 0.0 && scaled.fract().abs() < f32::EPSILON
+            let diff = harmonic - self.add;
+            diff % self.mul == 0 && diff / self.mul >= 0
         };
 
         result ^ self.inverted

@@ -11,9 +11,12 @@ use crate::synth_engine::{
 pub const BUFFER_SIZE: usize = 256 + 1;
 pub const SPECTRUM_BITS: usize = 10;
 pub const SPECTRAL_BUFFER_SIZE: usize = 1 << SPECTRUM_BITS;
+pub const DISPLAY_SPECTRUM_SIZE: usize = 512;
+pub const DC_OFFSET: usize = 1;
 
 pub type Buffer = [Sample; BUFFER_SIZE];
 pub type SpectralBuffer = [ComplexSample; SPECTRAL_BUFFER_SIZE];
+pub type DisplaySpectrum = [ComplexSample; DISPLAY_SPECTRUM_SIZE];
 
 pub static ZEROES_BUFFER: Buffer = [0.0; BUFFER_SIZE];
 #[allow(unused)]
@@ -116,6 +119,13 @@ impl ValueBuffer {
 
         self.set(self.buffer[self.change_at], 0);
     }
+}
+
+pub fn copy_to_display_spectrum(dst: &mut DisplaySpectrum, src: &[ComplexSample]) {
+    let len = src.len().min(DISPLAY_SPECTRUM_SIZE);
+
+    dst[..len].copy_from_slice(&src[..len]);
+    dst[len..].fill(ComplexSample::ZERO);
 }
 
 pub fn copy_to_buffer(buff: &mut [Sample], iter: impl Iterator<Item = Sample>) {
