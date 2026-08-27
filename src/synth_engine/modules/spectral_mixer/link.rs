@@ -1,8 +1,9 @@
 use triple_buffer::triple_buffer;
 
 use crate::synth_engine::{
-    AUDIO_TO_UI_RING_CAPACITY, DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, Input, MixType, StereoSample,
-    UI_TO_AUDIO_RING_CAPACITY, VolumeType, buffer::copy_to_display_spectrum, types::ComplexSample,
+    AUDIO_TO_UI_RING_CAPACITY, DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, Input, MixType,
+    StereoSample, UI_TO_AUDIO_RING_CAPACITY, VolumeType, buffer::copy_to_display_spectrum,
+    types::ComplexSample,
 };
 
 pub enum UiEvent {

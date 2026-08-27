@@ -27,6 +27,7 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 
 const DB_LIMIT: Sample = 48.0;
 
+#[derive(Clone, Copy)]
 pub enum EditRequest {
     Range {
         harmonic_from: u16,
@@ -197,6 +198,11 @@ impl HarmonicEditor {
             .publish_harmonics(&self.amplitudes, &self.phases);
     }
 
+    pub fn discard_draft(&mut self) {
+        self.draft_enabled = false;
+        self.rebuild_harmonics();
+    }
+
     fn apply_range_set(
         &mut self,
         harmonic_from: usize,
@@ -222,8 +228,10 @@ impl HarmonicEditor {
     }
 
     pub fn apply_edit_request(&mut self, request: EditRequest) {
-        for amplitudes_draft in self.amplitudes_draft.iter_mut() {
-            amplitudes_draft.fill(0.0);
+        for (amplitudes_draft, amplitudes) in
+            izip!(self.amplitudes_draft.iter_mut(), self.amplitudes.iter())
+        {
+            amplitudes_draft.copy_from_slice(amplitudes.as_slice());
         }
         self.draft_enabled = true;
 
@@ -327,6 +335,9 @@ impl SynthModule for HarmonicEditor {
                 }
                 UiEvent::ApplyDraft => {
                     self.apply_draft();
+                }
+                UiEvent::DiscardDraft => {
+                    self.discard_draft();
                 }
             }
         }

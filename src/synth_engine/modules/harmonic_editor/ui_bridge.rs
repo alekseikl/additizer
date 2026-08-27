@@ -1,7 +1,7 @@
 use crate::synth_engine::{ComplexSample, StereoSample, synth_module::ModuleUiBridge};
 
 use super::link::UiEnd;
-use super::{HarmonicEditor, Harmonics};
+use super::{EditRequest, HarmonicEditor, Harmonics};
 
 pub struct HarmonicEditorUiBridge {
     ui_end: UiEnd,
@@ -32,6 +32,18 @@ impl HarmonicEditorUiBridge {
 
     pub fn reset_sawtooth(&mut self) {
         self.ui_end.reset_sawtooth();
+    }
+
+    pub fn edit_request(&mut self, request: EditRequest) {
+        self.ui_end.edit_request(request);
+    }
+
+    pub fn apply_draft(&mut self) {
+        self.ui_end.apply_draft();
+    }
+
+    pub fn discard_draft(&mut self) {
+        self.ui_end.discard_draft();
     }
 }
 

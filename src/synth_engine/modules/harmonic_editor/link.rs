@@ -42,6 +42,7 @@ pub enum UiEvent {
     ResetSawtooth,
     EditRequest(EditRequest),
     ApplyDraft,
+    DiscardDraft,
 }
 
 pub struct UiEnd {
@@ -93,6 +94,10 @@ impl UiEnd {
 
     pub fn apply_draft(&mut self) -> bool {
         self.tx.push(UiEvent::ApplyDraft).is_ok()
+    }
+
+    pub fn discard_draft(&mut self) -> bool {
+        self.tx.push(UiEvent::DiscardDraft).is_ok()
     }
 }
 

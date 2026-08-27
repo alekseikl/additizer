@@ -1,3 +1,5 @@
+use nice_plug::util::db_to_gain_fast;
+
 use crate::{
     synth_engine::{
         Input, ModuleId, OUTPUT_MODULE_ID, Sample, StereoSample, SynthModule,
@@ -14,6 +16,9 @@ use crate::{
 };
 
 const _: () = assert!(NUM_CHANNELS == 2);
+
+/// Hard-clip ceiling for the summed output.
+const OUTPUT_CLIP_DB: Sample = 12.0;
 
 struct Voice {
     killing: bool,
@@ -131,9 +136,6 @@ impl SynthModule for Output {
         self.audio_input = inputs.first().and_then(|s| s.first_slot());
     }
 
-    fn update_input_amount(&mut self, _input_type: Input, _src_slot: usize, _amount: StereoSample) {
-    }
-
     fn process_events(&mut self, events: &[VoiceEvent]) {
         for channel in &mut self.channels {
             for event in events {
@@ -232,8 +234,10 @@ impl SynthModule for Output {
                 gain: impl Iterator<Item = Sample>,
                 samples: usize,
             ) {
+                let clip = db_to_gain_fast(OUTPUT_CLIP_DB);
+
                 for (out, gain) in output.zip(gain).take(samples) {
-                    *out *= gain;
+                    *out = (*out * gain).clamp(-clip, clip);
                 }
             }
 

@@ -3,8 +3,8 @@ use crate::{
     utils::from_ms,
 };
 
-const ATTACK_TIME: Sample = from_ms(10.0);
-const RELEASE_TIME: Sample = from_ms(150.0);
+const ATTACK_TIME: Sample = from_ms(2.0);
+const RELEASE_TIME: Sample = from_ms(250.0);
 
 #[derive(Default, Clone, Copy)]
 pub struct LevelBallistics {
