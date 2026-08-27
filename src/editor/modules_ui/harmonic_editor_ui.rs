@@ -1,22 +1,25 @@
 use crate::{
     editor::{
-        ModuleUi, gain_slider::GainSlider, module_label::ModuleLabel, slider::Slider, units::Units,
+        ModuleUi,
+        bin_slider::{BinSlider, BinSliderMode},
+        module_label::ModuleLabel,
+        slider::Slider,
+        units::Units,
     },
     synth_engine::{
         ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, Sample, StereoSample,
-        harmonic_editor::{EditRequest, HarmonicEditorUiBridge},
+        harmonic_editor::{EditRequest, HarmonicEditorUiBridge, sawtooth_phase},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::db_to_gain,
 };
-use egui::{
-    ComboBox, DragValue, Frame, Grid, Id, Margin, Modal, Panel, ScrollArea, Sides, Ui, Vec2,
-    style::ScrollStyle,
-};
+use egui::{ComboBox, DragValue, Grid, Id, Modal, ScrollArea, Sides, Ui, Vec2, style::ScrollStyle};
 
 const MIN_HARMONIC: u16 = 1;
 const MAX_HARMONIC: u16 = (SPECTRAL_BUFFER_SIZE - 1) as u16;
-const GAIN_DB_RANGE: std::ops::RangeInclusive<Sample> = -100.0..=48.0;
+const MIN_GAIN_DB: Sample = -48.0;
+const GAIN_DB_RANGE: std::ops::RangeInclusive<Sample> = MIN_GAIN_DB..=24.0;
+const HARMONICS_HEIGHT: f32 = 160.0;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum EditKind {
@@ -29,8 +32,8 @@ impl EditKind {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Range => "Range",
-            Self::NthElement => "NthElement",
+            Self::Range => "Set range",
+            Self::NthElement => "Set n-th",
         }
     }
 }
@@ -59,7 +62,13 @@ impl Default for EditFormState {
 
 impl EditFormState {
     fn to_request(&self) -> EditRequest {
-        let gain = self.gain_db.map(db_to_gain);
+        let gain = self.gain_db.map(|dbs| {
+            if dbs <= MIN_GAIN_DB {
+                0.0
+            } else {
+                db_to_gain(dbs)
+            }
+        });
 
         match self.kind {
             EditKind::Range => EditRequest::Range {
@@ -81,6 +90,7 @@ impl EditFormState {
 pub struct HarmonicEditorUI {
     module_id: ModuleId,
     edit_form: Option<EditFormState>,
+    bin_mode: BinSliderMode,
 }
 
 impl HarmonicEditorUI {
@@ -88,6 +98,7 @@ impl HarmonicEditorUI {
         Self {
             module_id,
             edit_form: None,
+            bin_mode: BinSliderMode::Amplitude,
         }
     }
 
@@ -98,20 +109,33 @@ impl HarmonicEditorUI {
         ui: &mut Ui,
     ) {
         let module_id = self.module_id;
-        ui.style_mut().spacing.scroll = ScrollStyle::solid();
 
-        Panel::top("harmonics-list")
-            .resizable(true)
-            .size_range(150.0..=400.0)
-            .default_size(200.0)
-            .frame(Frame::NONE.inner_margin(Margin {
-                left: 0,
-                top: 0,
-                right: 0,
-                bottom: 8,
-            }))
-            .show(ui, |ui| {
-                ScrollArea::horizontal().show(ui, |ui| {
+        ui.add(ModuleLabel::new(
+            module_id,
+            ModuleType::HarmonicEditor,
+            bridge,
+        ));
+
+        ui.add_space(16.0);
+
+        ui.horizontal(|ui| {
+            ComboBox::from_id_salt(("harmonic-bin-view", module_id))
+                .selected_text(self.bin_mode.label())
+                .width(0.0)
+                .show_ui(ui, |ui| {
+                    for &mode in BinSliderMode::ALL {
+                        ui.selectable_value(&mut self.bin_mode, mode, mode.label());
+                    }
+                });
+        });
+
+        ui.add_space(8.0);
+
+        ui.style_mut().spacing.scroll = ScrollStyle::solid();
+        ui.allocate_ui(Vec2::new(ui.available_width(), HARMONICS_HEIGHT), |ui| {
+            ScrollArea::horizontal()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
                     ui.horizontal_top(|ui| {
                         let height = ui.available_height();
 
@@ -124,34 +148,54 @@ impl HarmonicEditorUI {
                             let harmonics = editor_bridge.harmonics_mut();
 
                             for idx in 1..SPECTRAL_BUFFER_SIZE {
-                                let mut gain = harmonics.amplitude(idx);
+                                let mut value = match self.bin_mode {
+                                    BinSliderMode::Amplitude => harmonics.amplitude(idx),
+                                    BinSliderMode::Phase => harmonics.phase(idx),
+                                };
 
                                 if ui
                                     .add(
-                                        GainSlider::new(&mut gain)
+                                        BinSlider::new(&mut value)
+                                            .mode(self.bin_mode)
+                                            .default(match self.bin_mode {
+                                                BinSliderMode::Amplitude => {
+                                                    StereoSample::splat(1.0)
+                                                }
+                                                BinSliderMode::Phase => {
+                                                    StereoSample::splat(sawtooth_phase(idx))
+                                                }
+                                            })
                                             .label(&format!("{}", idx))
                                             .height(height),
                                     )
                                     .changed()
                                 {
-                                    harmonics.set_amplitude(idx, gain);
-                                    changed = Some((idx, gain));
+                                    match self.bin_mode {
+                                        BinSliderMode::Amplitude => {
+                                            harmonics.set_amplitude(idx, value);
+                                        }
+                                        BinSliderMode::Phase => {
+                                            harmonics.set_phase(idx, value);
+                                        }
+                                    }
+                                    changed = Some((idx, value));
                                 }
                             }
                         }
 
-                        if let Some((idx, gain)) = changed {
-                            editor_bridge.set_harmonic(idx, gain);
+                        if let Some((idx, value)) = changed {
+                            match self.bin_mode {
+                                BinSliderMode::Amplitude => {
+                                    editor_bridge.set_harmonic(idx, value);
+                                }
+                                BinSliderMode::Phase => {
+                                    editor_bridge.set_phase(idx, value);
+                                }
+                            }
                         }
                     });
                 });
-            });
-
-        ui.add(ModuleLabel::new(
-            module_id,
-            ModuleType::HarmonicEditor,
-            bridge,
-        ));
+        });
 
         ui.add_space(16.0);
 
@@ -189,7 +233,7 @@ impl HarmonicEditorUI {
 
         let modal =
             Modal::new(Id::new(("harmonic-editor-edit-modal", module_id))).show(ui.ctx(), |ui| {
-                ui.heading("Set Harmonics");
+                ui.heading("Edit Harmonics");
                 ui.add_space(20.0);
                 ui.set_width(440.0);
 
@@ -200,7 +244,7 @@ impl HarmonicEditorUI {
                     .spacing([40.0, 24.0])
                     .striped(true)
                     .show(ui, |ui| {
-                        ui.label("");
+                        ui.label("Type");
                         ComboBox::from_id_salt("edit-request-kind")
                             .selected_text(state.kind.label())
                             .show_ui(ui, |ui| {
@@ -270,13 +314,17 @@ impl HarmonicEditorUI {
                     ui,
                     |_ui| {},
                     |ui| {
-                        if ui.button("Set").clicked() {
+                        if ui.button("Ok").clicked() {
                             editor_bridge.apply_draft();
                             saved = true;
                             ui.close();
                         }
 
-                        if ui.button("Discard").clicked() {
+                        if ui.button("Apply").clicked() {
+                            editor_bridge.apply_draft();
+                        }
+
+                        if ui.button("Close").clicked() {
                             editor_bridge.discard_draft();
                             discarded = true;
                             ui.close();

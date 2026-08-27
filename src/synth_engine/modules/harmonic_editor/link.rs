@@ -33,6 +33,16 @@ impl Harmonics {
             amplitudes[index] = gain;
         }
     }
+
+    pub fn phase(&self, index: usize) -> StereoSample {
+        StereoSample::new(self.phases[0][index], self.phases[1][index])
+    }
+
+    pub fn set_phase(&mut self, index: usize, phase: StereoSample) {
+        for (phases, &phase) in self.phases.iter_mut().zip(phase.iter()) {
+            phases[index] = phase;
+        }
+    }
 }
 
 pub enum UiEvent {

@@ -34,6 +34,10 @@ impl Default for HarmonicEditorConfig {
     }
 }
 
+pub fn sawtooth_phase(harmonic: usize) -> Sample {
+    if harmonic & 1 == 0 { 0.0 } else { 0.5 }
+}
+
 pub(super) fn fill_default_harmonics<'a>(
     mut amplitudes: impl Iterator<Item = &'a mut Sample>,
     mut phases: impl Iterator<Item = &'a mut Sample>,
@@ -47,6 +51,6 @@ pub(super) fn fill_default_harmonics<'a>(
         let idx = idx + DC_OFFSET;
 
         *amp = 1.0;
-        *phase = if idx & 1 == 0 { 0.0 } else { 0.5 };
+        *phase = sawtooth_phase(idx);
     }
 }

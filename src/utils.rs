@@ -9,8 +9,6 @@ macro_rules! log {
 }
 pub(crate) use log;
 
-pub const MINUS_INFINITY_DB: f32 = nice_plug::util::MINUS_INFINITY_DB;
-
 #[inline]
 pub fn db_to_gain(dbs: f32) -> f32 {
     nice_plug::util::db_to_gain(dbs)

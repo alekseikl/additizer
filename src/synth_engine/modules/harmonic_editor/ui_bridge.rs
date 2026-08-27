@@ -26,6 +26,10 @@ impl HarmonicEditorUiBridge {
         self.ui_end.set_amplitude(harmonic_number, gain);
     }
 
+    pub fn set_phase(&mut self, harmonic_number: usize, phase: StereoSample) {
+        self.ui_end.set_phase(harmonic_number, phase);
+    }
+
     pub fn clear(&mut self) {
         self.ui_end.clear();
     }

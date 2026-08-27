@@ -23,9 +23,9 @@ use crate::{
     synth_engine::{ModuleId, ModuleType, ui_bridge::UiBridge},
 };
 
+mod bin_slider;
 mod control_meter;
 mod fit_label;
-mod gain_slider;
 mod grid;
 mod module_label;
 mod modules_ui;

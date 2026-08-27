@@ -18,14 +18,14 @@ mod config;
 mod link;
 mod ui_bridge;
 
-pub use config::HarmonicEditorConfig;
+pub use config::{HarmonicEditorConfig, sawtooth_phase};
 pub use link::Harmonics;
 pub use ui_bridge::HarmonicEditorUiBridge;
 
 use itertools::izip;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 
-const DB_LIMIT: Sample = 48.0;
+const DB_LIMIT: Sample = 24.0;
 
 #[derive(Clone, Copy)]
 pub enum EditRequest {
