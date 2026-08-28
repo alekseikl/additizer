@@ -36,6 +36,7 @@ impl Input {
             Self::Glide => "Glide".to_string(),
             Self::GlideSlope => "Glide Slope".to_string(),
             Self::PhaseShift => "Phase Shift".to_string(),
+            Self::PhaseSteal => "Phase Steal".to_string(),
             Self::FrequencyShift => "Frequency Shift".to_string(),
             Self::Spectrum => "Spectrum".to_string(),
             Self::SpectrumMix(idx) => format!("Spectrum #{}", idx + 1),
@@ -75,6 +76,7 @@ impl Input {
             Self::Glide => 0.67,
             Self::GlideSlope => 0.64,
             Self::PhaseShift => 0.79,
+            Self::PhaseSteal => 0.81,
             Self::FrequencyShift => 0.68,
             Self::Spectrum => 0.86,
             Self::SpectrumMix(idx) => 0.86 + *idx as f32 * 0.012,
@@ -136,6 +138,7 @@ impl Input {
                 .units(Units::Time),
             Self::GlideSlope => bipolar(amount),
             Self::PhaseShift => bipolar(amount),
+            Self::PhaseSteal => bipolar(amount),
             Self::FrequencyShift => Slider::stereo(amount, 0.0..=880.0, Some(-880.0))
                 .default(0.0)
                 .skew(2.0)
@@ -198,6 +201,7 @@ impl Input {
                 .units(Units::Time),
             Self::GlideSlope => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
             Self::PhaseShift => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
+            Self::PhaseSteal => Slider::stereo(value, 0.0..=1.0, None).default(0.0),
             Self::FrequencyShift => Slider::stereo(value, 0.0..=1_000.0, Some(-1_000.0))
                 .default(0.0)
                 .skew(2.0)

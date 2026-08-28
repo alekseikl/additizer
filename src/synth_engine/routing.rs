@@ -53,6 +53,7 @@ pub enum Input {
     Glide,
     GlideSlope,
     PhaseShift,
+    PhaseSteal, // [0.0, 1.0]
     FrequencyShift,
     Spectrum,
     SpectrumMix(u8),

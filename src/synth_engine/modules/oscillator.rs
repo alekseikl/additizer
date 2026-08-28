@@ -296,6 +296,7 @@ pub struct Inputs {
     detune_power: InputSlots,
     glide: InputSlots,
     glide_slope: InputSlots,
+    phase_steal: InputSlots,
     phases_blend: InputSlots,
     gains_blend: InputSlots,
 }
@@ -313,6 +314,7 @@ impl Default for Inputs {
             detune_power: InputSlots::new(Input::DetunePower),
             glide: InputSlots::new(Input::Glide),
             glide_slope: InputSlots::new(Input::GlideSlope),
+            phase_steal: InputSlots::new(Input::PhaseSteal),
             phases_blend: InputSlots::new(Input::PhasesBlend),
             gains_blend: InputSlots::new(Input::GainsBlend),
         }
@@ -334,6 +336,7 @@ impl Inputs {
                 Input::DetunePower => result.detune_power = input.clone(),
                 Input::Glide => result.glide = input.clone(),
                 Input::GlideSlope => result.glide_slope = input.clone(),
+                Input::PhaseSteal => result.phase_steal = input.clone(),
                 Input::PhasesBlend => result.phases_blend = input.clone(),
                 Input::GainsBlend => result.gains_blend = input.clone(),
                 _ => (),
@@ -360,6 +363,7 @@ impl Inputs {
             Input::DetunePower => self.detune_power.update_amount(src_slot, amount),
             Input::Glide => self.glide.update_amount(src_slot, amount),
             Input::GlideSlope => self.glide_slope.update_amount(src_slot, amount),
+            Input::PhaseSteal => self.phase_steal.update_amount(src_slot, amount),
             Input::PhasesBlend => self.phases_blend.update_amount(src_slot, amount),
             Input::GainsBlend => self.gains_blend.update_amount(src_slot, amount),
             _ => (),
@@ -867,7 +871,12 @@ impl Oscillator {
         }
     }
 
-    fn process_phase_reset(&mut self, channel_idx: usize, voice_idx: usize) {
+    fn process_phase_reset(
+        &mut self,
+        channel_idx: usize,
+        voice_idx: usize,
+        router: &mut Router<'_, '_, '_>,
+    ) {
         let Some(phase_reset) = self.voices[channel_idx][voice_idx].phase_reset.take() else {
             return;
         };
@@ -877,8 +886,15 @@ impl Oscillator {
         let unison = self.params.unison;
         let voice = &mut voices[voice_idx];
 
+        // When steal_phase set to false - control that toggle by input value
+        let steal_phase = router.scalar(
+            &self.inputs.phase_steal,
+            Sample::from(self.params.steal_phase),
+            true,
+        ) >= 0.5;
+
         if let Some(prev_voice_idx) = phase_reset.steal_from
-            && self.params.steal_phase
+            && steal_phase
         {
             voices[voice_idx].phases = voices[prev_voice_idx].phases;
         } else if self.params.phase_random > 1e-6 {
@@ -917,10 +933,10 @@ impl Oscillator {
         let mono_spectrum = rf.params().spectrum_channels < NUM_CHANNELS;
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
-
-        self.process_phase_reset(channel_idx, voice_idx);
-
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
+
+        self.process_phase_reset(channel_idx, voice_idx, &mut router);
+
         let inputs = &self.inputs;
         let buffers = &mut self.buffers;
         let channel = &mut self.channel_params[channel_idx];
@@ -1083,6 +1099,7 @@ impl SynthModule for Oscillator {
             InputMeta::control(Input::DetunePower),
             InputMeta::control(Input::Glide),
             InputMeta::control(Input::GlideSlope),
+            InputMeta::control(Input::PhaseSteal),
             InputMeta::control(Input::PhasesBlend),
             InputMeta::control(Input::GainsBlend),
         ];
