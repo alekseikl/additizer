@@ -174,6 +174,10 @@ impl Glide {
     }
 }
 
+struct PhaseReset {
+    steal_from: Option<usize>,
+}
+
 struct UnisonVoice {
     rate: Interpolated,
     phase_shift: Interpolated,
@@ -193,6 +197,7 @@ impl Default for UnisonVoice {
 struct Voice {
     pitch: Sample, // Octave units
     glide: Option<Glide>,
+    phase_reset: Option<PhaseReset>,
     unison_gain: Interpolated,
     unison: [UnisonVoice; MAX_UNISON_VOICES],
     phases: [Phase; MAX_UNISON_VOICES],
@@ -203,6 +208,7 @@ impl Default for Voice {
         Self {
             pitch: 0.0,
             glide: None,
+            phase_reset: None,
             phases: Default::default(),
             unison_gain: Interpolated { from: 1.0, to: 1.0 },
             unison: Default::default(),
@@ -861,6 +867,47 @@ impl Oscillator {
         }
     }
 
+    fn process_phase_reset(&mut self, channel_idx: usize, voice_idx: usize) {
+        let Some(phase_reset) = self.voices[channel_idx][voice_idx].phase_reset.take() else {
+            return;
+        };
+
+        let channel = &self.channel_params[channel_idx];
+        let voices = &mut self.voices[channel_idx];
+        let unison = self.params.unison;
+        let voice = &mut voices[voice_idx];
+
+        if let Some(prev_voice_idx) = phase_reset.steal_from
+            && self.params.steal_phase
+        {
+            voices[voice_idx].phases = voices[prev_voice_idx].phases;
+        } else if self.params.phase_random > 1e-6 {
+            for (phase, unison_voice, random) in izip!(
+                voice.phases.iter_mut(),
+                channel.unison.iter(),
+                (&mut self.random).random_iter::<Sample>()
+            )
+            .take(unison)
+            {
+                *phase = Phase::from_normalized(unison_voice.initial_phase)
+                    .add_normalized((random - 0.5) * self.params.phase_random);
+            }
+
+            if unison & 1 == 1 && channel_idx == RIGHT_CHANNEL {
+                let center = unison / 2;
+
+                self.voices[channel_idx][voice_idx].phases[center] =
+                    self.voices[LEFT_CHANNEL][voice_idx].phases[center];
+            }
+        } else if unison > 1 {
+            for (phase, unison_voice) in voice.phases.iter_mut().zip(&channel.unison).take(unison) {
+                *phase = Phase::from_normalized(unison_voice.initial_phase);
+            }
+        } else {
+            voice.phases[0] = Phase::ZERO;
+        }
+    }
+
     fn process_voice(
         &mut self,
         target: &VoiceTarget,
@@ -870,6 +917,9 @@ impl Oscillator {
         let mono_spectrum = rf.params().spectrum_channels < NUM_CHANNELS;
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
+
+        self.process_phase_reset(channel_idx, voice_idx);
+
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
         let buffers = &mut self.buffers;
@@ -981,7 +1031,6 @@ impl Oscillator {
         voice_idx: usize,
         pitch: Sample,
     ) {
-        let channel = &self.channel_params[channel_idx];
         let voices = &mut self.voices[channel_idx];
 
         if let Some(prev_voice_idx) = prev_voice_idx {
@@ -996,40 +1045,12 @@ impl Oscillator {
             voices[voice_idx].glide = None;
         }
 
-        let unison = self.params.unison;
         let voice = &mut voices[voice_idx];
 
         voice.pitch = pitch;
-
-        if let Some(prev_voice_idx) = prev_voice_idx
-            && self.params.steal_phase
-        {
-            voices[voice_idx].phases = voices[prev_voice_idx].phases;
-        } else if self.params.phase_random > 1e-6 {
-            for (phase, unison_voice, random) in izip!(
-                voice.phases.iter_mut(),
-                channel.unison.iter(),
-                (&mut self.random).random_iter::<Sample>()
-            )
-            .take(unison)
-            {
-                *phase = Phase::from_normalized(unison_voice.initial_phase)
-                    .add_normalized((random - 0.5) * self.params.phase_random);
-            }
-
-            if unison & 1 == 1 && channel_idx == RIGHT_CHANNEL {
-                let center = unison / 2;
-
-                self.voices[channel_idx][voice_idx].phases[center] =
-                    self.voices[LEFT_CHANNEL][voice_idx].phases[center];
-            }
-        } else if unison > 1 {
-            for (phase, unison_voice) in voice.phases.iter_mut().zip(&channel.unison).take(unison) {
-                *phase = Phase::from_normalized(unison_voice.initial_phase);
-            }
-        } else {
-            voice.phases[0] = Phase::ZERO;
-        }
+        voice.phase_reset = Some(PhaseReset {
+            steal_from: prev_voice_idx,
+        });
     }
 
     fn handle_update(&mut self, channel_idx: usize, voice_idx: usize, pitch: Sample) {
