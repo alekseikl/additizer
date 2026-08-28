@@ -376,6 +376,7 @@ pub struct Oscillator {
     output_slot: usize,
     voices: VoicesLayout<Voice>,
     voice_buffers: VoicesLayout<VoiceBuffers>,
+    last_voice_idx: Option<usize>,
 }
 
 impl Oscillator {
@@ -404,6 +405,7 @@ impl Oscillator {
             output_slot: usize::MAX,
             voices: new_voices_layout(),
             voice_buffers: new_voices_layout(),
+            last_voice_idx: None,
         }
     }
 
@@ -1088,20 +1090,32 @@ impl SynthModule for Oscillator {
     }
 
     fn process_events(&mut self, events: &[VoiceEvent]) {
-        for channel_idx in 0..NUM_CHANNELS {
-            for event in events {
-                match event {
-                    VoiceEvent::Reset {
-                        voice_idx,
-                        prev_voice_idx,
-                        pitch,
-                        ..
-                    } => self.handle_trigger(channel_idx, *prev_voice_idx, *voice_idx, *pitch),
-                    VoiceEvent::Update {
-                        voice_idx, pitch, ..
-                    } => self.handle_update(channel_idx, *voice_idx, *pitch),
-                    _ => (),
+        for event in events {
+            match event {
+                VoiceEvent::Reset {
+                    voice_idx,
+                    prev_voice_idx,
+                    pitch,
+                    ..
+                } => {
+                    let prev_voice_idx = prev_voice_idx.or(self.last_voice_idx);
+
+                    for channel_idx in 0..NUM_CHANNELS {
+                        self.handle_trigger(channel_idx, prev_voice_idx, *voice_idx, *pitch);
+                    }
+
+                    self.last_voice_idx = Some(*voice_idx);
                 }
+                VoiceEvent::Update {
+                    voice_idx, pitch, ..
+                } => {
+                    for channel_idx in 0..NUM_CHANNELS {
+                        self.handle_update(channel_idx, *voice_idx, *pitch);
+                    }
+
+                    self.last_voice_idx = Some(*voice_idx);
+                }
+                _ => (),
             }
         }
     }
