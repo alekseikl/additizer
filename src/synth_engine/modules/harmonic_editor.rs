@@ -32,20 +32,42 @@ const DB_LIMIT: Sample = 24.0;
 const MIN_RANDOM_LEVEL_DB: Sample = -48.0;
 
 #[derive(Clone, Copy)]
+pub struct HarmonicsRange {
+    pub from: u16,
+    pub to: u16,
+    pub mul: u8,
+    pub add: u8,
+}
+
+impl Default for HarmonicsRange {
+    fn default() -> Self {
+        Self {
+            from: DC_OFFSET as u16,
+            to: (SPECTRAL_BUFFER_SIZE - 1) as u16,
+            mul: 1,
+            add: 0,
+        }
+    }
+}
+
+impl HarmonicsRange {
+    fn matching_indices(self) -> impl Iterator<Item = usize> {
+        let from = (self.from as usize).clamp(DC_OFFSET, SPECTRAL_BUFFER_SIZE - 1);
+        let to = (self.to as usize).clamp(from, SPECTRAL_BUFFER_SIZE - 1);
+        let n_th = NthElement::new(self.mul as isize, self.add as isize, false);
+
+        (from..=to).filter(move |&idx| n_th.matches(idx))
+    }
+}
+
+#[derive(Clone, Copy)]
 pub enum EditRequest {
-    Range {
-        harmonic_from: u16,
-        harmonic_to: u16,
+    Gain {
+        range: HarmonicsRange,
         gain: StereoSample,
     },
-    NthElement {
-        harmonic_from: u16,
-        harmonic_to: u16,
-        mul: u8,
-        add: u8,
-        gain: StereoSample,
-    },
-    RandomAmplitudes {
+    RandomLevel {
+        range: HarmonicsRange,
         level_from: Sample,
         level_to: Sample,
         stereo: Sample,
@@ -214,26 +236,14 @@ impl HarmonicEditor {
         self.rebuild_harmonics();
     }
 
-    fn apply_range_set(
-        &mut self,
-        harmonic_from: usize,
-        harmonic_to: usize,
-        n_th: Option<NthElement>,
-        gain: StereoSample,
-    ) {
-        let from = harmonic_from.clamp(DC_OFFSET, SPECTRAL_BUFFER_SIZE - 1);
-        let to = harmonic_to.clamp(from, SPECTRAL_BUFFER_SIZE - 1);
+    fn apply_range_set(&mut self, range: HarmonicsRange, gain: StereoSample) {
         let gain_limit = db_to_gain(DB_LIMIT);
 
         for (amplitudes_draft, &gain) in izip!(self.amplitudes_draft.iter_mut(), gain.iter()) {
             let gain = gain.min(gain_limit);
 
-            for (offset, amp) in amplitudes_draft[from..=to].iter_mut().enumerate() {
-                let harmonic_idx = from + offset;
-
-                if n_th.as_ref().is_none_or(|n_th| n_th.matches(harmonic_idx)) {
-                    *amp = gain;
-                }
+            for idx in range.matching_indices() {
+                amplitudes_draft[idx] = gain;
             }
         }
     }
@@ -256,6 +266,7 @@ impl HarmonicEditor {
 
     fn apply_random_amplitudes(
         &mut self,
+        range: HarmonicsRange,
         level_from: Sample,
         level_to: Sample,
         stereo: Sample,
@@ -271,9 +282,8 @@ impl HarmonicEditor {
         let stereo_amount = (level_to - level_from) * stereo;
         let gain_limit = db_to_gain(DB_LIMIT);
 
-        for idx in DC_OFFSET..SPECTRAL_BUFFER_SIZE {
-            let center =
-                level_from + (level_to - level_from) * self.random.random::<Sample>();
+        for idx in range.matching_indices() {
+            let center = level_from + (level_to - level_from) * self.random.random::<Sample>();
             let left_db = Self::reflect_into_range(
                 center + stereo_amount * (self.random.random::<Sample>() - 0.5),
                 level_from,
@@ -299,33 +309,16 @@ impl HarmonicEditor {
         self.draft_enabled = true;
 
         match request {
-            EditRequest::Range {
-                harmonic_from,
-                harmonic_to,
-                gain,
-            } => {
-                self.apply_range_set(harmonic_from as usize, harmonic_to as usize, None, gain);
+            EditRequest::Gain { range, gain } => {
+                self.apply_range_set(range, gain);
             }
-            EditRequest::NthElement {
-                harmonic_from,
-                harmonic_to,
-                mul,
-                add,
-                gain,
-            } => {
-                self.apply_range_set(
-                    harmonic_from as usize,
-                    harmonic_to as usize,
-                    Some(NthElement::new(mul as isize, add as isize, false)),
-                    gain,
-                );
-            }
-            EditRequest::RandomAmplitudes {
+            EditRequest::RandomLevel {
+                range,
                 level_from,
                 level_to,
                 stereo,
             } => {
-                self.apply_random_amplitudes(level_from, level_to, stereo);
+                self.apply_random_amplitudes(range, level_from, level_to, stereo);
             }
         }
     }

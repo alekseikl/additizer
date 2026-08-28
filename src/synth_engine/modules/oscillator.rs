@@ -531,19 +531,15 @@ impl Oscillator {
         self.audio_end.push_refresh_state();
     }
 
-    pub fn randomize_phases(
-        &mut self,
-        amount: Sample,
-        stereo_spread: Sample,
-        dst: PhasesDst,
-    ) {
+    pub fn randomize_phases(&mut self, amount: Sample, stereo_spread: Sample, dst: PhasesDst) {
         let amount = amount.clamp(0.0, 1.0);
         let stereo_spread = stereo_spread.clamp(0.0, 1.0);
 
         let randoms: [StereoSample; MAX_UNISON_VOICES] = array::from_fn(|_| {
             let center = amount * (self.random.random::<Sample>() - 0.5);
-            let left = center + stereo_spread * (self.random.random::<Sample>() - 0.5);
-            let right = center + stereo_spread * (self.random.random::<Sample>() - 0.5);
+            let stereo_amount = amount * stereo_spread;
+            let left = center + stereo_amount * (self.random.random::<Sample>() - 0.5);
+            let right = center + stereo_amount * (self.random.random::<Sample>() - 0.5);
 
             StereoSample::new(left, right).map(|phase| phase.rem_euclid(1.0))
         });

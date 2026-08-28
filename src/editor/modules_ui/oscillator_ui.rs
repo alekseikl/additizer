@@ -115,11 +115,11 @@ impl OscillatorUI {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Amount");
-                    ui.add(Slider::mono(&mut state.amount, 0.0..=1.0, None).default(1.0));
+                    ui.add(Slider::mono(&mut state.amount, 0.0..=1.0, None).default(0.2));
                     ui.end_row();
 
                     ui.label("Stereo spread");
-                    ui.add(Slider::mono(&mut state.stereo_spread, 0.0..=1.0, None).default(0.0));
+                    ui.add(Slider::mono(&mut state.stereo_spread, 0.0..=1.0, None).default(0.5));
                     ui.end_row();
                 });
 
@@ -238,8 +238,8 @@ impl OscillatorUI {
 
             if ui.button("Randomize").clicked() {
                 unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
-                    amount: 1.0,
-                    stereo_spread: 0.1,
+                    amount: 0.2,
+                    stereo_spread: 0.5,
                     dst: PhasesDst::Initial,
                 }));
             }
@@ -261,8 +261,8 @@ impl OscillatorUI {
 
                     if ui.button("Randomize").clicked() {
                         unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
-                            amount: 1.0,
-                            stereo_spread: 0.1,
+                            amount: 0.2,
+                            stereo_spread: 0.5,
                             dst: PhasesDst::From,
                         }));
                     }
@@ -285,8 +285,8 @@ impl OscillatorUI {
 
                     if ui.button("Randomize").clicked() {
                         unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
-                            amount: 1.0,
-                            stereo_spread: 0.1,
+                            amount: 0.2,
+                            stereo_spread: 0.5,
                             dst: PhasesDst::To,
                         }));
                     }
