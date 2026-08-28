@@ -19,8 +19,7 @@ struct GainShapeState {
 }
 
 struct RandomizePhaseState {
-    from: Sample,
-    to: Sample,
+    amount: Sample,
     stereo_spread: Sample,
     dst: PhasesDst,
 }
@@ -115,16 +114,12 @@ impl OscillatorUI {
                 .spacing([40.0, 24.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    ui.label("From");
-                    ui.add(Slider::mono(&mut state.from, 0.0..=1.0, None).default(0.0));
-                    ui.end_row();
-
-                    ui.label("To");
-                    ui.add(Slider::mono(&mut state.to, 0.0..=1.0, None).default(1.0));
+                    ui.label("Amount");
+                    ui.add(Slider::mono(&mut state.amount, 0.0..=1.0, None).default(1.0));
                     ui.end_row();
 
                     ui.label("Stereo spread");
-                    ui.add(Slider::mono(&mut state.stereo_spread, 0.0..=1.0, None).default(1.0));
+                    ui.add(Slider::mono(&mut state.stereo_spread, 0.0..=1.0, None).default(0.0));
                     ui.end_row();
                 });
 
@@ -136,8 +131,7 @@ impl OscillatorUI {
                 |ui| {
                     if ui.button("Ok").clicked() {
                         bridge.randomize_phases(
-                            state.from,
-                            state.to,
+                            state.amount,
                             state.stereo_spread,
                             state.dst,
                         );
@@ -146,8 +140,7 @@ impl OscillatorUI {
 
                     if ui.button("Apply").clicked() {
                         bridge.randomize_phases(
-                            state.from,
-                            state.to,
+                            state.amount,
                             state.stereo_spread,
                             state.dst,
                         );
@@ -245,8 +238,7 @@ impl OscillatorUI {
 
             if ui.button("Randomize").clicked() {
                 unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
-                    from: 0.0,
-                    to: 1.0,
+                    amount: 1.0,
                     stereo_spread: 0.1,
                     dst: PhasesDst::Initial,
                 }));
@@ -269,8 +261,7 @@ impl OscillatorUI {
 
                     if ui.button("Randomize").clicked() {
                         unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
-                            from: 0.0,
-                            to: 1.0,
+                            amount: 1.0,
                             stereo_spread: 0.1,
                             dst: PhasesDst::From,
                         }));
@@ -294,8 +285,7 @@ impl OscillatorUI {
 
                     if ui.button("Randomize").clicked() {
                         unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
-                            from: 0.0,
-                            to: 1.0,
+                            amount: 1.0,
                             stereo_spread: 0.1,
                             dst: PhasesDst::To,
                         }));

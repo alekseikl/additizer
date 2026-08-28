@@ -127,12 +127,11 @@ impl OscillatorUiBridge {
 
     pub fn randomize_phases(
         &mut self,
-        from: Sample,
-        to: Sample,
+        amount: Sample,
         stereo_spread: Sample,
         dst: PhasesDst,
     ) {
-        self.ui_end.randomize_phases(from, to, stereo_spread, dst);
+        self.ui_end.randomize_phases(amount, stereo_spread, dst);
     }
 }
 

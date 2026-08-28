@@ -1,5 +1,8 @@
 use std::array;
 
+use rand::RngExt;
+use rand_pcg::Pcg32;
+
 use crate::{
     synth_engine::{
         ComplexSample, Sample, StereoSample,
@@ -7,7 +10,7 @@ use crate::{
         harmonic_editor::config::fill_default_harmonics,
         routing::{
             DataType, InputMeta, LEFT_CHANNEL, ModuleId, NUM_CHANNELS, ProcessContext,
-            RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget,
+            RIGHT_CHANNEL, RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget,
         },
         synth_module::SynthModule,
     },
@@ -26,6 +29,7 @@ use itertools::izip;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 
 const DB_LIMIT: Sample = 24.0;
+const MIN_RANDOM_LEVEL_DB: Sample = -48.0;
 
 #[derive(Clone, Copy)]
 pub enum EditRequest {
@@ -41,6 +45,11 @@ pub enum EditRequest {
         add: u8,
         gain: StereoSample,
     },
+    RandomAmplitudes {
+        level_from: Sample,
+        level_to: Sample,
+        stereo: Sample,
+    },
 }
 
 pub struct HarmonicEditor {
@@ -53,6 +62,7 @@ pub struct HarmonicEditor {
     amplitudes_draft: [Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
     draft_enabled: bool,
     output_harmonics: [Box<SpectralBuffer>; NUM_CHANNELS],
+    random: Pcg32,
 }
 
 impl HarmonicEditor {
@@ -105,6 +115,7 @@ impl HarmonicEditor {
             amplitudes_draft,
             draft_enabled: false,
             output_harmonics,
+            random: Pcg32::new(0x2b992ddfa23249d6, 0x9e3779b97f4a7c15),
         };
 
         editor.rebuild_harmonics();
@@ -227,6 +238,58 @@ impl HarmonicEditor {
         }
     }
 
+    fn reflect_into_range(value: Sample, min: Sample, max: Sample) -> Sample {
+        if min >= max {
+            return min;
+        }
+
+        let range = max - min;
+        let period = 2.0 * range;
+        let mut t = (value - min).rem_euclid(period);
+
+        if t > range {
+            t = period - t;
+        }
+
+        min + t
+    }
+
+    fn apply_random_amplitudes(
+        &mut self,
+        level_from: Sample,
+        level_to: Sample,
+        stereo: Sample,
+    ) {
+        let level_from = level_from.clamp(MIN_RANDOM_LEVEL_DB, DB_LIMIT);
+        let level_to = level_to.clamp(MIN_RANDOM_LEVEL_DB, DB_LIMIT);
+        let (level_from, level_to) = if level_from <= level_to {
+            (level_from, level_to)
+        } else {
+            (level_to, level_from)
+        };
+        let stereo = stereo.clamp(0.0, 1.0);
+        let stereo_amount = (level_to - level_from) * stereo;
+        let gain_limit = db_to_gain(DB_LIMIT);
+
+        for idx in DC_OFFSET..SPECTRAL_BUFFER_SIZE {
+            let center =
+                level_from + (level_to - level_from) * self.random.random::<Sample>();
+            let left_db = Self::reflect_into_range(
+                center + stereo_amount * (self.random.random::<Sample>() - 0.5),
+                level_from,
+                level_to,
+            );
+            let right_db = Self::reflect_into_range(
+                center + stereo_amount * (self.random.random::<Sample>() - 0.5),
+                level_from,
+                level_to,
+            );
+
+            self.amplitudes_draft[LEFT_CHANNEL][idx] = db_to_gain(left_db).min(gain_limit);
+            self.amplitudes_draft[RIGHT_CHANNEL][idx] = db_to_gain(right_db).min(gain_limit);
+        }
+    }
+
     pub fn apply_edit_request(&mut self, request: EditRequest) {
         for (amplitudes_draft, amplitudes) in
             izip!(self.amplitudes_draft.iter_mut(), self.amplitudes.iter())
@@ -256,6 +319,13 @@ impl HarmonicEditor {
                     Some(NthElement::new(mul as isize, add as isize, false)),
                     gain,
                 );
+            }
+            EditRequest::RandomAmplitudes {
+                level_from,
+                level_to,
+                stereo,
+            } => {
+                self.apply_random_amplitudes(level_from, level_to, stereo);
             }
         }
     }

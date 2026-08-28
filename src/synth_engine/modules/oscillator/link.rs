@@ -40,8 +40,7 @@ pub enum UiEvent {
         to: bool,
     },
     RandomizePhases {
-        from: Sample,
-        to: Sample,
+        amount: Sample,
         stereo_spread: Sample,
         dst: PhasesDst,
     },
@@ -118,15 +117,13 @@ impl UiEnd {
 
     pub fn randomize_phases(
         &mut self,
-        from: Sample,
-        to: Sample,
+        amount: Sample,
         stereo_spread: Sample,
         dst: PhasesDst,
     ) -> bool {
         self.tx
             .push(UiEvent::RandomizePhases {
-                from,
-                to,
+                amount,
                 stereo_spread,
                 dst,
             })

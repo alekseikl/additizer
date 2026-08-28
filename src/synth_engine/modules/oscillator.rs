@@ -533,19 +533,19 @@ impl Oscillator {
 
     pub fn randomize_phases(
         &mut self,
-        from: Sample,
-        to: Sample,
+        amount: Sample,
         stereo_spread: Sample,
         dst: PhasesDst,
     ) {
-        let from = from.clamp(0.0, 1.0);
-        let to = to.clamp(0.0, 1.0);
+        let amount = amount.clamp(0.0, 1.0);
+        let stereo_spread = stereo_spread.clamp(0.0, 1.0);
 
         let randoms: [StereoSample; MAX_UNISON_VOICES] = array::from_fn(|_| {
-            let left = from + (to - from) * self.random.random::<Sample>();
-            let right = left - 0.5 * stereo_spread + stereo_spread * self.random.random::<Sample>();
+            let center = amount * (self.random.random::<Sample>() - 0.5);
+            let left = center + stereo_spread * (self.random.random::<Sample>() - 0.5);
+            let right = center + stereo_spread * (self.random.random::<Sample>() - 0.5);
 
-            StereoSample::new(left, right).clamp(0.0, 1.0)
+            StereoSample::new(left, right).map(|phase| phase.rem_euclid(1.0))
         });
 
         for (channel_idx, channel) in self.channel_params.iter_mut().enumerate() {
@@ -1139,12 +1139,11 @@ impl SynthModule for Oscillator {
                     self.apply_unison_level_shape(center, level, to);
                 }
                 UiEvent::RandomizePhases {
-                    from,
-                    to,
+                    amount,
                     stereo_spread,
                     dst,
                 } => {
-                    self.randomize_phases(from, to, stereo_spread, dst);
+                    self.randomize_phases(amount, stereo_spread, dst);
                 }
             }
         }

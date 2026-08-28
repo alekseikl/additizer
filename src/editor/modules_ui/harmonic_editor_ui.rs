@@ -25,15 +25,17 @@ const HARMONICS_HEIGHT: f32 = 160.0;
 enum EditKind {
     Range,
     NthElement,
+    RandomAmplitudes,
 }
 
 impl EditKind {
-    const ALL: &[Self] = &[Self::Range, Self::NthElement];
+    const ALL: &[Self] = &[Self::Range, Self::NthElement, Self::RandomAmplitudes];
 
     fn label(self) -> &'static str {
         match self {
             Self::Range => "Set range",
             Self::NthElement => "Set n-th",
+            Self::RandomAmplitudes => "Randomize amplitudes",
         }
     }
 }
@@ -45,6 +47,9 @@ struct EditFormState {
     mul: u8,
     add: u8,
     gain_db: StereoSample,
+    level_from: Sample,
+    level_to: Sample,
+    stereo: Sample,
 }
 
 impl Default for EditFormState {
@@ -56,6 +61,9 @@ impl Default for EditFormState {
             mul: 2,
             add: 1,
             gain_db: StereoSample::ZERO,
+            level_from: -12.0,
+            level_to: 0.0,
+            stereo: 0.1,
         }
     }
 }
@@ -82,6 +90,11 @@ impl EditFormState {
                 mul: self.mul,
                 add: self.add,
                 gain,
+            },
+            EditKind::RandomAmplitudes => EditRequest::RandomAmplitudes {
+                level_from: self.level_from,
+                level_to: self.level_to,
+                stereo: self.stereo,
             },
         }
     }
@@ -256,23 +269,25 @@ impl HarmonicEditorUI {
                             });
                         ui.end_row();
 
-                        ui.label("Harmonics");
-                        ui.horizontal(|ui| {
-                            changed |= ui
-                                .add(
-                                    DragValue::new(&mut state.harmonic_from)
-                                        .range(MIN_HARMONIC..=MAX_HARMONIC),
-                                )
-                                .changed();
-                            ui.label(" — ");
-                            changed |= ui
-                                .add(
-                                    DragValue::new(&mut state.harmonic_to)
-                                        .range(MIN_HARMONIC..=MAX_HARMONIC),
-                                )
-                                .changed();
-                        });
-                        ui.end_row();
+                        if state.kind != EditKind::RandomAmplitudes {
+                            ui.label("Harmonics");
+                            ui.horizontal(|ui| {
+                                changed |= ui
+                                    .add(
+                                        DragValue::new(&mut state.harmonic_from)
+                                            .range(MIN_HARMONIC..=MAX_HARMONIC),
+                                    )
+                                    .changed();
+                                ui.label(" — ");
+                                changed |= ui
+                                    .add(
+                                        DragValue::new(&mut state.harmonic_to)
+                                            .range(MIN_HARMONIC..=MAX_HARMONIC),
+                                    )
+                                    .changed();
+                            });
+                            ui.end_row();
+                        }
 
                         if state.kind == EditKind::NthElement {
                             ui.label("N-th Element");
@@ -292,16 +307,48 @@ impl HarmonicEditorUI {
                             ui.end_row();
                         }
 
-                        ui.label("Gain");
-                        changed |= ui
-                            .add(
-                                Slider::stereo(&mut state.gain_db, GAIN_DB_RANGE, None)
-                                    .over(0.0)
-                                    .units(Units::Db)
-                                    .default(0.0),
-                            )
-                            .changed();
-                        ui.end_row();
+                        if state.kind == EditKind::RandomAmplitudes {
+                            ui.label("From");
+                            changed |= ui
+                                .add(
+                                    Slider::mono(&mut state.level_from, GAIN_DB_RANGE, None)
+                                        .over(0.0)
+                                        .units(Units::Db)
+                                        .default(-12.0),
+                                )
+                                .changed();
+                            ui.end_row();
+
+                            ui.label("To");
+                            changed |= ui
+                                .add(
+                                    Slider::mono(&mut state.level_to, GAIN_DB_RANGE, None)
+                                        .over(0.0)
+                                        .units(Units::Db)
+                                        .default(0.0),
+                                )
+                                .changed();
+                            ui.end_row();
+
+                            ui.label("Stereo");
+                            changed |= ui
+                                .add(
+                                    Slider::mono(&mut state.stereo, 0.0..=1.0, None).default(0.0),
+                                )
+                                .changed();
+                            ui.end_row();
+                        } else {
+                            ui.label("Gain");
+                            changed |= ui
+                                .add(
+                                    Slider::stereo(&mut state.gain_db, GAIN_DB_RANGE, None)
+                                        .over(0.0)
+                                        .units(Units::Db)
+                                        .default(0.0),
+                                )
+                                .changed();
+                            ui.end_row();
+                        }
                     });
 
                 if changed {
