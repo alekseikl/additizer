@@ -1065,7 +1065,7 @@ impl Oscillator {
 
         voice.pitch = pitch;
         voice.phase_reset = Some(PhaseReset {
-            steal_from: prev_voice_idx,
+            steal_from: prev_voice_idx.or(self.last_voice_idx),
         });
     }
 
@@ -1136,10 +1136,8 @@ impl SynthModule for Oscillator {
                     pitch,
                     ..
                 } => {
-                    let prev_voice_idx = prev_voice_idx.or(self.last_voice_idx);
-
                     for channel_idx in 0..NUM_CHANNELS {
-                        self.handle_trigger(channel_idx, prev_voice_idx, *voice_idx, *pitch);
+                        self.handle_trigger(channel_idx, *prev_voice_idx, *voice_idx, *pitch);
                     }
 
                     self.last_voice_idx = Some(*voice_idx);
