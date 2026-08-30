@@ -1,4 +1,4 @@
-use std::{array, convert::identity, f32, sync::Arc};
+use std::{array, convert::identity, f32, mem, sync::Arc};
 
 use itertools::izip;
 use rand::RngExt;
@@ -48,14 +48,6 @@ const MAX_GLIDE: Sample = 5.0;
 
 type WaveformBuffer = [Sample; WAVEFORM_BUFFER_SIZE];
 type DftBuffer = [ComplexSample; DFT_BUFFER_SIZE];
-
-const fn make_zero_wave_buffer() -> WaveformBuffer {
-    [0.0; WAVEFORM_BUFFER_SIZE]
-}
-
-const fn zero_dft_buffer() -> DftBuffer {
-    [ComplexSample::ZERO; DFT_BUFFER_SIZE]
-}
 
 struct Params {
     unison: usize,
@@ -217,20 +209,19 @@ impl Default for Voice {
 }
 
 struct VoiceBuffers {
-    wave_buffers: (WaveformBuffer, WaveformBuffer),
-    wave_buffers_swapped: bool,
+    wave: Box<WaveformBuffer>,
 }
 
 impl Default for VoiceBuffers {
     fn default() -> Self {
         Self {
-            wave_buffers_swapped: false,
-            wave_buffers: (make_zero_wave_buffer(), make_zero_wave_buffer()),
+            wave: Box::new([0.0; WAVEFORM_BUFFER_SIZE]),
         }
     }
 }
 
 struct Buffers {
+    tmp_wave: Box<WaveformBuffer>,
     tmp_spectral: DftBuffer,
     scratch: DftBuffer,
     pan: Buffer,
@@ -243,8 +234,9 @@ struct Buffers {
 impl Default for Buffers {
     fn default() -> Self {
         Self {
-            tmp_spectral: zero_dft_buffer(),
-            scratch: zero_dft_buffer(),
+            tmp_wave: Box::new([0.0; WAVEFORM_BUFFER_SIZE]),
+            tmp_spectral: [ComplexSample::ZERO; DFT_BUFFER_SIZE],
+            scratch: [ComplexSample::ZERO; DFT_BUFFER_SIZE],
             pan: zero_buffer(),
             gain: zero_buffer(),
             pitch: zero_buffer(),
@@ -638,48 +630,31 @@ impl Oscillator {
             out_wave_buff[WAVEFORM_PAD_LEFT + 1];
     }
 
-    fn build_waveforms(
-        inverse_fft: &dyn ComplexToReal<Sample>,
-        inputs: &Inputs,
-        voice_buffers: &mut VoiceBuffers,
-        buffers: &mut Buffers,
-        router: &Router<'_, '_, '_>,
+    fn build_this_frame_wave(
+        &mut self,
+        target: &VoiceTarget,
+        outputs: &mut VoicesLayout<SamplesOutput>,
+        rf: &mut RouterFactory<AudioRouterType>,
     ) {
-        if router.triggered() {
-            let spectrum_from = router.spectral(inputs.spectrum, true);
-
-            Self::build_wave(
-                inverse_fft,
-                pitch_to_freq(buffers.pitch[0]) + buffers.frequency_shift[0],
-                router.sample_rate(),
-                spectrum_from,
-                &mut buffers.tmp_spectral,
-                &mut buffers.scratch,
-                &mut voice_buffers.wave_buffers.0,
-            );
-
-            voice_buffers.wave_buffers_swapped = false;
+        if target.channel_idx >= rf.params().spectrum_channels {
+            return;
         }
 
-        let spectrum = router.spectral(inputs.spectrum, false);
-
-        let wave_to = if voice_buffers.wave_buffers_swapped {
-            &mut voice_buffers.wave_buffers.0
-        } else {
-            &mut voice_buffers.wave_buffers.1
-        };
+        let (mut router, _voice_output) = rf.for_voice(target, outputs);
+        let channel = &self.channel_params[target.channel_idx];
+        let voice = &self.voices[target.channel_idx][target.voice_idx];
+        let pitch =
+            voice.pitch + router.scalar(&self.inputs.pitch_shift, channel.pitch_shift.get(), true);
 
         Self::build_wave(
-            inverse_fft,
-            pitch_to_freq(buffers.pitch[router.samples() - 1])
-                + buffers.frequency_shift[router.samples() - 1],
+            self.inverse_fft.as_ref(),
+            pitch_to_freq(pitch),
             router.sample_rate(),
-            spectrum,
-            &mut buffers.tmp_spectral,
-            &mut buffers.scratch,
-            wave_to,
+            router.spectral(self.inputs.spectrum),
+            &mut self.buffers.tmp_spectral,
+            &mut self.buffers.scratch,
+            &mut self.voice_buffers[target.channel_idx][target.voice_idx].wave,
         );
-        voice_buffers.wave_buffers_swapped = !voice_buffers.wave_buffers_swapped;
     }
 
     fn process_unison(
@@ -933,54 +908,51 @@ impl Oscillator {
         let mono_spectrum = rf.params().spectrum_channels < NUM_CHANNELS;
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
+        let wave_channel = if mono_spectrum { 0 } else { channel_idx };
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
 
         self.process_phase_reset(channel_idx, voice_idx, &mut router);
 
+        let samples = router.samples();
+        let channel = &self.channel_params[channel_idx];
+        let voice = &mut self.voices[channel_idx][voice_idx];
         let inputs = &self.inputs;
         let buffers = &mut self.buffers;
-        let channel = &mut self.channel_params[channel_idx];
-        let voice = &mut self.voices[channel_idx][voice_idx];
-        let samples = router.samples();
 
         router.param(
             &inputs.pitch_shift,
             &channel.pitch_shift,
             &mut buffers.pitch,
         );
-
         add_buffer_value(&mut buffers.pitch[..samples], voice.pitch);
-
         router.param(
             &inputs.phase_shift,
             &channel.phase_shift,
             &mut buffers.phase_shift,
         );
-
         router.param(
             &inputs.freq_shift,
             &channel.frequency_shift,
             &mut buffers.frequency_shift,
         );
 
-        let voice_buffers = if mono_spectrum && channel_idx != 0 {
-            &self.voice_buffers[0][voice_idx]
-        } else {
-            let vb = &mut self.voice_buffers[channel_idx][voice_idx];
+        if channel_idx == wave_channel {
+            let last = router.samples().saturating_sub(1);
 
-            Self::build_waveforms(self.inverse_fft.as_ref(), inputs, vb, buffers, &router);
-            vb
-        };
-
-        let (wave_from, wave_to) = if voice_buffers.wave_buffers_swapped {
-            (&voice_buffers.wave_buffers.0, &voice_buffers.wave_buffers.1)
-        } else {
-            (&voice_buffers.wave_buffers.1, &voice_buffers.wave_buffers.0)
-        };
+            Self::build_wave(
+                self.inverse_fft.as_ref(),
+                pitch_to_freq(buffers.pitch[last]) + buffers.frequency_shift[last],
+                router.sample_rate(),
+                router.spectral(inputs.spectrum),
+                &mut buffers.tmp_spectral,
+                &mut buffers.scratch,
+                &mut buffers.tmp_wave,
+            );
+        }
 
         if router.need_update_ui_mono() {
             self.audio_end
-                .update_spectrum(router.spectral(inputs.spectrum, false));
+                .update_spectrum(router.spectral(inputs.spectrum));
         }
 
         Self::process_unison(self.params.unison, channel, inputs, voice, &mut router);
@@ -990,6 +962,8 @@ impl Oscillator {
         let buff_t_inc = (samples as f32).recip();
         let mut buff_t = 0.0;
         let output = voice_output.output();
+        let wave_from = &self.voice_buffers[wave_channel][voice_idx].wave;
+        let wave_to = &buffers.tmp_wave;
 
         for (out, &pitch, &phase_shift, freq_shift) in izip!(
             output.iter_mut(),
@@ -1037,6 +1011,13 @@ impl Oscillator {
             for (out, gain) in output.iter_mut().zip(&buffers.gain) {
                 *out *= gain;
             }
+        }
+
+        if !mono_spectrum || channel_idx == RIGHT_CHANNEL {
+            mem::swap(
+                &mut self.voice_buffers[wave_channel][voice_idx].wave,
+                &mut buffers.tmp_wave,
+            );
         }
     }
 
@@ -1196,13 +1177,19 @@ impl SynthModule for Oscillator {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_audio(self.id, self.output_slot, |rf, target, outputs| {
-            self.process_voice(target, outputs, rf);
-        });
+        if ctx.params.trigger_stage {
+            ctx.for_audio(self.id, self.output_slot, |rf, target, outputs| {
+                self.build_this_frame_wave(target, outputs, rf);
+            });
+        } else {
+            ctx.for_audio(self.id, self.output_slot, |rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
 
-        for channel_idx in 0..NUM_CHANNELS {
-            self.channel_params[channel_idx]
-                .advance_smoothers(&ctx.params.smooth_params, ctx.params.samples);
+            for channel_idx in 0..NUM_CHANNELS {
+                self.channel_params[channel_idx]
+                    .advance_smoothers(&ctx.params.smooth_params, ctx.params.samples);
+            }
         }
     }
 }

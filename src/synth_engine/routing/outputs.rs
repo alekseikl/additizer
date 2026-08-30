@@ -33,29 +33,23 @@ impl Default for SamplesOutput {
 }
 
 pub struct SpectralOutput {
-    swapped: bool,
-    output: [SpectralBuffer; 2],
+    output: SpectralBuffer,
 }
 
 impl Default for SpectralOutput {
     fn default() -> Self {
         Self {
-            swapped: false,
-            output: [zero_spectral_buffer(), zero_spectral_buffer()],
+            output: zero_spectral_buffer(),
         }
     }
 }
 
 impl SpectralOutput {
-    pub(super) fn get(&self, this_frame: bool) -> &SpectralBuffer {
-        &self.output[(!this_frame ^ self.swapped) as usize]
+    pub(super) fn get(&self) -> &SpectralBuffer {
+        &self.output
     }
 
     pub(super) fn buff(&mut self) -> &mut SpectralBuffer {
-        &mut self.output[self.swapped as usize]
-    }
-
-    pub fn advance(&mut self) {
-        self.swapped = !self.swapped;
+        &mut self.output
     }
 }

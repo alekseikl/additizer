@@ -223,9 +223,8 @@ impl OutputsArena {
         slot: Option<usize>,
         channel_idx: usize,
         voice_idx: usize,
-        this_frame: bool,
     ) -> Option<&SpectralBuffer> {
-        slot.map(|slot| self.spectral[slot][channel_idx][voice_idx].get(this_frame))
+        slot.map(|slot| self.spectral[slot][channel_idx][voice_idx].get())
     }
 }
 

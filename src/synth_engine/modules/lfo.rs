@@ -385,9 +385,11 @@ impl SynthModule for Lfo {
             self.process_voice(target, outputs, rf);
         });
 
-        for channel_idx in 0..NUM_CHANNELS {
-            self.channel_params[channel_idx]
-                .advance_smoothers(&ctx.params.smooth_params, ctx.params.samples);
+        if !ctx.params.trigger_stage {
+            for channel_idx in 0..NUM_CHANNELS {
+                self.channel_params[channel_idx]
+                    .advance_smoothers(&ctx.params.smooth_params, ctx.params.samples);
+            }
         }
     }
 }

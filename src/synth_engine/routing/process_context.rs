@@ -10,6 +10,7 @@ use crate::synth_engine::{
 };
 
 pub struct ProcessParams<'a> {
+    pub trigger_stage: bool,
     pub samples: usize,
     pub sample_rate: Sample,
     pub needs_update_ui: bool,

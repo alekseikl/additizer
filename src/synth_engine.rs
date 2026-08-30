@@ -812,26 +812,51 @@ impl SynthEngine {
 
         self.voices_handler.get_playing_voices(&mut playing_voices);
 
+        let mut triggered_voices = PlayingVoices::new();
+
+        triggered_voices.extend(
+            playing_voices
+                .iter()
+                .copied()
+                .filter(|voice| voice.triggered().is_some()),
+        );
+
         let samples = if self.oversampling {
             2 * samples
         } else {
             samples
         };
         let sample_rate = self.sample_rate();
+        let smooth_params = SmoothedSampleParams::new(sample_rate);
 
         let mut ctx = ProcessContext {
             outputs_arena: &mut self.outputs_arena,
             audio_end: &mut self.audio_end,
             params: ProcessParams {
+                trigger_stage: true,
                 samples,
                 sample_rate,
-                smooth_params: SmoothedSampleParams::new(sample_rate),
+                smooth_params,
                 needs_update_ui: update_ui,
                 spectrum_channels: self.spectrum_channels,
                 bandwidth: self.bandwidth,
-                active_voices: &playing_voices,
+                active_voices: &triggered_voices,
             },
         };
+
+        if !triggered_voices.is_empty() {
+            for module_id in &self.execution_order {
+                if let Some(module) = self.modules.get_mut(module_id)
+                    && (module.output_type() != DataType::Audio
+                        || matches!(module, ModuleHandle::Oscillator(_)))
+                {
+                    module.process(&mut ctx);
+                }
+            }
+        }
+
+        ctx.params.trigger_stage = false;
+        ctx.params.active_voices = &playing_voices;
 
         for module_id in &self.execution_order {
             if let Some(module) = self.modules.get_mut(module_id) {

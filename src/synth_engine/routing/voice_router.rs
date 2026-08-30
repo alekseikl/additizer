@@ -72,7 +72,6 @@ impl RouterDataType for ControlRouterType {
 #[derive(Clone, Copy)]
 pub struct SpectralVoiceState {
     bandwidth: usize,
-    triggered: Option<usize>,
 }
 
 pub struct SpectralRouterType {
@@ -84,12 +83,11 @@ impl RouterDataType for SpectralRouterType {
     type VoiceState = SpectralVoiceState;
 
     fn advance(
-        outputs: &mut VoicesLayout<Self::OutputType>,
-        target: &VoiceTarget,
+        _outputs: &mut VoicesLayout<Self::OutputType>,
+        _target: &VoiceTarget,
         _state: Self::VoiceState,
         _samples: usize,
     ) {
-        outputs[target.channel_idx][target.voice_idx].advance();
     }
 }
 
@@ -209,6 +207,10 @@ impl<'f, 'c> RouterFactory<'f, 'c, ControlRouterType> {
 
         for channel_idx in 0..NUM_CHANNELS {
             for (seq_idx, voice) in self.ctx.params.active_voices.iter().enumerate() {
+                if !self.ctx.params.trigger_stage && voice.triggered().is_some() {
+                    continue;
+                }
+
                 let target = VoiceTarget::new(channel_idx, voice, seq_idx);
 
                 f(self, &target, &mut slot);
@@ -275,14 +277,9 @@ impl<'f, 'c> RouterFactory<'f, 'c, SpectralRouterType> {
 
         for channel_idx in 0..self.ctx.params.spectrum_channels {
             for (seq_idx, voice) in self.ctx.params.active_voices.iter().enumerate() {
-                let mut target = VoiceTarget::new(channel_idx, voice, seq_idx);
+                let target = VoiceTarget::new(channel_idx, voice, seq_idx);
 
                 f(self, &target, &mut slot);
-
-                if target.triggered.is_some() {
-                    target.triggered = None;
-                    f(self, &target, &mut slot);
-                }
             }
         }
 
@@ -303,11 +300,10 @@ impl<'f, 'c> RouterFactory<'f, 'c, SpectralRouterType> {
         'f: 'voice,
     {
         let samples = self.params().samples;
-        // Spectral is block-rate: Option<offset> indexes control scalars and marks
-        // this_frame for dual-buffer reads; sample offset does not slice the spectrum.
+        // Spectral is block-rate: trigger_stage selects this-frame vs next-frame
+        // control scalars; sample offset does not slice the spectrum.
         let state = SpectralVoiceState {
             bandwidth: self.bandwidth(target.note_bandwidth),
-            triggered: target.triggered,
         };
 
         (
@@ -398,22 +394,12 @@ impl<'v, 'f, 'c, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D> {
         }
     }
 
-    fn spectral_impl(
-        &self,
-        slot: Option<usize>,
-        this_frame: bool,
-        bandwidth: usize,
-    ) -> &[ComplexSample] {
+    fn spectral_impl(&self, slot: Option<usize>, bandwidth: usize) -> &[ComplexSample] {
         let buff = self
             .factory
             .ctx
             .outputs_arena
-            .get_spectral(
-                slot,
-                self.target.channel_idx,
-                self.target.voice_idx,
-                this_frame,
-            )
+            .get_spectral(slot, self.target.channel_idx, self.target.voice_idx)
             .unwrap_or(&ZEROES_SPECTRAL_BUFFER);
 
         &buff[..buff.len().min(bandwidth)]
@@ -472,8 +458,8 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
         self.scalar_param_impl(input, param, this_frame.then_some(self.state.offset))
     }
 
-    pub fn spectral(&self, slot: Option<usize>, this_frame: bool) -> &[ComplexSample] {
-        self.spectral_impl(slot, this_frame, self.state.bandwidth)
+    pub fn spectral(&self, slot: Option<usize>) -> &[ComplexSample] {
+        self.spectral_impl(slot, self.state.bandwidth)
     }
 
     pub fn param_stationary_at(
@@ -571,11 +557,18 @@ impl<'v> VoiceOutput<'v, ControlRouterType> {
 
 impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, SpectralRouterType> {
     pub fn scalar(&mut self, input: &InputSlots, param: Sample) -> Sample {
-        self.scalar_param_impl(input, param, self.state.triggered)
+        let this_frame = self
+            .factory
+            .params()
+            .trigger_stage
+            .then_some(self.target.triggered)
+            .flatten();
+
+        self.scalar_param_impl(input, param, this_frame)
     }
 
     pub fn spectral(&self, slot: Option<usize>) -> &[ComplexSample] {
-        self.spectral_impl(slot, self.state.triggered.is_some(), self.state.bandwidth)
+        self.spectral_impl(slot, self.state.bandwidth)
     }
 }
 
