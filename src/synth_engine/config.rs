@@ -119,27 +119,10 @@ impl LinkConfig {
         }
     }
 
-    pub fn amount(&self) -> StereoSample {
-        match self {
-            Self::Direct { .. } => StereoSample::ONE,
-            Self::Mixed { amount, .. } => *amount,
-        }
-    }
-
     pub fn modulator_id(&self) -> Option<ModuleId> {
         match self {
             Self::Direct { .. } => None,
             Self::Mixed { modulator_id, .. } => *modulator_id,
-        }
-    }
-
-    pub fn set_modulator_id(&mut self, id: Option<ModuleId>) -> bool {
-        match self {
-            Self::Mixed { modulator_id, .. } => {
-                *modulator_id = id;
-                true
-            }
-            Self::Direct { .. } => false,
         }
     }
 }

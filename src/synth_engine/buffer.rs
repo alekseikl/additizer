@@ -1,4 +1,3 @@
-use core::f32;
 use std::mem::MaybeUninit;
 
 use crate::synth_engine::{
@@ -19,10 +18,7 @@ pub type SpectralBuffer = [ComplexSample; SPECTRAL_BUFFER_SIZE];
 pub type DisplaySpectrum = [ComplexSample; DISPLAY_SPECTRUM_SIZE];
 
 pub static ZEROES_BUFFER: Buffer = [0.0; BUFFER_SIZE];
-#[allow(unused)]
-pub static ONES_BUFFER: Buffer = [1.0; BUFFER_SIZE];
 pub static ZEROES_SPECTRAL_BUFFER: SpectralBuffer = zero_spectral_buffer();
-pub static HARMONIC_SERIES_BUFFER: SpectralBuffer = harmonic_series_buffer();
 
 pub const fn zero_buffer() -> Buffer {
     [0.0; BUFFER_SIZE]
@@ -30,23 +26,6 @@ pub const fn zero_buffer() -> Buffer {
 
 pub const fn zero_spectral_buffer() -> SpectralBuffer {
     [ComplexSample::ZERO; SPECTRAL_BUFFER_SIZE]
-}
-
-pub const fn harmonic_series_buffer() -> SpectralBuffer {
-    let mut buff: SpectralBuffer = [ComplexSample::ZERO; SPECTRAL_BUFFER_SIZE];
-    let mut i = 1;
-
-    while i < SPECTRAL_BUFFER_SIZE {
-        buff[i].im = -1.0 / (i as f32 * f32::consts::PI);
-
-        if i % 2 == 0 {
-            buff[i].im = -buff[i].im;
-        }
-
-        i += 1;
-    }
-
-    buff
 }
 
 pub type VoicesLayoutArray<T> = [[T; MAX_VOICES]; NUM_CHANNELS];

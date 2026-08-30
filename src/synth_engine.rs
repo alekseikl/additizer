@@ -22,14 +22,13 @@ use crate::synth_engine::{
 };
 
 pub use buffer::{
-    Buffer, DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, HARMONIC_SERIES_BUFFER, SPECTRAL_BUFFER_SIZE,
-    SpectralBuffer,
+    Buffer, DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, SPECTRAL_BUFFER_SIZE, SpectralBuffer,
 };
 pub use config::{EngineConfig, EngineParams, LinkConfig, MAX_BANDWIDTH, ModuleConfig};
 pub use module_handle::ModuleType;
 pub use modules::{
-    Amplifier, Envelope, Expressions, ExternalParam, FilterType, Lfo, LfoShape, Mixer, Oscillator,
-    ShaperType, SpectralBlend, SpectralFilter, SpectralMixer, WaveShaper,
+    Amplifier, Envelope, Expressions, ExternalParam, Lfo, LfoShape, Mixer, Oscillator, ShaperType,
+    SpectralBlend, SpectralFilter, SpectralMixer, WaveShaper,
     amplifier::{self},
     envelope::{self},
     expressions::{self},
@@ -58,7 +57,6 @@ mod buffer;
 mod config;
 #[macro_use]
 mod synth_module;
-pub mod biquad_filter;
 mod curves;
 pub mod filters;
 mod iir_decimator;

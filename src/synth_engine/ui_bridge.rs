@@ -33,7 +33,7 @@ pub mod ui_config;
 pub use ui_config::GridVec;
 
 pub use link::{AudioEnd, UiEnd, UiEvent, UiUpdate, create_link_pair};
-pub use routing_state::{AvailableInputSource, ConnectedInputSource, RoutingState};
+pub use routing_state::{ConnectedInputSource, RoutingState};
 use rustc_hash::FxHashMap;
 
 #[enum_dispatch(ModuleUiBridge)]
@@ -63,7 +63,6 @@ pub struct VoicesStatus {
 pub struct ModuleItem {
     pub id: ModuleId,
     pub module_type: ModuleType,
-    pub label: String,
 }
 
 #[derive(Clone, Copy)]
@@ -217,7 +216,6 @@ impl UiBridge {
             .map(|m| ModuleItem {
                 id: m.id,
                 module_type: m.module_type,
-                label: self.display_module_label(m.id),
             })
             .collect()
     }
@@ -383,31 +381,6 @@ impl UiBridge {
         } else {
             self.add_link(src, dst, StereoSample::ZERO);
         }
-    }
-
-    pub fn get_available_input_sources(&self, input: InputId) -> Vec<AvailableInputSource> {
-        let Some(input_module) = self.routing.modules.get(&input.module_id) else {
-            return Vec::new();
-        };
-        let Some(meta) = input_module
-            .inputs
-            .iter()
-            .find(|input_info| input_info.input_type == input.input_type)
-        else {
-            return Vec::new();
-        };
-
-        self.routing
-            .modules
-            .values()
-            .filter(|module| {
-                self.is_linkable_input(module.id, input.module_id, module.output_type, meta)
-            })
-            .map(|module| AvailableInputSource {
-                src: module.id,
-                label: self.display_module_label(module.id),
-            })
-            .collect()
     }
 
     pub fn has_connected_input_sources(&self, input: InputId) -> bool {

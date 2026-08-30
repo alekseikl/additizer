@@ -23,7 +23,6 @@ pub trait RouterDataType {
 pub struct AudioVoiceState {
     offset: usize,
     bandwidth: usize,
-    triggered: bool,
 }
 
 pub struct AudioRouterType {
@@ -46,7 +45,6 @@ impl RouterDataType for AudioRouterType {
 #[derive(Clone, Copy)]
 pub struct ControlVoiceState {
     offset: usize,
-    triggered: bool,
 }
 
 pub struct ControlRouterType {
@@ -172,7 +170,6 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
         let state = AudioVoiceState {
             offset: triggered.unwrap_or(0),
             bandwidth: self.bandwidth(target.note_bandwidth),
-            triggered: triggered.is_some(),
         };
 
         if let Some(offset) = triggered {
@@ -240,7 +237,6 @@ impl<'f, 'c> RouterFactory<'f, 'c, ControlRouterType> {
         // Some(0) is a real note-on at sample 0, distinct from the non-trigger case.
         let state = ControlVoiceState {
             offset: triggered.unwrap_or(1),
-            triggered: triggered.is_some(),
         };
 
         if let Some(offset) = triggered {
@@ -412,7 +408,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
     }
 
     pub fn triggered(&self) -> bool {
-        self.state.triggered
+        self.target.triggered.is_some()
     }
 
     pub fn direct(&mut self, slot: Option<usize>) -> &[Sample] {
@@ -487,7 +483,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
     }
 
     pub fn triggered(&self) -> bool {
-        self.state.triggered
+        self.target.triggered.is_some()
     }
 
     /// Maps an in-block sample offset to an index into [`VoiceOutput::output`].
@@ -539,7 +535,7 @@ impl<'v> VoiceOutput<'v, ControlRouterType> {
     /// External control sources are not written 1 sample ahead.
     /// in_buff is aligned with processing block.
     pub fn fill_with_ext_control(&mut self, in_buff: &[Sample]) {
-        let offset = if self.state.triggered {
+        let offset = if self.target.triggered.is_some() {
             self.state.offset
         } else {
             0

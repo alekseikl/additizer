@@ -54,24 +54,6 @@ impl StereoSample {
     pub fn clamp(&self, min: Sample, max: Sample) -> Self {
         self.map(|channel| channel.clamp(min, max))
     }
-
-    pub fn powf(&self, n: Sample) -> Self {
-        Self {
-            channels: self.channels.map(|channel| channel.powf(n)),
-        }
-    }
-
-    pub fn signum(&self) -> Self {
-        Self {
-            channels: self.channels.map(|channel| channel.signum()),
-        }
-    }
-
-    pub fn abs(&self) -> Self {
-        Self {
-            channels: self.channels.map(|channel| channel.abs()),
-        }
-    }
 }
 
 impl Default for StereoSample {

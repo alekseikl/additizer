@@ -12,7 +12,6 @@ pub mod spectral_filter;
 pub mod spectral_mixer;
 pub mod wave_shaper;
 
-pub use crate::synth_engine::filters::spectral_filter::FilterType;
 pub use amplifier::Amplifier;
 pub use envelope::Envelope;
 pub use expressions::Expressions;

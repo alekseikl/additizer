@@ -5,14 +5,14 @@ use parking_lot::Mutex;
 use crate::{
     engine_factory::{EngineHandle, UiConfigHandle},
     synth_engine::{
-        EngineConfig, EngineParams, Input, InputId, LinkConfig, ModuleConfig, ModuleId,
-        OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
         harmonic_editor::HarmonicEditorConfig,
         oscillator::OscillatorConfig,
         ui_bridge::{
-            UiBridge,
             ui_config::{UiConfig, UiModuleConfig},
+            UiBridge,
         },
+        EngineConfig, EngineParams, Input, InputId, LinkConfig, ModuleConfig, ModuleId, Sample,
+        StereoSample, SynthEngine, OUTPUT_MODULE_ID,
     },
 };
 
@@ -90,39 +90,44 @@ fn has_linkable_input_true_for_replacement_direct_source() {
 }
 
 #[test]
-fn get_available_input_sources_excludes_already_connected() {
+fn get_linkable_inputs_excludes_already_connected() {
     let bridge = make_bridge(minimal_engine());
-    let spectrum = InputId::new(Input::Spectrum, OSCILLATOR_ID);
 
-    let available = bridge.get_available_input_sources(spectrum);
+    let linkable = bridge.get_linkable_inputs(HARMONIC_EDITOR_ID, OSCILLATOR_ID);
     assert!(
-        available.iter().all(|src| src.src != HARMONIC_EDITOR_ID),
-        "connected harmonic editor must not appear as available"
+        linkable
+            .iter()
+            .all(|input| input.input_type != Input::Spectrum),
+        "connected harmonic editor must not appear as available for Spectrum"
     );
 }
 
 #[test]
-fn get_available_input_sources_includes_alternate_direct_source() {
+fn get_linkable_inputs_includes_alternate_direct_source() {
     let mut engine = minimal_engine();
     let he2 = engine.add_harmonic_editor();
     let bridge = make_bridge(engine);
-    let spectrum = InputId::new(Input::Spectrum, OSCILLATOR_ID);
 
-    let available = bridge.get_available_input_sources(spectrum);
+    let linkable = bridge.get_linkable_inputs(he2, OSCILLATOR_ID);
     assert!(
-        available.iter().any(|src| src.src == he2),
+        linkable
+            .iter()
+            .any(|input| input.input_type == Input::Spectrum),
         "second harmonic editor can replace Spectrum source"
     );
 }
 
 #[test]
-fn get_available_input_sources_excludes_self_and_type_mismatch() {
+fn get_linkable_inputs_excludes_self_and_type_mismatch() {
     let bridge = make_bridge(minimal_engine());
-    let spectrum = InputId::new(Input::Spectrum, OSCILLATOR_ID);
 
-    let available = bridge.get_available_input_sources(spectrum);
-    assert!(available.iter().all(|src| src.src != OSCILLATOR_ID));
-    assert!(available.iter().all(|src| src.src != OUTPUT_MODULE_ID));
+    assert!(bridge
+        .get_linkable_inputs(OSCILLATOR_ID, OSCILLATOR_ID)
+        .is_empty());
+    assert!(bridge
+        .get_linkable_inputs(OUTPUT_MODULE_ID, OSCILLATOR_ID)
+        .iter()
+        .all(|input| input.input_type != Input::Spectrum));
 }
 
 #[test]
@@ -167,10 +172,9 @@ fn get_available_mixed_excludes_connected_source() {
         .expect("lfo -> gain");
 
     let bridge = make_bridge(engine);
-    let gain = InputId::new(Input::Gain, OSCILLATOR_ID);
 
-    let available = bridge.get_available_input_sources(gain);
-    assert!(available.iter().all(|src| src.src != lfo_id));
+    let linkable = bridge.get_linkable_inputs(lfo_id, OSCILLATOR_ID);
+    assert!(linkable.iter().all(|input| input.input_type != Input::Gain));
 }
 
 #[test]

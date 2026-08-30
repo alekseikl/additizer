@@ -92,6 +92,22 @@ fn link(src_id: ModuleId, dst_id: ModuleId, dst_input: Input) -> LinkConfig {
     }
 }
 
+fn set_link_modulator(link: &mut LinkConfig, modulator_id: Option<ModuleId>) {
+    match link {
+        LinkConfig::Mixed {
+            modulator_id: slot, ..
+        } => *slot = modulator_id,
+        LinkConfig::Direct { .. } => panic!("expected mixed link"),
+    }
+}
+
+fn link_amount(link: &LinkConfig) -> StereoSample {
+    match *link {
+        LinkConfig::Mixed { amount, .. } => amount,
+        LinkConfig::Direct { .. } => panic!("expected mixed link"),
+    }
+}
+
 fn full_patch_engine_config(engine: EngineParams) -> EngineConfig {
     EngineConfig {
         engine,
@@ -391,7 +407,7 @@ fn try_new_skips_link_with_missing_modulator() {
         .iter()
         .position(|link| link.src_id() == ENVELOPE_AMP_ID && link.dst_id() == AMPLIFIER_ID)
         .expect("env -> amp link");
-    config.links[modulated].set_modulator_id(Some(9999));
+    set_link_modulator(&mut config.links[modulated], Some(9999));
 
     let engine =
         SynthEngine::try_new(&config, SAMPLE_RATE).expect("bad modulator skips that preset link");
@@ -415,7 +431,7 @@ fn try_new_skips_link_with_incompatible_modulator() {
         .position(|link| link.src_id() == ENVELOPE_AMP_ID && link.dst_id() == AMPLIFIER_ID)
         .expect("env -> amp link");
     // Spectral source cannot modulate a control (gain) input.
-    config.links[modulated].set_modulator_id(Some(HE0_ID));
+    set_link_modulator(&mut config.links[modulated], Some(HE0_ID));
 
     let engine = SynthEngine::try_new(&config, SAMPLE_RATE)
         .expect("incompatible modulator skips that preset link");
@@ -770,7 +786,7 @@ fn add_link_overrides_existing_link() {
         .collect();
 
     assert_eq!(links.len(), 1);
-    assert_eq!(links[0].amount(), StereoSample::splat(0.25));
+    assert_eq!(link_amount(links[0]), StereoSample::splat(0.25));
     assert!(links[0].modulator_id().is_none());
 }
 
@@ -853,7 +869,7 @@ fn update_link_amount_changes_routing() {
         .find(|link| link.src_id() == lfo_id && link.dst_id() == OSCILLATOR_ID)
         .expect("lfo -> osc gain link");
 
-    assert_eq!(link.amount(), StereoSample::splat(0.5));
+    assert_eq!(link_amount(link), StereoSample::splat(0.5));
 }
 
 #[test]
@@ -1325,7 +1341,7 @@ fn engine_extended_setters_round_trip() {
         .iter()
         .find(|link| link.src_id() == lfo_id && link.dst_id() == OSCILLATOR_ID)
         .expect("lfo -> osc gain link");
-    assert_eq!(link.amount(), StereoSample::splat(0.25));
+    assert_eq!(link_amount(link), StereoSample::splat(0.25));
 }
 
 #[test]
@@ -1445,7 +1461,7 @@ fn link_modulation_in_preset_builds() {
         .iter()
         .position(|link| link.src_id() == ENVELOPE_AMP_ID && link.dst_id() == AMPLIFIER_ID)
         .expect("env -> amp link");
-    config.links[modulated].set_modulator_id(Some(LFO_ID));
+    set_link_modulator(&mut config.links[modulated], Some(LFO_ID));
 
     config.links.push(config.links[modulated].clone());
 

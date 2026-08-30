@@ -24,11 +24,6 @@ impl Module {
     }
 }
 
-pub struct AvailableInputSource {
-    pub src: ModuleId,
-    pub label: String,
-}
-
 pub struct InputModulation {
     #[allow(unused)]
     pub src: ModuleId,
@@ -51,7 +46,6 @@ pub struct ModuleInput {
 pub struct ModuleIo {
     pub id: ModuleId,
     pub module_type: ModuleType,
-    pub inputs_meta: Vec<InputMeta>,
     pub inputs: Vec<ModuleInput>,
     pub output_type: DataType,
     pub output_connected: bool,
@@ -79,7 +73,6 @@ impl RoutingState {
                         id: m.id,
                         module_type: m.module_type,
                         output_type: m.output_type,
-                        inputs_meta: m.inputs.to_vec(),
                         inputs: m
                             .inputs
                             .iter()
