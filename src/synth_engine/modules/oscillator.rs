@@ -34,6 +34,7 @@ mod ui_bridge;
 mod tests;
 
 pub use config::OscillatorConfig;
+pub use link::Unison;
 pub use ui_bridge::OscillatorUiBridge;
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
@@ -392,7 +393,7 @@ impl Oscillator {
     pub fn from_config(config: &config::OscillatorConfig) -> Self {
         let (audio_end, ui_end) = create_link_pair();
 
-        Self {
+        let mut osc = Self {
             id: config.id,
             params: Params::from_config(config),
             channel_params: array::from_fn(|channel_idx| {
@@ -408,7 +409,36 @@ impl Oscillator {
             voices: new_voices_layout(),
             voice_buffers: new_voices_layout(),
             last_voice_idx: None,
+        };
+
+        osc.publish_unison();
+        osc
+    }
+
+    fn unison_snapshot(&self) -> Unison {
+        Unison {
+            initial_phases: array::from_fn(|i| get_unison_param!(self, initial_phase, i)),
+            phase_shifts: array::from_fn(|i| get_unison_param!(self, phase_shift, i)),
+            phase_shifts_to: array::from_fn(|i| get_unison_param!(self, phase_shift_to, i)),
+            gains: array::from_fn(|i| get_unison_param!(self, gain, i)),
+            gains_to: array::from_fn(|i| get_unison_param!(self, gain_to, i)),
         }
+    }
+
+    fn unison_config(&self) -> [config::UnisonConfig; MAX_UNISON_VOICES] {
+        let unison = self.unison_snapshot();
+
+        array::from_fn(|i| config::UnisonConfig {
+            initial_phase: unison.initial_phases[i],
+            phase_shift: unison.phase_shifts[i],
+            phase_shift_to: unison.phase_shifts_to[i],
+            gain: unison.gains[i],
+            gain_to: unison.gains_to[i],
+        })
+    }
+
+    fn publish_unison(&mut self) {
+        self.audio_end.publish_unison(&self.unison_snapshot());
     }
 
     pub fn get_config(&self) -> OscillatorConfig {
@@ -428,13 +458,7 @@ impl Oscillator {
             frequency_shift: get_smoothed_param!(self, frequency_shift),
             phases_blend: get_stereo_param!(self, phases_blend),
             gains_blend: get_stereo_param!(self, gains_blend),
-            unison: array::from_fn(|i| config::UnisonConfig {
-                initial_phase: get_unison_param!(self, initial_phase, i),
-                phase_shift: get_unison_param!(self, phase_shift, i),
-                phase_shift_to: get_unison_param!(self, phase_shift_to, i),
-                gain: get_unison_param!(self, gain, i),
-                gain_to: get_unison_param!(self, gain_to, i),
-            }),
+            unison: self.unison_config(),
         }
     }
 
@@ -532,7 +556,7 @@ impl Oscillator {
             }
         }
 
-        self.audio_end.push_refresh_state();
+        self.publish_unison();
     }
 
     pub fn randomize_phases(&mut self, amount: Sample, stereo_spread: Sample, dst: PhasesDst) {
@@ -560,7 +584,7 @@ impl Oscillator {
             }
         }
 
-        self.audio_end.push_refresh_state();
+        self.publish_unison();
     }
 
     #[inline]
@@ -633,14 +657,13 @@ impl Oscillator {
     fn build_this_frame_wave(
         &mut self,
         target: &VoiceTarget,
-        outputs: &mut VoicesLayout<SamplesOutput>,
         rf: &mut RouterFactory<AudioRouterType>,
     ) {
         if target.channel_idx >= rf.params().spectrum_channels {
             return;
         }
 
-        let (mut router, _voice_output) = rf.for_voice(target, outputs);
+        let mut router = rf.for_triggered_voice(target);
         let channel = &self.channel_params[target.channel_idx];
         let voice = &self.voices[target.channel_idx][target.voice_idx];
         let pitch =
@@ -1178,8 +1201,8 @@ impl SynthModule for Oscillator {
 
     fn process(&mut self, ctx: &mut ProcessContext) {
         ctx.audio(self.id, self.output_slot)
-            .for_triggered_voices(|rf, target, outputs| {
-                self.build_this_frame_wave(target, outputs, rf);
+            .for_triggered_voices(|rf, target| {
+                self.build_this_frame_wave(target, rf);
             })
             .for_voices(|rf, target, outputs| {
                 self.process_voice(target, outputs, rf);

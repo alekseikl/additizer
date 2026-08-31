@@ -5,7 +5,7 @@ use crate::{
     utils::from_st,
 };
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct UnisonConfig {
     pub initial_phase: StereoSample,
     pub phase_shift: StereoSample,

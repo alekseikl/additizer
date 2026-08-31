@@ -1,48 +1,31 @@
-use std::sync::Arc;
-
-use parking_lot::Mutex;
-
 use crate::synth_engine::{
-    DisplaySpectrum, Input, ModuleHandle, ModuleId, Sample, StereoSample, SynthEngine,
-    synth_module::ModuleUiBridge,
+    DisplaySpectrum, Input, Sample, StereoSample, synth_module::ModuleUiBridge,
 };
 
 use super::{
     Oscillator, OscillatorConfig, PhasesDst,
-    link::{UiEnd, UiUpdate},
+    link::{UiEnd, Unison},
 };
 
 pub struct OscillatorUiBridge {
-    synth: Arc<Mutex<SynthEngine>>,
-    module_id: ModuleId,
     ui_end: UiEnd,
     config: OscillatorConfig,
 }
 
 impl OscillatorUiBridge {
-    pub fn try_new(
-        module_id: ModuleId,
-        synth: Arc<Mutex<SynthEngine>>,
-        osc: &mut Oscillator,
-    ) -> Option<Self> {
+    pub fn try_new(osc: &mut Oscillator) -> Option<Self> {
         Some(Self {
-            synth,
-            module_id,
             ui_end: osc.ui_end.take()?,
             config: osc.get_config(),
         })
     }
 
-    pub fn sync(&mut self) {
-        let synth_lock = self.synth.lock();
-
-        if let Some(ModuleHandle::Oscillator(osc)) = synth_lock.get_module(self.module_id) {
-            self.config = osc.get_config();
-        }
-    }
-
     pub fn config(&self) -> &OscillatorConfig {
         &self.config
+    }
+
+    pub fn unison_mut(&mut self) -> &mut Unison {
+        self.ui_end.get_unison_mut()
     }
 
     pub fn get_spectrum(&mut self) -> &DisplaySpectrum {
@@ -87,33 +70,23 @@ impl OscillatorUiBridge {
     }
 
     pub fn set_unison_initial_phase(&mut self, idx: usize, value: StereoSample) {
-        if self.ui_end.set_unison_initial_phase(idx, value) {
-            self.config.unison[idx].initial_phase = value;
-        }
+        self.ui_end.set_unison_initial_phase(idx, value);
     }
 
     pub fn set_unison_phase_shift(&mut self, idx: usize, value: StereoSample) {
-        if self.ui_end.set_unison_phase_shift(idx, value) {
-            self.config.unison[idx].phase_shift = value;
-        }
+        self.ui_end.set_unison_phase_shift(idx, value);
     }
 
     pub fn set_unison_phase_shift_to(&mut self, idx: usize, value: StereoSample) {
-        if self.ui_end.set_unison_phase_shift_to(idx, value) {
-            self.config.unison[idx].phase_shift_to = value;
-        }
+        self.ui_end.set_unison_phase_shift_to(idx, value);
     }
 
     pub fn set_unison_gain(&mut self, idx: usize, value: StereoSample) {
-        if self.ui_end.set_unison_gain(idx, value) {
-            self.config.unison[idx].gain = value;
-        }
+        self.ui_end.set_unison_gain(idx, value);
     }
 
     pub fn set_unison_gain_to(&mut self, idx: usize, value: StereoSample) {
-        if self.ui_end.set_unison_gain_to(idx, value) {
-            self.config.unison[idx].gain_to = value;
-        }
+        self.ui_end.set_unison_gain_to(idx, value);
     }
 
     pub fn apply_unison_level_shape(
@@ -125,26 +98,13 @@ impl OscillatorUiBridge {
         self.ui_end.apply_unison_level_shape(center, level, to);
     }
 
-    pub fn randomize_phases(
-        &mut self,
-        amount: Sample,
-        stereo_spread: Sample,
-        dst: PhasesDst,
-    ) {
+    pub fn randomize_phases(&mut self, amount: Sample, stereo_spread: Sample, dst: PhasesDst) {
         self.ui_end.randomize_phases(amount, stereo_spread, dst);
     }
 }
 
 impl ModuleUiBridge for OscillatorUiBridge {
     fn update(&mut self) -> bool {
-        while let Some(update) = self.ui_end.pop_update() {
-            match update {
-                UiUpdate::RefreshState => {
-                    self.sync();
-                }
-            }
-        }
-
         false
     }
 }

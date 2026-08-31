@@ -130,20 +130,12 @@ impl OscillatorUI {
                 |_ui| {},
                 |ui| {
                     if ui.button("Ok").clicked() {
-                        bridge.randomize_phases(
-                            state.amount,
-                            state.stereo_spread,
-                            state.dst,
-                        );
+                        bridge.randomize_phases(state.amount, state.stereo_spread, state.dst);
                         ui.close();
                     }
 
                     if ui.button("Apply").clicked() {
-                        bridge.randomize_phases(
-                            state.amount,
-                            state.stereo_spread,
-                            state.dst,
-                        );
+                        bridge.randomize_phases(state.amount, state.stereo_spread, state.dst);
                     }
 
                     if ui.button("Cancel").clicked() {
@@ -156,17 +148,14 @@ impl OscillatorUI {
         !modal.should_close()
     }
 
-    fn show_phases(
-        ui: &mut Ui,
-        phases: impl Iterator<Item = StereoSample>,
-    ) -> Option<(usize, StereoSample)> {
+    fn show_phases(ui: &mut Ui, phases: &mut [StereoSample]) -> Option<(usize, StereoSample)> {
         let mut result = None;
 
         ui.horizontal(|ui| {
-            for (voice_idx, mut phase) in phases.enumerate() {
+            for (voice_idx, phase) in phases.iter_mut().enumerate() {
                 if ui
                     .add(
-                        Slider::stereo(&mut phase, 0.0..=1.0, None)
+                        Slider::stereo(phase, 0.0..=1.0, None)
                             .vertical()
                             .thickness(12.0)
                             .length(100.0)
@@ -174,7 +163,7 @@ impl OscillatorUI {
                     )
                     .changed()
                 {
-                    result = Some((voice_idx, phase));
+                    result = Some((voice_idx, *phase));
                 }
             }
         });
@@ -182,15 +171,12 @@ impl OscillatorUI {
         result
     }
 
-    fn show_gains(
-        ui: &mut Ui,
-        gains: impl Iterator<Item = StereoSample>,
-    ) -> Option<(usize, StereoSample)> {
+    fn show_gains(ui: &mut Ui, gains: &mut [StereoSample]) -> Option<(usize, StereoSample)> {
         let mut result = None;
 
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
-                for (voice_idx, gain) in gains.enumerate() {
+                for (voice_idx, gain) in gains.iter_mut().enumerate() {
                     let mut gain_db = gain.map(gain_to_db);
 
                     if ui
@@ -206,7 +192,8 @@ impl OscillatorUI {
                         )
                         .changed()
                     {
-                        result = Some((voice_idx, gain_db.map(db_to_gain)));
+                        *gain = gain_db.map(db_to_gain);
+                        result = Some((voice_idx, *gain));
                     }
                 }
             });
@@ -223,14 +210,15 @@ impl OscillatorUI {
         unison_state: &mut UnisonState,
         ui: &mut Ui,
     ) {
-        let unison = config.unison_voices;
+        let unison_voices = config.unison_voices;
 
         ui.label("Initial Phase");
         ui.vertical(|ui| {
-            if let Some((voice_idx, phase)) =
-                Self::show_phases(ui, (0..unison).map(|i| config.unison[i].initial_phase))
-            {
-                config.unison[voice_idx].initial_phase = phase;
+            let changed = {
+                let unison = bridge.unison_mut();
+                Self::show_phases(ui, &mut unison.initial_phases[..unison_voices])
+            };
+            if let Some((voice_idx, phase)) = changed {
                 bridge.set_unison_initial_phase(voice_idx, phase);
             }
 
@@ -250,10 +238,11 @@ impl OscillatorUI {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
-                    if let Some((voice_idx, phase)) =
-                        Self::show_phases(ui, (0..unison).map(|i| config.unison[i].phase_shift))
-                    {
-                        config.unison[voice_idx].phase_shift = phase;
+                    let changed = {
+                        let unison = bridge.unison_mut();
+                        Self::show_phases(ui, &mut unison.phase_shifts[..unison_voices])
+                    };
+                    if let Some((voice_idx, phase)) = changed {
                         bridge.set_unison_phase_shift(voice_idx, phase);
                     }
 
@@ -274,10 +263,11 @@ impl OscillatorUI {
                 });
 
                 ui.vertical(|ui| {
-                    if let Some((voice_idx, phase)) =
-                        Self::show_phases(ui, (0..unison).map(|i| config.unison[i].phase_shift_to))
-                    {
-                        config.unison[voice_idx].phase_shift_to = phase;
+                    let changed = {
+                        let unison = bridge.unison_mut();
+                        Self::show_phases(ui, &mut unison.phase_shifts_to[..unison_voices])
+                    };
+                    if let Some((voice_idx, phase)) = changed {
                         bridge.set_unison_phase_shift_to(voice_idx, phase);
                     }
 
@@ -313,10 +303,11 @@ impl OscillatorUI {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
-                    if let Some((voice_idx, gain)) =
-                        Self::show_gains(ui, (0..unison).map(|i| config.unison[i].gain))
-                    {
-                        config.unison[voice_idx].gain = gain;
+                    let changed = {
+                        let unison = bridge.unison_mut();
+                        Self::show_gains(ui, &mut unison.gains[..unison_voices])
+                    };
+                    if let Some((voice_idx, gain)) = changed {
                         bridge.set_unison_gain(voice_idx, gain);
                     }
 
@@ -337,10 +328,11 @@ impl OscillatorUI {
                 });
 
                 ui.vertical(|ui| {
-                    if let Some((voice_idx, gain)) =
-                        Self::show_gains(ui, (0..unison).map(|i| config.unison[i].gain_to))
-                    {
-                        config.unison[voice_idx].gain_to = gain;
+                    let changed = {
+                        let unison = bridge.unison_mut();
+                        Self::show_gains(ui, &mut unison.gains_to[..unison_voices])
+                    };
+                    if let Some((voice_idx, gain)) = changed {
                         bridge.set_unison_gain_to(voice_idx, gain);
                     }
 

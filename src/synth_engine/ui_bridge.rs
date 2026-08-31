@@ -137,9 +137,9 @@ impl UiBridge {
         let engine_ref = engine_lock.deref_mut();
 
         let bridge = match engine_ref.get_module_mut(id)? {
-            ModuleHandle::Oscillator(m) => ModuleBridge::Oscillator(Box::new(
-                OscillatorUiBridge::try_new(id, engine.clone(), m)?,
-            )),
+            ModuleHandle::Oscillator(m) => {
+                ModuleBridge::Oscillator(Box::new(OscillatorUiBridge::try_new(m)?))
+            }
             ModuleHandle::Envelope(m) => {
                 ModuleBridge::Envelope(Box::new(EnvelopeUiBridge::try_new(m)?))
             }

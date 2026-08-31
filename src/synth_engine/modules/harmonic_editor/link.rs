@@ -57,7 +57,7 @@ pub enum UiEvent {
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
-    display_spectrum: triple_buffer::Output<Box<DisplaySpectrum>>,
+    display_spectrum: triple_buffer::Output<DisplaySpectrum>,
     harmonics: triple_buffer::Output<Harmonics>,
 }
 
@@ -113,7 +113,7 @@ impl UiEnd {
 
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
-    display_spectrum: triple_buffer::Input<Box<DisplaySpectrum>>,
+    display_spectrum: triple_buffer::Input<DisplaySpectrum>,
     harmonics: triple_buffer::Input<Harmonics>,
 }
 
@@ -149,7 +149,7 @@ impl AudioEnd {
 pub fn create_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
     let (display_spectrum_input, display_spectrum_output) =
-        triple_buffer(&Box::new([ComplexSample::ZERO; DISPLAY_SPECTRUM_SIZE]));
+        triple_buffer(&[ComplexSample::ZERO; DISPLAY_SPECTRUM_SIZE]);
     let (harmonics_input, harmonics_output) = triple_buffer(&Harmonics::default());
 
     (

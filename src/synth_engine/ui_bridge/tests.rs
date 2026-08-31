@@ -5,14 +5,14 @@ use parking_lot::Mutex;
 use crate::{
     engine_factory::{EngineHandle, UiConfigHandle},
     synth_engine::{
+        EngineConfig, EngineParams, Input, InputId, LinkConfig, ModuleConfig, ModuleId,
+        OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
         harmonic_editor::HarmonicEditorConfig,
         oscillator::OscillatorConfig,
         ui_bridge::{
-            ui_config::{UiConfig, UiModuleConfig},
             UiBridge,
+            ui_config::{UiConfig, UiModuleConfig},
         },
-        EngineConfig, EngineParams, Input, InputId, LinkConfig, ModuleConfig, ModuleId, Sample,
-        StereoSample, SynthEngine, OUTPUT_MODULE_ID,
     },
 };
 
@@ -121,13 +121,17 @@ fn get_linkable_inputs_includes_alternate_direct_source() {
 fn get_linkable_inputs_excludes_self_and_type_mismatch() {
     let bridge = make_bridge(minimal_engine());
 
-    assert!(bridge
-        .get_linkable_inputs(OSCILLATOR_ID, OSCILLATOR_ID)
-        .is_empty());
-    assert!(bridge
-        .get_linkable_inputs(OUTPUT_MODULE_ID, OSCILLATOR_ID)
-        .iter()
-        .all(|input| input.input_type != Input::Spectrum));
+    assert!(
+        bridge
+            .get_linkable_inputs(OSCILLATOR_ID, OSCILLATOR_ID)
+            .is_empty()
+    );
+    assert!(
+        bridge
+            .get_linkable_inputs(OUTPUT_MODULE_ID, OSCILLATOR_ID)
+            .iter()
+            .all(|input| input.input_type != Input::Spectrum)
+    );
 }
 
 #[test]

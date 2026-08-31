@@ -176,13 +176,43 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
 
     pub fn for_triggered_voices(
         &mut self,
-        f: impl FnMut(&mut Self, &VoiceTarget, &mut VoicesLayout<SamplesOutput>),
+        mut f: impl FnMut(&mut Self, &VoiceTarget),
     ) -> &mut Self {
         if self.ctx.params.trigger_stage {
-            self.visit_voices(f);
+            for channel_idx in 0..NUM_CHANNELS {
+                for (seq_idx, voice) in self.ctx.params.active_voices.iter().enumerate() {
+                    let target = VoiceTarget::new(channel_idx, voice, seq_idx);
+
+                    f(self, &target);
+                }
+            }
         }
 
         self
+    }
+
+    fn audio_voice_state(&self, target: &VoiceTarget) -> AudioVoiceState {
+        AudioVoiceState {
+            // Audio is sample-aligned: no trigger → offset 0; else silence [0..offset].
+            offset: target.triggered.unwrap_or(0),
+            bandwidth: self.bandwidth(target.note_bandwidth),
+        }
+    }
+
+    pub fn for_triggered_voice<'voice>(
+        &'voice mut self,
+        target: &'voice VoiceTarget,
+    ) -> VoiceRouter<'voice, 'f, 'c, AudioRouterType>
+    where
+        'f: 'voice,
+    {
+        let state = self.audio_voice_state(target);
+
+        VoiceRouter {
+            factory: self,
+            target,
+            state,
+        }
     }
 
     pub fn for_voice<'voice>(
@@ -196,15 +226,10 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
     where
         'f: 'voice,
     {
-        let triggered = target.triggered;
         let samples = self.params().samples;
-        // Audio is sample-aligned: no trigger → offset 0; else silence [0..offset].
-        let state = AudioVoiceState {
-            offset: triggered.unwrap_or(0),
-            bandwidth: self.bandwidth(target.note_bandwidth),
-        };
+        let state = self.audio_voice_state(target);
 
-        if let Some(offset) = triggered {
+        if let Some(offset) = target.triggered {
             outputs[target.channel_idx][target.voice_idx].buffer[..offset.min(samples)].fill(0.0);
         }
 
