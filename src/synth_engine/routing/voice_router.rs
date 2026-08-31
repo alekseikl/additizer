@@ -118,6 +118,16 @@ impl<'f, 'c, D: RouterDataType> RouterFactory<'f, 'c, D> {
         &self.ctx.params
     }
 
+    pub fn for_channels(&mut self, mut f: impl FnMut(&mut Self, usize)) -> &mut Self {
+        if !self.ctx.params.trigger_stage {
+            for channel_idx in 0..NUM_CHANNELS {
+                f(self, channel_idx);
+            }
+        }
+
+        self
+    }
+
     fn bandwidth(&self, note_bandwidth: usize) -> usize {
         let bandwidth = self.params().bandwidth;
         let bandwidth = if bandwidth == 0 {
@@ -131,7 +141,7 @@ impl<'f, 'c, D: RouterDataType> RouterFactory<'f, 'c, D> {
 }
 
 impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
-    pub fn with_output_slot(
+    fn visit_voices(
         &mut self,
         mut f: impl FnMut(&mut Self, &VoiceTarget, &mut VoicesLayout<SamplesOutput>),
     ) {
@@ -151,6 +161,28 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
         self.ctx.outputs_arena.samples[self.data_type.samples_slot]
             .slot
             .replace(slot);
+    }
+
+    pub fn for_voices(
+        &mut self,
+        f: impl FnMut(&mut Self, &VoiceTarget, &mut VoicesLayout<SamplesOutput>),
+    ) -> &mut Self {
+        if !self.ctx.params.trigger_stage {
+            self.visit_voices(f);
+        }
+
+        self
+    }
+
+    pub fn for_triggered_voices(
+        &mut self,
+        f: impl FnMut(&mut Self, &VoiceTarget, &mut VoicesLayout<SamplesOutput>),
+    ) -> &mut Self {
+        if self.ctx.params.trigger_stage {
+            self.visit_voices(f);
+        }
+
+        self
     }
 
     pub fn for_voice<'voice>(
@@ -193,10 +225,10 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
 }
 
 impl<'f, 'c> RouterFactory<'f, 'c, ControlRouterType> {
-    pub fn with_output_slot(
+    pub fn for_voices(
         &mut self,
         mut f: impl FnMut(&mut Self, &VoiceTarget, &mut VoicesLayout<SamplesOutput>),
-    ) {
+    ) -> &mut Self {
         let mut slot = self.ctx.outputs_arena.samples[self.data_type.samples_slot]
             .slot
             .take()
@@ -217,6 +249,8 @@ impl<'f, 'c> RouterFactory<'f, 'c, ControlRouterType> {
         self.ctx.outputs_arena.samples[self.data_type.samples_slot]
             .slot
             .replace(slot);
+
+        self
     }
 
     pub fn for_voice<'voice>(
@@ -262,10 +296,10 @@ impl<'f, 'c> RouterFactory<'f, 'c, ControlRouterType> {
 }
 
 impl<'f, 'c> RouterFactory<'f, 'c, SpectralRouterType> {
-    pub fn with_output_slot(
+    pub fn for_voices(
         &mut self,
         mut f: impl FnMut(&mut Self, &VoiceTarget, &mut VoicesLayout<SpectralOutput>),
-    ) {
+    ) -> &mut Self {
         let mut slot = self.ctx.outputs_arena.spectral[self.data_type.spectral_slot]
             .slot
             .take()
@@ -282,6 +316,8 @@ impl<'f, 'c> RouterFactory<'f, 'c, SpectralRouterType> {
         self.ctx.outputs_arena.spectral[self.data_type.spectral_slot]
             .slot
             .replace(slot);
+
+        self
     }
 
     pub fn for_voice<'voice>(

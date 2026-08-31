@@ -453,13 +453,13 @@ impl SynthModule for Mixer {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_audio(self.id, self.output_slot, |rf, target, outputs| {
-            self.process_voice(target, outputs, rf);
-        });
-
-        for channel_idx in 0..NUM_CHANNELS {
-            self.channel_params[channel_idx]
-                .advance_smoothers(&ctx.params.smooth_params, ctx.params.samples);
-        }
+        ctx.audio(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            })
+            .for_channels(|rf, channel_idx| {
+                self.channel_params[channel_idx]
+                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
+            });
     }
 }

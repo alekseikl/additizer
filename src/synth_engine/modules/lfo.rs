@@ -381,15 +381,13 @@ impl SynthModule for Lfo {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_control(self.id, self.output_slot, |rf, target, outputs| {
-            self.process_voice(target, outputs, rf);
-        });
-
-        if !ctx.params.trigger_stage {
-            for channel_idx in 0..NUM_CHANNELS {
+        ctx.control(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            })
+            .for_channels(|rf, channel_idx| {
                 self.channel_params[channel_idx]
-                    .advance_smoothers(&ctx.params.smooth_params, ctx.params.samples);
-            }
-        }
+                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
+            });
     }
 }

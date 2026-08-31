@@ -260,8 +260,9 @@ impl SynthModule for SpectralFilter {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_spectral(self.id, self.output_slot, |rf, target, outputs| {
-            self.process_voice(target, outputs, rf);
-        });
+        ctx.spectral(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
     }
 }

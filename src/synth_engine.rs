@@ -832,6 +832,7 @@ impl SynthEngine {
             audio_end: &mut self.audio_end,
             params: ProcessParams {
                 trigger_stage: true,
+                has_triggered_voices: !triggered_voices.is_empty(),
                 samples,
                 sample_rate,
                 smooth_params,
@@ -844,10 +845,7 @@ impl SynthEngine {
 
         if !triggered_voices.is_empty() {
             for module_id in &self.execution_order {
-                if let Some(module) = self.modules.get_mut(module_id)
-                    && (module.output_type() != DataType::Audio
-                        || matches!(module, ModuleHandle::Oscillator(_)))
-                {
+                if let Some(module) = self.modules.get_mut(module_id) {
                     module.process(&mut ctx);
                 }
             }

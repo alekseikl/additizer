@@ -507,8 +507,9 @@ impl SynthModule for Envelope {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.for_control(self.id, self.output_slot, |rf, target, outputs| {
-            self.process_voice(target, outputs, rf);
-        });
+        ctx.control(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
     }
 }

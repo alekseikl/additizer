@@ -256,20 +256,16 @@ impl SynthModule for ExternalParam {
 
     fn process(&mut self, ctx: &mut ProcessContext) {
         let samples = ctx.params.samples;
-        let read_values = ctx.params.trigger_stage
-            || ctx
-                .params
-                .active_voices
-                .iter()
-                .all(|voice| voice.triggered().is_none());
+        let read_values = ctx.params.trigger_stage || !ctx.params.has_triggered_voices;
 
         if read_values {
             self.values.read_and_reset(&mut self.mono_buff[..samples]);
         }
 
-        ctx.for_control(self.id, self.output_slot, |rf, target, outputs| {
-            self.process_voice(target, outputs, rf);
-        });
+        ctx.control(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
 
         if ctx.params.needs_update_ui && ctx.params.active_voices.is_empty() {
             self.audio_end.update_value(self.mono_buff[0]);

@@ -1,9 +1,8 @@
 use crate::synth_engine::{
     ModuleId, Sample, SmoothedSampleParams,
-    buffer::VoicesLayout,
     routing::{
         AudioRouterType, ControlRouterType, OutputRouterType, OutputsArena, RouterFactory,
-        SamplesOutput, SpectralOutput, SpectralRouterType,
+        SpectralRouterType,
     },
     ui_bridge::AudioEnd,
     voices_handler::PlayingVoice,
@@ -11,6 +10,7 @@ use crate::synth_engine::{
 
 pub struct ProcessParams<'a> {
     pub trigger_stage: bool,
+    pub has_triggered_voices: bool,
     pub samples: usize,
     pub sample_rate: Sample,
     pub needs_update_ui: bool,
@@ -49,16 +49,12 @@ impl VoiceTarget {
 }
 
 impl<'c> ProcessContext<'c> {
-    pub fn for_audio<'f>(
+    pub fn audio<'f>(
         &'f mut self,
         module_id: ModuleId,
         output_slot: usize,
-        f: impl FnMut(
-            &mut RouterFactory<'f, 'c, AudioRouterType>,
-            &VoiceTarget,
-            &mut VoicesLayout<SamplesOutput>,
-        ),
-    ) where
+    ) -> RouterFactory<'f, 'c, AudioRouterType>
+    where
         'c: 'f,
     {
         RouterFactory {
@@ -68,19 +64,14 @@ impl<'c> ProcessContext<'c> {
                 samples_slot: output_slot,
             },
         }
-        .with_output_slot(f);
     }
 
-    pub fn for_control<'f>(
+    pub fn control<'f>(
         &'f mut self,
         module_id: ModuleId,
         output_slot: usize,
-        f: impl FnMut(
-            &mut RouterFactory<'f, 'c, ControlRouterType>,
-            &VoiceTarget,
-            &mut VoicesLayout<SamplesOutput>,
-        ),
-    ) where
+    ) -> RouterFactory<'f, 'c, ControlRouterType>
+    where
         'c: 'f,
     {
         RouterFactory {
@@ -90,19 +81,14 @@ impl<'c> ProcessContext<'c> {
                 samples_slot: output_slot,
             },
         }
-        .with_output_slot(f);
     }
 
-    pub fn for_spectral<'f>(
+    pub fn spectral<'f>(
         &'f mut self,
         module_id: ModuleId,
         output_slot: usize,
-        f: impl FnMut(
-            &mut RouterFactory<'f, 'c, SpectralRouterType>,
-            &VoiceTarget,
-            &mut VoicesLayout<SpectralOutput>,
-        ),
-    ) where
+    ) -> RouterFactory<'f, 'c, SpectralRouterType>
+    where
         'c: 'f,
     {
         RouterFactory {
@@ -112,7 +98,6 @@ impl<'c> ProcessContext<'c> {
                 spectral_slot: output_slot,
             },
         }
-        .with_output_slot(f);
     }
 
     pub fn for_output<'f>(

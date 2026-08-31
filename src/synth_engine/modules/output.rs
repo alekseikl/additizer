@@ -176,6 +176,10 @@ impl SynthModule for Output {
     fn process_ui_events(&mut self) {}
 
     fn process(&mut self, ctx: &mut ProcessContext) {
+        if ctx.params.trigger_stage {
+            return;
+        }
+
         let mut rf = ctx.for_output(self.id());
         let num_active_voices = rf.params().active_voices.len();
 

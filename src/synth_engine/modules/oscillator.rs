@@ -1177,19 +1177,16 @@ impl SynthModule for Oscillator {
     }
 
     fn process(&mut self, ctx: &mut ProcessContext) {
-        if ctx.params.trigger_stage {
-            ctx.for_audio(self.id, self.output_slot, |rf, target, outputs| {
+        ctx.audio(self.id, self.output_slot)
+            .for_triggered_voices(|rf, target, outputs| {
                 self.build_this_frame_wave(target, outputs, rf);
-            });
-        } else {
-            ctx.for_audio(self.id, self.output_slot, |rf, target, outputs| {
+            })
+            .for_voices(|rf, target, outputs| {
                 self.process_voice(target, outputs, rf);
-            });
-
-            for channel_idx in 0..NUM_CHANNELS {
+            })
+            .for_channels(|rf, channel_idx| {
                 self.channel_params[channel_idx]
-                    .advance_smoothers(&ctx.params.smooth_params, ctx.params.samples);
-            }
-        }
+                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
+            });
     }
 }
