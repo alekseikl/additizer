@@ -345,14 +345,14 @@ impl SynthModule for Lfo {
             for event in events {
                 if let VoiceEvent::Reset {
                     voice_idx,
-                    prev_voice_idx,
+                    replaced_voice_idx,
                     ..
                 } = event
                 {
-                    let phase = if let Some(prev_voice_idx) = prev_voice_idx
+                    let phase = if let Some(replaced_voice_idx) = replaced_voice_idx
                         && self.params.steal_phase
                     {
-                        channel[*prev_voice_idx].phase
+                        channel[*replaced_voice_idx].phase
                     } else {
                         Phase::ZERO
                     };

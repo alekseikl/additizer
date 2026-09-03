@@ -112,13 +112,13 @@ fn poly_single_note_on() {
     assert_eq!(trig, 1);
     match &ev.events()[0] {
         VoiceEvent::Reset {
-            prev_voice_idx,
+            replaced_voice_idx,
             prev_pitch,
             pitch,
             velocity,
             ..
         } => {
-            assert_eq!(*prev_voice_idx, None);
+            assert_eq!(*replaced_voice_idx, None);
             assert_eq!(*prev_pitch, None);
             assert_eq!(*pitch, note_pitch(60));
             assert_eq!(*velocity, 1.0);

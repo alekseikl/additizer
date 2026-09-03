@@ -130,7 +130,7 @@ pub enum Expression {
 pub enum VoiceEvent {
     Reset {
         voice_idx: usize,
-        prev_voice_idx: Option<usize>,
+        replaced_voice_idx: Option<usize>,
         prev_pitch: Option<Sample>,
         pitch: Sample,
         velocity: Sample,

@@ -125,14 +125,14 @@ impl VoiceEvents {
     fn reset(
         &mut self,
         voice_idx: VoiceIdx,
-        prev_voice_idx: Option<VoiceIdx>,
+        replaced_voice_idx: Option<VoiceIdx>,
         prev_pitch: Option<Sample>,
         note: Note,
         offset: usize,
     ) {
         self.events.push(VoiceEvent::Reset {
             voice_idx: voice_idx as usize,
-            prev_voice_idx: prev_voice_idx.map(|idx| idx as usize),
+            replaced_voice_idx: replaced_voice_idx.map(|idx| idx as usize),
             prev_pitch,
             pitch: Self::note_to_pitch(note.note),
             velocity: note.velocity,
@@ -207,7 +207,7 @@ impl VoicesHandler {
 
     fn grab_and_reset(
         &mut self,
-        prev_voice_idx: Option<VoiceIdx>,
+        replaced_voice_idx: Option<VoiceIdx>,
         note: Note,
         offset: usize,
         events: &mut VoiceEvents,
@@ -237,7 +237,7 @@ impl VoicesHandler {
 
         let prev_pitch = self.prev_notes[note.channel.min(MAX_MIDI_CHANNEL) as usize]
             .map(VoiceEvents::note_to_pitch);
-        events.reset(voice_idx, prev_voice_idx, prev_pitch, note, offset);
+        events.reset(voice_idx, replaced_voice_idx, prev_pitch, note, offset);
     }
 
     fn legato(&mut self, voice_idx: VoiceIdx, note: Note, offset: usize, events: &mut VoiceEvents) {
@@ -295,7 +295,7 @@ impl VoicesHandler {
     }
 
     fn note_on_polyphonic(&mut self, new_note: Note, offset: usize, events: &mut VoiceEvents) {
-        let mut prev_voice_idx = None;
+        let mut replaced_voice_idx = None;
 
         // Kill same releasing note
         if let Some(idx) = self
@@ -306,7 +306,7 @@ impl VoicesHandler {
             let releasing = self.releasing.remove(idx).unwrap();
 
             self.kill(releasing, offset, events);
-            prev_voice_idx = Some(releasing.voice_idx);
+            replaced_voice_idx = Some(releasing.voice_idx);
         }
 
         // All available voices have been occupied, kill the oldest one
@@ -319,7 +319,7 @@ impl VoicesHandler {
             }
         }
 
-        self.grab_and_reset(prev_voice_idx, new_note, offset, events);
+        self.grab_and_reset(replaced_voice_idx, new_note, offset, events);
     }
 
     fn note_on_impl(&mut self, new_note: Note, offset: usize, events: &mut VoiceEvents) {

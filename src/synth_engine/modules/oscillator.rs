@@ -891,10 +891,10 @@ impl Oscillator {
             true,
         ) >= 0.5;
 
-        if let Some(prev_voice_idx) = phase_reset.steal_from
+        if let Some(replaced_voice_idx) = phase_reset.steal_from
             && steal_phase
         {
-            voices[voice_idx].phases = voices[prev_voice_idx].phases;
+            voices[voice_idx].phases = voices[replaced_voice_idx].phases;
         } else if self.params.phase_random > 1e-6 {
             for (phase, unison_voice, random) in izip!(
                 voice.phases.iter_mut(),
@@ -1047,7 +1047,7 @@ impl Oscillator {
     fn handle_trigger(
         &mut self,
         channel_idx: usize,
-        prev_voice_idx: Option<usize>,
+        replaced_voice_idx: Option<usize>,
         prev_pitch: Option<Sample>,
         voice_idx: usize,
         pitch: Sample,
@@ -1064,7 +1064,7 @@ impl Oscillator {
 
         voice.pitch = pitch;
         voice.phase_reset = Some(PhaseReset {
-            steal_from: prev_voice_idx.or(self.last_voice_idx),
+            steal_from: replaced_voice_idx.or(self.last_voice_idx),
         });
     }
 
@@ -1131,7 +1131,7 @@ impl SynthModule for Oscillator {
             match event {
                 VoiceEvent::Reset {
                     voice_idx,
-                    prev_voice_idx,
+                    replaced_voice_idx,
                     prev_pitch,
                     pitch,
                     ..
@@ -1139,7 +1139,7 @@ impl SynthModule for Oscillator {
                     for channel_idx in 0..NUM_CHANNELS {
                         self.handle_trigger(
                             channel_idx,
-                            *prev_voice_idx,
+                            *replaced_voice_idx,
                             *prev_pitch,
                             *voice_idx,
                             *pitch,
