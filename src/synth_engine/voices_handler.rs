@@ -13,6 +13,8 @@ use crate::{
 
 pub const MAX_AVAILABLE_VOICES: usize = MAX_VOICES - 4;
 pub const BAND_LIMIT_FREQUENCY: Sample = 24_000.0;
+const NUM_MIDI_CHANNELS: usize = 16;
+const MAX_MIDI_CHANNEL: u8 = NUM_MIDI_CHANNELS as u8 - 1;
 
 type VoiceIdx = u8;
 
@@ -102,7 +104,7 @@ pub type DecayingVoices = SmallVec<[DecayingVoice; MAX_VOICES]>;
 pub type PlayingVoices = SmallVec<[PlayingVoice; MAX_VOICES]>;
 
 pub struct VoiceEvents {
-    events: SmallVec<[VoiceEvent; 6]>,
+    events: SmallVec<[VoiceEvent; 4]>,
 }
 
 impl VoiceEvents {
@@ -124,12 +126,14 @@ impl VoiceEvents {
         &mut self,
         voice_idx: VoiceIdx,
         prev_voice_idx: Option<VoiceIdx>,
+        prev_pitch: Option<Sample>,
         note: Note,
         offset: usize,
     ) {
         self.events.push(VoiceEvent::Reset {
             voice_idx: voice_idx as usize,
             prev_voice_idx: prev_voice_idx.map(|idx| idx as usize),
+            prev_pitch,
             pitch: Self::note_to_pitch(note.note),
             velocity: note.velocity,
             offset,
@@ -179,6 +183,7 @@ pub struct VoicesHandler {
     killing: VecDeque<PlayingNote>,
     terminate: Vec<Note>,
     free_voices: Vec<VoiceIdx>,
+    prev_notes: [Option<u8>; NUM_MIDI_CHANNELS],
     triggers: MonoVoicesLayout<Option<u16>>,
     seq_idx: u32,
 }
@@ -194,6 +199,7 @@ impl VoicesHandler {
             killing: VecDeque::with_capacity(MAX_VOICES),
             terminate: Vec::with_capacity(64),
             free_voices: (0..(MAX_VOICES as u8)).rev().collect(),
+            prev_notes: [None; NUM_MIDI_CHANNELS],
             triggers: new_mono_voices_layout(),
             seq_idx: 0,
         }
@@ -228,7 +234,10 @@ impl VoicesHandler {
         });
         self.seq_idx = self.seq_idx.wrapping_add(1);
         self.triggers[voice_idx as usize] = Some(offset as u16);
-        events.reset(voice_idx, prev_voice_idx, note, offset);
+
+        let prev_pitch = self.prev_notes[note.channel.min(MAX_MIDI_CHANNEL) as usize]
+            .map(VoiceEvents::note_to_pitch);
+        events.reset(voice_idx, prev_voice_idx, prev_pitch, note, offset);
     }
 
     fn legato(&mut self, voice_idx: VoiceIdx, note: Note, offset: usize, events: &mut VoiceEvents) {
@@ -335,6 +344,8 @@ impl VoicesHandler {
         } else {
             self.note_on_polyphonic(new_note, offset, events);
         }
+
+        self.prev_notes[new_note.channel.min(MAX_MIDI_CHANNEL) as usize] = Some(new_note.note);
     }
 
     pub fn reset_triggers(&mut self) {

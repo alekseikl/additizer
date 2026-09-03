@@ -113,11 +113,13 @@ fn poly_single_note_on() {
     match &ev.events()[0] {
         VoiceEvent::Reset {
             prev_voice_idx,
+            prev_pitch,
             pitch,
             velocity,
             ..
         } => {
             assert_eq!(*prev_voice_idx, None);
+            assert_eq!(*prev_pitch, None);
             assert_eq!(*pitch, note_pitch(60));
             assert_eq!(*velocity, 1.0);
         }
@@ -169,6 +171,79 @@ fn poly_multiple_notes_get_unique_voices() {
     indices.sort();
     indices.dedup();
     assert_eq!(indices.len(), orig_len);
+}
+
+#[test]
+fn reset_prev_pitch_follows_last_note_on_channel() {
+    let mut h = handler(4);
+    let mut ev = events();
+
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    match &ev.events()[0] {
+        VoiceEvent::Reset { prev_pitch, .. } => assert_eq!(*prev_pitch, None),
+        _ => panic!("expected Reset"),
+    }
+
+    ev = events();
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    match &ev.events()[0] {
+        VoiceEvent::Reset { prev_pitch, .. } => {
+            assert_eq!(*prev_pitch, Some(note_pitch(60)));
+        }
+        _ => panic!("expected Reset"),
+    }
+
+    ev = events();
+    h.handle_note_on(
+        Note {
+            channel: 1,
+            note: 67,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    match &ev.events()[0] {
+        VoiceEvent::Reset { prev_pitch, .. } => assert_eq!(*prev_pitch, None),
+        _ => panic!("expected Reset"),
+    }
+
+    ev = events();
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 72,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    match &ev.events()[0] {
+        VoiceEvent::Reset { prev_pitch, .. } => {
+            assert_eq!(*prev_pitch, Some(note_pitch(64)));
+        }
+        _ => panic!("expected Reset"),
+    }
 }
 
 #[test]

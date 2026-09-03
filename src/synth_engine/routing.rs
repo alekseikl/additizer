@@ -131,6 +131,7 @@ pub enum VoiceEvent {
     Reset {
         voice_idx: usize,
         prev_voice_idx: Option<usize>,
+        prev_pitch: Option<Sample>,
         pitch: Sample,
         velocity: Sample,
         offset: usize, // In-block sample offset

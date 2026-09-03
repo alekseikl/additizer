@@ -1048,18 +1048,13 @@ impl Oscillator {
         &mut self,
         channel_idx: usize,
         prev_voice_idx: Option<usize>,
+        prev_pitch: Option<Sample>,
         voice_idx: usize,
         pitch: Sample,
     ) {
         let voices = &mut self.voices[channel_idx];
 
-        if let Some(prev_voice_idx) = prev_voice_idx {
-            let prev_voice_state = &voices[prev_voice_idx];
-            let prev_pitch = prev_voice_state
-                .glide
-                .as_ref()
-                .map_or(prev_voice_state.pitch, |g| g.current_pitch);
-
+        if let Some(prev_pitch) = prev_pitch {
             voices[voice_idx].glide = Some(Glide::new(prev_pitch));
         } else {
             voices[voice_idx].glide = None;
@@ -1137,11 +1132,18 @@ impl SynthModule for Oscillator {
                 VoiceEvent::Reset {
                     voice_idx,
                     prev_voice_idx,
+                    prev_pitch,
                     pitch,
                     ..
                 } => {
                     for channel_idx in 0..NUM_CHANNELS {
-                        self.handle_trigger(channel_idx, *prev_voice_idx, *voice_idx, *pitch);
+                        self.handle_trigger(
+                            channel_idx,
+                            *prev_voice_idx,
+                            *prev_pitch,
+                            *voice_idx,
+                            *pitch,
+                        );
                     }
 
                     self.last_voice_idx = Some(*voice_idx);
