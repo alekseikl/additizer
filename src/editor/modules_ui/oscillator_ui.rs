@@ -61,7 +61,11 @@ impl OscillatorUI {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Center");
-                    ui.add(Slider::stereo(&mut state.center, 0.0..=1.0, None).default(0.5));
+                    ui.add(
+                        Slider::stereo(&mut state.center, 0.0..=1.0, None)
+                            .default(0.5)
+                            .show_label(),
+                    );
                     ui.end_row();
 
                     ui.label("Level");
@@ -69,7 +73,8 @@ impl OscillatorUI {
                         Slider::stereo(&mut state.level, -48.0..=6.0, None)
                             .over(0.0)
                             .units(Units::Db)
-                            .default(0.0),
+                            .default(0.0)
+                            .show_label(),
                     );
                     ui.end_row();
                 });
@@ -115,11 +120,19 @@ impl OscillatorUI {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Amount");
-                    ui.add(Slider::mono(&mut state.amount, 0.0..=1.0, None).default(0.2));
+                    ui.add(
+                        Slider::mono(&mut state.amount, 0.0..=1.0, None)
+                            .default(0.2)
+                            .show_label(),
+                    );
                     ui.end_row();
 
                     ui.label("Stereo spread");
-                    ui.add(Slider::mono(&mut state.stereo_spread, 0.0..=1.0, None).default(0.5));
+                    ui.add(
+                        Slider::mono(&mut state.stereo_spread, 0.0..=1.0, None)
+                            .default(0.5)
+                            .show_label(),
+                    );
                     ui.end_row();
                 });
 

@@ -8,7 +8,10 @@ use crate::{
     },
     synth_engine::{
         ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, Sample, StereoSample,
-        harmonic_editor::{EditRequest, HarmonicEditorUiBridge, HarmonicsRange, sawtooth_phase},
+        harmonic_editor::{
+            EditRequest, HarmonicEditorUiBridge, HarmonicsRange, MAX_LEVEL_DB, MIN_LEVEL_DB,
+            sawtooth_phase,
+        },
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::db_to_gain,
@@ -17,23 +20,25 @@ use egui::{ComboBox, DragValue, Grid, Id, Modal, ScrollArea, Sides, Ui, Vec2, st
 
 const MIN_HARMONIC: u16 = 1;
 const MAX_HARMONIC: u16 = (SPECTRAL_BUFFER_SIZE - 1) as u16;
-const MIN_GAIN_DB: Sample = -48.0;
-const GAIN_DB_RANGE: std::ops::RangeInclusive<Sample> = MIN_GAIN_DB..=24.0;
+const GAIN_DB_RANGE: std::ops::RangeInclusive<Sample> = MIN_LEVEL_DB..=MAX_LEVEL_DB;
+const SLOPE_DB_RANGE: std::ops::RangeInclusive<Sample> = 0.0..=-MIN_LEVEL_DB;
 const HARMONICS_HEIGHT: f32 = 160.0;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum EditKind {
     Level,
     RandomLevels,
+    Slope,
 }
 
 impl EditKind {
-    const ALL: &[Self] = &[Self::Level, Self::RandomLevels];
+    const ALL: &[Self] = &[Self::Level, Self::RandomLevels, Self::Slope];
 
     fn label(self) -> &'static str {
         match self {
-            Self::Level => "Set level",
-            Self::RandomLevels => "Set random",
+            Self::Level => "Level",
+            Self::RandomLevels => "Random",
+            Self::Slope => "Slope",
         }
     }
 }
@@ -42,9 +47,12 @@ struct EditFormState {
     kind: EditKind,
     range: HarmonicsRange,
     gain_db: StereoSample,
-    level_from: Sample,
-    level_to: Sample,
+    random_level_from: Sample,
+    random_level_to: Sample,
     stereo: Sample,
+    slope_level_from: Sample,
+    slope: Sample,
+    harmonic_from: u16,
 }
 
 impl Default for EditFormState {
@@ -53,9 +61,12 @@ impl Default for EditFormState {
             kind: EditKind::Level,
             range: HarmonicsRange::default(),
             gain_db: StereoSample::ZERO,
-            level_from: -12.0,
-            level_to: 0.0,
+            random_level_from: -24.0,
+            random_level_to: 6.0,
             stereo: 0.1,
+            slope_level_from: 0.0,
+            slope: -6.0,
+            harmonic_from: MIN_HARMONIC,
         }
     }
 }
@@ -66,7 +77,7 @@ impl EditFormState {
             EditKind::Level => EditRequest::Gain {
                 range: self.range,
                 gain: self.gain_db.map(|dbs| {
-                    if dbs <= MIN_GAIN_DB {
+                    if dbs <= MIN_LEVEL_DB {
                         0.0
                     } else {
                         db_to_gain(dbs)
@@ -75,9 +86,15 @@ impl EditFormState {
             },
             EditKind::RandomLevels => EditRequest::RandomLevel {
                 range: self.range,
-                level_from: self.level_from,
-                level_to: self.level_to,
+                level_from: self.random_level_from,
+                level_to: self.random_level_to,
                 stereo: self.stereo,
+            },
+            EditKind::Slope => EditRequest::Slope {
+                range: self.range,
+                harmonic_from: self.harmonic_from,
+                level_from: self.slope_level_from,
+                slope: self.slope,
             },
         }
     }
@@ -285,45 +302,96 @@ impl HarmonicEditorUI {
                         });
                         ui.end_row();
 
-                        if state.kind == EditKind::RandomLevels {
-                            ui.label("From");
-                            ui.add(
-                                Slider::mono(&mut state.level_from, GAIN_DB_RANGE, None)
-                                    .over(0.0)
-                                    .units(Units::Db)
-                                    .default(-12.0),
-                            );
-                            ui.end_row();
-
-                            ui.label("To");
-                            ui.add(
-                                Slider::mono(&mut state.level_to, GAIN_DB_RANGE, None)
-                                    .over(0.0)
-                                    .units(Units::Db)
-                                    .default(0.0),
-                            );
-                            ui.end_row();
-
-                            ui.label("Stereo");
-                            ui.add(Slider::mono(&mut state.stereo, 0.0..=1.0, None).default(0.0));
-                            ui.end_row();
-
-                            ui.label("");
-                            if ui.button("Apply Random").clicked() {
-                                editor_bridge.edit_request(state.to_request());
-                            }
-                            ui.end_row();
-                        } else {
-                            ui.label("Gain");
-                            changed |= ui
-                                .add(
-                                    Slider::stereo(&mut state.gain_db, GAIN_DB_RANGE, None)
+                        match state.kind {
+                            EditKind::RandomLevels => {
+                                ui.label("From");
+                                ui.add(
+                                    Slider::mono(&mut state.random_level_from, GAIN_DB_RANGE, None)
                                         .over(0.0)
                                         .units(Units::Db)
-                                        .default(0.0),
-                                )
-                                .changed();
-                            ui.end_row();
+                                        .default(-12.0)
+                                        .show_label(),
+                                );
+                                ui.end_row();
+
+                                ui.label("To");
+                                ui.add(
+                                    Slider::mono(&mut state.random_level_to, GAIN_DB_RANGE, None)
+                                        .over(0.0)
+                                        .units(Units::Db)
+                                        .default(0.0)
+                                        .show_label(),
+                                );
+                                ui.end_row();
+
+                                ui.label("Stereo");
+                                ui.add(
+                                    Slider::mono(&mut state.stereo, 0.0..=1.0, None)
+                                        .default(0.0)
+                                        .show_label(),
+                                );
+                                ui.end_row();
+
+                                ui.label("");
+                                if ui.button("Apply Random").clicked() {
+                                    editor_bridge.edit_request(state.to_request());
+                                }
+                                ui.end_row();
+                            }
+                            EditKind::Slope => {
+                                ui.label("Cutoff");
+                                changed |= ui
+                                    .add(
+                                        DragValue::new(&mut state.harmonic_from)
+                                            .range(MIN_HARMONIC..=MAX_HARMONIC),
+                                    )
+                                    .changed();
+                                ui.end_row();
+
+                                ui.label("From");
+                                changed |= ui
+                                    .add(
+                                        Slider::mono(
+                                            &mut state.slope_level_from,
+                                            GAIN_DB_RANGE,
+                                            None,
+                                        )
+                                        .over(0.0)
+                                        .units(Units::Db)
+                                        .default(0.0)
+                                        .show_label(),
+                                    )
+                                    .changed();
+                                ui.end_row();
+
+                                ui.label("Slope");
+                                changed |= ui
+                                    .add(
+                                        Slider::mono(
+                                            &mut state.slope,
+                                            SLOPE_DB_RANGE,
+                                            Some(MIN_LEVEL_DB),
+                                        )
+                                        .units(Units::Db)
+                                        .default(-6.0)
+                                        .show_label(),
+                                    )
+                                    .changed();
+                                ui.end_row();
+                            }
+                            EditKind::Level => {
+                                ui.label("Gain");
+                                changed |= ui
+                                    .add(
+                                        Slider::stereo(&mut state.gain_db, GAIN_DB_RANGE, None)
+                                            .over(0.0)
+                                            .units(Units::Db)
+                                            .default(0.0)
+                                            .show_label(),
+                                    )
+                                    .changed();
+                                ui.end_row();
+                            }
                         }
                     });
 

@@ -161,6 +161,7 @@ pub struct Slider<'a> {
     length: f32,
     thickness: f32,
     orientation: Orientation,
+    show_label: bool,
 }
 
 impl<'a> Slider<'a> {
@@ -183,6 +184,7 @@ impl<'a> Slider<'a> {
             length: 160.0,
             thickness: 14.0,
             orientation: Orientation::default(),
+            show_label: false,
         }
     }
 
@@ -239,6 +241,11 @@ impl<'a> Slider<'a> {
 
     pub fn vertical(mut self) -> Self {
         self.orientation = Orientation::Vertical;
+        self
+    }
+
+    pub fn show_label(mut self) -> Self {
+        self.show_label = true;
         self
     }
 
@@ -973,6 +980,15 @@ impl<'a> Slider<'a> {
 
 impl Widget for Slider<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        self.add_contents(ui)
+        if self.show_label && self.orientation == Orientation::Horizontal {
+            ui.horizontal(|ui| {
+                let response = self.add_contents(ui);
+                ui.label(self.format_label());
+                response
+            })
+            .inner
+        } else {
+            self.add_contents(ui)
+        }
     }
 }

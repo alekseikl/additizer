@@ -28,8 +28,8 @@ pub use ui_bridge::HarmonicEditorUiBridge;
 use itertools::izip;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 
-const DB_LIMIT: Sample = 24.0;
-const MIN_RANDOM_LEVEL_DB: Sample = -48.0;
+pub const MAX_LEVEL_DB: Sample = 24.0;
+pub const MIN_LEVEL_DB: Sample = -48.0;
 
 #[derive(Clone, Copy)]
 pub struct HarmonicsRange {
@@ -68,9 +68,15 @@ pub enum EditRequest {
     },
     RandomLevel {
         range: HarmonicsRange,
-        level_from: Sample,
-        level_to: Sample,
+        level_from: Sample, // dB
+        level_to: Sample,   // dB
         stereo: Sample,
+    },
+    Slope {
+        range: HarmonicsRange,
+        harmonic_from: u16, // Cutoff point
+        level_from: Sample, // dB
+        slope: Sample,      // dB/octave (positive = rise, negative = fall)
     },
 }
 
@@ -101,7 +107,7 @@ impl HarmonicEditor {
         let mut amplitudes = array::from_fn(|_| Box::new([0.0; SPECTRAL_BUFFER_SIZE]));
         let mut phases = array::from_fn(|_| Box::new([0.0; SPECTRAL_BUFFER_SIZE]));
 
-        let gain_limit = db_to_gain(DB_LIMIT);
+        let gain_limit = db_to_gain(MAX_LEVEL_DB);
 
         for (amplitudes, phases, cfg_amplitudes, cfg_phases) in izip!(
             amplitudes.iter_mut(),
@@ -204,7 +210,7 @@ impl HarmonicEditor {
 
     pub fn set_amplitude(&mut self, idx: usize, amplitude: StereoSample) {
         for (amplitudes, &amplitude) in izip!(self.amplitudes.iter_mut(), amplitude.iter()) {
-            amplitudes[idx] = amplitude.min(db_to_gain(DB_LIMIT));
+            amplitudes[idx] = amplitude.min(db_to_gain(MAX_LEVEL_DB));
         }
 
         self.rebuild_harmonic(idx);
@@ -237,7 +243,7 @@ impl HarmonicEditor {
     }
 
     fn apply_range_set(&mut self, range: HarmonicsRange, gain: StereoSample) {
-        let gain_limit = db_to_gain(DB_LIMIT);
+        let gain_limit = db_to_gain(MAX_LEVEL_DB);
 
         for (amplitudes_draft, &gain) in izip!(self.amplitudes_draft.iter_mut(), gain.iter()) {
             let gain = gain.min(gain_limit);
@@ -271,8 +277,8 @@ impl HarmonicEditor {
         level_to: Sample,
         stereo: Sample,
     ) {
-        let level_from = level_from.clamp(MIN_RANDOM_LEVEL_DB, DB_LIMIT);
-        let level_to = level_to.clamp(MIN_RANDOM_LEVEL_DB, DB_LIMIT);
+        let level_from = level_from.clamp(MIN_LEVEL_DB, MAX_LEVEL_DB);
+        let level_to = level_to.clamp(MIN_LEVEL_DB, MAX_LEVEL_DB);
         let (level_from, level_to) = if level_from <= level_to {
             (level_from, level_to)
         } else {
@@ -280,7 +286,7 @@ impl HarmonicEditor {
         };
         let stereo = stereo.clamp(0.0, 1.0);
         let stereo_amount = (level_to - level_from) * stereo;
-        let gain_limit = db_to_gain(DB_LIMIT);
+        let gain_limit = db_to_gain(MAX_LEVEL_DB);
 
         for idx in range.matching_indices() {
             let center = level_from + (level_to - level_from) * self.random.random::<Sample>();
@@ -297,6 +303,31 @@ impl HarmonicEditor {
 
             self.amplitudes_draft[LEFT_CHANNEL][idx] = db_to_gain(left_db).min(gain_limit);
             self.amplitudes_draft[RIGHT_CHANNEL][idx] = db_to_gain(right_db).min(gain_limit);
+        }
+    }
+
+    fn apply_slope(
+        &mut self,
+        range: HarmonicsRange,
+        harmonic_from: u16,
+        level_from: Sample,
+        slope: Sample,
+    ) {
+        let level_from = level_from.clamp(MIN_LEVEL_DB, MAX_LEVEL_DB);
+        let reference =
+            (harmonic_from as usize).clamp(DC_OFFSET, SPECTRAL_BUFFER_SIZE - 1) as Sample;
+
+        for idx in range.matching_indices() {
+            let octaves = (idx as Sample / reference).log2();
+            let level_db = level_from + slope * octaves;
+            let gain = if level_db <= MIN_LEVEL_DB {
+                0.0
+            } else {
+                db_to_gain(level_db.min(MAX_LEVEL_DB))
+            };
+
+            self.amplitudes_draft[LEFT_CHANNEL][idx] = gain;
+            self.amplitudes_draft[RIGHT_CHANNEL][idx] = gain;
         }
     }
 
@@ -319,6 +350,14 @@ impl HarmonicEditor {
                 stereo,
             } => {
                 self.apply_random_amplitudes(range, level_from, level_to, stereo);
+            }
+            EditRequest::Slope {
+                range,
+                harmonic_from,
+                level_from,
+                slope,
+            } => {
+                self.apply_slope(range, harmonic_from, level_from, slope);
             }
         }
     }
