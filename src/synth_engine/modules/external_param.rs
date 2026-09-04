@@ -18,7 +18,7 @@ use crate::synth_engine::{
     synth_module::SynthModule,
 };
 
-pub const NUM_EXT_PARAMS: usize = 4;
+pub const NUM_EXT_PARAMS: usize = 8;
 
 struct Params {
     selected_param_index: usize,

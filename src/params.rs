@@ -45,7 +45,7 @@ impl Default for AdditizerParams {
             config: PresetWrapper::new(),
             ext_params: std::array::from_fn(|i| ExtParam {
                 value: FloatParam::new(
-                    format!("Ctrl {}", i + 1),
+                    format!("Param {}", i + 1),
                     0.0,
                     FloatRange::Linear { min: 0.0, max: 1.0 },
                 )
