@@ -330,7 +330,7 @@ impl<'f, 'c> RouterFactory<'f, 'c, SpectralRouterType> {
             .take()
             .expect("slot should be in place");
 
-        for channel_idx in 0..self.ctx.params.spectrum_channels {
+        for channel_idx in 0..NUM_CHANNELS {
             for (seq_idx, voice) in self.ctx.params.active_voices.iter().enumerate() {
                 let target = VoiceTarget::new(channel_idx, voice, seq_idx);
 

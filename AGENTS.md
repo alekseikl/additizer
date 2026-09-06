@@ -62,7 +62,7 @@ uses `VoiceRouter` / `ProcessContext` (`src/synth_engine/routing/`).
 `default_scheme.rs` builds the default patch.
 
 **Engine params** (`EngineParams` in `config.rs`): polyphony, legato, block size, oversampling,
-stereo vs mono spectrum, voice kill time, output gain, bandwidth. UI can change several of these
+voice kill time, output gain, bandwidth. UI can change several of these
 at runtime via the engine-level `UiEnd` / `AudioEnd` link.
 
 ## Routing

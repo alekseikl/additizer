@@ -135,26 +135,6 @@ fn bench_process(c: &mut Criterion) {
     {
         let mut engine = make_engine(
             EngineParams {
-                stereo_spectrum: false,
-                ..EngineParams::default()
-            },
-            OscillatorConfig {
-                id: OSCILLATOR_ID,
-                ..OscillatorConfig::default()
-            },
-        );
-        trigger_notes(&mut engine, 1);
-
-        let samples = MAX_BLOCK_SIZE;
-        group.throughput(Throughput::Elements((samples * NUM_CHANNELS) as u64));
-        group.bench_function("mono_spectrum", |b| {
-            b.iter(|| black_box(process_block(&mut engine, samples)));
-        });
-    }
-
-    {
-        let mut engine = make_engine(
-            EngineParams {
                 num_voices: 16,
                 ..EngineParams::default()
             },

@@ -185,7 +185,6 @@ impl ModuleUi for ParamsUi {
                 let mut legato = controls.legato;
                 let mut block_size = controls.block_size;
                 let mut oversampling = controls.oversampling;
-                let mut stereo_spectrum = controls.stereo_spectrum;
                 let mut note_based = controls.bandwidth == 0;
                 let mut bandwidth = if note_based {
                     MAX_BANDWIDTH
@@ -245,15 +244,6 @@ impl ModuleUi for ParamsUi {
                 ui.label("Oversampling x2");
                 if ui.add(Checkbox::without_text(&mut oversampling)).changed() {
                     bridge.set_oversampling(oversampling);
-                }
-                ui.end_row();
-
-                ui.label("Stereo Spectrum");
-                if ui
-                    .add(Checkbox::without_text(&mut stereo_spectrum))
-                    .changed()
-                {
-                    bridge.set_stereo_spectrum(stereo_spectrum);
                 }
                 ui.end_row();
 

@@ -93,7 +93,6 @@ pub struct SynthEngine {
     block_size: usize,
     oversampling: bool,
     bandwidth: usize,
-    spectrum_channels: usize,
     modules: ModulesMap,
     input_sources: RoutingMap,
     execution_order: Vec<ModuleId>,
@@ -131,7 +130,6 @@ impl SynthEngine {
             block_size: Self::clamp_block_size(cfg.engine.block_size),
             oversampling: cfg.engine.oversampling,
             bandwidth: Self::clamp_bandwidth(cfg.engine.bandwidth),
-            spectrum_channels: Self::stereo_spectrum_channels(cfg.engine.stereo_spectrum),
             modules: ModulesMap::default(),
             input_sources: RoutingMap::default(),
             execution_order: Vec::new(),
@@ -289,7 +287,6 @@ impl SynthEngine {
             legato: voices.legato,
             block_size: self.block_size,
             oversampling: self.oversampling,
-            stereo_spectrum: self.spectrum_channels == NUM_CHANNELS,
             voice_kill_time: self.get_voice_kill_time(),
             output_gain: self.get_output_gain(),
             bandwidth: self.bandwidth,
@@ -344,10 +341,6 @@ impl SynthEngine {
         } else {
             host_offset
         }
-    }
-
-    pub fn set_stereo_spectrum(&mut self, stereo_spectrum: bool) {
-        self.spectrum_channels = Self::stereo_spectrum_channels(stereo_spectrum);
     }
 
     pub fn set_bandwidth(&mut self, bandwidth: usize) {
@@ -764,9 +757,6 @@ impl SynthEngine {
                     self.set_voice_kill_time(voice_kill_time);
                 }
                 UiEvent::Oversampling(oversampling) => self.set_oversampling(oversampling),
-                UiEvent::StereoSpectrum(stereo_spectrum) => {
-                    self.set_stereo_spectrum(stereo_spectrum);
-                }
                 UiEvent::Bandwidth(bandwidth) => self.set_bandwidth(bandwidth),
                 UiEvent::OutputGain(output_gain) => self.set_output_gain(output_gain),
             }
@@ -837,7 +827,6 @@ impl SynthEngine {
                 sample_rate,
                 smooth_params,
                 needs_update_ui: update_ui,
-                spectrum_channels: self.spectrum_channels,
                 bandwidth: self.bandwidth,
                 active_voices: &triggered_voices,
             },
@@ -1116,9 +1105,5 @@ impl SynthEngine {
         self.execution_order = execution_order;
         self.setup_slots();
         Ok(())
-    }
-
-    fn stereo_spectrum_channels(stereo_spectrum: bool) -> usize {
-        if stereo_spectrum { NUM_CHANNELS } else { 1 }
     }
 }

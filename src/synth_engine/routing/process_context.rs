@@ -15,7 +15,6 @@ pub struct ProcessParams<'a> {
     pub sample_rate: Sample,
     pub needs_update_ui: bool,
     pub smooth_params: SmoothedSampleParams,
-    pub spectrum_channels: usize,
     // Number of harmonics that set in UI. Without taking DC into account.
     pub bandwidth: usize,
     pub active_voices: &'a [PlayingVoice],

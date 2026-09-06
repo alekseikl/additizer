@@ -35,7 +35,6 @@ HTML reports are written to `target/criterion/`.
 | `unison/1,4,8,16` | Unison voice count (single note, 128-sample block) |
 | `voices/1,4,8,16` | Polyphony (4 unison voices) |
 | `block_size/8,32,64,128` | Engine block size (4 unison, single note) |
-| `mono_spectrum` | `stereo_spectrum: false` (shared waveform across channels) |
 | `heavy_patch` | 16 voices × 16 unison with detune |
 
 Throughput is reported in stereo output samples per second (`samples × channels`, and

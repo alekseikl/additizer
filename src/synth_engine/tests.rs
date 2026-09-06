@@ -1317,7 +1317,6 @@ fn engine_extended_setters_round_trip() {
     engine.set_block_size(32);
     engine.set_voice_kill_time(kill_time);
     engine.set_oversampling(true);
-    engine.set_stereo_spectrum(false);
     engine.set_output_gain(StereoSample::splat(0.5));
 
     let lfo_id = engine.add_lfo();
@@ -1333,7 +1332,6 @@ fn engine_extended_setters_round_trip() {
     assert_eq!(cfg.engine.block_size, 32);
     assert_eq!(engine.get_voice_kill_time(), kill_time);
     assert!(cfg.engine.oversampling);
-    assert!(!cfg.engine.stereo_spectrum);
     assert_eq!(cfg.engine.output_gain, StereoSample::splat(0.5));
 
     let link = cfg
@@ -1832,12 +1830,9 @@ fn handle_note_expression_and_choke_process() {
 }
 
 #[test]
-fn oversampling_and_mono_spectrum_process() {
+fn oversampling_process() {
     let mut engine = make_engine(
-        EngineParams {
-            stereo_spectrum: false,
-            ..EngineParams::default()
-        },
+        EngineParams::default(),
         OscillatorConfig {
             id: OSCILLATOR_ID,
             ..OscillatorConfig::default()

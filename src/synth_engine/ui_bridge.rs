@@ -426,16 +426,12 @@ impl UiBridge {
     pub fn get_input_modulated_value(&self, input: InputId) -> Option<ModulatedValue> {
         if self.routing.routing.contains_key(&input)
             && self.has_active_voices()
-            && let Some(module) = self.routing.modules.get(&input.module_id)
             && let Some(modulated) = self.modulated_inputs.get(&input).copied()
         {
-            let is_mono =
-                module.output_type == DataType::Spectral && !self.engine_params.stereo_spectrum;
-
             Some(ModulatedValue {
                 value: modulated.value,
                 normalized: modulated.normalized,
-                is_stereo: !is_mono,
+                is_stereo: true,
             })
         } else {
             None
@@ -670,12 +666,6 @@ impl UiBridge {
     pub fn set_oversampling(&mut self, oversampling: bool) {
         if self.ui_end.set_oversampling(oversampling) {
             self.engine_params.oversampling = oversampling;
-        }
-    }
-
-    pub fn set_stereo_spectrum(&mut self, stereo_spectrum: bool) {
-        if self.ui_end.set_stereo_spectrum(stereo_spectrum) {
-            self.engine_params.stereo_spectrum = stereo_spectrum;
         }
     }
 

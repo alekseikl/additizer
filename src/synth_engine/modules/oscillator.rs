@@ -663,10 +663,6 @@ impl Oscillator {
         target: &VoiceTarget,
         rf: &mut RouterFactory<AudioRouterType>,
     ) {
-        if target.channel_idx >= rf.params().spectrum_channels {
-            return;
-        }
-
         let mut router = rf.for_triggered_voice(target);
         let channel = &self.channel_params[target.channel_idx];
         let voice = &self.voices[target.channel_idx][target.voice_idx];
@@ -932,10 +928,8 @@ impl Oscillator {
         outputs: &mut VoicesLayout<SamplesOutput>,
         rf: &mut RouterFactory<AudioRouterType>,
     ) {
-        let mono_spectrum = rf.params().spectrum_channels < NUM_CHANNELS;
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
-        let wave_channel = if mono_spectrum { 0 } else { channel_idx };
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
 
         self.process_phase_reset(channel_idx, voice_idx, &mut router);
@@ -963,19 +957,17 @@ impl Oscillator {
             &mut buffers.frequency_shift,
         );
 
-        if channel_idx == wave_channel {
-            let last = router.samples().saturating_sub(1);
+        let last = router.samples().saturating_sub(1);
 
-            Self::build_wave(
-                self.inverse_fft.as_ref(),
-                pitch_to_freq(buffers.pitch[last]) + buffers.frequency_shift[last],
-                router.sample_rate(),
-                router.spectral(inputs.spectrum),
-                &mut buffers.tmp_spectral,
-                &mut buffers.scratch,
-                &mut buffers.tmp_wave,
-            );
-        }
+        Self::build_wave(
+            self.inverse_fft.as_ref(),
+            pitch_to_freq(buffers.pitch[last]) + buffers.frequency_shift[last],
+            router.sample_rate(),
+            router.spectral(inputs.spectrum),
+            &mut buffers.tmp_spectral,
+            &mut buffers.scratch,
+            &mut buffers.tmp_wave,
+        );
 
         if router.need_update_ui_mono() {
             self.audio_end
@@ -989,7 +981,7 @@ impl Oscillator {
         let buff_t_inc = (samples as f32).recip();
         let mut buff_t = 0.0;
         let output = voice_output.output();
-        let wave_from = &self.voice_buffers[wave_channel][voice_idx].wave;
+        let wave_from = &self.voice_buffers[channel_idx][voice_idx].wave;
         let wave_to = &buffers.tmp_wave;
 
         for (out, &pitch, &phase_shift, freq_shift) in izip!(
@@ -1040,12 +1032,10 @@ impl Oscillator {
             }
         }
 
-        if !mono_spectrum || channel_idx == RIGHT_CHANNEL {
-            mem::swap(
-                &mut self.voice_buffers[wave_channel][voice_idx].wave,
-                &mut buffers.tmp_wave,
-            );
-        }
+        mem::swap(
+            &mut self.voice_buffers[channel_idx][voice_idx].wave,
+            &mut buffers.tmp_wave,
+        );
     }
 
     fn handle_trigger(
