@@ -17,7 +17,8 @@ pub struct SpectralFilterConfig {
     #[serde(default = "default_keytrack")]
     pub keytrack: Sample,
     pub q_limit_to: StereoSample,
-    pub q_limit_curve: StereoSample,
+    #[serde(alias = "q_limit_curve")]
+    pub q_limit_slope: StereoSample,
     pub cutoff: StereoSample,
     pub resonance: StereoSample,
     pub drive: StereoSample,
@@ -31,7 +32,7 @@ impl Default for SpectralFilterConfig {
             linear_phase: false,
             keytrack: 0.0,
             q_limit_to: from_st(12.0).into(),
-            q_limit_curve: 0.5.into(),
+            q_limit_slope: 0.5.into(),
             cutoff: 1.0.into(),
             resonance: 0.0.into(),
             drive: 0.0.into(),

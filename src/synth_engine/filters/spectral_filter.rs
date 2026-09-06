@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::{ComplexSample, Sample},
-    utils::{db_to_gain_fast, from_st, power_scale},
+    utils::db_to_gain_fast,
 };
 
 const TAU: Sample = f32::consts::TAU;
@@ -360,7 +360,7 @@ pub struct FilterParams {
     pub cutoff: Sample, // Octaves of the note fundamental (harmonic space).
     pub resonance: Sample,
     pub q_limit_to: Sample,    // Octaves. Before this point Q is limited.
-    pub q_limit_curve: Sample, // [0.0-1.0]
+    pub q_limit_slope: Sample, // [0.0-1.0]
     pub linear_phase: bool,
 }
 
@@ -371,8 +371,6 @@ pub const MIN_CUTOFF: Sample = -4.0;
 pub const MAX_CUTOFF: Sample = 10.0;
 const MIN_Q: Sample = 0.01;
 const MAX_Q: Sample = 16.0;
-const MIN_Q_LIMIT: Sample = 0.0;
-const MAX_Q_LIMIT: Sample = 10.0;
 const MAX_Q_LIMIT_POWER: Sample = 10.0;
 
 pub struct SpectralFilter {
@@ -398,7 +396,7 @@ impl SpectralFilter {
 
     fn q_from_params(params: &FilterParams, cutoff: Sample) -> Sample {
         let resonance = params.resonance.clamp(MIN_RESONANCE, MAX_RESONANCE);
-        let q_limit_to = params.q_limit_to.clamp(MIN_Q_LIMIT, MAX_Q_LIMIT);
+        let q_limit_to = params.q_limit_to.clamp(MIN_CUTOFF, MAX_CUTOFF);
 
         let q = if resonance > 0.0 {
             BUTTERWORTH_Q + (MAX_Q - BUTTERWORTH_Q) * resonance.powf(3.0)
@@ -408,14 +406,13 @@ impl SpectralFilter {
 
         let butterworth_excess = q - BUTTERWORTH_Q;
 
-        if q_limit_to < from_st(1.0) || butterworth_excess <= 0.0 || cutoff > q_limit_to {
+        if butterworth_excess <= 0.0 || cutoff >= q_limit_to {
             return q;
         }
 
-        let q_limit_curve = params.q_limit_curve.clamp(0.0, 1.0) * MAX_Q_LIMIT_POWER;
-        let t = cutoff.max(0.0) / q_limit_to;
+        let rate = 1.0 + params.q_limit_slope.clamp(0.0, 1.0) * MAX_Q_LIMIT_POWER;
 
-        BUTTERWORTH_Q + butterworth_excess * power_scale(t, q_limit_curve)
+        BUTTERWORTH_Q + butterworth_excess * ((cutoff - q_limit_to) * rate).exp2()
     }
 
     pub fn apply_response(&self, input: &[ComplexSample], output: &mut [ComplexSample]) {

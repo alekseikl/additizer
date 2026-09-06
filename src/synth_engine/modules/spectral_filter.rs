@@ -16,7 +16,7 @@ use crate::{
         StereoSample,
         buffer::VoicesLayout,
         filters::spectral_filter::{
-            FilterParams, FilterType, MAX_RESONANCE, MIN_RESONANCE,
+            FilterParams, FilterType, MAX_CUTOFF, MAX_RESONANCE, MIN_CUTOFF, MIN_RESONANCE,
             SpectralFilter as SpectralFilterEngine,
         },
         routing::{
@@ -30,7 +30,7 @@ use crate::{
 };
 
 /// MIDI note 60. Zero cutoff with key tracking off maps to this note.
-const C4_NOTE: u8 = 60;
+pub const C4_NOTE: u8 = 60;
 
 struct Params {
     filter_type: FilterType,
@@ -54,7 +54,7 @@ struct ChannelParams {
     resonance: Sample,
     drive: Sample,
     q_limit_to: Sample,
-    q_limit_curve: Sample,
+    q_limit_slope: Sample,
 }
 
 impl ChannelParams {
@@ -64,7 +64,7 @@ impl ChannelParams {
             resonance: c.resonance[channel_idx],
             drive: c.drive[channel_idx],
             q_limit_to: c.q_limit_to[channel_idx],
-            q_limit_curve: c.q_limit_curve[channel_idx],
+            q_limit_slope: c.q_limit_slope[channel_idx],
         }
     }
 }
@@ -160,7 +160,7 @@ impl SpectralFilter {
             linear_phase: self.params.linear_phase,
             keytrack: self.params.keytrack,
             q_limit_to: get_stereo_param!(self, q_limit_to),
-            q_limit_curve: get_stereo_param!(self, q_limit_curve),
+            q_limit_slope: get_stereo_param!(self, q_limit_slope),
             cutoff: get_stereo_param!(self, cutoff),
             resonance: get_stereo_param!(self, resonance),
             drive: get_stereo_param!(self, drive),
@@ -171,18 +171,22 @@ impl SpectralFilter {
     set_mono_param!(set_linear_phase, linear_phase, bool);
     set_mono_param!(set_keytrack, keytrack, Sample, keytrack.clamp(0.0, 1.0));
 
-    set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
+    set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF));
     set_stereo_param!(
         set_resonance,
         resonance,
         resonance.clamp(MIN_RESONANCE, MAX_RESONANCE)
     );
     set_stereo_param!(set_drive, drive);
-    set_stereo_param!(set_q_limit_to, q_limit_to, q_limit_to.clamp(0.0, 10.0));
     set_stereo_param!(
-        set_q_limit_curve,
-        q_limit_curve,
-        q_limit_curve.clamp(0.0, 1.0)
+        set_q_limit_to,
+        q_limit_to,
+        q_limit_to.clamp(MIN_CUTOFF, MAX_CUTOFF)
+    );
+    set_stereo_param!(
+        set_q_limit_slope,
+        q_limit_slope,
+        q_limit_slope.clamp(0.0, 1.0)
     );
 
     fn process_voice(
@@ -197,23 +201,28 @@ impl SpectralFilter {
 
         let cutoff = router
             .scalar(&inputs.cutoff, channel.cutoff)
-            .clamp(-4.0, 10.0);
+            .clamp(MIN_CUTOFF, MAX_CUTOFF);
         let resonance = router
             .scalar(&inputs.resonance, channel.resonance)
             .clamp(MIN_RESONANCE, MAX_RESONANCE);
         let drive = router.scalar(&inputs.drive, channel.drive).min(24.0);
         let input = router.spectral(inputs.spectrum);
+        let keytrack_offset = from_st(C4_NOTE as Sample - target.note as Sample)
+            * (1.0 - self.params.keytrack);
+        let note_based_cutoff = cutoff + keytrack_offset;
+
+        if router.need_update_ui_mono() {
+            self.audio_end.update_note(target.note);
+        }
 
         let filter = SpectralFilterEngine::new(
             self.params.filter_type,
             FilterParams {
                 drive,
-                cutoff: cutoff
-                    + from_st(C4_NOTE as Sample - target.note as Sample)
-                        * (1.0 - self.params.keytrack),
+                cutoff: note_based_cutoff,
                 resonance,
-                q_limit_to: channel.q_limit_to,
-                q_limit_curve: channel.q_limit_curve,
+                q_limit_to: channel.q_limit_to + keytrack_offset,
+                q_limit_slope: channel.q_limit_slope,
                 linear_phase: self.params.linear_phase,
             },
         );
@@ -271,7 +280,7 @@ impl SynthModule for SpectralFilter {
                 UiEvent::LinearPhase(value) => self.set_linear_phase(value),
                 UiEvent::Keytrack(value) => self.set_keytrack(value),
                 UiEvent::QLimitTo(value) => self.set_q_limit_to(value),
-                UiEvent::QLimitCurve(value) => self.set_q_limit_curve(value),
+                UiEvent::QLimitSlope(value) => self.set_q_limit_slope(value),
             }
         }
     }

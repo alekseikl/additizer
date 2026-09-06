@@ -22,6 +22,10 @@ impl SpectralFilterUiBridge {
         &self.config
     }
 
+    pub fn note(&mut self) -> u8 {
+        self.ui_end.note()
+    }
+
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
         if !self.ui_end.set_param(input, value) {
             return;
@@ -59,9 +63,9 @@ impl SpectralFilterUiBridge {
         }
     }
 
-    pub fn set_q_limit_curve(&mut self, value: StereoSample) {
-        if self.ui_end.set_q_limit_curve(value) {
-            self.config.q_limit_curve = value;
+    pub fn set_q_limit_slope(&mut self, value: StereoSample) {
+        if self.ui_end.set_q_limit_slope(value) {
+            self.config.q_limit_slope = value;
         }
     }
 }

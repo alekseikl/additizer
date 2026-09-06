@@ -7,7 +7,7 @@ use crate::{
     },
     synth_engine::{
         Input, ModuleId, ModuleType,
-        filters::spectral_filter::FilterType,
+        filters::spectral_filter::{FilterType, MAX_CUTOFF, MIN_CUTOFF},
         spectral_filter::SpectralFilterUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -110,7 +110,7 @@ impl SpectralFilterUI {
                 ui.label("Q Limit");
                 if ui
                     .add(
-                        Slider::stereo(&mut config.q_limit_to, 0.0..=10.0, None)
+                        Slider::stereo(&mut config.q_limit_to, MIN_CUTOFF..=MAX_CUTOFF, None)
                             .default(from_st(12.0))
                             .units(Units::Octaves),
                     )
@@ -119,12 +119,12 @@ impl SpectralFilterUI {
                     filter_bridge.set_q_limit_to(config.q_limit_to);
                 }
 
-                ui.label("Q Curve");
+                ui.label("Q Slope");
                 if ui
-                    .add(Slider::stereo(&mut config.q_limit_curve, 0.0..=1.0, None).default(0.5))
+                    .add(Slider::stereo(&mut config.q_limit_slope, 0.0..=1.0, None).default(0.5))
                     .changed()
                 {
-                    filter_bridge.set_q_limit_curve(config.q_limit_curve);
+                    filter_bridge.set_q_limit_slope(config.q_limit_slope);
                 }
                 ui.end_row();
 

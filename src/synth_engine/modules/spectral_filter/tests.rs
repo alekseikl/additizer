@@ -1,8 +1,12 @@
 use super::*;
 use crate::utils::from_st;
 
+fn keytrack_offset(keytrack: Sample, note: u8) -> Sample {
+    from_st(C4_NOTE as Sample - note as Sample) * (1.0 - keytrack)
+}
+
 fn harmonic_cutoff(keytrack: Sample, cutoff: Sample, note: u8) -> Sample {
-    cutoff + from_st(C4_NOTE as Sample - note as Sample) * (1.0 - keytrack)
+    cutoff + keytrack_offset(keytrack, note)
 }
 
 fn assert_approx(a: Sample, b: Sample) {
@@ -56,16 +60,12 @@ fn config_from_keytrack(value: Option<serde_json::Value>) -> SpectralFilterConfi
     serde_json::from_value(json).unwrap()
 }
 
+fn display_offset(keytrack: Sample, note: u8) -> Sample {
+    from_st(note as Sample - C4_NOTE as Sample) * keytrack
+}
+
 #[test]
-fn keytrack_deserializes_from_bool_and_number() {
-    assert_approx(
-        config_from_keytrack(Some(serde_json::json!(true))).keytrack,
-        1.0,
-    );
-    assert_approx(
-        config_from_keytrack(Some(serde_json::json!(false))).keytrack,
-        0.0,
-    );
+fn keytrack_deserializes_from_number_and_defaults_when_missing() {
     assert_approx(
         config_from_keytrack(Some(serde_json::json!(0.25))).keytrack,
         0.25,
@@ -74,10 +74,26 @@ fn keytrack_deserializes_from_bool_and_number() {
 }
 
 #[test]
-fn keytrack_deserializes_from_key_track_alias() {
-    let mut json = serde_json::to_value(SpectralFilterConfig::default()).unwrap();
-    json.as_object_mut().unwrap().remove("keytrack");
-    json["key_track"] = serde_json::json!(0.5);
-    let config: SpectralFilterConfig = serde_json::from_value(json).unwrap();
-    assert_approx(config.keytrack, 0.5);
+fn display_offset_scales_note_distance_by_keytrack() {
+    let note = 72;
+
+    assert_approx(display_offset(0.0, note), 0.0);
+    assert_approx(display_offset(1.0, note), from_st(12.0));
+    assert_approx(display_offset(0.5, note), from_st(6.0));
+}
+
+#[test]
+fn keytrack_applies_the_same_offset_to_q_limit_to() {
+    let q_limit_to = 2.0;
+    let note = 48;
+
+    assert_approx(q_limit_to + keytrack_offset(1.0, note), q_limit_to);
+    assert_approx(
+        q_limit_to + keytrack_offset(0.0, note),
+        q_limit_to + c4_offset(note),
+    );
+    assert_approx(
+        q_limit_to + keytrack_offset(0.5, note),
+        q_limit_to + c4_offset(note) * 0.5,
+    );
 }

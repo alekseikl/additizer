@@ -1,3 +1,5 @@
+use triple_buffer::triple_buffer;
+
 use crate::synth_engine::{
     Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY, filters::spectral_filter::FilterType,
 };
@@ -8,16 +10,17 @@ pub enum UiEvent {
     LinearPhase(bool),
     Keytrack(Sample),
     QLimitTo(StereoSample),
-    QLimitCurve(StereoSample),
+    QLimitSlope(StereoSample),
 }
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
+    note: triple_buffer::Output<u8>,
 }
 
 impl UiEnd {
-    pub fn new(tx: rtrb::Producer<UiEvent>) -> Self {
-        Self { tx }
+    pub fn note(&mut self) -> u8 {
+        *self.note.read()
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
@@ -40,27 +43,38 @@ impl UiEnd {
         self.tx.push(UiEvent::QLimitTo(value)).is_ok()
     }
 
-    pub fn set_q_limit_curve(&mut self, value: StereoSample) -> bool {
-        self.tx.push(UiEvent::QLimitCurve(value)).is_ok()
+    pub fn set_q_limit_slope(&mut self, value: StereoSample) -> bool {
+        self.tx.push(UiEvent::QLimitSlope(value)).is_ok()
     }
 }
 
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
+    note: triple_buffer::Input<u8>,
 }
 
 impl AudioEnd {
-    pub fn new(rx: rtrb::Consumer<UiEvent>) -> Self {
-        Self { rx }
-    }
-
     pub fn pop_event(&mut self) -> Option<UiEvent> {
         self.rx.pop().ok()
+    }
+
+    pub fn update_note(&mut self, note: u8) {
+        self.note.write(note);
     }
 }
 
 pub fn create_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
+    let (note_input, note_output) = triple_buffer(&super::C4_NOTE);
 
-    (AudioEnd::new(from_ui_rx), UiEnd::new(to_audio_tx))
+    (
+        AudioEnd {
+            rx: from_ui_rx,
+            note: note_input,
+        },
+        UiEnd {
+            tx: to_audio_tx,
+            note: note_output,
+        },
+    )
 }

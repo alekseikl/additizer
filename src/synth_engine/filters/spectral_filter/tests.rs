@@ -1,5 +1,5 @@
 use super::*;
-use crate::utils::{db_to_gain_fast, from_st, power_scale};
+use crate::utils::db_to_gain_fast;
 
 const EPS: Sample = 1e-4;
 const CUTOFF: Sample = 1.0;
@@ -29,13 +29,13 @@ fn params(cutoff: Sample, resonance: Sample, q_limit_to: Sample) -> FilterParams
         cutoff,
         resonance,
         q_limit_to,
-        q_limit_curve: 0.0,
+        q_limit_slope: 0.0,
         linear_phase: false,
     }
 }
 
 fn default_params() -> FilterParams {
-    params(0.0, 0.0, MAX_Q_LIMIT)
+    params(0.0, 0.0, MAX_CUTOFF)
 }
 
 fn filter(filter_type: FilterType, p: FilterParams) -> SpectralFilter {
@@ -120,16 +120,16 @@ fn filter_type_serde_bandpass_alias() {
 
 #[test]
 fn cutoff_is_octaves_of_the_fundamental() {
-    assert_approx(cutoff_freq(params(0.0, 0.0, MAX_Q_LIMIT)), 1.0);
-    assert_approx(cutoff_freq(params(1.0, 0.0, MAX_Q_LIMIT)), 2.0);
+    assert_approx(cutoff_freq(params(0.0, 0.0, MAX_CUTOFF)), 1.0);
+    assert_approx(cutoff_freq(params(1.0, 0.0, MAX_CUTOFF)), 2.0);
 }
 
 #[test]
 fn cutoff_is_clamped() {
-    let over = cutoff_freq(params(MAX_CUTOFF + 5.0, 0.0, MAX_Q_LIMIT));
+    let over = cutoff_freq(params(MAX_CUTOFF + 5.0, 0.0, MAX_CUTOFF));
     assert_approx(over, MAX_CUTOFF.exp2());
 
-    let under = cutoff_freq(params(MIN_CUTOFF - 5.0, 0.0, MAX_Q_LIMIT));
+    let under = cutoff_freq(params(MIN_CUTOFF - 5.0, 0.0, MAX_CUTOFF));
     assert_approx(under, MIN_CUTOFF.exp2());
 }
 
@@ -167,7 +167,7 @@ fn q_of(p: FilterParams) -> Sample {
 
 #[test]
 fn zero_resonance_is_butterworth_q() {
-    assert_approx(q_of(params(0.0, 0.0, MAX_Q_LIMIT)), BUTTERWORTH_Q);
+    assert_approx(q_of(params(0.0, 0.0, MAX_CUTOFF)), BUTTERWORTH_Q);
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn max_resonance_maps_to_max_q() {
 
 #[test]
 fn min_resonance_maps_to_min_q() {
-    assert_approx(q_of(params(0.0, MIN_RESONANCE, MAX_Q_LIMIT)), MIN_Q);
+    assert_approx(q_of(params(0.0, MIN_RESONANCE, MAX_CUTOFF)), MIN_Q);
 }
 
 #[test]
@@ -193,21 +193,13 @@ fn positive_resonance_uses_cubic_curve() {
 fn negative_resonance_interpolates_to_min_q() {
     let resonance = -0.5;
     let expected = MIN_Q + (BUTTERWORTH_Q - MIN_Q) * (1.0 + resonance);
-    assert_approx(q_of(params(0.0, resonance, MAX_Q_LIMIT)), expected);
+    assert_approx(q_of(params(0.0, resonance, MAX_CUTOFF)), expected);
 }
 
 #[test]
 fn resonance_is_clamped() {
     assert_approx(q_of(params(8.0, MAX_RESONANCE + 1.0, 2.0)), MAX_Q);
-    assert_approx(q_of(params(0.0, MIN_RESONANCE - 1.0, MAX_Q_LIMIT)), MIN_Q);
-}
-
-#[test]
-fn q_limit_skipped_when_limit_below_one_semitone() {
-    let unlimited = q_of(params(8.0, 1.0, 2.0));
-    let tiny_limit = q_of(params(0.0, 1.0, from_st(1.0) * 0.5));
-    assert_approx(tiny_limit, unlimited);
-    assert_approx(tiny_limit, MAX_Q);
+    assert_approx(q_of(params(0.0, MIN_RESONANCE - 1.0, MAX_CUTOFF)), MIN_Q);
 }
 
 #[test]
@@ -222,57 +214,65 @@ fn q_limit_skipped_when_cutoff_above_limit() {
     assert_approx(unlimited, MAX_Q);
 }
 
+fn limited_q(cutoff: Sample, q_limit_to: Sample, curve: Sample) -> Sample {
+    let rate = 1.0 + curve * MAX_Q_LIMIT_POWER;
+    BUTTERWORTH_Q + (MAX_Q - BUTTERWORTH_Q) * ((cutoff - q_limit_to) * rate).exp2()
+}
+
 #[test]
 fn q_limit_reduces_q_below_limit_frequency() {
     let unlimited = q_of(params(8.0, 1.0, 2.0));
-    let fully_limited = q_of(params(0.0, 1.0, 2.0));
-    let halfway = q_of(params(1.0, 1.0, 2.0));
+    let one_below = q_of(params(1.0, 1.0, 2.0));
+    let two_below = q_of(params(0.0, 1.0, 2.0));
 
     assert_approx(unlimited, MAX_Q);
-    assert_approx(fully_limited, BUTTERWORTH_Q);
-    assert!(halfway > fully_limited);
-    assert!(halfway < unlimited);
+    assert_approx(one_below, limited_q(1.0, 2.0, 0.0));
+    assert_approx(two_below, limited_q(0.0, 2.0, 0.0));
+    assert!(two_below < one_below);
+    assert!(two_below > BUTTERWORTH_Q);
+}
 
-    // q_limit_curve = 0 → linear power_scale
-    let t = 1.0 / 2.0;
-    let expected = BUTTERWORTH_Q + (MAX_Q - BUTTERWORTH_Q) * power_scale(t, 0.0);
-    assert_approx(halfway, expected);
+#[test]
+fn q_limit_approaches_butterworth_far_below_limit() {
+    let far_below = q_of(params(MIN_CUTOFF, 1.0, MAX_CUTOFF));
+    assert!((far_below - BUTTERWORTH_Q).abs() < 1e-3);
 }
 
 #[test]
 fn q_limit_at_the_limit_frequency_is_unlimited() {
-    // cutoff == q_limit_to → t = 1, so the curve does not reduce Q
     assert_approx(q_of(params(2.0, 1.0, 2.0)), MAX_Q);
 }
 
 #[test]
-fn q_limit_curve_changes_the_shape() {
-    let mut linear = params(1.0, 1.0, 2.0);
-    linear.q_limit_curve = 0.0;
-    let mut curved = linear;
-    curved.q_limit_curve = 1.0;
+fn q_limit_slope_steepens_the_drop() {
+    let mut shallow = params(1.0, 1.0, 2.0);
+    shallow.q_limit_slope = 0.0;
+    let mut steep = shallow;
+    steep.q_limit_slope = 1.0;
 
-    let t = 1.0 / 2.0;
-    assert_approx(
-        q_of(linear),
-        BUTTERWORTH_Q + (MAX_Q - BUTTERWORTH_Q) * power_scale(t, 0.0),
-    );
-    assert_approx(
-        q_of(curved),
-        BUTTERWORTH_Q + (MAX_Q - BUTTERWORTH_Q) * power_scale(t, MAX_Q_LIMIT_POWER),
-    );
-    assert!(q_of(curved) < q_of(linear));
+    assert_approx(q_of(shallow), limited_q(1.0, 2.0, 0.0));
+    assert_approx(q_of(steep), limited_q(1.0, 2.0, 1.0));
+    assert!(q_of(steep) < q_of(shallow));
+}
+
+#[test]
+fn q_limit_applies_when_limit_is_negative() {
+    let unlimited = q_of(params(0.0, 1.0, -1.0));
+    let limited = q_of(params(-2.0, 1.0, -1.0));
+
+    assert_approx(unlimited, MAX_Q);
+    assert_approx(limited, limited_q(-2.0, -1.0, 0.0));
 }
 
 #[test]
 fn q_limit_to_is_clamped() {
-    let at_max = q_of(params(5.0, 1.0, MAX_Q_LIMIT));
-    let above_max = q_of(params(5.0, 1.0, MAX_Q_LIMIT + 10.0));
+    let at_max = q_of(params(5.0, 1.0, MAX_CUTOFF));
+    let above_max = q_of(params(5.0, 1.0, MAX_CUTOFF + 10.0));
     assert_approx(at_max, above_max);
 
-    // Negative limit clamps to 0, which is below one semitone → no limiting
-    let negative = q_of(params(0.0, 1.0, -1.0));
-    assert_approx(negative, MAX_Q);
+    let at_min = q_of(params(MIN_CUTOFF, 1.0, MIN_CUTOFF));
+    let below_min = q_of(params(MIN_CUTOFF, 1.0, MIN_CUTOFF - 5.0));
+    assert_approx(at_min, below_min);
 }
 
 // ---- FilterImpl frequency responses ----

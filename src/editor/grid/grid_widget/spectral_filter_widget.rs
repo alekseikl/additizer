@@ -8,10 +8,10 @@ use crate::{
             FilterParams, MAX_CUTOFF, MAX_RESONANCE, MIN_CUTOFF, MIN_RESONANCE,
             SpectralFilter as SpectralFilterEngine,
         },
-        spectral_filter::SpectralFilterUiBridge,
+        spectral_filter::{C4_NOTE, SpectralFilterUiBridge},
         ui_bridge::{ModuleBridge, UiBridge},
     },
-    utils::gain_to_db_fast,
+    utils::{from_st, gain_to_db_fast},
 };
 
 use super::GridWidgetContent;
@@ -43,20 +43,29 @@ impl SpectralFilterWidget {
         }
 
         let mut config = filter_bridge.config().clone();
+        let has_voices = bridge.has_active_voices();
 
-        bridge.apply_modulation(module_id, Input::Cutoff, &mut config.cutoff);
+        if has_voices {
+            bridge.apply_modulation(module_id, Input::Cutoff, &mut config.cutoff);
+        }
         bridge.apply_modulation(module_id, Input::Resonance, &mut config.resonance);
         bridge.apply_modulation(module_id, Input::Drive, &mut config.drive);
 
-        let cutoff = config.cutoff[0].clamp(MIN_CUTOFF, MAX_CUTOFF);
+        let offset = if has_voices {
+            from_st(filter_bridge.note() as Sample - C4_NOTE as Sample) * config.keytrack
+        } else {
+            0.0
+        };
+        let cutoff = (config.cutoff[0] + offset).clamp(MIN_CUTOFF, MAX_CUTOFF);
+        let q_limit_to = (config.q_limit_to[0] + offset).clamp(MIN_CUTOFF, MAX_CUTOFF);
         let filter = SpectralFilterEngine::new(
             config.filter_type,
             FilterParams {
                 drive: config.drive[0].min(24.0),
                 cutoff,
                 resonance: config.resonance[0].clamp(MIN_RESONANCE, MAX_RESONANCE),
-                q_limit_to: config.q_limit_to[0],
-                q_limit_curve: config.q_limit_curve[0],
+                q_limit_to,
+                q_limit_slope: config.q_limit_slope[0],
                 linear_phase: config.linear_phase,
             },
         );
