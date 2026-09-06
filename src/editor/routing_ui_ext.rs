@@ -2,7 +2,10 @@ use egui::{Color32, ecolor::Hsva};
 
 use crate::{
     editor::{slider::Slider, units::Units},
-    synth_engine::{DataType, Input, ModuleType, StereoSample},
+    synth_engine::{
+        DataType, Input, ModuleType, StereoSample,
+        filters::spectral_filter::{MAX_CUTOFF, MIN_CUTOFF},
+    },
     utils::from_st,
 };
 
@@ -183,7 +186,7 @@ impl Input {
             Self::Blend | Self::GainsBlend | Self::PhasesBlend => {
                 Slider::stereo(value, 0.0..=1.0, None).default(0.0)
             }
-            Self::Cutoff => Slider::stereo(value, -2.0..=10.0, None)
+            Self::Cutoff => Slider::stereo(value, MIN_CUTOFF..=MAX_CUTOFF, None)
                 .default(0.0)
                 .units(Units::Octaves),
             Self::Resonance => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),

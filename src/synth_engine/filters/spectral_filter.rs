@@ -354,9 +354,10 @@ impl FilterType {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct FilterParams {
     pub drive: Sample,
-    pub cutoff: Sample, // Octaves
+    pub cutoff: Sample, // Octaves of the note fundamental (harmonic space).
     pub resonance: Sample,
     pub q_limit_to: Sample,    // Octaves. Before this point Q is limited.
     pub q_limit_curve: Sample, // [0.0-1.0]
@@ -384,16 +385,18 @@ pub struct SpectralFilter {
 
 impl SpectralFilter {
     pub fn new(filter_type: FilterType, params: FilterParams) -> Self {
+        let cutoff = params.cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF);
+
         Self {
             filter_type,
             gain: db_to_gain_fast(params.drive.min(MAX_DRIVE)),
-            cutoff_freq: params.cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF).exp2(),
-            q: Self::q_from_params(&params),
+            cutoff_freq: cutoff.exp2(),
+            q: Self::q_from_params(&params, cutoff),
             linear_phase: params.linear_phase,
         }
     }
 
-    fn q_from_params(params: &FilterParams) -> Sample {
+    fn q_from_params(params: &FilterParams, cutoff: Sample) -> Sample {
         let resonance = params.resonance.clamp(MIN_RESONANCE, MAX_RESONANCE);
         let q_limit_to = params.q_limit_to.clamp(MIN_Q_LIMIT, MAX_Q_LIMIT);
 
@@ -405,12 +408,12 @@ impl SpectralFilter {
 
         let butterworth_excess = q - BUTTERWORTH_Q;
 
-        if q_limit_to < from_st(1.0) || butterworth_excess <= 0.0 || params.cutoff > q_limit_to {
+        if q_limit_to < from_st(1.0) || butterworth_excess <= 0.0 || cutoff > q_limit_to {
             return q;
         }
 
         let q_limit_curve = params.q_limit_curve.clamp(0.0, 1.0) * MAX_Q_LIMIT_POWER;
-        let t = params.cutoff.max(0.0) / q_limit_to;
+        let t = cutoff.max(0.0) / q_limit_to;
 
         BUTTERWORTH_Q + butterworth_excess * power_scale(t, q_limit_curve)
     }
@@ -475,3 +478,6 @@ impl SpectralFilter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

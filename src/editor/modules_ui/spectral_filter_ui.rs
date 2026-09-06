@@ -135,6 +135,14 @@ impl SpectralFilterUI {
                 {
                     filter_bridge.set_linear_phase(config.linear_phase);
                 }
+
+                ui.label("Keytrack");
+                if ui
+                    .add(Slider::mono(&mut config.keytrack, 0.0..=1.0, None).default(0.0))
+                    .changed()
+                {
+                    filter_bridge.set_keytrack(config.keytrack);
+                }
                 ui.end_row();
             });
     }

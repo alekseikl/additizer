@@ -1,5 +1,5 @@
 use crate::synth_engine::{
-    Input, StereoSample, filters::spectral_filter::FilterType, synth_module::ModuleUiBridge,
+    Input, Sample, StereoSample, filters::spectral_filter::FilterType, synth_module::ModuleUiBridge,
 };
 
 use super::link::UiEnd;
@@ -44,6 +44,12 @@ impl SpectralFilterUiBridge {
     pub fn set_linear_phase(&mut self, value: bool) {
         if self.ui_end.set_linear_phase(value) {
             self.config.linear_phase = value;
+        }
+    }
+
+    pub fn set_keytrack(&mut self, value: Sample) {
+        if self.ui_end.set_keytrack(value) {
+            self.config.keytrack = value;
         }
     }
 

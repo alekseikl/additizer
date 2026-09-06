@@ -4,28 +4,39 @@ mod config;
 mod link;
 mod ui_bridge;
 
+#[cfg(test)]
+mod tests;
+
 pub use config::SpectralFilterConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::SpectralFilterUiBridge;
 
-use crate::synth_engine::{
-    StereoSample,
-    buffer::VoicesLayout,
-    filters::spectral_filter::{
-        FilterParams, FilterType, MAX_RESONANCE, MIN_RESONANCE,
-        SpectralFilter as SpectralFilterEngine,
+use crate::{
+    synth_engine::{
+        StereoSample,
+        buffer::VoicesLayout,
+        filters::spectral_filter::{
+            FilterParams, FilterType, MAX_RESONANCE, MIN_RESONANCE,
+            SpectralFilter as SpectralFilterEngine,
+        },
+        routing::{
+            DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
+            RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceTarget,
+        },
+        synth_module::SynthModule,
+        types::Sample,
     },
-    routing::{
-        DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
-        RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceTarget,
-    },
-    synth_module::SynthModule,
-    types::Sample,
+    utils::from_st,
 };
+
+/// MIDI note 60. Zero cutoff with key tracking off maps to this note.
+const C4_NOTE: u8 = 60;
 
 struct Params {
     filter_type: FilterType,
     linear_phase: bool,
+    /// 0 = C4-relative cutoff, 1 = full key tracking (relative to the note).
+    keytrack: Sample,
 }
 
 impl Params {
@@ -33,6 +44,7 @@ impl Params {
         Self {
             filter_type: c.filter_type,
             linear_phase: c.linear_phase,
+            keytrack: c.keytrack,
         }
     }
 }
@@ -146,6 +158,7 @@ impl SpectralFilter {
             id: self.id,
             filter_type: self.params.filter_type,
             linear_phase: self.params.linear_phase,
+            keytrack: self.params.keytrack,
             q_limit_to: get_stereo_param!(self, q_limit_to),
             q_limit_curve: get_stereo_param!(self, q_limit_curve),
             cutoff: get_stereo_param!(self, cutoff),
@@ -156,6 +169,7 @@ impl SpectralFilter {
 
     set_mono_param!(set_filter_type, filter_type, FilterType);
     set_mono_param!(set_linear_phase, linear_phase, bool);
+    set_mono_param!(set_keytrack, keytrack, Sample, keytrack.clamp(0.0, 1.0));
 
     set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(-4.0, 10.0));
     set_stereo_param!(
@@ -194,7 +208,9 @@ impl SpectralFilter {
             self.params.filter_type,
             FilterParams {
                 drive,
-                cutoff,
+                cutoff: cutoff
+                    + from_st(C4_NOTE as Sample - target.note as Sample)
+                        * (1.0 - self.params.keytrack),
                 resonance,
                 q_limit_to: channel.q_limit_to,
                 q_limit_curve: channel.q_limit_curve,
@@ -253,6 +269,7 @@ impl SynthModule for SpectralFilter {
                 },
                 UiEvent::FilterType(filter_type) => self.set_filter_type(filter_type),
                 UiEvent::LinearPhase(value) => self.set_linear_phase(value),
+                UiEvent::Keytrack(value) => self.set_keytrack(value),
                 UiEvent::QLimitTo(value) => self.set_q_limit_to(value),
                 UiEvent::QLimitCurve(value) => self.set_q_limit_curve(value),
             }

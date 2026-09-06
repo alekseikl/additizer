@@ -73,6 +73,7 @@ impl DecayingVoice {
 pub struct PlayingVoice {
     voice_idx: VoiceIdx,
     note_bandwidth: u16,
+    note: u8,
     triggered: Option<u16>,
 }
 
@@ -83,6 +84,7 @@ impl PlayingVoice {
         Self {
             voice_idx,
             note_bandwidth: (BAND_LIMIT_FREQUENCY / frequency).floor() as u16,
+            note,
             triggered: None,
         }
     }
@@ -93,6 +95,10 @@ impl PlayingVoice {
 
     pub fn note_bandwidth(&self) -> usize {
         self.note_bandwidth as usize
+    }
+
+    pub fn note(&self) -> u8 {
+        self.note
     }
 
     pub fn triggered(&self) -> Option<usize> {

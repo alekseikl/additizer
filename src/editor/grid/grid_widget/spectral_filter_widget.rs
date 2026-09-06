@@ -5,7 +5,8 @@ use crate::{
     synth_engine::{
         Input, ModuleId, Sample,
         filters::spectral_filter::{
-            FilterParams, MAX_RESONANCE, MIN_RESONANCE, SpectralFilter as SpectralFilterEngine,
+            FilterParams, MAX_CUTOFF, MAX_RESONANCE, MIN_CUTOFF, MIN_RESONANCE,
+            SpectralFilter as SpectralFilterEngine,
         },
         spectral_filter::SpectralFilterUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
@@ -16,9 +17,6 @@ use crate::{
 use super::GridWidgetContent;
 
 const PADDING: f32 = 4.0;
-
-const MIN_LOG2_FREQ: Sample = -2.0;
-const MAX_LOG2_FREQ: Sample = 10.0;
 
 const MIN_DB: Sample = -48.0;
 const MAX_DB: Sample = 24.0;
@@ -50,11 +48,12 @@ impl SpectralFilterWidget {
         bridge.apply_modulation(module_id, Input::Resonance, &mut config.resonance);
         bridge.apply_modulation(module_id, Input::Drive, &mut config.drive);
 
+        let cutoff = config.cutoff[0].clamp(MIN_CUTOFF, MAX_CUTOFF);
         let filter = SpectralFilterEngine::new(
             config.filter_type,
             FilterParams {
                 drive: config.drive[0].min(24.0),
-                cutoff: config.cutoff[0].clamp(-4.0, 10.0),
+                cutoff,
                 resonance: config.resonance[0].clamp(MIN_RESONANCE, MAX_RESONANCE),
                 q_limit_to: config.q_limit_to[0],
                 q_limit_curve: config.q_limit_curve[0],
@@ -62,23 +61,18 @@ impl SpectralFilterWidget {
             },
         );
 
-        Self::paint_response(
-            ui.painter(),
-            rect,
-            &filter,
-            config.cutoff[0].clamp(-4.0, 10.0),
-        );
+        Self::paint_response(ui.painter(), rect, &filter, cutoff);
     }
 
     fn curve_points(rect: Rect, filter: &SpectralFilterEngine, cutoff_log2: Sample) -> Vec<Pos2> {
         const DB_RANGE_MULT: f32 = (MAX_DB - MIN_DB).recip();
         const COLUMNS: usize = 512;
         let t_mult = ((COLUMNS - 1) as f32).recip();
-        let log2_range = MAX_LOG2_FREQ - MIN_LOG2_FREQ;
+        let log2_range = MAX_CUTOFF - MIN_CUTOFF;
 
         let point_at = |col: f32| -> Pos2 {
             let t = col * t_mult;
-            let freq = (MIN_LOG2_FREQ + t * log2_range).exp2();
+            let freq = (MIN_CUTOFF + t * log2_range).exp2();
             let db = gain_to_db_fast(filter.response_at(freq).norm());
             let y_t = ((db - MIN_DB) * DB_RANGE_MULT).clamp(0.0, 1.0);
 
@@ -88,7 +82,7 @@ impl SpectralFilterWidget {
             )
         };
 
-        let cutoff_col = (cutoff_log2 - MIN_LOG2_FREQ) / log2_range * (COLUMNS - 1) as f32;
+        let cutoff_col = (cutoff_log2 - MIN_CUTOFF) / log2_range * (COLUMNS - 1) as f32;
         let split = cutoff_col.ceil().clamp(0.0, COLUMNS as f32) as usize;
         let mut points = Vec::with_capacity(COLUMNS + 1);
 

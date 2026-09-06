@@ -1,11 +1,12 @@
 use crate::synth_engine::{
-    Input, StereoSample, UI_TO_AUDIO_RING_CAPACITY, filters::spectral_filter::FilterType,
+    Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY, filters::spectral_filter::FilterType,
 };
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
     FilterType(FilterType),
     LinearPhase(bool),
+    Keytrack(Sample),
     QLimitTo(StereoSample),
     QLimitCurve(StereoSample),
 }
@@ -29,6 +30,10 @@ impl UiEnd {
 
     pub fn set_linear_phase(&mut self, value: bool) -> bool {
         self.tx.push(UiEvent::LinearPhase(value)).is_ok()
+    }
+
+    pub fn set_keytrack(&mut self, value: Sample) -> bool {
+        self.tx.push(UiEvent::Keytrack(value)).is_ok()
     }
 
     pub fn set_q_limit_to(&mut self, value: StereoSample) -> bool {
