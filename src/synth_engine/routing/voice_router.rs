@@ -141,34 +141,27 @@ impl<'f, 'c, D: RouterDataType> RouterFactory<'f, 'c, D> {
 }
 
 impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
-    fn visit_voices(
-        &mut self,
-        mut f: impl FnMut(&mut Self, &VoiceTarget, &mut VoicesLayout<SamplesOutput>),
-    ) {
-        let mut slot = self.ctx.outputs_arena.samples[self.data_type.samples_slot]
-            .slot
-            .take()
-            .expect("slot should be in place");
-
-        for channel_idx in 0..NUM_CHANNELS {
-            for (seq_idx, voice) in self.ctx.params.active_voices.iter().enumerate() {
-                let target = VoiceTarget::new(channel_idx, voice, seq_idx);
-
-                f(self, &target, &mut slot);
-            }
-        }
-
-        self.ctx.outputs_arena.samples[self.data_type.samples_slot]
-            .slot
-            .replace(slot);
-    }
-
     pub fn for_voices(
         &mut self,
-        f: impl FnMut(&mut Self, &VoiceTarget, &mut VoicesLayout<SamplesOutput>),
+        mut f: impl FnMut(&mut Self, &VoiceTarget, &mut VoicesLayout<SamplesOutput>),
     ) -> &mut Self {
         if !self.ctx.params.trigger_stage {
-            self.visit_voices(f);
+            let mut slot = self.ctx.outputs_arena.samples[self.data_type.samples_slot]
+                .slot
+                .take()
+                .expect("slot should be in place");
+
+            for (seq_idx, voice) in self.ctx.params.active_voices.iter().enumerate() {
+                for channel_idx in 0..NUM_CHANNELS {
+                    let target = VoiceTarget::new(channel_idx, voice, seq_idx);
+
+                    f(self, &target, &mut slot);
+                }
+            }
+
+            self.ctx.outputs_arena.samples[self.data_type.samples_slot]
+                .slot
+                .replace(slot);
         }
 
         self
@@ -179,8 +172,8 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
         mut f: impl FnMut(&mut Self, &VoiceTarget),
     ) -> &mut Self {
         if self.ctx.params.trigger_stage {
-            for channel_idx in 0..NUM_CHANNELS {
-                for (seq_idx, voice) in self.ctx.params.active_voices.iter().enumerate() {
+            for (seq_idx, voice) in self.ctx.params.active_voices.iter().enumerate() {
+                for channel_idx in 0..NUM_CHANNELS {
                     let target = VoiceTarget::new(channel_idx, voice, seq_idx);
 
                     f(self, &target);
