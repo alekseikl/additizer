@@ -56,6 +56,7 @@ pub enum UiEvent {
     },
     StealPhase(bool),
     PhaseRandom(Sample),
+    Keytrack(bool),
     ApplyUnisonLevelShape {
         center: StereoSample,
         level: StereoSample,
@@ -99,6 +100,10 @@ impl UiEnd {
 
     pub fn set_phase_random(&mut self, phase_random: Sample) -> bool {
         self.tx.push(UiEvent::PhaseRandom(phase_random)).is_ok()
+    }
+
+    pub fn set_keytrack(&mut self, keytrack: bool) -> bool {
+        self.tx.push(UiEvent::Keytrack(keytrack)).is_ok()
     }
 
     pub fn set_unison_initial_phase(&mut self, idx: usize, value: StereoSample) -> bool {

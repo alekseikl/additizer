@@ -39,6 +39,12 @@ pub const fn note_to_pitch(note: Sample) -> Sample {
     (note - 69.0) / 12.0
 }
 
+/// MIDI note number for middle C (C4).
+pub const C4_NOTE: u8 = 60;
+
+/// Pitch of C4 in octave units (relative to A4).
+pub const C4_PITCH: Sample = note_to_pitch(C4_NOTE as Sample);
+
 // Pitch in octave units
 #[inline(always)]
 pub fn pitch_to_freq(pitch: Sample) -> Sample {

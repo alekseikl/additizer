@@ -395,7 +395,7 @@ impl OscillatorUI {
         let mut config = osc_bridge.config().clone();
 
         Grid::new("osc_grid")
-            .num_columns(4)
+            .num_columns(6)
             .spacing([8.0, 8.0])
             .show(ui, |ui| {
                 ui.label("Gain");
@@ -428,6 +428,14 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_param(Input::Pan, config.pan);
                 }
+
+                ui.label("Unison");
+                if ui
+                    .add(DragValue::new(&mut config.unison_voices).range(1..=16))
+                    .changed()
+                {
+                    osc_bridge.set_unison(config.unison_voices);
+                }
                 ui.end_row();
 
                 ui.label("Pitch shift");
@@ -454,6 +462,14 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_param(Input::FrequencyShift, config.frequency_shift);
                 }
+
+                ui.label("Steal phase");
+                if ui
+                    .add(Checkbox::without_text(&mut config.steal_phase))
+                    .changed()
+                {
+                    osc_bridge.set_steal_phase(config.steal_phase);
+                }
                 ui.end_row();
 
                 ui.label("Phase shift");
@@ -477,6 +493,13 @@ impl OscillatorUI {
                     osc_bridge.set_phase_random(config.phase_random);
                 }
 
+                ui.label("Keytrack");
+                if ui
+                    .add(Checkbox::without_text(&mut config.keytrack))
+                    .changed()
+                {
+                    osc_bridge.set_keytrack(config.keytrack);
+                }
                 ui.end_row();
 
                 ui.label("Detune");
@@ -519,7 +542,7 @@ impl OscillatorUI {
                     osc_bridge.set_param(Input::Glide, config.glide);
                 }
 
-                ui.label("Glide Slope");
+                ui.label("Glide slope");
                 if ui
                     .add(StereoInput::new(
                         Input::GlideSlope,
@@ -530,23 +553,6 @@ impl OscillatorUI {
                     .changed()
                 {
                     osc_bridge.set_param(Input::GlideSlope, config.glide_slope);
-                }
-                ui.end_row();
-
-                ui.label("Unison");
-                if ui
-                    .add(DragValue::new(&mut config.unison_voices).range(1..=16))
-                    .changed()
-                {
-                    osc_bridge.set_unison(config.unison_voices);
-                }
-
-                ui.label("Steal phase");
-                if ui
-                    .add(Checkbox::without_text(&mut config.steal_phase))
-                    .changed()
-                {
-                    osc_bridge.set_steal_phase(config.steal_phase);
                 }
                 ui.end_row();
             });

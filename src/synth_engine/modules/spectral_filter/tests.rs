@@ -1,5 +1,5 @@
 use super::*;
-use crate::utils::from_st;
+use crate::utils::{C4_NOTE, from_st};
 
 fn keytrack_offset(keytrack: Sample, note: u8) -> Sample {
     from_st(C4_NOTE as Sample - note as Sample) * (1.0 - keytrack)

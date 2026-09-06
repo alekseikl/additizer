@@ -116,7 +116,10 @@ fn show_top_bar(ui: &mut Ui, editor_state: &mut EditorState) {
                 .as_ref()
                 .is_some_and(|panel| panel.module_id().is_none());
 
-            if ui.selectable_label(showing_params, "Parameters").clicked() {
+            if ui
+                .selectable_label(showing_params, "Engine settings")
+                .clicked()
+            {
                 if showing_params {
                     editor_state.grid_module_ui = None;
                 } else {

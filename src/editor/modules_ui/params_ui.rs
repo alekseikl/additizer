@@ -168,7 +168,7 @@ impl ModuleUi for ParamsUi {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
-        ui.heading("Parameters");
+        ui.heading("Engine settings");
         ui.add_space(20.0);
 
         Grid::new("params_grid")

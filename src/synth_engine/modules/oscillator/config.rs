@@ -5,6 +5,10 @@ use crate::{
     utils::from_st,
 };
 
+fn default_keytrack() -> bool {
+    true
+}
+
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct UnisonConfig {
     pub initial_phase: StereoSample,
@@ -33,6 +37,8 @@ pub struct OscillatorConfig {
     pub steal_phase: bool,
     #[serde(default)]
     pub phase_random: Sample,
+    #[serde(default = "default_keytrack")]
+    pub keytrack: bool,
     #[serde(default)]
     pub pan: StereoSample,
     pub gain: StereoSample,
@@ -55,6 +61,7 @@ impl Default for OscillatorConfig {
             unison_voices: 1,
             steal_phase: false,
             phase_random: 0.0,
+            keytrack: true,
             pan: 0.0.into(),
             gain: 1.0.into(),
             pitch_shift: 0.0.into(),

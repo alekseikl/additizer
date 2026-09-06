@@ -26,11 +26,8 @@ use crate::{
         synth_module::SynthModule,
         types::Sample,
     },
-    utils::from_st,
+    utils::{C4_NOTE, from_st},
 };
-
-/// MIDI note 60. Zero cutoff with key tracking off maps to this note.
-pub const C4_NOTE: u8 = 60;
 
 struct Params {
     filter_type: FilterType,

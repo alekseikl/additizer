@@ -8,10 +8,10 @@ use crate::{
             FilterParams, MAX_CUTOFF, MAX_RESONANCE, MIN_CUTOFF, MIN_RESONANCE,
             SpectralFilter as SpectralFilterEngine,
         },
-        spectral_filter::{C4_NOTE, SpectralFilterUiBridge},
+        spectral_filter::SpectralFilterUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
-    utils::{from_st, gain_to_db_fast},
+    utils::{C4_NOTE, from_st, gain_to_db_fast},
 };
 
 use super::GridWidgetContent;

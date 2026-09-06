@@ -69,6 +69,12 @@ impl OscillatorUiBridge {
         }
     }
 
+    pub fn set_keytrack(&mut self, keytrack: bool) {
+        if self.ui_end.set_keytrack(keytrack) {
+            self.config.keytrack = keytrack;
+        }
+    }
+
     pub fn set_unison_initial_phase(&mut self, idx: usize, value: StereoSample) {
         self.ui_end.set_unison_initial_phase(idx, value);
     }

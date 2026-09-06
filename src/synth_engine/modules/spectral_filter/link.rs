@@ -65,7 +65,7 @@ impl AudioEnd {
 
 pub fn create_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
-    let (note_input, note_output) = triple_buffer(&super::C4_NOTE);
+    let (note_input, note_output) = triple_buffer(&crate::utils::C4_NOTE);
 
     (
         AudioEnd {

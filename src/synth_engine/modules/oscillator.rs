@@ -23,7 +23,7 @@ use crate::{
         synth_module::SynthModule,
         types::{ComplexSample, Sample},
     },
-    utils::{db_to_gain, from_ms, from_st, pan_gain, pitch_to_freq, power_scale},
+    utils::{db_to_gain, from_ms, from_st, pan_gain, pitch_to_freq, power_scale, C4_PITCH},
 };
 
 mod config;
@@ -54,6 +54,7 @@ struct Params {
     unison: usize,
     steal_phase: bool,
     phase_random: Sample, // [0.0, 1.0]
+    keytrack: bool,
 }
 
 impl Params {
@@ -62,6 +63,7 @@ impl Params {
             unison: c.unison_voices,
             steal_phase: c.steal_phase,
             phase_random: c.phase_random,
+            keytrack: c.keytrack,
         }
     }
 }
@@ -447,6 +449,7 @@ impl Oscillator {
             unison_voices: self.params.unison,
             steal_phase: self.params.steal_phase,
             phase_random: self.params.phase_random,
+            keytrack: self.params.keytrack,
             pan: get_smoothed_param!(self, pan),
             gain: get_smoothed_param!(self, gain),
             pitch_shift: get_smoothed_param!(self, pitch_shift),
@@ -475,6 +478,7 @@ impl Oscillator {
         Sample,
         phase_random.clamp(0.0, 1.0)
     );
+    set_mono_param!(set_keytrack, keytrack, bool);
 
     set_smoothed_param!(set_pan, pan, pan.clamp(-1.0, 1.0));
     set_smoothed_param!(set_gain, gain, gain.clamp(-1.0, 1.0));
@@ -1052,17 +1056,19 @@ impl Oscillator {
         voice_idx: usize,
         pitch: Sample,
     ) {
-        let voices = &mut self.voices[channel_idx];
+        let voice = &mut self.voices[channel_idx][voice_idx];
 
-        if let Some(prev_pitch) = prev_pitch {
-            voices[voice_idx].glide = Some(Glide::new(prev_pitch));
+        voice.glide = None;
+
+        if self.params.keytrack {
+            if let Some(prev_pitch) = prev_pitch {
+                voice.glide = Some(Glide::new(prev_pitch));
+            }
+            voice.pitch = pitch;
         } else {
-            voices[voice_idx].glide = None;
+            voice.pitch = C4_PITCH;
         }
 
-        let voice = &mut voices[voice_idx];
-
-        voice.pitch = pitch;
         voice.phase_reset = Some(PhaseReset {
             steal_from: replaced_voice_idx.or(self.last_voice_idx),
         });
@@ -1071,13 +1077,18 @@ impl Oscillator {
     fn handle_update(&mut self, channel_idx: usize, voice_idx: usize, pitch: Sample) {
         let voice = &mut self.voices[channel_idx][voice_idx];
 
-        voice.glide = Some(Glide::new(
-            voice
-                .glide
-                .as_ref()
-                .map_or(voice.pitch, |g| g.current_pitch),
-        ));
-        voice.pitch = pitch;
+        if self.params.keytrack {
+            voice.glide = Some(Glide::new(
+                voice
+                    .glide
+                    .as_ref()
+                    .map_or(voice.pitch, |g| g.current_pitch),
+            ));
+            voice.pitch = pitch;
+        } else {
+            voice.glide = None;
+            voice.pitch = C4_PITCH;
+        }
     }
 }
 
@@ -1187,6 +1198,7 @@ impl SynthModule for Oscillator {
                 UiEvent::UnisonGainTo { idx, value } => self.set_unison_gain_to(idx, value),
                 UiEvent::StealPhase(steal_phase) => self.set_steal_phase(steal_phase),
                 UiEvent::PhaseRandom(phase_random) => self.set_phase_random(phase_random),
+                UiEvent::Keytrack(keytrack) => self.set_keytrack(keytrack),
                 UiEvent::ApplyUnisonLevelShape { center, level, to } => {
                     self.apply_unison_level_shape(center, level, to);
                 }
