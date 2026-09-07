@@ -204,8 +204,9 @@ impl SpectralFilter {
             .clamp(MIN_RESONANCE, MAX_RESONANCE);
         let drive = router.scalar(&inputs.drive, channel.drive).min(24.0);
         let input = router.spectral(inputs.spectrum);
-        let keytrack_offset = from_st(C4_NOTE as Sample - target.note as Sample)
-            * (1.0 - self.params.keytrack);
+        let output = voice_output.output(input.len());
+        let keytrack_offset =
+            from_st(C4_NOTE as Sample - target.note as Sample) * (1.0 - self.params.keytrack);
         let note_based_cutoff = cutoff + keytrack_offset;
 
         if router.need_update_ui_mono() {
@@ -224,7 +225,7 @@ impl SpectralFilter {
             },
         );
 
-        filter.apply_response(input, voice_output.output());
+        filter.apply_response(input, output);
     }
 }
 

@@ -92,7 +92,6 @@ pub struct SynthEngine {
     host_sample_rate: f32,
     block_size: usize,
     oversampling: bool,
-    bandwidth: usize,
     modules: ModulesMap,
     input_sources: RoutingMap,
     execution_order: Vec<ModuleId>,
@@ -129,7 +128,6 @@ impl SynthEngine {
             host_sample_rate,
             block_size: Self::clamp_block_size(cfg.engine.block_size),
             oversampling: cfg.engine.oversampling,
-            bandwidth: Self::clamp_bandwidth(cfg.engine.bandwidth),
             modules: ModulesMap::default(),
             input_sources: RoutingMap::default(),
             execution_order: Vec::new(),
@@ -289,7 +287,6 @@ impl SynthEngine {
             oversampling: self.oversampling,
             voice_kill_time: self.get_voice_kill_time(),
             output_gain: self.get_output_gain(),
-            bandwidth: self.bandwidth,
         }
     }
 
@@ -343,10 +340,6 @@ impl SynthEngine {
         }
     }
 
-    pub fn set_bandwidth(&mut self, bandwidth: usize) {
-        self.bandwidth = Self::clamp_bandwidth(bandwidth);
-    }
-
     pub fn get_output_gain(&self) -> StereoSample {
         match self.modules.get(&OUTPUT_MODULE_ID) {
             Some(ModuleHandle::Output(output)) => output.get_gain(),
@@ -373,10 +366,6 @@ impl SynthEngine {
 
     fn clamp_block_size(block_size: usize) -> usize {
         (block_size).clamp(4, MAX_BLOCK_SIZE)
-    }
-
-    fn clamp_bandwidth(bandwidth: usize) -> usize {
-        bandwidth.clamp(0, MAX_BANDWIDTH)
     }
 
     add_module_method!(add_oscillator, Oscillator);
@@ -757,7 +746,6 @@ impl SynthEngine {
                     self.set_voice_kill_time(voice_kill_time);
                 }
                 UiEvent::Oversampling(oversampling) => self.set_oversampling(oversampling),
-                UiEvent::Bandwidth(bandwidth) => self.set_bandwidth(bandwidth),
                 UiEvent::OutputGain(output_gain) => self.set_output_gain(output_gain),
             }
         }
@@ -827,7 +815,6 @@ impl SynthEngine {
                 sample_rate,
                 smooth_params,
                 needs_update_ui: update_ui,
-                bandwidth: self.bandwidth,
                 active_voices: &triggered_voices,
             },
         };

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use egui::{
-    Button, Checkbox, Color32, ComboBox, DragValue, Frame, Grid, Id, Label, Modal, RichText, Sense,
-    Sides, Slider, TextEdit, Ui, vec2,
+    Button, Checkbox, Color32, ComboBox, Frame, Grid, Id, Label, Modal, RichText, Sense, Sides,
+    Slider, TextEdit, Ui, vec2,
 };
 use egui_extras::{Column, TableBuilder};
 
@@ -10,7 +10,7 @@ use crate::{
     editor::ModuleUi,
     engine_factory::EngineFactory,
     presets::{PresetListItem, Presets},
-    synth_engine::{MAX_BANDWIDTH, ModuleId, SynthEngine, ui_bridge::UiBridge},
+    synth_engine::{ModuleId, SynthEngine, ui_bridge::UiBridge},
     utils::from_ms,
 };
 
@@ -185,12 +185,6 @@ impl ModuleUi for ParamsUi {
                 let mut legato = controls.legato;
                 let mut block_size = controls.block_size;
                 let mut oversampling = controls.oversampling;
-                let mut note_based = controls.bandwidth == 0;
-                let mut bandwidth = if note_based {
-                    MAX_BANDWIDTH
-                } else {
-                    controls.bandwidth
-                };
 
                 ui.label("Voices");
                 if ui
@@ -245,25 +239,6 @@ impl ModuleUi for ParamsUi {
                 if ui.add(Checkbox::without_text(&mut oversampling)).changed() {
                     bridge.set_oversampling(oversampling);
                 }
-                ui.end_row();
-
-                ui.label("Bandwidth");
-                ui.horizontal(|ui| {
-                    if !note_based
-                        && ui
-                            .add(DragValue::new(&mut bandwidth).range(1..=MAX_BANDWIDTH))
-                            .changed()
-                    {
-                        bridge.set_bandwidth(bandwidth);
-                    }
-
-                    if ui
-                        .add(Checkbox::new(&mut note_based, "Note based"))
-                        .changed()
-                    {
-                        bridge.set_bandwidth(if note_based { 0 } else { MAX_BANDWIDTH });
-                    }
-                });
                 ui.end_row();
 
                 ui.label("Presets");

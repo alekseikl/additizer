@@ -131,13 +131,15 @@ impl SpectralBlend {
         let blend = router.scalar(&inputs.blend, channel.blend).clamp(0.0, 1.0);
         let spectrum_from = router.spectral(inputs.spectrum);
         let spectrum_to = router.spectral(inputs.spectrum_to);
+        let length = spectrum_from.len().min(spectrum_to.len());
+        let output = voice_output.output(length);
 
-        for (out, from, to) in izip!(voice_output.output(), spectrum_from, spectrum_to) {
+        for (out, &from, &to) in izip!(output.iter_mut(), spectrum_from, spectrum_to) {
             *out = from + (to - from) * blend;
         }
 
         if router.need_update_ui_mono() {
-            self.audio_end.update_spectrum(voice_output.output());
+            self.audio_end.update_spectrum(output);
         }
     }
 }

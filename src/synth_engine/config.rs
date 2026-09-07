@@ -20,7 +20,6 @@ pub struct EngineParams {
     pub oversampling: bool,
     pub voice_kill_time: Sample,
     pub output_gain: StereoSample,
-    pub bandwidth: usize,
 }
 
 impl Default for EngineParams {
@@ -32,7 +31,6 @@ impl Default for EngineParams {
             oversampling: false,
             voice_kill_time: from_ms(30.0),
             output_gain: 0.5.into(),
-            bandwidth: 0,
         }
     }
 }

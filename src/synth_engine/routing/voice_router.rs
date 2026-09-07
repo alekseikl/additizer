@@ -1,6 +1,6 @@
 use crate::synth_engine::{
     Buffer, ComplexSample, ModuleId, NUM_CHANNELS, ProcessParams, Sample,
-    buffer::{VoicesLayout, ZEROES_BUFFER, ZEROES_SPECTRAL_BUFFER},
+    buffer::{VoicesLayout, ZEROES_BUFFER},
     routing::{
         InputSlots, ProcessContext, SamplesOutput, SpectralOutput, process_context::VoiceTarget,
     },
@@ -22,7 +22,6 @@ pub trait RouterDataType {
 #[derive(Clone, Copy)]
 pub struct AudioVoiceState {
     offset: usize,
-    bandwidth: usize,
 }
 
 pub struct AudioRouterType {
@@ -68,9 +67,7 @@ impl RouterDataType for ControlRouterType {
 }
 
 #[derive(Clone, Copy)]
-pub struct SpectralVoiceState {
-    bandwidth: usize,
-}
+pub struct SpectralVoiceState;
 
 pub struct SpectralRouterType {
     pub(super) spectral_slot: usize,
@@ -127,17 +124,6 @@ impl<'f, 'c, D: RouterDataType> RouterFactory<'f, 'c, D> {
 
         self
     }
-
-    fn bandwidth(&self, note_bandwidth: usize) -> usize {
-        let bandwidth = self.params().bandwidth;
-        let bandwidth = if bandwidth == 0 {
-            note_bandwidth
-        } else {
-            bandwidth
-        };
-
-        bandwidth + 1 // Add DC
-    }
 }
 
 impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
@@ -188,7 +174,6 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
         AudioVoiceState {
             // Audio is sample-aligned: no trigger → offset 0; else silence [0..offset].
             offset: target.triggered.unwrap_or(0),
-            bandwidth: self.bandwidth(target.note_bandwidth),
         }
     }
 
@@ -352,9 +337,7 @@ impl<'f, 'c> RouterFactory<'f, 'c, SpectralRouterType> {
         let samples = self.params().samples;
         // Spectral is block-rate: trigger_stage selects this-frame vs next-frame
         // control scalars; sample offset does not slice the spectrum.
-        let state = SpectralVoiceState {
-            bandwidth: self.bandwidth(target.note_bandwidth),
-        };
+        let state = SpectralVoiceState;
 
         (
             VoiceRouter {
@@ -444,15 +427,12 @@ impl<'v, 'f, 'c, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D> {
         }
     }
 
-    fn spectral_impl(&self, slot: Option<usize>, bandwidth: usize) -> &[ComplexSample] {
-        let buff = self
-            .factory
+    pub fn spectral(&self, slot: Option<usize>) -> &[ComplexSample] {
+        self.factory
             .ctx
             .outputs_arena
             .get_spectral(slot, self.target.channel_idx, self.target.voice_idx)
-            .unwrap_or(&ZEROES_SPECTRAL_BUFFER);
-
-        &buff[..buff.len().min(bandwidth)]
+            .unwrap_or(&[])
     }
 }
 
@@ -506,10 +486,6 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
 
     pub fn scalar(&mut self, input: &InputSlots, param: Sample, this_frame: bool) -> Sample {
         self.scalar_param_impl(input, param, this_frame.then_some(self.state.offset))
-    }
-
-    pub fn spectral(&self, slot: Option<usize>) -> &[ComplexSample] {
-        self.spectral_impl(slot, self.state.bandwidth)
     }
 
     pub fn param_stationary_at(
@@ -616,18 +592,14 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, SpectralRouterType> {
 
         self.scalar_param_impl(input, param, this_frame)
     }
-
-    pub fn spectral(&self, slot: Option<usize>) -> &[ComplexSample] {
-        self.spectral_impl(slot, self.state.bandwidth)
-    }
 }
 
 impl<'v> VoiceOutput<'v, SpectralRouterType> {
-    pub fn output(&mut self) -> &mut [ComplexSample] {
-        let buff = self.outputs[self.target.channel_idx][self.target.voice_idx].buff();
-        let bandwidth = buff.len().min(self.state.bandwidth);
+    pub fn output(&mut self, length: usize) -> &mut [ComplexSample] {
+        let out = &mut self.outputs[self.target.channel_idx][self.target.voice_idx];
 
-        &mut buff[..bandwidth]
+        out.set_length(length);
+        out.get_mut()
     }
 }
 

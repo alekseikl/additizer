@@ -279,7 +279,12 @@ impl SpectralMixer {
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
         let channel = &self.channel_params[target.channel_idx];
-        let voice_output = voice_output.output();
+        let length = (0..self.params.num_inputs as usize)
+            .filter_map(|input_idx| inputs.spectrum_mix[input_idx])
+            .map(|slot| router.spectral(Some(slot)).len())
+            .min()
+            .unwrap_or(0);
+        let voice_output = voice_output.output(length);
 
         voice_output.fill(ComplexSample::ZERO);
 

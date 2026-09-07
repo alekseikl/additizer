@@ -1,5 +1,5 @@
 use crate::synth_engine::{
-    Buffer, Sample, SpectralBuffer,
+    Buffer, ComplexSample, Sample, SpectralBuffer,
     buffer::{zero_buffer, zero_spectral_buffer},
 };
 
@@ -33,23 +33,29 @@ impl Default for SamplesOutput {
 }
 
 pub struct SpectralOutput {
+    length: usize,
     output: SpectralBuffer,
 }
 
 impl Default for SpectralOutput {
     fn default() -> Self {
         Self {
+            length: 0,
             output: zero_spectral_buffer(),
         }
     }
 }
 
 impl SpectralOutput {
-    pub(super) fn get(&self) -> &SpectralBuffer {
-        &self.output
+    pub(super) fn get(&self) -> &[ComplexSample] {
+        &self.output[..self.length]
     }
 
-    pub(super) fn buff(&mut self) -> &mut SpectralBuffer {
-        &mut self.output
+    pub(super) fn get_mut(&mut self) -> &mut [ComplexSample] {
+        &mut self.output[..self.length]
+    }
+
+    pub(super) fn set_length(&mut self, new_length: usize) {
+        self.length = new_length.min(self.output.len());
     }
 }

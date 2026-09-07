@@ -53,6 +53,7 @@ pub enum UiEvent {
     EditRequest(EditRequest),
     ApplyDraft,
     DiscardDraft,
+    Bandwidth(usize),
 }
 
 pub struct UiEnd {
@@ -108,6 +109,10 @@ impl UiEnd {
 
     pub fn discard_draft(&mut self) -> bool {
         self.tx.push(UiEvent::DiscardDraft).is_ok()
+    }
+
+    pub fn set_bandwidth(&mut self, bandwidth: usize) -> bool {
+        self.tx.push(UiEvent::Bandwidth(bandwidth)).is_ok()
     }
 }
 

@@ -5,7 +5,7 @@ use rand_pcg::Pcg32;
 
 use crate::{
     synth_engine::{
-        ComplexSample, Sample, StereoSample,
+        ComplexSample, MAX_BANDWIDTH, Sample, StereoSample,
         buffer::{DC_OFFSET, SPECTRAL_BUFFER_SIZE, SpectralBuffer, VoicesLayout},
         harmonic_editor::config::fill_default_harmonics,
         routing::{
@@ -91,6 +91,7 @@ pub struct HarmonicEditor {
     draft_enabled: bool,
     output_harmonics: [Box<SpectralBuffer>; NUM_CHANNELS],
     random: Pcg32,
+    bandwidth: usize,
 }
 
 impl HarmonicEditor {
@@ -144,6 +145,7 @@ impl HarmonicEditor {
             draft_enabled: false,
             output_harmonics,
             random: Pcg32::new(0x2b992ddfa23249d6, 0x9e3779b97f4a7c15),
+            bandwidth: config.bandwidth.min(MAX_BANDWIDTH),
         };
 
         editor.rebuild_harmonics();
@@ -158,7 +160,26 @@ impl HarmonicEditor {
             id: self.id,
             amplitudes: array::from_fn(|c| Vec::from_iter(self.amplitudes[c].iter().copied())),
             phases: array::from_fn(|c| Vec::from_iter(self.phases[c].iter().copied())),
+            bandwidth: self.bandwidth,
         }
+    }
+
+    pub fn bandwidth(&self) -> usize {
+        self.bandwidth
+    }
+
+    pub fn set_bandwidth(&mut self, bandwidth: usize) {
+        self.bandwidth = bandwidth.min(MAX_BANDWIDTH);
+    }
+
+    fn spectrum_length(&self, note_bandwidth: usize) -> usize {
+        let bandwidth = if self.bandwidth == 0 {
+            note_bandwidth
+        } else {
+            self.bandwidth
+        };
+
+        (bandwidth + 1).min(SPECTRAL_BUFFER_SIZE)
     }
 
     fn frequency_bin(idx: usize, amp: Sample, phase: Sample) -> ComplexSample {
@@ -389,9 +410,10 @@ impl HarmonicEditor {
         rf: &mut RouterFactory<SpectralRouterType>,
     ) {
         let (_, mut voice_output) = rf.for_voice(target, outputs);
-        let out = voice_output.output();
+        let length = self.spectrum_length(target.note_bandwidth);
+        let out = voice_output.output(length);
 
-        out.copy_from_slice(&self.output_harmonics[target.channel_idx][..out.len()]);
+        out.copy_from_slice(&self.output_harmonics[target.channel_idx][..length]);
     }
 }
 
@@ -440,6 +462,9 @@ impl SynthModule for HarmonicEditor {
                 }
                 UiEvent::DiscardDraft => {
                     self.discard_draft();
+                }
+                UiEvent::Bandwidth(bandwidth) => {
+                    self.set_bandwidth(bandwidth);
                 }
             }
         }

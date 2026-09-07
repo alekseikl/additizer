@@ -7,7 +7,7 @@ use crate::{
         units::Units,
     },
     synth_engine::{
-        ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, Sample, StereoSample,
+        MAX_BANDWIDTH, ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, Sample, StereoSample,
         harmonic_editor::{
             EditRequest, HarmonicEditorUiBridge, HarmonicsRange, MAX_LEVEL_DB, MIN_LEVEL_DB,
             sawtooth_phase,
@@ -16,7 +16,9 @@ use crate::{
     },
     utils::db_to_gain,
 };
-use egui::{ComboBox, DragValue, Grid, Id, Modal, ScrollArea, Sides, Ui, Vec2, style::ScrollStyle};
+use egui::{
+    Checkbox, ComboBox, DragValue, Grid, Id, Modal, ScrollArea, Sides, Ui, Vec2, style::ScrollStyle,
+};
 
 const MIN_HARMONIC: u16 = 1;
 const MAX_HARMONIC: u16 = (SPECTRAL_BUFFER_SIZE - 1) as u16;
@@ -140,6 +142,34 @@ impl HarmonicEditorUI {
                         ui.selectable_value(&mut self.bin_mode, mode, mode.label());
                     }
                 });
+        });
+
+        ui.add_space(8.0);
+
+        ui.horizontal(|ui| {
+            ui.label("Bandwidth");
+
+            let mut note_based = editor_bridge.bandwidth() == 0;
+            let mut bandwidth = if note_based {
+                MAX_BANDWIDTH
+            } else {
+                editor_bridge.bandwidth()
+            };
+
+            if !note_based
+                && ui
+                    .add(DragValue::new(&mut bandwidth).range(1..=MAX_BANDWIDTH))
+                    .changed()
+            {
+                editor_bridge.set_bandwidth(bandwidth);
+            }
+
+            if ui
+                .add(Checkbox::new(&mut note_based, "Note based"))
+                .changed()
+            {
+                editor_bridge.set_bandwidth(if note_based { 0 } else { MAX_BANDWIDTH });
+            }
         });
 
         ui.add_space(8.0);

@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::synth_engine::{
-    Sample, SpectralBuffer, SynthModule,
+    ComplexSample, Sample, SynthModule,
     buffer::{VoicesLayout, VoicesLayoutArray, add_to_buffer, new_voices_layout},
     module_handle::ModuleHandle,
     routing::{
@@ -223,7 +223,7 @@ impl OutputsArena {
         slot: Option<usize>,
         channel_idx: usize,
         voice_idx: usize,
-    ) -> Option<&SpectralBuffer> {
+    ) -> Option<&[ComplexSample]> {
         slot.map(|slot| self.spectral[slot][channel_idx][voice_idx].get())
     }
 }

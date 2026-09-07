@@ -13,6 +13,8 @@ pub struct HarmonicEditorConfig {
     pub id: ModuleId,
     pub amplitudes: [Vec<Sample>; NUM_CHANNELS],
     pub phases: [Vec<Sample>; NUM_CHANNELS],
+    #[serde(default)]
+    pub bandwidth: usize,
 }
 
 impl Default for HarmonicEditorConfig {
@@ -30,6 +32,7 @@ impl Default for HarmonicEditorConfig {
             id: -1,
             amplitudes,
             phases,
+            bandwidth: 0,
         }
     }
 }
