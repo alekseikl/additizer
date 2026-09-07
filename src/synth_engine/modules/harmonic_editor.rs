@@ -30,6 +30,11 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 
 pub const MAX_LEVEL_DB: Sample = 24.0;
 pub const MIN_LEVEL_DB: Sample = -48.0;
+pub const MAX_NOTE_BANDWIDTH_MULTIPLIER: i32 = 4;
+
+fn clamp_bandwidth(bandwidth: i32) -> i32 {
+    bandwidth.clamp(-MAX_NOTE_BANDWIDTH_MULTIPLIER, MAX_BANDWIDTH as i32)
+}
 
 #[derive(Clone, Copy)]
 pub struct HarmonicsRange {
@@ -91,7 +96,8 @@ pub struct HarmonicEditor {
     draft_enabled: bool,
     output_harmonics: [Box<SpectralBuffer>; NUM_CHANNELS],
     random: Pcg32,
-    bandwidth: usize,
+    bandwidth: i32,
+    mono: bool,
 }
 
 impl HarmonicEditor {
@@ -145,7 +151,8 @@ impl HarmonicEditor {
             draft_enabled: false,
             output_harmonics,
             random: Pcg32::new(0x2b992ddfa23249d6, 0x9e3779b97f4a7c15),
-            bandwidth: config.bandwidth.min(MAX_BANDWIDTH),
+            bandwidth: clamp_bandwidth(config.bandwidth),
+            mono: config.mono,
         };
 
         editor.rebuild_harmonics();
@@ -161,22 +168,32 @@ impl HarmonicEditor {
             amplitudes: array::from_fn(|c| Vec::from_iter(self.amplitudes[c].iter().copied())),
             phases: array::from_fn(|c| Vec::from_iter(self.phases[c].iter().copied())),
             bandwidth: self.bandwidth,
+            mono: self.mono,
         }
     }
 
-    pub fn bandwidth(&self) -> usize {
+    pub fn bandwidth(&self) -> i32 {
         self.bandwidth
     }
 
-    pub fn set_bandwidth(&mut self, bandwidth: usize) {
-        self.bandwidth = bandwidth.min(MAX_BANDWIDTH);
+    pub fn set_bandwidth(&mut self, bandwidth: i32) {
+        self.bandwidth = clamp_bandwidth(bandwidth);
+    }
+
+    pub fn mono(&self) -> bool {
+        self.mono
+    }
+
+    pub fn set_mono(&mut self, mono: bool) {
+        self.mono = mono;
     }
 
     fn spectrum_length(&self, note_bandwidth: usize) -> usize {
-        let bandwidth = if self.bandwidth == 0 {
-            note_bandwidth
+        let bandwidth = if self.bandwidth <= 0 {
+            let multiplier = self.bandwidth.unsigned_abs().max(1) as usize;
+            note_bandwidth.saturating_mul(multiplier)
         } else {
-            self.bandwidth
+            self.bandwidth as usize
         };
 
         (bandwidth + 1).min(SPECTRAL_BUFFER_SIZE)
@@ -410,6 +427,11 @@ impl HarmonicEditor {
         rf: &mut RouterFactory<SpectralRouterType>,
     ) {
         let (_, mut voice_output) = rf.for_voice(target, outputs);
+        if self.mono && target.channel_idx == RIGHT_CHANNEL {
+            voice_output.output(0);
+            return;
+        }
+
         let length = self.spectrum_length(target.note_bandwidth);
         let out = voice_output.output(length);
 
@@ -465,6 +487,9 @@ impl SynthModule for HarmonicEditor {
                 }
                 UiEvent::Bandwidth(bandwidth) => {
                     self.set_bandwidth(bandwidth);
+                }
+                UiEvent::Mono(mono) => {
+                    self.set_mono(mono);
                 }
             }
         }

@@ -1,19 +1,19 @@
-use crate::synth_engine::{
-    ComplexSample, MAX_BANDWIDTH, StereoSample, synth_module::ModuleUiBridge,
-};
+use crate::synth_engine::{ComplexSample, StereoSample, synth_module::ModuleUiBridge};
 
 use super::link::UiEnd;
-use super::{EditRequest, HarmonicEditor, Harmonics};
+use super::{EditRequest, HarmonicEditor, Harmonics, clamp_bandwidth};
 
 pub struct HarmonicEditorUiBridge {
     ui_end: UiEnd,
-    bandwidth: usize,
+    bandwidth: i32,
+    mono: bool,
 }
 
 impl HarmonicEditorUiBridge {
     pub fn try_new(editor: &mut HarmonicEditor) -> Option<Self> {
         Some(Self {
             bandwidth: editor.bandwidth(),
+            mono: editor.mono(),
             ui_end: editor.ui_end.take()?,
         })
     }
@@ -26,15 +26,25 @@ impl HarmonicEditorUiBridge {
         self.ui_end.get_display_spectrum()
     }
 
-    pub fn bandwidth(&self) -> usize {
+    pub fn bandwidth(&self) -> i32 {
         self.bandwidth
     }
 
-    pub fn set_bandwidth(&mut self, bandwidth: usize) {
-        let bandwidth = bandwidth.min(MAX_BANDWIDTH);
+    pub fn set_bandwidth(&mut self, bandwidth: i32) {
+        let bandwidth = clamp_bandwidth(bandwidth);
 
         if self.ui_end.set_bandwidth(bandwidth) {
             self.bandwidth = bandwidth;
+        }
+    }
+
+    pub fn mono(&self) -> bool {
+        self.mono
+    }
+
+    pub fn set_mono(&mut self, mono: bool) {
+        if self.ui_end.set_mono(mono) {
+            self.mono = mono;
         }
     }
 

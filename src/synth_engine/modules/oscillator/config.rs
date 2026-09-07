@@ -40,6 +40,8 @@ pub struct OscillatorConfig {
     #[serde(default = "default_keytrack")]
     pub keytrack: bool,
     #[serde(default)]
+    pub mono_spectrum: bool,
+    #[serde(default)]
     pub pan: StereoSample,
     pub gain: StereoSample,
     pub pitch_shift: StereoSample,
@@ -62,6 +64,7 @@ impl Default for OscillatorConfig {
             steal_phase: false,
             phase_random: 0.0,
             keytrack: true,
+            mono_spectrum: false,
             pan: 0.0.into(),
             gain: 1.0.into(),
             pitch_shift: 0.0.into(),

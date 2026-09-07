@@ -527,6 +527,16 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_param(Input::DetunePower, config.detune_power);
                 }
+
+                ui.label("Mono spectrum").on_hover_text(
+                    "Build the waveform for the left channel only and reuse it for the right.",
+                );
+                if ui
+                    .add(Checkbox::without_text(&mut config.mono_spectrum))
+                    .changed()
+                {
+                    osc_bridge.set_mono_spectrum(config.mono_spectrum);
+                }
                 ui.end_row();
 
                 ui.label("Glide");

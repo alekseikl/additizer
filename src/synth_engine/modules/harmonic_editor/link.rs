@@ -53,7 +53,8 @@ pub enum UiEvent {
     EditRequest(EditRequest),
     ApplyDraft,
     DiscardDraft,
-    Bandwidth(usize),
+    Bandwidth(i32),
+    Mono(bool),
 }
 
 pub struct UiEnd {
@@ -111,8 +112,12 @@ impl UiEnd {
         self.tx.push(UiEvent::DiscardDraft).is_ok()
     }
 
-    pub fn set_bandwidth(&mut self, bandwidth: usize) -> bool {
+    pub fn set_bandwidth(&mut self, bandwidth: i32) -> bool {
         self.tx.push(UiEvent::Bandwidth(bandwidth)).is_ok()
+    }
+
+    pub fn set_mono(&mut self, mono: bool) -> bool {
+        self.tx.push(UiEvent::Mono(mono)).is_ok()
     }
 }
 

@@ -9,15 +9,16 @@ use crate::{
     synth_engine::{
         MAX_BANDWIDTH, ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, Sample, StereoSample,
         harmonic_editor::{
-            EditRequest, HarmonicEditorUiBridge, HarmonicsRange, MAX_LEVEL_DB, MIN_LEVEL_DB,
-            sawtooth_phase,
+            EditRequest, HarmonicEditorUiBridge, HarmonicsRange, MAX_LEVEL_DB,
+            MAX_NOTE_BANDWIDTH_MULTIPLIER, MIN_LEVEL_DB, sawtooth_phase,
         },
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::db_to_gain,
 };
 use egui::{
-    Checkbox, ComboBox, DragValue, Grid, Id, Modal, ScrollArea, Sides, Ui, Vec2, style::ScrollStyle,
+    Checkbox, ComboBox, DragValue, FontFamily, Grid, Id, Modal, RichText, ScrollArea, Sides, Ui,
+    Vec2, style::ScrollStyle,
 };
 
 const MIN_HARMONIC: u16 = 1;
@@ -142,23 +143,18 @@ impl HarmonicEditorUI {
                         ui.selectable_value(&mut self.bin_mode, mode, mode.label());
                     }
                 });
-        });
 
-        ui.add_space(8.0);
+            ui.label(RichText::new("Bandwidth:").family(FontFamily::Name("Bold".into())))
+                .on_hover_text(
+                    "Reduce the number of frequency bins processed to improve performance.",
+                );
 
-        ui.horizontal(|ui| {
-            ui.label("Bandwidth");
-
-            let mut note_based = editor_bridge.bandwidth() == 0;
-            let mut bandwidth = if note_based {
-                MAX_BANDWIDTH
-            } else {
-                editor_bridge.bandwidth()
-            };
+            let mut bandwidth = editor_bridge.bandwidth();
+            let mut note_based = bandwidth <= 0;
 
             if !note_based
                 && ui
-                    .add(DragValue::new(&mut bandwidth).range(1..=MAX_BANDWIDTH))
+                    .add(DragValue::new(&mut bandwidth).range(1..=MAX_BANDWIDTH as i32))
                     .changed()
             {
                 editor_bridge.set_bandwidth(bandwidth);
@@ -168,7 +164,30 @@ impl HarmonicEditorUI {
                 .add(Checkbox::new(&mut note_based, "Note based"))
                 .changed()
             {
-                editor_bridge.set_bandwidth(if note_based { 0 } else { MAX_BANDWIDTH });
+                editor_bridge.set_bandwidth(if note_based { 0 } else { MAX_BANDWIDTH as i32 });
+            }
+
+            if note_based {
+                ui.label("x");
+
+                let mut multiplier = editor_bridge.bandwidth().abs().max(1);
+                if ui
+                    .add(DragValue::new(&mut multiplier).range(1..=MAX_NOTE_BANDWIDTH_MULTIPLIER))
+                    .changed()
+                {
+                    editor_bridge.set_bandwidth(-multiplier);
+                }
+            }
+
+            let mut mono = editor_bridge.mono();
+
+            ui.add_space(8.0);
+            if ui
+                .add(Checkbox::new(&mut mono, "Mono"))
+                .on_hover_text("Process only a single channel to improve performance.")
+                .changed()
+            {
+                editor_bridge.set_mono(mono);
             }
         });
 

@@ -75,6 +75,12 @@ impl OscillatorUiBridge {
         }
     }
 
+    pub fn set_mono_spectrum(&mut self, mono_spectrum: bool) {
+        if self.ui_end.set_mono_spectrum(mono_spectrum) {
+            self.config.mono_spectrum = mono_spectrum;
+        }
+    }
+
     pub fn set_unison_initial_phase(&mut self, idx: usize, value: StereoSample) {
         self.ui_end.set_unison_initial_phase(idx, value);
     }
