@@ -46,6 +46,7 @@ const DFT_BUFFER_SIZE: usize = (1 << (WAVEFORM_BITS - 1)) + 1;
 
 pub const MAX_UNISON_VOICES: usize = 16;
 const MAX_GLIDE: Sample = 5.0;
+const GLIDE_TIME_THRESHOLD: Sample = from_ms(1.0);
 
 type WaveformBuffer = [Sample; WAVEFORM_BUFFER_SIZE];
 type DftBuffer = [ComplexSample; DFT_BUFFER_SIZE];
@@ -56,6 +57,8 @@ struct Params {
     phase_random: Sample, // [0.0, 1.0]
     keytrack: bool,
     mono_spectrum: bool,
+    glide_always: bool,
+    glide_per_octave: bool,
 }
 
 impl Params {
@@ -66,6 +69,8 @@ impl Params {
             phase_random: c.phase_random,
             keytrack: c.keytrack,
             mono_spectrum: c.mono_spectrum,
+            glide_always: c.glide_always,
+            glide_per_octave: c.glide_per_octave,
         }
     }
 }
@@ -453,6 +458,8 @@ impl Oscillator {
             phase_random: self.params.phase_random,
             keytrack: self.params.keytrack,
             mono_spectrum: self.params.mono_spectrum,
+            glide_always: self.params.glide_always,
+            glide_per_octave: self.params.glide_per_octave,
             pan: get_smoothed_param!(self, pan),
             gain: get_smoothed_param!(self, gain),
             pitch_shift: get_smoothed_param!(self, pitch_shift),
@@ -483,6 +490,8 @@ impl Oscillator {
     );
     set_mono_param!(set_keytrack, keytrack, bool);
     set_mono_param!(set_mono_spectrum, mono_spectrum, bool);
+    set_mono_param!(set_glide_always, glide_always, bool);
+    set_mono_param!(set_glide_per_octave, glide_per_octave, bool);
 
     set_smoothed_param!(set_pan, pan, pan.clamp(-1.0, 1.0));
     set_smoothed_param!(set_gain, gain, gain.clamp(-1.0, 1.0));
@@ -674,8 +683,13 @@ impl Oscillator {
         let mut router = rf.for_triggered_voice(target);
         let channel = &self.channel_params[target.channel_idx];
         let voice = &self.voices[target.channel_idx][target.voice_idx];
-        let pitch =
-            voice.pitch + router.scalar(&self.inputs.pitch_shift, channel.pitch_shift.get(), true);
+        let pitch = Self::pitch_with_glide(
+            channel,
+            &self.inputs,
+            voice,
+            &mut router,
+            self.params.glide_per_octave,
+        ) + router.scalar(&self.inputs.pitch_shift, channel.pitch_shift.get(), true);
         let spectrum = router.spectral(self.inputs.spectrum);
 
         Self::build_wave(
@@ -805,14 +819,64 @@ impl Oscillator {
             cal_unison_gain(voice.unison.iter().take(unison).map(|state| state.gain.to));
     }
 
+    fn glide_time(
+        channel: &ChannelParams,
+        inputs: &Inputs,
+        pitch: Sample,
+        pitch_from: Sample,
+        router: &mut Router<'_, '_, '_>,
+        per_octave: bool,
+    ) -> Sample {
+        let mut glide_time = router
+            .scalar(&inputs.glide, channel.glide, true)
+            .clamp(0.0, MAX_GLIDE);
+
+        if per_octave {
+            glide_time *= (pitch - pitch_from).abs();
+        }
+
+        glide_time
+    }
+
+    fn glide_active(glide_time: Sample, t: Sample) -> bool {
+        glide_time >= GLIDE_TIME_THRESHOLD && glide_time - t > 0.0
+    }
+
+    fn pitch_with_glide(
+        channel: &ChannelParams,
+        inputs: &Inputs,
+        voice: &Voice,
+        router: &mut Router<'_, '_, '_>,
+        per_octave: bool,
+    ) -> Sample {
+        let Some(glide) = voice.glide.as_ref() else {
+            return voice.pitch;
+        };
+
+        let glide_time = Self::glide_time(
+            channel,
+            inputs,
+            voice.pitch,
+            glide.pitch_from,
+            router,
+            per_octave,
+        );
+
+        if Self::glide_active(glide_time, glide.t) {
+            glide.current_pitch
+        } else {
+            voice.pitch
+        }
+    }
+
     fn process_glide(
         channel: &ChannelParams,
         inputs: &Inputs,
         buffers: &mut Buffers,
         voice: &mut Voice,
         router: &mut Router<'_, '_, '_>,
+        per_octave: bool,
     ) {
-        const GLIDE_TIME_THRESHOLD: Sample = from_ms(1.0);
         const GLIDE_POWER_MAX: Sample = 6.0;
         const POWER_LINEAR_THRESHOLD: Sample = 0.005;
 
@@ -822,12 +886,11 @@ impl Oscillator {
             return;
         };
 
-        let glide_time = router
-            .scalar(&inputs.glide, channel.glide, true)
-            .clamp(0.0, MAX_GLIDE);
+        let glide_time =
+            Self::glide_time(channel, inputs, pitch, glide.pitch_from, router, per_octave);
         let time_left = glide_time - glide.t;
 
-        if glide_time < GLIDE_TIME_THRESHOLD || time_left <= 0.0 {
+        if !Self::glide_active(glide_time, glide.t) {
             voice.glide = None;
             return;
         }
@@ -966,6 +1029,15 @@ impl Oscillator {
             &mut buffers.frequency_shift,
         );
 
+        Self::process_glide(
+            channel,
+            inputs,
+            buffers,
+            voice,
+            &mut router,
+            self.params.glide_per_octave,
+        );
+
         let mono_spectrum = self.params.mono_spectrum;
         let wave_channel = if mono_spectrum {
             LEFT_CHANNEL
@@ -993,7 +1065,6 @@ impl Oscillator {
         }
 
         Self::process_unison(self.params.unison, channel, inputs, voice, &mut router);
-        Self::process_glide(channel, inputs, buffers, voice, &mut router);
 
         let freq_phase_mult = Phase::freq_phase_mult(router.sample_rate());
         let buff_t_inc = (samples as f32).recip();
@@ -1072,7 +1143,9 @@ impl Oscillator {
         voice.glide = None;
 
         if self.params.keytrack {
-            if let Some(prev_pitch) = prev_pitch {
+            if self.params.glide_always
+                && let Some(prev_pitch) = prev_pitch
+            {
                 voice.glide = Some(Glide::new(prev_pitch));
             }
             voice.pitch = pitch;
@@ -1211,6 +1284,10 @@ impl SynthModule for Oscillator {
                 UiEvent::PhaseRandom(phase_random) => self.set_phase_random(phase_random),
                 UiEvent::Keytrack(keytrack) => self.set_keytrack(keytrack),
                 UiEvent::MonoSpectrum(mono_spectrum) => self.set_mono_spectrum(mono_spectrum),
+                UiEvent::GlideAlways(glide_always) => self.set_glide_always(glide_always),
+                UiEvent::GlidePerOctave(glide_per_octave) => {
+                    self.set_glide_per_octave(glide_per_octave)
+                }
                 UiEvent::ApplyUnisonLevelShape { center, level, to } => {
                     self.apply_unison_level_shape(center, level, to);
                 }

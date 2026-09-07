@@ -564,6 +564,26 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_param(Input::GlideSlope, config.glide_slope);
                 }
+
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(Checkbox::new(&mut config.glide_always, "Always"))
+                        .on_hover_text("When disabled, glide only happens on legato notes")
+                        .changed()
+                    {
+                        osc_bridge.set_glide_always(config.glide_always);
+                    }
+
+                    ui.add_space(8.0);
+
+                    if ui
+                        .add(Checkbox::new(&mut config.glide_per_octave, "Per octave"))
+                        .on_hover_text("Octave scale")
+                        .changed()
+                    {
+                        osc_bridge.set_glide_per_octave(config.glide_per_octave);
+                    }
+                });
                 ui.end_row();
             });
 

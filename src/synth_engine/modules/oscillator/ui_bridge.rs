@@ -81,6 +81,18 @@ impl OscillatorUiBridge {
         }
     }
 
+    pub fn set_glide_always(&mut self, glide_always: bool) {
+        if self.ui_end.set_glide_always(glide_always) {
+            self.config.glide_always = glide_always;
+        }
+    }
+
+    pub fn set_glide_per_octave(&mut self, glide_per_octave: bool) {
+        if self.ui_end.set_glide_per_octave(glide_per_octave) {
+            self.config.glide_per_octave = glide_per_octave;
+        }
+    }
+
     pub fn set_unison_initial_phase(&mut self, idx: usize, value: StereoSample) {
         self.ui_end.set_unison_initial_phase(idx, value);
     }

@@ -9,6 +9,10 @@ fn default_keytrack() -> bool {
     true
 }
 
+fn default_glide_always() -> bool {
+    true
+}
+
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct UnisonConfig {
     pub initial_phase: StereoSample,
@@ -41,6 +45,10 @@ pub struct OscillatorConfig {
     pub keytrack: bool,
     #[serde(default)]
     pub mono_spectrum: bool,
+    #[serde(default = "default_glide_always")]
+    pub glide_always: bool,
+    #[serde(default)]
+    pub glide_per_octave: bool,
     #[serde(default)]
     pub pan: StereoSample,
     pub gain: StereoSample,
@@ -65,6 +73,8 @@ impl Default for OscillatorConfig {
             phase_random: 0.0,
             keytrack: true,
             mono_spectrum: false,
+            glide_always: true,
+            glide_per_octave: false,
             pan: 0.0.into(),
             gain: 1.0.into(),
             pitch_shift: 0.0.into(),
