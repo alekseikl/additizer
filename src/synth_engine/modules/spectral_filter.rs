@@ -26,7 +26,7 @@ use crate::{
         synth_module::SynthModule,
         types::Sample,
     },
-    utils::{C4_NOTE, from_st},
+    utils::C4_PITCH,
 };
 
 struct Params {
@@ -68,6 +68,7 @@ impl ChannelParams {
 
 pub struct Inputs {
     spectrum: Option<usize>,
+    pitch: Option<usize>,
     cutoff: InputSlots,
     resonance: InputSlots,
     drive: InputSlots,
@@ -77,6 +78,7 @@ impl Default for Inputs {
     fn default() -> Self {
         Self {
             spectrum: None,
+            pitch: None,
             cutoff: InputSlots::new(Input::Cutoff),
             resonance: InputSlots::new(Input::Resonance),
             drive: InputSlots::new(Input::Drive),
@@ -90,6 +92,7 @@ impl Inputs {
 
         for input in inputs {
             match input.input_type {
+                Input::Pitch => result.pitch = input.slots.first().map(|s| s.src_slot),
                 Input::Cutoff => result.cutoff = input.clone(),
                 Input::Resonance => result.resonance = input.clone(),
                 Input::Drive => result.drive = input.clone(),
@@ -203,14 +206,16 @@ impl SpectralFilter {
             .scalar(&inputs.resonance, channel.resonance)
             .clamp(MIN_RESONANCE, MAX_RESONANCE);
         let drive = router.scalar(&inputs.drive, channel.drive).min(24.0);
+        let pitch = router
+            .direct_opt(inputs.pitch)
+            .unwrap_or_else(|| target.note_pitch());
         let input = router.spectral(inputs.spectrum);
         let output = voice_output.output(input.len());
-        let keytrack_offset =
-            from_st(C4_NOTE as Sample - target.note as Sample) * (1.0 - self.params.keytrack);
+        let keytrack_offset = (C4_PITCH - pitch) * (1.0 - self.params.keytrack);
         let note_based_cutoff = cutoff + keytrack_offset;
 
         if router.need_update_ui_mono() {
-            self.audio_end.update_note(target.note);
+            self.audio_end.update_pitch(pitch);
         }
 
         let filter = SpectralFilterEngine::new(
@@ -237,6 +242,7 @@ impl SynthModule for SpectralFilter {
     fn inputs(&self) -> &'static [InputMeta] {
         static INPUTS: &[InputMeta] = &[
             InputMeta::spectral(Input::Spectrum),
+            InputMeta::direct_control(Input::Pitch),
             InputMeta::control(Input::Cutoff),
             InputMeta::control(Input::Resonance),
             InputMeta::control(Input::Drive),

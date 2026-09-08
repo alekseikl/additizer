@@ -8,7 +8,7 @@ use crate::{
         buffer::{MonoVoicesLayout, new_mono_voices_layout},
         routing::{ExpressionEvent, MAX_VOICES, VoiceEvent},
     },
-    utils::{log, note_to_pitch, pitch_to_freq},
+    utils::{log, note_to_pitch},
 };
 
 pub const MAX_AVAILABLE_VOICES: usize = MAX_VOICES - 4;
@@ -72,18 +72,14 @@ impl DecayingVoice {
 #[derive(Debug, Clone, Copy)]
 pub struct PlayingVoice {
     voice_idx: VoiceIdx,
-    note_bandwidth: u16,
     note: u8,
     triggered: Option<u16>,
 }
 
 impl PlayingVoice {
     fn new(voice_idx: VoiceIdx, note: u8) -> Self {
-        let frequency = pitch_to_freq(note_to_pitch(note as f32));
-
         Self {
             voice_idx,
-            note_bandwidth: (BAND_LIMIT_FREQUENCY / frequency).floor() as u16,
             note,
             triggered: None,
         }
@@ -91,10 +87,6 @@ impl PlayingVoice {
 
     pub fn voice_idx(&self) -> usize {
         self.voice_idx as usize
-    }
-
-    pub fn note_bandwidth(&self) -> usize {
-        self.note_bandwidth as usize
     }
 
     pub fn note(&self) -> u8 {

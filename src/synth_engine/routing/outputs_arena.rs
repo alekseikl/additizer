@@ -180,7 +180,7 @@ impl OutputsArena {
         true
     }
 
-    fn control_scalar(
+    pub(super) fn control_scalar(
         &self,
         slot: usize,
         channel_idx: usize,

@@ -29,23 +29,15 @@ const PITCH_ID: ModuleId = 7;
 fn default_ui_config() -> UiConfig {
     let mut modules = FxHashMap::default();
 
-    // Layout: main signal chain across the top row (y=2), modulation sources below (y=4).
-    // Each module occupies 4 grid columns wide × 2 rows tall (154×77 px per module).
-    // Column spacing of 6 gives a 77 px gap between adjacent modules.
-    //
-    //  col:  0                    6                           12                          18                24
-    //  y=0: [HarmonicEditor                      ]  [Pitch]   [Oscillator                      ]
-    //  y=2:            [SpectralFilter                      ]             [Amplifier               ]  [Output]
-    //  y=4: [FilterEnv                           ]             [AmpEnv                            ]
     for (id, label, grid_x, grid_y) in [
-        (HARMONIC_EDITOR_ID, "Harmonics", 0, 0),
-        (FILTER_ENV_ID, "Cutoff Envelope", 0, 4),
-        (FILTER_ID, "Filter", 6, 2),
-        (PITCH_ID, "Pitch", 8, 0),
-        (OSC_ID, "Oscillator", 12, 0),
-        (AMP_ENV_ID, "Amp Envelope", 12, 4),
-        (AMP_ID, "Amplifier", 18, 2),
-        (OUTPUT_MODULE_ID, "Output", 24, 2),
+        (PITCH_ID, "Pitch", 0, 0),
+        (HARMONIC_EDITOR_ID, "Harmonics", 3, 2),
+        (FILTER_ENV_ID, "Cutoff Envelope", 3, 4),
+        (FILTER_ID, "Filter", 8, 2),
+        (OSC_ID, "Oscillator", 13, 2),
+        (AMP_ENV_ID, "Amp Envelope", 13, 4),
+        (AMP_ID, "Amp", 18, 2),
+        (OUTPUT_MODULE_ID, "Out", 20, 2),
     ] {
         modules.insert(
             id,
@@ -117,6 +109,8 @@ fn default_engine_config() -> EngineConfig {
             LinkConfig::direct(HARMONIC_EDITOR_ID, FILTER_ID, Input::Spectrum),
             LinkConfig::mixed(FILTER_ENV_ID, FILTER_ID, Input::Cutoff, from_st(64.0)),
             LinkConfig::direct(FILTER_ID, OSC_ID, Input::Spectrum),
+            LinkConfig::direct(PITCH_ID, HARMONIC_EDITOR_ID, Input::Pitch),
+            LinkConfig::direct(PITCH_ID, FILTER_ID, Input::Pitch),
             LinkConfig::direct(PITCH_ID, OSC_ID, Input::Pitch),
             LinkConfig::direct(OSC_ID, AMP_ID, Input::Audio),
             LinkConfig::mixed(AMP_ENV_ID, AMP_ID, Input::Gain, StereoSample::ONE),

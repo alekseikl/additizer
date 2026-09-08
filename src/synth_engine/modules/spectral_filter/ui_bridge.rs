@@ -22,8 +22,8 @@ impl SpectralFilterUiBridge {
         &self.config
     }
 
-    pub fn note(&mut self) -> u8 {
-        self.ui_end.note()
+    pub fn pitch(&mut self) -> Sample {
+        self.ui_end.pitch()
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {

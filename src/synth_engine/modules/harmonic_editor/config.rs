@@ -13,8 +13,7 @@ pub struct HarmonicEditorConfig {
     pub id: ModuleId,
     pub amplitudes: [Vec<Sample>; NUM_CHANNELS],
     pub phases: [Vec<Sample>; NUM_CHANNELS],
-    /// Positive: fixed harmonic count. `0`/`-1`: note-based.
-    /// `-2..=-4`: note-based, multiplied by the absolute value.
+    /// Positive: fixed harmonic count. `0`: pitch-based bandlimiting.
     #[serde(default)]
     pub bandwidth: i32,
     #[serde(default)]

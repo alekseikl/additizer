@@ -9,12 +9,14 @@ use crate::{
         buffer::{DC_OFFSET, SPECTRAL_BUFFER_SIZE, SpectralBuffer, VoicesLayout},
         harmonic_editor::config::fill_default_harmonics,
         routing::{
-            DataType, InputMeta, LEFT_CHANNEL, ModuleId, NUM_CHANNELS, ProcessContext,
-            RIGHT_CHANNEL, RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget,
+            DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, ModuleId, NUM_CHANNELS,
+            ProcessContext, RIGHT_CHANNEL, RouterFactory, SpectralInputSlot, SpectralOutput,
+            SpectralRouterType, VoiceTarget,
         },
         synth_module::SynthModule,
+        voices_handler::BAND_LIMIT_FREQUENCY,
     },
-    utils::{NthElement, db_to_gain},
+    utils::{NthElement, db_to_gain, pitch_to_freq},
 };
 
 mod config;
@@ -30,10 +32,28 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 
 pub const MAX_LEVEL_DB: Sample = 24.0;
 pub const MIN_LEVEL_DB: Sample = -48.0;
-pub const MAX_NOTE_BANDWIDTH_MULTIPLIER: i32 = 4;
 
 fn clamp_bandwidth(bandwidth: i32) -> i32 {
-    bandwidth.clamp(-MAX_NOTE_BANDWIDTH_MULTIPLIER, MAX_BANDWIDTH as i32)
+    bandwidth.clamp(0, MAX_BANDWIDTH as i32)
+}
+
+#[derive(Default)]
+pub struct Inputs {
+    pitch: Option<usize>,
+}
+
+impl Inputs {
+    fn from_slots(inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) -> Self {
+        let mut result = Self::default();
+
+        for input in inputs {
+            if matches!(input.input_type, Input::Pitch) {
+                result.pitch = input.slots.first().map(|s| s.src_slot);
+            }
+        }
+
+        result
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -89,6 +109,7 @@ pub struct HarmonicEditor {
     id: ModuleId,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
+    inputs: Inputs,
     output_slot: usize,
     amplitudes: [Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
     phases: [Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
@@ -144,6 +165,7 @@ impl HarmonicEditor {
             id: config.id,
             audio_end,
             ui_end: Some(ui_end),
+            inputs: Inputs::default(),
             output_slot: usize::MAX,
             amplitudes,
             phases,
@@ -188,10 +210,15 @@ impl HarmonicEditor {
         self.mono = mono;
     }
 
-    fn spectrum_length(&self, note_bandwidth: usize) -> usize {
-        let bandwidth = if self.bandwidth <= 0 {
-            let multiplier = self.bandwidth.unsigned_abs().max(1) as usize;
-            note_bandwidth.saturating_mul(multiplier)
+    fn pitch_bandwidth(pitch: Sample) -> usize {
+        let frequency = pitch_to_freq(pitch).max(1.0);
+
+        (BAND_LIMIT_FREQUENCY / frequency).floor() as usize
+    }
+
+    fn spectrum_length(&self, pitch: Sample) -> usize {
+        let bandwidth = if self.bandwidth == 0 {
+            Self::pitch_bandwidth(pitch)
         } else {
             self.bandwidth as usize
         };
@@ -426,13 +453,16 @@ impl HarmonicEditor {
         outputs: &mut VoicesLayout<SpectralOutput>,
         rf: &mut RouterFactory<SpectralRouterType>,
     ) {
-        let (_, mut voice_output) = rf.for_voice(target, outputs);
+        let (router, mut voice_output) = rf.for_voice(target, outputs);
         if self.mono && target.channel_idx == RIGHT_CHANNEL {
             voice_output.output(0);
             return;
         }
 
-        let length = self.spectrum_length(target.note_bandwidth);
+        let pitch = router
+            .direct_opt(self.inputs.pitch)
+            .unwrap_or_else(|| target.note_pitch());
+        let length = self.spectrum_length(pitch);
         let out = voice_output.output(length);
 
         out.copy_from_slice(&self.output_harmonics[target.channel_idx][..length]);
@@ -445,7 +475,9 @@ impl SynthModule for HarmonicEditor {
     }
 
     fn inputs(&self) -> &'static [InputMeta] {
-        &[]
+        static INPUTS: &[InputMeta] = &[InputMeta::direct_control(Input::Pitch)];
+
+        INPUTS
     }
 
     fn output_type(&self) -> DataType {
@@ -458,6 +490,10 @@ impl SynthModule for HarmonicEditor {
 
     fn set_output_slot(&mut self, slot: usize) {
         self.output_slot = slot;
+    }
+
+    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) {
+        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
     }
 
     fn process_ui_events(&mut self) {

@@ -9,8 +9,8 @@ use crate::{
     synth_engine::{
         MAX_BANDWIDTH, ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, Sample, StereoSample,
         harmonic_editor::{
-            EditRequest, HarmonicEditorUiBridge, HarmonicsRange, MAX_LEVEL_DB,
-            MAX_NOTE_BANDWIDTH_MULTIPLIER, MIN_LEVEL_DB, sawtooth_phase,
+            EditRequest, HarmonicEditorUiBridge, HarmonicsRange, MAX_LEVEL_DB, MIN_LEVEL_DB,
+            sawtooth_phase,
         },
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -150,7 +150,7 @@ impl HarmonicEditorUI {
                 );
 
             let mut bandwidth = editor_bridge.bandwidth();
-            let mut note_based = bandwidth <= 0;
+            let mut note_based = bandwidth == 0;
 
             if !note_based
                 && ui
@@ -165,18 +165,6 @@ impl HarmonicEditorUI {
                 .changed()
             {
                 editor_bridge.set_bandwidth(if note_based { 0 } else { MAX_BANDWIDTH as i32 });
-            }
-
-            if note_based {
-                ui.label("x");
-
-                let mut multiplier = editor_bridge.bandwidth().abs().max(1);
-                if ui
-                    .add(DragValue::new(&mut multiplier).range(1..=MAX_NOTE_BANDWIDTH_MULTIPLIER))
-                    .changed()
-                {
-                    editor_bridge.set_bandwidth(-multiplier);
-                }
             }
 
             let mut mono = editor_bridge.mono();

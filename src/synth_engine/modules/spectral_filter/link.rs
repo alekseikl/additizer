@@ -15,12 +15,12 @@ pub enum UiEvent {
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
-    note: triple_buffer::Output<u8>,
+    pitch: triple_buffer::Output<Sample>,
 }
 
 impl UiEnd {
-    pub fn note(&mut self) -> u8 {
-        *self.note.read()
+    pub fn pitch(&mut self) -> Sample {
+        *self.pitch.read()
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
@@ -50,7 +50,7 @@ impl UiEnd {
 
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
-    note: triple_buffer::Input<u8>,
+    pitch: triple_buffer::Input<Sample>,
 }
 
 impl AudioEnd {
@@ -58,23 +58,23 @@ impl AudioEnd {
         self.rx.pop().ok()
     }
 
-    pub fn update_note(&mut self, note: u8) {
-        self.note.write(note);
+    pub fn update_pitch(&mut self, pitch: Sample) {
+        self.pitch.write(pitch);
     }
 }
 
 pub fn create_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
-    let (note_input, note_output) = triple_buffer(&crate::utils::C4_NOTE);
+    let (pitch_input, pitch_output) = triple_buffer(&crate::utils::C4_PITCH);
 
     (
         AudioEnd {
             rx: from_ui_rx,
-            note: note_input,
+            pitch: pitch_input,
         },
         UiEnd {
             tx: to_audio_tx,
-            note: note_output,
+            pitch: pitch_output,
         },
     )
 }

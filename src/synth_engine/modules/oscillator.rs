@@ -203,6 +203,7 @@ struct Buffers {
     tmp_wave: Box<WaveformBuffer>,
     tmp_spectral: DftBuffer,
     scratch: DftBuffer,
+    pitch: Buffer,
     pan: Buffer,
     gain: Buffer,
     phase_shift: Buffer,
@@ -215,6 +216,7 @@ impl Default for Buffers {
             tmp_wave: Box::new([0.0; WAVEFORM_BUFFER_SIZE]),
             tmp_spectral: [ComplexSample::ZERO; DFT_BUFFER_SIZE],
             scratch: [ComplexSample::ZERO; DFT_BUFFER_SIZE],
+            pitch: zero_buffer(),
             pan: zero_buffer(),
             gain: zero_buffer(),
             phase_shift: zero_buffer(),
@@ -622,7 +624,11 @@ impl Oscillator {
         }
 
         let mut router = rf.for_triggered_voice(target);
-        let pitch = router.direct(self.inputs.pitch)[0];
+        let pitch = if self.inputs.pitch.is_some() {
+            router.direct(self.inputs.pitch)[0]
+        } else {
+            target.note_pitch()
+        };
         let freq_shift = router.scalar(
             &self.inputs.freq_shift,
             self.channel_params[target.channel_idx]
@@ -843,7 +849,11 @@ impl Oscillator {
             &mut buffers.frequency_shift,
         );
 
-        let pitch_in = router.direct(inputs.pitch);
+        if inputs.pitch.is_some() {
+            buffers.pitch[..samples].copy_from_slice(router.direct(inputs.pitch));
+        } else {
+            buffers.pitch[..samples].fill(target.note_pitch());
+        }
 
         let mono_spectrum = self.params.mono_spectrum;
         let wave_channel = if mono_spectrum {
@@ -857,7 +867,7 @@ impl Oscillator {
 
             Self::build_wave(
                 self.inverse_fft.as_ref(),
-                pitch_to_freq(pitch_in[last]) + buffers.frequency_shift[last],
+                pitch_to_freq(buffers.pitch[last]) + buffers.frequency_shift[last],
                 router.sample_rate(),
                 router.spectral(inputs.spectrum),
                 &mut buffers.tmp_spectral,
@@ -881,7 +891,7 @@ impl Oscillator {
 
         for (out, &pitch, &phase_shift, freq_shift) in izip!(
             output.iter_mut(),
-            pitch_in,
+            &buffers.pitch,
             &buffers.phase_shift,
             &buffers.frequency_shift,
         ) {

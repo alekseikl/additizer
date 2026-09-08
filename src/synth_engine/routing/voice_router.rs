@@ -582,6 +582,24 @@ impl<'v> VoiceOutput<'v, ControlRouterType> {
 }
 
 impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, SpectralRouterType> {
+    pub fn direct_opt(&self, slot: Option<usize>) -> Option<Sample> {
+        let this_frame = self
+            .factory
+            .params()
+            .trigger_stage
+            .then_some(self.target.triggered)
+            .flatten();
+
+        slot.map(|slot| {
+            self.factory.ctx.outputs_arena.control_scalar(
+                slot,
+                self.target.channel_idx,
+                self.target.voice_idx,
+                this_frame,
+            )
+        })
+    }
+
     pub fn scalar(&mut self, input: &InputSlots, param: Sample) -> Sample {
         let this_frame = self
             .factory

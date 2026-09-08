@@ -11,7 +11,7 @@ use crate::{
         spectral_filter::SpectralFilterUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
-    utils::{C4_NOTE, from_st, gain_to_db_fast},
+    utils::{C4_PITCH, gain_to_db_fast},
 };
 
 use super::GridWidgetContent;
@@ -52,7 +52,7 @@ impl SpectralFilterWidget {
         bridge.apply_modulation(module_id, Input::Drive, &mut config.drive);
 
         let offset = if has_voices {
-            from_st(filter_bridge.note() as Sample - C4_NOTE as Sample) * config.keytrack
+            (filter_bridge.pitch() - C4_PITCH) * config.keytrack
         } else {
             0.0
         };

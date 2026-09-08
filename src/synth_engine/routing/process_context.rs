@@ -28,7 +28,6 @@ pub struct ProcessContext<'c> {
 pub struct VoiceTarget {
     pub channel_idx: usize,
     pub voice_idx: usize,
-    pub note_bandwidth: usize,
     pub note: u8,
     pub triggered: Option<usize>,
     pub is_last: bool,
@@ -39,11 +38,14 @@ impl VoiceTarget {
         VoiceTarget {
             channel_idx,
             voice_idx: voice.voice_idx(),
-            note_bandwidth: voice.note_bandwidth(),
             note: voice.note(),
             triggered: voice.triggered(),
             is_last: seq_idx == 0,
         }
+    }
+
+    pub fn note_pitch(&self) -> Sample {
+        crate::utils::note_to_pitch(self.note as Sample)
     }
 }
 
