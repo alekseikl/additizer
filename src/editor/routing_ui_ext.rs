@@ -260,6 +260,7 @@ impl ModuleType {
             Self::HarmonicEditor => "Harmonics",
             Self::ExternalParam => "Ext Param",
             Self::Lfo => "LFO",
+            Self::Pitch => "Pitch",
             Self::WaveShaper => "Waveshaper",
             Self::Expressions => "Expressions",
         }

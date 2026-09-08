@@ -13,7 +13,8 @@ use crate::{
             expressions_widget::ExpressionsWidget, external_param_widget::ExternalParamWidget,
             harmonic_editor_widget::HarmonicEditorWidget, lfo_widget::LfoWidget,
             mixer_widget::MixerWidget, oscillator_widget::OscillatorWidget,
-            output_widget::OutputWidget, spectral_blend_widget::SpectralBlendWidget,
+            output_widget::OutputWidget, pitch_widget::PitchWidget,
+            spectral_blend_widget::SpectralBlendWidget,
             spectral_filter_widget::SpectralFilterWidget,
             spectral_mixer_widget::SpectralMixerWidget, wave_shaper_widget::WaveShaperWidget,
         },
@@ -40,6 +41,7 @@ mod lfo_widget;
 mod mixer_widget;
 mod oscillator_widget;
 mod output_widget;
+mod pitch_widget;
 mod spectral_blend_widget;
 mod spectral_filter_widget;
 mod spectral_mixer_widget;
@@ -112,6 +114,7 @@ impl GridWidget {
                 ModuleType::SpectralFilter => Box::new(SpectralFilterWidget {}),
                 ModuleType::Envelope => Box::new(EnvelopeWidget {}),
                 ModuleType::Lfo => Box::new(LfoWidget::default()),
+                ModuleType::Pitch => Box::new(PitchWidget::default()),
                 ModuleType::HarmonicEditor => Box::new(HarmonicEditorWidget::default()),
                 ModuleType::SpectralBlend => Box::new(SpectralBlendWidget::default()),
                 ModuleType::SpectralMixer => Box::new(SpectralMixerWidget::default()),

@@ -16,6 +16,7 @@ use crate::{
         lfo::LfoUiBridge,
         mixer::MixerUiBridge,
         oscillator::OscillatorUiBridge,
+        pitch::PitchUiBridge,
         routing::{DataType, Input, InputMeta, InputSource, data_types_compatible},
         spectral_blend::SpectralBlendUiBridge,
         spectral_filter::SpectralFilterUiBridge,
@@ -42,6 +43,7 @@ pub enum ModuleBridge {
     Envelope(Box<EnvelopeUiBridge>),
     Amplifier(Box<AmplifierUiBridge>),
     Lfo(Box<LfoUiBridge>),
+    Pitch(Box<PitchUiBridge>),
     Mixer(Box<MixerUiBridge>),
     WaveShaper(Box<WaveShaperUiBridge>),
     SpectralFilter(Box<SpectralFilterUiBridge>),
@@ -144,6 +146,7 @@ impl UiBridge {
                 ModuleBridge::Envelope(Box::new(EnvelopeUiBridge::try_new(m)?))
             }
             ModuleHandle::Lfo(m) => ModuleBridge::Lfo(Box::new(LfoUiBridge::try_new(m)?)),
+            ModuleHandle::Pitch(m) => ModuleBridge::Pitch(Box::new(PitchUiBridge::try_new(m)?)),
             ModuleHandle::Amplifier(m) => {
                 ModuleBridge::Amplifier(Box::new(AmplifierUiBridge::try_new(m)?))
             }
@@ -540,6 +543,7 @@ impl UiBridge {
             ModuleType::HarmonicEditor => synth.add_harmonic_editor(),
             ModuleType::ExternalParam => synth.add_external_param(),
             ModuleType::Lfo => synth.add_lfo(),
+            ModuleType::Pitch => synth.add_pitch(),
             ModuleType::WaveShaper => synth.add_wave_shaper(),
             ModuleType::Expressions => synth.add_expressions(),
         };

@@ -27,8 +27,8 @@ pub use buffer::{
 pub use config::{EngineConfig, EngineParams, LinkConfig, MAX_BANDWIDTH, ModuleConfig};
 pub use module_handle::ModuleType;
 pub use modules::{
-    Amplifier, Envelope, Expressions, ExternalParam, Lfo, LfoShape, Mixer, Oscillator, ShaperType,
-    SpectralBlend, SpectralFilter, SpectralMixer, WaveShaper,
+    Amplifier, Envelope, Expressions, ExternalParam, Lfo, LfoShape, Mixer, Oscillator, Pitch,
+    ShaperType, SpectralBlend, SpectralFilter, SpectralMixer, WaveShaper,
     amplifier::{self},
     envelope::{self},
     expressions::{self},
@@ -37,6 +37,7 @@ pub use modules::{
     lfo::{self},
     mixer::{self},
     oscillator::{self},
+    pitch::{self},
     spectral_blend::{self},
     spectral_filter::{self},
     spectral_mixer::{self},
@@ -161,6 +162,7 @@ impl SynthEngine {
                     ModuleHandle::Envelope(Box::new(Envelope::from_config(cfg)))
                 }
                 ModuleConfig::Lfo(cfg) => ModuleHandle::Lfo(Box::new(Lfo::from_config(cfg))),
+                ModuleConfig::Pitch(cfg) => ModuleHandle::Pitch(Box::new(Pitch::from_config(cfg))),
                 ModuleConfig::Amplifier(cfg) => {
                     ModuleHandle::Amplifier(Box::new(Amplifier::from_config(cfg)))
                 }
@@ -229,6 +231,7 @@ impl SynthEngine {
                         Some(ModuleConfig::Envelope(Box::new(m.get_config())))
                     }
                     ModuleHandle::Lfo(m) => Some(ModuleConfig::Lfo(Box::new(m.get_config()))),
+                    ModuleHandle::Pitch(m) => Some(ModuleConfig::Pitch(Box::new(m.get_config()))),
                     ModuleHandle::Amplifier(m) => {
                         Some(ModuleConfig::Amplifier(Box::new(m.get_config())))
                     }
@@ -371,6 +374,7 @@ impl SynthEngine {
     add_module_method!(add_oscillator, Oscillator);
     add_module_method!(add_envelope, Envelope);
     add_module_method!(add_lfo, Lfo);
+    add_module_method!(add_pitch, Pitch);
     add_module_method!(add_amplifier, Amplifier);
     add_module_method!(add_mixer, Mixer);
     add_module_method!(add_wave_shaper, WaveShaper);

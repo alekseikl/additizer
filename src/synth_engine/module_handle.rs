@@ -1,6 +1,7 @@
 use crate::synth_engine::{
     Amplifier, Envelope, Expressions, ExternalParam, HarmonicEditor, Input, Lfo, Mixer, ModuleId,
-    Oscillator, SpectralBlend, SpectralFilter, SpectralMixer, StereoSample, VoiceEvent, WaveShaper,
+    Oscillator, Pitch, SpectralBlend, SpectralFilter, SpectralMixer, StereoSample, VoiceEvent,
+    WaveShaper,
     modules::Output,
     routing::{DataType, InputMeta, InputSlots, ProcessContext, SpectralInputSlot},
     synth_module::SynthModule,
@@ -21,6 +22,7 @@ pub enum ModuleType {
     HarmonicEditor,
     ExternalParam,
     Lfo,
+    Pitch,
     WaveShaper,
     Expressions,
 }
@@ -39,6 +41,7 @@ impl ModuleType {
             Self::HarmonicEditor => "Harmonic Editor",
             Self::ExternalParam => "Ext Parameter",
             Self::Lfo => "LFO",
+            Self::Pitch => "Pitch",
             Self::WaveShaper => "Waveshaper",
             Self::Expressions => "Expressions",
         }
@@ -50,6 +53,7 @@ pub enum ModuleHandle {
     Oscillator(Box<Oscillator>),
     Envelope(Box<Envelope>),
     Lfo(Box<Lfo>),
+    Pitch(Box<Pitch>),
     Amplifier(Box<Amplifier>),
     WaveShaper(Box<WaveShaper>),
     Mixer(Box<Mixer>),
@@ -69,6 +73,7 @@ impl ModuleHandle {
             Self::Oscillator(_) => ModuleType::Oscillator,
             Self::Envelope(_) => ModuleType::Envelope,
             Self::Lfo(_) => ModuleType::Lfo,
+            Self::Pitch(_) => ModuleType::Pitch,
             Self::Amplifier(_) => ModuleType::Amplifier,
             Self::Mixer(_) => ModuleType::Mixer,
             Self::WaveShaper(_) => ModuleType::WaveShaper,

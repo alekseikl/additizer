@@ -15,7 +15,7 @@ use crate::{
         grid::GridEvent,
         modules_ui::{
             AmplifierUI, EnvelopeUI, ExpressionsUi, ExternalParamUI, HarmonicEditorUI, LfoUi,
-            MixerUi, OscillatorUI, OutputUi, ParamsUi, SpectralBlendUi, SpectralFilterUI,
+            MixerUi, OscillatorUI, OutputUi, ParamsUi, PitchUi, SpectralBlendUi, SpectralFilterUI,
             SpectralMixerUi, WaveShaperUI,
         },
     },
@@ -92,6 +92,7 @@ impl ModuleType {
             Self::Envelope => Box::new(EnvelopeUI::new(id)),
             Self::ExternalParam => Box::new(ExternalParamUI::new(id)),
             Self::Lfo => Box::new(LfoUi::new(id)),
+            Self::Pitch => Box::new(PitchUi::new(id)),
             Self::SpectralBlend => Box::new(SpectralBlendUi::new(id)),
             Self::SpectralMixer => Box::new(SpectralMixerUi::new(id)),
             Self::WaveShaper => Box::new(WaveShaperUI::new(id)),
