@@ -445,7 +445,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
         self.target.triggered.is_some()
     }
 
-    pub fn direct(&mut self, slot: Option<usize>) -> &[Sample] {
+    pub fn direct(&self, slot: Option<usize>) -> &[Sample] {
         let ctx = &self.factory.ctx;
 
         &ctx.outputs_arena

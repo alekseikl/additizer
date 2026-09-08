@@ -5,14 +5,6 @@ use crate::{
     utils::from_st,
 };
 
-fn default_keytrack() -> bool {
-    true
-}
-
-fn default_glide_always() -> bool {
-    true
-}
-
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct UnisonConfig {
     pub initial_phase: StereoSample,
@@ -41,22 +33,13 @@ pub struct OscillatorConfig {
     pub steal_phase: bool,
     #[serde(default)]
     pub phase_random: Sample,
-    #[serde(default = "default_keytrack")]
-    pub keytrack: bool,
     #[serde(default)]
     pub mono_spectrum: bool,
-    #[serde(default = "default_glide_always")]
-    pub glide_always: bool,
-    #[serde(default)]
-    pub glide_per_octave: bool,
     #[serde(default)]
     pub pan: StereoSample,
     pub gain: StereoSample,
-    pub pitch_shift: StereoSample,
     pub detune: StereoSample,
     pub detune_power: StereoSample,
-    pub glide: StereoSample,
-    pub glide_slope: StereoSample,
     pub phase_shift: StereoSample,
     pub frequency_shift: StereoSample,
     pub phases_blend: StereoSample,
@@ -71,17 +54,11 @@ impl Default for OscillatorConfig {
             unison_voices: 1,
             steal_phase: false,
             phase_random: 0.0,
-            keytrack: true,
             mono_spectrum: false,
-            glide_always: true,
-            glide_per_octave: false,
             pan: 0.0.into(),
             gain: 1.0.into(),
-            pitch_shift: 0.0.into(),
             detune: from_st(0.2).into(),
             detune_power: 0.0.into(),
-            glide: 0.0.into(),
-            glide_slope: 0.0.into(),
             phase_shift: 0.0.into(),
             frequency_shift: 0.0.into(),
             phases_blend: 0.0.into(),

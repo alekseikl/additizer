@@ -8,6 +8,7 @@ use crate::{
         envelope::EnvelopeConfig,
         harmonic_editor::HarmonicEditorConfig,
         oscillator::OscillatorConfig,
+        pitch::PitchConfig,
         spectral_filter::SpectralFilterConfig,
         ui_bridge::{
             GridVec,
@@ -23,6 +24,7 @@ const FILTER_ID: ModuleId = 3;
 const OSC_ID: ModuleId = 4;
 const AMP_ID: ModuleId = 5;
 const AMP_ENV_ID: ModuleId = 6;
+const PITCH_ID: ModuleId = 7;
 
 fn default_ui_config() -> UiConfig {
     let mut modules = FxHashMap::default();
@@ -32,13 +34,14 @@ fn default_ui_config() -> UiConfig {
     // Column spacing of 6 gives a 77 px gap between adjacent modules.
     //
     //  col:  0                    6                           12                          18                24
-    //  y=0: [HarmonicEditor                      ]            [Oscillator                      ]
+    //  y=0: [HarmonicEditor                      ]  [Pitch]   [Oscillator                      ]
     //  y=2:            [SpectralFilter                      ]             [Amplifier               ]  [Output]
     //  y=4: [FilterEnv                           ]             [AmpEnv                            ]
     for (id, label, grid_x, grid_y) in [
         (HARMONIC_EDITOR_ID, "Harmonics", 0, 0),
         (FILTER_ENV_ID, "Cutoff Envelope", 0, 4),
         (FILTER_ID, "Filter", 6, 2),
+        (PITCH_ID, "Pitch", 8, 0),
         (OSC_ID, "Oscillator", 12, 0),
         (AMP_ENV_ID, "Amp Envelope", 12, 4),
         (AMP_ID, "Amplifier", 18, 2),
@@ -96,6 +99,10 @@ fn default_engine_config() -> EngineConfig {
             })),
             ModuleConfig::Envelope(Box::new(filter_env)),
             ModuleConfig::SpectralFilter(Box::new(spectral_filter)),
+            ModuleConfig::Pitch(Box::new(PitchConfig {
+                id: PITCH_ID,
+                ..PitchConfig::default()
+            })),
             ModuleConfig::Oscillator(Box::new(OscillatorConfig {
                 id: OSC_ID,
                 ..OscillatorConfig::default()
@@ -110,6 +117,7 @@ fn default_engine_config() -> EngineConfig {
             LinkConfig::direct(HARMONIC_EDITOR_ID, FILTER_ID, Input::Spectrum),
             LinkConfig::mixed(FILTER_ENV_ID, FILTER_ID, Input::Cutoff, from_st(64.0)),
             LinkConfig::direct(FILTER_ID, OSC_ID, Input::Spectrum),
+            LinkConfig::direct(PITCH_ID, OSC_ID, Input::Pitch),
             LinkConfig::direct(OSC_ID, AMP_ID, Input::Audio),
             LinkConfig::mixed(AMP_ENV_ID, AMP_ID, Input::Gain, StereoSample::ONE),
             LinkConfig::direct(AMP_ID, OUTPUT_MODULE_ID, Input::Audio),

@@ -15,7 +15,7 @@ use crate::{
         routing::{
             ControlRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
             ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent,
-            VoiceRouter, VoiceTarget,
+            VoiceTarget,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
@@ -139,8 +139,6 @@ struct Buffers {
     pitch: Buffer,
 }
 
-type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, ControlRouterType>;
-
 pub struct Pitch {
     id: ModuleId,
     params: Params,
@@ -205,97 +203,24 @@ impl Pitch {
     set_stereo_param!(set_glide, glide, glide.clamp(0.0, MAX_GLIDE));
     set_stereo_param!(set_glide_slope, glide_slope, glide_slope.clamp(-1.0, 1.0));
 
-    fn glide_time(
-        channel: &ChannelParams,
-        inputs: &Inputs,
+    #[inline(always)]
+    fn apply_glide(
+        buff: &mut [Sample],
+        glide: &mut Glide,
+        glide_time: Sample,
         pitch: Sample,
-        pitch_from: Sample,
-        router: &mut Router<'_, '_, '_>,
-        per_octave: bool,
-    ) -> Sample {
-        let mut glide_time = router
-            .scalar(&inputs.glide, channel.glide)
-            .clamp(0.0, MAX_GLIDE);
-
-        if per_octave {
-            glide_time *= (pitch - pitch_from).abs();
-        }
-
-        glide_time
-    }
-
-    fn glide_active(glide_time: Sample, t: Sample) -> bool {
-        glide_time >= GLIDE_TIME_THRESHOLD && glide_time - t > 0.0
-    }
-
-    fn process_glide(
-        channel: &ChannelParams,
-        inputs: &Inputs,
-        buffers: &mut Buffers,
-        voice: &mut Voice,
-        router: &mut Router<'_, '_, '_>,
-        per_octave: bool,
-        samples: usize,
+        t_step: Sample,
+        curve: impl Fn(Sample) -> Sample,
     ) {
-        const GLIDE_POWER_MAX: Sample = 6.0;
-        const POWER_LINEAR_THRESHOLD: Sample = 0.005;
+        let pitch_diff = pitch - glide.pitch_from;
+        let glide_time_recip = glide_time.recip();
 
-        let pitch = voice.pitch;
+        for out_pitch in buff {
+            let diff = pitch_diff * (1.0 - curve(glide.t * glide_time_recip));
 
-        let Some(glide) = voice.glide.as_mut() else {
-            return;
-        };
-
-        let glide_time =
-            Self::glide_time(channel, inputs, pitch, glide.pitch_from, router, per_octave);
-        let time_left = glide_time - glide.t;
-
-        if !Self::glide_active(glide_time, glide.t) {
-            voice.glide = None;
-            return;
-        }
-
-        let glide_slope = router
-            .scalar(&inputs.glide_slope, channel.glide_slope)
-            .clamp(-1.0, 1.0);
-        let glide_power = -glide_slope * GLIDE_POWER_MAX;
-        let t_step = router.sample_rate().recip();
-        let glide_samples = samples.min((time_left * router.sample_rate()) as usize);
-        let pitch_buff = &mut buffers.pitch[..glide_samples];
-
-        #[inline(always)]
-        fn process(
-            buff: &mut [Sample],
-            glide: &mut Glide,
-            glide_time: Sample,
-            pitch: Sample,
-            t_step: Sample,
-            curve: impl Fn(Sample) -> Sample,
-        ) {
-            let pitch_diff = pitch - glide.pitch_from;
-            let glide_time_recip = glide_time.recip();
-
-            for out_pitch in buff {
-                let diff = pitch_diff * (1.0 - curve(glide.t * glide_time_recip));
-
-                glide.current_pitch = pitch - diff;
-                *out_pitch -= diff;
-                glide.t += t_step;
-            }
-        }
-
-        if glide_power.abs() < POWER_LINEAR_THRESHOLD {
-            process(pitch_buff, glide, glide_time, pitch, t_step, identity);
-        } else {
-            let denominator_mult = (glide_power.exp() - 1.0).recip();
-
-            process(pitch_buff, glide, glide_time, pitch, t_step, |v| {
-                ((v * glide_power).exp() - 1.0) * denominator_mult
-            });
-        }
-
-        if glide_samples < samples {
-            voice.glide = None;
+            glide.current_pitch = pitch - diff;
+            *out_pitch -= diff;
+            glide.t += t_step;
         }
     }
 
@@ -323,20 +248,53 @@ impl Pitch {
         );
         add_buffer_value(&mut buffers.pitch[..samples], voice.pitch);
 
-        Self::process_glide(
-            channel,
-            inputs,
-            buffers,
-            voice,
-            &mut router,
-            self.params.glide_per_octave,
-            samples,
-        );
+        const GLIDE_POWER_MAX: Sample = 6.0;
+        const POWER_LINEAR_THRESHOLD: Sample = 0.005;
+
+        let pitch = voice.pitch;
+
+        if let Some(glide) = voice.glide.as_mut() {
+            let mut glide_time = router
+                .scalar(&inputs.glide, channel.glide)
+                .clamp(0.0, MAX_GLIDE);
+
+            if self.params.glide_per_octave {
+                glide_time *= (pitch - glide.pitch_from).abs();
+            }
+
+            let time_left = glide_time - glide.t;
+
+            if !(glide_time >= GLIDE_TIME_THRESHOLD && time_left > 0.0) {
+                voice.glide = None;
+            } else {
+                let glide_slope = router
+                    .scalar(&inputs.glide_slope, channel.glide_slope)
+                    .clamp(-1.0, 1.0);
+                let glide_power = -glide_slope * GLIDE_POWER_MAX;
+                let t_step = router.sample_rate().recip();
+                let glide_samples = samples.min((time_left * router.sample_rate()) as usize);
+                let pitch_buff = &mut buffers.pitch[..glide_samples];
+
+                if glide_power.abs() < POWER_LINEAR_THRESHOLD {
+                    Self::apply_glide(pitch_buff, glide, glide_time, pitch, t_step, identity);
+                } else {
+                    let denominator_mult = (glide_power.exp() - 1.0).recip();
+
+                    Self::apply_glide(pitch_buff, glide, glide_time, pitch, t_step, |v| {
+                        ((v * glide_power).exp() - 1.0) * denominator_mult
+                    });
+                }
+
+                if glide_samples < samples {
+                    voice.glide = None;
+                }
+            }
+        }
 
         output.copy_from_slice(&buffers.pitch[..samples]);
 
         if router.need_update_ui_mono() {
-            self.audio_end.update_pitch(buffers.pitch[samples - 1]);
+            self.audio_end.update_pitch(buffers.pitch[0]);
         }
     }
 

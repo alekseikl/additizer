@@ -438,18 +438,6 @@ impl OscillatorUI {
                 }
                 ui.end_row();
 
-                ui.label("Pitch shift");
-                if ui
-                    .add(StereoInput::new(
-                        Input::PitchShift,
-                        module_id,
-                        &mut config.pitch_shift,
-                        bridge,
-                    ))
-                    .changed()
-                {
-                    osc_bridge.set_param(Input::PitchShift, config.pitch_shift);
-                }
                 ui.label("Freq shift");
                 if ui
                     .add(StereoInput::new(
@@ -493,12 +481,14 @@ impl OscillatorUI {
                     osc_bridge.set_phase_random(config.phase_random);
                 }
 
-                ui.label("Keytrack");
+                ui.label("Mono spectrum").on_hover_text(
+                    "Build the waveform for the left channel only and reuse it for the right.",
+                );
                 if ui
-                    .add(Checkbox::without_text(&mut config.keytrack))
+                    .add(Checkbox::without_text(&mut config.mono_spectrum))
                     .changed()
                 {
-                    osc_bridge.set_keytrack(config.keytrack);
+                    osc_bridge.set_mono_spectrum(config.mono_spectrum);
                 }
                 ui.end_row();
 
@@ -527,63 +517,6 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_param(Input::DetunePower, config.detune_power);
                 }
-
-                ui.label("Mono spectrum").on_hover_text(
-                    "Build the waveform for the left channel only and reuse it for the right.",
-                );
-                if ui
-                    .add(Checkbox::without_text(&mut config.mono_spectrum))
-                    .changed()
-                {
-                    osc_bridge.set_mono_spectrum(config.mono_spectrum);
-                }
-                ui.end_row();
-
-                ui.label("Glide");
-                if ui
-                    .add(StereoInput::new(
-                        Input::Glide,
-                        module_id,
-                        &mut config.glide,
-                        bridge,
-                    ))
-                    .changed()
-                {
-                    osc_bridge.set_param(Input::Glide, config.glide);
-                }
-
-                ui.label("Glide slope");
-                if ui
-                    .add(StereoInput::new(
-                        Input::GlideSlope,
-                        module_id,
-                        &mut config.glide_slope,
-                        bridge,
-                    ))
-                    .changed()
-                {
-                    osc_bridge.set_param(Input::GlideSlope, config.glide_slope);
-                }
-
-                ui.horizontal(|ui| {
-                    if ui
-                        .add(Checkbox::new(&mut config.glide_always, "Always"))
-                        .on_hover_text("When disabled, glide only happens on legato notes")
-                        .changed()
-                    {
-                        osc_bridge.set_glide_always(config.glide_always);
-                    }
-
-                    ui.add_space(8.0);
-
-                    if ui
-                        .add(Checkbox::new(&mut config.glide_per_octave, "Per octave"))
-                        .on_hover_text("Octave scale")
-                        .changed()
-                    {
-                        osc_bridge.set_glide_per_octave(config.glide_per_octave);
-                    }
-                });
                 ui.end_row();
             });
 

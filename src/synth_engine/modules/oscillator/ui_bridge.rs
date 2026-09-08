@@ -37,13 +37,10 @@ impl OscillatorUiBridge {
             match input {
                 Input::Pan => self.config.pan = value,
                 Input::Gain => self.config.gain = value,
-                Input::PitchShift => self.config.pitch_shift = value,
                 Input::PhaseShift => self.config.phase_shift = value,
                 Input::FrequencyShift => self.config.frequency_shift = value,
                 Input::Detune => self.config.detune = value,
                 Input::DetunePower => self.config.detune_power = value,
-                Input::Glide => self.config.glide = value,
-                Input::GlideSlope => self.config.glide_slope = value,
                 Input::PhasesBlend => self.config.phases_blend = value,
                 Input::GainsBlend => self.config.gains_blend = value,
                 _ => (),
@@ -69,27 +66,9 @@ impl OscillatorUiBridge {
         }
     }
 
-    pub fn set_keytrack(&mut self, keytrack: bool) {
-        if self.ui_end.set_keytrack(keytrack) {
-            self.config.keytrack = keytrack;
-        }
-    }
-
     pub fn set_mono_spectrum(&mut self, mono_spectrum: bool) {
         if self.ui_end.set_mono_spectrum(mono_spectrum) {
             self.config.mono_spectrum = mono_spectrum;
-        }
-    }
-
-    pub fn set_glide_always(&mut self, glide_always: bool) {
-        if self.ui_end.set_glide_always(glide_always) {
-            self.config.glide_always = glide_always;
-        }
-    }
-
-    pub fn set_glide_per_octave(&mut self, glide_per_octave: bool) {
-        if self.ui_end.set_glide_per_octave(glide_per_octave) {
-            self.config.glide_per_octave = glide_per_octave;
         }
     }
 

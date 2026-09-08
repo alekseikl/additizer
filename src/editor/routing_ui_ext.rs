@@ -33,6 +33,7 @@ impl Input {
             Self::Pan => "Pan".to_string(),
             Self::Distortion => "Distortion".to_string(),
             Self::ClippingLevel => "Clipping Level".to_string(),
+            Self::Pitch => "Pitch".to_string(),
             Self::PitchShift => "Pitch Shift".to_string(),
             Self::Detune => "Detune".to_string(),
             Self::DetunePower => "Detune Power".to_string(),
@@ -73,6 +74,7 @@ impl Input {
             Self::Distortion => 0.02,
             Self::ClippingLevel => 0.04,
             Self::Drive => 0.06,
+            Self::Pitch => 0.71,
             Self::PitchShift => 0.70,
             Self::Detune => 0.73,
             Self::DetunePower => 0.76,
@@ -131,7 +133,7 @@ impl Input {
                 .default(0.0)
                 .units(Units::Octaves),
             Self::DetunePower => Slider::stereo(amount, 0.0..=5.0, Some(-5.0)).default(0.0),
-            Self::PitchShift => Slider::stereo(amount, 0.0..=8.0, Some(-8.0))
+            Self::Pitch | Self::PitchShift => Slider::stereo(amount, 0.0..=8.0, Some(-8.0))
                 .skew(1.8)
                 .default(1.0)
                 .units(Units::Octaves),
@@ -194,7 +196,7 @@ impl Input {
                 .default(from_st(0.2))
                 .units(Units::Octaves),
             Self::DetunePower => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
-            Self::PitchShift => Slider::stereo(value, 0.0..=8.0, Some(-8.0))
+            Self::Pitch | Self::PitchShift => Slider::stereo(value, 0.0..=8.0, Some(-8.0))
                 .skew(1.8)
                 .default(0.0)
                 .units(Units::Octaves),

@@ -56,10 +56,7 @@ pub enum UiEvent {
     },
     StealPhase(bool),
     PhaseRandom(Sample),
-    Keytrack(bool),
     MonoSpectrum(bool),
-    GlideAlways(bool),
-    GlidePerOctave(bool),
     ApplyUnisonLevelShape {
         center: StereoSample,
         level: StereoSample,
@@ -105,22 +102,8 @@ impl UiEnd {
         self.tx.push(UiEvent::PhaseRandom(phase_random)).is_ok()
     }
 
-    pub fn set_keytrack(&mut self, keytrack: bool) -> bool {
-        self.tx.push(UiEvent::Keytrack(keytrack)).is_ok()
-    }
-
     pub fn set_mono_spectrum(&mut self, mono_spectrum: bool) -> bool {
         self.tx.push(UiEvent::MonoSpectrum(mono_spectrum)).is_ok()
-    }
-
-    pub fn set_glide_always(&mut self, glide_always: bool) -> bool {
-        self.tx.push(UiEvent::GlideAlways(glide_always)).is_ok()
-    }
-
-    pub fn set_glide_per_octave(&mut self, glide_per_octave: bool) -> bool {
-        self.tx
-            .push(UiEvent::GlidePerOctave(glide_per_octave))
-            .is_ok()
     }
 
     pub fn set_unison_initial_phase(&mut self, idx: usize, value: StereoSample) -> bool {

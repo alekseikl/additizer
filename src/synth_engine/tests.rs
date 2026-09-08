@@ -186,7 +186,7 @@ fn full_patch_engine_config(engine: EngineParams) -> EngineConfig {
             link(ENVELOPE_FILTER_ID, SPECTRAL_FILTER_ID, Input::Cutoff),
             link(SPECTRAL_FILTER_ID, OSC0_ID, Input::Spectrum),
             link(HE0_ID, OSC1_ID, Input::Spectrum),
-            link(LFO_ID, OSC1_ID, Input::PitchShift),
+            link(LFO_ID, OSC1_ID, Input::Detune),
             link(OSC0_ID, MIXER_ID, Input::AudioMix(0)),
             link(OSC1_ID, MIXER_ID, Input::AudioMix(1)),
             link(MIXER_ID, AMPLIFIER_ID, Input::Audio),
@@ -1450,7 +1450,7 @@ fn link_modulation_in_preset_builds() {
     config.links.push(LinkConfig::mixed(
         LFO_ID,
         OSC1_ID,
-        Input::PitchShift,
+        Input::Detune,
         StereoSample::splat(0.5),
     ));
 

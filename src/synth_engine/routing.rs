@@ -47,6 +47,7 @@ pub enum Input {
     Pan,           // [-1.0, 1.0]
     Distortion,    // dB
     ClippingLevel, // dB
+    Pitch,
     PitchShift,
     Detune,
     DetunePower,
@@ -95,6 +96,14 @@ impl InputMeta {
             input_type: input,
             data_type: DataType::Audio,
             is_direct: false,
+        }
+    }
+
+    pub const fn direct_control(input: Input) -> Self {
+        Self {
+            input_type: input,
+            data_type: DataType::Control,
+            is_direct: true,
         }
     }
 
