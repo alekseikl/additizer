@@ -27,9 +27,8 @@ impl AmplifierUI {
         ui.add_space(16.0);
 
         Grid::new("amp_grid")
-            .num_columns(2)
-            .spacing([40.0, 24.0])
-            .striped(true)
+            .num_columns(4)
+            .spacing([8.0, 8.0])
             .show(ui, |ui| {
                 ui.label("Gain");
                 if ui
@@ -40,6 +39,31 @@ impl AmplifierUI {
                     .changed()
                 {
                     amp_bridge.set_param(Input::Gain, config.gain);
+                }
+
+                ui.label("Level");
+                if ui
+                    .add(
+                        StereoInput::new(Input::Level, module_id, &mut config.level, bridge)
+                            .default(0.0),
+                    )
+                    .changed()
+                {
+                    amp_bridge.set_param(Input::Level, config.level);
+                }
+                ui.end_row();
+
+                ui.label("Pan");
+                if ui
+                    .add(StereoInput::new(
+                        Input::Pan,
+                        module_id,
+                        &mut config.pan,
+                        bridge,
+                    ))
+                    .changed()
+                {
+                    amp_bridge.set_param(Input::Pan, config.pan);
                 }
                 ui.end_row();
             });

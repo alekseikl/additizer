@@ -43,16 +43,11 @@ impl GridWidgetContent for PitchWidget {
                         "—".to_string()
                     };
 
-                    ui.with_layout(
-                        Layout::centered_and_justified(ui.layout().main_dir()),
-                        |ui| {
-                            ui.add(
-                                Label::new(RichText::new(text).size(18.0))
-                                    .selectable(false)
-                                    .halign(Align::Center),
-                            );
-                        },
-                    );
+                    ui.add_space(8.0);
+
+                    ui.with_layout(Layout::top_down_justified(Align::Center), |ui| {
+                        ui.add(Label::new(RichText::new(text).size(18.0)).selectable(false));
+                    });
                 }
             });
     }

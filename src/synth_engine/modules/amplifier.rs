@@ -10,37 +10,50 @@ pub use config::AmplifierConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::AmplifierUiBridge;
 
-use crate::synth_engine::{
-    SmoothedSampleParams, StereoSample,
-    buffer::{Buffer, VoicesLayout, zero_buffer},
-    level_ballistics::LevelBallistics,
-    routing::{
-        AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-        ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceTarget,
+use crate::{
+    synth_engine::{
+        Sample, SmoothedSampleParams, StereoSample,
+        buffer::{Buffer, VoicesLayout, zero_buffer},
+        level_ballistics::LevelBallistics,
+        routing::{
+            AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
+            ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceTarget,
+        },
+        smooth::SmoothedSample,
+        synth_module::SynthModule,
     },
-    smooth::SmoothedSample,
-    synth_module::SynthModule,
+    utils::{db_to_gain_fast, pan_gain},
 };
+
+const MAX_LEVEL_DB: Sample = 6.0;
 
 struct ChannelParams {
     gain: SmoothedSample,
+    level: SmoothedSample,
+    pan: SmoothedSample,
 }
 
 impl ChannelParams {
     fn from_config(c: &AmplifierConfig, channel_idx: usize) -> Self {
         Self {
             gain: c.gain[channel_idx].into(),
+            level: c.level[channel_idx].into(),
+            pan: c.pan[channel_idx].into(),
         }
     }
 
     pub fn advance_smoothers(&mut self, smooth_params: &SmoothedSampleParams, samples: usize) {
         self.gain.advance(smooth_params, samples);
+        self.level.advance(smooth_params, samples);
+        self.pan.advance(smooth_params, samples);
     }
 }
 
 pub struct Inputs {
     audio: Option<usize>,
     gain: InputSlots,
+    level: InputSlots,
+    pan: InputSlots,
 }
 
 impl Default for Inputs {
@@ -48,6 +61,8 @@ impl Default for Inputs {
         Self {
             audio: None,
             gain: InputSlots::new(Input::Gain),
+            level: InputSlots::new(Input::Level),
+            pan: InputSlots::new(Input::Pan),
         }
     }
 }
@@ -60,6 +75,8 @@ impl Inputs {
             match input.input_type {
                 Input::Audio => result.audio = input.slots.first().map(|s| s.src_slot),
                 Input::Gain => result.gain = input.clone(),
+                Input::Level => result.level = input.clone(),
+                Input::Pan => result.pan = input.clone(),
                 _ => (),
             }
         }
@@ -68,8 +85,11 @@ impl Inputs {
     }
 
     fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
-        if input_type == Input::Gain {
-            self.gain.update_amount(src_slot, amount);
+        match input_type {
+            Input::Gain => self.gain.update_amount(src_slot, amount),
+            Input::Level => self.level.update_amount(src_slot, amount),
+            Input::Pan => self.pan.update_amount(src_slot, amount),
+            _ => (),
         }
     }
 }
@@ -120,10 +140,14 @@ impl Amplifier {
         AmplifierConfig {
             id: self.id,
             gain: get_smoothed_param!(self, gain),
+            level: get_smoothed_param!(self, level),
+            pan: get_smoothed_param!(self, pan),
         }
     }
 
     set_smoothed_param!(set_gain, gain);
+    set_smoothed_param!(set_level, level);
+    set_smoothed_param!(set_pan, pan, pan.clamp(-1.0, 1.0));
 
     fn process_voice(
         &mut self,
@@ -134,6 +158,7 @@ impl Amplifier {
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
         let channel = &mut self.channel_params[target.channel_idx];
+        let channel_idx = target.channel_idx;
 
         router.param(
             &inputs.gain,
@@ -148,6 +173,30 @@ impl Amplifier {
             izip!(output.iter_mut(), input, &self.buffers.gain_mod_input)
         {
             *out = input * modulation;
+        }
+
+        if !router.param_stationary_at(&inputs.level, &channel.level, 0.0) {
+            router.param(
+                &inputs.level,
+                &channel.level,
+                &mut self.buffers.gain_mod_input,
+            );
+
+            for (out, level) in output.iter_mut().zip(&self.buffers.gain_mod_input) {
+                *out *= db_to_gain_fast(level.min(MAX_LEVEL_DB));
+            }
+        }
+
+        if !router.param_stationary_at(&inputs.pan, &channel.pan, 0.0) {
+            router.param(
+                &inputs.pan,
+                &channel.pan,
+                &mut self.buffers.gain_mod_input,
+            );
+
+            for (out, &pan) in output.iter_mut().zip(&self.buffers.gain_mod_input) {
+                *out *= pan_gain(pan, channel_idx);
+            }
         }
 
         if router.need_update_ui() {
@@ -167,6 +216,8 @@ impl SynthModule for Amplifier {
         static INPUTS: &[InputMeta] = &[
             InputMeta::direct_audio(Input::Audio),
             InputMeta::control(Input::Gain),
+            InputMeta::control(Input::Level),
+            InputMeta::control(Input::Pan),
         ];
 
         INPUTS
@@ -195,11 +246,12 @@ impl SynthModule for Amplifier {
     fn process_ui_events(&mut self) {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
-                UiEvent::InputParam { input, value } => {
-                    if input == Input::Gain {
-                        self.set_gain(value)
-                    }
-                }
+                UiEvent::InputParam { input, value } => match input {
+                    Input::Gain => self.set_gain(value),
+                    Input::Level => self.set_level(value),
+                    Input::Pan => self.set_pan(value),
+                    _ => (),
+                },
             }
         }
     }

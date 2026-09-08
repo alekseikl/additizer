@@ -21,7 +21,7 @@ use crate::{
         synth_module::SynthModule,
         types::{ComplexSample, Sample},
     },
-    utils::{db_to_gain, from_st, pan_gain, pitch_to_freq, power_scale},
+    utils::{db_to_gain, from_st, pitch_to_freq, power_scale},
 };
 
 mod config;
@@ -86,8 +86,6 @@ impl Default for UnisonParams {
 }
 
 struct ChannelParams {
-    pan: SmoothedSample,
-    gain: SmoothedSample,
     detune: Sample, // Octaves
     detune_power: Sample,
     phase_shift: SmoothedSample,
@@ -100,8 +98,6 @@ struct ChannelParams {
 impl ChannelParams {
     fn from_config(c: &OscillatorConfig, channel_idx: usize) -> Self {
         Self {
-            pan: c.pan[channel_idx].into(),
-            gain: c.gain[channel_idx].into(),
             detune: c.detune[channel_idx],
             detune_power: c.detune_power[channel_idx],
             phase_shift: c.phase_shift[channel_idx].into(),
@@ -119,8 +115,6 @@ impl ChannelParams {
     }
 
     pub fn advance_smoothers(&mut self, smooth_params: &SmoothedSampleParams, samples: usize) {
-        self.pan.advance(smooth_params, samples);
-        self.gain.advance(smooth_params, samples);
         self.phase_shift.advance(smooth_params, samples);
         self.frequency_shift.advance(smooth_params, samples);
     }
@@ -204,8 +198,6 @@ struct Buffers {
     tmp_spectral: DftBuffer,
     scratch: DftBuffer,
     pitch: Buffer,
-    pan: Buffer,
-    gain: Buffer,
     phase_shift: Buffer,
     frequency_shift: Buffer,
 }
@@ -217,8 +209,6 @@ impl Default for Buffers {
             tmp_spectral: [ComplexSample::ZERO; DFT_BUFFER_SIZE],
             scratch: [ComplexSample::ZERO; DFT_BUFFER_SIZE],
             pitch: zero_buffer(),
-            pan: zero_buffer(),
-            gain: zero_buffer(),
             phase_shift: zero_buffer(),
             frequency_shift: zero_buffer(),
         }
@@ -259,8 +249,6 @@ pub enum PhasesDst {
 pub struct Inputs {
     spectrum: Option<usize>,
     pitch: Option<usize>,
-    pan: InputSlots,
-    gain: InputSlots,
     phase_shift: InputSlots,
     freq_shift: InputSlots,
     detune: InputSlots,
@@ -275,8 +263,6 @@ impl Default for Inputs {
         Self {
             spectrum: None,
             pitch: None,
-            pan: InputSlots::new(Input::Pan),
-            gain: InputSlots::new(Input::Gain),
             phase_shift: InputSlots::new(Input::PhaseShift),
             freq_shift: InputSlots::new(Input::FrequencyShift),
             detune: InputSlots::new(Input::Detune),
@@ -295,8 +281,6 @@ impl Inputs {
         for input in inputs {
             match input.input_type {
                 Input::Pitch => result.pitch = input.slots.first().map(|s| s.src_slot),
-                Input::Pan => result.pan = input.clone(),
-                Input::Gain => result.gain = input.clone(),
                 Input::PhaseShift => result.phase_shift = input.clone(),
                 Input::FrequencyShift => result.freq_shift = input.clone(),
                 Input::Detune => result.detune = input.clone(),
@@ -319,8 +303,6 @@ impl Inputs {
 
     fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
         match input_type {
-            Input::Pan => self.pan.update_amount(src_slot, amount),
-            Input::Gain => self.gain.update_amount(src_slot, amount),
             Input::PhaseShift => self.phase_shift.update_amount(src_slot, amount),
             Input::FrequencyShift => self.freq_shift.update_amount(src_slot, amount),
             Input::Detune => self.detune.update_amount(src_slot, amount),
@@ -349,6 +331,7 @@ pub struct Oscillator {
     voices: VoicesLayout<Voice>,
     voice_buffers: VoicesLayout<VoiceBuffers>,
     last_voice_idx: Option<usize>,
+    center_phase_sync: Phase,
 }
 
 impl Oscillator {
@@ -378,6 +361,7 @@ impl Oscillator {
             voices: new_voices_layout(),
             voice_buffers: new_voices_layout(),
             last_voice_idx: None,
+            center_phase_sync: Phase::ZERO,
         };
 
         osc.publish_unison();
@@ -417,8 +401,6 @@ impl Oscillator {
             steal_phase: self.params.steal_phase,
             phase_random: self.params.phase_random,
             mono_spectrum: self.params.mono_spectrum,
-            pan: get_smoothed_param!(self, pan),
-            gain: get_smoothed_param!(self, gain),
             detune: get_stereo_param!(self, detune),
             detune_power: get_stereo_param!(self, detune_power),
             phase_shift: get_smoothed_param!(self, phase_shift),
@@ -444,8 +426,6 @@ impl Oscillator {
     );
     set_mono_param!(set_mono_spectrum, mono_spectrum, bool);
 
-    set_smoothed_param!(set_pan, pan, pan.clamp(-1.0, 1.0));
-    set_smoothed_param!(set_gain, gain, gain.clamp(-1.0, 1.0));
     set_stereo_param!(set_detune, detune, detune.clamp(0.0, from_st(1.0)));
     set_stereo_param!(
         set_detune_power,
@@ -804,11 +784,14 @@ impl Oscillator {
                     .add_normalized((random - 0.5) * self.params.phase_random);
             }
 
-            if unison & 1 == 1 && channel_idx == RIGHT_CHANNEL {
+            if unison & 1 == 1 {
                 let center = unison / 2;
 
-                self.voices[channel_idx][voice_idx].phases[center] =
-                    self.voices[LEFT_CHANNEL][voice_idx].phases[center];
+                if channel_idx == LEFT_CHANNEL {
+                    self.center_phase_sync = voice.phases[center];
+                } else {
+                    voice.phases[center] = self.center_phase_sync;
+                }
             }
         } else if unison > 1 {
             for (phase, unison_voice) in voice.phases.iter_mut().zip(&channel.unison).take(unison) {
@@ -921,22 +904,6 @@ impl Oscillator {
             buff_t += buff_t_inc;
         }
 
-        if !router.param_stationary_at(&inputs.pan, &channel.pan, 0.0) {
-            router.param(&inputs.pan, &channel.pan, &mut buffers.pan);
-
-            for (out, &pan) in output.iter_mut().zip(&buffers.pan) {
-                *out *= pan_gain(pan, channel_idx);
-            }
-        }
-
-        if !router.param_stationary_at(&inputs.gain, &channel.gain, 1.0) {
-            router.param(&inputs.gain, &channel.gain, &mut buffers.gain);
-
-            for (out, gain) in output.iter_mut().zip(&buffers.gain) {
-                *out *= gain;
-            }
-        }
-
         if !mono_spectrum || channel_idx == RIGHT_CHANNEL {
             mem::swap(
                 &mut self.voice_buffers[wave_channel][voice_idx].wave,
@@ -968,8 +935,6 @@ impl SynthModule for Oscillator {
         static INPUTS: &[InputMeta] = &[
             InputMeta::spectral(Input::Spectrum),
             InputMeta::direct_control(Input::Pitch),
-            InputMeta::control(Input::Gain),
-            InputMeta::control(Input::Pan),
             InputMeta::audio(Input::PhaseShift),
             InputMeta::audio(Input::FrequencyShift),
             InputMeta::control(Input::Detune),
@@ -1028,8 +993,6 @@ impl SynthModule for Oscillator {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
                 UiEvent::InputParam { input, value } => match input {
-                    Input::Pan => self.set_pan(value),
-                    Input::Gain => self.set_gain(value),
                     Input::PhaseShift => self.set_phase_shift(value),
                     Input::FrequencyShift => self.set_frequency_shift(value),
                     Input::Detune => self.set_detune(value),

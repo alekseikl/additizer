@@ -25,8 +25,13 @@ impl AmplifierUiBridge {
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
-        if self.ui_end.set_param(input, value) && input == Input::Gain {
-            self.config.gain = value;
+        if self.ui_end.set_param(input, value) {
+            match input {
+                Input::Gain => self.config.gain = value,
+                Input::Level => self.config.level = value,
+                Input::Pan => self.config.pan = value,
+                _ => (),
+            }
         }
     }
 }

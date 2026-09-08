@@ -398,69 +398,7 @@ impl OscillatorUI {
             .num_columns(6)
             .spacing([8.0, 8.0])
             .show(ui, |ui| {
-                ui.label("Gain");
-
-                ui.horizontal(|ui| {
-                    if ui
-                        .add(StereoInput::new(
-                            Input::Gain,
-                            module_id,
-                            &mut config.gain,
-                            bridge,
-                        ))
-                        .changed()
-                    {
-                        osc_bridge.set_param(Input::Gain, config.gain);
-                    }
-
-                    ui.add_space(8.0);
-                });
-
-                ui.label("Pan");
-                if ui
-                    .add(StereoInput::new(
-                        Input::Pan,
-                        module_id,
-                        &mut config.pan,
-                        bridge,
-                    ))
-                    .changed()
-                {
-                    osc_bridge.set_param(Input::Pan, config.pan);
-                }
-
-                ui.label("Unison");
-                if ui
-                    .add(DragValue::new(&mut config.unison_voices).range(1..=16))
-                    .changed()
-                {
-                    osc_bridge.set_unison(config.unison_voices);
-                }
-                ui.end_row();
-
-                ui.label("Freq shift");
-                if ui
-                    .add(StereoInput::new(
-                        Input::FrequencyShift,
-                        module_id,
-                        &mut config.frequency_shift,
-                        bridge,
-                    ))
-                    .changed()
-                {
-                    osc_bridge.set_param(Input::FrequencyShift, config.frequency_shift);
-                }
-
-                ui.label("Steal phase");
-                if ui
-                    .add(Checkbox::without_text(&mut config.steal_phase))
-                    .changed()
-                {
-                    osc_bridge.set_steal_phase(config.steal_phase);
-                }
-                ui.end_row();
-
-                ui.label("Phase shift");
+                ui.label("Phase");
                 if ui
                     .add(StereoInput::new(
                         Input::PhaseShift,
@@ -481,14 +419,17 @@ impl OscillatorUI {
                     osc_bridge.set_phase_random(config.phase_random);
                 }
 
-                ui.label("Mono spectrum").on_hover_text(
-                    "Build the waveform for the left channel only and reuse it for the right.",
-                );
+                ui.label("Frequency");
                 if ui
-                    .add(Checkbox::without_text(&mut config.mono_spectrum))
+                    .add(StereoInput::new(
+                        Input::FrequencyShift,
+                        module_id,
+                        &mut config.frequency_shift,
+                        bridge,
+                    ))
                     .changed()
                 {
-                    osc_bridge.set_mono_spectrum(config.mono_spectrum);
+                    osc_bridge.set_param(Input::FrequencyShift, config.frequency_shift);
                 }
                 ui.end_row();
 
@@ -519,6 +460,39 @@ impl OscillatorUI {
                 }
                 ui.end_row();
             });
+
+        ui.add_space(8.0);
+
+        ui.horizontal(|ui| {
+            ui.label("Unison");
+            if ui
+                .add(DragValue::new(&mut config.unison_voices).range(1..=16))
+                .changed()
+            {
+                osc_bridge.set_unison(config.unison_voices);
+            }
+
+            ui.add_space(8.0);
+
+            if ui
+                .add(Checkbox::new(&mut config.steal_phase, "Steal phase"))
+                .changed()
+            {
+                osc_bridge.set_steal_phase(config.steal_phase);
+            }
+
+            ui.add_space(8.0);
+
+            if ui
+                .add(Checkbox::new(&mut config.mono_spectrum, "Mono spectrum"))
+                .on_hover_text(
+                    "Build the waveform for the left channel only and reuse it for the right.",
+                )
+                .changed()
+            {
+                osc_bridge.set_mono_spectrum(config.mono_spectrum);
+            }
+        });
 
         if config.unison_voices > 1 {
             ui.add_space(32.0);

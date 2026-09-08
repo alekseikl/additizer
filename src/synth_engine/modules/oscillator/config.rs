@@ -35,9 +35,6 @@ pub struct OscillatorConfig {
     pub phase_random: Sample,
     #[serde(default)]
     pub mono_spectrum: bool,
-    #[serde(default)]
-    pub pan: StereoSample,
-    pub gain: StereoSample,
     pub detune: StereoSample,
     pub detune_power: StereoSample,
     pub phase_shift: StereoSample,
@@ -55,8 +52,6 @@ impl Default for OscillatorConfig {
             steal_phase: false,
             phase_random: 0.0,
             mono_spectrum: false,
-            pan: 0.0.into(),
-            gain: 1.0.into(),
             detune: from_st(0.2).into(),
             detune_power: 0.0.into(),
             phase_shift: 0.0.into(),
