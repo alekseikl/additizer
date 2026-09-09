@@ -210,15 +210,25 @@ impl VoicesHandler {
     fn prev_note(&self, channel: u8) -> Option<PrevNote> {
         let channel = channel.min(MAX_MIDI_CHANNEL);
         let note = self.prev_notes[channel as usize]?;
+        let is_same = |n: &Note| n.channel == channel && n.note == note;
         let voice_idx = self
             .playing
             .iter()
             .chain(self.releasing.iter())
             .chain(self.killing.iter())
-            .find(|playing| playing.note.channel == channel && playing.note.note == note)
+            .find(|playing| is_same(&playing.note))
             .map(|playing| playing.voice_idx);
+        let pressed = self
+            .waiting
+            .iter()
+            .chain(self.playing.iter().map(|p| &p.note))
+            .any(is_same);
 
-        Some(PrevNote { note, voice_idx })
+        Some(PrevNote {
+            note,
+            voice_idx,
+            pressed,
+        })
     }
 
     fn grab_and_reset(

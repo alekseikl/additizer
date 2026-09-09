@@ -142,6 +142,7 @@ pub enum Expression {
 pub struct PrevNote {
     pub note: u8,
     pub voice_idx: Option<u8>,
+    pub pressed: bool, // key currently held
 }
 
 impl PrevNote {

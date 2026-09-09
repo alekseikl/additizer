@@ -29,7 +29,7 @@ const GLIDE_TIME_THRESHOLD: Sample = from_ms(0.1);
 
 struct Params {
     keytrack: bool,
-    glide_always: bool,
+    glide_always: bool, // also glide from an unpressed previous note
     glide_per_octave: bool,
 }
 
@@ -85,10 +85,6 @@ struct Voice {
 }
 
 impl Voice {
-    fn current_pitch(&self) -> Sample {
-        self.glide.as_ref().map_or(self.pitch, |g| g.current_pitch)
-    }
-
     fn reset(&mut self) {
         self.pitch = C4_PITCH;
         self.glide = None;
@@ -320,12 +316,12 @@ impl Pitch {
         if self.params.keytrack {
             self.voices[channel_idx][voice_idx].pitch = pitch;
 
-            if self.params.glide_always
-                && let Some(pitch_from) = prev_note.map(|prev_note| {
-                    prev_note.voice_idx().map_or_else(
-                        || prev_note.pitch(),
-                        |from_idx| self.voices[channel_idx][from_idx].current_pitch(),
-                    )
+            if let Some(pitch_from) = prev_note
+                .filter(|prev| prev.pressed || self.params.glide_always)
+                .map(|prev| {
+                    prev.voice_idx()
+                        .and_then(|from_idx| self.voices[channel_idx][from_idx].glide.as_ref())
+                        .map_or_else(|| prev.pitch(), |glide| glide.current_pitch)
                 })
             {
                 self.voices[channel_idx][voice_idx].glide = Some(Glide::new(pitch_from));
@@ -337,7 +333,9 @@ impl Pitch {
         let voice = &mut self.voices[channel_idx][voice_idx];
 
         if self.params.keytrack {
-            voice.glide = Some(Glide::new(voice.current_pitch()));
+            voice.glide = Some(Glide::new(
+                voice.glide.as_ref().map_or(voice.pitch, |g| g.current_pitch),
+            ));
             voice.pitch = pitch;
         } else {
             voice.glide = None;
