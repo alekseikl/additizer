@@ -14,7 +14,7 @@ use crate::{
         buffer::{Buffer, VoicesLayout, add_buffer_value, new_voices_layout, zero_buffer},
         routing::{
             ControlRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-            ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent,
+            PrevNote, ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent,
             VoiceTarget,
         },
         smooth::SmoothedSample,
@@ -82,6 +82,17 @@ impl Glide {
 struct Voice {
     pitch: Sample, // Octave units
     glide: Option<Glide>,
+}
+
+impl Voice {
+    fn current_pitch(&self) -> Sample {
+        self.glide.as_ref().map_or(self.pitch, |g| g.current_pitch)
+    }
+
+    fn reset(&mut self) {
+        self.pitch = C4_PITCH;
+        self.glide = None;
+    }
 }
 
 impl Default for Voice {
@@ -300,23 +311,25 @@ impl Pitch {
     fn handle_trigger(
         &mut self,
         channel_idx: usize,
-        prev_pitch: Option<Sample>,
+        prev_note: Option<PrevNote>,
         voice_idx: usize,
         pitch: Sample,
     ) {
-        let voice = &mut self.voices[channel_idx][voice_idx];
-
-        voice.glide = None;
+        self.voices[channel_idx][voice_idx].reset();
 
         if self.params.keytrack {
+            self.voices[channel_idx][voice_idx].pitch = pitch;
+
             if self.params.glide_always
-                && let Some(prev_pitch) = prev_pitch
+                && let Some(pitch_from) = prev_note.map(|prev_note| {
+                    prev_note.voice_idx().map_or_else(
+                        || prev_note.pitch(),
+                        |from_idx| self.voices[channel_idx][from_idx].current_pitch(),
+                    )
+                })
             {
-                voice.glide = Some(Glide::new(prev_pitch));
+                self.voices[channel_idx][voice_idx].glide = Some(Glide::new(pitch_from));
             }
-            voice.pitch = pitch;
-        } else {
-            voice.pitch = C4_PITCH;
         }
     }
 
@@ -324,12 +337,7 @@ impl Pitch {
         let voice = &mut self.voices[channel_idx][voice_idx];
 
         if self.params.keytrack {
-            voice.glide = Some(Glide::new(
-                voice
-                    .glide
-                    .as_ref()
-                    .map_or(voice.pitch, |g| g.current_pitch),
-            ));
+            voice.glide = Some(Glide::new(voice.current_pitch()));
             voice.pitch = pitch;
         } else {
             voice.glide = None;
@@ -378,12 +386,12 @@ impl SynthModule for Pitch {
             match event {
                 VoiceEvent::Reset {
                     voice_idx,
-                    prev_pitch,
+                    prev_note,
                     pitch,
                     ..
                 } => {
                     for channel_idx in 0..NUM_CHANNELS {
-                        self.handle_trigger(channel_idx, *prev_pitch, *voice_idx, *pitch);
+                        self.handle_trigger(channel_idx, *prev_note, *voice_idx, *pitch);
                     }
                 }
                 VoiceEvent::Update {

@@ -769,7 +769,7 @@ fn add_link_overrides_existing_link() {
     );
 
     let lfo_id = engine.add_lfo();
-    let dst = InputId::new(Input::Gain, OSCILLATOR_ID);
+    let dst = InputId::new(Input::Detune, OSCILLATOR_ID);
 
     engine
         .add_mixed_link(lfo_id, dst, StereoSample::ONE)
@@ -856,10 +856,10 @@ fn update_link_amount_changes_routing() {
     );
 
     let lfo_id = engine.add_lfo();
-    let dst = InputId::new(Input::Gain, OSCILLATOR_ID);
+    let dst = InputId::new(Input::Detune, OSCILLATOR_ID);
     engine
         .add_mixed_link(lfo_id, dst, StereoSample::ONE)
-        .expect("gain modulation link");
+        .expect("detune modulation link");
     engine.update_link_amount(&lfo_id, &dst, StereoSample::splat(0.5));
 
     let cfg = engine.get_config();
@@ -867,7 +867,7 @@ fn update_link_amount_changes_routing() {
         .links
         .iter()
         .find(|link| link.src_id() == lfo_id && link.dst_id() == OSCILLATOR_ID)
-        .expect("lfo -> osc gain link");
+        .expect("lfo -> osc detune link");
 
     assert_eq!(link_amount(link), StereoSample::splat(0.5));
 }
@@ -904,8 +904,8 @@ fn set_direct_link_rejects_mixed_input() {
     let lfo_id = engine.add_lfo();
 
     let err = engine
-        .set_direct_link(lfo_id, InputId::new(Input::Gain, OSCILLATOR_ID))
-        .expect_err("gain is a mixed input");
+        .set_direct_link(lfo_id, InputId::new(Input::Detune, OSCILLATOR_ID))
+        .expect_err("detune is a mixed input");
 
     assert!(err.contains("Mixed") || err.contains("add_mixed_link"));
 }
@@ -1320,10 +1320,10 @@ fn engine_extended_setters_round_trip() {
     engine.set_output_gain(StereoSample::splat(0.5));
 
     let lfo_id = engine.add_lfo();
-    let dst = InputId::new(Input::Gain, OSCILLATOR_ID);
+    let dst = InputId::new(Input::Detune, OSCILLATOR_ID);
     engine
         .add_mixed_link(lfo_id, dst, StereoSample::ONE)
-        .expect("gain link");
+        .expect("detune link");
     engine.update_link_amount(&lfo_id, &dst, StereoSample::splat(0.25));
 
     let cfg = engine.get_config();
@@ -1338,7 +1338,7 @@ fn engine_extended_setters_round_trip() {
         .links
         .iter()
         .find(|link| link.src_id() == lfo_id && link.dst_id() == OSCILLATOR_ID)
-        .expect("lfo -> osc gain link");
+        .expect("lfo -> osc detune link");
     assert_eq!(link_amount(link), StereoSample::splat(0.25));
 }
 
@@ -1782,7 +1782,7 @@ fn link_rejects_invalid_module_id() {
         },
     );
 
-    let dst = InputId::new(Input::Gain, OSCILLATOR_ID);
+    let dst = InputId::new(Input::Detune, OSCILLATOR_ID);
     let err = engine
         .add_mixed_link(9999, dst, StereoSample::ONE)
         .expect_err("unknown source module");

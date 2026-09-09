@@ -113,13 +113,13 @@ fn poly_single_note_on() {
     match &ev.events()[0] {
         VoiceEvent::Reset {
             replaced_voice_idx,
-            prev_pitch,
+            prev_note,
             pitch,
             velocity,
             ..
         } => {
             assert_eq!(*replaced_voice_idx, None);
-            assert_eq!(*prev_pitch, None);
+            assert_eq!(*prev_note, None);
             assert_eq!(*pitch, note_pitch(60));
             assert_eq!(*velocity, 1.0);
         }
@@ -174,7 +174,7 @@ fn poly_multiple_notes_get_unique_voices() {
 }
 
 #[test]
-fn reset_prev_pitch_follows_last_note_on_channel() {
+fn reset_prev_note_follows_last_note_on_channel() {
     let mut h = handler(4);
     let mut ev = events();
 
@@ -188,8 +188,9 @@ fn reset_prev_pitch_follows_last_note_on_channel() {
         0,
         &mut ev,
     );
+    let voice_60 = trigger_indices(&ev)[0];
     match &ev.events()[0] {
-        VoiceEvent::Reset { prev_pitch, .. } => assert_eq!(*prev_pitch, None),
+        VoiceEvent::Reset { prev_note, .. } => assert_eq!(*prev_note, None),
         _ => panic!("expected Reset"),
     }
 
@@ -204,9 +205,13 @@ fn reset_prev_pitch_follows_last_note_on_channel() {
         0,
         &mut ev,
     );
+    let voice_64 = trigger_indices(&ev)[0];
     match &ev.events()[0] {
-        VoiceEvent::Reset { prev_pitch, .. } => {
-            assert_eq!(*prev_pitch, Some(note_pitch(60)));
+        VoiceEvent::Reset { prev_note, .. } => {
+            let prev = prev_note.expect("prev note");
+            assert_eq!(prev.note, 60);
+            assert_eq!(prev.pitch(), note_pitch(60));
+            assert_eq!(prev.voice_idx(), Some(voice_60));
         }
         _ => panic!("expected Reset"),
     }
@@ -223,7 +228,7 @@ fn reset_prev_pitch_follows_last_note_on_channel() {
         &mut ev,
     );
     match &ev.events()[0] {
-        VoiceEvent::Reset { prev_pitch, .. } => assert_eq!(*prev_pitch, None),
+        VoiceEvent::Reset { prev_note, .. } => assert_eq!(*prev_note, None),
         _ => panic!("expected Reset"),
     }
 
@@ -239,8 +244,114 @@ fn reset_prev_pitch_follows_last_note_on_channel() {
         &mut ev,
     );
     match &ev.events()[0] {
-        VoiceEvent::Reset { prev_pitch, .. } => {
-            assert_eq!(*prev_pitch, Some(note_pitch(64)));
+        VoiceEvent::Reset { prev_note, .. } => {
+            let prev = prev_note.expect("prev note");
+            assert_eq!(prev.note, 64);
+            assert_eq!(prev.pitch(), note_pitch(64));
+            assert_eq!(prev.voice_idx(), Some(voice_64));
+        }
+        _ => panic!("expected Reset"),
+    }
+}
+
+#[test]
+fn reset_prev_note_voice_idx_from_releasing() {
+    let mut h = handler(4);
+    let mut ev = events();
+
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    let voice_60 = trigger_indices(&ev)[0];
+
+    h.handle_note_off(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    assert_eq!(h.get_metrics().releasing, 1);
+
+    ev = events();
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    match &ev.events()[0] {
+        VoiceEvent::Reset { prev_note, .. } => {
+            let prev = prev_note.expect("prev note");
+            assert_eq!(prev.note, 60);
+            assert_eq!(prev.voice_idx(), Some(voice_60));
+        }
+        _ => panic!("expected Reset"),
+    }
+}
+
+#[test]
+fn reset_prev_note_voice_idx_none_after_decay() {
+    let mut h = handler(4);
+    let mut ev = events();
+
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    h.handle_note_off(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+
+    let mut decaying = DecayingVoices::new();
+    h.get_decaying_voices(&mut decaying);
+    let _ = flush_terminated(&mut h, &decaying);
+    assert_eq!(h.get_metrics().releasing, 0);
+
+    ev = events();
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    match &ev.events()[0] {
+        VoiceEvent::Reset { prev_note, .. } => {
+            let prev = prev_note.expect("prev note");
+            assert_eq!(prev.note, 60);
+            assert_eq!(prev.pitch(), note_pitch(60));
+            assert_eq!(prev.voice_idx(), None);
         }
         _ => panic!("expected Reset"),
     }
@@ -1711,7 +1822,7 @@ fn waiting_note_off_terminates() {
 }
 
 #[test]
-fn restored_waiting_note_terminates_when_old_kill_completes() {
+fn restored_waiting_note_terminates_once_after_final_release() {
     let mut h = handler(1);
     let mut ev = events();
 
@@ -1750,20 +1861,240 @@ fn restored_waiting_note_terminates_when_old_kill_completes() {
     assert_eq!(h.get_metrics().playing, 1);
     assert_eq!(h.get_metrics().waiting, 0);
 
+    // The old kill of note 60 completes while its restored copy is still
+    // playing: only note 64 must be reported terminated.
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
     let terminated = flush_terminated(&mut h, &decaying);
 
-    assert!(
-        terminated
-            .iter()
-            .any(|n| n.note == 60 && n.host_id == Some(1))
+    assert_eq!(terminated.len(), 1);
+    assert_eq!(terminated[0].note, 64);
+    assert_eq!(terminated[0].host_id, Some(2));
+
+    // The restored note terminates exactly once, after its own release decays.
+    h.handle_note_off(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: Some(1),
+        },
+        0,
+        &mut ev,
     );
-    assert!(
-        terminated
-            .iter()
-            .any(|n| n.note == 64 && n.host_id == Some(2))
+
+    let mut decaying = DecayingVoices::new();
+    h.get_decaying_voices(&mut decaying);
+    let terminated = flush_terminated(&mut h, &decaying);
+
+    assert_eq!(terminated.len(), 1);
+    assert_eq!(terminated[0].note, 60);
+    assert_eq!(terminated[0].host_id, Some(1));
+}
+
+#[test]
+fn retriggered_note_old_instance_still_terminates() {
+    let mut h = handler(4);
+    let mut ev = events();
+
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: Some(1),
+        },
+        0,
+        &mut ev,
     );
+    h.handle_note_off(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: Some(1),
+        },
+        0,
+        &mut ev,
+    );
+    // Retrigger the same note while the old instance's kill is decaying.
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: Some(2),
+        },
+        0,
+        &mut ev,
+    );
+
+    assert_eq!(h.get_metrics().playing, 1);
+    assert_eq!(h.get_metrics().killing, 1);
+
+    // The old instance is a different host note; it must terminate even
+    // though the same key is still playing.
+    let mut decaying = DecayingVoices::new();
+    h.get_decaying_voices(&mut decaying);
+    let terminated = flush_terminated(&mut h, &decaying);
+
+    assert_eq!(terminated.len(), 1);
+    assert_eq!(terminated[0].note, 60);
+    assert_eq!(terminated[0].host_id, Some(1));
+}
+
+#[test]
+fn mono_note_off_restores_waiting_note_from_same_channel_only() {
+    let mut h = handler(1);
+    let mut ev = events();
+
+    // Channel 1: stack two notes; note 60 goes to waiting.
+    h.handle_note_on(
+        Note {
+            channel: 1,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    h.handle_note_on(
+        Note {
+            channel: 1,
+            note: 64,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    // Channel 0: independent note.
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 67,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+
+    assert_eq!(h.get_metrics().waiting, 1);
+
+    // Releasing the channel 0 note must not restore channel 1's waiting note.
+    h.handle_note_off(
+        Note {
+            channel: 0,
+            note: 67,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+
+    assert_eq!(h.get_metrics().waiting, 1);
+    assert!(
+        h.playing
+            .iter()
+            .any(|p| p.note.channel == 1 && p.note.note == 64)
+    );
+
+    // Releasing channel 1's playing note restores its own waiting note.
+    h.handle_note_off(
+        Note {
+            channel: 1,
+            note: 64,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+
+    assert_eq!(h.get_metrics().waiting, 0);
+    assert!(
+        h.playing
+            .iter()
+            .any(|p| p.note.channel == 1 && p.note.note == 60)
+    );
+}
+
+#[test]
+fn mono_legato_return_updates_prev_note() {
+    let mut h = handler(1);
+    h.set_legato(true);
+    let mut ev = events();
+
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    // Legato return to note 60.
+    h.handle_note_off(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    // Full release; the voice starts decaying.
+    h.handle_note_off(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+
+    // The next Reset must glide from note 60 (last sounding), not note 64.
+    ev = events();
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 72,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+
+    let reset = ev
+        .events()
+        .iter()
+        .find_map(|e| match e {
+            VoiceEvent::Reset { prev_note, .. } => Some(*prev_note),
+            _ => None,
+        })
+        .expect("expected Reset");
+    let prev = reset.expect("prev note");
+    assert_eq!(prev.note, 60);
+    assert!(prev.voice_idx().is_some());
 }
 
 #[test]

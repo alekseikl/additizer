@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
-use crate::synth_engine::{Sample, StereoSample, config::LinkConfig};
+use crate::{
+    synth_engine::{Sample, StereoSample, config::LinkConfig},
+    utils::note_to_pitch,
+};
 
 mod outputs;
 mod outputs_arena;
@@ -135,12 +138,28 @@ pub enum Expression {
     Pressure, // [0, 1]
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PrevNote {
+    pub note: u8,
+    pub voice_idx: Option<u8>,
+}
+
+impl PrevNote {
+    pub fn pitch(&self) -> Sample {
+        note_to_pitch(self.note as Sample)
+    }
+
+    pub fn voice_idx(&self) -> Option<usize> {
+        self.voice_idx.map(|idx| idx as usize)
+    }
+}
+
 #[derive(Debug)]
 pub enum VoiceEvent {
     Reset {
         voice_idx: usize,
         replaced_voice_idx: Option<usize>,
-        prev_pitch: Option<Sample>,
+        prev_note: Option<PrevNote>,
         pitch: Sample,
         velocity: Sample,
         offset: usize, // In-block sample offset

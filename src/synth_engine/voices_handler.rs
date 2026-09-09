@@ -6,7 +6,7 @@ use crate::{
     synth_engine::{
         Expression, Sample,
         buffer::{MonoVoicesLayout, new_mono_voices_layout},
-        routing::{ExpressionEvent, MAX_VOICES, VoiceEvent},
+        routing::{ExpressionEvent, MAX_VOICES, PrevNote, VoiceEvent},
     },
     utils::{log, note_to_pitch},
 };
@@ -27,8 +27,12 @@ pub struct Note {
 }
 
 impl Note {
-    fn is_same(&self, other: &Self) -> bool {
+    fn is_same_note(&self, other: &Self) -> bool {
         self.channel == other.channel && self.note == other.note
+    }
+
+    fn is_same_instance(&self, other: &Self) -> bool {
+        self.is_same_note(other) && self.host_id == other.host_id
     }
 }
 
@@ -124,14 +128,14 @@ impl VoiceEvents {
         &mut self,
         voice_idx: VoiceIdx,
         replaced_voice_idx: Option<VoiceIdx>,
-        prev_pitch: Option<Sample>,
+        prev_note: Option<PrevNote>,
         note: Note,
         offset: usize,
     ) {
         self.events.push(VoiceEvent::Reset {
             voice_idx: voice_idx as usize,
             replaced_voice_idx: replaced_voice_idx.map(|idx| idx as usize),
-            prev_pitch,
+            prev_note,
             pitch: Self::note_to_pitch(note.note),
             velocity: note.velocity,
             offset,
@@ -203,6 +207,20 @@ impl VoicesHandler {
         }
     }
 
+    fn prev_note(&self, channel: u8) -> Option<PrevNote> {
+        let channel = channel.min(MAX_MIDI_CHANNEL);
+        let note = self.prev_notes[channel as usize]?;
+        let voice_idx = self
+            .playing
+            .iter()
+            .chain(self.releasing.iter())
+            .chain(self.killing.iter())
+            .find(|playing| playing.note.channel == channel && playing.note.note == note)
+            .map(|playing| playing.voice_idx);
+
+        Some(PrevNote { note, voice_idx })
+    }
+
     fn grab_and_reset(
         &mut self,
         replaced_voice_idx: Option<VoiceIdx>,
@@ -210,6 +228,8 @@ impl VoicesHandler {
         offset: usize,
         events: &mut VoiceEvents,
     ) {
+        let prev_note = self.prev_note(note.channel);
+
         let voice_idx = if let Some(voice_idx) = self.free_voices.pop() {
             voice_idx
         } else if let Some(killing) = self.killing.pop_back() {
@@ -233,9 +253,7 @@ impl VoicesHandler {
         self.seq_idx = self.seq_idx.wrapping_add(1);
         self.triggers[voice_idx as usize] = Some(offset as u16);
 
-        let prev_pitch = self.prev_notes[note.channel.min(MAX_MIDI_CHANNEL) as usize]
-            .map(VoiceEvents::note_to_pitch);
-        events.reset(voice_idx, replaced_voice_idx, prev_pitch, note, offset);
+        events.reset(voice_idx, replaced_voice_idx, prev_note, note, offset);
     }
 
     fn legato(&mut self, voice_idx: VoiceIdx, note: Note, offset: usize, events: &mut VoiceEvents) {
@@ -249,7 +267,10 @@ impl VoicesHandler {
     }
 
     fn terminate_killed(&mut self, note: Note) {
-        if !self.waiting.iter().any(|w| w.is_same(&note)) {
+        let still_in_use = self.waiting.iter().any(|w| w.is_same_instance(&note))
+            || self.playing.iter().any(|p| p.note.is_same_instance(&note));
+
+        if !still_in_use {
             self.terminate.push(note);
         }
     }
@@ -299,7 +320,7 @@ impl VoicesHandler {
         if let Some(idx) = self
             .releasing
             .iter()
-            .position(|releasing| releasing.note.is_same(&new_note))
+            .position(|releasing| releasing.note.is_same_note(&new_note))
         {
             let releasing = self.releasing.remove(idx).unwrap();
 
@@ -327,11 +348,11 @@ impl VoicesHandler {
         if self
             .waiting
             .iter()
-            .any(|waiting| waiting.is_same(&new_note))
+            .any(|waiting| waiting.is_same_note(&new_note))
             || self
                 .playing
                 .iter()
-                .any(|playing| playing.note.is_same(&new_note))
+                .any(|playing| playing.note.is_same_note(&new_note))
         {
             log!("Already pressed note came: {:?}", new_note);
             return;
@@ -361,10 +382,14 @@ impl VoicesHandler {
         if let Some(waiting_idx) = self
             .waiting
             .iter()
-            .position(|waiting| waiting.is_same(&note))
+            .position(|waiting| waiting.is_same_note(&note))
         {
             let waiting = self.waiting.remove(waiting_idx);
-            if !self.killing.iter().any(|k| k.note.is_same(&waiting)) {
+            if !self
+                .killing
+                .iter()
+                .any(|k| k.note.is_same_instance(&waiting))
+            {
                 self.terminate.push(waiting);
             }
             return;
@@ -373,7 +398,7 @@ impl VoicesHandler {
         let Some(playing_idx) = self
             .playing
             .iter()
-            .position(|playing| playing.note.is_same(&note))
+            .position(|playing| playing.note.is_same_note(&note))
         else {
             log!("Unknown note lifted: {:?}", note);
             return;
@@ -391,6 +416,7 @@ impl VoicesHandler {
             let waiting_note = self.waiting.remove(waiting_idx);
 
             self.terminate.push(playing.note);
+            self.prev_notes[note.channel.min(MAX_MIDI_CHANNEL) as usize] = Some(waiting_note.note);
             self.legato(playing.voice_idx, waiting_note, offset, events);
             return;
         }
@@ -398,7 +424,18 @@ impl VoicesHandler {
         self.releasing.push_front(playing);
         events.release(playing.voice_idx, note.velocity, offset);
 
-        if let Some(waiting_note) = self.waiting.pop() {
+        // In mono mode `waiting` is a per-channel held-notes stack; only restore
+        // notes from the released note's channel.
+        let waiting_note = if monophonic {
+            self.waiting
+                .iter()
+                .rposition(|waiting| waiting.channel == note.channel)
+                .map(|idx| self.waiting.remove(idx))
+        } else {
+            self.waiting.pop()
+        };
+
+        if let Some(waiting_note) = waiting_note {
             self.note_on_impl(waiting_note, offset, events);
         }
     }
@@ -406,26 +443,30 @@ impl VoicesHandler {
     pub fn handle_choke(&mut self, note: Note) {
         let mut found = false;
 
-        if let Some(playing_idx) = self.playing.iter().position(|p| p.note.is_same(&note)) {
+        if let Some(playing_idx) = self.playing.iter().position(|p| p.note.is_same_note(&note)) {
             let playing = self.playing.remove(playing_idx).unwrap();
 
             self.free_voices.push(playing.voice_idx);
             found = true;
-        } else if let Some(releasing_idx) =
-            self.releasing.iter().position(|r| r.note.is_same(&note))
+        } else if let Some(releasing_idx) = self
+            .releasing
+            .iter()
+            .position(|r| r.note.is_same_note(&note))
         {
             let releasing = self.releasing.remove(releasing_idx).unwrap();
 
             self.free_voices.push(releasing.voice_idx);
             found = true;
-        } else if let Some(killing_idx) = self.killing.iter().position(|k| k.note.is_same(&note)) {
+        } else if let Some(killing_idx) =
+            self.killing.iter().position(|k| k.note.is_same_note(&note))
+        {
             let killing = self.killing.remove(killing_idx).unwrap();
 
             self.free_voices.push(killing.voice_idx);
             found = true;
         }
 
-        if let Some(waiting_idx) = self.waiting.iter().position(|w| w.is_same(&note)) {
+        if let Some(waiting_idx) = self.waiting.iter().position(|w| w.is_same_note(&note)) {
             self.waiting.remove(waiting_idx);
             found = true;
         }
@@ -447,7 +488,11 @@ impl VoicesHandler {
         }
 
         for killing in self.killing.drain(..) {
-            if !self.waiting.iter().any(|w| w.is_same(&killing.note)) {
+            if !self
+                .waiting
+                .iter()
+                .any(|w| w.is_same_instance(&killing.note))
+            {
                 self.terminate.push(killing.note);
             }
             self.free_voices.push(killing.voice_idx);
@@ -468,12 +513,12 @@ impl VoicesHandler {
         let voice_idx = self
             .playing
             .iter()
-            .find(|p| p.note.is_same(&note))
+            .find(|p| p.note.is_same_note(&note))
             .map(|p| p.voice_idx)
             .or_else(|| {
                 self.releasing
                     .iter()
-                    .find(|r| r.note.is_same(&note))
+                    .find(|r| r.note.is_same_note(&note))
                     .map(|r| r.voice_idx)
             });
 

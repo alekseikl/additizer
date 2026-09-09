@@ -150,15 +150,15 @@ fn create_link_routes_direct_spectrum() {
 }
 
 #[test]
-fn create_link_routes_mixed_gain() {
+fn create_link_routes_mixed_detune() {
     let mut engine = minimal_engine();
     let lfo_id = engine.add_lfo();
     let mut bridge = make_bridge(engine);
-    let gain = InputId::new(Input::Gain, OSCILLATOR_ID);
+    let detune = InputId::new(Input::Detune, OSCILLATOR_ID);
 
-    bridge.create_link(lfo_id, gain);
+    bridge.create_link(lfo_id, detune);
 
-    let connected = bridge.get_connected_input_sources(gain);
+    let connected = bridge.get_connected_input_sources(detune);
     assert_eq!(connected.len(), 1);
     assert_eq!(connected[0].src, lfo_id);
 }
@@ -170,15 +170,19 @@ fn get_available_mixed_excludes_connected_source() {
     engine
         .add_mixed_link(
             lfo_id,
-            InputId::new(Input::Gain, OSCILLATOR_ID),
+            InputId::new(Input::Detune, OSCILLATOR_ID),
             StereoSample::ONE,
         )
-        .expect("lfo -> gain");
+        .expect("lfo -> detune");
 
     let bridge = make_bridge(engine);
 
     let linkable = bridge.get_linkable_inputs(lfo_id, OSCILLATOR_ID);
-    assert!(linkable.iter().all(|input| input.input_type != Input::Gain));
+    assert!(
+        linkable
+            .iter()
+            .all(|input| input.input_type != Input::Detune)
+    );
 }
 
 #[test]
