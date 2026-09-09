@@ -6,7 +6,7 @@ use crate::synth_engine::{
 };
 
 // Use larger capacity than for modules for the inputs telemetry
-pub const AUDIO_TO_UI_RING_CAPACITY: usize = 512;
+pub const AUDIO_TO_UI_RING_CAPACITY: usize = 1024;
 
 pub enum UiEvent {
     LinkAmount {

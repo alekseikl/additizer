@@ -25,7 +25,7 @@ use crate::{
 };
 
 const MAX_GLIDE: Sample = 5.0;
-const GLIDE_TIME_THRESHOLD: Sample = from_ms(1.0);
+const GLIDE_TIME_THRESHOLD: Sample = from_ms(0.1);
 
 struct Params {
     keytrack: bool,
@@ -203,7 +203,7 @@ impl Pitch {
     set_stereo_param!(set_glide, glide, glide.clamp(0.0, MAX_GLIDE));
     set_stereo_param!(set_glide_slope, glide_slope, glide_slope.clamp(-1.0, 1.0));
 
-    #[inline(always)]
+    #[inline]
     fn apply_glide(
         buff: &mut [Sample],
         glide: &mut Glide,
@@ -240,24 +240,26 @@ impl Pitch {
 
         let output = voice_output.output();
         let samples = output.len();
+        let pitch = voice.pitch;
 
         router.param(
             &inputs.pitch_shift,
             &channel.pitch_shift,
             &mut buffers.pitch,
         );
-        add_buffer_value(&mut buffers.pitch[..samples], voice.pitch);
+        add_buffer_value(&mut buffers.pitch[..samples], pitch);
 
         const GLIDE_POWER_MAX: Sample = 6.0;
         const POWER_LINEAR_THRESHOLD: Sample = 0.005;
 
-        let pitch = voice.pitch;
+        let mut glide_time = router
+            .scalar(&inputs.glide, channel.glide)
+            .clamp(0.0, MAX_GLIDE);
+        let glide_slope = router
+            .scalar(&inputs.glide_slope, channel.glide_slope)
+            .clamp(-1.0, 1.0);
 
         if let Some(glide) = voice.glide.as_mut() {
-            let mut glide_time = router
-                .scalar(&inputs.glide, channel.glide)
-                .clamp(0.0, MAX_GLIDE);
-
             if self.params.glide_per_octave {
                 glide_time *= (pitch - glide.pitch_from).abs();
             }
@@ -267,9 +269,6 @@ impl Pitch {
             if !(glide_time >= GLIDE_TIME_THRESHOLD && time_left > 0.0) {
                 voice.glide = None;
             } else {
-                let glide_slope = router
-                    .scalar(&inputs.glide_slope, channel.glide_slope)
-                    .clamp(-1.0, 1.0);
                 let glide_power = -glide_slope * GLIDE_POWER_MAX;
                 let t_step = router.sample_rate().recip();
                 let glide_samples = samples.min((time_left * router.sample_rate()) as usize);

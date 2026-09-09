@@ -538,7 +538,8 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
             self.target.voice_idx,
             self.state.offset,
             buff,
-        ) {
+        ) && self.need_update_ui()
+        {
             let value = buff[0];
 
             self.factory.ctx.audio_end.update_modulated_input(
