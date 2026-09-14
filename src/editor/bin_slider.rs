@@ -2,7 +2,7 @@ use egui::{Color32, PointerButton, Rect, Response, Sense, Ui, Widget, vec2};
 
 use crate::{
     synth_engine::{Sample, StereoSample},
-    utils::{db_to_gain, gain_to_db},
+    utils::{MAX_LEVEL_DB, MIN_LEVEL_DB, db_to_gain, gain_to_db},
 };
 
 const BG_COLOR: Color32 = Color32::from_rgb(0, 0, 0);
@@ -10,9 +10,7 @@ const ATTENUATED_COLOR: Color32 = Color32::from_rgb(0x0b, 0x42, 0x67);
 const AMPLIFIED_COLOR: Color32 = Color32::from_rgb(0x72, 0x12, 0x12);
 const PHASE_COLOR: Color32 = Color32::from_rgb(0x42, 0x0b, 0x67);
 const SLIDER_WIDTH: f32 = 12.0;
-const MIN_DBS: Sample = -48.0;
-const MAX_DBS: Sample = 24.0;
-const DB_RANGE: Sample = MAX_DBS - MIN_DBS;
+const DB_RANGE: Sample = MAX_LEVEL_DB - MIN_LEVEL_DB;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum BinSliderMode {
@@ -74,7 +72,7 @@ impl<'a> BinSlider<'a> {
     }
 
     fn db_to_normalized(dbs: Sample) -> Sample {
-        ((dbs - MIN_DBS) / DB_RANGE).clamp(0.0, 1.0)
+        ((dbs - MIN_LEVEL_DB) / DB_RANGE).clamp(0.0, 1.0)
     }
 
     fn gain_to_normalized(gain: Sample) -> Sample {
@@ -91,7 +89,7 @@ impl<'a> BinSlider<'a> {
         if norm <= 0.0 {
             0.0
         } else {
-            db_to_gain(MIN_DBS + norm * DB_RANGE)
+            db_to_gain(MIN_LEVEL_DB + norm * DB_RANGE)
         }
     }
 
@@ -170,7 +168,7 @@ impl<'a> BinSlider<'a> {
 
         let dbs = gain_to_db(gain);
 
-        if dbs <= MIN_DBS {
+        if dbs <= MIN_LEVEL_DB {
             "-Inf dB".to_string()
         } else if dbs == 0.0 {
             "0 dB".to_string()

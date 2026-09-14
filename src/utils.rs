@@ -1,5 +1,10 @@
 use crate::synth_engine::Sample;
 
+/// Silence floor for dB level parameters. At or below this, gain is treated as zero.
+pub const MIN_LEVEL_DB: Sample = -60.0;
+/// Upper clamp for dB level parameters.
+pub const MAX_LEVEL_DB: Sample = 24.0;
+
 const ST_TO_OCTAVE_MULT: Sample = 12.0f32.recip();
 
 macro_rules! log {

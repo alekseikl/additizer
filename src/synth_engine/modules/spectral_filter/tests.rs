@@ -37,7 +37,10 @@ fn no_keytrack_zero_cutoff_maps_to_c4() {
 fn no_keytrack_offsets_nonzero_cutoff() {
     let cutoff = 1.5;
     let pitch = pitch_of_note(72);
-    assert_approx(harmonic_cutoff(0.0, cutoff, pitch), cutoff + (C4_PITCH - pitch));
+    assert_approx(
+        harmonic_cutoff(0.0, cutoff, pitch),
+        cutoff + (C4_PITCH - pitch),
+    );
 }
 
 #[test]

@@ -16,7 +16,7 @@ use crate::{
         synth_module::SynthModule,
         voices_handler::BAND_LIMIT_FREQUENCY,
     },
-    utils::{NthElement, db_to_gain, pitch_to_freq},
+    utils::{MAX_LEVEL_DB, MIN_LEVEL_DB, NthElement, db_to_gain, pitch_to_freq},
 };
 
 mod config;
@@ -29,9 +29,6 @@ pub use ui_bridge::HarmonicEditorUiBridge;
 
 use itertools::izip;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-
-pub const MAX_LEVEL_DB: Sample = 24.0;
-pub const MIN_LEVEL_DB: Sample = -48.0;
 
 fn clamp_bandwidth(bandwidth: i32) -> i32 {
     bandwidth.clamp(0, MAX_BANDWIDTH as i32)

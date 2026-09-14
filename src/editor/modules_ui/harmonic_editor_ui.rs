@@ -8,13 +8,10 @@ use crate::{
     },
     synth_engine::{
         MAX_BANDWIDTH, ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, Sample, StereoSample,
-        harmonic_editor::{
-            EditRequest, HarmonicEditorUiBridge, HarmonicsRange, MAX_LEVEL_DB, MIN_LEVEL_DB,
-            sawtooth_phase,
-        },
+        harmonic_editor::{EditRequest, HarmonicEditorUiBridge, HarmonicsRange, sawtooth_phase},
         ui_bridge::{ModuleBridge, UiBridge},
     },
-    utils::db_to_gain,
+    utils::{MAX_LEVEL_DB, MIN_LEVEL_DB, db_to_gain},
 };
 use egui::{
     Checkbox, ComboBox, DragValue, FontFamily, Grid, Id, Modal, RichText, ScrollArea, Sides, Ui,

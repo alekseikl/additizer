@@ -13,7 +13,7 @@ use crate::{
         synth_module::SynthModule,
         types::{ComplexSample, Sample},
     },
-    utils::db_to_gain_fast,
+    utils::{MAX_LEVEL_DB, db_to_gain_fast},
 };
 
 mod config;
@@ -23,8 +23,6 @@ mod ui_bridge;
 pub use config::{MAX_INPUTS, SpectralMixerConfig};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::SpectralMixerUiBridge;
-
-const MAX_VOLUME: Sample = 24.0; // dB
 
 struct InputChannelParams {
     level: Sample,
@@ -267,7 +265,7 @@ impl SpectralMixer {
 
     #[inline(always)]
     fn to_gain(vol: Sample) -> Sample {
-        db_to_gain_fast(vol.min(MAX_VOLUME))
+        db_to_gain_fast(vol.min(MAX_LEVEL_DB))
     }
 
     fn process_voice(

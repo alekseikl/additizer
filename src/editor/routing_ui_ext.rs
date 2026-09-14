@@ -6,7 +6,7 @@ use crate::{
         DataType, Input, ModuleType, StereoSample,
         filters::spectral_filter::{MAX_CUTOFF, MIN_CUTOFF},
     },
-    utils::from_st,
+    utils::{MAX_LEVEL_DB, MIN_LEVEL_DB, from_st},
 };
 
 const IO_COLOR_S: f32 = 0.8;
@@ -173,10 +173,12 @@ impl Input {
             Self::Gain | Self::GainMix(_) => {
                 Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(1.0)
             }
-            Self::Level | Self::LevelMix(_) => Slider::stereo(value, -48.0..=24.0, None)
-                .default(0.0)
-                .over(0.0)
-                .units(Units::Db),
+            Self::Level | Self::LevelMix(_) => {
+                Slider::stereo(value, MIN_LEVEL_DB..=MAX_LEVEL_DB, None)
+                    .default(0.0)
+                    .over(0.0)
+                    .units(Units::Db)
+            }
             Self::Pan => Slider::stereo(value, -1.0..=1.0, None).default(0.0),
             Self::Drive | Self::ClippingLevel => Slider::stereo(value, -24.0..=24.0, None)
                 .default(0.0)

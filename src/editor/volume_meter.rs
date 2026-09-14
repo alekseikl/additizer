@@ -2,7 +2,7 @@ use egui::{Color32, Painter, Pos2, Rect};
 
 use crate::{
     synth_engine::{NUM_CHANNELS, Sample, Smoother, StereoSample},
-    utils::gain_to_db,
+    utils::{MIN_LEVEL_DB, gain_to_db},
 };
 
 const BAR_GAP: f32 = 6.0;
@@ -10,7 +10,6 @@ const NUM_SEGMENTS: usize = 12;
 const LINEAR_SEGMENTS: usize = 10;
 const GREEN_SEGMENTS: usize = 8;
 const SEGMENT_GAP: f32 = 2.0;
-const MIN_DB: Sample = -48.0;
 const LINEAR_MAX_DB: Sample = 0.0;
 const VOLUME_SMOOTH_TIME: Sample = 0.15;
 const UI_SAMPLE_RATE: Sample = 60.0;
@@ -89,10 +88,10 @@ impl VolumeMeter {
 
     fn level_to_db(level: Sample) -> Sample {
         if level <= 1e-6 {
-            return MIN_DB;
+            return MIN_LEVEL_DB;
         }
 
-        gain_to_db(level).max(MIN_DB)
+        gain_to_db(level).max(MIN_LEVEL_DB)
     }
 
     fn segment_brightness(segment_idx: usize, db: Sample) -> Sample {
@@ -109,7 +108,7 @@ impl VolumeMeter {
 
     fn segment_bounds(segment_idx: usize) -> (Sample, Sample) {
         match segment_idx {
-            0 => (MIN_DB, Self::linear_segment_threshold(0)),
+            0 => (MIN_LEVEL_DB, Self::linear_segment_threshold(0)),
             1..10 => (
                 Self::linear_segment_threshold(segment_idx - 1),
                 Self::linear_segment_threshold(segment_idx),
@@ -120,7 +119,9 @@ impl VolumeMeter {
     }
 
     fn linear_segment_threshold(segment_idx: usize) -> Sample {
-        MIN_DB + (segment_idx + 1) as Sample * (LINEAR_MAX_DB - MIN_DB) / LINEAR_SEGMENTS as Sample
+        MIN_LEVEL_DB
+            + (segment_idx + 1) as Sample * (LINEAR_MAX_DB - MIN_LEVEL_DB)
+                / LINEAR_SEGMENTS as Sample
     }
 
     fn segment_fill_color(segment_idx: usize, brightness: Sample) -> Color32 {

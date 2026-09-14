@@ -11,15 +11,12 @@ use crate::{
         spectral_filter::SpectralFilterUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
-    utils::{C4_PITCH, gain_to_db_fast},
+    utils::{C4_PITCH, MAX_LEVEL_DB, MIN_LEVEL_DB, gain_to_db_fast},
 };
 
 use super::GridWidgetContent;
 
 const PADDING: f32 = 4.0;
-
-const MIN_DB: Sample = -48.0;
-const MAX_DB: Sample = 24.0;
 
 const STROKE_COLOR: Color32 = Color32::from_rgb(0xff, 0xb0, 0x00);
 const LINE_WIDTH: f32 = 1.0;
@@ -74,7 +71,7 @@ impl SpectralFilterWidget {
     }
 
     fn curve_points(rect: Rect, filter: &SpectralFilterEngine, cutoff_log2: Sample) -> Vec<Pos2> {
-        const DB_RANGE_MULT: f32 = (MAX_DB - MIN_DB).recip();
+        const DB_RANGE_MULT: f32 = (MAX_LEVEL_DB - MIN_LEVEL_DB).recip();
         const COLUMNS: usize = 512;
         let t_mult = ((COLUMNS - 1) as f32).recip();
         let log2_range = MAX_CUTOFF - MIN_CUTOFF;
@@ -83,7 +80,7 @@ impl SpectralFilterWidget {
             let t = col * t_mult;
             let freq = (MIN_CUTOFF + t * log2_range).exp2();
             let db = gain_to_db_fast(filter.response_at(freq).norm());
-            let y_t = ((db - MIN_DB) * DB_RANGE_MULT).clamp(0.0, 1.0);
+            let y_t = ((db - MIN_LEVEL_DB) * DB_RANGE_MULT).clamp(0.0, 1.0);
 
             Pos2::new(
                 rect.left() + t * rect.width(),

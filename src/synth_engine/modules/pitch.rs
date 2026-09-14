@@ -334,7 +334,10 @@ impl Pitch {
 
         if self.params.keytrack {
             voice.glide = Some(Glide::new(
-                voice.glide.as_ref().map_or(voice.pitch, |g| g.current_pitch),
+                voice
+                    .glide
+                    .as_ref()
+                    .map_or(voice.pitch, |g| g.current_pitch),
             ));
             voice.pitch = pitch;
         } else {

@@ -14,7 +14,7 @@ use crate::{
         synth_module::SynthModule,
         types::Sample,
     },
-    utils::db_to_gain_fast,
+    utils::{MAX_LEVEL_DB, db_to_gain_fast},
 };
 
 mod config;
@@ -24,8 +24,6 @@ mod ui_bridge;
 pub use config::{MAX_INPUTS, MixerConfig};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::MixerUiBridge;
-
-const MAX_VOLUME: Sample = 24.0; // dB
 
 struct InputChannelParams {
     level: SmoothedSample,
@@ -281,7 +279,7 @@ impl Mixer {
 
     #[inline(always)]
     fn to_gain(dbs: Sample) -> Sample {
-        db_to_gain_fast(dbs.min(MAX_VOLUME))
+        db_to_gain_fast(dbs.min(MAX_LEVEL_DB))
     }
 
     #[inline(always)]

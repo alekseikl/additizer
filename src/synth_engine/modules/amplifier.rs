@@ -188,11 +188,7 @@ impl Amplifier {
         }
 
         if !router.param_stationary_at(&inputs.pan, &channel.pan, 0.0) {
-            router.param(
-                &inputs.pan,
-                &channel.pan,
-                &mut self.buffers.gain_mod_input,
-            );
+            router.param(&inputs.pan, &channel.pan, &mut self.buffers.gain_mod_input);
 
             for (out, &pan) in output.iter_mut().zip(&self.buffers.gain_mod_input) {
                 *out *= pan_gain(pan, channel_idx);

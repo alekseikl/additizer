@@ -8,7 +8,7 @@ use crate::{
         oscillator::{self, OscillatorConfig, OscillatorUiBridge, PhasesDst},
         ui_bridge::{ModuleBridge, UiBridge},
     },
-    utils::{db_to_gain, gain_to_db},
+    utils::{MIN_LEVEL_DB, db_to_gain, gain_to_db},
 };
 use egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
 
@@ -70,7 +70,7 @@ impl OscillatorUI {
 
                     ui.label("Level");
                     ui.add(
-                        Slider::stereo(&mut state.level, -48.0..=6.0, None)
+                        Slider::stereo(&mut state.level, MIN_LEVEL_DB..=6.0, None)
                             .over(0.0)
                             .units(Units::Db)
                             .default(0.0)
@@ -194,7 +194,7 @@ impl OscillatorUI {
 
                     if ui
                         .add(
-                            Slider::stereo(&mut gain_db, -48.0..=6.0, None)
+                            Slider::stereo(&mut gain_db, MIN_LEVEL_DB..=6.0, None)
                                 .over(0.0)
                                 .units(Units::Db)
                                 .vertical()
