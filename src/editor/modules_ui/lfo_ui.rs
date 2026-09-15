@@ -74,21 +74,17 @@ impl LfoUi {
                 ui.end_row();
 
                 ui.label("Frequency");
-                ui.horizontal(|ui| {
-                    if ui
-                        .add(StereoInput::new(
-                            Input::LowFrequency,
-                            module_id,
-                            &mut config.frequency,
-                            bridge,
-                        ))
-                        .changed()
-                    {
-                        lfo_bridge.set_param(Input::LowFrequency, config.frequency);
-                    }
-
-                    ui.add_space(8.0);
-                });
+                if ui
+                    .add(StereoInput::new(
+                        Input::LowFrequency,
+                        module_id,
+                        &mut config.frequency,
+                        bridge,
+                    ))
+                    .changed()
+                {
+                    lfo_bridge.set_param(Input::LowFrequency, config.frequency);
+                }
 
                 ui.label("Phase shift");
                 if ui

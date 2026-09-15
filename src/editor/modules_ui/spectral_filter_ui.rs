@@ -77,21 +77,17 @@ impl SpectralFilterUI {
                 ui.end_row();
 
                 ui.label("Resonance");
-                ui.horizontal(|ui| {
-                    if ui
-                        .add(StereoInput::new(
-                            Input::Resonance,
-                            module_id,
-                            &mut config.resonance,
-                            bridge,
-                        ))
-                        .changed()
-                    {
-                        filter_bridge.set_param(Input::Resonance, config.resonance);
-                    }
-
-                    ui.add_space(8.0);
-                });
+                if ui
+                    .add(StereoInput::new(
+                        Input::Resonance,
+                        module_id,
+                        &mut config.resonance,
+                        bridge,
+                    ))
+                    .changed()
+                {
+                    filter_bridge.set_param(Input::Resonance, config.resonance);
+                }
 
                 ui.label("Drive");
                 if ui

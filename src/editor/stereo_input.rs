@@ -124,6 +124,7 @@ impl Widget for StereoInput<'_> {
             let response = ui.add(slider);
 
             self.add_circle(ui, modulated.as_ref());
+            ui.add_space(4.0);
 
             response
         })
