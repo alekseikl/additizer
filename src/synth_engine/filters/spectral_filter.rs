@@ -364,11 +364,9 @@ pub struct FilterParams {
     pub linear_phase: bool,
 }
 
-pub const MAX_DRIVE: Sample = 40.0;
+const MAX_DRIVE: Sample = 40.0;
 pub const MIN_RESONANCE: Sample = -1.0;
 pub const MAX_RESONANCE: Sample = 1.0;
-pub const MIN_CUTOFF: Sample = -4.0;
-pub const MAX_CUTOFF: Sample = 10.0;
 const MIN_Q: Sample = 0.01;
 const MAX_Q: Sample = 16.0;
 const MAX_Q_LIMIT_POWER: Sample = 10.0;
@@ -383,20 +381,17 @@ pub struct SpectralFilter {
 
 impl SpectralFilter {
     pub fn new(filter_type: FilterType, params: FilterParams) -> Self {
-        let cutoff = params.cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF);
-
         Self {
             filter_type,
             gain: db_to_gain_fast(params.drive.min(MAX_DRIVE)),
-            cutoff_freq: cutoff.exp2(),
-            q: Self::q_from_params(&params, cutoff),
+            cutoff_freq: params.cutoff.exp2(),
+            q: Self::q_from_params(&params),
             linear_phase: params.linear_phase,
         }
     }
 
-    fn q_from_params(params: &FilterParams, cutoff: Sample) -> Sample {
+    fn q_from_params(params: &FilterParams) -> Sample {
         let resonance = params.resonance.clamp(MIN_RESONANCE, MAX_RESONANCE);
-        let q_limit_to = params.q_limit_to.clamp(MIN_CUTOFF, MAX_CUTOFF);
 
         let q = if resonance > 0.0 {
             BUTTERWORTH_Q + (MAX_Q - BUTTERWORTH_Q) * resonance.powf(3.0)
@@ -406,13 +401,13 @@ impl SpectralFilter {
 
         let butterworth_excess = q - BUTTERWORTH_Q;
 
-        if butterworth_excess <= 0.0 || cutoff >= q_limit_to {
+        if butterworth_excess <= 0.0 || params.cutoff >= params.q_limit_to {
             return q;
         }
 
         let rate = 1.0 + params.q_limit_slope.clamp(0.0, 1.0) * MAX_Q_LIMIT_POWER;
 
-        BUTTERWORTH_Q + butterworth_excess * ((cutoff - q_limit_to) * rate).exp2()
+        BUTTERWORTH_Q + butterworth_excess * ((params.cutoff - params.q_limit_to) * rate).exp2()
     }
 
     pub fn apply_response(&self, input: &[ComplexSample], output: &mut [ComplexSample]) {

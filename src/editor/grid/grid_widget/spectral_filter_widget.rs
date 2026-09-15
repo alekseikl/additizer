@@ -5,10 +5,9 @@ use crate::{
     synth_engine::{
         Input, ModuleId, Sample,
         filters::spectral_filter::{
-            FilterParams, MAX_CUTOFF, MAX_RESONANCE, MIN_CUTOFF, MIN_RESONANCE,
-            SpectralFilter as SpectralFilterEngine,
+            FilterParams, MAX_RESONANCE, MIN_RESONANCE, SpectralFilter as SpectralFilterEngine,
         },
-        spectral_filter::SpectralFilterUiBridge,
+        spectral_filter::{MAX_CUTOFF, MIN_CUTOFF, SpectralFilterUiBridge},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{C4_PITCH, MAX_LEVEL_DB, MIN_LEVEL_DB, gain_to_db_fast},

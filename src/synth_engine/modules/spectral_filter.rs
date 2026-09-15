@@ -16,7 +16,7 @@ use crate::{
         StereoSample,
         buffer::VoicesLayout,
         filters::spectral_filter::{
-            FilterParams, FilterType, MAX_CUTOFF, MAX_RESONANCE, MIN_CUTOFF, MIN_RESONANCE,
+            FilterParams, FilterType, MAX_RESONANCE, MIN_RESONANCE,
             SpectralFilter as SpectralFilterEngine,
         },
         routing::{
@@ -28,6 +28,9 @@ use crate::{
     },
     utils::C4_PITCH,
 };
+
+pub const MIN_CUTOFF: Sample = -4.0;
+pub const MAX_CUTOFF: Sample = 7.0;
 
 struct Params {
     filter_type: FilterType,

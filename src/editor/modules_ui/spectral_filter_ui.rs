@@ -7,8 +7,8 @@ use crate::{
     },
     synth_engine::{
         Input, ModuleId, ModuleType,
-        filters::spectral_filter::{FilterType, MAX_CUTOFF, MIN_CUTOFF},
-        spectral_filter::SpectralFilterUiBridge,
+        filters::spectral_filter::FilterType,
+        spectral_filter::{MAX_CUTOFF, MIN_CUTOFF, SpectralFilterUiBridge},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::from_st,

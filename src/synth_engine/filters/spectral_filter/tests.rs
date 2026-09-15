@@ -35,7 +35,7 @@ fn params(cutoff: Sample, resonance: Sample, q_limit_to: Sample) -> FilterParams
 }
 
 fn default_params() -> FilterParams {
-    params(0.0, 0.0, MAX_CUTOFF)
+    params(0.0, 0.0, 8.0)
 }
 
 fn filter(filter_type: FilterType, p: FilterParams) -> SpectralFilter {
@@ -120,17 +120,14 @@ fn filter_type_serde_bandpass_alias() {
 
 #[test]
 fn cutoff_is_octaves_of_the_fundamental() {
-    assert_approx(cutoff_freq(params(0.0, 0.0, MAX_CUTOFF)), 1.0);
-    assert_approx(cutoff_freq(params(1.0, 0.0, MAX_CUTOFF)), 2.0);
+    assert_approx(cutoff_freq(params(0.0, 0.0, 8.0)), 1.0);
+    assert_approx(cutoff_freq(params(1.0, 0.0, 8.0)), 2.0);
 }
 
 #[test]
-fn cutoff_is_clamped() {
-    let over = cutoff_freq(params(MAX_CUTOFF + 5.0, 0.0, MAX_CUTOFF));
-    assert_approx(over, MAX_CUTOFF.exp2());
-
-    let under = cutoff_freq(params(MIN_CUTOFF - 5.0, 0.0, MAX_CUTOFF));
-    assert_approx(under, MIN_CUTOFF.exp2());
+fn cutoff_is_not_clamped() {
+    assert_approx(cutoff_freq(params(12.0, 0.0, 12.0)), 12.0f32.exp2());
+    assert_approx(cutoff_freq(params(-9.0, 0.0, 0.0)), (-9.0f32).exp2());
 }
 
 #[test]
@@ -167,7 +164,7 @@ fn q_of(p: FilterParams) -> Sample {
 
 #[test]
 fn zero_resonance_is_butterworth_q() {
-    assert_approx(q_of(params(0.0, 0.0, MAX_CUTOFF)), BUTTERWORTH_Q);
+    assert_approx(q_of(params(0.0, 0.0, 8.0)), BUTTERWORTH_Q);
 }
 
 #[test]
@@ -178,7 +175,7 @@ fn max_resonance_maps_to_max_q() {
 
 #[test]
 fn min_resonance_maps_to_min_q() {
-    assert_approx(q_of(params(0.0, MIN_RESONANCE, MAX_CUTOFF)), MIN_Q);
+    assert_approx(q_of(params(0.0, MIN_RESONANCE, 8.0)), MIN_Q);
 }
 
 #[test]
@@ -193,13 +190,13 @@ fn positive_resonance_uses_cubic_curve() {
 fn negative_resonance_interpolates_to_min_q() {
     let resonance = -0.5;
     let expected = MIN_Q + (BUTTERWORTH_Q - MIN_Q) * (1.0 + resonance);
-    assert_approx(q_of(params(0.0, resonance, MAX_CUTOFF)), expected);
+    assert_approx(q_of(params(0.0, resonance, 8.0)), expected);
 }
 
 #[test]
 fn resonance_is_clamped() {
     assert_approx(q_of(params(8.0, MAX_RESONANCE + 1.0, 2.0)), MAX_Q);
-    assert_approx(q_of(params(0.0, MIN_RESONANCE - 1.0, MAX_CUTOFF)), MIN_Q);
+    assert_approx(q_of(params(0.0, MIN_RESONANCE - 1.0, 8.0)), MIN_Q);
 }
 
 #[test]
@@ -234,7 +231,9 @@ fn q_limit_reduces_q_below_limit_frequency() {
 
 #[test]
 fn q_limit_approaches_butterworth_far_below_limit() {
-    let far_below = q_of(params(MIN_CUTOFF, 1.0, MAX_CUTOFF));
+    let mut p = params(-4.0, 1.0, 8.0);
+    p.q_limit_slope = 1.0;
+    let far_below = q_of(p);
     assert!((far_below - BUTTERWORTH_Q).abs() < 1e-3);
 }
 
@@ -262,17 +261,6 @@ fn q_limit_applies_when_limit_is_negative() {
 
     assert_approx(unlimited, MAX_Q);
     assert_approx(limited, limited_q(-2.0, -1.0, 0.0));
-}
-
-#[test]
-fn q_limit_to_is_clamped() {
-    let at_max = q_of(params(5.0, 1.0, MAX_CUTOFF));
-    let above_max = q_of(params(5.0, 1.0, MAX_CUTOFF + 10.0));
-    assert_approx(at_max, above_max);
-
-    let at_min = q_of(params(MIN_CUTOFF, 1.0, MIN_CUTOFF));
-    let below_min = q_of(params(MIN_CUTOFF, 1.0, MIN_CUTOFF - 5.0));
-    assert_approx(at_min, below_min);
 }
 
 // ---- FilterImpl frequency responses ----
