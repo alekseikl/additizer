@@ -137,11 +137,21 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
                 .take()
                 .expect("slot should be in place");
 
-            for (seq_idx, voice) in self.ctx.params.active_voices.iter().enumerate() {
-                for channel_idx in 0..NUM_CHANNELS {
-                    let target = VoiceTarget::new(channel_idx, voice, seq_idx);
+            // Untriggered first so triggered voices can steal already-advanced phase.
+            for triggered in [false, true] {
+                for (seq_idx, voice) in self
+                    .ctx
+                    .params
+                    .active_voices
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, voice)| voice.triggered().is_some() == triggered)
+                {
+                    for channel_idx in 0..NUM_CHANNELS {
+                        let target = VoiceTarget::new(channel_idx, voice, seq_idx);
 
-                    f(self, &target, &mut slot);
+                        f(self, &target, &mut slot);
+                    }
                 }
             }
 

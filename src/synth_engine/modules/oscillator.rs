@@ -4,6 +4,7 @@ use itertools::izip;
 use rand::RngExt;
 use rand_pcg::Pcg32;
 use realfft::{ComplexToReal, RealFftPlanner};
+use smallvec::SmallVec;
 use wide::f32x4;
 
 use crate::{
@@ -13,8 +14,8 @@ use crate::{
         oscillator::link::{AudioEnd, UiEnd, UiEvent, create_link_pair},
         phase::Phase,
         routing::{
-            AudioRouterType, DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, ModuleId,
-            NUM_CHANNELS, ProcessContext, RIGHT_CHANNEL, RouterFactory, SamplesOutput,
+            AudioRouterType, DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, MAX_VOICES,
+            ModuleId, NUM_CHANNELS, ProcessContext, RIGHT_CHANNEL, RouterFactory, SamplesOutput,
             SpectralInputSlot, VoiceEvent, VoiceRouter, VoiceTarget,
         },
         smooth::SmoothedSample,
@@ -139,6 +140,19 @@ impl Interpolated {
 
 struct PhaseReset {
     steal_from: Option<usize>,
+}
+
+struct PhaseSteal {
+    offset: u16,
+    voice_idx: u16,
+}
+
+struct VoiceRenderCtx {
+    channel_idx: usize,
+    voice_idx: usize,
+    wave_channel: usize,
+    freq_phase_mult: Sample,
+    samples: usize,
 }
 
 struct UnisonVoice {
@@ -757,9 +771,8 @@ impl Oscillator {
         };
 
         let channel = &self.channel_params[channel_idx];
-        let voices = &mut self.voices[channel_idx];
         let unison = self.params.unison;
-        let voice = &mut voices[voice_idx];
+        let voice = &mut self.voices[channel_idx][voice_idx];
 
         // When steal_phase set to false - control that toggle by input value
         let steal_phase = router.scalar(
@@ -768,11 +781,15 @@ impl Oscillator {
             true,
         ) >= 0.5;
 
-        if let Some(replaced_voice_idx) = phase_reset.steal_from
-            && steal_phase
-        {
-            voices[voice_idx].phases = voices[replaced_voice_idx].phases;
-        } else if self.params.phase_random > 1e-6 {
+        // Steal phases from this voice if VoicesHandler didn't provide replaced_voice_idx
+        self.last_voice_idx = Some(voice_idx);
+
+        if phase_reset.steal_from.is_some() && steal_phase {
+            // Phases already copied from another voice
+            return;
+        }
+
+        if self.params.phase_random > 1e-6 {
             for (phase, unison_voice, random) in izip!(
                 voice.phases.iter_mut(),
                 channel.unison.iter(),
@@ -802,92 +819,77 @@ impl Oscillator {
         }
     }
 
-    fn process_voice(
-        &mut self,
+    fn collect_phase_steals(
+        &self,
         target: &VoiceTarget,
-        outputs: &mut VoicesLayout<SamplesOutput>,
-        rf: &mut RouterFactory<AudioRouterType>,
-    ) {
+        rf: &RouterFactory<AudioRouterType>,
+    ) -> SmallVec<[PhaseSteal; MAX_VOICES]> {
+        let mut steals = SmallVec::new();
+
+        if target.triggered.is_some() || !rf.params().has_triggered_voices {
+            return steals;
+        }
+
         let channel_idx = target.channel_idx;
-        let voice_idx = target.voice_idx;
-        let (mut router, mut voice_output) = rf.for_voice(target, outputs);
+        let source_idx = target.voice_idx;
 
-        self.process_phase_reset(channel_idx, voice_idx, &mut router);
-        self.process_unison(channel_idx, voice_idx, &mut router);
+        for playing in rf.params().active_voices {
+            let Some(offset) = playing.triggered() else {
+                continue;
+            };
+            let requester_idx = playing.voice_idx();
 
-        let samples = router.samples();
-        let channel = &self.channel_params[channel_idx];
-        let voice = &mut self.voices[channel_idx][voice_idx];
-        let inputs = &self.inputs;
-        let buffers = &mut self.buffers;
-
-        router.param(
-            &inputs.phase_shift,
-            &channel.phase_shift,
-            &mut buffers.phase_shift,
-        );
-        router.param(
-            &inputs.freq_shift,
-            &channel.frequency_shift,
-            &mut buffers.frequency_shift,
-        );
-
-        if inputs.pitch.is_some() {
-            buffers.pitch[..samples].copy_from_slice(router.direct(inputs.pitch));
-        } else {
-            buffers.pitch[..samples].fill(target.note_pitch());
+            if self.voices[channel_idx][requester_idx]
+                .phase_reset
+                .as_ref()
+                .is_some_and(|reset| reset.steal_from == Some(source_idx))
+            {
+                steals.push(PhaseSteal {
+                    offset: offset as u16,
+                    voice_idx: requester_idx as u16,
+                });
+            }
         }
 
-        let mono_spectrum = self.params.mono_spectrum;
-        let wave_channel = if mono_spectrum {
-            LEFT_CHANNEL
-        } else {
-            channel_idx
-        };
+        steals.sort_unstable_by_key(|steal| steal.offset);
+        steals
+    }
 
-        if channel_idx == wave_channel {
-            let last = samples.saturating_sub(1);
-
-            Self::build_wave(
-                self.inverse_fft.as_ref(),
-                pitch_to_freq(buffers.pitch[last]) + buffers.frequency_shift[last],
-                router.sample_rate(),
-                router.spectral(inputs.spectrum),
-                &mut buffers.tmp_spectral,
-                &mut buffers.scratch,
-                &mut buffers.tmp_wave,
-            );
+    #[inline]
+    fn render_voice_samples(
+        &mut self,
+        ctx: &VoiceRenderCtx,
+        output: &mut [Sample],
+        start: usize,
+        end: usize,
+    ) {
+        if start >= end {
+            return;
         }
 
-        if router.need_update_ui_mono() {
-            self.audio_end
-                .update_spectrum(router.spectral(inputs.spectrum));
-        }
-
-        let freq_phase_mult = Phase::freq_phase_mult(router.sample_rate());
-        let buff_t_inc = (samples as f32).recip();
-        let mut buff_t = 0.0;
-        let output = voice_output.output();
-
-        let wave_from = &self.voice_buffers[wave_channel][voice_idx].wave;
-        let wave_to = &buffers.tmp_wave;
+        let unison = self.params.unison;
+        let voice = &mut self.voices[ctx.channel_idx][ctx.voice_idx];
+        let wave_from = &self.voice_buffers[ctx.wave_channel][ctx.voice_idx].wave;
+        let wave_to = &self.buffers.tmp_wave;
+        let buff_t_inc = (ctx.samples as Sample).recip();
+        let mut buff_t = start as Sample * buff_t_inc;
 
         for (out, &pitch, &phase_shift, freq_shift) in izip!(
-            output.iter_mut(),
-            &buffers.pitch,
-            &buffers.phase_shift,
-            &buffers.frequency_shift,
+            output[start..end].iter_mut(),
+            &self.buffers.pitch[start..end],
+            &self.buffers.phase_shift[start..end],
+            &self.buffers.frequency_shift[start..end],
         ) {
             let mut sample_acc = f32x4::ZERO;
             let phase_shift = Phase::from_normalized(phase_shift);
-            let pitch_phase_inc = pitch_to_freq(pitch) * freq_phase_mult;
-            let freq_phase_inc = freq_shift * freq_phase_mult;
+            let pitch_phase_inc = pitch_to_freq(pitch) * ctx.freq_phase_mult;
+            let freq_phase_inc = freq_shift * ctx.freq_phase_mult;
 
             for (phase, uv) in voice
                 .phases
                 .iter_mut()
                 .zip(voice.unison.iter())
-                .take(self.params.unison)
+                .take(unison)
             {
                 let read_phase = *phase
                     + phase_shift
@@ -903,11 +905,96 @@ impl Oscillator {
             *out = sample_acc.reduce_add() * voice.unison_gain.interpolate(buff_t);
             buff_t += buff_t_inc;
         }
+    }
+
+    fn process_voice(
+        &mut self,
+        target: &VoiceTarget,
+        outputs: &mut VoicesLayout<SamplesOutput>,
+        rf: &mut RouterFactory<AudioRouterType>,
+    ) {
+        let channel_idx = target.channel_idx;
+        let voice_idx = target.voice_idx;
+        let steals = self.collect_phase_steals(target, rf);
+
+        let (mut router, mut voice_output) = rf.for_voice(target, outputs);
+
+        self.process_phase_reset(channel_idx, voice_idx, &mut router);
+        self.process_unison(channel_idx, voice_idx, &mut router);
+
+        let samples = router.samples();
+        let channel = &self.channel_params[channel_idx];
+        let inputs = &self.inputs;
+
+        router.param(
+            &inputs.phase_shift,
+            &channel.phase_shift,
+            &mut self.buffers.phase_shift,
+        );
+        router.param(
+            &inputs.freq_shift,
+            &channel.frequency_shift,
+            &mut self.buffers.frequency_shift,
+        );
+
+        if inputs.pitch.is_some() {
+            self.buffers.pitch[..samples].copy_from_slice(router.direct(inputs.pitch));
+        } else {
+            self.buffers.pitch[..samples].fill(target.note_pitch());
+        }
+
+        let mono_spectrum = self.params.mono_spectrum;
+        let wave_channel = if mono_spectrum {
+            LEFT_CHANNEL
+        } else {
+            channel_idx
+        };
+
+        if channel_idx == wave_channel {
+            let last = samples.saturating_sub(1);
+
+            Self::build_wave(
+                self.inverse_fft.as_ref(),
+                pitch_to_freq(self.buffers.pitch[last]) + self.buffers.frequency_shift[last],
+                router.sample_rate(),
+                router.spectral(inputs.spectrum),
+                &mut self.buffers.tmp_spectral,
+                &mut self.buffers.scratch,
+                &mut self.buffers.tmp_wave,
+            );
+        }
+
+        if router.need_update_ui_mono() {
+            self.audio_end
+                .update_spectrum(router.spectral(inputs.spectrum));
+        }
+
+        let ctx = VoiceRenderCtx {
+            channel_idx,
+            voice_idx,
+            wave_channel,
+            freq_phase_mult: Phase::freq_phase_mult(router.sample_rate()),
+            samples,
+        };
+        let output = voice_output.output();
+        let mut start = 0;
+
+        for steal in &steals {
+            let offset = (steal.offset as usize).min(ctx.samples);
+
+            self.render_voice_samples(&ctx, output, start, offset);
+
+            self.voices[channel_idx][steal.voice_idx as usize].phases =
+                self.voices[channel_idx][voice_idx].phases;
+            start = offset;
+        }
+
+        self.render_voice_samples(&ctx, output, start, ctx.samples);
 
         if !mono_spectrum || channel_idx == RIGHT_CHANNEL {
             mem::swap(
                 &mut self.voice_buffers[wave_channel][voice_idx].wave,
-                &mut buffers.tmp_wave,
+                &mut self.buffers.tmp_wave,
             );
         }
     }
@@ -978,12 +1065,8 @@ impl SynthModule for Oscillator {
                     for channel_idx in 0..NUM_CHANNELS {
                         self.handle_trigger(channel_idx, *replaced_voice_idx, *voice_idx);
                     }
-
-                    self.last_voice_idx = Some(*voice_idx);
                 }
-                VoiceEvent::Update { voice_idx, .. } => {
-                    self.last_voice_idx = Some(*voice_idx);
-                }
+                VoiceEvent::Update { .. } => {}
                 _ => (),
             }
         }
