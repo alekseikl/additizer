@@ -942,7 +942,12 @@ impl SynthEngine {
         let topo_sort = TopoSort::from_map(dependents);
 
         match topo_sort.into_vec_nodes() {
-            SortResults::Full(nodes) => Ok(nodes),
+            SortResults::Full(mut nodes) => {
+                if let Some(pos) = nodes.iter().position(|&id| id == OUTPUT_MODULE_ID) {
+                    nodes[pos..].rotate_left(1);
+                }
+                Ok(nodes)
+            }
             SortResults::Partial(_) => Err("Cycles detected!".to_string()),
         }
     }

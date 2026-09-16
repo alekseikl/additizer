@@ -691,7 +691,7 @@ fn execution_order_includes_unlinked_modules() {
 
     assert!(order.contains(&LFO_ID));
     assert!(order.contains(&OSCILLATOR_ID));
-    assert!(order.contains(&OUTPUT_MODULE_ID));
+    assert_eq!(*order.last().unwrap(), OUTPUT_MODULE_ID);
     assert!(
         order.iter().position(|&id| id == OSCILLATOR_ID).unwrap()
             < order.iter().position(|&id| id == OUTPUT_MODULE_ID).unwrap()
