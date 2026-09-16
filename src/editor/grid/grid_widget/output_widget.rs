@@ -3,7 +3,7 @@ use egui::{Rect, Vec2, emath::GuiRounding};
 use crate::{
     editor::{fit_label::FitLabel, grid::WidgetCtx, volume_meter::VolumeMeter},
     synth_engine::{
-        ModuleId, ModuleType,
+        ModuleId, ModuleType, NUM_CHANNELS,
         ui_bridge::{GridVec, UiBridge},
     },
 };
@@ -11,10 +11,12 @@ use crate::{
 use super::GridWidgetContent;
 
 const VERT_PADDING: Vec2 = egui::vec2(4.0, 6.0);
+const CLIP_HOLD_SECS: f64 = 1.0;
 
 #[derive(Default)]
 pub struct OutputWidget {
     volume_meter: VolumeMeter,
+    clipped_until: [Option<f64>; NUM_CHANNELS],
 }
 
 impl OutputWidget {
@@ -34,10 +36,33 @@ impl OutputWidget {
             return;
         }
 
+        let meter = bridge.get_out_volume();
+        let now = ui.input(|i| i.time);
+        let mut clipped = [false; NUM_CHANNELS];
+        let mut holding_clip = false;
+
+        for (channel_idx, until) in self.clipped_until.iter_mut().enumerate() {
+            if meter.clipped[channel_idx] {
+                *until = Some(now + CLIP_HOLD_SECS);
+            }
+
+            if until.is_some_and(|t| now < t) {
+                clipped[channel_idx] = true;
+                holding_clip = true;
+            } else {
+                *until = None;
+            }
+        }
+
+        if holding_clip {
+            ui.ctx().request_repaint();
+        }
+
         self.volume_meter.paint_stereo(
             &ui.painter().with_clip_rect(rect),
             rect,
-            bridge.get_out_volume(),
+            meter.volume,
+            clipped,
         );
     }
 }

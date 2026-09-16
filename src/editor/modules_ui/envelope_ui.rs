@@ -98,11 +98,7 @@ impl EnvelopeUI {
 
                 ui.label("Decay Slope");
                 if ui
-                    .add(Slider::mono(
-                        &mut config.decay_slope,
-                        0.0..=1.0,
-                        Some(-1.0),
-                    ))
+                    .add(Slider::mono(&mut config.decay_slope, 0.0..=1.0, Some(-1.0)))
                     .changed()
                 {
                     env_bridge.set_decay_slope(config.decay_slope);

@@ -1,7 +1,7 @@
 use crate::{
     editor::{grid::WidgetCtx, volume_meter::VolumeMeter},
     synth_engine::{
-        ModuleId, StereoSample,
+        ModuleId, NUM_CHANNELS, StereoSample,
         mixer::MixerUiBridge,
         ui_bridge::{GridVec, ModuleBridge},
     },
@@ -37,8 +37,12 @@ impl MixerWidget {
             StereoSample::ZERO
         };
 
-        self.volume_meter
-            .paint_stereo(&ui.painter().with_clip_rect(rect), rect, volume);
+        self.volume_meter.paint_stereo(
+            &ui.painter().with_clip_rect(rect),
+            rect,
+            volume,
+            [false; NUM_CHANNELS],
+        );
     }
 }
 

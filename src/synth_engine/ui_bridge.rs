@@ -33,7 +33,7 @@ pub mod ui_config;
 
 pub use ui_config::GridVec;
 
-pub use link::{AudioEnd, UiEnd, UiEvent, UiUpdate, create_link_pair};
+pub use link::{AudioEnd, OutputMeter, UiEnd, UiEvent, UiUpdate, create_link_pair};
 pub use routing_state::{ConnectedInputSource, RoutingState};
 use rustc_hash::FxHashMap;
 
@@ -679,7 +679,7 @@ impl UiBridge {
         }
     }
 
-    pub fn get_out_volume(&mut self) -> StereoSample {
+    pub fn get_out_volume(&mut self) -> OutputMeter {
         self.ui_end.get_out_volume()
     }
 }

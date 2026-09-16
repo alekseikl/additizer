@@ -1,9 +1,24 @@
 use triple_buffer::triple_buffer;
 
 use crate::synth_engine::{
-    Input, InputId, ModuleId, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY,
+    Input, InputId, ModuleId, NUM_CHANNELS, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY,
     ui_bridge::VoicesStatus, voices_handler::VoicesHandlerMetrics,
 };
+
+#[derive(Clone, Copy)]
+pub struct OutputMeter {
+    pub volume: StereoSample,
+    pub clipped: [bool; NUM_CHANNELS],
+}
+
+impl Default for OutputMeter {
+    fn default() -> Self {
+        Self {
+            volume: StereoSample::ZERO,
+            clipped: [false; NUM_CHANNELS],
+        }
+    }
+}
 
 // Use larger capacity than for modules for the inputs telemetry
 pub const AUDIO_TO_UI_RING_CAPACITY: usize = 1024;
@@ -36,7 +51,7 @@ pub enum UiUpdate {
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
     tx: rtrb::Producer<UiUpdate>,
-    out_volume: triple_buffer::Input<StereoSample>,
+    out_volume: triple_buffer::Input<OutputMeter>,
 }
 
 impl AudioEnd {
@@ -74,8 +89,8 @@ impl AudioEnd {
         self.rx.pop().ok()
     }
 
-    pub fn update_out_volume(&mut self, out_volume: StereoSample) {
-        *self.out_volume.input_buffer_mut() = out_volume;
+    pub fn update_out_volume(&mut self, volume: StereoSample, clipped: [bool; NUM_CHANNELS]) {
+        *self.out_volume.input_buffer_mut() = OutputMeter { volume, clipped };
         self.out_volume.publish();
     }
 }
@@ -83,11 +98,11 @@ impl AudioEnd {
 pub struct UiEnd {
     rx: rtrb::Consumer<UiUpdate>,
     tx: rtrb::Producer<UiEvent>,
-    out_volume: triple_buffer::Output<StereoSample>,
+    out_volume: triple_buffer::Output<OutputMeter>,
 }
 
 impl UiEnd {
-    pub fn get_out_volume(&mut self) -> StereoSample {
+    pub fn get_out_volume(&mut self) -> OutputMeter {
         *self.out_volume.read()
     }
 
@@ -131,7 +146,7 @@ impl UiEnd {
 pub fn create_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
     let (to_ui_tx, from_audio_rx) = rtrb::RingBuffer::<UiUpdate>::new(AUDIO_TO_UI_RING_CAPACITY);
-    let (out_volume_input, out_volume_output) = triple_buffer(&StereoSample::ZERO);
+    let (out_volume_input, out_volume_output) = triple_buffer(&OutputMeter::default());
 
     (
         AudioEnd {

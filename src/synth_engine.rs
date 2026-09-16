@@ -8,7 +8,6 @@ use topo_sort::{SortResults, TopoSort};
 use crate::params::ExtParam;
 use crate::synth_engine::{
     external_param::NUM_EXT_PARAMS,
-    level_ballistics::StereoLevelBallistics,
     module_handle::ModuleHandle,
     modules::Output,
     routing::{
@@ -100,7 +99,6 @@ pub struct SynthEngine {
     audio_end: ui_bridge::AudioEnd,
     ui_end: Option<ui_bridge::UiEnd>,
     outputs_arena: OutputsArena,
-    out_volume_ballistics: StereoLevelBallistics,
     pending_poly_modulations: Vec<PendingPolyModulation>,
 }
 
@@ -139,7 +137,6 @@ impl SynthEngine {
             audio_end,
             ui_end: Some(ui_end),
             outputs_arena: OutputsArena::new(),
-            out_volume_ballistics: StereoLevelBallistics::default(),
             pending_poly_modulations: Vec::with_capacity(64),
         };
 
@@ -842,16 +839,6 @@ impl SynthEngine {
 
         if let Some(ModuleHandle::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID) {
             output.read_output(self.oversampling, &mut outputs);
-
-            if update_ui {
-                let (left, right) = outputs.split_at_mut(1);
-                let levels = self
-                    .out_volume_ballistics
-                    .process([left[0], right[0]], self.host_sample_rate);
-
-                self.audio_end
-                    .update_out_volume(StereoSample::from_iter(levels));
-            }
         }
 
         self.voices_handler.reset_triggers();

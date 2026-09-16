@@ -45,7 +45,13 @@ pub struct VolumeMeter {
 }
 
 impl VolumeMeter {
-    pub fn paint_stereo(&mut self, painter: &Painter, rect: Rect, volume: StereoSample) {
+    pub fn paint_stereo(
+        &mut self,
+        painter: &Painter,
+        rect: Rect,
+        volume: StereoSample,
+        clipped: [bool; NUM_CHANNELS],
+    ) {
         let volume = self.smoother.tick(volume);
         let bar_width = ((rect.width() - BAR_GAP) * 0.5).clamp(4.0, 24.0);
         let total_width = bar_width * 2.0 + BAR_GAP;
@@ -60,11 +66,11 @@ impl VolumeMeter {
             Pos2::new(left + total_width, rect.bottom()),
         );
 
-        self.paint_bar(painter, left_rect, volume.left());
-        self.paint_bar(painter, right_rect, volume.right());
+        self.paint_bar(painter, left_rect, volume.left(), clipped[0]);
+        self.paint_bar(painter, right_rect, volume.right(), clipped[1]);
     }
 
-    fn paint_bar(&self, painter: &Painter, rect: Rect, level: Sample) {
+    fn paint_bar(&self, painter: &Painter, rect: Rect, level: Sample, clipped: bool) {
         let db = Self::level_to_db(level);
         let segment_height =
             (rect.height() - SEGMENT_GAP * (NUM_SEGMENTS - 1) as f32) / NUM_SEGMENTS as f32;
@@ -80,7 +86,7 @@ impl VolumeMeter {
                 Pos2::new(rect.right(), bottom),
             );
             let brightness = Self::segment_brightness(segment_idx, db);
-            let color = Self::segment_fill_color(segment_idx, brightness);
+            let color = Self::segment_fill_color(segment_idx, brightness, clipped);
 
             painter.rect_filled(segment_rect, 0.0, color);
         }
@@ -124,12 +130,18 @@ impl VolumeMeter {
                 / LINEAR_SEGMENTS as Sample
     }
 
-    fn segment_fill_color(segment_idx: usize, brightness: Sample) -> Color32 {
+    fn segment_fill_color(segment_idx: usize, brightness: Sample, clipped: bool) -> Color32 {
         if brightness <= 0.0 {
             return OFF_COLOR;
         }
 
-        OFF_COLOR.lerp_to_gamma(Self::segment_color(segment_idx), brightness)
+        let color = if clipped {
+            RED
+        } else {
+            Self::segment_color(segment_idx)
+        };
+
+        OFF_COLOR.lerp_to_gamma(color, brightness)
     }
 
     fn segment_color(segment_idx: usize) -> Color32 {

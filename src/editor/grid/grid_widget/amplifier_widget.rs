@@ -3,7 +3,7 @@ use egui::{Rect, Vec2, emath::GuiRounding};
 use crate::{
     editor::{fit_label::FitLabel, grid::WidgetCtx, volume_meter::VolumeMeter},
     synth_engine::{
-        ModuleId, StereoSample,
+        ModuleId, NUM_CHANNELS, StereoSample,
         amplifier::AmplifierUiBridge,
         ui_bridge::{GridVec, ModuleBridge},
     },
@@ -47,8 +47,12 @@ impl AmplifierWidget {
             StereoSample::ZERO
         };
 
-        self.volume_meter
-            .paint_stereo(&ui.painter().with_clip_rect(rect), rect, volume);
+        self.volume_meter.paint_stereo(
+            &ui.painter().with_clip_rect(rect),
+            rect,
+            volume,
+            [false; NUM_CHANNELS],
+        );
     }
 }
 

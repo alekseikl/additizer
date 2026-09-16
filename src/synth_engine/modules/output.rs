@@ -5,6 +5,7 @@ use crate::{
         Input, ModuleId, OUTPUT_MODULE_ID, Sample, StereoSample, SynthModule,
         buffer::{Buffer, copy_or_add_to_buffer, copy_to_buffer, zero_buffer},
         iir_decimator::IirDecimator,
+        level_ballistics::StereoLevelBallistics,
         routing::{
             DataType, InputMeta, InputSlots, MAX_VOICES, NUM_CHANNELS, ProcessContext,
             SpectralInputSlot, VoiceEvent, VoiceTarget,
@@ -52,6 +53,7 @@ pub struct Output {
     input_buffer: Buffer,
     output: [Buffer; NUM_CHANNELS],
     decimator: IirDecimator,
+    out_volume_ballistics: StereoLevelBallistics,
 }
 
 impl Output {
@@ -67,6 +69,7 @@ impl Output {
             input_buffer: zero_buffer(),
             output: [zero_buffer(), zero_buffer()],
             decimator: IirDecimator::new(),
+            out_volume_ballistics: StereoLevelBallistics::default(),
         }
     }
 
@@ -76,6 +79,57 @@ impl Output {
 
     fn clamp_gain(gain: Sample) -> Sample {
         gain.clamp(0.0, 4.0)
+    }
+
+    #[inline]
+    fn apply_kill_fade(
+        buffer: &mut [Sample],
+        voice: &mut Voice,
+        kill_time: Sample,
+        sample_rate: Sample,
+    ) {
+        if !voice.killing {
+            return;
+        }
+
+        let samples = buffer.len();
+        let start = voice.killing_offset.take().unwrap_or(0).min(samples);
+
+        if kill_time < INSTANT_KILL_TIME {
+            buffer[start..].fill(0.0);
+            voice.killing_time = kill_time;
+        } else {
+            let power: Sample = -5.0;
+            let curve_mult: Sample = (power.exp() - 1.0).recip();
+            let time_mult: Sample = kill_time.recip();
+            let t_step = sample_rate.recip();
+
+            for out in buffer.iter_mut().skip(start) {
+                let t = (voice.killing_time * time_mult).min(1.0);
+                let gain = 1.0 - ((power * t).exp() - 1.0) * curve_mult;
+
+                *out *= gain;
+                voice.killing_time += t_step;
+            }
+        }
+    }
+
+    fn apply_volume<'a>(
+        output: impl Iterator<Item = &'a mut Sample>,
+        gain: impl Iterator<Item = Sample>,
+        samples: usize,
+    ) -> bool {
+        let clip_level = db_to_gain_fast(OUTPUT_CLIP_DB);
+        let mut clipped = false;
+
+        for (out, gain) in output.zip(gain).take(samples) {
+            let value = *out * gain;
+
+            clipped |= value < -clip_level || value > clip_level;
+            *out = value.clamp(-clip_level, clip_level);
+        }
+
+        clipped
     }
 
     pub fn get_gain(&self) -> StereoSample {
@@ -186,89 +240,65 @@ impl SynthModule for Output {
             return;
         }
 
+        let samples = ctx.params.samples;
+        let sample_rate = ctx.params.sample_rate;
+        let mut clipped = [false; NUM_CHANNELS];
         let mut rf = ctx.for_output(self.id());
         let num_active_voices = rf.params().active_voices.len();
 
         if num_active_voices == 0 {
             self.output.iter_mut().for_each(|output| output.fill(0.0));
-            // Advance gain parameter smoother
-            self.gain
-                .iter_mut()
-                .for_each(|gain| gain.advance(&rf.params().smooth_params, rf.params().samples));
-            return;
+        } else {
+            for (channel_idx, (output, gain)) in
+                self.output.iter_mut().zip(self.gain.iter_mut()).enumerate()
+            {
+                for seq_idx in 0..num_active_voices {
+                    let playing = rf.params().active_voices[seq_idx];
+                    let target = VoiceTarget::new(channel_idx, &playing, seq_idx);
+                    let mut router = rf.for_voice(&target);
+                    let input_buffer = &mut self.input_buffer[..samples];
+
+                    copy_to_buffer(
+                        input_buffer,
+                        router.direct(self.audio_input).iter().copied(),
+                    );
+
+                    let voice = &mut self.channels[channel_idx].voices[target.voice_idx];
+
+                    Self::apply_kill_fade(input_buffer, voice, self.kill_time, sample_rate);
+
+                    copy_or_add_to_buffer(
+                        seq_idx == 0,
+                        output,
+                        self.input_buffer.iter().copied().take(samples),
+                    );
+                }
+
+                clipped[channel_idx] = if gain.check_needs_smoothing(&rf.params().smooth_params) {
+                    Self::apply_volume(
+                        output.iter_mut(),
+                        gain.smoothed_iter(&rf.params().smooth_params),
+                        samples,
+                    )
+                } else {
+                    Self::apply_volume(output.iter_mut(), std::iter::repeat(gain.get()), samples)
+                };
+            }
         }
 
-        let sample_rate = rf.params().sample_rate;
-        let samples = rf.params().samples;
+        // Advance gain parameter smoother
+        self.gain
+            .iter_mut()
+            .for_each(|gain| gain.advance(&rf.params().smooth_params, samples));
 
-        for (channel_idx, (output, gain)) in
-            self.output.iter_mut().zip(self.gain.iter_mut()).enumerate()
-        {
-            for seq_idx in 0..num_active_voices {
-                let playing = rf.params().active_voices[seq_idx];
-                let target = VoiceTarget::new(channel_idx, &playing, seq_idx);
-                let mut router = rf.for_voice(&target);
+        if ctx.params.needs_update_ui {
+            let levels = self.out_volume_ballistics.process(
+                [&self.output[0][..samples], &self.output[1][..samples]],
+                sample_rate,
+            );
 
-                copy_to_buffer(
-                    &mut self.input_buffer[..samples],
-                    router.direct(self.audio_input).iter().copied(),
-                );
-
-                let voice = &mut self.channels[channel_idx].voices[target.voice_idx];
-
-                if voice.killing {
-                    let start = voice.killing_offset.take().unwrap_or(0).min(samples);
-
-                    if self.kill_time < INSTANT_KILL_TIME {
-                        self.input_buffer[start..samples].fill(0.0);
-                        voice.killing_time = self.kill_time;
-                    } else {
-                        let power: Sample = -5.0;
-                        let curve_mult: Sample = (power.exp() - 1.0).recip();
-                        let time_mult: Sample = self.kill_time.recip();
-                        let t_step = sample_rate.recip();
-
-                        for out in self.input_buffer[..samples].iter_mut().skip(start) {
-                            let t = (voice.killing_time * time_mult).min(1.0);
-                            let gain = 1.0 - ((power * t).exp() - 1.0) * curve_mult;
-
-                            *out *= gain;
-                            voice.killing_time += t_step;
-                        }
-                    }
-                }
-
-                copy_or_add_to_buffer(
-                    seq_idx == 0,
-                    output,
-                    self.input_buffer.iter().copied().take(samples),
-                );
-            }
-
-            fn apply_volume<'a>(
-                output: impl Iterator<Item = &'a mut Sample>,
-                gain: impl Iterator<Item = Sample>,
-                samples: usize,
-            ) {
-                let clip = db_to_gain_fast(OUTPUT_CLIP_DB);
-
-                for (out, gain) in output.zip(gain).take(samples) {
-                    *out = (*out * gain).clamp(-clip, clip);
-                }
-            }
-
-            if gain.check_needs_smoothing(&rf.params().smooth_params) {
-                apply_volume(
-                    output.iter_mut(),
-                    gain.smoothed_iter(&rf.params().smooth_params),
-                    samples,
-                );
-            } else {
-                apply_volume(output.iter_mut(), std::iter::repeat(gain.get()), samples);
-            }
-
-            // Advance gain parameter smoother
-            gain.advance(&rf.params().smooth_params, rf.params().samples);
+            ctx.audio_end
+                .update_out_volume(StereoSample::from_iter(levels), clipped);
         }
     }
 }
