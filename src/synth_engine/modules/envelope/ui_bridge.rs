@@ -64,6 +64,12 @@ impl EnvelopeUiBridge {
             self.config.keep_voice_alive = value;
         }
     }
+
+    pub fn set_steal_level(&mut self, value: bool) {
+        if self.ui_end.set_steal_level(value) {
+            self.config.steal_level = value;
+        }
+    }
 }
 
 impl ModuleUiBridge for EnvelopeUiBridge {

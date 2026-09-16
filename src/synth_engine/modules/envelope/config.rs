@@ -9,6 +9,8 @@ use crate::{
 pub struct EnvelopeConfig {
     pub id: ModuleId,
     pub keep_voice_alive: bool,
+    #[serde(default)]
+    pub steal_level: bool,
     pub delay: StereoSample,
     pub attack: StereoSample,
     pub attack_curvature: Sample,
@@ -25,6 +27,7 @@ impl Default for EnvelopeConfig {
         Self {
             id: -1,
             keep_voice_alive: false,
+            steal_level: false,
             delay: 0.0.into(),
             attack: 0.0.into(),
             attack_curvature: 0.3,

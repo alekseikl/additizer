@@ -156,6 +156,15 @@ impl EnvelopeUI {
                 {
                     env_bridge.set_keep_voice_alive(config.keep_voice_alive);
                 }
+
+                ui.label("Steal level")
+                    .on_hover_text("New voice starts from the previous envelope level");
+                if ui
+                    .add(Checkbox::without_text(&mut config.steal_level))
+                    .changed()
+                {
+                    env_bridge.set_steal_level(config.steal_level);
+                }
                 ui.end_row();
             });
     }

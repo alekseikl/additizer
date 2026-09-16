@@ -27,13 +27,14 @@ struct EnvelopeShape {
     decay: Sample,
     sustain: Sample,
     release: Sample,
+    start_level: Sample,
     attack_curvature: Sample,
     decay_curvature: Sample,
     release_curvature: Sample,
 }
 
 impl EnvelopeShape {
-    fn from_config(config: &EnvelopeConfig) -> Self {
+    fn from_config(config: &EnvelopeConfig, start_level: Sample) -> Self {
         Self {
             delay: config.delay[0].max(0.0),
             attack: config.attack[0].max(0.0),
@@ -41,6 +42,11 @@ impl EnvelopeShape {
             decay: config.decay[0].max(0.0),
             sustain: config.sustain[0].clamp(0.0, 1.0),
             release: config.release[0].max(0.0),
+            start_level: if config.steal_level {
+                start_level.clamp(0.0, 1.0)
+            } else {
+                0.0
+            },
             attack_curvature: config.attack_curvature,
             decay_curvature: config.decay_curvature,
             release_curvature: config.release_curvature,
@@ -79,8 +85,8 @@ impl EnvelopeWidget {
         bridge.apply_modulation(module_id, Input::Sustain, &mut config.sustain);
         bridge.apply_modulation(module_id, Input::Release, &mut config.release);
 
-        let shape = EnvelopeShape::from_config(&config);
         let phase = env_bridge.get_phase();
+        let shape = EnvelopeShape::from_config(&config, phase.start_level);
         let painter = ui.painter();
         let points = Self::curve_points(rect, &shape);
 
@@ -108,17 +114,17 @@ impl EnvelopeWidget {
         let total = shape.total_time();
         let mut points = Vec::with_capacity(POINTS_PER_SECTION * 4 + 2);
 
-        points.push(Self::to_pos(rect, total, 0.0, 0.0));
+        points.push(Self::to_pos(rect, total, 0.0, shape.start_level));
 
         if shape.delay > 0.0 {
-            points.push(Self::to_pos(rect, total, shape.delay, 0.0));
+            points.push(Self::to_pos(rect, total, shape.delay, shape.start_level));
         }
 
         let attack_start = shape.delay;
 
         for i in 1..=POINTS_PER_SECTION {
             let t = i as Sample / POINTS_PER_SECTION as Sample;
-            let value = Self::curve_value(t, shape.attack_curvature, 0.0, 1.0);
+            let value = Self::curve_value(t, shape.attack_curvature, shape.start_level, 1.0);
             points.push(Self::to_pos(
                 rect,
                 total,
@@ -183,7 +189,7 @@ impl EnvelopeWidget {
             let value = Self::curve_value(local, shape.release_curvature, shape.sustain, 0.0);
             Self::to_pos(rect, total, decay_end + shape.release * local, value)
         } else if phase.t < delay_end {
-            Self::to_pos(rect, total, phase.t, 0.0)
+            Self::to_pos(rect, total, phase.t, shape.start_level)
         } else if phase.t < attack_end {
             let local = if shape.attack > 0.0 {
                 (phase.t - delay_end) / shape.attack
@@ -191,7 +197,7 @@ impl EnvelopeWidget {
                 1.0
             };
 
-            let value = Self::curve_value(local, shape.attack_curvature, 0.0, 1.0);
+            let value = Self::curve_value(local, shape.attack_curvature, shape.start_level, 1.0);
             Self::to_pos(rect, total, phase.t, value)
         } else if phase.t < hold_end {
             Self::to_pos(rect, total, phase.t, 1.0)

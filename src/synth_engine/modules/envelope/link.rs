@@ -10,6 +10,7 @@ pub enum UiEvent {
     DecayCurvature(Sample),
     ReleaseCurvature(Sample),
     KeepVoiceAlive(bool),
+    StealLevel(bool),
 }
 
 pub struct UiEnd {
@@ -40,6 +41,10 @@ impl UiEnd {
 
     pub fn set_keep_voice_alive(&mut self, value: bool) -> bool {
         self.tx.push(UiEvent::KeepVoiceAlive(value)).is_ok()
+    }
+
+    pub fn set_steal_level(&mut self, value: bool) -> bool {
+        self.tx.push(UiEvent::StealLevel(value)).is_ok()
     }
 }
 
