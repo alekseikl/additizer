@@ -33,9 +33,9 @@ const MIN_TIME_THRESHOLD: Sample = from_ms(0.5);
 struct Params {
     keep_voice_alive: bool,
     steal_level: bool,
-    attack_curvature: Sample,
-    decay_curvature: Sample,
-    release_curvature: Sample,
+    attack_slope: Sample,
+    decay_slope: Sample,
+    release_slope: Sample,
 }
 
 impl Params {
@@ -43,9 +43,9 @@ impl Params {
         Self {
             keep_voice_alive: c.keep_voice_alive,
             steal_level: c.steal_level,
-            attack_curvature: c.attack_curvature,
-            decay_curvature: c.decay_curvature,
-            release_curvature: c.release_curvature,
+            attack_slope: c.attack_slope,
+            decay_slope: c.decay_slope,
+            release_slope: c.release_slope,
         }
     }
 }
@@ -290,7 +290,6 @@ pub struct Envelope {
     inputs: Inputs,
     output_slot: usize,
     voices: VoicesLayout<Voice>,
-    last_voice_idx: Option<usize>,
 }
 
 impl Envelope {
@@ -315,7 +314,6 @@ impl Envelope {
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             voices: new_voices_layout(),
-            last_voice_idx: None,
         }
     }
 
@@ -326,21 +324,21 @@ impl Envelope {
             steal_level: self.params.steal_level,
             delay: get_stereo_param!(self, delay),
             attack: get_stereo_param!(self, attack),
-            attack_curvature: self.params.attack_curvature,
+            attack_slope: self.params.attack_slope,
             hold: get_stereo_param!(self, hold),
             decay: get_stereo_param!(self, decay),
-            decay_curvature: self.params.decay_curvature,
+            decay_slope: self.params.decay_slope,
             sustain: get_stereo_param!(self, sustain),
             release: get_stereo_param!(self, release),
-            release_curvature: self.params.release_curvature,
+            release_slope: self.params.release_slope,
         }
     }
 
     set_mono_param!(set_keep_voice_alive, keep_voice_alive, bool);
     set_mono_param!(set_steal_level, steal_level, bool);
-    set_mono_param!(set_attack_curvature, attack_curvature, Sample);
-    set_mono_param!(set_decay_curvature, decay_curvature, Sample);
-    set_mono_param!(set_release_curvature, release_curvature, Sample);
+    set_mono_param!(set_attack_slope, attack_slope, Sample);
+    set_mono_param!(set_decay_slope, decay_slope, Sample);
+    set_mono_param!(set_release_slope, release_slope, Sample);
 
     set_stereo_param!(set_delay, delay);
     set_stereo_param!(set_attack, attack);
@@ -361,17 +359,11 @@ impl Envelope {
         let inputs = &self.inputs;
         let params = &self.params;
         let channel = &self.channel_params[channel_idx];
-        let triggered = router.triggered();
-
-        if triggered {
-            self.last_voice_idx = Some(voice_idx);
-        }
-
         let voice = &mut self.voices[channel_idx][voice_idx];
         let t_step = router.sample_rate().recip();
         let start_level = voice.start_level;
 
-        if triggered {
+        if router.triggered() {
             voice.t = 0.0;
             voice.release = None;
             voice.next_frame_value = start_level;
@@ -396,9 +388,9 @@ impl Envelope {
                 .clamp(0.0, 1.0),
             release_time: stage_time(router.scalar(&inputs.release, channel.release)),
             t_step,
-            attack_curve: Exponential::new(params.attack_curvature),
-            decay_curve: Exponential::new(params.decay_curvature),
-            release_curve: Exponential::new(params.release_curvature),
+            attack_curve: Exponential::new(params.attack_slope),
+            decay_curve: Exponential::new(params.decay_slope),
+            release_curve: Exponential::new(params.release_slope),
         };
 
         let mut sample_idx = 0;
@@ -493,14 +485,11 @@ impl SynthModule for Envelope {
                     replaced_voice_idx,
                     ..
                 } => {
-                    let steal_from = (*replaced_voice_idx).or(self.last_voice_idx);
-                    let steal_level = self.params.steal_level;
-
                     for channel in self.voices.iter_mut() {
-                        let start_level = if steal_level {
-                            steal_from
-                                .map(|src| channel[src].next_frame_value)
-                                .unwrap_or(0.0)
+                        let start_level = if let Some(replaced_voice_idx) = replaced_voice_idx
+                            && self.params.steal_level
+                        {
+                            channel[*replaced_voice_idx].next_frame_value
                         } else {
                             0.0
                         };
@@ -549,9 +538,9 @@ impl SynthModule for Envelope {
                     Input::Release => self.set_release(value),
                     _ => (),
                 },
-                UiEvent::AttackCurvature(value) => self.set_attack_curvature(value),
-                UiEvent::DecayCurvature(value) => self.set_decay_curvature(value),
-                UiEvent::ReleaseCurvature(value) => self.set_release_curvature(value),
+                UiEvent::AttackSlope(value) => self.set_attack_slope(value),
+                UiEvent::DecaySlope(value) => self.set_decay_slope(value),
+                UiEvent::ReleaseSlope(value) => self.set_release_slope(value),
                 UiEvent::KeepVoiceAlive(value) => self.set_keep_voice_alive(value),
                 UiEvent::StealLevel(value) => self.set_steal_level(value),
             }

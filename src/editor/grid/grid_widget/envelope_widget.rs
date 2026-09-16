@@ -28,9 +28,9 @@ struct EnvelopeShape {
     sustain: Sample,
     release: Sample,
     start_level: Sample,
-    attack_curvature: Sample,
-    decay_curvature: Sample,
-    release_curvature: Sample,
+    attack_slope: Sample,
+    decay_slope: Sample,
+    release_slope: Sample,
 }
 
 impl EnvelopeShape {
@@ -47,9 +47,9 @@ impl EnvelopeShape {
             } else {
                 0.0
             },
-            attack_curvature: config.attack_curvature,
-            decay_curvature: config.decay_curvature,
-            release_curvature: config.release_curvature,
+            attack_slope: config.attack_slope,
+            decay_slope: config.decay_slope,
+            release_slope: config.release_slope,
         }
     }
 
@@ -85,7 +85,11 @@ impl EnvelopeWidget {
         bridge.apply_modulation(module_id, Input::Sustain, &mut config.sustain);
         bridge.apply_modulation(module_id, Input::Release, &mut config.release);
 
-        let phase = env_bridge.get_phase();
+        let phase = if bridge.has_active_voices() {
+            env_bridge.get_phase()
+        } else {
+            EnvelopePhase::default()
+        };
         let shape = EnvelopeShape::from_config(&config, phase.start_level);
         let painter = ui.painter();
         let points = Self::curve_points(rect, &shape);
@@ -98,8 +102,8 @@ impl EnvelopeWidget {
         }
     }
 
-    fn curve_value(t: Sample, curvature: Sample, from: Sample, to: Sample) -> Sample {
-        let power = curvature.clamp(-1.0, 1.0) * -10.0;
+    fn curve_value(t: Sample, slope: Sample, from: Sample, to: Sample) -> Sample {
+        let power = slope.clamp(-1.0, 1.0) * -10.0;
         (to - from).mul_add(power_scale(t.clamp(0.0, 1.0), power), from)
     }
 
@@ -124,7 +128,7 @@ impl EnvelopeWidget {
 
         for i in 1..=POINTS_PER_SECTION {
             let t = i as Sample / POINTS_PER_SECTION as Sample;
-            let value = Self::curve_value(t, shape.attack_curvature, shape.start_level, 1.0);
+            let value = Self::curve_value(t, shape.attack_slope, shape.start_level, 1.0);
             points.push(Self::to_pos(
                 rect,
                 total,
@@ -143,7 +147,7 @@ impl EnvelopeWidget {
 
         for i in 1..=POINTS_PER_SECTION {
             let t = i as Sample / POINTS_PER_SECTION as Sample;
-            let value = Self::curve_value(t, shape.decay_curvature, 1.0, shape.sustain);
+            let value = Self::curve_value(t, shape.decay_slope, 1.0, shape.sustain);
             points.push(Self::to_pos(
                 rect,
                 total,
@@ -156,7 +160,7 @@ impl EnvelopeWidget {
 
         for i in 1..=POINTS_PER_SECTION {
             let t = i as Sample / POINTS_PER_SECTION as Sample;
-            let value = Self::curve_value(t, shape.release_curvature, shape.sustain, 0.0);
+            let value = Self::curve_value(t, shape.release_slope, shape.sustain, 0.0);
             points.push(Self::to_pos(
                 rect,
                 total,
@@ -186,7 +190,7 @@ impl EnvelopeWidget {
                 1.0
             };
 
-            let value = Self::curve_value(local, shape.release_curvature, shape.sustain, 0.0);
+            let value = Self::curve_value(local, shape.release_slope, shape.sustain, 0.0);
             Self::to_pos(rect, total, decay_end + shape.release * local, value)
         } else if phase.t < delay_end {
             Self::to_pos(rect, total, phase.t, shape.start_level)
@@ -197,7 +201,7 @@ impl EnvelopeWidget {
                 1.0
             };
 
-            let value = Self::curve_value(local, shape.attack_curvature, shape.start_level, 1.0);
+            let value = Self::curve_value(local, shape.attack_slope, shape.start_level, 1.0);
             Self::to_pos(rect, total, phase.t, value)
         } else if phase.t < hold_end {
             Self::to_pos(rect, total, phase.t, 1.0)
@@ -208,7 +212,7 @@ impl EnvelopeWidget {
                 1.0
             };
 
-            let value = Self::curve_value(local, shape.decay_curvature, 1.0, shape.sustain);
+            let value = Self::curve_value(local, shape.decay_slope, 1.0, shape.sustain);
             Self::to_pos(rect, total, phase.t, value)
         } else {
             Self::to_pos(rect, total, decay_end, shape.sustain)

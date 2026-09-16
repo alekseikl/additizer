@@ -6,9 +6,9 @@ use super::EnvelopePhase;
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
-    AttackCurvature(Sample),
-    DecayCurvature(Sample),
-    ReleaseCurvature(Sample),
+    AttackSlope(Sample),
+    DecaySlope(Sample),
+    ReleaseSlope(Sample),
     KeepVoiceAlive(bool),
     StealLevel(bool),
 }
@@ -27,16 +27,16 @@ impl UiEnd {
         self.tx.push(UiEvent::InputParam { input, value }).is_ok()
     }
 
-    pub fn set_attack_curvature(&mut self, value: Sample) -> bool {
-        self.tx.push(UiEvent::AttackCurvature(value)).is_ok()
+    pub fn set_attack_slope(&mut self, value: Sample) -> bool {
+        self.tx.push(UiEvent::AttackSlope(value)).is_ok()
     }
 
-    pub fn set_decay_curvature(&mut self, value: Sample) -> bool {
-        self.tx.push(UiEvent::DecayCurvature(value)).is_ok()
+    pub fn set_decay_slope(&mut self, value: Sample) -> bool {
+        self.tx.push(UiEvent::DecaySlope(value)).is_ok()
     }
 
-    pub fn set_release_curvature(&mut self, value: Sample) -> bool {
-        self.tx.push(UiEvent::ReleaseCurvature(value)).is_ok()
+    pub fn set_release_slope(&mut self, value: Sample) -> bool {
+        self.tx.push(UiEvent::ReleaseSlope(value)).is_ok()
     }
 
     pub fn set_keep_voice_alive(&mut self, value: bool) -> bool {

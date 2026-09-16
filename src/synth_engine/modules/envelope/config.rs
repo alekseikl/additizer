@@ -13,13 +13,16 @@ pub struct EnvelopeConfig {
     pub steal_level: bool,
     pub delay: StereoSample,
     pub attack: StereoSample,
-    pub attack_curvature: Sample,
+    #[serde(alias = "attack_curvature")]
+    pub attack_slope: Sample,
     pub hold: StereoSample,
     pub decay: StereoSample,
-    pub decay_curvature: Sample,
+    #[serde(alias = "decay_curvature")]
+    pub decay_slope: Sample,
     pub sustain: StereoSample,
     pub release: StereoSample,
-    pub release_curvature: Sample,
+    #[serde(alias = "release_curvature")]
+    pub release_slope: Sample,
 }
 
 impl Default for EnvelopeConfig {
@@ -30,13 +33,13 @@ impl Default for EnvelopeConfig {
             steal_level: false,
             delay: 0.0.into(),
             attack: 0.0.into(),
-            attack_curvature: 0.3,
+            attack_slope: 0.3,
             hold: 0.0.into(),
             decay: from_ms(200.0).into(),
-            decay_curvature: 0.2,
+            decay_slope: 0.2,
             sustain: 1.0.into(),
             release: from_ms(300.0).into(),
-            release_curvature: 0.2,
+            release_slope: 0.2,
         }
     }
 }

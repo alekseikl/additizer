@@ -70,16 +70,16 @@ impl EnvelopeUI {
                     env_bridge.set_param(Input::Attack, config.attack);
                 }
 
-                ui.label("Attack Curve");
+                ui.label("Attack Slope");
                 if ui
                     .add(Slider::mono(
-                        &mut config.attack_curvature,
+                        &mut config.attack_slope,
                         0.0..=1.0,
                         Some(-1.0),
                     ))
                     .changed()
                 {
-                    env_bridge.set_attack_curvature(config.attack_curvature);
+                    env_bridge.set_attack_slope(config.attack_slope);
                 }
                 ui.end_row();
 
@@ -96,16 +96,16 @@ impl EnvelopeUI {
                     env_bridge.set_param(Input::Decay, config.decay);
                 }
 
-                ui.label("Decay Curve");
+                ui.label("Decay Slope");
                 if ui
                     .add(Slider::mono(
-                        &mut config.decay_curvature,
+                        &mut config.decay_slope,
                         0.0..=1.0,
                         Some(-1.0),
                     ))
                     .changed()
                 {
-                    env_bridge.set_decay_curvature(config.decay_curvature);
+                    env_bridge.set_decay_slope(config.decay_slope);
                 }
                 ui.end_row();
 
@@ -136,16 +136,16 @@ impl EnvelopeUI {
                     env_bridge.set_param(Input::Release, config.release);
                 }
 
-                ui.label("Release Curve");
+                ui.label("Release Slope");
                 if ui
                     .add(Slider::mono(
-                        &mut config.release_curvature,
+                        &mut config.release_slope,
                         0.0..=1.0,
                         Some(-1.0),
                     ))
                     .changed()
                 {
-                    env_bridge.set_release_curvature(config.release_curvature);
+                    env_bridge.set_release_slope(config.release_slope);
                 }
                 ui.end_row();
 

@@ -33,14 +33,13 @@ fn reset_steals_next_frame_value_from_replaced_voice() {
 }
 
 #[test]
-fn reset_steals_from_last_voice_when_no_replaced() {
+fn reset_does_not_steal_without_replaced_voice() {
     let mut env = envelope(true);
-    env.last_voice_idx = Some(2);
     env.voices[0][2].next_frame_value = 0.75;
 
     env.process_events(&[reset_event(3, None)]);
 
-    assert!((env.voices[0][3].start_level - 0.75).abs() < 1e-6);
+    assert_eq!(env.voices[0][3].start_level, 0.0);
 }
 
 #[test]

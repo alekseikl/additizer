@@ -344,7 +344,6 @@ pub struct Oscillator {
     output_slot: usize,
     voices: VoicesLayout<Voice>,
     voice_buffers: VoicesLayout<VoiceBuffers>,
-    last_voice_idx: Option<usize>,
     center_phase_sync: Phase,
 }
 
@@ -374,7 +373,6 @@ impl Oscillator {
             output_slot: usize::MAX,
             voices: new_voices_layout(),
             voice_buffers: new_voices_layout(),
-            last_voice_idx: None,
             center_phase_sync: Phase::ZERO,
         };
 
@@ -781,9 +779,6 @@ impl Oscillator {
             true,
         ) >= 0.5;
 
-        // Steal phases from this voice if VoicesHandler didn't provide replaced_voice_idx
-        self.last_voice_idx = Some(voice_idx);
-
         if phase_reset.steal_from.is_some() && steal_phase {
             // Phases already copied from another voice
             return;
@@ -1008,7 +1003,7 @@ impl Oscillator {
         let voice = &mut self.voices[channel_idx][voice_idx];
 
         voice.phase_reset = Some(PhaseReset {
-            steal_from: replaced_voice_idx.or(self.last_voice_idx),
+            steal_from: replaced_voice_idx,
         });
     }
 }

@@ -60,7 +60,7 @@ fn default_engine_config() -> EngineConfig {
         id: FILTER_ENV_ID,
         attack: 0.0.into(),
         decay: from_ms(500.0).into(),
-        decay_curvature: 0.5,
+        decay_slope: 0.5,
         sustain: 0.0.into(),
         release: from_ms(100.0).into(),
         ..EnvelopeConfig::default()

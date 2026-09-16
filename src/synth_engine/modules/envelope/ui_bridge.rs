@@ -41,21 +41,21 @@ impl EnvelopeUiBridge {
         }
     }
 
-    pub fn set_attack_curvature(&mut self, value: Sample) {
-        if self.ui_end.set_attack_curvature(value) {
-            self.config.attack_curvature = value;
+    pub fn set_attack_slope(&mut self, value: Sample) {
+        if self.ui_end.set_attack_slope(value) {
+            self.config.attack_slope = value;
         }
     }
 
-    pub fn set_decay_curvature(&mut self, value: Sample) {
-        if self.ui_end.set_decay_curvature(value) {
-            self.config.decay_curvature = value;
+    pub fn set_decay_slope(&mut self, value: Sample) {
+        if self.ui_end.set_decay_slope(value) {
+            self.config.decay_slope = value;
         }
     }
 
-    pub fn set_release_curvature(&mut self, value: Sample) {
-        if self.ui_end.set_release_curvature(value) {
-            self.config.release_curvature = value;
+    pub fn set_release_slope(&mut self, value: Sample) {
+        if self.ui_end.set_release_slope(value) {
+            self.config.release_slope = value;
         }
     }
 
