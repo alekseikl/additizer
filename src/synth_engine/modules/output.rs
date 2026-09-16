@@ -19,6 +19,8 @@ const _: () = assert!(NUM_CHANNELS == 2);
 
 /// Hard-clip ceiling for the summed output.
 const OUTPUT_CLIP_DB: Sample = 12.0;
+/// Fade shorter than this is treated as an instant mute (including `kill_time == 0`).
+const INSTANT_KILL_TIME: Sample = from_ms(0.5);
 
 struct Voice {
     killing: bool,
@@ -69,7 +71,7 @@ impl Output {
     }
 
     fn clamp_kill_time(kill_time: Sample) -> Sample {
-        kill_time.clamp(from_ms(4.0), from_ms(50.0))
+        kill_time.clamp(0.0, from_ms(50.0))
     }
 
     fn clamp_gain(gain: Sample) -> Sample {
@@ -166,7 +168,11 @@ impl SynthModule for Output {
             for channel in &self.channels {
                 let voice = &channel.voices[decaying.index()];
 
-                if !voice.killing || voice.killing_time < self.kill_time {
+                // Pending kill offset: keep the voice so samples before the offset still play.
+                if !voice.killing
+                    || voice.killing_offset.is_some()
+                    || voice.killing_time < self.kill_time
+                {
                     decaying.mark_active();
                 }
             }
@@ -212,17 +218,23 @@ impl SynthModule for Output {
 
                 if voice.killing {
                     let start = voice.killing_offset.take().unwrap_or(0).min(samples);
-                    let power: Sample = -5.0;
-                    let curve_mult: Sample = (power.exp() - 1.0).recip();
-                    let time_mult: Sample = self.kill_time.max(from_ms(4.0)).recip();
-                    let t_step = sample_rate.recip();
 
-                    for out in self.input_buffer[..samples].iter_mut().skip(start) {
-                        let t = (voice.killing_time * time_mult).min(1.0);
-                        let gain = 1.0 - ((power * t).exp() - 1.0) * curve_mult;
+                    if self.kill_time < INSTANT_KILL_TIME {
+                        self.input_buffer[start..samples].fill(0.0);
+                        voice.killing_time = self.kill_time;
+                    } else {
+                        let power: Sample = -5.0;
+                        let curve_mult: Sample = (power.exp() - 1.0).recip();
+                        let time_mult: Sample = self.kill_time.recip();
+                        let t_step = sample_rate.recip();
 
-                        *out *= gain;
-                        voice.killing_time += t_step;
+                        for out in self.input_buffer[..samples].iter_mut().skip(start) {
+                            let t = (voice.killing_time * time_mult).min(1.0);
+                            let gain = 1.0 - ((power * t).exp() - 1.0) * curve_mult;
+
+                            *out *= gain;
+                            voice.killing_time += t_step;
+                        }
                     }
                 }
 

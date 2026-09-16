@@ -203,7 +203,7 @@ impl ModuleUi for ParamsUi {
 
                 ui.label("Voice kill time");
                 if ui
-                    .add(Slider::new(&mut kill_time_ms, 4.0..=100.0))
+                    .add(Slider::new(&mut kill_time_ms, 0.0..=100.0))
                     .changed()
                 {
                     bridge.set_voice_kill_time(from_ms(kill_time_ms));
