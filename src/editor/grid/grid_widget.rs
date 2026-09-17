@@ -542,6 +542,16 @@ impl GridWidget {
 
         let mut positions = Vec::with_capacity(self.io.inputs.len());
 
+        if let Some(input_mixer) = self.open_input_mixer
+            && !self
+                .io
+                .inputs
+                .iter()
+                .any(|inp| inp.meta.input_type == input_mixer)
+        {
+            self.open_input_mixer = None;
+        }
+
         for i in 0..self.io.inputs.len() {
             positions.push(self.draw_input(ui, ctx, IO_SLOT_H, i));
         }

@@ -6,7 +6,10 @@ use egui::{
     vec2,
 };
 
-use crate::synth_engine::{Input, InputId, ModuleId, ModuleType, ui_bridge::UiBridge};
+use crate::{
+    editor::utils::popup_should_close,
+    synth_engine::{Input, InputId, ModuleId, ModuleType, ui_bridge::UiBridge},
+};
 
 const MAX_LABEL_WIDTH: f32 = 200.0;
 const IO_DOT_SIZE: f32 = 8.0;
@@ -67,7 +70,7 @@ impl LinkAmountPopup {
             return true;
         };
 
-        popup.response.should_close()
+        popup_should_close(&popup.response)
     }
 
     fn title_ui(&self, ui: &mut Ui, bridge: &UiBridge) {

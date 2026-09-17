@@ -6,9 +6,12 @@ use egui::{
     vec2,
 };
 
-use crate::synth_engine::{
-    Input, InputId, ModuleId, ModuleType,
-    ui_bridge::{UiBridge, routing_state::ConnectedInputSource},
+use crate::{
+    editor::utils::popup_should_close,
+    synth_engine::{
+        Input, InputId, ModuleId, ModuleType,
+        ui_bridge::{UiBridge, routing_state::ConnectedInputSource},
+    },
 };
 
 const MAX_LABEL_WIDTH: f32 = 200.0;
@@ -53,7 +56,7 @@ impl InputMixerPopup {
                     .striped(false)
                     .show(ui, |ui| {
                         for src in &connected {
-                            self.link_rows(ui, bridge, input_id, src);
+                            self.link_row(ui, bridge, input_id, src);
                         }
                     });
             })
@@ -61,7 +64,7 @@ impl InputMixerPopup {
             return true;
         };
 
-        popup.response.should_close()
+        popup_should_close(&popup.response)
     }
 
     fn title_ui(&self, ui: &mut Ui, bridge: &mut UiBridge) {
@@ -109,7 +112,7 @@ impl InputMixerPopup {
         });
     }
 
-    fn link_rows(
+    fn link_row(
         &self,
         ui: &mut Ui,
         bridge: &mut UiBridge,
