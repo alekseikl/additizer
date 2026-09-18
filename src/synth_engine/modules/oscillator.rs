@@ -140,6 +140,7 @@ impl Interpolated {
 
 struct PhaseReset {
     steal_from: Option<usize>,
+    stolen: bool,
 }
 
 struct PhaseSteal {
@@ -779,7 +780,7 @@ impl Oscillator {
             true,
         ) >= 0.5;
 
-        if phase_reset.steal_from.is_some() && steal_phase {
+        if phase_reset.stolen && steal_phase {
             // Phases already copied from another voice
             return;
         }
@@ -979,8 +980,14 @@ impl Oscillator {
 
             self.render_voice_samples(&ctx, output, start, offset);
 
-            self.voices[channel_idx][steal.voice_idx as usize].phases =
-                self.voices[channel_idx][voice_idx].phases;
+            let phases = self.voices[channel_idx][voice_idx].phases;
+            let requester = &mut self.voices[channel_idx][steal.voice_idx as usize];
+
+            requester.phases = phases;
+
+            if let Some(reset) = requester.phase_reset.as_mut() {
+                reset.stolen = true;
+            }
             start = offset;
         }
 
@@ -1004,6 +1011,7 @@ impl Oscillator {
 
         voice.phase_reset = Some(PhaseReset {
             steal_from: replaced_voice_idx,
+            stolen: false,
         });
     }
 }
