@@ -732,6 +732,10 @@ impl SynthEngine {
         self.voices_handler.handle_choke(note);
     }
 
+    pub fn handle_choke_all(&mut self) {
+        self.voices_handler.choke_all_voices();
+    }
+
     fn handle_ui_events(&mut self) {
         use ui_bridge::UiEvent;
 

@@ -3,7 +3,16 @@ use crate::{
     synth_engine::{Expression, Note, SynthEngine, external_param::NUM_EXT_PARAMS},
     // utils::log,
 };
-use nice_plug::prelude::NoteEvent;
+use nice_plug::midi::{Channel, Key, NoteEvent, VoiceID};
+
+fn note_from_event(voice_id: VoiceID, channel: Channel, key: Key, velocity: f32) -> Option<Note> {
+    Some(Note {
+        channel: channel.number()?,
+        note: key.number()?,
+        velocity,
+        host_id: voice_id.id(),
+    })
+}
 
 pub fn process_event(
     synth: &mut SynthEngine,
@@ -18,143 +27,115 @@ pub fn process_event(
             timing,
             voice_id,
             channel,
-            note,
+            key,
             velocity,
         } => {
-            synth.handle_note_on(
-                Note {
-                    channel,
-                    note,
-                    velocity,
-                    host_id: voice_id,
-                },
-                timing as usize - block_start,
-            );
+            if let Some(note) = note_from_event(voice_id, channel, key, velocity) {
+                synth.handle_note_on(note, timing as usize - block_start);
+            }
         }
         NoteEvent::NoteOff {
             timing,
             voice_id,
             channel,
-            note,
+            key,
             velocity,
         } => {
-            synth.handle_note_off(
-                Note {
-                    channel,
-                    note,
-                    velocity,
-                    host_id: voice_id,
-                },
-                timing as usize - block_start,
-            );
+            if let Some(note) = note_from_event(voice_id, channel, key, velocity) {
+                synth.handle_note_off(note, timing as usize - block_start);
+            }
         }
         NoteEvent::Choke {
             voice_id,
             channel,
-            note,
+            key,
             ..
         } => {
-            synth.handle_choke(Note {
-                channel,
-                note,
-                velocity: 0.0,
-                host_id: voice_id,
-            });
+            if let Some(note) = note_from_event(voice_id, channel, key, 0.0) {
+                synth.handle_choke(note);
+            } else {
+                synth.handle_choke_all();
+            }
         }
         NoteEvent::PolyVolume {
             timing,
             voice_id,
             channel,
-            note,
+            key,
             gain,
         } => {
-            synth.handle_note_expression(
-                Note {
-                    channel,
+            if let Some(note) = note_from_event(voice_id, channel, key, 0.0) {
+                synth.handle_note_expression(
                     note,
-                    velocity: 0.0,
-                    host_id: voice_id,
-                },
-                Expression::Gain,
-                timing as usize - block_start,
-                gain,
-            );
+                    Expression::Gain,
+                    timing as usize - block_start,
+                    gain,
+                );
+            }
         }
         NoteEvent::PolyPan {
             timing,
             voice_id,
             channel,
-            note,
+            key,
             pan,
         } => {
-            synth.handle_note_expression(
-                Note {
-                    channel,
+            if let Some(note) = note_from_event(voice_id, channel, key, 0.0) {
+                synth.handle_note_expression(
                     note,
-                    velocity: 0.0,
-                    host_id: voice_id,
-                },
-                Expression::Pan,
-                timing as usize - block_start,
-                pan,
-            );
+                    Expression::Pan,
+                    timing as usize - block_start,
+                    pan,
+                );
+            }
         }
         NoteEvent::PolyTuning {
             timing,
             voice_id,
             channel,
-            note,
+            key,
             tuning,
         } => {
-            synth.handle_note_expression(
-                Note {
-                    channel,
+            if let Some(note) = note_from_event(voice_id, channel, key, 0.0) {
+                synth.handle_note_expression(
                     note,
-                    velocity: 0.0,
-                    host_id: voice_id,
-                },
-                Expression::Pitch,
-                timing as usize - block_start,
-                tuning,
-            );
+                    Expression::Pitch,
+                    timing as usize - block_start,
+                    tuning,
+                );
+            }
         }
         NoteEvent::PolyBrightness {
             timing,
             voice_id,
             channel,
-            note,
+            key,
             brightness,
         } => {
-            synth.handle_note_expression(
-                Note {
-                    channel,
+            if let Some(note) = note_from_event(voice_id, channel, key, 0.0) {
+                synth.handle_note_expression(
                     note,
-                    velocity: 0.0,
-                    host_id: voice_id,
-                },
-                Expression::Timbre,
-                timing as usize - block_start,
-                brightness,
-            );
+                    Expression::Timbre,
+                    timing as usize - block_start,
+                    brightness,
+                );
+            }
         }
         NoteEvent::PolyPressure {
             timing,
             voice_id,
             channel,
-            note,
+            key,
             pressure,
         } => {
-            synth.handle_note_expression(
-                Note {
-                    channel,
+            if let Some(note) = note_from_event(voice_id, channel, key, 0.0) {
+                synth.handle_note_expression(
                     note,
-                    velocity: 0.0,
-                    host_id: voice_id,
-                },
-                Expression::Pressure,
-                timing as usize - block_start,
-                pressure,
-            );
+                    Expression::Pressure,
+                    timing as usize - block_start,
+                    pressure,
+                );
+            }
         }
         NoteEvent::PolyModulation {
             timing,

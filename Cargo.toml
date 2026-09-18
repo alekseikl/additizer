@@ -8,15 +8,13 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 arc-swap = "1.9.2"
-egui = { version = "0.35.0", default-features = false, features = [
+egui = { version = "0.36.1", default-features = false, features = [
     "bytemuck",
     "default_fonts",
 ] }
-egui_extras = { version = "0.35.0", default-features = false }
-nice-plug = { git = "https://codeberg.org/RustAudio/nice-plug.git", features = [
-    "standalone",
-] }
-nice-plug-egui = { git = "https://codeberg.org/RustAudio/nice-plug.git", default-features = false, features = [
+egui_extras = { version = "0.36.1", default-features = false }
+nice-plug = { version = "0.4.2", features = ["standalone"] }
+nice-plug-egui = { version = "0.5.1", default-features = false, features = [
     "opengl",
 ] }
 serde = { version = "1.0.229", features = ["derive", "rc"] }

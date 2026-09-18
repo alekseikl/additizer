@@ -4,10 +4,12 @@ use egui::{
     CentralPanel, FontData, FontDefinitions, FontFamily, Frame, Id, Margin, Panel, ScrollArea, Ui,
     Vec2, vec2,
 };
-use nice_plug::editor::Editor;
+use nice_plug::context::gui::GuiContext;
+use nice_plug::editor::dpi::LogicalSize;
+use nice_plug::prelude::*;
 use nice_plug_egui::{
-    EguiNiceSettings, EguiState, GlConfig, GraphicsConfig, create_egui_editor,
-    resizable_window::ResizableWindow,
+    EguiEditor, EguiEditorState, EguiNiceSettings, NiceEguiApp, RepaintNotifier,
+    create_egui_editor, resizable_window::ResizableWindow,
 };
 
 use crate::{
@@ -37,6 +39,11 @@ mod utils;
 mod volume_meter;
 mod waveform;
 
+const MIN_WINDOW_SIZE: LogicalSize<f32> = LogicalSize::new(640.0, 480.0);
+const INITIAL_WINDOW_SIZE: LogicalSize<f32> = LogicalSize::new(900.0, 600.0);
+const INITIAL_ZOOM_FACTOR: f32 = 1.0;
+const RESIZE_HINT: ResizeHint = ResizeHint::resizable().with_min_logical_size(MIN_WINDOW_SIZE);
+
 pub trait ModuleUi {
     fn module_id(&self) -> Option<ModuleId>;
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui);
@@ -59,7 +66,7 @@ impl DetailViewKey {
     }
 }
 
-struct EditorState {
+pub struct EditorState {
     engine_factory: Arc<EngineFactory>,
     ui_bridge: UiBridge,
     grid_module_ui: Option<ModuleUIBox>,
@@ -211,36 +218,40 @@ fn show_editor(ui: &mut Ui, editor_state: &mut EditorState) {
     });
 }
 
-pub fn create_editor(
-    egui_state: Arc<EguiState>,
-    factory: Arc<EngineFactory>,
-) -> Option<Box<dyn Editor>> {
-    create_egui_editor(
-        Arc::clone(&egui_state),
-        EditorState::new(factory),
-        EguiNiceSettings {
-            graphics: GraphicsConfig {
-                gl_config: GlConfig {
-                    vsync: true,
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-        |_egui_ctx, _queue, _editor_state| {
-            #[cfg(debug_assertions)]
-            _egui_ctx.global_style_mut(|style| style.debug.warn_if_rect_changes_id = false);
+impl NiceEguiApp for EditorState {
+    fn build(
+        &mut self,
+        egui_ctx: egui::Context,
+        _nice_gui_ctx: GuiContext,
+        _frame: &mut nice_plug_egui::Frame,
+    ) -> Result<(), nice_plug_egui::baseview::HandlerError> {
+        #[cfg(debug_assertions)]
+        egui_ctx.global_style_mut(|style| style.debug.warn_if_rect_changes_id = false);
 
-            install_fonts(_egui_ctx);
-        },
-        move |ui, _setter, _queue, editor_state| {
-            ResizableWindow::new("res-wind")
-                .min_size(Vec2::new(640.0, 480.0))
-                .show(ui, |ui| {
-                    show_editor(ui, editor_state);
-                });
-        },
+        install_fonts(&egui_ctx);
+        Ok(())
+    }
+
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut nice_plug_egui::Frame) {
+        ResizableWindow::new("res-wind")
+            .min_size(Vec2::new(MIN_WINDOW_SIZE.width, MIN_WINDOW_SIZE.height))
+            .show(ui, |ui| {
+                show_editor(ui, self);
+            });
+        ui.ctx().request_repaint();
+    }
+}
+
+pub fn create_editor(
+    egui_state: Arc<EguiEditorState>,
+    repaint_notifier: RepaintNotifier,
+    factory: Arc<EngineFactory>,
+) -> Option<EguiEditor<EditorState>> {
+    create_egui_editor(
+        egui_state,
+        repaint_notifier,
+        EguiNiceSettings::new().with_resize_hint(RESIZE_HINT),
+        EditorState::new(factory),
     )
 }
 
@@ -260,4 +271,8 @@ fn install_fonts(ctx: &egui::Context) {
         .insert(FontFamily::Name("Bold".into()), vec!["Ubuntu-Bold".into()]);
 
     ctx.set_fonts(fonts);
+}
+
+pub fn new_editor_state() -> Arc<EguiEditorState> {
+    EguiEditorState::from_size(INITIAL_WINDOW_SIZE, INITIAL_ZOOM_FACTOR)
 }

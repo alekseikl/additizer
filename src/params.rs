@@ -1,7 +1,5 @@
-use nice_plug::editor::dpi::LogicalSize;
 use nice_plug::params::persist::PersistentField;
 use nice_plug::prelude::*;
-use nice_plug_egui::EguiState;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
@@ -28,9 +26,6 @@ impl ExtParam {
 
 #[derive(Params)]
 pub struct AdditizerParams {
-    #[persist = "editor-state"]
-    pub editor_state: Arc<EguiState>,
-
     #[persist = "plugin-preset"]
     pub config: PresetWrapper,
 
@@ -41,7 +36,6 @@ pub struct AdditizerParams {
 impl Default for AdditizerParams {
     fn default() -> Self {
         Self {
-            editor_state: EguiState::from_size(LogicalSize::new(900.0, 600.0)),
             config: PresetWrapper::new(),
             ext_params: std::array::from_fn(|i| ExtParam {
                 value: FloatParam::new(

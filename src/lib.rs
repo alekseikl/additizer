@@ -12,19 +12,23 @@ mod presets;
 pub mod synth_engine;
 mod utils;
 
-use crate::editor::create_editor;
+use crate::editor::{EditorState, create_editor};
 use crate::engine_factory::{EngineFactory, EngineHandle};
 use crate::params::AdditizerParams;
 use crate::synth_engine::{MAX_VOICES, Note};
 // use crate::utils::log;
 pub use egui;
+use nice_plug::midi::{Channel, Key, VoiceID};
 use nice_plug::prelude::*;
+use nice_plug_egui::{EguiEditor, EguiEditorState, RepaintNotifier};
 use std::sync::Arc;
 
 pub struct Additizer {
     params: Arc<AdditizerParams>,
     engine: Option<EngineHandle>,
     factory: Arc<EngineFactory>,
+    editor_state: Arc<EguiEditorState>,
+    repaint_notifier: RepaintNotifier,
     terminated_notes: Vec<Note>,
 }
 
@@ -37,6 +41,8 @@ impl Default for Additizer {
             params,
             engine: None,
             factory,
+            editor_state: crate::editor::new_editor_state(),
+            repaint_notifier: RepaintNotifier::new(),
             terminated_notes: Vec::with_capacity(128),
         }
     }
@@ -61,6 +67,7 @@ impl Plugin for Additizer {
     // Don't split a buffer
     const SAMPLE_ACCURATE_AUTOMATION: bool = false;
 
+    type Editor = EguiEditor<EditorState>;
     type SysExMessage = ();
     type BackgroundTask = ();
 
@@ -68,15 +75,19 @@ impl Plugin for Additizer {
         self.params.clone()
     }
 
-    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
-        create_editor(Arc::clone(&self.params.editor_state), self.factory.clone())
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
+        create_editor(
+            Arc::clone(&self.editor_state),
+            self.repaint_notifier.clone(),
+            self.factory.clone(),
+        )
     }
 
-    fn initialize(
+    fn activate(
         &mut self,
         _audio_io_layout: &AudioIOLayout,
         buffer_config: &BufferConfig,
-        _context: &mut impl InitContext<Self>,
+        _context: &mut impl ActivateContext<Self>,
     ) -> bool {
         self.factory.set_host_sample_rate(buffer_config.sample_rate);
         self.params.config.set_factory(self.factory.clone());
@@ -108,7 +119,7 @@ impl Plugin for Additizer {
 
         assert_no_alloc::assert_no_alloc(|| {
             let block_size = synth.block_size();
-            let update_ui = self.params.editor_state.is_open();
+            let update_ui = self.editor_state.is_open();
             let mut next_event = context.next_event();
 
             synth.set_automation_values(&self.params.ext_params);
@@ -137,13 +148,15 @@ impl Plugin for Additizer {
                 );
 
                 for note in self.terminated_notes.drain(..) {
-                    context.send_event(NoteEvent::VoiceTerminated {
+                    let _ = context.try_send_event(NoteEvent::VoiceTerminated {
                         timing: sample_to as u32,
-                        voice_id: note.host_id,
-                        channel: note.channel,
-                        note: note.note,
+                        voice_id: note.host_id.map(VoiceID::ID).unwrap_or(VoiceID::Wildcard),
+                        channel: Channel::Number(note.channel),
+                        key: Key::Number(note.note),
                     });
                 }
+
+                self.repaint_notifier.request_repaint();
             }
         });
 
