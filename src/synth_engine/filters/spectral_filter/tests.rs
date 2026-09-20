@@ -152,22 +152,15 @@ fn drive_converts_to_linear_gain() {
 }
 
 #[test]
-fn drive_is_clamped_to_max() {
+fn drive_is_not_clamped() {
     let mut p = default_params();
-    p.drive = MAX_DRIVE + 20.0;
-    assert_approx(
-        filter(FilterType::LowPass12, p).gain,
-        db_to_gain_fast(MAX_DRIVE),
-    );
-}
+    p.drive = 40.0;
+    assert_approx(filter(FilterType::LowPass12, p).gain, db_to_gain_fast(40.0));
 
-#[test]
-fn drive_is_clamped_to_min() {
-    let mut p = default_params();
-    p.drive = MIN_DRIVE - 20.0;
+    p.drive = -80.0;
     assert_approx(
         filter(FilterType::LowPass12, p).gain,
-        db_to_gain_fast(MIN_DRIVE),
+        db_to_gain_fast(-80.0),
     );
 }
 

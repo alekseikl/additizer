@@ -4,8 +4,7 @@ use crate::{
     editor::{slider::Slider, units::Units},
     synth_engine::{
         DataType, Input, ModuleType, StereoSample,
-        filters::spectral_filter::{MAX_DRIVE, MIN_DRIVE},
-        spectral_filter::{MAX_CUTOFF, MIN_CUTOFF},
+        spectral_filter::{MAX_CUTOFF, MAX_DRIVE, MIN_CUTOFF, MIN_DRIVE},
     },
     utils::{MAX_LEVEL_DB, MIN_LEVEL_DB, from_st},
 };

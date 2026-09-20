@@ -601,8 +601,6 @@ pub struct FilterParams {
     pub linear_phase: bool,
 }
 
-pub const MIN_DRIVE: Sample = -60.0;
-pub const MAX_DRIVE: Sample = 24.0;
 pub const MIN_RESONANCE: Sample = -1.0;
 pub const MAX_RESONANCE: Sample = 1.0;
 const MIN_Q: Sample = 0.01;
@@ -621,7 +619,7 @@ impl SpectralFilter {
     pub fn new(filter_type: FilterType, params: FilterParams) -> Self {
         Self {
             filter_type,
-            gain: db_to_gain_fast(params.drive.clamp(MIN_DRIVE, MAX_DRIVE)),
+            gain: db_to_gain_fast(params.drive),
             cutoff_freq: params.cutoff.exp2(),
             q: Self::q_from_params(&params),
             linear_phase: params.linear_phase,
