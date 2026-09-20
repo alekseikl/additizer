@@ -671,36 +671,40 @@ impl SpectralFilter {
         }
     }
 
-    pub fn response_at(&self, freq: Sample) -> ComplexSample {
+    pub fn response_at_freqs(&self, freqs: &[Sample], out: &mut [ComplexSample]) {
         match self.filter_type {
-            FilterType::LowPass12 => self.response_impl::<LowPass12>(freq),
-            FilterType::LowPass18 => self.response_impl::<LowPass18>(freq),
-            FilterType::LowPass24 => self.response_impl::<LowPass24>(freq),
-            FilterType::LowShelf12 => self.response_impl::<LowShelf12>(freq),
-            FilterType::LowShelf18 => self.response_impl::<LowShelf18>(freq),
-            FilterType::LowShelf24 => self.response_impl::<LowShelf24>(freq),
-            FilterType::HighPass12 => self.response_impl::<HighPass12>(freq),
-            FilterType::HighPass18 => self.response_impl::<HighPass18>(freq),
-            FilterType::HighPass24 => self.response_impl::<HighPass24>(freq),
-            FilterType::HighShelf12 => self.response_impl::<HighShelf12>(freq),
-            FilterType::HighShelf18 => self.response_impl::<HighShelf18>(freq),
-            FilterType::HighShelf24 => self.response_impl::<HighShelf24>(freq),
-            FilterType::BandPass6 => self.response_impl::<BandPass6>(freq),
-            FilterType::BandPass12 => self.response_impl::<BandPass12>(freq),
-            FilterType::BandPass18 => self.response_impl::<BandPass18>(freq),
-            FilterType::BandPass24 => self.response_impl::<BandPass24>(freq),
-            FilterType::Peaking => self.response_impl::<Peaking>(freq),
-            FilterType::Notch => self.response_impl::<Notch>(freq),
+            FilterType::LowPass12 => self.response_freqs_impl::<LowPass12>(freqs, out),
+            FilterType::LowPass18 => self.response_freqs_impl::<LowPass18>(freqs, out),
+            FilterType::LowPass24 => self.response_freqs_impl::<LowPass24>(freqs, out),
+            FilterType::LowShelf12 => self.response_freqs_impl::<LowShelf12>(freqs, out),
+            FilterType::LowShelf18 => self.response_freqs_impl::<LowShelf18>(freqs, out),
+            FilterType::LowShelf24 => self.response_freqs_impl::<LowShelf24>(freqs, out),
+            FilterType::HighPass12 => self.response_freqs_impl::<HighPass12>(freqs, out),
+            FilterType::HighPass18 => self.response_freqs_impl::<HighPass18>(freqs, out),
+            FilterType::HighPass24 => self.response_freqs_impl::<HighPass24>(freqs, out),
+            FilterType::HighShelf12 => self.response_freqs_impl::<HighShelf12>(freqs, out),
+            FilterType::HighShelf18 => self.response_freqs_impl::<HighShelf18>(freqs, out),
+            FilterType::HighShelf24 => self.response_freqs_impl::<HighShelf24>(freqs, out),
+            FilterType::BandPass6 => self.response_freqs_impl::<BandPass6>(freqs, out),
+            FilterType::BandPass12 => self.response_freqs_impl::<BandPass12>(freqs, out),
+            FilterType::BandPass18 => self.response_freqs_impl::<BandPass18>(freqs, out),
+            FilterType::BandPass24 => self.response_freqs_impl::<BandPass24>(freqs, out),
+            FilterType::Peaking => self.response_freqs_impl::<Peaking>(freqs, out),
+            FilterType::Notch => self.response_freqs_impl::<Notch>(freqs, out),
         }
     }
 
-    fn response_impl<T: FilterImpl>(&self, freq: Sample) -> ComplexSample {
-        let response = T::new(self.gain, self.cutoff_freq, self.q).at(freq);
+    fn response_freqs_impl<T: FilterImpl>(&self, freqs: &[Sample], out: &mut [ComplexSample]) {
+        let filter_impl = T::new(self.gain, self.cutoff_freq, self.q);
 
         if self.linear_phase {
-            ComplexSample::new(response.norm(), 0.0)
+            for (out, &freq) in out.iter_mut().zip(freqs) {
+                *out = ComplexSample::new(filter_impl.at(freq).norm(), 0.0);
+            }
         } else {
-            response
+            for (out, &freq) in out.iter_mut().zip(freqs) {
+                *out = filter_impl.at(freq);
+            }
         }
     }
 

@@ -3,7 +3,7 @@ use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, epaint::PathStroke};
 use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
-        Input, ModuleId, Sample,
+        ComplexSample, Input, ModuleId, Sample,
         filters::spectral_filter::{
             FilterParams, MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE,
             SpectralFilter as SpectralFilterEngine,
@@ -20,8 +20,24 @@ const PADDING: f32 = 4.0;
 
 const STROKE_COLOR: Color32 = Color32::from_rgb(0xff, 0xb0, 0x00);
 const LINE_WIDTH: f32 = 1.0;
+const COLUMNS: usize = 512;
+const MAX_POINTS: usize = COLUMNS + 1;
 
-pub struct SpectralFilterWidget {}
+pub struct SpectralFilterWidget {
+    cols: Vec<f32>,
+    freqs: Vec<Sample>,
+    responses: Vec<ComplexSample>,
+}
+
+impl Default for SpectralFilterWidget {
+    fn default() -> Self {
+        Self {
+            cols: Vec::with_capacity(MAX_POINTS),
+            freqs: Vec::with_capacity(MAX_POINTS),
+            responses: Vec::with_capacity(MAX_POINTS),
+        }
+    }
+}
 
 impl SpectralFilterWidget {
     fn filter_ui(
@@ -67,46 +83,70 @@ impl SpectralFilterWidget {
             },
         );
 
-        Self::paint_response(ui.painter(), rect, &filter, cutoff);
+        self.paint_response(ui.painter(), rect, &filter, cutoff);
     }
 
-    fn curve_points(rect: Rect, filter: &SpectralFilterEngine, cutoff_log2: Sample) -> Vec<Pos2> {
+    fn curve_points(
+        &mut self,
+        rect: Rect,
+        filter: &SpectralFilterEngine,
+        cutoff_log2: Sample,
+    ) -> Vec<Pos2> {
         const DB_RANGE_MULT: f32 = (MAX_LEVEL_DB - MIN_LEVEL_DB).recip();
-        const COLUMNS: usize = 512;
         let t_mult = ((COLUMNS - 1) as f32).recip();
         let log2_range = MAX_CUTOFF - MIN_CUTOFF;
 
-        let point_at = |col: f32| -> Pos2 {
-            let t = col * t_mult;
-            let freq = (MIN_CUTOFF + t * log2_range).exp2();
-            let db = gain_to_db_fast(filter.response_at(freq).norm());
-            let y_t = ((db - MIN_LEVEL_DB) * DB_RANGE_MULT).clamp(0.0, 1.0);
-
-            Pos2::new(
-                rect.left() + t * rect.width(),
-                rect.bottom() - y_t * rect.height(),
-            )
-        };
-
         let cutoff_col = (cutoff_log2 - MIN_CUTOFF) / log2_range * (COLUMNS - 1) as f32;
         let split = cutoff_col.ceil().clamp(0.0, COLUMNS as f32) as usize;
-        let mut points = Vec::with_capacity(COLUMNS + 1);
+        let include_cutoff = (0.0..=(COLUMNS - 1) as f32).contains(&cutoff_col);
+
+        self.cols.clear();
+        self.freqs.clear();
+
+        let cols = &mut self.cols;
+        let freqs = &mut self.freqs;
+        let mut push_col = |col: f32| {
+            cols.push(col);
+            freqs.push((MIN_CUTOFF + col * t_mult * log2_range).exp2());
+        };
 
         // Columns strictly before the cutoff.
-        points.extend((0..split).map(|c| point_at(c as f32)));
+        for c in 0..split {
+            push_col(c as f32);
+        }
 
         // The cutoff point itself, when it lands in the visible range.
-        if (0.0..=(COLUMNS - 1) as f32).contains(&cutoff_col) {
-            points.push(point_at(cutoff_col));
+        if include_cutoff {
+            push_col(cutoff_col);
         }
 
         // Remaining columns after the cutoff.
-        points.extend((split..COLUMNS).map(|c| point_at(c as f32)));
+        for c in split..COLUMNS {
+            push_col(c as f32);
+        }
 
-        points
+        self.responses
+            .resize(self.freqs.len(), ComplexSample::new(0.0, 0.0));
+        filter.response_at_freqs(&self.freqs, &mut self.responses);
+
+        self.cols
+            .iter()
+            .zip(self.responses.iter())
+            .map(|(&col, response)| {
+                let t = col * t_mult;
+                let db = gain_to_db_fast(response.norm());
+                let y_t = ((db - MIN_LEVEL_DB) * DB_RANGE_MULT).clamp(0.0, 1.0);
+
+                Pos2::new(
+                    rect.left() + t * rect.width(),
+                    rect.bottom() - y_t * rect.height(),
+                )
+            })
+            .collect()
     }
 
     fn paint_response(
+        &mut self,
         painter: &Painter,
         rect: Rect,
         filter: &SpectralFilterEngine,
@@ -116,7 +156,7 @@ impl SpectralFilterWidget {
             rect.left_top(),
             Pos2::new(rect.right(), rect.bottom() - LINE_WIDTH),
         ));
-        let points = Self::curve_points(rect, filter, cutoff_log2);
+        let points = self.curve_points(rect, filter, cutoff_log2);
 
         Self::paint_fill(&painter, rect, &points);
         Self::paint_stroke(&painter, &points);

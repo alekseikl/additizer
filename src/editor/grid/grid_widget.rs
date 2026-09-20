@@ -111,7 +111,7 @@ impl GridWidget {
                 ModuleType::Oscillator => Box::new(OscillatorWidget::default()),
                 ModuleType::Amplifier => Box::new(AmplifierWidget::default()),
                 ModuleType::Mixer => Box::new(MixerWidget::default()),
-                ModuleType::SpectralFilter => Box::new(SpectralFilterWidget {}),
+                ModuleType::SpectralFilter => Box::new(SpectralFilterWidget::default()),
                 ModuleType::Envelope => Box::new(EnvelopeWidget {}),
                 ModuleType::Lfo => Box::new(LfoWidget::default()),
                 ModuleType::Pitch => Box::new(PitchWidget::default()),

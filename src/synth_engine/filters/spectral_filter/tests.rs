@@ -649,7 +649,7 @@ fn higher_q_peaks_lowpass_near_cutoff() {
     assert_approx(resonant, GAIN * MAX_Q);
 }
 
-// ---- SpectralFilter::response_at / apply_response ----
+// ---- SpectralFilter::response_at_freqs / apply_response ----
 
 fn ones(len: usize) -> Vec<ComplexSample> {
     vec![ComplexSample::new(1.0, 0.0); len]
@@ -659,14 +659,20 @@ fn zeros(len: usize) -> Vec<ComplexSample> {
     vec![ComplexSample::new(0.0, 0.0); len]
 }
 
+fn eval_at(f: &SpectralFilter, freq: Sample) -> ComplexSample {
+    let mut out = ComplexSample::new(0.0, 0.0);
+    f.response_at_freqs(&[freq], std::slice::from_mut(&mut out));
+    out
+}
+
 #[test]
-fn response_at_matches_filter_impl_for_every_type() {
+fn response_at_freqs_matches_filter_impl_for_every_type() {
     let freq = 2.5;
     let p = default_params();
 
     for ty in FilterType::ALL {
         let f = filter(ty, p);
-        let response = f.response_at(freq);
+        let response = eval_at(&f, freq);
         let expected = match ty {
             FilterType::LowPass12 => LowPass12::new(f.gain, f.cutoff_freq, f.q).at(freq),
             FilterType::LowPass18 => LowPass18::new(f.gain, f.cutoff_freq, f.q).at(freq),
@@ -701,8 +707,8 @@ fn linear_phase_response_is_real_magnitude() {
     for ty in FilterType::ALL {
         let mut min_phase = p;
         min_phase.linear_phase = false;
-        let complex = filter(ty, min_phase).response_at(freq);
-        let linear = filter(ty, p).response_at(freq);
+        let complex = eval_at(&filter(ty, min_phase), freq);
+        let linear = eval_at(&filter(ty, p), freq);
 
         assert_approx(linear.im, 0.0);
         assert_approx(linear.re, complex.norm());
@@ -720,13 +726,14 @@ fn apply_response_skips_dc_bin() {
 }
 
 #[test]
-fn apply_response_matches_response_at() {
+fn apply_response_matches_response_at_freqs() {
     let input = [
         ComplexSample::new(1.0, 0.0),
         ComplexSample::new(0.5, 0.25),
         ComplexSample::new(-1.0, 0.75),
         ComplexSample::new(0.0, 1.0),
     ];
+    let freqs: Vec<Sample> = (1..input.len()).map(|i| i as Sample).collect();
 
     for ty in FilterType::ALL {
         for linear_phase in [false, true] {
@@ -739,12 +746,27 @@ fn apply_response_matches_response_at() {
             let mut output = zeros(input.len());
             f.apply_response(&input, &mut output);
 
+            let mut responses = zeros(freqs.len());
+            f.response_at_freqs(&freqs, &mut responses);
+
             assert_complex_eq(output[0], ComplexSample::new(0.0, 0.0));
             for i in 1..input.len() {
-                assert_complex_eq(output[i], input[i] * f.response_at(i as Sample));
+                assert_complex_eq(output[i], input[i] * responses[i - 1]);
             }
         }
     }
+}
+
+#[test]
+fn response_at_freqs_zips_to_shortest_slice() {
+    let freqs = [1.0, 2.0, 3.0];
+    let mut out = [ComplexSample::new(0.0, 0.0); 2];
+    let f = filter(FilterType::Notch, default_params());
+    f.response_at_freqs(&freqs, &mut out);
+
+    assert_eq!(out.len(), 2);
+    assert_complex_eq(out[0], eval_at(&f, 1.0));
+    assert_complex_eq(out[1], eval_at(&f, 2.0));
 }
 
 #[test]
