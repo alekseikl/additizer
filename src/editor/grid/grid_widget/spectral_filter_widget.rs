@@ -5,7 +5,8 @@ use crate::{
     synth_engine::{
         Input, ModuleId, Sample,
         filters::spectral_filter::{
-            FilterParams, MAX_RESONANCE, MIN_RESONANCE, SpectralFilter as SpectralFilterEngine,
+            FilterParams, MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE,
+            SpectralFilter as SpectralFilterEngine,
         },
         spectral_filter::{MAX_CUTOFF, MIN_CUTOFF, SpectralFilterUiBridge},
         ui_bridge::{ModuleBridge, UiBridge},
@@ -57,7 +58,7 @@ impl SpectralFilterWidget {
         let filter = SpectralFilterEngine::new(
             config.filter_type,
             FilterParams {
-                drive: config.drive[0].min(24.0),
+                drive: config.drive[0].clamp(MIN_DRIVE, MAX_DRIVE),
                 cutoff,
                 resonance: config.resonance[0].clamp(MIN_RESONANCE, MAX_RESONANCE),
                 q_limit_to,

@@ -4,6 +4,7 @@ use crate::{
     editor::{slider::Slider, units::Units},
     synth_engine::{
         DataType, Input, ModuleType, StereoSample,
+        filters::spectral_filter::{MAX_DRIVE, MIN_DRIVE},
         spectral_filter::{MAX_CUTOFF, MIN_CUTOFF},
     },
     utils::{MAX_LEVEL_DB, MIN_LEVEL_DB, from_st},
@@ -118,7 +119,10 @@ impl Input {
                 .skew(2.0)
                 .units(Units::Db),
             Self::Pan => Slider::stereo(amount, 0.0..=1.0, Some(-1.0)),
-            Self::Drive | Self::ClippingLevel => Slider::stereo(amount, 0.0..=24.0, Some(-24.0))
+            Self::Drive => Slider::stereo(amount, 0.0..=60.0, Some(-60.0))
+                .default(0.0)
+                .units(Units::Db),
+            Self::ClippingLevel => Slider::stereo(amount, 0.0..=24.0, Some(-24.0))
                 .default(0.0)
                 .units(Units::Db),
             Self::Distortion => Slider::stereo(amount, 0.0..=48.0, Some(-48.0))
@@ -180,7 +184,11 @@ impl Input {
                     .units(Units::Db)
             }
             Self::Pan => Slider::stereo(value, -1.0..=1.0, None).default(0.0),
-            Self::Drive | Self::ClippingLevel => Slider::stereo(value, -24.0..=24.0, None)
+            Self::Drive => Slider::stereo(value, MIN_DRIVE..=MAX_DRIVE, None)
+                .default(0.0)
+                .over(0.0)
+                .units(Units::Db),
+            Self::ClippingLevel => Slider::stereo(value, -24.0..=24.0, None)
                 .default(0.0)
                 .over(0.0)
                 .units(Units::Db),

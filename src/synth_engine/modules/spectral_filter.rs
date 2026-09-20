@@ -16,7 +16,7 @@ use crate::{
         StereoSample,
         buffer::VoicesLayout,
         filters::spectral_filter::{
-            FilterParams, FilterType, MAX_RESONANCE, MIN_RESONANCE,
+            FilterParams, FilterType, MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE,
             SpectralFilter as SpectralFilterEngine,
         },
         routing::{
@@ -180,7 +180,7 @@ impl SpectralFilter {
         resonance,
         resonance.clamp(MIN_RESONANCE, MAX_RESONANCE)
     );
-    set_stereo_param!(set_drive, drive);
+    set_stereo_param!(set_drive, drive, drive.clamp(MIN_DRIVE, MAX_DRIVE));
     set_stereo_param!(
         set_q_limit_to,
         q_limit_to,
@@ -208,7 +208,9 @@ impl SpectralFilter {
         let resonance = router
             .scalar(&inputs.resonance, channel.resonance)
             .clamp(MIN_RESONANCE, MAX_RESONANCE);
-        let drive = router.scalar(&inputs.drive, channel.drive).min(24.0);
+        let drive = router
+            .scalar(&inputs.drive, channel.drive)
+            .clamp(MIN_DRIVE, MAX_DRIVE);
         let pitch = router
             .direct_opt(inputs.pitch)
             .unwrap_or_else(|| target.note_pitch());
