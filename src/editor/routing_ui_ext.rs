@@ -130,16 +130,16 @@ impl Input {
             Self::Blend | Self::GainsBlend | Self::PhasesBlend => bipolar(amount),
             Self::Cutoff => Slider::stereo(amount, 0.0..=10.0, Some(-10.0))
                 .default(0.0)
-                .units(Units::Octaves),
+                .units(Units::Octaves(false)),
             Self::Resonance => bipolar(amount),
             Self::Detune => Slider::stereo(amount, 0.0..=from_st(1.0), Some(-from_st(1.0)))
                 .default(0.0)
-                .units(Units::Octaves),
+                .units(Units::Octaves(false)),
             Self::DetunePower => Slider::stereo(amount, 0.0..=5.0, Some(-5.0)).default(0.0),
             Self::Pitch | Self::PitchShift => Slider::stereo(amount, 0.0..=8.0, Some(-8.0))
                 .skew(1.8)
                 .default(1.0)
-                .units(Units::Octaves),
+                .units(Units::Octaves(false)),
             Self::Glide => Slider::stereo(amount, 0.0..=5.0, Some(-5.0))
                 .default(0.0)
                 .skew(2.0)
@@ -199,16 +199,16 @@ impl Input {
             }
             Self::Cutoff => Slider::stereo(value, MIN_CUTOFF..=MAX_CUTOFF, None)
                 .default(0.0)
-                .units(Units::Octaves),
+                .units(Units::Octaves(true)),
             Self::Resonance => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
             Self::Detune => Slider::stereo(value, 0.0..=from_st(1.0), None)
                 .default(from_st(0.2))
-                .units(Units::Octaves),
+                .units(Units::Octaves(true)),
             Self::DetunePower => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
             Self::Pitch | Self::PitchShift => Slider::stereo(value, 0.0..=8.0, Some(-8.0))
                 .skew(1.8)
                 .default(0.0)
-                .units(Units::Octaves),
+                .units(Units::Octaves(true)),
             Self::Glide => Slider::stereo(value, 0.0..=5.0, None)
                 .default(0.0)
                 .skew(2.0)

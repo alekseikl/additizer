@@ -4,6 +4,11 @@ use crate::synth_engine::Sample;
 pub const MIN_LEVEL_DB: Sample = -60.0;
 /// Upper clamp for dB level parameters.
 pub const MAX_LEVEL_DB: Sample = 24.0;
+/// MIDI note number for middle C (C4).
+pub const C4_NOTE: u8 = 60;
+/// Pitch of C4 in octave units (relative to A4).
+pub const C4_PITCH: Sample = note_to_pitch(C4_NOTE as Sample);
+const A4_FREQ: Sample = 440.0;
 
 const ST_TO_OCTAVE_MULT: Sample = 12.0f32.recip();
 
@@ -41,19 +46,23 @@ pub const fn from_ms(ms: f32) -> f32 {
 
 #[inline(always)]
 pub const fn note_to_pitch(note: Sample) -> Sample {
-    (note - 69.0) / 12.0
+    (note - 69.0) * ST_TO_OCTAVE_MULT
 }
-
-/// MIDI note number for middle C (C4).
-pub const C4_NOTE: u8 = 60;
-
-/// Pitch of C4 in octave units (relative to A4).
-pub const C4_PITCH: Sample = note_to_pitch(C4_NOTE as Sample);
 
 // Pitch in octave units
 #[inline(always)]
 pub fn pitch_to_freq(pitch: Sample) -> Sample {
-    pitch.exp2() * 440.0
+    pitch.exp2() * A4_FREQ
+}
+
+#[inline(always)]
+pub fn freq_to_pitch(freq: Sample) -> Sample {
+    (freq / A4_FREQ).log2()
+}
+
+#[inline(always)]
+pub fn freq_to_c4_pitch(freq: Sample) -> Sample {
+    freq_to_pitch(freq) - C4_PITCH
 }
 
 #[inline(always)]

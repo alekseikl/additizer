@@ -1,4 +1,7 @@
-use crate::synth_engine::{Sample, StereoSample};
+use crate::{
+    synth_engine::{Sample, StereoSample},
+    utils::{C4_PITCH, freq_to_c4_pitch, pitch_to_freq},
+};
 
 enum DisplayUnit {
     Percents(Sample),
@@ -93,17 +96,27 @@ impl DisplayUnit {
 pub enum Units {
     Normalized,
     Db,
-    Octaves,
+    /// `true` displays Hz/kHz relative to C4; `false` displays semitones/cents.
+    Octaves(bool),
     Frequency,
     Time,
 }
 
 impl Units {
+    fn frequency_display_unit(value: Sample) -> DisplayUnit {
+        if value.abs() > 1_000.0 {
+            DisplayUnit::Khz(value / 1_000.0)
+        } else {
+            DisplayUnit::Hz(value)
+        }
+    }
+
     fn display_unit(&self, value: Sample) -> DisplayUnit {
         match self {
             Self::Db => DisplayUnit::Db(value),
             Self::Normalized => DisplayUnit::Percents(value * 100.0),
-            Self::Octaves => {
+            Self::Octaves(true) => Self::frequency_display_unit(pitch_to_freq(C4_PITCH + value)),
+            Self::Octaves(false) => {
                 let st = value * 12.0;
 
                 if st == 0.0 {
@@ -114,13 +127,7 @@ impl Units {
                     DisplayUnit::Semitones(st)
                 }
             }
-            Self::Frequency => {
-                if value.abs() > 1_000.0 {
-                    DisplayUnit::Khz(value / 1_000.0)
-                } else {
-                    DisplayUnit::Hz(value)
-                }
-            }
+            Self::Frequency => Self::frequency_display_unit(value),
             Self::Time => {
                 let ms = value * 1_000.0;
 
@@ -164,13 +171,18 @@ impl Units {
         match self {
             Self::Normalized if unit.is_empty() || unit == "%" => Some(number / 100.0),
             Self::Db if unit.is_empty() || unit.eq_ignore_ascii_case("db") => Some(number),
-            Self::Octaves if unit.is_empty() || unit.eq_ignore_ascii_case("st") => {
-                Some(number / 12.0)
-            }
-            Self::Octaves
+            Self::Octaves(_) if unit.eq_ignore_ascii_case("st") => Some(number / 12.0),
+            Self::Octaves(false) if unit.is_empty() => Some(number / 12.0),
+            Self::Octaves(_)
                 if unit.eq_ignore_ascii_case("cents") || unit.eq_ignore_ascii_case("cent") =>
             {
                 Some(number / 1_200.0)
+            }
+            Self::Octaves(true) if unit.is_empty() || unit.eq_ignore_ascii_case("hz") => {
+                Some(freq_to_c4_pitch(number))
+            }
+            Self::Octaves(true) if unit.eq_ignore_ascii_case("khz") => {
+                Some(freq_to_c4_pitch(number * 1_000.0))
             }
             Self::Frequency if unit.is_empty() || unit.eq_ignore_ascii_case("hz") => Some(number),
             Self::Frequency if unit.eq_ignore_ascii_case("khz") => Some(number * 1_000.0),

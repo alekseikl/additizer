@@ -108,7 +108,7 @@ impl SpectralFilterUI {
                     .add(
                         Slider::stereo(&mut config.q_limit_to, MIN_CUTOFF..=MAX_CUTOFF, None)
                             .default(from_st(12.0))
-                            .units(Units::Octaves),
+                            .units(Units::Octaves(true)),
                     )
                     .changed()
                 {

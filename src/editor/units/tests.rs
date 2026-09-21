@@ -6,14 +6,23 @@ fn approx(a: Sample, b: Sample) -> bool {
 
 #[test]
 fn parse_octaves_st() {
-    let value = Units::Octaves.parse_one("12.5 st").unwrap();
+    let value = Units::Octaves(false).parse_one("12.5 st").unwrap();
     assert!(approx(value, 12.5 / 12.0));
 }
 
 #[test]
 fn parse_octaves_cents() {
-    let value = Units::Octaves.parse_one("50 cents").unwrap();
+    let value = Units::Octaves(false).parse_one("50 cents").unwrap();
     assert!(approx(value, 50.0 / 1_200.0));
+}
+
+#[test]
+fn parse_octaves_hz_from_c4() {
+    let value = Units::Octaves(true).parse_one("440").unwrap();
+    assert!(approx(value, 0.75));
+
+    let value = Units::Octaves(true).parse_one("2.5 kHz").unwrap();
+    assert!(approx(value, freq_to_c4_pitch(2_500.0)));
 }
 
 #[test]
@@ -62,8 +71,10 @@ fn parse_rejects_wrong_unit() {
 fn format_input_trims_default_units_and_trailing_zeros() {
     assert_eq!(Units::Normalized.format_input(0.5), "50");
     assert_eq!(Units::Db.format_input(-6.0), "-6");
-    assert_eq!(Units::Octaves.format_input(12.5 / 12.0), "12.5");
-    assert_eq!(Units::Octaves.format_input(50.0 / 1_200.0), "50 cents");
+    assert_eq!(Units::Octaves(false).format_input(12.5 / 12.0), "12.5");
+    assert_eq!(Units::Octaves(false).format_input(50.0 / 1_200.0), "50 cents");
+    assert_eq!(Units::Octaves(true).format_input(0.75), "440");
+    assert_eq!(Units::Octaves(true).format_input(freq_to_c4_pitch(2_500.0)), "2.5 kHz");
     assert_eq!(Units::Frequency.format_input(440.0), "440");
     assert_eq!(Units::Frequency.format_input(2_500.0), "2.5 kHz");
     assert_eq!(Units::Time.format_input(0.004), "4 ms");
@@ -76,8 +87,10 @@ fn format_input_parse_roundtrip() {
     for (units, value) in [
         (Units::Normalized, 0.5),
         (Units::Db, -6.0),
-        (Units::Octaves, 12.5 / 12.0),
-        (Units::Octaves, 50.0 / 1_200.0),
+        (Units::Octaves(false), 12.5 / 12.0),
+        (Units::Octaves(false), 50.0 / 1_200.0),
+        (Units::Octaves(true), 0.75),
+        (Units::Octaves(true), freq_to_c4_pitch(2_500.0)),
         (Units::Frequency, 440.0),
         (Units::Frequency, 2_500.0),
         (Units::Time, 0.004),
@@ -99,8 +112,10 @@ fn format_parse_roundtrip() {
     for (units, value) in [
         (Units::Normalized, 0.5),
         (Units::Db, -6.0),
-        (Units::Octaves, 12.5 / 12.0),
-        (Units::Octaves, 50.0 / 1_200.0),
+        (Units::Octaves(false), 12.5 / 12.0),
+        (Units::Octaves(false), 50.0 / 1_200.0),
+        (Units::Octaves(true), 0.75),
+        (Units::Octaves(true), freq_to_c4_pitch(2_500.0)),
         (Units::Frequency, 440.0),
         (Units::Frequency, 2_500.0),
         (Units::Time, 0.004),
