@@ -24,7 +24,8 @@ use crate::{
     utils::{C4_PITCH, from_ms, from_st},
 };
 
-const MAX_GLIDE: Sample = 5.0;
+pub const MAX_GLIDE_TIME: Sample = 8.0;
+const MAX_GLIDE_POWER: Sample = 8.0;
 const GLIDE_TIME_THRESHOLD: Sample = from_ms(0.1);
 
 struct Params {
@@ -207,7 +208,7 @@ impl Pitch {
         pitch_shift,
         pitch_shift.clamp(from_st(-60.0), from_st(60.0))
     );
-    set_stereo_param!(set_glide, glide, glide.clamp(0.0, MAX_GLIDE));
+    set_stereo_param!(set_glide, glide, glide.clamp(0.0, MAX_GLIDE_TIME));
     set_stereo_param!(set_glide_slope, glide_slope, glide_slope.clamp(-1.0, 1.0));
 
     #[inline]
@@ -256,12 +257,11 @@ impl Pitch {
         );
         add_buffer_value(&mut buffers.pitch[..samples], pitch);
 
-        const GLIDE_POWER_MAX: Sample = 6.0;
         const POWER_LINEAR_THRESHOLD: Sample = 0.005;
 
         let mut glide_time = router
             .scalar(&inputs.glide, channel.glide)
-            .clamp(0.0, MAX_GLIDE);
+            .clamp(0.0, MAX_GLIDE_TIME);
         let glide_slope = router
             .scalar(&inputs.glide_slope, channel.glide_slope)
             .clamp(-1.0, 1.0);
@@ -276,7 +276,7 @@ impl Pitch {
             if !(glide_time >= GLIDE_TIME_THRESHOLD && time_left > 0.0) {
                 voice.glide = None;
             } else {
-                let glide_power = -glide_slope * GLIDE_POWER_MAX;
+                let glide_power = -glide_slope * MAX_GLIDE_POWER;
                 let t_step = router.sample_rate().recip();
                 let glide_samples = samples.min((time_left * router.sample_rate()) as usize);
                 let pitch_buff = &mut buffers.pitch[..glide_samples];

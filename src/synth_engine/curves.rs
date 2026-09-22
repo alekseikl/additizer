@@ -1,4 +1,7 @@
-use crate::{synth_engine::Sample, utils::power_scale};
+use crate::{
+    synth_engine::{Sample, envelope::SLOPE_POWER_SCALE},
+    utils::power_scale,
+};
 
 pub trait CurveFunction {
     fn calc(&self, arg: Sample) -> Sample;
@@ -11,7 +14,7 @@ pub struct Exponential {
 impl Exponential {
     pub fn new(curvature: Sample) -> Self {
         Self {
-            power: curvature.clamp(-1.0, 1.0) * -10.0,
+            power: -curvature.clamp(-1.0, 1.0) * SLOPE_POWER_SCALE,
         }
     }
 }

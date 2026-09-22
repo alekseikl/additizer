@@ -605,7 +605,7 @@ pub const MIN_RESONANCE: Sample = -1.0;
 pub const MAX_RESONANCE: Sample = 1.0;
 const MIN_Q: Sample = 0.01;
 const MAX_Q: Sample = 16.0;
-const MAX_Q_LIMIT_POWER: Sample = 10.0;
+const MAX_Q_LIMIT_POWER: Sample = 20.0;
 
 pub struct SpectralFilter {
     filter_type: FilterType,

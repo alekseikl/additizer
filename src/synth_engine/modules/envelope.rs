@@ -28,6 +28,8 @@ use crate::{
     utils::from_ms,
 };
 
+pub const SLOPE_POWER_SCALE: Sample = 20.0;
+
 const MIN_TIME_THRESHOLD: Sample = from_ms(0.5);
 
 struct Params {

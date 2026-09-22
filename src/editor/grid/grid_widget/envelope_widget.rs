@@ -4,7 +4,7 @@ use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
         Input, ModuleId, Sample,
-        envelope::{EnvelopeConfig, EnvelopePhase, EnvelopeUiBridge},
+        envelope::{EnvelopeConfig, EnvelopePhase, EnvelopeUiBridge, SLOPE_POWER_SCALE},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::power_scale,
@@ -103,7 +103,7 @@ impl EnvelopeWidget {
     }
 
     fn curve_value(t: Sample, slope: Sample, from: Sample, to: Sample) -> Sample {
-        let power = slope.clamp(-1.0, 1.0) * -10.0;
+        let power = -slope.clamp(-1.0, 1.0) * SLOPE_POWER_SCALE;
         (to - from).mul_add(power_scale(t.clamp(0.0, 1.0), power), from)
     }
 

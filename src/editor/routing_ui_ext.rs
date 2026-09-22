@@ -4,6 +4,7 @@ use crate::{
     editor::{slider::Slider, units::Units},
     synth_engine::{
         DataType, Input, ModuleType, StereoSample,
+        pitch::MAX_GLIDE_TIME,
         spectral_filter::{MAX_CUTOFF, MAX_DRIVE, MIN_CUTOFF, MIN_DRIVE},
     },
     utils::{MAX_LEVEL_DB, MIN_LEVEL_DB, from_st},
@@ -140,9 +141,9 @@ impl Input {
                 .skew(1.8)
                 .default(1.0)
                 .units(Units::Octaves(false)),
-            Self::Glide => Slider::stereo(amount, 0.0..=5.0, Some(-5.0))
+            Self::Glide => Slider::stereo(amount, 0.0..=MAX_GLIDE_TIME, Some(-MAX_GLIDE_TIME))
                 .default(0.0)
-                .skew(2.0)
+                .skew(2.4)
                 .units(Units::Time),
             Self::GlideSlope => bipolar(amount),
             Self::PhaseShift => bipolar(amount),
@@ -203,15 +204,15 @@ impl Input {
             Self::Resonance => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
             Self::Detune => Slider::stereo(value, 0.0..=from_st(1.0), None)
                 .default(from_st(0.2))
-                .units(Units::Octaves(true)),
+                .units(Units::Octaves(false)),
             Self::DetunePower => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
             Self::Pitch | Self::PitchShift => Slider::stereo(value, 0.0..=8.0, Some(-8.0))
                 .skew(1.8)
                 .default(0.0)
                 .units(Units::Octaves(true)),
-            Self::Glide => Slider::stereo(value, 0.0..=5.0, None)
+            Self::Glide => Slider::stereo(value, 0.0..=MAX_GLIDE_TIME, None)
                 .default(0.0)
-                .skew(2.0)
+                .skew(2.4)
                 .units(Units::Time),
             Self::GlideSlope => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
             Self::PhaseShift => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),

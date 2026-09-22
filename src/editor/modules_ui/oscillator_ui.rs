@@ -495,7 +495,7 @@ impl OscillatorUI {
         });
 
         if config.unison_voices > 1 {
-            ui.add_space(32.0);
+            ui.add_space(16.0);
 
             Grid::new("osc_unison_grid")
                 .num_columns(2)
