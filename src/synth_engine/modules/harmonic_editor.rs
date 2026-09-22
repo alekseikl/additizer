@@ -23,6 +23,9 @@ mod config;
 mod link;
 mod ui_bridge;
 
+#[cfg(test)]
+mod tests;
+
 pub use config::{HarmonicEditorConfig, sawtooth_phase};
 pub use link::Harmonics;
 pub use ui_bridge::HarmonicEditorUiBridge;
@@ -36,16 +39,23 @@ fn clamp_bandwidth(bandwidth: i32) -> i32 {
 
 #[derive(Default)]
 pub struct Inputs {
+    spectrum: Option<usize>,
     pitch: Option<usize>,
 }
 
 impl Inputs {
-    fn from_slots(inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) -> Self {
+    fn from_slots(inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) -> Self {
         let mut result = Self::default();
 
         for input in inputs {
             if matches!(input.input_type, Input::Pitch) {
                 result.pitch = input.slots.first().map(|s| s.src_slot);
+            }
+        }
+
+        for input in spectral_inputs {
+            if matches!(input.input_type, Input::Spectrum) {
+                result.spectrum = Some(input.slot);
             }
         }
 
@@ -116,6 +126,7 @@ pub struct HarmonicEditor {
     random: Pcg32,
     bandwidth: i32,
     mono: bool,
+    capture_input: bool,
 }
 
 impl HarmonicEditor {
@@ -172,6 +183,7 @@ impl HarmonicEditor {
             random: Pcg32::new(0x2b992ddfa23249d6, 0x9e3779b97f4a7c15),
             bandwidth: clamp_bandwidth(config.bandwidth),
             mono: config.mono,
+            capture_input: config.capture_input,
         };
 
         editor.rebuild_harmonics();
@@ -188,6 +200,7 @@ impl HarmonicEditor {
             phases: array::from_fn(|c| Vec::from_iter(self.phases[c].iter().copied())),
             bandwidth: self.bandwidth,
             mono: self.mono,
+            capture_input: self.capture_input,
         }
     }
 
@@ -205,6 +218,14 @@ impl HarmonicEditor {
 
     pub fn set_mono(&mut self, mono: bool) {
         self.mono = mono;
+    }
+
+    pub fn capture_input(&self) -> bool {
+        self.capture_input
+    }
+
+    pub fn set_capture_input(&mut self, capture_input: bool) {
+        self.capture_input = capture_input;
     }
 
     fn pitch_bandwidth(pitch: Sample) -> usize {
@@ -228,6 +249,33 @@ impl HarmonicEditor {
             amp / (idx as Sample * std::f32::consts::PI),
             (phase + 0.25) * std::f32::consts::TAU,
         )
+    }
+
+    fn from_frequency_bin(idx: usize, bin: ComplexSample) -> (Sample, Sample) {
+        let amp = (bin.norm() * idx as Sample * std::f32::consts::PI).min(db_to_gain(MAX_LEVEL_DB));
+
+        if amp <= 0.0 {
+            return (0.0, 0.0);
+        }
+
+        let phase = (bin.arg() / std::f32::consts::TAU - 0.25).rem_euclid(1.0);
+        (amp, phase)
+    }
+
+    fn capture_channel(&mut self, channel: usize, input: &[ComplexSample]) {
+        let amplitudes = &mut self.amplitudes[channel];
+        let phases = &mut self.phases[channel];
+
+        amplitudes.fill(0.0);
+        phases.fill(0.0);
+
+        for (idx, (amplitude, phase, &bin)) in
+            izip!(amplitudes.iter_mut(), phases.iter_mut(), input)
+                .enumerate()
+                .skip(DC_OFFSET)
+        {
+            (*amplitude, *phase) = Self::from_frequency_bin(idx, bin);
+        }
     }
 
     fn rebuild_harmonics(&mut self) {
@@ -450,7 +498,21 @@ impl HarmonicEditor {
         outputs: &mut VoicesLayout<SpectralOutput>,
         rf: &mut RouterFactory<SpectralRouterType>,
     ) {
+        let trigger_stage = rf.params().trigger_stage;
         let (router, mut voice_output) = rf.for_voice(target, outputs);
+
+        if self.capture_input && trigger_stage && self.inputs.spectrum.is_some() {
+            let input = router.spectral(self.inputs.spectrum);
+
+            self.capture_channel(target.channel_idx, input);
+            self.rebuild_harmonics();
+
+            if target.channel_idx == RIGHT_CHANNEL {
+                self.audio_end
+                    .publish_harmonics(&self.amplitudes, &self.phases);
+            }
+        }
+
         if self.mono && target.channel_idx == RIGHT_CHANNEL {
             voice_output.output(0);
             return;
@@ -472,7 +534,10 @@ impl SynthModule for HarmonicEditor {
     }
 
     fn inputs(&self) -> &'static [InputMeta] {
-        static INPUTS: &[InputMeta] = &[InputMeta::direct_control(Input::Pitch)];
+        static INPUTS: &[InputMeta] = &[
+            InputMeta::spectral(Input::Spectrum),
+            InputMeta::direct_control(Input::Pitch),
+        ];
 
         INPUTS
     }
@@ -523,6 +588,9 @@ impl SynthModule for HarmonicEditor {
                 }
                 UiEvent::Mono(mono) => {
                     self.set_mono(mono);
+                }
+                UiEvent::CaptureInput(capture_input) => {
+                    self.set_capture_input(capture_input);
                 }
             }
         }

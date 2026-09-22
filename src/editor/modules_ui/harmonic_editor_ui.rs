@@ -166,13 +166,24 @@ impl HarmonicEditorUI {
 
             let mut mono = editor_bridge.mono();
 
-            ui.add_space(8.0);
+            ui.separator();
             if ui
                 .add(Checkbox::new(&mut mono, "Mono"))
                 .on_hover_text("Process only a single channel to improve performance.")
                 .changed()
             {
                 editor_bridge.set_mono(mono);
+            }
+
+            let mut capture_input = editor_bridge.capture_input();
+
+            ui.separator();
+            if ui
+                .add(Checkbox::new(&mut capture_input, "Capture input"))
+                .on_hover_text("On note-on, replace amplitudes and phases with the spectrum input.")
+                .changed()
+            {
+                editor_bridge.set_capture_input(capture_input);
             }
         });
 

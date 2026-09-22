@@ -55,6 +55,7 @@ pub enum UiEvent {
     DiscardDraft,
     Bandwidth(i32),
     Mono(bool),
+    CaptureInput(bool),
 }
 
 pub struct UiEnd {
@@ -118,6 +119,10 @@ impl UiEnd {
 
     pub fn set_mono(&mut self, mono: bool) -> bool {
         self.tx.push(UiEvent::Mono(mono)).is_ok()
+    }
+
+    pub fn set_capture_input(&mut self, capture_input: bool) -> bool {
+        self.tx.push(UiEvent::CaptureInput(capture_input)).is_ok()
     }
 }
 

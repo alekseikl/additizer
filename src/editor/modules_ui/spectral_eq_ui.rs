@@ -8,9 +8,7 @@ use crate::{
     synth_engine::{
         Input, ModuleId, ModuleType, Sample,
         filters::spectral_filter::{FilterType, MAX_RESONANCE, MIN_RESONANCE},
-        spectral_eq::{
-            EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MIN_CUTOFF_HZ, SpectralEqUiBridge,
-        },
+        spectral_eq::{EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MIN_CUTOFF_HZ, SpectralEqUiBridge},
         spectral_filter::{MAX_CUTOFF, MAX_DRIVE, MIN_CUTOFF, MIN_DRIVE},
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -44,13 +42,8 @@ impl SpectralEqUi {
                 ui.label("Cutoff");
                 if ui
                     .add(
-                        StereoInput::new(
-                            Input::Cutoff,
-                            module_id,
-                            &mut config.cutoff,
-                            bridge,
-                        )
-                        .slider(|slider| slider.units(Units::Octaves(false))),
+                        StereoInput::new(Input::Cutoff, module_id, &mut config.cutoff, bridge)
+                            .slider(|slider| slider.units(Units::Octaves(false))),
                     )
                     .changed()
                 {

@@ -7,6 +7,7 @@ pub struct HarmonicEditorUiBridge {
     ui_end: UiEnd,
     bandwidth: i32,
     mono: bool,
+    capture_input: bool,
 }
 
 impl HarmonicEditorUiBridge {
@@ -14,6 +15,7 @@ impl HarmonicEditorUiBridge {
         Some(Self {
             bandwidth: editor.bandwidth(),
             mono: editor.mono(),
+            capture_input: editor.capture_input(),
             ui_end: editor.ui_end.take()?,
         })
     }
@@ -45,6 +47,16 @@ impl HarmonicEditorUiBridge {
     pub fn set_mono(&mut self, mono: bool) {
         if self.ui_end.set_mono(mono) {
             self.mono = mono;
+        }
+    }
+
+    pub fn capture_input(&self) -> bool {
+        self.capture_input
+    }
+
+    pub fn set_capture_input(&mut self, capture_input: bool) {
+        if self.ui_end.set_capture_input(capture_input) {
+            self.capture_input = capture_input;
         }
     }
 

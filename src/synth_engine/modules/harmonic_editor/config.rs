@@ -18,6 +18,9 @@ pub struct HarmonicEditorConfig {
     pub bandwidth: i32,
     #[serde(default)]
     pub mono: bool,
+    /// On note-on, replace amplitudes and phases with the spectrum input.
+    #[serde(default)]
+    pub capture_input: bool,
 }
 
 impl Default for HarmonicEditorConfig {
@@ -37,6 +40,7 @@ impl Default for HarmonicEditorConfig {
             phases,
             bandwidth: 0,
             mono: false,
+            capture_input: false,
         }
     }
 }
