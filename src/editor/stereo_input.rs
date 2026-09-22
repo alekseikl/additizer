@@ -1,7 +1,7 @@
 use egui::{Response, Sense, Ui, Widget, emath, lerp, vec2};
 
 use crate::{
-    editor::grid::input_mixer_popup::InputMixerPopup,
+    editor::{grid::input_mixer_popup::InputMixerPopup, slider::Slider},
     synth_engine::{
         Input, InputId, ModuleId, ModuleType, Sample, StereoSample,
         ui_bridge::{ModulatedValue, UiBridge},
@@ -16,6 +16,7 @@ pub struct StereoInput<'a> {
     value: &'a mut StereoSample,
     bridge: &'a mut UiBridge,
     default: Option<Sample>,
+    map_slider: Option<for<'b> fn(Slider<'b>) -> Slider<'b>>,
 }
 
 impl<'a> StereoInput<'a> {
@@ -30,11 +31,18 @@ impl<'a> StereoInput<'a> {
             value,
             bridge,
             default: None,
+            map_slider: None,
         }
     }
 
     pub fn default(mut self, default: Sample) -> Self {
         self.default = Some(default);
+        self
+    }
+
+    /// Adjust the slider produced for this input (`units`, `skew`, `length`, …).
+    pub fn slider(mut self, map: for<'b> fn(Slider<'b>) -> Slider<'b>) -> Self {
+        self.map_slider = Some(map);
         self
     }
 }
@@ -108,6 +116,10 @@ impl Widget for StereoInput<'_> {
         ui.horizontal_centered(|ui| {
             let modulated = self.bridge.get_input_modulated_value(self.input);
             let mut slider = self.input.input_type.param_slider(self.value);
+
+            if let Some(map_slider) = self.map_slider {
+                slider = map_slider(slider);
+            }
 
             if let Some(default) = self.default {
                 slider = slider.default(default);

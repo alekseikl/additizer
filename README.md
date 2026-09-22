@@ -10,6 +10,7 @@ Every slider in the UI is stereo, and each channel can be adjusted by dragging w
   selected by range and an n-th-element formula.
 - `Spectral Filter`: Applies a biquad filter to the frequency bins (lowpass, highpass, bandpass, bandstop, and peaking).
   Has a 4th-order option (multiply by the filter frequency response twice) and a linear-phase mode (multiply by the magnitude response).
+- `Spectral EQ`: Chains up to 16 spectral filters.
 - `Spectral Mixer`: Mixes multiple spectral inputs with per-input level/gain and output volume control.
 - `Spectral Blend`: Crossfades between two spectrums with a blend control.
 - `Oscillator`: Takes a spectral input, performs an inverse FFT, and then behaves like a wavetable oscillator.

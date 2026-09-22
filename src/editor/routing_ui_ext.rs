@@ -267,6 +267,7 @@ impl ModuleType {
             Self::Mixer => "Mixer",
             Self::Oscillator => "Oscillator",
             Self::SpectralFilter => "Spectral Filter",
+            Self::SpectralEq => "Spectral EQ",
             Self::SpectralBlend => "Spectral Blend",
             Self::SpectralMixer => "Spectral Mixer",
             Self::HarmonicEditor => "Harmonics",
@@ -294,6 +295,10 @@ impl ModuleType {
                 Input::SpectrumMix(i) => format!("Spectral In #{}", i + 1),
                 Input::GainMix(i) => format!("Input #{} gain", i + 1),
                 Input::LevelMix(i) => format!("Input #{} level (dB)", i + 1),
+                _ => input.label(),
+            },
+            Self::SpectralEq => match input {
+                Input::Level => "Output".into(),
                 _ => input.label(),
             },
             _ => input.label(),

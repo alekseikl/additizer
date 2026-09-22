@@ -72,9 +72,15 @@ fn format_input_trims_default_units_and_trailing_zeros() {
     assert_eq!(Units::Normalized.format_input(0.5), "50");
     assert_eq!(Units::Db.format_input(-6.0), "-6");
     assert_eq!(Units::Octaves(false).format_input(12.5 / 12.0), "12.5");
-    assert_eq!(Units::Octaves(false).format_input(50.0 / 1_200.0), "50 cents");
+    assert_eq!(
+        Units::Octaves(false).format_input(50.0 / 1_200.0),
+        "50 cents"
+    );
     assert_eq!(Units::Octaves(true).format_input(0.75), "440");
-    assert_eq!(Units::Octaves(true).format_input(freq_to_c4_pitch(2_500.0)), "2.5 kHz");
+    assert_eq!(
+        Units::Octaves(true).format_input(freq_to_c4_pitch(2_500.0)),
+        "2.5 kHz"
+    );
     assert_eq!(Units::Frequency.format_input(440.0), "440");
     assert_eq!(Units::Frequency.format_input(2_500.0), "2.5 kHz");
     assert_eq!(Units::Time.format_input(0.004), "4 ms");

@@ -66,7 +66,7 @@ pub enum Input {
     PhasesBlend,
     GainsBlend,
     LowFrequency,
-    Cutoff,
+    Cutoff, // Octaves. Spectral EQ adds this offset to each band.
     Resonance,
     Drive, // dB
     Skew,

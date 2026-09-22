@@ -763,6 +763,36 @@ fn response_at_freqs_zips_to_shortest_slice() {
 }
 
 #[test]
+fn apply_response_in_place_matches_apply_response() {
+    let input = [
+        ComplexSample::new(1.0, 0.0),
+        ComplexSample::new(0.5, 0.25),
+        ComplexSample::new(-1.0, 0.75),
+        ComplexSample::new(0.0, 1.0),
+    ];
+
+    for ty in FilterType::ALL {
+        for linear_phase in [false, true] {
+            let mut p = default_params();
+            p.linear_phase = linear_phase;
+            p.resonance = 0.6;
+            p.drive = 3.0;
+
+            let f = filter(ty, p);
+            let mut copied = input;
+            f.apply_response(&input, &mut copied);
+
+            let mut in_place = input;
+            f.apply_response_in_place(&mut in_place);
+
+            for (a, b) in copied.iter().zip(in_place) {
+                assert_complex_eq(*a, b);
+            }
+        }
+    }
+}
+
+#[test]
 fn apply_response_zips_to_shortest_slice() {
     let input = ones(4);
     let mut output = zeros(2);

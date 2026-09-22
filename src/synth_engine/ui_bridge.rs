@@ -19,6 +19,7 @@ use crate::{
         pitch::PitchUiBridge,
         routing::{DataType, Input, InputMeta, InputSource, data_types_compatible},
         spectral_blend::SpectralBlendUiBridge,
+        spectral_eq::SpectralEqUiBridge,
         spectral_filter::SpectralFilterUiBridge,
         spectral_mixer::SpectralMixerUiBridge,
         ui_bridge::{routing_state::ModuleIo, ui_config::UiModuleConfig},
@@ -47,6 +48,7 @@ pub enum ModuleBridge {
     Mixer(Box<MixerUiBridge>),
     WaveShaper(Box<WaveShaperUiBridge>),
     SpectralFilter(Box<SpectralFilterUiBridge>),
+    SpectralEq(Box<SpectralEqUiBridge>),
     SpectralBlend(Box<SpectralBlendUiBridge>),
     SpectralMixer(Box<SpectralMixerUiBridge>),
     HarmonicEditor(Box<HarmonicEditorUiBridge>),
@@ -156,6 +158,9 @@ impl UiBridge {
             }
             ModuleHandle::SpectralFilter(m) => {
                 ModuleBridge::SpectralFilter(Box::new(SpectralFilterUiBridge::try_new(m)?))
+            }
+            ModuleHandle::SpectralEq(m) => {
+                ModuleBridge::SpectralEq(Box::new(SpectralEqUiBridge::try_new(m)?))
             }
             ModuleHandle::SpectralBlend(m) => {
                 ModuleBridge::SpectralBlend(Box::new(SpectralBlendUiBridge::try_new(m)?))
@@ -538,6 +543,7 @@ impl UiBridge {
             ModuleType::Mixer => synth.add_mixer(),
             ModuleType::Oscillator => synth.add_oscillator(),
             ModuleType::SpectralFilter => synth.add_spectral_filter(),
+            ModuleType::SpectralEq => synth.add_spectral_eq(),
             ModuleType::SpectralBlend => synth.add_spectral_blend(),
             ModuleType::SpectralMixer => synth.add_spectral_mixer(),
             ModuleType::HarmonicEditor => synth.add_harmonic_editor(),

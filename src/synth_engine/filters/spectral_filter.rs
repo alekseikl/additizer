@@ -669,6 +669,29 @@ impl SpectralFilter {
         }
     }
 
+    pub fn apply_response_in_place(&self, samples: &mut [ComplexSample]) {
+        match self.filter_type {
+            FilterType::LowPass12 => self.apply_in_place_impl::<LowPass12>(samples),
+            FilterType::LowPass18 => self.apply_in_place_impl::<LowPass18>(samples),
+            FilterType::LowPass24 => self.apply_in_place_impl::<LowPass24>(samples),
+            FilterType::LowShelf12 => self.apply_in_place_impl::<LowShelf12>(samples),
+            FilterType::LowShelf18 => self.apply_in_place_impl::<LowShelf18>(samples),
+            FilterType::LowShelf24 => self.apply_in_place_impl::<LowShelf24>(samples),
+            FilterType::HighPass12 => self.apply_in_place_impl::<HighPass12>(samples),
+            FilterType::HighPass18 => self.apply_in_place_impl::<HighPass18>(samples),
+            FilterType::HighPass24 => self.apply_in_place_impl::<HighPass24>(samples),
+            FilterType::HighShelf12 => self.apply_in_place_impl::<HighShelf12>(samples),
+            FilterType::HighShelf18 => self.apply_in_place_impl::<HighShelf18>(samples),
+            FilterType::HighShelf24 => self.apply_in_place_impl::<HighShelf24>(samples),
+            FilterType::BandPass6 => self.apply_in_place_impl::<BandPass6>(samples),
+            FilterType::BandPass12 => self.apply_in_place_impl::<BandPass12>(samples),
+            FilterType::BandPass18 => self.apply_in_place_impl::<BandPass18>(samples),
+            FilterType::BandPass24 => self.apply_in_place_impl::<BandPass24>(samples),
+            FilterType::Peaking => self.apply_in_place_impl::<Peaking>(samples),
+            FilterType::Notch => self.apply_in_place_impl::<Notch>(samples),
+        }
+    }
+
     pub fn response_at_freqs(&self, freqs: &[Sample], out: &mut [ComplexSample]) {
         match self.filter_type {
             FilterType::LowPass12 => self.response_freqs_impl::<LowPass12>(freqs, out),
@@ -718,6 +741,22 @@ impl SpectralFilter {
             //Skip DC
             for (i, (out, &inp)) in output.iter_mut().zip(input).enumerate().skip(1) {
                 *out = inp * filter_impl.at(i as Sample);
+            }
+        }
+    }
+
+    fn apply_in_place_impl<T: FilterImpl>(&self, samples: &mut [ComplexSample]) {
+        let filter_impl = T::new(self.gain, self.cutoff_freq, self.q);
+
+        if self.linear_phase {
+            //Skip DC
+            for (i, sample) in samples.iter_mut().enumerate().skip(1) {
+                *sample *= filter_impl.at(i as Sample).norm();
+            }
+        } else {
+            //Skip DC
+            for (i, sample) in samples.iter_mut().enumerate().skip(1) {
+                *sample *= filter_impl.at(i as Sample);
             }
         }
     }
