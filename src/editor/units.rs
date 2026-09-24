@@ -17,7 +17,13 @@ enum DisplayUnit {
 impl DisplayUnit {
     fn format(&self) -> String {
         match self {
-            Self::Db(value) => format!("{:+.1} dB", value),
+            Self::Db(value) => {
+                if *value == 0.0 {
+                    "0.0 dB".to_string()
+                } else {
+                    format!("{:+.1} dB", value)
+                }
+            }
             Self::Percents(value) => format!("{:.0}%", value),
             Self::Semitones(value) => {
                 if *value == 0.0 {

@@ -33,6 +33,16 @@ fn parse_time_stereo_mixed_units() {
 }
 
 #[test]
+fn format_db_zero_has_no_sign() {
+    assert_eq!(Units::Db.format(0.0), "0.0 dB");
+    assert_eq!(Units::Db.format(-0.0), "0.0 dB");
+    assert_eq!(Units::Db.format(0.04), "+0.0 dB");
+    assert_eq!(Units::Db.format(-0.04), "-0.0 dB");
+    assert_eq!(Units::Db.format(6.0), "+6.0 dB");
+    assert_eq!(Units::Db.format(-6.0), "-6.0 dB");
+}
+
+#[test]
 fn parse_db_signed() {
     let value = Units::Db.parse_one("+12.5 dB").unwrap();
     assert!(approx(value, 12.5));
