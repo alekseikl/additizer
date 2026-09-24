@@ -8,7 +8,7 @@ use crate::{
         mixer::MixerConfig, oscillator::OscillatorConfig, pitch::PitchConfig, routing::ModuleId,
         spectral_blend::SpectralBlendConfig, spectral_eq::SpectralEqConfig,
         spectral_filter::SpectralFilterConfig, spectral_mixer::SpectralMixerConfig,
-        wave_shaper::WaveShaperConfig,
+        spectral_noise::SpectralNoiseConfig, wave_shaper::WaveShaperConfig,
     },
     utils::from_ms,
 };
@@ -31,7 +31,7 @@ impl Default for EngineParams {
             block_size: MAX_BLOCK_SIZE,
             oversampling: false,
             voice_kill_time: from_ms(30.0),
-            output_gain: 0.5.into(),
+            output_gain: 0.25.into(),
         }
     }
 }
@@ -138,6 +138,7 @@ pub enum ModuleConfig {
     SpectralBlend(Box<SpectralBlendConfig>),
     SpectralMixer(Box<SpectralMixerConfig>),
     HarmonicEditor(Box<HarmonicEditorConfig>),
+    SpectralNoise(Box<SpectralNoiseConfig>),
     Expressions(Box<ExpressionsConfig>),
     ExternalParam(Box<ExternalParamConfig>),
 }

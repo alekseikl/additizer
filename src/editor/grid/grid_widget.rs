@@ -16,7 +16,8 @@ use crate::{
             output_widget::OutputWidget, pitch_widget::PitchWidget,
             spectral_blend_widget::SpectralBlendWidget, spectral_eq_widget::SpectralEqWidget,
             spectral_filter_widget::SpectralFilterWidget,
-            spectral_mixer_widget::SpectralMixerWidget, wave_shaper_widget::WaveShaperWidget,
+            spectral_mixer_widget::SpectralMixerWidget, spectral_noise_widget::SpectralNoiseWidget,
+            wave_shaper_widget::WaveShaperWidget,
         },
         input_mixer_popup::InputMixerPopup,
         input_tooltip,
@@ -46,6 +47,7 @@ mod spectral_blend_widget;
 mod spectral_eq_widget;
 mod spectral_filter_widget;
 mod spectral_mixer_widget;
+mod spectral_noise_widget;
 mod wave_shaper_widget;
 
 const C_MOD_BG: Color32 = Color32::from_rgb(28, 30, 42);
@@ -118,6 +120,7 @@ impl GridWidget {
                 ModuleType::Lfo => Box::new(LfoWidget::default()),
                 ModuleType::Pitch => Box::new(PitchWidget::default()),
                 ModuleType::HarmonicEditor => Box::new(HarmonicEditorWidget::default()),
+                ModuleType::SpectralNoise => Box::new(SpectralNoiseWidget::default()),
                 ModuleType::SpectralBlend => Box::new(SpectralBlendWidget::default()),
                 ModuleType::SpectralMixer => Box::new(SpectralMixerWidget::default()),
                 ModuleType::Output => Box::new(OutputWidget::default()),

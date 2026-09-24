@@ -22,6 +22,7 @@ use crate::{
         spectral_eq::SpectralEqUiBridge,
         spectral_filter::SpectralFilterUiBridge,
         spectral_mixer::SpectralMixerUiBridge,
+        spectral_noise::SpectralNoiseUiBridge,
         ui_bridge::{routing_state::ModuleIo, ui_config::UiModuleConfig},
         wave_shaper::WaveShaperUiBridge,
     },
@@ -52,6 +53,7 @@ pub enum ModuleBridge {
     SpectralBlend(Box<SpectralBlendUiBridge>),
     SpectralMixer(Box<SpectralMixerUiBridge>),
     HarmonicEditor(Box<HarmonicEditorUiBridge>),
+    SpectralNoise(Box<SpectralNoiseUiBridge>),
     Expressions(Box<ExpressionsUiBridge>),
     ExternalParam(Box<ExternalParamUiBridge>),
 }
@@ -170,6 +172,9 @@ impl UiBridge {
             }
             ModuleHandle::HarmonicEditor(m) => {
                 ModuleBridge::HarmonicEditor(Box::new(HarmonicEditorUiBridge::try_new(m)?))
+            }
+            ModuleHandle::SpectralNoise(m) => {
+                ModuleBridge::SpectralNoise(Box::new(SpectralNoiseUiBridge::try_new(m)?))
             }
             ModuleHandle::Expressions(m) => {
                 ModuleBridge::Expressions(Box::new(ExpressionsUiBridge::try_new(m)?))
@@ -547,6 +552,7 @@ impl UiBridge {
             ModuleType::SpectralBlend => synth.add_spectral_blend(),
             ModuleType::SpectralMixer => synth.add_spectral_mixer(),
             ModuleType::HarmonicEditor => synth.add_harmonic_editor(),
+            ModuleType::SpectralNoise => synth.add_spectral_noise(),
             ModuleType::ExternalParam => synth.add_external_param(),
             ModuleType::Lfo => synth.add_lfo(),
             ModuleType::Pitch => synth.add_pitch(),

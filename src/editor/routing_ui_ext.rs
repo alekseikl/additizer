@@ -60,6 +60,7 @@ impl Input {
             Self::Decay => "Decay".to_string(),
             Self::Sustain => "Sustain".to_string(),
             Self::Release => "Release".to_string(),
+            Self::Amount => "Amount".to_string(),
         }
     }
 
@@ -100,6 +101,7 @@ impl Input {
             Self::Decay => 0.48,
             Self::Sustain => 0.43,
             Self::Release => 0.38,
+            Self::Amount => 0.50,
         }
     }
 
@@ -157,6 +159,7 @@ impl Input {
                 .skew(3.0)
                 .units(Units::Frequency),
             Self::Skew => bipolar(amount),
+            Self::Amount => bipolar(amount),
             Self::Sustain => Slider::stereo(amount, 0.0..=1.0, None).units(Units::Normalized),
             Self::Delay | Self::Attack | Self::Hold | Self::Decay | Self::Release => {
                 Slider::stereo(amount, 0.0..=8.0, Some(-8.0))
@@ -226,6 +229,7 @@ impl Input {
                 .skew(3.0)
                 .units(Units::Frequency),
             Self::Skew => Slider::stereo(value, 0.0..=1.0, None).default(0.5),
+            Self::Amount => Slider::stereo(value, 0.0..=1.0, None).default(1.0),
             Self::Sustain => Slider::stereo(value, 0.0..=1.0, None)
                 .default(0.5)
                 .units(Units::Normalized),
@@ -271,6 +275,7 @@ impl ModuleType {
             Self::SpectralBlend => "Spectral Blend",
             Self::SpectralMixer => "Spectral Mixer",
             Self::HarmonicEditor => "Harmonics",
+            Self::SpectralNoise => "Spectral Noise",
             Self::ExternalParam => "Ext Param",
             Self::Lfo => "LFO",
             Self::Pitch => "Pitch",

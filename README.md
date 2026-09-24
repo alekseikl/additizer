@@ -8,6 +8,7 @@ Every slider in the UI is stereo, and each channel can be adjusted by dragging w
 
 - `Harmonic Editor`: Allows you to set each of the 1024 harmonics manually, apply a biquad filter statically, or set the gain for a group of harmonics
   selected by range and an n-th-element formula.
+- `Spectral Noise`: Generates white, pink, or brown noise harmonics.
 - `Spectral Filter`: Applies a biquad filter to the frequency bins (lowpass, highpass, bandpass, bandstop, and peaking).
   Has a 4th-order option (multiply by the filter frequency response twice) and a linear-phase mode (multiply by the magnitude response).
 - `Spectral EQ`: Chains up to 16 spectral filters.

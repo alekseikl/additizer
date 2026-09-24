@@ -41,6 +41,7 @@ pub use modules::{
     spectral_eq::{self},
     spectral_filter::{self},
     spectral_mixer::{self},
+    spectral_noise::{self, SpectralNoise},
     wave_shaper::{self},
 };
 pub use routing::{
@@ -183,6 +184,9 @@ impl SynthEngine {
                 ModuleConfig::HarmonicEditor(cfg) => {
                     ModuleHandle::HarmonicEditor(Box::new(HarmonicEditor::from_config(cfg)))
                 }
+                ModuleConfig::SpectralNoise(cfg) => {
+                    ModuleHandle::SpectralNoise(Box::new(SpectralNoise::from_config(cfg)))
+                }
                 ModuleConfig::Expressions(cfg) => {
                     ModuleHandle::Expressions(Box::new(Expressions::from_config(cfg)))
                 }
@@ -254,6 +258,9 @@ impl SynthEngine {
                     }
                     ModuleHandle::HarmonicEditor(m) => {
                         Some(ModuleConfig::HarmonicEditor(Box::new(m.get_config())))
+                    }
+                    ModuleHandle::SpectralNoise(m) => {
+                        Some(ModuleConfig::SpectralNoise(Box::new(m.get_config())))
                     }
                     ModuleHandle::Expressions(m) => {
                         Some(ModuleConfig::Expressions(Box::new(m.get_config())))
@@ -387,6 +394,7 @@ impl SynthEngine {
     add_module_method!(add_spectral_blend, SpectralBlend);
     add_module_method!(add_spectral_mixer, SpectralMixer);
     add_module_method!(add_harmonic_editor, HarmonicEditor);
+    add_module_method!(add_spectral_noise, SpectralNoise);
     add_module_method!(add_expressions, Expressions);
     add_module_method!(add_external_param, ExternalParam);
 

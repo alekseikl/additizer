@@ -12,6 +12,7 @@ pub mod spectral_blend;
 pub mod spectral_eq;
 pub mod spectral_filter;
 pub mod spectral_mixer;
+pub mod spectral_noise;
 pub mod wave_shaper;
 
 pub use amplifier::Amplifier;

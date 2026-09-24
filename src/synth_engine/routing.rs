@@ -76,6 +76,7 @@ pub enum Input {
     Decay,
     Sustain,
     Release,
+    Amount, // [0.0, 1.0]
 }
 
 #[derive(Clone, Copy)]
