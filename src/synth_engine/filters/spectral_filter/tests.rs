@@ -1,5 +1,10 @@
 use super::*;
-use crate::utils::db_to_gain_fast;
+use crate::{
+    synth_engine::spectral_filter::{
+        MAX_RESONANCE, MAX_RESONANCE_Q, MIN_RESONANCE, MIN_RESONANCE_Q, q_from_resonance,
+    },
+    utils::db_to_gain_fast,
+};
 
 const EPS: Sample = 1e-4;
 const CUTOFF: Sample = 1.0;
@@ -23,11 +28,11 @@ fn assert_complex_eq(a: ComplexSample, b: ComplexSample) {
     assert_approx(a.im, b.im);
 }
 
-fn params(cutoff: Sample, resonance: Sample, q_limit_to: Sample) -> FilterParams {
+fn params(cutoff: Sample, q: Sample, q_limit_to: Sample) -> FilterParams {
     FilterParams {
         drive: 0.0,
         cutoff,
-        resonance,
+        q,
         q_limit_to,
         q_limit_slope: 0.0,
         linear_phase: false,
@@ -35,7 +40,7 @@ fn params(cutoff: Sample, resonance: Sample, q_limit_to: Sample) -> FilterParams
 }
 
 fn default_params() -> FilterParams {
-    params(0.0, 0.0, 8.0)
+    params(0.0, BUTTERWORTH_Q, 8.0)
 }
 
 fn filter(filter_type: FilterType, p: FilterParams) -> SpectralFilter {
@@ -181,65 +186,63 @@ fn q_of(p: FilterParams) -> Sample {
 
 #[test]
 fn zero_resonance_is_butterworth_q() {
-    assert_approx(q_of(params(0.0, 0.0, 8.0)), BUTTERWORTH_Q);
+    assert_approx(q_from_resonance(0.0), BUTTERWORTH_Q);
 }
 
 #[test]
 fn max_resonance_maps_to_max_q() {
-    // cutoff above q_limit_to so limiting does not apply
-    assert_approx(q_of(params(8.0, MAX_RESONANCE, 2.0)), MAX_Q);
+    assert_approx(q_from_resonance(MAX_RESONANCE), MAX_RESONANCE_Q);
 }
 
 #[test]
 fn min_resonance_maps_to_min_q() {
-    assert_approx(q_of(params(0.0, MIN_RESONANCE, 8.0)), MIN_Q);
+    assert_approx(q_from_resonance(MIN_RESONANCE), MIN_RESONANCE_Q);
 }
 
 #[test]
 fn positive_resonance_uses_cubic_curve() {
     let resonance: Sample = 0.5;
-    let expected = BUTTERWORTH_Q + (MAX_Q - BUTTERWORTH_Q) * resonance.powf(3.0);
-    // cutoff above q_limit_to so limiting does not apply
-    assert_approx(q_of(params(8.0, resonance, 2.0)), expected);
+    let expected = BUTTERWORTH_Q + (MAX_RESONANCE_Q - BUTTERWORTH_Q) * resonance.powf(3.0);
+    assert_approx(q_from_resonance(resonance), expected);
 }
 
 #[test]
 fn negative_resonance_interpolates_to_min_q() {
     let resonance = -0.5;
-    let expected = MIN_Q + (BUTTERWORTH_Q - MIN_Q) * (1.0 + resonance);
-    assert_approx(q_of(params(0.0, resonance, 8.0)), expected);
+    let expected = MIN_RESONANCE_Q + (BUTTERWORTH_Q - MIN_RESONANCE_Q) * (1.0 + resonance);
+    assert_approx(q_from_resonance(resonance), expected);
 }
 
 #[test]
 fn resonance_is_clamped() {
-    assert_approx(q_of(params(8.0, MAX_RESONANCE + 1.0, 2.0)), MAX_Q);
-    assert_approx(q_of(params(0.0, MIN_RESONANCE - 1.0, 8.0)), MIN_Q);
+    assert_approx(q_from_resonance(MAX_RESONANCE + 1.0), MAX_RESONANCE_Q);
+    assert_approx(q_from_resonance(MIN_RESONANCE - 1.0), MIN_RESONANCE_Q);
 }
 
 #[test]
-fn q_limit_skipped_when_resonance_not_above_butterworth() {
-    let limited = q_of(params(0.0, 0.0, 2.0));
+fn q_limit_skipped_when_q_not_above_butterworth() {
+    let limited = q_of(params(0.0, BUTTERWORTH_Q, 2.0));
     assert_approx(limited, BUTTERWORTH_Q);
 }
 
 #[test]
 fn q_limit_skipped_when_cutoff_above_limit() {
-    let unlimited = q_of(params(3.0, 1.0, 2.0));
-    assert_approx(unlimited, MAX_Q);
+    let unlimited = q_of(params(3.0, MAX_RESONANCE_Q, 2.0));
+    assert_approx(unlimited, MAX_RESONANCE_Q);
 }
 
 fn limited_q(cutoff: Sample, q_limit_to: Sample, curve: Sample) -> Sample {
     let rate = 1.0 + curve * MAX_Q_LIMIT_POWER;
-    BUTTERWORTH_Q + (MAX_Q - BUTTERWORTH_Q) * ((cutoff - q_limit_to) * rate).exp2()
+    BUTTERWORTH_Q + (MAX_RESONANCE_Q - BUTTERWORTH_Q) * ((cutoff - q_limit_to) * rate).exp2()
 }
 
 #[test]
 fn q_limit_reduces_q_below_limit_frequency() {
-    let unlimited = q_of(params(8.0, 1.0, 2.0));
-    let one_below = q_of(params(1.0, 1.0, 2.0));
-    let two_below = q_of(params(0.0, 1.0, 2.0));
+    let unlimited = q_of(params(8.0, MAX_RESONANCE_Q, 2.0));
+    let one_below = q_of(params(1.0, MAX_RESONANCE_Q, 2.0));
+    let two_below = q_of(params(0.0, MAX_RESONANCE_Q, 2.0));
 
-    assert_approx(unlimited, MAX_Q);
+    assert_approx(unlimited, MAX_RESONANCE_Q);
     assert_approx(one_below, limited_q(1.0, 2.0, 0.0));
     assert_approx(two_below, limited_q(0.0, 2.0, 0.0));
     assert!(two_below < one_below);
@@ -248,7 +251,7 @@ fn q_limit_reduces_q_below_limit_frequency() {
 
 #[test]
 fn q_limit_approaches_butterworth_far_below_limit() {
-    let mut p = params(-4.0, 1.0, 8.0);
+    let mut p = params(-4.0, MAX_RESONANCE_Q, 8.0);
     p.q_limit_slope = 1.0;
     let far_below = q_of(p);
     assert!((far_below - BUTTERWORTH_Q).abs() < 1e-3);
@@ -256,12 +259,12 @@ fn q_limit_approaches_butterworth_far_below_limit() {
 
 #[test]
 fn q_limit_at_the_limit_frequency_is_unlimited() {
-    assert_approx(q_of(params(2.0, 1.0, 2.0)), MAX_Q);
+    assert_approx(q_of(params(2.0, MAX_RESONANCE_Q, 2.0)), MAX_RESONANCE_Q);
 }
 
 #[test]
 fn q_limit_slope_steepens_the_drop() {
-    let mut shallow = params(1.0, 1.0, 2.0);
+    let mut shallow = params(1.0, MAX_RESONANCE_Q, 2.0);
     shallow.q_limit_slope = 0.0;
     let mut steep = shallow;
     steep.q_limit_slope = 1.0;
@@ -272,11 +275,35 @@ fn q_limit_slope_steepens_the_drop() {
 }
 
 #[test]
-fn q_limit_applies_when_limit_is_negative() {
-    let unlimited = q_of(params(0.0, 1.0, -1.0));
-    let limited = q_of(params(-2.0, 1.0, -1.0));
+fn raw_q_is_used_when_cutoff_is_above_the_limit() {
+    assert_approx(q_of(params(8.0, 4.0, 2.0)), 4.0);
+}
 
-    assert_approx(unlimited, MAX_Q);
+#[test]
+fn raw_q_is_not_clamped() {
+    assert_approx(
+        q_of(params(8.0, MAX_RESONANCE_Q + 10.0, 2.0)),
+        MAX_RESONANCE_Q + 10.0,
+    );
+    assert_approx(q_of(params(8.0, 0.001, 2.0)), 0.001);
+}
+
+#[test]
+fn raw_q_is_limited_below_the_limit_frequency() {
+    let q = 4.0;
+    let p = params(0.0, q, 2.0);
+
+    let distance: Sample = (0.0 - 2.0) * 1.0;
+    let expected = BUTTERWORTH_Q + (q - BUTTERWORTH_Q) * distance.exp2();
+    assert_approx(q_of(p), expected);
+}
+
+#[test]
+fn q_limit_applies_when_limit_is_negative() {
+    let unlimited = q_of(params(0.0, MAX_RESONANCE_Q, -1.0));
+    let limited = q_of(params(-2.0, MAX_RESONANCE_Q, -1.0));
+
+    assert_approx(unlimited, MAX_RESONANCE_Q);
     assert_approx(limited, limited_q(-2.0, -1.0, 0.0));
 }
 
@@ -431,9 +458,9 @@ fn higher_q_shelf_has_sharper_transition() {
     let below = 0.25 * CUTOFF;
     let above = 4.0 * CUTOFF;
 
-    let res_below = mag_params::<LowShelf12>(gain, CUTOFF, MAX_Q, below);
+    let res_below = mag_params::<LowShelf12>(gain, CUTOFF, MAX_RESONANCE_Q, below);
     let bw_below = mag_params::<LowShelf12>(gain, CUTOFF, BUTTERWORTH_Q, below);
-    let res_above = mag_params::<LowShelf12>(gain, CUTOFF, MAX_Q, above);
+    let res_above = mag_params::<LowShelf12>(gain, CUTOFF, MAX_RESONANCE_Q, above);
     let bw_above = mag_params::<LowShelf12>(gain, CUTOFF, BUTTERWORTH_Q, above);
 
     assert!(res_below > bw_below);
@@ -633,13 +660,13 @@ fn steeper_bandpass_is_narrower() {
 
 #[test]
 fn higher_q_peaks_lowpass_near_cutoff() {
-    let dull = mag_params::<LowPass12>(GAIN, CUTOFF, MIN_Q, CUTOFF);
+    let dull = mag_params::<LowPass12>(GAIN, CUTOFF, MIN_RESONANCE_Q, CUTOFF);
     let butterworth = mag_params::<LowPass12>(GAIN, CUTOFF, BUTTERWORTH_Q, CUTOFF);
-    let resonant = mag_params::<LowPass12>(GAIN, CUTOFF, MAX_Q, CUTOFF);
+    let resonant = mag_params::<LowPass12>(GAIN, CUTOFF, MAX_RESONANCE_Q, CUTOFF);
 
     assert!(dull < butterworth);
     assert!(butterworth < resonant);
-    assert_approx(resonant, GAIN * MAX_Q);
+    assert_approx(resonant, GAIN * MAX_RESONANCE_Q);
 }
 
 // ---- SpectralFilter::response_at_freqs / apply_response ----
@@ -694,7 +721,7 @@ fn response_at_freqs_matches_filter_impl_for_every_type() {
 fn linear_phase_response_is_real_magnitude() {
     let mut p = default_params();
     p.linear_phase = true;
-    p.resonance = 0.8;
+    p.q = q_from_resonance(0.8);
 
     let freq = 2.5;
     for ty in FilterType::ALL {
@@ -732,7 +759,7 @@ fn apply_response_matches_response_at_freqs() {
         for linear_phase in [false, true] {
             let mut p = default_params();
             p.linear_phase = linear_phase;
-            p.resonance = 0.6;
+            p.q = q_from_resonance(0.6);
             p.drive = 3.0;
 
             let f = filter(ty, p);
@@ -775,7 +802,7 @@ fn apply_response_in_place_matches_apply_response() {
         for linear_phase in [false, true] {
             let mut p = default_params();
             p.linear_phase = linear_phase;
-            p.resonance = 0.6;
+            p.q = q_from_resonance(0.6);
             p.drive = 3.0;
 
             let f = filter(ty, p);

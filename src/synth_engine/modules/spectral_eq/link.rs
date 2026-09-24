@@ -13,6 +13,7 @@ pub enum UiEvent {
     SetFilter { index: u8, filter: EqFilter },
     AddFilter(EqFilter),
     RemoveFilter(u8),
+    MoveFilter { from: u8, to: u8 },
 }
 
 pub struct UiEnd {
@@ -55,6 +56,10 @@ impl UiEnd {
 
     pub fn remove_filter(&mut self, index: u8) -> bool {
         self.tx.push(UiEvent::RemoveFilter(index)).is_ok()
+    }
+
+    pub fn move_filter(&mut self, from: u8, to: u8) -> bool {
+        self.tx.push(UiEvent::MoveFilter { from, to }).is_ok()
     }
 }
 

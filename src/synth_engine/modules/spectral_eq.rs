@@ -9,7 +9,9 @@ mod ui_bridge;
 #[cfg(test)]
 mod tests;
 
-pub use config::{EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MIN_CUTOFF_HZ, SpectralEqConfig};
+pub use config::{
+    EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MAX_Q, MIN_CUTOFF_HZ, MIN_Q, SpectralEqConfig,
+};
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::SpectralEqUiBridge;
 
@@ -17,9 +19,7 @@ use crate::{
     synth_engine::{
         StereoSample,
         buffer::VoicesLayout,
-        filters::spectral_filter::{
-            FilterParams, MAX_RESONANCE, MIN_RESONANCE, SpectralFilter as SpectralFilterEngine,
-        },
+        filters::spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
         routing::{
             DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
             RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceTarget,
@@ -208,6 +208,17 @@ impl SpectralEq {
         }
     }
 
+    fn move_filter(&mut self, from: usize, to: usize) {
+        let len = self.params.filters.len();
+
+        if from >= len || to >= len || from == to {
+            return;
+        }
+
+        let filter = self.params.filters.remove(from);
+        self.params.filters.insert(to, filter);
+    }
+
     fn process_voice(
         &mut self,
         target: &VoiceTarget,
@@ -250,7 +261,7 @@ impl SpectralEq {
                 FilterParams {
                     drive: band.drive.clamp(MIN_DRIVE, MAX_DRIVE),
                     cutoff,
-                    resonance: band.resonance.clamp(MIN_RESONANCE, MAX_RESONANCE),
+                    q: band.q,
                     q_limit_to,
                     q_limit_slope,
                     linear_phase,
@@ -321,6 +332,7 @@ impl SynthModule for SpectralEq {
                 UiEvent::SetFilter { index, filter } => self.set_filter(index as usize, filter),
                 UiEvent::AddFilter(filter) => self.add_filter(filter),
                 UiEvent::RemoveFilter(index) => self.remove_filter(index as usize),
+                UiEvent::MoveFilter { from, to } => self.move_filter(from as usize, to as usize),
             }
         }
     }

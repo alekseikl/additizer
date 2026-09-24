@@ -16,8 +16,7 @@ use crate::{
         StereoSample,
         buffer::VoicesLayout,
         filters::spectral_filter::{
-            FilterParams, FilterType, MAX_RESONANCE, MIN_RESONANCE,
-            SpectralFilter as SpectralFilterEngine,
+            BUTTERWORTH_Q, FilterParams, FilterType, SpectralFilter as SpectralFilterEngine,
         },
         routing::{
             DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
@@ -33,6 +32,20 @@ pub const MIN_CUTOFF: Sample = -4.0;
 pub const MAX_CUTOFF: Sample = 7.0;
 pub const MIN_DRIVE: Sample = -60.0;
 pub const MAX_DRIVE: Sample = 24.0;
+pub const MIN_RESONANCE: Sample = -1.0;
+pub const MAX_RESONANCE: Sample = 1.0;
+pub const MIN_RESONANCE_Q: Sample = 0.01;
+pub const MAX_RESONANCE_Q: Sample = 16.0;
+
+pub fn q_from_resonance(resonance: Sample) -> Sample {
+    let resonance = resonance.clamp(MIN_RESONANCE, MAX_RESONANCE);
+
+    if resonance > 0.0 {
+        BUTTERWORTH_Q + (MAX_RESONANCE_Q - BUTTERWORTH_Q) * resonance.powf(3.0)
+    } else {
+        MIN_RESONANCE_Q + (BUTTERWORTH_Q - MIN_RESONANCE_Q) * (1.0 + resonance)
+    }
+}
 
 struct Params {
     filter_type: FilterType,
@@ -230,7 +243,7 @@ impl SpectralFilter {
             FilterParams {
                 drive,
                 cutoff: note_based_cutoff,
-                resonance,
+                q: q_from_resonance(resonance),
                 q_limit_to: channel.q_limit_to + keytrack_offset,
                 q_limit_slope: channel.q_limit_slope,
                 linear_phase: self.params.linear_phase,

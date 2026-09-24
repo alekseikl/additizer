@@ -97,7 +97,7 @@ impl SpectralEqWidget {
                 FilterParams {
                     drive: band.drive,
                     cutoff,
-                    resonance: band.resonance,
+                    q: band.q,
                     q_limit_to,
                     q_limit_slope,
                     linear_phase,

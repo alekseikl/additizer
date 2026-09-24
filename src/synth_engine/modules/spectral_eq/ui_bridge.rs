@@ -92,6 +92,21 @@ impl SpectralEqUiBridge {
             }
         }
     }
+
+    pub fn move_filter(&mut self, from: u8, to: u8) {
+        let from_index = from as usize;
+        let to_index = to as usize;
+        let len = self.config.filters.len();
+
+        if from_index >= len || to_index >= len || from_index == to_index {
+            return;
+        }
+
+        if self.ui_end.move_filter(from, to) {
+            let filter = self.config.filters.remove(from_index);
+            self.config.filters.insert(to_index, filter);
+        }
+    }
 }
 
 impl ModuleUiBridge for SpectralEqUiBridge {

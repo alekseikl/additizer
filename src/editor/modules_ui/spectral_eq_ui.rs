@@ -1,4 +1,7 @@
-use egui::{Button, Checkbox, ComboBox, DragValue, Grid, RichText, Ui};
+use egui::{
+    Button, Checkbox, Color32, ComboBox, DragAndDrop, DragValue, Grid, Id, Label, Pos2, Rangef,
+    Rect, RichText, Stroke, StrokeKind, Ui,
+};
 
 use crate::{
     editor::{
@@ -7,16 +10,27 @@ use crate::{
     },
     synth_engine::{
         Input, ModuleId, ModuleType, Sample,
-        filters::spectral_filter::{FilterType, MAX_RESONANCE, MIN_RESONANCE},
-        spectral_eq::{EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MIN_CUTOFF_HZ, SpectralEqUiBridge},
+        filters::spectral_filter::FilterType,
+        spectral_eq::{
+            EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MAX_Q, MIN_CUTOFF_HZ, MIN_Q,
+            SpectralEqUiBridge,
+        },
         spectral_filter::{MAX_CUTOFF, MAX_DRIVE, MIN_CUTOFF, MIN_DRIVE},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::from_st,
 };
 
+const DRAG_HANDLE: &str = "☰";
 const REMOVE_ICON: &str = "❌";
-const REMOVE_TINT: egui::Color32 = egui::Color32::from_rgb(0xe0, 0x6a, 0x6a);
+const REMOVE_TINT: Color32 = Color32::from_rgb(0xe0, 0x6a, 0x6a);
+const BAND_DRAG_TINT: Color32 = Color32::from_rgb(0xff, 0xb0, 0x00);
+
+#[derive(Clone, Copy)]
+struct BandDrag {
+    module_id: ModuleId,
+    index: usize,
+}
 
 pub struct SpectralEqUi {
     module_id: ModuleId,
@@ -106,47 +120,79 @@ impl SpectralEqUi {
         ui.add_space(16.0);
 
         let mut removed = None;
+        let mut rows = Vec::with_capacity(config.filters.len());
 
         Grid::new("spectral_eq_filters")
-            .num_columns(5)
+            .num_columns(6)
+            .min_col_width(0.0)
             .spacing([8.0, 6.0])
             .show(ui, |ui| {
+                ui.label("");
                 ui.label("Type");
                 ui.label("Cutoff");
-                ui.label("Resonance");
+                ui.label("Q");
                 ui.label("Drive");
                 ui.label("");
                 ui.end_row();
 
                 for (index, band) in config.filters.iter_mut().enumerate() {
                     let mut changed = false;
+                    let drag_id = Id::new(("eq-band-drag", module_id, index));
 
-                    ComboBox::from_id_salt(format!("eq-filter-type-{module_id}-{index}"))
-                        .selected_text(band.filter_type.label())
-                        .width(120.0)
-                        .show_ui(ui, |ui| {
-                            for filter_type in FilterType::ALL {
-                                changed |= ui
-                                    .selectable_value(
-                                        &mut band.filter_type,
-                                        filter_type,
-                                        filter_type.label(),
-                                    )
-                                    .changed();
-                            }
-                        });
+                    let handle = ui
+                        .dnd_drag_source(drag_id, BandDrag { module_id, index }, |ui| {
+                            // The drag source is a scope, which otherwise fills the grid cell.
+                            ui.set_max_width(ui.spacing().interact_size.y);
+                            ui.add(Label::new(DRAG_HANDLE).selectable(false));
+                        })
+                        .response;
 
-                    changed |= ui.add(Self::cutoff_drag(&mut band.cutoff_hz)).changed();
-                    changed |= ui.add(Self::resonance_drag(&mut band.resonance)).changed();
-                    changed |= ui.add(Self::drive_drag(&mut band.drive)).changed();
+                    let filter_type =
+                        ComboBox::from_id_salt(format!("eq-filter-type-{module_id}-{index}"))
+                            .selected_text(band.filter_type.label())
+                            .width(120.0)
+                            .show_ui(ui, |ui| {
+                                for filter_type in FilterType::ALL {
+                                    changed |= ui
+                                        .selectable_value(
+                                            &mut band.filter_type,
+                                            filter_type,
+                                            filter_type.label(),
+                                        )
+                                        .changed();
+                                }
+                            })
+                            .response;
 
-                    if ui
-                        .button(RichText::new(REMOVE_ICON).color(REMOVE_TINT))
-                        .clicked()
-                    {
+                    let cutoff = ui.add(Self::cutoff_drag(&mut band.cutoff_hz));
+                    let q = ui.add(Self::q_drag(&mut band.q));
+                    let drive = ui.add(Self::drive_drag(&mut band.drive));
+                    changed |= cutoff.changed() || q.changed() || drive.changed();
+
+                    let remove = ui.button(RichText::new(REMOVE_ICON).color(REMOVE_TINT));
+
+                    if remove.clicked() {
                         removed = Some(index as u8);
                     }
 
+                    let row_rect = handle
+                        .rect
+                        .union(filter_type.rect)
+                        .union(cutoff.rect)
+                        .union(q.rect)
+                        .union(drive.rect)
+                        .union(remove.rect);
+
+                    if ui.ctx().is_being_dragged(drag_id) {
+                        ui.painter().rect_stroke(
+                            row_rect,
+                            2.0,
+                            Stroke::new(1.0, BAND_DRAG_TINT),
+                            StrokeKind::Outside,
+                        );
+                    }
+
+                    rows.push((index, row_rect));
                     ui.end_row();
 
                     if changed {
@@ -155,8 +201,12 @@ impl SpectralEqUi {
                 }
             });
 
+        let moved = Self::dropped_band(ui, module_id, &rows);
+
         if let Some(index) = removed {
             eq_bridge.remove_filter(index);
+        } else if let Some((from, to)) = moved {
+            eq_bridge.move_filter(from, to);
         }
 
         ui.add_space(8.0);
@@ -167,6 +217,58 @@ impl SpectralEqUi {
         {
             eq_bridge.add_filter(EqFilter::default());
         }
+    }
+
+    fn dropped_band(ui: &Ui, module_id: ModuleId, rows: &[(usize, Rect)]) -> Option<(u8, u8)> {
+        let drag = DragAndDrop::payload::<BandDrag>(ui.ctx())?;
+
+        if drag.module_id != module_id {
+            return None;
+        }
+
+        let pointer = ui.input(|input| input.pointer.interact_pos())?;
+        let (insert_at, y, x_range) = Self::insertion(rows, pointer)?;
+
+        ui.painter()
+            .hline(x_range, y, Stroke::new(2.0, BAND_DRAG_TINT));
+
+        if !ui.input(|input| input.pointer.any_released()) {
+            return None;
+        }
+
+        let to = if drag.index < insert_at {
+            insert_at - 1
+        } else {
+            insert_at
+        };
+
+        (drag.index != to).then_some((drag.index as u8, to as u8))
+    }
+
+    fn insertion(rows: &[(usize, Rect)], pointer: Pos2) -> Option<(usize, f32, Rangef)> {
+        let mut bounds = rows.first()?.1;
+
+        for (_, rect) in rows.iter().skip(1) {
+            bounds = bounds.union(*rect);
+        }
+
+        let margin = 12.0;
+        let over_table = bounds.x_range().contains(pointer.x)
+            && pointer.y >= bounds.top() - margin
+            && pointer.y <= bounds.bottom() + margin;
+
+        if !over_table {
+            return None;
+        }
+
+        for &(index, rect) in rows {
+            if pointer.y < rect.center().y {
+                return Some((index, rect.top(), bounds.x_range()));
+            }
+        }
+
+        let &(index, rect) = rows.last()?;
+        Some((index + 1, rect.bottom(), bounds.x_range()))
     }
 
     fn cutoff_drag(cutoff_hz: &mut Sample) -> DragValue<'_> {
@@ -183,16 +285,11 @@ impl SpectralEqUi {
             })
     }
 
-    fn resonance_drag(resonance: &mut Sample) -> DragValue<'_> {
-        DragValue::new(resonance)
-            .range(MIN_RESONANCE..=MAX_RESONANCE)
-            .speed(0.005)
-            .custom_formatter(|value, _| Units::Normalized.format(value as Sample))
-            .custom_parser(|text| {
-                Units::Normalized
-                    .parse(text, false)
-                    .map(|value| value.left() as f64)
-            })
+    fn q_drag(q: &mut Sample) -> DragValue<'_> {
+        DragValue::new(q)
+            .range(MIN_Q..=MAX_Q)
+            .speed(0.01)
+            .fixed_decimals(3)
     }
 
     fn drive_drag(drive: &mut Sample) -> DragValue<'_> {

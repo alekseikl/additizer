@@ -2,8 +2,7 @@ use super::*;
 use crate::synth_engine::{
     ComplexSample, DataType, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId,
     NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Sample, SynthEngine, oscillator::OscillatorConfig,
-    routing::LEFT_CHANNEL,
-    synth_module::SynthModule,
+    routing::LEFT_CHANNEL, synth_module::SynthModule,
 };
 
 const SAMPLE_RATE: Sample = 48_000.0;

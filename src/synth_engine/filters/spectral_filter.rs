@@ -64,7 +64,7 @@ impl FilterImpl for LowPass18 {
     }
 }
 
-const BUTTERWORTH_Q: Sample = f32::consts::FRAC_1_SQRT_2;
+pub const BUTTERWORTH_Q: Sample = f32::consts::FRAC_1_SQRT_2;
 
 #[derive(Clone, Copy)]
 pub struct LowPass24 {
@@ -595,16 +595,12 @@ impl FilterType {
 pub struct FilterParams {
     pub drive: Sample,
     pub cutoff: Sample, // Octaves of the note fundamental (harmonic space).
-    pub resonance: Sample,
+    pub q: Sample,
     pub q_limit_to: Sample,    // Octaves. Before this point Q is limited.
     pub q_limit_slope: Sample, // [0.0-1.0]
     pub linear_phase: bool,
 }
 
-pub const MIN_RESONANCE: Sample = -1.0;
-pub const MAX_RESONANCE: Sample = 1.0;
-const MIN_Q: Sample = 0.01;
-const MAX_Q: Sample = 16.0;
 const MAX_Q_LIMIT_POWER: Sample = 20.0;
 
 pub struct SpectralFilter {
@@ -627,14 +623,7 @@ impl SpectralFilter {
     }
 
     fn q_from_params(params: &FilterParams) -> Sample {
-        let resonance = params.resonance.clamp(MIN_RESONANCE, MAX_RESONANCE);
-
-        let q = if resonance > 0.0 {
-            BUTTERWORTH_Q + (MAX_Q - BUTTERWORTH_Q) * resonance.powf(3.0)
-        } else {
-            MIN_Q + (BUTTERWORTH_Q - MIN_Q) * (1.0 + resonance)
-        };
-
+        let q = params.q;
         let butterworth_excess = q - BUTTERWORTH_Q;
 
         if butterworth_excess <= 0.0 || params.cutoff >= params.q_limit_to {
