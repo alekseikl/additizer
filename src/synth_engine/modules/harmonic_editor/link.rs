@@ -50,6 +50,7 @@ pub enum UiEvent {
     SetPhase { index: u32, phase: StereoSample },
     Clear,
     ResetSawtooth,
+    ZeroPhases,
     EditRequest(EditRequest),
     ApplyDraft,
     DiscardDraft,
@@ -99,6 +100,10 @@ impl UiEnd {
 
     pub fn reset_sawtooth(&mut self) -> bool {
         self.tx.push(UiEvent::ResetSawtooth).is_ok()
+    }
+
+    pub fn zero_phases(&mut self) -> bool {
+        self.tx.push(UiEvent::ZeroPhases).is_ok()
     }
 
     pub fn edit_request(&mut self, request: EditRequest) -> bool {

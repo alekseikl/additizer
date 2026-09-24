@@ -262,8 +262,12 @@ impl HarmonicEditorUI {
                 editor_bridge.clear();
             }
 
-            if ui.button("Reset Sawtooth").clicked() {
+            if ui.button("Reset sawtooth").clicked() {
                 editor_bridge.reset_sawtooth();
+            }
+
+            if ui.button("Zero phases").clicked() {
+                editor_bridge.zero_phases();
             }
 
             if ui.button("Edit").clicked() {

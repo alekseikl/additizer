@@ -10,6 +10,21 @@ const SRC_ID: ModuleId = 1;
 const DST_ID: ModuleId = 2;
 
 #[test]
+fn zero_phases_clears_phases_and_keeps_amplitudes() {
+    let mut editor = HarmonicEditor::new(SRC_ID);
+    let before = editor.get_config();
+
+    editor.zero_phases();
+
+    let after = editor.get_config();
+
+    for channel in 0..NUM_CHANNELS {
+        assert_eq!(after.amplitudes[channel], before.amplitudes[channel]);
+        assert!(after.phases[channel].iter().all(|&phase| phase == 0.0));
+    }
+}
+
+#[test]
 fn frequency_bin_round_trips_amplitude_and_phase() {
     for (idx, amp, phase) in [
         (1, 1.0, 0.0),

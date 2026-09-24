@@ -76,6 +76,10 @@ impl HarmonicEditorUiBridge {
         self.ui_end.reset_sawtooth();
     }
 
+    pub fn zero_phases(&mut self) {
+        self.ui_end.zero_phases();
+    }
+
     pub fn edit_request(&mut self, request: EditRequest) {
         self.ui_end.edit_request(request);
     }

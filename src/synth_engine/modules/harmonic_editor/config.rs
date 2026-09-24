@@ -46,7 +46,7 @@ impl Default for HarmonicEditorConfig {
 }
 
 pub fn sawtooth_phase(harmonic: usize) -> Sample {
-    if harmonic & 1 == 0 { 0.0 } else { 0.5 }
+    if harmonic & 1 == 0 { 0.25 } else { 0.75 }
 }
 
 pub(super) fn fill_default_harmonics<'a>(

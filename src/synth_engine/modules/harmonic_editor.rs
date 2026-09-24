@@ -247,7 +247,7 @@ impl HarmonicEditor {
     fn frequency_bin(idx: usize, amp: Sample, phase: Sample) -> ComplexSample {
         ComplexSample::from_polar(
             amp / (idx as Sample * std::f32::consts::PI),
-            (phase + 0.25) * std::f32::consts::TAU,
+            phase * std::f32::consts::TAU,
         )
     }
 
@@ -258,7 +258,7 @@ impl HarmonicEditor {
             return (0.0, 0.0);
         }
 
-        let phase = (bin.arg() / std::f32::consts::TAU - 0.25).rem_euclid(1.0);
+        let phase = (bin.arg() / std::f32::consts::TAU).rem_euclid(1.0);
         (amp, phase)
     }
 
@@ -492,6 +492,16 @@ impl HarmonicEditor {
             .publish_harmonics(&self.amplitudes, &self.phases);
     }
 
+    pub fn zero_phases(&mut self) {
+        for phases in self.phases.iter_mut() {
+            phases.fill(0.0);
+        }
+
+        self.rebuild_harmonics();
+        self.audio_end
+            .publish_harmonics(&self.amplitudes, &self.phases);
+    }
+
     fn process_voice(
         &mut self,
         target: &VoiceTarget,
@@ -572,6 +582,9 @@ impl SynthModule for HarmonicEditor {
                 }
                 UiEvent::ResetSawtooth => {
                     self.reset_saw();
+                }
+                UiEvent::ZeroPhases => {
+                    self.zero_phases();
                 }
                 UiEvent::EditRequest(request) => {
                     self.apply_edit_request(request);
