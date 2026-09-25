@@ -10,10 +10,11 @@ framework with an `egui`-based editor (`nice_plug_egui`, OpenGL via `baseview`).
 
 The synth is a graph of **modules**. Some process audio in the time domain (oscillator,
 mixer, amplifier, waveshaper, output), others operate on spectra (harmonic editor, spectral
-filter/mixer/blend), and others are modulation sources (envelope, LFO, expressions/MPE,
-external params). Modules are connected by **links** into a routing graph that is
-topologically sorted and processed per voice/channel. See `README.md` for the user-facing
-module list and `docs/module-routing-rules.md` for link/modulation rules.
+noise, spectral filter/EQ/mixer/blend), and others are control sources (envelope, LFO, pitch
+with keytrack/glide, expressions/MPE, external params). Modules are connected by **links**
+into a routing graph that is topologically sorted and processed per voice/channel. See
+`README.md` for the user-facing module list and `docs/module-routing-rules.md` for
+link/modulation rules.
 
 ## Commands
 
@@ -22,7 +23,11 @@ module list and `docs/module-routing-rules.md` for link/modulation rules.
 cargo nice-plug bundle additizer --release
 
 # Run standalone, choosing a MIDI input device by name
+# (if --midi-input is omitted, src/main.rs picks the first available MIDI input)
 cargo run --release -- --midi-input "Keystation Mini 32 MK3"
+
+# Run tests
+cargo test
 ```
 
 ## Architecture
@@ -62,20 +67,25 @@ uses `VoiceRouter` / `ProcessContext` (`src/synth_engine/routing/`).
 `default_scheme.rs` builds the default patch.
 
 **Engine params** (`EngineParams` in `config.rs`): polyphony, legato, block size, oversampling,
-voice kill time, output gain, bandwidth. UI can change several of these
-at runtime via the engine-level `UiEnd` / `AudioEnd` link.
+voice kill time, output gain. UI can change several of these at runtime via the engine-level
+`UiEnd` / `AudioEnd` link. Spectral bandwidth is **per module** (Harmonic Editor, Spectral
+Noise), capped by `MAX_BANDWIDTH` in `config.rs`; `0` means note-based bandwidth.
+
+**Shared DSP** lives outside `modules/`: `src/synth_engine/filters/spectral_filter.rs` holds
+the frequency-response filter implementations (`FilterImpl`, `FilterType`, `SpectralFilter`)
+used by both the Spectral Filter and Spectral EQ modules and their editor widgets.
 
 ## Routing
 
 A patch is a directed graph. Edges target `InputId = (module_id, Input)`. Process order is a
 topo sort of source → destination (including modulators).
 
-| | |
-| --- | --- |
-| Data types | Audio, Control, Spectral |
-| Link kinds | **Direct** (exactly one source) or **Mixed** (many sources + optional modulator) |
-| Amount | Implicit `1.0` for Direct; `StereoSample` per Mixed source |
-| Spectral inputs | Direct only (`InputMeta.is_direct`) |
+|                 |                                                                                  |
+| --------------- | -------------------------------------------------------------------------------- |
+| Data types      | Audio, Control, Spectral                                                         |
+| Link kinds      | **Direct** (exactly one source) or **Mixed** (many sources + optional modulator) |
+| Amount          | Implicit `1.0` for Direct; `StereoSample` per Mixed source                       |
+| Spectral inputs | Direct only (`InputMeta.is_direct`)                                              |
 
 Full rules (validation, acyclicity, mutation APIs): `docs/module-routing-rules.md`.
 
@@ -84,6 +94,11 @@ semantic matches (e.g. `Gain`, `Level`, `Cutoff`) and document units (dB vs. lin
 `routing.rs`.
 
 ## The module pattern (important)
+
+Current modules (`src/synth_engine/modules/`): `oscillator`, `envelope`, `lfo`, `pitch`,
+`amplifier`, `mixer`, `wave_shaper`, `spectral_filter`, `spectral_eq`, `spectral_blend`,
+`spectral_mixer`, `harmonic_editor`, `spectral_noise`, `expressions`, `external_param`, plus
+the special `output`.
 
 Every DSP module follows the **same four-part structure**. Using `amplifier` as the template:
 
@@ -95,14 +110,18 @@ Every DSP module follows the **same four-part structure**. Using `amplifier` as 
   module's state. `from_config` / `get_config` round-trip through it for presets.
 - `modules/<name>/link.rs` — the lock-free `UiEnd` / `AudioEnd` pair and `UiEvent` enum
   (`rtrb`; plus `triple_buffer` when the UI needs live meters/spectra/phase).
-- `modules/<name>/ui_bridge.rs` — `<Name>UiBridge` (implements `ModuleUiBridge`): UI-thread
-  handle that owns the `UiEnd`, mirrors `config`, and exposes setters that push events.
+- `modules/<name>/ui_bridge.rs` — `<Name>UiBridge` (implements `ModuleUiBridge` from
+  `synth_module.rs`): UI-thread handle that owns the `UiEnd`, mirrors `config`, and exposes
+  setters that push events.
+- `modules/<name>/tests.rs` (optional) — unit tests, included via `#[cfg(test)] mod tests;`.
 
 Editor surfaces:
 
 - Detail panel: `src/editor/modules_ui/<name>_ui.rs` (wired via `ModuleType::ui` in `editor.rs`).
-- Grid tile (most modules): `src/editor/grid/grid_widget/<name>_widget.rs` (wired in
+- Grid tile (every module): `src/editor/grid/grid_widget/<name>_widget.rs` (wired in
   `grid_widget.rs`).
+- Value formatting (dB, Hz, st, ms, …) goes through `Units` in `src/editor/units.rs`; reuse it
+  rather than formatting inline.
 
 `Output` is an exception: audio-only module in `modules/output.rs`, no config/link/ui_bridge
 subdir, no `ModuleConfig` variant; UI is `output_ui.rs` / `output_widget.rs`.
@@ -114,12 +133,16 @@ subdir, no `ModuleConfig` variant; UI is `output_ui.rs` / `output_widget.rs`.
 3. Add `ModuleType::<Name>` and `ModuleHandle::<Name>` in `module_handle.rs`.
 4. Add `ModuleConfig::<Name>` in `config.rs` and wire it in `SynthEngine::try_new` /
    `get_config` (`src/synth_engine.rs`). Add `add_<name>` via `add_module_method!`.
-5. Add `ModuleBridge::<Name>` and a match arm in `UiBridge::insert_module_bridge`.
-6. Add the editor detail panel and `ModuleType::ui` arm; add a grid widget if the module
-   appears on the patch grid.
+5. Add `ModuleBridge::<Name>` and a match arm in `UiBridge::insert_module_bridge`
+   (`src/synth_engine/ui_bridge.rs`).
+6. Add the editor detail panel and `ModuleType::ui` arm in `editor.rs`; add a grid widget and
+   its `ModuleType::<Name>` arm in `grid_widget.rs`; list it in
+   `src/editor/grid/add_module_popup.rs` so users can create it.
+7. Add the module to the list in `README.md`.
 
-Use the param macros in `synth_module.rs` (`set_smoothed_param!`, `get_smoothed_param!`,
-`set_stereo_param!`, etc.) for the standard stereo/smoothed parameter plumbing.
+Use the param macros in `synth_module.rs` (`set_mono_param!`, `set_stereo_param!`,
+`get_stereo_param!`, `set_smoothed_param!`, `get_smoothed_param!`) for the standard
+stereo/smoothed parameter plumbing.
 
 ## Conventions & constraints
 
@@ -155,9 +178,11 @@ Use the param macros in `synth_module.rs` (`set_smoothed_param!`, `get_smoothed_
 
 ## Testing
 
-- Tests live next to the code they cover (e.g. `src/synth_engine/voices_handler/tests.rs`,
-  `src/synth_engine/tests.rs`, included via `#[cfg(test)] mod tests;`). Run them with
-  `cargo test`.
+- Tests live next to the code they cover in a `tests.rs` sibling directory, included via
+  `#[cfg(test)] mod tests;` (e.g. `src/synth_engine/tests.rs`,
+  `src/synth_engine/voices_handler/tests.rs`, `src/synth_engine/modules/spectral_eq/tests.rs`,
+  `src/synth_engine/filters/spectral_filter/tests.rs`, `src/editor/units/tests.rs`). Run them
+  with `cargo test`. When changing a module that has a `tests.rs`, update or extend it.
 - Performance benchmarks use [Criterion](https://github.com/bheisler/criterion.rs) in
   `benches/synth_engine.rs`. Coverage reports use
   [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov). See `TOOLS.md` for
@@ -172,13 +197,3 @@ Do not assume or hide confusion. Surface assumptions and tradeoffs before implem
 - State assumptions explicitly. If uncertain, ask.
 - If multiple interpretations exist, present them instead of choosing silently.
 - If something is unclear, stop, name what is confusing, and ask.
-
-### Simplicity First
-
-Write the minimum code that solves the requested problem.
-
-- Do not add features beyond what was asked.
-- Do not add abstractions for single-use code.
-- Do not add flexibility or configurability that was not requested.
-- Do not add error handling for impossible scenarios.
-- If a change is becoming much larger than necessary, simplify before continuing.
