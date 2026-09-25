@@ -51,6 +51,7 @@ pub enum UiEvent {
     Clear,
     ResetSawtooth,
     ZeroPhases,
+    SawtoothPhases,
     EditRequest(EditRequest),
     ApplyDraft,
     DiscardDraft,
@@ -104,6 +105,10 @@ impl UiEnd {
 
     pub fn zero_phases(&mut self) -> bool {
         self.tx.push(UiEvent::ZeroPhases).is_ok()
+    }
+
+    pub fn sawtooth_phases(&mut self) -> bool {
+        self.tx.push(UiEvent::SawtoothPhases).is_ok()
     }
 
     pub fn edit_request(&mut self, request: EditRequest) -> bool {

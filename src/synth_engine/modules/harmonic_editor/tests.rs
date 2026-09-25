@@ -25,6 +25,26 @@ fn zero_phases_clears_phases_and_keeps_amplitudes() {
 }
 
 #[test]
+fn sawtooth_phases_sets_sawtooth_pattern_and_keeps_amplitudes() {
+    let mut editor = HarmonicEditor::new(SRC_ID);
+    let before = editor.get_config();
+
+    editor.zero_phases();
+    editor.sawtooth_phases();
+
+    let after = editor.get_config();
+
+    for channel in 0..NUM_CHANNELS {
+        assert_eq!(after.amplitudes[channel], before.amplitudes[channel]);
+        assert_eq!(after.phases[channel][0], 0.0);
+
+        for (idx, &phase) in after.phases[channel].iter().enumerate().skip(1) {
+            assert_eq!(phase, sawtooth_phase(idx));
+        }
+    }
+}
+
+#[test]
 fn frequency_bin_round_trips_amplitude_and_phase() {
     for (idx, amp, phase) in [
         (1, 1.0, 0.0),

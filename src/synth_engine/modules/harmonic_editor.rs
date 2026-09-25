@@ -502,6 +502,22 @@ impl HarmonicEditor {
             .publish_harmonics(&self.amplitudes, &self.phases);
     }
 
+    pub fn sawtooth_phases(&mut self) {
+        for phases in self.phases.iter_mut() {
+            if let Some(dc_phase) = phases.first_mut() {
+                *dc_phase = 0.0;
+            }
+
+            for (idx, phase) in phases.iter_mut().enumerate().skip(DC_OFFSET) {
+                *phase = config::sawtooth_phase(idx);
+            }
+        }
+
+        self.rebuild_harmonics();
+        self.audio_end
+            .publish_harmonics(&self.amplitudes, &self.phases);
+    }
+
     fn process_voice(
         &mut self,
         target: &VoiceTarget,
@@ -585,6 +601,9 @@ impl SynthModule for HarmonicEditor {
                 }
                 UiEvent::ZeroPhases => {
                     self.zero_phases();
+                }
+                UiEvent::SawtoothPhases => {
+                    self.sawtooth_phases();
                 }
                 UiEvent::EditRequest(request) => {
                     self.apply_edit_request(request);

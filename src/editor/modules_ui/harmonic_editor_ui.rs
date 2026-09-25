@@ -270,6 +270,10 @@ impl HarmonicEditorUI {
                 editor_bridge.zero_phases();
             }
 
+            if ui.button("Sawtooth phases").clicked() {
+                editor_bridge.sawtooth_phases();
+            }
+
             if ui.button("Edit").clicked() {
                 let state = EditFormState::default();
                 editor_bridge.edit_request(state.to_request());
