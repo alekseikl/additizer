@@ -49,15 +49,15 @@ impl SpectralEqUiBridge {
         }
     }
 
-    pub fn set_q_limit_to(&mut self, value: StereoSample) {
-        if self.ui_end.set_q_limit_to(value) {
-            self.config.q_limit_to = value;
+    pub fn set_q_cutoff(&mut self, value: StereoSample) {
+        if self.ui_end.set_q_cutoff(value) {
+            self.config.q_cutoff = value;
         }
     }
 
-    pub fn set_q_limit_slope(&mut self, value: StereoSample) {
-        if self.ui_end.set_q_limit_slope(value) {
-            self.config.q_limit_slope = value;
+    pub fn set_q_rolloff(&mut self, value: StereoSample) {
+        if self.ui_end.set_q_rolloff(value) {
+            self.config.q_rolloff = value;
         }
     }
 

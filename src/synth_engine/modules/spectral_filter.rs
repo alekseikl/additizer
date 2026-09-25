@@ -25,17 +25,17 @@ use crate::{
         synth_module::SynthModule,
         types::Sample,
     },
-    utils::C4_PITCH,
+    utils::{C4_PITCH, MAX_CUTOFF, MIN_CUTOFF},
 };
 
-pub const MIN_CUTOFF: Sample = -4.0;
-pub const MAX_CUTOFF: Sample = 7.0;
 pub const MIN_DRIVE: Sample = -60.0;
 pub const MAX_DRIVE: Sample = 24.0;
 pub const MIN_RESONANCE: Sample = -1.0;
 pub const MAX_RESONANCE: Sample = 1.0;
 pub const MIN_RESONANCE_Q: Sample = 0.01;
 pub const MAX_RESONANCE_Q: Sample = 16.0;
+pub const MIN_Q_ROLLOFF: Sample = 3.0;
+pub const MAX_Q_ROLLOFF: Sample = 48.0;
 
 pub fn q_from_resonance(resonance: Sample) -> Sample {
     let resonance = resonance.clamp(MIN_RESONANCE, MAX_RESONANCE);
@@ -68,8 +68,8 @@ struct ChannelParams {
     cutoff: Sample,
     resonance: Sample,
     drive: Sample,
-    q_limit_to: Sample,
-    q_limit_slope: Sample,
+    q_cutoff: Sample,
+    q_rolloff: Sample,
 }
 
 impl ChannelParams {
@@ -78,8 +78,8 @@ impl ChannelParams {
             cutoff: c.cutoff[channel_idx],
             resonance: c.resonance[channel_idx],
             drive: c.drive[channel_idx],
-            q_limit_to: c.q_limit_to[channel_idx],
-            q_limit_slope: c.q_limit_slope[channel_idx],
+            q_cutoff: c.q_cutoff[channel_idx],
+            q_rolloff: c.q_rolloff[channel_idx].clamp(MIN_Q_ROLLOFF, MAX_Q_ROLLOFF),
         }
     }
 }
@@ -177,8 +177,8 @@ impl SpectralFilter {
             filter_type: self.params.filter_type,
             linear_phase: self.params.linear_phase,
             keytrack: self.params.keytrack,
-            q_limit_to: get_stereo_param!(self, q_limit_to),
-            q_limit_slope: get_stereo_param!(self, q_limit_slope),
+            q_cutoff: get_stereo_param!(self, q_cutoff),
+            q_rolloff: get_stereo_param!(self, q_rolloff),
             cutoff: get_stereo_param!(self, cutoff),
             resonance: get_stereo_param!(self, resonance),
             drive: get_stereo_param!(self, drive),
@@ -197,14 +197,14 @@ impl SpectralFilter {
     );
     set_stereo_param!(set_drive, drive, drive.clamp(MIN_DRIVE, MAX_DRIVE));
     set_stereo_param!(
-        set_q_limit_to,
-        q_limit_to,
-        q_limit_to.clamp(MIN_CUTOFF, MAX_CUTOFF)
+        set_q_cutoff,
+        q_cutoff,
+        q_cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF)
     );
     set_stereo_param!(
-        set_q_limit_slope,
-        q_limit_slope,
-        q_limit_slope.clamp(0.0, 1.0)
+        set_q_rolloff,
+        q_rolloff,
+        q_rolloff.clamp(MIN_Q_ROLLOFF, MAX_Q_ROLLOFF)
     );
 
     fn process_voice(
@@ -244,8 +244,8 @@ impl SpectralFilter {
                 drive,
                 cutoff: note_based_cutoff,
                 q: q_from_resonance(resonance),
-                q_limit_to: channel.q_limit_to + keytrack_offset,
-                q_limit_slope: channel.q_limit_slope,
+                q_cutoff: channel.q_cutoff + keytrack_offset,
+                q_rolloff: channel.q_rolloff,
                 linear_phase: self.params.linear_phase,
             },
         );
@@ -303,8 +303,8 @@ impl SynthModule for SpectralFilter {
                 UiEvent::FilterType(filter_type) => self.set_filter_type(filter_type),
                 UiEvent::LinearPhase(value) => self.set_linear_phase(value),
                 UiEvent::Keytrack(value) => self.set_keytrack(value),
-                UiEvent::QLimitTo(value) => self.set_q_limit_to(value),
-                UiEvent::QLimitSlope(value) => self.set_q_limit_slope(value),
+                UiEvent::QCutoff(value) => self.set_q_cutoff(value),
+                UiEvent::QRolloff(value) => self.set_q_rolloff(value),
             }
         }
     }

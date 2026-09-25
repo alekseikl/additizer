@@ -1,9 +1,15 @@
 use serde::{Deserialize, Deserializer, Serialize, de::Error};
 
-use crate::synth_engine::{
-    ModuleId, Sample, StereoSample,
-    filters::spectral_filter::FilterType,
-    spectral_filter::{MAX_DRIVE, MIN_CUTOFF, MIN_DRIVE, q_from_resonance},
+use crate::{
+    synth_engine::{
+        ModuleId, Sample, StereoSample,
+        filters::spectral_filter::FilterType,
+        spectral_filter::{
+            MAX_DRIVE, MAX_Q_ROLLOFF, MIN_DRIVE, MIN_Q_ROLLOFF,
+            q_from_resonance,
+        },
+    },
+    utils::MIN_CUTOFF,
 };
 
 pub const MAX_EQ_FILTERS: usize = 16;
@@ -78,8 +84,10 @@ pub struct SpectralEqConfig {
     pub filters: Vec<EqFilter>,
     pub linear_phase: bool,
     pub keytrack: Sample,
-    pub q_limit_to: StereoSample,
-    pub q_limit_slope: StereoSample,
+    #[serde(alias = "q_limit_to")]
+    pub q_cutoff: StereoSample,
+    #[serde(alias = "q_limit_slope")]
+    pub q_rolloff: StereoSample,
     pub cutoff: StereoSample,
     pub output_level: StereoSample,
 }
@@ -91,8 +99,8 @@ impl Default for SpectralEqConfig {
             filters: vec![EqFilter::default()],
             linear_phase: false,
             keytrack: 0.0,
-            q_limit_to: MIN_CUTOFF.into(),
-            q_limit_slope: 0.5.into(),
+            q_cutoff: MIN_CUTOFF.into(),
+            q_rolloff: ((MIN_Q_ROLLOFF + MAX_Q_ROLLOFF) * 0.5).into(),
             cutoff: 0.0.into(),
             output_level: 0.0.into(),
         }

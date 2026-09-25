@@ -87,17 +87,17 @@ fn display_offset_scales_pitch_distance_by_keytrack() {
 }
 
 #[test]
-fn keytrack_applies_the_same_offset_to_q_limit_to() {
-    let q_limit_to = 2.0;
+fn keytrack_applies_the_same_offset_to_q_cutoff() {
+    let q_cutoff = 2.0;
     let pitch = pitch_of_note(48);
 
-    assert_approx(q_limit_to + keytrack_offset(1.0, pitch), q_limit_to);
+    assert_approx(q_cutoff + keytrack_offset(1.0, pitch), q_cutoff);
     assert_approx(
-        q_limit_to + keytrack_offset(0.0, pitch),
-        q_limit_to + (C4_PITCH - pitch),
+        q_cutoff + keytrack_offset(0.0, pitch),
+        q_cutoff + (C4_PITCH - pitch),
     );
     assert_approx(
-        q_limit_to + keytrack_offset(0.5, pitch),
-        q_limit_to + (C4_PITCH - pitch) * 0.5,
+        q_cutoff + keytrack_offset(0.5, pitch),
+        q_cutoff + (C4_PITCH - pitch) * 0.5,
     );
 }

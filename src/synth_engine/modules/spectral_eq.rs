@@ -24,11 +24,16 @@ use crate::{
             DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
             RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceTarget,
         },
-        spectral_filter::{MAX_CUTOFF, MAX_DRIVE, MIN_CUTOFF, MIN_DRIVE},
+        spectral_filter::{
+            MAX_DRIVE, MAX_Q_ROLLOFF, MIN_DRIVE, MIN_Q_ROLLOFF,
+        },
         synth_module::SynthModule,
         types::Sample,
     },
-    utils::{C4_PITCH, MAX_LEVEL_DB, MIN_LEVEL_DB, db_to_gain_fast, freq_to_c4_pitch},
+    utils::{
+        C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, db_to_gain_fast,
+        freq_to_c4_pitch,
+    },
 };
 
 struct Params {
@@ -56,8 +61,8 @@ impl Params {
 
 struct ChannelParams {
     cutoff: Sample,
-    q_limit_to: Sample,
-    q_limit_slope: Sample,
+    q_cutoff: Sample,
+    q_rolloff: Sample,
     output_level: Sample,
 }
 
@@ -65,8 +70,9 @@ impl ChannelParams {
     fn from_config(c: &SpectralEqConfig, channel_idx: usize) -> Self {
         Self {
             cutoff: c.cutoff[channel_idx],
-            q_limit_to: c.q_limit_to[channel_idx],
-            q_limit_slope: c.q_limit_slope[channel_idx],
+            q_cutoff: c.q_cutoff[channel_idx],
+            q_rolloff: c.q_rolloff[channel_idx]
+                .clamp(MIN_Q_ROLLOFF, MAX_Q_ROLLOFF),
             output_level: c.output_level[channel_idx],
         }
     }
@@ -161,8 +167,8 @@ impl SpectralEq {
             filters: self.params.filters.to_vec(),
             linear_phase: self.params.linear_phase,
             keytrack: self.params.keytrack,
-            q_limit_to: get_stereo_param!(self, q_limit_to),
-            q_limit_slope: get_stereo_param!(self, q_limit_slope),
+            q_cutoff: get_stereo_param!(self, q_cutoff),
+            q_rolloff: get_stereo_param!(self, q_rolloff),
             cutoff: get_stereo_param!(self, cutoff),
             output_level: get_stereo_param!(self, output_level),
         }
@@ -173,14 +179,14 @@ impl SpectralEq {
 
     set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF));
     set_stereo_param!(
-        set_q_limit_to,
-        q_limit_to,
-        q_limit_to.clamp(MIN_CUTOFF, MAX_CUTOFF)
+        set_q_cutoff,
+        q_cutoff,
+        q_cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF)
     );
     set_stereo_param!(
-        set_q_limit_slope,
-        q_limit_slope,
-        q_limit_slope.clamp(0.0, 1.0)
+        set_q_rolloff,
+        q_rolloff,
+        q_rolloff.clamp(MIN_Q_ROLLOFF, MAX_Q_ROLLOFF)
     );
     set_stereo_param!(
         set_output_level,
@@ -232,8 +238,10 @@ impl SpectralEq {
         let cutoff_offset = router
             .scalar(&inputs.cutoff, channel.cutoff)
             .clamp(MIN_CUTOFF, MAX_CUTOFF);
-        let q_limit_to = channel.q_limit_to.clamp(MIN_CUTOFF, MAX_CUTOFF);
-        let q_limit_slope = channel.q_limit_slope.clamp(0.0, 1.0);
+        let q_cutoff = channel.q_cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF);
+        let q_rolloff = channel
+            .q_rolloff
+            .clamp(MIN_Q_ROLLOFF, MAX_Q_ROLLOFF);
         let keytrack = self.params.keytrack;
         let output_level = router
             .scalar(&inputs.output_level, channel.output_level)
@@ -250,7 +258,7 @@ impl SpectralEq {
         }
 
         let keytrack_offset = (C4_PITCH - pitch) * (1.0 - keytrack);
-        let q_limit_to = (q_limit_to + keytrack_offset).clamp(MIN_CUTOFF, MAX_CUTOFF);
+        let q_cutoff = (q_cutoff + keytrack_offset).clamp(MIN_CUTOFF, MAX_CUTOFF);
 
         output.copy_from_slice(&input[..output.len()]);
 
@@ -262,8 +270,8 @@ impl SpectralEq {
                     drive: band.drive.clamp(MIN_DRIVE, MAX_DRIVE),
                     cutoff,
                     q: band.q,
-                    q_limit_to,
-                    q_limit_slope,
+                    q_cutoff,
+                    q_rolloff,
                     linear_phase,
                 },
             );
@@ -327,8 +335,8 @@ impl SynthModule for SpectralEq {
                 },
                 UiEvent::LinearPhase(value) => self.set_linear_phase(value),
                 UiEvent::Keytrack(value) => self.set_keytrack(value),
-                UiEvent::QLimitTo(value) => self.set_q_limit_to(value),
-                UiEvent::QLimitSlope(value) => self.set_q_limit_slope(value),
+                UiEvent::QCutoff(value) => self.set_q_cutoff(value),
+                UiEvent::QRolloff(value) => self.set_q_rolloff(value),
                 UiEvent::SetFilter { index, filter } => self.set_filter(index as usize, filter),
                 UiEvent::AddFilter(filter) => self.add_filter(filter),
                 UiEvent::RemoveFilter(index) => self.remove_filter(index as usize),

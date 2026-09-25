@@ -1,7 +1,12 @@
 use egui::{Checkbox, Grid, Ui};
 
 use crate::{
-    editor::{ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput, units::Units},
+    editor::{
+        ModuleUi,
+        module_label::ModuleLabel,
+        stereo_input::StereoInput,
+        units::{OctavesDisplay, Units},
+    },
     synth_engine::{
         Input, ModuleId, ModuleType,
         pitch::PitchUiBridge,
@@ -39,7 +44,7 @@ impl PitchUi {
                             &mut config.pitch_shift,
                             bridge,
                         )
-                        .slider(|slider| slider.units(Units::Octaves(false))),
+                        .slider(|slider| slider.units(Units::Octaves(OctavesDisplay::Semitones))),
                     )
                     .changed()
                 {

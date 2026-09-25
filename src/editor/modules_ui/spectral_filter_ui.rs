@@ -2,16 +2,21 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput,
-        units::Units,
+        ModuleUi,
+        module_label::ModuleLabel,
+        slider::Slider,
+        stereo_input::StereoInput,
+        units::{OctavesDisplay, Units},
     },
     synth_engine::{
         Input, ModuleId, ModuleType,
         filters::spectral_filter::FilterType,
-        spectral_filter::{MAX_CUTOFF, MIN_CUTOFF, SpectralFilterUiBridge},
+        spectral_filter::{
+            MAX_Q_ROLLOFF, MIN_Q_ROLLOFF, SpectralFilterUiBridge,
+        },
         ui_bridge::{ModuleBridge, UiBridge},
     },
-    utils::from_st,
+    utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},
 };
 
 pub struct SpectralFilterUI {
@@ -103,24 +108,32 @@ impl SpectralFilterUI {
                 }
                 ui.end_row();
 
-                ui.label("Q Limit");
+                ui.label("Q Cutoff");
                 if ui
                     .add(
-                        Slider::stereo(&mut config.q_limit_to, MIN_CUTOFF..=MAX_CUTOFF, None)
+                        Slider::stereo(&mut config.q_cutoff, MIN_CUTOFF..=MAX_CUTOFF, None)
                             .default(from_st(12.0))
-                            .units(Units::Octaves(true)),
+                            .units(Units::Octaves(OctavesDisplay::Frequency)),
                     )
                     .changed()
                 {
-                    filter_bridge.set_q_limit_to(config.q_limit_to);
+                    filter_bridge.set_q_cutoff(config.q_cutoff);
                 }
 
-                ui.label("Q Slope");
+                ui.label("Q Rolloff");
                 if ui
-                    .add(Slider::stereo(&mut config.q_limit_slope, 0.0..=1.0, None).default(0.5))
+                    .add(
+                        Slider::stereo(
+                            &mut config.q_rolloff,
+                            MIN_Q_ROLLOFF..=MAX_Q_ROLLOFF,
+                            None,
+                        )
+                        .default(18.0)
+                        .units(Units::Rolloff),
+                    )
                     .changed()
                 {
-                    filter_bridge.set_q_limit_slope(config.q_limit_slope);
+                    filter_bridge.set_q_rolloff(config.q_rolloff);
                 }
                 ui.end_row();
 

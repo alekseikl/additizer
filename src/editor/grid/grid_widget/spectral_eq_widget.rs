@@ -7,11 +7,11 @@ use crate::{
         ComplexSample, Input, ModuleId, Sample,
         filters::spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
         spectral_eq::{MAX_EQ_FILTERS, SpectralEqUiBridge},
-        spectral_filter::{MAX_CUTOFF, MIN_CUTOFF},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{
-        C4_PITCH, MAX_LEVEL_DB, MIN_LEVEL_DB, db_to_gain_fast, freq_to_c4_pitch, gain_to_db_fast,
+        C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, db_to_gain_fast,
+        freq_to_c4_pitch, gain_to_db_fast,
     },
 };
 
@@ -71,8 +71,8 @@ impl SpectralEqWidget {
         } else {
             0.0
         };
-        let q_limit_to = config.q_limit_to[0] + shift;
-        let q_limit_slope = config.q_limit_slope[0];
+        let q_cutoff = config.q_cutoff[0] + shift;
+        let q_rolloff = config.q_rolloff[0];
         let linear_phase = config.linear_phase;
         let gain = db_to_gain_fast(config.output_level[0]);
         let cutoff_offset = config.cutoff[0];
@@ -98,8 +98,8 @@ impl SpectralEqWidget {
                     drive: band.drive,
                     cutoff,
                     q: band.q,
-                    q_limit_to,
-                    q_limit_slope,
+                    q_cutoff,
+                    q_rolloff,
                     linear_phase,
                 },
             );

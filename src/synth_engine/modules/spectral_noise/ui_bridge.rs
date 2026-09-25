@@ -57,19 +57,19 @@ impl SpectralNoiseUiBridge {
         }
     }
 
-    pub fn set_amount_limit_to(&mut self, value: StereoSample) {
-        let value = SpectralNoise::clamp_amount_limit_to(value);
+    pub fn set_cutoff(&mut self, value: StereoSample) {
+        let value = SpectralNoise::clamp_cutoff(value);
 
-        if self.ui_end.set_amount_limit_to(value) {
-            self.config.amount_limit_to = value;
+        if self.ui_end.set_cutoff(value) {
+            self.config.cutoff = value;
         }
     }
 
-    pub fn set_amount_limit_slope(&mut self, value: StereoSample) {
-        let value = SpectralNoise::clamp_amount_limit_slope(value);
+    pub fn set_rolloff(&mut self, value: StereoSample) {
+        let value = SpectralNoise::clamp_rolloff(value);
 
-        if self.ui_end.set_amount_limit_slope(value) {
-            self.config.amount_limit_slope = value;
+        if self.ui_end.set_rolloff(value) {
+            self.config.rolloff = value;
         }
     }
 

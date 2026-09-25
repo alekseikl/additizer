@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::{ModuleId, StereoSample};
+use crate::{
+    synth_engine::{ModuleId, StereoSample},
+    utils::MIN_CUTOFF,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum NoiseColor {
@@ -31,8 +34,10 @@ pub struct SpectralNoiseConfig {
     pub level: StereoSample,
     pub stereo: bool,
     pub amount: StereoSample,
-    pub amount_limit_to: StereoSample,
-    pub amount_limit_slope: StereoSample,
+    #[serde(alias = "amount_limit_to")]
+    pub cutoff: StereoSample,
+    #[serde(alias = "amount_limit_slope")]
+    pub rolloff: StereoSample,
     pub steal_phase: bool,
 }
 
@@ -45,8 +50,8 @@ impl Default for SpectralNoiseConfig {
             level: StereoSample::ZERO,
             stereo: true,
             amount: 1.0.into(),
-            amount_limit_to: 0.0.into(),
-            amount_limit_slope: 0.5.into(),
+            cutoff: MIN_CUTOFF.into(),
+            rolloff: ((super::MIN_ROLLOFF + super::MAX_ROLLOFF) * 0.5).into(),
             steal_phase: false,
         }
     }

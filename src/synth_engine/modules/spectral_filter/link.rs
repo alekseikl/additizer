@@ -9,8 +9,8 @@ pub enum UiEvent {
     FilterType(FilterType),
     LinearPhase(bool),
     Keytrack(Sample),
-    QLimitTo(StereoSample),
-    QLimitSlope(StereoSample),
+    QCutoff(StereoSample),
+    QRolloff(StereoSample),
 }
 
 pub struct UiEnd {
@@ -39,12 +39,12 @@ impl UiEnd {
         self.tx.push(UiEvent::Keytrack(value)).is_ok()
     }
 
-    pub fn set_q_limit_to(&mut self, value: StereoSample) -> bool {
-        self.tx.push(UiEvent::QLimitTo(value)).is_ok()
+    pub fn set_q_cutoff(&mut self, value: StereoSample) -> bool {
+        self.tx.push(UiEvent::QCutoff(value)).is_ok()
     }
 
-    pub fn set_q_limit_slope(&mut self, value: StereoSample) -> bool {
-        self.tx.push(UiEvent::QLimitSlope(value)).is_ok()
+    pub fn set_q_rolloff(&mut self, value: StereoSample) -> bool {
+        self.tx.push(UiEvent::QRolloff(value)).is_ok()
     }
 }
 

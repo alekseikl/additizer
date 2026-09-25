@@ -8,6 +8,10 @@ pub const MAX_LEVEL_DB: Sample = 24.0;
 pub const C4_NOTE: u8 = 60;
 /// Pitch of C4 in octave units (relative to A4).
 pub const C4_PITCH: Sample = note_to_pitch(C4_NOTE as Sample);
+/// Lowest cutoff, in octave units (same space as pitch).
+pub const MIN_CUTOFF: Sample = -4.0;
+/// Highest cutoff, in octave units (same space as pitch).
+pub const MAX_CUTOFF: Sample = 7.0;
 const A4_FREQ: Sample = 440.0;
 
 const ST_TO_OCTAVE_MULT: Sample = 12.0f32.recip();

@@ -2,16 +2,20 @@ use egui::{Checkbox, ComboBox, DragValue, Grid, Ui};
 
 use crate::{
     editor::{
-        ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput,
-        units::Units,
+        ModuleUi,
+        module_label::ModuleLabel,
+        slider::Slider,
+        stereo_input::StereoInput,
+        units::{OctavesDisplay, Units},
     },
     synth_engine::{
         Input, MAX_BANDWIDTH, ModuleId, ModuleType,
-        spectral_filter::{MAX_CUTOFF, MIN_CUTOFF},
-        spectral_noise::{NoiseColor, SpectralNoiseUiBridge},
+        spectral_noise::{
+            MAX_ROLLOFF, MIN_ROLLOFF, NoiseColor, SpectralNoiseUiBridge,
+        },
         ui_bridge::{ModuleBridge, UiBridge},
     },
-    utils::from_st,
+    utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},
 };
 
 pub struct SpectralNoiseUi {
@@ -116,35 +120,36 @@ impl SpectralNoiseUi {
                 }
                 ui.end_row();
 
-                ui.label("Amount Limit").on_hover_text(
+                ui.label("Cutoff").on_hover_text(
                     "Harmonics below this frequency get a smaller phase turn. At it and above, the turn is Amount.",
                 );
                 if ui
                     .add(
-                        Slider::stereo(
-                            &mut config.amount_limit_to,
-                            MIN_CUTOFF..=MAX_CUTOFF,
-                            None,
-                        )
-                        .default(from_st(0.0))
-                        .units(Units::Octaves(true)),
+                        Slider::stereo(&mut config.cutoff, MIN_CUTOFF..=MAX_CUTOFF, None)
+                            .default(from_st(0.0))
+                            .units(Units::Octaves(OctavesDisplay::Frequency)),
                     )
                     .changed()
                 {
-                    noise_bridge.set_amount_limit_to(config.amount_limit_to);
+                    noise_bridge.set_cutoff(config.cutoff);
                 }
 
-                ui.label("Amount Slope").on_hover_text(
-                    "How fast the phase turn falls off below Amount Limit. Same curve as the spectral filter Q slope.",
+                ui.label("Rolloff").on_hover_text(
+                    "Phase-turn rolloff below Cutoff, in dB per octave. The attenuation is converted to gain and scales Amount.",
                 );
                 if ui
                     .add(
-                        Slider::stereo(&mut config.amount_limit_slope, 0.0..=1.0, None)
-                            .default(0.5),
+                        Slider::stereo(
+                            &mut config.rolloff,
+                            MIN_ROLLOFF..=MAX_ROLLOFF,
+                            None,
+                        )
+                        .default((MIN_ROLLOFF + MAX_ROLLOFF) * 0.5)
+                        .units(Units::Rolloff),
                     )
                     .changed()
                 {
-                    noise_bridge.set_amount_limit_slope(config.amount_limit_slope);
+                    noise_bridge.set_rolloff(config.rolloff);
                 }
                 ui.end_row();
 

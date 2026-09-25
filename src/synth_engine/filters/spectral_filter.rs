@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::{ComplexSample, Sample},
-    utils::db_to_gain_fast,
+    utils::{db_to_gain, db_to_gain_fast},
 };
 
 const TAU: Sample = f32::consts::TAU;
@@ -596,12 +596,10 @@ pub struct FilterParams {
     pub drive: Sample,
     pub cutoff: Sample, // Octaves of the note fundamental (harmonic space).
     pub q: Sample,
-    pub q_limit_to: Sample,    // Octaves. Before this point Q is limited.
-    pub q_limit_slope: Sample, // [0.0-1.0]
+    pub q_cutoff: Sample,  // Octaves. At and above this, Q is not reduced.
+    pub q_rolloff: Sample, // dB per octave below q_cutoff.
     pub linear_phase: bool,
 }
-
-const MAX_Q_LIMIT_POWER: Sample = 20.0;
 
 pub struct SpectralFilter {
     filter_type: FilterType,
@@ -626,13 +624,14 @@ impl SpectralFilter {
         let q = params.q;
         let butterworth_excess = q - BUTTERWORTH_Q;
 
-        if butterworth_excess <= 0.0 || params.cutoff >= params.q_limit_to {
+        if butterworth_excess <= 0.0 || params.cutoff >= params.q_cutoff {
             return q;
         }
 
-        let rate = 1.0 + params.q_limit_slope.clamp(0.0, 1.0) * MAX_Q_LIMIT_POWER;
+        let octaves_below = params.q_cutoff - params.cutoff;
+        let scale = db_to_gain(-params.q_rolloff * octaves_below);
 
-        BUTTERWORTH_Q + butterworth_excess * ((params.cutoff - params.q_limit_to) * rate).exp2()
+        BUTTERWORTH_Q + butterworth_excess * scale
     }
 
     pub fn apply_response(&self, input: &[ComplexSample], output: &mut [ComplexSample]) {

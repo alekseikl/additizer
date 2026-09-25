@@ -1,13 +1,16 @@
 use egui::{Color32, ecolor::Hsva};
 
 use crate::{
-    editor::{slider::Slider, units::Units},
+    editor::{
+        slider::Slider,
+        units::{OctavesDisplay, Units},
+    },
     synth_engine::{
         DataType, Input, ModuleType, StereoSample,
         pitch::MAX_GLIDE_TIME,
-        spectral_filter::{MAX_CUTOFF, MAX_DRIVE, MIN_CUTOFF, MIN_DRIVE},
+        spectral_filter::{MAX_DRIVE, MIN_DRIVE},
     },
-    utils::{MAX_LEVEL_DB, MIN_LEVEL_DB, from_st},
+    utils::{MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, from_st},
 };
 
 const IO_COLOR_S: f32 = 0.8;
@@ -133,16 +136,16 @@ impl Input {
             Self::Blend | Self::GainsBlend | Self::PhasesBlend => bipolar(amount),
             Self::Cutoff => Slider::stereo(amount, 0.0..=10.0, Some(-10.0))
                 .default(0.0)
-                .units(Units::Octaves(false)),
+                .units(Units::Octaves(OctavesDisplay::Semitones)),
             Self::Resonance => bipolar(amount),
             Self::Detune => Slider::stereo(amount, 0.0..=from_st(1.0), Some(-from_st(1.0)))
                 .default(0.0)
-                .units(Units::Octaves(false)),
+                .units(Units::Octaves(OctavesDisplay::Semitones)),
             Self::DetunePower => Slider::stereo(amount, 0.0..=5.0, Some(-5.0)).default(0.0),
             Self::Pitch | Self::PitchShift => Slider::stereo(amount, 0.0..=8.0, Some(-8.0))
                 .skew(1.8)
                 .default(1.0)
-                .units(Units::Octaves(false)),
+                .units(Units::Octaves(OctavesDisplay::Semitones)),
             Self::Glide => Slider::stereo(amount, 0.0..=MAX_GLIDE_TIME, Some(-MAX_GLIDE_TIME))
                 .default(0.0)
                 .skew(2.4)
@@ -203,16 +206,16 @@ impl Input {
             }
             Self::Cutoff => Slider::stereo(value, MIN_CUTOFF..=MAX_CUTOFF, None)
                 .default(0.0)
-                .units(Units::Octaves(true)),
+                .units(Units::Octaves(OctavesDisplay::Frequency)),
             Self::Resonance => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
             Self::Detune => Slider::stereo(value, 0.0..=from_st(1.0), None)
                 .default(from_st(0.2))
-                .units(Units::Octaves(false)),
+                .units(Units::Octaves(OctavesDisplay::Semitones)),
             Self::DetunePower => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
             Self::Pitch | Self::PitchShift => Slider::stereo(value, 0.0..=8.0, Some(-8.0))
                 .skew(1.8)
                 .default(0.0)
-                .units(Units::Octaves(true)),
+                .units(Units::Octaves(OctavesDisplay::Frequency)),
             Self::Glide => Slider::stereo(value, 0.0..=MAX_GLIDE_TIME, None)
                 .default(0.0)
                 .skew(2.4)

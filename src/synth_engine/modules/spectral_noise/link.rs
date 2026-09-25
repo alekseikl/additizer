@@ -12,8 +12,8 @@ pub enum UiEvent {
     Color(NoiseColor),
     Bandwidth(i32),
     Stereo(bool),
-    AmountLimitTo(StereoSample),
-    AmountLimitSlope(StereoSample),
+    Cutoff(StereoSample),
+    Rolloff(StereoSample),
     StealPhase(bool),
 }
 
@@ -44,12 +44,12 @@ impl UiEnd {
         self.tx.push(UiEvent::Stereo(stereo)).is_ok()
     }
 
-    pub fn set_amount_limit_to(&mut self, value: StereoSample) -> bool {
-        self.tx.push(UiEvent::AmountLimitTo(value)).is_ok()
+    pub fn set_cutoff(&mut self, value: StereoSample) -> bool {
+        self.tx.push(UiEvent::Cutoff(value)).is_ok()
     }
 
-    pub fn set_amount_limit_slope(&mut self, value: StereoSample) -> bool {
-        self.tx.push(UiEvent::AmountLimitSlope(value)).is_ok()
+    pub fn set_rolloff(&mut self, value: StereoSample) -> bool {
+        self.tx.push(UiEvent::Rolloff(value)).is_ok()
     }
 
     pub fn set_steal_phase(&mut self, steal_phase: bool) -> bool {

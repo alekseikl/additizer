@@ -1,9 +1,10 @@
 use super::*;
 use crate::{
     synth_engine::spectral_filter::{
-        MAX_RESONANCE, MAX_RESONANCE_Q, MIN_RESONANCE, MIN_RESONANCE_Q, q_from_resonance,
+        MAX_Q_ROLLOFF, MAX_RESONANCE, MAX_RESONANCE_Q, MIN_Q_ROLLOFF,
+        MIN_RESONANCE, MIN_RESONANCE_Q, q_from_resonance,
     },
-    utils::db_to_gain_fast,
+    utils::{db_to_gain, db_to_gain_fast},
 };
 
 const EPS: Sample = 1e-4;
@@ -28,13 +29,13 @@ fn assert_complex_eq(a: ComplexSample, b: ComplexSample) {
     assert_approx(a.im, b.im);
 }
 
-fn params(cutoff: Sample, q: Sample, q_limit_to: Sample) -> FilterParams {
+fn params(cutoff: Sample, q: Sample, q_cutoff: Sample) -> FilterParams {
     FilterParams {
         drive: 0.0,
         cutoff,
         q,
-        q_limit_to,
-        q_limit_slope: 0.0,
+        q_cutoff,
+        q_rolloff: MIN_Q_ROLLOFF,
         linear_phase: false,
     }
 }
@@ -231,9 +232,9 @@ fn q_limit_skipped_when_cutoff_above_limit() {
     assert_approx(unlimited, MAX_RESONANCE_Q);
 }
 
-fn limited_q(cutoff: Sample, q_limit_to: Sample, curve: Sample) -> Sample {
-    let rate = 1.0 + curve * MAX_Q_LIMIT_POWER;
-    BUTTERWORTH_Q + (MAX_RESONANCE_Q - BUTTERWORTH_Q) * ((cutoff - q_limit_to) * rate).exp2()
+fn limited_q(cutoff: Sample, q_cutoff: Sample, db_per_oct: Sample) -> Sample {
+    let octaves_below = q_cutoff - cutoff;
+    BUTTERWORTH_Q + (MAX_RESONANCE_Q - BUTTERWORTH_Q) * db_to_gain(-db_per_oct * octaves_below)
 }
 
 #[test]
@@ -243,8 +244,8 @@ fn q_limit_reduces_q_below_limit_frequency() {
     let two_below = q_of(params(0.0, MAX_RESONANCE_Q, 2.0));
 
     assert_approx(unlimited, MAX_RESONANCE_Q);
-    assert_approx(one_below, limited_q(1.0, 2.0, 0.0));
-    assert_approx(two_below, limited_q(0.0, 2.0, 0.0));
+    assert_approx(one_below, limited_q(1.0, 2.0, MIN_Q_ROLLOFF));
+    assert_approx(two_below, limited_q(0.0, 2.0, MIN_Q_ROLLOFF));
     assert!(two_below < one_below);
     assert!(two_below > BUTTERWORTH_Q);
 }
@@ -252,7 +253,7 @@ fn q_limit_reduces_q_below_limit_frequency() {
 #[test]
 fn q_limit_approaches_butterworth_far_below_limit() {
     let mut p = params(-4.0, MAX_RESONANCE_Q, 8.0);
-    p.q_limit_slope = 1.0;
+    p.q_rolloff = MAX_Q_ROLLOFF;
     let far_below = q_of(p);
     assert!((far_below - BUTTERWORTH_Q).abs() < 1e-3);
 }
@@ -263,14 +264,14 @@ fn q_limit_at_the_limit_frequency_is_unlimited() {
 }
 
 #[test]
-fn q_limit_slope_steepens_the_drop() {
+fn q_rolloff_steepens_the_drop() {
     let mut shallow = params(1.0, MAX_RESONANCE_Q, 2.0);
-    shallow.q_limit_slope = 0.0;
+    shallow.q_rolloff = MIN_Q_ROLLOFF;
     let mut steep = shallow;
-    steep.q_limit_slope = 1.0;
+    steep.q_rolloff = MAX_Q_ROLLOFF;
 
-    assert_approx(q_of(shallow), limited_q(1.0, 2.0, 0.0));
-    assert_approx(q_of(steep), limited_q(1.0, 2.0, 1.0));
+    assert_approx(q_of(shallow), limited_q(1.0, 2.0, MIN_Q_ROLLOFF));
+    assert_approx(q_of(steep), limited_q(1.0, 2.0, MAX_Q_ROLLOFF));
     assert!(q_of(steep) < q_of(shallow));
 }
 
@@ -293,8 +294,9 @@ fn raw_q_is_limited_below_the_limit_frequency() {
     let q = 4.0;
     let p = params(0.0, q, 2.0);
 
-    let distance: Sample = (0.0 - 2.0) * 1.0;
-    let expected = BUTTERWORTH_Q + (q - BUTTERWORTH_Q) * distance.exp2();
+    let octaves_below = 2.0;
+    let expected =
+        BUTTERWORTH_Q + (q - BUTTERWORTH_Q) * db_to_gain(-MIN_Q_ROLLOFF * octaves_below);
     assert_approx(q_of(p), expected);
 }
 
@@ -304,7 +306,7 @@ fn q_limit_applies_when_limit_is_negative() {
     let limited = q_of(params(-2.0, MAX_RESONANCE_Q, -1.0));
 
     assert_approx(unlimited, MAX_RESONANCE_Q);
-    assert_approx(limited, limited_q(-2.0, -1.0, 0.0));
+    assert_approx(limited, limited_q(-2.0, -1.0, MIN_Q_ROLLOFF));
 }
 
 // ---- FilterImpl frequency responses ----

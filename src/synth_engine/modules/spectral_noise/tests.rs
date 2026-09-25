@@ -8,7 +8,7 @@ use crate::{
         oscillator::OscillatorConfig, routing::LEFT_CHANNEL, synth_module::SynthModule,
         voices_handler::BAND_LIMIT_FREQUENCY,
     },
-    utils::{MIN_LEVEL_DB, db_to_gain, note_to_pitch, pitch_to_freq},
+    utils::{C4_PITCH, MIN_LEVEL_DB, db_to_gain, note_to_pitch, pitch_to_freq},
 };
 
 const SAMPLE_RATE: Sample = 48_000.0;
@@ -41,37 +41,27 @@ fn draw(
 
     let gain = SpectralNoise::level_gain(level);
     let phase_channel = if noise.stereo { channel } else { LEFT_CHANNEL };
-    let limit_to = noise.amount_limit_to[phase_channel];
-    let slope = noise.amount_limit_slope[phase_channel];
+    let cutoff = noise.cutoff[phase_channel];
+    let rolloff = noise.rolloff[phase_channel];
 
     if noise.stereo || channel == LEFT_CHANNEL {
         let phases = &mut noise.phases[phase_channel][voice][DC_OFFSET..length];
         let rng = &mut noise.random;
-        let log2_cutoff = limit_to;
-        let cutoff = log2_cutoff.exp2();
-        let slope = slope.clamp(0.0, 1.0);
-        let split = (cutoff.ceil() as usize)
+        let cutoff_log2 = cutoff;
+        let cutoff_harmonic = cutoff_log2.exp2();
+        let db_per_oct = rolloff.clamp(MIN_ROLLOFF, MAX_ROLLOFF);
+        let split = (cutoff_harmonic.ceil() as usize)
             .saturating_sub(DC_OFFSET)
             .min(phases.len());
         let (limited, full) = phases.split_at_mut(split);
         let full_turn = PI * amount;
 
-        if slope <= 0.0 {
-            for (offset, phase) in limited.iter_mut().enumerate() {
-                let scale = (DC_OFFSET + offset) as Sample / cutoff;
+        for (offset, phase) in limited.iter_mut().enumerate() {
+            let harmonic = DC_OFFSET + offset;
+            let octaves_below = (cutoff_log2 - noise.log2[harmonic]).max(0.0);
+            let scale = db_to_gain(-db_per_oct * octaves_below);
 
-                SpectralNoise::turn_phase(phase, full_turn * scale, rng);
-            }
-        } else {
-            let rate = 1.0 + slope * MAX_AMOUNT_LIMIT_POWER;
-
-            for (offset, phase) in limited.iter_mut().enumerate() {
-                let harmonic = DC_OFFSET + offset;
-                let scale =
-                    (rate * (noise.log2[harmonic] - log2_cutoff)).exp2();
-
-                SpectralNoise::turn_phase(phase, full_turn * scale, rng);
-            }
+            SpectralNoise::turn_phase(phase, full_turn * scale, rng);
         }
 
         for phase in full {
@@ -84,6 +74,13 @@ fn draw(
 
     noise.write_harmonics(voice, phase_channel, gain, &mut out);
     out
+}
+
+fn rolloff_gain(octaves_below: Sample, db_per_oct: Sample) -> Sample {
+    let octaves_below = octaves_below.max(0.0);
+    let db_per_oct = db_per_oct.clamp(MIN_ROLLOFF, MAX_ROLLOFF);
+
+    db_to_gain(-db_per_oct * octaves_below)
 }
 
 #[test]
@@ -221,74 +218,60 @@ fn amount_scales_the_phase_turn() {
 
 #[test]
 fn amount_is_full_at_and_above_the_limit() {
-    let cutoff = 2.0f32.exp2();
-
-    assert!(4.0 >= cutoff);
-    assert!(8.0 >= cutoff);
+    assert!((rolloff_gain(0.0, 33.0) - 1.0).abs() < 1e-6);
+    assert!((rolloff_gain(-2.0, MAX_ROLLOFF) - 1.0).abs() < 1e-6);
 }
 
 #[test]
-fn amount_falls_below_the_limit_like_q_limit() {
-    let noise = noise_with(NoiseColor::White, StereoSample::ZERO, 0);
-    let scale = (1.0 * (noise.log2[1] - 2.0)).exp2();
-    let expected = (-2.0f32).exp2();
+fn amount_rolls_off_linearly_in_db_per_octave() {
+    let one_octave = rolloff_gain(1.0, MIN_ROLLOFF);
+    let two_octaves = rolloff_gain(2.0, MIN_ROLLOFF);
+    let steep = rolloff_gain(1.0, MAX_ROLLOFF);
 
-    assert!((scale - expected).abs() < 1e-6);
+    assert!((one_octave - db_to_gain(-6.0)).abs() < 1e-5);
+    assert!((two_octaves - db_to_gain(-12.0)).abs() < 1e-5);
+    assert!((steep - db_to_gain(-60.0)).abs() < 1e-5);
 }
 
 #[test]
-fn amount_limit_slope_steepens_the_drop() {
-    let noise = noise_with(NoiseColor::White, StereoSample::ZERO, 0);
-    let shallow = (1.0 * (noise.log2[1] - 2.0)).exp2();
-    let steep = ((1.0 + MAX_AMOUNT_LIMIT_POWER) * (noise.log2[1] - 2.0)).exp2();
+fn rolloff_steepens_the_falloff() {
+    let gentle = rolloff_gain(2.0, MIN_ROLLOFF);
+    let steep = rolloff_gain(2.0, MAX_ROLLOFF);
 
-    assert!(steep < shallow);
+    assert!(steep < gentle);
 }
 
 #[test]
-fn amount_limit_sticks_to_frequency() {
-    let noise = noise_with(NoiseColor::White, StereoSample::ZERO, 0);
-    let limit = 2.0f32;
-    let rate = 1.0;
-    let log2_c4 = limit;
-    let cutoff_c4 = log2_c4.exp2();
-    let log2_up = limit - 1.0;
-    let cutoff_up = log2_up.exp2();
-    let at_c4 = (rate * (noise.log2[2] - log2_c4)).exp2();
-    let octave_up = (rate * (noise.log2[1] - log2_up)).exp2();
+fn cutoff_sticks_to_frequency() {
+    let octaves_below = |pitch: f32, harmonic: f32| 2.0 - (pitch - C4_PITCH) - harmonic.log2();
+    let at_c4 = rolloff_gain(octaves_below(C4_PITCH, 2.0), MIN_ROLLOFF);
+    let octave_up = rolloff_gain(octaves_below(C4_PITCH + 1.0, 1.0), MIN_ROLLOFF);
 
-    assert!(4.0 >= cutoff_c4);
-    assert!(2.0 >= cutoff_up);
-    assert!((at_c4 - octave_up).abs() < 1e-6);
+    assert!((at_c4 - octave_up).abs() < 1e-5);
     assert!(at_c4 < 1.0);
 }
 
 #[test]
-fn amount_limit_reduces_the_turn_below_the_frequency() {
+fn cutoff_reduces_the_turn_below_the_frequency() {
     let amount = 1.0;
-    let slope = 0.0;
+    let slope = MIN_ROLLOFF;
     let limit = 2.0;
     let mut noise = SpectralNoise::from_config(&SpectralNoiseConfig {
         id: 1,
         amount: amount.into(),
-        amount_limit_to: limit.into(),
-        amount_limit_slope: slope.into(),
+        cutoff: limit.into(),
+        rolloff: slope.into(),
         ..SpectralNoiseConfig::default()
     });
     let before = draw(&mut noise, 0, LEFT_CHANNEL, 16);
     let after = draw(&mut noise, 0, LEFT_CHANNEL, 16);
     let low = circular_distance(before[1].arg(), after[1].arg());
-    let log2_cutoff = limit as Sample;
-    let low_limit = PI
-        * amount
-        * ((1.0 + slope.clamp(0.0, 1.0) * MAX_AMOUNT_LIMIT_POWER)
-            * (noise.log2[1] - log2_cutoff))
-            .exp2();
+    let low_limit = PI * amount * rolloff_gain(limit, slope);
     let high = circular_distance(before[8].arg(), after[8].arg());
 
     assert!(low <= low_limit + 1e-4, "low harmonic jumped by {low}");
     assert!(high <= PI * amount + 1e-4, "high harmonic jumped by {high}");
-    assert!(low_limit < PI * amount * 0.5);
+    assert!(low_limit < PI * amount);
 }
 
 #[test]
@@ -338,8 +321,8 @@ fn config_round_trips() {
         level: StereoSample::new(-12.0, -3.0),
         stereo: false,
         amount: 0.25.into(),
-        amount_limit_to: StereoSample::new(-1.0, 2.0),
-        amount_limit_slope: StereoSample::new(0.2, 0.8),
+        cutoff: StereoSample::new(-1.0, 2.0),
+        rolloff: StereoSample::new(12.0, 48.0),
         steal_phase: true,
     });
     let restored = SpectralNoise::from_config(&noise.get_config());
@@ -347,14 +330,8 @@ fn config_round_trips() {
     assert_eq!(restored.get_config(), noise.get_config());
     assert!(!restored.get_config().stereo);
     assert_eq!(restored.get_config().amount, StereoSample::splat(0.25));
-    assert_eq!(
-        restored.get_config().amount_limit_to,
-        StereoSample::new(-1.0, 2.0)
-    );
-    assert_eq!(
-        restored.get_config().amount_limit_slope,
-        StereoSample::new(0.2, 0.8)
-    );
+    assert_eq!(restored.get_config().cutoff, StereoSample::new(-1.0, 2.0));
+    assert_eq!(restored.get_config().rolloff, StereoSample::new(12.0, 48.0));
     assert!(restored.get_config().steal_phase);
 }
 

@@ -15,10 +15,10 @@ use crate::{
         synth_module::SynthModule,
         voices_handler::BAND_LIMIT_FREQUENCY,
     },
-    utils::{C4_PITCH, MAX_LEVEL_DB, MIN_LEVEL_DB, db_to_gain, pitch_to_freq},
+    utils::{
+        C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, db_to_gain, pitch_to_freq,
+    },
 };
-
-use crate::synth_engine::spectral_filter::{MAX_CUTOFF, MIN_CUTOFF};
 
 mod config;
 mod link;
@@ -32,8 +32,8 @@ pub use ui_bridge::SpectralNoiseUiBridge;
 
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 
-/// Matches the spectral filter's Q-limit slope: `1` is this many times steeper than `0`.
-const MAX_AMOUNT_LIMIT_POWER: Sample = 20.0;
+pub const MIN_ROLLOFF: Sample = 6.0;
+pub const MAX_ROLLOFF: Sample = 60.0;
 
 #[derive(Clone, Copy)]
 struct PhaseReset {
@@ -105,8 +105,8 @@ pub struct SpectralNoise {
     color: NoiseColor,
     bandwidth: i32,
     stereo: bool,
-    amount_limit_to: StereoSample,
-    amount_limit_slope: StereoSample,
+    cutoff: StereoSample,
+    rolloff: StereoSample,
     steal_phase: bool,
     /// `power_scale(color) / π`, shared by every voice.
     magnitude_scale: Sample,
@@ -141,15 +141,14 @@ impl SpectralNoise {
             color: config.color,
             bandwidth: Self::clamp_bandwidth(config.bandwidth),
             stereo: config.stereo,
-            amount_limit_to: Self::clamp_amount_limit_to(config.amount_limit_to),
-            amount_limit_slope: Self::clamp_amount_limit_slope(config.amount_limit_slope),
+            cutoff: Self::clamp_cutoff(config.cutoff),
+            rolloff: Self::clamp_rolloff(config.rolloff),
             steal_phase: config.steal_phase,
             magnitude_scale: Self::magnitude_scale(config.color),
             random: Pcg32::new(0xa5a5_5a5a_c3c3_3c3c, 0x9e3779b97f4a7c15),
             phases: Box::new(array::from_fn(|_| {
                 array::from_fn(|_| Box::new([0.0; SPECTRAL_BUFFER_SIZE]))
             })),
-            phase_reset: [None; MAX_VOICES],
             log2: array::from_fn(|harmonic| {
                 if harmonic == 0 {
                     0.0
@@ -157,6 +156,7 @@ impl SpectralNoise {
                     (harmonic as Sample).log2()
                 }
             }),
+            phase_reset: [None; MAX_VOICES],
         };
 
         for voice_idx in 0..MAX_VOICES {
@@ -174,8 +174,8 @@ impl SpectralNoise {
             level: get_stereo_param!(self, level),
             stereo: self.stereo,
             amount: get_stereo_param!(self, amount),
-            amount_limit_to: self.amount_limit_to,
-            amount_limit_slope: self.amount_limit_slope,
+            cutoff: self.cutoff,
+            rolloff: self.rolloff,
             steal_phase: self.steal_phase,
         }
     }
@@ -196,12 +196,12 @@ impl SpectralNoise {
         self.stereo = stereo;
     }
 
-    pub fn set_amount_limit_to(&mut self, value: StereoSample) {
-        self.amount_limit_to = Self::clamp_amount_limit_to(value);
+    pub fn set_cutoff(&mut self, value: StereoSample) {
+        self.cutoff = Self::clamp_cutoff(value);
     }
 
-    pub fn set_amount_limit_slope(&mut self, value: StereoSample) {
-        self.amount_limit_slope = Self::clamp_amount_limit_slope(value);
+    pub fn set_rolloff(&mut self, value: StereoSample) {
+        self.rolloff = Self::clamp_rolloff(value);
     }
 
     pub fn set_steal_phase(&mut self, steal_phase: bool) {
@@ -220,12 +220,12 @@ impl SpectralNoise {
         amount.clamp(0.0, 1.0)
     }
 
-    fn clamp_amount_limit_to(value: StereoSample) -> StereoSample {
+    fn clamp_cutoff(value: StereoSample) -> StereoSample {
         value.clamp(MIN_CUTOFF, MAX_CUTOFF)
     }
 
-    fn clamp_amount_limit_slope(value: StereoSample) -> StereoSample {
-        value.clamp(0.0, 1.0)
+    fn clamp_rolloff(value: StereoSample) -> StereoSample {
+        value.clamp(MIN_ROLLOFF, MAX_ROLLOFF)
     }
 
     fn level_gain(level_db: Sample) -> Sample {
@@ -308,6 +308,7 @@ impl SpectralNoise {
         }
     }
 
+    #[inline]
     fn turn_phase(phase: &mut Sample, max_turn: Sample, rng: &mut Pcg32) {
         let turn = (rng.random::<Sample>() * 2.0 - 1.0) * max_turn;
 
@@ -384,36 +385,28 @@ impl SpectralNoise {
 
         let gain = Self::level_gain(level);
         let phase_channel = if self.stereo { channel } else { LEFT_CHANNEL };
-        let limit_to = self.amount_limit_to[phase_channel];
-        let slope = self.amount_limit_slope[phase_channel];
+        let cutoff = self.cutoff[phase_channel];
+        let rolloff = self.rolloff[phase_channel];
 
         if self.stereo || channel == LEFT_CHANNEL {
             let phases = &mut self.phases[phase_channel][voice_idx][DC_OFFSET..length];
             let rng = &mut self.random;
-            let log2_cutoff = limit_to - (pitch - C4_PITCH);
-            let cutoff = log2_cutoff.exp2();
-            let slope = slope.clamp(0.0, 1.0);
-            let split = (cutoff.ceil() as usize)
+            // Octaves of the harmonic index that sits on the cutoff.
+            let cutoff_log2 = cutoff - (pitch - C4_PITCH);
+            let cutoff_harmonic = cutoff_log2.exp2();
+            let db_per_oct = rolloff.clamp(MIN_ROLLOFF, MAX_ROLLOFF);
+            let split = (cutoff_harmonic.ceil() as usize)
                 .saturating_sub(DC_OFFSET)
                 .min(phases.len());
             let (limited, full) = phases.split_at_mut(split);
             let full_turn = f32::consts::PI * amount;
 
-            if slope < 1e-5 {
-                for (offset, phase) in limited.iter_mut().enumerate() {
-                    let scale = (DC_OFFSET + offset) as Sample / cutoff;
+            for (offset, phase) in limited.iter_mut().enumerate() {
+                let harmonic = DC_OFFSET + offset;
+                let octaves_below = (cutoff_log2 - self.log2[harmonic]).max(0.0);
+                let scale = db_to_gain(-db_per_oct * octaves_below);
 
-                    Self::turn_phase(phase, full_turn * scale, rng);
-                }
-            } else {
-                let rate = 1.0 + slope * MAX_AMOUNT_LIMIT_POWER;
-
-                for (offset, phase) in limited.iter_mut().enumerate() {
-                    let harmonic = DC_OFFSET + offset;
-                    let scale = (rate * (self.log2[harmonic] - log2_cutoff)).exp2();
-
-                    Self::turn_phase(phase, full_turn * scale, rng);
-                }
+                Self::turn_phase(phase, full_turn * scale, rng);
             }
 
             for phase in full {
@@ -493,8 +486,8 @@ impl SynthModule for SpectralNoise {
                 UiEvent::Color(color) => self.set_color(color),
                 UiEvent::Bandwidth(bandwidth) => self.set_bandwidth(bandwidth),
                 UiEvent::Stereo(stereo) => self.set_stereo(stereo),
-                UiEvent::AmountLimitTo(value) => self.set_amount_limit_to(value),
-                UiEvent::AmountLimitSlope(value) => self.set_amount_limit_slope(value),
+                UiEvent::Cutoff(value) => self.set_cutoff(value),
+                UiEvent::Rolloff(value) => self.set_rolloff(value),
                 UiEvent::StealPhase(steal_phase) => self.set_steal_phase(steal_phase),
             }
         }

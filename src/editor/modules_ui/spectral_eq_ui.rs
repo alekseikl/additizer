@@ -5,8 +5,11 @@ use egui::{
 
 use crate::{
     editor::{
-        ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput,
-        units::Units,
+        ModuleUi,
+        module_label::ModuleLabel,
+        slider::Slider,
+        stereo_input::StereoInput,
+        units::{OctavesDisplay, Units},
     },
     synth_engine::{
         Input, ModuleId, ModuleType, Sample,
@@ -15,10 +18,12 @@ use crate::{
             EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MAX_Q, MIN_CUTOFF_HZ, MIN_Q,
             SpectralEqUiBridge,
         },
-        spectral_filter::{MAX_CUTOFF, MAX_DRIVE, MIN_CUTOFF, MIN_DRIVE},
+        spectral_filter::{
+            MAX_DRIVE, MAX_Q_ROLLOFF, MIN_DRIVE, MIN_Q_ROLLOFF,
+        },
         ui_bridge::{ModuleBridge, UiBridge},
     },
-    utils::from_st,
+    utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},
 };
 
 const DRAG_HANDLE: &str = "☰";
@@ -57,32 +62,42 @@ impl SpectralEqUi {
                 if ui
                     .add(
                         StereoInput::new(Input::Cutoff, module_id, &mut config.cutoff, bridge)
-                            .slider(|slider| slider.units(Units::Octaves(false))),
+                            .slider(|slider| {
+                                slider.units(Units::Octaves(OctavesDisplay::Semitones))
+                            }),
                     )
                     .changed()
                 {
                     eq_bridge.set_param(Input::Cutoff, config.cutoff);
                 }
 
-                ui.label("Q Limit");
+                ui.label("Q Cutoff");
                 if ui
                     .add(
-                        Slider::stereo(&mut config.q_limit_to, MIN_CUTOFF..=MAX_CUTOFF, None)
+                        Slider::stereo(&mut config.q_cutoff, MIN_CUTOFF..=MAX_CUTOFF, None)
                             .default(from_st(12.0))
-                            .units(Units::Octaves(true)),
+                            .units(Units::Octaves(OctavesDisplay::Frequency)),
                     )
                     .changed()
                 {
-                    eq_bridge.set_q_limit_to(config.q_limit_to);
+                    eq_bridge.set_q_cutoff(config.q_cutoff);
                 }
                 ui.end_row();
 
-                ui.label("Q Slope");
+                ui.label("Q Rolloff");
                 if ui
-                    .add(Slider::stereo(&mut config.q_limit_slope, 0.0..=1.0, None).default(0.5))
+                    .add(
+                        Slider::stereo(
+                            &mut config.q_rolloff,
+                            MIN_Q_ROLLOFF..=MAX_Q_ROLLOFF,
+                            None,
+                        )
+                        .default((MIN_Q_ROLLOFF + MAX_Q_ROLLOFF) * 0.5)
+                        .units(Units::Rolloff),
+                    )
                     .changed()
                 {
-                    eq_bridge.set_q_limit_slope(config.q_limit_slope);
+                    eq_bridge.set_q_rolloff(config.q_rolloff);
                 }
 
                 ui.label("Linear");

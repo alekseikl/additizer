@@ -6,12 +6,12 @@ use crate::{
         ComplexSample, Input, ModuleId, Sample,
         filters::spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
         spectral_filter::{
-            MAX_CUTOFF, MAX_DRIVE, MAX_RESONANCE, MIN_CUTOFF, MIN_DRIVE, MIN_RESONANCE,
-            SpectralFilterUiBridge, q_from_resonance,
+            MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, SpectralFilterUiBridge,
+            q_from_resonance,
         },
         ui_bridge::{ModuleBridge, UiBridge},
     },
-    utils::{C4_PITCH, MAX_LEVEL_DB, MIN_LEVEL_DB, gain_to_db_fast},
+    utils::{C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, gain_to_db_fast},
 };
 
 use super::GridWidgetContent;
@@ -70,15 +70,15 @@ impl SpectralFilterWidget {
             0.0
         };
         let cutoff = (config.cutoff[0] + offset).clamp(MIN_CUTOFF, MAX_CUTOFF);
-        let q_limit_to = (config.q_limit_to[0] + offset).clamp(MIN_CUTOFF, MAX_CUTOFF);
+        let q_cutoff = (config.q_cutoff[0] + offset).clamp(MIN_CUTOFF, MAX_CUTOFF);
         let filter = SpectralFilterEngine::new(
             config.filter_type,
             FilterParams {
                 drive: config.drive[0].clamp(MIN_DRIVE, MAX_DRIVE),
                 cutoff,
                 q: q_from_resonance(config.resonance[0].clamp(MIN_RESONANCE, MAX_RESONANCE)),
-                q_limit_to,
-                q_limit_slope: config.q_limit_slope[0],
+                q_cutoff,
+                q_rolloff: config.q_rolloff[0],
                 linear_phase: config.linear_phase,
             },
         );
