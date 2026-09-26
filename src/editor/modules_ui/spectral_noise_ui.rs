@@ -92,7 +92,7 @@ impl SpectralNoiseUi {
                 ui.end_row();
 
                 ui.label("Amount").on_hover_text(
-                    "Scales how far each harmonic's phase turns between frames.",
+                    "Scales how far each harmonic's phase turns between frames. At 100%, harmonics at and above the cutoff get a new random phase.",
                 );
                 if ui
                     .add(StereoInput::new(

@@ -1,5 +1,7 @@
 use std::f32::consts::PI;
 
+use rand_pcg::Pcg32;
+
 use super::*;
 use crate::{
     synth_engine::{
@@ -64,8 +66,14 @@ fn draw(
             SpectralNoise::turn_phase(phase, full_turn * scale, rng);
         }
 
-        for phase in full {
-            SpectralNoise::turn_phase(phase, full_turn, rng);
+        if amount > FULL_AMOUNT_THRESHOLD {
+            for phase in full {
+                SpectralNoise::reset_phase(phase, rng);
+            }
+        } else {
+            for phase in full {
+                SpectralNoise::turn_phase(phase, full_turn, rng);
+            }
         }
     } else {
         let [left, right] = noise.phases.each_mut();
@@ -214,6 +222,34 @@ fn amount_scales_the_phase_turn() {
             "phase jumped by {turn}, limit is {limit}"
         );
     }
+}
+
+#[test]
+fn full_amount_replaces_phase_and_ignores_the_previous_value() {
+    let mut from_low = 0.2;
+    let mut from_high = 2.7;
+    let mut rng_a = Pcg32::new(0x1234, 0x5678);
+    let mut rng_b = Pcg32::new(0x1234, 0x5678);
+
+    SpectralNoise::reset_phase(&mut from_low, &mut rng_a);
+    SpectralNoise::reset_phase(&mut from_high, &mut rng_b);
+
+    assert_eq!(from_low, from_high);
+    assert_ne!(from_low, 0.2);
+}
+
+#[test]
+fn partial_amount_turns_from_the_previous_phase() {
+    let start = 0.4;
+    let amount = 0.25;
+    let mut phase = start;
+    let mut rng = Pcg32::new(0x1234, 0x5678);
+
+    SpectralNoise::turn_phase(&mut phase, PI * amount, &mut rng);
+
+    let turn = circular_distance(start, phase);
+    assert!(turn > 0.0);
+    assert!(turn <= PI * amount + 1e-4, "phase jumped by {turn}");
 }
 
 #[test]

@@ -34,6 +34,7 @@ use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 
 pub const MIN_ROLLOFF: Sample = 6.0;
 pub const MAX_ROLLOFF: Sample = 60.0;
+const FULL_AMOUNT_THRESHOLD: Sample = 0.9999;
 
 #[derive(Clone, Copy)]
 struct PhaseReset {
@@ -268,7 +269,7 @@ impl SpectralNoise {
             self.phases[channel][voice_idx][0] = 0.0;
 
             for phase in self.phases[channel][voice_idx].iter_mut().skip(DC_OFFSET) {
-                *phase = self.random.random::<Sample>() * f32::consts::TAU;
+                Self::reset_phase(phase, &mut self.random);
             }
         }
     }
@@ -313,6 +314,11 @@ impl SpectralNoise {
         let turn = (rng.random::<Sample>() * 2.0 - 1.0) * max_turn;
 
         *phase = (*phase + turn).rem_euclid(f32::consts::TAU);
+    }
+
+    #[inline]
+    fn reset_phase(phase: &mut Sample, rng: &mut Pcg32) {
+        *phase = rng.random::<Sample>() * f32::consts::TAU;
     }
 
     /// Writes this voice's harmonics into `out`. `out.len()` is the bandlimited
@@ -409,8 +415,14 @@ impl SpectralNoise {
                 Self::turn_phase(phase, full_turn * scale, rng);
             }
 
-            for phase in full {
-                Self::turn_phase(phase, full_turn, rng);
+            if amount > FULL_AMOUNT_THRESHOLD {
+                for phase in full {
+                    Self::reset_phase(phase, rng);
+                }
+            } else {
+                for phase in full {
+                    Self::turn_phase(phase, full_turn, rng);
+                }
             }
         } else {
             let [left, right] = self.phases.each_mut();
