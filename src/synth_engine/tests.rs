@@ -1883,7 +1883,16 @@ fn svf_highpass_above_fundamental_removes_most_signal() {
 
 #[test]
 fn svf_all_modes_produce_finite_audio() {
-    for filter_type in filters::svf::SvfType::ALL {
+    for filter_type in [
+        filters::svf::SvfType::LowPass12,
+        filters::svf::SvfType::LowPass18,
+        filters::svf::SvfType::LowPass24,
+        filters::svf::SvfType::HighPass12,
+        filters::svf::SvfType::HighPass18,
+        filters::svf::SvfType::HighPass24,
+        filters::svf::SvfType::BandPass6,
+        filters::svf::SvfType::BandPass12,
+    ] {
         let level = svf_output_rms(SvfConfig {
             filter_type,
             cutoff: 0.0.into(),

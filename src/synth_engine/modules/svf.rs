@@ -32,7 +32,6 @@ pub use svf::{MAX_RESONANCE, MIN_RESONANCE};
 
 struct Params {
     filter_type: SvfType,
-    /// 0 = absolute cutoff (relative to C4), 1 = full key tracking.
     keytrack: Sample,
 }
 
@@ -208,11 +207,6 @@ impl Svf {
         let filter_type = params.filter_type;
 
         state.set_type(filter_type);
-
-        // A NaN/inf that slipped in would otherwise stick forever.
-        if !state.is_finite() {
-            state.reset();
-        }
 
         router.param(
             &inputs.cutoff,

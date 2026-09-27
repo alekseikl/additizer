@@ -71,12 +71,6 @@ voice kill time, output gain. UI can change several of these at runtime via the 
 `UiEnd` / `AudioEnd` link. Spectral bandwidth is **per module** (Harmonic Editor, Spectral
 Noise), capped by `MAX_BANDWIDTH` in `config.rs`; `0` means note-based bandwidth.
 
-**Shared DSP** lives outside `modules/`: `src/synth_engine/filters/spectral_filter.rs` holds
-the frequency-response filter implementations (`FilterImpl`, `FilterType`, `SpectralFilter`)
-used by both the Spectral Filter and Spectral EQ modules and their editor widgets.
-`src/synth_engine/filters/svf.rs` holds the time-domain state-variable filter core
-(`SvfState`, `SvfCoeffs`, `SvfResponse`) used by the SVF module and its grid widget.
-
 ## Routing
 
 A patch is a directed graph. Edges target `InputId = (module_id, Input)`. Process order is a
@@ -183,7 +177,8 @@ stereo/smoothed parameter plumbing.
 - Tests live next to the code they cover in a `tests.rs` sibling directory, included via
   `#[cfg(test)] mod tests;` (e.g. `src/synth_engine/tests.rs`,
   `src/synth_engine/voices_handler/tests.rs`, `src/synth_engine/modules/spectral_eq/tests.rs`,
-  `src/synth_engine/filters/spectral_filter/tests.rs`, `src/editor/units/tests.rs`). Run them
+  `src/synth_engine/filters/spectral_filter/tests.rs`,
+  `src/synth_engine/filters/svf/tests.rs`, `src/editor/units/tests.rs`). Run them
   with `cargo test`. When changing a module that has a `tests.rs`, update or extend it.
 - Performance benchmarks use [Criterion](https://github.com/bheisler/criterion.rs) in
   `benches/synth_engine.rs`. Coverage reports use

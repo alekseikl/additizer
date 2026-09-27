@@ -71,10 +71,11 @@ impl SvfWidget {
         let response = SvfResponse {
             filter_type: config.filter_type,
             resonance: config.resonance[0],
+            cutoff: cutoff_freq,
         };
         let drive_db = config.drive[0];
 
-        self.build_points(rect, &response, cutoff_freq, cutoff_log2, drive_db);
+        self.build_points(rect, &response, cutoff_log2, drive_db);
         Self::paint_response(ui.painter(), rect, &self.points);
     }
 
@@ -84,7 +85,6 @@ impl SvfWidget {
         &mut self,
         rect: Rect,
         response: &SvfResponse,
-        cutoff_freq: Sample,
         cutoff_log2: Sample,
         drive_db: Sample,
     ) {
@@ -101,7 +101,7 @@ impl SvfWidget {
         let mut push_col = |col: f32| {
             let t = col * t_mult;
             let freq = pitch_to_freq(C4_PITCH + MIN_CUTOFF + t * log2_range);
-            let gain = response.at(SvfResponse::analog_s(freq, cutoff_freq)).norm();
+            let gain = response.at(freq).norm();
             let db = gain_to_db_fast(gain) + drive_db;
             let y_t = ((db - MIN_LEVEL_DB) * DB_RANGE_MULT).clamp(0.0, 1.0);
 

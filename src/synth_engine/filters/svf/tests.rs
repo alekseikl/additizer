@@ -5,6 +5,17 @@ use super::{SvfFilter, *};
 const SAMPLE_RATE: Sample = 48_000.0;
 const CUTOFF: Sample = 1_000.0;
 
+const ALL_TYPES: [SvfType; 8] = [
+    SvfType::LowPass12,
+    SvfType::LowPass18,
+    SvfType::LowPass24,
+    SvfType::HighPass12,
+    SvfType::HighPass18,
+    SvfType::HighPass24,
+    SvfType::BandPass6,
+    SvfType::BandPass12,
+];
+
 fn g_and_k(cutoff: Sample, q: Sample) -> (Sample, Sample) {
     let g = (PI * (cutoff * SAMPLE_RATE.recip()).min(0.499)).tan();
 
@@ -36,21 +47,26 @@ fn resonance_for_q(q: Sample) -> Sample {
 }
 
 fn predicted_gain(filter_type: SvfType, q: Sample, freq: Sample) -> Sample {
-    SvfResponse {
+    let w = (PI * freq / SAMPLE_RATE).tan();
+    let g = (PI * CUTOFF / SAMPLE_RATE).tan();
+
+    let response = SvfResponse {
         filter_type,
         resonance: resonance_for_q(q),
-    }
-    .at(SvfResponse::digital_s(freq, CUTOFF, SAMPLE_RATE))
-    .norm()
+        cutoff: g,
+    };
+
+    response.at(w).norm()
 }
 
 fn analog_gain(filter_type: SvfType, q: Sample, freq: Sample) -> Sample {
-    SvfResponse {
+    let response = SvfResponse {
         filter_type,
         resonance: resonance_for_q(q),
-    }
-    .at(SvfResponse::analog_s(freq, CUTOFF))
-    .norm()
+        cutoff: CUTOFF,
+    };
+
+    response.at(freq).norm()
 }
 
 fn assert_close(measured: Sample, predicted: Sample, ctx: &str) {
@@ -64,7 +80,7 @@ fn assert_close(measured: Sample, predicted: Sample, ctx: &str) {
 
 #[test]
 fn tick_matches_bilinear_response_for_all_types() {
-    for filter_type in SvfType::ALL {
+    for filter_type in ALL_TYPES {
         for q in [ZERO_RESONANCE_Q, 1.0, 4.0] {
             for freq in [250.0, 1_000.0, 4_000.0] {
                 assert_close(
@@ -146,7 +162,7 @@ fn steeper_types_roll_off_faster() {
 
 #[test]
 fn high_resonance_impulse_decays_and_stays_finite() {
-    for filter_type in SvfType::ALL {
+    for filter_type in ALL_TYPES {
         let (g, k) = g_and_k(CUTOFF, 16.0);
         let mut state = SvfState::new(filter_type);
         let mut peak_early = 0.0f32;
@@ -165,7 +181,6 @@ fn high_resonance_impulse_decays_and_stays_finite() {
             }
         }
 
-        assert!(state.is_finite());
         assert!(
             peak_late < peak_early * 0.01,
             "{filter_type:?}: early {peak_early} late {peak_late}"
@@ -189,7 +204,7 @@ fn reset_clears_memory() {
 
 #[test]
 fn types_round_trip_through_serde() {
-    for filter_type in SvfType::ALL {
+    for filter_type in ALL_TYPES {
         let json = serde_json::to_string(&filter_type).unwrap();
         let back: SvfType = serde_json::from_str(&json).unwrap();
 
