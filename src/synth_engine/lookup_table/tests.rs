@@ -27,15 +27,6 @@ fn values_match_at_each_interval_end() {
 }
 
 #[test]
-fn lookup_clamps_t_to_the_unit_interval() {
-    const INTERVALS: usize = 4;
-    let table = LookupTable::<{ INTERVALS + EXTRA_SAMPLES }>::new(|t| t);
-
-    assert_eq!(table.at(-1.0), 0.0);
-    assert_eq!(table.at(2.0), 1.0);
-}
-
-#[test]
 fn single_interval_of_a_constant_returns_that_value() {
     let table = LookupTable::<{ 1 + EXTRA_SAMPLES }>::new(|_| 3.0);
 

@@ -46,7 +46,7 @@ impl<const N: usize> LookupTable<N> {
             );
         };
 
-        let x = t.clamp(0.0, 1.0) * Self::INTERVALS as Sample;
+        let x = t * Self::INTERVALS as Sample;
         let idx = (x as usize).min(Self::INTERVALS);
         let frac = x - idx as Sample;
         let s = &self.samples[idx..idx + 4];

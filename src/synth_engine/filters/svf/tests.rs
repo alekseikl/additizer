@@ -1,5 +1,7 @@
 use std::f32::consts::{PI, TAU};
 
+use crate::utils::freq_to_c4_pitch;
+
 use super::{SvfFilter, g_table, *};
 
 fn approx_g(freq_ratio: Sample) -> Sample {
@@ -67,6 +69,26 @@ fn prewarped_g_tracks_tan() {
     let knot = 256.0 * step;
     assert_eq!(g_table().at(knot), (knot * PI).tan());
     assert_eq!(g_table().at(0.75), (MAX_FREQ_RATIO * PI).tan());
+}
+
+#[test]
+fn process_clamps_frequency_ratio_to_the_tan_limit() {
+    let resonance = [0.0];
+    let gain = [1.0];
+    let input = [1.0];
+
+    let run = |ratio: Sample| {
+        let cutoff = [freq_to_c4_pitch(ratio * SAMPLE_RATE)];
+        let mut state = SvfState::new(SvfType::LowPass12);
+        let mut output = [0.0];
+
+        state.process(SAMPLE_RATE, &input, &cutoff, &resonance, &gain, &mut output);
+
+        output[0]
+    };
+
+    assert_eq!(run(0.6), run(1.0));
+    assert_ne!(run(0.01), run(1.0));
 }
 
 #[test]

@@ -20,15 +20,15 @@ pub const MAX_RESONANCE: Sample = 1.0;
 const ZERO_RESONANCE_Q: Sample = 0.5;
 const MAX_RESONANCE_Q: Sample = 16.0;
 
+/// Clamp for `f / sample_rate` before `tan(π t)` (`ω = 0.499 π`).
+const MAX_FREQ_RATIO: Sample = 0.499;
+
 const G_TABLE_INTERVALS: usize = 2048;
 
 /// `G_TABLE_INTERVALS` steps on `[0, 1]`, plus the Catmull-Rom pads.
 type GTable = LookupTable<{ G_TABLE_INTERVALS + EXTRA_SAMPLES }>;
 
 fn g_table() -> &'static GTable {
-    /// Clamp for `f / sample_rate` before `tan(π t)` (`ω = 0.499 π`).
-    const MAX_FREQ_RATIO: Sample = 0.499;
-
     static TABLE: LazyLock<GTable> =
         LazyLock::new(|| LookupTable::new(|t| (t.min(MAX_FREQ_RATIO) * PI).tan()));
 
@@ -93,7 +93,7 @@ pub(crate) trait SvfFilter {
             izip!(output, input, cutoff, resonance, gain)
         {
             let freq = pitch_to_freq(C4_PITCH + cutoff);
-            let g = g_table.at(freq * inv_sample_rate);
+            let g = g_table.at((freq * inv_sample_rate).min(MAX_FREQ_RATIO));
             let k = q_from_resonance(resonance).recip();
 
             *out = self.tick(g, k, sample * gain);
