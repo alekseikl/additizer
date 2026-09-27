@@ -323,7 +323,7 @@ impl GridWidget {
         let module_id = self.io.id;
 
         response.context_menu(|ui| {
-            if ui.button("Remove Module").clicked() {
+            if ui.button("Remove").clicked() {
                 ctx.bridge.remove_module(module_id);
                 ui.close();
             }

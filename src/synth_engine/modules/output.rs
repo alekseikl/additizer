@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use nice_plug::util::db_to_gain_fast;
 
 use crate::{
@@ -127,6 +130,11 @@ impl Output {
 
             clipped |= value < -clip_level || value > clip_level;
             *out = value.clamp(-clip_level, clip_level);
+
+            if !out.is_finite() {
+                *out = 0.0;
+                clipped = true;
+            }
         }
 
         clipped
