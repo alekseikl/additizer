@@ -18,9 +18,7 @@ use crate::{
             EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MAX_Q, MIN_CUTOFF_HZ, MIN_Q,
             SpectralEqUiBridge,
         },
-        spectral_filter::{
-            MAX_DRIVE, MAX_Q_ROLLOFF, MIN_DRIVE, MIN_Q_ROLLOFF,
-        },
+        spectral_filter::{MAX_DRIVE, MAX_Q_ROLLOFF, MIN_DRIVE, MIN_Q_ROLLOFF},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},
@@ -87,13 +85,9 @@ impl SpectralEqUi {
                 ui.label("Q Rolloff");
                 if ui
                     .add(
-                        Slider::stereo(
-                            &mut config.q_rolloff,
-                            MIN_Q_ROLLOFF..=MAX_Q_ROLLOFF,
-                            None,
-                        )
-                        .default((MIN_Q_ROLLOFF + MAX_Q_ROLLOFF) * 0.5)
-                        .units(Units::Rolloff),
+                        Slider::stereo(&mut config.q_rolloff, MIN_Q_ROLLOFF..=MAX_Q_ROLLOFF, None)
+                            .default((MIN_Q_ROLLOFF + MAX_Q_ROLLOFF) * 0.5)
+                            .units(Units::Rolloff),
                     )
                     .changed()
                 {

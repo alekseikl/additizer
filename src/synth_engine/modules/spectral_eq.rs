@@ -24,9 +24,7 @@ use crate::{
             DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
             RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceTarget,
         },
-        spectral_filter::{
-            MAX_DRIVE, MAX_Q_ROLLOFF, MIN_DRIVE, MIN_Q_ROLLOFF,
-        },
+        spectral_filter::{MAX_DRIVE, MAX_Q_ROLLOFF, MIN_DRIVE, MIN_Q_ROLLOFF},
         synth_module::SynthModule,
         types::Sample,
     },
@@ -71,8 +69,7 @@ impl ChannelParams {
         Self {
             cutoff: c.cutoff[channel_idx],
             q_cutoff: c.q_cutoff[channel_idx],
-            q_rolloff: c.q_rolloff[channel_idx]
-                .clamp(MIN_Q_ROLLOFF, MAX_Q_ROLLOFF),
+            q_rolloff: c.q_rolloff[channel_idx].clamp(MIN_Q_ROLLOFF, MAX_Q_ROLLOFF),
             output_level: c.output_level[channel_idx],
         }
     }
@@ -239,9 +236,7 @@ impl SpectralEq {
             .scalar(&inputs.cutoff, channel.cutoff)
             .clamp(MIN_CUTOFF, MAX_CUTOFF);
         let q_cutoff = channel.q_cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF);
-        let q_rolloff = channel
-            .q_rolloff
-            .clamp(MIN_Q_ROLLOFF, MAX_Q_ROLLOFF);
+        let q_rolloff = channel.q_rolloff.clamp(MIN_Q_ROLLOFF, MAX_Q_ROLLOFF);
         let keytrack = self.params.keytrack;
         let output_level = router
             .scalar(&inputs.output_level, channel.output_level)

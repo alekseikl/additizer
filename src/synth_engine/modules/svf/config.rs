@@ -11,7 +11,7 @@ pub struct SvfConfig {
     pub keytrack: Sample,
     /// Octaves relative to C4.
     pub cutoff: StereoSample,
-    /// [-1, 1]; 0 = Butterworth.
+    /// [0, 1]; 0 = Q of 0.5.
     pub resonance: StereoSample,
     /// dB of input gain into the saturator.
     pub drive: StereoSample,

@@ -65,12 +65,15 @@ impl SvfUi {
 
                 ui.label("Resonance");
                 if ui
-                    .add(StereoInput::new(
-                        Input::Resonance,
-                        module_id,
-                        &mut config.resonance,
-                        bridge,
-                    ))
+                    .add(
+                        StereoInput::new(
+                            Input::Resonance,
+                            module_id,
+                            &mut config.resonance,
+                            bridge,
+                        )
+                        .slider(|slider| slider.without_inverse()),
+                    )
                     .changed()
                 {
                     svf_bridge.set_param(Input::Resonance, config.resonance);

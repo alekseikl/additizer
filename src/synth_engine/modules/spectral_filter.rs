@@ -16,7 +16,7 @@ use crate::{
         StereoSample,
         buffer::VoicesLayout,
         filters::spectral_filter::{
-            BUTTERWORTH_Q, FilterParams, FilterType, SpectralFilter as SpectralFilterEngine,
+            FilterParams, FilterType, SpectralFilter as SpectralFilterEngine, ZERO_RESONANCE_Q,
         },
         routing::{
             DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
@@ -41,9 +41,9 @@ pub fn q_from_resonance(resonance: Sample) -> Sample {
     let resonance = resonance.clamp(MIN_RESONANCE, MAX_RESONANCE);
 
     if resonance > 0.0 {
-        BUTTERWORTH_Q + (MAX_RESONANCE_Q - BUTTERWORTH_Q) * resonance.powf(3.0)
+        ZERO_RESONANCE_Q + (MAX_RESONANCE_Q - ZERO_RESONANCE_Q) * resonance.powf(3.0)
     } else {
-        MIN_RESONANCE_Q + (BUTTERWORTH_Q - MIN_RESONANCE_Q) * (1.0 + resonance)
+        MIN_RESONANCE_Q + (ZERO_RESONANCE_Q - MIN_RESONANCE_Q) * (1.0 + resonance)
     }
 }
 

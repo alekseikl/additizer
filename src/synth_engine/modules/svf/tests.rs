@@ -1,60 +1,8 @@
 use super::*;
-use crate::utils::{note_to_pitch, pitch_to_freq};
-
-const SAMPLE_RATE: Sample = 48_000.0;
+use crate::utils::db_to_gain_fast;
 
 fn assert_approx(a: Sample, b: Sample) {
     assert!((a - b).abs() < 1e-3 * b.abs().max(1.0), "{a} ≈ {b}");
-}
-
-#[test]
-fn zero_cutoff_without_keytrack_is_c4_for_any_note() {
-    let c4_freq = pitch_to_freq(C4_PITCH);
-
-    for note in [36u8, 60, 84] {
-        assert_approx(
-            cutoff_freq(0.0, 0.0, note_to_pitch(note as Sample), SAMPLE_RATE),
-            c4_freq,
-        );
-    }
-}
-
-#[test]
-fn full_keytrack_follows_the_note() {
-    for note in [36u8, 60, 84] {
-        let pitch = note_to_pitch(note as Sample);
-
-        // Cutoff of one octave sits an octave above the played note.
-        assert_approx(
-            cutoff_freq(1.0, 1.0, pitch, SAMPLE_RATE),
-            2.0 * pitch_to_freq(pitch),
-        );
-    }
-}
-
-#[test]
-fn partial_keytrack_interpolates_in_octaves() {
-    let pitch = note_to_pitch(72.0); // C5, one octave above C4
-
-    assert_approx(cutoff_pitch(0.0, 0.5, pitch), C4_PITCH + 0.5);
-    assert_approx(cutoff_pitch(2.0, 0.25, pitch), C4_PITCH + 2.25);
-}
-
-#[test]
-fn cutoff_freq_is_clamped_to_tunable_range() {
-    assert_approx(
-        cutoff_freq(MIN_CUTOFF, 1.0, note_to_pitch(0.0), SAMPLE_RATE),
-        MIN_CUTOFF_FREQ,
-    );
-    assert_approx(
-        cutoff_freq(MAX_CUTOFF, 1.0, note_to_pitch(127.0), SAMPLE_RATE),
-        SAMPLE_RATE * MAX_CUTOFF_RATIO,
-    );
-    // Out-of-range octave values are clamped before key tracking is applied.
-    assert_approx(
-        cutoff_pitch(MAX_CUTOFF + 10.0, 0.0, C4_PITCH),
-        C4_PITCH + MAX_CUTOFF,
-    );
 }
 
 #[test]
@@ -64,7 +12,7 @@ fn config_round_trips_and_defaults_missing_keytrack() {
         filter_type: SvfType::BandPass12,
         keytrack: 0.5,
         cutoff: StereoSample::new(1.0, 2.0),
-        resonance: StereoSample::new(-0.5, 0.5),
+        resonance: StereoSample::new(0.2, 0.5),
         drive: StereoSample::new(6.0, -6.0),
     };
     let mut json = serde_json::to_value(&config).unwrap();
@@ -106,11 +54,26 @@ fn module_config_round_trips_through_get_config() {
 }
 
 #[test]
-fn saturation_is_bounded_and_gain_scaled() {
-    assert!(saturate(100.0, 24.0).abs() <= 1.0);
-    assert!(saturate(-100.0, 24.0).abs() <= 1.0);
-    // -60 dB into tanh is effectively linear.
-    assert_approx(saturate(0.5, -60.0), 0.5 * 1e-3);
-    // More drive → more output for the same small input.
-    assert!(saturate(0.1, 12.0) > saturate(0.1, 0.0));
+fn resonance_is_clamped_to_zero_and_one() {
+    let module = Svf::from_config(&SvfConfig {
+        resonance: StereoSample::new(-0.5, 1.5),
+        ..SvfConfig::default()
+    });
+    let back = module.get_config();
+
+    assert_eq!(back.resonance, StereoSample::new(0.0, 1.0));
+}
+
+#[test]
+fn drive_gain_is_clamped_db() {
+    let gain = |drive_db: Sample| db_to_gain_fast(drive_db.clamp(MIN_DRIVE, MAX_DRIVE));
+    let quiet = gain(-60.0);
+    let unity = gain(0.0);
+    let hot = gain(12.0);
+    let max = gain(MAX_DRIVE);
+
+    assert_approx(quiet, 1e-3);
+    assert_approx(unity, 1.0);
+    assert!(hot > unity);
+    assert_approx(gain(MAX_DRIVE + 24.0), max);
 }

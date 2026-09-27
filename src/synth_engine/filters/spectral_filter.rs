@@ -64,25 +64,28 @@ impl FilterImpl for LowPass18 {
     }
 }
 
-pub const BUTTERWORTH_Q: Sample = f32::consts::FRAC_1_SQRT_2;
+/// Q of the resonant stage when the resonance control is 0.
+pub const ZERO_RESONANCE_Q: Sample = 0.5;
+/// Q of the fixed stages cascaded with the resonant stage.
+pub const FIXED_Q: Sample = 1.0;
 
 #[derive(Clone, Copy)]
 pub struct LowPass24 {
-    butterworth: LowPass12,
+    fixed: LowPass12,
     resonant: LowPass12,
 }
 
 impl FilterImpl for LowPass24 {
     fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
         Self {
-            butterworth: LowPass12::new(1.0, cutoff, BUTTERWORTH_Q),
+            fixed: LowPass12::new(1.0, cutoff, FIXED_Q),
             resonant: LowPass12::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        self.butterworth.at(freq) * self.resonant.at(freq)
+        self.fixed.at(freq) * self.resonant.at(freq)
     }
 }
 
@@ -138,21 +141,21 @@ impl FilterImpl for HighPass18 {
 
 #[derive(Clone, Copy)]
 pub struct HighPass24 {
-    butterworth: HighPass12,
+    fixed: HighPass12,
     resonant: HighPass12,
 }
 
 impl FilterImpl for HighPass24 {
     fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
         Self {
-            butterworth: HighPass12::new(1.0, cutoff, BUTTERWORTH_Q),
+            fixed: HighPass12::new(1.0, cutoff, FIXED_Q),
             resonant: HighPass12::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        self.butterworth.at(freq) * self.resonant.at(freq)
+        self.fixed.at(freq) * self.resonant.at(freq)
     }
 }
 
@@ -185,66 +188,66 @@ impl FilterImpl for BandPass6 {
 
 #[derive(Clone, Copy)]
 pub struct BandPass12 {
-    butterworth: BandPass6,
+    fixed: BandPass6,
     resonant: BandPass6,
 }
 
 impl FilterImpl for BandPass12 {
     fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
         Self {
-            butterworth: BandPass6::new(1.0, cutoff, BUTTERWORTH_Q),
+            fixed: BandPass6::new(1.0, cutoff, FIXED_Q),
             resonant: BandPass6::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        self.butterworth.at(freq) * self.resonant.at(freq)
+        self.fixed.at(freq) * self.resonant.at(freq)
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct BandPass18 {
-    butterworth: BandPass6,
+    fixed: BandPass6,
     resonant: BandPass6,
 }
 
 impl FilterImpl for BandPass18 {
     fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
         Self {
-            butterworth: BandPass6::new(1.0, cutoff, BUTTERWORTH_Q),
+            fixed: BandPass6::new(1.0, cutoff, FIXED_Q),
             resonant: BandPass6::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        let butterworth = self.butterworth.at(freq);
+        let fixed = self.fixed.at(freq);
 
-        butterworth * butterworth * self.resonant.at(freq)
+        fixed * fixed * self.resonant.at(freq)
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct BandPass24 {
-    butterworth: BandPass6,
+    fixed: BandPass6,
     resonant: BandPass6,
 }
 
 impl FilterImpl for BandPass24 {
     fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
         Self {
-            butterworth: BandPass6::new(1.0, cutoff, BUTTERWORTH_Q),
+            fixed: BandPass6::new(1.0, cutoff, FIXED_Q),
             resonant: BandPass6::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        let butterworth = self.butterworth.at(freq);
-        let butterworth_sq = butterworth * butterworth;
+        let fixed = self.fixed.at(freq);
+        let fixed_sq = fixed * fixed;
 
-        butterworth_sq * butterworth * self.resonant.at(freq)
+        fixed_sq * fixed * self.resonant.at(freq)
     }
 }
 
@@ -477,7 +480,7 @@ impl FilterImpl for HighShelf18 {
 
 #[derive(Clone, Copy)]
 pub struct LowShelf24 {
-    butterworth: LowShelf12,
+    fixed: LowShelf12,
     resonant: LowShelf12,
 }
 
@@ -486,20 +489,20 @@ impl FilterImpl for LowShelf24 {
         let g12 = gain.max(0.0).sqrt();
 
         Self {
-            butterworth: LowShelf12::new(g12, cutoff, BUTTERWORTH_Q),
+            fixed: LowShelf12::new(g12, cutoff, FIXED_Q),
             resonant: LowShelf12::new(g12, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        self.butterworth.at(freq) * self.resonant.at(freq)
+        self.fixed.at(freq) * self.resonant.at(freq)
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct HighShelf24 {
-    butterworth: HighShelf12,
+    fixed: HighShelf12,
     resonant: HighShelf12,
 }
 
@@ -508,14 +511,14 @@ impl FilterImpl for HighShelf24 {
         let g12 = gain.max(0.0).sqrt();
 
         Self {
-            butterworth: HighShelf12::new(g12, cutoff, BUTTERWORTH_Q),
+            fixed: HighShelf12::new(g12, cutoff, FIXED_Q),
             resonant: HighShelf12::new(g12, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        self.butterworth.at(freq) * self.resonant.at(freq)
+        self.fixed.at(freq) * self.resonant.at(freq)
     }
 }
 
@@ -622,16 +625,16 @@ impl SpectralFilter {
 
     fn q_from_params(params: &FilterParams) -> Sample {
         let q = params.q;
-        let butterworth_excess = q - BUTTERWORTH_Q;
+        let excess = q - ZERO_RESONANCE_Q;
 
-        if butterworth_excess <= 0.0 || params.cutoff >= params.q_cutoff {
+        if excess <= 0.0 || params.cutoff >= params.q_cutoff {
             return q;
         }
 
         let octaves_below = params.q_cutoff - params.cutoff;
         let scale = db_to_gain(-params.q_rolloff * octaves_below);
 
-        BUTTERWORTH_Q + butterworth_excess * scale
+        ZERO_RESONANCE_Q + excess * scale
     }
 
     pub fn apply_response(&self, input: &[ComplexSample], output: &mut [ComplexSample]) {

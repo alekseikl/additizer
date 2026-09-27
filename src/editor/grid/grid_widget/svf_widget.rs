@@ -5,8 +5,7 @@ use crate::{
     synth_engine::{
         Input, ModuleId, Sample,
         filters::svf::SvfResponse,
-        spectral_filter::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
-        svf::{MIN_CUTOFF_FREQ, SvfUiBridge, cutoff_pitch},
+        svf::SvfUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{
@@ -67,13 +66,13 @@ impl SvfWidget {
             C4_PITCH
         };
         // Octaves relative to C4, same axis as the cutoff slider.
-        let cutoff_log2 = cutoff_pitch(config.cutoff[0], config.keytrack, pitch) - C4_PITCH;
-        let cutoff_freq = pitch_to_freq(C4_PITCH + cutoff_log2).max(MIN_CUTOFF_FREQ);
+        let cutoff_log2 = config.cutoff[0] + config.keytrack * (pitch - C4_PITCH);
+        let cutoff_freq = pitch_to_freq(C4_PITCH + cutoff_log2);
         let response = SvfResponse {
             filter_type: config.filter_type,
-            q: q_from_resonance(config.resonance[0].clamp(MIN_RESONANCE, MAX_RESONANCE)),
+            resonance: config.resonance[0],
         };
-        let drive_db = config.drive[0].clamp(MIN_DRIVE, MAX_DRIVE);
+        let drive_db = config.drive[0];
 
         self.build_points(rect, &response, cutoff_freq, cutoff_log2, drive_db);
         Self::paint_response(ui.painter(), rect, &self.points);

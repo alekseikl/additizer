@@ -229,6 +229,12 @@ impl<'a> Slider<'a> {
         self
     }
 
+    /// Keep the slider inside `range`, with no extension below `range.start()`.
+    pub fn without_inverse(mut self) -> Self {
+        self.inverse_to = None;
+        self
+    }
+
     pub fn length(mut self, length: f32) -> Self {
         self.length = length;
         self

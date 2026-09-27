@@ -11,9 +11,7 @@ use crate::{
     synth_engine::{
         Input, ModuleId, ModuleType,
         filters::spectral_filter::FilterType,
-        spectral_filter::{
-            MAX_Q_ROLLOFF, MIN_Q_ROLLOFF, SpectralFilterUiBridge,
-        },
+        spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF, SpectralFilterUiBridge},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},
@@ -123,13 +121,9 @@ impl SpectralFilterUI {
                 ui.label("Q Rolloff");
                 if ui
                     .add(
-                        Slider::stereo(
-                            &mut config.q_rolloff,
-                            MIN_Q_ROLLOFF..=MAX_Q_ROLLOFF,
-                            None,
-                        )
-                        .default(18.0)
-                        .units(Units::Rolloff),
+                        Slider::stereo(&mut config.q_rolloff, MIN_Q_ROLLOFF..=MAX_Q_ROLLOFF, None)
+                            .default(18.0)
+                            .units(Units::Rolloff),
                     )
                     .changed()
                 {

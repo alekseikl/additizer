@@ -10,9 +10,7 @@ use crate::{
     },
     synth_engine::{
         Input, MAX_BANDWIDTH, ModuleId, ModuleType,
-        spectral_noise::{
-            MAX_ROLLOFF, MIN_ROLLOFF, NoiseColor, SpectralNoiseUiBridge,
-        },
+        spectral_noise::{MAX_ROLLOFF, MIN_ROLLOFF, NoiseColor, SpectralNoiseUiBridge},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},

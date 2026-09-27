@@ -4,10 +4,7 @@ use crate::{
     synth_engine::{
         ModuleId, Sample, StereoSample,
         filters::spectral_filter::FilterType,
-        spectral_filter::{
-            MAX_DRIVE, MAX_Q_ROLLOFF, MIN_DRIVE, MIN_Q_ROLLOFF,
-            q_from_resonance,
-        },
+        spectral_filter::{MAX_DRIVE, MAX_Q_ROLLOFF, MIN_DRIVE, MIN_Q_ROLLOFF, q_from_resonance},
     },
     utils::MIN_CUTOFF,
 };

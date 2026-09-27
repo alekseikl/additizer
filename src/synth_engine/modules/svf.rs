@@ -1,7 +1,5 @@
 use std::array;
 
-use itertools::izip;
-
 mod config;
 mod link;
 mod ui_bridge;
@@ -16,43 +14,21 @@ pub use ui_bridge::SvfUiBridge;
 use crate::{
     synth_engine::{
         Sample, SmoothedSampleParams, StereoSample,
-        buffer::{Buffer, VoicesLayout, zero_buffer},
-        filters::svf::{SvfCoeffs, SvfState, SvfType},
-        modules::spectral_filter::{
-            MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance,
-        },
+        buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
+        filters::svf::{self, SvfFilter, SvfState, SvfType},
+        modules::spectral_filter::{MAX_DRIVE, MIN_DRIVE},
         routing::{
-            AudioRouterType, DataType, Input, InputMeta, InputSlots, MAX_VOICES, ModuleId,
-            NUM_CHANNELS, ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot,
-            VoiceEvent, VoiceTarget,
+            AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
+            ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent,
+            VoiceTarget,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
     },
-    utils::{C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain_fast, pitch_to_freq},
+    utils::{C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain_fast},
 };
 
-/// Lowest cutoff frequency the filter is ever tuned to, Hz.
-pub const MIN_CUTOFF_FREQ: Sample = 5.0;
-/// Highest cutoff as a fraction of the sample rate (keeps `tan` well away from Nyquist).
-pub const MAX_CUTOFF_RATIO: Sample = 0.45;
-
-/// Absolute cutoff in octave units (same space as pitch) for the given settings.
-pub fn cutoff_pitch(cutoff: Sample, keytrack: Sample, pitch: Sample) -> Sample {
-    C4_PITCH + cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF) + keytrack * (pitch - C4_PITCH)
-}
-
-/// Cutoff frequency in Hz, clamped to the range the filter can be tuned to.
-pub fn cutoff_freq(cutoff: Sample, keytrack: Sample, pitch: Sample, sample_rate: Sample) -> Sample {
-    pitch_to_freq(cutoff_pitch(cutoff, keytrack, pitch))
-        .clamp(MIN_CUTOFF_FREQ, sample_rate * MAX_CUTOFF_RATIO)
-}
-
-/// Drive: dB of gain into a `tanh` soft clipper ahead of the filter.
-#[inline(always)]
-fn saturate(input: Sample, drive: Sample) -> Sample {
-    (input * db_to_gain_fast(drive.clamp(MIN_DRIVE, MAX_DRIVE))).tanh()
-}
+pub use svf::{MAX_RESONANCE, MIN_RESONANCE};
 
 struct Params {
     filter_type: SvfType,
@@ -67,20 +43,6 @@ impl Params {
             keytrack: c.keytrack.clamp(0.0, 1.0),
         }
     }
-
-    fn coeffs(
-        &self,
-        cutoff: Sample,
-        resonance: Sample,
-        pitch: Sample,
-        sample_rate: Sample,
-    ) -> SvfCoeffs {
-        SvfCoeffs::new(
-            cutoff_freq(cutoff, self.keytrack, pitch, sample_rate),
-            q_from_resonance(resonance.clamp(MIN_RESONANCE, MAX_RESONANCE)),
-            sample_rate,
-        )
-    }
 }
 
 struct ChannelParams {
@@ -93,7 +55,9 @@ impl ChannelParams {
     fn from_config(c: &SvfConfig, channel_idx: usize) -> Self {
         Self {
             cutoff: c.cutoff[channel_idx].into(),
-            resonance: c.resonance[channel_idx].into(),
+            resonance: c.resonance[channel_idx]
+                .clamp(MIN_RESONANCE, MAX_RESONANCE)
+                .into(),
             drive: c.drive[channel_idx].into(),
         }
     }
@@ -164,7 +128,7 @@ pub struct Svf {
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
     buffers: Buffers,
-    states: [[SvfState; MAX_VOICES]; NUM_CHANNELS],
+    states: VoicesLayout<SvfState>,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
     inputs: Inputs,
@@ -193,7 +157,7 @@ impl Svf {
                 resonance_mod: zero_buffer(),
                 drive_mod: zero_buffer(),
             },
-            states: [[SvfState::default(); MAX_VOICES]; NUM_CHANNELS],
+            states: new_voices_layout(),
             audio_end,
             ui_end: Some(ui_end),
             inputs: Inputs::default(),
@@ -235,13 +199,15 @@ impl Svf {
         outputs: &mut VoicesLayout<SamplesOutput>,
         rf: &mut RouterFactory<AudioRouterType>,
     ) {
-        let smooth_params = rf.params().smooth_params;
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
         let params = &self.params;
         let channel = &self.channel_params[target.channel_idx];
         let state = &mut self.states[target.channel_idx][target.voice_idx];
         let sample_rate = router.sample_rate();
+        let filter_type = params.filter_type;
+
+        state.set_type(filter_type);
 
         // A NaN/inf that slipped in would otherwise stick forever.
         if !state.is_finite() {
@@ -258,54 +224,58 @@ impl Svf {
             &channel.resonance,
             &mut self.buffers.resonance_mod,
         );
-        router.param(&inputs.drive, &channel.drive, &mut self.buffers.drive_mod);
 
-        let pitch_tracked = inputs.pitch.is_some() && params.keytrack != 0.0;
-        let coeffs_static = !pitch_tracked
-            && inputs.cutoff.is_empty()
-            && inputs.resonance.is_empty()
-            && !channel.cutoff.check_needs_smoothing(&smooth_params)
-            && !channel.resonance.check_needs_smoothing(&smooth_params);
+        let samples = router.samples();
+
+        for resonance in &mut self.buffers.resonance_mod[..samples] {
+            *resonance = resonance.clamp(MIN_RESONANCE, MAX_RESONANCE);
+        }
+
+        if router.param_stationary_at(&inputs.drive, &channel.drive, 0.0) {
+            self.buffers.drive_mod[..samples].fill(1.0);
+        } else {
+            router.param(&inputs.drive, &channel.drive, &mut self.buffers.drive_mod);
+
+            for drive in &mut self.buffers.drive_mod[..samples] {
+                *drive = db_to_gain_fast(drive.clamp(MIN_DRIVE, MAX_DRIVE));
+            }
+        }
 
         let note_pitch = target.note_pitch();
         let pitch = inputs.pitch.is_some().then(|| router.direct(inputs.pitch));
-        let pitch_at = |idx: usize| pitch.map_or(note_pitch, |p| p[idx]);
         let input = router.direct(inputs.audio);
         let output = voice_output.output();
-        let cutoff_mod = &self.buffers.cutoff_mod[..input.len()];
-        let resonance_mod = &self.buffers.resonance_mod[..input.len()];
-        let drive_mod = &self.buffers.drive_mod[..input.len()];
-        let filter_type = params.filter_type;
 
         if router.need_update_ui_mono() {
-            self.audio_end.update_pitch(pitch_at(0));
+            let pitch = pitch.and_then(|p| p.first().copied()).unwrap_or(note_pitch);
+
+            self.audio_end.update_pitch(pitch);
         }
 
-        if input.is_empty() {
-            return;
-        }
+        let keytrack = params.keytrack;
 
-        if coeffs_static {
-            let coeffs = params.coeffs(cutoff_mod[0], resonance_mod[0], pitch_at(0), sample_rate);
+        if keytrack > 1e-5 {
+            if let Some(pitch) = pitch {
+                for (cutoff, pitch) in self.buffers.cutoff_mod.iter_mut().zip(pitch) {
+                    *cutoff += keytrack * (pitch - C4_PITCH);
+                }
+            } else {
+                let offset = keytrack * (note_pitch - C4_PITCH);
 
-            for (out, &x, &drive) in izip!(output.iter_mut(), input, drive_mod) {
-                *out = state.tick(filter_type, &coeffs, saturate(x, drive));
-            }
-        } else {
-            for (idx, (out, &x, &drive, &cutoff, &resonance)) in izip!(
-                output.iter_mut(),
-                input,
-                drive_mod,
-                cutoff_mod,
-                resonance_mod
-            )
-            .enumerate()
-            {
-                let coeffs = params.coeffs(cutoff, resonance, pitch_at(idx), sample_rate);
-
-                *out = state.tick(filter_type, &coeffs, saturate(x, drive));
+                for cutoff in self.buffers.cutoff_mod.iter_mut().take(samples) {
+                    *cutoff += offset;
+                }
             }
         }
+
+        state.process(
+            sample_rate,
+            input,
+            &self.buffers.cutoff_mod,
+            &self.buffers.resonance_mod,
+            &self.buffers.drive_mod,
+            output,
+        );
     }
 }
 

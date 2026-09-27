@@ -1,8 +1,8 @@
 use super::*;
 use crate::{
     synth_engine::spectral_filter::{
-        MAX_Q_ROLLOFF, MAX_RESONANCE, MAX_RESONANCE_Q, MIN_Q_ROLLOFF,
-        MIN_RESONANCE, MIN_RESONANCE_Q, q_from_resonance,
+        MAX_Q_ROLLOFF, MAX_RESONANCE, MAX_RESONANCE_Q, MIN_Q_ROLLOFF, MIN_RESONANCE,
+        MIN_RESONANCE_Q, q_from_resonance,
     },
     utils::{db_to_gain, db_to_gain_fast},
 };
@@ -10,7 +10,7 @@ use crate::{
 const EPS: Sample = 1e-4;
 const CUTOFF: Sample = 1.0;
 const GAIN: Sample = 1.0;
-const Q: Sample = BUTTERWORTH_Q;
+const Q: Sample = ZERO_RESONANCE_Q;
 
 fn assert_approx(a: Sample, b: Sample) {
     assert_approx_eps(a, b, EPS);
@@ -41,7 +41,7 @@ fn params(cutoff: Sample, q: Sample, q_cutoff: Sample) -> FilterParams {
 }
 
 fn default_params() -> FilterParams {
-    params(0.0, BUTTERWORTH_Q, 8.0)
+    params(0.0, ZERO_RESONANCE_Q, 8.0)
 }
 
 fn filter(filter_type: FilterType, p: FilterParams) -> SpectralFilter {
@@ -186,8 +186,8 @@ fn q_of(p: FilterParams) -> Sample {
 }
 
 #[test]
-fn zero_resonance_is_butterworth_q() {
-    assert_approx(q_from_resonance(0.0), BUTTERWORTH_Q);
+fn zero_resonance_q_is_one_half() {
+    assert_approx(q_from_resonance(0.0), ZERO_RESONANCE_Q);
 }
 
 #[test]
@@ -203,14 +203,14 @@ fn min_resonance_maps_to_min_q() {
 #[test]
 fn positive_resonance_uses_cubic_curve() {
     let resonance: Sample = 0.5;
-    let expected = BUTTERWORTH_Q + (MAX_RESONANCE_Q - BUTTERWORTH_Q) * resonance.powf(3.0);
+    let expected = ZERO_RESONANCE_Q + (MAX_RESONANCE_Q - ZERO_RESONANCE_Q) * resonance.powf(3.0);
     assert_approx(q_from_resonance(resonance), expected);
 }
 
 #[test]
 fn negative_resonance_interpolates_to_min_q() {
     let resonance = -0.5;
-    let expected = MIN_RESONANCE_Q + (BUTTERWORTH_Q - MIN_RESONANCE_Q) * (1.0 + resonance);
+    let expected = MIN_RESONANCE_Q + (ZERO_RESONANCE_Q - MIN_RESONANCE_Q) * (1.0 + resonance);
     assert_approx(q_from_resonance(resonance), expected);
 }
 
@@ -221,9 +221,9 @@ fn resonance_is_clamped() {
 }
 
 #[test]
-fn q_limit_skipped_when_q_not_above_butterworth() {
-    let limited = q_of(params(0.0, BUTTERWORTH_Q, 2.0));
-    assert_approx(limited, BUTTERWORTH_Q);
+fn q_limit_skipped_at_or_below_zero_resonance() {
+    let limited = q_of(params(0.0, ZERO_RESONANCE_Q, 2.0));
+    assert_approx(limited, ZERO_RESONANCE_Q);
 }
 
 #[test]
@@ -234,7 +234,8 @@ fn q_limit_skipped_when_cutoff_above_limit() {
 
 fn limited_q(cutoff: Sample, q_cutoff: Sample, db_per_oct: Sample) -> Sample {
     let octaves_below = q_cutoff - cutoff;
-    BUTTERWORTH_Q + (MAX_RESONANCE_Q - BUTTERWORTH_Q) * db_to_gain(-db_per_oct * octaves_below)
+    ZERO_RESONANCE_Q
+        + (MAX_RESONANCE_Q - ZERO_RESONANCE_Q) * db_to_gain(-db_per_oct * octaves_below)
 }
 
 #[test]
@@ -247,15 +248,15 @@ fn q_limit_reduces_q_below_limit_frequency() {
     assert_approx(one_below, limited_q(1.0, 2.0, MIN_Q_ROLLOFF));
     assert_approx(two_below, limited_q(0.0, 2.0, MIN_Q_ROLLOFF));
     assert!(two_below < one_below);
-    assert!(two_below > BUTTERWORTH_Q);
+    assert!(two_below > ZERO_RESONANCE_Q);
 }
 
 #[test]
-fn q_limit_approaches_butterworth_far_below_limit() {
+fn q_limit_approaches_zero_resonance_far_below_limit() {
     let mut p = params(-4.0, MAX_RESONANCE_Q, 8.0);
     p.q_rolloff = MAX_Q_ROLLOFF;
     let far_below = q_of(p);
-    assert!((far_below - BUTTERWORTH_Q).abs() < 1e-3);
+    assert!((far_below - ZERO_RESONANCE_Q).abs() < 1e-3);
 }
 
 #[test]
@@ -296,7 +297,7 @@ fn raw_q_is_limited_below_the_limit_frequency() {
 
     let octaves_below = 2.0;
     let expected =
-        BUTTERWORTH_Q + (q - BUTTERWORTH_Q) * db_to_gain(-MIN_Q_ROLLOFF * octaves_below);
+        ZERO_RESONANCE_Q + (q - ZERO_RESONANCE_Q) * db_to_gain(-MIN_Q_ROLLOFF * octaves_below);
     assert_approx(q_of(p), expected);
 }
 
@@ -339,8 +340,9 @@ fn highpass12_cutoff_phase_is_plus_90_deg() {
 fn bandpass6_peaks_at_cutoff() {
     assert_approx(mag::<BandPass6>(0.0), 0.0);
     assert_approx(mag::<BandPass6>(CUTOFF), GAIN);
-    assert!(mag::<BandPass6>(10.0 * CUTOFF) < 0.15);
-    assert!(mag::<BandPass6>(0.1 * CUTOFF) < 0.15);
+    // Q = 0.5 is a wide band-pass; a decade from the cutoff it is still well down.
+    assert!(mag::<BandPass6>(10.0 * CUTOFF) < 0.25);
+    assert!(mag::<BandPass6>(0.1 * CUTOFF) < 0.25);
 }
 
 #[test]
@@ -461,12 +463,12 @@ fn higher_q_shelf_has_sharper_transition() {
     let above = 4.0 * CUTOFF;
 
     let res_below = mag_params::<LowShelf12>(gain, CUTOFF, MAX_RESONANCE_Q, below);
-    let bw_below = mag_params::<LowShelf12>(gain, CUTOFF, BUTTERWORTH_Q, below);
+    let neutral_below = mag_params::<LowShelf12>(gain, CUTOFF, ZERO_RESONANCE_Q, below);
     let res_above = mag_params::<LowShelf12>(gain, CUTOFF, MAX_RESONANCE_Q, above);
-    let bw_above = mag_params::<LowShelf12>(gain, CUTOFF, BUTTERWORTH_Q, above);
+    let neutral_above = mag_params::<LowShelf12>(gain, CUTOFF, ZERO_RESONANCE_Q, above);
 
-    assert!(res_below > bw_below);
-    assert!(res_above < bw_above);
+    assert!(res_below > neutral_below);
+    assert!(res_above < neutral_above);
 }
 
 #[test]
@@ -496,26 +498,26 @@ fn highshelf18_is_biquad_times_one_pole() {
 }
 
 #[test]
-fn lowshelf24_is_butterworth_times_resonant() {
+fn lowshelf24_is_fixed_times_resonant() {
     let freq = 1.7;
     let gain: Sample = 0.5;
     let q = 4.0;
     let g12 = gain.sqrt();
-    let expected = LowShelf12::new(g12, CUTOFF, BUTTERWORTH_Q).at(freq)
-        * LowShelf12::new(g12, CUTOFF, q).at(freq);
+    let expected =
+        LowShelf12::new(g12, CUTOFF, FIXED_Q).at(freq) * LowShelf12::new(g12, CUTOFF, q).at(freq);
 
     assert_complex_eq(LowShelf24::new(gain, CUTOFF, q).at(freq), expected);
     assert_approx(mag_params::<LowShelf24>(gain, CUTOFF, q, 0.0), gain);
 }
 
 #[test]
-fn highshelf24_is_butterworth_times_resonant() {
+fn highshelf24_is_fixed_times_resonant() {
     let freq = 1.7;
     let gain: Sample = 0.5;
     let q = 4.0;
     let g12 = gain.sqrt();
-    let expected = HighShelf12::new(g12, CUTOFF, BUTTERWORTH_Q).at(freq)
-        * HighShelf12::new(g12, CUTOFF, q).at(freq);
+    let expected =
+        HighShelf12::new(g12, CUTOFF, FIXED_Q).at(freq) * HighShelf12::new(g12, CUTOFF, q).at(freq);
 
     assert_complex_eq(HighShelf24::new(gain, CUTOFF, q).at(freq), expected);
 }
@@ -577,24 +579,24 @@ fn highpass18_is_biquad_times_one_pole() {
 }
 
 #[test]
-fn lowpass24_is_butterworth_times_resonant() {
+fn lowpass24_is_fixed_times_resonant() {
     let freq = 1.7;
     let gain = 0.5;
     let q = 4.0;
-    let expected = LowPass12::new(1.0, CUTOFF, BUTTERWORTH_Q).at(freq)
-        * LowPass12::new(gain, CUTOFF, q).at(freq);
+    let expected =
+        LowPass12::new(1.0, CUTOFF, FIXED_Q).at(freq) * LowPass12::new(gain, CUTOFF, q).at(freq);
 
     assert_complex_eq(LowPass24::new(gain, CUTOFF, q).at(freq), expected);
     assert_approx(mag_params::<LowPass24>(gain, CUTOFF, q, 0.0), gain);
 }
 
 #[test]
-fn highpass24_is_butterworth_times_resonant() {
+fn highpass24_is_fixed_times_resonant() {
     let freq = 1.7;
     let gain = 0.5;
     let q = 4.0;
-    let expected = HighPass12::new(1.0, CUTOFF, BUTTERWORTH_Q).at(freq)
-        * HighPass12::new(gain, CUTOFF, q).at(freq);
+    let expected =
+        HighPass12::new(1.0, CUTOFF, FIXED_Q).at(freq) * HighPass12::new(gain, CUTOFF, q).at(freq);
 
     assert_complex_eq(HighPass24::new(gain, CUTOFF, q).at(freq), expected);
 }
@@ -604,20 +606,20 @@ fn bandpass_cascades() {
     let freq = 1.7;
     let gain = 0.5;
     let q = 4.0;
-    let butterworth = BandPass6::new(1.0, CUTOFF, BUTTERWORTH_Q).at(freq);
+    let neutral = BandPass6::new(1.0, CUTOFF, FIXED_Q).at(freq);
     let resonant = BandPass6::new(gain, CUTOFF, q).at(freq);
 
     assert_complex_eq(
         BandPass12::new(gain, CUTOFF, q).at(freq),
-        butterworth * resonant,
+        neutral * resonant,
     );
     assert_complex_eq(
         BandPass18::new(gain, CUTOFF, q).at(freq),
-        butterworth * butterworth * resonant,
+        neutral * neutral * resonant,
     );
     assert_complex_eq(
         BandPass24::new(gain, CUTOFF, q).at(freq),
-        butterworth * butterworth * butterworth * resonant,
+        neutral * neutral * neutral * resonant,
     );
 
     assert_approx(mag_params::<BandPass12>(gain, CUTOFF, q, CUTOFF), gain);
@@ -663,11 +665,11 @@ fn steeper_bandpass_is_narrower() {
 #[test]
 fn higher_q_peaks_lowpass_near_cutoff() {
     let dull = mag_params::<LowPass12>(GAIN, CUTOFF, MIN_RESONANCE_Q, CUTOFF);
-    let butterworth = mag_params::<LowPass12>(GAIN, CUTOFF, BUTTERWORTH_Q, CUTOFF);
+    let neutral = mag_params::<LowPass12>(GAIN, CUTOFF, ZERO_RESONANCE_Q, CUTOFF);
     let resonant = mag_params::<LowPass12>(GAIN, CUTOFF, MAX_RESONANCE_Q, CUTOFF);
 
-    assert!(dull < butterworth);
-    assert!(butterworth < resonant);
+    assert!(dull < neutral);
+    assert!(neutral < resonant);
     assert_approx(resonant, GAIN * MAX_RESONANCE_Q);
 }
 
