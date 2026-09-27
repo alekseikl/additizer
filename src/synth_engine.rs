@@ -57,6 +57,7 @@ pub use types::{ComplexSample, Sample};
 pub use voices_handler::Note;
 
 mod buffer;
+mod coeffs;
 mod config;
 #[macro_use]
 mod synth_module;
@@ -64,6 +65,7 @@ mod curves;
 pub mod filters;
 mod iir_decimator;
 mod level_ballistics;
+mod lookup_table;
 mod module_handle;
 mod modules;
 mod phase;

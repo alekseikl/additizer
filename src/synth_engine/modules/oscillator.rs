@@ -11,6 +11,7 @@ use crate::{
     synth_engine::{
         SmoothedSampleParams, StereoSample,
         buffer::{Buffer, SPECTRUM_BITS, VoicesLayout, new_voices_layout, zero_buffer},
+        coeffs::catmull_rom,
         oscillator::link::{AudioEnd, UiEnd, UiEvent, create_link_pair},
         phase::Phase,
         routing::{
@@ -560,17 +561,11 @@ impl Oscillator {
         idx: usize,
         t: Sample,
     ) -> f32x4 {
-        const B0: f32x4 = f32x4::new([-1.0 / 2.0, 3.0 / 2.0, -3.0 / 2.0, 1.0 / 2.0]);
-        const B1: f32x4 = f32x4::new([1.0, -5.0 / 2.0, 4.0 / 2.0, -1.0 / 2.0]);
-        const B2: f32x4 = f32x4::new([-1.0 / 2.0, 0.0 / 2.0, 1.0 / 2.0, 0.0 / 2.0]);
-        const B3: f32x4 = f32x4::new([0.0 / 2.0, 1.0, 0.0 / 2.0, 0.0 / 2.0]);
-
         let c_from = Self::load_segment(wave_from, idx);
         let c_to = Self::load_segment(wave_to, idx);
 
         let c = (c_to - c_from).mul_add(f32x4::splat(buff_t), c_from);
-        let t = f32x4::splat(t);
-        let poly = B0.mul_add(t, B1).mul_add(t, B2).mul_add(t, B3);
+        let poly = catmull_rom(t);
 
         poly * c
     }

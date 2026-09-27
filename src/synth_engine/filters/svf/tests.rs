@@ -1,7 +1,12 @@
 use std::f32::consts::{PI, TAU};
 
-use super::{SvfFilter, *};
+use super::{SvfFilter, g_table, *};
 
+fn approx_g(freq_ratio: Sample) -> Sample {
+    g_table().at(freq_ratio)
+}
+
+const MAX_FREQ_RATIO: Sample = 0.499;
 const SAMPLE_RATE: Sample = 48_000.0;
 const CUTOFF: Sample = 1_000.0;
 
@@ -15,6 +20,70 @@ const ALL_TYPES: [SvfType; 8] = [
     SvfType::BandPass6,
     SvfType::BandPass12,
 ];
+
+#[test]
+fn prewarped_g_tracks_tan() {
+    let mut prev = 0.0;
+    let mut worst_interior = (0.0, 0.0);
+    // Samples at and above the clamp are constant. Stop two steps earlier so the
+    // cubic window stays in the unclamped region.
+    let step = (G_TABLE_INTERVALS as Sample).recip();
+    let unclamped_end = ((MAX_FREQ_RATIO * G_TABLE_INTERVALS as Sample).floor() - 2.0) * step;
+
+    for i in 0..=20_000 {
+        let ratio = MAX_FREQ_RATIO * i as Sample / 20_000.0;
+        let expected = (ratio * PI).tan();
+        let actual = approx_g(ratio);
+        let omega_expected = expected.atan();
+        let rel = if omega_expected == 0.0 {
+            (actual.atan() - omega_expected).abs()
+        } else {
+            (actual.atan() - omega_expected).abs() / omega_expected
+        };
+
+        assert!(actual.is_finite(), "non-finite g at ratio {ratio}");
+        if ratio <= unclamped_end {
+            assert!(
+                actual + 1e-4 >= prev,
+                "g decreased at ratio {ratio}: {actual} < {prev}"
+            );
+        }
+
+        if ratio < unclamped_end && rel > worst_interior.1 {
+            worst_interior = (ratio, rel);
+        }
+
+        prev = actual;
+    }
+
+    assert!(
+        worst_interior.1 < 1e-4,
+        "worst interior relative cutoff error {} at freq/sample_rate {}",
+        worst_interior.1,
+        worst_interior.0
+    );
+
+    assert_eq!(approx_g(0.0), 0.0);
+    let knot = 256.0 * step;
+    assert_eq!(g_table().at(knot), (knot * PI).tan());
+    assert_eq!(g_table().at(0.75), (MAX_FREQ_RATIO * PI).tan());
+}
+
+#[test]
+fn prewarped_g_is_accurate_at_low_cutoffs() {
+    for sample_rate in [44_100.0, 48_000.0, 96_000.0, 192_000.0] {
+        for freq in [5.0, 10.0, 20.0, 40.0, 80.0] {
+            let ratio: Sample = freq / sample_rate;
+            let expected = (ratio * PI).tan();
+            let rel = (approx_g(ratio) - expected).abs() / expected;
+
+            assert!(
+                rel < 1e-4,
+                "{freq} Hz at {sample_rate} Hz: relative error {rel}"
+            );
+        }
+    }
+}
 
 fn g_and_k(cutoff: Sample, q: Sample) -> (Sample, Sample) {
     let g = (PI * (cutoff * SAMPLE_RATE.recip()).min(0.499)).tan();

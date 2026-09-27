@@ -1,13 +1,16 @@
 //! Time-domain state-variable filter in the Cytomic / Andrew Simper form
 
-use std::f32::consts::PI;
+use std::{f32::consts::PI, sync::LazyLock};
 
 use enum_dispatch::enum_dispatch;
 use itertools::izip;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    synth_engine::Sample,
+    synth_engine::{
+        Sample,
+        lookup_table::{EXTRA_SAMPLES, LookupTable},
+    },
     utils::{C4_PITCH, pitch_to_freq},
 };
 
@@ -16,6 +19,21 @@ pub const MAX_RESONANCE: Sample = 1.0;
 
 const ZERO_RESONANCE_Q: Sample = 0.5;
 const MAX_RESONANCE_Q: Sample = 16.0;
+
+const G_TABLE_INTERVALS: usize = 2048;
+
+/// `G_TABLE_INTERVALS` steps on `[0, 1]`, plus the Catmull-Rom pads.
+type GTable = LookupTable<{ G_TABLE_INTERVALS + EXTRA_SAMPLES }>;
+
+fn g_table() -> &'static GTable {
+    /// Clamp for `f / sample_rate` before `tan(π t)` (`ω = 0.499 π`).
+    const MAX_FREQ_RATIO: Sample = 0.499;
+
+    static TABLE: LazyLock<GTable> =
+        LazyLock::new(|| LookupTable::new(|t| (t.min(MAX_FREQ_RATIO) * PI).tan()));
+
+    &TABLE
+}
 
 #[cfg(test)]
 mod tests;
@@ -68,14 +86,14 @@ pub(crate) trait SvfFilter {
         gain: &[Sample],
         output: &mut [Sample],
     ) {
-        const MAX_OMEGA: Sample = 0.499 * PI;
-        let pi_over_rate = PI / sample_rate;
+        let g_table = g_table();
+        let inv_sample_rate = sample_rate.recip();
 
         for (out, &sample, &cutoff, &resonance, &gain) in
             izip!(output, input, cutoff, resonance, gain)
         {
             let freq = pitch_to_freq(C4_PITCH + cutoff);
-            let g = (freq * pi_over_rate).min(MAX_OMEGA).tan();
+            let g = g_table.at(freq * inv_sample_rate);
             let k = q_from_resonance(resonance).recip();
 
             *out = self.tick(g, k, sample * gain);
