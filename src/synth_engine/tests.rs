@@ -4,10 +4,10 @@ use crate::{
         amplifier::AmplifierConfig, envelope::EnvelopeConfig, expressions::ExpressionsConfig,
         external_param::ExternalParamConfig, harmonic_editor::HarmonicEditorConfig, lfo::LfoConfig,
         mixer::MixerConfig, oscillator::OscillatorConfig, spectral_blend::SpectralBlendConfig,
-        spectral_filter::SpectralFilterConfig, spectral_mixer::SpectralMixerConfig,
+        spectral_filter::SpectralFilterConfig, spectral_mixer::SpectralMixerConfig, svf::SvfConfig,
         wave_shaper::WaveShaperConfig,
     },
-    utils::from_ms,
+    utils::{MAX_CUTOFF, MIN_CUTOFF, from_ms},
 };
 
 const SAMPLE_RATE: Sample = 48_000.0;
@@ -1704,9 +1704,10 @@ fn runtime_add_all_module_types() {
         engine.add_spectral_mixer(),
         engine.add_expressions(),
         engine.add_external_param(),
+        engine.add_svf(),
     ];
 
-    assert_eq!(ids.len(), 12);
+    assert_eq!(ids.len(), 13);
     assert!(matches!(
         engine.get_module(ids[0]),
         Some(ModuleHandle::HarmonicEditor(_))
@@ -1755,6 +1756,144 @@ fn runtime_add_all_module_types() {
         engine.get_module(ids[11]),
         Some(ModuleHandle::ExternalParam(_))
     ));
+    assert!(matches!(
+        engine.get_module(ids[12]),
+        Some(ModuleHandle::Svf(_))
+    ));
+}
+
+// ---- SVF ----
+
+const SVF_ID: ModuleId = 3;
+
+fn svf_engine(svf: SvfConfig) -> SynthEngine {
+    let config = EngineConfig {
+        engine: EngineParams::default(),
+        modules: vec![
+            ModuleConfig::HarmonicEditor(Box::new(HarmonicEditorConfig {
+                id: HARMONIC_EDITOR_ID,
+                ..HarmonicEditorConfig::default()
+            })),
+            ModuleConfig::Oscillator(Box::new(OscillatorConfig {
+                id: OSCILLATOR_ID,
+                ..OscillatorConfig::default()
+            })),
+            ModuleConfig::Svf(Box::new(SvfConfig { id: SVF_ID, ..svf })),
+        ],
+        links: vec![
+            LinkConfig::direct(HARMONIC_EDITOR_ID, OSCILLATOR_ID, Input::Spectrum),
+            LinkConfig::direct(OSCILLATOR_ID, SVF_ID, Input::Audio),
+            LinkConfig::direct(SVF_ID, OUTPUT_MODULE_ID, Input::Audio),
+        ],
+    };
+
+    SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid svf patch")
+}
+
+fn svf_output_rms(svf: SvfConfig) -> Sample {
+    let mut engine = svf_engine(svf);
+
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
+
+    // Let the filter settle, then measure.
+    for _ in 0..8 {
+        process_block(&mut engine, 128);
+    }
+
+    let (left, right) = process_block(&mut engine, 128);
+
+    assert!(left.iter().chain(right.iter()).all(|s| s.is_finite()));
+
+    rms(&left)
+}
+
+#[test]
+fn svf_patch_round_trips_config() {
+    let engine = svf_engine(SvfConfig {
+        filter_type: filters::svf::SvfType::BandPass12,
+        cutoff: 2.0.into(),
+        ..SvfConfig::default()
+    });
+    let cfg = engine.get_config();
+
+    assert_eq!(cfg.modules.len(), 3);
+    assert!(matches!(
+        engine.get_module(SVF_ID),
+        Some(ModuleHandle::Svf(_))
+    ));
+
+    let svf_cfg = cfg
+        .modules
+        .iter()
+        .find_map(|m| match m {
+            ModuleConfig::Svf(cfg) => Some(cfg),
+            _ => None,
+        })
+        .expect("svf config present");
+
+    assert_eq!(svf_cfg.filter_type, filters::svf::SvfType::BandPass12);
+    assert_eq!(svf_cfg.cutoff, StereoSample::splat(2.0));
+}
+
+#[test]
+fn svf_lowpass_attenuates_more_as_cutoff_drops() {
+    let open = svf_output_rms(SvfConfig {
+        cutoff: MAX_CUTOFF.into(),
+        ..SvfConfig::default()
+    });
+    let mid = svf_output_rms(SvfConfig {
+        cutoff: 1.0.into(),
+        ..SvfConfig::default()
+    });
+    let closed = svf_output_rms(SvfConfig {
+        cutoff: MIN_CUTOFF.into(),
+        ..SvfConfig::default()
+    });
+
+    assert!(open > 1e-4, "{open}");
+    assert!(mid < open, "mid {mid} vs open {open}");
+    assert!(closed < mid, "closed {closed} vs mid {mid}");
+    assert!(closed < open * 0.05, "closed {closed} vs open {open}");
+}
+
+#[test]
+fn svf_highpass_above_fundamental_removes_most_signal() {
+    let open = svf_output_rms(SvfConfig {
+        filter_type: filters::svf::SvfType::HighPass12,
+        cutoff: MIN_CUTOFF.into(),
+        ..SvfConfig::default()
+    });
+    let closed = svf_output_rms(SvfConfig {
+        filter_type: filters::svf::SvfType::HighPass24,
+        cutoff: MAX_CUTOFF.into(),
+        ..SvfConfig::default()
+    });
+
+    assert!(open > 1e-4, "{open}");
+    assert!(closed < open * 0.05, "closed {closed} vs open {open}");
+}
+
+#[test]
+fn svf_all_modes_produce_finite_audio() {
+    for filter_type in filters::svf::SvfType::ALL {
+        let level = svf_output_rms(SvfConfig {
+            filter_type,
+            cutoff: 0.0.into(),
+            resonance: 0.9.into(),
+            drive: 12.0.into(),
+            ..SvfConfig::default()
+        });
+
+        assert!(level.is_finite(), "{filter_type:?}");
+    }
 }
 
 #[test]

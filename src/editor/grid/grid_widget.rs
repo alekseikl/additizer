@@ -17,7 +17,7 @@ use crate::{
             spectral_blend_widget::SpectralBlendWidget, spectral_eq_widget::SpectralEqWidget,
             spectral_filter_widget::SpectralFilterWidget,
             spectral_mixer_widget::SpectralMixerWidget, spectral_noise_widget::SpectralNoiseWidget,
-            wave_shaper_widget::WaveShaperWidget,
+            svf_widget::SvfWidget, wave_shaper_widget::WaveShaperWidget,
         },
         input_mixer_popup::InputMixerPopup,
         input_tooltip,
@@ -48,6 +48,7 @@ mod spectral_eq_widget;
 mod spectral_filter_widget;
 mod spectral_mixer_widget;
 mod spectral_noise_widget;
+mod svf_widget;
 mod wave_shaper_widget;
 
 const C_MOD_BG: Color32 = Color32::from_rgb(28, 30, 42);
@@ -127,6 +128,7 @@ impl GridWidget {
                 ModuleType::ExternalParam => Box::new(ExternalParamWidget::default()),
                 ModuleType::Expressions => Box::new(ExpressionsWidget::default()),
                 ModuleType::WaveShaper => Box::new(WaveShaperWidget {}),
+                ModuleType::Svf => Box::new(SvfWidget::default()),
             },
             drag_offset: Vec2::ZERO,
             drag_grab: None,

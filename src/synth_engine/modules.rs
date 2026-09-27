@@ -13,6 +13,7 @@ pub mod spectral_eq;
 pub mod spectral_filter;
 pub mod spectral_mixer;
 pub mod spectral_noise;
+pub mod svf;
 pub mod wave_shaper;
 
 pub use amplifier::Amplifier;
@@ -28,4 +29,5 @@ pub use spectral_blend::SpectralBlend;
 pub use spectral_eq::SpectralEq;
 pub use spectral_filter::SpectralFilter;
 pub use spectral_mixer::SpectralMixer;
+pub use svf::Svf;
 pub use wave_shaper::{ShaperType, WaveShaper};

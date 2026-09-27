@@ -283,6 +283,7 @@ impl ModuleType {
             Self::Lfo => "LFO",
             Self::Pitch => "Pitch",
             Self::WaveShaper => "Waveshaper",
+            Self::Svf => "SVF",
             Self::Expressions => "Expressions",
         }
     }

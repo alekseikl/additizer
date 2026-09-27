@@ -6,7 +6,7 @@ use egui::{
 
 use crate::synth_engine::ModuleType;
 
-const ADDABLE_MODULES: [ModuleType; 15] = [
+const ADDABLE_MODULES: [ModuleType; 16] = [
     ModuleType::HarmonicEditor,
     ModuleType::SpectralNoise,
     ModuleType::Oscillator,
@@ -20,6 +20,7 @@ const ADDABLE_MODULES: [ModuleType; 15] = [
     ModuleType::ExternalParam,
     ModuleType::Expressions,
     ModuleType::WaveShaper,
+    ModuleType::Svf,
     ModuleType::Amplifier,
     ModuleType::Mixer,
 ];

@@ -8,7 +8,7 @@ use crate::{
         mixer::MixerConfig, oscillator::OscillatorConfig, pitch::PitchConfig, routing::ModuleId,
         spectral_blend::SpectralBlendConfig, spectral_eq::SpectralEqConfig,
         spectral_filter::SpectralFilterConfig, spectral_mixer::SpectralMixerConfig,
-        spectral_noise::SpectralNoiseConfig, wave_shaper::WaveShaperConfig,
+        spectral_noise::SpectralNoiseConfig, svf::SvfConfig, wave_shaper::WaveShaperConfig,
     },
     utils::from_ms,
 };
@@ -133,6 +133,7 @@ pub enum ModuleConfig {
     Amplifier(Box<AmplifierConfig>),
     Mixer(Box<MixerConfig>),
     WaveShaper(Box<WaveShaperConfig>),
+    Svf(Box<SvfConfig>),
     SpectralFilter(Box<SpectralFilterConfig>),
     SpectralEq(Box<SpectralEqConfig>),
     SpectralBlend(Box<SpectralBlendConfig>),

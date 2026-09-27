@@ -14,6 +14,7 @@ mod spectral_eq_ui;
 mod spectral_filter_ui;
 mod spectral_mixer_ui;
 mod spectral_noise_ui;
+mod svf_ui;
 mod wave_shaper_ui;
 
 pub use amplifier_ui::AmplifierUI;
@@ -32,4 +33,5 @@ pub use spectral_eq_ui::SpectralEqUi;
 pub use spectral_filter_ui::SpectralFilterUI;
 pub use spectral_mixer_ui::SpectralMixerUi;
 pub use spectral_noise_ui::SpectralNoiseUi;
+pub use svf_ui::SvfUi;
 pub use wave_shaper_ui::WaveShaperUI;

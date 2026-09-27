@@ -23,6 +23,7 @@ use crate::{
         spectral_filter::SpectralFilterUiBridge,
         spectral_mixer::SpectralMixerUiBridge,
         spectral_noise::SpectralNoiseUiBridge,
+        svf::SvfUiBridge,
         ui_bridge::{routing_state::ModuleIo, ui_config::UiModuleConfig},
         wave_shaper::WaveShaperUiBridge,
     },
@@ -48,6 +49,7 @@ pub enum ModuleBridge {
     Pitch(Box<PitchUiBridge>),
     Mixer(Box<MixerUiBridge>),
     WaveShaper(Box<WaveShaperUiBridge>),
+    Svf(Box<SvfUiBridge>),
     SpectralFilter(Box<SpectralFilterUiBridge>),
     SpectralEq(Box<SpectralEqUiBridge>),
     SpectralBlend(Box<SpectralBlendUiBridge>),
@@ -158,6 +160,7 @@ impl UiBridge {
             ModuleHandle::WaveShaper(m) => {
                 ModuleBridge::WaveShaper(Box::new(WaveShaperUiBridge::try_new(m)?))
             }
+            ModuleHandle::Svf(m) => ModuleBridge::Svf(Box::new(SvfUiBridge::try_new(m)?)),
             ModuleHandle::SpectralFilter(m) => {
                 ModuleBridge::SpectralFilter(Box::new(SpectralFilterUiBridge::try_new(m)?))
             }
@@ -557,6 +560,7 @@ impl UiBridge {
             ModuleType::Lfo => synth.add_lfo(),
             ModuleType::Pitch => synth.add_pitch(),
             ModuleType::WaveShaper => synth.add_wave_shaper(),
+            ModuleType::Svf => synth.add_svf(),
             ModuleType::Expressions => synth.add_expressions(),
         };
 

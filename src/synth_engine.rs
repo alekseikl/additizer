@@ -27,7 +27,7 @@ pub use config::{EngineConfig, EngineParams, LinkConfig, MAX_BANDWIDTH, ModuleCo
 pub use module_handle::ModuleType;
 pub use modules::{
     Amplifier, Envelope, Expressions, ExternalParam, Lfo, LfoShape, Mixer, Oscillator, Pitch,
-    ShaperType, SpectralBlend, SpectralEq, SpectralFilter, SpectralMixer, WaveShaper,
+    ShaperType, SpectralBlend, SpectralEq, SpectralFilter, SpectralMixer, Svf, WaveShaper,
     amplifier::{self},
     envelope::{self},
     expressions::{self},
@@ -42,6 +42,7 @@ pub use modules::{
     spectral_filter::{self},
     spectral_mixer::{self},
     spectral_noise::{self, SpectralNoise},
+    svf::{self},
     wave_shaper::{self},
 };
 pub use routing::{
@@ -169,6 +170,7 @@ impl SynthEngine {
                 ModuleConfig::WaveShaper(cfg) => {
                     ModuleHandle::WaveShaper(Box::new(WaveShaper::from_config(cfg)))
                 }
+                ModuleConfig::Svf(cfg) => ModuleHandle::Svf(Box::new(Svf::from_config(cfg))),
                 ModuleConfig::SpectralFilter(cfg) => {
                     ModuleHandle::SpectralFilter(Box::new(SpectralFilter::from_config(cfg)))
                 }
@@ -244,6 +246,7 @@ impl SynthEngine {
                     ModuleHandle::WaveShaper(m) => {
                         Some(ModuleConfig::WaveShaper(Box::new(m.get_config())))
                     }
+                    ModuleHandle::Svf(m) => Some(ModuleConfig::Svf(Box::new(m.get_config()))),
                     ModuleHandle::SpectralFilter(m) => {
                         Some(ModuleConfig::SpectralFilter(Box::new(m.get_config())))
                     }
@@ -389,6 +392,7 @@ impl SynthEngine {
     add_module_method!(add_amplifier, Amplifier);
     add_module_method!(add_mixer, Mixer);
     add_module_method!(add_wave_shaper, WaveShaper);
+    add_module_method!(add_svf, Svf);
     add_module_method!(add_spectral_filter, SpectralFilter);
     add_module_method!(add_spectral_eq, SpectralEq);
     add_module_method!(add_spectral_blend, SpectralBlend);

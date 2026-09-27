@@ -22,6 +22,9 @@ Every slider in the UI is stereo, and each channel can be adjusted by dragging w
 - `LFO`: Low-frequency oscillator (triangle/square/sine) with skew and bipolar modes.
 - `Mixer`: Mixes multiple audio inputs with per-input level/gain and output volume control.
 - `Waveshaper`: Wave shaping distortion (hard clip or sigmoid) with drive and clipping level.
+- `SVF`: Time-domain state-variable filter (Cytomic / Andrew Simper form): lowpass and highpass at 12/18/24 dB,
+  bandpass at 6/12 dB per octave (18 dB variants cascade a one-pole section after the SVF).
+  Modulatable cutoff (with keytrack), resonance, and drive (soft saturation ahead of the filter).
 - `Amplifier`: Simple gain modulation for input signal.
 - `External Parameter`: Exposes host/plugin parameters as modulation sources with smoothing.
 - `Expressions`: Uses MPE as modulation sources.

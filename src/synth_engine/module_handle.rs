@@ -1,7 +1,7 @@
 use crate::synth_engine::{
     Amplifier, Envelope, Expressions, ExternalParam, HarmonicEditor, Input, Lfo, Mixer, ModuleId,
     Oscillator, Pitch, SpectralBlend, SpectralEq, SpectralFilter, SpectralMixer, SpectralNoise,
-    StereoSample, VoiceEvent, WaveShaper,
+    StereoSample, Svf, VoiceEvent, WaveShaper,
     modules::Output,
     routing::{DataType, InputMeta, InputSlots, ProcessContext, SpectralInputSlot},
     synth_module::SynthModule,
@@ -26,6 +26,7 @@ pub enum ModuleType {
     Lfo,
     Pitch,
     WaveShaper,
+    Svf,
     Expressions,
 }
 
@@ -47,6 +48,7 @@ impl ModuleType {
             Self::Lfo => "LFO",
             Self::Pitch => "Pitch",
             Self::WaveShaper => "Waveshaper",
+            Self::Svf => "SVF",
             Self::Expressions => "Expressions",
         }
     }
@@ -60,6 +62,7 @@ pub enum ModuleHandle {
     Pitch(Box<Pitch>),
     Amplifier(Box<Amplifier>),
     WaveShaper(Box<WaveShaper>),
+    Svf(Box<Svf>),
     Mixer(Box<Mixer>),
     SpectralFilter(Box<SpectralFilter>),
     SpectralEq(Box<SpectralEq>),
@@ -83,6 +86,7 @@ impl ModuleHandle {
             Self::Amplifier(_) => ModuleType::Amplifier,
             Self::Mixer(_) => ModuleType::Mixer,
             Self::WaveShaper(_) => ModuleType::WaveShaper,
+            Self::Svf(_) => ModuleType::Svf,
             Self::SpectralFilter(_) => ModuleType::SpectralFilter,
             Self::SpectralEq(_) => ModuleType::SpectralEq,
             Self::SpectralBlend(_) => ModuleType::SpectralBlend,

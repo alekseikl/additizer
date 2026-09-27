@@ -74,6 +74,8 @@ Noise), capped by `MAX_BANDWIDTH` in `config.rs`; `0` means note-based bandwidth
 **Shared DSP** lives outside `modules/`: `src/synth_engine/filters/spectral_filter.rs` holds
 the frequency-response filter implementations (`FilterImpl`, `FilterType`, `SpectralFilter`)
 used by both the Spectral Filter and Spectral EQ modules and their editor widgets.
+`src/synth_engine/filters/svf.rs` holds the time-domain state-variable filter core
+(`SvfState`, `SvfCoeffs`, `SvfResponse`) used by the SVF module and its grid widget.
 
 ## Routing
 
@@ -96,7 +98,7 @@ semantic matches (e.g. `Gain`, `Level`, `Cutoff`) and document units (dB vs. lin
 ## The module pattern (important)
 
 Current modules (`src/synth_engine/modules/`): `oscillator`, `envelope`, `lfo`, `pitch`,
-`amplifier`, `mixer`, `wave_shaper`, `spectral_filter`, `spectral_eq`, `spectral_blend`,
+`amplifier`, `mixer`, `wave_shaper`, `svf`, `spectral_filter`, `spectral_eq`, `spectral_blend`,
 `spectral_mixer`, `harmonic_editor`, `spectral_noise`, `expressions`, `external_param`, plus
 the special `output`.
 
