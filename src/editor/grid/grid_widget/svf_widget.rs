@@ -5,7 +5,7 @@ use crate::{
     synth_engine::{
         Input, ModuleId, Sample,
         filters::svf::SvfResponse,
-        svf::SvfUiBridge,
+        svf::{SvfUiBridge, q_from_resonance},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{
@@ -70,7 +70,7 @@ impl SvfWidget {
         let cutoff_freq = pitch_to_freq(C4_PITCH + cutoff_log2);
         let response = SvfResponse {
             filter_type: config.filter_type,
-            resonance: config.resonance[0],
+            q: q_from_resonance(config.resonance[0]),
             cutoff: cutoff_freq,
         };
         let drive_db = config.drive[0];

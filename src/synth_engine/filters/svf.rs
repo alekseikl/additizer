@@ -14,23 +14,18 @@ use crate::{
     utils::{C4_PITCH, pitch_to_freq},
 };
 
-pub const MIN_RESONANCE: Sample = 0.0;
-pub const MAX_RESONANCE: Sample = 1.0;
-
-const ZERO_RESONANCE_Q: Sample = 0.5;
-const MAX_RESONANCE_Q: Sample = 16.0;
-
-/// Clamp for `f / sample_rate` before `tan(π t)` (`ω = 0.499 π`).
-const MAX_FREQ_RATIO: Sample = 0.499;
-
 const G_TABLE_INTERVALS: usize = 2048;
+const RANGE_SCALE: Sample = 0.5;
 
-/// `G_TABLE_INTERVALS` steps on `[0, 1]`, plus the Catmull-Rom pads.
+/// `G_TABLE_INTERVALS` steps of `f / sample_rate` on `[0, 1/2]`, clamped at `0.499` before `tan`.
 type GTable = LookupTable<{ G_TABLE_INTERVALS + EXTRA_SAMPLES }>;
 
 fn g_table() -> &'static GTable {
-    static TABLE: LazyLock<GTable> =
-        LazyLock::new(|| LookupTable::new(|t| (t.min(MAX_FREQ_RATIO) * PI).tan()));
+    const MAX_RATIO: Sample = 0.499;
+
+    static TABLE: LazyLock<GTable> = LazyLock::new(|| {
+        LookupTable::new(|t| ((RANGE_SCALE * t).min(MAX_RATIO) * PI).tan())
+    });
 
     &TABLE
 }
@@ -44,11 +39,6 @@ mod stage;
 pub use response::SvfResponse;
 
 use stage::{OnePoleStage, SvfStage};
-
-#[inline(always)]
-fn q_from_resonance(resonance: Sample) -> Sample {
-    ZERO_RESONANCE_Q + (MAX_RESONANCE_Q - ZERO_RESONANCE_Q) * resonance * resonance * resonance
-}
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SvfType {
@@ -82,21 +72,21 @@ pub(crate) trait SvfFilter {
         sample_rate: Sample,
         input: &[Sample],
         cutoff: &[Sample],
-        resonance: &[Sample],
+        q: &[Sample],
         gain: &[Sample],
         output: &mut [Sample],
     ) {
         let g_table = g_table();
-        let inv_sample_rate = sample_rate.recip();
+        let freq_mult = (sample_rate * RANGE_SCALE).recip();
 
-        for (out, &sample, &cutoff, &resonance, &gain) in
-            izip!(output, input, cutoff, resonance, gain)
-        {
+        for (out, &sample, &cutoff, &q, &gain) in izip!(output, input, cutoff, q, gain) {
             let freq = pitch_to_freq(C4_PITCH + cutoff);
-            let g = g_table.at((freq * inv_sample_rate).min(MAX_FREQ_RATIO));
-            let k = q_from_resonance(resonance).recip();
 
-            *out = self.tick(g, k, sample * gain);
+            *out = self.tick(
+                g_table.at((freq * freq_mult).min(1.0)),
+                q.recip(),
+                sample * gain,
+            );
         }
     }
 }

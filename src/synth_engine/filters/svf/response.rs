@@ -1,4 +1,4 @@
-use super::{BandPass, HighPass, LowPass, SvfType, q_from_resonance};
+use super::{BandPass, HighPass, LowPass, SvfType};
 use crate::synth_engine::{ComplexSample, Sample};
 
 /// Analog prototype of an SVF output tap.
@@ -51,7 +51,7 @@ impl Response for BandPass {
 #[derive(Clone, Copy)]
 pub struct SvfResponse {
     pub filter_type: SvfType,
-    pub resonance: Sample,
+    pub q: Sample,
     pub cutoff: Sample,
 }
 
@@ -82,9 +82,8 @@ impl SvfResponse {
     }
 
     pub fn at(&self, freq: Sample) -> ComplexSample {
-        let q = q_from_resonance(self.resonance);
         let s = ComplexSample::new(0.0, freq / self.cutoff);
 
-        Self::of_type(self.filter_type, q, s)
+        Self::of_type(self.filter_type, self.q, s)
     }
 }

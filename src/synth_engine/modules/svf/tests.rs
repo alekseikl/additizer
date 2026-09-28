@@ -1,4 +1,4 @@
-use super::*;
+use super::{MAX_RESONANCE_Q, ZERO_RESONANCE_Q, *};
 use crate::utils::db_to_gain_fast;
 
 fn assert_approx(a: Sample, b: Sample) {
@@ -51,6 +51,18 @@ fn module_config_round_trips_through_get_config() {
     assert_eq!(back.cutoff, config.cutoff);
     assert_eq!(back.resonance, config.resonance);
     assert_eq!(back.drive, config.drive);
+}
+
+#[test]
+fn q_from_resonance_follows_cubic_curve() {
+    assert!((q_from_resonance(0.0) - ZERO_RESONANCE_Q).abs() < 1e-6);
+
+    let resonance: Sample = 0.5;
+    let expected =
+        ZERO_RESONANCE_Q + (MAX_RESONANCE_Q - ZERO_RESONANCE_Q) * resonance * resonance * resonance;
+
+    assert!((q_from_resonance(resonance) - expected).abs() < 1e-6);
+    assert!((q_from_resonance(1.0) - MAX_RESONANCE_Q).abs() < 1e-6);
 }
 
 #[test]

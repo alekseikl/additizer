@@ -15,7 +15,7 @@ use crate::{
     synth_engine::{
         Sample, SmoothedSampleParams, StereoSample,
         buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
-        filters::svf::{self, SvfFilter, SvfState, SvfType},
+        filters::svf::{SvfFilter, SvfState, SvfType},
         modules::spectral_filter::{MAX_DRIVE, MIN_DRIVE},
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
@@ -28,7 +28,16 @@ use crate::{
     utils::{C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain_fast},
 };
 
-pub use svf::{MAX_RESONANCE, MIN_RESONANCE};
+pub const MIN_RESONANCE: Sample = 0.0;
+pub const MAX_RESONANCE: Sample = 1.0;
+
+const ZERO_RESONANCE_Q: Sample = 0.5;
+const MAX_RESONANCE_Q: Sample = 16.0;
+
+#[inline(always)]
+pub fn q_from_resonance(resonance: Sample) -> Sample {
+    ZERO_RESONANCE_Q + (MAX_RESONANCE_Q - ZERO_RESONANCE_Q) * resonance * resonance * resonance
+}
 
 struct Params {
     filter_type: SvfType,
@@ -117,9 +126,9 @@ impl Inputs {
 }
 
 struct Buffers {
-    cutoff_mod: Buffer,
-    resonance_mod: Buffer,
-    drive_mod: Buffer,
+    cutoff: Buffer,
+    resonance: Buffer,
+    drive: Buffer,
 }
 
 pub struct Svf {
@@ -152,9 +161,9 @@ impl Svf {
                 ChannelParams::from_config(config, channel_idx)
             }),
             buffers: Buffers {
-                cutoff_mod: zero_buffer(),
-                resonance_mod: zero_buffer(),
-                drive_mod: zero_buffer(),
+                cutoff: zero_buffer(),
+                resonance: zero_buffer(),
+                drive: zero_buffer(),
             },
             states: new_voices_layout(),
             audio_end,
@@ -208,29 +217,25 @@ impl Svf {
 
         state.set_type(filter_type);
 
-        router.param(
-            &inputs.cutoff,
-            &channel.cutoff,
-            &mut self.buffers.cutoff_mod,
-        );
+        router.param(&inputs.cutoff, &channel.cutoff, &mut self.buffers.cutoff);
         router.param(
             &inputs.resonance,
             &channel.resonance,
-            &mut self.buffers.resonance_mod,
+            &mut self.buffers.resonance,
         );
 
         let samples = router.samples();
 
-        for resonance in &mut self.buffers.resonance_mod[..samples] {
-            *resonance = resonance.clamp(MIN_RESONANCE, MAX_RESONANCE);
+        for q in &mut self.buffers.resonance[..samples] {
+            *q = q_from_resonance(q.clamp(MIN_RESONANCE, MAX_RESONANCE));
         }
 
         if router.param_stationary_at(&inputs.drive, &channel.drive, 0.0) {
-            self.buffers.drive_mod[..samples].fill(1.0);
+            self.buffers.drive[..samples].fill(1.0);
         } else {
-            router.param(&inputs.drive, &channel.drive, &mut self.buffers.drive_mod);
+            router.param(&inputs.drive, &channel.drive, &mut self.buffers.drive);
 
-            for drive in &mut self.buffers.drive_mod[..samples] {
+            for drive in &mut self.buffers.drive[..samples] {
                 *drive = db_to_gain_fast(drive.clamp(MIN_DRIVE, MAX_DRIVE));
             }
         }
@@ -250,13 +255,13 @@ impl Svf {
 
         if keytrack > 1e-5 {
             if let Some(pitch) = pitch {
-                for (cutoff, pitch) in self.buffers.cutoff_mod.iter_mut().zip(pitch) {
+                for (cutoff, pitch) in self.buffers.cutoff.iter_mut().zip(pitch) {
                     *cutoff += keytrack * (pitch - C4_PITCH);
                 }
             } else {
                 let offset = keytrack * (note_pitch - C4_PITCH);
 
-                for cutoff in self.buffers.cutoff_mod.iter_mut().take(samples) {
+                for cutoff in self.buffers.cutoff.iter_mut().take(samples) {
                     *cutoff += offset;
                 }
             }
@@ -265,9 +270,9 @@ impl Svf {
         state.process(
             sample_rate,
             input,
-            &self.buffers.cutoff_mod,
-            &self.buffers.resonance_mod,
-            &self.buffers.drive_mod,
+            &self.buffers.cutoff,
+            &self.buffers.resonance,
+            &self.buffers.drive,
             output,
         );
     }
