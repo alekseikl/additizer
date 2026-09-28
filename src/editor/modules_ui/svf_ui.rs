@@ -11,17 +11,6 @@ use crate::{
 };
 
 impl SvfType {
-    const ALL: [Self; 8] = [
-        Self::LowPass12,
-        Self::LowPass18,
-        Self::LowPass24,
-        Self::HighPass12,
-        Self::HighPass18,
-        Self::HighPass24,
-        Self::BandPass6,
-        Self::BandPass12,
-    ];
-
     fn label(&self) -> &'static str {
         match self {
             Self::LowPass12 => "Lowpass 12",
@@ -32,6 +21,8 @@ impl SvfType {
             Self::HighPass24 => "Highpass 24",
             Self::BandPass6 => "Bandpass 6",
             Self::BandPass12 => "Bandpass 12",
+            Self::Peaking => "Peaking",
+            Self::Notch => "Notch",
         }
     }
 }

@@ -4,13 +4,13 @@ use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
         Input, ModuleId, Sample,
-        filters::svf::SvfResponse,
+        filters::svf::{SvfResponse, SvfType},
         svf::{SvfUiBridge, q_from_resonance},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{
-        C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, gain_to_db_fast,
-        pitch_to_freq,
+        C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, db_to_gain_fast,
+        gain_to_db_fast, pitch_to_freq,
     },
 };
 
@@ -68,18 +68,20 @@ impl SvfWidget {
         // Octaves relative to C4, same axis as the cutoff slider.
         let cutoff_log2 = config.cutoff[0] + config.keytrack * (pitch - C4_PITCH);
         let cutoff_freq = pitch_to_freq(C4_PITCH + cutoff_log2);
+        let drive_db = config.drive[0];
         let response = SvfResponse {
             filter_type: config.filter_type,
             q: q_from_resonance(config.resonance[0]),
             cutoff: cutoff_freq,
+            gain: db_to_gain_fast(drive_db),
         };
-        let drive_db = config.drive[0];
 
         self.build_points(rect, &response, cutoff_log2, drive_db);
         Self::paint_response(ui.painter(), rect, &self.points);
     }
 
-    /// Small-signal response: the analog prototype scaled by the drive gain.
+    /// Analog prototype in decibels. Drive shifts the curve.
+    /// For Peaking, drive is the bell gain and is already inside the prototype.
     /// The UI has no sample rate, so bilinear warping near Nyquist is not shown.
     fn build_points(
         &mut self,
@@ -102,7 +104,11 @@ impl SvfWidget {
             let t = col * t_mult;
             let freq = pitch_to_freq(C4_PITCH + MIN_CUTOFF + t * log2_range);
             let gain = response.at(freq).norm();
-            let db = gain_to_db_fast(gain) + drive_db;
+            let drive_offset = match response.filter_type {
+                SvfType::Peaking => 0.0,
+                _ => drive_db,
+            };
+            let db = gain_to_db_fast(gain) + drive_offset;
             let y_t = ((db - MIN_LEVEL_DB) * DB_RANGE_MULT).clamp(0.0, 1.0);
 
             points.push(Pos2::new(

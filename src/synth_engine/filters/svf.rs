@@ -23,9 +23,8 @@ type GTable = LookupTable<{ G_TABLE_INTERVALS + EXTRA_SAMPLES }>;
 fn g_table() -> &'static GTable {
     const MAX_RATIO: Sample = 0.499;
 
-    static TABLE: LazyLock<GTable> = LazyLock::new(|| {
-        LookupTable::new(|t| ((RANGE_SCALE * t).min(MAX_RATIO) * PI).tan())
-    });
+    static TABLE: LazyLock<GTable> =
+        LazyLock::new(|| LookupTable::new(|t| ((RANGE_SCALE * t).min(MAX_RATIO) * PI).tan()));
 
     &TABLE
 }
@@ -51,6 +50,23 @@ pub enum SvfType {
     HighPass24,
     BandPass6,
     BandPass12,
+    Peaking,
+    Notch,
+}
+
+impl SvfType {
+    pub const ALL: [Self; 10] = [
+        Self::LowPass12,
+        Self::LowPass18,
+        Self::LowPass24,
+        Self::HighPass12,
+        Self::HighPass18,
+        Self::HighPass24,
+        Self::BandPass6,
+        Self::BandPass12,
+        Self::Peaking,
+        Self::Notch,
+    ];
 }
 
 #[derive(Clone, Copy, Default)]
@@ -64,7 +80,7 @@ struct BandPass;
 
 #[enum_dispatch]
 pub(crate) trait SvfFilter {
-    fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample;
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample;
     fn reset(&mut self);
 
     fn process(
@@ -85,7 +101,8 @@ pub(crate) trait SvfFilter {
             *out = self.tick(
                 g_table.at((freq * freq_mult).min(1.0)),
                 q.recip(),
-                sample * gain,
+                gain,
+                sample,
             );
         }
     }
@@ -136,10 +153,21 @@ pub(crate) struct BandPass12 {
     resonant: SvfStage<BandPass>,
 }
 
+/// Bell. Linear `gain` is the level at the cutoff; DC and high frequencies stay at unity.
+#[derive(Default, Clone, Copy)]
+pub(crate) struct Peaking {
+    stage: SvfStage<stage::Peaking>,
+}
+
+#[derive(Default, Clone, Copy)]
+pub(crate) struct Notch {
+    resonant: SvfStage<stage::Notch>,
+}
+
 impl SvfFilter for LowPass12 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample {
-        self.resonant.tick(g, k, input)
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+        self.resonant.tick(g, k, gain, input)
     }
 
     fn reset(&mut self) {
@@ -149,8 +177,8 @@ impl SvfFilter for LowPass12 {
 
 impl SvfFilter for LowPass18 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample {
-        let x = self.resonant.tick(g, k, input);
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+        let x = self.resonant.tick(g, k, gain, input);
 
         self.one_pole.tick(g, x)
     }
@@ -162,10 +190,10 @@ impl SvfFilter for LowPass18 {
 
 impl SvfFilter for LowPass24 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample {
-        let x = self.fixed.tick(g, 1.0, input);
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+        let x = self.fixed.tick(g, 1.0, gain, input);
 
-        self.resonant.tick(g, k, x)
+        self.resonant.tick(g, k, 1.0, x)
     }
 
     fn reset(&mut self) {
@@ -175,8 +203,8 @@ impl SvfFilter for LowPass24 {
 
 impl SvfFilter for HighPass12 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample {
-        self.resonant.tick(g, k, input)
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+        self.resonant.tick(g, k, gain, input)
     }
 
     fn reset(&mut self) {
@@ -186,8 +214,8 @@ impl SvfFilter for HighPass12 {
 
 impl SvfFilter for HighPass18 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample {
-        let x = self.resonant.tick(g, k, input);
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+        let x = self.resonant.tick(g, k, gain, input);
 
         self.one_pole.tick(g, x)
     }
@@ -199,10 +227,10 @@ impl SvfFilter for HighPass18 {
 
 impl SvfFilter for HighPass24 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample {
-        let x = self.fixed.tick(g, 1.0, input);
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+        let x = self.fixed.tick(g, 1.0, gain, input);
 
-        self.resonant.tick(g, k, x)
+        self.resonant.tick(g, k, 1.0, x)
     }
 
     fn reset(&mut self) {
@@ -212,8 +240,8 @@ impl SvfFilter for HighPass24 {
 
 impl SvfFilter for BandPass6 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample {
-        self.resonant.tick(g, k, input)
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+        self.resonant.tick(g, k, gain, input)
     }
 
     fn reset(&mut self) {
@@ -223,10 +251,33 @@ impl SvfFilter for BandPass6 {
 
 impl SvfFilter for BandPass12 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample {
-        let x = self.fixed.tick(g, 1.0, input);
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+        let x = self.fixed.tick(g, 1.0, gain, input);
 
-        self.resonant.tick(g, k, x)
+        self.resonant.tick(g, k, 1.0, x)
+    }
+
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
+impl SvfFilter for Peaking {
+    #[inline(always)]
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+        let gain = gain.max(1e-4);
+        self.stage.tick(g, k / gain.sqrt(), gain, input)
+    }
+
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
+impl SvfFilter for Notch {
+    #[inline(always)]
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+        self.resonant.tick(g, k, gain, input)
     }
 
     fn reset(&mut self) {
@@ -245,6 +296,8 @@ pub(crate) enum SvfState {
     HighPass24(HighPass24),
     BandPass6(BandPass6),
     BandPass12(BandPass12),
+    Peaking(Peaking),
+    Notch(Notch),
 }
 
 impl Default for SvfState {
@@ -264,6 +317,8 @@ impl SvfState {
             SvfType::HighPass24 => Self::HighPass24(HighPass24::default()),
             SvfType::BandPass6 => Self::BandPass6(BandPass6::default()),
             SvfType::BandPass12 => Self::BandPass12(BandPass12::default()),
+            SvfType::Peaking => Self::Peaking(Peaking::default()),
+            SvfType::Notch => Self::Notch(Notch::default()),
         }
     }
 
@@ -277,6 +332,8 @@ impl SvfState {
             Self::HighPass24(_) => SvfType::HighPass24,
             Self::BandPass6(_) => SvfType::BandPass6,
             Self::BandPass12(_) => SvfType::BandPass12,
+            Self::Peaking(_) => SvfType::Peaking,
+            Self::Notch(_) => SvfType::Notch,
         }
     }
 

@@ -14,17 +14,6 @@ const CUTOFF: Sample = 1_000.0;
 /// Butterworth Q. A 2-pole low-pass is −6 dB at the cutoff.
 const FLAT_Q: Sample = 0.5;
 
-const ALL_TYPES: [SvfType; 8] = [
-    SvfType::LowPass12,
-    SvfType::LowPass18,
-    SvfType::LowPass24,
-    SvfType::HighPass12,
-    SvfType::HighPass18,
-    SvfType::HighPass24,
-    SvfType::BandPass6,
-    SvfType::BandPass12,
-];
-
 #[test]
 fn prewarped_g_tracks_tan() {
     let mut prev = 0.0;
@@ -114,7 +103,7 @@ fn g_and_k(cutoff: Sample, q: Sample) -> (Sample, Sample) {
 }
 
 /// Steady-state amplitude of the filter output for a unit sine at `freq`.
-fn measured_gain(filter_type: SvfType, q: Sample, freq: Sample) -> Sample {
+fn measured_gain(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) -> Sample {
     let (g, k) = g_and_k(CUTOFF, q);
     let mut state = SvfState::new(filter_type);
     let settle = SAMPLE_RATE as usize;
@@ -123,7 +112,7 @@ fn measured_gain(filter_type: SvfType, q: Sample, freq: Sample) -> Sample {
 
     for n in 0..settle + measure {
         let x = (TAU * freq * n as Sample / SAMPLE_RATE).sin();
-        let y = state.tick(g, k, x);
+        let y = state.tick(g, k, gain, x);
 
         if n >= settle {
             sum_sq += (y as f64) * (y as f64);
@@ -133,7 +122,7 @@ fn measured_gain(filter_type: SvfType, q: Sample, freq: Sample) -> Sample {
     ((sum_sq / measure as f64).sqrt() * std::f64::consts::SQRT_2) as Sample
 }
 
-fn predicted_gain(filter_type: SvfType, q: Sample, freq: Sample) -> Sample {
+fn predicted_gain(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) -> Sample {
     let w = (PI * freq / SAMPLE_RATE).tan();
     let g = (PI * CUTOFF / SAMPLE_RATE).tan();
 
@@ -141,16 +130,22 @@ fn predicted_gain(filter_type: SvfType, q: Sample, freq: Sample) -> Sample {
         filter_type,
         q,
         cutoff: g,
+        gain,
     };
 
     response.at(w).norm()
 }
 
 fn analog_gain(filter_type: SvfType, q: Sample, freq: Sample) -> Sample {
+    analog_gain_with(filter_type, q, 1.0, freq)
+}
+
+fn analog_gain_with(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) -> Sample {
     let response = SvfResponse {
         filter_type,
         q,
         cutoff: CUTOFF,
+        gain,
     };
 
     response.at(freq).norm()
@@ -167,12 +162,12 @@ fn assert_close(measured: Sample, predicted: Sample, ctx: &str) {
 
 #[test]
 fn tick_matches_bilinear_response_for_all_types() {
-    for filter_type in ALL_TYPES {
+    for filter_type in SvfType::ALL {
         for q in [FLAT_Q, 1.0, 4.0] {
             for freq in [250.0, 1_000.0, 4_000.0] {
                 assert_close(
-                    measured_gain(filter_type, q, freq),
-                    predicted_gain(filter_type, q, freq),
+                    measured_gain(filter_type, q, 1.0, freq),
+                    predicted_gain(filter_type, q, 1.0, freq),
                     &format!("{filter_type:?} q={q} f={freq}"),
                 );
             }
@@ -235,31 +230,40 @@ fn steeper_types_roll_off_faster() {
     assert!(gain(SvfType::HighPass18) > gain(SvfType::HighPass24));
 }
 
+fn assert_impulse_decays(filter_type: SvfType, gain: Sample) {
+    let (g, k) = g_and_k(CUTOFF, 16.0);
+    let mut state = SvfState::new(filter_type);
+    let mut peak_early = 0.0f32;
+    let mut peak_late = 0.0f32;
+
+    for n in 0..SAMPLE_RATE as usize {
+        let x = if n == 0 { 1.0 } else { 0.0 };
+        let y = state.tick(g, k, gain, x);
+
+        assert!(y.is_finite(), "{filter_type:?} gain={gain} at {n}");
+
+        if n < 2_000 {
+            peak_early = peak_early.max(y.abs());
+        } else if n >= 40_000 {
+            peak_late = peak_late.max(y.abs());
+        }
+    }
+
+    assert!(
+        peak_late < peak_early * 0.01,
+        "{filter_type:?} gain={gain}: early {peak_early} late {peak_late}"
+    );
+}
+
 #[test]
 fn high_resonance_impulse_decays_and_stays_finite() {
-    for filter_type in ALL_TYPES {
-        let (g, k) = g_and_k(CUTOFF, 16.0);
-        let mut state = SvfState::new(filter_type);
-        let mut peak_early = 0.0f32;
-        let mut peak_late = 0.0f32;
+    for filter_type in SvfType::ALL {
+        assert_impulse_decays(filter_type, 1.0);
 
-        for n in 0..SAMPLE_RATE as usize {
-            let x = if n == 0 { 1.0 } else { 0.0 };
-            let y = state.tick(g, k, x);
-
-            assert!(y.is_finite(), "{filter_type:?} at {n}");
-
-            if n < 2_000 {
-                peak_early = peak_early.max(y.abs());
-            } else if n >= 40_000 {
-                peak_late = peak_late.max(y.abs());
-            }
+        if filter_type == SvfType::Peaking {
+            assert_impulse_decays(filter_type, 4.0);
+            assert_impulse_decays(filter_type, 0.25);
         }
-
-        assert!(
-            peak_late < peak_early * 0.01,
-            "{filter_type:?}: early {peak_early} late {peak_late}"
-        );
     }
 }
 
@@ -269,17 +273,78 @@ fn reset_clears_memory() {
     let mut state = SvfState::new(SvfType::LowPass24);
 
     for _ in 0..100 {
-        state.tick(g, k, 1.0);
+        state.tick(g, k, 1.0, 1.0);
     }
 
     state.reset();
 
-    assert_eq!(state.tick(g, k, 0.0), 0.0);
+    assert_eq!(state.tick(g, k, 1.0, 0.0), 0.0);
+}
+
+#[test]
+fn notch_passes_away_from_cutoff_and_nulls_it() {
+    assert!((analog_gain(SvfType::Notch, FLAT_Q, 0.0) - 1.0).abs() < 1e-6);
+    assert!(analog_gain(SvfType::Notch, 4.0, CUTOFF) < 1e-6);
+    assert!((analog_gain(SvfType::Notch, FLAT_Q, 100.0 * CUTOFF) - 1.0).abs() < 1e-3);
+}
+
+#[test]
+fn peaking_is_unity_away_from_cutoff_and_gain_at_cutoff() {
+    for gain in [0.25, 4.0] {
+        assert!(
+            (analog_gain_with(SvfType::Peaking, 2.0, gain, 0.0) - 1.0).abs() < 1e-6,
+            "dc gain={gain}"
+        );
+        assert!(
+            (analog_gain_with(SvfType::Peaking, 2.0, gain, CUTOFF) - gain).abs() < 1e-5,
+            "cutoff gain={gain}"
+        );
+        assert!(
+            (analog_gain_with(SvfType::Peaking, 2.0, gain, 100.0 * CUTOFF) - 1.0).abs() < 1e-3,
+            "high gain={gain}"
+        );
+    }
+}
+
+#[test]
+fn peaking_tick_matches_bilinear_response() {
+    for gain in [0.25, 4.0] {
+        for q in [FLAT_Q, 1.0, 4.0] {
+            for freq in [250.0, 1_000.0, 4_000.0] {
+                assert_close(
+                    measured_gain(SvfType::Peaking, q, gain, freq),
+                    predicted_gain(SvfType::Peaking, q, gain, freq),
+                    &format!("peaking gain={gain} q={q} f={freq}"),
+                );
+            }
+        }
+    }
+}
+
+fn settled_dc(filter_type: SvfType, gain: Sample) -> Sample {
+    let cutoff = [freq_to_c4_pitch(CUTOFF)];
+    let q = [2.0];
+    let gain = [gain];
+    let mut state = SvfState::new(filter_type);
+    let mut output = [0.0];
+
+    for _ in 0..8_000 {
+        state.process(SAMPLE_RATE, &[1.0], &cutoff, &q, &gain, &mut output);
+    }
+
+    output[0]
+}
+
+#[test]
+fn peaking_dc_stays_unity_while_drive_scales_the_other_types() {
+    assert!((settled_dc(SvfType::Peaking, 4.0) - 1.0).abs() < 1e-3);
+    assert!((settled_dc(SvfType::Notch, 4.0) - 4.0).abs() < 1e-2);
+    assert!((settled_dc(SvfType::LowPass12, 4.0) - 4.0).abs() < 1e-2);
 }
 
 #[test]
 fn types_round_trip_through_serde() {
-    for filter_type in ALL_TYPES {
+    for filter_type in SvfType::ALL {
         let json = serde_json::to_string(&filter_type).unwrap();
         let back: SvfType = serde_json::from_str(&json).unwrap();
 
