@@ -24,7 +24,7 @@ fn old_resonance_deserializes_as_q() {
 
     let filter: EqFilter = serde_json::from_value(json).unwrap();
 
-    assert!((filter.q - q_from_resonance(0.5)).abs() < 1e-6);
+    assert!((filter.q - q_from_resonance(0.5).resonant).abs() < 1e-6);
     assert_eq!(filter.cutoff_hz, 440.0);
     assert_eq!(filter.drive, -3.0);
 }

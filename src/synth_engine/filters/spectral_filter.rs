@@ -10,7 +10,7 @@ use crate::{
 const TAU: Sample = f32::consts::TAU;
 
 pub trait FilterImpl: Clone + Copy + 'static {
-    fn new(gain: Sample, cutoff_freq: Sample, q: Sample) -> Self;
+    fn new(gain: Sample, cutoff_freq: Sample, q: Sample, pre_q: Sample) -> Self;
     fn at(&self, freq: Sample) -> ComplexSample;
 }
 
@@ -22,7 +22,7 @@ pub struct LowPass12 {
 }
 
 impl FilterImpl for LowPass12 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
         let w = cutoff * TAU;
         let w_squared = w * w;
 
@@ -43,14 +43,14 @@ impl FilterImpl for LowPass12 {
 
 #[derive(Clone, Copy)]
 pub struct LowPass18 {
-    biquad: LowPass12,
+    resonant: LowPass12,
     w: Sample,
 }
 
 impl FilterImpl for LowPass18 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         Self {
-            biquad: LowPass12::new(gain, cutoff, q),
+            resonant: LowPass12::new(gain, cutoff, q, pre_q),
             w: cutoff * TAU,
         }
     }
@@ -60,30 +60,27 @@ impl FilterImpl for LowPass18 {
         let x = freq * TAU;
         let one_pole = self.w / ComplexSample::new(self.w, x);
 
-        one_pole * self.biquad.at(freq)
+        one_pole * self.resonant.at(freq)
     }
 }
 
-/// Q of the fixed stages cascaded with the resonant stage.
-pub const FIXED_Q: Sample = 1.0;
-
 #[derive(Clone, Copy)]
 pub struct LowPass24 {
-    fixed: LowPass12,
+    pre_stage: LowPass12,
     resonant: LowPass12,
 }
 
 impl FilterImpl for LowPass24 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         Self {
-            fixed: LowPass12::new(1.0, cutoff, FIXED_Q),
-            resonant: LowPass12::new(gain, cutoff, q),
+            pre_stage: LowPass12::new(1.0, cutoff, pre_q, pre_q),
+            resonant: LowPass12::new(gain, cutoff, q, pre_q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        self.fixed.at(freq) * self.resonant.at(freq)
+        self.pre_stage.at(freq) * self.resonant.at(freq)
     }
 }
 
@@ -95,7 +92,7 @@ pub struct HighPass12 {
 }
 
 impl FilterImpl for HighPass12 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
         let w = cutoff * TAU;
 
         Self {
@@ -116,14 +113,14 @@ impl FilterImpl for HighPass12 {
 
 #[derive(Clone, Copy)]
 pub struct HighPass18 {
-    biquad: HighPass12,
+    resonant: HighPass12,
     w: Sample,
 }
 
 impl FilterImpl for HighPass18 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         Self {
-            biquad: HighPass12::new(gain, cutoff, q),
+            resonant: HighPass12::new(gain, cutoff, q, pre_q),
             w: cutoff * TAU,
         }
     }
@@ -133,27 +130,27 @@ impl FilterImpl for HighPass18 {
         let x = freq * TAU;
         let one_pole = ComplexSample::new(0.0, x) / ComplexSample::new(self.w, x);
 
-        one_pole * self.biquad.at(freq)
+        one_pole * self.resonant.at(freq)
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct HighPass24 {
-    fixed: HighPass12,
+    pre_stage: HighPass12,
     resonant: HighPass12,
 }
 
 impl FilterImpl for HighPass24 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         Self {
-            fixed: HighPass12::new(1.0, cutoff, FIXED_Q),
-            resonant: HighPass12::new(gain, cutoff, q),
+            pre_stage: HighPass12::new(1.0, cutoff, pre_q, pre_q),
+            resonant: HighPass12::new(gain, cutoff, q, pre_q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        self.fixed.at(freq) * self.resonant.at(freq)
+        self.pre_stage.at(freq) * self.resonant.at(freq)
     }
 }
 
@@ -165,7 +162,7 @@ pub struct BandPass6 {
 }
 
 impl FilterImpl for BandPass6 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
         let w = cutoff * TAU;
 
         Self {
@@ -186,66 +183,66 @@ impl FilterImpl for BandPass6 {
 
 #[derive(Clone, Copy)]
 pub struct BandPass12 {
-    fixed: BandPass6,
+    pre_stage: BandPass6,
     resonant: BandPass6,
 }
 
 impl FilterImpl for BandPass12 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         Self {
-            fixed: BandPass6::new(1.0, cutoff, FIXED_Q),
-            resonant: BandPass6::new(gain, cutoff, q),
+            pre_stage: BandPass6::new(1.0, cutoff, pre_q, pre_q),
+            resonant: BandPass6::new(gain, cutoff, q, pre_q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        self.fixed.at(freq) * self.resonant.at(freq)
+        self.pre_stage.at(freq) * self.resonant.at(freq)
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct BandPass18 {
-    fixed: BandPass6,
+    pre_stage: BandPass6,
     resonant: BandPass6,
 }
 
 impl FilterImpl for BandPass18 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         Self {
-            fixed: BandPass6::new(1.0, cutoff, FIXED_Q),
-            resonant: BandPass6::new(gain, cutoff, q),
+            pre_stage: BandPass6::new(1.0, cutoff, pre_q, pre_q),
+            resonant: BandPass6::new(gain, cutoff, q, pre_q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        let fixed = self.fixed.at(freq);
+        let pre_stage = self.pre_stage.at(freq);
 
-        fixed * fixed * self.resonant.at(freq)
+        pre_stage * pre_stage * self.resonant.at(freq)
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct BandPass24 {
-    fixed: BandPass6,
+    pre_stage: BandPass6,
     resonant: BandPass6,
 }
 
 impl FilterImpl for BandPass24 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         Self {
-            fixed: BandPass6::new(1.0, cutoff, FIXED_Q),
-            resonant: BandPass6::new(gain, cutoff, q),
+            pre_stage: BandPass6::new(1.0, cutoff, pre_q, pre_q),
+            resonant: BandPass6::new(gain, cutoff, q, pre_q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        let fixed = self.fixed.at(freq);
-        let fixed_sq = fixed * fixed;
+        let pre_stage = self.pre_stage.at(freq);
+        let pre_stage_sq = pre_stage * pre_stage;
 
-        fixed_sq * fixed * self.resonant.at(freq)
+        pre_stage_sq * pre_stage * self.resonant.at(freq)
     }
 }
 
@@ -257,7 +254,7 @@ pub struct Peaking {
 }
 
 impl FilterImpl for Peaking {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
         let w = cutoff * TAU;
         let a = gain.max(0.0).sqrt();
 
@@ -285,7 +282,7 @@ pub struct Notch {
 }
 
 impl FilterImpl for Notch {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
         let w = cutoff * TAU;
 
         Self {
@@ -333,7 +330,7 @@ pub struct LowShelf12 {
 }
 
 impl FilterImpl for LowShelf12 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
         Self {
             coeffs: ShelfCoeffs::new(gain, cutoff, q),
         }
@@ -357,7 +354,7 @@ pub struct HighShelf12 {
 }
 
 impl FilterImpl for HighShelf12 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
         Self {
             coeffs: ShelfCoeffs::new(gain, cutoff, q),
         }
@@ -376,147 +373,46 @@ impl FilterImpl for HighShelf12 {
 }
 
 #[derive(Clone, Copy)]
-struct LowShelf6 {
-    w_sqrt_a: Sample,
-    w_inv_sqrt_a: Sample,
-}
-
-impl FilterImpl for LowShelf6 {
-    fn new(gain: Sample, cutoff: Sample, _q: Sample) -> Self {
-        let w = cutoff * TAU;
-        let sqrt_a = gain.max(0.0).sqrt();
-
-        Self {
-            w_sqrt_a: w * sqrt_a,
-            w_inv_sqrt_a: w / sqrt_a,
-        }
-    }
-
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        let x = freq * TAU;
-
-        ComplexSample::new(self.w_sqrt_a, x) / ComplexSample::new(self.w_inv_sqrt_a, x)
-    }
-}
-
-#[derive(Clone, Copy)]
-struct HighShelf6 {
-    gain: Sample,
-    w_sqrt_a: Sample,
-    w_inv_sqrt_a: Sample,
-}
-
-impl FilterImpl for HighShelf6 {
-    fn new(gain: Sample, cutoff: Sample, _q: Sample) -> Self {
-        let w = cutoff * TAU;
-        let sqrt_a = gain.max(0.0).sqrt();
-
-        Self {
-            gain,
-            w_sqrt_a: w * sqrt_a,
-            w_inv_sqrt_a: w / sqrt_a,
-        }
-    }
-
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        let x = freq * TAU;
-
-        self.gain * ComplexSample::new(self.w_inv_sqrt_a, x) / ComplexSample::new(self.w_sqrt_a, x)
-    }
-}
-
-fn shelf_18_gains(gain: Sample) -> (Sample, Sample) {
-    let g6 = gain.max(0.0).cbrt();
-    (g6 * g6, g6)
-}
-
-#[derive(Clone, Copy)]
-pub struct LowShelf18 {
-    biquad: LowShelf12,
-    one_pole: LowShelf6,
-}
-
-impl FilterImpl for LowShelf18 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
-        let (g12, g6) = shelf_18_gains(gain);
-
-        Self {
-            biquad: LowShelf12::new(g12, cutoff, q),
-            one_pole: LowShelf6::new(g6, cutoff, q),
-        }
-    }
-
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.one_pole.at(freq) * self.biquad.at(freq)
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct HighShelf18 {
-    biquad: HighShelf12,
-    one_pole: HighShelf6,
-}
-
-impl FilterImpl for HighShelf18 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
-        let (g12, g6) = shelf_18_gains(gain);
-
-        Self {
-            biquad: HighShelf12::new(g12, cutoff, q),
-            one_pole: HighShelf6::new(g6, cutoff, q),
-        }
-    }
-
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.one_pole.at(freq) * self.biquad.at(freq)
-    }
-}
-
-#[derive(Clone, Copy)]
 pub struct LowShelf24 {
-    fixed: LowShelf12,
+    pre_stage: LowShelf12,
     resonant: LowShelf12,
 }
 
 impl FilterImpl for LowShelf24 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         let g12 = gain.max(0.0).sqrt();
 
         Self {
-            fixed: LowShelf12::new(g12, cutoff, FIXED_Q),
-            resonant: LowShelf12::new(g12, cutoff, q),
+            pre_stage: LowShelf12::new(g12, cutoff, pre_q, pre_q),
+            resonant: LowShelf12::new(g12, cutoff, q, pre_q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        self.fixed.at(freq) * self.resonant.at(freq)
+        self.pre_stage.at(freq) * self.resonant.at(freq)
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct HighShelf24 {
-    fixed: HighShelf12,
+    pre_stage: HighShelf12,
     resonant: HighShelf12,
 }
 
 impl FilterImpl for HighShelf24 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         let g12 = gain.max(0.0).sqrt();
 
         Self {
-            fixed: HighShelf12::new(g12, cutoff, FIXED_Q),
-            resonant: HighShelf12::new(g12, cutoff, q),
+            pre_stage: HighShelf12::new(g12, cutoff, pre_q, pre_q),
+            resonant: HighShelf12::new(g12, cutoff, q, pre_q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        self.fixed.at(freq) * self.resonant.at(freq)
+        self.pre_stage.at(freq) * self.resonant.at(freq)
     }
 }
 
@@ -538,11 +434,9 @@ pub enum FilterType {
     Notch,
     #[serde(alias = "LowShelf")]
     LowShelf12,
-    LowShelf18,
     LowShelf24,
     #[serde(alias = "HighShelf")]
     HighShelf12,
-    HighShelf18,
     HighShelf24,
 }
 
@@ -551,6 +445,8 @@ pub struct FilterParams {
     pub drive: Sample,
     pub cutoff: Sample, // Octaves of the note fundamental (harmonic space).
     pub q: Sample,
+    /// Pre-stage Q in a cascade.
+    pub pre_q: Sample,
     pub q_cutoff: Sample,  // Octaves. At and above this, Q is not reduced.
     pub q_rolloff: Sample, // dB per octave below q_cutoff.
     pub linear_phase: bool,
@@ -561,6 +457,7 @@ pub struct SpectralFilter {
     gain: Sample,
     cutoff_freq: Sample,
     q: Sample,
+    pre_q: Sample,
     linear_phase: bool,
 }
 
@@ -571,6 +468,7 @@ impl SpectralFilter {
             gain: db_to_gain_fast(params.drive),
             cutoff_freq: params.cutoff.exp2(),
             q: Self::q_from_params(&params),
+            pre_q: params.pre_q,
             linear_phase: params.linear_phase,
         }
     }
@@ -595,13 +493,11 @@ impl SpectralFilter {
             FilterType::LowPass18 => self.apply_impl::<LowPass18>(input, output),
             FilterType::LowPass24 => self.apply_impl::<LowPass24>(input, output),
             FilterType::LowShelf12 => self.apply_impl::<LowShelf12>(input, output),
-            FilterType::LowShelf18 => self.apply_impl::<LowShelf18>(input, output),
             FilterType::LowShelf24 => self.apply_impl::<LowShelf24>(input, output),
             FilterType::HighPass12 => self.apply_impl::<HighPass12>(input, output),
             FilterType::HighPass18 => self.apply_impl::<HighPass18>(input, output),
             FilterType::HighPass24 => self.apply_impl::<HighPass24>(input, output),
             FilterType::HighShelf12 => self.apply_impl::<HighShelf12>(input, output),
-            FilterType::HighShelf18 => self.apply_impl::<HighShelf18>(input, output),
             FilterType::HighShelf24 => self.apply_impl::<HighShelf24>(input, output),
             FilterType::BandPass6 => self.apply_impl::<BandPass6>(input, output),
             FilterType::BandPass12 => self.apply_impl::<BandPass12>(input, output),
@@ -618,13 +514,11 @@ impl SpectralFilter {
             FilterType::LowPass18 => self.apply_in_place_impl::<LowPass18>(samples),
             FilterType::LowPass24 => self.apply_in_place_impl::<LowPass24>(samples),
             FilterType::LowShelf12 => self.apply_in_place_impl::<LowShelf12>(samples),
-            FilterType::LowShelf18 => self.apply_in_place_impl::<LowShelf18>(samples),
             FilterType::LowShelf24 => self.apply_in_place_impl::<LowShelf24>(samples),
             FilterType::HighPass12 => self.apply_in_place_impl::<HighPass12>(samples),
             FilterType::HighPass18 => self.apply_in_place_impl::<HighPass18>(samples),
             FilterType::HighPass24 => self.apply_in_place_impl::<HighPass24>(samples),
             FilterType::HighShelf12 => self.apply_in_place_impl::<HighShelf12>(samples),
-            FilterType::HighShelf18 => self.apply_in_place_impl::<HighShelf18>(samples),
             FilterType::HighShelf24 => self.apply_in_place_impl::<HighShelf24>(samples),
             FilterType::BandPass6 => self.apply_in_place_impl::<BandPass6>(samples),
             FilterType::BandPass12 => self.apply_in_place_impl::<BandPass12>(samples),
@@ -641,13 +535,11 @@ impl SpectralFilter {
             FilterType::LowPass18 => self.response_freqs_impl::<LowPass18>(freqs, out),
             FilterType::LowPass24 => self.response_freqs_impl::<LowPass24>(freqs, out),
             FilterType::LowShelf12 => self.response_freqs_impl::<LowShelf12>(freqs, out),
-            FilterType::LowShelf18 => self.response_freqs_impl::<LowShelf18>(freqs, out),
             FilterType::LowShelf24 => self.response_freqs_impl::<LowShelf24>(freqs, out),
             FilterType::HighPass12 => self.response_freqs_impl::<HighPass12>(freqs, out),
             FilterType::HighPass18 => self.response_freqs_impl::<HighPass18>(freqs, out),
             FilterType::HighPass24 => self.response_freqs_impl::<HighPass24>(freqs, out),
             FilterType::HighShelf12 => self.response_freqs_impl::<HighShelf12>(freqs, out),
-            FilterType::HighShelf18 => self.response_freqs_impl::<HighShelf18>(freqs, out),
             FilterType::HighShelf24 => self.response_freqs_impl::<HighShelf24>(freqs, out),
             FilterType::BandPass6 => self.response_freqs_impl::<BandPass6>(freqs, out),
             FilterType::BandPass12 => self.response_freqs_impl::<BandPass12>(freqs, out),
@@ -659,7 +551,7 @@ impl SpectralFilter {
     }
 
     fn response_freqs_impl<T: FilterImpl>(&self, freqs: &[Sample], out: &mut [ComplexSample]) {
-        let filter_impl = T::new(self.gain, self.cutoff_freq, self.q);
+        let filter_impl = T::new(self.gain, self.cutoff_freq, self.q, self.pre_q);
 
         if self.linear_phase {
             for (out, &freq) in out.iter_mut().zip(freqs) {
@@ -673,7 +565,7 @@ impl SpectralFilter {
     }
 
     fn apply_impl<T: FilterImpl>(&self, input: &[ComplexSample], output: &mut [ComplexSample]) {
-        let filter_impl = T::new(self.gain, self.cutoff_freq, self.q);
+        let filter_impl = T::new(self.gain, self.cutoff_freq, self.q, self.pre_q);
 
         if self.linear_phase {
             //Skip DC
@@ -689,7 +581,7 @@ impl SpectralFilter {
     }
 
     fn apply_in_place_impl<T: FilterImpl>(&self, samples: &mut [ComplexSample]) {
-        let filter_impl = T::new(self.gain, self.cutoff_freq, self.q);
+        let filter_impl = T::new(self.gain, self.cutoff_freq, self.q, self.pre_q);
 
         if self.linear_phase {
             //Skip DC

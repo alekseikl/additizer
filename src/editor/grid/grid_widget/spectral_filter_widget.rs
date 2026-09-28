@@ -69,12 +69,14 @@ impl SpectralFilterWidget {
         };
         let cutoff = (config.cutoff[0] + offset).clamp(MIN_CUTOFF, MAX_CUTOFF);
         let q_cutoff = (config.q_cutoff[0] + offset).clamp(MIN_CUTOFF, MAX_CUTOFF);
+        let q = q_from_resonance(config.resonance[0]);
         let filter = SpectralFilterEngine::new(
             config.filter_type,
             FilterParams {
                 drive: config.drive[0].clamp(MIN_DRIVE, MAX_DRIVE),
                 cutoff,
-                q: q_from_resonance(config.resonance[0]),
+                q: q.resonant,
+                pre_q: q.pre_stage,
                 q_cutoff,
                 q_rolloff: config.q_rolloff[0],
                 linear_phase: config.linear_phase,

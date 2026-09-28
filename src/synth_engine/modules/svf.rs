@@ -119,6 +119,7 @@ impl Inputs {
 struct Buffers {
     cutoff: Buffer,
     resonance: Buffer,
+    pre_k: Buffer,
     drive: Buffer,
 }
 
@@ -154,6 +155,7 @@ impl Svf {
             buffers: Buffers {
                 cutoff: zero_buffer(),
                 resonance: zero_buffer(),
+                pre_k: zero_buffer(),
                 drive: zero_buffer(),
             },
             states: new_voices_layout(),
@@ -217,9 +219,17 @@ impl Svf {
 
         let samples = router.samples();
 
-        // Map resonance into 1/Q coefficient
-        for k in &mut self.buffers.resonance[..samples] {
-            *k = q_from_resonance(*k).recip();
+        for (resonance, pre_k) in self
+            .buffers
+            .resonance
+            .iter_mut()
+            .zip(&mut self.buffers.pre_k)
+            .take(samples)
+        {
+            let q = q_from_resonance(*resonance);
+
+            *resonance = q.resonant.recip();
+            *pre_k = q.pre_stage.recip();
         }
 
         if router.param_stationary_at(&inputs.drive, &channel.drive, 0.0) {
@@ -264,6 +274,7 @@ impl Svf {
             input,
             &self.buffers.cutoff,
             &self.buffers.resonance,
+            &self.buffers.pre_k,
             &self.buffers.drive,
             output,
         );

@@ -30,7 +30,7 @@ impl Default for EqFilter {
         Self {
             filter_type: FilterType::LowPass12,
             cutoff_hz: 1_000.0,
-            q: q_from_resonance(0.0),
+            q: q_from_resonance(0.0).resonant,
             drive: 0.0,
         }
     }
@@ -63,7 +63,7 @@ impl<'de> Deserialize<'de> for EqFilter {
         let raw = Raw::deserialize(deserializer)?;
         let q = match (raw.q, raw.resonance) {
             (Some(q), _) => q,
-            (None, Some(resonance)) => q_from_resonance(resonance),
+            (None, Some(resonance)) => q_from_resonance(resonance).resonant,
             (None, None) => return Err(D::Error::missing_field("q")),
         };
 

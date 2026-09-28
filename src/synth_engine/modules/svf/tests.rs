@@ -1,5 +1,7 @@
 use super::*;
-use crate::synth_engine::filters::control::{MAX_RESONANCE_Q, MIN_RESONANCE_Q, ZERO_RESONANCE_Q};
+use crate::synth_engine::filters::control::{
+    MAX_PRE_Q, MAX_RESONANCE_Q, MIN_PRE_Q, NEGATIVE_RESONANCE_Q, ZERO_RESONANCE_Q,
+};
 use crate::utils::db_to_gain_fast;
 
 fn assert_approx(a: Sample, b: Sample) {
@@ -56,26 +58,41 @@ fn module_config_round_trips_through_get_config() {
 
 #[test]
 fn q_from_resonance_follows_cubic_curve() {
-    assert!((q_from_resonance(0.0) - ZERO_RESONANCE_Q).abs() < 1e-6);
+    let zero = q_from_resonance(0.0);
+
+    assert!((zero.resonant - ZERO_RESONANCE_Q).abs() < 1e-6);
+    assert!((zero.pre_stage - MIN_PRE_Q).abs() < 1e-6);
 
     let resonance: Sample = 0.5;
-    let expected =
-        ZERO_RESONANCE_Q + (MAX_RESONANCE_Q - ZERO_RESONANCE_Q) * resonance * resonance * resonance;
+    let curve = resonance * resonance * resonance;
+    let q = q_from_resonance(resonance);
 
-    assert!((q_from_resonance(resonance) - expected).abs() < 1e-6);
-    assert!((q_from_resonance(1.0) - MAX_RESONANCE_Q).abs() < 1e-6);
-    assert!((q_from_resonance(2.0) - MAX_RESONANCE_Q).abs() < 1e-6);
+    assert!(
+        (q.resonant - (ZERO_RESONANCE_Q + (MAX_RESONANCE_Q - ZERO_RESONANCE_Q) * curve)).abs()
+            < 1e-6
+    );
+    assert!((q.pre_stage - (MIN_PRE_Q + (MAX_PRE_Q - MIN_PRE_Q) * resonance.sqrt())).abs() < 1e-6);
+
+    let full = q_from_resonance(1.0);
+
+    assert!((full.resonant - MAX_RESONANCE_Q).abs() < 1e-6);
+    assert!((full.pre_stage - MAX_PRE_Q).abs() < 1e-6);
+    assert!((q_from_resonance(2.0).resonant - MAX_RESONANCE_Q).abs() < 1e-6);
+    assert!((q_from_resonance(2.0).pre_stage - MAX_PRE_Q).abs() < 1e-6);
 }
 
 #[test]
 fn negative_resonance_uses_linear_curve() {
-    assert!((q_from_resonance(-1.0) - MIN_RESONANCE_Q).abs() < 1e-6);
-    assert!((q_from_resonance(-2.0) - MIN_RESONANCE_Q).abs() < 1e-6);
+    assert!((q_from_resonance(-1.0).resonant - NEGATIVE_RESONANCE_Q).abs() < 1e-6);
+    assert!((q_from_resonance(-1.0).pre_stage - MIN_PRE_Q).abs() < 1e-6);
+    assert!((q_from_resonance(-2.0).resonant - NEGATIVE_RESONANCE_Q).abs() < 1e-6);
 
     let resonance = -0.5;
-    let expected = MIN_RESONANCE_Q + (ZERO_RESONANCE_Q - MIN_RESONANCE_Q) * (1.0 + resonance);
+    let expected =
+        NEGATIVE_RESONANCE_Q + (ZERO_RESONANCE_Q - NEGATIVE_RESONANCE_Q) * (1.0 + resonance);
 
-    assert!((q_from_resonance(resonance) - expected).abs() < 1e-6);
+    assert!((q_from_resonance(resonance).resonant - expected).abs() < 1e-6);
+    assert!((q_from_resonance(resonance).pre_stage - MIN_PRE_Q).abs() < 1e-6);
 }
 
 #[test]

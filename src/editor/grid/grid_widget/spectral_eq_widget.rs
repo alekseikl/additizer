@@ -5,7 +5,10 @@ use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
         ComplexSample, Input, ModuleId, Sample,
-        filters::spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
+        filters::{
+            control::MAX_PRE_Q,
+            spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
+        },
         spectral_eq::{MAX_EQ_FILTERS, SpectralEqUiBridge},
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -98,6 +101,7 @@ impl SpectralEqWidget {
                     drive: band.drive,
                     cutoff,
                     q: band.q,
+                    pre_q: MAX_PRE_Q,
                     q_cutoff,
                     q_rolloff,
                     linear_phase,

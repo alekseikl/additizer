@@ -70,9 +70,11 @@ impl SvfWidget {
         let cutoff_log2 = config.cutoff[0] + config.keytrack * (pitch - C4_PITCH);
         let cutoff_freq = pitch_to_freq(C4_PITCH + cutoff_log2);
         let drive_db = config.drive[0];
+        let q = q_from_resonance(config.resonance[0]);
         let response = SvfResponse {
             filter_type: config.filter_type,
-            q: q_from_resonance(config.resonance[0]),
+            q: q.resonant,
+            pre_q: q.pre_stage,
             cutoff: cutoff_freq,
             gain: db_to_gain_fast(drive_db),
         };

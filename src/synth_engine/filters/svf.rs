@@ -1,33 +1,18 @@
 //! Time-domain state-variable filter in the Cytomic / Andrew Simper form
 
-use std::{f32::consts::PI, sync::LazyLock};
+use std::f32::consts::PI;
 
 use enum_dispatch::enum_dispatch;
 use itertools::izip;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    synth_engine::{
-        Sample,
-        lookup_table::{EXTRA_SAMPLES, LookupTable},
-    },
+    synth_engine::Sample,
     utils::{C4_PITCH, pitch_to_freq},
 };
 
-const G_TABLE_INTERVALS: usize = 2048;
-const RANGE_SCALE: Sample = 0.5;
-
-/// `G_TABLE_INTERVALS` steps of `f / sample_rate` on `[0, 1/2]`, clamped at `0.499` before `tan`.
-type GTable = LookupTable<{ G_TABLE_INTERVALS + EXTRA_SAMPLES }>;
-
-fn g_table() -> &'static GTable {
-    const MAX_RATIO: Sample = 0.499;
-
-    static TABLE: LazyLock<GTable> =
-        LazyLock::new(|| LookupTable::new(|t| ((RANGE_SCALE * t).min(MAX_RATIO) * PI).tan()));
-
-    &TABLE
-}
+/// Largest `f / sample_rate` fed to `tan`, keeping `g` finite just below Nyquist.
+const MAX_FREQ_RATIO: Sample = 0.499;
 
 #[cfg(test)]
 mod tests;
@@ -60,27 +45,46 @@ pub enum SvfType {
     HighShelf24,
 }
 
+/// Coefficients and input for one sample.
+pub(crate) struct TickParams {
+    g: Sample,
+    /// `1/Q` of the resonant stage.
+    k: Sample,
+    /// `1/Q` of the pre stage.
+    pre_k: Sample,
+    gain: Sample,
+    input: Sample,
+}
+
 #[enum_dispatch]
 pub(crate) trait SvfFilter {
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample;
+    fn tick(&mut self, p: &TickParams) -> Sample;
 
+    #[allow(clippy::too_many_arguments)]
     fn process(
         &mut self,
         sample_rate: Sample,
         input: &[Sample],
         cutoff: &[Sample],
-        k: &[Sample], // k = 1/Q
+        k: &[Sample],     // k = 1/Q of the resonant stage
+        pre_k: &[Sample], // k = 1/Q of the pre stage
         gain: &[Sample],
         output: &mut [Sample],
     ) {
-        let g_table = g_table();
-        let freq_mult = (sample_rate * RANGE_SCALE).recip();
+        let freq_mult = sample_rate.recip();
 
-        for (out, &sample, &cutoff, &k, &gain) in izip!(output, input, cutoff, k, gain) {
+        for (out, &sample, &cutoff, &k, &pre_k, &gain) in
+            izip!(output, input, cutoff, k, pre_k, gain)
+        {
             let freq = pitch_to_freq(C4_PITCH + cutoff);
-            let g = g_table.at((freq * freq_mult).min(1.0));
 
-            *out = self.tick(g, k, gain, sample);
+            *out = self.tick(&TickParams {
+                g: ((freq * freq_mult).min(MAX_FREQ_RATIO) * PI).tan(),
+                k,
+                pre_k,
+                gain,
+                input: sample,
+            });
         }
     }
 }
@@ -98,7 +102,7 @@ pub(crate) struct LowPass18 {
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct LowPass24 {
-    fixed: LowPass,
+    pre_stage: LowPass,
     resonant: LowPass,
 }
 
@@ -115,7 +119,7 @@ pub(crate) struct HighPass18 {
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct HighPass24 {
-    fixed: HighPass,
+    pre_stage: HighPass,
     resonant: HighPass,
 }
 
@@ -126,7 +130,7 @@ pub(crate) struct BandPass6 {
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct BandPass12 {
-    fixed: BandPass,
+    pre_stage: BandPass,
     resonant: BandPass,
 }
 
@@ -153,131 +157,133 @@ pub(crate) struct HighShelf12 {
     section: HighShelf,
 }
 
-/// Low shelf, 24 dB/oct. Two 12 dB sections, each at `sqrt(gain)`, one fixed at Q = 1.
+/// Low shelf, 24 dB/oct. Two 12 dB sections, each at `sqrt(gain)`. One stage uses `pre_k`.
 #[derive(Default, Clone, Copy)]
 pub(crate) struct LowShelf24 {
-    fixed: LowShelf,
+    pre_stage: LowShelf,
     resonant: LowShelf,
 }
 
-/// High shelf, 24 dB/oct. Two 12 dB sections, each at `sqrt(gain)`, one fixed at Q = 1.
+/// High shelf, 24 dB/oct. Two 12 dB sections, each at `sqrt(gain)`. One stage uses `pre_k`.
 #[derive(Default, Clone, Copy)]
 pub(crate) struct HighShelf24 {
-    fixed: HighShelf,
+    pre_stage: HighShelf,
     resonant: HighShelf,
 }
 
 impl SvfFilter for LowPass12 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        self.resonant.tick(g, k, input * gain)
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        self.resonant.tick(p.g, p.k, p.input * p.gain)
     }
 }
 
 impl SvfFilter for LowPass18 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let x = self.resonant.tick(g, k, input * gain);
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        let x = self.resonant.tick(p.g, p.k, p.input * p.gain);
 
-        self.one_pole.tick(g, x)
+        self.one_pole.tick(p.g, x)
     }
 }
 
 impl SvfFilter for LowPass24 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let x = self.fixed.tick(g, 1.0, input * gain);
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        let x = self.pre_stage.tick(p.g, p.pre_k, p.input * p.gain);
 
-        self.resonant.tick(g, k, x)
+        self.resonant.tick(p.g, p.k, x)
     }
 }
 
 impl SvfFilter for HighPass12 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        self.resonant.tick(g, k, input * gain)
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        self.resonant.tick(p.g, p.k, p.input * p.gain)
     }
 }
 
 impl SvfFilter for HighPass18 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let x = self.resonant.tick(g, k, input * gain);
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        let x = self.resonant.tick(p.g, p.k, p.input * p.gain);
 
-        self.one_pole.tick(g, x)
+        self.one_pole.tick(p.g, x)
     }
 }
 
 impl SvfFilter for HighPass24 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let x = self.fixed.tick(g, 1.0, input * gain);
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        let x = self.pre_stage.tick(p.g, p.pre_k, p.input * p.gain);
 
-        self.resonant.tick(g, k, x)
+        self.resonant.tick(p.g, p.k, x)
     }
 }
 
 impl SvfFilter for BandPass6 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        self.resonant.tick(g, k, input * gain)
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        self.resonant.tick(p.g, p.k, p.input * p.gain)
     }
 }
 
 impl SvfFilter for BandPass12 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let x = self.fixed.tick(g, 1.0, input * gain);
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        let x = self.pre_stage.tick(p.g, p.pre_k, p.input * p.gain);
 
-        self.resonant.tick(g, k, x)
+        self.resonant.tick(p.g, p.k, x)
     }
 }
 
 impl SvfFilter for Peaking {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        self.section.tick(g, k, gain, input)
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        self.section.tick(p.g, p.k, p.gain, p.input)
     }
 }
 
 impl SvfFilter for Notch {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        self.resonant.tick(g, k, input * gain)
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        self.resonant.tick(p.g, p.k, p.input * p.gain)
     }
 }
 
 impl SvfFilter for LowShelf12 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        self.section.tick(g, k, ShelfCoeffs::new(gain), input)
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        self.section
+            .tick(p.g, p.k, ShelfCoeffs::new(p.gain), p.input)
     }
 }
 
 impl SvfFilter for HighShelf12 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        self.section.tick(g, k, ShelfCoeffs::new(gain), input)
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        self.section
+            .tick(p.g, p.k, ShelfCoeffs::new(p.gain), p.input)
     }
 }
 
 impl SvfFilter for LowShelf24 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let coeffs = ShelfCoeffs::cascaded(gain);
-        let x = self.fixed.tick(g, 1.0, coeffs, input);
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        let coeffs = ShelfCoeffs::cascaded(p.gain);
+        let x = self.pre_stage.tick(p.g, p.pre_k, coeffs, p.input);
 
-        self.resonant.tick(g, k, coeffs, x)
+        self.resonant.tick(p.g, p.k, coeffs, x)
     }
 }
 
 impl SvfFilter for HighShelf24 {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let coeffs = ShelfCoeffs::cascaded(gain);
-        let x = self.fixed.tick(g, 1.0, coeffs, input);
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        let coeffs = ShelfCoeffs::cascaded(p.gain);
+        let x = self.pre_stage.tick(p.g, p.pre_k, coeffs, p.input);
 
-        self.resonant.tick(g, k, coeffs, x)
+        self.resonant.tick(p.g, p.k, coeffs, x)
     }
 }
 

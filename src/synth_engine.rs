@@ -65,7 +65,6 @@ mod curves;
 pub mod filters;
 mod iir_decimator;
 mod level_ballistics;
-mod lookup_table;
 mod module_handle;
 mod modules;
 mod phase;

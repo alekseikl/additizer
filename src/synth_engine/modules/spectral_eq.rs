@@ -19,7 +19,7 @@ use crate::{
     synth_engine::{
         StereoSample,
         buffer::VoicesLayout,
-        filters::control::{MAX_DRIVE, MIN_DRIVE},
+        filters::control::{MAX_DRIVE, MAX_PRE_Q, MIN_DRIVE},
         filters::spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
         routing::{
             DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
@@ -266,6 +266,7 @@ impl SpectralEq {
                     drive: band.drive.clamp(MIN_DRIVE, MAX_DRIVE),
                     cutoff,
                     q: band.q,
+                    pre_q: MAX_PRE_Q,
                     q_cutoff,
                     q_rolloff,
                     linear_phase,

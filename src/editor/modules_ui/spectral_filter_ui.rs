@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl FilterType {
-    pub(crate) const ALL: [Self; 18] = [
+    pub(crate) const ALL: [Self; 16] = [
         Self::LowPass12,
         Self::LowPass18,
         Self::LowPass24,
@@ -32,10 +32,8 @@ impl FilterType {
         Self::Peaking,
         Self::Notch,
         Self::LowShelf12,
-        Self::LowShelf18,
         Self::LowShelf24,
         Self::HighShelf12,
-        Self::HighShelf18,
         Self::HighShelf24,
     ];
 
@@ -54,10 +52,8 @@ impl FilterType {
             Self::Peaking => "Peaking",
             Self::Notch => "Notch",
             Self::LowShelf12 => "Lowshelf 12",
-            Self::LowShelf18 => "Lowshelf 18",
             Self::LowShelf24 => "Lowshelf 24",
             Self::HighShelf12 => "Highshelf 12",
-            Self::HighShelf18 => "Highshelf 18",
             Self::HighShelf24 => "Highshelf 24",
         }
     }

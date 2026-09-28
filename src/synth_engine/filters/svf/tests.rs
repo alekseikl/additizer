@@ -1,9 +1,12 @@
 use std::f32::consts::{PI, TAU};
 
-use crate::{synth_engine::ComplexSample, utils::freq_to_c4_pitch};
+use crate::{
+    synth_engine::{ComplexSample, filters::control::MAX_PRE_Q},
+    utils::freq_to_c4_pitch,
+};
 
 use super::{
-    SvfFilter, g_table,
+    SvfFilter,
     section::{
         BandPass, HighPass, HighShelf, Integrator, LowPass, LowShelf, Notch, OnePoleHighPass,
         OnePoleIntegrator, OnePoleLowPass, Peaking, ShelfCoeffs,
@@ -11,61 +14,10 @@ use super::{
     *,
 };
 
-fn approx_g(freq_ratio: Sample) -> Sample {
-    g_table().at((freq_ratio / RANGE_SCALE).min(1.0))
-}
-
-const MAX_FREQ_RATIO: Sample = 0.499;
 const SAMPLE_RATE: Sample = 48_000.0;
 const CUTOFF: Sample = 1_000.0;
 /// Butterworth Q. A 2-pole low-pass is −6 dB at the cutoff.
 const FLAT_Q: Sample = 0.5;
-
-#[test]
-fn prewarped_g_tracks_tan() {
-    let mut prev = 0.0;
-    let mut worst_interior = (0.0, 0.0);
-    let step = (G_TABLE_INTERVALS as Sample).recip();
-
-    for i in 0..=20_000 {
-        let ratio = MAX_FREQ_RATIO * i as Sample / 20_000.0;
-        let expected = (ratio * PI).tan();
-        let actual = approx_g(ratio);
-        let omega_expected = expected.atan();
-        let rel = if omega_expected == 0.0 {
-            (actual.atan() - omega_expected).abs()
-        } else {
-            (actual.atan() - omega_expected).abs() / omega_expected
-        };
-
-        assert!(actual.is_finite(), "non-finite g at ratio {ratio}");
-        assert!(
-            actual + 1e-4 >= prev,
-            "g decreased at ratio {ratio}: {actual} < {prev}"
-        );
-
-        if rel > worst_interior.1 {
-            worst_interior = (ratio, rel);
-        }
-
-        prev = actual;
-    }
-
-    assert!(
-        worst_interior.1 < 1e-4,
-        "worst interior relative cutoff error {} at freq/sample_rate {}",
-        worst_interior.1,
-        worst_interior.0
-    );
-
-    assert_eq!(approx_g(0.0), 0.0);
-    let knot = 256.0 * step;
-    assert_eq!(
-        g_table().at(knot),
-        ((RANGE_SCALE * knot).min(0.499) * PI).tan()
-    );
-    assert_eq!(approx_g(0.75), approx_g(1.0));
-}
 
 #[test]
 fn process_clamps_frequency_ratio_to_the_tan_limit() {
@@ -78,7 +30,9 @@ fn process_clamps_frequency_ratio_to_the_tan_limit() {
         let mut state = SvfState::new(SvfType::LowPass12);
         let mut output = [0.0];
 
-        state.process(SAMPLE_RATE, &input, &cutoff, &k, &gain, &mut output);
+        let pre_k = [MAX_PRE_Q.recip()];
+
+        state.process(SAMPLE_RATE, &input, &cutoff, &k, &pre_k, &gain, &mut output);
 
         output[0]
     };
@@ -87,26 +41,20 @@ fn process_clamps_frequency_ratio_to_the_tan_limit() {
     assert_ne!(run(0.01), run(1.0));
 }
 
-#[test]
-fn prewarped_g_is_accurate_at_low_cutoffs() {
-    for sample_rate in [44_100.0, 48_000.0, 96_000.0, 192_000.0] {
-        for freq in [5.0, 10.0, 20.0, 40.0, 80.0] {
-            let ratio: Sample = freq / sample_rate;
-            let expected = (ratio * PI).tan();
-            let rel = (approx_g(ratio) - expected).abs() / expected;
-
-            assert!(
-                rel < 1e-4,
-                "{freq} Hz at {sample_rate} Hz: relative error {rel}"
-            );
-        }
-    }
-}
-
 fn g_and_k(cutoff: Sample, q: Sample) -> (Sample, Sample) {
     let g = (PI * (cutoff * SAMPLE_RATE.recip()).min(0.499)).tan();
 
     (g, q.recip())
+}
+
+fn tick_params(g: Sample, k: Sample, gain: Sample, input: Sample) -> TickParams {
+    TickParams {
+        g,
+        k,
+        pre_k: MAX_PRE_Q.recip(),
+        gain,
+        input,
+    }
 }
 
 /// Steady-state amplitude of the filter output for a unit sine at `freq`.
@@ -119,7 +67,7 @@ fn measured_gain(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) ->
 
     for n in 0..settle + measure {
         let x = (TAU * freq * n as Sample / SAMPLE_RATE).sin();
-        let y = state.tick(g, k, gain, x);
+        let y = state.tick(&tick_params(g, k, gain, x));
 
         if n >= settle {
             sum_sq += (y as f64) * (y as f64);
@@ -136,6 +84,7 @@ fn predicted_gain(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) -
     let response = SvfResponse {
         filter_type,
         q,
+        pre_q: MAX_PRE_Q,
         cutoff: g,
         gain,
     };
@@ -151,6 +100,7 @@ fn analog_gain_with(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample)
     let response = SvfResponse {
         filter_type,
         q,
+        pre_q: MAX_PRE_Q,
         cutoff: CUTOFF,
         gain,
     };
@@ -214,6 +164,21 @@ fn analog_prototype_dc_and_cutoff_gains() {
 }
 
 #[test]
+fn lowpass24_cutoff_gain_is_the_product_of_the_stage_qs() {
+    let q = 2.0;
+    let pre_q = 0.5;
+    let response = SvfResponse {
+        filter_type: SvfType::LowPass24,
+        q,
+        pre_q,
+        cutoff: CUTOFF,
+        gain: 1.0,
+    };
+
+    assert!((response.at(CUTOFF).norm() - q * pre_q).abs() < 1e-5);
+}
+
+#[test]
 fn zero_resonance_lowpass_is_minus_6db_at_cutoff() {
     // |H(fc)| of a 2-pole low-pass equals its Q, so Q = 0.5 is −6 dB.
     let gain = analog_gain(SvfType::LowPass12, FLAT_Q, CUTOFF);
@@ -245,7 +210,7 @@ fn assert_impulse_decays(filter_type: SvfType, gain: Sample) {
 
     for n in 0..SAMPLE_RATE as usize {
         let x = if n == 0 { 1.0 } else { 0.0 };
-        let y = state.tick(g, k, gain, x);
+        let y = state.tick(&tick_params(g, k, gain, x));
 
         assert!(y.is_finite(), "{filter_type:?} gain={gain} at {n}");
 
@@ -287,12 +252,12 @@ fn fresh_state_has_no_memory() {
     let mut state = SvfState::new(SvfType::LowPass24);
 
     for _ in 0..100 {
-        state.tick(g, k, 1.0, 1.0);
+        state.tick(&tick_params(g, k, 1.0, 1.0));
     }
 
     state = SvfState::new(SvfType::LowPass24);
 
-    assert_eq!(state.tick(g, k, 1.0, 0.0), 0.0);
+    assert_eq!(state.tick(&tick_params(g, k, 1.0, 0.0)), 0.0);
 }
 
 #[test]
@@ -343,7 +308,9 @@ fn settled_dc(filter_type: SvfType, gain: Sample) -> Sample {
     let mut output = [0.0];
 
     for _ in 0..8_000 {
-        state.process(SAMPLE_RATE, &[1.0], &cutoff, &k, &gain, &mut output);
+        let pre_k = [MAX_PRE_Q.recip()];
+
+        state.process(SAMPLE_RATE, &[1.0], &cutoff, &k, &pre_k, &gain, &mut output);
     }
 
     output[0]
@@ -360,6 +327,7 @@ fn analog_h(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) -> Comp
     SvfResponse {
         filter_type,
         q,
+        pre_q: MAX_PRE_Q,
         cutoff: CUTOFF,
         gain,
     }
@@ -551,7 +519,10 @@ fn default_state_is_lowpass12() {
     let mut lowpass = SvfState::new(SvfType::LowPass12);
 
     for input in [0.0, 1.0, -1.0, 0.3] {
-        assert_eq!(state.tick(g, k, 1.0, input), lowpass.tick(g, k, 1.0, input));
+        assert_eq!(
+            state.tick(&tick_params(g, k, 1.0, input)),
+            lowpass.tick(&tick_params(g, k, 1.0, input))
+        );
     }
 }
 
@@ -559,7 +530,7 @@ fn drive(state: &mut SvfState) {
     let (g, k) = g_and_k(CUTOFF, 4.0);
 
     for _ in 0..32 {
-        state.tick(g, k, 2.0, 1.0);
+        state.tick(&tick_params(g, k, 2.0, 1.0));
     }
 }
 
@@ -568,7 +539,7 @@ fn tick_sequence(state: &mut SvfState) -> [Sample; 4] {
     let mut output = [0.0; 4];
 
     for (out, input) in output.iter_mut().zip([0.0, 1.0, -0.5, 0.25]) {
-        *out = state.tick(g, k, 2.0, input);
+        *out = state.tick(&tick_params(g, k, 2.0, input));
     }
 
     output

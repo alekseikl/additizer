@@ -223,12 +223,14 @@ impl SpectralFilter {
             self.audio_end.update_pitch(pitch);
         }
 
+        let q = q_from_resonance(resonance);
         let filter = SpectralFilterEngine::new(
             self.params.filter_type,
             FilterParams {
                 drive,
                 cutoff: note_based_cutoff,
-                q: q_from_resonance(resonance),
+                q: q.resonant,
+                pre_q: q.pre_stage,
                 q_cutoff: channel.q_cutoff + keytrack_offset,
                 q_rolloff: channel.q_rolloff,
                 linear_phase: self.params.linear_phase,
