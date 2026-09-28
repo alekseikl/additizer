@@ -1,6 +1,6 @@
 use std::f32::consts::{PI, TAU};
 
-use crate::utils::freq_to_c4_pitch;
+use crate::{synth_engine::ComplexSample, utils::freq_to_c4_pitch};
 
 use super::{SvfFilter, g_table, *};
 
@@ -260,7 +260,10 @@ fn high_resonance_impulse_decays_and_stays_finite() {
     for filter_type in SvfType::ALL {
         assert_impulse_decays(filter_type, 1.0);
 
-        if filter_type == SvfType::Peaking {
+        if matches!(
+            filter_type,
+            SvfType::Peaking | SvfType::LowShelf12 | SvfType::HighShelf12
+        ) {
             assert_impulse_decays(filter_type, 4.0);
             assert_impulse_decays(filter_type, 0.25);
         }
@@ -340,6 +343,117 @@ fn peaking_dc_stays_unity_while_drive_scales_the_other_types() {
     assert!((settled_dc(SvfType::Peaking, 4.0) - 1.0).abs() < 1e-3);
     assert!((settled_dc(SvfType::Notch, 4.0) - 4.0).abs() < 1e-2);
     assert!((settled_dc(SvfType::LowPass12, 4.0) - 4.0).abs() < 1e-2);
+}
+
+fn analog_h(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) -> ComplexSample {
+    SvfResponse {
+        filter_type,
+        q,
+        cutoff: CUTOFF,
+        gain,
+    }
+    .at(freq)
+}
+
+#[test]
+fn lowshelf_boosts_dc_and_is_unity_at_high_freq() {
+    for gain in [0.25, 4.0] {
+        assert!(
+            (analog_gain_with(SvfType::LowShelf12, 2.0, gain, 0.0) - gain).abs() < 1e-5,
+            "dc gain={gain}"
+        );
+        assert!(
+            (analog_gain_with(SvfType::LowShelf12, 2.0, gain, CUTOFF) - gain.sqrt()).abs() < 1e-5,
+            "cutoff gain={gain}"
+        );
+        assert!(
+            (analog_gain_with(SvfType::LowShelf12, 2.0, gain, 100.0 * CUTOFF) - 1.0).abs() < 1e-3,
+            "high gain={gain}"
+        );
+    }
+}
+
+#[test]
+fn highshelf_is_unity_at_dc_and_boosts_high_freq() {
+    for gain in [0.25, 4.0] {
+        assert!(
+            (analog_gain_with(SvfType::HighShelf12, 2.0, gain, 0.0) - 1.0).abs() < 1e-5,
+            "dc gain={gain}"
+        );
+        assert!(
+            (analog_gain_with(SvfType::HighShelf12, 2.0, gain, CUTOFF) - gain.sqrt()).abs() < 1e-5,
+            "cutoff gain={gain}"
+        );
+        assert!(
+            (analog_gain_with(SvfType::HighShelf12, 2.0, gain, 100.0 * CUTOFF) - gain).abs() < 1e-3,
+            "high gain={gain}"
+        );
+    }
+}
+
+#[test]
+fn shelves_are_identity_at_unity_gain() {
+    for filter_type in [SvfType::LowShelf12, SvfType::HighShelf12] {
+        for freq in [0.0, 0.25 * CUTOFF, CUTOFF, 4.0 * CUTOFF] {
+            let h = analog_h(filter_type, 2.0, 1.0, freq);
+
+            assert!((h.re - 1.0).abs() < 1e-6, "{filter_type:?} f={freq}");
+            assert!(h.im.abs() < 1e-6, "{filter_type:?} f={freq}");
+        }
+    }
+}
+
+#[test]
+fn shelf_boost_and_cut_are_inverses() {
+    let freq = 1.7 * CUTOFF;
+    let gain: Sample = 4.0;
+    let cut = gain.recip();
+
+    for filter_type in [SvfType::LowShelf12, SvfType::HighShelf12] {
+        let product =
+            analog_h(filter_type, 2.0, gain, freq) * analog_h(filter_type, 2.0, cut, freq);
+
+        assert!(
+            (product.re - 1.0).abs() < 1e-5 && product.im.abs() < 1e-5,
+            "{filter_type:?} {product}"
+        );
+    }
+}
+
+#[test]
+fn low_and_high_shelf_product_is_flat_gain() {
+    let freq = 1.7 * CUTOFF;
+    let gain = 4.0;
+    let product = analog_h(SvfType::LowShelf12, 2.0, gain, freq)
+        * analog_h(SvfType::HighShelf12, 2.0, gain, freq);
+
+    assert!((product.re - gain).abs() < 1e-4, "{product}");
+    assert!(product.im.abs() < 1e-4, "{product}");
+}
+
+#[test]
+fn shelf_tick_matches_bilinear_response() {
+    for filter_type in [SvfType::LowShelf12, SvfType::HighShelf12] {
+        for gain in [0.25, 4.0] {
+            for q in [FLAT_Q, 1.0, 4.0] {
+                for freq in [250.0, 1_000.0, 4_000.0] {
+                    assert_close(
+                        measured_gain(filter_type, q, gain, freq),
+                        predicted_gain(filter_type, q, gain, freq),
+                        &format!("{filter_type:?} gain={gain} q={q} f={freq}"),
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn shelf_dc_follows_the_shelf_gain() {
+    assert!((settled_dc(SvfType::LowShelf12, 4.0) - 4.0).abs() < 1e-2);
+    assert!((settled_dc(SvfType::HighShelf12, 4.0) - 1.0).abs() < 1e-3);
+    assert!((settled_dc(SvfType::LowShelf12, 0.25) - 0.25).abs() < 1e-3);
+    assert!((settled_dc(SvfType::HighShelf12, 0.25) - 1.0).abs() < 1e-3);
 }
 
 #[test]

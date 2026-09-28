@@ -81,7 +81,7 @@ impl SvfWidget {
     }
 
     /// Analog prototype in decibels. Drive shifts the curve.
-    /// For Peaking, drive is the bell gain and is already inside the prototype.
+    /// For Peaking and the shelves, drive is the filter gain and is already inside the prototype.
     /// The UI has no sample rate, so bilinear warping near Nyquist is not shown.
     fn build_points(
         &mut self,
@@ -105,7 +105,7 @@ impl SvfWidget {
             let freq = pitch_to_freq(C4_PITCH + MIN_CUTOFF + t * log2_range);
             let gain = response.at(freq).norm();
             let drive_offset = match response.filter_type {
-                SvfType::Peaking => 0.0,
+                SvfType::Peaking | SvfType::LowShelf12 | SvfType::HighShelf12 => 0.0,
                 _ => drive_db,
             };
             let db = gain_to_db_fast(gain) + drive_offset;

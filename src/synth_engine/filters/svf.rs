@@ -33,11 +33,11 @@ fn g_table() -> &'static GTable {
 mod tests;
 
 mod response;
-mod stage;
+mod section;
 
 pub use response::SvfResponse;
 
-use stage::{OnePoleStage, SvfStage};
+use section::{BandPass, HighPass, HighShelf, LowPass, LowShelf, OnePoleHighPass, OnePoleLowPass};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SvfType {
@@ -52,10 +52,12 @@ pub enum SvfType {
     BandPass12,
     Peaking,
     Notch,
+    LowShelf12,
+    HighShelf12,
 }
 
 impl SvfType {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 12] = [
         Self::LowPass12,
         Self::LowPass18,
         Self::LowPass24,
@@ -66,17 +68,10 @@ impl SvfType {
         Self::BandPass12,
         Self::Peaking,
         Self::Notch,
+        Self::LowShelf12,
+        Self::HighShelf12,
     ];
 }
-
-#[derive(Clone, Copy, Default)]
-struct LowPass;
-
-#[derive(Clone, Copy, Default)]
-struct HighPass;
-
-#[derive(Clone, Copy, Default)]
-struct BandPass;
 
 #[enum_dispatch]
 pub(crate) trait SvfFilter {
@@ -110,64 +105,76 @@ pub(crate) trait SvfFilter {
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct LowPass12 {
-    resonant: SvfStage<LowPass>,
+    resonant: LowPass,
 }
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct LowPass18 {
-    resonant: SvfStage<LowPass>,
-    one_pole: OnePoleStage<LowPass>,
+    resonant: LowPass,
+    one_pole: OnePoleLowPass,
 }
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct LowPass24 {
-    fixed: SvfStage<LowPass>,
-    resonant: SvfStage<LowPass>,
+    fixed: LowPass,
+    resonant: LowPass,
 }
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct HighPass12 {
-    resonant: SvfStage<HighPass>,
+    resonant: HighPass,
 }
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct HighPass18 {
-    resonant: SvfStage<HighPass>,
-    one_pole: OnePoleStage<HighPass>,
+    resonant: HighPass,
+    one_pole: OnePoleHighPass,
 }
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct HighPass24 {
-    fixed: SvfStage<HighPass>,
-    resonant: SvfStage<HighPass>,
+    fixed: HighPass,
+    resonant: HighPass,
 }
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct BandPass6 {
-    resonant: SvfStage<BandPass>,
+    resonant: BandPass,
 }
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct BandPass12 {
-    fixed: SvfStage<BandPass>,
-    resonant: SvfStage<BandPass>,
+    fixed: BandPass,
+    resonant: BandPass,
 }
 
 /// Bell. Linear `gain` is the level at the cutoff; DC and high frequencies stay at unity.
 #[derive(Default, Clone, Copy)]
 pub(crate) struct Peaking {
-    stage: SvfStage<stage::Peaking>,
+    section: section::Peaking,
 }
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct Notch {
-    resonant: SvfStage<stage::Notch>,
+    resonant: section::Notch,
+}
+
+/// Low shelf, 12 dB/oct. Linear `gain` is the DC level; high frequencies stay at unity.
+#[derive(Default, Clone, Copy)]
+pub(crate) struct LowShelf12 {
+    section: LowShelf,
+}
+
+/// High shelf, 12 dB/oct. Linear `gain` is the high-frequency level; DC stays at unity.
+#[derive(Default, Clone, Copy)]
+pub(crate) struct HighShelf12 {
+    section: HighShelf,
 }
 
 impl SvfFilter for LowPass12 {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        self.resonant.tick(g, k, gain, input)
+        self.resonant.tick(g, k, input * gain)
     }
 
     fn reset(&mut self) {
@@ -178,7 +185,7 @@ impl SvfFilter for LowPass12 {
 impl SvfFilter for LowPass18 {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let x = self.resonant.tick(g, k, gain, input);
+        let x = self.resonant.tick(g, k, input * gain);
 
         self.one_pole.tick(g, x)
     }
@@ -191,9 +198,9 @@ impl SvfFilter for LowPass18 {
 impl SvfFilter for LowPass24 {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let x = self.fixed.tick(g, 1.0, gain, input);
+        let x = self.fixed.tick(g, 1.0, input * gain);
 
-        self.resonant.tick(g, k, 1.0, x)
+        self.resonant.tick(g, k, x)
     }
 
     fn reset(&mut self) {
@@ -204,7 +211,7 @@ impl SvfFilter for LowPass24 {
 impl SvfFilter for HighPass12 {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        self.resonant.tick(g, k, gain, input)
+        self.resonant.tick(g, k, input * gain)
     }
 
     fn reset(&mut self) {
@@ -215,7 +222,7 @@ impl SvfFilter for HighPass12 {
 impl SvfFilter for HighPass18 {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let x = self.resonant.tick(g, k, gain, input);
+        let x = self.resonant.tick(g, k, input * gain);
 
         self.one_pole.tick(g, x)
     }
@@ -228,9 +235,9 @@ impl SvfFilter for HighPass18 {
 impl SvfFilter for HighPass24 {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let x = self.fixed.tick(g, 1.0, gain, input);
+        let x = self.fixed.tick(g, 1.0, input * gain);
 
-        self.resonant.tick(g, k, 1.0, x)
+        self.resonant.tick(g, k, x)
     }
 
     fn reset(&mut self) {
@@ -241,7 +248,7 @@ impl SvfFilter for HighPass24 {
 impl SvfFilter for BandPass6 {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        self.resonant.tick(g, k, gain, input)
+        self.resonant.tick(g, k, input * gain)
     }
 
     fn reset(&mut self) {
@@ -252,9 +259,9 @@ impl SvfFilter for BandPass6 {
 impl SvfFilter for BandPass12 {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let x = self.fixed.tick(g, 1.0, gain, input);
+        let x = self.fixed.tick(g, 1.0, input * gain);
 
-        self.resonant.tick(g, k, 1.0, x)
+        self.resonant.tick(g, k, x)
     }
 
     fn reset(&mut self) {
@@ -265,8 +272,7 @@ impl SvfFilter for BandPass12 {
 impl SvfFilter for Peaking {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let gain = gain.max(1e-4);
-        self.stage.tick(g, k / gain.sqrt(), gain, input)
+        self.section.tick(g, k, gain, input)
     }
 
     fn reset(&mut self) {
@@ -277,7 +283,29 @@ impl SvfFilter for Peaking {
 impl SvfFilter for Notch {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        self.resonant.tick(g, k, gain, input)
+        self.resonant.tick(g, k, input * gain)
+    }
+
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
+impl SvfFilter for LowShelf12 {
+    #[inline(always)]
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+        self.section.tick(g, k, gain, input)
+    }
+
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
+impl SvfFilter for HighShelf12 {
+    #[inline(always)]
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+        self.section.tick(g, k, gain, input)
     }
 
     fn reset(&mut self) {
@@ -298,6 +326,8 @@ pub(crate) enum SvfState {
     BandPass12(BandPass12),
     Peaking(Peaking),
     Notch(Notch),
+    LowShelf12(LowShelf12),
+    HighShelf12(HighShelf12),
 }
 
 impl Default for SvfState {
@@ -319,6 +349,8 @@ impl SvfState {
             SvfType::BandPass12 => Self::BandPass12(BandPass12::default()),
             SvfType::Peaking => Self::Peaking(Peaking::default()),
             SvfType::Notch => Self::Notch(Notch::default()),
+            SvfType::LowShelf12 => Self::LowShelf12(LowShelf12::default()),
+            SvfType::HighShelf12 => Self::HighShelf12(HighShelf12::default()),
         }
     }
 
@@ -334,6 +366,8 @@ impl SvfState {
             Self::BandPass12(_) => SvfType::BandPass12,
             Self::Peaking(_) => SvfType::Peaking,
             Self::Notch(_) => SvfType::Notch,
+            Self::LowShelf12(_) => SvfType::LowShelf12,
+            Self::HighShelf12(_) => SvfType::HighShelf12,
         }
     }
 

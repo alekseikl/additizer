@@ -23,6 +23,8 @@ impl SvfType {
             Self::BandPass12 => "Bandpass 12",
             Self::Peaking => "Peaking",
             Self::Notch => "Notch",
+            Self::LowShelf12 => "Lowshelf 12",
+            Self::HighShelf12 => "Highshelf 12",
         }
     }
 }
