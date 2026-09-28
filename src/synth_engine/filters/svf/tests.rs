@@ -62,7 +62,7 @@ fn prewarped_g_tracks_tan() {
 
 #[test]
 fn process_clamps_frequency_ratio_to_the_tan_limit() {
-    let q = [FLAT_Q];
+    let k = [FLAT_Q.recip()];
     let gain = [1.0];
     let input = [1.0];
 
@@ -71,7 +71,7 @@ fn process_clamps_frequency_ratio_to_the_tan_limit() {
         let mut state = SvfState::new(SvfType::LowPass12);
         let mut output = [0.0];
 
-        state.process(SAMPLE_RATE, &input, &cutoff, &q, &gain, &mut output);
+        state.process(SAMPLE_RATE, &input, &cutoff, &k, &gain, &mut output);
 
         output[0]
     };
@@ -275,7 +275,7 @@ fn high_resonance_impulse_decays_and_stays_finite() {
 }
 
 #[test]
-fn reset_clears_memory() {
+fn fresh_state_has_no_memory() {
     let (g, k) = g_and_k(CUTOFF, 2.0);
     let mut state = SvfState::new(SvfType::LowPass24);
 
@@ -283,7 +283,7 @@ fn reset_clears_memory() {
         state.tick(g, k, 1.0, 1.0);
     }
 
-    state.reset();
+    state = SvfState::new(SvfType::LowPass24);
 
     assert_eq!(state.tick(g, k, 1.0, 0.0), 0.0);
 }
@@ -330,13 +330,13 @@ fn peaking_tick_matches_bilinear_response() {
 
 fn settled_dc(filter_type: SvfType, gain: Sample) -> Sample {
     let cutoff = [freq_to_c4_pitch(CUTOFF)];
-    let q = [2.0];
+    let k = [0.5];
     let gain = [gain];
     let mut state = SvfState::new(filter_type);
     let mut output = [0.0];
 
     for _ in 0..8_000 {
-        state.process(SAMPLE_RATE, &[1.0], &cutoff, &q, &gain, &mut output);
+        state.process(SAMPLE_RATE, &[1.0], &cutoff, &k, &gain, &mut output);
     }
 
     output[0]

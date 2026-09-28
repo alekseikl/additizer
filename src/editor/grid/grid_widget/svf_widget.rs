@@ -4,8 +4,9 @@ use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
         Input, ModuleId, Sample,
+        filters::control::q_from_resonance,
         filters::svf::{SvfResponse, SvfType},
-        svf::{SvfUiBridge, q_from_resonance},
+        svf::SvfUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{

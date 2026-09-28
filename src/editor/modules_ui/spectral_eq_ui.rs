@@ -13,12 +13,13 @@ use crate::{
     },
     synth_engine::{
         Input, ModuleId, ModuleType, Sample,
+        filters::control::{MAX_DRIVE, MIN_DRIVE},
         filters::spectral_filter::FilterType,
         spectral_eq::{
             EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MAX_Q, MIN_CUTOFF_HZ, MIN_Q,
             SpectralEqUiBridge,
         },
-        spectral_filter::{MAX_DRIVE, MAX_Q_ROLLOFF, MIN_DRIVE, MIN_Q_ROLLOFF},
+        spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},

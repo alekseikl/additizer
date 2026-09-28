@@ -17,6 +17,52 @@ use crate::{
     utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},
 };
 
+impl FilterType {
+    pub(crate) const ALL: [Self; 18] = [
+        Self::LowPass12,
+        Self::LowPass18,
+        Self::LowPass24,
+        Self::HighPass12,
+        Self::HighPass18,
+        Self::HighPass24,
+        Self::BandPass6,
+        Self::BandPass12,
+        Self::BandPass18,
+        Self::BandPass24,
+        Self::Peaking,
+        Self::Notch,
+        Self::LowShelf12,
+        Self::LowShelf18,
+        Self::LowShelf24,
+        Self::HighShelf12,
+        Self::HighShelf18,
+        Self::HighShelf24,
+    ];
+
+    pub(crate) fn label(&self) -> &'static str {
+        match self {
+            Self::LowPass12 => "Lowpass 12",
+            Self::LowPass18 => "Lowpass 18",
+            Self::LowPass24 => "Lowpass 24",
+            Self::HighPass12 => "Highpass 12",
+            Self::HighPass18 => "Highpass 18",
+            Self::HighPass24 => "Highpass 24",
+            Self::BandPass6 => "Bandpass 6",
+            Self::BandPass12 => "Bandpass 12",
+            Self::BandPass18 => "Bandpass 18",
+            Self::BandPass24 => "Bandpass 24",
+            Self::Peaking => "Peaking",
+            Self::Notch => "Notch",
+            Self::LowShelf12 => "Lowshelf 12",
+            Self::LowShelf18 => "Lowshelf 18",
+            Self::LowShelf24 => "Lowshelf 24",
+            Self::HighShelf12 => "Highshelf 12",
+            Self::HighShelf18 => "Highshelf 18",
+            Self::HighShelf24 => "Highshelf 24",
+        }
+    }
+}
+
 pub struct SpectralFilterUI {
     module_id: ModuleId,
 }

@@ -1,4 +1,5 @@
-use super::{MAX_RESONANCE_Q, ZERO_RESONANCE_Q, *};
+use super::*;
+use crate::synth_engine::filters::control::{MAX_RESONANCE_Q, MIN_RESONANCE_Q, ZERO_RESONANCE_Q};
 use crate::utils::db_to_gain_fast;
 
 fn assert_approx(a: Sample, b: Sample) {
@@ -63,17 +64,30 @@ fn q_from_resonance_follows_cubic_curve() {
 
     assert!((q_from_resonance(resonance) - expected).abs() < 1e-6);
     assert!((q_from_resonance(1.0) - MAX_RESONANCE_Q).abs() < 1e-6);
+    assert!((q_from_resonance(2.0) - MAX_RESONANCE_Q).abs() < 1e-6);
 }
 
 #[test]
-fn resonance_is_clamped_to_zero_and_one() {
+fn negative_resonance_uses_cubic_curve() {
+    assert!((q_from_resonance(-1.0) - MIN_RESONANCE_Q).abs() < 1e-6);
+    assert!((q_from_resonance(-2.0) - MIN_RESONANCE_Q).abs() < 1e-6);
+
+    let resonance = -0.5;
+    let t = 1.0 + resonance;
+    let expected = MIN_RESONANCE_Q + (ZERO_RESONANCE_Q - MIN_RESONANCE_Q) * t * t * t;
+
+    assert!((q_from_resonance(resonance) - expected).abs() < 1e-6);
+}
+
+#[test]
+fn resonance_is_clamped_to_minus_one_and_one() {
     let module = Svf::from_config(&SvfConfig {
-        resonance: StereoSample::new(-0.5, 1.5),
+        resonance: StereoSample::new(-1.5, 1.5),
         ..SvfConfig::default()
     });
     let back = module.get_config();
 
-    assert_eq!(back.resonance, StereoSample::new(0.0, 1.0));
+    assert_eq!(back.resonance, StereoSample::new(-1.0, 1.0));
 }
 
 #[test]

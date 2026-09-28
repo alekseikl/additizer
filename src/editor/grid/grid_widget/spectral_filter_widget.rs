@@ -4,11 +4,9 @@ use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
         ComplexSample, Input, ModuleId, Sample,
+        filters::control::{MAX_DRIVE, MIN_DRIVE, q_from_resonance},
         filters::spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
-        spectral_filter::{
-            MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, SpectralFilterUiBridge,
-            q_from_resonance,
-        },
+        spectral_filter::SpectralFilterUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, gain_to_db_fast},
@@ -76,7 +74,7 @@ impl SpectralFilterWidget {
             FilterParams {
                 drive: config.drive[0].clamp(MIN_DRIVE, MAX_DRIVE),
                 cutoff,
-                q: q_from_resonance(config.resonance[0].clamp(MIN_RESONANCE, MAX_RESONANCE)),
+                q: q_from_resonance(config.resonance[0]),
                 q_cutoff,
                 q_rolloff: config.q_rolloff[0],
                 linear_phase: config.linear_phase,

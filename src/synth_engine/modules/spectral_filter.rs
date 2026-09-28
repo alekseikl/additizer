@@ -15,8 +15,9 @@ use crate::{
     synth_engine::{
         StereoSample,
         buffer::VoicesLayout,
-        filters::spectral_filter::{
-            FilterParams, FilterType, SpectralFilter as SpectralFilterEngine, ZERO_RESONANCE_Q,
+        filters::{
+            control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
+            spectral_filter::{FilterParams, FilterType, SpectralFilter as SpectralFilterEngine},
         },
         routing::{
             DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
@@ -28,24 +29,8 @@ use crate::{
     utils::{C4_PITCH, MAX_CUTOFF, MIN_CUTOFF},
 };
 
-pub const MIN_DRIVE: Sample = -60.0;
-pub const MAX_DRIVE: Sample = 24.0;
-pub const MIN_RESONANCE: Sample = -1.0;
-pub const MAX_RESONANCE: Sample = 1.0;
-pub const MIN_RESONANCE_Q: Sample = 0.01;
-pub const MAX_RESONANCE_Q: Sample = 16.0;
 pub const MIN_Q_ROLLOFF: Sample = 3.0;
 pub const MAX_Q_ROLLOFF: Sample = 48.0;
-
-pub fn q_from_resonance(resonance: Sample) -> Sample {
-    let resonance = resonance.clamp(MIN_RESONANCE, MAX_RESONANCE);
-
-    if resonance > 0.0 {
-        ZERO_RESONANCE_Q + (MAX_RESONANCE_Q - ZERO_RESONANCE_Q) * resonance.powf(3.0)
-    } else {
-        MIN_RESONANCE_Q + (ZERO_RESONANCE_Q - MIN_RESONANCE_Q) * (1.0 + resonance)
-    }
-}
 
 struct Params {
     filter_type: FilterType,

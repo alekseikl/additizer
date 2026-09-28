@@ -7,8 +7,8 @@ use crate::{
     },
     synth_engine::{
         DataType, Input, ModuleType, StereoSample,
+        filters::control::{MAX_DRIVE, MIN_DRIVE},
         pitch::MAX_GLIDE_TIME,
-        spectral_filter::{MAX_DRIVE, MIN_DRIVE},
     },
     utils::{MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, from_st},
 };

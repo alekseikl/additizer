@@ -60,51 +60,27 @@ pub enum SvfType {
     HighShelf24,
 }
 
-impl SvfType {
-    pub const ALL: [Self; 14] = [
-        Self::LowPass12,
-        Self::LowPass18,
-        Self::LowPass24,
-        Self::HighPass12,
-        Self::HighPass18,
-        Self::HighPass24,
-        Self::BandPass6,
-        Self::BandPass12,
-        Self::Peaking,
-        Self::Notch,
-        Self::LowShelf12,
-        Self::LowShelf24,
-        Self::HighShelf12,
-        Self::HighShelf24,
-    ];
-}
-
 #[enum_dispatch]
 pub(crate) trait SvfFilter {
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample;
-    fn reset(&mut self);
 
     fn process(
         &mut self,
         sample_rate: Sample,
         input: &[Sample],
         cutoff: &[Sample],
-        q: &[Sample],
+        k: &[Sample], // k = 1/Q
         gain: &[Sample],
         output: &mut [Sample],
     ) {
         let g_table = g_table();
         let freq_mult = (sample_rate * RANGE_SCALE).recip();
 
-        for (out, &sample, &cutoff, &q, &gain) in izip!(output, input, cutoff, q, gain) {
+        for (out, &sample, &cutoff, &k, &gain) in izip!(output, input, cutoff, k, gain) {
             let freq = pitch_to_freq(C4_PITCH + cutoff);
+            let g = g_table.at((freq * freq_mult).min(1.0));
 
-            *out = self.tick(
-                g_table.at((freq * freq_mult).min(1.0)),
-                q.recip(),
-                gain,
-                sample,
-            );
+            *out = self.tick(g, k, gain, sample);
         }
     }
 }
@@ -196,10 +172,6 @@ impl SvfFilter for LowPass12 {
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
         self.resonant.tick(g, k, input * gain)
     }
-
-    fn reset(&mut self) {
-        *self = Self::default();
-    }
 }
 
 impl SvfFilter for LowPass18 {
@@ -208,10 +180,6 @@ impl SvfFilter for LowPass18 {
         let x = self.resonant.tick(g, k, input * gain);
 
         self.one_pole.tick(g, x)
-    }
-
-    fn reset(&mut self) {
-        *self = Self::default();
     }
 }
 
@@ -222,20 +190,12 @@ impl SvfFilter for LowPass24 {
 
         self.resonant.tick(g, k, x)
     }
-
-    fn reset(&mut self) {
-        *self = Self::default();
-    }
 }
 
 impl SvfFilter for HighPass12 {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
         self.resonant.tick(g, k, input * gain)
-    }
-
-    fn reset(&mut self) {
-        *self = Self::default();
     }
 }
 
@@ -246,10 +206,6 @@ impl SvfFilter for HighPass18 {
 
         self.one_pole.tick(g, x)
     }
-
-    fn reset(&mut self) {
-        *self = Self::default();
-    }
 }
 
 impl SvfFilter for HighPass24 {
@@ -259,20 +215,12 @@ impl SvfFilter for HighPass24 {
 
         self.resonant.tick(g, k, x)
     }
-
-    fn reset(&mut self) {
-        *self = Self::default();
-    }
 }
 
 impl SvfFilter for BandPass6 {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
         self.resonant.tick(g, k, input * gain)
-    }
-
-    fn reset(&mut self) {
-        *self = Self::default();
     }
 }
 
@@ -283,20 +231,12 @@ impl SvfFilter for BandPass12 {
 
         self.resonant.tick(g, k, x)
     }
-
-    fn reset(&mut self) {
-        *self = Self::default();
-    }
 }
 
 impl SvfFilter for Peaking {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
         self.section.tick(g, k, gain, input)
-    }
-
-    fn reset(&mut self) {
-        *self = Self::default();
     }
 }
 
@@ -305,10 +245,6 @@ impl SvfFilter for Notch {
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
         self.resonant.tick(g, k, input * gain)
     }
-
-    fn reset(&mut self) {
-        *self = Self::default();
-    }
 }
 
 impl SvfFilter for LowShelf12 {
@@ -316,20 +252,12 @@ impl SvfFilter for LowShelf12 {
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
         self.section.tick(g, k, ShelfCoeffs::new(gain), input)
     }
-
-    fn reset(&mut self) {
-        *self = Self::default();
-    }
 }
 
 impl SvfFilter for HighShelf12 {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
         self.section.tick(g, k, ShelfCoeffs::new(gain), input)
-    }
-
-    fn reset(&mut self) {
-        *self = Self::default();
     }
 }
 
@@ -341,10 +269,6 @@ impl SvfFilter for LowShelf24 {
 
         self.resonant.tick(g, k, coeffs, x)
     }
-
-    fn reset(&mut self) {
-        *self = Self::default();
-    }
 }
 
 impl SvfFilter for HighShelf24 {
@@ -354,10 +278,6 @@ impl SvfFilter for HighShelf24 {
         let x = self.fixed.tick(g, 1.0, coeffs, input);
 
         self.resonant.tick(g, k, coeffs, x)
-    }
-
-    fn reset(&mut self) {
-        *self = Self::default();
     }
 }
 

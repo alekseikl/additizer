@@ -15,8 +15,10 @@ use crate::{
     synth_engine::{
         Sample, SmoothedSampleParams, StereoSample,
         buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
-        filters::svf::{SvfFilter, SvfState, SvfType},
-        modules::spectral_filter::{MAX_DRIVE, MIN_DRIVE},
+        filters::{
+            control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
+            svf::{SvfFilter, SvfState, SvfType},
+        },
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
             ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent,
@@ -27,17 +29,6 @@ use crate::{
     },
     utils::{C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain_fast},
 };
-
-pub const MIN_RESONANCE: Sample = 0.0;
-pub const MAX_RESONANCE: Sample = 1.0;
-
-const ZERO_RESONANCE_Q: Sample = 0.5;
-const MAX_RESONANCE_Q: Sample = 16.0;
-
-#[inline(always)]
-pub fn q_from_resonance(resonance: Sample) -> Sample {
-    ZERO_RESONANCE_Q + (MAX_RESONANCE_Q - ZERO_RESONANCE_Q) * resonance * resonance * resonance
-}
 
 struct Params {
     filter_type: SvfType,
@@ -197,7 +188,7 @@ impl Svf {
 
     fn reset_voice(&mut self, voice_idx: usize) {
         for channel in self.states.iter_mut() {
-            channel[voice_idx].reset();
+            channel[voice_idx] = SvfState::new(self.params.filter_type);
         }
     }
 
@@ -226,8 +217,9 @@ impl Svf {
 
         let samples = router.samples();
 
-        for q in &mut self.buffers.resonance[..samples] {
-            *q = q_from_resonance(q.clamp(MIN_RESONANCE, MAX_RESONANCE));
+        // Map resonance into 1/Q coefficient
+        for k in &mut self.buffers.resonance[..samples] {
+            *k = q_from_resonance(*k).recip();
         }
 
         if router.param_stationary_at(&inputs.drive, &channel.drive, 0.0) {

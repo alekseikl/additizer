@@ -1,8 +1,11 @@
 use super::*;
 use crate::{
-    synth_engine::spectral_filter::{
-        MAX_Q_ROLLOFF, MAX_RESONANCE, MAX_RESONANCE_Q, MIN_Q_ROLLOFF, MIN_RESONANCE,
-        MIN_RESONANCE_Q, q_from_resonance,
+    synth_engine::{
+        filters::control::{
+            MAX_RESONANCE, MAX_RESONANCE_Q, MIN_RESONANCE, MIN_RESONANCE_Q, ZERO_RESONANCE_Q,
+            q_from_resonance,
+        },
+        spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF},
     },
     utils::{db_to_gain, db_to_gain_fast},
 };
@@ -208,9 +211,10 @@ fn positive_resonance_uses_cubic_curve() {
 }
 
 #[test]
-fn negative_resonance_interpolates_to_min_q() {
+fn negative_resonance_uses_cubic_curve() {
     let resonance = -0.5;
-    let expected = MIN_RESONANCE_Q + (ZERO_RESONANCE_Q - MIN_RESONANCE_Q) * (1.0 + resonance);
+    let t = 1.0 + resonance;
+    let expected = MIN_RESONANCE_Q + (ZERO_RESONANCE_Q - MIN_RESONANCE_Q) * t * t * t;
     assert_approx(q_from_resonance(resonance), expected);
 }
 

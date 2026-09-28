@@ -3,7 +3,7 @@ use std::f32;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    synth_engine::{ComplexSample, Sample},
+    synth_engine::{ComplexSample, Sample, filters::control::ZERO_RESONANCE_Q},
     utils::{db_to_gain, db_to_gain_fast},
 };
 
@@ -64,8 +64,6 @@ impl FilterImpl for LowPass18 {
     }
 }
 
-/// Q of the resonant stage when the resonance control is 0.
-pub const ZERO_RESONANCE_Q: Sample = 0.5;
 /// Q of the fixed stages cascaded with the resonant stage.
 pub const FIXED_Q: Sample = 1.0;
 
@@ -528,17 +526,9 @@ pub enum FilterType {
     LowPass12,
     LowPass18,
     LowPass24,
-    #[serde(alias = "LowShelf")]
-    LowShelf12,
-    LowShelf18,
-    LowShelf24,
     HighPass12,
     HighPass18,
     HighPass24,
-    #[serde(alias = "HighShelf")]
-    HighShelf12,
-    HighShelf18,
-    HighShelf24,
     #[serde(alias = "BandPass")]
     BandPass6,
     BandPass12,
@@ -546,52 +536,14 @@ pub enum FilterType {
     BandPass24,
     Peaking,
     Notch,
-}
-
-impl FilterType {
-    pub const ALL: [Self; 18] = [
-        Self::LowPass12,
-        Self::LowPass18,
-        Self::LowPass24,
-        Self::LowShelf12,
-        Self::LowShelf18,
-        Self::LowShelf24,
-        Self::HighPass12,
-        Self::HighPass18,
-        Self::HighPass24,
-        Self::HighShelf12,
-        Self::HighShelf18,
-        Self::HighShelf24,
-        Self::BandPass6,
-        Self::BandPass12,
-        Self::BandPass18,
-        Self::BandPass24,
-        Self::Peaking,
-        Self::Notch,
-    ];
-
-    pub fn label(&self) -> &'static str {
-        match self {
-            Self::LowPass12 => "Lowpass 12",
-            Self::LowPass18 => "Lowpass 18",
-            Self::LowPass24 => "Lowpass 24",
-            Self::LowShelf12 => "Lowshelf 12",
-            Self::LowShelf18 => "Lowshelf 18",
-            Self::LowShelf24 => "Lowshelf 24",
-            Self::HighPass12 => "Highpass 12",
-            Self::HighPass18 => "Highpass 18",
-            Self::HighPass24 => "Highpass 24",
-            Self::HighShelf12 => "Highshelf 12",
-            Self::HighShelf18 => "Highshelf 18",
-            Self::HighShelf24 => "Highshelf 24",
-            Self::BandPass6 => "Bandpass 6",
-            Self::BandPass12 => "Bandpass 12",
-            Self::BandPass18 => "Bandpass 18",
-            Self::BandPass24 => "Bandpass 24",
-            Self::Peaking => "Peaking",
-            Self::Notch => "Notch",
-        }
-    }
+    #[serde(alias = "LowShelf")]
+    LowShelf12,
+    LowShelf18,
+    LowShelf24,
+    #[serde(alias = "HighShelf")]
+    HighShelf12,
+    HighShelf18,
+    HighShelf24,
 }
 
 #[derive(Clone, Copy)]

@@ -11,6 +11,23 @@ use crate::{
 };
 
 impl SvfType {
+    pub(crate) const ALL: [Self; 14] = [
+        Self::LowPass12,
+        Self::LowPass18,
+        Self::LowPass24,
+        Self::HighPass12,
+        Self::HighPass18,
+        Self::HighPass24,
+        Self::BandPass6,
+        Self::BandPass12,
+        Self::Peaking,
+        Self::Notch,
+        Self::LowShelf12,
+        Self::LowShelf24,
+        Self::HighShelf12,
+        Self::HighShelf24,
+    ];
+
     fn label(&self) -> &'static str {
         match self {
             Self::LowPass12 => "Lowpass 12",
@@ -86,15 +103,12 @@ impl SvfUi {
 
                 ui.label("Resonance");
                 if ui
-                    .add(
-                        StereoInput::new(
-                            Input::Resonance,
-                            module_id,
-                            &mut config.resonance,
-                            bridge,
-                        )
-                        .slider(|slider| slider.without_inverse()),
-                    )
+                    .add(StereoInput::new(
+                        Input::Resonance,
+                        module_id,
+                        &mut config.resonance,
+                        bridge,
+                    ))
                     .changed()
                 {
                     svf_bridge.set_param(Input::Resonance, config.resonance);

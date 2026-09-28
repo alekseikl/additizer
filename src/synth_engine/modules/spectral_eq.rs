@@ -19,12 +19,13 @@ use crate::{
     synth_engine::{
         StereoSample,
         buffer::VoicesLayout,
+        filters::control::{MAX_DRIVE, MIN_DRIVE},
         filters::spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
         routing::{
             DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
             RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceTarget,
         },
-        spectral_filter::{MAX_DRIVE, MAX_Q_ROLLOFF, MIN_DRIVE, MIN_Q_ROLLOFF},
+        spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF},
         synth_module::SynthModule,
         types::Sample,
     },
