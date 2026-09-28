@@ -105,7 +105,11 @@ impl SvfWidget {
             let freq = pitch_to_freq(C4_PITCH + MIN_CUTOFF + t * log2_range);
             let gain = response.at(freq).norm();
             let drive_offset = match response.filter_type {
-                SvfType::Peaking | SvfType::LowShelf12 | SvfType::HighShelf12 => 0.0,
+                SvfType::Peaking
+                | SvfType::LowShelf12
+                | SvfType::LowShelf24
+                | SvfType::HighShelf12
+                | SvfType::HighShelf24 => 0.0,
                 _ => drive_db,
             };
             let db = gain_to_db_fast(gain) + drive_offset;

@@ -37,7 +37,9 @@ mod section;
 
 pub use response::SvfResponse;
 
-use section::{BandPass, HighPass, HighShelf, LowPass, LowShelf, OnePoleHighPass, OnePoleLowPass};
+use section::{
+    BandPass, HighPass, HighShelf, LowPass, LowShelf, OnePoleHighPass, OnePoleLowPass, ShelfCoeffs,
+};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SvfType {
@@ -53,11 +55,13 @@ pub enum SvfType {
     Peaking,
     Notch,
     LowShelf12,
+    LowShelf24,
     HighShelf12,
+    HighShelf24,
 }
 
 impl SvfType {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 14] = [
         Self::LowPass12,
         Self::LowPass18,
         Self::LowPass24,
@@ -69,7 +73,9 @@ impl SvfType {
         Self::Peaking,
         Self::Notch,
         Self::LowShelf12,
+        Self::LowShelf24,
         Self::HighShelf12,
+        Self::HighShelf24,
     ];
 }
 
@@ -169,6 +175,20 @@ pub(crate) struct LowShelf12 {
 #[derive(Default, Clone, Copy)]
 pub(crate) struct HighShelf12 {
     section: HighShelf,
+}
+
+/// Low shelf, 24 dB/oct. Two 12 dB sections, each at `sqrt(gain)`, one fixed at Q = 1.
+#[derive(Default, Clone, Copy)]
+pub(crate) struct LowShelf24 {
+    fixed: LowShelf,
+    resonant: LowShelf,
+}
+
+/// High shelf, 24 dB/oct. Two 12 dB sections, each at `sqrt(gain)`, one fixed at Q = 1.
+#[derive(Default, Clone, Copy)]
+pub(crate) struct HighShelf24 {
+    fixed: HighShelf,
+    resonant: HighShelf,
 }
 
 impl SvfFilter for LowPass12 {
@@ -294,7 +314,7 @@ impl SvfFilter for Notch {
 impl SvfFilter for LowShelf12 {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        self.section.tick(g, k, gain, input)
+        self.section.tick(g, k, ShelfCoeffs::new(gain), input)
     }
 
     fn reset(&mut self) {
@@ -305,7 +325,35 @@ impl SvfFilter for LowShelf12 {
 impl SvfFilter for HighShelf12 {
     #[inline(always)]
     fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        self.section.tick(g, k, gain, input)
+        self.section.tick(g, k, ShelfCoeffs::new(gain), input)
+    }
+
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
+impl SvfFilter for LowShelf24 {
+    #[inline(always)]
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+        let coeffs = ShelfCoeffs::cascaded(gain);
+        let x = self.fixed.tick(g, 1.0, coeffs, input);
+
+        self.resonant.tick(g, k, coeffs, x)
+    }
+
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
+impl SvfFilter for HighShelf24 {
+    #[inline(always)]
+    fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+        let coeffs = ShelfCoeffs::cascaded(gain);
+        let x = self.fixed.tick(g, 1.0, coeffs, input);
+
+        self.resonant.tick(g, k, coeffs, x)
     }
 
     fn reset(&mut self) {
@@ -327,7 +375,9 @@ pub(crate) enum SvfState {
     Peaking(Peaking),
     Notch(Notch),
     LowShelf12(LowShelf12),
+    LowShelf24(LowShelf24),
     HighShelf12(HighShelf12),
+    HighShelf24(HighShelf24),
 }
 
 impl Default for SvfState {
@@ -350,7 +400,9 @@ impl SvfState {
             SvfType::Peaking => Self::Peaking(Peaking::default()),
             SvfType::Notch => Self::Notch(Notch::default()),
             SvfType::LowShelf12 => Self::LowShelf12(LowShelf12::default()),
+            SvfType::LowShelf24 => Self::LowShelf24(LowShelf24::default()),
             SvfType::HighShelf12 => Self::HighShelf12(HighShelf12::default()),
+            SvfType::HighShelf24 => Self::HighShelf24(HighShelf24::default()),
         }
     }
 
@@ -367,7 +419,9 @@ impl SvfState {
             Self::Peaking(_) => SvfType::Peaking,
             Self::Notch(_) => SvfType::Notch,
             Self::LowShelf12(_) => SvfType::LowShelf12,
+            Self::LowShelf24(_) => SvfType::LowShelf24,
             Self::HighShelf12(_) => SvfType::HighShelf12,
+            Self::HighShelf24(_) => SvfType::HighShelf24,
         }
     }
 

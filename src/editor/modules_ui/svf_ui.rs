@@ -24,7 +24,9 @@ impl SvfType {
             Self::Peaking => "Peaking",
             Self::Notch => "Notch",
             Self::LowShelf12 => "Lowshelf 12",
+            Self::LowShelf24 => "Lowshelf 24",
             Self::HighShelf12 => "Highshelf 12",
+            Self::HighShelf24 => "Highshelf 24",
         }
     }
 }

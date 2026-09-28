@@ -114,6 +114,36 @@ impl Peaking {
     }
 }
 
+/// `A = √gain` and `√A`, shared by every section of one shelf.
+#[derive(Clone, Copy)]
+pub(super) struct ShelfCoeffs {
+    /// `A = √gain`.
+    a: Sample,
+    /// `√A`. Low shelf tunes at `g / sqrt_a`, high shelf at `g * sqrt_a`.
+    sqrt_a: Sample,
+    gain: Sample,
+}
+
+impl ShelfCoeffs {
+    #[inline(always)]
+    pub(super) fn new(gain: Sample) -> Self {
+        let gain = gain.max(1e-4);
+        let a = gain.sqrt();
+
+        Self {
+            a,
+            sqrt_a: a.sqrt(),
+            gain,
+        }
+    }
+
+    /// Both sections of a 24 dB shelf run at `√gain`.
+    #[inline(always)]
+    pub(super) fn cascaded(gain: Sample) -> Self {
+        Self::new(gain.max(1e-4).sqrt())
+    }
+}
+
 #[derive(Default, Clone, Copy)]
 pub(super) struct LowShelf {
     integrator: Integrator,
@@ -121,13 +151,17 @@ pub(super) struct LowShelf {
 
 impl LowShelf {
     #[inline(always)]
-    pub(super) fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let gain = gain.max(1e-4);
-        let a = gain.sqrt();
-        // Poles sit at fc / sqrt(A) so the shelf centers on the cutoff.
-        let (v1, v2) = self.integrator.tick(g / a.sqrt(), k, input);
+    pub(super) fn tick(
+        &mut self,
+        g: Sample,
+        k: Sample,
+        coeffs: ShelfCoeffs,
+        input: Sample,
+    ) -> Sample {
+        // Poles sit at fc / √A so the shelf centers on the cutoff.
+        let (v1, v2) = self.integrator.tick(g / coeffs.sqrt_a, k, input);
 
-        input + (a - 1.0) * k * v1 + (gain - 1.0) * v2
+        input + (coeffs.a - 1.0) * k * v1 + (coeffs.gain - 1.0) * v2
     }
 }
 
@@ -138,13 +172,17 @@ pub(super) struct HighShelf {
 
 impl HighShelf {
     #[inline(always)]
-    pub(super) fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let gain = gain.max(1e-4);
-        let a = gain.sqrt();
-        // Poles sit at fc * sqrt(A) so the shelf centers on the cutoff.
-        let (v1, v2) = self.integrator.tick(g * a.sqrt(), k, input);
+    pub(super) fn tick(
+        &mut self,
+        g: Sample,
+        k: Sample,
+        coeffs: ShelfCoeffs,
+        input: Sample,
+    ) -> Sample {
+        // Poles sit at fc * √A so the shelf centers on the cutoff.
+        let (v1, v2) = self.integrator.tick(g * coeffs.sqrt_a, k, input);
 
-        gain * input + (a - gain) * k * v1 + (1.0 - gain) * v2
+        coeffs.gain * input + (coeffs.a - coeffs.gain) * k * v1 + (1.0 - coeffs.gain) * v2
     }
 }
 
