@@ -16,7 +16,6 @@ pub fn q_from_resonance(resonance: Sample) -> Sample {
     if r > 0.0 {
         ZERO_RESONANCE_Q + (MAX_RESONANCE_Q - ZERO_RESONANCE_Q) * r * r * r
     } else {
-        let r = 1.0 + r;
-        MIN_RESONANCE_Q + (ZERO_RESONANCE_Q - MIN_RESONANCE_Q) * r * r * r
+        MIN_RESONANCE_Q + (ZERO_RESONANCE_Q - MIN_RESONANCE_Q) * (1.0 + r)
     }
 }

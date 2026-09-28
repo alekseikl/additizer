@@ -68,13 +68,12 @@ fn q_from_resonance_follows_cubic_curve() {
 }
 
 #[test]
-fn negative_resonance_uses_cubic_curve() {
+fn negative_resonance_uses_linear_curve() {
     assert!((q_from_resonance(-1.0) - MIN_RESONANCE_Q).abs() < 1e-6);
     assert!((q_from_resonance(-2.0) - MIN_RESONANCE_Q).abs() < 1e-6);
 
     let resonance = -0.5;
-    let t = 1.0 + resonance;
-    let expected = MIN_RESONANCE_Q + (ZERO_RESONANCE_Q - MIN_RESONANCE_Q) * t * t * t;
+    let expected = MIN_RESONANCE_Q + (ZERO_RESONANCE_Q - MIN_RESONANCE_Q) * (1.0 + resonance);
 
     assert!((q_from_resonance(resonance) - expected).abs() < 1e-6);
 }

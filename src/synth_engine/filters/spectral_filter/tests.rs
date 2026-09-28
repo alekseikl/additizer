@@ -211,10 +211,9 @@ fn positive_resonance_uses_cubic_curve() {
 }
 
 #[test]
-fn negative_resonance_uses_cubic_curve() {
+fn negative_resonance_uses_linear_curve() {
     let resonance = -0.5;
-    let t = 1.0 + resonance;
-    let expected = MIN_RESONANCE_Q + (ZERO_RESONANCE_Q - MIN_RESONANCE_Q) * t * t * t;
+    let expected = MIN_RESONANCE_Q + (ZERO_RESONANCE_Q - MIN_RESONANCE_Q) * (1.0 + resonance);
     assert_approx(q_from_resonance(resonance), expected);
 }
 

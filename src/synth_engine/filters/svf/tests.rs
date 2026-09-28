@@ -2,7 +2,14 @@ use std::f32::consts::{PI, TAU};
 
 use crate::{synth_engine::ComplexSample, utils::freq_to_c4_pitch};
 
-use super::{SvfFilter, g_table, *};
+use super::{
+    SvfFilter, g_table,
+    section::{
+        BandPass, HighPass, HighShelf, Integrator, LowPass, LowShelf, Notch, OnePoleHighPass,
+        OnePoleIntegrator, OnePoleLowPass, Peaking, ShelfCoeffs,
+    },
+    *,
+};
 
 fn approx_g(freq_ratio: Sample) -> Sample {
     g_table().at((freq_ratio / RANGE_SCALE).min(1.0))
@@ -532,5 +539,329 @@ fn types_round_trip_through_serde() {
         let back: SvfType = serde_json::from_str(&json).unwrap();
 
         assert_eq!(back, filter_type);
+    }
+}
+
+#[test]
+fn default_state_is_lowpass12() {
+    assert_eq!(SvfType::default(), SvfType::LowPass12);
+
+    let (g, k) = g_and_k(CUTOFF, 2.0);
+    let mut state = SvfState::default();
+    let mut lowpass = SvfState::new(SvfType::LowPass12);
+
+    for input in [0.0, 1.0, -1.0, 0.3] {
+        assert_eq!(state.tick(g, k, 1.0, input), lowpass.tick(g, k, 1.0, input));
+    }
+}
+
+fn drive(state: &mut SvfState) {
+    let (g, k) = g_and_k(CUTOFF, 4.0);
+
+    for _ in 0..32 {
+        state.tick(g, k, 2.0, 1.0);
+    }
+}
+
+fn tick_sequence(state: &mut SvfState) -> [Sample; 4] {
+    let (g, k) = g_and_k(CUTOFF, 4.0);
+    let mut output = [0.0; 4];
+
+    for (out, input) in output.iter_mut().zip([0.0, 1.0, -0.5, 0.25]) {
+        *out = state.tick(g, k, 2.0, input);
+    }
+
+    output
+}
+
+#[test]
+fn set_type_keeps_integrator_state_when_the_type_is_unchanged() {
+    for filter_type in SvfType::ALL {
+        let mut driven = SvfState::new(filter_type);
+
+        drive(&mut driven);
+
+        let mut kept = driven;
+        let mut untouched = driven;
+        let mut fresh = SvfState::new(filter_type);
+
+        kept.set_type(filter_type);
+
+        let kept_out = tick_sequence(&mut kept);
+        let untouched_out = tick_sequence(&mut untouched);
+        let fresh_out = tick_sequence(&mut fresh);
+
+        assert_eq!(kept_out, untouched_out, "{filter_type:?}");
+        assert!(
+            kept_out
+                .iter()
+                .zip(fresh_out)
+                .any(|(kept, fresh)| (kept - fresh).abs() > 1e-4),
+            "{filter_type:?} lost its state"
+        );
+    }
+}
+
+#[test]
+fn set_type_clears_integrator_state_when_the_type_changes() {
+    let types = SvfType::ALL;
+
+    for (i, &filter_type) in types.iter().enumerate() {
+        let next = types[(i + 1) % types.len()];
+        let mut state = SvfState::new(filter_type);
+
+        drive(&mut state);
+        state.set_type(next);
+
+        let mut fresh = SvfState::new(next);
+
+        assert_eq!(
+            tick_sequence(&mut state),
+            tick_sequence(&mut fresh),
+            "{filter_type:?} -> {next:?}"
+        );
+    }
+}
+
+/// `(g, k, input)`. Coefficients change every step so the state update is part of the check.
+const SECTION_STEPS: [(f64, f64, f64); 6] = [
+    (0.0, 0.5, 1.0),
+    (0.15, 0.5, 0.5),
+    (0.4, 1.0, -1.0),
+    (0.9, 0.2, 0.25),
+    (0.25, 2.0, 0.0),
+    (1.2, 0.05, -0.75),
+];
+
+fn assert_sample_near(actual: Sample, expected: f64, ctx: &str) {
+    let error = (f64::from(actual) - expected).abs();
+    let tolerance = expected.abs() * 1e-5 + 1e-6;
+
+    assert!(
+        error <= tolerance,
+        "{ctx}: actual {actual} expected {expected}"
+    );
+}
+
+/// Cytomic trapezoidal pair, in `f64` and in the `a1`/`a2`/`a3` form.
+#[derive(Default)]
+struct RefIntegrator {
+    ic1eq: f64,
+    ic2eq: f64,
+}
+
+impl RefIntegrator {
+    fn tick(&mut self, g: f64, k: f64, v0: f64) -> (f64, f64) {
+        let a1 = 1.0 / (1.0 + g * (g + k));
+        let a2 = g * a1;
+        let a3 = g * a2;
+        let v3 = v0 - self.ic2eq;
+        let v1 = a1 * self.ic1eq + a2 * v3;
+        let v2 = self.ic2eq + a2 * self.ic1eq + a3 * v3;
+
+        self.ic1eq = 2.0 * v1 - self.ic1eq;
+        self.ic2eq = 2.0 * v2 - self.ic2eq;
+
+        (v1, v2)
+    }
+}
+
+#[derive(Default)]
+struct RefOnePole {
+    s: f64,
+}
+
+impl RefOnePole {
+    fn tick(&mut self, g: f64, input: f64) -> f64 {
+        let a = g / (1.0 + g);
+        let v = (input - self.s) * a;
+        let lp = self.s + v;
+
+        self.s += 2.0 * v;
+
+        lp
+    }
+}
+
+struct RefShelf {
+    a: f64,
+    sqrt_a: f64,
+    gain: f64,
+}
+
+impl RefShelf {
+    fn new(gain: f64) -> Self {
+        let gain = gain.max(1e-4);
+        let a = gain.sqrt();
+
+        Self {
+            a,
+            sqrt_a: a.sqrt(),
+            gain,
+        }
+    }
+
+    fn cascaded(gain: f64) -> Self {
+        Self::new(gain.max(1e-4).sqrt())
+    }
+}
+
+#[test]
+fn trapezoidal_integrator_matches_reference() {
+    let mut integrator = Integrator::default();
+    let mut reference = RefIntegrator::default();
+
+    for (step, &(g, k, input)) in SECTION_STEPS.iter().enumerate() {
+        let (v1, v2) = integrator.tick(g as Sample, k as Sample, input as Sample);
+        let (expected_v1, expected_v2) = reference.tick(g, k, input);
+
+        assert_sample_near(v1, expected_v1, &format!("integrator v1 step {step}"));
+        assert_sample_near(v2, expected_v2, &format!("integrator v2 step {step}"));
+    }
+}
+
+#[test]
+fn one_pole_integrator_matches_reference() {
+    let mut integrator = OnePoleIntegrator::default();
+    let mut reference = RefOnePole::default();
+
+    for (step, &(g, _, input)) in SECTION_STEPS.iter().enumerate() {
+        let lp = integrator.tick(g as Sample, input as Sample);
+
+        assert_sample_near(
+            lp,
+            reference.tick(g, input),
+            &format!("one-pole step {step}"),
+        );
+    }
+}
+
+#[test]
+fn two_pole_sections_match_reference() {
+    let mut low_pass = LowPass::default();
+    let mut high_pass = HighPass::default();
+    let mut band_pass = BandPass::default();
+    let mut notch = Notch::default();
+    let mut low_ref = RefIntegrator::default();
+    let mut high_ref = RefIntegrator::default();
+    let mut band_ref = RefIntegrator::default();
+    let mut notch_ref = RefIntegrator::default();
+
+    for (step, &(g, k, input)) in SECTION_STEPS.iter().enumerate() {
+        let g_s = g as Sample;
+        let k_s = k as Sample;
+        let input_s = input as Sample;
+
+        let (_v1, low) = low_ref.tick(g, k, input);
+        let (v1, v2) = high_ref.tick(g, k, input);
+        let (band_v1, _v2) = band_ref.tick(g, k, input);
+        let (notch_v1, _v2) = notch_ref.tick(g, k, input);
+
+        assert_sample_near(
+            low_pass.tick(g_s, k_s, input_s),
+            low,
+            &format!("lowpass step {step}"),
+        );
+        assert_sample_near(
+            high_pass.tick(g_s, k_s, input_s),
+            input - k * v1 - v2,
+            &format!("highpass step {step}"),
+        );
+        assert_sample_near(
+            band_pass.tick(g_s, k_s, input_s),
+            k * band_v1,
+            &format!("bandpass step {step}"),
+        );
+        assert_sample_near(
+            notch.tick(g_s, k_s, input_s),
+            input - k * notch_v1,
+            &format!("notch step {step}"),
+        );
+    }
+}
+
+#[test]
+fn peaking_section_matches_reference() {
+    for gain in [1.0_f64, 4.0, 0.25, 0.0, -1.0] {
+        let mut peaking = Peaking::default();
+        let mut reference = RefIntegrator::default();
+        let clamped = gain.max(1e-4);
+        let k_scale = clamped.sqrt();
+
+        for (step, &(g, k, input)) in SECTION_STEPS.iter().enumerate() {
+            let (v1, _v2) = reference.tick(g, k / k_scale, input);
+            let expected = input + (clamped - 1.0) * (k / k_scale) * v1;
+
+            assert_sample_near(
+                peaking.tick(g as Sample, k as Sample, gain as Sample, input as Sample),
+                expected,
+                &format!("peaking gain={gain} step {step}"),
+            );
+        }
+    }
+}
+
+#[test]
+fn shelf_sections_match_reference() {
+    for (label, coeffs_for) in [
+        ("section", RefShelf::new as fn(f64) -> RefShelf),
+        ("cascaded", RefShelf::cascaded as fn(f64) -> RefShelf),
+    ] {
+        for gain in [1.0_f64, 4.0, 0.25, 0.0, -1.0] {
+            let coeffs = coeffs_for(gain);
+            let shelf = if label == "section" {
+                ShelfCoeffs::new(gain as Sample)
+            } else {
+                ShelfCoeffs::cascaded(gain as Sample)
+            };
+            let mut low_shelf = LowShelf::default();
+            let mut high_shelf = HighShelf::default();
+            let mut low_ref = RefIntegrator::default();
+            let mut high_ref = RefIntegrator::default();
+
+            for (step, &(g, k, input)) in SECTION_STEPS.iter().enumerate() {
+                let (low_v1, low_v2) = low_ref.tick(g / coeffs.sqrt_a, k, input);
+                let (high_v1, high_v2) = high_ref.tick(g * coeffs.sqrt_a, k, input);
+                let low = input + (coeffs.a - 1.0) * k * low_v1 + (coeffs.gain - 1.0) * low_v2;
+                let high = coeffs.gain * input
+                    + (coeffs.a - coeffs.gain) * k * high_v1
+                    + (1.0 - coeffs.gain) * high_v2;
+
+                assert_sample_near(
+                    low_shelf.tick(g as Sample, k as Sample, shelf, input as Sample),
+                    low,
+                    &format!("lowshelf {label} gain={gain} step {step}"),
+                );
+                assert_sample_near(
+                    high_shelf.tick(g as Sample, k as Sample, shelf, input as Sample),
+                    high,
+                    &format!("highshelf {label} gain={gain} step {step}"),
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn one_pole_sections_match_reference() {
+    let mut low_pass = OnePoleLowPass::default();
+    let mut high_pass = OnePoleHighPass::default();
+    let mut low_ref = RefOnePole::default();
+    let mut high_ref = RefOnePole::default();
+
+    for (step, &(g, _, input)) in SECTION_STEPS.iter().enumerate() {
+        let low = low_ref.tick(g, input);
+        let high = input - high_ref.tick(g, input);
+
+        assert_sample_near(
+            low_pass.tick(g as Sample, input as Sample),
+            low,
+            &format!("one-pole lowpass step {step}"),
+        );
+        assert_sample_near(
+            high_pass.tick(g as Sample, input as Sample),
+            high,
+            &format!("one-pole highpass step {step}"),
+        );
     }
 }

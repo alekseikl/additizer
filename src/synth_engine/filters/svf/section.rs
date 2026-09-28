@@ -2,7 +2,7 @@ use crate::synth_engine::Sample;
 
 /// Trapezoidal integrator pair shared by every two-pole section.
 #[derive(Default, Clone, Copy)]
-struct Integrator {
+pub(super) struct Integrator {
     ic1eq: Sample,
     ic2eq: Sample,
 }
@@ -10,14 +10,14 @@ struct Integrator {
 impl Integrator {
     /// Returns `(v1, v2)` for input `v0`.
     #[inline(always)]
-    fn tick(&mut self, g: Sample, k: Sample, v0: Sample) -> (Sample, Sample) {
-        let a1 = 1.0 / (1.0 + g * (g + k));
+    pub(super) fn tick(&mut self, g: Sample, k: Sample, v0: Sample) -> (Sample, Sample) {
+        let a1 = 1.0 / g.mul_add(g + k, 1.0);
         let v3 = v0 - self.ic2eq;
-        let v1 = a1 * (self.ic1eq + g * v3);
-        let v2 = self.ic2eq + g * v1;
+        let v1 = a1 * g.mul_add(v3, self.ic1eq);
+        let v2 = g.mul_add(v1, self.ic2eq);
 
-        self.ic1eq = 2.0 * v1 - self.ic1eq;
-        self.ic2eq = 2.0 * v2 - self.ic2eq;
+        self.ic1eq = v1.mul_add(2.0, -self.ic1eq);
+        self.ic2eq = v2.mul_add(2.0, -self.ic2eq);
 
         (v1, v2)
     }
@@ -25,13 +25,13 @@ impl Integrator {
 
 /// One-pole integrator. `tick` returns the lowpass.
 #[derive(Default, Clone, Copy)]
-struct OnePoleIntegrator {
+pub(super) struct OnePoleIntegrator {
     s: Sample,
 }
 
 impl OnePoleIntegrator {
     #[inline(always)]
-    fn tick(&mut self, g: Sample, input: Sample) -> Sample {
+    pub(super) fn tick(&mut self, g: Sample, input: Sample) -> Sample {
         let g = g / (1.0 + g);
         let v = (input - self.s) * g;
         let lp = v + self.s;
@@ -66,7 +66,7 @@ impl HighPass {
     pub(super) fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample {
         let (v1, v2) = self.integrator.tick(g, k, input);
 
-        input - k * v1 - v2
+        k.mul_add(-v1, input) - v2
     }
 }
 
@@ -94,7 +94,7 @@ impl Notch {
     pub(super) fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample {
         let (v1, _v2) = self.integrator.tick(g, k, input);
 
-        input - k * v1
+        k.mul_add(-v1, input)
     }
 }
 
@@ -110,7 +110,7 @@ impl Peaking {
         let k = k / gain.sqrt();
         let (v1, _v2) = self.integrator.tick(g, k, input);
         // Passband stays at unity; `gain` is the level at the cutoff.
-        input + (gain - 1.0) * k * v1
+        ((gain - 1.0) * k).mul_add(v1, input)
     }
 }
 
@@ -161,7 +161,7 @@ impl LowShelf {
         // Poles sit at fc / √A so the shelf centers on the cutoff.
         let (v1, v2) = self.integrator.tick(g / coeffs.sqrt_a, k, input);
 
-        input + (coeffs.a - 1.0) * k * v1 + (coeffs.gain - 1.0) * v2
+        (coeffs.gain - 1.0).mul_add(v2, ((coeffs.a - 1.0) * k).mul_add(v1, input))
     }
 }
 
@@ -182,7 +182,10 @@ impl HighShelf {
         // Poles sit at fc * √A so the shelf centers on the cutoff.
         let (v1, v2) = self.integrator.tick(g * coeffs.sqrt_a, k, input);
 
-        coeffs.gain * input + (coeffs.a - coeffs.gain) * k * v1 + (1.0 - coeffs.gain) * v2
+        (1.0 - coeffs.gain).mul_add(
+            v2,
+            ((coeffs.a - coeffs.gain) * k).mul_add(v1, coeffs.gain * input),
+        )
     }
 }
 
