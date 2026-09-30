@@ -21,9 +21,16 @@ const SLOPE_HEIGHT: f32 = 2.0;
 const DB_SPAN: f32 = MAX_LEVEL_DB - MIN_LEVEL_DB;
 const ZERO_DB_LEVEL: f32 = -MIN_LEVEL_DB / DB_SPAN;
 
-/// Hue when a harmonic sits on the sawtooth phase. Bars below 0 dB turn this hue by the phase offset.
+/// Below 0 dB when phase sits on sawtooth (angle zero).
 const ATTENUATED_COLOR: Hsva = hsva(0.567, 1.0, 0.35, 1.0);
+/// Above 0 dB, independent of phase.
 const AMPLIFIED_COLOR: Hsva = hsva(0.02, 0.88, 0.55, 1.0);
+/// 90° from sawtooth.
+const PHASE_GREEN: Hsva = hsva(1.0 / 3.0, 1.0, 0.5, 1.0);
+/// 180° from sawtooth.
+const PHASE_RED: Hsva = hsva(0.0, 1.0, 0.5, 1.0);
+/// 270° from sawtooth.
+const PHASE_YELLOW: Hsva = hsva(1.0 / 6.0, 1.0, 0.55, 1.0);
 
 const PLACEHOLDER_BARS: usize = 128;
 const PLACEHOLDER_COLOR: Color32 = Color32::from_rgb(36, 38, 50);
@@ -31,14 +38,15 @@ const PLACEHOLDER_COLOR: Color32 = Color32::from_rgb(36, 38, 50);
 #[derive(Clone, Copy, Default)]
 struct Column {
     level: f32,
-    hue: f32,
+    /// Turns from sawtooth phase, in `0..1`. Sawtooth is angle zero.
+    phase: f32,
 }
 
 impl Column {
     fn new(harmonic: usize, bin: ComplexSample) -> Self {
         Self {
             level: level_from_bin(harmonic, bin),
-            hue: attenuated_hue(harmonic, bin),
+            phase: phase_turns(harmonic, bin),
         }
     }
 }
@@ -109,7 +117,7 @@ impl FrequencyBins {
                 rect.left() + col as f32,
                 column.level,
                 next_level,
-                attenuated_color(column.hue),
+                attenuated_color(column.phase),
             );
         }
     }
@@ -171,17 +179,29 @@ fn level_from_bin(harmonic: usize, bin: ComplexSample) -> f32 {
     ((gain_to_db(amplitude) - MIN_LEVEL_DB) / DB_SPAN).clamp(0.0, 1.0)
 }
 
-/// `ATTENUATED_COLOR` hue, turned by this harmonic's phase offset from sawtooth (turns).
-fn attenuated_hue(harmonic: usize, bin: ComplexSample) -> f32 {
+/// Turns from sawtooth phase, in `0..1`. Sawtooth is angle zero.
+fn phase_turns(harmonic: usize, bin: ComplexSample) -> f32 {
     let phase = (bin.arg() / TAU).rem_euclid(1.0);
-    (ATTENUATED_COLOR.h + phase - sawtooth_phase(harmonic)).rem_euclid(1.0)
+    (phase - sawtooth_phase(harmonic)).rem_euclid(1.0)
 }
 
-fn attenuated_color(hue: f32) -> Color32 {
-    Color32::from(Hsva {
-        h: hue,
-        ..ATTENUATED_COLOR
-    })
+/// Color at and below 0 dB for a phase offset in turns.
+///
+/// 0° is [`ATTENUATED_COLOR`], then green, red, and yellow at 90°, 180°, and 270°,
+/// blended in gamma between those stops. Above 0 dB stays [`AMPLIFIED_COLOR`].
+fn attenuated_color(turns: f32) -> Color32 {
+    let turns = turns.rem_euclid(1.0);
+    let (from, to, t) = if turns < 0.25 {
+        (ATTENUATED_COLOR, PHASE_GREEN, turns * 4.0)
+    } else if turns < 0.5 {
+        (PHASE_GREEN, PHASE_RED, (turns - 0.25) * 4.0)
+    } else if turns < 0.75 {
+        (PHASE_RED, PHASE_YELLOW, (turns - 0.5) * 4.0)
+    } else {
+        (PHASE_YELLOW, ATTENUATED_COLOR, (turns - 0.75) * 4.0)
+    };
+
+    Color32::from(from).lerp_to_gamma(Color32::from(to), t)
 }
 
 /// Screen-space height gap between two normalized levels is under [`SLOPE_HEIGHT`].
@@ -243,7 +263,7 @@ impl BarMesh {
         }
     }
 
-    /// One column whose top edge runs from `level` to `next_level`; `AMPLIFIED_COLOR` above 0 dB.
+    /// One column whose top edge runs from `level` to `next_level`; [`AMPLIFIED_COLOR`] above 0 dB.
     fn column(&mut self, x: f32, level: f32, next_level: f32, attenuated: Color32) {
         let left_y = self.bottom - level * self.height;
         let right_y = self.bottom - next_level * self.height;

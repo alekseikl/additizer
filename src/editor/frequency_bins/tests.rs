@@ -109,34 +109,54 @@ fn shared_column_keeps_the_louder_bin() {
     bins.accumulate_columns(&spectrum, column_count);
 
     assert!((bins.columns[col].level - level_from_bin(loud_h, loud)).abs() < 1e-6);
-    assert!((bins.columns[col].hue - attenuated_hue(loud_h, loud)).abs() < 1e-5);
+    assert!((bins.columns[col].phase - phase_turns(loud_h, loud)).abs() < 1e-5);
 }
 
 #[test]
-fn sawtooth_phase_keeps_the_attenuated_hue() {
+fn sawtooth_phase_uses_the_zero_colors() {
     let harmonic = 3;
     let phase = sawtooth_phase(harmonic);
     let bin = ComplexSample::from_polar(1.0, phase * TAU);
 
-    let hue = attenuated_hue(harmonic, bin);
+    let attenuated = attenuated_color(phase_turns(harmonic, bin));
 
-    assert!((hue - ATTENUATED_COLOR.h).abs() < 1e-5, "hue {hue}");
+    assert_eq!(attenuated, Color32::from(ATTENUATED_COLOR));
 }
 
 #[test]
-fn hue_turns_with_the_phase_offset_from_sawtooth() {
+fn phase_color_hits_green_red_and_yellow() {
     let harmonic = 4;
-    let turn = 0.3;
-    let phase = sawtooth_phase(harmonic) + turn;
-    let bin = ComplexSample::from_polar(1.0, phase * TAU);
+    let cases = [
+        (0.25, PHASE_GREEN),
+        (0.5, PHASE_RED),
+        (0.75, PHASE_YELLOW),
+    ];
 
-    let hue = attenuated_hue(harmonic, bin);
-    let expected = (ATTENUATED_COLOR.h + turn).rem_euclid(1.0);
+    for (turn, expected) in cases {
+        let phase = sawtooth_phase(harmonic) + turn;
+        let bin = ComplexSample::from_polar(1.0, phase * TAU);
+        let attenuated = attenuated_color(phase_turns(harmonic, bin));
 
-    assert!(
-        (hue - expected).abs() < 1e-5,
-        "hue {hue} expected {expected}"
-    );
+        assert_eq!(attenuated, Color32::from(expected), "turn {turn}");
+    }
+}
+
+#[test]
+fn phase_color_interpolates_between_stops() {
+    let mid = attenuated_color(0.125);
+    let expected = Color32::from(ATTENUATED_COLOR).lerp_to_gamma(PHASE_GREEN.into(), 0.5);
+
+    assert_eq!(mid, expected);
+
+    let mid = attenuated_color(0.625);
+    let expected = Color32::from(PHASE_RED).lerp_to_gamma(PHASE_YELLOW.into(), 0.5);
+
+    assert_eq!(mid, expected);
+
+    let mid = attenuated_color(0.875);
+    let expected = Color32::from(PHASE_YELLOW).lerp_to_gamma(ATTENUATED_COLOR.into(), 0.5);
+
+    assert_eq!(mid, expected);
 }
 
 #[test]
@@ -179,7 +199,7 @@ fn feather_is_centered_on_the_top_edge() {
 fn bar_crossing_zero_db_splits_into_two_colors() {
     let rect = Rect::from_min_size(Pos2::ZERO, egui::vec2(10.0, 100.0));
     let mut bars = BarMesh::new(rect, 0.0);
-    let attenuated = attenuated_color(ATTENUATED_COLOR.h);
+    let attenuated = attenuated_color(0.0);
     let below = ZERO_DB_LEVEL - 0.01;
     let above = ZERO_DB_LEVEL + 0.01;
 

@@ -185,13 +185,14 @@ impl SpectralBandSelect {
         if to <= from {
             output.fill(ComplexSample::ZERO);
         } else {
-            let from = from as usize;
-            let to = to as usize;
+            let range = (from as usize)..(to as usize);
 
-            for (i, (out, &inp)) in output.iter_mut().zip(input).enumerate() {
-                let keep = i >= DC_OFFSET && (from..to).contains(&i);
-
-                *out = if keep { inp } else { ComplexSample::ZERO };
+            for (i, (out, &inp)) in output.iter_mut().zip(input).enumerate().skip(DC_OFFSET) {
+                *out = if range.contains(&i) {
+                    inp
+                } else {
+                    ComplexSample::ZERO
+                };
             }
         }
 

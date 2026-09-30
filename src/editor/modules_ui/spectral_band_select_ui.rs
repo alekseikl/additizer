@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-use egui::{ComboBox, DragValue, Grid, Ui};
+use egui::{ComboBox, DragValue, Ui};
 
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, units::Units},
@@ -52,85 +52,72 @@ impl SpectralBandSelectUi {
 
         ui.add_space(16.0);
 
-        Grid::new(("spectral_band_select", module_id))
-            .num_columns(2)
-            .spacing([40.0, 24.0])
-            .striped(true)
-            .show(ui, |ui| {
-                ui.label("Select");
-                ComboBox::from_id_salt(("spectral-band-select-mode", module_id))
-                    .selected_text(config.mode.label())
-                    .show_ui(ui, |ui| {
-                        for mode in BandSelectMode::ALL {
-                            if ui
-                                .selectable_value(&mut config.mode, mode, mode.label())
-                                .changed()
-                            {
-                                select_bridge.set_mode(config.mode);
-                            }
-                        }
-                    });
-                ui.end_row();
-
-                ui.label(match config.mode {
-                    BandSelectMode::Harmonic => "Harmonics",
-                    BandSelectMode::Frequency => "Frequency",
-                });
-                ui.horizontal(|ui| {
-                    let from_changed = match config.mode {
-                        BandSelectMode::Harmonic => ui
-                            .add(
-                                DragValue::new(&mut config.harmonic_from)
-                                    .range(MIN_HARMONIC..=config.harmonic_to.min(MAX_HARMONIC)),
-                            )
-                            .changed(),
-                        BandSelectMode::Frequency => ui
-                            .add(Self::freq_drag(
-                                &mut config.freq_from,
-                                MIN_BAND_HZ..=config.freq_to,
-                            ))
-                            .changed(),
-                    };
-                    ui.label("—");
-                    let to_changed = match config.mode {
-                        BandSelectMode::Harmonic => ui
-                            .add(
-                                DragValue::new(&mut config.harmonic_to)
-                                    .range(config.harmonic_from..=MAX_HARMONIC_END),
-                            )
-                            .changed(),
-                        BandSelectMode::Frequency => ui
-                            .add(Self::freq_drag(
-                                &mut config.freq_to,
-                                config.freq_from..=MAX_BAND_HZ,
-                            ))
-                            .changed(),
-                    };
-
-                    if from_changed {
-                        match config.mode {
-                            BandSelectMode::Harmonic => {
-                                select_bridge.set_harmonic_from(config.harmonic_from);
-                            }
-                            BandSelectMode::Frequency => {
-                                select_bridge.set_freq_from(config.freq_from);
-                            }
-                        }
-                    }
-
-                    if to_changed {
-                        match config.mode {
-                            BandSelectMode::Harmonic => {
-                                select_bridge.set_harmonic_to(config.harmonic_to);
-                            }
-                            BandSelectMode::Frequency => {
-                                select_bridge.set_freq_to(config.freq_to);
-                            }
+        ui.horizontal(|ui| {
+            ComboBox::from_id_salt(("spectral-band-select-mode", module_id))
+                .selected_text(config.mode.label())
+                .show_ui(ui, |ui| {
+                    for mode in BandSelectMode::ALL {
+                        if ui
+                            .selectable_value(&mut config.mode, mode, mode.label())
+                            .changed()
+                        {
+                            select_bridge.set_mode(config.mode);
                         }
                     }
                 });
-                ui.end_row();
-            });
+
+            let from_changed = match config.mode {
+                BandSelectMode::Harmonic => ui
+                    .add(
+                        DragValue::new(&mut config.harmonic_from)
+                            .range(MIN_HARMONIC..=config.harmonic_to.min(MAX_HARMONIC)),
+                    )
+                    .changed(),
+                BandSelectMode::Frequency => ui
+                    .add(Self::freq_drag(
+                        &mut config.freq_from,
+                        MIN_BAND_HZ..=config.freq_to,
+                    ))
+                    .changed(),
+            };
+            ui.label("—");
+            let to_changed = match config.mode {
+                BandSelectMode::Harmonic => ui
+                    .add(
+                        DragValue::new(&mut config.harmonic_to)
+                            .range(config.harmonic_from..=MAX_HARMONIC_END),
+                    )
+                    .changed(),
+                BandSelectMode::Frequency => ui
+                    .add(Self::freq_drag(
+                        &mut config.freq_to,
+                        config.freq_from..=MAX_BAND_HZ,
+                    ))
+                    .changed(),
+            };
+
+            if from_changed {
+                match config.mode {
+                    BandSelectMode::Harmonic => {
+                        select_bridge.set_harmonic_from(config.harmonic_from);
+                    }
+                    BandSelectMode::Frequency => {
+                        select_bridge.set_freq_from(config.freq_from);
+                    }
+                }
+            }
+
+            if to_changed {
+                match config.mode {
+                    BandSelectMode::Harmonic => {
+                        select_bridge.set_harmonic_to(config.harmonic_to);
+                    }
+                    BandSelectMode::Frequency => {
+                        select_bridge.set_freq_to(config.freq_to);
+                    }
+                }
+            }
+        });
     }
 
     fn freq_drag(freq_hz: &mut Sample, range: RangeInclusive<Sample>) -> DragValue<'_> {
