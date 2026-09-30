@@ -28,6 +28,7 @@ use crate::{
 mod bin_slider;
 mod control_meter;
 mod fit_label;
+mod frequency_bins;
 mod grid;
 mod module_label;
 mod modules_ui;

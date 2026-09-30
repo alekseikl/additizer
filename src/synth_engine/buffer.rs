@@ -99,8 +99,8 @@ impl ValueBuffer {
     }
 }
 
-pub fn copy_to_display_spectrum(dst: &mut DisplaySpectrum, src: &[ComplexSample]) {
-    let len = src.len().min(DISPLAY_SPECTRUM_SIZE);
+pub fn copy_to_display_spectrum(dst: &mut [ComplexSample], src: &[ComplexSample]) {
+    let len = src.len().min(dst.len());
 
     dst[..len].copy_from_slice(&src[..len]);
     dst[len..].fill(ComplexSample::ZERO);

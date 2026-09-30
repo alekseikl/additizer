@@ -21,7 +21,7 @@ use crate::synth_engine::{
 };
 
 pub use buffer::{
-    Buffer, DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, SPECTRAL_BUFFER_SIZE, SpectralBuffer,
+    Buffer, DC_OFFSET, DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, SPECTRAL_BUFFER_SIZE, SpectralBuffer,
 };
 pub use config::{EngineConfig, EngineParams, LinkConfig, MAX_BANDWIDTH, ModuleConfig};
 pub use module_handle::ModuleType;

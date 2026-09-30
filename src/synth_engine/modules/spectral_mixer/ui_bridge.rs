@@ -1,5 +1,5 @@
 use crate::synth_engine::{
-    DisplaySpectrum, Input, MixType, StereoSample, VolumeType, synth_module::ModuleUiBridge,
+    Input, MixType, StereoSample, VolumeType, synth_module::ModuleUiBridge, types::ComplexSample,
 };
 
 use super::link::{UiEnd, UiUpdate};
@@ -22,7 +22,7 @@ impl SpectralMixerUiBridge {
         &self.config
     }
 
-    pub fn get_spectrum(&mut self) -> &DisplaySpectrum {
+    pub fn get_spectrum(&mut self) -> &[ComplexSample] {
         self.ui_end.get_spectrum()
     }
 
