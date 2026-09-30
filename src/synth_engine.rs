@@ -27,7 +27,8 @@ pub use config::{EngineConfig, EngineParams, LinkConfig, MAX_BANDWIDTH, ModuleCo
 pub use module_handle::ModuleType;
 pub use modules::{
     Amplifier, Envelope, Expressions, ExternalParam, Lfo, LfoShape, Mixer, Oscillator, Pitch,
-    ShaperType, SpectralBlend, SpectralEq, SpectralFilter, SpectralMixer, Svf, WaveShaper,
+    ShaperType, SpectralBandSelect, SpectralBlend, SpectralEq, SpectralFilter, SpectralMixer, Svf,
+    WaveShaper,
     amplifier::{self},
     envelope::{self},
     expressions::{self},
@@ -37,6 +38,7 @@ pub use modules::{
     mixer::{self},
     oscillator::{self},
     pitch::{self},
+    spectral_band_select::{self},
     spectral_blend::{self},
     spectral_eq::{self},
     spectral_filter::{self},
@@ -178,6 +180,9 @@ impl SynthEngine {
                 ModuleConfig::SpectralEq(cfg) => {
                     ModuleHandle::SpectralEq(Box::new(SpectralEq::from_config(cfg)))
                 }
+                ModuleConfig::SpectralBandSelect(cfg) => {
+                    ModuleHandle::SpectralBandSelect(Box::new(SpectralBandSelect::from_config(cfg)))
+                }
                 ModuleConfig::SpectralBlend(cfg) => {
                     ModuleHandle::SpectralBlend(Box::new(SpectralBlend::from_config(cfg)))
                 }
@@ -253,6 +258,9 @@ impl SynthEngine {
                     }
                     ModuleHandle::SpectralEq(m) => {
                         Some(ModuleConfig::SpectralEq(Box::new(m.get_config())))
+                    }
+                    ModuleHandle::SpectralBandSelect(m) => {
+                        Some(ModuleConfig::SpectralBandSelect(Box::new(m.get_config())))
                     }
                     ModuleHandle::SpectralBlend(m) => {
                         Some(ModuleConfig::SpectralBlend(Box::new(m.get_config())))
@@ -396,6 +404,7 @@ impl SynthEngine {
     add_module_method!(add_svf, Svf);
     add_module_method!(add_spectral_filter, SpectralFilter);
     add_module_method!(add_spectral_eq, SpectralEq);
+    add_module_method!(add_spectral_band_select, SpectralBandSelect);
     add_module_method!(add_spectral_blend, SpectralBlend);
     add_module_method!(add_spectral_mixer, SpectralMixer);
     add_module_method!(add_harmonic_editor, HarmonicEditor);

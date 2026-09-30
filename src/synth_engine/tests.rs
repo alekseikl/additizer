@@ -1701,13 +1701,14 @@ fn runtime_add_all_module_types() {
         engine.add_wave_shaper(),
         engine.add_spectral_filter(),
         engine.add_spectral_blend(),
+        engine.add_spectral_band_select(),
         engine.add_spectral_mixer(),
         engine.add_expressions(),
         engine.add_external_param(),
         engine.add_svf(),
     ];
 
-    assert_eq!(ids.len(), 13);
+    assert_eq!(ids.len(), 14);
     assert!(matches!(
         engine.get_module(ids[0]),
         Some(ModuleHandle::HarmonicEditor(_))
@@ -1746,18 +1747,22 @@ fn runtime_add_all_module_types() {
     ));
     assert!(matches!(
         engine.get_module(ids[9]),
-        Some(ModuleHandle::SpectralMixer(_))
+        Some(ModuleHandle::SpectralBandSelect(_))
     ));
     assert!(matches!(
         engine.get_module(ids[10]),
-        Some(ModuleHandle::Expressions(_))
+        Some(ModuleHandle::SpectralMixer(_))
     ));
     assert!(matches!(
         engine.get_module(ids[11]),
-        Some(ModuleHandle::ExternalParam(_))
+        Some(ModuleHandle::Expressions(_))
     ));
     assert!(matches!(
         engine.get_module(ids[12]),
+        Some(ModuleHandle::ExternalParam(_))
+    ));
+    assert!(matches!(
+        engine.get_module(ids[13]),
         Some(ModuleHandle::Svf(_))
     ));
 }

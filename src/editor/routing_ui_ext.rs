@@ -275,6 +275,7 @@ impl ModuleType {
             Self::Oscillator => "Oscillator",
             Self::SpectralFilter => "Spectral Filter",
             Self::SpectralEq => "Spectral EQ",
+            Self::SpectralBandSelect => "Band Select",
             Self::SpectralBlend => "Spectral Blend",
             Self::SpectralMixer => "Spectral Mixer",
             Self::HarmonicEditor => "Harmonics",

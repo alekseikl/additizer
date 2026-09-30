@@ -14,6 +14,7 @@ Every slider in the UI is stereo, and each channel can be adjusted by dragging w
 - `Spectral EQ`: Chains up to 16 spectral filters.
 - `Spectral Mixer`: Mixes multiple spectral inputs with per-input level/gain and output volume control.
 - `Spectral Blend`: Crossfades between two spectrums with a blend control.
+- `Band Select`: Passes a half-open range of harmonics.
 - `Oscillator`: Takes a spectral input, performs an inverse FFT, and then behaves like a wavetable oscillator.
   Supports up to 16 unison voices, each of which is stereo. The phase and gain of each unison voice can be controlled via a stereo slider.
   Controls that can be modulated: gain, pitch, frequency (through-zero FM), phase, detune, detune power (pitch distribution),
