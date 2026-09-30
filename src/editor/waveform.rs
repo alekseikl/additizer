@@ -5,6 +5,9 @@ use realfft::{ComplexToReal, RealFftPlanner};
 
 use crate::synth_engine::{ComplexSample, Sample};
 
+#[cfg(test)]
+mod tests;
+
 /// Pre-allocated inverse-FFT state that turns a display spectrum into a time-domain
 /// waveform for grid tiles (oscillator, harmonic editor, …).
 pub struct WaveformBuilder {
@@ -72,6 +75,7 @@ const LINE_WIDTH: f32 = 1.0;
 pub struct WaveformOptions {
     /// When true, append a point at t = 1 that wraps to the first sample.
     pub close_period: bool,
+    /// When true, shrink peaks that exceed the view so they fit. Peaks already inside stay put.
     pub normalize: bool,
     /// Stroke / tint color for the waveform.
     pub color: Color32,
@@ -124,18 +128,19 @@ fn build_curve_points(
     points
 }
 
-/// Scale the curve's vertical deviation from the center so its peak fills the view.
+/// Shrink the curve toward the center when its peak exceeds the view. Peaks that already fit are left as-is.
 fn normalize_points(rect: Rect, points: &mut [Pos2]) {
     let center_y = rect.center().y;
+    let half_height = rect.height() * 0.5;
     let peak = points
         .iter()
         .fold(0.0_f32, |acc, p| acc.max((p.y - center_y).abs()));
 
-    if peak <= 1e-6 {
+    if peak <= half_height {
         return;
     }
 
-    let scale = rect.height() * 0.5 / peak;
+    let scale = half_height / peak;
     for p in points.iter_mut() {
         p.y = center_y + (p.y - center_y) * scale;
     }
@@ -213,54 +218,4 @@ pub fn paint_waveform_with_options(
     }
 
     paint_stroke(painter, &points, options);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use egui::Vec2;
-
-    #[test]
-    fn normalizes_points_to_fill_height() {
-        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(4.0, 100.0));
-        let center_y = rect.center().y;
-        let mut points = vec![
-            Pos2::new(0.0, center_y - 10.0),
-            Pos2::new(1.0, center_y + 20.0),
-            Pos2::new(2.0, center_y - 5.0),
-        ];
-
-        normalize_points(rect, &mut points);
-
-        // The peak deviation (20.0) should now reach half the height (50.0).
-        assert!((points[1].y - (center_y + 50.0)).abs() < f32::EPSILON);
-        assert!((points[0].y - (center_y - 25.0)).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn unipolar_maps_zero_to_bottom_one_to_top() {
-        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(100.0, 50.0));
-        assert!((sample_to_y(rect, 0.0, false) - rect.bottom()).abs() < f32::EPSILON);
-        assert!((sample_to_y(rect, 1.0, false) - rect.top()).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn close_period_endpoints_match() {
-        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(10.0, 100.0));
-        let waveform = [0.5f32, -0.2, -0.8, 0.1];
-        let points = build_curve_points(rect, &waveform, true, true);
-
-        assert!((points[0].y - points[points.len() - 1].y).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn open_period_omits_wrap() {
-        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(10.0, 100.0));
-        let waveform = [0.5f32, -0.2, -0.8, 0.1];
-        let points = build_curve_points(rect, &waveform, true, false);
-
-        assert_eq!(points.len(), waveform.len());
-        let last_t = (waveform.len() - 1) as f32 / waveform.len() as f32;
-        assert!((points.last().unwrap().x - (rect.left() + last_t * rect.width())).abs() < 1e-5);
-    }
 }
