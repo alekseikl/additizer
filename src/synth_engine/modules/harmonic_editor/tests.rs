@@ -45,6 +45,55 @@ fn sawtooth_phases_sets_sawtooth_pattern_and_keeps_amplitudes() {
 }
 
 #[test]
+fn random_phases_assigns_uniform_phases_and_keeps_amplitudes() {
+    let mut editor = HarmonicEditor::new(SRC_ID);
+    let before = editor.get_config();
+
+    editor.random_phases();
+
+    let after = editor.get_config();
+
+    for channel in 0..NUM_CHANNELS {
+        assert_eq!(after.amplitudes[channel], before.amplitudes[channel]);
+        assert_eq!(after.phases[channel][0], 0.0);
+
+        for &phase in after.phases[channel].iter().skip(1) {
+            assert!((0.0..1.0).contains(&phase));
+        }
+
+        assert!(
+            after.phases[channel]
+                .iter()
+                .skip(1)
+                .any(|&phase| phase != 0.0)
+        );
+    }
+
+    assert_eq!(after.phases[0], after.phases[1]);
+}
+
+#[test]
+fn random_phases_stereo_differs_per_channel() {
+    let mut editor = HarmonicEditor::new(SRC_ID);
+    let before = editor.get_config();
+
+    editor.random_phases_stereo();
+
+    let after = editor.get_config();
+
+    for channel in 0..NUM_CHANNELS {
+        assert_eq!(after.amplitudes[channel], before.amplitudes[channel]);
+        assert_eq!(after.phases[channel][0], 0.0);
+
+        for &phase in after.phases[channel].iter().skip(1) {
+            assert!((0.0..1.0).contains(&phase));
+        }
+    }
+
+    assert_ne!(after.phases[0], after.phases[1]);
+}
+
+#[test]
 fn frequency_bin_round_trips_amplitude_and_phase() {
     for (idx, amp, phase) in [
         (1, 1.0, 0.0),

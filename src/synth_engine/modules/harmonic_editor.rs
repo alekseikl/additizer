@@ -518,6 +518,46 @@ impl HarmonicEditor {
             .publish_harmonics(&self.amplitudes, &self.phases);
     }
 
+    /// Each harmonic gets a uniform random phase in turns, shared by both channels. DC stays at 0.
+    pub fn random_phases(&mut self) {
+        self.assign_random_phases(false);
+    }
+
+    /// Each harmonic gets an independent uniform random phase per channel. DC stays at 0.
+    pub fn random_phases_stereo(&mut self) {
+        self.assign_random_phases(true);
+    }
+
+    fn assign_random_phases(&mut self, stereo: bool) {
+        {
+            let rng = &mut self.random;
+            Self::fill_random_phases(&mut self.phases[LEFT_CHANNEL][..], rng);
+
+            if stereo {
+                Self::fill_random_phases(&mut self.phases[RIGHT_CHANNEL][..], rng);
+            }
+        }
+
+        if !stereo {
+            let [left, right] = &mut self.phases;
+            right.copy_from_slice(&left[..]);
+        }
+
+        self.rebuild_harmonics();
+        self.audio_end
+            .publish_harmonics(&self.amplitudes, &self.phases);
+    }
+
+    fn fill_random_phases(phases: &mut [Sample], rng: &mut Pcg32) {
+        if let Some(dc_phase) = phases.first_mut() {
+            *dc_phase = 0.0;
+        }
+
+        for phase in phases.iter_mut().skip(DC_OFFSET) {
+            *phase = rng.random::<Sample>();
+        }
+    }
+
     fn process_voice(
         &mut self,
         target: &VoiceTarget,
@@ -604,6 +644,12 @@ impl SynthModule for HarmonicEditor {
                 }
                 UiEvent::SawtoothPhases => {
                     self.sawtooth_phases();
+                }
+                UiEvent::RandomPhases => {
+                    self.random_phases();
+                }
+                UiEvent::RandomPhasesStereo => {
+                    self.random_phases_stereo();
                 }
                 UiEvent::EditRequest(request) => {
                     self.apply_edit_request(request);

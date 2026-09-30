@@ -52,6 +52,8 @@ pub enum UiEvent {
     ResetSawtooth,
     ZeroPhases,
     SawtoothPhases,
+    RandomPhases,
+    RandomPhasesStereo,
     EditRequest(EditRequest),
     ApplyDraft,
     DiscardDraft,
@@ -109,6 +111,14 @@ impl UiEnd {
 
     pub fn sawtooth_phases(&mut self) -> bool {
         self.tx.push(UiEvent::SawtoothPhases).is_ok()
+    }
+
+    pub fn random_phases(&mut self) -> bool {
+        self.tx.push(UiEvent::RandomPhases).is_ok()
+    }
+
+    pub fn random_phases_stereo(&mut self) -> bool {
+        self.tx.push(UiEvent::RandomPhasesStereo).is_ok()
     }
 
     pub fn edit_request(&mut self, request: EditRequest) -> bool {

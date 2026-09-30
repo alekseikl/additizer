@@ -274,6 +274,14 @@ impl HarmonicEditorUI {
                 editor_bridge.sawtooth_phases();
             }
 
+            if ui.button("Random phases").clicked() {
+                editor_bridge.random_phases();
+            }
+
+            if ui.button("Random phases (stereo)").clicked() {
+                editor_bridge.random_phases_stereo();
+            }
+
             if ui.button("Edit").clicked() {
                 let state = EditFormState::default();
                 editor_bridge.edit_request(state.to_request());

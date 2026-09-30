@@ -84,6 +84,14 @@ impl HarmonicEditorUiBridge {
         self.ui_end.sawtooth_phases();
     }
 
+    pub fn random_phases(&mut self) {
+        self.ui_end.random_phases();
+    }
+
+    pub fn random_phases_stereo(&mut self) {
+        self.ui_end.random_phases_stereo();
+    }
+
     pub fn edit_request(&mut self, request: EditRequest) {
         self.ui_end.edit_request(request);
     }
