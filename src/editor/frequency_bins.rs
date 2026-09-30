@@ -12,6 +12,8 @@ use crate::{
 mod tests;
 
 const BAR_WIDTH: f32 = 1.0;
+/// Adjacent columns closer than this, in points, get a sloped top toward the next column.
+const SLOPE_HEIGHT: f32 = 2.0;
 
 const DB_SPAN: f32 = MAX_LEVEL_DB - MIN_LEVEL_DB;
 const ZERO_DB_LEVEL: f32 = -MIN_LEVEL_DB / DB_SPAN;
@@ -69,21 +71,50 @@ impl FrequencyBins {
         let bottom = rect.bottom();
         let height = rect.height();
         let zero_y = bottom - ZERO_DB_LEVEL * height;
+        let feather = Self::feather_width(painter);
 
-        for (col, column) in self.columns.iter().enumerate() {
+        for col in 0..self.columns.len() {
+            let column = self.columns[col];
+
             if column.level <= 0.0 {
                 continue;
             }
 
             let x = rect.left() + col as f32;
-            let y = bottom - column.level * height;
             let attenuated = Self::attenuated_color(column.hue);
+            let next_level = self
+                .columns
+                .get(col + 1)
+                .map(|next| next.level)
+                .filter(|level| *level > 0.0);
 
-            if column.level > ZERO_DB_LEVEL {
-                Self::push_bar(&mut mesh, x, y, zero_y, AMPLIFIED_COLOR.into());
-                Self::push_bar(&mut mesh, x, zero_y, bottom, attenuated);
+            if let Some(next_level) = next_level
+                .filter(|next_level| Self::within_slope_height(column.level, *next_level, height))
+            {
+                Self::paint_sloped_bar(
+                    &mut mesh,
+                    x,
+                    BAR_WIDTH,
+                    column.level,
+                    next_level,
+                    bottom,
+                    height,
+                    zero_y,
+                    attenuated,
+                    feather,
+                );
             } else {
-                Self::push_bar(&mut mesh, x, y, bottom, attenuated);
+                Self::paint_bar(
+                    &mut mesh,
+                    x,
+                    BAR_WIDTH,
+                    column.level,
+                    bottom,
+                    height,
+                    zero_y,
+                    attenuated,
+                    feather,
+                );
             }
         }
 
@@ -190,6 +221,7 @@ impl FrequencyBins {
             Self::push_bar(
                 &mut mesh,
                 rect.left() + col as f32,
+                BAR_WIDTH,
                 zero_y,
                 bottom,
                 PLACEHOLDER_COLOR,
@@ -201,18 +233,206 @@ impl FrequencyBins {
         }
     }
 
-    fn push_bar(mesh: &mut Mesh, x: f32, top: f32, bottom: f32, color: Color32) {
-        if bottom - top <= 0.0 {
+    /// Screen-space height gap between two normalized levels is under [`SLOPE_HEIGHT`].
+    fn within_slope_height(level: f32, next: f32, plot_height: f32) -> bool {
+        let delta = (level - next).abs() * plot_height;
+        delta > 0.0 && delta < SLOPE_HEIGHT
+    }
+
+    /// Fraction along the top edge where a slope crosses `zero_y`.
+    fn slope_cross_t(left_y: f32, right_y: f32, zero_y: f32) -> f32 {
+        ((zero_y - left_y) / (right_y - left_y)).clamp(0.0, 1.0)
+    }
+
+    /// Feather width in points: one physical pixel, same as egui's tessellator.
+    fn feather_width(painter: &Painter) -> f32 {
+        let pixels_per_point = painter.pixels_per_point();
+
+        if pixels_per_point <= 0.0 {
+            return 0.0;
+        }
+
+        painter.ctx().tessellation_options(|options| {
+            if options.feathering {
+                options.feathering_size_in_pixels / pixels_per_point
+            } else {
+                0.0
+            }
+        })
+    }
+
+    /// Outer (transparent) and inner (opaque) y of a feather centered on `edge_y`.
+    fn feather_ys(edge_y: f32, floor: f32, feather: f32) -> (f32, f32) {
+        let half = feather * 0.5;
+        (edge_y - half, (edge_y + half).min(floor))
+    }
+
+    fn paint_bar(
+        mesh: &mut Mesh,
+        x: f32,
+        width: f32,
+        level: f32,
+        bottom: f32,
+        height: f32,
+        zero_y: f32,
+        attenuated: Color32,
+        feather: f32,
+    ) {
+        let y = bottom - level * height;
+        let right = x + width;
+
+        if level > ZERO_DB_LEVEL {
+            Self::paint_feathered_span(
+                mesh,
+                x,
+                y,
+                right,
+                y,
+                zero_y,
+                AMPLIFIED_COLOR.into(),
+                feather,
+            );
+            Self::push_trapezoid(mesh, x, zero_y, right, zero_y, bottom, attenuated);
+        } else {
+            Self::paint_feathered_span(mesh, x, y, right, y, bottom, attenuated, feather);
+        }
+    }
+
+    /// One column whose top edge runs from `level` to `next_level`.
+    fn paint_sloped_bar(
+        mesh: &mut Mesh,
+        x: f32,
+        width: f32,
+        level: f32,
+        next_level: f32,
+        bottom: f32,
+        height: f32,
+        zero_y: f32,
+        attenuated: Color32,
+        feather: f32,
+    ) {
+        let left_y = bottom - level * height;
+        let right_y = bottom - next_level * height;
+        let right = x + width;
+        let amplified = AMPLIFIED_COLOR.into();
+        let left_above = left_y < zero_y;
+        let right_above = right_y < zero_y;
+
+        if !left_above && !right_above {
+            Self::paint_feathered_span(
+                mesh, x, left_y, right, right_y, bottom, attenuated, feather,
+            );
+            return;
+        }
+
+        if left_above && right_above {
+            Self::paint_feathered_span(mesh, x, left_y, right, right_y, zero_y, amplified, feather);
+            Self::push_trapezoid(mesh, x, zero_y, right, zero_y, bottom, attenuated);
+            return;
+        }
+
+        let cross_x = x + Self::slope_cross_t(left_y, right_y, zero_y) * width;
+
+        if left_above {
+            Self::paint_feathered_span(
+                mesh, x, left_y, cross_x, zero_y, zero_y, amplified, feather,
+            );
+            Self::push_trapezoid(mesh, x, zero_y, cross_x, zero_y, bottom, attenuated);
+            Self::paint_feathered_span(
+                mesh, cross_x, zero_y, right, right_y, bottom, attenuated, feather,
+            );
+        } else {
+            Self::paint_feathered_span(
+                mesh, cross_x, zero_y, right, right_y, zero_y, amplified, feather,
+            );
+            Self::paint_feathered_span(
+                mesh, x, left_y, cross_x, zero_y, bottom, attenuated, feather,
+            );
+            Self::push_trapezoid(mesh, cross_x, zero_y, right, zero_y, bottom, attenuated);
+        }
+    }
+
+    /// Filled span with egui-style feathering: a gradient into transparency centered on the top edge.
+    fn paint_feathered_span(
+        mesh: &mut Mesh,
+        left: f32,
+        left_top: f32,
+        right: f32,
+        right_top: f32,
+        floor: f32,
+        color: Color32,
+        feather: f32,
+    ) {
+        if right - left <= 0.0 {
+            return;
+        }
+
+        let (outer_left, inner_left) = Self::feather_ys(left_top, floor, feather);
+        let (outer_right, inner_right) = Self::feather_ys(right_top, floor, feather);
+
+        Self::push_trapezoid(mesh, left, inner_left, right, inner_right, floor, color);
+
+        if feather <= 0.0 {
+            return;
+        }
+
+        Self::push_colored_quad(
+            mesh,
+            Pos2::new(left, outer_left),
+            Color32::TRANSPARENT,
+            Pos2::new(right, outer_right),
+            Color32::TRANSPARENT,
+            Pos2::new(right, inner_right),
+            color,
+            Pos2::new(left, inner_left),
+            color,
+        );
+    }
+
+    fn push_bar(mesh: &mut Mesh, x: f32, width: f32, top: f32, bottom: f32, color: Color32) {
+        Self::push_trapezoid(mesh, x, top, x + width, top, bottom, color);
+    }
+
+    fn push_trapezoid(
+        mesh: &mut Mesh,
+        left: f32,
+        left_top: f32,
+        right: f32,
+        right_top: f32,
+        bottom: f32,
+        color: Color32,
+    ) {
+        if right - left <= 0.0 || (bottom - left_top <= 0.0 && bottom - right_top <= 0.0) {
             return;
         }
 
         let i = mesh.vertices.len() as u32;
-        let right = x + BAR_WIDTH;
 
-        mesh.colored_vertex(Pos2::new(x, top), color);
-        mesh.colored_vertex(Pos2::new(right, top), color);
+        mesh.colored_vertex(Pos2::new(left, left_top), color);
+        mesh.colored_vertex(Pos2::new(right, right_top), color);
         mesh.colored_vertex(Pos2::new(right, bottom), color);
-        mesh.colored_vertex(Pos2::new(x, bottom), color);
+        mesh.colored_vertex(Pos2::new(left, bottom), color);
+        mesh.add_triangle(i, i + 1, i + 2);
+        mesh.add_triangle(i, i + 2, i + 3);
+    }
+
+    fn push_colored_quad(
+        mesh: &mut Mesh,
+        a: Pos2,
+        a_color: Color32,
+        b: Pos2,
+        b_color: Color32,
+        c: Pos2,
+        c_color: Color32,
+        d: Pos2,
+        d_color: Color32,
+    ) {
+        let i = mesh.vertices.len() as u32;
+
+        mesh.colored_vertex(a, a_color);
+        mesh.colored_vertex(b, b_color);
+        mesh.colored_vertex(c, c_color);
+        mesh.colored_vertex(d, d_color);
         mesh.add_triangle(i, i + 1, i + 2);
         mesh.add_triangle(i, i + 2, i + 3);
     }

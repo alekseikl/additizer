@@ -106,6 +106,58 @@ fn sawtooth_phase_keeps_the_attenuated_hue() {
 }
 
 #[test]
+fn close_columns_slope_toward_the_next() {
+    let current = 0.40;
+    let next = 0.44;
+    let plot_height = 40.0;
+
+    assert!(FrequencyBins::within_slope_height(
+        current,
+        next,
+        plot_height
+    ));
+    assert!(!FrequencyBins::within_slope_height(
+        current,
+        0.0,
+        plot_height
+    ));
+    assert!(!FrequencyBins::within_slope_height(
+        current,
+        current,
+        plot_height
+    ));
+    assert!(!FrequencyBins::within_slope_height(
+        current,
+        0.50,
+        plot_height
+    ));
+
+    let bottom = 100.0;
+    let left_y = bottom - current * plot_height;
+    let right_y = bottom - next * plot_height;
+    let zero_y = (left_y + right_y) * 0.5;
+
+    assert!((FrequencyBins::slope_cross_t(left_y, right_y, zero_y) - 0.5).abs() < 1e-5);
+}
+
+#[test]
+fn feather_is_centered_on_the_top_edge() {
+    let top = 40.0;
+    let floor = 100.0;
+    let feather = 0.5;
+
+    let (outer, inner) = FrequencyBins::feather_ys(top, floor, feather);
+
+    assert!((outer - (top - feather * 0.5)).abs() < 1e-6);
+    assert!((inner - (top + feather * 0.5)).abs() < 1e-6);
+
+    let (outer, inner) = FrequencyBins::feather_ys(floor - 0.1, floor, feather);
+
+    assert!((inner - floor).abs() < 1e-6);
+    assert!(outer < floor - 0.1);
+}
+
+#[test]
 fn hue_turns_with_the_phase_offset_from_sawtooth() {
     let harmonic = 4;
     let turn = 0.3;
