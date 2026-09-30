@@ -1,56 +1,34 @@
-use egui::ecolor::Hsva;
+use egui::emath::GuiRounding;
 
 use crate::{
-    editor::{
-        grid::WidgetCtx,
-        waveform::{WaveformBuilder, WaveformOptions},
-    },
-    synth_engine::{
-        DISPLAY_SPECTRUM_SIZE, ModuleId, harmonic_editor::HarmonicEditorUiBridge,
-        ui_bridge::ModuleBridge,
-    },
+    editor::{frequency_bins::FrequencyBins, grid::WidgetCtx},
+    synth_engine::{ModuleId, harmonic_editor::HarmonicEditorUiBridge, ui_bridge::ModuleBridge},
 };
 
 use super::GridWidgetContent;
 
-const WAVE_PADDING: f32 = 4.0;
-const WAVE_COLOR: Hsva = Hsva {
-    h: 0.567,
-    s: 1.0,
-    v: 0.5,
-    a: 1.0,
-};
+const PADDING: f32 = 4.0;
 
+#[derive(Default)]
 pub struct HarmonicEditorWidget {
-    waveform: WaveformBuilder,
-}
-
-impl Default for HarmonicEditorWidget {
-    fn default() -> Self {
-        Self {
-            waveform: WaveformBuilder::new(DISPLAY_SPECTRUM_SIZE),
-        }
-    }
+    bins: FrequencyBins,
 }
 
 impl HarmonicEditorWidget {
     fn editor_ui(&mut self, ui: &mut egui::Ui, editor_bridge: &mut HarmonicEditorUiBridge) {
         let size = ui.available_size();
         let response = ui.allocate_response(size, egui::Sense::hover());
-        let rect = response.rect.shrink2(egui::vec2(0.0, WAVE_PADDING));
-        let painter = ui.painter();
+        let rect = response
+            .rect
+            .shrink2(egui::vec2(0.0, PADDING))
+            .round_to_pixels(ui.pixels_per_point());
 
-        if ui.is_rect_visible(rect) {
-            self.waveform.build_and_paint(
-                painter,
-                rect,
-                editor_bridge.get_display_spectrum(),
-                WaveformOptions {
-                    color: WAVE_COLOR.into(),
-                    ..Default::default()
-                },
-            );
+        if !rect.is_positive() || !ui.is_rect_visible(rect) {
+            return;
         }
+
+        self.bins
+            .paint(ui.painter(), rect, editor_bridge.get_display_spectrum());
     }
 }
 
