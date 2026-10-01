@@ -37,6 +37,8 @@ pub enum SvfType {
     HighPass24,
     BandPass6,
     BandPass12,
+    BandPass18,
+    BandPass24,
     Peaking,
     Notch,
     LowShelf12,
@@ -131,6 +133,20 @@ pub(crate) struct BandPass6 {
 #[derive(Default, Clone, Copy)]
 pub(crate) struct BandPass12 {
     pre_stage: BandPass,
+    resonant: BandPass,
+}
+
+/// 18 dB/oct. Two pre stages at `pre_k`, then the resonant stage.
+#[derive(Default, Clone, Copy)]
+pub(crate) struct BandPass18 {
+    pre_stages: [BandPass; 2],
+    resonant: BandPass,
+}
+
+/// 24 dB/oct. Three pre stages at `pre_k`, then the resonant stage.
+#[derive(Default, Clone, Copy)]
+pub(crate) struct BandPass24 {
+    pre_stages: [BandPass; 3],
     resonant: BandPass,
 }
 
@@ -237,6 +253,27 @@ impl SvfFilter for BandPass12 {
     }
 }
 
+impl SvfFilter for BandPass18 {
+    #[inline(always)]
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        let x = self.pre_stages[0].tick(p.g, p.pre_k, p.input * p.gain);
+        let x = self.pre_stages[1].tick(p.g, p.pre_k, x);
+
+        self.resonant.tick(p.g, p.k, x)
+    }
+}
+
+impl SvfFilter for BandPass24 {
+    #[inline(always)]
+    fn tick(&mut self, p: &TickParams) -> Sample {
+        let x = self.pre_stages[0].tick(p.g, p.pre_k, p.input * p.gain);
+        let x = self.pre_stages[1].tick(p.g, p.pre_k, x);
+        let x = self.pre_stages[2].tick(p.g, p.pre_k, x);
+
+        self.resonant.tick(p.g, p.k, x)
+    }
+}
+
 impl SvfFilter for Peaking {
     #[inline(always)]
     fn tick(&mut self, p: &TickParams) -> Sample {
@@ -298,6 +335,8 @@ pub(crate) enum SvfState {
     HighPass24(HighPass24),
     BandPass6(BandPass6),
     BandPass12(BandPass12),
+    BandPass18(BandPass18),
+    BandPass24(BandPass24),
     Peaking(Peaking),
     Notch(Notch),
     LowShelf12(LowShelf12),
@@ -323,6 +362,8 @@ impl SvfState {
             SvfType::HighPass24 => Self::HighPass24(HighPass24::default()),
             SvfType::BandPass6 => Self::BandPass6(BandPass6::default()),
             SvfType::BandPass12 => Self::BandPass12(BandPass12::default()),
+            SvfType::BandPass18 => Self::BandPass18(BandPass18::default()),
+            SvfType::BandPass24 => Self::BandPass24(BandPass24::default()),
             SvfType::Peaking => Self::Peaking(Peaking::default()),
             SvfType::Notch => Self::Notch(Notch::default()),
             SvfType::LowShelf12 => Self::LowShelf12(LowShelf12::default()),
@@ -342,6 +383,8 @@ impl SvfState {
             Self::HighPass24(_) => SvfType::HighPass24,
             Self::BandPass6(_) => SvfType::BandPass6,
             Self::BandPass12(_) => SvfType::BandPass12,
+            Self::BandPass18(_) => SvfType::BandPass18,
+            Self::BandPass24(_) => SvfType::BandPass24,
             Self::Peaking(_) => SvfType::Peaking,
             Self::Notch(_) => SvfType::Notch,
             Self::LowShelf12(_) => SvfType::LowShelf12,

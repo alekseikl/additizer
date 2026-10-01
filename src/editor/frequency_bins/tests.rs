@@ -120,16 +120,16 @@ fn sawtooth_phase_uses_the_zero_colors() {
 
     let attenuated = attenuated_color(phase_turns(harmonic, bin));
 
-    assert_eq!(attenuated, Color32::from(ATTENUATED_COLOR));
+    assert_eq!(attenuated, Color32::from(PHASE_0_COLOR));
 }
 
 #[test]
 fn phase_color_hits_green_red_and_yellow() {
     let harmonic = 4;
     let cases = [
-        (0.25, PHASE_GREEN),
-        (0.5, PHASE_RED),
-        (0.75, PHASE_YELLOW),
+        (0.25, PHASE_90_COLOR),
+        (0.5, PHASE_180_COLOR),
+        (0.75, PHASE_270_COLOR),
     ];
 
     for (turn, expected) in cases {
@@ -144,17 +144,17 @@ fn phase_color_hits_green_red_and_yellow() {
 #[test]
 fn phase_color_interpolates_between_stops() {
     let mid = attenuated_color(0.125);
-    let expected = Color32::from(ATTENUATED_COLOR).lerp_to_gamma(PHASE_GREEN.into(), 0.5);
+    let expected = Color32::from(PHASE_0_COLOR).lerp_to_gamma(PHASE_90_COLOR.into(), 0.5);
 
     assert_eq!(mid, expected);
 
     let mid = attenuated_color(0.625);
-    let expected = Color32::from(PHASE_RED).lerp_to_gamma(PHASE_YELLOW.into(), 0.5);
+    let expected = Color32::from(PHASE_180_COLOR).lerp_to_gamma(PHASE_270_COLOR.into(), 0.5);
 
     assert_eq!(mid, expected);
 
     let mid = attenuated_color(0.875);
-    let expected = Color32::from(PHASE_YELLOW).lerp_to_gamma(ATTENUATED_COLOR.into(), 0.5);
+    let expected = Color32::from(PHASE_270_COLOR).lerp_to_gamma(PHASE_0_COLOR.into(), 0.5);
 
     assert_eq!(mid, expected);
 }

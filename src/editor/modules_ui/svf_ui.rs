@@ -11,7 +11,7 @@ use crate::{
 };
 
 impl SvfType {
-    pub(crate) const ALL: [Self; 14] = [
+    pub(crate) const ALL: [Self; 16] = [
         Self::LowPass12,
         Self::LowPass18,
         Self::LowPass24,
@@ -20,6 +20,8 @@ impl SvfType {
         Self::HighPass24,
         Self::BandPass6,
         Self::BandPass12,
+        Self::BandPass18,
+        Self::BandPass24,
         Self::Peaking,
         Self::Notch,
         Self::LowShelf12,
@@ -38,6 +40,8 @@ impl SvfType {
             Self::HighPass24 => "Highpass 24",
             Self::BandPass6 => "Bandpass 6",
             Self::BandPass12 => "Bandpass 12",
+            Self::BandPass18 => "Bandpass 18",
+            Self::BandPass24 => "Bandpass 24",
             Self::Peaking => "Peaking",
             Self::Notch => "Notch",
             Self::LowShelf12 => "Lowshelf 12",

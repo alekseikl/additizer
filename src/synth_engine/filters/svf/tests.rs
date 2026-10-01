@@ -153,7 +153,12 @@ fn analog_prototype_dc_and_cutoff_gains() {
     }
 
     // Normalized band-pass stages are unity at the cutoff for any Q.
-    for filter_type in [SvfType::BandPass6, SvfType::BandPass12] {
+    for filter_type in [
+        SvfType::BandPass6,
+        SvfType::BandPass12,
+        SvfType::BandPass18,
+        SvfType::BandPass24,
+    ] {
         for q in [0.5, 4.0, 16.0] {
             assert!(
                 (analog_gain(filter_type, q, CUTOFF) - 1.0).abs() < 1e-5,
@@ -194,6 +199,8 @@ fn steeper_types_roll_off_faster() {
     assert!(gain(SvfType::LowPass12) > gain(SvfType::LowPass18));
     assert!(gain(SvfType::LowPass18) > gain(SvfType::LowPass24));
     assert!(gain(SvfType::BandPass6) > gain(SvfType::BandPass12));
+    assert!(gain(SvfType::BandPass12) > gain(SvfType::BandPass18));
+    assert!(gain(SvfType::BandPass18) > gain(SvfType::BandPass24));
 
     let near = CUTOFF / 8.0;
     let gain = |filter_type| analog_gain(filter_type, FLAT_Q, near);

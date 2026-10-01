@@ -116,6 +116,16 @@ impl SvfResponse {
             SvfType::BandPass12 => {
                 Self::band_pass(q.recip(), s) * Self::band_pass(pre_q.recip(), s)
             }
+            SvfType::BandPass18 => {
+                let pre = Self::band_pass(pre_q.recip(), s);
+
+                pre * pre * Self::band_pass(q.recip(), s)
+            }
+            SvfType::BandPass24 => {
+                let pre = Self::band_pass(pre_q.recip(), s);
+
+                pre * pre * pre * Self::band_pass(q.recip(), s)
+            }
             SvfType::Peaking => Self::peaking(q, gain, s),
             SvfType::Notch => Self::notch(q, s),
             SvfType::LowShelf12 => Self::low_shelf(q, gain, s),
