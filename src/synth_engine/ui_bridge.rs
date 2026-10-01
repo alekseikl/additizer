@@ -589,6 +589,30 @@ impl UiBridge {
         id
     }
 
+    pub fn duplicate_module(&mut self, module_id: ModuleId, position: GridVec) -> Option<ModuleId> {
+        let mut synth = self.engine.lock();
+        let id = synth.duplicate_module(module_id)?;
+
+        self.routing = synth.get_routing_state();
+        drop(synth);
+
+        Self::insert_module_bridge(id, &self.engine, &mut self.module_bridges);
+
+        let label = self.get_module_label(module_id);
+        let mut ui_config = self.ui_config.lock();
+
+        ui_config.modules.insert(
+            id,
+            UiModuleConfig {
+                id,
+                label,
+                position,
+            },
+        );
+
+        Some(id)
+    }
+
     pub fn remove_module(&mut self, module_id: ModuleId) {
         let mut synth = self.engine.lock();
 

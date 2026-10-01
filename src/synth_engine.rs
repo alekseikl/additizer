@@ -116,7 +116,8 @@ macro_rules! add_module_method {
 
             self.outputs_arena.allocate_slot(&mut module);
             self.modules.insert(id, module);
-            self.execution_order.push(id);
+            self.refresh_routing()
+                .expect("routing should be consistent after a module is added");
             id
         }
     };
@@ -157,51 +158,7 @@ impl SynthEngine {
         let mut max_module_id = MIN_MODULE_ID;
 
         for module_cfg in cfg.modules.iter() {
-            let mut module = match module_cfg {
-                ModuleConfig::Oscillator(cfg) => {
-                    ModuleHandle::Oscillator(Box::new(Oscillator::from_config(cfg)))
-                }
-                ModuleConfig::Envelope(cfg) => {
-                    ModuleHandle::Envelope(Box::new(Envelope::from_config(cfg)))
-                }
-                ModuleConfig::Lfo(cfg) => ModuleHandle::Lfo(Box::new(Lfo::from_config(cfg))),
-                ModuleConfig::Pitch(cfg) => ModuleHandle::Pitch(Box::new(Pitch::from_config(cfg))),
-                ModuleConfig::Amplifier(cfg) => {
-                    ModuleHandle::Amplifier(Box::new(Amplifier::from_config(cfg)))
-                }
-                ModuleConfig::Mixer(cfg) => ModuleHandle::Mixer(Box::new(Mixer::from_config(cfg))),
-                ModuleConfig::WaveShaper(cfg) => {
-                    ModuleHandle::WaveShaper(Box::new(WaveShaper::from_config(cfg)))
-                }
-                ModuleConfig::Svf(cfg) => ModuleHandle::Svf(Box::new(Svf::from_config(cfg))),
-                ModuleConfig::SpectralFilter(cfg) => {
-                    ModuleHandle::SpectralFilter(Box::new(SpectralFilter::from_config(cfg)))
-                }
-                ModuleConfig::SpectralEq(cfg) => {
-                    ModuleHandle::SpectralEq(Box::new(SpectralEq::from_config(cfg)))
-                }
-                ModuleConfig::SpectralBandSelect(cfg) => {
-                    ModuleHandle::SpectralBandSelect(Box::new(SpectralBandSelect::from_config(cfg)))
-                }
-                ModuleConfig::SpectralBlend(cfg) => {
-                    ModuleHandle::SpectralBlend(Box::new(SpectralBlend::from_config(cfg)))
-                }
-                ModuleConfig::SpectralMixer(cfg) => {
-                    ModuleHandle::SpectralMixer(Box::new(SpectralMixer::from_config(cfg)))
-                }
-                ModuleConfig::HarmonicEditor(cfg) => {
-                    ModuleHandle::HarmonicEditor(Box::new(HarmonicEditor::from_config(cfg)))
-                }
-                ModuleConfig::SpectralNoise(cfg) => {
-                    ModuleHandle::SpectralNoise(Box::new(SpectralNoise::from_config(cfg)))
-                }
-                ModuleConfig::Expressions(cfg) => {
-                    ModuleHandle::Expressions(Box::new(Expressions::from_config(cfg)))
-                }
-                ModuleConfig::ExternalParam(cfg) => {
-                    ModuleHandle::ExternalParam(Box::new(ExternalParam::from_config(cfg)))
-                }
-            };
+            let mut module = ModuleHandle::from_config(module_cfg);
 
             let module_id = module.id();
 
@@ -233,55 +190,7 @@ impl SynthEngine {
 
         let modules = module_ids
             .iter()
-            .filter_map(|&id| {
-                let module = self.modules.get(&id)?;
-                match module {
-                    ModuleHandle::Output(_) => None,
-                    ModuleHandle::Oscillator(m) => {
-                        Some(ModuleConfig::Oscillator(Box::new(m.get_config())))
-                    }
-                    ModuleHandle::Envelope(m) => {
-                        Some(ModuleConfig::Envelope(Box::new(m.get_config())))
-                    }
-                    ModuleHandle::Lfo(m) => Some(ModuleConfig::Lfo(Box::new(m.get_config()))),
-                    ModuleHandle::Pitch(m) => Some(ModuleConfig::Pitch(Box::new(m.get_config()))),
-                    ModuleHandle::Amplifier(m) => {
-                        Some(ModuleConfig::Amplifier(Box::new(m.get_config())))
-                    }
-                    ModuleHandle::Mixer(m) => Some(ModuleConfig::Mixer(Box::new(m.get_config()))),
-                    ModuleHandle::WaveShaper(m) => {
-                        Some(ModuleConfig::WaveShaper(Box::new(m.get_config())))
-                    }
-                    ModuleHandle::Svf(m) => Some(ModuleConfig::Svf(Box::new(m.get_config()))),
-                    ModuleHandle::SpectralFilter(m) => {
-                        Some(ModuleConfig::SpectralFilter(Box::new(m.get_config())))
-                    }
-                    ModuleHandle::SpectralEq(m) => {
-                        Some(ModuleConfig::SpectralEq(Box::new(m.get_config())))
-                    }
-                    ModuleHandle::SpectralBandSelect(m) => {
-                        Some(ModuleConfig::SpectralBandSelect(Box::new(m.get_config())))
-                    }
-                    ModuleHandle::SpectralBlend(m) => {
-                        Some(ModuleConfig::SpectralBlend(Box::new(m.get_config())))
-                    }
-                    ModuleHandle::SpectralMixer(m) => {
-                        Some(ModuleConfig::SpectralMixer(Box::new(m.get_config())))
-                    }
-                    ModuleHandle::HarmonicEditor(m) => {
-                        Some(ModuleConfig::HarmonicEditor(Box::new(m.get_config())))
-                    }
-                    ModuleHandle::SpectralNoise(m) => {
-                        Some(ModuleConfig::SpectralNoise(Box::new(m.get_config())))
-                    }
-                    ModuleHandle::Expressions(m) => {
-                        Some(ModuleConfig::Expressions(Box::new(m.get_config())))
-                    }
-                    ModuleHandle::ExternalParam(m) => {
-                        Some(ModuleConfig::ExternalParam(Box::new(m.get_config())))
-                    }
-                }
-            })
+            .filter_map(|id| self.modules.get(id).and_then(ModuleHandle::config))
             .collect();
 
         EngineConfig {
@@ -411,6 +320,22 @@ impl SynthEngine {
     add_module_method!(add_spectral_noise, SpectralNoise);
     add_module_method!(add_expressions, Expressions);
     add_module_method!(add_external_param, ExternalParam);
+
+    pub fn duplicate_module(&mut self, id: ModuleId) -> Option<ModuleId> {
+        let mut config = self.modules.get(&id)?.config()?;
+        let new_id = self.alloc_module_id();
+
+        config.set_id(new_id);
+
+        let mut module = ModuleHandle::from_config(&config);
+
+        self.outputs_arena.allocate_slot(&mut module);
+        self.modules.insert(new_id, module);
+        self.refresh_routing()
+            .expect("routing should be consistent after a module is added");
+
+        Some(new_id)
+    }
 
     pub fn remove_module(&mut self, id: ModuleId) {
         let Some(module) = self.modules.get(&id) else {

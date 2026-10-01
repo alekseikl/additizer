@@ -203,6 +203,10 @@ impl GridWidget {
         self.drag_offset
     }
 
+    pub(super) fn body_grid_size(&self) -> GridVec {
+        self.content.grid_size()
+    }
+
     pub fn grid_size(&self) -> GridVec {
         let size = self.content.grid_size();
         // Height required by inputs
@@ -326,6 +330,11 @@ impl GridWidget {
         let module_id = self.io.id;
 
         response.context_menu(|ui| {
+            if ui.button("Duplicate").clicked() {
+                ctx.events.push(GridEvent::Duplicate(module_id));
+                ui.close();
+            }
+
             if ui.button("Remove").clicked() {
                 ctx.bridge.remove_module(module_id);
                 ui.close();

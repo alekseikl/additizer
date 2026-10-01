@@ -146,6 +146,30 @@ pub enum ModuleConfig {
     ExternalParam(Box<ExternalParamConfig>),
 }
 
+impl ModuleConfig {
+    pub(super) fn set_id(&mut self, id: ModuleId) {
+        match self {
+            Self::Oscillator(cfg) => cfg.id = id,
+            Self::Envelope(cfg) => cfg.id = id,
+            Self::Lfo(cfg) => cfg.id = id,
+            Self::Pitch(cfg) => cfg.id = id,
+            Self::Amplifier(cfg) => cfg.id = id,
+            Self::Mixer(cfg) => cfg.id = id,
+            Self::WaveShaper(cfg) => cfg.id = id,
+            Self::Svf(cfg) => cfg.id = id,
+            Self::SpectralFilter(cfg) => cfg.id = id,
+            Self::SpectralEq(cfg) => cfg.id = id,
+            Self::SpectralBandSelect(cfg) => cfg.id = id,
+            Self::SpectralBlend(cfg) => cfg.id = id,
+            Self::SpectralMixer(cfg) => cfg.id = id,
+            Self::HarmonicEditor(cfg) => cfg.id = id,
+            Self::SpectralNoise(cfg) => cfg.id = id,
+            Self::Expressions(cfg) => cfg.id = id,
+            Self::ExternalParam(cfg) => cfg.id = id,
+        }
+    }
+}
+
 #[derive(Default, Clone, Serialize, Deserialize)]
 pub struct EngineConfig {
     pub engine: EngineParams,

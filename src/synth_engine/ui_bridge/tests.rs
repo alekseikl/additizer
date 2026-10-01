@@ -11,7 +11,7 @@ use crate::{
         oscillator::OscillatorConfig,
         ui_bridge::{
             UiBridge,
-            ui_config::{UiConfig, UiModuleConfig},
+            ui_config::{GridVec, UiConfig, UiModuleConfig},
         },
     },
 };
@@ -190,4 +190,23 @@ fn has_linkable_input_false_for_spectral_into_audio_only_module() {
     let bridge = make_bridge(minimal_engine());
 
     assert!(!bridge.has_linkable_input(HARMONIC_EDITOR_ID, OUTPUT_MODULE_ID));
+}
+
+#[test]
+fn duplicate_module_places_copy_at_the_given_position() {
+    let mut bridge = make_bridge(minimal_engine());
+
+    bridge.set_module_position(OSCILLATOR_ID, GridVec::new(1, 2));
+    bridge.set_module_label(OSCILLATOR_ID, "Lead".into());
+
+    let copy_id = bridge
+        .duplicate_module(OSCILLATOR_ID, GridVec::new(1, 4))
+        .expect("oscillator duplicates");
+
+    assert_eq!(bridge.get_module_position(copy_id), GridVec::new(1, 4));
+    assert_eq!(bridge.get_module_label(copy_id), "Lead");
+    assert_eq!(
+        bridge.get_module_position(OSCILLATOR_ID),
+        GridVec::new(1, 2)
+    );
 }

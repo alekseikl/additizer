@@ -102,6 +102,7 @@ struct WidgetsState {
 pub enum GridEvent {
     Moved(ModuleId),
     Selected(ModuleId),
+    Duplicate(ModuleId),
 }
 
 struct WidgetCtx<'a> {
@@ -162,11 +163,44 @@ impl Grid {
 
     fn process_events(&mut self, bridge: &mut UiBridge) {
         for event in self.events.iter() {
-            if let GridEvent::Moved(module_id) = event {
-                self.resolve_overlaps(Some(*module_id), bridge);
+            match event {
+                GridEvent::Moved(module_id) => self.resolve_overlaps(Some(*module_id), bridge),
+                GridEvent::Duplicate(module_id) => self.place_duplicate(*module_id, bridge),
+                GridEvent::Selected(_) => {}
             }
         }
         self.events.clear();
+    }
+
+    fn place_duplicate(&self, module_id: ModuleId, bridge: &mut UiBridge) {
+        let Some((origin_span, size)) = self
+            .widgets
+            .iter()
+            .find(|widget| widget.module_id() == module_id)
+            .map(|widget| (widget.grid_size(), widget.body_grid_size()))
+        else {
+            return;
+        };
+        let origin = bridge.get_module_position(module_id);
+        let occupied: Vec<GridRect> = self
+            .widgets
+            .iter()
+            .map(|widget| {
+                let position = bridge.get_module_position(widget.module_id());
+                let span = widget.grid_size();
+
+                GridRect {
+                    id: widget.module_id(),
+                    x: position.x,
+                    y: position.y,
+                    w: span.x,
+                    h: span.y,
+                }
+            })
+            .collect();
+        let position = Self::free_position_below(origin, origin_span, size, &occupied);
+
+        bridge.duplicate_module(module_id, position);
     }
 
     pub fn ui(&mut self, ui: &mut Ui, bridge: &mut UiBridge, selected_module_id: Option<ModuleId>) {
@@ -429,6 +463,35 @@ impl Grid {
         }
     }
 
+    fn free_position_below(
+        origin: GridVec,
+        origin_span: GridVec,
+        size: GridVec,
+        occupied: &[GridRect],
+    ) -> GridVec {
+        let mut y = origin.y + origin_span.y;
+
+        loop {
+            let candidate = GridRect {
+                id: 0,
+                x: origin.x,
+                y,
+                w: size.x,
+                h: size.y,
+            };
+            let next_y = occupied
+                .iter()
+                .filter(|rect| rect.overlaps(&candidate))
+                .map(GridRect::bottom)
+                .max();
+
+            match next_y {
+                Some(bottom) => y = bottom,
+                None => return GridVec::new(origin.x, y),
+            }
+        }
+    }
+
     fn trim_partial_cell(span: f32) -> f32 {
         (span / GRID_CELL_SIZE).floor() * GRID_CELL_SIZE
     }
@@ -459,3 +522,6 @@ impl Grid {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

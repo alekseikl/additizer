@@ -699,7 +699,7 @@ fn execution_order_includes_unlinked_modules() {
 }
 
 #[test]
-fn add_module_appends_to_execution_order() {
+fn add_module_joins_execution_order_before_output() {
     let mut engine = make_engine(
         EngineParams::default(),
         OscillatorConfig {
@@ -709,8 +709,68 @@ fn add_module_appends_to_execution_order() {
     );
 
     let lfo_id = engine.add_lfo();
-    assert_eq!(*engine.execution_order.last().unwrap(), lfo_id);
-    assert!(engine.execution_order.contains(&OUTPUT_MODULE_ID));
+    assert!(engine.execution_order.contains(&lfo_id));
+    assert_eq!(*engine.execution_order.last().unwrap(), OUTPUT_MODULE_ID);
+}
+
+fn oscillator_config(engine: &SynthEngine, id: ModuleId) -> OscillatorConfig {
+    match engine.get_module(id) {
+        Some(ModuleHandle::Oscillator(osc)) => osc.get_config(),
+        _ => panic!("expected oscillator {id}"),
+    }
+}
+
+#[test]
+fn duplicate_module_copies_settings_without_links() {
+    let mut engine = make_engine(
+        EngineParams::default(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            unison_voices: 3,
+            steal_phase: true,
+            phase_random: 0.25,
+            mono_spectrum: true,
+            detune: 0.4.into(),
+            ..OscillatorConfig::default()
+        },
+    );
+
+    let copy_id = engine
+        .duplicate_module(OSCILLATOR_ID)
+        .expect("oscillator duplicates");
+
+    assert_ne!(copy_id, OSCILLATOR_ID);
+    assert!(engine.duplicate_module(OUTPUT_MODULE_ID).is_none());
+    assert!(engine.duplicate_module(99).is_none());
+    assert!(engine.execution_order.contains(&copy_id));
+    assert_eq!(*engine.execution_order.last().unwrap(), OUTPUT_MODULE_ID);
+
+    let original = oscillator_config(&engine, OSCILLATOR_ID);
+    let copy = oscillator_config(&engine, copy_id);
+
+    assert_eq!(copy.id, copy_id);
+    assert_eq!(original.unison_voices, copy.unison_voices);
+    assert_eq!(original.steal_phase, copy.steal_phase);
+    assert_eq!(original.phase_random, copy.phase_random);
+    assert_eq!(original.mono_spectrum, copy.mono_spectrum);
+    assert_eq!(original.detune, copy.detune);
+    assert_eq!(original.detune_power, copy.detune_power);
+    assert_eq!(original.phase_shift, copy.phase_shift);
+    assert_eq!(original.frequency_shift, copy.frequency_shift);
+    assert_eq!(original.phases_blend, copy.phases_blend);
+    assert_eq!(original.gains_blend, copy.gains_blend);
+
+    for (left, right) in original.unison.iter().zip(copy.unison.iter()) {
+        assert_eq!(left.initial_phase, right.initial_phase);
+        assert_eq!(left.phase_shift, right.phase_shift);
+        assert_eq!(left.phase_shift_to, right.phase_shift_to);
+        assert_eq!(left.gain, right.gain);
+        assert_eq!(left.gain_to, right.gain_to);
+    }
+
+    assert!(engine.get_config().links.iter().all(|link| {
+        link.src_id() != copy_id && link.dst_id() != copy_id && link.modulator_id() != Some(copy_id)
+    }));
 }
 
 #[test]

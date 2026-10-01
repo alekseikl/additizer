@@ -1,7 +1,7 @@
 use crate::synth_engine::{
-    Amplifier, Envelope, Expressions, ExternalParam, HarmonicEditor, Input, Lfo, Mixer, ModuleId,
-    Oscillator, Pitch, SpectralBandSelect, SpectralBlend, SpectralEq, SpectralFilter,
-    SpectralMixer, SpectralNoise, StereoSample, Svf, VoiceEvent, WaveShaper,
+    Amplifier, Envelope, Expressions, ExternalParam, HarmonicEditor, Input, Lfo, Mixer,
+    ModuleConfig, ModuleId, Oscillator, Pitch, SpectralBandSelect, SpectralBlend, SpectralEq,
+    SpectralFilter, SpectralMixer, SpectralNoise, StereoSample, Svf, VoiceEvent, WaveShaper,
     modules::Output,
     routing::{DataType, InputMeta, InputSlots, ProcessContext, SpectralInputSlot},
     synth_module::SynthModule,
@@ -99,6 +99,75 @@ impl ModuleHandle {
             Self::SpectralNoise(_) => ModuleType::SpectralNoise,
             Self::Expressions(_) => ModuleType::Expressions,
             Self::ExternalParam(_) => ModuleType::ExternalParam,
+        }
+    }
+
+    pub(super) fn from_config(module_cfg: &ModuleConfig) -> Self {
+        match module_cfg {
+            ModuleConfig::Oscillator(cfg) => {
+                Self::Oscillator(Box::new(Oscillator::from_config(cfg)))
+            }
+            ModuleConfig::Envelope(cfg) => Self::Envelope(Box::new(Envelope::from_config(cfg))),
+            ModuleConfig::Lfo(cfg) => Self::Lfo(Box::new(Lfo::from_config(cfg))),
+            ModuleConfig::Pitch(cfg) => Self::Pitch(Box::new(Pitch::from_config(cfg))),
+            ModuleConfig::Amplifier(cfg) => Self::Amplifier(Box::new(Amplifier::from_config(cfg))),
+            ModuleConfig::Mixer(cfg) => Self::Mixer(Box::new(Mixer::from_config(cfg))),
+            ModuleConfig::WaveShaper(cfg) => {
+                Self::WaveShaper(Box::new(WaveShaper::from_config(cfg)))
+            }
+            ModuleConfig::Svf(cfg) => Self::Svf(Box::new(Svf::from_config(cfg))),
+            ModuleConfig::SpectralFilter(cfg) => {
+                Self::SpectralFilter(Box::new(SpectralFilter::from_config(cfg)))
+            }
+            ModuleConfig::SpectralEq(cfg) => {
+                Self::SpectralEq(Box::new(SpectralEq::from_config(cfg)))
+            }
+            ModuleConfig::SpectralBandSelect(cfg) => {
+                Self::SpectralBandSelect(Box::new(SpectralBandSelect::from_config(cfg)))
+            }
+            ModuleConfig::SpectralBlend(cfg) => {
+                Self::SpectralBlend(Box::new(SpectralBlend::from_config(cfg)))
+            }
+            ModuleConfig::SpectralMixer(cfg) => {
+                Self::SpectralMixer(Box::new(SpectralMixer::from_config(cfg)))
+            }
+            ModuleConfig::HarmonicEditor(cfg) => {
+                Self::HarmonicEditor(Box::new(HarmonicEditor::from_config(cfg)))
+            }
+            ModuleConfig::SpectralNoise(cfg) => {
+                Self::SpectralNoise(Box::new(SpectralNoise::from_config(cfg)))
+            }
+            ModuleConfig::Expressions(cfg) => {
+                Self::Expressions(Box::new(Expressions::from_config(cfg)))
+            }
+            ModuleConfig::ExternalParam(cfg) => {
+                Self::ExternalParam(Box::new(ExternalParam::from_config(cfg)))
+            }
+        }
+    }
+
+    pub(super) fn config(&self) -> Option<ModuleConfig> {
+        match self {
+            Self::Output(_) => None,
+            Self::Oscillator(m) => Some(ModuleConfig::Oscillator(Box::new(m.get_config()))),
+            Self::Envelope(m) => Some(ModuleConfig::Envelope(Box::new(m.get_config()))),
+            Self::Lfo(m) => Some(ModuleConfig::Lfo(Box::new(m.get_config()))),
+            Self::Pitch(m) => Some(ModuleConfig::Pitch(Box::new(m.get_config()))),
+            Self::Amplifier(m) => Some(ModuleConfig::Amplifier(Box::new(m.get_config()))),
+            Self::Mixer(m) => Some(ModuleConfig::Mixer(Box::new(m.get_config()))),
+            Self::WaveShaper(m) => Some(ModuleConfig::WaveShaper(Box::new(m.get_config()))),
+            Self::Svf(m) => Some(ModuleConfig::Svf(Box::new(m.get_config()))),
+            Self::SpectralFilter(m) => Some(ModuleConfig::SpectralFilter(Box::new(m.get_config()))),
+            Self::SpectralEq(m) => Some(ModuleConfig::SpectralEq(Box::new(m.get_config()))),
+            Self::SpectralBandSelect(m) => {
+                Some(ModuleConfig::SpectralBandSelect(Box::new(m.get_config())))
+            }
+            Self::SpectralBlend(m) => Some(ModuleConfig::SpectralBlend(Box::new(m.get_config()))),
+            Self::SpectralMixer(m) => Some(ModuleConfig::SpectralMixer(Box::new(m.get_config()))),
+            Self::HarmonicEditor(m) => Some(ModuleConfig::HarmonicEditor(Box::new(m.get_config()))),
+            Self::SpectralNoise(m) => Some(ModuleConfig::SpectralNoise(Box::new(m.get_config()))),
+            Self::Expressions(m) => Some(ModuleConfig::Expressions(Box::new(m.get_config()))),
+            Self::ExternalParam(m) => Some(ModuleConfig::ExternalParam(Box::new(m.get_config()))),
         }
     }
 }
