@@ -1,6 +1,5 @@
-
 use crate::synth_engine::{
-    Input, MixType, StereoSample, VolumeType, types::ComplexSample,
+    Input, MixType, StereoSample, VolumeType, engine_io, types::ComplexSample,
 };
 
 pub enum UiEvent {
@@ -43,6 +42,7 @@ pub trait SpectralMixerUiEnd: Send {
 pub trait SpectralMixerLinks: Send {
     type AudioEnd: SpectralMixerAudioEnd;
     type UiEnd: SpectralMixerUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

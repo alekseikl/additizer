@@ -8,11 +8,11 @@ mod link;
 #[cfg(test)]
 mod tests;
 
+pub use crate::ui_bridge::modules::spectral_eq::SpectralEqUiBridge;
 pub use config::{
     EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MAX_Q, MIN_CUTOFF_HZ, MIN_Q, SpectralEqConfig,
 };
 pub use link::{SpectralEqAudioEnd, SpectralEqLinks, SpectralEqUiEnd, UiEvent};
-pub use crate::ui_bridge::modules::spectral_eq::SpectralEqUiBridge;
 
 use additizer_dsp::filters::{
     control::{MAX_DRIVE, MAX_PRE_Q, MIN_DRIVE},
@@ -233,7 +233,7 @@ impl<L: SpectralEqLinks> SpectralEq<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SpectralOutput>,
-        rf: &mut RouterFactory<SpectralRouterType>,
+        rf: &mut RouterFactory<SpectralRouterType, L::EngineEnd>,
     ) {
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
@@ -289,6 +289,12 @@ impl<L: SpectralEqLinks> SpectralEq<L> {
                 *out *= gain;
             }
         }
+    }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.spectral(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
     }
 }
 
@@ -346,12 +352,5 @@ impl<L: SpectralEqLinks> SynthModule for SpectralEq<L> {
                 UiEvent::MoveFilter { from, to } => self.move_filter(from as usize, to as usize),
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.spectral(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            });
     }
 }

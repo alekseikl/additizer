@@ -1,6 +1,7 @@
-use crate::synth_engine::wave_shaper::{ShaperType, WaveShaper, WaveShaperConfig, WaveShaperLinks, WaveShaperUiEnd};
+use crate::synth_engine::wave_shaper::{
+    ShaperType, WaveShaper, WaveShaperConfig, WaveShaperLinks, WaveShaperUiEnd,
+};
 use crate::synth_engine::{Input, StereoSample, synth_module::ModuleUiBridge};
-
 
 pub struct WaveShaperUiBridge<L: WaveShaperLinks = crate::links::wave_shaper::Links> {
     ui_end: L::UiEnd,

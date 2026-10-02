@@ -19,9 +19,9 @@ use crate::{
 mod config;
 mod link;
 
+pub use crate::ui_bridge::modules::spectral_mixer::SpectralMixerUiBridge;
 pub use config::{MAX_INPUTS, SpectralMixerConfig};
 pub use link::{SpectralMixerAudioEnd, SpectralMixerLinks, SpectralMixerUiEnd, UiEvent, UiUpdate};
-pub use crate::ui_bridge::modules::spectral_mixer::SpectralMixerUiBridge;
 
 struct InputChannelParams {
     level: Sample,
@@ -275,7 +275,7 @@ impl<L: SpectralMixerLinks> SpectralMixer<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SpectralOutput>,
-        rf: &mut RouterFactory<SpectralRouterType>,
+        rf: &mut RouterFactory<SpectralRouterType, L::EngineEnd>,
     ) {
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
@@ -340,6 +340,12 @@ impl<L: SpectralMixerLinks> SpectralMixer<L> {
             self.audio_end.update_spectrum(voice_output);
         }
     }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.spectral(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
+    }
 }
 
 impl<L: SpectralMixerLinks> SynthModule for SpectralMixer<L> {
@@ -402,12 +408,5 @@ impl<L: SpectralMixerLinks> SynthModule for SpectralMixer<L> {
                 }
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.spectral(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            });
     }
 }

@@ -4,12 +4,14 @@ mod link;
 #[cfg(test)]
 mod tests;
 
+pub use crate::ui_bridge::modules::spectral_band_select::SpectralBandSelectUiBridge;
 pub use config::{
     BandSelectMode, MAX_BAND_HZ, MAX_HARMONIC, MAX_HARMONIC_END, MIN_BAND_HZ, MIN_HARMONIC,
     SpectralBandSelectConfig,
 };
-pub use link::{SpectralBandSelectAudioEnd, SpectralBandSelectLinks, SpectralBandSelectUiEnd, UiEvent};
-pub use crate::ui_bridge::modules::spectral_band_select::SpectralBandSelectUiBridge;
+pub use link::{
+    SpectralBandSelectAudioEnd, SpectralBandSelectLinks, SpectralBandSelectUiEnd, UiEvent,
+};
 
 use crate::{
     synth_engine::{
@@ -76,7 +78,9 @@ impl Inputs {
     }
 }
 
-pub struct SpectralBandSelect<L: SpectralBandSelectLinks = crate::links::spectral_band_select::Links> {
+pub struct SpectralBandSelect<
+    L: SpectralBandSelectLinks = crate::links::spectral_band_select::Links,
+> {
     id: ModuleId,
     params: Params,
     audio_end: L::AudioEnd,
@@ -164,7 +168,7 @@ impl<L: SpectralBandSelectLinks> SpectralBandSelect<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SpectralOutput>,
-        rf: &mut RouterFactory<SpectralRouterType>,
+        rf: &mut RouterFactory<SpectralRouterType, L::EngineEnd>,
     ) {
         let (router, mut voice_output) = rf.for_voice(target, outputs);
         let pitch = router
@@ -202,6 +206,12 @@ impl<L: SpectralBandSelectLinks> SpectralBandSelect<L> {
         if router.need_update_ui_mono() {
             self.audio_end.update_spectrum(output);
         }
+    }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.spectral(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
     }
 }
 
@@ -245,12 +255,5 @@ impl<L: SpectralBandSelectLinks> SynthModule for SpectralBandSelect<L> {
                 UiEvent::FreqTo(value) => self.set_freq_to(value),
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.spectral(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            });
     }
 }

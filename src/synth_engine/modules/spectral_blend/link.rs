@@ -1,7 +1,4 @@
-
-use crate::synth_engine::{
-    Input, StereoSample, types::ComplexSample,
-};
+use crate::synth_engine::{Input, StereoSample, engine_io, types::ComplexSample};
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
@@ -20,6 +17,7 @@ pub trait SpectralBlendUiEnd: Send {
 pub trait SpectralBlendLinks: Send {
     type AudioEnd: SpectralBlendAudioEnd;
     type UiEnd: SpectralBlendUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

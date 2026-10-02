@@ -2,10 +2,7 @@ use enum_dispatch::enum_dispatch;
 
 use crate::synth_engine::{
     StereoSample,
-    routing::{
-        DataType, Input, InputMeta, InputSlots, ModuleId, ProcessContext, SpectralInputSlot,
-        VoiceEvent,
-    },
+    routing::{DataType, Input, InputMeta, InputSlots, ModuleId, SpectralInputSlot, VoiceEvent},
     voices_handler::DecayingVoice,
 };
 
@@ -27,8 +24,6 @@ pub(crate) trait SynthModule: Send {
     fn process_events(&mut self, events: &[VoiceEvent]) {}
     fn process_ui_events(&mut self);
     fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {}
-
-    fn process(&mut self, ctx: &mut ProcessContext);
 }
 
 #[enum_dispatch]

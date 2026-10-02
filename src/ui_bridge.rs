@@ -23,26 +23,16 @@ pub use ui_config::GridVec;
 pub use crate::synth_engine::engine_io::{
     EngineUiEnd, OutputMeter, UiEvent, UiUpdate, VoicesStatus,
 };
-pub use routing_state::{ConnectedInputSource, RoutingState};
 use modules::{
-    amplifier::AmplifierUiBridge,
-    envelope::EnvelopeUiBridge,
-    expressions::ExpressionsUiBridge,
-    external_param::ExternalParamUiBridge,
-    harmonic_editor::HarmonicEditorUiBridge,
-    lfo::LfoUiBridge,
-    mixer::MixerUiBridge,
-    oscillator::OscillatorUiBridge,
-    pitch::PitchUiBridge,
-    spectral_band_select::SpectralBandSelectUiBridge,
-    spectral_blend::SpectralBlendUiBridge,
-    spectral_eq::SpectralEqUiBridge,
-    spectral_filter::SpectralFilterUiBridge,
-    spectral_mixer::SpectralMixerUiBridge,
-    spectral_noise::SpectralNoiseUiBridge,
-    svf::SvfUiBridge,
+    amplifier::AmplifierUiBridge, envelope::EnvelopeUiBridge, expressions::ExpressionsUiBridge,
+    external_param::ExternalParamUiBridge, harmonic_editor::HarmonicEditorUiBridge,
+    lfo::LfoUiBridge, mixer::MixerUiBridge, oscillator::OscillatorUiBridge, pitch::PitchUiBridge,
+    spectral_band_select::SpectralBandSelectUiBridge, spectral_blend::SpectralBlendUiBridge,
+    spectral_eq::SpectralEqUiBridge, spectral_filter::SpectralFilterUiBridge,
+    spectral_mixer::SpectralMixerUiBridge, spectral_noise::SpectralNoiseUiBridge, svf::SvfUiBridge,
     wave_shaper::WaveShaperUiBridge,
 };
+pub use routing_state::{ConnectedInputSource, RoutingState};
 use rustc_hash::FxHashMap;
 
 use routing_state::ModuleIo;

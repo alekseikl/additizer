@@ -5,8 +5,9 @@ use crate::synth_engine::{
     buffer::copy_to_display_spectrum, oscillator::PhasesDst, types::ComplexSample,
 };
 
-
-use crate::synth_engine::oscillator::{OscillatorAudioEnd, OscillatorLinks, OscillatorUiEnd, Unison, UiEvent};
+use crate::synth_engine::oscillator::{
+    OscillatorAudioEnd, OscillatorLinks, OscillatorUiEnd, UiEvent, Unison,
+};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
@@ -189,7 +190,12 @@ impl OscillatorUiEnd for UiEnd {
     fn set_unison_gain_to(&mut self, idx: usize, value: StereoSample) -> bool {
         UiEnd::set_unison_gain_to(self, idx, value)
     }
-    fn apply_unison_level_shape(&mut self, center: StereoSample, level: StereoSample, to: bool) -> bool {
+    fn apply_unison_level_shape(
+        &mut self,
+        center: StereoSample,
+        level: StereoSample,
+        to: bool,
+    ) -> bool {
         UiEnd::apply_unison_level_shape(self, center, level, to)
     }
     fn randomize_phases(&mut self, amount: Sample, stereo_spread: Sample, dst: PhasesDst) -> bool {
@@ -202,6 +208,7 @@ pub struct Links;
 impl OscillatorLinks for Links {
     type AudioEnd = AudioEnd;
     type UiEnd = UiEnd;
+    type EngineEnd = crate::links::engine::AudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd) {
         make_link_pair()

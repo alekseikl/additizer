@@ -10,7 +10,6 @@ use crate::synth_engine::{
     smooth::SmoothedSampleParams,
     ui_bridge::OutputMeter,
     voices_handler::{DecayingVoice, PlayingVoice},
-    Telemetry,
 };
 use crate::utils::from_ms;
 use nice_plug::util::db_to_gain_fast;
@@ -53,10 +52,9 @@ fn run_process(
     let active: &[PlayingVoice] = &[];
 
     {
-        let mut telemetry = Telemetry::from_end(&mut audio_end);
         let mut ctx = ProcessContext {
             outputs_arena: &mut arena,
-            telemetry: &mut telemetry,
+            audio_end: &mut audio_end,
             params: ProcessParams {
                 trigger_stage,
                 has_triggered_voices: false,

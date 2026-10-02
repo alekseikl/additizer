@@ -1,5 +1,4 @@
-
-use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::synth_engine::{Input, Sample, StereoSample, engine_io};
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
@@ -24,6 +23,7 @@ pub trait PitchUiEnd: Send {
 pub trait PitchLinks: Send {
     type AudioEnd: PitchAudioEnd;
     type UiEnd: PitchUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

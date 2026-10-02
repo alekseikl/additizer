@@ -7,7 +7,9 @@ use crate::synth_engine::{
 
 use crate::synth_engine::spectral_noise::NoiseColor;
 
-use crate::synth_engine::spectral_noise::{SpectralNoiseAudioEnd, SpectralNoiseLinks, SpectralNoiseUiEnd, UiEvent};
+use crate::synth_engine::spectral_noise::{
+    SpectralNoiseAudioEnd, SpectralNoiseLinks, SpectralNoiseUiEnd, UiEvent,
+};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
@@ -123,6 +125,7 @@ pub struct Links;
 impl SpectralNoiseLinks for Links {
     type AudioEnd = AudioEnd;
     type UiEnd = UiEnd;
+    type EngineEnd = crate::links::engine::AudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd) {
         make_link_pair()

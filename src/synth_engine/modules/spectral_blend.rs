@@ -5,9 +5,9 @@ use itertools::izip;
 mod config;
 mod link;
 
+pub use crate::ui_bridge::modules::spectral_blend::SpectralBlendUiBridge;
 pub use config::SpectralBlendConfig;
 pub use link::{SpectralBlendAudioEnd, SpectralBlendLinks, SpectralBlendUiEnd, UiEvent};
-pub use crate::ui_bridge::modules::spectral_blend::SpectralBlendUiBridge;
 
 use crate::synth_engine::{
     StereoSample,
@@ -125,7 +125,7 @@ impl<L: SpectralBlendLinks> SpectralBlend<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SpectralOutput>,
-        rf: &mut RouterFactory<SpectralRouterType>,
+        rf: &mut RouterFactory<SpectralRouterType, L::EngineEnd>,
     ) {
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
@@ -144,6 +144,12 @@ impl<L: SpectralBlendLinks> SpectralBlend<L> {
         if router.need_update_ui_mono() {
             self.audio_end.update_spectrum(output);
         }
+    }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.spectral(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
     }
 }
 
@@ -192,12 +198,5 @@ impl<L: SpectralBlendLinks> SynthModule for SpectralBlend<L> {
                 self.set_blend(value);
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.spectral(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            });
     }
 }

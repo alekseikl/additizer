@@ -11,7 +11,7 @@ use crate::synth_engine::{
     modules::Output,
     routing::{
         InputSlot, InputSlots, MIN_MODULE_ID, MixedSource, ModuleLink, OutputsArena,
-        ProcessContext, ProcessParams, SpectralInputSlot, Telemetry, data_types_compatible,
+        ProcessContext, ProcessParams, SpectralInputSlot, data_types_compatible,
     },
     synth_module::SynthModule,
     voices_handler::{
@@ -745,11 +745,9 @@ impl<E: EngineLinks> SynthEngine<E> {
         let sample_rate = self.sample_rate();
         let smooth_params = SmoothedSampleParams::new(sample_rate);
 
-        let mut telemetry = Telemetry::from_end(&mut self.audio_end);
-
         let mut ctx = ProcessContext {
             outputs_arena: &mut self.outputs_arena,
-            telemetry: &mut telemetry,
+            audio_end: &mut self.audio_end,
             params: ProcessParams {
                 trigger_stage: true,
                 has_triggered_voices: !triggered_voices.is_empty(),

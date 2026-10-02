@@ -1,4 +1,4 @@
-use crate::synth_engine::{Input, StereoSample};
+use crate::synth_engine::{Input, StereoSample, engine_io};
 
 use super::config::ShaperType;
 
@@ -19,6 +19,7 @@ pub trait WaveShaperUiEnd: Send {
 pub trait WaveShaperLinks: Send {
     type AudioEnd: WaveShaperAudioEnd;
     type UiEnd: WaveShaperUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

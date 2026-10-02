@@ -12,7 +12,6 @@ use crate::{
         SmoothedSampleParams, StereoSample,
         buffer::{Buffer, SPECTRUM_BITS, VoicesLayout, new_voices_layout, zero_buffer},
         coeffs::catmull_rom,
-        
         phase::Phase,
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, MAX_VOICES,
@@ -32,9 +31,9 @@ mod link;
 #[cfg(test)]
 mod tests;
 
-pub use config::OscillatorConfig;
-pub use link::{Unison, OscillatorAudioEnd, OscillatorLinks, OscillatorUiEnd, UiEvent};
 pub use crate::ui_bridge::modules::oscillator::OscillatorUiBridge;
+pub use config::OscillatorConfig;
+pub use link::{OscillatorAudioEnd, OscillatorLinks, OscillatorUiEnd, UiEvent, Unison};
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
 const WAVEFORM_SIZE: usize = 1 << WAVEFORM_BITS;
@@ -330,7 +329,7 @@ impl Inputs {
     }
 }
 
-type Router<'v, 'f, 'c> = VoiceRouter<'v, 'f, 'c, AudioRouterType>;
+type Router<'v, 'f, 'c, A> = VoiceRouter<'v, 'f, 'c, AudioRouterType, A>;
 
 pub struct Oscillator<L: OscillatorLinks = crate::links::oscillator::Links> {
     buffers: Buffers,
@@ -608,7 +607,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
     fn build_this_frame_wave(
         &mut self,
         target: &VoiceTarget,
-        rf: &mut RouterFactory<AudioRouterType>,
+        rf: &mut RouterFactory<AudioRouterType, L::EngineEnd>,
     ) {
         if self.params.mono_spectrum && target.channel_idx == RIGHT_CHANNEL {
             return;
@@ -645,7 +644,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         this_frame: bool,
         channel: &ChannelParams,
         inputs: &Inputs,
-        router: &mut Router<'_, '_, '_>,
+        router: &mut Router<'_, '_, '_, L::EngineEnd>,
     ) -> impl Iterator<Item = UnisonStateUpdate> {
         const MAX_DETUNE: Sample = 1.0;
         const MAX_DETUNE_POWER: Sample = 5.0;
@@ -692,7 +691,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         &mut self,
         channel_idx: usize,
         voice_idx: usize,
-        router: &mut Router<'_, '_, '_>,
+        router: &mut Router<'_, '_, '_, L::EngineEnd>,
     ) {
         let channel = &self.channel_params[channel_idx];
         let voice = &mut self.voices[channel_idx][voice_idx];
@@ -761,7 +760,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         &mut self,
         channel_idx: usize,
         voice_idx: usize,
-        router: &mut Router<'_, '_, '_>,
+        router: &mut Router<'_, '_, '_, L::EngineEnd>,
     ) {
         let Some(phase_reset) = self.voices[channel_idx][voice_idx].phase_reset.take() else {
             return;
@@ -816,7 +815,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
     fn collect_phase_steals(
         &self,
         target: &VoiceTarget,
-        rf: &RouterFactory<AudioRouterType>,
+        rf: &RouterFactory<AudioRouterType, L::EngineEnd>,
     ) -> SmallVec<[PhaseSteal; MAX_VOICES]> {
         let mut steals = SmallVec::new();
 
@@ -905,7 +904,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
-        rf: &mut RouterFactory<AudioRouterType>,
+        rf: &mut RouterFactory<AudioRouterType, L::EngineEnd>,
     ) {
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
@@ -1012,6 +1011,19 @@ impl<L: OscillatorLinks> Oscillator<L> {
             stolen: false,
         });
     }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.audio(self.id, self.output_slot)
+            .for_triggered_voices(|rf, target| {
+                self.build_this_frame_wave(target, rf);
+            })
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            })
+            .for_channels(|rf, channel_idx| {
+                self.channel_params[channel_idx]
+                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
+            });
+    }
 }
 
 impl<L: OscillatorLinks> SynthModule for Oscillator<L> {
@@ -1106,19 +1118,5 @@ impl<L: OscillatorLinks> SynthModule for Oscillator<L> {
                 }
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.audio(self.id, self.output_slot)
-            .for_triggered_voices(|rf, target| {
-                self.build_this_frame_wave(target, rf);
-            })
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            })
-            .for_channels(|rf, channel_idx| {
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
-            });
     }
 }

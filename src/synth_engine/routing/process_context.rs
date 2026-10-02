@@ -1,5 +1,5 @@
 use crate::synth_engine::{
-    Input, ModuleId, NUM_CHANNELS, Sample, SmoothedSampleParams, StereoSample,
+    ModuleId, Sample, SmoothedSampleParams,
     engine_io::EngineAudioEnd,
     routing::{
         AudioRouterType, ControlRouterType, OutputRouterType, OutputsArena, RouterFactory,
@@ -7,71 +7,6 @@ use crate::synth_engine::{
     },
     voices_handler::PlayingVoice,
 };
-
-trait TelemetrySink {
-    fn update_modulated_input(
-        &mut self,
-        module_id: ModuleId,
-        input: Input,
-        channel: u8,
-        value: Sample,
-        normalized_value: Sample,
-    ) -> bool;
-
-    fn update_out_volume(&mut self, volume: StereoSample, clipped: [bool; NUM_CHANNELS]);
-}
-
-impl<A: EngineAudioEnd> TelemetrySink for A {
-    fn update_modulated_input(
-        &mut self,
-        module_id: ModuleId,
-        input: Input,
-        channel: u8,
-        value: Sample,
-        normalized_value: Sample,
-    ) -> bool {
-        EngineAudioEnd::update_modulated_input(
-            self,
-            module_id,
-            input,
-            channel,
-            value,
-            normalized_value,
-        )
-    }
-
-    fn update_out_volume(&mut self, volume: StereoSample, clipped: [bool; NUM_CHANNELS]) {
-        EngineAudioEnd::update_out_volume(self, volume, clipped)
-    }
-}
-
-/// UI telemetry published during `process`. Forwards into the engine audio end
-/// without putting that type on [`ProcessContext`].
-pub struct Telemetry<'a> {
-    sink: &'a mut dyn TelemetrySink,
-}
-
-impl<'a> Telemetry<'a> {
-    pub(crate) fn from_end<A: EngineAudioEnd + 'a>(end: &'a mut A) -> Self {
-        Self { sink: end }
-    }
-
-    pub fn update_modulated_input(
-        &mut self,
-        module_id: ModuleId,
-        input: Input,
-        channel: u8,
-        value: Sample,
-        normalized_value: Sample,
-    ) -> bool {
-        self.sink
-            .update_modulated_input(module_id, input, channel, value, normalized_value)
-    }
-
-    pub fn update_out_volume(&mut self, volume: StereoSample, clipped: [bool; NUM_CHANNELS]) {
-        self.sink.update_out_volume(volume, clipped)
-    }
-}
 
 pub struct ProcessParams<'a> {
     pub trigger_stage: bool,
@@ -83,9 +18,9 @@ pub struct ProcessParams<'a> {
     pub active_voices: &'a [PlayingVoice],
 }
 
-pub struct ProcessContext<'c> {
+pub struct ProcessContext<'c, A: EngineAudioEnd> {
     pub outputs_arena: &'c mut OutputsArena,
-    pub telemetry: &'c mut Telemetry<'c>,
+    pub audio_end: &'c mut A,
     pub params: ProcessParams<'c>,
 }
 
@@ -114,12 +49,12 @@ impl VoiceTarget {
     }
 }
 
-impl<'c> ProcessContext<'c> {
+impl<'c, A: EngineAudioEnd> ProcessContext<'c, A> {
     pub fn audio<'f>(
         &'f mut self,
         module_id: ModuleId,
         output_slot: usize,
-    ) -> RouterFactory<'f, 'c, AudioRouterType>
+    ) -> RouterFactory<'f, 'c, AudioRouterType, A>
     where
         'c: 'f,
     {
@@ -136,7 +71,7 @@ impl<'c> ProcessContext<'c> {
         &'f mut self,
         module_id: ModuleId,
         output_slot: usize,
-    ) -> RouterFactory<'f, 'c, ControlRouterType>
+    ) -> RouterFactory<'f, 'c, ControlRouterType, A>
     where
         'c: 'f,
     {
@@ -153,7 +88,7 @@ impl<'c> ProcessContext<'c> {
         &'f mut self,
         module_id: ModuleId,
         output_slot: usize,
-    ) -> RouterFactory<'f, 'c, SpectralRouterType>
+    ) -> RouterFactory<'f, 'c, SpectralRouterType, A>
     where
         'c: 'f,
     {
@@ -169,7 +104,7 @@ impl<'c> ProcessContext<'c> {
     pub fn for_output<'f>(
         &'f mut self,
         module_id: ModuleId,
-    ) -> RouterFactory<'f, 'c, OutputRouterType>
+    ) -> RouterFactory<'f, 'c, OutputRouterType, A>
     where
         'c: 'f,
     {

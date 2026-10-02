@@ -1,5 +1,4 @@
-
-use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::synth_engine::{Input, Sample, StereoSample, engine_io};
 
 use super::config::LfoShape;
 
@@ -28,6 +27,7 @@ pub trait LfoUiEnd: Send {
 pub trait LfoLinks: Send {
     type AudioEnd: LfoAudioEnd;
     type UiEnd: LfoUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

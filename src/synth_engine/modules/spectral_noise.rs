@@ -26,8 +26,8 @@ mod link;
 #[cfg(test)]
 mod tests;
 
-pub use config::{NoiseColor, SpectralNoiseConfig};
 pub use crate::ui_bridge::modules::spectral_noise::SpectralNoiseUiBridge;
+pub use config::{NoiseColor, SpectralNoiseConfig};
 
 pub use link::{SpectralNoiseAudioEnd, SpectralNoiseLinks, SpectralNoiseUiEnd, UiEvent};
 
@@ -369,7 +369,7 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SpectralOutput>,
-        rf: &mut RouterFactory<SpectralRouterType>,
+        rf: &mut RouterFactory<SpectralRouterType, L::EngineEnd>,
     ) {
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let channel = target.channel_idx;
@@ -437,6 +437,12 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
         if channel == LEFT_CHANNEL {
             self.audio_end.update_display_spectrum(out);
         }
+    }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.spectral(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
     }
 }
 
@@ -506,12 +512,5 @@ impl<L: SpectralNoiseLinks> SynthModule for SpectralNoise<L> {
                 UiEvent::StealPhase(steal_phase) => self.set_steal_phase(steal_phase),
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.spectral(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            });
     }
 }

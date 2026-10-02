@@ -101,8 +101,10 @@ fn frequency_bin_round_trips_amplitude_and_phase() {
         (7, 0.8, 0.3),
         (16, 1.0, 0.75),
     ] {
-        let (got_amp, got_phase) =
-            <HarmonicEditor>::from_frequency_bin(idx, <HarmonicEditor>::frequency_bin(idx, amp, phase));
+        let (got_amp, got_phase) = <HarmonicEditor>::from_frequency_bin(
+            idx,
+            <HarmonicEditor>::frequency_bin(idx, amp, phase),
+        );
 
         assert!(
             (got_amp - amp).abs() < 1e-5,

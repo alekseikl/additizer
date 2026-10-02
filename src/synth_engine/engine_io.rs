@@ -1,22 +1,11 @@
 use crate::synth_engine::{
-    Input, InputId, ModuleId, NUM_CHANNELS, Sample, StereoSample,
-    amplifier::AmplifierLinks,
-    envelope::EnvelopeLinks,
-    expressions::ExpressionsLinks,
-    external_param::ExternalParamLinks,
-    harmonic_editor::HarmonicEditorLinks,
-    lfo::LfoLinks,
-    mixer::MixerLinks,
-    oscillator::OscillatorLinks,
-    pitch::PitchLinks,
-    spectral_band_select::SpectralBandSelectLinks,
-    spectral_blend::SpectralBlendLinks,
-    spectral_eq::SpectralEqLinks,
-    spectral_filter::SpectralFilterLinks,
-    spectral_mixer::SpectralMixerLinks,
-    spectral_noise::SpectralNoiseLinks,
-    svf::SvfLinks,
-    wave_shaper::WaveShaperLinks,
+    Input, InputId, ModuleId, NUM_CHANNELS, Sample, StereoSample, amplifier::AmplifierLinks,
+    envelope::EnvelopeLinks, expressions::ExpressionsLinks, external_param::ExternalParamLinks,
+    harmonic_editor::HarmonicEditorLinks, lfo::LfoLinks, mixer::MixerLinks,
+    oscillator::OscillatorLinks, pitch::PitchLinks, spectral_band_select::SpectralBandSelectLinks,
+    spectral_blend::SpectralBlendLinks, spectral_eq::SpectralEqLinks,
+    spectral_filter::SpectralFilterLinks, spectral_mixer::SpectralMixerLinks,
+    spectral_noise::SpectralNoiseLinks, svf::SvfLinks, wave_shaper::WaveShaperLinks,
 };
 
 pub use crate::synth_engine::voices_handler::VoicesHandlerMetrics;
@@ -109,23 +98,23 @@ pub trait EngineUiEnd: Send {
 pub trait EngineLinks: Send {
     type AudioEnd: EngineAudioEnd;
     type UiEnd: EngineUiEnd;
-    type Amplifier: AmplifierLinks;
-    type Envelope: EnvelopeLinks;
-    type Expressions: ExpressionsLinks;
-    type ExternalParam: ExternalParamLinks;
-    type HarmonicEditor: HarmonicEditorLinks;
-    type Lfo: LfoLinks;
-    type Mixer: MixerLinks;
-    type Oscillator: OscillatorLinks;
-    type Pitch: PitchLinks;
-    type SpectralBandSelect: SpectralBandSelectLinks;
-    type SpectralBlend: SpectralBlendLinks;
-    type SpectralEq: SpectralEqLinks;
-    type SpectralFilter: SpectralFilterLinks;
-    type SpectralMixer: SpectralMixerLinks;
-    type SpectralNoise: SpectralNoiseLinks;
-    type Svf: SvfLinks;
-    type WaveShaper: WaveShaperLinks;
+    type Amplifier: AmplifierLinks<EngineEnd = Self::AudioEnd>;
+    type Envelope: EnvelopeLinks<EngineEnd = Self::AudioEnd>;
+    type Expressions: ExpressionsLinks<EngineEnd = Self::AudioEnd>;
+    type ExternalParam: ExternalParamLinks<EngineEnd = Self::AudioEnd>;
+    type HarmonicEditor: HarmonicEditorLinks<EngineEnd = Self::AudioEnd>;
+    type Lfo: LfoLinks<EngineEnd = Self::AudioEnd>;
+    type Mixer: MixerLinks<EngineEnd = Self::AudioEnd>;
+    type Oscillator: OscillatorLinks<EngineEnd = Self::AudioEnd>;
+    type Pitch: PitchLinks<EngineEnd = Self::AudioEnd>;
+    type SpectralBandSelect: SpectralBandSelectLinks<EngineEnd = Self::AudioEnd>;
+    type SpectralBlend: SpectralBlendLinks<EngineEnd = Self::AudioEnd>;
+    type SpectralEq: SpectralEqLinks<EngineEnd = Self::AudioEnd>;
+    type SpectralFilter: SpectralFilterLinks<EngineEnd = Self::AudioEnd>;
+    type SpectralMixer: SpectralMixerLinks<EngineEnd = Self::AudioEnd>;
+    type SpectralNoise: SpectralNoiseLinks<EngineEnd = Self::AudioEnd>;
+    type Svf: SvfLinks<EngineEnd = Self::AudioEnd>;
+    type WaveShaper: WaveShaperLinks<EngineEnd = Self::AudioEnd>;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

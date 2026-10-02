@@ -25,9 +25,9 @@ mod link;
 #[cfg(test)]
 mod tests;
 
+pub use crate::ui_bridge::modules::harmonic_editor::HarmonicEditorUiBridge;
 pub use config::{HarmonicEditorConfig, sawtooth_phase};
 pub use link::Harmonics;
-pub use crate::ui_bridge::modules::harmonic_editor::HarmonicEditorUiBridge;
 
 use itertools::izip;
 pub use link::{HarmonicEditorAudioEnd, HarmonicEditorLinks, HarmonicEditorUiEnd, UiEvent};
@@ -565,7 +565,7 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SpectralOutput>,
-        rf: &mut RouterFactory<SpectralRouterType>,
+        rf: &mut RouterFactory<SpectralRouterType, L::EngineEnd>,
     ) {
         let trigger_stage = rf.params().trigger_stage;
         let (router, mut voice_output) = rf.for_voice(target, outputs);
@@ -594,6 +594,12 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
         let out = voice_output.output(length);
 
         out.copy_from_slice(&self.output_harmonics[target.channel_idx][..length]);
+    }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.spectral(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
     }
 }
 
@@ -675,12 +681,5 @@ impl<L: HarmonicEditorLinks> SynthModule for HarmonicEditor<L> {
                 }
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.spectral(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            });
     }
 }

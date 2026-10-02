@@ -1,5 +1,4 @@
-
-use crate::synth_engine::{Expression, Sample};
+use crate::synth_engine::{Expression, Sample, engine_io};
 
 pub enum UiEvent {
     Expression(Expression),
@@ -22,6 +21,7 @@ pub trait ExpressionsUiEnd: Send {
 pub trait ExpressionsLinks: Send {
     type AudioEnd: ExpressionsAudioEnd;
     type UiEnd: ExpressionsUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

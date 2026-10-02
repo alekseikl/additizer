@@ -5,9 +5,9 @@ use itertools::izip;
 mod config;
 mod link;
 
+pub use crate::ui_bridge::modules::amplifier::AmplifierUiBridge;
 pub use config::AmplifierConfig;
 pub use link::{AmplifierAudioEnd, AmplifierLinks, AmplifierUiEnd, UiEvent};
-pub use crate::ui_bridge::modules::amplifier::AmplifierUiBridge;
 
 use crate::{
     synth_engine::{
@@ -156,7 +156,7 @@ impl<L: AmplifierLinks> Amplifier<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
-        rf: &mut RouterFactory<AudioRouterType>,
+        rf: &mut RouterFactory<AudioRouterType, L::EngineEnd>,
     ) {
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
@@ -203,6 +203,16 @@ impl<L: AmplifierLinks> Amplifier<L> {
                 .process(output, router.sample_rate());
             self.audio_end.update_out_volume(target.channel_idx, level);
         }
+    }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.audio(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            })
+            .for_channels(|rf, channel_idx| {
+                self.channel_params[channel_idx]
+                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
+            });
     }
 }
 
@@ -253,16 +263,5 @@ impl<L: AmplifierLinks> SynthModule for Amplifier<L> {
                 },
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.audio(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            })
-            .for_channels(|rf, channel_idx| {
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
-            });
     }
 }

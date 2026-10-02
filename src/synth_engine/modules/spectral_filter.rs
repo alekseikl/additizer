@@ -6,9 +6,9 @@ mod link;
 #[cfg(test)]
 mod tests;
 
+pub use crate::ui_bridge::modules::spectral_filter::SpectralFilterUiBridge;
 pub use config::SpectralFilterConfig;
 pub use link::{SpectralFilterAudioEnd, SpectralFilterLinks, SpectralFilterUiEnd, UiEvent};
-pub use crate::ui_bridge::modules::spectral_filter::SpectralFilterUiBridge;
 
 use additizer_dsp::filters::{
     control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
@@ -200,7 +200,7 @@ impl<L: SpectralFilterLinks> SpectralFilter<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SpectralOutput>,
-        rf: &mut RouterFactory<SpectralRouterType>,
+        rf: &mut RouterFactory<SpectralRouterType, L::EngineEnd>,
     ) {
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
@@ -242,6 +242,12 @@ impl<L: SpectralFilterLinks> SpectralFilter<L> {
         );
 
         filter.apply_response(input, output);
+    }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.spectral(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
     }
 }
 
@@ -298,12 +304,5 @@ impl<L: SpectralFilterLinks> SynthModule for SpectralFilter<L> {
                 UiEvent::QRolloff(value) => self.set_q_rolloff(value),
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.spectral(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            });
     }
 }

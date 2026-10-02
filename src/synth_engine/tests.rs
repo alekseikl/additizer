@@ -450,8 +450,8 @@ fn set_config_links_direct_exclusivity_keeps_last_source() {
     // full_patch already has HE0 -> OSC1.Spectrum; a later Direct replaces it.
     config.links.push(link(HE1_ID, OSC1_ID, Input::Spectrum));
 
-    let mut engine =
-        <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("extra spectral sources collapse to one");
+    let mut engine = <SynthEngine>::try_new(&config, SAMPLE_RATE)
+        .expect("extra spectral sources collapse to one");
 
     let cfg = engine.get_config();
     let spectrum_links: Vec<_> = cfg
@@ -1355,7 +1355,8 @@ fn full_patch_config_round_trips() {
         ..EngineParams::default()
     });
     let cfg = engine.get_config();
-    let rebuilt = <SynthEngine>::try_new(&cfg, SAMPLE_RATE).expect("full patch config deserializes");
+    let rebuilt =
+        <SynthEngine>::try_new(&cfg, SAMPLE_RATE).expect("full patch config deserializes");
 
     assert_eq!(rebuilt.get_config().modules.len(), cfg.modules.len());
     assert_eq!(rebuilt.get_config().links.len(), cfg.links.len());

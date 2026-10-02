@@ -5,9 +5,9 @@ use itertools::izip;
 mod config;
 mod link;
 
+pub use crate::ui_bridge::modules::lfo::LfoUiBridge;
 pub use config::{LfoConfig, LfoShape};
 pub use link::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
-pub use crate::ui_bridge::modules::lfo::LfoUiBridge;
 
 use crate::synth_engine::{
     Input, ModuleId, Sample, SmoothedSampleParams, StereoSample,
@@ -249,7 +249,7 @@ impl<L: LfoLinks> Lfo<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
-        rf: &mut RouterFactory<ControlRouterType>,
+        rf: &mut RouterFactory<ControlRouterType, L::EngineEnd>,
     ) {
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
@@ -305,6 +305,16 @@ impl<L: LfoLinks> Lfo<L> {
         voice
             .smoother
             .apply_if_needed(sample_rate, channel.smooth_time, voice_output.output());
+    }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.control(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            })
+            .for_channels(|rf, channel_idx| {
+                self.channel_params[channel_idx]
+                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
+            });
     }
 }
 
@@ -381,16 +391,5 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
                 UiEvent::SmoothTime(value) => self.set_smooth_time(value),
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.control(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            })
-            .for_channels(|rf, channel_idx| {
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
-            });
     }
 }

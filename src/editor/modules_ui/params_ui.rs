@@ -188,7 +188,10 @@ impl ModuleUi for ParamsUi {
 
                 ui.label("Voices");
                 if ui
-                    .add(Slider::new(&mut voices, 1..=crate::synth_engine::AVAILABLE_VOICES))
+                    .add(Slider::new(
+                        &mut voices,
+                        1..=crate::synth_engine::AVAILABLE_VOICES,
+                    ))
                     .changed()
                 {
                     bridge.set_voices(voices);

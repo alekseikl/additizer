@@ -1,5 +1,4 @@
-
-use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::synth_engine::{Input, Sample, StereoSample, engine_io};
 use additizer_dsp::filters::svf::SvfType;
 
 pub enum UiEvent {
@@ -23,6 +22,7 @@ pub trait SvfUiEnd: Send {
 pub trait SvfLinks: Send {
     type AudioEnd: SvfAudioEnd;
     type UiEnd: SvfUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

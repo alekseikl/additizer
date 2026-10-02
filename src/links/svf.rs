@@ -88,6 +88,7 @@ pub struct Links;
 impl SvfLinks for Links {
     type AudioEnd = AudioEnd;
     type UiEnd = UiEnd;
+    type EngineEnd = crate::links::engine::AudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd) {
         make_link_pair()

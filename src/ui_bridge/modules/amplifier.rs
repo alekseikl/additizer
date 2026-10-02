@@ -1,7 +1,6 @@
 use crate::synth_engine::amplifier::{Amplifier, AmplifierConfig, AmplifierLinks, AmplifierUiEnd};
 use crate::synth_engine::{Input, StereoSample, synth_module::ModuleUiBridge};
 
-
 pub struct AmplifierUiBridge<L: AmplifierLinks = crate::links::amplifier::Links> {
     ui_end: L::UiEnd,
     config: AmplifierConfig,

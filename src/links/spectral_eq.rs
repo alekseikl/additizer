@@ -4,7 +4,9 @@ use crate::synth_engine::{Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY
 
 use crate::synth_engine::spectral_eq::EqFilter;
 
-use crate::synth_engine::spectral_eq::{SpectralEqAudioEnd, SpectralEqLinks, SpectralEqUiEnd, UiEvent};
+use crate::synth_engine::spectral_eq::{
+    SpectralEqAudioEnd, SpectralEqLinks, SpectralEqUiEnd, UiEvent,
+};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
@@ -131,6 +133,7 @@ pub struct Links;
 impl SpectralEqLinks for Links {
     type AudioEnd = AudioEnd;
     type UiEnd = UiEnd;
+    type EngineEnd = crate::links::engine::AudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd) {
         make_link_pair()

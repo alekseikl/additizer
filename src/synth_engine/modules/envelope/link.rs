@@ -1,5 +1,4 @@
-
-use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::synth_engine::{Input, Sample, StereoSample, engine_io};
 
 use super::EnvelopePhase;
 
@@ -30,6 +29,7 @@ pub trait EnvelopeUiEnd: Send {
 pub trait EnvelopeLinks: Send {
     type AudioEnd: EnvelopeAudioEnd;
     type UiEnd: EnvelopeUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

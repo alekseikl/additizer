@@ -1,7 +1,4 @@
-
-use crate::synth_engine::{
-    ComplexSample, DisplaySpectrum, Input, StereoSample,
-};
+use crate::synth_engine::{ComplexSample, DisplaySpectrum, Input, StereoSample, engine_io};
 
 use super::config::NoiseColor;
 
@@ -34,6 +31,7 @@ pub trait SpectralNoiseUiEnd: Send {
 pub trait SpectralNoiseLinks: Send {
     type AudioEnd: SpectralNoiseAudioEnd;
     type UiEnd: SpectralNoiseUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

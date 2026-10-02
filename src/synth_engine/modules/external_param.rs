@@ -1,9 +1,9 @@
 mod config;
 mod link;
 
+pub use crate::ui_bridge::modules::external_param::ExternalParamUiBridge;
 pub use config::ExternalParamConfig;
 pub use link::{ExternalParamAudioEnd, ExternalParamLinks, ExternalParamUiEnd, UiEvent};
-pub use crate::ui_bridge::modules::external_param::ExternalParamUiBridge;
 
 use crate::params::ExtParam;
 use crate::synth_engine::{
@@ -164,7 +164,7 @@ impl<L: ExternalParamLinks> ExternalParam<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
-        rf: &mut RouterFactory<ControlRouterType>,
+        rf: &mut RouterFactory<ControlRouterType, L::EngineEnd>,
     ) {
         let block_samples = rf.params().samples;
         let sample_rate = rf.params().sample_rate;
@@ -214,6 +214,23 @@ impl<L: ExternalParamLinks> ExternalParam<L> {
 
         voice_output.fill_with_ext_control(&voice.buffer[..block_samples]);
     }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        let samples = ctx.params.samples;
+        let read_values = ctx.params.trigger_stage || !ctx.params.has_triggered_voices;
+
+        if read_values {
+            self.values.read_and_reset(&mut self.mono_buff[..samples]);
+        }
+
+        ctx.control(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
+
+        if ctx.params.needs_update_ui && ctx.params.active_voices.is_empty() {
+            self.audio_end.update_value(self.mono_buff[0]);
+        }
+    }
 }
 
 impl<L: ExternalParamLinks> SynthModule for ExternalParam<L> {
@@ -254,24 +271,6 @@ impl<L: ExternalParamLinks> SynthModule for ExternalParam<L> {
                 UiEvent::MakeBipolar(value) => self.set_make_bipolar(value),
                 UiEvent::Polyphonic(value) => self.set_polyphonic(value),
             }
-        }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        let samples = ctx.params.samples;
-        let read_values = ctx.params.trigger_stage || !ctx.params.has_triggered_voices;
-
-        if read_values {
-            self.values.read_and_reset(&mut self.mono_buff[..samples]);
-        }
-
-        ctx.control(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            });
-
-        if ctx.params.needs_update_ui && ctx.params.active_voices.is_empty() {
-            self.audio_end.update_value(self.mono_buff[0]);
         }
     }
 }

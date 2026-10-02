@@ -3,9 +3,9 @@ use std::{array, convert::identity};
 mod config;
 mod link;
 
+pub use crate::ui_bridge::modules::pitch::PitchUiBridge;
 pub use config::PitchConfig;
 pub use link::{PitchAudioEnd, PitchLinks, PitchUiEnd, UiEvent};
-pub use crate::ui_bridge::modules::pitch::PitchUiBridge;
 
 use crate::{
     synth_engine::{
@@ -239,7 +239,7 @@ impl<L: PitchLinks> Pitch<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
-        rf: &mut RouterFactory<ControlRouterType>,
+        rf: &mut RouterFactory<ControlRouterType, L::EngineEnd>,
     ) {
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
@@ -348,6 +348,16 @@ impl<L: PitchLinks> Pitch<L> {
             voice.pitch = C4_PITCH;
         }
     }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.control(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            })
+            .for_channels(|rf, channel_idx| {
+                self.channel_params[channel_idx]
+                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
+            });
+    }
 }
 
 impl<L: PitchLinks> SynthModule for Pitch<L> {
@@ -426,16 +436,5 @@ impl<L: PitchLinks> SynthModule for Pitch<L> {
                 }
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.control(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            })
-            .for_channels(|rf, channel_idx| {
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
-            });
     }
 }

@@ -3,7 +3,9 @@ use triple_buffer::triple_buffer;
 use crate::synth_engine::{Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 use additizer_dsp::filters::spectral_filter::FilterType;
 
-use crate::synth_engine::spectral_filter::{SpectralFilterAudioEnd, SpectralFilterLinks, SpectralFilterUiEnd, UiEvent};
+use crate::synth_engine::spectral_filter::{
+    SpectralFilterAudioEnd, SpectralFilterLinks, SpectralFilterUiEnd, UiEvent,
+};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
@@ -109,6 +111,7 @@ pub struct Links;
 impl SpectralFilterLinks for Links {
     type AudioEnd = AudioEnd;
     type UiEnd = UiEnd;
+    type EngineEnd = crate::links::engine::AudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd) {
         make_link_pair()

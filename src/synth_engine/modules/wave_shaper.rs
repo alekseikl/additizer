@@ -19,9 +19,9 @@ use crate::{
 mod config;
 mod link;
 
-pub use config::{ShaperType, WaveShaperConfig};
-pub use link::{WaveShaperAudioEnd, WaveShaperLinks, WaveShaperUiEnd, UiEvent};
 pub use crate::ui_bridge::modules::wave_shaper::WaveShaperUiBridge;
+pub use config::{ShaperType, WaveShaperConfig};
+pub use link::{UiEvent, WaveShaperAudioEnd, WaveShaperLinks, WaveShaperUiEnd};
 
 struct Params {
     shaper_type: ShaperType,
@@ -170,7 +170,7 @@ impl<L: WaveShaperLinks> WaveShaper<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
-        rf: &mut RouterFactory<AudioRouterType>,
+        rf: &mut RouterFactory<AudioRouterType, L::EngineEnd>,
     ) {
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
@@ -198,6 +198,16 @@ impl<L: WaveShaperLinks> WaveShaper<L> {
 
             *out = self.params.shaper_type.apply(*input, gain, clipping_gain);
         }
+    }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.audio(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            })
+            .for_channels(|rf, channel_idx| {
+                self.channel_params[channel_idx]
+                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
+            });
     }
 }
 
@@ -247,16 +257,5 @@ impl<L: WaveShaperLinks> SynthModule for WaveShaper<L> {
                 UiEvent::ShaperType(shaper_type) => self.set_shaper_type(shaper_type),
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.audio(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            })
-            .for_channels(|rf, channel_idx| {
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
-            });
     }
 }

@@ -1,4 +1,5 @@
 pub mod amplifier;
+pub mod engine;
 pub mod envelope;
 pub mod expressions;
 pub mod external_param;
@@ -15,7 +16,6 @@ pub mod spectral_mixer;
 pub mod spectral_noise;
 pub mod svf;
 pub mod wave_shaper;
-pub mod engine;
 
 use crate::synth_engine::engine_io::EngineLinks;
 

@@ -1,9 +1,9 @@
 mod config;
 mod link;
 
+pub use crate::ui_bridge::modules::expressions::ExpressionsUiBridge;
 pub use config::ExpressionsConfig;
 pub use link::{ExpressionsAudioEnd, ExpressionsLinks, ExpressionsUiEnd, UiEvent};
-pub use crate::ui_bridge::modules::expressions::ExpressionsUiBridge;
 
 use crate::{
     synth_engine::{
@@ -163,7 +163,7 @@ impl<L: ExpressionsLinks> Expressions<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
-        rf: &mut RouterFactory<ControlRouterType>,
+        rf: &mut RouterFactory<ControlRouterType, L::EngineEnd>,
     ) {
         let block_samples = rf.params().samples;
         let sample_rate = rf.params().sample_rate;
@@ -196,6 +196,12 @@ impl<L: ExpressionsLinks> Expressions<L> {
         }
 
         voice_output.fill_with_ext_control(&voice.buffer[..block_samples]);
+    }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.control(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
     }
 }
 
@@ -273,12 +279,5 @@ impl<L: ExpressionsLinks> SynthModule for Expressions<L> {
                 UiEvent::Smooth(value) => self.set_smooth(value),
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.control(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            });
     }
 }

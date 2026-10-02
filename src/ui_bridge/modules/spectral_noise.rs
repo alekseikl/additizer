@@ -4,7 +4,6 @@ use crate::synth_engine::spectral_noise::{
 };
 use crate::synth_engine::{ComplexSample, Input, StereoSample, synth_module::ModuleUiBridge};
 
-
 pub struct SpectralNoiseUiBridge<L: SpectralNoiseLinks = crate::links::spectral_noise::Links> {
     ui_end: L::UiEnd,
     config: SpectralNoiseConfig,

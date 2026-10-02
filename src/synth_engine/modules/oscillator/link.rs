@@ -1,6 +1,6 @@
-
 use crate::synth_engine::{
-    DisplaySpectrum, Input, Sample, StereoSample, oscillator::PhasesDst, types::ComplexSample,
+    DisplaySpectrum, Input, Sample, StereoSample, engine_io, oscillator::PhasesDst,
+    types::ComplexSample,
 };
 
 use super::MAX_UNISON_VOICES;
@@ -86,13 +86,19 @@ pub trait OscillatorUiEnd: Send {
     fn set_unison_phase_shift_to(&mut self, idx: usize, value: StereoSample) -> bool;
     fn set_unison_gain(&mut self, idx: usize, value: StereoSample) -> bool;
     fn set_unison_gain_to(&mut self, idx: usize, value: StereoSample) -> bool;
-    fn apply_unison_level_shape(&mut self, center: StereoSample, level: StereoSample, to: bool) -> bool;
+    fn apply_unison_level_shape(
+        &mut self,
+        center: StereoSample,
+        level: StereoSample,
+        to: bool,
+    ) -> bool;
     fn randomize_phases(&mut self, amount: Sample, stereo_spread: Sample, dst: PhasesDst) -> bool;
 }
 
 pub trait OscillatorLinks: Send {
     type AudioEnd: OscillatorAudioEnd;
     type UiEnd: OscillatorUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

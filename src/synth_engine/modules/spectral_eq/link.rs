@@ -1,5 +1,4 @@
-
-use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::synth_engine::{Input, Sample, StereoSample, engine_io};
 
 use super::config::EqFilter;
 
@@ -36,6 +35,7 @@ pub trait SpectralEqUiEnd: Send {
 pub trait SpectralEqLinks: Send {
     type AudioEnd: SpectralEqAudioEnd;
     type UiEnd: SpectralEqUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

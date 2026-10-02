@@ -5,7 +5,9 @@ use crate::synth_engine::{
     UI_TO_AUDIO_RING_CAPACITY, VolumeType, types::ComplexSample,
 };
 
-use crate::synth_engine::spectral_mixer::{SpectralMixerAudioEnd, SpectralMixerLinks, SpectralMixerUiEnd, UiEvent, UiUpdate};
+use crate::synth_engine::spectral_mixer::{
+    SpectralMixerAudioEnd, SpectralMixerLinks, SpectralMixerUiEnd, UiEvent, UiUpdate,
+};
 
 pub struct UiEnd {
     rx: rtrb::Consumer<UiUpdate>,
@@ -142,6 +144,7 @@ pub struct Links;
 impl SpectralMixerLinks for Links {
     type AudioEnd = AudioEnd;
     type UiEnd = UiEnd;
+    type EngineEnd = crate::links::engine::AudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd) {
         make_link_pair()

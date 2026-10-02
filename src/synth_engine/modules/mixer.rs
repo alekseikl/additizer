@@ -20,9 +20,9 @@ use crate::{
 mod config;
 mod link;
 
+pub use crate::ui_bridge::modules::mixer::MixerUiBridge;
 pub use config::{MAX_INPUTS, MixerConfig};
 pub use link::{MixerAudioEnd, MixerLinks, MixerUiEnd, UiEvent, UiUpdate};
-pub use crate::ui_bridge::modules::mixer::MixerUiBridge;
 
 struct InputChannelParams {
     level: SmoothedSample,
@@ -311,7 +311,7 @@ impl<L: MixerLinks> Mixer<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
-        rf: &mut RouterFactory<AudioRouterType>,
+        rf: &mut RouterFactory<AudioRouterType, L::EngineEnd>,
     ) {
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
@@ -393,6 +393,16 @@ impl<L: MixerLinks> Mixer<L> {
             self.audio_end.update_out_volume(target.channel_idx, level);
         }
     }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.audio(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            })
+            .for_channels(|rf, channel_idx| {
+                self.channel_params[channel_idx]
+                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
+            });
+    }
 }
 
 impl<L: MixerLinks> SynthModule for Mixer<L> {
@@ -451,16 +461,5 @@ impl<L: MixerLinks> SynthModule for Mixer<L> {
                 }
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.audio(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            })
-            .for_channels(|rf, channel_idx| {
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
-            });
     }
 }

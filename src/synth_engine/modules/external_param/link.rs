@@ -1,5 +1,4 @@
-
-use crate::synth_engine::Sample;
+use crate::synth_engine::{Sample, engine_io};
 
 pub enum UiEvent {
     SelectedParamIndex(usize),
@@ -26,6 +25,7 @@ pub trait ExternalParamUiEnd: Send {
 pub trait ExternalParamLinks: Send {
     type AudioEnd: ExternalParamAudioEnd;
     type UiEnd: ExternalParamUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

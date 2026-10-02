@@ -2,7 +2,9 @@ use crate::synth_engine::{Input, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 use crate::synth_engine::wave_shaper::ShaperType;
 
-use crate::synth_engine::wave_shaper::{WaveShaperAudioEnd, WaveShaperLinks, WaveShaperUiEnd, UiEvent};
+use crate::synth_engine::wave_shaper::{
+    UiEvent, WaveShaperAudioEnd, WaveShaperLinks, WaveShaperUiEnd,
+};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
@@ -62,6 +64,7 @@ pub struct Links;
 impl WaveShaperLinks for Links {
     type AudioEnd = AudioEnd;
     type UiEnd = UiEnd;
+    type EngineEnd = crate::links::engine::AudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd) {
         make_link_pair()

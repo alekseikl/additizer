@@ -2,7 +2,9 @@ use triple_buffer::triple_buffer;
 
 use crate::synth_engine::{Sample, UI_TO_AUDIO_RING_CAPACITY};
 
-use crate::synth_engine::external_param::{ExternalParamAudioEnd, ExternalParamLinks, ExternalParamUiEnd, UiEvent};
+use crate::synth_engine::external_param::{
+    ExternalParamAudioEnd, ExternalParamLinks, ExternalParamUiEnd, UiEvent,
+};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
@@ -103,6 +105,7 @@ pub struct Links;
 impl ExternalParamLinks for Links {
     type AudioEnd = AudioEnd;
     type UiEnd = UiEnd;
+    type EngineEnd = crate::links::engine::AudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd) {
         make_link_pair()

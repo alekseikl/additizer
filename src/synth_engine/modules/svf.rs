@@ -6,9 +6,9 @@ mod link;
 #[cfg(test)]
 mod tests;
 
+pub use crate::ui_bridge::modules::svf::SvfUiBridge;
 pub use config::SvfConfig;
 pub use link::{SvfAudioEnd, SvfLinks, SvfUiEnd, UiEvent};
-pub use crate::ui_bridge::modules::svf::SvfUiBridge;
 
 use additizer_dsp::filters::{
     control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
@@ -202,7 +202,7 @@ impl<L: SvfLinks> Svf<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
-        rf: &mut RouterFactory<AudioRouterType>,
+        rf: &mut RouterFactory<AudioRouterType, L::EngineEnd>,
     ) {
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
@@ -283,6 +283,16 @@ impl<L: SvfLinks> Svf<L> {
             output,
         );
     }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.audio(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            })
+            .for_channels(|rf, channel_idx| {
+                self.channel_params[channel_idx]
+                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
+            });
+    }
 }
 
 impl<L: SvfLinks> SynthModule for Svf<L> {
@@ -343,16 +353,5 @@ impl<L: SvfLinks> SynthModule for Svf<L> {
                 UiEvent::Keytrack(value) => self.set_keytrack(value),
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.audio(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            })
-            .for_channels(|rf, channel_idx| {
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
-            });
     }
 }

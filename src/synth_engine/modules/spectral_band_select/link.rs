@@ -1,8 +1,5 @@
-
 use super::BandSelectMode;
-use crate::synth_engine::{
-    Sample, types::ComplexSample,
-};
+use crate::synth_engine::{Sample, engine_io, types::ComplexSample};
 
 pub enum UiEvent {
     Mode(BandSelectMode),
@@ -29,6 +26,7 @@ pub trait SpectralBandSelectUiEnd: Send {
 pub trait SpectralBandSelectLinks: Send {
     type AudioEnd: SpectralBandSelectAudioEnd;
     type UiEnd: SpectralBandSelectUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

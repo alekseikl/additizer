@@ -6,9 +6,9 @@ mod link;
 #[cfg(test)]
 mod tests;
 
+pub use crate::ui_bridge::modules::envelope::EnvelopeUiBridge;
 pub use config::EnvelopeConfig;
 pub use link::{EnvelopeAudioEnd, EnvelopeLinks, EnvelopeUiEnd, UiEvent};
-pub use crate::ui_bridge::modules::envelope::EnvelopeUiBridge;
 
 use crate::{
     synth_engine::{
@@ -356,7 +356,7 @@ impl<L: EnvelopeLinks> Envelope<L> {
         &mut self,
         target: &VoiceTarget,
         outputs: &mut VoicesLayout<SamplesOutput>,
-        rf: &mut RouterFactory<ControlRouterType>,
+        rf: &mut RouterFactory<ControlRouterType, L::EngineEnd>,
     ) {
         let channel_idx = target.channel_idx;
         let voice_idx = target.voice_idx;
@@ -441,6 +441,12 @@ impl<L: EnvelopeLinks> Envelope<L> {
                 done: voice.done,
             });
         }
+    }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.control(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
     }
 }
 
@@ -550,12 +556,5 @@ impl<L: EnvelopeLinks> SynthModule for Envelope<L> {
                 UiEvent::StealLevel(value) => self.set_steal_level(value),
             }
         }
-    }
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        ctx.control(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            });
     }
 }

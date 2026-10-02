@@ -1,6 +1,7 @@
 use crate::synth_engine::{
     Buffer, ComplexSample, ModuleId, NUM_CHANNELS, ProcessParams, Sample,
     buffer::{VoicesLayout, ZEROES_BUFFER},
+    engine_io::EngineAudioEnd,
     routing::{
         InputSlots, ProcessContext, SamplesOutput, SpectralOutput, process_context::VoiceTarget,
     },
@@ -104,13 +105,13 @@ impl RouterDataType for OutputRouterType {
     }
 }
 
-pub struct RouterFactory<'f, 'c, D: RouterDataType> {
-    pub(super) ctx: &'f mut ProcessContext<'c>,
+pub struct RouterFactory<'f, 'c, D: RouterDataType, A: EngineAudioEnd> {
+    pub(super) ctx: &'f mut ProcessContext<'c, A>,
     pub(super) module_id: ModuleId,
     pub(super) data_type: D,
 }
 
-impl<'f, 'c, D: RouterDataType> RouterFactory<'f, 'c, D> {
+impl<'f, 'c, A: EngineAudioEnd, D: RouterDataType> RouterFactory<'f, 'c, D, A> {
     pub fn params(&self) -> &ProcessParams<'_> {
         &self.ctx.params
     }
@@ -126,7 +127,7 @@ impl<'f, 'c, D: RouterDataType> RouterFactory<'f, 'c, D> {
     }
 }
 
-impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
+impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, AudioRouterType, A> {
     pub fn for_voices(
         &mut self,
         mut f: impl FnMut(&mut Self, &VoiceTarget, &mut VoicesLayout<SamplesOutput>),
@@ -190,7 +191,7 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
     pub fn for_triggered_voice<'voice>(
         &'voice mut self,
         target: &'voice VoiceTarget,
-    ) -> VoiceRouter<'voice, 'f, 'c, AudioRouterType>
+    ) -> VoiceRouter<'voice, 'f, 'c, AudioRouterType, A>
     where
         'f: 'voice,
     {
@@ -208,7 +209,7 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
         target: &'voice VoiceTarget,
         outputs: &'voice mut VoicesLayout<SamplesOutput>,
     ) -> (
-        VoiceRouter<'voice, 'f, 'c, AudioRouterType>,
+        VoiceRouter<'voice, 'f, 'c, AudioRouterType, A>,
         VoiceOutput<'voice, AudioRouterType>,
     )
     where
@@ -237,7 +238,7 @@ impl<'f, 'c> RouterFactory<'f, 'c, AudioRouterType> {
     }
 }
 
-impl<'f, 'c> RouterFactory<'f, 'c, ControlRouterType> {
+impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, ControlRouterType, A> {
     pub fn for_voices(
         &mut self,
         mut f: impl FnMut(&mut Self, &VoiceTarget, &mut VoicesLayout<SamplesOutput>),
@@ -271,7 +272,7 @@ impl<'f, 'c> RouterFactory<'f, 'c, ControlRouterType> {
         target: &'voice VoiceTarget,
         outputs: &'voice mut VoicesLayout<SamplesOutput>,
     ) -> (
-        VoiceRouter<'voice, 'f, 'c, ControlRouterType>,
+        VoiceRouter<'voice, 'f, 'c, ControlRouterType, A>,
         VoiceOutput<'voice, ControlRouterType>,
     )
     where
@@ -308,7 +309,7 @@ impl<'f, 'c> RouterFactory<'f, 'c, ControlRouterType> {
     }
 }
 
-impl<'f, 'c> RouterFactory<'f, 'c, SpectralRouterType> {
+impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, SpectralRouterType, A> {
     pub fn for_voices(
         &mut self,
         mut f: impl FnMut(&mut Self, &VoiceTarget, &mut VoicesLayout<SpectralOutput>),
@@ -338,7 +339,7 @@ impl<'f, 'c> RouterFactory<'f, 'c, SpectralRouterType> {
         target: &'voice VoiceTarget,
         outputs: &'voice mut VoicesLayout<SpectralOutput>,
     ) -> (
-        VoiceRouter<'voice, 'f, 'c, SpectralRouterType>,
+        VoiceRouter<'voice, 'f, 'c, SpectralRouterType, A>,
         VoiceOutput<'voice, SpectralRouterType>,
     )
     where
@@ -365,11 +366,11 @@ impl<'f, 'c> RouterFactory<'f, 'c, SpectralRouterType> {
     }
 }
 
-impl<'f, 'c> RouterFactory<'f, 'c, OutputRouterType> {
+impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, OutputRouterType, A> {
     pub fn for_voice<'voice>(
         &'voice mut self,
         target: &'voice VoiceTarget,
-    ) -> VoiceRouter<'voice, 'f, 'c, OutputRouterType>
+    ) -> VoiceRouter<'voice, 'f, 'c, OutputRouterType, A>
     where
         'f: 'voice,
     {
@@ -381,8 +382,8 @@ impl<'f, 'c> RouterFactory<'f, 'c, OutputRouterType> {
     }
 }
 
-pub struct VoiceRouter<'v, 'f, 'c, D: RouterDataType> {
-    factory: &'v mut RouterFactory<'f, 'c, D>,
+pub struct VoiceRouter<'v, 'f, 'c, D: RouterDataType, A: EngineAudioEnd> {
+    factory: &'v mut RouterFactory<'f, 'c, D, A>,
     target: &'v VoiceTarget,
     state: D::VoiceState,
 }
@@ -394,7 +395,7 @@ pub struct VoiceOutput<'v, D: RouterDataType> {
     samples: usize,
 }
 
-impl<'v, 'f, 'c, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D> {
+impl<'v, 'f, 'c, A: EngineAudioEnd, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D, A> {
     pub fn sample_rate(&self) -> Sample {
         self.factory.ctx.params.sample_rate
     }
@@ -422,7 +423,7 @@ impl<'v, 'f, 'c, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D> {
             let value = param + modulated_amount;
 
             if self.need_update_ui() {
-                self.factory.ctx.telemetry.update_modulated_input(
+                self.factory.ctx.audio_end.update_modulated_input(
                     self.factory.module_id,
                     input.input_type,
                     self.target.channel_idx as u8,
@@ -446,7 +447,7 @@ impl<'v, 'f, 'c, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D> {
     }
 }
 
-impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
+impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, AudioRouterType, A> {
     pub fn samples(&self) -> usize {
         self.factory.ctx.params.samples - self.state.offset
     }
@@ -484,7 +485,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
         {
             let value = buff[0];
 
-            self.factory.ctx.telemetry.update_modulated_input(
+            self.factory.ctx.audio_end.update_modulated_input(
                 self.factory.module_id,
                 input.input_type,
                 self.target.channel_idx as u8,
@@ -517,7 +518,7 @@ impl<'v> VoiceOutput<'v, AudioRouterType> {
     }
 }
 
-impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
+impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, ControlRouterType, A> {
     fn samples(&self) -> usize {
         self.factory.ctx.params.samples - self.state.offset + 1
     }
@@ -552,7 +553,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
         {
             let value = buff[0];
 
-            self.factory.ctx.telemetry.update_modulated_input(
+            self.factory.ctx.audio_end.update_modulated_input(
                 self.factory.module_id,
                 input.input_type,
                 self.target.channel_idx as u8,
@@ -592,7 +593,7 @@ impl<'v> VoiceOutput<'v, ControlRouterType> {
     }
 }
 
-impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, SpectralRouterType> {
+impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, SpectralRouterType, A> {
     pub fn direct_opt(&self, slot: Option<usize>) -> Option<Sample> {
         let this_frame = self
             .factory
@@ -638,7 +639,7 @@ impl<'v, D: RouterDataType> Drop for VoiceOutput<'v, D> {
     }
 }
 
-impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, OutputRouterType> {
+impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, OutputRouterType, A> {
     pub fn direct(&mut self, slot: Option<usize>) -> &[Sample] {
         let ctx = &self.factory.ctx;
 

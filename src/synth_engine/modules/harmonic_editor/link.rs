@@ -1,9 +1,8 @@
 use std::array;
 
-
 use crate::synth_engine::{
     ComplexSample, DisplaySpectrum, NUM_CHANNELS, SPECTRAL_BUFFER_SIZE, Sample, StereoSample,
-    harmonic_editor::EditRequest,
+    engine_io, harmonic_editor::EditRequest,
 };
 
 #[derive(Clone)]
@@ -77,7 +76,11 @@ pub enum UiEvent {
 pub trait HarmonicEditorAudioEnd: Send {
     fn pop_event(&mut self) -> Option<UiEvent>;
     fn update_display_spectrum(&mut self, spectrum: &[ComplexSample]);
-    fn publish_harmonics(&mut self, amplitudes: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS], phases: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS]);
+    fn publish_harmonics(
+        &mut self,
+        amplitudes: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+        phases: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+    );
 }
 
 pub trait HarmonicEditorUiEnd: Send {
@@ -102,6 +105,7 @@ pub trait HarmonicEditorUiEnd: Send {
 pub trait HarmonicEditorLinks: Send {
     type AudioEnd: HarmonicEditorAudioEnd;
     type UiEnd: HarmonicEditorUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

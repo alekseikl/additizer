@@ -10,8 +10,8 @@ use crate::{
         iir_decimator::IirDecimator,
         level_ballistics::StereoLevelBallistics,
         routing::{
-            DataType, InputMeta, InputSlots, MAX_VOICES, NUM_CHANNELS, ProcessContext,
-            SpectralInputSlot, VoiceEvent, VoiceTarget,
+            DataType, EngineAudioEnd, InputMeta, InputSlots, MAX_VOICES, NUM_CHANNELS,
+            ProcessContext, SpectralInputSlot, VoiceEvent, VoiceTarget,
         },
         smooth::SmoothedSample,
         voices_handler::DecayingVoice,
@@ -171,6 +171,72 @@ impl Output {
             }
         }
     }
+    pub(crate) fn process<A: EngineAudioEnd>(&mut self, ctx: &mut ProcessContext<A>) {
+        if ctx.params.trigger_stage {
+            return;
+        }
+
+        let samples = ctx.params.samples;
+        let sample_rate = ctx.params.sample_rate;
+        let mut clipped = [false; NUM_CHANNELS];
+        let mut rf = ctx.for_output(self.id());
+        let num_active_voices = rf.params().active_voices.len();
+
+        if num_active_voices == 0 {
+            self.output.iter_mut().for_each(|output| output.fill(0.0));
+        } else {
+            for (channel_idx, (output, gain)) in
+                self.output.iter_mut().zip(self.gain.iter_mut()).enumerate()
+            {
+                for seq_idx in 0..num_active_voices {
+                    let playing = rf.params().active_voices[seq_idx];
+                    let target = VoiceTarget::new(channel_idx, &playing, seq_idx);
+                    let mut router = rf.for_voice(&target);
+                    let input_buffer = &mut self.input_buffer[..samples];
+
+                    copy_to_buffer(
+                        input_buffer,
+                        router.direct(self.audio_input).iter().copied(),
+                    );
+
+                    let voice = &mut self.channels[channel_idx].voices[target.voice_idx];
+
+                    Self::apply_kill_fade(input_buffer, voice, self.kill_time, sample_rate);
+
+                    copy_or_add_to_buffer(
+                        seq_idx == 0,
+                        output,
+                        self.input_buffer.iter().copied().take(samples),
+                    );
+                }
+
+                clipped[channel_idx] = if gain.check_needs_smoothing(&rf.params().smooth_params) {
+                    Self::apply_volume(
+                        output.iter_mut(),
+                        gain.smoothed_iter(&rf.params().smooth_params),
+                        samples,
+                    )
+                } else {
+                    Self::apply_volume(output.iter_mut(), std::iter::repeat(gain.get()), samples)
+                };
+            }
+        }
+
+        // Advance gain parameter smoother
+        self.gain
+            .iter_mut()
+            .for_each(|gain| gain.advance(&rf.params().smooth_params, samples));
+
+        if ctx.params.needs_update_ui {
+            let levels = self.out_volume_ballistics.process(
+                [&self.output[0][..samples], &self.output[1][..samples]],
+                sample_rate,
+            );
+
+            ctx.audio_end
+                .update_out_volume(StereoSample::from_iter(levels), clipped);
+        }
+    }
 }
 
 impl SynthModule for Output {
@@ -242,71 +308,4 @@ impl SynthModule for Output {
     }
 
     fn process_ui_events(&mut self) {}
-
-    fn process(&mut self, ctx: &mut ProcessContext) {
-        if ctx.params.trigger_stage {
-            return;
-        }
-
-        let samples = ctx.params.samples;
-        let sample_rate = ctx.params.sample_rate;
-        let mut clipped = [false; NUM_CHANNELS];
-        let mut rf = ctx.for_output(self.id());
-        let num_active_voices = rf.params().active_voices.len();
-
-        if num_active_voices == 0 {
-            self.output.iter_mut().for_each(|output| output.fill(0.0));
-        } else {
-            for (channel_idx, (output, gain)) in
-                self.output.iter_mut().zip(self.gain.iter_mut()).enumerate()
-            {
-                for seq_idx in 0..num_active_voices {
-                    let playing = rf.params().active_voices[seq_idx];
-                    let target = VoiceTarget::new(channel_idx, &playing, seq_idx);
-                    let mut router = rf.for_voice(&target);
-                    let input_buffer = &mut self.input_buffer[..samples];
-
-                    copy_to_buffer(
-                        input_buffer,
-                        router.direct(self.audio_input).iter().copied(),
-                    );
-
-                    let voice = &mut self.channels[channel_idx].voices[target.voice_idx];
-
-                    Self::apply_kill_fade(input_buffer, voice, self.kill_time, sample_rate);
-
-                    copy_or_add_to_buffer(
-                        seq_idx == 0,
-                        output,
-                        self.input_buffer.iter().copied().take(samples),
-                    );
-                }
-
-                clipped[channel_idx] = if gain.check_needs_smoothing(&rf.params().smooth_params) {
-                    Self::apply_volume(
-                        output.iter_mut(),
-                        gain.smoothed_iter(&rf.params().smooth_params),
-                        samples,
-                    )
-                } else {
-                    Self::apply_volume(output.iter_mut(), std::iter::repeat(gain.get()), samples)
-                };
-            }
-        }
-
-        // Advance gain parameter smoother
-        self.gain
-            .iter_mut()
-            .for_each(|gain| gain.advance(&rf.params().smooth_params, samples));
-
-        if ctx.params.needs_update_ui {
-            let levels = self.out_volume_ballistics.process(
-                [&self.output[0][..samples], &self.output[1][..samples]],
-                sample_rate,
-            );
-
-            ctx.telemetry
-                .update_out_volume(StereoSample::from_iter(levels), clipped);
-        }
-    }
 }

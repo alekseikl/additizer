@@ -80,6 +80,29 @@ pub enum ModuleHandle<E: EngineLinks = crate::links::PluginLinks> {
 }
 
 impl<E: EngineLinks> ModuleHandle<E> {
+    pub(super) fn process(&mut self, ctx: &mut ProcessContext<E::AudioEnd>) {
+        match self {
+            Self::Oscillator(m) => m.process(ctx),
+            Self::Envelope(m) => m.process(ctx),
+            Self::Lfo(m) => m.process(ctx),
+            Self::Pitch(m) => m.process(ctx),
+            Self::Amplifier(m) => m.process(ctx),
+            Self::WaveShaper(m) => m.process(ctx),
+            Self::Svf(m) => m.process(ctx),
+            Self::Mixer(m) => m.process(ctx),
+            Self::SpectralFilter(m) => m.process(ctx),
+            Self::SpectralEq(m) => m.process(ctx),
+            Self::SpectralBandSelect(m) => m.process(ctx),
+            Self::SpectralBlend(m) => m.process(ctx),
+            Self::SpectralMixer(m) => m.process(ctx),
+            Self::HarmonicEditor(m) => m.process(ctx),
+            Self::SpectralNoise(m) => m.process(ctx),
+            Self::Expressions(m) => m.process(ctx),
+            Self::ExternalParam(m) => m.process(ctx),
+            Self::Output(m) => m.process(ctx),
+        }
+    }
+
     pub(crate) fn module_type(&self) -> ModuleType {
         match self {
             Self::Output(_) => ModuleType::Output,

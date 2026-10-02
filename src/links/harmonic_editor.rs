@@ -6,7 +6,9 @@ use crate::synth_engine::{
     harmonic_editor::EditRequest,
 };
 
-use crate::synth_engine::harmonic_editor::{HarmonicEditorAudioEnd, HarmonicEditorLinks, HarmonicEditorUiEnd, Harmonics, UiEvent};
+use crate::synth_engine::harmonic_editor::{
+    HarmonicEditorAudioEnd, HarmonicEditorLinks, HarmonicEditorUiEnd, Harmonics, UiEvent,
+};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
@@ -146,7 +148,11 @@ impl HarmonicEditorAudioEnd for AudioEnd {
     fn update_display_spectrum(&mut self, spectrum: &[ComplexSample]) {
         AudioEnd::update_display_spectrum(self, spectrum)
     }
-    fn publish_harmonics(&mut self, amplitudes: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS], phases: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS]) {
+    fn publish_harmonics(
+        &mut self,
+        amplitudes: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+        phases: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+    ) {
         AudioEnd::publish_harmonics(self, amplitudes, phases)
     }
 }
@@ -207,6 +213,7 @@ pub struct Links;
 impl HarmonicEditorLinks for Links {
     type AudioEnd = AudioEnd;
     type UiEnd = UiEnd;
+    type EngineEnd = crate::links::engine::AudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd) {
         make_link_pair()

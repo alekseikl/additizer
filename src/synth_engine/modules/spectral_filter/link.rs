@@ -1,5 +1,4 @@
-
-use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::synth_engine::{Input, Sample, StereoSample, engine_io};
 use additizer_dsp::filters::spectral_filter::FilterType;
 
 pub enum UiEvent {
@@ -29,6 +28,7 @@ pub trait SpectralFilterUiEnd: Send {
 pub trait SpectralFilterLinks: Send {
     type AudioEnd: SpectralFilterAudioEnd;
     type UiEnd: SpectralFilterUiEnd;
+    type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }
