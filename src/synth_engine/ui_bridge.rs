@@ -551,23 +551,7 @@ impl UiBridge {
 
         let id = match module_type {
             ModuleType::Output => OUTPUT_MODULE_ID,
-            ModuleType::Amplifier => synth.add_amplifier(),
-            ModuleType::Envelope => synth.add_envelope(),
-            ModuleType::Mixer => synth.add_mixer(),
-            ModuleType::Oscillator => synth.add_oscillator(),
-            ModuleType::SpectralFilter => synth.add_spectral_filter(),
-            ModuleType::SpectralEq => synth.add_spectral_eq(),
-            ModuleType::SpectralBandSelect => synth.add_spectral_band_select(),
-            ModuleType::SpectralBlend => synth.add_spectral_blend(),
-            ModuleType::SpectralMixer => synth.add_spectral_mixer(),
-            ModuleType::HarmonicEditor => synth.add_harmonic_editor(),
-            ModuleType::SpectralNoise => synth.add_spectral_noise(),
-            ModuleType::ExternalParam => synth.add_external_param(),
-            ModuleType::Lfo => synth.add_lfo(),
-            ModuleType::Pitch => synth.add_pitch(),
-            ModuleType::WaveShaper => synth.add_wave_shaper(),
-            ModuleType::Svf => synth.add_svf(),
-            ModuleType::Expressions => synth.add_expressions(),
+            module_type => synth.add_module(module_type),
         };
 
         self.routing = synth.get_routing_state();

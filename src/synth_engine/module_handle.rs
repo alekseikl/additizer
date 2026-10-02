@@ -102,6 +102,31 @@ impl ModuleHandle {
         }
     }
 
+    pub(super) fn new(module_type: ModuleType, id: ModuleId) -> Self {
+        match module_type {
+            ModuleType::Output => unreachable!("output is created with the engine"),
+            ModuleType::Oscillator => Self::Oscillator(Box::new(Oscillator::new(id))),
+            ModuleType::Envelope => Self::Envelope(Box::new(Envelope::new(id))),
+            ModuleType::Lfo => Self::Lfo(Box::new(Lfo::new(id))),
+            ModuleType::Pitch => Self::Pitch(Box::new(Pitch::new(id))),
+            ModuleType::Amplifier => Self::Amplifier(Box::new(Amplifier::new(id))),
+            ModuleType::Mixer => Self::Mixer(Box::new(Mixer::new(id))),
+            ModuleType::WaveShaper => Self::WaveShaper(Box::new(WaveShaper::new(id))),
+            ModuleType::Svf => Self::Svf(Box::new(Svf::new(id))),
+            ModuleType::SpectralFilter => Self::SpectralFilter(Box::new(SpectralFilter::new(id))),
+            ModuleType::SpectralEq => Self::SpectralEq(Box::new(SpectralEq::new(id))),
+            ModuleType::SpectralBandSelect => {
+                Self::SpectralBandSelect(Box::new(SpectralBandSelect::new(id)))
+            }
+            ModuleType::SpectralBlend => Self::SpectralBlend(Box::new(SpectralBlend::new(id))),
+            ModuleType::SpectralMixer => Self::SpectralMixer(Box::new(SpectralMixer::new(id))),
+            ModuleType::HarmonicEditor => Self::HarmonicEditor(Box::new(HarmonicEditor::new(id))),
+            ModuleType::SpectralNoise => Self::SpectralNoise(Box::new(SpectralNoise::new(id))),
+            ModuleType::Expressions => Self::Expressions(Box::new(Expressions::new(id))),
+            ModuleType::ExternalParam => Self::ExternalParam(Box::new(ExternalParam::new(id))),
+        }
+    }
+
     pub(super) fn from_config(module_cfg: &ModuleConfig) -> Self {
         match module_cfg {
             ModuleConfig::Oscillator(cfg) => {

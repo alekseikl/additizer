@@ -6,7 +6,7 @@ use crate::{
     engine_factory::{EngineHandle, UiConfigHandle},
     synth_engine::{
         EngineConfig, EngineParams, Input, InputId, LinkConfig, ModuleConfig, ModuleId,
-        OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
+        ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
         harmonic_editor::HarmonicEditorConfig,
         oscillator::OscillatorConfig,
         ui_bridge::{
@@ -83,7 +83,7 @@ fn has_linkable_input_false_when_only_compatible_input_already_taken_by_src() {
 #[test]
 fn has_linkable_input_true_for_replacement_direct_source() {
     let mut engine = minimal_engine();
-    let he2 = engine.add_harmonic_editor();
+    let he2 = engine.add_module(ModuleType::HarmonicEditor);
     let bridge = make_bridge(engine);
 
     assert!(bridge.has_linkable_input(he2, OSCILLATOR_ID));
@@ -105,7 +105,7 @@ fn get_linkable_inputs_excludes_already_connected() {
 #[test]
 fn get_linkable_inputs_includes_alternate_direct_source() {
     let mut engine = minimal_engine();
-    let he2 = engine.add_harmonic_editor();
+    let he2 = engine.add_module(ModuleType::HarmonicEditor);
     let bridge = make_bridge(engine);
 
     let linkable = bridge.get_linkable_inputs(he2, OSCILLATOR_ID);
@@ -137,7 +137,7 @@ fn get_linkable_inputs_excludes_self_and_type_mismatch() {
 #[test]
 fn create_link_routes_direct_spectrum() {
     let mut engine = minimal_engine();
-    let he2 = engine.add_harmonic_editor();
+    let he2 = engine.add_module(ModuleType::HarmonicEditor);
     let mut bridge = make_bridge(engine);
     let spectrum = InputId::new(Input::Spectrum, OSCILLATOR_ID);
 
@@ -152,7 +152,7 @@ fn create_link_routes_direct_spectrum() {
 #[test]
 fn create_link_routes_mixed_detune() {
     let mut engine = minimal_engine();
-    let lfo_id = engine.add_lfo();
+    let lfo_id = engine.add_module(ModuleType::Lfo);
     let mut bridge = make_bridge(engine);
     let detune = InputId::new(Input::Detune, OSCILLATOR_ID);
 
@@ -166,7 +166,7 @@ fn create_link_routes_mixed_detune() {
 #[test]
 fn get_available_mixed_excludes_connected_source() {
     let mut engine = minimal_engine();
-    let lfo_id = engine.add_lfo();
+    let lfo_id = engine.add_module(ModuleType::Lfo);
     engine
         .add_mixed_link(
             lfo_id,

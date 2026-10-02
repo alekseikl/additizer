@@ -104,21 +104,6 @@ pub struct SynthEngine {
     pending_poly_modulations: Vec<PendingPolyModulation>,
 }
 
-macro_rules! add_module_method {
-    ($func_name:ident, $module_type:ident $(, $arg:ident )*) => {
-        pub fn $func_name(&mut self) -> ModuleId {
-            let id = self.alloc_module_id();
-            let mut module = ModuleHandle::$module_type(Box::new($module_type::new(id $(, self.$arg() )*)));
-
-            self.outputs_arena.allocate_slot(&mut module);
-            self.modules.insert(id, module);
-            self.refresh_routing()
-                .expect("routing should be consistent after a module is added");
-            id
-        }
-    };
-}
-
 impl SynthEngine {
     pub const AVAILABLE_VOICES: usize = MAX_AVAILABLE_VOICES;
 
@@ -299,23 +284,16 @@ impl SynthEngine {
         (block_size).clamp(4, MAX_BLOCK_SIZE)
     }
 
-    add_module_method!(add_oscillator, Oscillator);
-    add_module_method!(add_envelope, Envelope);
-    add_module_method!(add_lfo, Lfo);
-    add_module_method!(add_pitch, Pitch);
-    add_module_method!(add_amplifier, Amplifier);
-    add_module_method!(add_mixer, Mixer);
-    add_module_method!(add_wave_shaper, WaveShaper);
-    add_module_method!(add_svf, Svf);
-    add_module_method!(add_spectral_filter, SpectralFilter);
-    add_module_method!(add_spectral_eq, SpectralEq);
-    add_module_method!(add_spectral_band_select, SpectralBandSelect);
-    add_module_method!(add_spectral_blend, SpectralBlend);
-    add_module_method!(add_spectral_mixer, SpectralMixer);
-    add_module_method!(add_harmonic_editor, HarmonicEditor);
-    add_module_method!(add_spectral_noise, SpectralNoise);
-    add_module_method!(add_expressions, Expressions);
-    add_module_method!(add_external_param, ExternalParam);
+    pub fn add_module(&mut self, module_type: ModuleType) -> ModuleId {
+        let id = self.alloc_module_id();
+        let mut module = ModuleHandle::new(module_type, id);
+
+        self.outputs_arena.allocate_slot(&mut module);
+        self.modules.insert(id, module);
+        self.refresh_routing()
+            .expect("routing should be consistent after a module is added");
+        id
+    }
 
     pub fn duplicate_module(&mut self, id: ModuleId) -> Option<ModuleId> {
         let mut config = self.modules.get(&id)?.config()?;

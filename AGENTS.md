@@ -131,9 +131,10 @@ subdir, no `ModuleConfig` variant; UI is `output_ui.rs` / `output_widget.rs`.
 
 1. Create `modules/<name>.rs` + `config.rs`, `link.rs`, `ui_bridge.rs` (copy `amplifier`).
 2. Register the module in `synth_engine/modules.rs` (`pub mod` + re-exports).
-3. Add `ModuleType::<Name>` and `ModuleHandle::<Name>` in `module_handle.rs`.
+3. Add `ModuleType::<Name>`, `ModuleHandle::<Name>`, and a `ModuleHandle::new` arm in
+   `module_handle.rs`.
 4. Add `ModuleConfig::<Name>` in `config.rs` and wire it in `SynthEngine::try_new` /
-   `get_config` (`src/synth_engine.rs`). Add `add_<name>` via `add_module_method!`.
+   `get_config` (`src/synth_engine.rs`).
 5. Add `ModuleBridge::<Name>` and a match arm in `UiBridge::insert_module_bridge`
    (`src/synth_engine/ui_bridge.rs`).
 6. Add the editor detail panel and `ModuleType::ui` arm in `editor.rs`; add a grid widget and

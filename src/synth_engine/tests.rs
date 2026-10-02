@@ -709,7 +709,7 @@ fn add_module_joins_execution_order_before_output() {
         },
     );
 
-    let lfo_id = engine.add_lfo();
+    let lfo_id = engine.add_module(ModuleType::Lfo);
     assert!(engine.execution_order.contains(&lfo_id));
     assert_eq!(*engine.execution_order.last().unwrap(), OUTPUT_MODULE_ID);
 }
@@ -784,7 +784,7 @@ fn add_module_at_runtime() {
         },
     );
 
-    let amp_id = engine.add_amplifier();
+    let amp_id = engine.add_module(ModuleType::Amplifier);
     let osc_to_out = InputId::new(Input::Audio, OUTPUT_MODULE_ID);
 
     engine.remove_link(&OSCILLATOR_ID, &osc_to_out);
@@ -829,7 +829,7 @@ fn add_link_overrides_existing_link() {
         },
     );
 
-    let lfo_id = engine.add_lfo();
+    let lfo_id = engine.add_module(ModuleType::Lfo);
     let dst = InputId::new(Input::Detune, OSCILLATOR_ID);
 
     engine
@@ -861,7 +861,7 @@ fn set_direct_link_replaces_existing_source() {
         },
     );
 
-    let harmonic_b = engine.add_harmonic_editor();
+    let harmonic_b = engine.add_module(ModuleType::HarmonicEditor);
     let dst = InputId::new(Input::Spectrum, OSCILLATOR_ID);
 
     engine
@@ -916,7 +916,7 @@ fn update_link_amount_changes_routing() {
         },
     );
 
-    let lfo_id = engine.add_lfo();
+    let lfo_id = engine.add_module(ModuleType::Lfo);
     let dst = InputId::new(Input::Detune, OSCILLATOR_ID);
     engine
         .add_mixed_link(lfo_id, dst, StereoSample::ONE)
@@ -962,7 +962,7 @@ fn set_direct_link_rejects_mixed_input() {
             ..OscillatorConfig::default()
         },
     );
-    let lfo_id = engine.add_lfo();
+    let lfo_id = engine.add_module(ModuleType::Lfo);
 
     let err = engine
         .set_direct_link(lfo_id, InputId::new(Input::Detune, OSCILLATOR_ID))
@@ -980,7 +980,7 @@ fn add_mixed_link_allows_control_into_audio_input() {
             ..OscillatorConfig::default()
         },
     );
-    let lfo_id = engine.add_lfo();
+    let lfo_id = engine.add_module(ModuleType::Lfo);
 
     engine
         .add_mixed_link(
@@ -1000,7 +1000,7 @@ fn add_mixed_link_rejects_audio_into_control() {
             ..OscillatorConfig::default()
         },
     );
-    let env_id = engine.add_envelope();
+    let env_id = engine.add_module(ModuleType::Envelope);
 
     let err = engine
         .add_mixed_link(
@@ -1051,7 +1051,7 @@ fn set_link_modulation_rejects_direct_edge() {
             ..OscillatorConfig::default()
         },
     );
-    let lfo_id = engine.add_lfo();
+    let lfo_id = engine.add_module(ModuleType::Lfo);
     let spectrum = InputId::new(Input::Spectrum, OSCILLATOR_ID);
 
     let err = engine
@@ -1070,8 +1070,8 @@ fn cyclic_direct_links_rejected() {
             ..OscillatorConfig::default()
         },
     );
-    let amp_a = engine.add_amplifier();
-    let amp_b = engine.add_amplifier();
+    let amp_a = engine.add_module(ModuleType::Amplifier);
+    let amp_b = engine.add_module(ModuleType::Amplifier);
 
     engine
         .set_direct_link(amp_a, InputId::new(Input::Audio, amp_b))
@@ -1380,7 +1380,7 @@ fn engine_extended_setters_round_trip() {
     engine.set_oversampling(true);
     engine.set_output_gain(StereoSample::splat(0.5));
 
-    let lfo_id = engine.add_lfo();
+    let lfo_id = engine.add_module(ModuleType::Lfo);
     let dst = InputId::new(Input::Detune, OSCILLATOR_ID);
     engine
         .add_mixed_link(lfo_id, dst, StereoSample::ONE)
@@ -1436,8 +1436,8 @@ fn add_link_connects_new_modules() {
         },
     );
 
-    let amp_id = engine.add_amplifier();
-    let env_id = engine.add_envelope();
+    let amp_id = engine.add_module(ModuleType::Amplifier);
+    let env_id = engine.add_module(ModuleType::Envelope);
     let osc_to_out = InputId::new(Input::Audio, OUTPUT_MODULE_ID);
 
     engine.remove_link(&OSCILLATOR_ID, &osc_to_out);
@@ -1674,9 +1674,9 @@ fn dual_audio_sources_mix_via_mixer() {
         },
     );
 
-    let osc_b = engine.add_oscillator();
-    let harmonic_b = engine.add_harmonic_editor();
-    let mixer_id = engine.add_mixer();
+    let osc_b = engine.add_module(ModuleType::Oscillator);
+    let harmonic_b = engine.add_module(ModuleType::HarmonicEditor);
+    let mixer_id = engine.add_module(ModuleType::Mixer);
     let out_audio = InputId::new(Input::Audio, OUTPUT_MODULE_ID);
 
     engine.remove_link(&OSCILLATOR_ID, &out_audio);
@@ -1753,20 +1753,20 @@ fn runtime_add_all_module_types() {
     );
 
     let ids = [
-        engine.add_harmonic_editor(),
-        engine.add_oscillator(),
-        engine.add_envelope(),
-        engine.add_lfo(),
-        engine.add_amplifier(),
-        engine.add_mixer(),
-        engine.add_wave_shaper(),
-        engine.add_spectral_filter(),
-        engine.add_spectral_blend(),
-        engine.add_spectral_band_select(),
-        engine.add_spectral_mixer(),
-        engine.add_expressions(),
-        engine.add_external_param(),
-        engine.add_svf(),
+        engine.add_module(ModuleType::HarmonicEditor),
+        engine.add_module(ModuleType::Oscillator),
+        engine.add_module(ModuleType::Envelope),
+        engine.add_module(ModuleType::Lfo),
+        engine.add_module(ModuleType::Amplifier),
+        engine.add_module(ModuleType::Mixer),
+        engine.add_module(ModuleType::WaveShaper),
+        engine.add_module(ModuleType::SpectralFilter),
+        engine.add_module(ModuleType::SpectralBlend),
+        engine.add_module(ModuleType::SpectralBandSelect),
+        engine.add_module(ModuleType::SpectralMixer),
+        engine.add_module(ModuleType::Expressions),
+        engine.add_module(ModuleType::ExternalParam),
+        engine.add_module(ModuleType::Svf),
     ];
 
     assert_eq!(ids.len(), 14);
