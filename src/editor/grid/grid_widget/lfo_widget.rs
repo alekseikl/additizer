@@ -43,7 +43,8 @@ impl LfoWidget {
 
         for (i, sample) in self.waveform.iter_mut().enumerate() {
             let t = i as Sample / last;
-            *sample = Lfo::evaluate(shape, t, phase_shift, skew, bipolar);
+            *sample =
+                Lfo::<crate::links::lfo::Links>::evaluate(shape, t, phase_shift, skew, bipolar);
         }
     }
 
@@ -103,7 +104,7 @@ impl LfoWidget {
 
         if has_active_voices {
             let phase = lfo_bridge.get_phase();
-            let value = Lfo::evaluate(
+            let value = Lfo::<crate::links::lfo::Links>::evaluate(
                 config.shape,
                 phase,
                 config.phase_shift[0],

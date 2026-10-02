@@ -8,11 +8,10 @@ use topo_sort::{SortResults, TopoSort};
 use crate::params::ExtParam;
 use crate::synth_engine::{
     external_param::NUM_EXT_PARAMS,
-    module_handle::ModuleHandle,
     modules::Output,
     routing::{
         InputSlot, InputSlots, MIN_MODULE_ID, MixedSource, ModuleLink, OutputsArena,
-        ProcessContext, ProcessParams, SpectralInputSlot, data_types_compatible,
+        ProcessContext, ProcessParams, SpectralInputSlot, Telemetry, data_types_compatible,
     },
     synth_module::SynthModule,
     voices_handler::{
@@ -62,24 +61,29 @@ pub(crate) use additizer_dsp::{
     coeffs, iir_decimator, level_ballistics, phase, smooth, stereo_sample, types,
 };
 
-mod buffer;
-mod config;
+pub(crate) mod buffer;
+pub(crate) mod config;
 #[macro_use]
-mod synth_module;
+pub(crate) mod synth_module;
 mod curves;
-mod module_handle;
+pub mod engine_io;
+pub(crate) mod module_handle;
 mod modules;
-mod routing;
-pub mod ui_bridge;
+pub(crate) mod routing;
 mod voices_handler;
+
+pub use crate::ui_bridge;
+pub use engine_io::{EngineAudioEnd, EngineLinks};
+pub(crate) use module_handle::ModuleHandle;
 
 #[cfg(test)]
 mod tests;
 
 pub const MAX_BLOCK_SIZE: usize = 128;
+pub const AVAILABLE_VOICES: usize = MAX_AVAILABLE_VOICES;
 
-type ModulesMap = FxHashMap<ModuleId, ModuleHandle>;
-type RoutingMap = FxHashMap<InputId, InputSource>;
+type ModulesMap<E> = FxHashMap<ModuleId, ModuleHandle<E>>;
+pub(crate) type RoutingMap = FxHashMap<InputId, InputSource>;
 
 #[derive(Clone, Copy)]
 struct PendingPolyModulation {
@@ -89,33 +93,31 @@ struct PendingPolyModulation {
     value_offset: Sample,
 }
 
-pub struct SynthEngine {
+pub struct SynthEngine<E: EngineLinks = crate::links::PluginLinks> {
     next_id: ModuleId,
     host_sample_rate: f32,
     block_size: usize,
     oversampling: bool,
-    modules: ModulesMap,
+    modules: ModulesMap<E>,
     input_sources: RoutingMap,
     execution_order: Vec<ModuleId>,
     voices_handler: VoicesHandler,
-    audio_end: ui_bridge::AudioEnd,
-    ui_end: Option<ui_bridge::UiEnd>,
+    audio_end: E::AudioEnd,
+    ui_end: Option<E::UiEnd>,
     outputs_arena: OutputsArena,
     pending_poly_modulations: Vec<PendingPolyModulation>,
 }
 
-impl SynthEngine {
-    pub const AVAILABLE_VOICES: usize = MAX_AVAILABLE_VOICES;
-
+impl<E: EngineLinks> SynthEngine<E> {
     pub fn try_new(cfg: &EngineConfig, host_sample_rate: Sample) -> Option<Self> {
-        let (audio_end, ui_end) = ui_bridge::create_link_pair();
+        let (audio_end, ui_end) = E::create_link_pair();
 
         let mut engine = Self {
             next_id: 1,
             host_sample_rate,
             block_size: Self::clamp_block_size(cfg.engine.block_size),
             oversampling: cfg.engine.oversampling,
-            modules: ModulesMap::default(),
+            modules: ModulesMap::<E>::default(),
             input_sources: RoutingMap::default(),
             execution_order: Vec::new(),
             voices_handler: VoicesHandler::new(
@@ -139,7 +141,7 @@ impl SynthEngine {
         let mut max_module_id = MIN_MODULE_ID;
 
         for module_cfg in cfg.modules.iter() {
-            let mut module = ModuleHandle::from_config(module_cfg);
+            let mut module = ModuleHandle::<E>::from_config(module_cfg);
 
             let module_id = module.id();
 
@@ -164,6 +166,10 @@ impl SynthEngine {
         Some(engine)
     }
 
+    pub(crate) fn take_ui_end(&mut self) -> Option<E::UiEnd> {
+        self.ui_end.take()
+    }
+
     pub fn get_config(&self) -> EngineConfig {
         let mut module_ids: Vec<_> = self.modules.keys().copied().collect();
 
@@ -171,7 +177,7 @@ impl SynthEngine {
 
         let modules = module_ids
             .iter()
-            .filter_map(|id| self.modules.get(id).and_then(ModuleHandle::config))
+            .filter_map(|id| self.modules.get(id).and_then(|module| module.config()))
             .collect();
 
         EngineConfig {
@@ -193,7 +199,7 @@ impl SynthEngine {
         }
     }
 
-    fn get_engine_params(&self) -> EngineParams {
+    pub(crate) fn get_engine_params(&self) -> EngineParams {
         let voices = self.voices_handler.get_metrics();
 
         EngineParams {
@@ -206,7 +212,7 @@ impl SynthEngine {
         }
     }
 
-    fn get_routing_state(&self) -> ui_bridge::RoutingState {
+    pub(crate) fn get_routing_state(&self) -> ui_bridge::RoutingState {
         ui_bridge::RoutingState::new(
             self.modules
                 .values()
@@ -277,7 +283,7 @@ impl SynthEngine {
     }
 
     fn clamp_num_voices(num_voices: usize) -> usize {
-        num_voices.clamp(1, Self::AVAILABLE_VOICES)
+        num_voices.clamp(1, AVAILABLE_VOICES)
     }
 
     fn clamp_block_size(block_size: usize) -> usize {
@@ -286,7 +292,7 @@ impl SynthEngine {
 
     pub fn add_module(&mut self, module_type: ModuleType) -> ModuleId {
         let id = self.alloc_module_id();
-        let mut module = ModuleHandle::new(module_type, id);
+        let mut module = ModuleHandle::<E>::new(module_type, id);
 
         self.outputs_arena.allocate_slot(&mut module);
         self.modules.insert(id, module);
@@ -301,7 +307,7 @@ impl SynthEngine {
 
         config.set_id(new_id);
 
-        let mut module = ModuleHandle::from_config(&config);
+        let mut module = ModuleHandle::<E>::from_config(&config);
 
         self.outputs_arena.allocate_slot(&mut module);
         self.modules.insert(new_id, module);
@@ -666,7 +672,7 @@ impl SynthEngine {
     }
 
     fn handle_ui_events(&mut self) {
-        use ui_bridge::UiEvent;
+        use engine_io::UiEvent;
 
         while let Some(event) = self.audio_end.pop_event() {
             match event {
@@ -739,9 +745,11 @@ impl SynthEngine {
         let sample_rate = self.sample_rate();
         let smooth_params = SmoothedSampleParams::new(sample_rate);
 
+        let mut telemetry = Telemetry::from_end(&mut self.audio_end);
+
         let mut ctx = ProcessContext {
             outputs_arena: &mut self.outputs_arena,
-            audio_end: &mut self.audio_end,
+            telemetry: &mut telemetry,
             params: ProcessParams {
                 trigger_stage: true,
                 has_triggered_voices: !triggered_voices.is_empty(),
@@ -828,11 +836,11 @@ impl SynthEngine {
             .collect()
     }
 
-    pub fn get_module(&self, id: ModuleId) -> Option<&ModuleHandle> {
+    pub fn get_module(&self, id: ModuleId) -> Option<&ModuleHandle<E>> {
         self.modules.get(&id)
     }
 
-    pub fn get_module_mut(&mut self, id: ModuleId) -> Option<&mut ModuleHandle> {
+    pub fn get_module_mut(&mut self, id: ModuleId) -> Option<&mut ModuleHandle<E>> {
         self.modules.get_mut(&id)
     }
 

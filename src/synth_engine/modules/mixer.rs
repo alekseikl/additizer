@@ -19,11 +19,10 @@ use crate::{
 
 mod config;
 mod link;
-mod ui_bridge;
 
 pub use config::{MAX_INPUTS, MixerConfig};
-use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::MixerUiBridge;
+pub use link::{MixerAudioEnd, MixerLinks, MixerUiEnd, UiEvent, UiUpdate};
+pub use crate::ui_bridge::modules::mixer::MixerUiBridge;
 
 struct InputChannelParams {
     level: SmoothedSample,
@@ -152,20 +151,24 @@ impl Default for Buffers {
     }
 }
 
-pub struct Mixer {
+pub struct Mixer<L: MixerLinks = crate::links::mixer::Links> {
     id: ModuleId,
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
     buffers: Buffers,
-    audio_end: AudioEnd,
-    ui_end: Option<UiEnd>,
+    audio_end: L::AudioEnd,
+    ui_end: Option<L::UiEnd>,
     inputs: Inputs,
     output_slot: usize,
     inputs_meta: Vec<InputMeta>,
     out_volume_ballistics: [LevelBallistics; NUM_CHANNELS],
 }
 
-impl Mixer {
+impl<L: MixerLinks> Mixer<L> {
+    pub fn take_ui_end(&mut self) -> Option<L::UiEnd> {
+        self.ui_end.take()
+    }
+
     pub const MAX_INPUTS: u8 = MAX_INPUTS;
 
     pub fn new(id: ModuleId) -> Self {
@@ -176,7 +179,7 @@ impl Mixer {
     }
 
     pub fn from_config(config: &config::MixerConfig) -> Self {
-        let (audio_end, ui_end) = create_link_pair();
+        let (audio_end, ui_end) = L::create_link_pair();
 
         let mut result = Self {
             id: config.id,
@@ -392,7 +395,7 @@ impl Mixer {
     }
 }
 
-impl SynthModule for Mixer {
+impl<L: MixerLinks> SynthModule for Mixer<L> {
     fn id(&self) -> ModuleId {
         self.id
     }

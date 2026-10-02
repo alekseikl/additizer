@@ -8,8 +8,9 @@ use crate::synth_engine::{
     oscillator::OscillatorConfig,
     routing::{InputSlot, InputSlots, NUM_CHANNELS, OutputsArena, SpectralInputSlot},
     smooth::SmoothedSampleParams,
-    ui_bridge::{OutputMeter, create_link_pair},
+    ui_bridge::OutputMeter,
     voices_handler::{DecayingVoice, PlayingVoice},
+    Telemetry,
 };
 use crate::utils::from_ms;
 use nice_plug::util::db_to_gain_fast;
@@ -48,13 +49,14 @@ fn run_process(
     update_ui: bool,
 ) -> OutputMeter {
     let mut arena = OutputsArena::new();
-    let (mut audio_end, mut ui_end) = create_link_pair();
+    let (mut audio_end, mut ui_end) = crate::links::engine::make_link_pair();
     let active: &[PlayingVoice] = &[];
 
     {
+        let mut telemetry = Telemetry::from_end(&mut audio_end);
         let mut ctx = ProcessContext {
             outputs_arena: &mut arena,
-            audio_end: &mut audio_end,
+            telemetry: &mut telemetry,
             params: ProcessParams {
                 trigger_stage,
                 has_triggered_voices: false,

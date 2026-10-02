@@ -17,7 +17,7 @@ const SAMPLE_RATE: Sample = 48_000.0;
 const DRAW_LEN: usize = 32;
 
 fn noise_with(color: NoiseColor, level: StereoSample, bandwidth: i32) -> SpectralNoise {
-    SpectralNoise::from_config(&SpectralNoiseConfig {
+    <SpectralNoise>::from_config(&SpectralNoiseConfig {
         id: 1,
         color,
         bandwidth,
@@ -41,7 +41,7 @@ fn draw(
         noise.apply_phase_reset(voice);
     }
 
-    let gain = SpectralNoise::level_gain(level);
+    let gain = <SpectralNoise>::level_gain(level);
     let phase_channel = if noise.stereo { channel } else { LEFT_CHANNEL };
     let cutoff = noise.cutoff[phase_channel];
     let rolloff = noise.rolloff[phase_channel];
@@ -63,16 +63,16 @@ fn draw(
             let octaves_below = (cutoff_log2 - noise.log2[harmonic]).max(0.0);
             let scale = db_to_gain(-db_per_oct * octaves_below);
 
-            SpectralNoise::turn_phase(phase, full_turn * scale, rng);
+            <SpectralNoise>::turn_phase(phase, full_turn * scale, rng);
         }
 
         if amount > FULL_AMOUNT_THRESHOLD {
             for phase in full {
-                SpectralNoise::reset_phase(phase, rng);
+                <SpectralNoise>::reset_phase(phase, rng);
             }
         } else {
             for phase in full {
-                SpectralNoise::turn_phase(phase, full_turn, rng);
+                <SpectralNoise>::turn_phase(phase, full_turn, rng);
             }
         }
     } else {
@@ -132,7 +132,7 @@ fn stereo_channels_share_magnitude_and_differ_in_phase() {
 
 #[test]
 fn mono_channels_share_harmonics() {
-    let mut noise = SpectralNoise::from_config(&SpectralNoiseConfig {
+    let mut noise = <SpectralNoise>::from_config(&SpectralNoiseConfig {
         id: 1,
         color: NoiseColor::White,
         level: StereoSample::new(0.0, -6.0),
@@ -150,7 +150,7 @@ fn mono_channels_share_harmonics() {
 
 #[test]
 fn voices_get_independent_harmonics() {
-    let mut noise = SpectralNoise::from_config(&SpectralNoiseConfig {
+    let mut noise = <SpectralNoise>::from_config(&SpectralNoiseConfig {
         id: 1,
         stereo: false,
         ..SpectralNoiseConfig::default()
@@ -192,7 +192,7 @@ fn circular_distance(a: Sample, b: Sample) -> Sample {
 
 #[test]
 fn zero_amount_holds_phase() {
-    let mut noise = SpectralNoise::from_config(&SpectralNoiseConfig {
+    let mut noise = <SpectralNoise>::from_config(&SpectralNoiseConfig {
         id: 1,
         amount: 0.0.into(),
         ..SpectralNoiseConfig::default()
@@ -206,7 +206,7 @@ fn zero_amount_holds_phase() {
 #[test]
 fn amount_scales_the_phase_turn() {
     let amount = 0.5;
-    let mut noise = SpectralNoise::from_config(&SpectralNoiseConfig {
+    let mut noise = <SpectralNoise>::from_config(&SpectralNoiseConfig {
         id: 1,
         amount: amount.into(),
         ..SpectralNoiseConfig::default()
@@ -231,8 +231,8 @@ fn full_amount_replaces_phase_and_ignores_the_previous_value() {
     let mut rng_a = Pcg32::new(0x1234, 0x5678);
     let mut rng_b = Pcg32::new(0x1234, 0x5678);
 
-    SpectralNoise::reset_phase(&mut from_low, &mut rng_a);
-    SpectralNoise::reset_phase(&mut from_high, &mut rng_b);
+    <SpectralNoise>::reset_phase(&mut from_low, &mut rng_a);
+    <SpectralNoise>::reset_phase(&mut from_high, &mut rng_b);
 
     assert_eq!(from_low, from_high);
     assert_ne!(from_low, 0.2);
@@ -245,7 +245,7 @@ fn partial_amount_turns_from_the_previous_phase() {
     let mut phase = start;
     let mut rng = Pcg32::new(0x1234, 0x5678);
 
-    SpectralNoise::turn_phase(&mut phase, PI * amount, &mut rng);
+    <SpectralNoise>::turn_phase(&mut phase, PI * amount, &mut rng);
 
     let turn = circular_distance(start, phase);
     assert!(turn > 0.0);
@@ -292,7 +292,7 @@ fn cutoff_reduces_the_turn_below_the_frequency() {
     let amount = 1.0;
     let slope = MIN_ROLLOFF;
     let limit = 2.0;
-    let mut noise = SpectralNoise::from_config(&SpectralNoiseConfig {
+    let mut noise = <SpectralNoise>::from_config(&SpectralNoiseConfig {
         id: 1,
         amount: amount.into(),
         cutoff: limit.into(),
@@ -350,7 +350,7 @@ fn fixed_bandwidth_ignores_pitch() {
 
 #[test]
 fn config_round_trips() {
-    let noise = SpectralNoise::from_config(&SpectralNoiseConfig {
+    let noise = <SpectralNoise>::from_config(&SpectralNoiseConfig {
         id: 4,
         color: NoiseColor::Brown,
         bandwidth: 24,
@@ -361,7 +361,7 @@ fn config_round_trips() {
         rolloff: StereoSample::new(12.0, 48.0),
         steal_phase: true,
     });
-    let restored = SpectralNoise::from_config(&noise.get_config());
+    let restored = <SpectralNoise>::from_config(&noise.get_config());
 
     assert_eq!(restored.get_config(), noise.get_config());
     assert!(!restored.get_config().stereo);
@@ -395,7 +395,7 @@ fn play(bandwidth: i32) -> Vec<Sample> {
         ],
     };
 
-    let mut engine = SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid engine");
+    let mut engine = <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("valid engine");
 
     engine.handle_note_on(
         Note {
@@ -462,7 +462,7 @@ fn each_process_draws_a_new_spectrum() {
         ],
     };
 
-    let mut engine = SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid engine");
+    let mut engine = <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("valid engine");
 
     engine.handle_note_on(
         Note {
@@ -497,7 +497,7 @@ fn each_process_draws_a_new_spectrum() {
 }
 
 fn held_phases(steal_phase: bool) -> SpectralNoise {
-    SpectralNoise::from_config(&SpectralNoiseConfig {
+    <SpectralNoise>::from_config(&SpectralNoiseConfig {
         id: 1,
         amount: 0.0.into(),
         steal_phase,

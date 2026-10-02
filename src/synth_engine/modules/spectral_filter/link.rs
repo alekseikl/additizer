@@ -1,6 +1,5 @@
-use triple_buffer::triple_buffer;
 
-use crate::synth_engine::{Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
+use crate::synth_engine::{Input, Sample, StereoSample};
 use additizer_dsp::filters::spectral_filter::FilterType;
 
 pub enum UiEvent {
@@ -12,68 +11,24 @@ pub enum UiEvent {
     QRolloff(StereoSample),
 }
 
-pub struct UiEnd {
-    tx: rtrb::Producer<UiEvent>,
-    pitch: triple_buffer::Output<Sample>,
+pub trait SpectralFilterAudioEnd: Send {
+    fn pop_event(&mut self) -> Option<UiEvent>;
+    fn update_pitch(&mut self, pitch: Sample);
 }
 
-impl UiEnd {
-    pub fn pitch(&mut self) -> Sample {
-        *self.pitch.read()
-    }
-
-    pub fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
-        self.tx.push(UiEvent::InputParam { input, value }).is_ok()
-    }
-
-    pub fn set_filter_type(&mut self, filter_type: FilterType) -> bool {
-        self.tx.push(UiEvent::FilterType(filter_type)).is_ok()
-    }
-
-    pub fn set_linear_phase(&mut self, value: bool) -> bool {
-        self.tx.push(UiEvent::LinearPhase(value)).is_ok()
-    }
-
-    pub fn set_keytrack(&mut self, value: Sample) -> bool {
-        self.tx.push(UiEvent::Keytrack(value)).is_ok()
-    }
-
-    pub fn set_q_cutoff(&mut self, value: StereoSample) -> bool {
-        self.tx.push(UiEvent::QCutoff(value)).is_ok()
-    }
-
-    pub fn set_q_rolloff(&mut self, value: StereoSample) -> bool {
-        self.tx.push(UiEvent::QRolloff(value)).is_ok()
-    }
+pub trait SpectralFilterUiEnd: Send {
+    fn pitch(&mut self) -> Sample;
+    fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
+    fn set_filter_type(&mut self, filter_type: FilterType) -> bool;
+    fn set_linear_phase(&mut self, value: bool) -> bool;
+    fn set_keytrack(&mut self, value: Sample) -> bool;
+    fn set_q_cutoff(&mut self, value: StereoSample) -> bool;
+    fn set_q_rolloff(&mut self, value: StereoSample) -> bool;
 }
 
-pub struct AudioEnd {
-    rx: rtrb::Consumer<UiEvent>,
-    pitch: triple_buffer::Input<Sample>,
-}
+pub trait SpectralFilterLinks: Send {
+    type AudioEnd: SpectralFilterAudioEnd;
+    type UiEnd: SpectralFilterUiEnd;
 
-impl AudioEnd {
-    pub fn pop_event(&mut self) -> Option<UiEvent> {
-        self.rx.pop().ok()
-    }
-
-    pub fn update_pitch(&mut self, pitch: Sample) {
-        self.pitch.write(pitch);
-    }
-}
-
-pub fn create_link_pair() -> (AudioEnd, UiEnd) {
-    let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
-    let (pitch_input, pitch_output) = triple_buffer(&crate::utils::C4_PITCH);
-
-    (
-        AudioEnd {
-            rx: from_ui_rx,
-            pitch: pitch_input,
-        },
-        UiEnd {
-            tx: to_audio_tx,
-            pitch: pitch_output,
-        },
-    )
+    fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

@@ -1,18 +1,17 @@
+use crate::synth_engine::spectral_filter::{SpectralFilter, SpectralFilterConfig, SpectralFilterLinks, SpectralFilterUiEnd};
 use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
 use additizer_dsp::filters::spectral_filter::FilterType;
 
-use super::link::UiEnd;
-use super::{SpectralFilter, SpectralFilterConfig};
 
-pub struct SpectralFilterUiBridge {
-    ui_end: UiEnd,
+pub struct SpectralFilterUiBridge<L: SpectralFilterLinks = crate::links::spectral_filter::Links> {
+    ui_end: L::UiEnd,
     config: SpectralFilterConfig,
 }
 
-impl SpectralFilterUiBridge {
-    pub fn try_new(filter: &mut SpectralFilter) -> Option<Self> {
+impl<L: SpectralFilterLinks> SpectralFilterUiBridge<L> {
+    pub fn try_new(filter: &mut SpectralFilter<L>) -> Option<Self> {
         Some(Self {
-            ui_end: filter.ui_end.take()?,
+            ui_end: filter.take_ui_end()?,
             config: filter.get_config(),
         })
     }
@@ -69,7 +68,7 @@ impl SpectralFilterUiBridge {
     }
 }
 
-impl ModuleUiBridge for SpectralFilterUiBridge {
+impl<L: SpectralFilterLinks> ModuleUiBridge for SpectralFilterUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

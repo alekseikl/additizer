@@ -305,7 +305,7 @@ impl SynthModule for Output {
                 sample_rate,
             );
 
-            ctx.audio_end
+            ctx.telemetry
                 .update_out_volume(StereoSample::from_iter(levels), clipped);
         }
     }

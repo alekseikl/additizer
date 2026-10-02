@@ -1,17 +1,16 @@
+use crate::synth_engine::wave_shaper::{ShaperType, WaveShaper, WaveShaperConfig, WaveShaperLinks, WaveShaperUiEnd};
 use crate::synth_engine::{Input, StereoSample, synth_module::ModuleUiBridge};
 
-use super::link::UiEnd;
-use super::{ShaperType, WaveShaper, WaveShaperConfig};
 
-pub struct WaveShaperUiBridge {
-    ui_end: UiEnd,
+pub struct WaveShaperUiBridge<L: WaveShaperLinks = crate::links::wave_shaper::Links> {
+    ui_end: L::UiEnd,
     config: WaveShaperConfig,
 }
 
-impl WaveShaperUiBridge {
-    pub fn try_new(shaper: &mut WaveShaper) -> Option<Self> {
+impl<L: WaveShaperLinks> WaveShaperUiBridge<L> {
+    pub fn try_new(shaper: &mut WaveShaper<L>) -> Option<Self> {
         Some(Self {
-            ui_end: shaper.ui_end.take()?,
+            ui_end: shaper.take_ui_end()?,
             config: shaper.get_config(),
         })
     }
@@ -39,7 +38,7 @@ impl WaveShaperUiBridge {
     }
 }
 
-impl ModuleUiBridge for WaveShaperUiBridge {
+impl<L: WaveShaperLinks> ModuleUiBridge for WaveShaperUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

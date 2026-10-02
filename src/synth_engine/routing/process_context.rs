@@ -1,12 +1,77 @@
 use crate::synth_engine::{
-    ModuleId, Sample, SmoothedSampleParams,
+    Input, ModuleId, NUM_CHANNELS, Sample, SmoothedSampleParams, StereoSample,
+    engine_io::EngineAudioEnd,
     routing::{
         AudioRouterType, ControlRouterType, OutputRouterType, OutputsArena, RouterFactory,
         SpectralRouterType,
     },
-    ui_bridge::AudioEnd,
     voices_handler::PlayingVoice,
 };
+
+trait TelemetrySink {
+    fn update_modulated_input(
+        &mut self,
+        module_id: ModuleId,
+        input: Input,
+        channel: u8,
+        value: Sample,
+        normalized_value: Sample,
+    ) -> bool;
+
+    fn update_out_volume(&mut self, volume: StereoSample, clipped: [bool; NUM_CHANNELS]);
+}
+
+impl<A: EngineAudioEnd> TelemetrySink for A {
+    fn update_modulated_input(
+        &mut self,
+        module_id: ModuleId,
+        input: Input,
+        channel: u8,
+        value: Sample,
+        normalized_value: Sample,
+    ) -> bool {
+        EngineAudioEnd::update_modulated_input(
+            self,
+            module_id,
+            input,
+            channel,
+            value,
+            normalized_value,
+        )
+    }
+
+    fn update_out_volume(&mut self, volume: StereoSample, clipped: [bool; NUM_CHANNELS]) {
+        EngineAudioEnd::update_out_volume(self, volume, clipped)
+    }
+}
+
+/// UI telemetry published during `process`. Forwards into the engine audio end
+/// without putting that type on [`ProcessContext`].
+pub struct Telemetry<'a> {
+    sink: &'a mut dyn TelemetrySink,
+}
+
+impl<'a> Telemetry<'a> {
+    pub(crate) fn from_end<A: EngineAudioEnd + 'a>(end: &'a mut A) -> Self {
+        Self { sink: end }
+    }
+
+    pub fn update_modulated_input(
+        &mut self,
+        module_id: ModuleId,
+        input: Input,
+        channel: u8,
+        value: Sample,
+        normalized_value: Sample,
+    ) -> bool {
+        self.sink
+            .update_modulated_input(module_id, input, channel, value, normalized_value)
+    }
+
+    pub fn update_out_volume(&mut self, volume: StereoSample, clipped: [bool; NUM_CHANNELS]) {
+        self.sink.update_out_volume(volume, clipped)
+    }
+}
 
 pub struct ProcessParams<'a> {
     pub trigger_stage: bool,
@@ -20,7 +85,7 @@ pub struct ProcessParams<'a> {
 
 pub struct ProcessContext<'c> {
     pub outputs_arena: &'c mut OutputsArena,
-    pub audio_end: &'c mut AudioEnd,
+    pub telemetry: &'c mut Telemetry<'c>,
     pub params: ProcessParams<'c>,
 }
 

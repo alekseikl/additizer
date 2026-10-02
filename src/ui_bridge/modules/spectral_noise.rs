@@ -1,18 +1,19 @@
+use crate::synth_engine::spectral_noise::{
+    NoiseColor, SpectralNoise, SpectralNoiseConfig, SpectralNoiseLinks, SpectralNoiseUiEnd,
+    clamp_bandwidth, clamp_cutoff, clamp_rolloff,
+};
 use crate::synth_engine::{ComplexSample, Input, StereoSample, synth_module::ModuleUiBridge};
 
-use super::SpectralNoise;
-use super::config::{NoiseColor, SpectralNoiseConfig};
-use super::link::UiEnd;
 
-pub struct SpectralNoiseUiBridge {
-    ui_end: UiEnd,
+pub struct SpectralNoiseUiBridge<L: SpectralNoiseLinks = crate::links::spectral_noise::Links> {
+    ui_end: L::UiEnd,
     config: SpectralNoiseConfig,
 }
 
-impl SpectralNoiseUiBridge {
-    pub fn try_new(noise: &mut SpectralNoise) -> Option<Self> {
+impl<L: SpectralNoiseLinks> SpectralNoiseUiBridge<L> {
+    pub fn try_new(noise: &mut SpectralNoise<L>) -> Option<Self> {
         Some(Self {
-            ui_end: noise.ui_end.take()?,
+            ui_end: noise.take_ui_end()?,
             config: noise.get_config(),
         })
     }
@@ -32,7 +33,7 @@ impl SpectralNoiseUiBridge {
     }
 
     pub fn set_bandwidth(&mut self, bandwidth: i32) {
-        let bandwidth = SpectralNoise::clamp_bandwidth(bandwidth);
+        let bandwidth = clamp_bandwidth(bandwidth);
 
         if self.ui_end.set_bandwidth(bandwidth) {
             self.config.bandwidth = bandwidth;
@@ -58,7 +59,7 @@ impl SpectralNoiseUiBridge {
     }
 
     pub fn set_cutoff(&mut self, value: StereoSample) {
-        let value = SpectralNoise::clamp_cutoff(value);
+        let value = clamp_cutoff(value);
 
         if self.ui_end.set_cutoff(value) {
             self.config.cutoff = value;
@@ -66,7 +67,7 @@ impl SpectralNoiseUiBridge {
     }
 
     pub fn set_rolloff(&mut self, value: StereoSample) {
-        let value = SpectralNoise::clamp_rolloff(value);
+        let value = clamp_rolloff(value);
 
         if self.ui_end.set_rolloff(value) {
             self.config.rolloff = value;
@@ -80,7 +81,7 @@ impl SpectralNoiseUiBridge {
     }
 }
 
-impl ModuleUiBridge for SpectralNoiseUiBridge {
+impl<L: SpectralNoiseLinks> ModuleUiBridge for SpectralNoiseUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

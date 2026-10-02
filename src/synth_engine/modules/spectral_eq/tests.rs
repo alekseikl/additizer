@@ -9,7 +9,7 @@ fn from_config_keeps_at_most_16_filters() {
         ..SpectralEqConfig::default()
     };
 
-    let eq = SpectralEq::from_config(&config);
+    let eq = <SpectralEq>::from_config(&config);
 
     assert_eq!(eq.get_config().filters.len(), MAX_EQ_FILTERS);
 }
@@ -67,7 +67,7 @@ fn move_filter_reorders_bands() {
         cutoff_hz,
         ..EqFilter::default()
     });
-    let mut eq = SpectralEq::from_config(&SpectralEqConfig {
+    let mut eq = <SpectralEq>::from_config(&SpectralEqConfig {
         filters: bands.to_vec(),
         ..SpectralEqConfig::default()
     });

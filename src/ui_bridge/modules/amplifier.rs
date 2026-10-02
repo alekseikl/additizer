@@ -1,17 +1,16 @@
+use crate::synth_engine::amplifier::{Amplifier, AmplifierConfig, AmplifierLinks, AmplifierUiEnd};
 use crate::synth_engine::{Input, StereoSample, synth_module::ModuleUiBridge};
 
-use super::link::UiEnd;
-use super::{Amplifier, AmplifierConfig};
 
-pub struct AmplifierUiBridge {
-    ui_end: UiEnd,
+pub struct AmplifierUiBridge<L: AmplifierLinks = crate::links::amplifier::Links> {
+    ui_end: L::UiEnd,
     config: AmplifierConfig,
 }
 
-impl AmplifierUiBridge {
-    pub fn try_new(amp: &mut Amplifier) -> Option<Self> {
+impl<L: AmplifierLinks> AmplifierUiBridge<L> {
+    pub fn try_new(amp: &mut Amplifier<L>) -> Option<Self> {
         Some(Self {
-            ui_end: amp.ui_end.take()?,
+            ui_end: amp.take_ui_end()?,
             config: amp.get_config(),
         })
     }
@@ -36,7 +35,7 @@ impl AmplifierUiBridge {
     }
 }
 
-impl ModuleUiBridge for AmplifierUiBridge {
+impl<L: AmplifierLinks> ModuleUiBridge for AmplifierUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

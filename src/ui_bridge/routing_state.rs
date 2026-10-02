@@ -2,6 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::synth_engine::{
     InputId, ModuleHandle, ModuleId, ModuleType, RoutingMap, StereoSample,
+    engine_io::EngineLinks,
     routing::{DataType, InputMeta, InputSource},
     synth_module::SynthModule,
 };
@@ -14,7 +15,7 @@ pub struct Module {
 }
 
 impl Module {
-    pub(in super::super) fn new(module: &ModuleHandle) -> Self {
+    pub(crate) fn new<E: EngineLinks>(module: &ModuleHandle<E>) -> Self {
         Self {
             id: module.id(),
             module_type: module.module_type(),

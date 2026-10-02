@@ -1,21 +1,18 @@
+use crate::synth_engine::oscillator::{Oscillator, OscillatorConfig, OscillatorLinks, OscillatorUiEnd, PhasesDst, Unison};
 use crate::synth_engine::{
     DisplaySpectrum, Input, Sample, StereoSample, synth_module::ModuleUiBridge,
 };
 
-use super::{
-    Oscillator, OscillatorConfig, PhasesDst,
-    link::{UiEnd, Unison},
-};
 
-pub struct OscillatorUiBridge {
-    ui_end: UiEnd,
+pub struct OscillatorUiBridge<L: OscillatorLinks = crate::links::oscillator::Links> {
+    ui_end: L::UiEnd,
     config: OscillatorConfig,
 }
 
-impl OscillatorUiBridge {
-    pub fn try_new(osc: &mut Oscillator) -> Option<Self> {
+impl<L: OscillatorLinks> OscillatorUiBridge<L> {
+    pub fn try_new(osc: &mut Oscillator<L>) -> Option<Self> {
         Some(Self {
-            ui_end: osc.ui_end.take()?,
+            ui_end: osc.take_ui_end()?,
             config: osc.get_config(),
         })
     }
@@ -104,7 +101,7 @@ impl OscillatorUiBridge {
     }
 }
 
-impl ModuleUiBridge for OscillatorUiBridge {
+impl<L: OscillatorLinks> ModuleUiBridge for OscillatorUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

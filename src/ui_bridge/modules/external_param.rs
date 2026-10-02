@@ -1,17 +1,16 @@
+use crate::synth_engine::external_param::{ExternalParam, ExternalParamConfig, ExternalParamLinks, ExternalParamUiEnd, NUM_EXT_PARAMS};
 use crate::synth_engine::{Sample, synth_module::ModuleUiBridge};
 
-use super::link::UiEnd;
-use super::{ExternalParam, ExternalParamConfig, NUM_EXT_PARAMS};
 
-pub struct ExternalParamUiBridge {
-    ui_end: UiEnd,
+pub struct ExternalParamUiBridge<L: ExternalParamLinks = crate::links::external_param::Links> {
+    ui_end: L::UiEnd,
     config: ExternalParamConfig,
 }
 
-impl ExternalParamUiBridge {
-    pub fn try_new(param: &mut ExternalParam) -> Option<Self> {
+impl<L: ExternalParamLinks> ExternalParamUiBridge<L> {
+    pub fn try_new(param: &mut ExternalParam<L>) -> Option<Self> {
         Some(Self {
-            ui_end: param.ui_end.take()?,
+            ui_end: param.take_ui_end()?,
             config: param.get_config(),
         })
     }
@@ -55,7 +54,7 @@ impl ExternalParamUiBridge {
     }
 }
 
-impl ModuleUiBridge for ExternalParamUiBridge {
+impl<L: ExternalParamLinks> ModuleUiBridge for ExternalParamUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

@@ -12,7 +12,7 @@ use crate::synth_engine::{
 #[enum_dispatch]
 #[auto_impl::auto_impl(Box)]
 #[allow(unused_variables)]
-pub(super) trait SynthModule: Send {
+pub(crate) trait SynthModule: Send {
     fn id(&self) -> ModuleId;
 
     fn inputs(&self) -> &[InputMeta];

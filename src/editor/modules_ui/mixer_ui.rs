@@ -5,7 +5,7 @@ use egui::{ComboBox, DragValue, Grid, Ui};
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput},
     synth_engine::{
-        Input, Mixer, ModuleId, ModuleType, VolumeType,
+        Input, ModuleId, ModuleType, VolumeType,
         mixer::MixerUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -33,7 +33,10 @@ impl MixerUi {
         ui.horizontal(|ui| {
             ui.label("Inputs");
             if ui
-                .add(DragValue::new(&mut config.num_inputs).range(1..=Mixer::MAX_INPUTS))
+                .add(
+                    DragValue::new(&mut config.num_inputs)
+                        .range(1..=crate::synth_engine::mixer::MAX_INPUTS),
+                )
                 .changed()
             {
                 mixer_bridge.set_num_inputs(config.num_inputs);

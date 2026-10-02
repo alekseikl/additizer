@@ -3,6 +3,7 @@ use std::ops::{Deref, DerefMut};
 use crate::synth_engine::{
     ComplexSample, Sample, SynthModule,
     buffer::{VoicesLayout, VoicesLayoutArray, add_to_buffer, new_voices_layout},
+    engine_io::EngineLinks,
     module_handle::ModuleHandle,
     routing::{
         DataType, InputSlot,
@@ -101,7 +102,7 @@ impl OutputsArena {
         Self::free_impl(&mut self.spectral, &mut self.free_spectral_slots, slot);
     }
 
-    pub fn allocate_slot(&mut self, module: &mut ModuleHandle) {
+    pub fn allocate_slot<E: EngineLinks>(&mut self, module: &mut ModuleHandle<E>) {
         match module.output_type() {
             DataType::Audio => module.set_output_slot(self.allocate_samples_slot(false)),
             DataType::Control => module.set_output_slot(self.allocate_samples_slot(true)),
@@ -109,7 +110,7 @@ impl OutputsArena {
         }
     }
 
-    pub fn free_slot(&mut self, module: &ModuleHandle) {
+    pub fn free_slot<E: EngineLinks>(&mut self, module: &ModuleHandle<E>) {
         match module.output_type() {
             DataType::Audio | DataType::Control => self.free_samples_slot(module.output_slot()),
             DataType::Spectral => self.free_spectral_slot(module.output_slot()),

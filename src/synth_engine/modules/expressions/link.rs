@@ -1,6 +1,5 @@
-use triple_buffer::triple_buffer;
 
-use crate::synth_engine::{Expression, Sample, UI_TO_AUDIO_RING_CAPACITY};
+use crate::synth_engine::{Expression, Sample};
 
 pub enum UiEvent {
     Expression(Expression),
@@ -8,58 +7,21 @@ pub enum UiEvent {
     Smooth(Sample),
 }
 
-pub struct UiEnd {
-    tx: rtrb::Producer<UiEvent>,
-    value: triple_buffer::Output<Sample>,
+pub trait ExpressionsAudioEnd: Send {
+    fn pop_event(&mut self) -> Option<UiEvent>;
+    fn update_value(&mut self, value: Sample);
 }
 
-impl UiEnd {
-    pub fn new(tx: rtrb::Producer<UiEvent>, value: triple_buffer::Output<Sample>) -> Self {
-        Self { tx, value }
-    }
-
-    pub fn get_value(&mut self) -> Sample {
-        *self.value.read()
-    }
-
-    pub fn set_expression(&mut self, expression: Expression) -> bool {
-        self.tx.push(UiEvent::Expression(expression)).is_ok()
-    }
-
-    pub fn set_use_release_velocity(&mut self, value: bool) -> bool {
-        self.tx.push(UiEvent::UseReleaseVelocity(value)).is_ok()
-    }
-
-    pub fn set_smooth(&mut self, value: Sample) -> bool {
-        self.tx.push(UiEvent::Smooth(value)).is_ok()
-    }
+pub trait ExpressionsUiEnd: Send {
+    fn get_value(&mut self) -> Sample;
+    fn set_expression(&mut self, expression: Expression) -> bool;
+    fn set_use_release_velocity(&mut self, value: bool) -> bool;
+    fn set_smooth(&mut self, value: Sample) -> bool;
 }
 
-pub struct AudioEnd {
-    rx: rtrb::Consumer<UiEvent>,
-    value: triple_buffer::Input<Sample>,
-}
+pub trait ExpressionsLinks: Send {
+    type AudioEnd: ExpressionsAudioEnd;
+    type UiEnd: ExpressionsUiEnd;
 
-impl AudioEnd {
-    pub fn new(rx: rtrb::Consumer<UiEvent>, value: triple_buffer::Input<Sample>) -> Self {
-        Self { rx, value }
-    }
-
-    pub fn pop_event(&mut self) -> Option<UiEvent> {
-        self.rx.pop().ok()
-    }
-
-    pub fn update_value(&mut self, value: Sample) {
-        self.value.write(value);
-    }
-}
-
-pub fn create_link_pair() -> (AudioEnd, UiEnd) {
-    let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
-    let (value_input, value_output) = triple_buffer(&0.0);
-
-    (
-        AudioEnd::new(from_ui_rx, value_input),
-        UiEnd::new(to_audio_tx, value_output),
-    )
+    fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

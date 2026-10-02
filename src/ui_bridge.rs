@@ -7,67 +7,66 @@ use crate::{
     synth_engine::{
         InputId, ModuleHandle, ModuleId, ModuleType, ModuleUiBridge, OUTPUT_MODULE_ID, Sample,
         StereoSample,
-        amplifier::AmplifierUiBridge,
         config::EngineParams,
-        envelope::EnvelopeUiBridge,
-        expressions::ExpressionsUiBridge,
-        external_param::ExternalParamUiBridge,
-        harmonic_editor::HarmonicEditorUiBridge,
-        lfo::LfoUiBridge,
-        mixer::MixerUiBridge,
-        oscillator::OscillatorUiBridge,
-        pitch::PitchUiBridge,
+        engine_io::EngineLinks,
         routing::{DataType, Input, InputMeta, InputSource, data_types_compatible},
-        spectral_band_select::SpectralBandSelectUiBridge,
-        spectral_blend::SpectralBlendUiBridge,
-        spectral_eq::SpectralEqUiBridge,
-        spectral_filter::SpectralFilterUiBridge,
-        spectral_mixer::SpectralMixerUiBridge,
-        spectral_noise::SpectralNoiseUiBridge,
-        svf::SvfUiBridge,
-        ui_bridge::{routing_state::ModuleIo, ui_config::UiModuleConfig},
-        wave_shaper::WaveShaperUiBridge,
     },
     utils::log,
 };
 
-mod link;
+pub mod modules;
 pub mod routing_state;
 pub mod ui_config;
 
 pub use ui_config::GridVec;
 
-pub use link::{AudioEnd, OutputMeter, UiEnd, UiEvent, UiUpdate, create_link_pair};
+pub use crate::synth_engine::engine_io::{
+    EngineUiEnd, OutputMeter, UiEvent, UiUpdate, VoicesStatus,
+};
 pub use routing_state::{ConnectedInputSource, RoutingState};
+use modules::{
+    amplifier::AmplifierUiBridge,
+    envelope::EnvelopeUiBridge,
+    expressions::ExpressionsUiBridge,
+    external_param::ExternalParamUiBridge,
+    harmonic_editor::HarmonicEditorUiBridge,
+    lfo::LfoUiBridge,
+    mixer::MixerUiBridge,
+    oscillator::OscillatorUiBridge,
+    pitch::PitchUiBridge,
+    spectral_band_select::SpectralBandSelectUiBridge,
+    spectral_blend::SpectralBlendUiBridge,
+    spectral_eq::SpectralEqUiBridge,
+    spectral_filter::SpectralFilterUiBridge,
+    spectral_mixer::SpectralMixerUiBridge,
+    spectral_noise::SpectralNoiseUiBridge,
+    svf::SvfUiBridge,
+    wave_shaper::WaveShaperUiBridge,
+};
 use rustc_hash::FxHashMap;
 
-#[enum_dispatch(ModuleUiBridge)]
-pub enum ModuleBridge {
-    Oscillator(Box<OscillatorUiBridge>),
-    Envelope(Box<EnvelopeUiBridge>),
-    Amplifier(Box<AmplifierUiBridge>),
-    Lfo(Box<LfoUiBridge>),
-    Pitch(Box<PitchUiBridge>),
-    Mixer(Box<MixerUiBridge>),
-    WaveShaper(Box<WaveShaperUiBridge>),
-    Svf(Box<SvfUiBridge>),
-    SpectralFilter(Box<SpectralFilterUiBridge>),
-    SpectralEq(Box<SpectralEqUiBridge>),
-    SpectralBandSelect(Box<SpectralBandSelectUiBridge>),
-    SpectralBlend(Box<SpectralBlendUiBridge>),
-    SpectralMixer(Box<SpectralMixerUiBridge>),
-    HarmonicEditor(Box<HarmonicEditorUiBridge>),
-    SpectralNoise(Box<SpectralNoiseUiBridge>),
-    Expressions(Box<ExpressionsUiBridge>),
-    ExternalParam(Box<ExternalParamUiBridge>),
-}
+use routing_state::ModuleIo;
+use ui_config::UiModuleConfig;
 
-#[derive(Clone, Copy, Default)]
-pub struct VoicesStatus {
-    pub waiting_notes: u8,
-    pub playing: u8,
-    pub releasing: u8,
-    pub killing: u8,
+#[enum_dispatch(ModuleUiBridge)]
+pub enum ModuleBridge<E: EngineLinks = crate::links::PluginLinks> {
+    Oscillator(Box<OscillatorUiBridge<E::Oscillator>>),
+    Envelope(Box<EnvelopeUiBridge<E::Envelope>>),
+    Amplifier(Box<AmplifierUiBridge<E::Amplifier>>),
+    Lfo(Box<LfoUiBridge<E::Lfo>>),
+    Pitch(Box<PitchUiBridge<E::Pitch>>),
+    Mixer(Box<MixerUiBridge<E::Mixer>>),
+    WaveShaper(Box<WaveShaperUiBridge<E::WaveShaper>>),
+    Svf(Box<SvfUiBridge<E::Svf>>),
+    SpectralFilter(Box<SpectralFilterUiBridge<E::SpectralFilter>>),
+    SpectralEq(Box<SpectralEqUiBridge<E::SpectralEq>>),
+    SpectralBandSelect(Box<SpectralBandSelectUiBridge<E::SpectralBandSelect>>),
+    SpectralBlend(Box<SpectralBlendUiBridge<E::SpectralBlend>>),
+    SpectralMixer(Box<SpectralMixerUiBridge<E::SpectralMixer>>),
+    HarmonicEditor(Box<HarmonicEditorUiBridge<E::HarmonicEditor>>),
+    SpectralNoise(Box<SpectralNoiseUiBridge<E::SpectralNoise>>),
+    Expressions(Box<ExpressionsUiBridge<E::Expressions>>),
+    ExternalParam(Box<ExternalParamUiBridge<E::ExternalParam>>),
 }
 
 pub struct ModuleItem {
@@ -99,28 +98,28 @@ struct ModulatedInput {
     normalized: StereoSample,
 }
 
-pub struct UiBridge {
-    engine: EngineHandle,
+pub struct UiBridge<E: EngineLinks = crate::links::PluginLinks> {
+    engine: EngineHandle<E>,
     ui_config: UiConfigHandle,
-    ui_end: UiEnd,
+    ui_end: E::UiEnd,
     routing: RoutingState,
     engine_params: EngineParams,
     voices: VoicesStatus,
     modulated_inputs: FxHashMap<InputId, ModulatedInput>,
-    module_bridges: FxHashMap<ModuleId, Option<ModuleBridge>>,
+    module_bridges: FxHashMap<ModuleId, Option<ModuleBridge<E>>>,
 }
 
-impl UiBridge {
-    pub fn create(engine: EngineHandle, ui_config: UiConfigHandle) -> Option<Self> {
+impl<E: EngineLinks> UiBridge<E> {
+    pub fn create(engine: EngineHandle<E>, ui_config: UiConfigHandle) -> Option<Self> {
         let mut engine_lock = engine.lock();
 
-        let ui_end = engine_lock.ui_end.take()?;
+        let ui_end = engine_lock.take_ui_end()?;
         let routing = engine_lock.get_routing_state();
         let engine_params = engine_lock.get_engine_params();
 
         drop(engine_lock);
 
-        let mut bridges: FxHashMap<ModuleId, Option<ModuleBridge>> = FxHashMap::default();
+        let mut bridges: FxHashMap<ModuleId, Option<ModuleBridge<E>>> = FxHashMap::default();
 
         for m in routing.modules.values() {
             Self::insert_module_bridge(m.id, &engine, &mut bridges)?;
@@ -140,8 +139,8 @@ impl UiBridge {
 
     fn insert_module_bridge(
         id: ModuleId,
-        engine: &EngineHandle,
-        bridges: &mut FxHashMap<ModuleId, Option<ModuleBridge>>,
+        engine: &EngineHandle<E>,
+        bridges: &mut FxHashMap<ModuleId, Option<ModuleBridge<E>>>,
     ) -> Option<()> {
         let mut engine_lock = engine.lock();
         let engine_ref = engine_lock.deref_mut();
@@ -198,7 +197,7 @@ impl UiBridge {
         Some(())
     }
 
-    pub fn engine(&self) -> &EngineHandle {
+    pub fn engine(&self) -> &EngineHandle<E> {
         &self.engine
     }
 
@@ -248,7 +247,7 @@ impl UiBridge {
     pub fn with_module_bridge(
         &mut self,
         module_id: ModuleId,
-        f: impl FnOnce(&mut Self, &mut ModuleBridge),
+        f: impl FnOnce(&mut Self, &mut ModuleBridge<E>),
     ) {
         let bridge = self
             .module_bridges

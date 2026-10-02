@@ -2,51 +2,14 @@ use triple_buffer::triple_buffer;
 
 use crate::synth_engine::{
     Input, InputId, ModuleId, NUM_CHANNELS, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY,
-    ui_bridge::VoicesStatus, voices_handler::VoicesHandlerMetrics,
+    engine_io::{
+        EngineAudioEnd, EngineUiEnd, OutputMeter, UiEvent, UiUpdate, VoicesHandlerMetrics,
+        VoicesStatus,
+    },
 };
 
-#[derive(Clone, Copy)]
-pub struct OutputMeter {
-    pub volume: StereoSample,
-    pub clipped: [bool; NUM_CHANNELS],
-}
-
-impl Default for OutputMeter {
-    fn default() -> Self {
-        Self {
-            volume: StereoSample::ZERO,
-            clipped: [false; NUM_CHANNELS],
-        }
-    }
-}
-
-// Use larger capacity than for modules for the inputs telemetry
-pub const AUDIO_TO_UI_RING_CAPACITY: usize = 1024;
-
-pub enum UiEvent {
-    LinkAmount {
-        src: ModuleId,
-        dst: InputId,
-        amount: StereoSample,
-    },
-    Voices(usize),
-    Legato(bool),
-    BlockSize(usize),
-    VoiceKillTime(Sample),
-    Oversampling(bool),
-    OutputGain(StereoSample),
-}
-
-pub enum UiUpdate {
-    ModulatedInput {
-        module_id: ModuleId,
-        input: Input,
-        channel: u8,
-        value: Sample,
-        normalized_value: Sample,
-    },
-    VoicesStatus(VoicesStatus),
-}
+// Larger than module links: this carries per-input modulation telemetry.
+const AUDIO_TO_UI_RING_CAPACITY: usize = 1024;
 
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
@@ -143,7 +106,7 @@ impl UiEnd {
     }
 }
 
-pub fn create_link_pair() -> (AudioEnd, UiEnd) {
+pub fn make_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
     let (to_ui_tx, from_audio_rx) = rtrb::RingBuffer::<UiUpdate>::new(AUDIO_TO_UI_RING_CAPACITY);
     let (out_volume_input, out_volume_output) = triple_buffer(&OutputMeter::default());
@@ -160,4 +123,67 @@ pub fn create_link_pair() -> (AudioEnd, UiEnd) {
             out_volume: out_volume_output,
         },
     )
+}
+
+impl EngineAudioEnd for AudioEnd {
+    fn update_modulated_input(
+        &mut self,
+        module_id: ModuleId,
+        input: Input,
+        channel: u8,
+        value: Sample,
+        normalized_value: Sample,
+    ) -> bool {
+        AudioEnd::update_modulated_input(self, module_id, input, channel, value, normalized_value)
+    }
+
+    fn update_voices_status(&mut self, metrics: &VoicesHandlerMetrics) -> bool {
+        AudioEnd::update_voices_status(self, metrics)
+    }
+
+    fn pop_event(&mut self) -> Option<UiEvent> {
+        AudioEnd::pop_event(self)
+    }
+
+    fn update_out_volume(&mut self, volume: StereoSample, clipped: [bool; NUM_CHANNELS]) {
+        AudioEnd::update_out_volume(self, volume, clipped)
+    }
+}
+
+impl EngineUiEnd for UiEnd {
+    fn get_out_volume(&mut self) -> OutputMeter {
+        UiEnd::get_out_volume(self)
+    }
+
+    fn set_link_amount(&mut self, src: ModuleId, dst: InputId, amount: StereoSample) -> bool {
+        UiEnd::set_link_amount(self, src, dst, amount)
+    }
+
+    fn set_voices(&mut self, voices: usize) -> bool {
+        UiEnd::set_voices(self, voices)
+    }
+
+    fn set_legato(&mut self, legato: bool) -> bool {
+        UiEnd::set_legato(self, legato)
+    }
+
+    fn set_block_size(&mut self, block_size: usize) -> bool {
+        UiEnd::set_block_size(self, block_size)
+    }
+
+    fn set_voice_kill_time(&mut self, voice_kill_time: Sample) -> bool {
+        UiEnd::set_voice_kill_time(self, voice_kill_time)
+    }
+
+    fn set_oversampling(&mut self, oversampling: bool) -> bool {
+        UiEnd::set_oversampling(self, oversampling)
+    }
+
+    fn set_output_gain(&mut self, output_gain: StereoSample) -> bool {
+        UiEnd::set_output_gain(self, output_gain)
+    }
+
+    fn pop_update(&mut self) -> Option<UiUpdate> {
+        UiEnd::pop_update(self)
+    }
 }

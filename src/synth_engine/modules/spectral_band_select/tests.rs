@@ -5,8 +5,8 @@ fn quantized_bounds(freq_from: Sample, freq_to: Sample, pitch: Sample) -> (u16, 
     let fundamental = pitch_to_freq(pitch).max(1.0);
 
     (
-        SpectralBandSelect::quantize_harmonic(freq_from / fundamental),
-        SpectralBandSelect::quantize_harmonic(freq_to / fundamental),
+        <SpectralBandSelect>::quantize_harmonic(freq_from / fundamental),
+        <SpectralBandSelect>::quantize_harmonic(freq_to / fundamental),
     )
 }
 
@@ -36,7 +36,7 @@ fn frequency_gap_between_harmonics_selects_nothing() {
 
 #[test]
 fn config_clamps_harmonic_and_frequency_limits() {
-    let module = SpectralBandSelect::from_config(&SpectralBandSelectConfig {
+    let module = <SpectralBandSelect>::from_config(&SpectralBandSelectConfig {
         id: 3,
         mode: BandSelectMode::Frequency,
         harmonic_from: 0,

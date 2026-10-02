@@ -1,19 +1,18 @@
+use crate::synth_engine::spectral_blend::{SpectralBlend, SpectralBlendConfig, SpectralBlendLinks, SpectralBlendUiEnd};
 use crate::synth_engine::{
     Input, StereoSample, synth_module::ModuleUiBridge, types::ComplexSample,
 };
 
-use super::link::UiEnd;
-use super::{SpectralBlend, SpectralBlendConfig};
 
-pub struct SpectralBlendUiBridge {
-    ui_end: UiEnd,
+pub struct SpectralBlendUiBridge<L: SpectralBlendLinks = crate::links::spectral_blend::Links> {
+    ui_end: L::UiEnd,
     config: SpectralBlendConfig,
 }
 
-impl SpectralBlendUiBridge {
-    pub fn try_new(blend: &mut SpectralBlend) -> Option<Self> {
+impl<L: SpectralBlendLinks> SpectralBlendUiBridge<L> {
+    pub fn try_new(blend: &mut SpectralBlend<L>) -> Option<Self> {
         Some(Self {
-            ui_end: blend.ui_end.take()?,
+            ui_end: blend.take_ui_end()?,
             config: blend.get_config(),
         })
     }
@@ -33,7 +32,7 @@ impl SpectralBlendUiBridge {
     }
 }
 
-impl ModuleUiBridge for SpectralBlendUiBridge {
+impl<L: SpectralBlendLinks> ModuleUiBridge for SpectralBlendUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

@@ -9,7 +9,7 @@ use crate::{
     synth_engine::{EngineConfig, Sample, SynthEngine, ui_bridge::ui_config::UiConfig},
 };
 
-pub type EngineHandle = Arc<Mutex<SynthEngine>>;
+pub type EngineHandle<E = crate::links::PluginLinks> = Arc<Mutex<SynthEngine<E>>>;
 pub type UiConfigHandle = Arc<Mutex<UiConfig>>;
 
 pub struct EngineFactory {

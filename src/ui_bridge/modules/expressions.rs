@@ -1,17 +1,16 @@
+use crate::synth_engine::expressions::{Expressions, ExpressionsConfig, ExpressionsLinks, ExpressionsUiEnd};
 use crate::synth_engine::{Expression, Sample, synth_module::ModuleUiBridge};
 
-use super::link::UiEnd;
-use super::{Expressions, ExpressionsConfig};
 
-pub struct ExpressionsUiBridge {
-    ui_end: UiEnd,
+pub struct ExpressionsUiBridge<L: ExpressionsLinks = crate::links::expressions::Links> {
+    ui_end: L::UiEnd,
     config: ExpressionsConfig,
 }
 
-impl ExpressionsUiBridge {
-    pub fn try_new(exp: &mut Expressions) -> Option<Self> {
+impl<L: ExpressionsLinks> ExpressionsUiBridge<L> {
+    pub fn try_new(exp: &mut Expressions<L>) -> Option<Self> {
         Some(Self {
-            ui_end: exp.ui_end.take()?,
+            ui_end: exp.take_ui_end()?,
             config: exp.get_config(),
         })
     }
@@ -43,7 +42,7 @@ impl ExpressionsUiBridge {
     }
 }
 
-impl ModuleUiBridge for ExpressionsUiBridge {
+impl<L: ExpressionsLinks> ModuleUiBridge for ExpressionsUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

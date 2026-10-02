@@ -97,7 +97,7 @@ fn inverted_right_harmonics() -> HarmonicEditorConfig {
 #[test]
 fn mono_spectrum_defaults_to_false() {
     assert!(!OscillatorConfig::default().mono_spectrum);
-    assert!(!Oscillator::new(1).get_config().mono_spectrum);
+    assert!(!<Oscillator>::new(1).get_config().mono_spectrum);
 }
 
 #[test]
@@ -112,7 +112,7 @@ fn mono_spectrum_defaults_when_missing_from_json() {
 
 #[test]
 fn mono_spectrum_round_trips_through_config() {
-    let osc = Oscillator::from_config(&OscillatorConfig {
+    let osc = <Oscillator>::from_config(&OscillatorConfig {
         id: 1,
         mono_spectrum: true,
         ..OscillatorConfig::default()
@@ -123,7 +123,7 @@ fn mono_spectrum_round_trips_through_config() {
 
 #[test]
 fn set_mono_spectrum_updates_config() {
-    let mut osc = Oscillator::new(1);
+    let mut osc = <Oscillator>::new(1);
 
     osc.set_mono_spectrum(true);
 
@@ -132,7 +132,7 @@ fn set_mono_spectrum_updates_config() {
 
 #[test]
 fn ui_event_sets_mono_spectrum() {
-    let mut osc = Oscillator::new(1);
+    let mut osc = <Oscillator>::new(1);
     let mut bridge = OscillatorUiBridge::try_new(&mut osc).expect("ui end");
 
     bridge.set_mono_spectrum(true);

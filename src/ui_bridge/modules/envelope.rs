@@ -1,18 +1,17 @@
+use crate::synth_engine::envelope::{Envelope, EnvelopeConfig, EnvelopeLinks, EnvelopeUiEnd};
 use crate::synth_engine::envelope::EnvelopePhase;
 use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
 
-use super::link::UiEnd;
-use super::{Envelope, EnvelopeConfig};
 
-pub struct EnvelopeUiBridge {
-    ui_end: UiEnd,
+pub struct EnvelopeUiBridge<L: EnvelopeLinks = crate::links::envelope::Links> {
+    ui_end: L::UiEnd,
     config: EnvelopeConfig,
 }
 
-impl EnvelopeUiBridge {
-    pub fn try_new(env: &mut Envelope) -> Option<Self> {
+impl<L: EnvelopeLinks> EnvelopeUiBridge<L> {
+    pub fn try_new(env: &mut Envelope<L>) -> Option<Self> {
         Some(Self {
-            ui_end: env.ui_end.take()?,
+            ui_end: env.take_ui_end()?,
             config: env.get_config(),
         })
     }
@@ -72,7 +71,7 @@ impl EnvelopeUiBridge {
     }
 }
 
-impl ModuleUiBridge for EnvelopeUiBridge {
+impl<L: EnvelopeLinks> ModuleUiBridge for EnvelopeUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

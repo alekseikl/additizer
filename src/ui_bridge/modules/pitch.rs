@@ -1,17 +1,16 @@
+use crate::synth_engine::pitch::{Pitch, PitchConfig, PitchLinks, PitchUiEnd};
 use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
 
-use super::link::UiEnd;
-use super::{Pitch, PitchConfig};
 
-pub struct PitchUiBridge {
-    ui_end: UiEnd,
+pub struct PitchUiBridge<L: PitchLinks = crate::links::pitch::Links> {
+    ui_end: L::UiEnd,
     config: PitchConfig,
 }
 
-impl PitchUiBridge {
-    pub fn try_new(pitch: &mut Pitch) -> Option<Self> {
+impl<L: PitchLinks> PitchUiBridge<L> {
+    pub fn try_new(pitch: &mut Pitch<L>) -> Option<Self> {
         Some(Self {
-            ui_end: pitch.ui_end.take()?,
+            ui_end: pitch.take_ui_end()?,
             config: pitch.get_config(),
         })
     }
@@ -56,7 +55,7 @@ impl PitchUiBridge {
     }
 }
 
-impl ModuleUiBridge for PitchUiBridge {
+impl<L: PitchLinks> ModuleUiBridge for PitchUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

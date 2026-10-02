@@ -6,10 +6,12 @@ mod default_scheme;
 mod editor;
 mod engine_factory;
 mod host_events;
+pub mod links;
 mod params;
 mod preset;
 mod presets;
 pub mod synth_engine;
+pub mod ui_bridge;
 mod utils;
 
 use crate::editor::{EditorState, create_editor};

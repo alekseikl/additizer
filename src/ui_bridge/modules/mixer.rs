@@ -1,29 +1,26 @@
-use crate::synth_engine::{
-    Input, MixType, StereoSample, VolumeType, synth_module::ModuleUiBridge, types::ComplexSample,
-};
+use crate::synth_engine::mixer::{Mixer, MixerConfig, MixerLinks, MixerUiEnd, UiUpdate};
+use crate::synth_engine::{Input, StereoSample, VolumeType, synth_module::ModuleUiBridge};
 
-use super::link::{UiEnd, UiUpdate};
-use super::{SpectralMixer, SpectralMixerConfig};
 
-pub struct SpectralMixerUiBridge {
-    ui_end: UiEnd,
-    config: SpectralMixerConfig,
+pub struct MixerUiBridge<L: MixerLinks = crate::links::mixer::Links> {
+    ui_end: L::UiEnd,
+    config: MixerConfig,
 }
 
-impl SpectralMixerUiBridge {
-    pub fn try_new(mixer: &mut SpectralMixer) -> Option<Self> {
+impl<L: MixerLinks> MixerUiBridge<L> {
+    pub fn try_new(mixer: &mut Mixer<L>) -> Option<Self> {
         Some(Self {
-            ui_end: mixer.ui_end.take()?,
+            ui_end: mixer.take_ui_end()?,
             config: mixer.get_config(),
         })
     }
 
-    pub fn config(&self) -> &SpectralMixerConfig {
+    pub fn config(&self) -> &MixerConfig {
         &self.config
     }
 
-    pub fn get_spectrum(&mut self) -> &[ComplexSample] {
-        self.ui_end.get_spectrum()
+    pub fn get_out_volume(&mut self) -> StereoSample {
+        self.ui_end.get_out_volume()
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
@@ -46,12 +43,6 @@ impl SpectralMixerUiBridge {
         }
     }
 
-    pub fn set_mix_type(&mut self, input_idx: u8, mix_type: MixType) {
-        if self.ui_end.set_mix_type(input_idx, mix_type) {
-            self.config.inputs[input_idx as usize].mix_type = mix_type;
-        }
-    }
-
     pub fn set_volume_type(&mut self, input_idx: u8, volume_type: VolumeType) {
         if self.ui_end.set_volume_type(input_idx, volume_type) {
             self.config.inputs[input_idx as usize].volume_type = volume_type;
@@ -65,7 +56,7 @@ impl SpectralMixerUiBridge {
     }
 }
 
-impl ModuleUiBridge for SpectralMixerUiBridge {
+impl<L: MixerLinks> ModuleUiBridge for MixerUiBridge<L> {
     fn update(&mut self) -> bool {
         let mut routing_refresh = false;
 

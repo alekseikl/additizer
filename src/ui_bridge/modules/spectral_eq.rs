@@ -1,18 +1,16 @@
+use crate::synth_engine::spectral_eq::{EqFilter, MAX_EQ_FILTERS, SpectralEq, SpectralEqConfig, SpectralEqLinks, SpectralEqUiEnd};
 use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
 
-use super::SpectralEq;
-use super::config::{EqFilter, MAX_EQ_FILTERS, SpectralEqConfig};
-use super::link::UiEnd;
 
-pub struct SpectralEqUiBridge {
-    ui_end: UiEnd,
+pub struct SpectralEqUiBridge<L: SpectralEqLinks = crate::links::spectral_eq::Links> {
+    ui_end: L::UiEnd,
     config: SpectralEqConfig,
 }
 
-impl SpectralEqUiBridge {
-    pub fn try_new(eq: &mut SpectralEq) -> Option<Self> {
+impl<L: SpectralEqLinks> SpectralEqUiBridge<L> {
+    pub fn try_new(eq: &mut SpectralEq<L>) -> Option<Self> {
         Some(Self {
-            ui_end: eq.ui_end.take()?,
+            ui_end: eq.take_ui_end()?,
             config: eq.get_config(),
         })
     }
@@ -109,7 +107,7 @@ impl SpectralEqUiBridge {
     }
 }
 
-impl ModuleUiBridge for SpectralEqUiBridge {
+impl<L: SpectralEqLinks> ModuleUiBridge for SpectralEqUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

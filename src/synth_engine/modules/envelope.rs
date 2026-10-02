@@ -2,14 +2,13 @@ use std::array;
 
 mod config;
 mod link;
-mod ui_bridge;
 
 #[cfg(test)]
 mod tests;
 
 pub use config::EnvelopeConfig;
-use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::EnvelopeUiBridge;
+pub use link::{EnvelopeAudioEnd, EnvelopeLinks, EnvelopeUiEnd, UiEvent};
+pub use crate::ui_bridge::modules::envelope::EnvelopeUiBridge;
 
 use crate::{
     synth_engine::{
@@ -283,18 +282,22 @@ impl Inputs {
     }
 }
 
-pub struct Envelope {
+pub struct Envelope<L: EnvelopeLinks = crate::links::envelope::Links> {
     id: ModuleId,
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
-    audio_end: AudioEnd,
-    ui_end: Option<UiEnd>,
+    audio_end: L::AudioEnd,
+    ui_end: Option<L::UiEnd>,
     inputs: Inputs,
     output_slot: usize,
     voices: VoicesLayout<Voice>,
 }
 
-impl Envelope {
+impl<L: EnvelopeLinks> Envelope<L> {
+    pub fn take_ui_end(&mut self) -> Option<L::UiEnd> {
+        self.ui_end.take()
+    }
+
     pub fn new(id: ModuleId) -> Self {
         Self::from_config(&EnvelopeConfig {
             id,
@@ -303,7 +306,7 @@ impl Envelope {
     }
 
     pub fn from_config(config: &config::EnvelopeConfig) -> Self {
-        let (audio_end, ui_end) = create_link_pair();
+        let (audio_end, ui_end) = L::create_link_pair();
 
         Self {
             id: config.id,
@@ -441,7 +444,7 @@ impl Envelope {
     }
 }
 
-impl SynthModule for Envelope {
+impl<L: EnvelopeLinks> SynthModule for Envelope<L> {
     fn id(&self) -> ModuleId {
         self.id
     }

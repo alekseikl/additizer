@@ -1,4 +1,4 @@
-use crate::synth_engine::{Input, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
+use crate::synth_engine::{Input, StereoSample};
 
 use super::config::ShaperType;
 
@@ -7,40 +7,18 @@ pub enum UiEvent {
     ShaperType(ShaperType),
 }
 
-pub struct UiEnd {
-    tx: rtrb::Producer<UiEvent>,
+pub trait WaveShaperAudioEnd: Send {
+    fn pop_event(&mut self) -> Option<UiEvent>;
 }
 
-impl UiEnd {
-    pub fn new(tx: rtrb::Producer<UiEvent>) -> Self {
-        Self { tx }
-    }
-
-    pub fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
-        self.tx.push(UiEvent::InputParam { input, value }).is_ok()
-    }
-
-    pub fn set_shaper_type(&mut self, shaper_type: ShaperType) -> bool {
-        self.tx.push(UiEvent::ShaperType(shaper_type)).is_ok()
-    }
+pub trait WaveShaperUiEnd: Send {
+    fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
+    fn set_shaper_type(&mut self, shaper_type: ShaperType) -> bool;
 }
 
-pub struct AudioEnd {
-    rx: rtrb::Consumer<UiEvent>,
-}
+pub trait WaveShaperLinks: Send {
+    type AudioEnd: WaveShaperAudioEnd;
+    type UiEnd: WaveShaperUiEnd;
 
-impl AudioEnd {
-    pub fn new(rx: rtrb::Consumer<UiEvent>) -> Self {
-        Self { rx }
-    }
-
-    pub fn pop_event(&mut self) -> Option<UiEvent> {
-        self.rx.pop().ok()
-    }
-}
-
-pub fn create_link_pair() -> (AudioEnd, UiEnd) {
-    let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
-
-    (AudioEnd::new(from_ui_rx), UiEnd::new(to_audio_tx))
+    fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

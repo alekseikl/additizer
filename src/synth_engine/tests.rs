@@ -52,7 +52,7 @@ fn minimal_engine_config(engine: EngineParams, osc: OscillatorConfig) -> EngineC
 fn make_engine(engine: EngineParams, osc: OscillatorConfig) -> SynthEngine {
     let config = minimal_engine_config(engine, osc);
 
-    SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid engine config")
+    <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("valid engine config")
 }
 
 fn process_block(engine: &mut SynthEngine, samples: usize) -> (Vec<Sample>, Vec<Sample>) {
@@ -203,7 +203,7 @@ fn full_patch_engine_config(engine: EngineParams) -> EngineConfig {
 fn make_full_patch_engine(engine: EngineParams) -> SynthEngine {
     let config = full_patch_engine_config(engine);
 
-    SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid full patch config")
+    <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("valid full patch config")
 }
 
 // ---- Construction ----
@@ -309,7 +309,7 @@ fn try_new_builds_full_patch() {
         Some(ModuleHandle::Output(_))
     ));
 
-    let order = SynthEngine::calc_execution_order(
+    let order = <SynthEngine>::calc_execution_order(
         &cfg.links
             .iter()
             .map(ModuleLink::from_config)
@@ -363,7 +363,7 @@ fn try_new_rejects_duplicate_module_id() {
         links: vec![],
     };
 
-    assert!(SynthEngine::try_new(&config, SAMPLE_RATE).is_none());
+    assert!(<SynthEngine>::try_new(&config, SAMPLE_RATE).is_none());
 }
 
 #[test]
@@ -389,7 +389,7 @@ fn try_new_skips_invalid_link() {
     };
 
     let engine =
-        SynthEngine::try_new(&config, SAMPLE_RATE).expect("invalid links are skipped on load");
+        <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("invalid links are skipped on load");
 
     assert!(
         engine
@@ -411,7 +411,7 @@ fn try_new_skips_link_with_missing_modulator() {
     set_link_modulator(&mut config.links[modulated], Some(9999));
 
     let engine =
-        SynthEngine::try_new(&config, SAMPLE_RATE).expect("bad modulator skips that preset link");
+        <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("bad modulator skips that preset link");
 
     assert!(
         engine.get_config().links.iter().all(|link| {
@@ -434,7 +434,7 @@ fn try_new_skips_link_with_incompatible_modulator() {
     // Spectral source cannot modulate a control (gain) input.
     set_link_modulator(&mut config.links[modulated], Some(HE0_ID));
 
-    let engine = SynthEngine::try_new(&config, SAMPLE_RATE)
+    let engine = <SynthEngine>::try_new(&config, SAMPLE_RATE)
         .expect("incompatible modulator skips that preset link");
 
     assert!(engine.get_config().links.iter().all(|link| {
@@ -451,7 +451,7 @@ fn set_config_links_direct_exclusivity_keeps_last_source() {
     config.links.push(link(HE1_ID, OSC1_ID, Input::Spectrum));
 
     let mut engine =
-        SynthEngine::try_new(&config, SAMPLE_RATE).expect("extra spectral sources collapse to one");
+        <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("extra spectral sources collapse to one");
 
     let cfg = engine.get_config();
     let spectrum_links: Vec<_> = cfg
@@ -486,7 +486,7 @@ fn set_config_links_skips_mixed_kind_on_direct_input() {
         StereoSample::ONE,
     ));
 
-    let engine = SynthEngine::try_new(&config, SAMPLE_RATE)
+    let engine = <SynthEngine>::try_new(&config, SAMPLE_RATE)
         .expect("wrong-kind mixed link should be skipped");
 
     let cfg = engine.get_config();
@@ -627,7 +627,7 @@ fn num_voices_and_legato_setters() {
     engine.set_num_voices(999);
     assert_eq!(
         engine.get_config().engine.num_voices,
-        SynthEngine::AVAILABLE_VOICES
+        crate::synth_engine::AVAILABLE_VOICES
     );
 
     engine.set_legato(true);
@@ -661,7 +661,7 @@ fn execution_order_rejects_cycles() {
         ModuleLink::direct(2, InputId::new(Input::Audio, 1)),
     ];
 
-    assert!(SynthEngine::calc_execution_order(&links, []).is_err());
+    assert!(<SynthEngine>::calc_execution_order(&links, []).is_err());
 }
 
 #[test]
@@ -674,7 +674,7 @@ fn execution_order_places_output_last() {
         ModuleLink::direct(OSCILLATOR_ID, InputId::new(Input::Audio, OUTPUT_MODULE_ID)),
     ];
 
-    let order = SynthEngine::calc_execution_order(&links, []).expect("valid graph");
+    let order = <SynthEngine>::calc_execution_order(&links, []).expect("valid graph");
     assert_eq!(*order.last().unwrap(), OUTPUT_MODULE_ID);
     assert_eq!(order.len(), 3);
 }
@@ -687,7 +687,7 @@ fn execution_order_includes_unlinked_modules() {
     )];
 
     let order =
-        SynthEngine::calc_execution_order(&links, [LFO_ID, OSCILLATOR_ID, OUTPUT_MODULE_ID])
+        <SynthEngine>::calc_execution_order(&links, [LFO_ID, OSCILLATOR_ID, OUTPUT_MODULE_ID])
             .expect("valid graph");
 
     assert!(order.contains(&LFO_ID));
@@ -1355,7 +1355,7 @@ fn full_patch_config_round_trips() {
         ..EngineParams::default()
     });
     let cfg = engine.get_config();
-    let rebuilt = SynthEngine::try_new(&cfg, SAMPLE_RATE).expect("full patch config deserializes");
+    let rebuilt = <SynthEngine>::try_new(&cfg, SAMPLE_RATE).expect("full patch config deserializes");
 
     assert_eq!(rebuilt.get_config().modules.len(), cfg.modules.len());
     assert_eq!(rebuilt.get_config().links.len(), cfg.links.len());
@@ -1524,7 +1524,7 @@ fn link_modulation_in_preset_builds() {
 
     config.links.push(config.links[modulated].clone());
 
-    let mut engine = SynthEngine::try_new(&config, SAMPLE_RATE).expect("modulated preset");
+    let mut engine = <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("modulated preset");
 
     let cfg = engine.get_config();
     let env_amp_links: Vec<_> = cfg
@@ -1535,7 +1535,7 @@ fn link_modulation_in_preset_builds() {
     assert_eq!(env_amp_links.len(), 1);
     assert_eq!(env_amp_links[0].modulator_id(), Some(LFO_ID));
 
-    let order = SynthEngine::calc_execution_order(
+    let order = <SynthEngine>::calc_execution_order(
         &cfg.links
             .iter()
             .map(ModuleLink::from_config)
@@ -1570,7 +1570,7 @@ fn set_config_links_dedupes_duplicate_preset_links() {
     config.links.push(osc_out);
 
     let engine =
-        SynthEngine::try_new(&config, SAMPLE_RATE).expect("duplicate links should be skipped");
+        <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("duplicate links should be skipped");
 
     let count = engine
         .get_config()
@@ -1853,7 +1853,7 @@ fn svf_engine(svf: SvfConfig) -> SynthEngine {
         ],
     };
 
-    SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid svf patch")
+    <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("valid svf patch")
 }
 
 fn svf_output_rms(svf: SvfConfig) -> Sample {
@@ -2077,7 +2077,7 @@ fn execution_order_accounts_for_link_modulation() {
         ModuleLink::direct(AMPLIFIER_ID, InputId::new(Input::Audio, OUTPUT_MODULE_ID)),
     ];
 
-    let order = SynthEngine::calc_execution_order(&links, []).expect("valid order");
+    let order = <SynthEngine>::calc_execution_order(&links, []).expect("valid order");
     let lfo_pos = order.iter().position(|&id| id == LFO_ID).unwrap();
     let amp_pos = order.iter().position(|&id| id == AMPLIFIER_ID).unwrap();
     assert!(lfo_pos < amp_pos);

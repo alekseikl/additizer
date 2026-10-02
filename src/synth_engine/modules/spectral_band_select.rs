@@ -1,6 +1,5 @@
 mod config;
 mod link;
-mod ui_bridge;
 
 #[cfg(test)]
 mod tests;
@@ -9,8 +8,8 @@ pub use config::{
     BandSelectMode, MAX_BAND_HZ, MAX_HARMONIC, MAX_HARMONIC_END, MIN_BAND_HZ, MIN_HARMONIC,
     SpectralBandSelectConfig,
 };
-use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::SpectralBandSelectUiBridge;
+pub use link::{SpectralBandSelectAudioEnd, SpectralBandSelectLinks, SpectralBandSelectUiEnd, UiEvent};
+pub use crate::ui_bridge::modules::spectral_band_select::SpectralBandSelectUiBridge;
 
 use crate::{
     synth_engine::{
@@ -77,16 +76,20 @@ impl Inputs {
     }
 }
 
-pub struct SpectralBandSelect {
+pub struct SpectralBandSelect<L: SpectralBandSelectLinks = crate::links::spectral_band_select::Links> {
     id: ModuleId,
     params: Params,
-    audio_end: AudioEnd,
-    ui_end: Option<UiEnd>,
+    audio_end: L::AudioEnd,
+    ui_end: Option<L::UiEnd>,
     inputs: Inputs,
     output_slot: usize,
 }
 
-impl SpectralBandSelect {
+impl<L: SpectralBandSelectLinks> SpectralBandSelect<L> {
+    pub fn take_ui_end(&mut self) -> Option<L::UiEnd> {
+        self.ui_end.take()
+    }
+
     pub fn new(id: ModuleId) -> Self {
         Self::from_config(&SpectralBandSelectConfig {
             id,
@@ -95,7 +98,7 @@ impl SpectralBandSelect {
     }
 
     pub fn from_config(config: &SpectralBandSelectConfig) -> Self {
-        let (audio_end, ui_end) = create_link_pair();
+        let (audio_end, ui_end) = L::create_link_pair();
         let params = Params::from_config(config);
 
         Self {
@@ -202,7 +205,7 @@ impl SpectralBandSelect {
     }
 }
 
-impl SynthModule for SpectralBandSelect {
+impl<L: SpectralBandSelectLinks> SynthModule for SpectralBandSelect<L> {
     fn id(&self) -> ModuleId {
         self.id
     }

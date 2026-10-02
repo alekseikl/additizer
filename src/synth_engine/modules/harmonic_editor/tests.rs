@@ -11,7 +11,7 @@ const DST_ID: ModuleId = 2;
 
 #[test]
 fn zero_phases_clears_phases_and_keeps_amplitudes() {
-    let mut editor = HarmonicEditor::new(SRC_ID);
+    let mut editor = <HarmonicEditor>::new(SRC_ID);
     let before = editor.get_config();
 
     editor.zero_phases();
@@ -26,7 +26,7 @@ fn zero_phases_clears_phases_and_keeps_amplitudes() {
 
 #[test]
 fn sawtooth_phases_sets_sawtooth_pattern_and_keeps_amplitudes() {
-    let mut editor = HarmonicEditor::new(SRC_ID);
+    let mut editor = <HarmonicEditor>::new(SRC_ID);
     let before = editor.get_config();
 
     editor.zero_phases();
@@ -46,7 +46,7 @@ fn sawtooth_phases_sets_sawtooth_pattern_and_keeps_amplitudes() {
 
 #[test]
 fn random_phases_assigns_uniform_phases_and_keeps_amplitudes() {
-    let mut editor = HarmonicEditor::new(SRC_ID);
+    let mut editor = <HarmonicEditor>::new(SRC_ID);
     let before = editor.get_config();
 
     editor.random_phases();
@@ -74,7 +74,7 @@ fn random_phases_assigns_uniform_phases_and_keeps_amplitudes() {
 
 #[test]
 fn random_phases_stereo_differs_per_channel() {
-    let mut editor = HarmonicEditor::new(SRC_ID);
+    let mut editor = <HarmonicEditor>::new(SRC_ID);
     let before = editor.get_config();
 
     editor.random_phases_stereo();
@@ -102,7 +102,7 @@ fn frequency_bin_round_trips_amplitude_and_phase() {
         (16, 1.0, 0.75),
     ] {
         let (got_amp, got_phase) =
-            HarmonicEditor::from_frequency_bin(idx, HarmonicEditor::frequency_bin(idx, amp, phase));
+            <HarmonicEditor>::from_frequency_bin(idx, <HarmonicEditor>::frequency_bin(idx, amp, phase));
 
         assert!(
             (got_amp - amp).abs() < 1e-5,
@@ -114,14 +114,14 @@ fn frequency_bin_round_trips_amplitude_and_phase() {
         );
     }
 
-    let (amp, phase) = HarmonicEditor::from_frequency_bin(4, ComplexSample::ZERO);
+    let (amp, phase) = <HarmonicEditor>::from_frequency_bin(4, ComplexSample::ZERO);
     assert_eq!(amp, 0.0);
     assert_eq!(phase, 0.0);
 }
 
 #[test]
 fn exposes_spectrum_input() {
-    let editor = HarmonicEditor::new(SRC_ID);
+    let editor = <HarmonicEditor>::new(SRC_ID);
 
     assert!(editor.inputs().iter().any(|input| {
         input.input_type == Input::Spectrum && input.data_type == DataType::Spectral

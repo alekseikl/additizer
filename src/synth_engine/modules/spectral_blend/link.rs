@@ -1,84 +1,25 @@
-use triple_buffer::triple_buffer;
 
 use crate::synth_engine::{
-    DISPLAY_SPECTRUM_SIZE, Input, StereoSample, UI_TO_AUDIO_RING_CAPACITY, types::ComplexSample,
+    Input, StereoSample, types::ComplexSample,
 };
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
 }
 
-pub struct UiEnd {
-    tx: rtrb::Producer<UiEvent>,
-    spectrum: triple_buffer::Output<Vec<ComplexSample>>,
+pub trait SpectralBlendAudioEnd: Send {
+    fn pop_event(&mut self) -> Option<UiEvent>;
+    fn update_spectrum(&mut self, spectrum: &[ComplexSample]);
 }
 
-impl UiEnd {
-    pub fn get_spectrum(&mut self) -> &[ComplexSample] {
-        self.spectrum.update();
-        self.spectrum.output_buffer()
-    }
-
-    pub fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
-        self.tx.push(UiEvent::InputParam { input, value }).is_ok()
-    }
+pub trait SpectralBlendUiEnd: Send {
+    fn get_spectrum(&mut self) -> &[ComplexSample];
+    fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
 }
 
-pub struct AudioEnd {
-    rx: rtrb::Consumer<UiEvent>,
-    spectrum: triple_buffer::Input<Vec<ComplexSample>>,
-}
+pub trait SpectralBlendLinks: Send {
+    type AudioEnd: SpectralBlendAudioEnd;
+    type UiEnd: SpectralBlendUiEnd;
 
-impl AudioEnd {
-    pub fn pop_event(&mut self) -> Option<UiEvent> {
-        self.rx.pop().ok()
-    }
-
-    pub fn update_spectrum(&mut self, spectrum: &[ComplexSample]) {
-        let dst = self.spectrum.input_buffer_mut();
-        let len = spectrum.len().min(DISPLAY_SPECTRUM_SIZE);
-
-        debug_assert!(dst.capacity() >= len);
-        dst.clear();
-        dst.extend_from_slice(&spectrum[..len]);
-        self.spectrum.publish();
-    }
-}
-
-pub fn create_link_pair() -> (AudioEnd, UiEnd) {
-    let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
-    // Length, not only capacity: `triple_buffer` clones this, and `Vec::clone` keeps `len`.
-    let spectrum = vec![ComplexSample::ZERO; DISPLAY_SPECTRUM_SIZE];
-    let (spectrum_input, spectrum_output) = triple_buffer(&spectrum);
-
-    (
-        AudioEnd {
-            rx: from_ui_rx,
-            spectrum: spectrum_input,
-        },
-        UiEnd {
-            tx: to_audio_tx,
-            spectrum: spectrum_output,
-        },
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn published_length_follows_the_source() {
-        let (mut audio, mut ui) = create_link_pair();
-        let long = vec![ComplexSample::from_polar(0.25, 0.1); DISPLAY_SPECTRUM_SIZE + 8];
-
-        audio.update_spectrum(&long);
-        assert_eq!(ui.get_spectrum().len(), DISPLAY_SPECTRUM_SIZE);
-        assert_eq!(ui.get_spectrum()[3], long[3]);
-
-        let short = vec![ComplexSample::from_polar(0.5, -0.2); 6];
-        audio.update_spectrum(&short);
-        assert_eq!(ui.get_spectrum(), short.as_slice());
-        assert!(audio.spectrum.input_buffer().capacity() >= DISPLAY_SPECTRUM_SIZE);
-    }
+    fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
 }

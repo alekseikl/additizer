@@ -22,15 +22,14 @@ use crate::{
 
 mod config;
 mod link;
-mod ui_bridge;
 
 #[cfg(test)]
 mod tests;
 
 pub use config::{NoiseColor, SpectralNoiseConfig};
-pub use ui_bridge::SpectralNoiseUiBridge;
+pub use crate::ui_bridge::modules::spectral_noise::SpectralNoiseUiBridge;
 
-use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
+pub use link::{SpectralNoiseAudioEnd, SpectralNoiseLinks, SpectralNoiseUiEnd, UiEvent};
 
 pub const MIN_ROLLOFF: Sample = 6.0;
 pub const MAX_ROLLOFF: Sample = 60.0;
@@ -90,16 +89,36 @@ struct ChannelParams {
 impl ChannelParams {
     fn from_config(config: &SpectralNoiseConfig, channel_idx: usize) -> Self {
         Self {
-            amount: SpectralNoise::clamp_amount(config.amount[channel_idx]),
-            level: SpectralNoise::clamp_level(config.level[channel_idx]),
+            amount: clamp_amount(config.amount[channel_idx]),
+            level: clamp_level(config.level[channel_idx]),
         }
     }
 }
 
-pub struct SpectralNoise {
+pub(crate) fn clamp_bandwidth(bandwidth: i32) -> i32 {
+    bandwidth.clamp(0, MAX_BANDWIDTH as i32)
+}
+
+fn clamp_level(level: Sample) -> Sample {
+    level.clamp(MIN_LEVEL_DB, MAX_LEVEL_DB)
+}
+
+fn clamp_amount(amount: Sample) -> Sample {
+    amount.clamp(0.0, 1.0)
+}
+
+pub(crate) fn clamp_cutoff(value: StereoSample) -> StereoSample {
+    value.clamp(MIN_CUTOFF, MAX_CUTOFF)
+}
+
+pub(crate) fn clamp_rolloff(value: StereoSample) -> StereoSample {
+    value.clamp(MIN_ROLLOFF, MAX_ROLLOFF)
+}
+
+pub struct SpectralNoise<L: SpectralNoiseLinks = crate::links::spectral_noise::Links> {
     id: ModuleId,
-    audio_end: AudioEnd,
-    ui_end: Option<UiEnd>,
+    audio_end: L::AudioEnd,
+    ui_end: Option<L::UiEnd>,
     inputs: Inputs,
     channel_params: [ChannelParams; NUM_CHANNELS],
     output_slot: usize,
@@ -120,7 +139,11 @@ pub struct SpectralNoise {
     phase_reset: [Option<PhaseReset>; MAX_VOICES],
 }
 
-impl SpectralNoise {
+impl<L: SpectralNoiseLinks> SpectralNoise<L> {
+    pub fn take_ui_end(&mut self) -> Option<L::UiEnd> {
+        self.ui_end.take()
+    }
+
     pub fn new(id: ModuleId) -> Self {
         Self::from_config(&SpectralNoiseConfig {
             id,
@@ -129,7 +152,7 @@ impl SpectralNoise {
     }
 
     pub fn from_config(config: &SpectralNoiseConfig) -> Self {
-        let (audio_end, ui_end) = create_link_pair();
+        let (audio_end, ui_end) = L::create_link_pair();
         let mut noise = Self {
             id: config.id,
             audio_end,
@@ -140,10 +163,10 @@ impl SpectralNoise {
             }),
             output_slot: usize::MAX,
             color: config.color,
-            bandwidth: Self::clamp_bandwidth(config.bandwidth),
+            bandwidth: clamp_bandwidth(config.bandwidth),
             stereo: config.stereo,
-            cutoff: Self::clamp_cutoff(config.cutoff),
-            rolloff: Self::clamp_rolloff(config.rolloff),
+            cutoff: clamp_cutoff(config.cutoff),
+            rolloff: clamp_rolloff(config.rolloff),
             steal_phase: config.steal_phase,
             magnitude_scale: Self::magnitude_scale(config.color),
             random: Pcg32::new(0xa5a5_5a5a_c3c3_3c3c, 0x9e3779b97f4a7c15),
@@ -187,46 +210,26 @@ impl SpectralNoise {
     }
 
     pub fn set_bandwidth(&mut self, bandwidth: i32) {
-        self.bandwidth = Self::clamp_bandwidth(bandwidth);
+        self.bandwidth = clamp_bandwidth(bandwidth);
     }
 
-    set_stereo_param!(set_level, level, Self::clamp_level(*level));
-    set_stereo_param!(set_amount, amount, Self::clamp_amount(*amount));
+    set_stereo_param!(set_level, level, clamp_level(*level));
+    set_stereo_param!(set_amount, amount, clamp_amount(*amount));
 
     pub fn set_stereo(&mut self, stereo: bool) {
         self.stereo = stereo;
     }
 
     pub fn set_cutoff(&mut self, value: StereoSample) {
-        self.cutoff = Self::clamp_cutoff(value);
+        self.cutoff = clamp_cutoff(value);
     }
 
     pub fn set_rolloff(&mut self, value: StereoSample) {
-        self.rolloff = Self::clamp_rolloff(value);
+        self.rolloff = clamp_rolloff(value);
     }
 
     pub fn set_steal_phase(&mut self, steal_phase: bool) {
         self.steal_phase = steal_phase;
-    }
-
-    fn clamp_bandwidth(bandwidth: i32) -> i32 {
-        bandwidth.clamp(0, MAX_BANDWIDTH as i32)
-    }
-
-    fn clamp_level(level: Sample) -> Sample {
-        level.clamp(MIN_LEVEL_DB, MAX_LEVEL_DB)
-    }
-
-    fn clamp_amount(amount: Sample) -> Sample {
-        amount.clamp(0.0, 1.0)
-    }
-
-    fn clamp_cutoff(value: StereoSample) -> StereoSample {
-        value.clamp(MIN_CUTOFF, MAX_CUTOFF)
-    }
-
-    fn clamp_rolloff(value: StereoSample) -> StereoSample {
-        value.clamp(MIN_ROLLOFF, MAX_ROLLOFF)
     }
 
     fn level_gain(level_db: Sample) -> Sample {
@@ -437,7 +440,7 @@ impl SpectralNoise {
     }
 }
 
-impl SynthModule for SpectralNoise {
+impl<L: SpectralNoiseLinks> SynthModule for SpectralNoise<L> {
     fn id(&self) -> ModuleId {
         self.id
     }

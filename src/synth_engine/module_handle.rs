@@ -2,6 +2,7 @@ use crate::synth_engine::{
     Amplifier, Envelope, Expressions, ExternalParam, HarmonicEditor, Input, Lfo, Mixer,
     ModuleConfig, ModuleId, Oscillator, Pitch, SpectralBandSelect, SpectralBlend, SpectralEq,
     SpectralFilter, SpectralMixer, SpectralNoise, StereoSample, Svf, VoiceEvent, WaveShaper,
+    engine_io::EngineLinks,
     modules::Output,
     routing::{DataType, InputMeta, InputSlots, ProcessContext, SpectralInputSlot},
     synth_module::SynthModule,
@@ -57,29 +58,29 @@ impl ModuleType {
 }
 
 #[enum_dispatch(SynthModule)]
-pub enum ModuleHandle {
-    Oscillator(Box<Oscillator>),
-    Envelope(Box<Envelope>),
-    Lfo(Box<Lfo>),
-    Pitch(Box<Pitch>),
-    Amplifier(Box<Amplifier>),
-    WaveShaper(Box<WaveShaper>),
-    Svf(Box<Svf>),
-    Mixer(Box<Mixer>),
-    SpectralFilter(Box<SpectralFilter>),
-    SpectralEq(Box<SpectralEq>),
-    SpectralBandSelect(Box<SpectralBandSelect>),
-    SpectralBlend(Box<SpectralBlend>),
-    SpectralMixer(Box<SpectralMixer>),
-    HarmonicEditor(Box<HarmonicEditor>),
-    SpectralNoise(Box<SpectralNoise>),
-    Expressions(Box<Expressions>),
-    ExternalParam(Box<ExternalParam>),
+pub enum ModuleHandle<E: EngineLinks = crate::links::PluginLinks> {
+    Oscillator(Box<Oscillator<E::Oscillator>>),
+    Envelope(Box<Envelope<E::Envelope>>),
+    Lfo(Box<Lfo<E::Lfo>>),
+    Pitch(Box<Pitch<E::Pitch>>),
+    Amplifier(Box<Amplifier<E::Amplifier>>),
+    WaveShaper(Box<WaveShaper<E::WaveShaper>>),
+    Svf(Box<Svf<E::Svf>>),
+    Mixer(Box<Mixer<E::Mixer>>),
+    SpectralFilter(Box<SpectralFilter<E::SpectralFilter>>),
+    SpectralEq(Box<SpectralEq<E::SpectralEq>>),
+    SpectralBandSelect(Box<SpectralBandSelect<E::SpectralBandSelect>>),
+    SpectralBlend(Box<SpectralBlend<E::SpectralBlend>>),
+    SpectralMixer(Box<SpectralMixer<E::SpectralMixer>>),
+    HarmonicEditor(Box<HarmonicEditor<E::HarmonicEditor>>),
+    SpectralNoise(Box<SpectralNoise<E::SpectralNoise>>),
+    Expressions(Box<Expressions<E::Expressions>>),
+    ExternalParam(Box<ExternalParam<E::ExternalParam>>),
     Output(Box<Output>),
 }
 
-impl ModuleHandle {
-    pub(super) fn module_type(&self) -> ModuleType {
+impl<E: EngineLinks> ModuleHandle<E> {
+    pub(crate) fn module_type(&self) -> ModuleType {
         match self {
             Self::Output(_) => ModuleType::Output,
             Self::Oscillator(_) => ModuleType::Oscillator,

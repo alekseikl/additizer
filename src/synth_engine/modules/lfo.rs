@@ -4,11 +4,10 @@ use itertools::izip;
 
 mod config;
 mod link;
-mod ui_bridge;
 
 pub use config::{LfoConfig, LfoShape};
-use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::LfoUiBridge;
+pub use link::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
+pub use crate::ui_bridge::modules::lfo::LfoUiBridge;
 
 use crate::synth_engine::{
     Input, ModuleId, Sample, SmoothedSampleParams, StereoSample,
@@ -124,19 +123,23 @@ struct Buffers {
     skew: Buffer,
 }
 
-pub struct Lfo {
+pub struct Lfo<L: LfoLinks = crate::links::lfo::Links> {
     id: ModuleId,
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
     buffers: Buffers,
-    audio_end: AudioEnd,
-    ui_end: Option<UiEnd>,
+    audio_end: L::AudioEnd,
+    ui_end: Option<L::UiEnd>,
     inputs: Inputs,
     output_slot: usize,
     voices: VoicesLayout<VoiceState>,
 }
 
-impl Lfo {
+impl<L: LfoLinks> Lfo<L> {
+    pub fn take_ui_end(&mut self) -> Option<L::UiEnd> {
+        self.ui_end.take()
+    }
+
     pub fn new(id: ModuleId) -> Self {
         Self::from_config(&LfoConfig {
             id,
@@ -145,7 +148,7 @@ impl Lfo {
     }
 
     pub fn from_config(config: &config::LfoConfig) -> Self {
-        let (audio_end, ui_end) = create_link_pair();
+        let (audio_end, ui_end) = L::create_link_pair();
 
         Self {
             id: config.id,
@@ -305,7 +308,7 @@ impl Lfo {
     }
 }
 
-impl SynthModule for Lfo {
+impl<L: LfoLinks> SynthModule for Lfo<L> {
     fn id(&self) -> ModuleId {
         self.id
     }

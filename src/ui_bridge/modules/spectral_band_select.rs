@@ -1,18 +1,16 @@
+use crate::synth_engine::spectral_band_select::{BandSelectMode, MAX_BAND_HZ, MAX_HARMONIC, MAX_HARMONIC_END, MIN_BAND_HZ, MIN_HARMONIC, SpectralBandSelect, SpectralBandSelectConfig, SpectralBandSelectLinks, SpectralBandSelectUiEnd};
 use crate::synth_engine::{Sample, synth_module::ModuleUiBridge, types::ComplexSample};
 
-use super::config::{MAX_BAND_HZ, MAX_HARMONIC, MAX_HARMONIC_END, MIN_BAND_HZ, MIN_HARMONIC};
-use super::link::UiEnd;
-use super::{BandSelectMode, SpectralBandSelect, SpectralBandSelectConfig};
 
-pub struct SpectralBandSelectUiBridge {
-    ui_end: UiEnd,
+pub struct SpectralBandSelectUiBridge<L: SpectralBandSelectLinks = crate::links::spectral_band_select::Links> {
+    ui_end: L::UiEnd,
     config: SpectralBandSelectConfig,
 }
 
-impl SpectralBandSelectUiBridge {
-    pub fn try_new(module: &mut SpectralBandSelect) -> Option<Self> {
+impl<L: SpectralBandSelectLinks> SpectralBandSelectUiBridge<L> {
+    pub fn try_new(module: &mut SpectralBandSelect<L>) -> Option<Self> {
         Some(Self {
-            ui_end: module.ui_end.take()?,
+            ui_end: module.take_ui_end()?,
             config: module.get_config(),
         })
     }
@@ -64,7 +62,7 @@ impl SpectralBandSelectUiBridge {
     }
 }
 
-impl ModuleUiBridge for SpectralBandSelectUiBridge {
+impl<L: SpectralBandSelectLinks> ModuleUiBridge for SpectralBandSelectUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

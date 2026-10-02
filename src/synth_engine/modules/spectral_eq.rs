@@ -4,7 +4,6 @@ use smallvec::SmallVec;
 
 mod config;
 mod link;
-mod ui_bridge;
 
 #[cfg(test)]
 mod tests;
@@ -12,8 +11,8 @@ mod tests;
 pub use config::{
     EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MAX_Q, MIN_CUTOFF_HZ, MIN_Q, SpectralEqConfig,
 };
-use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::SpectralEqUiBridge;
+pub use link::{SpectralEqAudioEnd, SpectralEqLinks, SpectralEqUiEnd, UiEvent};
+pub use crate::ui_bridge::modules::spectral_eq::SpectralEqUiBridge;
 
 use additizer_dsp::filters::{
     control::{MAX_DRIVE, MAX_PRE_Q, MIN_DRIVE},
@@ -128,17 +127,21 @@ impl Inputs {
     }
 }
 
-pub struct SpectralEq {
+pub struct SpectralEq<L: SpectralEqLinks = crate::links::spectral_eq::Links> {
     id: ModuleId,
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
-    audio_end: AudioEnd,
-    ui_end: Option<UiEnd>,
+    audio_end: L::AudioEnd,
+    ui_end: Option<L::UiEnd>,
     inputs: Inputs,
     output_slot: usize,
 }
 
-impl SpectralEq {
+impl<L: SpectralEqLinks> SpectralEq<L> {
+    pub fn take_ui_end(&mut self) -> Option<L::UiEnd> {
+        self.ui_end.take()
+    }
+
     pub fn new(id: ModuleId) -> Self {
         Self::from_config(&SpectralEqConfig {
             id,
@@ -147,7 +150,7 @@ impl SpectralEq {
     }
 
     pub fn from_config(config: &SpectralEqConfig) -> Self {
-        let (audio_end, ui_end) = create_link_pair();
+        let (audio_end, ui_end) = L::create_link_pair();
 
         Self {
             id: config.id,
@@ -289,7 +292,7 @@ impl SpectralEq {
     }
 }
 
-impl SynthModule for SpectralEq {
+impl<L: SpectralEqLinks> SynthModule for SpectralEq<L> {
     fn id(&self) -> ModuleId {
         self.id
     }

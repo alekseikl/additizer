@@ -45,7 +45,7 @@ fn module_config_round_trips_through_get_config() {
         resonance: StereoSample::new(0.25, 0.75),
         drive: StereoSample::new(12.0, 0.0),
     };
-    let module = Svf::from_config(&config);
+    let module = <Svf>::from_config(&config);
     let back = module.get_config();
 
     assert_eq!(back.id, 3);
@@ -97,7 +97,7 @@ fn negative_resonance_uses_linear_curve() {
 
 #[test]
 fn resonance_is_clamped_to_minus_one_and_one() {
-    let module = Svf::from_config(&SvfConfig {
+    let module = <Svf>::from_config(&SvfConfig {
         resonance: StereoSample::new(-1.5, 1.5),
         ..SvfConfig::default()
     });

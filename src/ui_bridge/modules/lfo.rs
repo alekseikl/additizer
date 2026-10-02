@@ -1,17 +1,16 @@
+use crate::synth_engine::lfo::{Lfo, LfoConfig, LfoLinks, LfoShape, LfoUiEnd};
 use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
 
-use super::link::UiEnd;
-use super::{Lfo, LfoConfig, LfoShape};
 
-pub struct LfoUiBridge {
-    ui_end: UiEnd,
+pub struct LfoUiBridge<L: LfoLinks = crate::links::lfo::Links> {
+    ui_end: L::UiEnd,
     config: LfoConfig,
 }
 
-impl LfoUiBridge {
-    pub fn try_new(lfo: &mut Lfo) -> Option<Self> {
+impl<L: LfoLinks> LfoUiBridge<L> {
+    pub fn try_new(lfo: &mut Lfo<L>) -> Option<Self> {
         Some(Self {
-            ui_end: lfo.ui_end.take()?,
+            ui_end: lfo.take_ui_end()?,
             config: lfo.get_config(),
         })
     }
@@ -62,7 +61,7 @@ impl LfoUiBridge {
     }
 }
 
-impl ModuleUiBridge for LfoUiBridge {
+impl<L: LfoLinks> ModuleUiBridge for LfoUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

@@ -2,14 +2,13 @@ use std::array;
 
 mod config;
 mod link;
-mod ui_bridge;
 
 #[cfg(test)]
 mod tests;
 
 pub use config::SvfConfig;
-use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::SvfUiBridge;
+pub use link::{SvfAudioEnd, SvfLinks, SvfUiEnd, UiEvent};
+pub use crate::ui_bridge::modules::svf::SvfUiBridge;
 
 use additizer_dsp::filters::{
     control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
@@ -124,19 +123,23 @@ struct Buffers {
     drive: Buffer,
 }
 
-pub struct Svf {
+pub struct Svf<L: SvfLinks = crate::links::svf::Links> {
     id: ModuleId,
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
     buffers: Buffers,
     states: VoicesLayout<SvfChannel>,
-    audio_end: AudioEnd,
-    ui_end: Option<UiEnd>,
+    audio_end: L::AudioEnd,
+    ui_end: Option<L::UiEnd>,
     inputs: Inputs,
     output_slot: usize,
 }
 
-impl Svf {
+impl<L: SvfLinks> Svf<L> {
+    pub fn take_ui_end(&mut self) -> Option<L::UiEnd> {
+        self.ui_end.take()
+    }
+
     pub fn new(id: ModuleId) -> Self {
         Self::from_config(&SvfConfig {
             id,
@@ -145,7 +148,7 @@ impl Svf {
     }
 
     pub fn from_config(config: &SvfConfig) -> Self {
-        let (audio_end, ui_end) = create_link_pair();
+        let (audio_end, ui_end) = L::create_link_pair();
 
         Self {
             id: config.id,
@@ -282,7 +285,7 @@ impl Svf {
     }
 }
 
-impl SynthModule for Svf {
+impl<L: SvfLinks> SynthModule for Svf<L> {
     fn id(&self) -> ModuleId {
         self.id
     }

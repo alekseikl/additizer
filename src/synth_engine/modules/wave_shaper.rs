@@ -18,11 +18,10 @@ use crate::{
 
 mod config;
 mod link;
-mod ui_bridge;
 
 pub use config::{ShaperType, WaveShaperConfig};
-use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::WaveShaperUiBridge;
+pub use link::{WaveShaperAudioEnd, WaveShaperLinks, WaveShaperUiEnd, UiEvent};
+pub use crate::ui_bridge::modules::wave_shaper::WaveShaperUiBridge;
 
 struct Params {
     shaper_type: ShaperType,
@@ -110,18 +109,22 @@ struct Buffers {
     clipping_level_mod_input: Buffer,
 }
 
-pub struct WaveShaper {
+pub struct WaveShaper<L: WaveShaperLinks = crate::links::wave_shaper::Links> {
     id: ModuleId,
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
     buffers: Buffers,
-    audio_end: AudioEnd,
-    ui_end: Option<UiEnd>,
+    audio_end: L::AudioEnd,
+    ui_end: Option<L::UiEnd>,
     inputs: Inputs,
     output_slot: usize,
 }
 
-impl WaveShaper {
+impl<L: WaveShaperLinks> WaveShaper<L> {
+    pub fn take_ui_end(&mut self) -> Option<L::UiEnd> {
+        self.ui_end.take()
+    }
+
     pub fn new(id: ModuleId) -> Self {
         Self::from_config(&WaveShaperConfig {
             id,
@@ -130,7 +133,7 @@ impl WaveShaper {
     }
 
     pub fn from_config(config: &config::WaveShaperConfig) -> Self {
-        let (audio_end, ui_end) = create_link_pair();
+        let (audio_end, ui_end) = L::create_link_pair();
 
         Self {
             id: config.id,
@@ -198,7 +201,7 @@ impl WaveShaper {
     }
 }
 
-impl SynthModule for WaveShaper {
+impl<L: WaveShaperLinks> SynthModule for WaveShaper<L> {
     fn id(&self) -> ModuleId {
         self.id
     }

@@ -1,22 +1,21 @@
+use crate::synth_engine::harmonic_editor::{EditRequest, HarmonicEditor, HarmonicEditorLinks, HarmonicEditorUiEnd, Harmonics, clamp_bandwidth};
 use crate::synth_engine::{ComplexSample, StereoSample, synth_module::ModuleUiBridge};
 
-use super::link::UiEnd;
-use super::{EditRequest, HarmonicEditor, Harmonics, clamp_bandwidth};
 
-pub struct HarmonicEditorUiBridge {
-    ui_end: UiEnd,
+pub struct HarmonicEditorUiBridge<L: HarmonicEditorLinks = crate::links::harmonic_editor::Links> {
+    ui_end: L::UiEnd,
     bandwidth: i32,
     mono: bool,
     capture_input: bool,
 }
 
-impl HarmonicEditorUiBridge {
-    pub fn try_new(editor: &mut HarmonicEditor) -> Option<Self> {
+impl<L: HarmonicEditorLinks> HarmonicEditorUiBridge<L> {
+    pub fn try_new(editor: &mut HarmonicEditor<L>) -> Option<Self> {
         Some(Self {
             bandwidth: editor.bandwidth(),
             mono: editor.mono(),
             capture_input: editor.capture_input(),
-            ui_end: editor.ui_end.take()?,
+            ui_end: editor.take_ui_end()?,
         })
     }
 
@@ -105,7 +104,7 @@ impl HarmonicEditorUiBridge {
     }
 }
 
-impl ModuleUiBridge for HarmonicEditorUiBridge {
+impl<L: HarmonicEditorLinks> ModuleUiBridge for HarmonicEditorUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

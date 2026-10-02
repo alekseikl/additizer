@@ -21,19 +21,18 @@ use crate::{
 
 mod config;
 mod link;
-mod ui_bridge;
 
 #[cfg(test)]
 mod tests;
 
 pub use config::{HarmonicEditorConfig, sawtooth_phase};
 pub use link::Harmonics;
-pub use ui_bridge::HarmonicEditorUiBridge;
+pub use crate::ui_bridge::modules::harmonic_editor::HarmonicEditorUiBridge;
 
 use itertools::izip;
-use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
+pub use link::{HarmonicEditorAudioEnd, HarmonicEditorLinks, HarmonicEditorUiEnd, UiEvent};
 
-fn clamp_bandwidth(bandwidth: i32) -> i32 {
+pub(crate) fn clamp_bandwidth(bandwidth: i32) -> i32 {
     bandwidth.clamp(0, MAX_BANDWIDTH as i32)
 }
 
@@ -112,10 +111,10 @@ pub enum EditRequest {
     },
 }
 
-pub struct HarmonicEditor {
+pub struct HarmonicEditor<L: HarmonicEditorLinks = crate::links::harmonic_editor::Links> {
     id: ModuleId,
-    audio_end: AudioEnd,
-    ui_end: Option<UiEnd>,
+    audio_end: L::AudioEnd,
+    ui_end: Option<L::UiEnd>,
     inputs: Inputs,
     output_slot: usize,
     amplitudes: [Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
@@ -129,7 +128,11 @@ pub struct HarmonicEditor {
     capture_input: bool,
 }
 
-impl HarmonicEditor {
+impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
+    pub fn take_ui_end(&mut self) -> Option<L::UiEnd> {
+        self.ui_end.take()
+    }
+
     pub fn new(id: ModuleId) -> Self {
         Self::from_config(&HarmonicEditorConfig {
             id,
@@ -138,7 +141,7 @@ impl HarmonicEditor {
     }
 
     pub fn from_config(config: &config::HarmonicEditorConfig) -> Self {
-        let (audio_end, ui_end) = create_link_pair();
+        let (audio_end, ui_end) = L::create_link_pair();
 
         let mut amplitudes = array::from_fn(|_| Box::new([0.0; SPECTRAL_BUFFER_SIZE]));
         let mut phases = array::from_fn(|_| Box::new([0.0; SPECTRAL_BUFFER_SIZE]));
@@ -594,7 +597,7 @@ impl HarmonicEditor {
     }
 }
 
-impl SynthModule for HarmonicEditor {
+impl<L: HarmonicEditorLinks> SynthModule for HarmonicEditor<L> {
     fn id(&self) -> ModuleId {
         self.id
     }

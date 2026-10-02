@@ -1,18 +1,17 @@
+use crate::synth_engine::svf::{Svf, SvfConfig, SvfLinks, SvfUiEnd};
 use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
 use additizer_dsp::filters::svf::SvfType;
 
-use super::link::UiEnd;
-use super::{Svf, SvfConfig};
 
-pub struct SvfUiBridge {
-    ui_end: UiEnd,
+pub struct SvfUiBridge<L: SvfLinks = crate::links::svf::Links> {
+    ui_end: L::UiEnd,
     config: SvfConfig,
 }
 
-impl SvfUiBridge {
-    pub fn try_new(svf: &mut Svf) -> Option<Self> {
+impl<L: SvfLinks> SvfUiBridge<L> {
+    pub fn try_new(svf: &mut Svf<L>) -> Option<Self> {
         Some(Self {
-            ui_end: svf.ui_end.take()?,
+            ui_end: svf.take_ui_end()?,
             config: svf.get_config(),
         })
     }
@@ -52,7 +51,7 @@ impl SvfUiBridge {
     }
 }
 
-impl ModuleUiBridge for SvfUiBridge {
+impl<L: SvfLinks> ModuleUiBridge for SvfUiBridge<L> {
     fn update(&mut self) -> bool {
         false
     }

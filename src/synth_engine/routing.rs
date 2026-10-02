@@ -13,7 +13,7 @@ mod voice_router;
 
 pub use outputs::{SamplesOutput, SpectralOutput};
 pub use outputs_arena::OutputsArena;
-pub use process_context::{ProcessContext, ProcessParams, VoiceTarget};
+pub use process_context::{ProcessContext, ProcessParams, Telemetry, VoiceTarget};
 pub use voice_router::{
     AudioRouterType, ControlRouterType, OutputRouterType, RouterFactory, SpectralRouterType,
     VoiceRouter,

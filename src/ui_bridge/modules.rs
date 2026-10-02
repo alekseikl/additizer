@@ -1,0 +1,17 @@
+pub mod amplifier;
+pub mod envelope;
+pub mod expressions;
+pub mod external_param;
+pub mod harmonic_editor;
+pub mod lfo;
+pub mod mixer;
+pub mod oscillator;
+pub mod pitch;
+pub mod spectral_band_select;
+pub mod spectral_blend;
+pub mod spectral_eq;
+pub mod spectral_filter;
+pub mod spectral_mixer;
+pub mod spectral_noise;
+pub mod svf;
+pub mod wave_shaper;

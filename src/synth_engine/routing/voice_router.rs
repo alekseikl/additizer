@@ -422,7 +422,7 @@ impl<'v, 'f, 'c, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D> {
             let value = param + modulated_amount;
 
             if self.need_update_ui() {
-                self.factory.ctx.audio_end.update_modulated_input(
+                self.factory.ctx.telemetry.update_modulated_input(
                     self.factory.module_id,
                     input.input_type,
                     self.target.channel_idx as u8,
@@ -484,7 +484,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, AudioRouterType> {
         {
             let value = buff[0];
 
-            self.factory.ctx.audio_end.update_modulated_input(
+            self.factory.ctx.telemetry.update_modulated_input(
                 self.factory.module_id,
                 input.input_type,
                 self.target.channel_idx as u8,
@@ -552,7 +552,7 @@ impl<'v, 'f, 'c> VoiceRouter<'v, 'f, 'c, ControlRouterType> {
         {
             let value = buff[0];
 
-            self.factory.ctx.audio_end.update_modulated_input(
+            self.factory.ctx.telemetry.update_modulated_input(
                 self.factory.module_id,
                 input.input_type,
                 self.target.channel_idx as u8,

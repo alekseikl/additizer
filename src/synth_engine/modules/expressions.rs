@@ -1,10 +1,9 @@
 mod config;
 mod link;
-mod ui_bridge;
 
 pub use config::ExpressionsConfig;
-use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::ExpressionsUiBridge;
+pub use link::{ExpressionsAudioEnd, ExpressionsLinks, ExpressionsUiEnd, UiEvent};
+pub use crate::ui_bridge::modules::expressions::ExpressionsUiBridge;
 
 use crate::{
     synth_engine::{
@@ -54,16 +53,20 @@ impl Default for Voice {
     }
 }
 
-pub struct Expressions {
+pub struct Expressions<L: ExpressionsLinks = crate::links::expressions::Links> {
     id: ModuleId,
     params: Params,
-    audio_end: AudioEnd,
-    ui_end: Option<UiEnd>,
+    audio_end: L::AudioEnd,
+    ui_end: Option<L::UiEnd>,
     output_slot: usize,
     mono_voices: MonoVoicesLayout<Voice>,
 }
 
-impl Expressions {
+impl<L: ExpressionsLinks> Expressions<L> {
+    pub fn take_ui_end(&mut self) -> Option<L::UiEnd> {
+        self.ui_end.take()
+    }
+
     pub fn new(id: ModuleId) -> Self {
         Self::from_config(&ExpressionsConfig {
             id,
@@ -72,7 +75,7 @@ impl Expressions {
     }
 
     pub fn from_config(config: &config::ExpressionsConfig) -> Self {
-        let (audio_end, ui_end) = create_link_pair();
+        let (audio_end, ui_end) = L::create_link_pair();
 
         Self {
             id: config.id,
@@ -196,7 +199,7 @@ impl Expressions {
     }
 }
 
-impl SynthModule for Expressions {
+impl<L: ExpressionsLinks> SynthModule for Expressions<L> {
     fn id(&self) -> ModuleId {
         self.id
     }

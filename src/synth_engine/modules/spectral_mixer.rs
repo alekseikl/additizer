@@ -18,11 +18,10 @@ use crate::{
 
 mod config;
 mod link;
-mod ui_bridge;
 
 pub use config::{MAX_INPUTS, SpectralMixerConfig};
-use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
-pub use ui_bridge::SpectralMixerUiBridge;
+pub use link::{SpectralMixerAudioEnd, SpectralMixerLinks, SpectralMixerUiEnd, UiEvent, UiUpdate};
+pub use crate::ui_bridge::modules::spectral_mixer::SpectralMixerUiBridge;
 
 struct InputChannelParams {
     level: Sample,
@@ -136,18 +135,22 @@ impl Inputs {
     }
 }
 
-pub struct SpectralMixer {
+pub struct SpectralMixer<L: SpectralMixerLinks = crate::links::spectral_mixer::Links> {
     id: ModuleId,
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
-    audio_end: AudioEnd,
-    ui_end: Option<UiEnd>,
+    audio_end: L::AudioEnd,
+    ui_end: Option<L::UiEnd>,
     inputs: Inputs,
     output_slot: usize,
     inputs_meta: Vec<InputMeta>,
 }
 
-impl SpectralMixer {
+impl<L: SpectralMixerLinks> SpectralMixer<L> {
+    pub fn take_ui_end(&mut self) -> Option<L::UiEnd> {
+        self.ui_end.take()
+    }
+
     pub const MAX_INPUTS: u8 = MAX_INPUTS;
 
     pub fn new(id: ModuleId) -> Self {
@@ -158,7 +161,7 @@ impl SpectralMixer {
     }
 
     pub fn from_config(config: &config::SpectralMixerConfig) -> Self {
-        let (audio_end, ui_end) = create_link_pair();
+        let (audio_end, ui_end) = L::create_link_pair();
 
         let mut result = Self {
             id: config.id,
@@ -339,7 +342,7 @@ impl SpectralMixer {
     }
 }
 
-impl SynthModule for SpectralMixer {
+impl<L: SpectralMixerLinks> SynthModule for SpectralMixer<L> {
     fn id(&self) -> ModuleId {
         self.id
     }
