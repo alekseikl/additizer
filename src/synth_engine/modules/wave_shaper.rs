@@ -18,6 +18,7 @@ use crate::{
 
 mod config;
 mod link;
+pub mod stub;
 
 pub use crate::ui_bridge::modules::wave_shaper::WaveShaperUiBridge;
 pub use config::{ShaperType, WaveShaperConfig};
@@ -146,7 +147,7 @@ impl<L: WaveShaperLinks> WaveShaper<L> {
                 clipping_level_mod_input: zero_buffer(),
             },
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             inputs: Inputs::default(),
             output_slot: usize::MAX,
         }

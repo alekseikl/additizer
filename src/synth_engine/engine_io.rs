@@ -116,5 +116,5 @@ pub trait EngineLinks: Send {
     type Svf: SvfLinks<EngineEnd = Self::AudioEnd>;
     type WaveShaper: WaveShaperLinks<EngineEnd = Self::AudioEnd>;
 
-    fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
+    fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
 }

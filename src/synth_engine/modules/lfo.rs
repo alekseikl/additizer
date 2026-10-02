@@ -4,6 +4,7 @@ use itertools::izip;
 
 mod config;
 mod link;
+pub mod stub;
 
 pub use crate::ui_bridge::modules::lfo::LfoUiBridge;
 pub use config::{LfoConfig, LfoShape};
@@ -162,7 +163,7 @@ impl<L: LfoLinks> Lfo<L> {
                 skew: zero_buffer(),
             },
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             voices: new_voices_layout(),

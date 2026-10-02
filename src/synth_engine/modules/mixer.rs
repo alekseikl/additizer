@@ -19,6 +19,7 @@ use crate::{
 
 mod config;
 mod link;
+pub mod stub;
 
 pub use crate::ui_bridge::modules::mixer::MixerUiBridge;
 pub use config::{MAX_INPUTS, MixerConfig};
@@ -189,7 +190,7 @@ impl<L: MixerLinks> Mixer<L> {
             }),
             buffers: Buffers::default(),
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             inputs_meta: Vec::with_capacity(1 + 2 * MAX_INPUTS as usize),

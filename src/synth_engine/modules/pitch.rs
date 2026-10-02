@@ -2,6 +2,7 @@ use std::{array, convert::identity};
 
 mod config;
 mod link;
+pub mod stub;
 
 pub use crate::ui_bridge::modules::pitch::PitchUiBridge;
 pub use config::PitchConfig;
@@ -183,7 +184,7 @@ impl<L: PitchLinks> Pitch<L> {
                 pitch: zero_buffer(),
             },
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             voices: new_voices_layout(),

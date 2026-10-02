@@ -1,5 +1,6 @@
 mod config;
 mod link;
+pub mod stub;
 
 pub use crate::ui_bridge::modules::external_param::ExternalParamUiBridge;
 pub use config::ExternalParamConfig;
@@ -87,7 +88,7 @@ impl<L: ExternalParamLinks> ExternalParam<L> {
             id: config.id,
             params: Params::from_config(config),
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             output_slot: usize::MAX,
             values: ValueBuffer::default(),
             mono_buff: zero_buffer(),

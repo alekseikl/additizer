@@ -22,6 +22,7 @@ use crate::{
 
 mod config;
 mod link;
+pub mod stub;
 
 #[cfg(test)]
 mod tests;
@@ -156,7 +157,7 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
         let mut noise = Self {
             id: config.id,
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             inputs: Inputs::default(),
             channel_params: array::from_fn(|channel_idx| {
                 ChannelParams::from_config(config, channel_idx)

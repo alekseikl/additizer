@@ -18,6 +18,7 @@ use crate::{
 
 mod config;
 mod link;
+pub mod stub;
 
 pub use crate::ui_bridge::modules::spectral_mixer::SpectralMixerUiBridge;
 pub use config::{MAX_INPUTS, SpectralMixerConfig};
@@ -170,7 +171,7 @@ impl<L: SpectralMixerLinks> SpectralMixer<L> {
                 ChannelParams::from_config(config, channel_idx)
             }),
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             inputs_meta: Vec::with_capacity(1 + 2 * MAX_INPUTS as usize),

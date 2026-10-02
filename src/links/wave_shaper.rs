@@ -66,7 +66,8 @@ impl WaveShaperLinks for Links {
     type UiEnd = UiEnd;
     type EngineEnd = crate::links::engine::AudioEnd;
 
-    fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd) {
-        make_link_pair()
+    fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>) {
+        let (audio_end, ui_end) = make_link_pair();
+        (audio_end, Some(ui_end))
     }
 }

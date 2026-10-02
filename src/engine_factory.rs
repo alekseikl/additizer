@@ -5,16 +5,17 @@ use atomic_float::AtomicF32;
 use parking_lot::Mutex;
 
 use crate::{
+    links::PluginLinks,
     preset::{Preset, PresetInfo},
     synth_engine::{EngineConfig, Sample, SynthEngine, ui_bridge::ui_config::UiConfig},
 };
 
-pub type EngineHandle<E = crate::links::PluginLinks> = Arc<Mutex<SynthEngine<E>>>;
+pub type EngineHandle<E = PluginLinks> = Arc<Mutex<SynthEngine<E>>>;
 pub type UiConfigHandle = Arc<Mutex<UiConfig>>;
 
 pub struct EngineFactory {
     host_sample_rate: AtomicF32,
-    engine: ArcSwap<Mutex<SynthEngine>>,
+    engine: ArcSwap<Mutex<SynthEngine<PluginLinks>>>,
     ui_config: ArcSwap<Mutex<UiConfig>>,
 }
 
@@ -23,7 +24,7 @@ impl EngineFactory {
         Self {
             host_sample_rate: AtomicF32::new(44100.0),
             engine: ArcSwap::from_pointee(Mutex::new(
-                SynthEngine::try_new(&EngineConfig::default(), 44100.0).unwrap(),
+                SynthEngine::<PluginLinks>::try_new(&EngineConfig::default(), 44100.0).unwrap(),
             )),
             ui_config: ArcSwap::from_pointee(Mutex::new(UiConfig::default())),
         }
@@ -54,7 +55,7 @@ impl EngineFactory {
     }
 
     pub fn load_preset(&self, preset: &Preset) -> bool {
-        let Some(new_engine) = SynthEngine::try_new(
+        let Some(new_engine) = SynthEngine::<PluginLinks>::try_new(
             &preset.engine,
             self.host_sample_rate.load(Ordering::Acquire),
         ) else {

@@ -19,5 +19,5 @@ pub trait SpectralBlendLinks: Send {
     type UiEnd: SpectralBlendUiEnd;
     type EngineEnd: engine_io::EngineAudioEnd;
 
-    fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
+    fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
 }

@@ -21,6 +21,7 @@ use crate::{
 
 mod config;
 mod link;
+pub mod stub;
 
 #[cfg(test)]
 mod tests;
@@ -175,7 +176,7 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
         let mut editor = Self {
             id: config.id,
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             amplitudes,

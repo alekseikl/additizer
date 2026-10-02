@@ -4,6 +4,7 @@ use parking_lot::Mutex;
 
 use crate::{
     engine_factory::{EngineHandle, UiConfigHandle},
+    links::PluginLinks,
     synth_engine::{
         EngineConfig, EngineParams, Input, InputId, LinkConfig, ModuleConfig, ModuleId, ModuleType,
         OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
@@ -20,7 +21,7 @@ const SAMPLE_RATE: Sample = 48_000.0;
 const HARMONIC_EDITOR_ID: ModuleId = 1;
 const OSCILLATOR_ID: ModuleId = 2;
 
-fn minimal_engine() -> SynthEngine {
+fn minimal_engine() -> SynthEngine<PluginLinks> {
     let config = EngineConfig {
         engine: EngineParams::default(),
         modules: vec![
@@ -39,10 +40,10 @@ fn minimal_engine() -> SynthEngine {
         ],
     };
 
-    SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid engine")
+    SynthEngine::<PluginLinks>::try_new(&config, SAMPLE_RATE).expect("valid engine")
 }
 
-fn make_bridge(engine: SynthEngine) -> UiBridge {
+fn make_bridge(engine: SynthEngine<PluginLinks>) -> UiBridge {
     let mut ui_config = UiConfig::default();
     for (id, label) in [
         (HARMONIC_EDITOR_ID, "Harmonics"),

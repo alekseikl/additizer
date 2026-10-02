@@ -42,7 +42,8 @@ impl EngineLinks for PluginLinks {
     type Svf = svf::Links;
     type WaveShaper = wave_shaper::Links;
 
-    fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd) {
-        engine::make_link_pair()
+    fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>) {
+        let (audio_end, ui_end) = engine::make_link_pair();
+        (audio_end, Some(ui_end))
     }
 }

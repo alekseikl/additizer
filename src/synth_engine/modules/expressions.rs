@@ -1,5 +1,6 @@
 mod config;
 mod link;
+pub mod stub;
 
 pub use crate::ui_bridge::modules::expressions::ExpressionsUiBridge;
 pub use config::ExpressionsConfig;
@@ -81,7 +82,7 @@ impl<L: ExpressionsLinks> Expressions<L> {
             id: config.id,
             params: Params::from_config(config),
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             output_slot: usize::MAX,
             mono_voices: new_mono_voices_layout(),
         }

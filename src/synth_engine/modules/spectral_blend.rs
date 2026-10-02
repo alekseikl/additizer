@@ -4,6 +4,7 @@ use itertools::izip;
 
 mod config;
 mod link;
+pub mod stub;
 
 pub use crate::ui_bridge::modules::spectral_blend::SpectralBlendUiBridge;
 pub use config::SpectralBlendConfig;
@@ -106,7 +107,7 @@ impl<L: SpectralBlendLinks> SpectralBlend<L> {
                 ChannelParams::from_config(config, channel_idx)
             }),
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             inputs: Inputs::default(),
             output_slot: usize::MAX,
         }

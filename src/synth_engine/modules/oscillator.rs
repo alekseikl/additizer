@@ -27,6 +27,7 @@ use crate::{
 
 mod config;
 mod link;
+pub mod stub;
 
 #[cfg(test)]
 mod tests;
@@ -372,7 +373,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE),
             random: Pcg32::new(420, 1337),
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             voices: new_voices_layout(),

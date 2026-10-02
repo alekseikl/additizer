@@ -24,5 +24,5 @@ pub trait SvfLinks: Send {
     type UiEnd: SvfUiEnd;
     type EngineEnd: engine_io::EngineAudioEnd;
 
-    fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
+    fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
 }

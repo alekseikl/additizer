@@ -25,5 +25,5 @@ pub trait PitchLinks: Send {
     type UiEnd: PitchUiEnd;
     type EngineEnd: engine_io::EngineAudioEnd;
 
-    fn create_link_pair() -> (Self::AudioEnd, Self::UiEnd);
+    fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
 }

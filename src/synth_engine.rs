@@ -70,6 +70,7 @@ pub mod engine_io;
 pub(crate) mod module_handle;
 mod modules;
 pub(crate) mod routing;
+pub mod stub;
 mod voices_handler;
 
 pub use crate::ui_bridge;
@@ -93,7 +94,7 @@ struct PendingPolyModulation {
     value_offset: Sample,
 }
 
-pub struct SynthEngine<E: EngineLinks = crate::links::PluginLinks> {
+pub struct SynthEngine<E: EngineLinks = stub::StubLinks> {
     next_id: ModuleId,
     host_sample_rate: f32,
     block_size: usize,
@@ -125,7 +126,7 @@ impl<E: EngineLinks> SynthEngine<E> {
                 cfg.engine.legato,
             ),
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             outputs_arena: OutputsArena::new(),
             pending_poly_modulations: Vec::with_capacity(64),
         };

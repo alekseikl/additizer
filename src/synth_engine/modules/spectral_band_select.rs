@@ -1,5 +1,6 @@
 mod config;
 mod link;
+pub mod stub;
 
 #[cfg(test)]
 mod tests;
@@ -109,7 +110,7 @@ impl<L: SpectralBandSelectLinks> SpectralBandSelect<L> {
             id: config.id,
             params,
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             inputs: Inputs::default(),
             output_slot: usize::MAX,
         }

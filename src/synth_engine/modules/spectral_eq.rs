@@ -4,6 +4,7 @@ use smallvec::SmallVec;
 
 mod config;
 mod link;
+pub mod stub;
 
 #[cfg(test)]
 mod tests;
@@ -159,7 +160,7 @@ impl<L: SpectralEqLinks> SpectralEq<L> {
                 ChannelParams::from_config(config, channel_idx)
             }),
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             inputs: Inputs::default(),
             output_slot: usize::MAX,
         }

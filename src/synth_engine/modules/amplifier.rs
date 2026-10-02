@@ -4,6 +4,7 @@ use itertools::izip;
 
 mod config;
 mod link;
+pub mod stub;
 
 pub use crate::ui_bridge::modules::amplifier::AmplifierUiBridge;
 pub use config::AmplifierConfig;
@@ -132,7 +133,7 @@ impl<L: AmplifierLinks> Amplifier<L> {
                 gain_mod_input: zero_buffer(),
             },
             audio_end,
-            ui_end: Some(ui_end),
+            ui_end,
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             out_volume_ballistics: [LevelBallistics::default(); NUM_CHANNELS],

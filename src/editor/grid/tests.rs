@@ -6,6 +6,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     engine_factory::{EngineHandle, UiConfigHandle},
+    links::PluginLinks,
     synth_engine::{
         EngineConfig, EngineParams, Input, InputId, ModuleId, ModuleType, OUTPUT_MODULE_ID,
         SynthEngine,
@@ -20,7 +21,7 @@ fn rect(x: i32, y: i32, w: i32, h: i32) -> GridRect {
 }
 
 fn empty_bridge() -> UiBridge {
-    let engine = SynthEngine::try_new(
+    let engine = SynthEngine::<PluginLinks>::try_new(
         &EngineConfig {
             engine: EngineParams::default(),
             modules: Vec::new(),
