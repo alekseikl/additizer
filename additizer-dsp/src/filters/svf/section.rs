@@ -1,4 +1,4 @@
-use crate::synth_engine::Sample;
+use crate::Sample;
 
 /// Trapezoidal integrator pair shared by every two-pole section.
 #[derive(Default, Clone, Copy)]

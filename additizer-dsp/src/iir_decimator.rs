@@ -1,7 +1,7 @@
 use itertools::izip;
 use wide::f32x4;
 
-use crate::synth_engine::Sample;
+use crate::Sample;
 
 const fn tap(x1: f32, x2: f32) -> f32x4 {
     f32x4::new([x1, x2, x1, x2])

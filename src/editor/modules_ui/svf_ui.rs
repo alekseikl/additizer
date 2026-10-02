@@ -4,53 +4,11 @@ use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput},
     synth_engine::{
         Input, ModuleId, ModuleType,
-        filters::svf::SvfType,
         svf::SvfUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
 };
-
-impl SvfType {
-    pub(crate) const ALL: [Self; 16] = [
-        Self::LowPass12,
-        Self::LowPass18,
-        Self::LowPass24,
-        Self::HighPass12,
-        Self::HighPass18,
-        Self::HighPass24,
-        Self::BandPass6,
-        Self::BandPass12,
-        Self::BandPass18,
-        Self::BandPass24,
-        Self::Peaking,
-        Self::Notch,
-        Self::LowShelf12,
-        Self::LowShelf24,
-        Self::HighShelf12,
-        Self::HighShelf24,
-    ];
-
-    fn label(&self) -> &'static str {
-        match self {
-            Self::LowPass12 => "Lowpass 12",
-            Self::LowPass18 => "Lowpass 18",
-            Self::LowPass24 => "Lowpass 24",
-            Self::HighPass12 => "Highpass 12",
-            Self::HighPass18 => "Highpass 18",
-            Self::HighPass24 => "Highpass 24",
-            Self::BandPass6 => "Bandpass 6",
-            Self::BandPass12 => "Bandpass 12",
-            Self::BandPass18 => "Bandpass 18",
-            Self::BandPass24 => "Bandpass 24",
-            Self::Peaking => "Peaking",
-            Self::Notch => "Notch",
-            Self::LowShelf12 => "Lowshelf 12",
-            Self::LowShelf24 => "Lowshelf 24",
-            Self::HighShelf12 => "Highshelf 12",
-            Self::HighShelf24 => "Highshelf 24",
-        }
-    }
-}
+use additizer_dsp::filters::svf::SvfType;
 
 pub struct SvfUi {
     module_id: ModuleId,

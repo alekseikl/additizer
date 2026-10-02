@@ -2,7 +2,7 @@ use std::ops::{Add, AddAssign};
 
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::Sample;
+use crate::Sample;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Phase(u32);

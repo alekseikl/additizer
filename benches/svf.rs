@@ -1,11 +1,9 @@
 use std::{f32::consts::TAU, hint::black_box};
 
-use additizer::synth_engine::{
-    MAX_BLOCK_SIZE, Sample,
-    filters::{
-        control::MAX_PRE_Q,
-        svf::{SvfChannel, SvfType},
-    },
+use additizer::synth_engine::{MAX_BLOCK_SIZE, Sample};
+use additizer_dsp::filters::{
+    control::MAX_PRE_Q,
+    svf::{SvfChannel, SvfType},
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 

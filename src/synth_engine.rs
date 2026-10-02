@@ -58,22 +58,18 @@ pub use synth_module::ModuleUiBridge;
 pub use types::{ComplexSample, Sample};
 pub use voices_handler::Note;
 
+pub(crate) use additizer_dsp::{
+    coeffs, iir_decimator, level_ballistics, phase, smooth, stereo_sample, types,
+};
+
 mod buffer;
-mod coeffs;
 mod config;
 #[macro_use]
 mod synth_module;
 mod curves;
-pub mod filters;
-mod iir_decimator;
-mod level_ballistics;
 mod module_handle;
 mod modules;
-mod phase;
 mod routing;
-mod smooth;
-mod stereo_sample;
-mod types;
 pub mod ui_bridge;
 mod voices_handler;
 

@@ -9,6 +9,7 @@ use crate::{
     },
     utils::{MAX_CUTOFF, MIN_CUTOFF, from_ms},
 };
+use additizer_dsp::filters;
 
 const SAMPLE_RATE: Sample = 48_000.0;
 const HARMONIC_EDITOR_ID: ModuleId = 1;

@@ -11,14 +11,15 @@ pub use config::SpectralFilterConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::SpectralFilterUiBridge;
 
+use additizer_dsp::filters::{
+    control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
+    spectral_filter::{FilterParams, FilterType, SpectralFilter as SpectralFilterEngine},
+};
+
 use crate::{
     synth_engine::{
         StereoSample,
         buffer::VoicesLayout,
-        filters::{
-            control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
-            spectral_filter::{FilterParams, FilterType, SpectralFilter as SpectralFilterEngine},
-        },
         routing::{
             DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
             RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceTarget,

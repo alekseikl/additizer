@@ -1,10 +1,13 @@
 use serde::{Deserialize, Deserializer, Serialize, de::Error};
 
+use additizer_dsp::filters::{
+    control::{MAX_DRIVE, MIN_DRIVE, q_from_resonance},
+    spectral_filter::FilterType,
+};
+
 use crate::{
     synth_engine::{
         ModuleId, Sample, StereoSample,
-        filters::control::{MAX_DRIVE, MIN_DRIVE, q_from_resonance},
-        filters::spectral_filter::FilterType,
         spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF},
     },
     utils::MIN_CUTOFF,

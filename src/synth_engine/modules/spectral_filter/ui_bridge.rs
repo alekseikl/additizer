@@ -1,6 +1,5 @@
-use crate::synth_engine::{
-    Input, Sample, StereoSample, filters::spectral_filter::FilterType, synth_module::ModuleUiBridge,
-};
+use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
+use additizer_dsp::filters::spectral_filter::FilterType;
 
 use super::link::UiEnd;
 use super::{SpectralFilter, SpectralFilterConfig};

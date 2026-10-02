@@ -2,7 +2,7 @@
 
 use wide::f32x4;
 
-use crate::synth_engine::Sample;
+use crate::Sample;
 
 /// Coefficients of `((b0 * t + b1) * t + b2) * t + b3`, weighting `[s0, s1, s2, s3]`.
 const CATMULL_ROM: [f32x4; 4] = [

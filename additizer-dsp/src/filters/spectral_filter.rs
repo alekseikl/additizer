@@ -3,8 +3,9 @@ use std::f32;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    synth_engine::{ComplexSample, Sample, filters::control::ZERO_RESONANCE_Q},
-    utils::{db_to_gain, db_to_gain_fast},
+    ComplexSample, Sample,
+    filters::control::ZERO_RESONANCE_Q,
+    units::{db_to_gain, db_to_gain_fast},
 };
 
 const TAU: Sample = f32::consts::TAU;
@@ -438,6 +439,48 @@ pub enum FilterType {
     #[serde(alias = "HighShelf")]
     HighShelf12,
     HighShelf24,
+}
+
+impl FilterType {
+    pub const ALL: [Self; 16] = [
+        Self::LowPass12,
+        Self::LowPass18,
+        Self::LowPass24,
+        Self::HighPass12,
+        Self::HighPass18,
+        Self::HighPass24,
+        Self::BandPass6,
+        Self::BandPass12,
+        Self::BandPass18,
+        Self::BandPass24,
+        Self::Peaking,
+        Self::Notch,
+        Self::LowShelf12,
+        Self::LowShelf24,
+        Self::HighShelf12,
+        Self::HighShelf24,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::LowPass12 => "Lowpass 12",
+            Self::LowPass18 => "Lowpass 18",
+            Self::LowPass24 => "Lowpass 24",
+            Self::HighPass12 => "Highpass 12",
+            Self::HighPass18 => "Highpass 18",
+            Self::HighPass24 => "Highpass 24",
+            Self::BandPass6 => "Bandpass 6",
+            Self::BandPass12 => "Bandpass 12",
+            Self::BandPass18 => "Bandpass 18",
+            Self::BandPass24 => "Bandpass 24",
+            Self::Peaking => "Peaking",
+            Self::Notch => "Notch",
+            Self::LowShelf12 => "Lowshelf 12",
+            Self::LowShelf24 => "Lowshelf 24",
+            Self::HighShelf12 => "Highshelf 12",
+            Self::HighShelf24 => "Highshelf 24",
+        }
+    }
 }
 
 #[derive(Clone, Copy)]

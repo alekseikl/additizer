@@ -11,14 +11,15 @@ pub use config::SvfConfig;
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::SvfUiBridge;
 
+use additizer_dsp::filters::{
+    control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
+    svf::{SvfChannel, SvfType},
+};
+
 use crate::{
     synth_engine::{
         Sample, SmoothedSampleParams, StereoSample,
         buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
-        filters::{
-            control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
-            svf::{SvfFilter, SvfState, SvfType},
-        },
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
             ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent,
@@ -128,7 +129,7 @@ pub struct Svf {
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
     buffers: Buffers,
-    states: VoicesLayout<SvfState>,
+    states: VoicesLayout<SvfChannel>,
     audio_end: AudioEnd,
     ui_end: Option<UiEnd>,
     inputs: Inputs,
@@ -190,7 +191,7 @@ impl Svf {
 
     fn reset_voice(&mut self, voice_idx: usize) {
         for channel in self.states.iter_mut() {
-            channel[voice_idx] = SvfState::new(self.params.filter_type);
+            channel[voice_idx] = SvfChannel::new(self.params.filter_type);
         }
     }
 

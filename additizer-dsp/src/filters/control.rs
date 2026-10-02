@@ -1,4 +1,4 @@
-use crate::synth_engine::Sample;
+use crate::Sample;
 
 pub const MIN_DRIVE: Sample = -60.0;
 pub const MAX_DRIVE: Sample = 24.0;

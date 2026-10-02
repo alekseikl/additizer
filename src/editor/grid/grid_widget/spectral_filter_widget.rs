@@ -4,12 +4,14 @@ use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
         ComplexSample, Input, ModuleId, Sample,
-        filters::control::{MAX_DRIVE, MIN_DRIVE, q_from_resonance},
-        filters::spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
         spectral_filter::SpectralFilterUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, gain_to_db_fast},
+};
+use additizer_dsp::filters::{
+    control::{MAX_DRIVE, MIN_DRIVE, q_from_resonance},
+    spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
 };
 
 use super::GridWidgetContent;

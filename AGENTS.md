@@ -32,6 +32,11 @@ cargo test
 
 ## Architecture
 
+The workspace has two crates. `additizer` is the plugin. `additizer-dsp` holds the shared DSP
+(sample types, unit conversions, smoothing, phase, stereo helpers, ballistics, the
+time-domain SVF, and the spectral filter). `SynthEngine` still re-exports the sample types,
+smoothing, and stereo helpers. Filter types are imported from `additizer_dsp::filters`.
+
 There are two threads that matter, and they must never block each other:
 
 1. **Audio thread** — owns `SynthEngine` (`src/synth_engine.rs`). Real-time, allocation-free.
@@ -177,8 +182,8 @@ stereo/smoothed parameter plumbing.
 - Tests live next to the code they cover in a `tests.rs` sibling directory, included via
   `#[cfg(test)] mod tests;` (e.g. `src/synth_engine/tests.rs`,
   `src/synth_engine/voices_handler/tests.rs`, `src/synth_engine/modules/spectral_eq/tests.rs`,
-  `src/synth_engine/filters/spectral_filter/tests.rs`,
-  `src/synth_engine/filters/svf/tests.rs`, `src/editor/units/tests.rs`). Run them
+  `additizer-dsp/src/filters/spectral_filter/tests.rs`,
+  `additizer-dsp/src/filters/svf/tests.rs`, `src/editor/units/tests.rs`). Run them
   with `cargo test`. When changing a module that has a `tests.rs`, update or extend it.
 - Performance benchmarks use [Criterion](https://github.com/bheisler/criterion.rs) in
  `benches/synth_engine.rs`, `benches/svf.rs`, and `benches/spectral_filter.rs`. Coverage reports use

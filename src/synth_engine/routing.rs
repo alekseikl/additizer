@@ -22,7 +22,7 @@ pub use voice_router::{
 pub type ModuleId = i32;
 
 pub const MAX_VOICES: usize = 20;
-pub const NUM_CHANNELS: usize = 2;
+pub use additizer_dsp::NUM_CHANNELS;
 pub const OUTPUT_MODULE_ID: ModuleId = 0;
 pub const MIN_MODULE_ID: ModuleId = 1;
 

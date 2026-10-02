@@ -1,8 +1,8 @@
 use super::*;
-use crate::synth_engine::filters::control::{
+use crate::utils::db_to_gain_fast;
+use additizer_dsp::filters::control::{
     MAX_PRE_Q, MAX_RESONANCE_Q, MIN_PRE_Q, NEGATIVE_RESONANCE_Q, ZERO_RESONANCE_Q,
 };
-use crate::utils::db_to_gain_fast;
 
 fn assert_approx(a: Sample, b: Sample) {
     assert!((a - b).abs() < 1e-3 * b.abs().max(1.0), "{a} ≈ {b}");

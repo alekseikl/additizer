@@ -1,5 +1,5 @@
 use super::SvfType;
-use crate::synth_engine::{ComplexSample, Sample};
+use crate::{ComplexSample, Sample};
 
 /// Analog prototype frequency response. Frequencies passed to [`Self::at`] use the same units as `cutoff`.
 ///

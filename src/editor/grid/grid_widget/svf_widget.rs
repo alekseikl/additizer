@@ -4,8 +4,6 @@ use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
         Input, ModuleId, Sample,
-        filters::control::q_from_resonance,
-        filters::svf::{SvfResponse, SvfType},
         svf::SvfUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -13,6 +11,10 @@ use crate::{
         C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, db_to_gain_fast,
         gain_to_db_fast, pitch_to_freq,
     },
+};
+use additizer_dsp::filters::{
+    control::q_from_resonance,
+    svf::{SvfResponse, SvfType},
 };
 
 use super::GridWidgetContent;

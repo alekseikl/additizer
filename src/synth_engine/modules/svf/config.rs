@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::{ModuleId, Sample, StereoSample, filters::svf::SvfType};
+use crate::synth_engine::{ModuleId, Sample, StereoSample};
+use additizer_dsp::filters::svf::SvfType;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SvfConfig {

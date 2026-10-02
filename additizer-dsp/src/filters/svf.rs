@@ -7,8 +7,8 @@ use itertools::izip;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    synth_engine::Sample,
-    utils::{C4_PITCH, pitch_to_freq},
+    Sample,
+    units::{C4_PITCH, pitch_to_freq},
 };
 
 /// Largest `f / sample_rate` fed to `tan`, keeping `g` finite just below Nyquist.
@@ -45,6 +45,48 @@ pub enum SvfType {
     LowShelf24,
     HighShelf12,
     HighShelf24,
+}
+
+impl SvfType {
+    pub const ALL: [Self; 16] = [
+        Self::LowPass12,
+        Self::LowPass18,
+        Self::LowPass24,
+        Self::HighPass12,
+        Self::HighPass18,
+        Self::HighPass24,
+        Self::BandPass6,
+        Self::BandPass12,
+        Self::BandPass18,
+        Self::BandPass24,
+        Self::Peaking,
+        Self::Notch,
+        Self::LowShelf12,
+        Self::LowShelf24,
+        Self::HighShelf12,
+        Self::HighShelf24,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::LowPass12 => "Lowpass 12",
+            Self::LowPass18 => "Lowpass 18",
+            Self::LowPass24 => "Lowpass 24",
+            Self::HighPass12 => "Highpass 12",
+            Self::HighPass18 => "Highpass 18",
+            Self::HighPass24 => "Highpass 24",
+            Self::BandPass6 => "Bandpass 6",
+            Self::BandPass12 => "Bandpass 12",
+            Self::BandPass18 => "Bandpass 18",
+            Self::BandPass24 => "Bandpass 24",
+            Self::Peaking => "Peaking",
+            Self::Notch => "Notch",
+            Self::LowShelf12 => "Lowshelf 12",
+            Self::LowShelf24 => "Lowshelf 24",
+            Self::HighShelf12 => "Highshelf 12",
+            Self::HighShelf24 => "Highshelf 24",
+        }
+    }
 }
 
 /// Coefficients and input for one sample.
@@ -408,11 +450,22 @@ pub struct SvfChannel {
     state: SvfState,
 }
 
+impl Default for SvfChannel {
+    fn default() -> Self {
+        Self::new(SvfType::default())
+    }
+}
+
 impl SvfChannel {
     pub fn new(filter_type: SvfType) -> Self {
         Self {
             state: SvfState::new(filter_type),
         }
+    }
+
+    /// Replaces the filter when `filter_type` changes, which clears integrator state.
+    pub fn set_type(&mut self, filter_type: SvfType) {
+        self.state.set_type(filter_type);
     }
 
     /// Filters `input` into `output`.

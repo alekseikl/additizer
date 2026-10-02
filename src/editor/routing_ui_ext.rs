@@ -5,13 +5,10 @@ use crate::{
         slider::Slider,
         units::{OctavesDisplay, Units},
     },
-    synth_engine::{
-        DataType, Input, ModuleType, StereoSample,
-        filters::control::{MAX_DRIVE, MIN_DRIVE},
-        pitch::MAX_GLIDE_TIME,
-    },
+    synth_engine::{DataType, Input, ModuleType, StereoSample, pitch::MAX_GLIDE_TIME},
     utils::{MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, from_st},
 };
+use additizer_dsp::filters::control::{MAX_DRIVE, MIN_DRIVE};
 
 const IO_COLOR_S: f32 = 0.8;
 const IO_COLOR_V: f32 = 0.5;

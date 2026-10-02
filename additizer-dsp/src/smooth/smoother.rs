@@ -1,4 +1,4 @@
-use crate::synth_engine::Sample;
+use crate::Sample;
 
 const SMOOTHING_TIME_THRESHOLD: Sample = 0.0005;
 

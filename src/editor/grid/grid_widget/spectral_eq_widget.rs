@@ -5,10 +5,6 @@ use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
         ComplexSample, Input, ModuleId, Sample,
-        filters::{
-            control::MAX_PRE_Q,
-            spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
-        },
         spectral_eq::{MAX_EQ_FILTERS, SpectralEqUiBridge},
         ui_bridge::{ModuleBridge, UiBridge},
     },
@@ -16,6 +12,10 @@ use crate::{
         C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, db_to_gain_fast,
         freq_to_c4_pitch, gain_to_db_fast,
     },
+};
+use additizer_dsp::filters::{
+    control::MAX_PRE_Q,
+    spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
 };
 
 use super::GridWidgetContent;

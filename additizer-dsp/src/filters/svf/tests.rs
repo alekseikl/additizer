@@ -1,9 +1,6 @@
 use std::f32::consts::{PI, TAU};
 
-use crate::{
-    synth_engine::{ComplexSample, filters::control::MAX_PRE_Q},
-    utils::freq_to_c4_pitch,
-};
+use crate::{ComplexSample, filters::control::MAX_PRE_Q, units::freq_to_c4_pitch};
 
 use super::{
     SvfFilter,

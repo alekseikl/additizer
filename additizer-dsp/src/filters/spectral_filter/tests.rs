@@ -1,14 +1,12 @@
 use super::*;
-use crate::{
-    synth_engine::{
-        filters::control::{
-            MAX_PRE_Q, MAX_RESONANCE, MAX_RESONANCE_Q, MIN_PRE_Q, MIN_RESONANCE,
-            NEGATIVE_RESONANCE_Q, ZERO_RESONANCE_Q, q_from_resonance,
-        },
-        spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF},
-    },
-    utils::{db_to_gain, db_to_gain_fast},
+use crate::filters::control::{
+    MAX_PRE_Q, MAX_RESONANCE, MAX_RESONANCE_Q, MIN_PRE_Q, MIN_RESONANCE, NEGATIVE_RESONANCE_Q,
+    ZERO_RESONANCE_Q, q_from_resonance,
 };
+
+/// Same bounds as the spectral filter module's Q-rolloff parameter.
+const MIN_Q_ROLLOFF: Sample = 3.0;
+const MAX_Q_ROLLOFF: Sample = 48.0;
 
 const EPS: Sample = 1e-4;
 const CUTOFF: Sample = 1.0;

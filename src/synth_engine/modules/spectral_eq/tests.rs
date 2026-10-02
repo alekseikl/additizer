@@ -1,5 +1,6 @@
 use super::*;
-use crate::synth_engine::{filters::control::q_from_resonance, synth_module::SynthModule};
+use crate::synth_engine::synth_module::SynthModule;
+use additizer_dsp::filters::control::q_from_resonance;
 
 #[test]
 fn from_config_keeps_at_most_16_filters() {

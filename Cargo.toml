@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "additizer-dsp"]
+
 [package]
 name = "additizer"
 version = "0.1.0"
@@ -7,6 +10,7 @@ edition = "2024"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
+additizer-dsp = { path = "additizer-dsp" }
 arc-swap = "1.9.2"
 egui = { version = "0.36.1", default-features = false, features = [
     "bytemuck",

@@ -1,12 +1,11 @@
 use std::hint::black_box;
 
 use additizer::synth_engine::{
-    ComplexSample, SPECTRAL_BUFFER_SIZE, Sample,
-    filters::{
-        control::MAX_PRE_Q,
-        spectral_filter::{FilterParams, FilterType, SpectralFilter},
-    },
-    spectral_filter::MIN_Q_ROLLOFF,
+    ComplexSample, SPECTRAL_BUFFER_SIZE, Sample, spectral_filter::MIN_Q_ROLLOFF,
+};
+use additizer_dsp::filters::{
+    control::MAX_PRE_Q,
+    spectral_filter::{FilterParams, FilterType, SpectralFilter},
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 

@@ -15,6 +15,7 @@ dependencies = [
 name = "additizer"
 version = "0.1.0"
 dependencies = [
+ "additizer-dsp",
  "arc-swap",
  "assert_no_alloc",
  "atomic_float",
@@ -41,6 +42,18 @@ dependencies = [
  "smallvec",
  "topo_sort",
  "triple_buffer",
+ "wide",
+]
+
+[[package]]
+name = "additizer-dsp"
+version = "0.1.0"
+dependencies = [
+ "enum_dispatch",
+ "itertools 0.15.0",
+ "num-complex",
+ "serde",
+ "serde_json",
  "wide",
 ]
 

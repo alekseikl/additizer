@@ -1,7 +1,4 @@
-use crate::{
-    synth_engine::{NUM_CHANNELS, Sample},
-    utils::from_ms,
-};
+use crate::{NUM_CHANNELS, Sample, units::from_ms};
 
 const ATTACK_TIME: Sample = from_ms(2.0);
 const RELEASE_TIME: Sample = from_ms(250.0);
@@ -73,7 +70,6 @@ impl StereoLevelBallistics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::from_ms;
 
     const SAMPLE_RATE: Sample = 48_000.0;
 

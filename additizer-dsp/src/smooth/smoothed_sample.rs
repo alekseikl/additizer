@@ -1,5 +1,6 @@
-use crate::{synth_engine::Sample, utils::from_ms};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::{Sample, units::from_ms};
 
 const SMOOTHING_TIME: Sample = from_ms(300.0);
 

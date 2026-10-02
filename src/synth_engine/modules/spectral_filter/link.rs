@@ -1,8 +1,7 @@
 use triple_buffer::triple_buffer;
 
-use crate::synth_engine::{
-    Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY, filters::spectral_filter::FilterType,
-};
+use crate::synth_engine::{Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
+use additizer_dsp::filters::spectral_filter::FilterType;
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },

@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    synth_engine::{ModuleId, Sample, StereoSample, filters::spectral_filter::FilterType},
+    synth_engine::{ModuleId, Sample, StereoSample},
     utils::from_st,
 };
+use additizer_dsp::filters::spectral_filter::FilterType;
 
 fn default_keytrack() -> Sample {
     1.0

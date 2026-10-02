@@ -1,6 +1,5 @@
-use crate::synth_engine::{
-    Input, Sample, StereoSample, filters::svf::SvfType, synth_module::ModuleUiBridge,
-};
+use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
+use additizer_dsp::filters::svf::SvfType;
 
 use super::link::UiEnd;
 use super::{Svf, SvfConfig};

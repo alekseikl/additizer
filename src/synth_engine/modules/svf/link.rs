@@ -1,8 +1,7 @@
 use triple_buffer::triple_buffer;
 
-use crate::synth_engine::{
-    Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY, filters::svf::SvfType,
-};
+use crate::synth_engine::{Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
+use additizer_dsp::filters::svf::SvfType;
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },

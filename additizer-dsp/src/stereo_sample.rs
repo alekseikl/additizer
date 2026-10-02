@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::iter::Sum;
 use std::ops::{Add, Div, Index, IndexMut, Mul, Sub};
 
-use crate::synth_engine::{Sample, routing::NUM_CHANNELS};
+use crate::{NUM_CHANNELS, Sample};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct StereoSample {

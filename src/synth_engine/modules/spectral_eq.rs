@@ -15,12 +15,15 @@ pub use config::{
 use link::{AudioEnd, UiEnd, UiEvent, create_link_pair};
 pub use ui_bridge::SpectralEqUiBridge;
 
+use additizer_dsp::filters::{
+    control::{MAX_DRIVE, MAX_PRE_Q, MIN_DRIVE},
+    spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
+};
+
 use crate::{
     synth_engine::{
         StereoSample,
         buffer::VoicesLayout,
-        filters::control::{MAX_DRIVE, MAX_PRE_Q, MIN_DRIVE},
-        filters::spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
         routing::{
             DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
             RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceTarget,
