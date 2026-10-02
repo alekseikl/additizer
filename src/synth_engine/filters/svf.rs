@@ -401,3 +401,45 @@ impl SvfState {
         }
     }
 }
+
+/// One channel of time-domain SVF state.
+#[derive(Clone, Copy)]
+pub struct SvfChannel {
+    state: SvfState,
+}
+
+impl SvfChannel {
+    pub fn new(filter_type: SvfType) -> Self {
+        Self {
+            state: SvfState::new(filter_type),
+        }
+    }
+
+    /// Filters `input` into `output`.
+    ///
+    /// `cutoff` is octaves relative to C4. `k` and `pre_k` are `1/Q` of the resonant
+    /// stage and the pre stage. `gain` is linear.
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn process(
+        &mut self,
+        sample_rate: Sample,
+        input: &[Sample],
+        cutoff: &[Sample],
+        k: &[Sample],
+        pre_k: &[Sample],
+        gain: &[Sample],
+        output: &mut [Sample],
+    ) {
+        SvfFilter::process(
+            &mut self.state,
+            sample_rate,
+            input,
+            cutoff,
+            k,
+            pre_k,
+            gain,
+            output,
+        );
+    }
+}

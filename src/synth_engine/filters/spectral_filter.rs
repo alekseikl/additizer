@@ -416,7 +416,7 @@ impl FilterImpl for HighShelf24 {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum FilterType {
     #[default]
     LowPass12,

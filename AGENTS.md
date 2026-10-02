@@ -181,7 +181,7 @@ stereo/smoothed parameter plumbing.
   `src/synth_engine/filters/svf/tests.rs`, `src/editor/units/tests.rs`). Run them
   with `cargo test`. When changing a module that has a `tests.rs`, update or extend it.
 - Performance benchmarks use [Criterion](https://github.com/bheisler/criterion.rs) in
-  `benches/synth_engine.rs`. Coverage reports use
+ `benches/synth_engine.rs`, `benches/svf.rs`, and `benches/spectral_filter.rs`. Coverage reports use
   [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov). See `TOOLS.md` for
   commands and workflows.
 

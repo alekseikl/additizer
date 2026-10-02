@@ -40,8 +40,16 @@ triple_buffer = "9.0.0"
 midir = "0.11"
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8.2", features = ["html_reports"] }
 
 [[bench]]
 name = "synth_engine"
+harness = false
+
+[[bench]]
+name = "svf"
+harness = false
+
+[[bench]]
+name = "spectral_filter"
 harness = false
