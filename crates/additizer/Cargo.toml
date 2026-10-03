@@ -1,0 +1,23 @@
+[package]
+name = "additizer"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+addi-dsp = { workspace = true }
+addi-egui = { path = "../addi-egui" }
+addi-engine = { workspace = true }
+addi-ui-backend = { workspace = true }
+egui = { workspace = true }
+nice-plug = { version = "0.4.2", features = ["standalone"] }
+nice-plug-egui = { version = "0.5.1", default-features = false, features = [
+    "opengl",
+] }
+parking_lot = { workspace = true, features = ["serde"] }
+assert_no_alloc = "1.1.2"
+const_format = "0.2.36"
+crossbeam-utils = "0.8.23"
+midir = "0.11"

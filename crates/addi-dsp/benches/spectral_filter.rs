@@ -1,11 +1,18 @@
 use std::hint::black_box;
 
-use addi_dsp::filters::{
-    control::MAX_PRE_Q,
-    spectral_filter::{FilterParams, FilterType, SpectralFilter},
+use addi_dsp::{
+    ComplexSample, Sample,
+    filters::{
+        control::MAX_PRE_Q,
+        spectral_filter::{FilterParams, FilterType, SpectralFilter},
+    },
 };
-use addi_engine::{ComplexSample, SPECTRAL_BUFFER_SIZE, Sample, spectral_filter::MIN_Q_ROLLOFF};
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+
+/// Matches the engine spectrum length (`1 << SPECTRUM_BITS`).
+const SPECTRAL_BUFFER_SIZE: usize = 1024;
+/// Same lower bound as the spectral filter module's Q-rolloff parameter.
+const MIN_Q_ROLLOFF: Sample = 3.0;
 
 /// Octaves of the note fundamental. Two octaves up is the 4th harmonic.
 const CUTOFF_OCTAVES: Sample = 2.0;

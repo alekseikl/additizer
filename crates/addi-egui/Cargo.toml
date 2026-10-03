@@ -4,17 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-addi-dsp = { path = "../addi-dsp" }
-addi-engine = { path = "../addi-engine" }
-addi-ui-backend = { path = "../addi-ui-backend" }
-egui = { version = "0.36.1", default-features = false, features = [
-    "bytemuck",
-    "default_fonts",
-] }
+addi-dsp = { workspace = true }
+addi-engine = { workspace = true }
+addi-ui-backend = { workspace = true }
+egui = { workspace = true }
 egui_extras = { version = "0.36.1", default-features = false }
-realfft = { version = "3.5" }
-rustc-hash = "2.1.3"
-smallvec = "1.16.1"
+realfft = { workspace = true }
+rustc-hash = { workspace = true }
+smallvec = { workspace = true }
 
 [dev-dependencies]
-parking_lot = "0.12.5"
+parking_lot = { workspace = true }

@@ -23,7 +23,7 @@ link/modulation rules.
 cargo nice-plug bundle additizer --release
 
 # Run standalone, choosing a MIDI input device by name
-# (if --midi-input is omitted, src/main.rs picks the first available MIDI input)
+# (if --midi-input is omitted, crates/additizer/src/main.rs picks the first available MIDI input)
 cargo run --release -- --midi-input "Keystation Mini 32 MK3"
 
 # Run tests
@@ -32,7 +32,8 @@ cargo test
 
 ## Architecture
 
-The workspace has five crates. `additizer` is the plugin. `addi-dsp` holds the shared DSP
+The workspace is virtual: the root `Cargo.toml` has no package. It has five crates under
+`crates/`. `additizer` (`crates/additizer`) is the plugin. `addi-dsp` holds the shared DSP
 (sample types, unit conversions, smoothing, phase, stereo helpers, ballistics, the
 time-domain SVF, and the spectral filter). `addi-engine` holds `SynthEngine`, modules,
 routing, and voices. The plugin imports it directly as `addi_engine`.
@@ -41,13 +42,13 @@ imported from `addi_dsp::filters`. `addi-ui-backend` holds the concrete UI/audio
 `UiBridge`, `EngineFactory`, presets, and the default patch. `addi-egui` holds the egui
 editor (module grid, detail panels, widgets) and imports `addi_ui_backend` directly.
 The plugin keeps `pub(crate)` aliases for `engine_factory`, `preset`, and `default_scheme`,
-and wires the editor into nice-plug in `src/editor.rs` (window size, `NiceEguiApp`, repaint).
+and wires the editor into nice-plug in `crates/additizer/src/editor.rs` (window size, `NiceEguiApp`, repaint).
 The engine is generic over `EngineLinks` and defaults to no-op stubs.
 
 There are two threads that matter, and they must never block each other:
 
 1. **Audio thread** — owns `SynthEngine` (`addi-engine`). Real-time, allocation-free.
-   `Additizer::process` (in `src/lib.rs`) splits the host buffer into blocks (≤ `MAX_BLOCK_SIZE`
+   `Additizer::process` (in `crates/additizer/src/lib.rs`) splits the host buffer into blocks (≤ `MAX_BLOCK_SIZE`
    = 128, see `block_size()`), reorders note events, and drives the engine.
 2. **UI thread** — owns `UiBridge` (`crates/addi-ui-backend/src/ui_bridge.rs`) and the `egui` editor
    (`crates/addi-egui`). Reads/writes engine state without touching the audio thread directly.
@@ -76,7 +77,7 @@ uses `VoiceRouter` / `ProcessContext` (`crates/addi-engine/src/synth_engine/rout
 (`crates/addi-engine/src/synth_engine/config.rs`,
 `crates/addi-ui-backend/src/ui_bridge/ui_config.rs`,
 `crates/addi-ui-backend/src/preset.rs`, `crates/addi-ui-backend/src/presets.rs`).
-nice-plug persists them via `PresetWrapper` in `src/params.rs`.
+nice-plug persists them via `PresetWrapper` in `crates/additizer/src/params.rs`.
 `crates/addi-ui-backend/src/default_scheme.rs` builds the default patch.
 
 **Engine params** (`EngineParams` in `config.rs`): polyphony, legato, block size, oversampling,
@@ -161,7 +162,7 @@ stereo/smoothed parameter plumbing.
 - **Everything is stereo.** Use `StereoSample` (`synth_engine/stereo_sample.rs`); each channel
   is independent and `NUM_CHANNELS == 2`. Audio is `f32` (`Sample`).
 - **No allocation on the audio thread.** `process` is wrapped in
-  `assert_no_alloc::assert_no_alloc(...)` in `src/lib.rs`. Do not allocate, lock contended
+  `assert_no_alloc::assert_no_alloc(...)` in `crates/additizer/src/lib.rs`. Do not allocate, lock contended
   mutexes, or block inside `SynthModule::process` or anything it calls. Pre-allocate scratch
   buffers in the module struct (see `Amplifier::buffers`).
 - **Buffers are fixed-size.** Time-domain `Buffer` is `[Sample; 257]` (`BUFFER_SIZE`);
@@ -198,7 +199,7 @@ stereo/smoothed parameter plumbing.
   `crates/addi-dsp/src/filters/svf/tests.rs`, `crates/addi-egui/src/units/tests.rs`). Run them
   with `cargo test`. When changing a module that has a `tests.rs`, update or extend it.
 - Performance benchmarks use [Criterion](https://github.com/bheisler/criterion.rs) in
- `benches/synth_engine.rs`, `benches/svf.rs`, and `benches/spectral_filter.rs`. Coverage reports use
+ `crates/addi-engine/benches/synth_engine.rs`, `crates/addi-dsp/benches/svf.rs`, and `crates/addi-dsp/benches/spectral_filter.rs`. Coverage reports use
   [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov). See `TOOLS.md` for
   commands and workflows.
 

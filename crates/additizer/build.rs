@@ -14,8 +14,8 @@ fn main() {
         && hash.len() >= 7
     {
         println!("cargo:rustc-env=GIT_COMMIT_SUFFIX=-{}", &hash[..7]);
-        println!("cargo:rerun-if-changed=.git/HEAD");
-        println!("cargo:rerun-if-changed=.git/index");
+        println!("cargo:rerun-if-changed=../../.git/HEAD");
+        println!("cargo:rerun-if-changed=../../.git/index");
     } else {
         println!("cargo:rustc-env=GIT_COMMIT_SUFFIX=");
     }

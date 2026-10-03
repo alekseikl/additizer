@@ -1,11 +1,16 @@
 use std::{f32::consts::TAU, hint::black_box};
 
-use addi_dsp::filters::{
-    control::MAX_PRE_Q,
-    svf::{SvfChannel, SvfType},
+use addi_dsp::{
+    Sample,
+    filters::{
+        control::MAX_PRE_Q,
+        svf::{SvfChannel, SvfType},
+    },
 };
-use addi_engine::{MAX_BLOCK_SIZE, Sample};
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+
+/// Matches `addi_engine::MAX_BLOCK_SIZE`.
+const MAX_BLOCK_SIZE: usize = 128;
 
 const SAMPLE_RATE: Sample = 48_000.0;
 /// Octaves relative to C4. Two octaves up is about 1 kHz.

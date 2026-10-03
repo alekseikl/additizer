@@ -1,50 +1,30 @@
 [workspace]
+resolver = "3"
 members = [
-    ".",
+    "crates/additizer",
     "crates/addi-dsp",
     "crates/addi-engine",
     "crates/addi-ui-backend",
     "crates/addi-egui",
 ]
+default-members = ["crates/additizer"]
 
-[package]
-name = "additizer"
-version = "0.1.0"
-edition = "2024"
-
-[lib]
-crate-type = ["cdylib", "lib"]
-
-[dependencies]
+[workspace.dependencies]
 addi-dsp = { path = "crates/addi-dsp" }
-addi-egui = { path = "crates/addi-egui" }
 addi-engine = { path = "crates/addi-engine" }
 addi-ui-backend = { path = "crates/addi-ui-backend" }
+auto_impl = "1.3"
 egui = { version = "0.36.1", default-features = false, features = [
     "bytemuck",
     "default_fonts",
 ] }
-nice-plug = { version = "0.4.2", features = ["standalone"] }
-nice-plug-egui = { version = "0.5.1", default-features = false, features = [
-    "opengl",
-] }
-parking_lot = { version = "0.12.5", features = ["serde"] }
-assert_no_alloc = "1.1.2"
-const_format = "0.2.36"
-crossbeam-utils = "0.8.23"
-midir = "0.11"
-
-[dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
-
-[[bench]]
-name = "synth_engine"
-harness = false
-
-[[bench]]
-name = "svf"
-harness = false
-
-[[bench]]
-name = "spectral_filter"
-harness = false
+enum_dispatch = "0.3"
+itertools = "0.15.0"
+parking_lot = "0.12.5"
+realfft = { version = "3.5" }
+rustc-hash = "2.1.3"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+smallvec = "1.16.1"
+wide = "1.7.1"

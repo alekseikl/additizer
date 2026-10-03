@@ -15,6 +15,7 @@ dependencies = [
 name = "addi-dsp"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "enum_dispatch",
  "itertools 0.15.0",
  "num-complex",
@@ -44,6 +45,7 @@ version = "0.1.0"
 dependencies = [
  "addi-dsp",
  "auto_impl",
+ "criterion",
  "enum_dispatch",
  "itertools 0.15.0",
  "rand",
@@ -87,7 +89,6 @@ dependencies = [
  "addi-ui-backend",
  "assert_no_alloc",
  "const_format",
- "criterion",
  "crossbeam-utils",
  "egui",
  "midir",
