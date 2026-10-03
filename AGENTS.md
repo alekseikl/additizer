@@ -32,14 +32,16 @@ cargo test
 
 ## Architecture
 
-The workspace has four crates. `additizer` is the plugin. `addi-dsp` holds the shared DSP
+The workspace has five crates. `additizer` is the plugin. `addi-dsp` holds the shared DSP
 (sample types, unit conversions, smoothing, phase, stereo helpers, ballistics, the
 time-domain SVF, and the spectral filter). `addi-engine` holds `SynthEngine`, modules,
 routing, and voices. The plugin imports it directly as `addi_engine`.
 `SynthEngine` re-exports the sample types, smoothing, and stereo helpers. Filter types are
 imported from `addi_dsp::filters`. `addi-ui-backend` holds the concrete UI/audio links,
-`UiBridge`, `EngineFactory`, presets, and the default patch. The plugin re-exports those modules
-so the editor keeps using `crate::ui_bridge`, `crate::links`, and the other crate-root paths.
+`UiBridge`, `EngineFactory`, presets, and the default patch. `addi-egui` holds the egui
+editor (module grid, detail panels, widgets) and imports `addi_ui_backend` directly.
+The plugin keeps `pub(crate)` aliases for `engine_factory`, `preset`, and `default_scheme`,
+and wires the editor into nice-plug in `src/editor.rs` (window size, `NiceEguiApp`, repaint).
 The engine is generic over `EngineLinks` and defaults to no-op stubs.
 
 There are two threads that matter, and they must never block each other:
@@ -48,8 +50,7 @@ There are two threads that matter, and they must never block each other:
    `Additizer::process` (in `src/lib.rs`) splits the host buffer into blocks (≤ `MAX_BLOCK_SIZE`
    = 128, see `block_size()`), reorders note events, and drives the engine.
 2. **UI thread** — owns `UiBridge` (`crates/addi-ui-backend/src/ui_bridge.rs`) and the `egui` editor
-   (`src/editor.rs` + `src/editor/grid/`). Reads/writes engine state without touching the audio
-   thread directly.
+   (`crates/addi-egui`). Reads/writes engine state without touching the audio thread directly.
 
 **`EngineFactory`** (`crates/addi-ui-backend/src/engine_factory.rs`) is the shared bridge between them. It holds the
 live `SynthEngine` and `UiConfig` inside `ArcSwap<Mutex<…>>`. Loading a preset swaps in a brand
@@ -125,11 +126,12 @@ Every DSP module follows the **same four-part structure**. Using `amplifier` as 
 
 Editor surfaces:
 
-- Detail panel: `src/editor/modules_ui/<name>_ui.rs` (wired via `ModuleType::ui` in `editor.rs`).
-- Grid tile (every module): `src/editor/grid/grid_widget/<name>_widget.rs` (wired in
+- Detail panel: `crates/addi-egui/src/modules_ui/<name>_ui.rs` (wired via `ModuleType::ui` in
+  `crates/addi-egui/src/lib.rs`).
+- Grid tile (every module): `crates/addi-egui/src/grid/grid_widget/<name>_widget.rs` (wired in
   `grid_widget.rs`).
-- Value formatting (dB, Hz, st, ms, …) goes through `Units` in `src/editor/units.rs`; reuse it
-  rather than formatting inline.
+- Value formatting (dB, Hz, st, ms, …) goes through `Units` in `crates/addi-egui/src/units.rs`;
+  reuse it rather than formatting inline.
 
 `Output` is an exception: audio-only module in `modules/output.rs`, no config/link/ui_bridge
 subdir, no `ModuleConfig` variant; UI is `output_ui.rs` / `output_widget.rs`.
@@ -145,9 +147,9 @@ subdir, no `ModuleConfig` variant; UI is `output_ui.rs` / `output_widget.rs`.
 5. Add `ModuleBridge::<Name>` and a match arm in `UiBridge::insert_module_bridge`
    (`crates/addi-ui-backend/src/ui_bridge.rs`). Add the concrete link in
    `crates/addi-ui-backend/src/links/` and register it on `PluginLinks`.
-6. Add the editor detail panel and `ModuleType::ui` arm in `editor.rs`; add a grid widget and
-   its `ModuleType::<Name>` arm in `grid_widget.rs`; list it in
-   `src/editor/grid/add_module_popup.rs` so users can create it.
+6. Add the editor detail panel and `ModuleType::ui` arm in `crates/addi-egui/src/lib.rs`; add a
+   grid widget and its `ModuleType::<Name>` arm in `grid_widget.rs`; list it in
+   `crates/addi-egui/src/grid/add_module_popup.rs` so users can create it.
 7. Add the module to the list in `README.md`.
 
 Use the param macros in `synth_module.rs` (`set_mono_param!`, `set_stereo_param!`,
@@ -193,7 +195,7 @@ stereo/smoothed parameter plumbing.
   `crates/addi-engine/src/synth_engine/voices_handler/tests.rs`,
   `crates/addi-engine/src/synth_engine/modules/spectral_eq/tests.rs`,
   `crates/addi-dsp/src/filters/spectral_filter/tests.rs`,
-  `crates/addi-dsp/src/filters/svf/tests.rs`, `src/editor/units/tests.rs`). Run them
+  `crates/addi-dsp/src/filters/svf/tests.rs`, `crates/addi-egui/src/units/tests.rs`). Run them
   with `cargo test`. When changing a module that has a `tests.rs`, update or extend it.
 - Performance benchmarks use [Criterion](https://github.com/bheisler/criterion.rs) in
  `benches/synth_engine.rs`, `benches/svf.rs`, and `benches/spectral_filter.rs`. Coverage reports use

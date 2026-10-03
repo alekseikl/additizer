@@ -4,6 +4,7 @@ members = [
     "crates/addi-dsp",
     "crates/addi-engine",
     "crates/addi-ui-backend",
+    "crates/addi-egui",
 ]
 
 [package]
@@ -16,23 +17,20 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 addi-dsp = { path = "crates/addi-dsp" }
+addi-egui = { path = "crates/addi-egui" }
 addi-engine = { path = "crates/addi-engine" }
 addi-ui-backend = { path = "crates/addi-ui-backend" }
 egui = { version = "0.36.1", default-features = false, features = [
     "bytemuck",
     "default_fonts",
 ] }
-egui_extras = { version = "0.36.1", default-features = false }
 nice-plug = { version = "0.4.2", features = ["standalone"] }
 nice-plug-egui = { version = "0.5.1", default-features = false, features = [
     "opengl",
 ] }
-realfft = { version = "3.5" }
 parking_lot = { version = "0.12.5", features = ["serde"] }
-smallvec = "1.16.1"
 assert_no_alloc = "1.1.2"
 const_format = "0.2.36"
-rustc-hash = "2.1.3"
 crossbeam-utils = "0.8.23"
 midir = "0.11"
 

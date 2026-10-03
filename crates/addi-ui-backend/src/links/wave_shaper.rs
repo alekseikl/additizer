@@ -2,9 +2,7 @@ use addi_engine::{Input, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 use addi_engine::wave_shaper::ShaperType;
 
-use addi_engine::wave_shaper::{
-    UiEvent, WaveShaperAudioEnd, WaveShaperLinks, WaveShaperUiEnd,
-};
+use addi_engine::wave_shaper::{UiEvent, WaveShaperAudioEnd, WaveShaperLinks, WaveShaperUiEnd};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,

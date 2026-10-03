@@ -6,15 +6,11 @@ mod editor;
 mod host_events;
 mod params;
 
-pub use addi_ui_backend::links;
-pub use addi_ui_backend::ui_bridge;
-
 pub(crate) use addi_ui_backend::default_scheme;
 pub(crate) use addi_ui_backend::engine_factory;
 pub(crate) use addi_ui_backend::preset;
-pub(crate) use addi_ui_backend::presets;
 
-use crate::editor::{EditorState, create_editor};
+use crate::editor::{PluginEditor, create_editor};
 use crate::engine_factory::{EngineFactory, EngineHandle};
 use crate::params::AdditizerParams;
 use addi_engine::{MAX_VOICES, Note};
@@ -68,7 +64,7 @@ impl Plugin for Additizer {
     // Don't split a buffer
     const SAMPLE_ACCURATE_AUTOMATION: bool = false;
 
-    type Editor = EguiEditor<EditorState>;
+    type Editor = EguiEditor<PluginEditor>;
     type SysExMessage = ();
     type BackgroundTask = ();
 

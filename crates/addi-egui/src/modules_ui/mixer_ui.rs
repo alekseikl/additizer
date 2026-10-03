@@ -1,0 +1,180 @@
+use addi_ui_backend::ui_bridge::modules::mixer::MixerUiBridge;
+use std::{cell::Cell, rc::Rc};
+
+use egui::{ComboBox, DragValue, Grid, Ui};
+
+use crate::{ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput};
+use addi_engine::{Input, ModuleId, ModuleType, VolumeType};
+use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
+
+pub struct MixerUi {
+    module_id: ModuleId,
+}
+
+impl MixerUi {
+    pub fn new(module_id: ModuleId) -> Self {
+        Self { module_id }
+    }
+
+    fn paint_ui(&mut self, bridge: &mut UiBridge, mixer_bridge: &mut MixerUiBridge, ui: &mut Ui) {
+        let module_id = self.module_id;
+        let mut config = mixer_bridge.config().clone();
+        let input_volume_type_change = Rc::new(Cell::new(None));
+        let output_volume_type_change = Rc::new(Cell::new(None));
+
+        ui.add(ModuleLabel::new(module_id, ModuleType::Mixer, bridge));
+
+        ui.add_space(16.0);
+
+        ui.horizontal(|ui| {
+            ui.label("Inputs");
+            if ui
+                .add(
+                    DragValue::new(&mut config.num_inputs)
+                        .range(1..=addi_engine::mixer::MAX_INPUTS),
+                )
+                .changed()
+            {
+                mixer_bridge.set_num_inputs(config.num_inputs);
+            }
+        });
+
+        ui.add_space(16.0);
+
+        Grid::new("mixer_grid")
+            .num_columns(3)
+            .spacing([16.0, 8.0])
+            .striped(false)
+            .show(ui, |ui| {
+                for input_idx in 0..config.num_inputs {
+                    let input_volume_type_change = Rc::clone(&input_volume_type_change);
+                    let i = input_idx as usize;
+                    let mut volume_type = config.inputs[i].volume_type;
+                    let mut value = match volume_type {
+                        VolumeType::Db => config.inputs[i].level,
+                        VolumeType::Gain => config.inputs[i].gain,
+                    };
+                    let input = match volume_type {
+                        VolumeType::Db => Input::LevelMix(input_idx),
+                        VolumeType::Gain => Input::GainMix(input_idx),
+                    };
+
+                    ui.label(format!("Input {}", input_idx + 1));
+
+                    ui.horizontal(|ui| {
+                        ComboBox::from_id_salt(format!("volume-type-{}", input_idx))
+                            .selected_text(volume_type.label())
+                            .width(0.0)
+                            .show_ui(ui, |ui| {
+                                const TYPE_OPTIONS: &[VolumeType] =
+                                    &[VolumeType::Gain, VolumeType::Db];
+
+                                for vol_type_item in TYPE_OPTIONS {
+                                    if ui
+                                        .selectable_value(
+                                            &mut volume_type,
+                                            *vol_type_item,
+                                            vol_type_item.label(),
+                                        )
+                                        .clicked()
+                                    {
+                                        input_volume_type_change
+                                            .set(Some((input_idx, *vol_type_item)));
+                                    }
+                                }
+                            });
+                    });
+
+                    if ui
+                        .add(StereoInput::new(input, module_id, &mut value, bridge))
+                        .changed()
+                    {
+                        match volume_type {
+                            VolumeType::Db => {
+                                mixer_bridge.set_param(Input::LevelMix(input_idx), value);
+                            }
+                            VolumeType::Gain => {
+                                mixer_bridge.set_param(Input::GainMix(input_idx), value);
+                            }
+                        }
+                    }
+                    ui.end_row();
+
+                    config.inputs[i].volume_type = volume_type;
+                    match volume_type {
+                        VolumeType::Db => config.inputs[i].level = value,
+                        VolumeType::Gain => config.inputs[i].gain = value,
+                    }
+                }
+
+                let (input, value) = match config.output_volume_type {
+                    VolumeType::Db => (Input::Level, &mut config.output_level),
+                    VolumeType::Gain => (Input::Gain, &mut config.output_gain),
+                };
+
+                ui.label("Output");
+
+                let output_volume_type_change = Rc::clone(&output_volume_type_change);
+                ui.horizontal(|ui| {
+                    ui.set_min_width(52.0);
+
+                    ComboBox::from_id_salt("volume-type-output")
+                        .selected_text(config.output_volume_type.label())
+                        .width(0.0)
+                        .show_ui(ui, |ui| {
+                            const TYPE_OPTIONS: &[VolumeType] = &[VolumeType::Gain, VolumeType::Db];
+
+                            for vol_type_item in TYPE_OPTIONS {
+                                if ui
+                                    .selectable_value(
+                                        &mut config.output_volume_type,
+                                        *vol_type_item,
+                                        vol_type_item.label(),
+                                    )
+                                    .clicked()
+                                {
+                                    output_volume_type_change.set(Some(*vol_type_item));
+                                }
+                            }
+                        });
+                });
+
+                if ui
+                    .add(StereoInput::new(input, module_id, value, bridge))
+                    .changed()
+                {
+                    match config.output_volume_type {
+                        VolumeType::Db => {
+                            mixer_bridge.set_param(Input::Level, config.output_level);
+                        }
+                        VolumeType::Gain => {
+                            mixer_bridge.set_param(Input::Gain, config.output_gain);
+                        }
+                    }
+                }
+                ui.end_row();
+            });
+
+        if let Some((input_idx, volume_type)) = input_volume_type_change.take() {
+            mixer_bridge.set_volume_type(input_idx, volume_type);
+        }
+
+        if let Some(volume_type) = output_volume_type_change.take() {
+            mixer_bridge.set_output_volume_type(volume_type);
+        }
+    }
+}
+
+impl ModuleUi for MixerUi {
+    fn module_id(&self) -> Option<ModuleId> {
+        Some(self.module_id)
+    }
+
+    fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        bridge.with_module_bridge(self.module_id, |bridge, module_bridge| {
+            if let ModuleBridge::Mixer(mixer_bridge) = module_bridge {
+                self.paint_ui(bridge, mixer_bridge, ui);
+            }
+        });
+    }
+}

@@ -63,9 +63,7 @@ pub use addi_dsp::{
 
 pub use addi_dsp::types;
 
-pub(crate) use addi_dsp::{
-    coeffs, iir_decimator, level_ballistics, phase, smooth, stereo_sample,
-};
+pub(crate) use addi_dsp::{coeffs, iir_decimator, level_ballistics, phase, smooth, stereo_sample};
 
 pub mod buffer;
 pub mod config;

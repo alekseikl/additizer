@@ -4,9 +4,7 @@ use addi_dsp::filters::{
     control::MAX_PRE_Q,
     spectral_filter::{FilterParams, FilterType, SpectralFilter},
 };
-use addi_engine::{
-    ComplexSample, SPECTRAL_BUFFER_SIZE, Sample, spectral_filter::MIN_Q_ROLLOFF,
-};
+use addi_engine::{ComplexSample, SPECTRAL_BUFFER_SIZE, Sample, spectral_filter::MIN_Q_ROLLOFF};
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 /// Octaves of the note fundamental. Two octaves up is the 4th harmonic.

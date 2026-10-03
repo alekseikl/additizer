@@ -1,9 +1,7 @@
 use triple_buffer::triple_buffer;
 
 use addi_engine::spectral_band_select::BandSelectMode;
-use addi_engine::{
-    DISPLAY_SPECTRUM_SIZE, Sample, UI_TO_AUDIO_RING_CAPACITY, types::ComplexSample,
-};
+use addi_engine::{DISPLAY_SPECTRUM_SIZE, Sample, UI_TO_AUDIO_RING_CAPACITY, types::ComplexSample};
 
 use addi_engine::spectral_band_select::{
     SpectralBandSelectAudioEnd, SpectralBandSelectLinks, SpectralBandSelectUiEnd, UiEvent,

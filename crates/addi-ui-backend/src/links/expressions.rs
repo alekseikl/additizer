@@ -2,9 +2,7 @@ use triple_buffer::triple_buffer;
 
 use addi_engine::{Expression, Sample, UI_TO_AUDIO_RING_CAPACITY};
 
-use addi_engine::expressions::{
-    ExpressionsAudioEnd, ExpressionsLinks, ExpressionsUiEnd, UiEvent,
-};
+use addi_engine::expressions::{ExpressionsAudioEnd, ExpressionsLinks, ExpressionsUiEnd, UiEvent};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,

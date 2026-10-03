@@ -4,9 +4,7 @@ use addi_engine::{Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 use addi_engine::spectral_eq::EqFilter;
 
-use addi_engine::spectral_eq::{
-    SpectralEqAudioEnd, SpectralEqLinks, SpectralEqUiEnd, UiEvent,
-};
+use addi_engine::spectral_eq::{SpectralEqAudioEnd, SpectralEqLinks, SpectralEqUiEnd, UiEvent};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,

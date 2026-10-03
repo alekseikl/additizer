@@ -24,6 +24,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "addi-egui"
+version = "0.1.0"
+dependencies = [
+ "addi-dsp",
+ "addi-engine",
+ "addi-ui-backend",
+ "egui",
+ "egui_extras",
+ "parking_lot",
+ "realfft",
+ "rustc-hash",
+ "smallvec",
+]
+
+[[package]]
 name = "addi-engine"
 version = "0.1.0"
 dependencies = [
@@ -67,6 +82,7 @@ name = "additizer"
 version = "0.1.0"
 dependencies = [
  "addi-dsp",
+ "addi-egui",
  "addi-engine",
  "addi-ui-backend",
  "assert_no_alloc",
@@ -74,14 +90,10 @@ dependencies = [
  "criterion",
  "crossbeam-utils",
  "egui",
- "egui_extras",
  "midir",
  "nice-plug",
  "nice-plug-egui",
  "parking_lot",
- "realfft",
- "rustc-hash",
- "smallvec",
 ]
 
 [[package]]

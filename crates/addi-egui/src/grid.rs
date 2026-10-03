@@ -1,0 +1,527 @@
+use egui::{
+    Color32, Painter, Pos2, Rect, Response, ScrollArea, Sense, Shape, Ui, Vec2,
+    epaint::{CubicBezierShape, PathStroke},
+    pos2,
+    scroll_area::{DragScroll, ScrollBarVisibility, ScrollSource},
+    vec2,
+};
+use rustc_hash::FxHashMap;
+
+use crate::grid::{
+    add_module_popup::{AddModulePopup, AddResult},
+    grid_widget::GridWidget,
+};
+use addi_engine::{ModuleId, routing_state::ModuleIo};
+use addi_ui_backend::ui_bridge::{GridVec, UiBridge};
+
+mod add_module_popup;
+mod grid_widget;
+pub(super) mod input_mixer_popup;
+pub(super) mod input_tooltip;
+mod link_amount_popup;
+mod select_input_popup;
+
+const GRID_CELL_SIZE: f32 = 40.0;
+const C_GRID: Color32 = Color32::from_rgb(25, 25, 25);
+const GRID_T: f32 = 1.0;
+const WIRE_T: f32 = 2.0;
+const WIRE_MOD_T: f32 = 1.0;
+/// Minimum horizontal offset of a backward wire's Bézier control points.
+const WIRE_CTRL_MIN: f32 = 8.0;
+const WIRE_END_DOT: f32 = 8.0;
+
+/// Compensates for egui-baseview negating horizontal wheel delta on macOS.
+#[cfg(target_os = "macos")]
+const TRACKPAD_SCROLL_MULTIPLIER: egui::Vec2 = vec2(-1.0, 1.0);
+#[cfg(not(target_os = "macos"))]
+const TRACKPAD_SCROLL_MULTIPLIER: egui::Vec2 = egui::Vec2::splat(1.0);
+
+trait GridVecExt {
+    fn to_vec2(self) -> Vec2;
+    fn from_vec_rounded(value: Vec2) -> Self;
+    fn from_vec_floor(value: Vec2) -> Self;
+}
+
+impl GridVecExt for GridVec {
+    fn to_vec2(self) -> Vec2 {
+        vec2(self.x as f32, self.y as f32) * GRID_CELL_SIZE
+    }
+
+    fn from_vec_rounded(value: Vec2) -> Self {
+        Self {
+            x: (value.x / GRID_CELL_SIZE).round() as i32,
+            y: (value.y / GRID_CELL_SIZE).round() as i32,
+        }
+    }
+
+    fn from_vec_floor(value: Vec2) -> Self {
+        Self {
+            x: (value.x / GRID_CELL_SIZE).floor() as i32,
+            y: (value.y / GRID_CELL_SIZE).floor() as i32,
+        }
+    }
+}
+
+struct GridRect {
+    id: ModuleId,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+}
+
+impl GridRect {
+    fn right(&self) -> i32 {
+        self.x + self.w
+    }
+
+    fn bottom(&self) -> i32 {
+        self.y + self.h
+    }
+
+    fn overlaps(&self, other: &GridRect) -> bool {
+        self.x < other.x + other.w
+            && other.x < self.x + self.w
+            && self.y < other.y + other.h
+            && other.y < self.y + self.h
+    }
+}
+
+struct WireDragState {
+    src_id: ModuleId,
+    start_pos: Pos2,
+    color: Color32,
+    dropped_at: Option<u64>,
+}
+
+#[derive(Default)]
+struct WidgetsState {
+    wire_drag: Option<WireDragState>,
+}
+
+pub enum GridEvent {
+    Moved(ModuleId),
+    Selected(ModuleId),
+    Duplicate(ModuleId),
+}
+
+struct WidgetCtx<'a> {
+    bridge: &'a mut UiBridge,
+    state: &'a mut WidgetsState,
+    selected_module_id: Option<ModuleId>,
+    events: &'a mut Vec<GridEvent>,
+}
+
+pub struct Grid {
+    widgets: Vec<GridWidget>,
+    widgets_state: WidgetsState,
+    content_size: egui::Vec2,
+    events: Vec<GridEvent>,
+    open_add_module: Option<(GridVec, Pos2)>,
+    added_module_id: Option<ModuleId>,
+}
+
+impl Grid {
+    pub fn new() -> Self {
+        Self {
+            widgets: Vec::new(),
+            widgets_state: WidgetsState::default(),
+            content_size: egui::Vec2::ZERO,
+            events: Vec::new(),
+            open_add_module: None,
+            added_module_id: None,
+        }
+    }
+
+    pub fn update_widgets(
+        &mut self,
+        modules_io: FxHashMap<ModuleId, ModuleIo>,
+        bridge: &mut UiBridge,
+    ) {
+        let mut widgets_by_id: FxHashMap<ModuleId, GridWidget> =
+            self.widgets.drain(..).map(|w| (w.module_id(), w)).collect();
+
+        self.widgets = modules_io
+            .into_iter()
+            .map(|(id, module_io)| match widgets_by_id.remove(&id) {
+                Some(mut widget) => {
+                    widget.update(module_io);
+                    widget
+                }
+                None => GridWidget::new(module_io),
+            })
+            .collect();
+
+        let added_mod_id = self.added_module_id.take();
+
+        self.resolve_overlaps(added_mod_id, bridge);
+    }
+
+    pub fn events(&self) -> &Vec<GridEvent> {
+        &self.events
+    }
+
+    fn process_events(&mut self, bridge: &mut UiBridge) {
+        for event in self.events.iter() {
+            match event {
+                GridEvent::Moved(module_id) => self.resolve_overlaps(Some(*module_id), bridge),
+                GridEvent::Duplicate(module_id) => self.place_duplicate(*module_id, bridge),
+                GridEvent::Selected(_) => {}
+            }
+        }
+        self.events.clear();
+    }
+
+    fn place_duplicate(&self, module_id: ModuleId, bridge: &mut UiBridge) {
+        let Some((origin_span, size)) = self
+            .widgets
+            .iter()
+            .find(|widget| widget.module_id() == module_id)
+            .map(|widget| (widget.grid_size(), widget.body_grid_size()))
+        else {
+            return;
+        };
+        let origin = bridge.get_module_position(module_id);
+        let occupied: Vec<GridRect> = self
+            .widgets
+            .iter()
+            .map(|widget| {
+                let position = bridge.get_module_position(widget.module_id());
+                let span = widget.grid_size();
+
+                GridRect {
+                    id: widget.module_id(),
+                    x: position.x,
+                    y: position.y,
+                    w: span.x,
+                    h: span.y,
+                }
+            })
+            .collect();
+        let position = Self::free_position_below(origin, origin_span, size, &occupied);
+
+        bridge.duplicate_module(module_id, position);
+    }
+
+    pub fn ui(&mut self, ui: &mut Ui, bridge: &mut UiBridge, selected_module_id: Option<ModuleId>) {
+        self.process_events(bridge);
+
+        let content_size = self.calc_content_size(bridge);
+        let dragging = self.widgets.iter().any(GridWidget::is_dragging)
+            || self.widgets_state.wire_drag.is_some();
+
+        self.content_size = if dragging {
+            self.content_size.max(content_size)
+        } else {
+            content_size
+        };
+
+        let viewport_size = ui.available_size();
+
+        // Never smaller than the viewport so the grid fills the panel.
+        let grid_area = (self.content_size + 0.5 * viewport_size).max(viewport_size);
+
+        ScrollArea::both()
+            .id_salt("module-grid-area")
+            .scroll_source(ScrollSource {
+                drag: DragScroll::Always,
+                scroll_bar: false,
+                ..Default::default()
+            })
+            .wheel_scroll_multiplier(TRACKPAD_SCROLL_MULTIPLIER)
+            .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
+            .auto_shrink([true, true])
+            .show(ui, |ui| {
+                let (response, painter) = ui.allocate_painter(grid_area, Sense::click());
+
+                Self::paint_grid(&painter, painter.clip_rect(), response.rect.min);
+                self.add_module_menu(&response, ui, bridge);
+
+                // Reserve a paint slot for the wires.
+                let wires = painter.add(Shape::Noop);
+
+                let mut ctx = WidgetCtx {
+                    bridge,
+                    state: &mut self.widgets_state,
+                    events: &mut self.events,
+                    selected_module_id,
+                };
+
+                for widget in &mut self.widgets {
+                    widget.ui(ui, &mut ctx);
+                }
+
+                painter.set(wires, Shape::Vec(self.build_wire_shapes()));
+
+                if let Some(drag) = self.widgets_state.wire_drag.as_mut()
+                    && let Some(dropped_at) = drag.dropped_at
+                    && dropped_at < ui.ctx().cumulative_frame_nr()
+                {
+                    self.widgets_state.wire_drag = None;
+                }
+
+                if let Some(drag) = &self.widgets_state.wire_drag
+                    && let Some(pointer) = ui.ctx().pointer_hover_pos()
+                {
+                    painter.add(self.build_drag_wire_shape(drag, pointer));
+                }
+            });
+    }
+
+    /// Right-click menu adding a module at the clicked cell.
+    fn add_module_menu(&mut self, response: &Response, ui: &mut Ui, bridge: &mut UiBridge) {
+        if response.secondary_clicked()
+            && let Some(pointer) = response.interact_pointer_pos()
+        {
+            let cell = GridVec::from_vec_floor(pointer - response.rect.min).max(GridVec::ZERO);
+
+            self.open_add_module = if self.cell_occupied(bridge, cell) {
+                None
+            } else {
+                Some((cell, pointer))
+            };
+        }
+
+        if let Some((cell, pos)) = self.open_add_module {
+            let popup = AddModulePopup { pos };
+
+            match popup.show(response, ui) {
+                AddResult::Selected(module_type) => {
+                    self.added_module_id = Some(bridge.add_module(module_type, cell));
+                    self.open_add_module = None;
+                }
+                AddResult::Close => self.open_add_module = None,
+                AddResult::KeepVisible => {}
+            }
+        }
+    }
+
+    fn cell_occupied(&self, bridge: &UiBridge, cell: GridVec) -> bool {
+        self.widgets.iter().any(|widget| {
+            let pos = bridge.get_module_position(widget.module_id());
+            let size = widget.grid_size();
+
+            (pos.x..pos.x + size.x).contains(&cell.x) && (pos.y..pos.y + size.y).contains(&cell.y)
+        })
+    }
+
+    fn calc_content_size(&self, bridge: &UiBridge) -> Vec2 {
+        let mut extent = Vec2::ZERO;
+
+        for widget in &self.widgets {
+            let pos = bridge.get_module_position(widget.module_id());
+            let cell_extent = pos + widget.grid_size();
+            let bottom_right = cell_extent.to_vec2() + widget.drag_offset();
+
+            extent = extent.max(bottom_right);
+        }
+
+        extent
+    }
+
+    fn build_drag_wire_shape(&self, drag: &WireDragState, pointer: Pos2) -> Shape {
+        let src_pos = drag.start_pos;
+        let dst_pos = pointer;
+        let output_color = drag.color;
+        let stroke = PathStroke::new(WIRE_T, output_color).middle();
+
+        Shape::Vec(vec![
+            Self::wire_shape(src_pos, dst_pos, stroke),
+            Shape::circle_filled(dst_pos, WIRE_END_DOT * 0.5, output_color),
+        ])
+    }
+
+    fn wire_shape(src: Pos2, dst: Pos2, stroke: PathStroke) -> Shape {
+        if (src.y - dst.y).abs() < 0.1 {
+            return Shape::line(vec![src, dst], stroke);
+        }
+
+        let mut dx = (dst.x - src.x).abs() * 0.5;
+        if dst.x < src.x {
+            dx = dx.max(WIRE_CTRL_MIN);
+        }
+
+        Shape::CubicBezier(CubicBezierShape::from_points_stroke(
+            [src, src + vec2(dx, 0.0), dst - vec2(dx, 0.0), dst],
+            false,
+            Color32::TRANSPARENT,
+            stroke,
+        ))
+    }
+
+    fn wire_color_at(
+        pos: Pos2,
+        src_pos: Pos2,
+        dst_pos: Pos2,
+        output_color: Color32,
+        input_color: Color32,
+    ) -> Color32 {
+        let seg = dst_pos - src_pos;
+        let len_sq = seg.length_sq();
+        let t = if len_sq > 0.0 {
+            (pos - src_pos).dot(seg) / len_sq
+        } else {
+            0.0
+        };
+        let blend = ((t.clamp(0.0, 1.0) - 0.75) / 0.25).clamp(0.0, 1.0);
+        output_color.lerp_to_gamma(input_color, blend)
+    }
+
+    fn build_wire_shapes(&self) -> Vec<Shape> {
+        let outputs: FxHashMap<ModuleId, (Pos2, Color32)> = self
+            .widgets
+            .iter()
+            .filter_map(|widget| {
+                widget
+                    .output_point()
+                    .map(|anchor| (widget.module_id(), anchor))
+            })
+            .collect();
+
+        let mut shapes = Vec::new();
+
+        for widget in &self.widgets {
+            for input in widget.input_points() {
+                if let Some(&(src_pos, output_color)) = outputs.get(&input.module_id) {
+                    let dst_pos = input.point;
+                    let input_color = input.color;
+                    let thickness = if input.is_modulation {
+                        WIRE_MOD_T
+                    } else {
+                        WIRE_T
+                    };
+                    let stroke = PathStroke::new_uv(thickness, move |_, pos| {
+                        Self::wire_color_at(pos, src_pos, dst_pos, output_color, input_color)
+                    })
+                    .middle();
+
+                    shapes.push(Self::wire_shape(src_pos, dst_pos, stroke));
+                }
+            }
+        }
+
+        shapes
+    }
+
+    fn resolve_overlaps(&self, anchor: Option<ModuleId>, bridge: &mut UiBridge) {
+        let mut rects: Vec<GridRect> = self
+            .widgets
+            .iter()
+            .map(|widget| {
+                let id = widget.module_id();
+                let GridVec { x, y } = bridge.get_module_position(id);
+                let GridVec { x: w, y: h } = widget.grid_size();
+
+                GridRect { id, x, y, w, h }
+            })
+            .collect();
+
+        // The anchor is fixed; settle it first. Remaining widgets are settled in
+        // reading order (top-left first) so pushes cascade toward bottom-right.
+        let mut settled: Vec<GridRect> = Vec::with_capacity(rects.len());
+        if let Some(anchor) = anchor
+            && let Some(pos) = rects.iter().position(|r| r.id == anchor)
+        {
+            settled.push(rects.remove(pos));
+        }
+        rects.sort_by_key(|r| (r.y, r.x));
+
+        for mut rect in rects {
+            let original = (rect.x, rect.y);
+
+            while let Some(blocker) = settled.iter().find(|s| s.overlaps(&rect)) {
+                let dir_x = (rect.x - blocker.x).max(0);
+                let dir_y = (rect.y - blocker.y).max(0);
+
+                if dir_x > dir_y {
+                    rect.x = blocker.right();
+                } else if dir_y > dir_x {
+                    rect.y = blocker.bottom();
+                } else {
+                    let push_right = blocker.right() - rect.x;
+                    let push_down = blocker.bottom() - rect.y;
+
+                    if push_right <= push_down {
+                        rect.x = blocker.right();
+                    } else {
+                        rect.y = blocker.bottom();
+                    }
+                }
+            }
+
+            if (rect.x, rect.y) != original {
+                bridge.set_module_position(
+                    rect.id,
+                    GridVec {
+                        x: rect.x,
+                        y: rect.y,
+                    },
+                );
+            }
+
+            settled.push(rect);
+        }
+    }
+
+    fn free_position_below(
+        origin: GridVec,
+        origin_span: GridVec,
+        size: GridVec,
+        occupied: &[GridRect],
+    ) -> GridVec {
+        let mut y = origin.y + origin_span.y;
+
+        loop {
+            let candidate = GridRect {
+                id: 0,
+                x: origin.x,
+                y,
+                w: size.x,
+                h: size.y,
+            };
+            let next_y = occupied
+                .iter()
+                .filter(|rect| rect.overlaps(&candidate))
+                .map(GridRect::bottom)
+                .max();
+
+            match next_y {
+                Some(bottom) => y = bottom,
+                None => return GridVec::new(origin.x, y),
+            }
+        }
+    }
+
+    fn trim_partial_cell(span: f32) -> f32 {
+        (span / GRID_CELL_SIZE).floor() * GRID_CELL_SIZE
+    }
+
+    fn paint_grid(painter: &Painter, area: Rect, origin: Pos2) {
+        let stroke = PathStroke::new(GRID_T, C_GRID).inside();
+
+        painter.rect_filled(area, 0.0, Color32::BLACK);
+
+        let mut x = origin.x + Self::trim_partial_cell(area.left() - origin.x);
+
+        while x <= area.right() {
+            painter.line(
+                vec![pos2(x, area.top()), pos2(x, area.bottom())],
+                stroke.clone(),
+            );
+            x += GRID_CELL_SIZE;
+        }
+
+        let mut y = origin.y + Self::trim_partial_cell(area.top() - origin.y);
+
+        while y <= area.bottom() {
+            painter.line(
+                vec![pos2(area.left(), y), pos2(area.right(), y)],
+                stroke.clone(),
+            );
+            y += GRID_CELL_SIZE;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

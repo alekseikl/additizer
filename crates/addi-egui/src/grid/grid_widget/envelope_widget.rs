@@ -1,0 +1,269 @@
+use addi_ui_backend::ui_bridge::modules::envelope::EnvelopeUiBridge;
+use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, epaint::PathStroke};
+
+use crate::grid::WidgetCtx;
+use addi_dsp::power_scale;
+use addi_engine::{
+    Input, ModuleId, Sample,
+    envelope::{EnvelopeConfig, EnvelopePhase, SLOPE_POWER_SCALE},
+};
+use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
+
+use super::GridWidgetContent;
+
+const PADDING: f32 = 4.0;
+const POINTS_PER_SECTION: usize = 32;
+const PHASE_RADIUS: f32 = 3.5;
+const LINE_WIDTH: f32 = 1.0;
+const MIN_TOTAL_TIME: Sample = 1e-3;
+
+const STROKE_COLOR: Color32 = Color32::from_rgb(0x06, 0xaa, 0x1c);
+
+struct EnvelopeShape {
+    delay: Sample,
+    attack: Sample,
+    hold: Sample,
+    decay: Sample,
+    sustain: Sample,
+    release: Sample,
+    start_level: Sample,
+    attack_slope: Sample,
+    decay_slope: Sample,
+    release_slope: Sample,
+}
+
+impl EnvelopeShape {
+    fn from_config(config: &EnvelopeConfig, start_level: Sample) -> Self {
+        Self {
+            delay: config.delay[0].max(0.0),
+            attack: config.attack[0].max(0.0),
+            hold: config.hold[0].max(0.0),
+            decay: config.decay[0].max(0.0),
+            sustain: config.sustain[0].clamp(0.0, 1.0),
+            release: config.release[0].max(0.0),
+            start_level: if config.steal_level {
+                start_level.clamp(0.0, 1.0)
+            } else {
+                0.0
+            },
+            attack_slope: config.attack_slope,
+            decay_slope: config.decay_slope,
+            release_slope: config.release_slope,
+        }
+    }
+
+    fn total_time(&self) -> Sample {
+        (self.delay + self.attack + self.hold + self.decay + self.release).max(MIN_TOTAL_TIME)
+    }
+}
+
+pub struct EnvelopeWidget {}
+
+impl EnvelopeWidget {
+    fn envelope_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        bridge: &mut UiBridge,
+        env_bridge: &mut EnvelopeUiBridge,
+        module_id: ModuleId,
+    ) {
+        let size = ui.available_size();
+        let response = ui.allocate_response(size, egui::Sense::hover());
+        let rect = response.rect.shrink2(egui::vec2(0.0, PADDING));
+
+        if !rect.is_positive() || !ui.is_rect_visible(rect) {
+            return;
+        }
+
+        let mut config = env_bridge.config().clone();
+
+        bridge.apply_modulation(module_id, Input::Delay, &mut config.delay);
+        bridge.apply_modulation(module_id, Input::Attack, &mut config.attack);
+        bridge.apply_modulation(module_id, Input::Hold, &mut config.hold);
+        bridge.apply_modulation(module_id, Input::Decay, &mut config.decay);
+        bridge.apply_modulation(module_id, Input::Sustain, &mut config.sustain);
+        bridge.apply_modulation(module_id, Input::Release, &mut config.release);
+
+        let phase = if bridge.has_active_voices() {
+            env_bridge.get_phase()
+        } else {
+            EnvelopePhase::default()
+        };
+        let shape = EnvelopeShape::from_config(&config, phase.start_level);
+        let painter = ui.painter();
+        let points = Self::curve_points(rect, &shape);
+
+        Self::paint_fill(painter, rect, &points);
+        Self::paint_stroke(painter, &points);
+
+        if let Some(pos) = Self::phase_pos(rect, &shape, phase) {
+            painter.circle_filled(pos, PHASE_RADIUS, STROKE_COLOR);
+        }
+    }
+
+    fn curve_value(t: Sample, slope: Sample, from: Sample, to: Sample) -> Sample {
+        let power = -slope.clamp(-1.0, 1.0) * SLOPE_POWER_SCALE;
+        (to - from).mul_add(power_scale(t.clamp(0.0, 1.0), power), from)
+    }
+
+    fn to_pos(rect: Rect, total: Sample, time: Sample, value: Sample) -> Pos2 {
+        Pos2::new(
+            rect.left() + (time / total).clamp(0.0, 1.0) * rect.width(),
+            rect.bottom() - value.clamp(0.0, 1.0) * rect.height(),
+        )
+    }
+
+    fn curve_points(rect: Rect, shape: &EnvelopeShape) -> Vec<Pos2> {
+        let total = shape.total_time();
+        let mut points = Vec::with_capacity(POINTS_PER_SECTION * 4 + 2);
+
+        points.push(Self::to_pos(rect, total, 0.0, shape.start_level));
+
+        if shape.delay > 0.0 {
+            points.push(Self::to_pos(rect, total, shape.delay, shape.start_level));
+        }
+
+        let attack_start = shape.delay;
+
+        for i in 1..=POINTS_PER_SECTION {
+            let t = i as Sample / POINTS_PER_SECTION as Sample;
+            let value = Self::curve_value(t, shape.attack_slope, shape.start_level, 1.0);
+            points.push(Self::to_pos(
+                rect,
+                total,
+                attack_start + shape.attack * t,
+                value,
+            ));
+        }
+
+        let hold_start = attack_start + shape.attack;
+
+        if shape.hold > 0.0 {
+            points.push(Self::to_pos(rect, total, hold_start + shape.hold, 1.0));
+        }
+
+        let decay_start = hold_start + shape.hold;
+
+        for i in 1..=POINTS_PER_SECTION {
+            let t = i as Sample / POINTS_PER_SECTION as Sample;
+            let value = Self::curve_value(t, shape.decay_slope, 1.0, shape.sustain);
+            points.push(Self::to_pos(
+                rect,
+                total,
+                decay_start + shape.decay * t,
+                value,
+            ));
+        }
+
+        let release_start = decay_start + shape.decay;
+
+        for i in 1..=POINTS_PER_SECTION {
+            let t = i as Sample / POINTS_PER_SECTION as Sample;
+            let value = Self::curve_value(t, shape.release_slope, shape.sustain, 0.0);
+            points.push(Self::to_pos(
+                rect,
+                total,
+                release_start + shape.release * t,
+                value,
+            ));
+        }
+
+        points
+    }
+
+    fn phase_pos(rect: Rect, shape: &EnvelopeShape, phase: EnvelopePhase) -> Option<Pos2> {
+        if phase.done {
+            return None;
+        }
+
+        let total = shape.total_time();
+        let delay_end = shape.delay;
+        let attack_end = delay_end + shape.attack;
+        let hold_end = attack_end + shape.hold;
+        let decay_end = hold_end + shape.decay;
+
+        Some(if phase.released {
+            let local = if shape.release > 0.0 {
+                (phase.t / shape.release).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
+
+            let value = Self::curve_value(local, shape.release_slope, shape.sustain, 0.0);
+            Self::to_pos(rect, total, decay_end + shape.release * local, value)
+        } else if phase.t < delay_end {
+            Self::to_pos(rect, total, phase.t, shape.start_level)
+        } else if phase.t < attack_end {
+            let local = if shape.attack > 0.0 {
+                (phase.t - delay_end) / shape.attack
+            } else {
+                1.0
+            };
+
+            let value = Self::curve_value(local, shape.attack_slope, shape.start_level, 1.0);
+            Self::to_pos(rect, total, phase.t, value)
+        } else if phase.t < hold_end {
+            Self::to_pos(rect, total, phase.t, 1.0)
+        } else if phase.t < decay_end {
+            let local = if shape.decay > 0.0 {
+                (phase.t - hold_end) / shape.decay
+            } else {
+                1.0
+            };
+
+            let value = Self::curve_value(local, shape.decay_slope, 1.0, shape.sustain);
+            Self::to_pos(rect, total, phase.t, value)
+        } else {
+            Self::to_pos(rect, total, decay_end, shape.sustain)
+        })
+    }
+
+    fn fill_color() -> Color32 {
+        Color32::from_rgba_unmultiplied(STROKE_COLOR.r(), STROKE_COLOR.g(), STROKE_COLOR.b(), 0x66)
+    }
+
+    fn paint_stroke(painter: &Painter, points: &[Pos2]) {
+        if points.len() < 2 {
+            return;
+        }
+
+        let stroke = PathStroke::new(LINE_WIDTH, STROKE_COLOR).middle();
+        painter.line(points.to_vec(), stroke);
+    }
+
+    fn paint_fill(painter: &Painter, rect: Rect, points: &[Pos2]) {
+        if points.len() < 2 {
+            return;
+        }
+
+        let mut mesh = Mesh::default();
+        let fill = Self::fill_color();
+        let bottom = rect.bottom();
+
+        for window in points.windows(2) {
+            let (a, b) = (window[0], window[1]);
+            let i_a = mesh.vertices.len() as u32;
+
+            mesh.colored_vertex(a, fill);
+            mesh.colored_vertex(b, fill);
+            mesh.colored_vertex(Pos2::new(b.x, bottom), fill);
+            mesh.colored_vertex(Pos2::new(a.x, bottom), fill);
+
+            mesh.add_triangle(i_a, i_a + 1, i_a + 2);
+            mesh.add_triangle(i_a, i_a + 2, i_a + 3);
+        }
+
+        painter.add(Shape::mesh(mesh));
+    }
+}
+
+impl GridWidgetContent for EnvelopeWidget {
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut WidgetCtx, module_id: ModuleId) {
+        ctx.bridge
+            .with_module_bridge(module_id, |bridge, module_bridge| {
+                if let ModuleBridge::Envelope(env_bridge) = module_bridge {
+                    self.envelope_ui(ui, bridge, env_bridge, module_id);
+                }
+            });
+    }
+}
