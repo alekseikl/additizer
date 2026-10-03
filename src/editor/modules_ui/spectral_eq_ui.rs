@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::spectral_eq::SpectralEqUiBridge;
 use egui::{
     Button, Checkbox, Color32, ComboBox, DragAndDrop, DragValue, Grid, Id, Label, Pos2, Rangef,
     Rect, RichText, Stroke, StrokeKind, Ui,
@@ -13,10 +14,7 @@ use crate::{
     },
     synth_engine::{
         Input, ModuleId, ModuleType, Sample,
-        spectral_eq::{
-            EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MAX_Q, MIN_CUTOFF_HZ, MIN_Q,
-            SpectralEqUiBridge,
-        },
+        spectral_eq::{EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MAX_Q, MIN_CUTOFF_HZ, MIN_Q},
         spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF},
         ui_bridge::{ModuleBridge, UiBridge},
     },

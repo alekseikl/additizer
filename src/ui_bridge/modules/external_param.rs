@@ -1,7 +1,8 @@
+use crate::synth_engine::Sample;
 use crate::synth_engine::external_param::{
     ExternalParam, ExternalParamConfig, ExternalParamLinks, ExternalParamUiEnd, NUM_EXT_PARAMS,
 };
-use crate::synth_engine::{Sample, synth_module::ModuleUiBridge};
+use crate::ui_bridge::ModuleUiBridge;
 
 pub struct ExternalParamUiBridge<L: ExternalParamLinks = crate::links::external_param::Links> {
     ui_end: L::UiEnd,

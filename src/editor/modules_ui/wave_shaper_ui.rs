@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::wave_shaper::WaveShaperUiBridge;
 use egui::{ComboBox, Grid, Ui};
 
 use crate::{
@@ -5,13 +6,16 @@ use crate::{
     synth_engine::{
         Input, ModuleId, ModuleType, ShaperType,
         ui_bridge::{ModuleBridge, UiBridge},
-        wave_shaper::WaveShaperUiBridge,
     },
 };
 
-impl ShaperType {
-    const ALL: [Self; 2] = [Self::HardClip, Self::Sigmoid];
+const SHAPER_TYPES: [ShaperType; 2] = [ShaperType::HardClip, ShaperType::Sigmoid];
 
+trait ShaperTypeLabel {
+    fn label(&self) -> &'static str;
+}
+
+impl ShaperTypeLabel for ShaperType {
     fn label(&self) -> &'static str {
         match self {
             Self::HardClip => "Hard Clip",
@@ -50,7 +54,7 @@ impl WaveShaperUI {
                 ComboBox::from_id_salt("waveshaper-type")
                     .selected_text(config.shaper_type.label())
                     .show_ui(ui, |ui| {
-                        for shaper_type in ShaperType::ALL {
+                        for shaper_type in SHAPER_TYPES {
                             if ui
                                 .selectable_value(
                                     &mut config.shaper_type,

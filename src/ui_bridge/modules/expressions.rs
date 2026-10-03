@@ -1,7 +1,8 @@
 use crate::synth_engine::expressions::{
     Expressions, ExpressionsConfig, ExpressionsLinks, ExpressionsUiEnd,
 };
-use crate::synth_engine::{Expression, Sample, synth_module::ModuleUiBridge};
+use crate::synth_engine::{Expression, Sample};
+use crate::ui_bridge::ModuleUiBridge;
 
 pub struct ExpressionsUiBridge<L: ExpressionsLinks = crate::links::expressions::Links> {
     ui_end: L::UiEnd,

@@ -6,6 +6,7 @@ use egui::{
     vec2,
 };
 
+use crate::editor::routing_ui_ext::{InputUi, ModuleTypeUi};
 use crate::{
     editor::utils::popup_should_close,
     synth_engine::{Input, InputId, ModuleId, ModuleType, ui_bridge::UiBridge},

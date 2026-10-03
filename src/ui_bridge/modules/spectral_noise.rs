@@ -2,7 +2,8 @@ use crate::synth_engine::spectral_noise::{
     NoiseColor, SpectralNoise, SpectralNoiseConfig, SpectralNoiseLinks, SpectralNoiseUiEnd,
     clamp_bandwidth, clamp_cutoff, clamp_rolloff,
 };
-use crate::synth_engine::{ComplexSample, Input, StereoSample, synth_module::ModuleUiBridge};
+use crate::synth_engine::{ComplexSample, Input, StereoSample};
+use crate::ui_bridge::ModuleUiBridge;
 
 pub struct SpectralNoiseUiBridge<L: SpectralNoiseLinks = crate::links::spectral_noise::Links> {
     ui_end: L::UiEnd,

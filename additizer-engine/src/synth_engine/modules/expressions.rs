@@ -1,0 +1,283 @@
+mod config;
+mod link;
+pub mod stub;
+
+pub use config::ExpressionsConfig;
+pub use link::{ExpressionsAudioEnd, ExpressionsLinks, ExpressionsUiEnd, UiEvent};
+
+use crate::{
+    synth_engine::from_st,
+    synth_engine::{
+        Buffer, Expression, ModuleId, Sample,
+        buffer::{
+            MonoVoicesLayout, ValueBuffer, VoicesLayout, new_mono_voices_layout, zero_buffer,
+        },
+        routing::{
+            ControlRouterType, DataType, ExpressionEvent, InputMeta, ProcessContext, RouterFactory,
+            SamplesOutput, VoiceEvent, VoiceTarget,
+        },
+        smooth::Smoother,
+        synth_module::SynthModule,
+    },
+};
+
+struct Params {
+    expression: Expression,
+    use_release_velocity: bool,
+    smooth: Sample,
+}
+
+impl Params {
+    fn from_config(c: &config::ExpressionsConfig) -> Self {
+        Self {
+            expression: c.expression,
+            use_release_velocity: c.use_release_velocity,
+            smooth: c.smooth,
+        }
+    }
+}
+
+struct Voice {
+    values: ValueBuffer,
+    buffer: Buffer,
+    smoother: Smoother,
+}
+
+impl Default for Voice {
+    fn default() -> Self {
+        Self {
+            values: ValueBuffer::default(),
+            buffer: zero_buffer(),
+            smoother: Smoother::default(),
+        }
+    }
+}
+
+pub struct Expressions<L: ExpressionsLinks = stub::Links> {
+    id: ModuleId,
+    params: Params,
+    audio_end: L::AudioEnd,
+    ui_end: Option<L::UiEnd>,
+    output_slot: usize,
+    mono_voices: MonoVoicesLayout<Voice>,
+}
+
+impl<L: ExpressionsLinks> Expressions<L> {
+    pub fn take_ui_end(&mut self) -> Option<L::UiEnd> {
+        self.ui_end.take()
+    }
+
+    pub fn new(id: ModuleId) -> Self {
+        Self::from_config(&ExpressionsConfig {
+            id,
+            ..ExpressionsConfig::default()
+        })
+    }
+
+    pub fn from_config(config: &config::ExpressionsConfig) -> Self {
+        let (audio_end, ui_end) = L::create_link_pair();
+
+        Self {
+            id: config.id,
+            params: Params::from_config(config),
+            audio_end,
+            ui_end,
+            output_slot: usize::MAX,
+            mono_voices: new_mono_voices_layout(),
+        }
+    }
+
+    pub fn get_config(&self) -> ExpressionsConfig {
+        ExpressionsConfig {
+            id: self.id,
+            expression: self.params.expression,
+            use_release_velocity: self.params.use_release_velocity,
+            smooth: self.params.smooth,
+        }
+    }
+
+    set_mono_param!(set_expression, expression, Expression);
+    set_mono_param!(set_use_release_velocity, use_release_velocity, bool);
+    set_mono_param!(set_smooth, smooth, Sample);
+
+    fn transform_value(expression: Expression, value: Sample) -> Sample {
+        match expression {
+            Expression::Pitch => from_st(value),
+            _ => value,
+        }
+    }
+
+    fn default_value(expression: Expression) -> Sample {
+        match expression {
+            Expression::Gain => 1.0,
+            _ => 0.0,
+        }
+    }
+
+    fn normalize_display_value(expression: Expression, value: Sample) -> Sample {
+        match expression {
+            Expression::Pitch => (value.abs() / from_st(12.0)).clamp(0.0, 1.0),
+            Expression::Pan => ((value + 1.0) * 0.5).clamp(0.0, 1.0),
+            _ => value.abs().clamp(0.0, 1.0),
+        }
+    }
+
+    fn handle_trigger(voice: &mut Voice, params: &Params, velocity: Sample) {
+        let value = if matches!(params.expression, Expression::Velocity) {
+            velocity
+        } else {
+            Self::default_value(params.expression)
+        };
+
+        voice.values.set(value, 0);
+    }
+
+    fn handle_update(voice: &mut Voice, params: &Params, velocity: Sample, at: usize) {
+        let value = if matches!(params.expression, Expression::Velocity) {
+            velocity
+        } else {
+            Self::default_value(params.expression)
+        };
+
+        voice.values.set(value, at);
+    }
+
+    fn handle_release(voice: &mut Voice, params: &Params, velocity: Sample, at: usize) {
+        if matches!(params.expression, Expression::Velocity) && params.use_release_velocity {
+            voice.values.set(velocity, at);
+        }
+    }
+
+    pub fn process_expression(&mut self, e: &ExpressionEvent) {
+        if e.expression != self.params.expression {
+            return;
+        }
+
+        let voice = &mut self.mono_voices[e.voice_idx];
+        let value = Self::transform_value(e.expression, e.value);
+
+        voice.values.set(value, e.offset);
+    }
+
+    fn process_voice(
+        &mut self,
+        target: &VoiceTarget,
+        outputs: &mut VoicesLayout<SamplesOutput>,
+        rf: &mut RouterFactory<ControlRouterType, L::EngineEnd>,
+    ) {
+        let block_samples = rf.params().samples;
+        let sample_rate = rf.params().sample_rate;
+        let voice = &mut self.mono_voices[target.voice_idx];
+        let (router, mut voice_output) = rf.for_voice(target, outputs);
+
+        // Mono voice state is shared across channels; prepare it once.
+        if target.channel_idx == 0 {
+            let buff = &mut voice.buffer[..block_samples];
+
+            voice.values.read_and_reset(buff);
+
+            let offset = if let Some(offset) = target.triggered {
+                voice.smoother.reset(buff[offset]);
+                offset
+            } else {
+                0
+            };
+
+            voice
+                .smoother
+                .apply_if_needed(sample_rate, self.params.smooth, &mut buff[offset..]);
+
+            if router.need_update_ui() {
+                self.audio_end.update_value(Self::normalize_display_value(
+                    self.params.expression,
+                    buff[offset],
+                ));
+            }
+        }
+
+        voice_output.fill_with_ext_control(&voice.buffer[..block_samples]);
+    }
+    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+        ctx.control(self.id, self.output_slot)
+            .for_voices(|rf, target, outputs| {
+                self.process_voice(target, outputs, rf);
+            });
+    }
+}
+
+impl<L: ExpressionsLinks> SynthModule for Expressions<L> {
+    fn id(&self) -> ModuleId {
+        self.id
+    }
+
+    fn inputs(&self) -> &'static [InputMeta] {
+        &[]
+    }
+
+    fn output_type(&self) -> DataType {
+        DataType::Control
+    }
+
+    fn output_slot(&self) -> usize {
+        self.output_slot
+    }
+
+    fn set_output_slot(&mut self, slot: usize) {
+        self.output_slot = slot;
+    }
+
+    fn process_events(&mut self, events: &[VoiceEvent]) {
+        for event in events {
+            match event {
+                VoiceEvent::Reset {
+                    voice_idx,
+                    velocity,
+                    ..
+                } => {
+                    Self::handle_trigger(
+                        &mut self.mono_voices[*voice_idx],
+                        &self.params,
+                        *velocity,
+                    );
+                }
+                VoiceEvent::Update {
+                    voice_idx,
+                    velocity,
+                    offset,
+                    ..
+                } => {
+                    Self::handle_update(
+                        &mut self.mono_voices[*voice_idx],
+                        &self.params,
+                        *velocity,
+                        *offset,
+                    );
+                }
+                VoiceEvent::Release {
+                    voice_idx,
+                    velocity,
+                    offset,
+                    ..
+                } => {
+                    Self::handle_release(
+                        &mut self.mono_voices[*voice_idx],
+                        &self.params,
+                        *velocity,
+                        *offset,
+                    );
+                }
+                _ => (),
+            }
+        }
+    }
+
+    fn process_ui_events(&mut self) {
+        while let Some(event) = self.audio_end.pop_event() {
+            match event {
+                UiEvent::Expression(expression) => self.set_expression(expression),
+                UiEvent::UseReleaseVelocity(value) => self.set_use_release_velocity(value),
+                UiEvent::Smooth(value) => self.set_smooth(value),
+            }
+        }
+    }
+}

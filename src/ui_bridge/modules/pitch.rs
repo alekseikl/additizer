@@ -1,5 +1,6 @@
 use crate::synth_engine::pitch::{Pitch, PitchConfig, PitchLinks, PitchUiEnd};
-use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
+use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::ui_bridge::ModuleUiBridge;
 
 pub struct PitchUiBridge<L: PitchLinks = crate::links::pitch::Links> {
     ui_end: L::UiEnd,

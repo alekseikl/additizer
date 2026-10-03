@@ -1,5 +1,6 @@
 use egui::{Response, Sense, Ui, Widget, emath, lerp, vec2};
 
+use crate::editor::routing_ui_ext::InputUi;
 use crate::{
     editor::{grid::input_mixer_popup::InputMixerPopup, slider::Slider},
     synth_engine::{

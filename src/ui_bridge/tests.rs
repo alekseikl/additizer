@@ -9,12 +9,15 @@ use crate::{
         EngineConfig, EngineParams, Input, InputId, LinkConfig, ModuleConfig, ModuleId, ModuleType,
         OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
         harmonic_editor::HarmonicEditorConfig,
-        oscillator::OscillatorConfig,
+        oscillator::{Oscillator, OscillatorConfig},
+        spectral_eq::{EqFilter, SpectralEq, SpectralEqConfig},
+        synth_module::SynthModule,
         ui_bridge::{
             UiBridge,
             ui_config::{GridVec, UiConfig, UiModuleConfig},
         },
     },
+    ui_bridge::modules::{oscillator::OscillatorUiBridge, spectral_eq::SpectralEqUiBridge},
 };
 
 const SAMPLE_RATE: Sample = 48_000.0;
@@ -210,4 +213,51 @@ fn duplicate_module_places_copy_at_the_given_position() {
         bridge.get_module_position(OSCILLATOR_ID),
         GridVec::new(1, 2)
     );
+}
+
+#[test]
+fn ui_event_sets_mono_spectrum() {
+    let mut osc = Oscillator::<crate::links::oscillator::Links>::new(1);
+    let mut bridge = OscillatorUiBridge::try_new(&mut osc).expect("ui end");
+
+    bridge.set_mono_spectrum(true);
+    osc.process_ui_events();
+
+    assert!(bridge.config().mono_spectrum);
+    assert!(osc.get_config().mono_spectrum);
+}
+
+#[test]
+fn move_filter_reorders_bands() {
+    let bands = [100.0, 1_000.0, 8_000.0].map(|cutoff_hz| EqFilter {
+        cutoff_hz,
+        ..EqFilter::default()
+    });
+    let mut eq = SpectralEq::<crate::links::spectral_eq::Links>::from_config(&SpectralEqConfig {
+        filters: bands.to_vec(),
+        ..SpectralEqConfig::default()
+    });
+    let mut bridge = SpectralEqUiBridge::try_new(&mut eq).unwrap();
+
+    bridge.move_filter(0, 0);
+    bridge.move_filter(3, 0);
+    eq.process_ui_events();
+    assert_eq!(cutoffs(&eq.get_config().filters), [100.0, 1_000.0, 8_000.0]);
+
+    bridge.move_filter(2, 0);
+    eq.process_ui_events();
+    assert_eq!(cutoffs(&bridge.config().filters), [8_000.0, 100.0, 1_000.0]);
+    assert_eq!(cutoffs(&eq.get_config().filters), [8_000.0, 100.0, 1_000.0]);
+
+    bridge.move_filter(0, 1);
+    eq.process_ui_events();
+    assert_eq!(cutoffs(&eq.get_config().filters), [100.0, 8_000.0, 1_000.0]);
+}
+
+fn cutoffs(filters: &[EqFilter]) -> [f32; 3] {
+    [
+        filters[0].cutoff_hz,
+        filters[1].cutoff_hz,
+        filters[2].cutoff_hz,
+    ]
 }

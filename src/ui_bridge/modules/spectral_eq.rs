@@ -1,7 +1,8 @@
 use crate::synth_engine::spectral_eq::{
     EqFilter, MAX_EQ_FILTERS, SpectralEq, SpectralEqConfig, SpectralEqLinks, SpectralEqUiEnd,
 };
-use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
+use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::ui_bridge::ModuleUiBridge;
 
 pub struct SpectralEqUiBridge<L: SpectralEqLinks = crate::links::spectral_eq::Links> {
     ui_end: L::UiEnd,

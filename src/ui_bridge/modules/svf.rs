@@ -1,5 +1,6 @@
 use crate::synth_engine::svf::{Svf, SvfConfig, SvfLinks, SvfUiEnd};
-use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
+use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::ui_bridge::ModuleUiBridge;
 use additizer_dsp::filters::svf::SvfType;
 
 pub struct SvfUiBridge<L: SvfLinks = crate::links::svf::Links> {

@@ -14,7 +14,8 @@ use crate::{
     },
     synth_engine::{
         ModuleId,
-        ui_bridge::{GridVec, UiBridge, routing_state::ModuleIo},
+        routing_state::ModuleIo,
+        ui_bridge::{GridVec, UiBridge},
     },
 };
 

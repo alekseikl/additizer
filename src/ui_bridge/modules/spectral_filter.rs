@@ -1,7 +1,8 @@
 use crate::synth_engine::spectral_filter::{
     SpectralFilter, SpectralFilterConfig, SpectralFilterLinks, SpectralFilterUiEnd,
 };
-use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
+use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::ui_bridge::ModuleUiBridge;
 use additizer_dsp::filters::spectral_filter::FilterType;
 
 pub struct SpectralFilterUiBridge<L: SpectralFilterLinks = crate::links::spectral_filter::Links> {

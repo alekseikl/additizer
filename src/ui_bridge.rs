@@ -2,20 +2,20 @@ use std::ops::DerefMut;
 
 use enum_dispatch::enum_dispatch;
 
+use crate::editor::routing_ui_ext::ModuleTypeUi;
 use crate::{
     engine_factory::{EngineHandle, UiConfigHandle},
     synth_engine::{
-        InputId, ModuleHandle, ModuleId, ModuleType, ModuleUiBridge, OUTPUT_MODULE_ID, Sample,
-        StereoSample,
+        InputId, ModuleHandle, ModuleId, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample,
         config::EngineParams,
         engine_io::EngineLinks,
         routing::{DataType, Input, InputMeta, InputSource, data_types_compatible},
+        routing_state::{self, ConnectedInputSource, ModuleIo, RoutingState},
     },
     utils::log,
 };
 
 pub mod modules;
-pub mod routing_state;
 pub mod ui_config;
 
 pub use ui_config::GridVec;
@@ -32,10 +32,8 @@ use modules::{
     spectral_mixer::SpectralMixerUiBridge, spectral_noise::SpectralNoiseUiBridge, svf::SvfUiBridge,
     wave_shaper::WaveShaperUiBridge,
 };
-pub use routing_state::{ConnectedInputSource, RoutingState};
 use rustc_hash::FxHashMap;
 
-use routing_state::ModuleIo;
 use ui_config::UiModuleConfig;
 
 #[enum_dispatch(ModuleUiBridge)]
@@ -57,6 +55,13 @@ pub enum ModuleBridge<E: EngineLinks = crate::links::PluginLinks> {
     SpectralNoise(Box<SpectralNoiseUiBridge<E::SpectralNoise>>),
     Expressions(Box<ExpressionsUiBridge<E::Expressions>>),
     ExternalParam(Box<ExternalParamUiBridge<E::ExternalParam>>),
+}
+
+#[enum_dispatch]
+#[auto_impl::auto_impl(Box)]
+pub trait ModuleUiBridge: Send {
+    // Return true when routing needs to be update
+    fn update(&mut self) -> bool;
 }
 
 pub struct ModuleItem {

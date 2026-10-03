@@ -33,7 +33,7 @@ mod frequency_bins;
 mod grid;
 mod module_label;
 mod modules_ui;
-mod routing_ui_ext;
+pub mod routing_ui_ext;
 mod slider;
 mod stereo_input;
 mod units;
@@ -89,7 +89,11 @@ impl EditorState {
     }
 }
 
-impl ModuleType {
+trait ModuleTypeEditor {
+    fn ui(&self, id: ModuleId) -> ModuleUIBox;
+}
+
+impl ModuleTypeEditor for ModuleType {
     fn ui(&self, id: ModuleId) -> ModuleUIBox {
         match self {
             Self::Output => Box::new(OutputUi::new()),

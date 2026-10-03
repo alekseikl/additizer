@@ -1,9 +1,8 @@
 use crate::synth_engine::oscillator::{
     Oscillator, OscillatorConfig, OscillatorLinks, OscillatorUiEnd, PhasesDst, Unison,
 };
-use crate::synth_engine::{
-    DisplaySpectrum, Input, Sample, StereoSample, synth_module::ModuleUiBridge,
-};
+use crate::synth_engine::{DisplaySpectrum, Input, Sample, StereoSample};
+use crate::ui_bridge::ModuleUiBridge;
 
 pub struct OscillatorUiBridge<L: OscillatorLinks = crate::links::oscillator::Links> {
     ui_end: L::UiEnd,

@@ -1,5 +1,6 @@
 use crate::synth_engine::lfo::{Lfo, LfoConfig, LfoLinks, LfoShape, LfoUiEnd};
-use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
+use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::ui_bridge::ModuleUiBridge;
 
 pub struct LfoUiBridge<L: LfoLinks = crate::links::lfo::Links> {
     ui_end: L::UiEnd,

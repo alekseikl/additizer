@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::spectral_eq::SpectralEqUiBridge;
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, epaint::PathStroke};
 use smallvec::SmallVec;
 
@@ -5,7 +6,7 @@ use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
         ComplexSample, Input, ModuleId, Sample,
-        spectral_eq::{MAX_EQ_FILTERS, SpectralEqUiBridge},
+        spectral_eq::MAX_EQ_FILTERS,
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{

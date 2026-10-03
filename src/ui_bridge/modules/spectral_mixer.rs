@@ -1,9 +1,8 @@
 use crate::synth_engine::spectral_mixer::{
     SpectralMixer, SpectralMixerConfig, SpectralMixerLinks, SpectralMixerUiEnd, UiUpdate,
 };
-use crate::synth_engine::{
-    Input, MixType, StereoSample, VolumeType, synth_module::ModuleUiBridge, types::ComplexSample,
-};
+use crate::synth_engine::{Input, MixType, StereoSample, VolumeType, types::ComplexSample};
+use crate::ui_bridge::ModuleUiBridge;
 
 pub struct SpectralMixerUiBridge<L: SpectralMixerLinks = crate::links::spectral_mixer::Links> {
     ui_end: L::UiEnd,

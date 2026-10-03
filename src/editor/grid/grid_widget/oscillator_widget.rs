@@ -1,8 +1,8 @@
+use crate::ui_bridge::modules::oscillator::OscillatorUiBridge;
 use crate::{
     editor::{grid::WidgetCtx, waveform::WaveformBuilder},
     synth_engine::{
         DISPLAY_SPECTRUM_SIZE, ModuleId,
-        oscillator::OscillatorUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
 };

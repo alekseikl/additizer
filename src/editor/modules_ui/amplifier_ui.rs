@@ -1,10 +1,10 @@
+use crate::ui_bridge::modules::amplifier::AmplifierUiBridge;
 use egui::{Grid, Ui};
 
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput},
     synth_engine::{
         Input, ModuleId, ModuleType,
-        amplifier::AmplifierUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
 };

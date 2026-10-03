@@ -10,7 +10,8 @@ use crate::{
     synth_engine::{
         EngineConfig, EngineParams, Input, InputId, ModuleId, ModuleType, OUTPUT_MODULE_ID,
         SynthEngine,
-        ui_bridge::{GridVec, UiBridge, routing_state::ModuleIo, ui_config::UiConfig},
+        routing_state::ModuleIo,
+        ui_bridge::{GridVec, UiBridge, ui_config::UiConfig},
     },
 };
 

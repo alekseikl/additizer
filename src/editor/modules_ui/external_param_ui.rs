@@ -1,10 +1,11 @@
+use crate::ui_bridge::modules::external_param::ExternalParamUiBridge;
 use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, slider::Slider, units::Units},
     synth_engine::{
         ModuleId, ModuleType,
-        external_param::{ExternalParamUiBridge, NUM_EXT_PARAMS},
+        external_param::NUM_EXT_PARAMS,
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::from_ms,

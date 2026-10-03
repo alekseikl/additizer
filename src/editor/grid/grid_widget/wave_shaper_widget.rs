@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::wave_shaper::WaveShaperUiBridge;
 use egui::{Color32, Pos2, Rect, Stroke, StrokeKind, Vec2, emath::GuiRounding, epaint::PathStroke};
 
 use crate::{
@@ -5,7 +6,6 @@ use crate::{
     synth_engine::{
         Input, ModuleId, Sample, ShaperType,
         ui_bridge::{GridVec, ModuleBridge, UiBridge},
-        wave_shaper::WaveShaperUiBridge,
     },
     utils::db_to_gain_fast,
 };

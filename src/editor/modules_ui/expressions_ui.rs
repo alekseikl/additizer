@@ -1,17 +1,21 @@
+use crate::ui_bridge::modules::expressions::ExpressionsUiBridge;
 use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, slider::Slider, units::Units},
     synth_engine::{
         Expression, ModuleId, ModuleType,
-        expressions::ExpressionsUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::from_ms,
 };
 
-impl Expression {
-    pub fn label(&self) -> &'static str {
+trait ExpressionLabel {
+    fn label(&self) -> &'static str;
+}
+
+impl ExpressionLabel for Expression {
+    fn label(&self) -> &'static str {
         match self {
             Self::Velocity => "Velocity",
             Self::Gain => "Gain",

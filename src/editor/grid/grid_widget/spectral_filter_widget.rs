@@ -1,10 +1,10 @@
+use crate::ui_bridge::modules::spectral_filter::SpectralFilterUiBridge;
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, epaint::PathStroke};
 
 use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
         ComplexSample, Input, ModuleId, Sample,
-        spectral_filter::SpectralFilterUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, gain_to_db_fast},

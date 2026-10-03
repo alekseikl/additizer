@@ -2,6 +2,7 @@ use egui::{
     Color32, FontFamily, FontId, Id, Response, RichText, Stroke, TextEdit, Ui, Widget, ecolor::Hsva,
 };
 
+use crate::editor::routing_ui_ext::ModuleTypeUi;
 use crate::synth_engine::{ModuleId, ModuleType, ui_bridge::UiBridge};
 
 use super::utils::hsva;

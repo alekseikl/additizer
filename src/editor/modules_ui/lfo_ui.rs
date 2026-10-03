@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::lfo::LfoUiBridge;
 use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
@@ -7,12 +8,15 @@ use crate::{
     },
     synth_engine::{
         Input, LfoShape, ModuleId, ModuleType,
-        lfo::LfoUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
 };
 
-impl LfoShape {
+trait LfoShapeLabel {
+    fn label(&self) -> &'static str;
+}
+
+impl LfoShapeLabel for LfoShape {
     fn label(&self) -> &'static str {
         match self {
             Self::Triangle => "Triangle",

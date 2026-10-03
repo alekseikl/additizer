@@ -1,10 +1,10 @@
+use crate::ui_bridge::modules::spectral_blend::SpectralBlendUiBridge;
 use egui::{Grid, Ui};
 
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput},
     synth_engine::{
         Input, ModuleId, ModuleType,
-        spectral_blend::SpectralBlendUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
 };

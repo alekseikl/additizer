@@ -1,10 +1,10 @@
+use crate::ui_bridge::modules::amplifier::AmplifierUiBridge;
 use egui::{Rect, Vec2, emath::GuiRounding};
 
 use crate::{
     editor::{fit_label::FitLabel, grid::WidgetCtx, volume_meter::VolumeMeter},
     synth_engine::{
         ModuleId, NUM_CHANNELS, StereoSample,
-        amplifier::AmplifierUiBridge,
         ui_bridge::{GridVec, ModuleBridge},
     },
 };

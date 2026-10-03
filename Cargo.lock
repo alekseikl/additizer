@@ -16,6 +16,7 @@ name = "additizer"
 version = "0.1.0"
 dependencies = [
  "additizer-dsp",
+ "additizer-engine",
  "arc-swap",
  "assert_no_alloc",
  "atomic_float",
@@ -27,22 +28,17 @@ dependencies = [
  "egui",
  "egui_extras",
  "enum_dispatch",
- "itertools 0.15.0",
  "midir",
  "nice-plug",
  "nice-plug-egui",
  "parking_lot",
- "rand",
- "rand_pcg",
  "realfft",
  "rtrb",
  "rustc-hash",
  "serde",
  "serde_json",
  "smallvec",
- "topo_sort",
  "triple_buffer",
- "wide",
 ]
 
 [[package]]
@@ -54,6 +50,25 @@ dependencies = [
  "num-complex",
  "serde",
  "serde_json",
+ "wide",
+]
+
+[[package]]
+name = "additizer-engine"
+version = "0.1.0"
+dependencies = [
+ "additizer-dsp",
+ "auto_impl",
+ "enum_dispatch",
+ "itertools 0.15.0",
+ "rand",
+ "rand_pcg",
+ "realfft",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "topo_sort",
  "wide",
 ]
 

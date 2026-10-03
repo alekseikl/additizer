@@ -5,6 +5,7 @@ use egui::{
     lerp, vec2,
 };
 
+use crate::editor::routing_ui_ext::{DataTypeUi, InputUi, ModuleTypeUi};
 use crate::{
     editor::grid::{
         GridEvent, WidgetCtx, WireDragState,
@@ -27,10 +28,8 @@ use crate::{
     },
     synth_engine::{
         Input, InputId, InputSource, ModuleId, ModuleType,
-        ui_bridge::{
-            GridVec,
-            routing_state::{ModuleInput, ModuleIo},
-        },
+        routing_state::{ModuleInput, ModuleIo},
+        ui_bridge::GridVec,
     },
 };
 

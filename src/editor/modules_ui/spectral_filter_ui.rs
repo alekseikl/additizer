@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::spectral_filter::SpectralFilterUiBridge;
 use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
@@ -10,7 +11,7 @@ use crate::{
     },
     synth_engine::{
         Input, ModuleId, ModuleType,
-        spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF, SpectralFilterUiBridge},
+        spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},

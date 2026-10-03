@@ -1,10 +1,10 @@
+use crate::ui_bridge::modules::svf::SvfUiBridge;
 use egui::{ComboBox, Grid, Ui};
 
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput},
     synth_engine::{
         Input, ModuleId, ModuleType,
-        svf::SvfUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
 };

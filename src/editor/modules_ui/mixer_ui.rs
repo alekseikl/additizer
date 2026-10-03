@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::mixer::MixerUiBridge;
 use std::{cell::Cell, rc::Rc};
 
 use egui::{ComboBox, DragValue, Grid, Ui};
@@ -6,7 +7,6 @@ use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput},
     synth_engine::{
         Input, ModuleId, ModuleType, VolumeType,
-        mixer::MixerUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
 };

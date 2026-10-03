@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::spectral_noise::SpectralNoiseUiBridge;
 use egui::ecolor::Hsva;
 
 use crate::{
@@ -5,10 +6,7 @@ use crate::{
         grid::WidgetCtx,
         waveform::{WaveformBuilder, WaveformOptions},
     },
-    synth_engine::{
-        DISPLAY_SPECTRUM_SIZE, ModuleId, spectral_noise::SpectralNoiseUiBridge,
-        ui_bridge::ModuleBridge,
-    },
+    synth_engine::{DISPLAY_SPECTRUM_SIZE, ModuleId, ui_bridge::ModuleBridge},
 };
 
 use super::GridWidgetContent;

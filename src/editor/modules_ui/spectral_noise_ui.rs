@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::spectral_noise::SpectralNoiseUiBridge;
 use egui::{Checkbox, ComboBox, DragValue, Grid, Ui};
 
 use crate::{
@@ -10,7 +11,7 @@ use crate::{
     },
     synth_engine::{
         Input, MAX_BANDWIDTH, ModuleId, ModuleType,
-        spectral_noise::{MAX_ROLLOFF, MIN_ROLLOFF, NoiseColor, SpectralNoiseUiBridge},
+        spectral_noise::{MAX_ROLLOFF, MIN_ROLLOFF, NoiseColor},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},

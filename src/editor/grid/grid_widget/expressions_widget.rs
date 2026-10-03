@@ -1,10 +1,10 @@
+use crate::ui_bridge::modules::expressions::ExpressionsUiBridge;
 use egui::{Rect, Vec2, emath::GuiRounding};
 
 use crate::{
     editor::{control_meter::ControlMeter, fit_label::FitLabel, grid::WidgetCtx},
     synth_engine::{
         ModuleId,
-        expressions::ExpressionsUiBridge,
         ui_bridge::{GridVec, ModuleBridge},
     },
 };

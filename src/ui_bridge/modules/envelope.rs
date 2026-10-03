@@ -1,6 +1,7 @@
 use crate::synth_engine::envelope::EnvelopePhase;
 use crate::synth_engine::envelope::{Envelope, EnvelopeConfig, EnvelopeLinks, EnvelopeUiEnd};
-use crate::synth_engine::{Input, Sample, StereoSample, synth_module::ModuleUiBridge};
+use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::ui_bridge::ModuleUiBridge;
 
 pub struct EnvelopeUiBridge<L: EnvelopeLinks = crate::links::envelope::Links> {
     ui_end: L::UiEnd,

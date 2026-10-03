@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::oscillator::OscillatorUiBridge;
 use crate::{
     editor::{
         ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput,
@@ -5,7 +6,7 @@ use crate::{
     },
     synth_engine::{
         Input, ModuleId, ModuleType, Sample, StereoSample,
-        oscillator::{self, OscillatorConfig, OscillatorUiBridge, PhasesDst},
+        oscillator::{OscillatorConfig, PhasesDst},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{MIN_LEVEL_DB, db_to_gain, gain_to_db},
@@ -46,7 +47,7 @@ impl OscillatorUI {
     }
 
     fn show_gain_shape_modal(
-        bridge: &mut oscillator::OscillatorUiBridge,
+        bridge: &mut OscillatorUiBridge,
         ui: &mut Ui,
         state: &mut GainShapeState,
     ) -> bool {
@@ -105,7 +106,7 @@ impl OscillatorUI {
     }
 
     fn show_randomize_phases_modal(
-        bridge: &mut oscillator::OscillatorUiBridge,
+        bridge: &mut OscillatorUiBridge,
         ui: &mut Ui,
         state: &mut RandomizePhaseState,
     ) -> bool {
@@ -218,7 +219,7 @@ impl OscillatorUI {
     fn show_unison_section(
         module_id: ModuleId,
         synth_bridge: &mut UiBridge,
-        bridge: &mut oscillator::OscillatorUiBridge,
+        bridge: &mut OscillatorUiBridge,
         config: &mut OscillatorConfig,
         unison_state: &mut UnisonState,
         ui: &mut Ui,

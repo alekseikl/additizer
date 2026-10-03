@@ -1,10 +1,10 @@
+use crate::ui_bridge::modules::svf::SvfUiBridge;
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, epaint::PathStroke};
 
 use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
         Input, ModuleId, Sample,
-        svf::SvfUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{

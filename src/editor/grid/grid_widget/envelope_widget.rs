@@ -1,10 +1,11 @@
+use crate::ui_bridge::modules::envelope::EnvelopeUiBridge;
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, epaint::PathStroke};
 
 use crate::{
     editor::grid::WidgetCtx,
     synth_engine::{
         Input, ModuleId, Sample,
-        envelope::{EnvelopeConfig, EnvelopePhase, EnvelopeUiBridge, SLOPE_POWER_SCALE},
+        envelope::{EnvelopeConfig, EnvelopePhase, SLOPE_POWER_SCALE},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::power_scale,

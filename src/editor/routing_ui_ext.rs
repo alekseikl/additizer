@@ -22,8 +22,16 @@ fn color_from_hue(h: f32) -> Color32 {
     })
 }
 
-impl Input {
-    pub fn label(&self) -> String {
+pub trait InputUi {
+    fn label(&self) -> String;
+    fn hue(&self) -> f32;
+    fn color(&self) -> Color32;
+    fn amount_slider<'a>(&self, amount: &'a mut StereoSample) -> Slider<'a>;
+    fn param_slider<'a>(&self, value: &'a mut StereoSample) -> Slider<'a>;
+}
+
+impl InputUi for Input {
+    fn label(&self) -> String {
         match self {
             Self::Audio => "Audio".to_string(),
             Self::AudioMix(idx) => format!("Audio #{}", idx + 1),
@@ -64,7 +72,7 @@ impl Input {
         }
     }
 
-    pub fn hue(&self) -> f32 {
+    fn hue(&self) -> f32 {
         match self {
             Self::Audio => 0.0,
             Self::AudioMix(idx) => 0.0 + *idx as f32 * 0.012,
@@ -105,11 +113,11 @@ impl Input {
         }
     }
 
-    pub fn color(&self) -> Color32 {
+    fn color(&self) -> Color32 {
         color_from_hue(self.hue())
     }
 
-    pub fn amount_slider<'a>(&self, amount: &'a mut StereoSample) -> Slider<'a> {
+    fn amount_slider<'a>(&self, amount: &'a mut StereoSample) -> Slider<'a> {
         fn bipolar<'a>(amount: &'a mut StereoSample) -> Slider<'a> {
             Slider::stereo(amount, 0.0..=1.0, Some(-1.0)).default(0.0)
         }
@@ -175,7 +183,7 @@ impl Input {
         }
     }
 
-    pub fn param_slider<'a>(&self, value: &'a mut StereoSample) -> Slider<'a> {
+    fn param_slider<'a>(&self, value: &'a mut StereoSample) -> Slider<'a> {
         match self {
             Self::Gain | Self::GainMix(_) => {
                 Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(1.0)
@@ -248,8 +256,13 @@ impl Input {
     }
 }
 
-impl DataType {
-    pub fn hue(&self) -> f32 {
+pub trait DataTypeUi {
+    fn hue(&self) -> f32;
+    fn color(&self) -> Color32;
+}
+
+impl DataTypeUi for DataType {
+    fn hue(&self) -> f32 {
         match self {
             Self::Audio => 0.0,
             Self::Control => 0.36,
@@ -257,13 +270,18 @@ impl DataType {
         }
     }
 
-    pub fn color(&self) -> Color32 {
+    fn color(&self) -> Color32 {
         color_from_hue(self.hue())
     }
 }
 
-impl ModuleType {
-    pub fn default_label(self) -> &'static str {
+pub trait ModuleTypeUi {
+    fn default_label(self) -> &'static str;
+    fn input_label(self, input: Input) -> String;
+}
+
+impl ModuleTypeUi for ModuleType {
+    fn default_label(self) -> &'static str {
         match self {
             Self::Output => "Output",
             Self::Amplifier => "Amplifier",
@@ -286,7 +304,7 @@ impl ModuleType {
         }
     }
 
-    pub fn input_label(self, input: Input) -> String {
+    fn input_label(self, input: Input) -> String {
         match self {
             Self::Mixer => match input {
                 Input::Gain => "Output gain".into(),

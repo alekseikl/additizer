@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::spectral_band_select::SpectralBandSelectUiBridge;
 use std::ops::RangeInclusive;
 
 use egui::{ComboBox, DragValue, Ui};
@@ -8,7 +9,6 @@ use crate::{
         ModuleId, ModuleType, Sample,
         spectral_band_select::{
             BandSelectMode, MAX_BAND_HZ, MAX_HARMONIC, MAX_HARMONIC_END, MIN_BAND_HZ, MIN_HARMONIC,
-            SpectralBandSelectUiBridge,
         },
         ui_bridge::{ModuleBridge, UiBridge},
     },

@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::pitch::PitchUiBridge;
 use egui::{Checkbox, Grid, Ui};
 
 use crate::{
@@ -9,7 +10,6 @@ use crate::{
     },
     synth_engine::{
         Input, ModuleId, ModuleType,
-        pitch::PitchUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
 };

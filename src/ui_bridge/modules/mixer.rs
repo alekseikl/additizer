@@ -1,5 +1,6 @@
 use crate::synth_engine::mixer::{Mixer, MixerConfig, MixerLinks, MixerUiEnd, UiUpdate};
-use crate::synth_engine::{Input, StereoSample, VolumeType, synth_module::ModuleUiBridge};
+use crate::synth_engine::{Input, StereoSample, VolumeType};
+use crate::ui_bridge::ModuleUiBridge;
 
 pub struct MixerUiBridge<L: MixerLinks = crate::links::mixer::Links> {
     ui_end: L::UiEnd,

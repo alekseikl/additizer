@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::lfo::LfoUiBridge;
 use egui::{Color32, Pos2, Rect};
 
 use crate::{
@@ -7,7 +8,7 @@ use crate::{
     },
     synth_engine::{
         Input, ModuleId, Sample,
-        lfo::{Lfo, LfoShape, LfoUiBridge},
+        lfo::{Lfo, LfoShape},
         ui_bridge::{ModuleBridge, UiBridge},
     },
 };

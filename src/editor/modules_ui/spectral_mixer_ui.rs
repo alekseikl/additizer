@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::spectral_mixer::SpectralMixerUiBridge;
 use std::{cell::Cell, rc::Rc};
 
 use egui::{ComboBox, DragValue, Grid, Ui};
@@ -6,12 +7,15 @@ use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput},
     synth_engine::{
         Input, MixType, ModuleId, ModuleType, VolumeType,
-        spectral_mixer::SpectralMixerUiBridge,
         ui_bridge::{ModuleBridge, UiBridge},
     },
 };
 
-impl MixType {
+trait MixTypeLabel {
+    fn label(&self) -> &'static str;
+}
+
+impl MixTypeLabel for MixType {
     fn label(&self) -> &'static str {
         match self {
             Self::Add => "+",

@@ -2,7 +2,8 @@ use crate::synth_engine::harmonic_editor::{
     EditRequest, HarmonicEditor, HarmonicEditorLinks, HarmonicEditorUiEnd, Harmonics,
     clamp_bandwidth,
 };
-use crate::synth_engine::{ComplexSample, StereoSample, synth_module::ModuleUiBridge};
+use crate::synth_engine::{ComplexSample, StereoSample};
+use crate::ui_bridge::ModuleUiBridge;
 
 pub struct HarmonicEditorUiBridge<L: HarmonicEditorLinks = crate::links::harmonic_editor::Links> {
     ui_end: L::UiEnd,

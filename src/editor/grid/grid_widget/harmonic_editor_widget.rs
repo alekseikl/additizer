@@ -1,8 +1,9 @@
+use crate::ui_bridge::modules::harmonic_editor::HarmonicEditorUiBridge;
 use egui::emath::GuiRounding;
 
 use crate::{
     editor::{frequency_bins::FrequencyBins, grid::WidgetCtx},
-    synth_engine::{ModuleId, harmonic_editor::HarmonicEditorUiBridge, ui_bridge::ModuleBridge},
+    synth_engine::{ModuleId, ui_bridge::ModuleBridge},
 };
 
 use super::GridWidgetContent;

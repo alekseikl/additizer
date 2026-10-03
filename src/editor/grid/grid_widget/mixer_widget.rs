@@ -1,8 +1,8 @@
+use crate::ui_bridge::modules::mixer::MixerUiBridge;
 use crate::{
     editor::{grid::WidgetCtx, volume_meter::VolumeMeter},
     synth_engine::{
         ModuleId, NUM_CHANNELS, StereoSample,
-        mixer::MixerUiBridge,
         ui_bridge::{GridVec, ModuleBridge},
     },
 };

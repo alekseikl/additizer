@@ -1,3 +1,4 @@
+use crate::ui_bridge::modules::harmonic_editor::HarmonicEditorUiBridge;
 use crate::{
     editor::{
         ModuleUi,
@@ -8,7 +9,7 @@ use crate::{
     },
     synth_engine::{
         MAX_BANDWIDTH, ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, Sample, StereoSample,
-        harmonic_editor::{EditRequest, HarmonicEditorUiBridge, HarmonicsRange, sawtooth_phase},
+        harmonic_editor::{EditRequest, HarmonicsRange, sawtooth_phase},
         ui_bridge::{ModuleBridge, UiBridge},
     },
     utils::{MAX_LEVEL_DB, MIN_LEVEL_DB, db_to_gain},

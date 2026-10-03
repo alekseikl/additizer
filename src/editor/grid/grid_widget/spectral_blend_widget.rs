@@ -1,8 +1,9 @@
+use crate::ui_bridge::modules::spectral_blend::SpectralBlendUiBridge;
 use egui::emath::GuiRounding;
 
 use crate::{
     editor::{frequency_bins::FrequencyBins, grid::WidgetCtx},
-    synth_engine::{ModuleId, spectral_blend::SpectralBlendUiBridge, ui_bridge::ModuleBridge},
+    synth_engine::{ModuleId, ui_bridge::ModuleBridge},
 };
 
 use super::GridWidgetContent;

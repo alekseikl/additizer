@@ -1,9 +1,8 @@
 use crate::synth_engine::spectral_blend::{
     SpectralBlend, SpectralBlendConfig, SpectralBlendLinks, SpectralBlendUiEnd,
 };
-use crate::synth_engine::{
-    Input, StereoSample, synth_module::ModuleUiBridge, types::ComplexSample,
-};
+use crate::synth_engine::{Input, StereoSample, types::ComplexSample};
+use crate::ui_bridge::ModuleUiBridge;
 
 pub struct SpectralBlendUiBridge<L: SpectralBlendLinks = crate::links::spectral_blend::Links> {
     ui_end: L::UiEnd,
