@@ -1,4 +1,4 @@
-use std::{array, f32, mem, sync::Arc};
+use std::{array, mem, sync::Arc};
 
 use itertools::izip;
 use rand::RngExt;

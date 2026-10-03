@@ -152,8 +152,6 @@ impl Plugin for Additizer {
                         key: Key::Number(note.note),
                     });
                 }
-
-                self.repaint_notifier.request_repaint();
             }
         });
 

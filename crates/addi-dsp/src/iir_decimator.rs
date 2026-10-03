@@ -34,12 +34,14 @@ impl IirDecimator {
 
     pub fn process(&mut self, input: [&[Sample]; CHANNELS], mut output: [&mut [Sample]; CHANNELS]) {
         let (out_left, out_right) = output.split_at_mut(1);
+        let (in_left, _) = input[0].as_chunks::<2>();
+        let (in_right, _) = input[1].as_chunks::<2>();
 
         for (out_left, out_right, in_left, in_right) in izip!(
             out_left[0].iter_mut(),
             out_right[0].iter_mut(),
-            input[0].chunks_exact(2),
-            input[1].chunks_exact(2)
+            in_left,
+            in_right,
         ) {
             let mut result = f32x4::new([in_left[0], in_left[1], in_right[0], in_right[1]]);
 

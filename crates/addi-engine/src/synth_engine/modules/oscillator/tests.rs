@@ -74,9 +74,7 @@ fn silent_right_harmonics() -> HarmonicEditorConfig {
         ..HarmonicEditorConfig::default()
     };
 
-    for amp in &mut he.amplitudes[RIGHT_CHANNEL] {
-        *amp = 0.0;
-    }
+    he.amplitudes[RIGHT_CHANNEL].fill(0.0);
 
     he
 }
