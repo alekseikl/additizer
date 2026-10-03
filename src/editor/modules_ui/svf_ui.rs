@@ -8,7 +8,7 @@ use crate::{
         ui_bridge::{ModuleBridge, UiBridge},
     },
 };
-use additizer_dsp::filters::svf::SvfType;
+use addi_dsp::filters::svf::SvfType;
 
 pub struct SvfUi {
     module_id: ModuleId,

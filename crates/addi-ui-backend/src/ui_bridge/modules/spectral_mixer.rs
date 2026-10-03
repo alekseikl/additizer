@@ -1,0 +1,79 @@
+use crate::ui_bridge::ModuleUiBridge;
+use addi_engine::spectral_mixer::{
+    SpectralMixer, SpectralMixerConfig, SpectralMixerLinks, SpectralMixerUiEnd, UiUpdate,
+};
+use addi_engine::{Input, MixType, StereoSample, VolumeType, types::ComplexSample};
+
+pub struct SpectralMixerUiBridge<L: SpectralMixerLinks = crate::links::spectral_mixer::Links> {
+    ui_end: L::UiEnd,
+    config: SpectralMixerConfig,
+}
+
+impl<L: SpectralMixerLinks> SpectralMixerUiBridge<L> {
+    pub fn try_new(mixer: &mut SpectralMixer<L>) -> Option<Self> {
+        Some(Self {
+            ui_end: mixer.take_ui_end()?,
+            config: mixer.get_config(),
+        })
+    }
+
+    pub fn config(&self) -> &SpectralMixerConfig {
+        &self.config
+    }
+
+    pub fn get_spectrum(&mut self) -> &[ComplexSample] {
+        self.ui_end.get_spectrum()
+    }
+
+    pub fn set_param(&mut self, input: Input, value: StereoSample) {
+        if !self.ui_end.set_param(input, value) {
+            return;
+        }
+
+        match input {
+            Input::Gain => self.config.output_gain = value,
+            Input::Level => self.config.output_level = value,
+            Input::GainMix(idx) => self.config.inputs[idx as usize].gain = value,
+            Input::LevelMix(idx) => self.config.inputs[idx as usize].level = value,
+            _ => (),
+        }
+    }
+
+    pub fn set_num_inputs(&mut self, num_inputs: u8) {
+        if self.ui_end.set_num_inputs(num_inputs) {
+            self.config.num_inputs = num_inputs;
+        }
+    }
+
+    pub fn set_mix_type(&mut self, input_idx: u8, mix_type: MixType) {
+        if self.ui_end.set_mix_type(input_idx, mix_type) {
+            self.config.inputs[input_idx as usize].mix_type = mix_type;
+        }
+    }
+
+    pub fn set_volume_type(&mut self, input_idx: u8, volume_type: VolumeType) {
+        if self.ui_end.set_volume_type(input_idx, volume_type) {
+            self.config.inputs[input_idx as usize].volume_type = volume_type;
+        }
+    }
+
+    pub fn set_output_volume_type(&mut self, volume_type: VolumeType) {
+        if self.ui_end.set_output_volume_type(volume_type) {
+            self.config.output_volume_type = volume_type;
+        }
+    }
+}
+
+impl<L: SpectralMixerLinks> ModuleUiBridge for SpectralMixerUiBridge<L> {
+    fn update(&mut self) -> bool {
+        let mut routing_refresh = false;
+
+        while let Some(update) = self.ui_end.pop_update() {
+            match update {
+                UiUpdate::RefreshRouting => routing_refresh = true,
+            }
+        }
+
+        routing_refresh
+    }
+}

@@ -20,7 +20,7 @@ use crate::{
     },
     utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},
 };
-use additizer_dsp::filters::{
+use addi_dsp::filters::{
     control::{MAX_DRIVE, MIN_DRIVE},
     spectral_filter::FilterType,
 };

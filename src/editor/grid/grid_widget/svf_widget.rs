@@ -12,7 +12,7 @@ use crate::{
         gain_to_db_fast, pitch_to_freq,
     },
 };
-use additizer_dsp::filters::{
+use addi_dsp::filters::{
     control::q_from_resonance,
     svf::{SvfResponse, SvfType},
 };

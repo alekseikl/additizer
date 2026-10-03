@@ -9,7 +9,7 @@ use crate::{
     },
     utils::{C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, gain_to_db_fast},
 };
-use additizer_dsp::filters::{
+use addi_dsp::filters::{
     control::{MAX_DRIVE, MIN_DRIVE, q_from_resonance},
     spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
 };

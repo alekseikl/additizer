@@ -5,6 +5,7 @@ use egui::{
     lerp, vec2,
 };
 
+use crate::editor::grid::GridVecExt;
 use crate::editor::routing_ui_ext::{DataTypeUi, InputUi, ModuleTypeUi};
 use crate::{
     editor::grid::{
@@ -223,8 +224,8 @@ impl GridWidget {
 
     pub fn ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
         let grid_pos = ctx.bridge.get_module_position(self.io.id);
-        let size = Vec2::from(self.grid_size()) - Vec2::splat(1.0);
-        let pos = Vec2::from(grid_pos) + vec2(0.0, 1.0);
+        let size = self.grid_size().to_vec2() - Vec2::splat(1.0);
+        let pos = grid_pos.to_vec2() + vec2(0.0, 1.0);
         let origin = ui.min_rect().min;
         let max_rect =
             Rect::from_min_size(origin + pos + self.drag_offset, size).shrink(BLOCK_MARGIN);
@@ -257,7 +258,7 @@ impl GridWidget {
             let offset = (pointer - origin) - pos - grab;
             // Clamp so the widget can't be dragged past the top/left edges:
 
-            self.drag_offset = offset.max(-Vec2::from(grid_pos));
+            self.drag_offset = offset.max(-grid_pos.to_vec2());
             Self::auto_scroll(ui, pointer);
         }
 

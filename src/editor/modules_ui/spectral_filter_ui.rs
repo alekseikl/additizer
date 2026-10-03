@@ -16,7 +16,7 @@ use crate::{
     },
     utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},
 };
-use additizer_dsp::filters::spectral_filter::FilterType;
+use addi_dsp::filters::spectral_filter::FilterType;
 
 pub struct SpectralFilterUI {
     module_id: ModuleId,

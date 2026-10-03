@@ -8,7 +8,7 @@ use crate::{
     synth_engine::{DataType, Input, ModuleType, StereoSample, pitch::MAX_GLIDE_TIME},
     utils::{MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, from_st},
 };
-use additizer_dsp::filters::control::{MAX_DRIVE, MIN_DRIVE};
+use addi_dsp::filters::control::{MAX_DRIVE, MIN_DRIVE};
 
 const IO_COLOR_S: f32 = 0.8;
 const IO_COLOR_V: f32 = 0.5;
@@ -282,26 +282,7 @@ pub trait ModuleTypeUi {
 
 impl ModuleTypeUi for ModuleType {
     fn default_label(self) -> &'static str {
-        match self {
-            Self::Output => "Output",
-            Self::Amplifier => "Amplifier",
-            Self::Envelope => "Envelope",
-            Self::Mixer => "Mixer",
-            Self::Oscillator => "Oscillator",
-            Self::SpectralFilter => "Spectral Filter",
-            Self::SpectralEq => "Spectral EQ",
-            Self::SpectralBandSelect => "Band Select",
-            Self::SpectralBlend => "Spectral Blend",
-            Self::SpectralMixer => "Spectral Mixer",
-            Self::HarmonicEditor => "Harmonics",
-            Self::SpectralNoise => "Spectral Noise",
-            Self::ExternalParam => "Ext Param",
-            Self::Lfo => "LFO",
-            Self::Pitch => "Pitch",
-            Self::WaveShaper => "Waveshaper",
-            Self::Svf => "SVF",
-            Self::Expressions => "Expressions",
-        }
+        crate::ui_bridge::module_default_label(self)
     }
 
     fn input_label(self, input: Input) -> String {

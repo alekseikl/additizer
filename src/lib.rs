@@ -2,23 +2,24 @@
 
 use const_format::concatcp;
 
-mod default_scheme;
 mod editor;
-mod engine_factory;
 mod host_events;
-pub mod links;
 mod params;
-mod preset;
-mod presets;
 pub mod synth_engine;
-pub mod ui_bridge;
 mod utils;
+
+pub use addi_ui_backend::links;
+pub use addi_ui_backend::ui_bridge;
+
+pub(crate) use addi_ui_backend::default_scheme;
+pub(crate) use addi_ui_backend::engine_factory;
+pub(crate) use addi_ui_backend::preset;
+pub(crate) use addi_ui_backend::presets;
 
 use crate::editor::{EditorState, create_editor};
 use crate::engine_factory::{EngineFactory, EngineHandle};
 use crate::params::AdditizerParams;
 use crate::synth_engine::{MAX_VOICES, Note};
-// use crate::utils::log;
 pub use egui;
 use nice_plug::midi::{Channel, Key, VoiceID};
 use nice_plug::prelude::*;

@@ -14,7 +14,7 @@ use crate::{
         freq_to_c4_pitch, gain_to_db_fast,
     },
 };
-use additizer_dsp::filters::{
+use addi_dsp::filters::{
     control::MAX_PRE_Q,
     spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
 };

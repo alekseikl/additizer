@@ -1,10 +1,10 @@
 use std::{f32::consts::TAU, hint::black_box};
 
-use additizer_engine::{MAX_BLOCK_SIZE, Sample};
-use additizer_dsp::filters::{
+use addi_dsp::filters::{
     control::MAX_PRE_Q,
     svf::{SvfChannel, SvfType},
 };
+use addi_engine::{MAX_BLOCK_SIZE, Sample};
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 const SAMPLE_RATE: Sample = 48_000.0;

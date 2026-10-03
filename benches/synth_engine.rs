@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use additizer_engine::{
+use addi_engine::{
     EngineConfig, EngineParams, Input, LinkConfig, MAX_BLOCK_SIZE, ModuleConfig, ModuleId,
     NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
     harmonic_editor::HarmonicEditorConfig,

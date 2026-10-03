@@ -15,7 +15,7 @@ use crate::{
     },
 };
 
-use super::{Grid, GridEvent, GridRect, GridWidget};
+use super::{Grid, GridEvent, GridRect, GridVecExt, GridWidget};
 
 fn rect(x: i32, y: i32, w: i32, h: i32) -> GridRect {
     GridRect { id: 0, x, y, w, h }

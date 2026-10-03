@@ -12,37 +12,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "additizer"
-version = "0.1.0"
-dependencies = [
- "additizer-dsp",
- "additizer-engine",
- "arc-swap",
- "assert_no_alloc",
- "atomic_float",
- "auto_impl",
- "const_format",
- "criterion",
- "crossbeam-utils",
- "directories",
- "egui",
- "egui_extras",
- "enum_dispatch",
- "midir",
- "nice-plug",
- "nice-plug-egui",
- "parking_lot",
- "realfft",
- "rtrb",
- "rustc-hash",
- "serde",
- "serde_json",
- "smallvec",
- "triple_buffer",
-]
-
-[[package]]
-name = "additizer-dsp"
+name = "addi-dsp"
 version = "0.1.0"
 dependencies = [
  "enum_dispatch",
@@ -54,10 +24,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "additizer-engine"
+name = "addi-engine"
 version = "0.1.0"
 dependencies = [
- "additizer-dsp",
+ "addi-dsp",
  "auto_impl",
  "enum_dispatch",
  "itertools 0.15.0",
@@ -70,6 +40,48 @@ dependencies = [
  "smallvec",
  "topo_sort",
  "wide",
+]
+
+[[package]]
+name = "addi-ui-backend"
+version = "0.1.0"
+dependencies = [
+ "addi-dsp",
+ "addi-engine",
+ "arc-swap",
+ "atomic_float",
+ "auto_impl",
+ "directories",
+ "enum_dispatch",
+ "parking_lot",
+ "rtrb",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "tracing",
+ "triple_buffer",
+]
+
+[[package]]
+name = "additizer"
+version = "0.1.0"
+dependencies = [
+ "addi-dsp",
+ "addi-engine",
+ "addi-ui-backend",
+ "assert_no_alloc",
+ "const_format",
+ "criterion",
+ "crossbeam-utils",
+ "egui",
+ "egui_extras",
+ "midir",
+ "nice-plug",
+ "nice-plug-egui",
+ "parking_lot",
+ "realfft",
+ "rustc-hash",
+ "smallvec",
 ]
 
 [[package]]

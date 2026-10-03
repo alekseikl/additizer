@@ -1,0 +1,77 @@
+use crate::ui_bridge::ModuleUiBridge;
+use addi_dsp::filters::spectral_filter::FilterType;
+use addi_engine::spectral_filter::{
+    SpectralFilter, SpectralFilterConfig, SpectralFilterLinks, SpectralFilterUiEnd,
+};
+use addi_engine::{Input, Sample, StereoSample};
+
+pub struct SpectralFilterUiBridge<L: SpectralFilterLinks = crate::links::spectral_filter::Links> {
+    ui_end: L::UiEnd,
+    config: SpectralFilterConfig,
+}
+
+impl<L: SpectralFilterLinks> SpectralFilterUiBridge<L> {
+    pub fn try_new(filter: &mut SpectralFilter<L>) -> Option<Self> {
+        Some(Self {
+            ui_end: filter.take_ui_end()?,
+            config: filter.get_config(),
+        })
+    }
+
+    pub fn config(&self) -> &SpectralFilterConfig {
+        &self.config
+    }
+
+    pub fn pitch(&mut self) -> Sample {
+        self.ui_end.pitch()
+    }
+
+    pub fn set_param(&mut self, input: Input, value: StereoSample) {
+        if !self.ui_end.set_param(input, value) {
+            return;
+        }
+
+        match input {
+            Input::Cutoff => self.config.cutoff = value,
+            Input::Resonance => self.config.resonance = value,
+            Input::Drive => self.config.drive = value,
+            _ => (),
+        }
+    }
+
+    pub fn set_filter_type(&mut self, filter_type: FilterType) {
+        if self.ui_end.set_filter_type(filter_type) {
+            self.config.filter_type = filter_type;
+        }
+    }
+
+    pub fn set_linear_phase(&mut self, value: bool) {
+        if self.ui_end.set_linear_phase(value) {
+            self.config.linear_phase = value;
+        }
+    }
+
+    pub fn set_keytrack(&mut self, value: Sample) {
+        if self.ui_end.set_keytrack(value) {
+            self.config.keytrack = value;
+        }
+    }
+
+    pub fn set_q_cutoff(&mut self, value: StereoSample) {
+        if self.ui_end.set_q_cutoff(value) {
+            self.config.q_cutoff = value;
+        }
+    }
+
+    pub fn set_q_rolloff(&mut self, value: StereoSample) {
+        if self.ui_end.set_q_rolloff(value) {
+            self.config.q_rolloff = value;
+        }
+    }
+}
+
+impl<L: SpectralFilterLinks> ModuleUiBridge for SpectralFilterUiBridge<L> {
+    fn update(&mut self) -> bool {
+        false
+    }
+}

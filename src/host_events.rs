@@ -1,7 +1,6 @@
 use crate::{
     params::ExtParam,
     synth_engine::{EngineLinks, Expression, Note, SynthEngine, external_param::NUM_EXT_PARAMS},
-    // utils::log,
 };
 use nice_plug::midi::{Channel, Key, NoteEvent, VoiceID};
 
@@ -20,8 +19,6 @@ pub fn process_event(
     block_start: usize,
     params: &[ExtParam; NUM_EXT_PARAMS],
 ) {
-    // log!("Event: {:?}", event);
-
     match event {
         NoteEvent::NoteOn {
             timing,

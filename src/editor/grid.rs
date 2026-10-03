@@ -41,13 +41,17 @@ const TRACKPAD_SCROLL_MULTIPLIER: egui::Vec2 = vec2(-1.0, 1.0);
 #[cfg(not(target_os = "macos"))]
 const TRACKPAD_SCROLL_MULTIPLIER: egui::Vec2 = egui::Vec2::splat(1.0);
 
-impl From<GridVec> for Vec2 {
-    fn from(grid: GridVec) -> Self {
-        vec2(grid.x as f32, grid.y as f32) * GRID_CELL_SIZE
-    }
+trait GridVecExt {
+    fn to_vec2(self) -> Vec2;
+    fn from_vec_rounded(value: Vec2) -> Self;
+    fn from_vec_floor(value: Vec2) -> Self;
 }
 
-impl GridVec {
+impl GridVecExt for GridVec {
+    fn to_vec2(self) -> Vec2 {
+        vec2(self.x as f32, self.y as f32) * GRID_CELL_SIZE
+    }
+
     fn from_vec_rounded(value: Vec2) -> Self {
         Self {
             x: (value.x / GRID_CELL_SIZE).round() as i32,
@@ -312,7 +316,7 @@ impl Grid {
         for widget in &self.widgets {
             let pos = bridge.get_module_position(widget.module_id());
             let cell_extent = pos + widget.grid_size();
-            let bottom_right = Vec2::from(cell_extent) + widget.drag_offset();
+            let bottom_right = cell_extent.to_vec2() + widget.drag_offset();
 
             extent = extent.max(bottom_right);
         }
