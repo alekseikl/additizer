@@ -4,19 +4,18 @@ use smallvec::SmallVec;
 
 use crate::{
     editor::grid::WidgetCtx,
-    synth_engine::{
-        ComplexSample, Input, ModuleId, Sample,
-        spectral_eq::MAX_EQ_FILTERS,
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
-    utils::{
-        C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, db_to_gain_fast,
-        freq_to_c4_pitch, gain_to_db_fast,
-    },
+    ui_bridge::{ModuleBridge, UiBridge},
 };
-use addi_dsp::filters::{
-    control::MAX_PRE_Q,
-    spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
+use addi_dsp::{
+    C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain_fast,
+    filters::{
+        control::MAX_PRE_Q,
+        spectral_filter::{FilterParams, SpectralFilter as SpectralFilterEngine},
+    },
+    freq_to_c4_pitch, gain_to_db_fast,
+};
+use addi_engine::{
+    ComplexSample, Input, MAX_LEVEL_DB, MIN_LEVEL_DB, ModuleId, Sample, spectral_eq::MAX_EQ_FILTERS,
 };
 
 use super::GridWidgetContent;

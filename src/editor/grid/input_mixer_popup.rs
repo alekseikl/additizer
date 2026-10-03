@@ -7,13 +7,8 @@ use egui::{
 };
 
 use crate::editor::routing_ui_ext::{InputUi, ModuleTypeUi};
-use crate::{
-    editor::utils::popup_should_close,
-    synth_engine::{
-        Input, InputId, ModuleId, ModuleType, routing_state::ConnectedInputSource,
-        ui_bridge::UiBridge,
-    },
-};
+use crate::{editor::utils::popup_should_close, ui_bridge::UiBridge};
+use addi_engine::{Input, InputId, ModuleId, ModuleType, routing_state::ConnectedInputSource};
 
 const MAX_LABEL_WIDTH: f32 = 200.0;
 const IO_DOT_SIZE: f32 = 8.0;

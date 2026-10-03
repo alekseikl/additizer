@@ -3,11 +3,9 @@ use egui::{Checkbox, Grid, Ui};
 
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput},
-    synth_engine::{
-        Input, ModuleId, ModuleType,
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
+    ui_bridge::{ModuleBridge, UiBridge},
 };
+use addi_engine::{Input, ModuleId, ModuleType};
 
 pub struct EnvelopeUI {
     module_id: ModuleId,

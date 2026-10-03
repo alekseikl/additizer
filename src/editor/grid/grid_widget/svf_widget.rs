@@ -3,19 +3,17 @@ use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, epaint::PathStroke};
 
 use crate::{
     editor::grid::WidgetCtx,
-    synth_engine::{
-        Input, ModuleId, Sample,
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
-    utils::{
-        C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, db_to_gain_fast,
-        gain_to_db_fast, pitch_to_freq,
-    },
+    ui_bridge::{ModuleBridge, UiBridge},
 };
-use addi_dsp::filters::{
-    control::q_from_resonance,
-    svf::{SvfResponse, SvfType},
+use addi_dsp::{
+    C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain_fast,
+    filters::{
+        control::q_from_resonance,
+        svf::{SvfResponse, SvfType},
+    },
+    gain_to_db_fast, pitch_to_freq,
 };
+use addi_engine::{Input, MAX_LEVEL_DB, MIN_LEVEL_DB, ModuleId, Sample};
 
 use super::GridWidgetContent;
 

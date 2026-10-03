@@ -12,12 +12,9 @@ use crate::{
         add_module_popup::{AddModulePopup, AddResult},
         grid_widget::GridWidget,
     },
-    synth_engine::{
-        ModuleId,
-        routing_state::ModuleIo,
-        ui_bridge::{GridVec, UiBridge},
-    },
+    ui_bridge::{GridVec, UiBridge},
 };
+use addi_engine::{ModuleId, routing_state::ModuleIo};
 
 mod add_module_popup;
 mod grid_widget;

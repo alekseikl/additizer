@@ -6,8 +6,8 @@ use egui::{
 
 use crate::editor::grid::{GridEvent, WidgetCtx};
 use crate::editor::routing_ui_ext::{InputUi, ModuleTypeUi};
-use crate::synth_engine::Input;
-use crate::synth_engine::{InputId, ModuleId, ModuleType, ui_bridge::LinkableInput};
+use crate::ui_bridge::LinkableInput;
+use addi_engine::{Input, InputId, ModuleId, ModuleType};
 
 const IO_DOT_SIZE: f32 = 8.0;
 const MENU_INDENT: i8 = 8;

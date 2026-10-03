@@ -1,14 +1,17 @@
 use egui::{Color32, ecolor::Hsva};
 
-use crate::{
-    editor::{
-        slider::Slider,
-        units::{OctavesDisplay, Units},
-    },
-    synth_engine::{DataType, Input, ModuleType, StereoSample, pitch::MAX_GLIDE_TIME},
-    utils::{MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, from_st},
+use crate::editor::{
+    slider::Slider,
+    units::{OctavesDisplay, Units},
 };
-use addi_dsp::filters::control::{MAX_DRIVE, MIN_DRIVE};
+use addi_dsp::{
+    MAX_CUTOFF, MIN_CUTOFF,
+    filters::control::{MAX_DRIVE, MIN_DRIVE},
+    from_st,
+};
+use addi_engine::{
+    DataType, Input, MAX_LEVEL_DB, MIN_LEVEL_DB, ModuleType, StereoSample, pitch::MAX_GLIDE_TIME,
+};
 
 const IO_COLOR_S: f32 = 0.8;
 const IO_COLOR_V: f32 = 0.5;

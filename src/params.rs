@@ -3,10 +3,8 @@ use nice_plug::prelude::*;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
-use crate::{
-    default_scheme::build_default_preset, engine_factory::EngineFactory, preset::Preset,
-    synth_engine::external_param::NUM_EXT_PARAMS,
-};
+use crate::{default_scheme::build_default_preset, engine_factory::EngineFactory, preset::Preset};
+use addi_engine::external_param::NUM_EXT_PARAMS;
 
 #[derive(Params)]
 pub struct ExtParam {
@@ -14,7 +12,7 @@ pub struct ExtParam {
     pub value: FloatParam,
 }
 
-impl crate::synth_engine::external_param::ExtParamValue for ExtParam {
+impl addi_engine::external_param::ExtParamValue for ExtParam {
     fn unmodulated(&self) -> f32 {
         self.value.unmodulated_normalized_value()
     }

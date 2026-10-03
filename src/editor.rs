@@ -23,8 +23,9 @@ use crate::{
         },
     },
     engine_factory::EngineFactory,
-    synth_engine::{ModuleId, ModuleType, ui_bridge::UiBridge},
+    ui_bridge::UiBridge,
 };
+use addi_engine::{ModuleId, ModuleType};
 
 mod bin_slider;
 mod control_meter;

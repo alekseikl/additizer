@@ -9,12 +9,12 @@ use crate::{
         stereo_input::StereoInput,
         units::{OctavesDisplay, Units},
     },
-    synth_engine::{
-        Input, MAX_BANDWIDTH, ModuleId, ModuleType,
-        spectral_noise::{MAX_ROLLOFF, MIN_ROLLOFF, NoiseColor},
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
-    utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},
+    ui_bridge::{ModuleBridge, UiBridge},
+};
+use addi_dsp::{MAX_CUTOFF, MIN_CUTOFF, from_st};
+use addi_engine::{
+    Input, MAX_BANDWIDTH, ModuleId, ModuleType,
+    spectral_noise::{MAX_ROLLOFF, MIN_ROLLOFF, NoiseColor},
 };
 
 pub struct SpectralNoiseUi {

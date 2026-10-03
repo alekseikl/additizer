@@ -1,6 +1,6 @@
 use egui::{Color32, Painter, Pos2, Rect};
 
-use crate::synth_engine::Sample;
+use addi_engine::Sample;
 
 const NUM_SEGMENTS: usize = 12;
 const SEGMENT_GAP: f32 = 2.0;

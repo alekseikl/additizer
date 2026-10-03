@@ -3,12 +3,10 @@ use egui::{Color32, Pos2, Rect, Stroke, StrokeKind, Vec2, emath::GuiRounding, ep
 
 use crate::{
     editor::grid::WidgetCtx,
-    synth_engine::{
-        Input, ModuleId, Sample, ShaperType,
-        ui_bridge::{GridVec, ModuleBridge, UiBridge},
-    },
-    utils::db_to_gain_fast,
+    ui_bridge::{GridVec, ModuleBridge, UiBridge},
 };
+use addi_dsp::db_to_gain_fast;
+use addi_engine::{Input, ModuleId, Sample, ShaperType};
 
 use super::GridWidgetContent;
 

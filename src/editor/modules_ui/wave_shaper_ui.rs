@@ -3,11 +3,9 @@ use egui::{ComboBox, Grid, Ui};
 
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput},
-    synth_engine::{
-        Input, ModuleId, ModuleType, ShaperType,
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
+    ui_bridge::{ModuleBridge, UiBridge},
 };
+use addi_engine::{Input, ModuleId, ModuleType, ShaperType};
 
 const SHAPER_TYPES: [ShaperType; 2] = [ShaperType::HardClip, ShaperType::Sigmoid];
 

@@ -2,9 +2,10 @@ use egui::{Grid, Ui};
 
 use crate::{
     editor::{ModuleUi, slider::Slider, units::Units},
-    synth_engine::{ModuleId, OUTPUT_MODULE_ID, StereoSample, ui_bridge::UiBridge},
-    utils::{db_to_gain, gain_to_db},
+    ui_bridge::UiBridge,
 };
+use addi_dsp::{db_to_gain, gain_to_db};
+use addi_engine::{ModuleId, OUTPUT_MODULE_ID, StereoSample};
 
 pub struct OutputUi;
 

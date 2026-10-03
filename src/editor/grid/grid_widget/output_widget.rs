@@ -3,11 +3,9 @@ use egui::{Rect, Vec2, emath::GuiRounding};
 use crate::editor::routing_ui_ext::ModuleTypeUi;
 use crate::{
     editor::{fit_label::FitLabel, grid::WidgetCtx, volume_meter::VolumeMeter},
-    synth_engine::{
-        ModuleId, ModuleType, NUM_CHANNELS,
-        ui_bridge::{GridVec, UiBridge},
-    },
+    ui_bridge::{GridVec, UiBridge},
 };
+use addi_engine::{ModuleId, ModuleType, NUM_CHANNELS};
 
 use super::GridWidgetContent;
 

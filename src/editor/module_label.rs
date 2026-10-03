@@ -3,7 +3,8 @@ use egui::{
 };
 
 use crate::editor::routing_ui_ext::ModuleTypeUi;
-use crate::synth_engine::{ModuleId, ModuleType, ui_bridge::UiBridge};
+use crate::ui_bridge::UiBridge;
+use addi_engine::{ModuleId, ModuleType};
 
 use super::utils::hsva;
 

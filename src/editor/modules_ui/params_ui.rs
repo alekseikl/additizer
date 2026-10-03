@@ -10,9 +10,10 @@ use crate::{
     editor::ModuleUi,
     engine_factory::EngineFactory,
     presets::{PresetListItem, Presets},
-    synth_engine::{ModuleId, ui_bridge::UiBridge},
-    utils::from_ms,
+    ui_bridge::UiBridge,
 };
+use addi_dsp::from_ms;
+use addi_engine::ModuleId;
 
 #[derive(Default)]
 pub struct SavePresetState {
@@ -188,10 +189,7 @@ impl ModuleUi for ParamsUi {
 
                 ui.label("Voices");
                 if ui
-                    .add(Slider::new(
-                        &mut voices,
-                        1..=crate::synth_engine::AVAILABLE_VOICES,
-                    ))
+                    .add(Slider::new(&mut voices, 1..=addi_engine::AVAILABLE_VOICES))
                     .changed()
                 {
                     bridge.set_voices(voices);

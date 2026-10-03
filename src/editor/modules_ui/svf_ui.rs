@@ -3,12 +3,10 @@ use egui::{ComboBox, Grid, Ui};
 
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput},
-    synth_engine::{
-        Input, ModuleId, ModuleType,
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
+    ui_bridge::{ModuleBridge, UiBridge},
 };
 use addi_dsp::filters::svf::SvfType;
+use addi_engine::{Input, ModuleId, ModuleType};
 
 pub struct SvfUi {
     module_id: ModuleId,

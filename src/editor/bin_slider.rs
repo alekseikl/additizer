@@ -1,9 +1,7 @@
 use egui::{Color32, PointerButton, Rect, Response, Sense, Ui, Widget, vec2};
 
-use crate::{
-    synth_engine::{Sample, StereoSample},
-    utils::{MAX_LEVEL_DB, MIN_LEVEL_DB, db_to_gain, gain_to_db},
-};
+use addi_dsp::{db_to_gain, gain_to_db};
+use addi_engine::{MAX_LEVEL_DB, MIN_LEVEL_DB, Sample, StereoSample};
 
 const BG_COLOR: Color32 = Color32::from_rgb(0, 0, 0);
 const ATTENUATED_COLOR: Color32 = Color32::from_rgb(0x0b, 0x42, 0x67);

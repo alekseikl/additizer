@@ -11,7 +11,7 @@ use egui::{
     vec2,
 };
 
-use crate::synth_engine::{Sample, StereoSample};
+use addi_engine::{Sample, StereoSample};
 
 use super::{units::Units, utils::hsva};
 

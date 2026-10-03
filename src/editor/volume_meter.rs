@@ -1,9 +1,7 @@
 use egui::{Color32, Painter, Pos2, Rect};
 
-use crate::{
-    synth_engine::{NUM_CHANNELS, Sample, Smoother, StereoSample},
-    utils::{MIN_LEVEL_DB, gain_to_db},
-};
+use addi_dsp::gain_to_db;
+use addi_engine::{MIN_LEVEL_DB, NUM_CHANNELS, Sample, Smoother, StereoSample};
 
 const BAR_GAP: f32 = 6.0;
 const NUM_SEGMENTS: usize = 12;

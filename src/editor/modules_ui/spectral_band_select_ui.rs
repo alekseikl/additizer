@@ -5,12 +5,12 @@ use egui::{ComboBox, DragValue, Ui};
 
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, units::Units},
-    synth_engine::{
-        ModuleId, ModuleType, Sample,
-        spectral_band_select::{
-            BandSelectMode, MAX_BAND_HZ, MAX_HARMONIC, MAX_HARMONIC_END, MIN_BAND_HZ, MIN_HARMONIC,
-        },
-        ui_bridge::{ModuleBridge, UiBridge},
+    ui_bridge::{ModuleBridge, UiBridge},
+};
+use addi_engine::{
+    ModuleId, ModuleType, Sample,
+    spectral_band_select::{
+        BandSelectMode, MAX_BAND_HZ, MAX_HARMONIC, MAX_HARMONIC_END, MIN_BAND_HZ, MIN_HARMONIC,
     },
 };
 

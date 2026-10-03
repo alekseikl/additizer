@@ -35,7 +35,7 @@ cargo test
 The workspace has four crates. `additizer` is the plugin. `addi-dsp` holds the shared DSP
 (sample types, unit conversions, smoothing, phase, stereo helpers, ballistics, the
 time-domain SVF, and the spectral filter). `addi-engine` holds `SynthEngine`, modules,
-routing, and voices. The plugin re-exports it as `synth_engine` (`src/synth_engine.rs`).
+routing, and voices. The plugin imports it directly as `addi_engine`.
 `SynthEngine` re-exports the sample types, smoothing, and stereo helpers. Filter types are
 imported from `addi_dsp::filters`. `addi-ui-backend` holds the concrete UI/audio links,
 `UiBridge`, `EngineFactory`, presets, and the default patch. The plugin re-exports those modules

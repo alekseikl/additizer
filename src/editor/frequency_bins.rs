@@ -5,10 +5,10 @@ use std::{
 
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, ecolor::Hsva};
 
-use crate::{
-    editor::utils::hsva,
-    synth_engine::{ComplexSample, DC_OFFSET, harmonic_editor::sawtooth_phase},
-    utils::{MAX_LEVEL_DB, MIN_LEVEL_DB, gain_to_db},
+use crate::editor::utils::hsva;
+use addi_dsp::gain_to_db;
+use addi_engine::{
+    ComplexSample, DC_OFFSET, MAX_LEVEL_DB, MIN_LEVEL_DB, harmonic_editor::sawtooth_phase,
 };
 
 #[cfg(test)]

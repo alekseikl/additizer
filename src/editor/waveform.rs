@@ -3,7 +3,7 @@ use std::sync::Arc;
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, ecolor::Hsva};
 use realfft::{ComplexToReal, RealFftPlanner};
 
-use crate::synth_engine::{ComplexSample, Sample};
+use addi_engine::{ComplexSample, Sample};
 
 #[cfg(test)]
 mod tests;

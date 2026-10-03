@@ -7,12 +7,13 @@ use crate::{
         slider::Slider,
         units::Units,
     },
-    synth_engine::{
-        MAX_BANDWIDTH, ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, Sample, StereoSample,
-        harmonic_editor::{EditRequest, HarmonicsRange, sawtooth_phase},
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
-    utils::{MAX_LEVEL_DB, MIN_LEVEL_DB, db_to_gain},
+    ui_bridge::{ModuleBridge, UiBridge},
+};
+use addi_dsp::db_to_gain;
+use addi_engine::{
+    MAX_BANDWIDTH, MAX_LEVEL_DB, MIN_LEVEL_DB, ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, Sample,
+    StereoSample,
+    harmonic_editor::{EditRequest, HarmonicsRange, sawtooth_phase},
 };
 use egui::{
     Checkbox, ComboBox, DragValue, FontFamily, Grid, Id, Modal, RichText, ScrollArea, Sides, Ui,

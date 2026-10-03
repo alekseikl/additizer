@@ -5,11 +5,9 @@ use egui::{ComboBox, DragValue, Grid, Ui};
 
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput},
-    synth_engine::{
-        Input, MixType, ModuleId, ModuleType, VolumeType,
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
+    ui_bridge::{ModuleBridge, UiBridge},
 };
+use addi_engine::{Input, MixType, ModuleId, ModuleType, VolumeType};
 
 trait MixTypeLabel {
     fn label(&self) -> &'static str;
@@ -59,7 +57,7 @@ impl SpectralMixerUi {
             if ui
                 .add(
                     DragValue::new(&mut config.num_inputs)
-                        .range(1..=crate::synth_engine::spectral_mixer::MAX_INPUTS),
+                        .range(1..=addi_engine::spectral_mixer::MAX_INPUTS),
                 )
                 .changed()
             {

@@ -4,7 +4,7 @@ use egui::{
     Response, Sense, Ui,
 };
 
-use crate::synth_engine::ModuleType;
+use addi_engine::ModuleType;
 
 const ADDABLE_MODULES: [ModuleType; 17] = [
     ModuleType::HarmonicEditor,

@@ -12,17 +12,20 @@ use crate::{
         stereo_input::StereoInput,
         units::{OctavesDisplay, Units},
     },
-    synth_engine::{
-        Input, ModuleId, ModuleType, Sample,
-        spectral_eq::{EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MAX_Q, MIN_CUTOFF_HZ, MIN_Q},
-        spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF},
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
-    utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},
+    ui_bridge::{ModuleBridge, UiBridge},
 };
-use addi_dsp::filters::{
-    control::{MAX_DRIVE, MIN_DRIVE},
-    spectral_filter::FilterType,
+use addi_dsp::{
+    MAX_CUTOFF, MIN_CUTOFF,
+    filters::{
+        control::{MAX_DRIVE, MIN_DRIVE},
+        spectral_filter::FilterType,
+    },
+    from_st,
+};
+use addi_engine::{
+    Input, ModuleId, ModuleType, Sample,
+    spectral_eq::{EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MAX_Q, MIN_CUTOFF_HZ, MIN_Q},
+    spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF},
 };
 
 const DRAG_HANDLE: &str = "☰";

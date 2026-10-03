@@ -8,11 +8,9 @@ use crate::{
         stereo_input::StereoInput,
         units::{OctavesDisplay, Units},
     },
-    synth_engine::{
-        Input, ModuleId, ModuleType,
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
+    ui_bridge::{ModuleBridge, UiBridge},
 };
+use addi_engine::{Input, ModuleId, ModuleType};
 
 pub struct PitchUi {
     module_id: ModuleId,

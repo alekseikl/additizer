@@ -56,7 +56,7 @@ Per-link checks only — does **not** check acyclicity. Checks run in this order
 
 ## Link mutations
 
-All mutations except `update_link_amount` rebuild the full link list from `get_links()`, apply the change, and call `setup_routing`. They live on `SynthEngine` (`src/synth_engine.rs`); the UI calls them through the `UiBridge` wrappers of the same name (note `UiBridge::add_link` → `SynthEngine::add_mixed_link`), which lock the engine and refresh the cached `routing` state.
+All mutations except `update_link_amount` rebuild the full link list from `get_links()`, apply the change, and call `setup_routing`. They live on `SynthEngine` (`crates/addi-engine/src/synth_engine.rs`); the UI calls them through the `UiBridge` wrappers of the same name (note `UiBridge::add_link` → `SynthEngine::add_mixed_link`), which lock the engine and refresh the cached `routing` state.
 
 | Operation                                            | Effect                                                                                                                 |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |

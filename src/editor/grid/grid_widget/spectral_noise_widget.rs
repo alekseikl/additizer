@@ -6,8 +6,9 @@ use crate::{
         grid::WidgetCtx,
         waveform::{WaveformBuilder, WaveformOptions},
     },
-    synth_engine::{DISPLAY_SPECTRUM_SIZE, ModuleId, ui_bridge::ModuleBridge},
+    ui_bridge::ModuleBridge,
 };
+use addi_engine::{DISPLAY_SPECTRUM_SIZE, ModuleId};
 
 use super::GridWidgetContent;
 

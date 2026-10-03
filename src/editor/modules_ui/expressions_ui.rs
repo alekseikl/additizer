@@ -3,12 +3,10 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, slider::Slider, units::Units},
-    synth_engine::{
-        Expression, ModuleId, ModuleType,
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
-    utils::from_ms,
+    ui_bridge::{ModuleBridge, UiBridge},
 };
+use addi_dsp::from_ms;
+use addi_engine::{Expression, ModuleId, ModuleType};
 
 trait ExpressionLabel {
     fn label(&self) -> &'static str;

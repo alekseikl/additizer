@@ -1,7 +1,5 @@
-use crate::{
-    params::ExtParam,
-    synth_engine::{EngineLinks, Expression, Note, SynthEngine, external_param::NUM_EXT_PARAMS},
-};
+use crate::params::ExtParam;
+use addi_engine::{EngineLinks, Expression, Note, SynthEngine, external_param::NUM_EXT_PARAMS};
 use nice_plug::midi::{Channel, Key, NoteEvent, VoiceID};
 
 fn note_from_event(voice_id: VoiceID, channel: Channel, key: Key, velocity: f32) -> Option<Note> {

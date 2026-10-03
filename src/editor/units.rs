@@ -1,7 +1,5 @@
-use crate::{
-    synth_engine::{Sample, StereoSample},
-    utils::{C4_PITCH, freq_to_c4_pitch, pitch_to_freq},
-};
+use addi_dsp::{C4_PITCH, freq_to_c4_pitch, pitch_to_freq};
+use addi_engine::{Sample, StereoSample};
 
 enum DisplayUnit {
     Percents(Sample),

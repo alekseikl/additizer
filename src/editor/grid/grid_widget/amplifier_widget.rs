@@ -3,11 +3,9 @@ use egui::{Rect, Vec2, emath::GuiRounding};
 
 use crate::{
     editor::{fit_label::FitLabel, grid::WidgetCtx, volume_meter::VolumeMeter},
-    synth_engine::{
-        ModuleId, NUM_CHANNELS, StereoSample,
-        ui_bridge::{GridVec, ModuleBridge},
-    },
+    ui_bridge::{GridVec, ModuleBridge},
 };
+use addi_engine::{ModuleId, NUM_CHANNELS, StereoSample};
 
 use super::GridWidgetContent;
 

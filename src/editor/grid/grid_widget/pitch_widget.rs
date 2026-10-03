@@ -2,11 +2,9 @@ use egui::{Align, Label, Layout, RichText};
 
 use crate::{
     editor::grid::WidgetCtx,
-    synth_engine::{
-        ModuleId, Sample,
-        ui_bridge::{GridVec, ModuleBridge},
-    },
+    ui_bridge::{GridVec, ModuleBridge},
 };
+use addi_engine::{ModuleId, Sample};
 
 use super::GridWidgetContent;
 

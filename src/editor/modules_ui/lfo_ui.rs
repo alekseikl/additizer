@@ -6,11 +6,9 @@ use crate::{
         ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput,
         units::Units,
     },
-    synth_engine::{
-        Input, LfoShape, ModuleId, ModuleType,
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
+    ui_bridge::{ModuleBridge, UiBridge},
 };
+use addi_engine::{Input, LfoShape, ModuleId, ModuleType};
 
 trait LfoShapeLabel {
     fn label(&self) -> &'static str;

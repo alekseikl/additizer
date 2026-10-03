@@ -4,12 +4,12 @@ use crate::{
         ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput,
         units::Units,
     },
-    synth_engine::{
-        Input, ModuleId, ModuleType, Sample, StereoSample,
-        oscillator::{OscillatorConfig, PhasesDst},
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
-    utils::{MIN_LEVEL_DB, db_to_gain, gain_to_db},
+    ui_bridge::{ModuleBridge, UiBridge},
+};
+use addi_dsp::{db_to_gain, gain_to_db};
+use addi_engine::{
+    Input, MIN_LEVEL_DB, ModuleId, ModuleType, Sample, StereoSample,
+    oscillator::{OscillatorConfig, PhasesDst},
 };
 use egui::{Checkbox, DragValue, Grid, Id, Modal, Sides, Ui};
 

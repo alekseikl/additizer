@@ -9,14 +9,13 @@ use crate::{
         stereo_input::StereoInput,
         units::{OctavesDisplay, Units},
     },
-    synth_engine::{
-        Input, ModuleId, ModuleType,
-        spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF},
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
-    utils::{MAX_CUTOFF, MIN_CUTOFF, from_st},
+    ui_bridge::{ModuleBridge, UiBridge},
 };
-use addi_dsp::filters::spectral_filter::FilterType;
+use addi_dsp::{MAX_CUTOFF, MIN_CUTOFF, filters::spectral_filter::FilterType, from_st};
+use addi_engine::{
+    Input, ModuleId, ModuleType,
+    spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF},
+};
 
 pub struct SpectralFilterUI {
     module_id: ModuleId,

@@ -5,8 +5,6 @@ use const_format::concatcp;
 mod editor;
 mod host_events;
 mod params;
-pub mod synth_engine;
-mod utils;
 
 pub use addi_ui_backend::links;
 pub use addi_ui_backend::ui_bridge;
@@ -19,7 +17,7 @@ pub(crate) use addi_ui_backend::presets;
 use crate::editor::{EditorState, create_editor};
 use crate::engine_factory::{EngineFactory, EngineHandle};
 use crate::params::AdditizerParams;
-use crate::synth_engine::{MAX_VOICES, Note};
+use addi_engine::{MAX_VOICES, Note};
 pub use egui;
 use nice_plug::midi::{Channel, Key, VoiceID};
 use nice_plug::prelude::*;

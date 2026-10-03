@@ -3,12 +3,12 @@ use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, epaint::PathStroke};
 
 use crate::{
     editor::grid::WidgetCtx,
-    synth_engine::{
-        Input, ModuleId, Sample,
-        envelope::{EnvelopeConfig, EnvelopePhase, SLOPE_POWER_SCALE},
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
-    utils::power_scale,
+    ui_bridge::{ModuleBridge, UiBridge},
+};
+use addi_dsp::power_scale;
+use addi_engine::{
+    Input, ModuleId, Sample,
+    envelope::{EnvelopeConfig, EnvelopePhase, SLOPE_POWER_SCALE},
 };
 
 use super::GridWidgetContent;

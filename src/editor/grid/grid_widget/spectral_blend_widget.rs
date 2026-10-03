@@ -3,8 +3,9 @@ use egui::emath::GuiRounding;
 
 use crate::{
     editor::{frequency_bins::FrequencyBins, grid::WidgetCtx},
-    synth_engine::{ModuleId, ui_bridge::ModuleBridge},
+    ui_bridge::ModuleBridge,
 };
+use addi_engine::ModuleId;
 
 use super::GridWidgetContent;
 

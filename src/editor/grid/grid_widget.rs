@@ -27,11 +27,11 @@ use crate::{
         link_amount_popup::LinkAmountPopup,
         select_input_popup::{SelectInputPopup, ShowResult},
     },
-    synth_engine::{
-        Input, InputId, InputSource, ModuleId, ModuleType,
-        routing_state::{ModuleInput, ModuleIo},
-        ui_bridge::GridVec,
-    },
+    ui_bridge::GridVec,
+};
+use addi_engine::{
+    Input, InputId, InputSource, ModuleId, ModuleType,
+    routing_state::{ModuleInput, ModuleIo},
 };
 
 mod amplifier_widget;

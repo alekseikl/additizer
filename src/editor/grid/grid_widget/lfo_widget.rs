@@ -6,11 +6,11 @@ use crate::{
         grid::WidgetCtx,
         waveform::{self, WaveformOptions},
     },
-    synth_engine::{
-        Input, ModuleId, Sample,
-        lfo::{Lfo, LfoShape},
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
+    ui_bridge::{ModuleBridge, UiBridge},
+};
+use addi_engine::{
+    Input, ModuleId, Sample,
+    lfo::{Lfo, LfoShape},
 };
 
 use super::GridWidgetContent;

@@ -3,11 +3,9 @@ use egui::{Response, Sense, Ui, Widget, emath, lerp, vec2};
 use crate::editor::routing_ui_ext::InputUi;
 use crate::{
     editor::{grid::input_mixer_popup::InputMixerPopup, slider::Slider},
-    synth_engine::{
-        Input, InputId, ModuleId, ModuleType, Sample, StereoSample,
-        ui_bridge::{ModulatedValue, UiBridge},
-    },
+    ui_bridge::{ModulatedValue, UiBridge},
 };
+use addi_engine::{Input, InputId, ModuleId, ModuleType, Sample, StereoSample};
 
 const IO_DOT_SIZE: f32 = 8.0;
 const IO_DOT_SIZE_HOVER: f32 = 10.0;

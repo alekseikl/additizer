@@ -3,13 +3,10 @@ use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     editor::{ModuleUi, module_label::ModuleLabel, slider::Slider, units::Units},
-    synth_engine::{
-        ModuleId, ModuleType,
-        external_param::NUM_EXT_PARAMS,
-        ui_bridge::{ModuleBridge, UiBridge},
-    },
-    utils::from_ms,
+    ui_bridge::{ModuleBridge, UiBridge},
 };
+use addi_dsp::from_ms;
+use addi_engine::{ModuleId, ModuleType, external_param::NUM_EXT_PARAMS};
 
 pub struct ExternalParamUI {
     module_id: ModuleId,

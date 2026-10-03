@@ -7,12 +7,11 @@ use rustc_hash::FxHashMap;
 use crate::{
     engine_factory::{EngineHandle, UiConfigHandle},
     links::PluginLinks,
-    synth_engine::{
-        EngineConfig, EngineParams, Input, InputId, ModuleId, ModuleType, OUTPUT_MODULE_ID,
-        SynthEngine,
-        routing_state::ModuleIo,
-        ui_bridge::{GridVec, UiBridge, ui_config::UiConfig},
-    },
+    ui_bridge::{GridVec, UiBridge, ui_config::UiConfig},
+};
+use addi_engine::{
+    EngineConfig, EngineParams, Input, InputId, ModuleId, ModuleType, OUTPUT_MODULE_ID,
+    SynthEngine, routing_state::ModuleIo,
 };
 
 use super::{Grid, GridEvent, GridRect, GridVecExt, GridWidget};
