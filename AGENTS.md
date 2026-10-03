@@ -63,14 +63,14 @@ new engine; the audio thread detects the swap via `engine_changed()` and picks i
 
 **Modules on the audio side** are stored as `ModuleHandle` (`enum_dispatch` over `SynthModule`)
 in `FxHashMap<ModuleId, ModuleHandle>`. Output slots live in `OutputsArena`; per-voice routing
-uses `VoiceRouter` / `ProcessContext` (`additizer-engine/src/synth_engine/routing/`).
+uses `VoiceRouter` / `ProcessContext` (`crates/additizer-engine/src/synth_engine/routing/`).
 
 **`Output` is special.** It is always present at `OUTPUT_MODULE_ID` (`0`), created in
 `SynthEngine::try_new`, and is not part of `ModuleConfig` / presets. User modules use ids ≥
 `MIN_MODULE_ID` (`1`).
 
 **Presets / persistence:** `EngineConfig` + `UiConfig` are `serde`-serializable
-(`additizer-engine/src/synth_engine/config.rs`, `src/ui_bridge/ui_config.rs`, `src/preset.rs`,
+(`crates/additizer-engine/src/synth_engine/config.rs`, `src/ui_bridge/ui_config.rs`, `src/preset.rs`,
 `src/presets.rs`). nice-plug persists them via `PresetWrapper` in `src/params.rs`.
 `default_scheme.rs` builds the default patch.
 
@@ -99,7 +99,7 @@ semantic matches (e.g. `Gain`, `Level`, `Cutoff`) and document units (dB vs. lin
 
 ## The module pattern (important)
 
-Current modules (`additizer-engine/src/synth_engine/modules/`): `oscillator`, `envelope`, `lfo`, `pitch`,
+Current modules (`crates/additizer-engine/src/synth_engine/modules/`): `oscillator`, `envelope`, `lfo`, `pitch`,
 `amplifier`, `mixer`, `wave_shaper`, `svf`, `spectral_filter`, `spectral_eq`, `spectral_blend`,
 `spectral_mixer`, `harmonic_editor`, `spectral_noise`, `expressions`, `external_param`, plus
 the special `output`.
@@ -137,7 +137,7 @@ subdir, no `ModuleConfig` variant; UI is `output_ui.rs` / `output_widget.rs`.
 3. Add `ModuleType::<Name>`, `ModuleHandle::<Name>`, and a `ModuleHandle::new` arm in
    `module_handle.rs`.
 4. Add `ModuleConfig::<Name>` in `config.rs` and wire it in `SynthEngine::try_new` /
-   `get_config` (`additizer-engine/src/synth_engine.rs`).
+   `get_config` (`crates/additizer-engine/src/synth_engine.rs`).
 5. Add `ModuleBridge::<Name>` and a match arm in `UiBridge::insert_module_bridge`
    (`src/ui_bridge.rs`).
 6. Add the editor detail panel and `ModuleType::ui` arm in `editor.rs`; add a grid widget and
@@ -184,11 +184,11 @@ stereo/smoothed parameter plumbing.
 ## Testing
 
 - Tests live next to the code they cover in a `tests.rs` sibling directory, included via
-  `#[cfg(test)] mod tests;` (e.g. `additizer-engine/src/synth_engine/tests.rs`,
-  `additizer-engine/src/synth_engine/voices_handler/tests.rs`,
-  `additizer-engine/src/synth_engine/modules/spectral_eq/tests.rs`,
-  `additizer-dsp/src/filters/spectral_filter/tests.rs`,
-  `additizer-dsp/src/filters/svf/tests.rs`, `src/editor/units/tests.rs`). Run them
+  `#[cfg(test)] mod tests;` (e.g. `crates/additizer-engine/src/synth_engine/tests.rs`,
+  `crates/additizer-engine/src/synth_engine/voices_handler/tests.rs`,
+  `crates/additizer-engine/src/synth_engine/modules/spectral_eq/tests.rs`,
+  `crates/additizer-dsp/src/filters/spectral_filter/tests.rs`,
+  `crates/additizer-dsp/src/filters/svf/tests.rs`, `src/editor/units/tests.rs`). Run them
   with `cargo test`. When changing a module that has a `tests.rs`, update or extend it.
 - Performance benchmarks use [Criterion](https://github.com/bheisler/criterion.rs) in
  `benches/synth_engine.rs`, `benches/svf.rs`, and `benches/spectral_filter.rs`. Coverage reports use

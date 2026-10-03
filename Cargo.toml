@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "additizer-dsp", "additizer-engine"]
+members = [".", "crates/additizer-dsp", "crates/additizer-engine"]
 
 [package]
 name = "additizer"
@@ -10,8 +10,8 @@ edition = "2024"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-additizer-dsp = { path = "additizer-dsp" }
-additizer-engine = { path = "additizer-engine" }
+additizer-dsp = { path = "crates/additizer-dsp" }
+additizer-engine = { path = "crates/additizer-engine" }
 arc-swap = "1.9.2"
 auto_impl = "1.3"
 enum_dispatch = "0.3"

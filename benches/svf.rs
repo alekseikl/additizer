@@ -1,6 +1,6 @@
 use std::{f32::consts::TAU, hint::black_box};
 
-use additizer::synth_engine::{MAX_BLOCK_SIZE, Sample};
+use additizer_engine::{MAX_BLOCK_SIZE, Sample};
 use additizer_dsp::filters::{
     control::MAX_PRE_Q,
     svf::{SvfChannel, SvfType},

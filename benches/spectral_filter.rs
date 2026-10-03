@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use additizer::synth_engine::{
+use additizer_engine::{
     ComplexSample, SPECTRAL_BUFFER_SIZE, Sample, spectral_filter::MIN_Q_ROLLOFF,
 };
 use additizer_dsp::filters::{
