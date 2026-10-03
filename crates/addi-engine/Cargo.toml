@@ -15,6 +15,7 @@ rustc-hash = { workspace = true }
 serde = { workspace = true }
 smallvec = { workspace = true }
 topo_sort = "0.4"
+tracing = "0.1.41"
 wide = { workspace = true }
 
 [dev-dependencies]

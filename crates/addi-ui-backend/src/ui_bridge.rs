@@ -11,10 +11,7 @@ use addi_engine::{
     routing_state::{self, ConnectedInputSource, ModuleIo, RoutingState},
 };
 
-use crate::{
-    engine_factory::{EngineHandle, UiConfigHandle},
-    log::log,
-};
+use crate::engine_factory::{EngineHandle, UiConfigHandle};
 
 pub mod modules;
 pub mod ui_config;
@@ -555,7 +552,7 @@ impl<E: EngineLinks> UiBridge<E> {
         let mut engine = self.engine.lock();
 
         if engine.refresh_routing().is_err() {
-            log!("Failed to refresh routing");
+            tracing::error!("Failed to refresh routing");
         }
         self.routing = engine.get_routing_state();
     }
@@ -623,7 +620,7 @@ impl<E: EngineLinks> UiBridge<E> {
         let mut synth = self.engine.lock();
 
         if let Err(err) = synth.set_direct_link(src, dst) {
-            log!("Failed to set direct link: {err}");
+            tracing::error!("Failed to set direct link: {err}");
         }
         self.routing = synth.get_routing_state();
     }
@@ -632,7 +629,7 @@ impl<E: EngineLinks> UiBridge<E> {
         let mut synth = self.engine.lock();
 
         if let Err(err) = synth.add_mixed_link(src, dst, amount) {
-            log!("Failed to add link: {err}");
+            tracing::error!("Failed to add link: {err}");
         }
         self.routing = synth.get_routing_state();
     }
@@ -667,7 +664,7 @@ impl<E: EngineLinks> UiBridge<E> {
         let mut synth = self.engine.lock();
 
         if let Err(err) = synth.set_link_modulation(src_id, dst_input, modulator_id) {
-            log!("Failed to set link modulation: {err}");
+            tracing::error!("Failed to set link modulation: {err}");
         }
         self.routing = synth.get_routing_state();
     }

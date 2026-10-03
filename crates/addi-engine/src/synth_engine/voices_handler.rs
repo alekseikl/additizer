@@ -7,7 +7,6 @@ use crate::synth_engine::{
     buffer::{MonoVoicesLayout, new_mono_voices_layout},
     note_to_pitch,
     routing::{ExpressionEvent, MAX_VOICES, PrevNote, VoiceEvent},
-    utils::log,
 };
 
 pub const MAX_AVAILABLE_VOICES: usize = MAX_VOICES - 4;
@@ -363,7 +362,7 @@ impl VoicesHandler {
                 .iter()
                 .any(|playing| playing.note.is_same_note(&new_note))
         {
-            log!("Already pressed note came: {:?}", new_note);
+            tracing::info!("Already pressed note came: {:?}", new_note);
             return;
         }
 
@@ -409,7 +408,7 @@ impl VoicesHandler {
             .iter()
             .position(|playing| playing.note.is_same_note(&note))
         else {
-            log!("Unknown note lifted: {:?}", note);
+            tracing::info!("Unknown note lifted: {:?}", note);
             return;
         };
 

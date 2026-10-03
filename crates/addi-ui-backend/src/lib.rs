@@ -8,5 +8,3 @@ pub mod links;
 pub mod preset;
 pub mod presets;
 pub mod ui_bridge;
-
-mod log;
