@@ -4,7 +4,7 @@ use crate::{ComplexSample, filters::control::MAX_PRE_Q, units::freq_to_c4_pitch}
 
 use super::{
     SvfFilter,
-    section::{
+    sections::{
         BandPass, HighPass, HighShelf, Integrator, LowPass, LowShelf, Notch, OnePoleHighPass,
         OnePoleIntegrator, OnePoleLowPass, Peaking, ShelfCoeffs,
     },

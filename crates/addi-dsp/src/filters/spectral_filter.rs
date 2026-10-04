@@ -1,5 +1,3 @@
-use std::f32;
-
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -8,7 +6,12 @@ use crate::{
     units::{db_to_gain, db_to_gain_fast},
 };
 
-const TAU: Sample = f32::consts::TAU;
+mod sections;
+
+use sections::{BandPass, HighPass, HighShelf, LowPass, LowShelf, OnePoleHighPass, OnePoleLowPass};
+
+#[cfg(test)]
+use sections::TAU;
 
 pub trait FilterImpl: Clone + Copy + 'static {
     fn new(gain: Sample, cutoff_freq: Sample, q: Sample, pre_q: Sample) -> Self;
@@ -17,65 +20,125 @@ pub trait FilterImpl: Clone + Copy + 'static {
 
 #[derive(Clone, Copy)]
 pub struct LowPass12 {
-    numerator: Sample,
-    w_squared: Sample,
-    w_q: Sample,
-}
-
-impl FilterImpl for LowPass12 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
-        let w = cutoff * TAU;
-        let w_squared = w * w;
-
-        Self {
-            numerator: gain * w_squared,
-            w_squared,
-            w_q: w / q,
-        }
-    }
-
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        let x = freq * TAU;
-
-        self.numerator / ComplexSample::new(self.w_squared - x * x, self.w_q * x)
-    }
+    resonant: LowPass,
 }
 
 #[derive(Clone, Copy)]
 pub struct LowPass18 {
-    resonant: LowPass12,
-    w: Sample,
+    pre_stage: OnePoleLowPass,
+    resonant: LowPass,
 }
 
-impl FilterImpl for LowPass18 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
+#[derive(Clone, Copy)]
+pub struct LowPass24 {
+    pre_stage: LowPass,
+    resonant: LowPass,
+}
+
+#[derive(Clone, Copy)]
+pub struct HighPass12 {
+    resonant: HighPass,
+}
+
+#[derive(Clone, Copy)]
+pub struct HighPass18 {
+    pre_stage: OnePoleHighPass,
+    resonant: HighPass,
+}
+
+#[derive(Clone, Copy)]
+pub struct HighPass24 {
+    pre_stage: HighPass,
+    resonant: HighPass,
+}
+
+#[derive(Clone, Copy)]
+pub struct BandPass6 {
+    resonant: BandPass,
+}
+
+#[derive(Clone, Copy)]
+pub struct BandPass12 {
+    pre_stage: BandPass,
+    resonant: BandPass,
+}
+
+#[derive(Clone, Copy)]
+pub struct BandPass18 {
+    pre_stage: BandPass,
+    resonant: BandPass,
+}
+
+#[derive(Clone, Copy)]
+pub struct BandPass24 {
+    pre_stage: BandPass,
+    resonant: BandPass,
+}
+
+#[derive(Clone, Copy)]
+pub struct Peaking {
+    section: sections::Peaking,
+}
+
+#[derive(Clone, Copy)]
+pub struct Notch {
+    resonant: sections::Notch,
+}
+
+#[derive(Clone, Copy)]
+pub struct LowShelf12 {
+    section: LowShelf,
+}
+
+#[derive(Clone, Copy)]
+pub struct HighShelf12 {
+    section: HighShelf,
+}
+
+#[derive(Clone, Copy)]
+pub struct LowShelf24 {
+    pre_stage: LowShelf,
+    resonant: LowShelf,
+}
+
+#[derive(Clone, Copy)]
+pub struct HighShelf24 {
+    pre_stage: HighShelf,
+    resonant: HighShelf,
+}
+
+impl FilterImpl for LowPass12 {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
         Self {
-            resonant: LowPass12::new(gain, cutoff, q, pre_q),
-            w: cutoff * TAU,
+            resonant: LowPass::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        let x = freq * TAU;
-        let one_pole = self.w / ComplexSample::new(self.w, x);
-
-        one_pole * self.resonant.at(freq)
+        self.resonant.at(freq)
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct LowPass24 {
-    pre_stage: LowPass12,
-    resonant: LowPass12,
+impl FilterImpl for LowPass18 {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
+        Self {
+            pre_stage: OnePoleLowPass::new(cutoff),
+            resonant: LowPass::new(gain, cutoff, q),
+        }
+    }
+
+    #[inline]
+    fn at(&self, freq: Sample) -> ComplexSample {
+        self.pre_stage.at(freq) * self.resonant.at(freq)
+    }
 }
 
 impl FilterImpl for LowPass24 {
     fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         Self {
-            pre_stage: LowPass12::new(1.0, cutoff, pre_q, pre_q),
-            resonant: LowPass12::new(gain, cutoff, q, pre_q),
+            pre_stage: LowPass::new(1.0, cutoff, pre_q),
+            resonant: LowPass::new(gain, cutoff, q),
         }
     }
 
@@ -85,67 +148,38 @@ impl FilterImpl for LowPass24 {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct HighPass12 {
-    neg_gain: Sample,
-    w_squared: Sample,
-    w_q: Sample,
-}
-
 impl FilterImpl for HighPass12 {
     fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
-        let w = cutoff * TAU;
-
         Self {
-            neg_gain: -gain,
-            w_squared: w * w,
-            w_q: w / q,
+            resonant: HighPass::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        let x = freq * TAU;
-        let x_squared = x * x;
-
-        (self.neg_gain * x_squared) / ComplexSample::new(self.w_squared - x_squared, self.w_q * x)
+        self.resonant.at(freq)
     }
-}
-
-#[derive(Clone, Copy)]
-pub struct HighPass18 {
-    resonant: HighPass12,
-    w: Sample,
 }
 
 impl FilterImpl for HighPass18 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
+    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
         Self {
-            resonant: HighPass12::new(gain, cutoff, q, pre_q),
-            w: cutoff * TAU,
+            pre_stage: OnePoleHighPass::new(cutoff),
+            resonant: HighPass::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        let x = freq * TAU;
-        let one_pole = ComplexSample::new(0.0, x) / ComplexSample::new(self.w, x);
-
-        one_pole * self.resonant.at(freq)
+        self.pre_stage.at(freq) * self.resonant.at(freq)
     }
-}
-
-#[derive(Clone, Copy)]
-pub struct HighPass24 {
-    pre_stage: HighPass12,
-    resonant: HighPass12,
 }
 
 impl FilterImpl for HighPass24 {
     fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         Self {
-            pre_stage: HighPass12::new(1.0, cutoff, pre_q, pre_q),
-            resonant: HighPass12::new(gain, cutoff, q, pre_q),
+            pre_stage: HighPass::new(1.0, cutoff, pre_q),
+            resonant: HighPass::new(gain, cutoff, q),
         }
     }
 
@@ -155,44 +189,24 @@ impl FilterImpl for HighPass24 {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct BandPass6 {
-    gain: Sample,
-    w_squared: Sample,
-    w_q: Sample,
-}
-
 impl FilterImpl for BandPass6 {
     fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
-        let w = cutoff * TAU;
-
         Self {
-            gain,
-            w_squared: w * w,
-            w_q: w / q,
+            resonant: BandPass::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        let x = freq * TAU;
-        let wx_q = self.w_q * x;
-
-        ComplexSample::new(0.0, self.gain * wx_q) / ComplexSample::new(self.w_squared - x * x, wx_q)
+        self.resonant.at(freq)
     }
-}
-
-#[derive(Clone, Copy)]
-pub struct BandPass12 {
-    pre_stage: BandPass6,
-    resonant: BandPass6,
 }
 
 impl FilterImpl for BandPass12 {
     fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         Self {
-            pre_stage: BandPass6::new(1.0, cutoff, pre_q, pre_q),
-            resonant: BandPass6::new(gain, cutoff, q, pre_q),
+            pre_stage: BandPass::new(1.0, cutoff, pre_q),
+            resonant: BandPass::new(gain, cutoff, q),
         }
     }
 
@@ -202,17 +216,11 @@ impl FilterImpl for BandPass12 {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct BandPass18 {
-    pre_stage: BandPass6,
-    resonant: BandPass6,
-}
-
 impl FilterImpl for BandPass18 {
     fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         Self {
-            pre_stage: BandPass6::new(1.0, cutoff, pre_q, pre_q),
-            resonant: BandPass6::new(gain, cutoff, q, pre_q),
+            pre_stage: BandPass::new(1.0, cutoff, pre_q),
+            resonant: BandPass::new(gain, cutoff, q),
         }
     }
 
@@ -224,17 +232,11 @@ impl FilterImpl for BandPass18 {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct BandPass24 {
-    pre_stage: BandPass6,
-    resonant: BandPass6,
-}
-
 impl FilterImpl for BandPass24 {
     fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         Self {
-            pre_stage: BandPass6::new(1.0, cutoff, pre_q, pre_q),
-            resonant: BandPass6::new(gain, cutoff, q, pre_q),
+            pre_stage: BandPass::new(1.0, cutoff, pre_q),
+            resonant: BandPass::new(gain, cutoff, q),
         }
     }
 
@@ -247,136 +249,56 @@ impl FilterImpl for BandPass24 {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct Peaking {
-    w_squared: Sample,
-    wa_q: Sample,
-    w_aq: Sample,
-}
-
 impl FilterImpl for Peaking {
     fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
-        let w = cutoff * TAU;
-        let a = gain.max(0.0).sqrt();
-
         Self {
-            w_squared: w * w,
-            wa_q: (w * a) / q,
-            w_aq: w / (a * q),
+            section: sections::Peaking::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        let x = freq * TAU;
-        let wx_diff = self.w_squared - x * x;
-
-        ComplexSample::new(wx_diff, self.wa_q * x) / ComplexSample::new(wx_diff, self.w_aq * x)
+        self.section.at(freq)
     }
-}
-
-#[derive(Clone, Copy)]
-pub struct Notch {
-    gain: Sample,
-    w_squared: Sample,
-    w_q: Sample,
 }
 
 impl FilterImpl for Notch {
     fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
-        let w = cutoff * TAU;
-
         Self {
-            gain,
-            w_squared: w * w,
-            w_q: w / q,
+            resonant: sections::Notch::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        let x = freq * TAU;
-        let wx_diff = self.w_squared - x * x;
-
-        (self.gain * wx_diff) / ComplexSample::new(wx_diff, self.w_q * x)
+        self.resonant.at(freq)
     }
-}
-
-#[derive(Clone, Copy)]
-struct ShelfCoeffs {
-    a: Sample,
-    a_w_sq: Sample,
-    w_sq: Sample,
-    w_damp: Sample,
-}
-
-impl ShelfCoeffs {
-    fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
-        let w = cutoff * TAU;
-        let a = gain.max(0.0).sqrt();
-        let w_sq = w * w;
-
-        Self {
-            a,
-            a_w_sq: a * w_sq,
-            w_sq,
-            w_damp: a.sqrt() * w / q,
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct LowShelf12 {
-    coeffs: ShelfCoeffs,
 }
 
 impl FilterImpl for LowShelf12 {
     fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
         Self {
-            coeffs: ShelfCoeffs::new(gain, cutoff, q),
+            section: LowShelf::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        let x = freq * TAU;
-        let x_sq = x * x;
-        let j_damp = self.coeffs.w_damp * x;
-        let c = &self.coeffs;
-
-        c.a * ComplexSample::new(c.a_w_sq - x_sq, j_damp)
-            / ComplexSample::new(c.w_sq - c.a * x_sq, j_damp)
+        self.section.at(freq)
     }
-}
-
-#[derive(Clone, Copy)]
-pub struct HighShelf12 {
-    coeffs: ShelfCoeffs,
 }
 
 impl FilterImpl for HighShelf12 {
     fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
         Self {
-            coeffs: ShelfCoeffs::new(gain, cutoff, q),
+            section: HighShelf::new(gain, cutoff, q),
         }
     }
 
     #[inline]
     fn at(&self, freq: Sample) -> ComplexSample {
-        let x = freq * TAU;
-        let x_sq = x * x;
-        let j_damp = self.coeffs.w_damp * x;
-        let c = &self.coeffs;
-
-        c.a * ComplexSample::new(c.w_sq - c.a * x_sq, j_damp)
-            / ComplexSample::new(c.a_w_sq - x_sq, j_damp)
+        self.section.at(freq)
     }
-}
-
-#[derive(Clone, Copy)]
-pub struct LowShelf24 {
-    pre_stage: LowShelf12,
-    resonant: LowShelf12,
 }
 
 impl FilterImpl for LowShelf24 {
@@ -384,8 +306,8 @@ impl FilterImpl for LowShelf24 {
         let g12 = gain.max(0.0).sqrt();
 
         Self {
-            pre_stage: LowShelf12::new(g12, cutoff, pre_q, pre_q),
-            resonant: LowShelf12::new(g12, cutoff, q, pre_q),
+            pre_stage: LowShelf::new(g12, cutoff, pre_q),
+            resonant: LowShelf::new(g12, cutoff, q),
         }
     }
 
@@ -395,19 +317,13 @@ impl FilterImpl for LowShelf24 {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct HighShelf24 {
-    pre_stage: HighShelf12,
-    resonant: HighShelf12,
-}
-
 impl FilterImpl for HighShelf24 {
     fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
         let g12 = gain.max(0.0).sqrt();
 
         Self {
-            pre_stage: HighShelf12::new(g12, cutoff, pre_q, pre_q),
-            resonant: HighShelf12::new(g12, cutoff, q, pre_q),
+            pre_stage: HighShelf::new(g12, cutoff, pre_q),
+            resonant: HighShelf::new(g12, cutoff, q),
         }
     }
 

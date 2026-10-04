@@ -121,7 +121,7 @@ pub fn fast_pitch_to_freq_x4(pitch: f32x4) -> f32x4 {
 
 #[inline(always)]
 pub fn freq_to_pitch(freq: Sample) -> Sample {
-    (freq / A4_FREQ).log2()
+    (freq * A4_FREQ.recip()).log2()
 }
 
 #[inline(always)]

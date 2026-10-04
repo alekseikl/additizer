@@ -18,11 +18,11 @@ const MAX_FREQ_RATIO: Sample = 0.499;
 mod tests;
 
 mod response;
-mod section;
+mod sections;
 
 pub use response::SvfResponse;
 
-use section::{
+use sections::{
     BandPass, HighPass, HighShelf, LowPass, LowShelf, OnePoleHighPass, OnePoleLowPass, ShelfCoeffs,
 };
 
@@ -195,12 +195,12 @@ pub(crate) struct BandPass24 {
 /// Bell. Linear `gain` is the level at the cutoff; DC and high frequencies stay at unity.
 #[derive(Default, Clone, Copy)]
 pub(crate) struct Peaking {
-    section: section::Peaking,
+    section: sections::Peaking,
 }
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct Notch {
-    resonant: section::Notch,
+    resonant: sections::Notch,
 }
 
 /// Low shelf, 12 dB/oct. Linear `gain` is the DC level; high frequencies stay at unity.
