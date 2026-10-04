@@ -61,7 +61,7 @@ impl RouterDataType for ControlRouterType {
         _state: Self::VoiceState,
         samples: usize,
     ) {
-        let output = &mut outputs[target.channel_idx][target.voice_idx];
+        let output = outputs.at_mut(target.channel_idx, target.voice_idx);
 
         output.next_frame_sample = output.buffer[samples];
     }
@@ -219,7 +219,8 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, AudioRouterType, A> {
         let state = self.audio_voice_state(target);
 
         if let Some(offset) = target.triggered {
-            outputs[target.channel_idx][target.voice_idx].buffer[..offset.min(samples)].fill(0.0);
+            outputs.at_mut(target.channel_idx, target.voice_idx).buffer[..offset.min(samples)]
+                .fill(0.0);
         }
 
         (
@@ -280,7 +281,7 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, ControlRouterType, A> {
     {
         let triggered = target.triggered;
         let samples = self.params().samples;
-        let output = &mut outputs[target.channel_idx][target.voice_idx];
+        let output = outputs.at_mut(target.channel_idx, target.voice_idx);
         // Control runs 1 sample ahead: no trigger → offset 1 (seed buffer[0]);
         // Some(0) is a real note-on at sample 0, distinct from the non-trigger case.
         let state = ControlVoiceState {
@@ -513,8 +514,10 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, AudioRouterType, A> 
 
 impl<'v> VoiceOutput<'v, AudioRouterType> {
     pub fn output(&mut self) -> &mut [Sample] {
-        &mut self.outputs[self.target.channel_idx][self.target.voice_idx].buffer
-            [self.state.offset..self.samples]
+        &mut self
+            .outputs
+            .at_mut(self.target.channel_idx, self.target.voice_idx)
+            .buffer[self.state.offset..self.samples]
     }
 }
 
@@ -570,8 +573,10 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, ControlRouterType, A
 
 impl<'v> VoiceOutput<'v, ControlRouterType> {
     pub fn output(&mut self) -> &mut [Sample] {
-        &mut self.outputs[self.target.channel_idx][self.target.voice_idx].buffer
-            [self.state.offset..self.samples + 1]
+        &mut self
+            .outputs
+            .at_mut(self.target.channel_idx, self.target.voice_idx)
+            .buffer[self.state.offset..self.samples + 1]
     }
 
     /// External control sources are not written 1 sample ahead.
@@ -585,7 +590,9 @@ impl<'v> VoiceOutput<'v, ControlRouterType> {
         let in_buff = &in_buff[offset.min(in_buff.len())..];
         let len = in_buff.len();
         let last = in_buff[len - 1];
-        let output = &mut self.outputs[self.target.channel_idx][self.target.voice_idx];
+        let output = self
+            .outputs
+            .at_mut(self.target.channel_idx, self.target.voice_idx);
 
         output.buffer[offset..offset + len].copy_from_slice(in_buff);
         output.buffer[offset + len] = last;
@@ -626,7 +633,9 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, SpectralRouterType, 
 
 impl<'v> VoiceOutput<'v, SpectralRouterType> {
     pub fn output(&mut self, length: usize) -> &mut [ComplexSample] {
-        let out = &mut self.outputs[self.target.channel_idx][self.target.voice_idx];
+        let out = self
+            .outputs
+            .at_mut(self.target.channel_idx, self.target.voice_idx);
 
         out.set_length(length);
         out.get_mut()

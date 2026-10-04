@@ -257,7 +257,7 @@ impl<L: LfoLinks> Lfo<L> {
         let inputs = &self.inputs;
         let params = &self.params;
         let channel = &mut self.channel_params[channel_idx];
-        let voice = &mut self.voices[channel_idx][voice_idx];
+        let voice = self.voices.at_mut(channel_idx, voice_idx);
         let sample_rate = router.sample_rate();
 
         router.param(
@@ -354,7 +354,7 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
     }
 
     fn process_events(&mut self, events: &[VoiceEvent]) {
-        for channel in self.voices.iter_mut() {
+        for channel_idx in 0..NUM_CHANNELS {
             for event in events {
                 if let VoiceEvent::Reset {
                     voice_idx,
@@ -365,12 +365,12 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
                     let phase = if let Some(replaced_voice_idx) = replaced_voice_idx
                         && self.params.steal_phase
                     {
-                        channel[*replaced_voice_idx].phase
+                        self.voices.at(channel_idx, *replaced_voice_idx).phase
                     } else {
                         Phase::ZERO
                     };
 
-                    channel[*voice_idx].phase = phase;
+                    self.voices.at_mut(channel_idx, *voice_idx).phase = phase;
                 }
             }
         }

@@ -364,7 +364,7 @@ impl<L: EnvelopeLinks> Envelope<L> {
         let inputs = &self.inputs;
         let params = &self.params;
         let channel = &self.channel_params[channel_idx];
-        let voice = &mut self.voices[channel_idx][voice_idx];
+        let voice = self.voices.at_mut(channel_idx, voice_idx);
         let t_step = router.sample_rate().recip();
         let start_level = voice.start_level;
 
@@ -496,16 +496,18 @@ impl<L: EnvelopeLinks> SynthModule for Envelope<L> {
                     replaced_voice_idx,
                     ..
                 } => {
-                    for channel in self.voices.iter_mut() {
+                    for channel_idx in 0..NUM_CHANNELS {
                         let start_level = if let Some(replaced_voice_idx) = replaced_voice_idx
                             && self.params.steal_level
                         {
-                            channel[*replaced_voice_idx].next_frame_value
+                            self.voices
+                                .at(channel_idx, *replaced_voice_idx)
+                                .next_frame_value
                         } else {
                             0.0
                         };
 
-                        let voice = &mut channel[*voice_idx];
+                        let voice = self.voices.at_mut(channel_idx, *voice_idx);
                         voice.released = None;
                         voice.done = false;
                         voice.start_level = start_level;
@@ -514,8 +516,8 @@ impl<L: EnvelopeLinks> SynthModule for Envelope<L> {
                 VoiceEvent::Release {
                     voice_idx, offset, ..
                 } => {
-                    for channel in self.voices.iter_mut() {
-                        channel[*voice_idx].released = Some(*offset);
+                    for voice in self.voices.channels_at_mut(*voice_idx) {
+                        voice.released = Some(*offset);
                     }
                 }
                 _ => (),
@@ -526,9 +528,7 @@ impl<L: EnvelopeLinks> SynthModule for Envelope<L> {
     fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {
         if self.params.keep_voice_alive {
             for decaying in decaying_voices.iter_mut().filter(|d| d.is_done()) {
-                for channel in self.voices.iter() {
-                    let voice = &channel[decaying.index()];
-
+                for voice in self.voices.channels_at(decaying.index()) {
                     if !voice.done {
                         decaying.mark_active();
                     }

@@ -680,7 +680,10 @@ impl<L: OscillatorLinks> Oscillator<L> {
             spectrum,
             &mut self.buffers.tmp_spectral,
             &mut self.buffers.scratch,
-            &mut self.voice_buffers[target.channel_idx][target.voice_idx].wave,
+            &mut self
+                .voice_buffers
+                .at_mut(target.channel_idx, target.voice_idx)
+                .wave,
         );
     }
 
@@ -742,7 +745,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             let unison = self.params.unison;
             let inputs = &self.inputs;
             let channel = &self.channel_params[channel_idx];
-            let voice = &mut self.voices[channel_idx][voice_idx];
+            let voice = self.voices.at_mut(channel_idx, voice_idx);
 
             if unison < 2 {
                 voice.unison[0] = UnisonVoice::default();
@@ -801,7 +804,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let unison = self.params.unison.clamp(1, MAX_UNISON_VOICES);
         let full_chunks = unison / UNISON_LANES;
         let rem_lanes = unison % UNISON_LANES;
-        let unison_voices = &self.voices[channel_idx][voice_idx].unison;
+        let unison_voices = &self.voices.at(channel_idx, voice_idx).unison;
 
         for chunk_idx in 0..full_chunks {
             let start = chunk_idx * UNISON_LANES;
@@ -821,13 +824,18 @@ impl<L: OscillatorLinks> Oscillator<L> {
         voice_idx: usize,
         router: &mut Router<'_, '_, '_, L::EngineEnd>,
     ) {
-        let Some(phase_reset) = self.voices[channel_idx][voice_idx].phase_reset.take() else {
+        let Some(phase_reset) = self
+            .voices
+            .at_mut(channel_idx, voice_idx)
+            .phase_reset
+            .take()
+        else {
             return;
         };
 
         let channel = &self.channel_params[channel_idx];
         let unison = self.params.unison;
-        let voice = &mut self.voices[channel_idx][voice_idx];
+        let voice = self.voices.at_mut(channel_idx, voice_idx);
 
         // When steal_phase set to false - control that toggle by input value
         let steal_phase = router.scalar(
@@ -891,7 +899,9 @@ impl<L: OscillatorLinks> Oscillator<L> {
             };
             let requester_idx = playing.voice_idx();
 
-            if self.voices[channel_idx][requester_idx]
+            if self
+                .voices
+                .at(channel_idx, requester_idx)
                 .phase_reset
                 .as_ref()
                 .is_some_and(|reset| reset.steal_from == Some(source_idx))
@@ -933,7 +943,9 @@ impl<L: OscillatorLinks> Oscillator<L> {
             return;
         }
 
-        let from_size = self.voice_buffers[ctx.wave_channel][ctx.voice_idx]
+        let from_size = self
+            .voice_buffers
+            .at(ctx.wave_channel, ctx.voice_idx)
             .wave
             .size;
         let to_size = self.buffers.tmp_wave.size;
@@ -999,8 +1011,10 @@ impl<L: OscillatorLinks> Oscillator<L> {
         ),
     ) {
         let unison = self.params.unison.clamp(1, MAX_UNISON_VOICES);
-        let voice = &mut self.voices[ctx.channel_idx][ctx.voice_idx];
-        let wave_from = self.voice_buffers[ctx.wave_channel][ctx.voice_idx]
+        let voice = self.voices.at_mut(ctx.channel_idx, ctx.voice_idx);
+        let wave_from = self
+            .voice_buffers
+            .at(ctx.wave_channel, ctx.voice_idx)
             .wave
             .samples
             .as_ref();
@@ -1141,8 +1155,8 @@ impl<L: OscillatorLinks> Oscillator<L> {
 
             self.render_voice_samples(&ctx, output, start, offset);
 
-            let phases = self.voices[channel_idx][voice_idx].phases;
-            let requester = &mut self.voices[channel_idx][steal.voice_idx as usize];
+            let phases = self.voices.at(channel_idx, voice_idx).phases;
+            let requester = self.voices.at_mut(channel_idx, steal.voice_idx as usize);
 
             requester.phases = phases;
 
@@ -1156,20 +1170,13 @@ impl<L: OscillatorLinks> Oscillator<L> {
 
         if !mono_spectrum || channel_idx == RIGHT_CHANNEL {
             mem::swap(
-                &mut self.voice_buffers[wave_channel][voice_idx].wave,
+                &mut self.voice_buffers.at_mut(wave_channel, voice_idx).wave,
                 &mut self.buffers.tmp_wave,
             );
         }
     }
 
-    fn handle_trigger(
-        &mut self,
-        channel_idx: usize,
-        replaced_voice_idx: Option<usize>,
-        voice_idx: usize,
-    ) {
-        let voice = &mut self.voices[channel_idx][voice_idx];
-
+    fn handle_trigger(voice: &mut Voice, replaced_voice_idx: Option<usize>) {
         voice.phase_reset = Some(PhaseReset {
             steal_from: replaced_voice_idx,
             stolen: false,
@@ -1240,8 +1247,8 @@ impl<L: OscillatorLinks> SynthModule for Oscillator<L> {
                     replaced_voice_idx,
                     ..
                 } => {
-                    for channel_idx in 0..NUM_CHANNELS {
-                        self.handle_trigger(channel_idx, *replaced_voice_idx, *voice_idx);
+                    for voice in self.voices.channels_at_mut(*voice_idx) {
+                        Self::handle_trigger(voice, *replaced_voice_idx);
                     }
                 }
                 VoiceEvent::Update { .. } => {}

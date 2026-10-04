@@ -592,27 +592,31 @@ fn load_case(
 
     for channel in 0..NUM_CHANNELS {
         for voice in 0..MAX_VOICES {
-            osc.voice_buffers[channel][voice].wave.samples = decoy.clone();
-            osc.voice_buffers[channel][voice].wave.size = WaveformSize::Full;
+            osc.voice_buffers.at_mut(channel, voice).wave.samples = decoy.clone();
+            osc.voice_buffers.at_mut(channel, voice).wave.size = WaveformSize::Full;
 
-            let slot = &mut osc.voices[channel][voice];
+            let slot = osc.voices.at_mut(channel, voice);
             slot.phases = [Phase::from_bits(DECOY_PHASE); MAX_UNISON_VOICES];
             slot.unison = std::array::from_fn(|_| decoy_unison_voice());
             slot.unison_gain = Interpolated { from: 4.0, to: 4.0 };
         }
     }
 
-    *osc.voice_buffers[case.wave_channel][case.voice]
+    *osc.voice_buffers
+        .at_mut(case.wave_channel, case.voice)
         .wave
         .samples = *wave_from;
-    osc.voice_buffers[case.wave_channel][case.voice].wave.size = case.from_size;
+    osc.voice_buffers
+        .at_mut(case.wave_channel, case.voice)
+        .wave
+        .size = case.from_size;
     *osc.buffers.tmp_wave.samples = *wave_to;
     osc.buffers.tmp_wave.size = case.to_size;
 
     let voices = initial_voices();
     store_lane_params(osc, &voices, case.unison);
 
-    let slot = &mut osc.voices[case.channel][case.voice];
+    let slot = osc.voices.at_mut(case.channel, case.voice);
     slot.phases = initial_phases();
     slot.unison = voices;
     slot.unison_gain = Interpolated {
@@ -685,13 +689,13 @@ fn assert_other_voices_unchanged(osc: &Oscillator, case: &RenderCase) {
     let other_voice = usize::from(case.voice == 0);
 
     assert_eq!(
-        osc.voices[other_channel][case.voice].phases[0].bits(),
+        osc.voices.at(other_channel, case.voice).phases[0].bits(),
         DECOY_PHASE,
         "{}: rendered the other channel",
         case.name
     );
     assert_eq!(
-        osc.voices[case.channel][other_voice].phases[0].bits(),
+        osc.voices.at(case.channel, other_voice).phases[0].bits(),
         DECOY_PHASE,
         "{}: rendered another voice",
         case.name
@@ -767,7 +771,7 @@ fn render_voice_samples_matches_scalar_reference() {
         assert_phases(
             case.name,
             &expected_phases,
-            &osc.voices[case.channel][case.voice].phases,
+            &osc.voices.at(case.channel, case.voice).phases,
         );
         assert_other_voices_unchanged(&osc, &case);
     }
@@ -797,7 +801,7 @@ fn render_voice_samples_continues_across_a_split_range() {
     assert_phases(
         case.name,
         &expected_phases,
-        &osc.voices[case.channel][case.voice].phases,
+        &osc.voices.at(case.channel, case.voice).phases,
     );
 }
 
@@ -809,7 +813,7 @@ fn render_voice_samples_empty_range_is_a_no_op() {
     let mut osc = Oscillator::new(1);
     load_case(&mut osc, &case, &wave_from, &wave_to);
 
-    let phases_before = osc.voices[case.channel][case.voice].phases;
+    let phases_before = osc.voices.at(case.channel, case.voice).phases;
     let mut output = vec![RENDER_SENTINEL; case.samples];
     let ctx = render_ctx(&case);
 
@@ -817,5 +821,8 @@ fn render_voice_samples_empty_range_is_a_no_op() {
     osc.render_voice_samples(&ctx, &mut output, 10, 4);
 
     assert!(output.iter().all(|sample| *sample == RENDER_SENTINEL));
-    assert_eq!(osc.voices[case.channel][case.voice].phases, phases_before);
+    assert_eq!(
+        osc.voices.at(case.channel, case.voice).phases,
+        phases_before
+    );
 }

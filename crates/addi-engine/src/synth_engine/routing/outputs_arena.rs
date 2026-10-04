@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use crate::synth_engine::{
     ComplexSample, Sample, SynthModule,
-    buffer::{VoicesLayout, VoicesLayoutArray, add_to_buffer, new_voices_layout},
+    buffer::{VoicesLayout, add_to_buffer, new_voices_layout},
     engine_io::EngineLinks,
     module_handle::ModuleHandle,
     routing::{
@@ -26,20 +26,16 @@ impl<T: Default + Send> Default for ArenaSlot<T> {
 }
 
 impl<T: Default + Send> Deref for ArenaSlot<T> {
-    type Target = VoicesLayoutArray<T>;
+    type Target = VoicesLayout<T>;
 
     fn deref(&self) -> &Self::Target {
-        self.slot
-            .as_deref()
-            .expect("buffer slot should be in place")
+        self.slot.as_ref().expect("buffer slot should be in place")
     }
 }
 
 impl<T: Default + Send> DerefMut for ArenaSlot<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.slot
-            .as_deref_mut()
-            .expect("buffer slot should be in place")
+        self.slot.as_mut().expect("buffer slot should be in place")
     }
 }
 
@@ -123,7 +119,7 @@ impl OutputsArena {
         channel_idx: usize,
         voice_idx: usize,
     ) -> Option<&[Sample]> {
-        slot.map(|slot| self.samples[slot][channel_idx][voice_idx].buffer())
+        slot.map(|slot| self.samples[slot].at(channel_idx, voice_idx).buffer())
     }
 
     fn assert_control_rate(&self, slot: usize) {
@@ -155,14 +151,16 @@ impl OutputsArena {
             }
 
             let amount = slot.amount[channel_idx];
-            let input = self.samples[slot.src_slot][channel_idx][voice_idx]
+            let input = self.samples[slot.src_slot]
+                .at(channel_idx, voice_idx)
                 .buffer()
                 .iter()
                 .skip(offset)
                 .map(|sample| sample * amount);
 
             if let Some(modulation_slot) = slot.modulation_slot {
-                let input_mod = self.samples[modulation_slot][channel_idx][voice_idx]
+                let input_mod = self.samples[modulation_slot]
+                    .at(channel_idx, voice_idx)
                     .buffer()
                     .iter()
                     .skip(offset);
@@ -189,7 +187,9 @@ impl OutputsArena {
         this_frame: Option<usize>,
     ) -> Sample {
         self.assert_control_rate(slot);
-        self.samples[slot][channel_idx][voice_idx].scalar(this_frame)
+        self.samples[slot]
+            .at(channel_idx, voice_idx)
+            .scalar(this_frame)
     }
 
     pub(super) fn get_scalar(
@@ -225,7 +225,7 @@ impl OutputsArena {
         channel_idx: usize,
         voice_idx: usize,
     ) -> Option<&[ComplexSample]> {
-        slot.map(|slot| self.spectral[slot][channel_idx][voice_idx].get())
+        slot.map(|slot| self.spectral[slot].at(channel_idx, voice_idx).get())
     }
 }
 

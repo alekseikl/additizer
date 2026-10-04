@@ -27,35 +27,99 @@ pub const fn zero_spectral_buffer() -> SpectralBuffer {
     [ComplexSample::ZERO; SPECTRAL_BUFFER_SIZE]
 }
 
-pub type VoicesLayoutArray<T> = [[T; MAX_VOICES]; NUM_CHANNELS];
-pub type VoicesLayout<T> = Box<VoicesLayoutArray<T>>;
+type VoicesLayoutArray<T> = [[T; NUM_CHANNELS]; MAX_VOICES];
+
+pub struct VoicesLayout<T> {
+    voices: Box<VoicesLayoutArray<T>>,
+}
+
+impl<T> VoicesLayout<T> {
+    #[inline]
+    pub fn at(&self, channel_idx: usize, voice_idx: usize) -> &T {
+        &self.voices[voice_idx][channel_idx]
+    }
+
+    #[inline]
+    pub fn at_mut(&mut self, channel_idx: usize, voice_idx: usize) -> &mut T {
+        &mut self.voices[voice_idx][channel_idx]
+    }
+
+    #[inline]
+    pub fn channels_at(&self, voice_idx: usize) -> &[T; NUM_CHANNELS] {
+        &self.voices[voice_idx]
+    }
+
+    #[inline]
+    pub fn channels_at_mut(&mut self, voice_idx: usize) -> &mut [T; NUM_CHANNELS] {
+        &mut self.voices[voice_idx]
+    }
+
+    /// Mutable references to two different slots. Argument order is preserved.
+    pub fn at_pair_mut(
+        &mut self,
+        channel_a: usize,
+        voice_a: usize,
+        channel_b: usize,
+        voice_b: usize,
+    ) -> (&mut T, &mut T) {
+        assert!(
+            channel_a != channel_b || voice_a != voice_b,
+            "slots must differ"
+        );
+
+        if voice_a == voice_b {
+            let channels = self.channels_at_mut(voice_a);
+
+            if channel_a < channel_b {
+                let (left, right) = channels.split_at_mut(channel_b);
+                (&mut left[channel_a], &mut right[0])
+            } else {
+                let (left, right) = channels.split_at_mut(channel_a);
+                (&mut right[0], &mut left[channel_b])
+            }
+        } else if voice_a < voice_b {
+            let (left, right) = self.voices.split_at_mut(voice_b);
+            (&mut left[voice_a][channel_a], &mut right[0][channel_b])
+        } else {
+            let (left, right) = self.voices.split_at_mut(voice_a);
+            (&mut right[0][channel_a], &mut left[voice_b][channel_b])
+        }
+    }
+}
 
 pub type MonoVoicesLayoutArray<T> = [T; MAX_VOICES];
 pub type MonoVoicesLayout<T> = Box<MonoVoicesLayoutArray<T>>;
 
 pub fn new_voices_layout<U: Default + Send>() -> VoicesLayout<U> {
-    let mut channels: Box<[MaybeUninit<[U; MAX_VOICES]>; NUM_CHANNELS]> =
-        Box::new([const { MaybeUninit::uninit() }; NUM_CHANNELS]);
+    new_voices_layout_with(U::default)
+}
 
-    for channel in channels.iter_mut() {
-        init_array_in_place::<U, MAX_VOICES>(channel.as_mut_ptr());
+pub fn new_voices_layout_with<U: Send>(init: impl FnMut() -> U) -> VoicesLayout<U> {
+    let mut voices: Box<[MaybeUninit<[U; NUM_CHANNELS]>; MAX_VOICES]> =
+        Box::new([const { MaybeUninit::uninit() }; MAX_VOICES]);
+    let mut init = init;
+
+    for voice in voices.iter_mut() {
+        init_array_in_place::<U, NUM_CHANNELS>(voice.as_mut_ptr(), &mut init);
     }
 
-    unsafe { Box::from_raw(Box::into_raw(channels).cast::<[[U; MAX_VOICES]; NUM_CHANNELS]>()) }
+    VoicesLayout {
+        voices: unsafe { Box::from_raw(Box::into_raw(voices).cast::<VoicesLayoutArray<U>>()) },
+    }
 }
 
 pub fn new_mono_voices_layout<U: Default + Send>() -> MonoVoicesLayout<U> {
     let mut voices: Box<MaybeUninit<[U; MAX_VOICES]>> = Box::new(MaybeUninit::uninit());
-    init_array_in_place::<U, MAX_VOICES>(voices.as_mut_ptr());
+    init_array_in_place::<U, MAX_VOICES>(voices.as_mut_ptr(), &mut U::default);
     unsafe { Box::from_raw(Box::into_raw(voices).cast::<[U; MAX_VOICES]>()) }
 }
 
-fn init_array_in_place<U: Default, const N: usize>(dst: *mut [U; N]) {
+fn init_array_in_place<U, const N: usize>(dst: *mut [U; N], init: &mut impl FnMut() -> U) {
     let elements = dst.cast::<U>();
 
     for i in 0..N {
         unsafe {
-            elements.add(i).write(U::default());
+            elements.add(i).write(init());
         }
     }
 }
@@ -129,3 +193,6 @@ pub fn copy_or_add_to_buffer(copy: bool, buff: &mut [Sample], input: impl Iterat
         add_to_buffer(buff, input);
     }
 }
+
+#[cfg(test)]
+mod tests;

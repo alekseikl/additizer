@@ -49,7 +49,7 @@ fn draw(
     let rolloff = noise.rolloff[phase_channel];
 
     if noise.stereo || channel == LEFT_CHANNEL {
-        let phases = &mut noise.phases[phase_channel][voice][DC_OFFSET..length];
+        let phases = &mut noise.phases.at_mut(phase_channel, voice)[DC_OFFSET..length];
         let rng = &mut noise.random;
         let cutoff_log2 = cutoff;
         let cutoff_harmonic = cutoff_log2.exp2();
@@ -78,8 +78,8 @@ fn draw(
             }
         }
     } else {
-        let [left, right] = noise.phases.each_mut();
-        right[voice][..length].copy_from_slice(&left[voice][..length]);
+        let [left, right] = noise.phases.channels_at_mut(voice);
+        right[..length].copy_from_slice(&left[..length]);
     }
 
     noise.write_harmonics(voice, phase_channel, gain, &mut out);
@@ -519,9 +519,11 @@ fn reset(voice_idx: usize, replaced_voice_idx: Option<usize>) -> VoiceEvent {
 }
 
 fn phases_differ(noise: &SpectralNoise, voice_a: usize, voice_b: usize) -> bool {
-    noise.phases[LEFT_CHANNEL][voice_a]
+    noise
+        .phases
+        .at(LEFT_CHANNEL, voice_a)
         .iter()
-        .zip(noise.phases[LEFT_CHANNEL][voice_b].iter())
+        .zip(noise.phases.at(LEFT_CHANNEL, voice_b).iter())
         .skip(1)
         .any(|(a, b)| a != b)
 }
@@ -537,10 +539,13 @@ fn trigger_steals_phases_from_the_replaced_voice() {
     let _ = draw(&mut noise, 1, LEFT_CHANNEL, 8);
 
     assert_eq!(
-        noise.phases[LEFT_CHANNEL][1].as_ref(),
-        noise.phases[LEFT_CHANNEL][0].as_ref()
+        noise.phases.at(LEFT_CHANNEL, 1).as_ref(),
+        noise.phases.at(LEFT_CHANNEL, 0).as_ref()
     );
-    assert_eq!(noise.phases[1][1].as_ref(), noise.phases[1][0].as_ref());
+    assert_eq!(
+        noise.phases.at(1, 1).as_ref(),
+        noise.phases.at(1, 0).as_ref()
+    );
 }
 
 #[test]
@@ -548,7 +553,7 @@ fn trigger_randomizes_phases_when_steal_is_off() {
     let mut noise = held_phases(false);
     let _ = draw(&mut noise, 0, LEFT_CHANNEL, 8);
     let _ = draw(&mut noise, 1, LEFT_CHANNEL, 8);
-    let before = noise.phases[LEFT_CHANNEL][0].clone();
+    let before = *noise.phases.at(LEFT_CHANNEL, 0);
 
     SynthModule::process_events(&mut noise, &[reset(0, Some(1))]);
     let _ = draw(&mut noise, 0, LEFT_CHANNEL, 8);
@@ -556,7 +561,7 @@ fn trigger_randomizes_phases_when_steal_is_off() {
     assert!(
         before
             .iter()
-            .zip(noise.phases[LEFT_CHANNEL][0].iter())
+            .zip(noise.phases.at(LEFT_CHANNEL, 0).iter())
             .skip(1)
             .any(|(a, b)| a != b)
     );
@@ -567,7 +572,7 @@ fn trigger_randomizes_phases_when_steal_is_off() {
 fn steal_without_a_replaced_voice_randomizes() {
     let mut noise = held_phases(true);
     let _ = draw(&mut noise, 0, LEFT_CHANNEL, 8);
-    let before = noise.phases[LEFT_CHANNEL][0].clone();
+    let before = *noise.phases.at(LEFT_CHANNEL, 0);
 
     SynthModule::process_events(&mut noise, &[reset(0, None)]);
     let _ = draw(&mut noise, 0, LEFT_CHANNEL, 8);
@@ -575,7 +580,7 @@ fn steal_without_a_replaced_voice_randomizes() {
     assert!(
         before
             .iter()
-            .zip(noise.phases[LEFT_CHANNEL][0].iter())
+            .zip(noise.phases.at(LEFT_CHANNEL, 0).iter())
             .skip(1)
             .any(|(a, b)| a != b)
     );

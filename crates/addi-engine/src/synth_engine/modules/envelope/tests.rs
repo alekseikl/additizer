@@ -1,5 +1,5 @@
 use super::*;
-use crate::synth_engine::routing::{NUM_CHANNELS, VoiceEvent};
+use crate::synth_engine::routing::VoiceEvent;
 
 fn reset_event(voice_idx: usize, replaced_voice_idx: Option<usize>) -> VoiceEvent {
     VoiceEvent::Reset {
@@ -23,33 +23,33 @@ fn envelope(steal_level: bool) -> Envelope {
 #[test]
 fn reset_steals_next_frame_value_from_replaced_voice() {
     let mut env = envelope(true);
-    env.voices[0][0].next_frame_value = 0.6;
-    env.voices[1][0].next_frame_value = 0.4;
+    env.voices.at_mut(0, 0).next_frame_value = 0.6;
+    env.voices.at_mut(1, 0).next_frame_value = 0.4;
 
     env.process_events(&[reset_event(1, Some(0))]);
 
-    assert!((env.voices[0][1].start_level - 0.6).abs() < 1e-6);
-    assert!((env.voices[1][1].start_level - 0.4).abs() < 1e-6);
+    assert!((env.voices.at(0, 1).start_level - 0.6).abs() < 1e-6);
+    assert!((env.voices.at(1, 1).start_level - 0.4).abs() < 1e-6);
 }
 
 #[test]
 fn reset_does_not_steal_without_replaced_voice() {
     let mut env = envelope(true);
-    env.voices[0][2].next_frame_value = 0.75;
+    env.voices.at_mut(0, 2).next_frame_value = 0.75;
 
     env.process_events(&[reset_event(3, None)]);
 
-    assert_eq!(env.voices[0][3].start_level, 0.0);
+    assert_eq!(env.voices.at(0, 3).start_level, 0.0);
 }
 
 #[test]
 fn reset_does_not_steal_when_disabled() {
     let mut env = envelope(false);
-    env.voices[0][0].next_frame_value = 0.6;
+    env.voices.at_mut(0, 0).next_frame_value = 0.6;
 
     env.process_events(&[reset_event(1, Some(0))]);
 
-    assert_eq!(env.voices[0][1].start_level, 0.0);
+    assert_eq!(env.voices.at(0, 1).start_level, 0.0);
 }
 
 #[test]
@@ -119,14 +119,14 @@ fn steal_level_round_trips_in_config() {
 #[test]
 fn both_channels_steal_independently() {
     let mut env = envelope(true);
-    for channel_idx in 0..NUM_CHANNELS {
-        env.voices[channel_idx][0].next_frame_value = 0.2 + channel_idx as Sample * 0.3;
+    for (channel_idx, voice) in env.voices.channels_at_mut(0).iter_mut().enumerate() {
+        voice.next_frame_value = 0.2 + channel_idx as Sample * 0.3;
     }
 
     env.process_events(&[reset_event(4, Some(0))]);
 
-    for channel_idx in 0..NUM_CHANNELS {
+    for (channel_idx, voice) in env.voices.channels_at(4).iter().enumerate() {
         let expected = 0.2 + channel_idx as Sample * 0.3;
-        assert!((env.voices[channel_idx][4].start_level - expected).abs() < 1e-6);
+        assert!((voice.start_level - expected).abs() < 1e-6);
     }
 }

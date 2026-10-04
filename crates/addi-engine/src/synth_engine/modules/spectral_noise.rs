@@ -10,7 +10,7 @@ use crate::{
     },
     synth_engine::{
         ComplexSample, MAX_BANDWIDTH, Sample, StereoSample,
-        buffer::{DC_OFFSET, SPECTRAL_BUFFER_SIZE, VoicesLayout},
+        buffer::{DC_OFFSET, SPECTRAL_BUFFER_SIZE, VoicesLayout, new_voices_layout_with},
         routing::{
             DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, MAX_VOICES, ModuleId,
             NUM_CHANNELS, ProcessContext, RouterFactory, SpectralInputSlot, SpectralOutput,
@@ -133,7 +133,7 @@ pub struct SpectralNoise<L: SpectralNoiseLinks = stub::Links> {
     magnitude_scale: Sample,
     random: Pcg32,
     /// Harmonic phase in radians, per channel and voice. DC stays at 0.
-    phases: VoicesLayout<Box<[Sample; SPECTRAL_BUFFER_SIZE]>>,
+    phases: VoicesLayout<[Sample; SPECTRAL_BUFFER_SIZE]>,
     /// `log2` of harmonic indices. Index 0 is unused.
     log2: [Sample; SPECTRAL_BUFFER_SIZE],
     /// Pending note-on. Applied on the voice's next left-channel render.
@@ -171,9 +171,7 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
             steal_phase: config.steal_phase,
             magnitude_scale: Self::magnitude_scale(config.color),
             random: Pcg32::new(0xa5a5_5a5a_c3c3_3c3c, 0x9e3779b97f4a7c15),
-            phases: Box::new(array::from_fn(|_| {
-                array::from_fn(|_| Box::new([0.0; SPECTRAL_BUFFER_SIZE]))
-            })),
+            phases: new_voices_layout_with(|| [0.0; SPECTRAL_BUFFER_SIZE]),
             log2: array::from_fn(|harmonic| {
                 if harmonic == 0 {
                     0.0
@@ -269,10 +267,10 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
     }
 
     fn randomize_voice_phases(&mut self, voice_idx: usize) {
-        for channel in 0..NUM_CHANNELS {
-            self.phases[channel][voice_idx][0] = 0.0;
+        for phases in self.phases.channels_at_mut(voice_idx) {
+            phases[0] = 0.0;
 
-            for phase in self.phases[channel][voice_idx].iter_mut().skip(DC_OFFSET) {
+            for phase in phases.iter_mut().skip(DC_OFFSET) {
                 Self::reset_phase(phase, &mut self.random);
             }
         }
@@ -283,15 +281,8 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
             return;
         }
 
-        for channel in self.phases.iter_mut() {
-            let (src_phases, dst_phases) = if src < dst {
-                let (left, right) = channel.split_at_mut(dst);
-                (&left[src], &mut right[0])
-            } else {
-                let (left, right) = channel.split_at_mut(src);
-                (&right[0], &mut left[dst])
-            };
-
+        for channel in 0..NUM_CHANNELS {
+            let (src_phases, dst_phases) = self.phases.at_pair_mut(channel, src, channel, dst);
             dst_phases.copy_from_slice(&src_phases[..]);
         }
     }
@@ -340,7 +331,7 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
 
         *dc = ComplexSample::ZERO;
         let mag_scale = self.magnitude_scale * gain;
-        let phases = &self.phases[channel][voice_idx];
+        let phases = self.phases.at(channel, voice_idx);
 
         for (offset, bin) in harmonics.iter_mut().enumerate() {
             let idx = offset + DC_OFFSET;
@@ -399,7 +390,7 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
         let rolloff = self.rolloff[phase_channel];
 
         if self.stereo || channel == LEFT_CHANNEL {
-            let phases = &mut self.phases[phase_channel][voice_idx][DC_OFFSET..length];
+            let phases = &mut self.phases.at_mut(phase_channel, voice_idx)[DC_OFFSET..length];
             let rng = &mut self.random;
             // Octaves of the harmonic index that sits on the cutoff.
             let cutoff_log2 = cutoff - (pitch - C4_PITCH);
@@ -429,8 +420,8 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
                 }
             }
         } else {
-            let [left, right] = self.phases.each_mut();
-            right[voice_idx][..length].copy_from_slice(&left[voice_idx][..length]);
+            let [left, right] = self.phases.channels_at_mut(voice_idx);
+            right[..length].copy_from_slice(&left[..length]);
         }
 
         self.write_harmonics(voice_idx, phase_channel, gain, out);

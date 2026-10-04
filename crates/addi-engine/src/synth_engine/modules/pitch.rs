@@ -245,7 +245,7 @@ impl<L: PitchLinks> Pitch<L> {
         let voice_idx = target.voice_idx;
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let channel = &self.channel_params[channel_idx];
-        let voice = &mut self.voices[channel_idx][voice_idx];
+        let voice = self.voices.at_mut(channel_idx, voice_idx);
         let inputs = &self.inputs;
         let buffers = &mut self.buffers;
 
@@ -314,26 +314,26 @@ impl<L: PitchLinks> Pitch<L> {
         voice_idx: usize,
         pitch: Sample,
     ) {
-        self.voices[channel_idx][voice_idx].reset();
+        self.voices.at_mut(channel_idx, voice_idx).reset();
 
         if self.params.keytrack {
-            self.voices[channel_idx][voice_idx].pitch = pitch;
+            self.voices.at_mut(channel_idx, voice_idx).pitch = pitch;
 
             if let Some(pitch_from) = prev_note
                 .filter(|prev| prev.pressed || self.params.glide_always)
                 .map(|prev| {
                     prev.voice_idx()
-                        .and_then(|from_idx| self.voices[channel_idx][from_idx].glide.as_ref())
+                        .and_then(|from_idx| self.voices.at(channel_idx, from_idx).glide.as_ref())
                         .map_or_else(|| prev.pitch(), |glide| glide.current_pitch)
                 })
             {
-                self.voices[channel_idx][voice_idx].glide = Some(Glide::new(pitch_from));
+                self.voices.at_mut(channel_idx, voice_idx).glide = Some(Glide::new(pitch_from));
             }
         }
     }
 
     fn handle_update(&mut self, channel_idx: usize, voice_idx: usize, pitch: Sample) {
-        let voice = &mut self.voices[channel_idx][voice_idx];
+        let voice = self.voices.at_mut(channel_idx, voice_idx);
 
         if self.params.keytrack {
             voice.glide = Some(Glide::new(
@@ -348,6 +348,7 @@ impl<L: PitchLinks> Pitch<L> {
             voice.pitch = C4_PITCH;
         }
     }
+
     pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
         ctx.control(self.id, self.output_slot)
             .for_voices(|rf, target, outputs| {

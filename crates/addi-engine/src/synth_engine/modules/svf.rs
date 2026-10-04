@@ -193,8 +193,8 @@ impl<L: SvfLinks> Svf<L> {
     set_smoothed_param!(set_drive, drive, drive.clamp(MIN_DRIVE, MAX_DRIVE));
 
     fn reset_voice(&mut self, voice_idx: usize) {
-        for channel in self.states.iter_mut() {
-            channel[voice_idx] = SvfChannel::new(self.params.filter_type);
+        for state in self.states.channels_at_mut(voice_idx) {
+            *state = SvfChannel::new(self.params.filter_type);
         }
     }
 
@@ -208,7 +208,7 @@ impl<L: SvfLinks> Svf<L> {
         let inputs = &self.inputs;
         let params = &self.params;
         let channel = &self.channel_params[target.channel_idx];
-        let state = &mut self.states[target.channel_idx][target.voice_idx];
+        let state = self.states.at_mut(target.channel_idx, target.voice_idx);
         let sample_rate = router.sample_rate();
         let filter_type = params.filter_type;
 
