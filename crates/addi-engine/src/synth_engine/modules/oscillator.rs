@@ -11,7 +11,6 @@ use crate::{
     synth_engine::{
         SmoothedSampleParams, StereoSample,
         buffer::{Buffer, SPECTRUM_BITS, VoicesLayout, new_voices_layout, zero_buffer},
-        coeffs::catmull_rom_from_powers,
         phase::{Phase, PhaseX4},
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, MAX_VOICES,
@@ -26,8 +25,11 @@ use crate::{
 };
 
 mod config;
+mod lanes;
 mod link;
 pub mod stub;
+
+use lanes::{SampleCtx, UNISON_CHUNKS, UNISON_LANES, UnisonLaneParams};
 
 #[cfg(test)]
 mod tests;
@@ -36,6 +38,7 @@ pub use config::OscillatorConfig;
 pub use link::{OscillatorAudioEnd, OscillatorLinks, OscillatorUiEnd, UiEvent, Unison};
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
+const HALF_WAVEFORM_BITS: usize = WAVEFORM_BITS - 1;
 const WAVEFORM_SIZE: usize = 1 << WAVEFORM_BITS;
 const WAVEFORM_PAD_LEFT: usize = 1;
 const WAVEFORM_PAD_RIGHT: usize = 2;
@@ -46,6 +49,59 @@ pub const MAX_UNISON_VOICES: usize = 16;
 
 type WaveformBuffer = [Sample; WAVEFORM_BUFFER_SIZE];
 type DftBuffer = [ComplexSample; DFT_BUFFER_SIZE];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WaveformSize {
+    Full,
+    Half,
+}
+
+impl WaveformSize {
+    const fn len(self) -> usize {
+        match self {
+            Self::Full => WAVEFORM_SIZE,
+            Self::Half => WAVEFORM_SIZE / 2,
+        }
+    }
+}
+
+struct Waveform {
+    samples: Box<WaveformBuffer>,
+    size: WaveformSize,
+}
+
+impl Waveform {
+    fn new() -> Self {
+        Self {
+            samples: Box::new([0.0; WAVEFORM_BUFFER_SIZE]),
+            size: WaveformSize::Full,
+        }
+    }
+}
+
+struct IfftPlanners {
+    full: Arc<dyn ComplexToReal<Sample>>,
+    half: Arc<dyn ComplexToReal<Sample>>,
+}
+
+impl IfftPlanners {
+    fn new() -> Self {
+        let mut planner = RealFftPlanner::<Sample>::new();
+
+        Self {
+            full: planner.plan_fft_inverse(WAVEFORM_SIZE),
+            half: planner.plan_fft_inverse(WAVEFORM_SIZE / 2),
+        }
+    }
+
+    fn select(&self, cutoff_index: usize) -> (WaveformSize, &dyn ComplexToReal<Sample>) {
+        if cutoff_index < self.half.complex_len() {
+            (WaveformSize::Half, self.half.as_ref())
+        } else {
+            (WaveformSize::Full, self.full.as_ref())
+        }
+    }
+}
 
 struct Params {
     unison: usize,
@@ -172,59 +228,6 @@ struct UnisonStateUpdate {
     gain: Sample,
 }
 
-const UNISON_LANES: usize = 4;
-const UNISON_CHUNKS: usize = MAX_UNISON_VOICES / UNISON_LANES;
-const _: () = assert!(UNISON_CHUNKS * UNISON_LANES == MAX_UNISON_VOICES);
-
-#[derive(Clone, Copy, Default)]
-struct UnisonLaneParams {
-    rate_from: f32x4,
-    rate_delta: f32x4,
-    phase_shift_from: f32x4,
-    phase_shift_delta: f32x4,
-    gain_from: f32x4,
-    gain_delta: f32x4,
-}
-
-impl UnisonLaneParams {
-    #[inline(always)]
-    fn from_voices(voices: &[UnisonVoice]) -> Self {
-        debug_assert!(voices.len() <= UNISON_LANES);
-
-        let lanes = |f: fn(&UnisonVoice) -> Sample| {
-            f32x4::new(array::from_fn(|i| voices.get(i).map(f).unwrap_or(0.0)))
-        };
-
-        let phase_shift_from = PhaseX4::wrap_normalized(lanes(|uv| uv.phase_shift.from));
-        let phase_shift_to = PhaseX4::wrap_normalized(lanes(|uv| uv.phase_shift.to));
-
-        Self {
-            rate_from: lanes(|uv| uv.rate.from),
-            rate_delta: lanes(|uv| uv.rate.to - uv.rate.from),
-            phase_shift_from,
-            phase_shift_delta: phase_shift_to - phase_shift_from,
-            gain_from: lanes(|uv| uv.gain.from),
-            gain_delta: lanes(|uv| uv.gain.to - uv.gain.from),
-        }
-    }
-}
-
-struct UnisonTaps {
-    idx: [u32; UNISON_LANES],
-    g: f32x4,
-    gt: f32x4,
-    gt2: f32x4,
-    gt3: f32x4,
-}
-
-#[derive(Clone, Copy)]
-struct SampleCtx {
-    buff_t: f32x4,
-    phase_shift: PhaseX4,
-    pitch_phase_inc: f32x4,
-    freq_phase_inc: f32x4,
-}
-
 struct Voice {
     phase_reset: Option<PhaseReset>,
     unison_gain: Interpolated,
@@ -244,19 +247,19 @@ impl Default for Voice {
 }
 
 struct VoiceBuffers {
-    wave: Box<WaveformBuffer>,
+    wave: Waveform,
 }
 
 impl Default for VoiceBuffers {
     fn default() -> Self {
         Self {
-            wave: Box::new([0.0; WAVEFORM_BUFFER_SIZE]),
+            wave: Waveform::new(),
         }
     }
 }
 
 struct Buffers {
-    tmp_wave: Box<WaveformBuffer>,
+    tmp_wave: Waveform,
     tmp_spectral: DftBuffer,
     scratch: DftBuffer,
     pitch: Buffer,
@@ -268,7 +271,7 @@ struct Buffers {
 impl Default for Buffers {
     fn default() -> Self {
         Self {
-            tmp_wave: Box::new([0.0; WAVEFORM_BUFFER_SIZE]),
+            tmp_wave: Waveform::new(),
             tmp_spectral: [ComplexSample::ZERO; DFT_BUFFER_SIZE],
             scratch: [ComplexSample::ZERO; DFT_BUFFER_SIZE],
             pitch: zero_buffer(),
@@ -383,7 +386,7 @@ type Router<'v, 'f, 'c, A> = VoiceRouter<'v, 'f, 'c, AudioRouterType, A>;
 
 pub struct Oscillator<L: OscillatorLinks = stub::Links> {
     buffers: Buffers,
-    inverse_fft: Arc<dyn ComplexToReal<Sample>>,
+    ifft: IfftPlanners,
     random: Pcg32,
     id: ModuleId,
     params: Params,
@@ -420,7 +423,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
                 ChannelParams::from_config(config, channel_idx)
             }),
             buffers: Buffers::default(),
-            inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE),
+            ifft: IfftPlanners::new(),
             random: Pcg32::new(420, 1337),
             audio_end,
             ui_end,
@@ -596,76 +599,28 @@ impl<L: OscillatorLinks> Oscillator<L> {
     }
 
     #[inline]
-    fn get_wave_slice_mut(wave_buff: &mut WaveformBuffer) -> &mut [Sample] {
-        &mut wave_buff[WAVEFORM_PAD_LEFT..(WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT)]
+    fn waveform_body_mut(wave_buff: &mut WaveformBuffer, size: WaveformSize) -> &mut [Sample] {
+        let len = size.len();
+
+        &mut wave_buff[WAVEFORM_PAD_LEFT..WAVEFORM_PAD_LEFT + len]
     }
 
-    #[inline(always)]
-    fn load_segment(wave_buffer: &WaveformBuffer, idx: usize) -> f32x4 {
-        let s = &wave_buffer[idx..idx + 4];
+    fn wrap_waveform(wave_buff: &mut WaveformBuffer, size: WaveformSize) {
+        let last = WAVEFORM_PAD_LEFT + size.len() - 1;
 
-        f32x4::new([s[0], s[1], s[2], s[3]])
-    }
-
-    #[inline(always)]
-    fn advance_unison_lanes(
-        phases: &mut [Phase; UNISON_LANES],
-        p: &UnisonLaneParams,
-        s: &SampleCtx,
-    ) -> UnisonTaps {
-        let phase = PhaseX4::load(phases);
-
-        let unison_shift = p.phase_shift_delta.mul_add(s.buff_t, p.phase_shift_from);
-        let read_phase = phase + s.phase_shift + PhaseX4::from_wrapped(unison_shift);
-        let idx = read_phase.wave_index::<WAVEFORM_BITS>();
-        let t = read_phase.wave_index_fraction::<WAVEFORM_BITS>();
-
-        let g = p.gain_delta.mul_add(s.buff_t, p.gain_from);
-        let gt = g * t;
-        let gt2 = gt * t;
-        let gt3 = gt2 * t;
-
-        let rate = p.rate_delta.mul_add(s.buff_t, p.rate_from);
-        (phase + rate.mul_add(s.pitch_phase_inc, s.freq_phase_inc)).store(phases);
-
-        UnisonTaps {
-            idx,
-            g,
-            gt,
-            gt2,
-            gt3,
-        }
-    }
-
-    #[inline(always)]
-    fn accumulate_unison_lane(
-        taps: &UnisonTaps,
-        lane: usize,
-        wave_from: &WaveformBuffer,
-        wave_to: &WaveformBuffer,
-        acc_from: &mut f32x4,
-        acc_to: &mut f32x4,
-    ) {
-        let idx = taps.idx[lane] as usize;
-        let weights = catmull_rom_from_powers(
-            taps.g.as_array()[lane],
-            taps.gt.as_array()[lane],
-            taps.gt2.as_array()[lane],
-            taps.gt3.as_array()[lane],
-        );
-
-        *acc_from = Self::load_segment(wave_from, idx).mul_add(weights, *acc_from);
-        *acc_to = Self::load_segment(wave_to, idx).mul_add(weights, *acc_to);
+        wave_buff[0] = wave_buff[last];
+        wave_buff[last + 1] = wave_buff[WAVEFORM_PAD_LEFT];
+        wave_buff[last + 2] = wave_buff[WAVEFORM_PAD_LEFT + 1];
     }
 
     fn build_wave(
-        inverse_fft: &dyn ComplexToReal<Sample>,
+        ifft: &IfftPlanners,
         frequency: f32,
         sample_rate: f32,
         spectral_buff: &[ComplexSample],
         dft_buff: &mut DftBuffer,
         scratch_buff: &mut DftBuffer,
-        out_wave_buff: &mut WaveformBuffer,
+        out_wave: &mut Waveform,
     ) {
         let frequency = frequency.abs();
         let max_frequency = 0.5 * sample_rate;
@@ -673,21 +628,25 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let cutoff_index =
             ((max_frequency / frequency).floor() as usize + 1).min(spectral_buff.len());
 
-        dft_buff[..cutoff_index].copy_from_slice(&spectral_buff[..cutoff_index]);
-        dft_buff[cutoff_index..].fill(ComplexSample::ZERO);
+        let (size, inverse_fft) = ifft.select(cutoff_index);
+        let complex_len = inverse_fft.complex_len();
+        debug_assert!(cutoff_index <= complex_len);
+        debug_assert_eq!(inverse_fft.len(), size.len());
+
+        let dft = &mut dft_buff[..complex_len];
+        dft[..cutoff_index].copy_from_slice(&spectral_buff[..cutoff_index]);
+        dft[cutoff_index..].fill(ComplexSample::ZERO);
 
         inverse_fft
             .process_with_scratch(
-                dft_buff,
-                Self::get_wave_slice_mut(out_wave_buff),
+                dft,
+                Self::waveform_body_mut(&mut out_wave.samples, size),
                 scratch_buff,
             )
             .expect("ifft should succeed");
 
-        out_wave_buff[0] = out_wave_buff[WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT - 1];
-        out_wave_buff[WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT] = out_wave_buff[WAVEFORM_PAD_LEFT];
-        out_wave_buff[WAVEFORM_BUFFER_SIZE - WAVEFORM_PAD_RIGHT + 1] =
-            out_wave_buff[WAVEFORM_PAD_LEFT + 1];
+        Self::wrap_waveform(&mut out_wave.samples, size);
+        out_wave.size = size;
     }
 
     fn build_this_frame_wave(
@@ -715,7 +674,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let spectrum = router.spectral(self.inputs.spectrum);
 
         Self::build_wave(
-            self.inverse_fft.as_ref(),
+            &self.ifft,
             pitch_to_freq(pitch) + freq_shift,
             router.sample_rate(),
             spectrum,
@@ -974,10 +933,78 @@ impl<L: OscillatorLinks> Oscillator<L> {
             return;
         }
 
+        let from_size = self.voice_buffers[ctx.wave_channel][ctx.voice_idx]
+            .wave
+            .size;
+        let to_size = self.buffers.tmp_wave.size;
+
+        match (from_size, to_size) {
+            (WaveformSize::Full, WaveformSize::Full) => {
+                self.render_voice_samples_same::<WAVEFORM_BITS>(ctx, output, start, end)
+            }
+            (WaveformSize::Full, WaveformSize::Half) => self
+                .render_voice_samples_sized::<WAVEFORM_BITS, HALF_WAVEFORM_BITS>(
+                    ctx, output, start, end,
+                ),
+            (WaveformSize::Half, WaveformSize::Full) => self
+                .render_voice_samples_sized::<HALF_WAVEFORM_BITS, WAVEFORM_BITS>(
+                    ctx, output, start, end,
+                ),
+            (WaveformSize::Half, WaveformSize::Half) => {
+                self.render_voice_samples_same::<HALF_WAVEFORM_BITS>(ctx, output, start, end)
+            }
+        }
+    }
+
+    #[inline(never)]
+    fn render_voice_samples_same<const BITS: usize>(
+        &mut self,
+        ctx: &VoiceRenderCtx,
+        output: &mut [Sample],
+        start: usize,
+        end: usize,
+    ) {
+        self.render_voice_loop(ctx, output, start, end, lanes::render_same::<BITS>);
+    }
+
+    #[inline(never)]
+    fn render_voice_samples_sized<const FROM_BITS: usize, const TO_BITS: usize>(
+        &mut self,
+        ctx: &VoiceRenderCtx,
+        output: &mut [Sample],
+        start: usize,
+        end: usize,
+    ) {
+        self.render_voice_loop(
+            ctx,
+            output,
+            start,
+            end,
+            lanes::render_sized::<FROM_BITS, TO_BITS>,
+        );
+    }
+
+    #[inline(always)]
+    fn render_voice_loop(
+        &mut self,
+        ctx: &VoiceRenderCtx,
+        output: &mut [Sample],
+        start: usize,
+        end: usize,
+        mut render_lanes: impl FnMut(
+            &mut [Phase; UNISON_LANES],
+            &UnisonLaneParams,
+            &mut SampleCtx,
+            usize,
+        ),
+    ) {
         let unison = self.params.unison.clamp(1, MAX_UNISON_VOICES);
         let voice = &mut self.voices[ctx.channel_idx][ctx.voice_idx];
-        let wave_from: &WaveformBuffer = &self.voice_buffers[ctx.wave_channel][ctx.voice_idx].wave;
-        let wave_to: &WaveformBuffer = &self.buffers.tmp_wave;
+        let wave_from = self.voice_buffers[ctx.wave_channel][ctx.voice_idx]
+            .wave
+            .samples
+            .as_ref();
+        let wave_to = self.buffers.tmp_wave.samples.as_ref();
         let buff_t_inc = (ctx.samples as Sample).recip();
         let mut buff_t = start as Sample * buff_t_inc;
 
@@ -999,48 +1026,27 @@ impl<L: OscillatorLinks> Oscillator<L> {
             &self.buffers.phase_shift[start..end],
             &self.buffers.frequency_shift[start..end],
         ) {
-            let s = SampleCtx {
+            let mut s = SampleCtx {
                 buff_t: f32x4::splat(buff_t),
                 phase_shift: PhaseX4::splat(Phase::from_normalized(phase_shift)),
                 pitch_phase_inc: f32x4::splat(pitch_phase_inc),
                 freq_phase_inc: f32x4::splat(freq_shift * ctx.freq_phase_mult),
+                wave_from,
+                wave_to,
+                acc_from: [f32x4::ZERO; UNISON_LANES],
+                acc_to: [f32x4::ZERO; UNISON_LANES],
             };
 
-            let mut acc_from = [f32x4::ZERO; UNISON_LANES];
-            let mut acc_to = [f32x4::ZERO; UNISON_LANES];
-
             for (phases, params) in full_phases.iter_mut().zip(full_params) {
-                let taps = Self::advance_unison_lanes(phases, params, &s);
-
-                for lane in 0..UNISON_LANES {
-                    Self::accumulate_unison_lane(
-                        &taps,
-                        lane,
-                        wave_from,
-                        wave_to,
-                        &mut acc_from[lane],
-                        &mut acc_to[lane],
-                    );
-                }
+                render_lanes(phases, params, &mut s, UNISON_LANES);
             }
 
             if rem_lanes > 0 {
-                let taps = Self::advance_unison_lanes(&mut rem_phases[0], &rem_params[0], &s);
-
-                for lane in 0..rem_lanes {
-                    Self::accumulate_unison_lane(
-                        &taps,
-                        lane,
-                        wave_from,
-                        wave_to,
-                        &mut acc_from[lane],
-                        &mut acc_to[lane],
-                    );
-                }
+                render_lanes(&mut rem_phases[0], &rem_params[0], &mut s, rem_lanes);
             }
 
-            let acc_from = (acc_from[0] + acc_from[1]) + (acc_from[2] + acc_from[3]);
-            let acc_to = (acc_to[0] + acc_to[1]) + (acc_to[2] + acc_to[3]);
+            let acc_from = (s.acc_from[0] + s.acc_from[1]) + (s.acc_from[2] + s.acc_from[3]);
+            let acc_to = (s.acc_to[0] + s.acc_to[1]) + (s.acc_to[2] + s.acc_to[3]);
             let acc = (acc_to - acc_from).mul_add(s.buff_t, acc_from);
 
             *out = acc.reduce_add() * unison_gain_delta.mul_add(buff_t, unison_gain_from);
@@ -1105,7 +1111,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             let last = samples.saturating_sub(1);
 
             Self::build_wave(
-                self.inverse_fft.as_ref(),
+                &self.ifft,
                 pitch_to_freq(self.buffers.pitch[last]) + self.buffers.frequency_shift[last],
                 router.sample_rate(),
                 router.spectral(inputs.spectrum),
@@ -1169,6 +1175,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             stolen: false,
         });
     }
+
     pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
         ctx.audio(self.id, self.output_slot)
             .for_triggered_voices(|rf, target| {

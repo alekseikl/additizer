@@ -43,7 +43,7 @@ HTML reports are written to `target/criterion/`.
 | `unison/1,4,8,16` | Unison voice count (single note, 128-sample block) |
 | `voices/1,4,8,16` | Polyphony (4 unison voices) |
 | `block_size/8,32,64,128` | Engine block size (4 unison, single note) |
-| `heavy_patch` | 16 voices × 16 unison with detune |
+| `heavy_patch` | 16 voices (MIDI 15–30) × 16 unison with detune, all on the full table |
 
 Throughput for `synth_engine` is reported in stereo output samples per second
 (`samples × channels`, and `× voices` where applicable).
@@ -56,6 +56,7 @@ voices with detune and unison phase/gain blends, to measure the per-sample cost 
 |-----------|----------------|
 | `single_voice_unison16/note_pitch` | Constant note pitch (no `Pitch` input) |
 | `single_voice_unison16/pitch_input` | `Pitch` module → oscillator pitch input, as in the default patch |
+| `single_voice_unison16/size_crossfade` | Legato C1↔C2, so each block crossfades full and half tables (`accumulate_unison_lane`). Time is both directions |
 
 Throughput here is unison-voice samples per second (`samples × channels × 16`).
 

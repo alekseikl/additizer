@@ -178,6 +178,43 @@ impl PhaseX4 {
 
         masked.round_float() * mult
     }
+
+    /// Lane-wise [`Phase::wave_index`] for a wavetable size chosen at runtime.
+    #[inline(always)]
+    pub fn wave_index_with(self, scale: WaveIndexScale) -> [u32; 4] {
+        (self.0 >> scale.shift).to_array()
+    }
+
+    /// Lane-wise [`Phase::wave_index_fraction`] for a wavetable size chosen at runtime.
+    #[inline(always)]
+    pub fn wave_index_fraction_with(self, scale: WaveIndexScale) -> f32x4 {
+        let masked: i32x4 = cast(self.0 & scale.mask);
+
+        masked.round_float() * scale.mult
+    }
+}
+
+/// Precomputed shift, mask, and fraction scale for a power-of-two wavetable.
+///
+/// Built once per render so the sample loop does not splat these constants.
+#[derive(Clone, Copy)]
+pub struct WaveIndexScale {
+    shift: u32,
+    mask: u32x4,
+    mult: f32x4,
+}
+
+impl WaveIndexScale {
+    #[inline(always)]
+    pub fn from_bits(waveform_bits: u32) -> Self {
+        let shift = 32 - waveform_bits;
+
+        Self {
+            shift,
+            mask: u32x4::splat((1u32 << shift) - 1),
+            mult: f32x4::splat(((1u32 << shift) as f32).recip()),
+        }
+    }
 }
 
 impl Add for PhaseX4 {

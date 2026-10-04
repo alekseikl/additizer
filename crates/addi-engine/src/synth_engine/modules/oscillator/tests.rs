@@ -1,7 +1,13 @@
-use super::{Oscillator, OscillatorConfig};
+use realfft::RealFftPlanner;
+
+use super::{
+    DFT_BUFFER_SIZE, IfftPlanners, Oscillator, OscillatorConfig, WAVEFORM_BUFFER_SIZE,
+    WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform, WaveformBuffer, WaveformSize,
+};
 use crate::synth_engine::{
-    harmonic_editor::HarmonicEditorConfig, routing::RIGHT_CHANNEL, EngineConfig, EngineParams,
-    Input, LinkConfig, ModuleConfig, ModuleId, Note, Sample, SynthEngine, OUTPUT_MODULE_ID,
+    ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId, Note,
+    OUTPUT_MODULE_ID, Sample, SynthEngine, harmonic_editor::HarmonicEditorConfig,
+    routing::RIGHT_CHANNEL,
 };
 
 const SAMPLE_RATE: Sample = 48_000.0;
@@ -211,4 +217,120 @@ fn coherent_unison_scales_single_voice_by_sqrt_n() {
             );
         }
     }
+}
+
+fn wave_cutoff(frequency: Sample, sample_rate: Sample, spectrum_len: usize) -> usize {
+    let max_frequency = 0.5 * sample_rate;
+    ((max_frequency / frequency).floor() as usize + 1).min(spectrum_len)
+}
+
+fn reference_full_wave(spectrum: &[ComplexSample], cutoff: usize) -> Box<WaveformBuffer> {
+    let fft = RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE);
+    let mut dft = [ComplexSample::ZERO; DFT_BUFFER_SIZE];
+    let mut scratch = [ComplexSample::ZERO; DFT_BUFFER_SIZE];
+    let mut wave = Box::new([0.0; WAVEFORM_BUFFER_SIZE]);
+    let complex_len = fft.complex_len();
+    let copy_len = cutoff.min(complex_len).min(spectrum.len());
+
+    dft[..copy_len].copy_from_slice(&spectrum[..copy_len]);
+    fft.process_with_scratch(
+        &mut dft[..complex_len],
+        Oscillator::<super::stub::Links>::waveform_body_mut(&mut wave, WaveformSize::Full),
+        &mut scratch,
+    )
+    .expect("reference ifft");
+
+    wave
+}
+
+fn build_test_wave(frequency: Sample, spectrum: &[ComplexSample]) -> Waveform {
+    let ifft = IfftPlanners::new();
+    let mut dft = [ComplexSample::ZERO; DFT_BUFFER_SIZE];
+    let mut scratch = [ComplexSample::ZERO; DFT_BUFFER_SIZE];
+    let mut wave = Waveform::new();
+
+    Oscillator::<super::stub::Links>::build_wave(
+        &ifft,
+        frequency,
+        SAMPLE_RATE,
+        spectrum,
+        &mut dft,
+        &mut scratch,
+        &mut wave,
+    );
+
+    wave
+}
+
+fn body(wave: &WaveformBuffer, len: usize) -> &[Sample] {
+    &wave[WAVEFORM_PAD_LEFT..WAVEFORM_PAD_LEFT + len]
+}
+
+fn assert_wave_matches_full(frequency: Sample, spectrum: &[ComplexSample], size: WaveformSize) {
+    let cutoff = wave_cutoff(frequency, SAMPLE_RATE, spectrum.len());
+    let reference = reference_full_wave(spectrum, cutoff);
+    let wave = build_test_wave(frequency, spectrum);
+    let len = size.len();
+    let stride = WAVEFORM_SIZE / len;
+    let actual = body(&wave.samples, len);
+    let expected = body(&reference, WAVEFORM_SIZE);
+    let peak = expected.iter().fold(0.0_f32, |acc, s| acc.max(s.abs()));
+    let max_diff = actual
+        .iter()
+        .enumerate()
+        .map(|(i, sample)| (sample - expected[i * stride]).abs())
+        .fold(0.0_f32, Sample::max);
+    let last = WAVEFORM_PAD_LEFT + len - 1;
+
+    assert_eq!(wave.size, size);
+    assert!(peak > 1.0, "frequency {frequency}: reference peak {peak}");
+    assert!(
+        max_diff < peak * 1e-4,
+        "frequency {frequency}: max diff {max_diff}, peak {peak}"
+    );
+    assert_eq!(wave.samples[0], wave.samples[last]);
+    assert_eq!(wave.samples[last + 1], wave.samples[WAVEFORM_PAD_LEFT]);
+    assert_eq!(wave.samples[last + 2], wave.samples[WAVEFORM_PAD_LEFT + 1]);
+}
+
+#[test]
+fn build_wave_uses_half_resolution_for_high_notes() {
+    let mut spectrum = vec![ComplexSample::ZERO; DFT_BUFFER_SIZE];
+    spectrum[1] = ComplexSample::new(0.8, 0.1);
+    spectrum[80] = ComplexSample::new(0.4, -0.3);
+
+    assert_wave_matches_full(200.0, &spectrum, WaveformSize::Half);
+}
+
+#[test]
+fn build_wave_uses_half_resolution_for_mid_notes() {
+    let mut spectrum = vec![ComplexSample::ZERO; DFT_BUFFER_SIZE];
+    spectrum[1] = ComplexSample::new(0.8, 0.1);
+    spectrum[200] = ComplexSample::new(0.35, 0.25);
+
+    assert_wave_matches_full(80.0, &spectrum, WaveformSize::Half);
+}
+
+#[test]
+fn build_wave_keeps_full_resolution_when_cutoff_reaches_half_nyquist() {
+    let mut spectrum = vec![ComplexSample::ZERO; DFT_BUFFER_SIZE];
+    spectrum[1] = ComplexSample::new(0.8, 0.0);
+    spectrum[200] = ComplexSample::new(0.2, 0.1);
+
+    let cutoff = wave_cutoff(46.8, SAMPLE_RATE, spectrum.len());
+    assert_eq!(cutoff, WaveformSize::Half.len() / 2 + 1);
+
+    assert_wave_matches_full(46.8, &spectrum, WaveformSize::Full);
+}
+
+#[test]
+fn build_wave_keeps_full_resolution_past_half_table() {
+    let mut spectrum = vec![ComplexSample::ZERO; DFT_BUFFER_SIZE];
+    spectrum[1] = ComplexSample::new(0.8, 0.0);
+    spectrum[520] = ComplexSample::new(0.05, 0.2);
+
+    let cutoff = wave_cutoff(46.0, SAMPLE_RATE, spectrum.len());
+    assert!(cutoff > WaveformSize::Half.len() / 2 + 1);
+
+    assert_wave_matches_full(46.0, &spectrum, WaveformSize::Full);
 }

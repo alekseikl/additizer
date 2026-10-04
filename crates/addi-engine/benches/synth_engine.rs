@@ -1,4 +1,5 @@
 use std::hint::black_box;
+use std::time::Instant;
 
 use addi_engine::{
     EngineConfig, EngineParams, Input, LinkConfig, MAX_BLOCK_SIZE, ModuleConfig, ModuleId,
@@ -56,11 +57,15 @@ fn make_engine(engine: EngineParams, osc: OscillatorConfig) -> SynthEngine {
 }
 
 fn trigger_notes(engine: &mut SynthEngine, count: usize) {
+    trigger_notes_at(engine, count, 60);
+}
+
+fn trigger_notes_at(engine: &mut SynthEngine, count: usize, base_note: u8) {
     for i in 0..count {
         engine.handle_note_on(
             Note {
                 channel: 0,
-                note: (60 + i) as u8,
+                note: base_note + i as u8,
                 velocity: 1.0,
                 host_id: None,
             },
@@ -87,12 +92,12 @@ fn process_block(engine: &mut SynthEngine, samples: usize) -> [Sample; MAX_BLOCK
 fn bench_process(c: &mut Criterion) {
     let mut group = c.benchmark_group("synth_engine/oscillator_path");
 
-    for unison in [1, 4, 8, MAX_UNISON_VOICES] {
+    {
         let mut engine = make_engine(
             EngineParams::default(),
             OscillatorConfig {
                 id: OSCILLATOR_ID,
-                unison_voices: unison,
+                unison_voices: 1,
                 ..OscillatorConfig::default()
             },
         );
@@ -100,7 +105,27 @@ fn bench_process(c: &mut Criterion) {
 
         let samples = MAX_BLOCK_SIZE;
         group.throughput(Throughput::Elements((samples * NUM_CHANNELS) as u64));
-        group.bench_with_input(BenchmarkId::new("unison", unison), &unison, |b, _| {
+        group.bench_function("unison/1", |b| {
+            b.iter(|| black_box(process_block(&mut engine, samples)));
+        });
+    }
+
+    // One voice, 16 unison. At 48 kHz the inverse FFT is half above ~47 Hz
+    // (C2) and full below that (C1).
+    for (name, note) in [("half", 36u8), ("full", 24)] {
+        let mut engine = make_engine(
+            EngineParams::default(),
+            OscillatorConfig {
+                id: OSCILLATOR_ID,
+                unison_voices: MAX_UNISON_VOICES,
+                ..OscillatorConfig::default()
+            },
+        );
+        trigger_notes_at(&mut engine, 1, note);
+
+        let samples = MAX_BLOCK_SIZE;
+        group.throughput(Throughput::Elements((samples * NUM_CHANNELS) as u64));
+        group.bench_function(BenchmarkId::new("unison16", name), |b| {
             b.iter(|| black_box(process_block(&mut engine, samples)));
         });
     }
@@ -165,7 +190,10 @@ fn bench_process(c: &mut Criterion) {
                 ..OscillatorConfig::default()
             },
         );
-        trigger_notes(&mut engine, 16);
+        // MIDI 15..=30 stay on the full table at 48 kHz (half begins at
+        // note 31, ~49 Hz). Same-note repeats are ignored, so the notes
+        // must be distinct to occupy all 16 voices.
+        trigger_notes_at(&mut engine, 16, 15);
 
         let samples = MAX_BLOCK_SIZE;
         group.throughput(Throughput::Elements((samples * NUM_CHANNELS * 16) as u64));
@@ -178,8 +206,8 @@ fn bench_process(c: &mut Criterion) {
 }
 
 /// Per-sample cost of the oscillator render loop: one voice, max unison, with
-/// detune, unison phase/gain blends and a pitch input so every per-sample code
-/// path in `render_voice_samples` is exercised.
+/// detune and unison phase/gain blends. `note_pitch` and `pitch_input` keep
+/// one table size. `size_crossfade` switches between the full and half tables.
 fn bench_oscillator_render(c: &mut Criterion) {
     let mut group = c.benchmark_group("synth_engine/oscillator_render");
 
@@ -209,6 +237,66 @@ fn bench_oscillator_render(c: &mut Criterion) {
         group.bench_function(BenchmarkId::new("single_voice_unison16", name), |b| {
             b.iter(|| black_box(process_block(&mut engine, samples)));
         });
+    }
+
+    // Held voice, alternating C1 (full table) and C2 (half table). Each timed
+    // block crossfades the previous table into the new one, which is the
+    // `accumulate_unison_lane` path. An iteration covers both directions.
+    // Legato note changes are outside the timer.
+    {
+        let mut engine = SynthEngine::try_new(
+            &minimal_engine_config(
+                EngineParams {
+                    legato: true,
+                    ..EngineParams::default()
+                },
+                osc.clone(),
+            ),
+            SAMPLE_RATE,
+        )
+        .expect("valid engine config");
+        let full = Note {
+            channel: 0,
+            note: 24,
+            velocity: 1.0,
+            host_id: None,
+        };
+        let half = Note {
+            channel: 0,
+            note: 36,
+            velocity: 1.0,
+            host_id: None,
+        };
+
+        engine.handle_note_on(full, 0);
+        process_block(&mut engine, MAX_BLOCK_SIZE);
+
+        let samples = MAX_BLOCK_SIZE;
+        group.throughput(Throughput::Elements(
+            (samples * NUM_CHANNELS * MAX_UNISON_VOICES * 2) as u64,
+        ));
+        group.bench_function(
+            BenchmarkId::new("single_voice_unison16", "size_crossfade"),
+            |b| {
+                b.iter_custom(|iters| {
+                    let mut total = std::time::Duration::ZERO;
+
+                    for _ in 0..iters {
+                        engine.handle_note_on(half, 0);
+                        let start = Instant::now();
+                        black_box(process_block(&mut engine, samples));
+                        total += start.elapsed();
+
+                        engine.handle_note_off(half, 0);
+                        let start = Instant::now();
+                        black_box(process_block(&mut engine, samples));
+                        total += start.elapsed();
+                    }
+
+                    total
+                });
+            },
+        );
     }
 
     group.finish();

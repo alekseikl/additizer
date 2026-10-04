@@ -1,6 +1,6 @@
 use wide::f32x4;
 
-use super::{Phase, PhaseX4};
+use super::{Phase, PhaseX4, WaveIndexScale};
 
 const BITS: usize = 11;
 
@@ -78,6 +78,37 @@ fn wave_index_and_fraction_match_scalar() {
     for lane in 0..4 {
         assert_eq!(idx[lane] as usize, phases[lane].wave_index::<BITS>());
         assert_eq!(frac[lane], phases[lane].wave_index_fraction::<BITS>());
+    }
+}
+
+#[test]
+fn wave_index_with_matches_const_bits() {
+    let phases = [0u32, 0x0100_0000, 0x7fff_ffff, 0xffff_ffff].map(Phase::from_bits);
+    let simd = PhaseX4::load(&phases);
+
+    for bits in [9u32, 10, 11] {
+        let scale = WaveIndexScale::from_bits(bits);
+        let idx = simd.wave_index_with(scale);
+        let frac = simd.wave_index_fraction_with(scale).to_array();
+
+        let (expected_idx, expected_frac) = match bits {
+            9 => (
+                simd.wave_index::<9>(),
+                simd.wave_index_fraction::<9>().to_array(),
+            ),
+            10 => (
+                simd.wave_index::<10>(),
+                simd.wave_index_fraction::<10>().to_array(),
+            ),
+            11 => (
+                simd.wave_index::<11>(),
+                simd.wave_index_fraction::<11>().to_array(),
+            ),
+            _ => unreachable!(),
+        };
+
+        assert_eq!(idx, expected_idx);
+        assert_eq!(frac, expected_frac);
     }
 }
 
