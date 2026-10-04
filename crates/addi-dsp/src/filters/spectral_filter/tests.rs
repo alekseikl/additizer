@@ -1,4 +1,6 @@
 use super::*;
+use wide::f32x4;
+
 use crate::filters::control::{
     MAX_PRE_Q, MAX_RESONANCE, MAX_RESONANCE_Q, MIN_PRE_Q, MIN_RESONANCE, NEGATIVE_RESONANCE_Q,
     ZERO_RESONANCE_Q, q_from_resonance,
@@ -53,6 +55,18 @@ fn filter(filter_type: FilterType, p: FilterParams) -> SpectralFilter {
 fn cutoff_freq(p: FilterParams) -> Sample {
     filter(FilterType::LowPass12, p).cutoff_freq
 }
+
+/// Lane 0 of [`FilterLanes::at_x4`] at a single frequency.
+trait AtFreq: FilterLanes {
+    fn at(&self, freq: Sample) -> ComplexSample {
+        let response = self.at_x4(f32x4::splat(freq));
+        let re = response.re.to_array();
+        let im = response.im.to_array();
+        ComplexSample::new(re[0], im[0])
+    }
+}
+
+impl<T: FilterLanes> AtFreq for T {}
 
 fn mag<T: FilterLanes>(freq: Sample) -> Sample {
     mag_params::<T>(GAIN, CUTOFF, Q, freq)

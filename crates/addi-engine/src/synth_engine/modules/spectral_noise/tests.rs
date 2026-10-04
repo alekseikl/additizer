@@ -4,7 +4,9 @@ use rand_pcg::Pcg32;
 
 use super::*;
 use crate::{
-    synth_engine::{C4_PITCH, MIN_LEVEL_DB, db_to_gain, note_to_pitch, pitch_to_freq},
+    synth_engine::{
+        C4_PITCH, MIN_LEVEL_DB, db_to_gain, db_to_gain_fast, note_to_pitch, pitch_to_freq,
+    },
     synth_engine::{
         ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId, Note,
         OUTPUT_MODULE_ID, SPECTRAL_BUFFER_SIZE, Sample, SynthEngine, VoiceEvent, buffer::DC_OFFSET,
@@ -61,7 +63,7 @@ fn draw(
         for (offset, phase) in limited.iter_mut().enumerate() {
             let harmonic = DC_OFFSET + offset;
             let octaves_below = (cutoff_log2 - noise.log2[harmonic]).max(0.0);
-            let scale = db_to_gain(-db_per_oct * octaves_below);
+            let scale = db_to_gain_fast(-db_per_oct * octaves_below);
 
             <SpectralNoise>::turn_phase(phase, full_turn * scale, rng);
         }
@@ -88,7 +90,7 @@ fn rolloff_gain(octaves_below: Sample, db_per_oct: Sample) -> Sample {
     let octaves_below = octaves_below.max(0.0);
     let db_per_oct = db_per_oct.clamp(MIN_ROLLOFF, MAX_ROLLOFF);
 
-    db_to_gain(-db_per_oct * octaves_below)
+    db_to_gain_fast(-db_per_oct * octaves_below)
 }
 
 #[test]

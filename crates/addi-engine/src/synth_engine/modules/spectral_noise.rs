@@ -5,7 +5,8 @@ use rand_pcg::Pcg32;
 
 use crate::{
     synth_engine::{
-        C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, db_to_gain, pitch_to_freq,
+        C4_PITCH, MAX_CUTOFF, MAX_LEVEL_DB, MIN_CUTOFF, MIN_LEVEL_DB, db_to_gain, db_to_gain_fast,
+        pitch_to_freq,
     },
     synth_engine::{
         ComplexSample, MAX_BANDWIDTH, Sample, StereoSample,
@@ -413,7 +414,7 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
             for (offset, phase) in limited.iter_mut().enumerate() {
                 let harmonic = DC_OFFSET + offset;
                 let octaves_below = (cutoff_log2 - self.log2[harmonic]).max(0.0);
-                let scale = db_to_gain(-db_per_oct * octaves_below);
+                let scale = db_to_gain_fast(-db_per_oct * octaves_below);
 
                 Self::turn_phase(phase, full_turn * scale, rng);
             }

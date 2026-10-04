@@ -22,12 +22,6 @@ pub trait FilterImpl: Clone + Copy + 'static {
 
 trait FilterLanes: FilterImpl {
     fn at_x4(&self, freq: f32x4) -> ComplexX4;
-
-    /// Lane 0 of [`Self::at_x4`] at a single frequency.
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        lane0(self.at_x4(f32x4::splat(freq)))
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -587,13 +581,6 @@ impl SpectralFilter {
 
 const LANES: usize = 4;
 const DC_OFFSET: usize = 1;
-
-#[inline]
-fn lane0(response: ComplexX4) -> ComplexSample {
-    let re = response.re.to_array();
-    let im = response.im.to_array();
-    ComplexSample::new(re[0], im[0])
-}
 
 /// Up to four frequencies. Lanes past the slice stay zero and are not stored.
 #[inline(always)]
