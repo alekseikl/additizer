@@ -54,15 +54,15 @@ fn cutoff_freq(p: FilterParams) -> Sample {
     filter(FilterType::LowPass12, p).cutoff_freq
 }
 
-fn mag<T: FilterImpl>(freq: Sample) -> Sample {
+fn mag<T: FilterLanes>(freq: Sample) -> Sample {
     mag_params::<T>(GAIN, CUTOFF, Q, freq)
 }
 
-fn mag_params<T: FilterImpl>(gain: Sample, cutoff: Sample, q: Sample, freq: Sample) -> Sample {
+fn mag_params<T: FilterLanes>(gain: Sample, cutoff: Sample, q: Sample, freq: Sample) -> Sample {
     T::new(gain, cutoff, q, MAX_PRE_Q).at(freq).norm()
 }
 
-fn at<T: FilterImpl>(freq: Sample) -> ComplexSample {
+fn at<T: FilterLanes>(freq: Sample) -> ComplexSample {
     T::new(GAIN, CUTOFF, Q, MAX_PRE_Q).at(freq)
 }
 
@@ -760,6 +760,9 @@ fn apply_response_matches_response_at_freqs() {
         ComplexSample::new(0.5, 0.25),
         ComplexSample::new(-1.0, 0.75),
         ComplexSample::new(0.0, 1.0),
+        ComplexSample::new(0.25, -0.5),
+        ComplexSample::new(-0.5, 0.5),
+        ComplexSample::new(0.75, 0.1),
     ];
     let freqs: Vec<Sample> = (1..input.len()).map(|i| i as Sample).collect();
 
@@ -804,6 +807,9 @@ fn apply_response_in_place_matches_apply_response() {
         ComplexSample::new(0.5, 0.25),
         ComplexSample::new(-1.0, 0.75),
         ComplexSample::new(0.0, 1.0),
+        ComplexSample::new(0.25, -0.5),
+        ComplexSample::new(-0.5, 0.5),
+        ComplexSample::new(0.75, 0.1),
     ];
 
     for ty in FilterType::ALL {

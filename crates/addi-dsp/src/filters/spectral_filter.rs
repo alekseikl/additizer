@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use wide::f32x4;
 
 use crate::{
     ComplexSample, Sample,
@@ -7,15 +8,26 @@ use crate::{
 };
 
 mod sections;
+mod simd;
 
 use sections::{BandPass, HighPass, HighShelf, LowPass, LowShelf, OnePoleHighPass, OnePoleLowPass};
+use simd::ComplexX4;
 
 #[cfg(test)]
 use sections::TAU;
 
 pub trait FilterImpl: Clone + Copy + 'static {
     fn new(gain: Sample, cutoff_freq: Sample, q: Sample, pre_q: Sample) -> Self;
-    fn at(&self, freq: Sample) -> ComplexSample;
+}
+
+trait FilterLanes: FilterImpl {
+    fn at_x4(&self, freq: f32x4) -> ComplexX4;
+
+    /// Lane 0 of [`Self::at_x4`] at a single frequency.
+    #[inline]
+    fn at(&self, freq: Sample) -> ComplexSample {
+        lane0(self.at_x4(f32x4::splat(freq)))
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -113,10 +125,12 @@ impl FilterImpl for LowPass12 {
             resonant: LowPass::new(gain, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.resonant.at(freq)
+impl FilterLanes for LowPass12 {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        self.resonant.at_x4(freq)
     }
 }
 
@@ -127,10 +141,12 @@ impl FilterImpl for LowPass18 {
             resonant: LowPass::new(gain, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.pre_stage.at(freq) * self.resonant.at(freq)
+impl FilterLanes for LowPass18 {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        self.pre_stage.at_x4(freq) * self.resonant.at_x4(freq)
     }
 }
 
@@ -141,10 +157,12 @@ impl FilterImpl for LowPass24 {
             resonant: LowPass::new(gain, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.pre_stage.at(freq) * self.resonant.at(freq)
+impl FilterLanes for LowPass24 {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        self.pre_stage.at_x4(freq) * self.resonant.at_x4(freq)
     }
 }
 
@@ -154,10 +172,12 @@ impl FilterImpl for HighPass12 {
             resonant: HighPass::new(gain, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.resonant.at(freq)
+impl FilterLanes for HighPass12 {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        self.resonant.at_x4(freq)
     }
 }
 
@@ -168,10 +188,12 @@ impl FilterImpl for HighPass18 {
             resonant: HighPass::new(gain, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.pre_stage.at(freq) * self.resonant.at(freq)
+impl FilterLanes for HighPass18 {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        self.pre_stage.at_x4(freq) * self.resonant.at_x4(freq)
     }
 }
 
@@ -182,10 +204,12 @@ impl FilterImpl for HighPass24 {
             resonant: HighPass::new(gain, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.pre_stage.at(freq) * self.resonant.at(freq)
+impl FilterLanes for HighPass24 {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        self.pre_stage.at_x4(freq) * self.resonant.at_x4(freq)
     }
 }
 
@@ -195,10 +219,12 @@ impl FilterImpl for BandPass6 {
             resonant: BandPass::new(gain, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.resonant.at(freq)
+impl FilterLanes for BandPass6 {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        self.resonant.at_x4(freq)
     }
 }
 
@@ -209,10 +235,12 @@ impl FilterImpl for BandPass12 {
             resonant: BandPass::new(gain, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.pre_stage.at(freq) * self.resonant.at(freq)
+impl FilterLanes for BandPass12 {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        self.pre_stage.at_x4(freq) * self.resonant.at_x4(freq)
     }
 }
 
@@ -223,12 +251,14 @@ impl FilterImpl for BandPass18 {
             resonant: BandPass::new(gain, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        let pre_stage = self.pre_stage.at(freq);
+impl FilterLanes for BandPass18 {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        let pre_stage = self.pre_stage.at_x4(freq);
 
-        pre_stage * pre_stage * self.resonant.at(freq)
+        pre_stage * pre_stage * self.resonant.at_x4(freq)
     }
 }
 
@@ -239,13 +269,15 @@ impl FilterImpl for BandPass24 {
             resonant: BandPass::new(gain, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        let pre_stage = self.pre_stage.at(freq);
+impl FilterLanes for BandPass24 {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        let pre_stage = self.pre_stage.at_x4(freq);
         let pre_stage_sq = pre_stage * pre_stage;
 
-        pre_stage_sq * pre_stage * self.resonant.at(freq)
+        pre_stage_sq * pre_stage * self.resonant.at_x4(freq)
     }
 }
 
@@ -255,10 +287,12 @@ impl FilterImpl for Peaking {
             section: sections::Peaking::new(gain, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.section.at(freq)
+impl FilterLanes for Peaking {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        self.section.at_x4(freq)
     }
 }
 
@@ -268,10 +302,12 @@ impl FilterImpl for Notch {
             resonant: sections::Notch::new(gain, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.resonant.at(freq)
+impl FilterLanes for Notch {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        self.resonant.at_x4(freq)
     }
 }
 
@@ -281,10 +317,12 @@ impl FilterImpl for LowShelf12 {
             section: LowShelf::new(gain, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.section.at(freq)
+impl FilterLanes for LowShelf12 {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        self.section.at_x4(freq)
     }
 }
 
@@ -294,10 +332,12 @@ impl FilterImpl for HighShelf12 {
             section: HighShelf::new(gain, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.section.at(freq)
+impl FilterLanes for HighShelf12 {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        self.section.at_x4(freq)
     }
 }
 
@@ -310,10 +350,12 @@ impl FilterImpl for LowShelf24 {
             resonant: LowShelf::new(g12, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.pre_stage.at(freq) * self.resonant.at(freq)
+impl FilterLanes for LowShelf24 {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        self.pre_stage.at_x4(freq) * self.resonant.at_x4(freq)
     }
 }
 
@@ -326,10 +368,12 @@ impl FilterImpl for HighShelf24 {
             resonant: HighShelf::new(g12, cutoff, q),
         }
     }
+}
 
-    #[inline]
-    fn at(&self, freq: Sample) -> ComplexSample {
-        self.pre_stage.at(freq) * self.resonant.at(freq)
+impl FilterLanes for HighShelf24 {
+    #[inline(always)]
+    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+        self.pre_stage.at_x4(freq) * self.resonant.at_x4(freq)
     }
 }
 
@@ -509,50 +553,200 @@ impl SpectralFilter {
         }
     }
 
-    fn response_freqs_impl<T: FilterImpl>(&self, freqs: &[Sample], out: &mut [ComplexSample]) {
+    fn response_freqs_impl<T: FilterLanes>(&self, freqs: &[Sample], out: &mut [ComplexSample]) {
         let filter_impl = T::new(self.gain, self.cutoff_freq, self.q, self.pre_q);
 
         if self.linear_phase {
-            for (out, &freq) in out.iter_mut().zip(freqs) {
-                *out = ComplexSample::new(filter_impl.at(freq).norm(), 0.0);
-            }
+            write_responses::<T, true>(&filter_impl, freqs, out);
         } else {
-            for (out, &freq) in out.iter_mut().zip(freqs) {
-                *out = filter_impl.at(freq);
-            }
+            write_responses::<T, false>(&filter_impl, freqs, out);
         }
     }
 
-    fn apply_impl<T: FilterImpl>(&self, input: &[ComplexSample], output: &mut [ComplexSample]) {
+    fn apply_impl<T: FilterLanes>(&self, input: &[ComplexSample], output: &mut [ComplexSample]) {
         let filter_impl = T::new(self.gain, self.cutoff_freq, self.q, self.pre_q);
+        let len = input.len().min(output.len());
 
         if self.linear_phase {
-            //Skip DC
-            for (i, (out, &inp)) in output.iter_mut().zip(input).enumerate().skip(1) {
-                *out = inp * filter_impl.at(i as Sample).norm();
-            }
+            apply_lanes::<T, true>(&filter_impl, input, output, len);
         } else {
-            //Skip DC
-            for (i, (out, &inp)) in output.iter_mut().zip(input).enumerate().skip(1) {
-                *out = inp * filter_impl.at(i as Sample);
-            }
+            apply_lanes::<T, false>(&filter_impl, input, output, len);
         }
     }
 
-    fn apply_in_place_impl<T: FilterImpl>(&self, samples: &mut [ComplexSample]) {
+    fn apply_in_place_impl<T: FilterLanes>(&self, samples: &mut [ComplexSample]) {
         let filter_impl = T::new(self.gain, self.cutoff_freq, self.q, self.pre_q);
 
         if self.linear_phase {
-            //Skip DC
-            for (i, sample) in samples.iter_mut().enumerate().skip(1) {
-                *sample *= filter_impl.at(i as Sample).norm();
-            }
+            apply_lanes_in_place::<T, true>(&filter_impl, samples);
         } else {
-            //Skip DC
-            for (i, sample) in samples.iter_mut().enumerate().skip(1) {
-                *sample *= filter_impl.at(i as Sample);
-            }
+            apply_lanes_in_place::<T, false>(&filter_impl, samples);
         }
+    }
+}
+
+const LANES: usize = 4;
+const DC_OFFSET: usize = 1;
+
+#[inline]
+fn lane0(response: ComplexX4) -> ComplexSample {
+    let re = response.re.to_array();
+    let im = response.im.to_array();
+    ComplexSample::new(re[0], im[0])
+}
+
+/// Up to four frequencies. Lanes past the slice stay zero and are not stored.
+#[inline(always)]
+fn load_freq_lanes(freqs: &[Sample]) -> f32x4 {
+    let mut lanes = [0.0; LANES];
+    let n = freqs.len().min(LANES);
+    lanes[..n].copy_from_slice(&freqs[..n]);
+    f32x4::new(lanes)
+}
+
+#[inline(always)]
+fn write_response_lanes<const LINEAR: bool>(
+    response: ComplexX4,
+    out: &mut [ComplexSample],
+    i: usize,
+    n: usize,
+) {
+    if LINEAR {
+        let mag = response.norm().to_array();
+        for k in 0..n {
+            out[i + k] = ComplexSample::new(mag[k], 0.0);
+        }
+    } else {
+        let re = response.re.to_array();
+        let im = response.im.to_array();
+        for k in 0..n {
+            out[i + k] = ComplexSample::new(re[k], im[k]);
+        }
+    }
+}
+
+fn write_responses<T: FilterLanes, const LINEAR: bool>(
+    filter: &T,
+    freqs: &[Sample],
+    out: &mut [ComplexSample],
+) {
+    let n = freqs.len().min(out.len());
+    let mut i = 0;
+
+    while i + LANES <= n {
+        write_response_lanes::<LINEAR>(
+            filter.at_x4(f32x4::new([
+                freqs[i],
+                freqs[i + 1],
+                freqs[i + 2],
+                freqs[i + 3],
+            ])),
+            out,
+            i,
+            LANES,
+        );
+        i += LANES;
+    }
+
+    if i < n {
+        write_response_lanes::<LINEAR>(filter.at_x4(load_freq_lanes(&freqs[i..])), out, i, n - i);
+    }
+}
+
+#[inline(always)]
+fn store_lanes<const LINEAR: bool>(
+    response: ComplexX4,
+    input: &[ComplexSample],
+    output: &mut [ComplexSample],
+    i: usize,
+    n: usize,
+) {
+    if LINEAR {
+        let mag = response.norm().to_array();
+        for k in 0..n {
+            output[i + k] = input[i + k] * mag[k];
+        }
+    } else {
+        let re = response.re.to_array();
+        let im = response.im.to_array();
+        for k in 0..n {
+            output[i + k] = input[i + k] * ComplexSample::new(re[k], im[k]);
+        }
+    }
+}
+
+#[inline(always)]
+fn scale_lanes_in_place<const LINEAR: bool>(
+    response: ComplexX4,
+    samples: &mut [ComplexSample],
+    i: usize,
+    n: usize,
+) {
+    if LINEAR {
+        let mag = response.norm().to_array();
+        for k in 0..n {
+            samples[i + k] *= mag[k];
+        }
+    } else {
+        let re = response.re.to_array();
+        let im = response.im.to_array();
+        for k in 0..n {
+            samples[i + k] *= ComplexSample::new(re[k], im[k]);
+        }
+    }
+}
+
+/// Frequencies for one chunk. Lanes past `n` are zero and must not be stored.
+#[inline(always)]
+fn chunk_freq(freq: f32x4, n: usize) -> f32x4 {
+    let mut lanes = freq.to_array();
+    for lane in lanes.iter_mut().skip(n) {
+        *lane = 0.0;
+    }
+    f32x4::new(lanes)
+}
+
+fn apply_lanes<T: FilterLanes, const LINEAR: bool>(
+    filter: &T,
+    input: &[ComplexSample],
+    output: &mut [ComplexSample],
+    len: usize,
+) {
+    // Skip DC. Bin indices are the frequencies.
+    let mut i = DC_OFFSET;
+    let mut freq = f32x4::new([1.0, 2.0, 3.0, 4.0]);
+    let step = f32x4::splat(LANES as Sample);
+
+    while i + LANES <= len {
+        store_lanes::<LINEAR>(filter.at_x4(freq), input, output, i, LANES);
+        freq += step;
+        i += LANES;
+    }
+
+    if i < len {
+        let n = len - i;
+        store_lanes::<LINEAR>(filter.at_x4(chunk_freq(freq, n)), input, output, i, n);
+    }
+}
+
+fn apply_lanes_in_place<T: FilterLanes, const LINEAR: bool>(
+    filter: &T,
+    samples: &mut [ComplexSample],
+) {
+    let len = samples.len();
+    let mut i = DC_OFFSET;
+    let mut freq = f32x4::new([1.0, 2.0, 3.0, 4.0]);
+    let step = f32x4::splat(LANES as Sample);
+
+    while i + LANES <= len {
+        scale_lanes_in_place::<LINEAR>(filter.at_x4(freq), samples, i, LANES);
+        freq += step;
+        i += LANES;
+    }
+
+    if i < len {
+        let n = len - i;
+        scale_lanes_in_place::<LINEAR>(filter.at_x4(chunk_freq(freq, n)), samples, i, n);
     }
 }
 

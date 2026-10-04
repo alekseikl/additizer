@@ -69,8 +69,7 @@ cargo bench -p addi-engine --bench synth_engine -- oscillator_render
 | Benchmark | What it measures |
 |-----------|------------------|
 | `svf/<type>` | One channel, 128-sample block, cutoff +2 octaves from C4, Q = 1 |
-| `spectral_filter/minimum_phase/<type>` | 1024-bin spectrum, complex response |
-| `spectral_filter/linear_phase/<type>` | Same spectrum, magnitude-only response |
+| `spectral_filter/linear_phase/<type>` | 1024-bin spectrum, `apply_response`, magnitude-only |
 
 SVF throughput is samples per second for that channel. Spectral throughput is bins per second.
 
