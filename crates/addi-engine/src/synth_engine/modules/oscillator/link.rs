@@ -1,6 +1,6 @@
 use crate::synth_engine::{
-    DisplaySpectrum, Input, Sample, StereoSample, engine_io, oscillator::PhasesDst,
-    types::ComplexSample,
+    engine_io, oscillator::PhasesDst, types::ComplexSample, DisplaySpectrum, Input, Sample,
+    StereoSample,
 };
 
 use super::MAX_UNISON_VOICES;

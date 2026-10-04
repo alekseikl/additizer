@@ -1,7 +1,7 @@
 use super::{Oscillator, OscillatorConfig};
 use crate::synth_engine::{
-    EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId, Note, OUTPUT_MODULE_ID,
-    Sample, SynthEngine, harmonic_editor::HarmonicEditorConfig, routing::RIGHT_CHANNEL,
+    harmonic_editor::HarmonicEditorConfig, routing::RIGHT_CHANNEL, EngineConfig, EngineParams,
+    Input, LinkConfig, ModuleConfig, ModuleId, Note, Sample, SynthEngine, OUTPUT_MODULE_ID,
 };
 
 const SAMPLE_RATE: Sample = 48_000.0;

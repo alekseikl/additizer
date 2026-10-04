@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::from_st,
-    synth_engine::{ModuleId, Sample, StereoSample, oscillator::MAX_UNISON_VOICES},
+    synth_engine::{oscillator::MAX_UNISON_VOICES, ModuleId, Sample, StereoSample},
 };
 
 #[derive(Clone, Copy, Serialize, Deserialize)]

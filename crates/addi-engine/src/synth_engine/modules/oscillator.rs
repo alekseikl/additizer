@@ -172,13 +172,10 @@ struct UnisonStateUpdate {
     gain: Sample,
 }
 
-/// Number of unison voices handled per SIMD step in the render loop.
 const UNISON_LANES: usize = 4;
 const UNISON_CHUNKS: usize = MAX_UNISON_VOICES / UNISON_LANES;
+const _: () = assert!(UNISON_CHUNKS * UNISON_LANES == MAX_UNISON_VOICES);
 
-/// Parameters of `UNISON_LANES` unison voices in `from + delta * t` form,
-/// structure-of-arrays so the per-sample interpolation is one FMA per
-/// parameter for all lanes at once.
 #[derive(Clone, Copy, Default)]
 struct UnisonLaneParams {
     rate_from: f32x4,
@@ -191,11 +188,13 @@ struct UnisonLaneParams {
 
 impl UnisonLaneParams {
     #[inline(always)]
-    fn new(voices: &[UnisonVoice; UNISON_LANES]) -> Self {
-        let lanes = |f: fn(&UnisonVoice) -> Sample| f32x4::new(array::from_fn(|i| f(&voices[i])));
+    fn from_voices(voices: &[UnisonVoice]) -> Self {
+        debug_assert!(voices.len() <= UNISON_LANES);
 
-        // Endpoints are wrapped once per block. A lerp of values in
-        // `[-0.5, 0.5]` stays there, so the sample loop can skip the modulo.
+        let lanes = |f: fn(&UnisonVoice) -> Sample| {
+            f32x4::new(array::from_fn(|i| voices.get(i).map(f).unwrap_or(0.0)))
+        };
+
         let phase_shift_from = PhaseX4::wrap_normalized(lanes(|uv| uv.phase_shift.from));
         let phase_shift_to = PhaseX4::wrap_normalized(lanes(|uv| uv.phase_shift.to));
 
@@ -210,8 +209,6 @@ impl UnisonLaneParams {
     }
 }
 
-/// Per-lane wavetable read positions and gain-scaled powers of the
-/// fractional position, for `UNISON_LANES` unison voices at one sample.
 struct UnisonTaps {
     idx: [u32; UNISON_LANES],
     g: f32x4,
@@ -220,7 +217,6 @@ struct UnisonTaps {
     gt3: f32x4,
 }
 
-/// Per-sample values shared by all unison voices.
 #[derive(Clone, Copy)]
 struct SampleCtx {
     buff_t: f32x4,
@@ -264,7 +260,6 @@ struct Buffers {
     tmp_spectral: DftBuffer,
     scratch: DftBuffer,
     pitch: Buffer,
-    /// Per-sample phase increment from `pitch` alone (frequency shift excluded).
     pitch_phase_inc: Buffer,
     phase_shift: Buffer,
     frequency_shift: Buffer,
@@ -399,6 +394,7 @@ pub struct Oscillator<L: OscillatorLinks = stub::Links> {
     output_slot: usize,
     voices: VoicesLayout<Voice>,
     voice_buffers: VoicesLayout<VoiceBuffers>,
+    lane_params: [UnisonLaneParams; UNISON_CHUNKS],
     center_phase_sync: Phase,
 }
 
@@ -432,6 +428,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             output_slot: usize::MAX,
             voices: new_voices_layout(),
             voice_buffers: new_voices_layout(),
+            lane_params: Default::default(),
             center_phase_sync: Phase::ZERO,
         };
 
@@ -610,9 +607,6 @@ impl<L: OscillatorLinks> Oscillator<L> {
         f32x4::new([s[0], s[1], s[2], s[3]])
     }
 
-    /// SIMD part of one sample for `UNISON_LANES` unison voices: interpolates
-    /// the lane parameters, resolves the wavetable read positions and advances
-    /// the phases.
     #[inline(always)]
     fn advance_unison_lanes(
         phases: &mut [Phase; UNISON_LANES],
@@ -643,13 +637,6 @@ impl<L: OscillatorLinks> Oscillator<L> {
         }
     }
 
-    /// Scalar-lane part of one sample for one unison voice: reads the 4-tap
-    /// segment from both waves and accumulates it with the gain-scaled
-    /// Catmull-Rom weights.
-    ///
-    /// The `from` and `to` waves are accumulated separately and crossfaded by
-    /// the caller once per sample; this is algebraically identical to
-    /// crossfading each segment but saves a vector sub + FMA per unison voice.
     #[inline(always)]
     fn accumulate_unison_lane(
         taps: &UnisonTaps,
@@ -792,67 +779,81 @@ impl<L: OscillatorLinks> Oscillator<L> {
         voice_idx: usize,
         router: &mut Router<'_, '_, '_, L::EngineEnd>,
     ) {
-        let channel = &self.channel_params[channel_idx];
-        let voice = &mut self.voices[channel_idx][voice_idx];
+        {
+            let unison = self.params.unison;
+            let inputs = &self.inputs;
+            let channel = &self.channel_params[channel_idx];
+            let voice = &mut self.voices[channel_idx][voice_idx];
 
-        if self.params.unison < 2 {
-            voice.unison[0] = UnisonVoice::default();
-            voice.unison_gain = Interpolated { from: 1.0, to: 1.0 };
-            return;
-        }
+            if unison < 2 {
+                voice.unison[0] = UnisonVoice::default();
+                voice.unison_gain = Interpolated { from: 1.0, to: 1.0 };
+            } else {
+                fn calc_unison_gain(gains: impl Iterator<Item = Sample>) -> Sample {
+                    gains
+                        .map(|gain| gain * gain)
+                        .sum::<Sample>()
+                        .sqrt()
+                        .max(1.0) //Don't amplify
+                        .recip()
+                }
 
-        fn calc_unison_gain(gains: impl Iterator<Item = Sample>) -> Sample {
-            gains
-                .map(|gain| gain * gain)
-                .sum::<Sample>()
-                .sqrt()
-                .max(1.0) //Don't amplify
-                .recip()
-        }
+                if router.triggered() {
+                    for (state, update) in izip!(
+                        &mut voice.unison,
+                        Self::calc_unison_update(unison, true, channel, inputs, router)
+                    ) {
+                        state.rate.from = update.rate;
+                        state.phase_shift.from = update.phase_shift;
+                        state.gain.from = update.gain;
+                    }
 
-        if router.triggered() {
-            for (state, update) in izip!(
-                &mut voice.unison,
-                Self::calc_unison_update(self.params.unison, true, channel, &self.inputs, router)
-            ) {
-                state.rate.from = update.rate;
-                state.phase_shift.from = update.phase_shift;
-                state.gain.from = update.gain;
+                    voice.unison_gain.from = calc_unison_gain(
+                        voice
+                            .unison
+                            .iter()
+                            .take(unison)
+                            .map(|state| state.gain.from),
+                    );
+                } else {
+                    for state in voice.unison.iter_mut().take(unison) {
+                        state.rate.advance();
+                        state.phase_shift.advance();
+                        state.gain.advance();
+                    }
+
+                    voice.unison_gain.advance();
+                }
+
+                for (state, update) in izip!(
+                    &mut voice.unison,
+                    Self::calc_unison_update(unison, false, channel, inputs, router)
+                ) {
+                    state.rate.to = update.rate;
+                    state.phase_shift.to = update.phase_shift;
+                    state.gain.to = update.gain;
+                }
+
+                voice.unison_gain.to =
+                    calc_unison_gain(voice.unison.iter().take(unison).map(|state| state.gain.to));
             }
-
-            voice.unison_gain.from = calc_unison_gain(
-                voice
-                    .unison
-                    .iter()
-                    .take(self.params.unison)
-                    .map(|state| state.gain.from),
-            );
-        } else {
-            for state in voice.unison.iter_mut().take(self.params.unison) {
-                state.rate.advance();
-                state.phase_shift.advance();
-                state.gain.advance();
-            }
-
-            voice.unison_gain.advance();
         }
 
-        for (state, update) in izip!(
-            &mut voice.unison,
-            Self::calc_unison_update(self.params.unison, false, channel, &self.inputs, router)
-        ) {
-            state.rate.to = update.rate;
-            state.phase_shift.to = update.phase_shift;
-            state.gain.to = update.gain;
-        }
+        let unison = self.params.unison.clamp(1, MAX_UNISON_VOICES);
+        let full_chunks = unison / UNISON_LANES;
+        let rem_lanes = unison % UNISON_LANES;
+        let unison_voices = &self.voices[channel_idx][voice_idx].unison;
 
-        voice.unison_gain.to = calc_unison_gain(
-            voice
-                .unison
-                .iter()
-                .take(self.params.unison)
-                .map(|state| state.gain.to),
-        );
+        for chunk_idx in 0..full_chunks {
+            let start = chunk_idx * UNISON_LANES;
+            let params = UnisonLaneParams::from_voices(&unison_voices[start..start + UNISON_LANES]);
+            self.lane_params[chunk_idx] = params;
+        }
+        if rem_lanes > 0 {
+            let start = full_chunks * UNISON_LANES;
+            let params = UnisonLaneParams::from_voices(&unison_voices[start..start + rem_lanes]);
+            self.lane_params[full_chunks] = params;
+        }
     }
 
     fn process_phase_reset(
@@ -947,9 +948,6 @@ impl<L: OscillatorLinks> Oscillator<L> {
         steals
     }
 
-    /// Converts a pitch buffer (octaves) to per-sample phase increments, four
-    /// samples at a time. Keeps `exp2f` calls (and their register clobbering)
-    /// out of the per-sample render loop.
     fn pitch_to_phase_inc(pitch: &[Sample], out: &mut [Sample], freq_phase_mult: Sample) {
         let mult = f32x4::splat(freq_phase_mult);
         let (pitch_chunks, pitch_rem) = pitch.as_chunks::<4>();
@@ -964,9 +962,6 @@ impl<L: OscillatorLinks> Oscillator<L> {
         }
     }
 
-    // Kept out of line on purpose: when inlined into the (very large) `process`
-    // closure the hot loop loses registers and reloads the Catmull-Rom
-    // constants from the stack on every unison iteration.
     #[inline(never)]
     fn render_voice_samples(
         &mut self,
@@ -989,20 +984,14 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let unison_gain_from = voice.unison_gain.from;
         let unison_gain_delta = voice.unison_gain.to - voice.unison_gain.from;
 
-        let (unison_chunks, []) = voice.unison.as_chunks::<UNISON_LANES>() else {
-            unreachable!("MAX_UNISON_VOICES is a multiple of UNISON_LANES");
-        };
-        let lane_params: [UnisonLaneParams; UNISON_CHUNKS] =
-            array::from_fn(|i| UnisonLaneParams::new(&unison_chunks[i]));
         let (phase_chunks, []) = voice.phases.as_chunks_mut::<UNISON_LANES>() else {
             unreachable!("MAX_UNISON_VOICES is a multiple of UNISON_LANES");
         };
 
-        // Full chunks use all lanes; the last chunk may be partial.
         let full_chunks = unison / UNISON_LANES;
         let rem_lanes = unison % UNISON_LANES;
         let (full_phases, rem_phases) = phase_chunks.split_at_mut(full_chunks);
-        let (full_params, rem_params) = lane_params.split_at(full_chunks);
+        let (full_params, rem_params) = self.lane_params.split_at(full_chunks);
 
         for (out, &pitch_phase_inc, &phase_shift, &freq_shift) in izip!(
             output[start..end].iter_mut(),
