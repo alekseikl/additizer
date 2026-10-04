@@ -1,12 +1,15 @@
 use realfft::RealFftPlanner;
 
 use super::{
-    DFT_BUFFER_SIZE, IfftPlanners, Oscillator, OscillatorConfig, WAVEFORM_BUFFER_SIZE,
+    DFT_BUFFER_SIZE, HALF_WAVEFORM_BITS, IfftPlanners, Interpolated, MAX_UNISON_VOICES, Oscillator,
+    OscillatorConfig, UnisonVoice, VoiceRenderCtx, WAVEFORM_BITS, WAVEFORM_BUFFER_SIZE,
     WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform, WaveformBuffer, WaveformSize,
+    lanes::{UNISON_LANES, UnisonLaneParams},
 };
 use crate::synth_engine::{
-    ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId, Note,
-    OUTPUT_MODULE_ID, Sample, SynthEngine, harmonic_editor::HarmonicEditorConfig,
+    ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, MAX_VOICES, ModuleConfig,
+    ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Sample, SynthEngine,
+    coeffs::catmull_rom_from_powers, harmonic_editor::HarmonicEditorConfig, phase::Phase,
     routing::RIGHT_CHANNEL,
 };
 
@@ -333,4 +336,486 @@ fn build_wave_keeps_full_resolution_past_half_table() {
     assert!(cutoff > WaveformSize::Half.len() / 2 + 1);
 
     assert_wave_matches_full(46.0, &spectrum, WaveformSize::Full);
+}
+
+const RENDER_SENTINEL: Sample = 50.0;
+const FREQ_PHASE_MULT: Sample = 16.0;
+const UNISON_GAIN_FROM: Sample = 0.55;
+const UNISON_GAIN_TO: Sample = 0.85;
+const DECOY_PHASE: u32 = 0x1111_1111;
+
+struct RenderCase {
+    name: &'static str,
+    unison: usize,
+    from_size: WaveformSize,
+    to_size: WaveformSize,
+    samples: usize,
+    start: usize,
+    end: usize,
+    channel: usize,
+    voice: usize,
+    wave_channel: usize,
+}
+
+fn render_case(
+    name: &'static str,
+    unison: usize,
+    from_size: WaveformSize,
+    to_size: WaveformSize,
+) -> RenderCase {
+    RenderCase {
+        name,
+        unison,
+        from_size,
+        to_size,
+        samples: 32,
+        start: 0,
+        end: 32,
+        channel: 0,
+        voice: 0,
+        wave_channel: 0,
+    }
+}
+
+struct SampleControls {
+    pitch_phase_inc: Sample,
+    phase_shift: Sample,
+    frequency_shift: Sample,
+}
+
+fn sample_controls(index: usize) -> SampleControls {
+    let n = index as Sample;
+
+    SampleControls {
+        pitch_phase_inc: 262_144.0 + n * 128.0,
+        phase_shift: 0.02 + 0.001 * n,
+        frequency_shift: 64.0 + 2.0 * n,
+    }
+}
+
+fn test_phase(index: usize) -> Phase {
+    if index == 0 {
+        // Last full-table bin, so the first read uses the wrap padding.
+        Phase::from_bits(0xffff_0000)
+    } else {
+        Phase::from_bits(
+            0x1000_0000u32
+                .wrapping_mul(index as u32)
+                .wrapping_add(0x0008_0000),
+        )
+    }
+}
+
+fn test_unison_voice(index: usize) -> UnisonVoice {
+    let i = index as Sample;
+
+    UnisonVoice {
+        rate: Interpolated {
+            from: 0.85 + 0.03 * i,
+            to: 1.15 - 0.02 * i,
+        },
+        phase_shift: Interpolated {
+            from: -0.2 + 0.02 * i,
+            to: 0.15 - 0.015 * i,
+        },
+        gain: Interpolated {
+            from: 0.35 - 0.08 * i,
+            to: -0.25 + 0.06 * i,
+        },
+    }
+}
+
+fn initial_phases() -> [Phase; MAX_UNISON_VOICES] {
+    std::array::from_fn(test_phase)
+}
+
+fn initial_voices() -> [UnisonVoice; MAX_UNISON_VOICES] {
+    std::array::from_fn(test_unison_voice)
+}
+
+/// Same wrap as `PhaseX4::wrap_normalized`: one cycle, half away from zero.
+fn wrap_unit(phase: Sample) -> Sample {
+    phase - phase.round()
+}
+
+fn interpolated_sample(
+    wave: &WaveformBuffer,
+    phase: Phase,
+    size: WaveformSize,
+    gain: Sample,
+) -> Sample {
+    let (idx, t) = match size {
+        WaveformSize::Full => (
+            phase.wave_index::<WAVEFORM_BITS>(),
+            phase.wave_index_fraction::<WAVEFORM_BITS>(),
+        ),
+        WaveformSize::Half => (
+            phase.wave_index::<HALF_WAVEFORM_BITS>(),
+            phase.wave_index_fraction::<HALF_WAVEFORM_BITS>(),
+        ),
+    };
+    let gt = gain * t;
+    let gt2 = gt * t;
+    let gt3 = gt2 * t;
+    let weights = catmull_rom_from_powers(gain, gt, gt2, gt3).to_array();
+
+    weights
+        .iter()
+        .zip(&wave[idx..idx + 4])
+        .map(|(weight, sample)| weight * sample)
+        .sum()
+}
+
+fn patterned_wave(size: WaveformSize, seed: Sample) -> Box<WaveformBuffer> {
+    let mut samples = Box::new([RENDER_SENTINEL; WAVEFORM_BUFFER_SIZE]);
+    let len = size.len();
+
+    for i in 0..len {
+        let n = (i + 1) as Sample;
+        samples[WAVEFORM_PAD_LEFT + i] = (seed * n).sin() * 0.5 + (n * 0.17 + seed).cos() * 0.25;
+    }
+
+    Oscillator::<super::stub::Links>::wrap_waveform(&mut samples, size);
+    samples
+}
+
+/// Scalar Catmull-Rom render of one block. `buff_t` follows the audio-thread
+/// recurrence (`start / n`, then `+= 1/n`) so phase truncation matches.
+fn reference_render(
+    case: &RenderCase,
+    wave_from: &WaveformBuffer,
+    wave_to: &WaveformBuffer,
+) -> (Vec<Sample>, [Phase; MAX_UNISON_VOICES]) {
+    let voices = initial_voices();
+    let mut phases = initial_phases();
+    let mut output = vec![RENDER_SENTINEL; case.samples];
+    let buff_t_inc = (case.samples as Sample).recip();
+    let mut buff_t = case.start as Sample * buff_t_inc;
+    let full = case.unison / UNISON_LANES;
+    let rem = case.unison % UNISON_LANES;
+
+    for (index, sample) in output
+        .iter_mut()
+        .enumerate()
+        .take(case.end)
+        .skip(case.start)
+    {
+        let controls = sample_controls(index);
+        let global_shift = Phase::from_normalized(controls.phase_shift);
+        let freq_inc = controls.frequency_shift * FREQ_PHASE_MULT;
+        let mut acc_from = 0.0;
+        let mut acc_to = 0.0;
+
+        let mut advance_chunk = |chunk: usize, lanes: usize| {
+            for lane in 0..UNISON_LANES {
+                let voice_idx = chunk * UNISON_LANES + lane;
+                let (rate_from, rate_delta, phase_from, phase_delta, gain_from, gain_delta) =
+                    if lane < lanes {
+                        let voice = &voices[voice_idx];
+                        let phase_from = wrap_unit(voice.phase_shift.from);
+                        let phase_to = wrap_unit(voice.phase_shift.to);
+
+                        (
+                            voice.rate.from,
+                            voice.rate.to - voice.rate.from,
+                            phase_from,
+                            phase_to - phase_from,
+                            voice.gain.from,
+                            voice.gain.to - voice.gain.from,
+                        )
+                    } else {
+                        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+                    };
+
+                let rate = rate_delta.mul_add(buff_t, rate_from);
+                let unison_shift = phase_delta.mul_add(buff_t, phase_from);
+                let gain = gain_delta.mul_add(buff_t, gain_from);
+                let read = phases[voice_idx] + global_shift + Phase::from_normalized(unison_shift);
+
+                if lane < lanes {
+                    acc_from += interpolated_sample(wave_from, read, case.from_size, gain);
+                    acc_to += interpolated_sample(wave_to, read, case.to_size, gain);
+                }
+
+                let inc = rate.mul_add(controls.pitch_phase_inc, freq_inc);
+                phases[voice_idx] += inc;
+            }
+        };
+
+        for chunk in 0..full {
+            advance_chunk(chunk, UNISON_LANES);
+        }
+        if rem > 0 {
+            advance_chunk(full, rem);
+        }
+
+        let mixed = (acc_to - acc_from).mul_add(buff_t, acc_from);
+        let unison_gain = (UNISON_GAIN_TO - UNISON_GAIN_FROM).mul_add(buff_t, UNISON_GAIN_FROM);
+        *sample = mixed * unison_gain;
+        buff_t += buff_t_inc;
+    }
+
+    (output, phases)
+}
+
+fn decoy_unison_voice() -> UnisonVoice {
+    UnisonVoice {
+        rate: Interpolated { from: 2.0, to: 2.0 },
+        phase_shift: Interpolated { from: 0.3, to: 0.3 },
+        gain: Interpolated { from: 4.0, to: 4.0 },
+    }
+}
+
+fn store_lane_params(osc: &mut Oscillator, voices: &[UnisonVoice], unison: usize) {
+    let full = unison / UNISON_LANES;
+    let rem = unison % UNISON_LANES;
+
+    for chunk in 0..full {
+        let start = chunk * UNISON_LANES;
+        osc.lane_params[chunk] =
+            UnisonLaneParams::from_voices(&voices[start..start + UNISON_LANES]);
+    }
+
+    if rem > 0 {
+        let start = full * UNISON_LANES;
+        osc.lane_params[full] = UnisonLaneParams::from_voices(&voices[start..start + rem]);
+    }
+}
+
+fn load_case(
+    osc: &mut Oscillator,
+    case: &RenderCase,
+    wave_from: &WaveformBuffer,
+    wave_to: &WaveformBuffer,
+) {
+    let decoy = patterned_wave(WaveformSize::Full, 9.5);
+
+    for channel in 0..NUM_CHANNELS {
+        for voice in 0..MAX_VOICES {
+            osc.voice_buffers[channel][voice].wave.samples = decoy.clone();
+            osc.voice_buffers[channel][voice].wave.size = WaveformSize::Full;
+
+            let slot = &mut osc.voices[channel][voice];
+            slot.phases = [Phase::from_bits(DECOY_PHASE); MAX_UNISON_VOICES];
+            slot.unison = std::array::from_fn(|_| decoy_unison_voice());
+            slot.unison_gain = Interpolated { from: 4.0, to: 4.0 };
+        }
+    }
+
+    *osc.voice_buffers[case.wave_channel][case.voice]
+        .wave
+        .samples = *wave_from;
+    osc.voice_buffers[case.wave_channel][case.voice].wave.size = case.from_size;
+    *osc.buffers.tmp_wave.samples = *wave_to;
+    osc.buffers.tmp_wave.size = case.to_size;
+
+    let voices = initial_voices();
+    store_lane_params(osc, &voices, case.unison);
+
+    let slot = &mut osc.voices[case.channel][case.voice];
+    slot.phases = initial_phases();
+    slot.unison = voices;
+    slot.unison_gain = Interpolated {
+        from: UNISON_GAIN_FROM,
+        to: UNISON_GAIN_TO,
+    };
+    osc.params.unison = case.unison;
+
+    osc.buffers.pitch_phase_inc.fill(0.0);
+    osc.buffers.phase_shift.fill(0.0);
+    osc.buffers.frequency_shift.fill(0.0);
+
+    for index in 0..case.samples {
+        let controls = sample_controls(index);
+        osc.buffers.pitch_phase_inc[index] = controls.pitch_phase_inc;
+        osc.buffers.phase_shift[index] = controls.phase_shift;
+        osc.buffers.frequency_shift[index] = controls.frequency_shift;
+    }
+}
+
+fn render_ctx(case: &RenderCase) -> VoiceRenderCtx {
+    VoiceRenderCtx {
+        channel_idx: case.channel,
+        voice_idx: case.voice,
+        wave_channel: case.wave_channel,
+        freq_phase_mult: FREQ_PHASE_MULT,
+        samples: case.samples,
+    }
+}
+
+fn assert_samples_close(name: &str, expected: &[Sample], actual: &[Sample]) {
+    let mut max_diff = 0.0;
+    let mut at = 0;
+
+    for (index, (expected, actual)) in expected.iter().zip(actual).enumerate() {
+        let diff = (expected - actual).abs();
+
+        if diff > max_diff {
+            max_diff = diff;
+            at = index;
+        }
+    }
+
+    assert!(
+        max_diff < 1e-4,
+        "{name}: max diff {max_diff} at sample {at} (expected {}, actual {})",
+        expected[at],
+        actual[at]
+    );
+}
+
+fn assert_phases(
+    name: &str,
+    expected: &[Phase; MAX_UNISON_VOICES],
+    actual: &[Phase; MAX_UNISON_VOICES],
+) {
+    for (index, (expected, actual)) in expected.iter().zip(actual).enumerate() {
+        assert_eq!(
+            expected.bits(),
+            actual.bits(),
+            "{name}: phase {index} expected {:08x}, got {:08x}",
+            expected.bits(),
+            actual.bits()
+        );
+    }
+}
+
+fn assert_other_voices_unchanged(osc: &Oscillator, case: &RenderCase) {
+    let other_channel = usize::from(case.channel == 0);
+    let other_voice = usize::from(case.voice == 0);
+
+    assert_eq!(
+        osc.voices[other_channel][case.voice].phases[0].bits(),
+        DECOY_PHASE,
+        "{}: rendered the other channel",
+        case.name
+    );
+    assert_eq!(
+        osc.voices[case.channel][other_voice].phases[0].bits(),
+        DECOY_PHASE,
+        "{}: rendered another voice",
+        case.name
+    );
+}
+
+/// Rendered samples and advanced phases match an independent scalar
+/// Catmull-Rom lookup. Covers both table sizes, a size crossfade, partial SIMD
+/// lanes, a mid-block range, and reading the spectrum channel's wavetable.
+#[test]
+fn render_voice_samples_matches_scalar_reference() {
+    let mut mid_block = render_case("mid-block range", 7, WaveformSize::Half, WaveformSize::Full);
+    mid_block.start = 6;
+    mid_block.end = 28;
+
+    let mut other_channel = render_case("right channel", 3, WaveformSize::Half, WaveformSize::Half);
+    other_channel.channel = 1;
+
+    let mut other_wave = render_case("sixteen voices", 16, WaveformSize::Full, WaveformSize::Full);
+    other_wave.samples = 16;
+    other_wave.end = 16;
+    other_wave.voice = 2;
+    other_wave.wave_channel = 1;
+
+    let mut sized = render_case(
+        "partial chunk, full to half",
+        5,
+        WaveformSize::Full,
+        WaveformSize::Half,
+    );
+    sized.samples = 24;
+    sized.end = 24;
+
+    let cases = [
+        render_case(
+            "one voice, full table",
+            1,
+            WaveformSize::Full,
+            WaveformSize::Full,
+        ),
+        render_case(
+            "simd chunk, half table",
+            4,
+            WaveformSize::Half,
+            WaveformSize::Half,
+        ),
+        sized,
+        mid_block,
+        other_wave,
+        other_channel,
+        render_case(
+            "thirteen voices, half to full",
+            13,
+            WaveformSize::Half,
+            WaveformSize::Full,
+        ),
+    ];
+
+    let mut osc = Oscillator::new(1);
+
+    for case in cases {
+        let wave_from = patterned_wave(case.from_size, 1.7);
+        let wave_to = patterned_wave(case.to_size, 2.9);
+        let (expected, expected_phases) = reference_render(&case, &wave_from, &wave_to);
+
+        load_case(&mut osc, &case, &wave_from, &wave_to);
+
+        let mut actual = vec![RENDER_SENTINEL; case.samples];
+        let ctx = render_ctx(&case);
+        osc.render_voice_samples(&ctx, &mut actual, case.start, case.end);
+
+        assert_samples_close(case.name, &expected, &actual);
+        assert_phases(
+            case.name,
+            &expected_phases,
+            &osc.voices[case.channel][case.voice].phases,
+        );
+        assert_other_voices_unchanged(&osc, &case);
+    }
+}
+
+/// A phase-steal split must keep going from the phases of the first slice.
+/// `buff_t` is still the index inside the whole block.
+#[test]
+fn render_voice_samples_continues_across_a_split_range() {
+    let mut case = render_case("split block", 6, WaveformSize::Half, WaveformSize::Full);
+    case.samples = 48;
+    case.end = 48;
+
+    let wave_from = patterned_wave(case.from_size, 1.7);
+    let wave_to = patterned_wave(case.to_size, 2.9);
+    let (expected, expected_phases) = reference_render(&case, &wave_from, &wave_to);
+
+    let mut osc = Oscillator::new(1);
+    load_case(&mut osc, &case, &wave_from, &wave_to);
+
+    let mut actual = vec![RENDER_SENTINEL; case.samples];
+    let ctx = render_ctx(&case);
+    osc.render_voice_samples(&ctx, &mut actual, 0, 17);
+    osc.render_voice_samples(&ctx, &mut actual, 17, 48);
+
+    assert_samples_close(case.name, &expected, &actual);
+    assert_phases(
+        case.name,
+        &expected_phases,
+        &osc.voices[case.channel][case.voice].phases,
+    );
+}
+
+#[test]
+fn render_voice_samples_empty_range_is_a_no_op() {
+    let case = render_case("empty", 4, WaveformSize::Full, WaveformSize::Half);
+    let wave_from = patterned_wave(case.from_size, 1.7);
+    let wave_to = patterned_wave(case.to_size, 2.9);
+    let mut osc = Oscillator::new(1);
+    load_case(&mut osc, &case, &wave_from, &wave_to);
+
+    let phases_before = osc.voices[case.channel][case.voice].phases;
+    let mut output = vec![RENDER_SENTINEL; case.samples];
+    let ctx = render_ctx(&case);
+
+    osc.render_voice_samples(&ctx, &mut output, 4, 4);
+    osc.render_voice_samples(&ctx, &mut output, 10, 4);
+
+    assert!(output.iter().all(|sample| *sample == RENDER_SENTINEL));
+    assert_eq!(osc.voices[case.channel][case.voice].phases, phases_before);
 }

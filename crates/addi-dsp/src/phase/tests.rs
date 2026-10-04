@@ -1,6 +1,6 @@
 use wide::f32x4;
 
-use super::{Phase, PhaseX4, WaveIndexScale};
+use super::{Phase, PhaseX4};
 
 const BITS: usize = 11;
 
@@ -15,9 +15,9 @@ fn load_store_round_trips() {
 }
 
 #[test]
-fn from_normalized_matches_scalar_modulo_one_cycle() {
-    // Values beyond [-0.5, 0.5] exercise the wrap path that scalar `Phase`
-    // gets for free from the `i64 -> u32` truncation.
+fn wrap_normalized_matches_scalar_modulo_one_cycle() {
+    // Values beyond [-0.5, 0.5] exercise the wrap that scalar `Phase` gets
+    // for free from the `i64 -> u32` truncation.
     let inputs = [
         -1.0f32, -0.75, -0.5, -0.25, 0.0, 0.125, 0.5, 0.75, 1.0, 1.3, -1.7,
     ];
@@ -26,7 +26,7 @@ fn from_normalized_matches_scalar_modulo_one_cycle() {
         let mut arr = [0.0; 4];
         arr[..chunk.len()].copy_from_slice(chunk);
 
-        let simd = PhaseX4::from_normalized(f32x4::new(arr));
+        let simd = PhaseX4::from_wrapped(PhaseX4::wrap_normalized(f32x4::new(arr)));
         let mut out = [Phase::ZERO; 4];
         simd.store(&mut out);
 
@@ -46,8 +46,7 @@ fn from_normalized_matches_scalar_modulo_one_cycle() {
 
 #[test]
 fn from_wrapped_matches_scalar_inside_half_cycle() {
-    // `from_wrapped` does not modulo. `+0.5` saturates in the `i32` conversion,
-    // so it stays on the `from_normalized` path.
+    // `from_wrapped` does not modulo. `+0.5` saturates in the `i32` conversion.
     let inputs = [-0.5f32, -0.49, -0.25, 0.0, 0.125, 0.49];
 
     for chunk in inputs.chunks(4) {
@@ -78,37 +77,6 @@ fn wave_index_and_fraction_match_scalar() {
     for lane in 0..4 {
         assert_eq!(idx[lane] as usize, phases[lane].wave_index::<BITS>());
         assert_eq!(frac[lane], phases[lane].wave_index_fraction::<BITS>());
-    }
-}
-
-#[test]
-fn wave_index_with_matches_const_bits() {
-    let phases = [0u32, 0x0100_0000, 0x7fff_ffff, 0xffff_ffff].map(Phase::from_bits);
-    let simd = PhaseX4::load(&phases);
-
-    for bits in [9u32, 10, 11] {
-        let scale = WaveIndexScale::from_bits(bits);
-        let idx = simd.wave_index_with(scale);
-        let frac = simd.wave_index_fraction_with(scale).to_array();
-
-        let (expected_idx, expected_frac) = match bits {
-            9 => (
-                simd.wave_index::<9>(),
-                simd.wave_index_fraction::<9>().to_array(),
-            ),
-            10 => (
-                simd.wave_index::<10>(),
-                simd.wave_index_fraction::<10>().to_array(),
-            ),
-            11 => (
-                simd.wave_index::<11>(),
-                simd.wave_index_fraction::<11>().to_array(),
-            ),
-            _ => unreachable!(),
-        };
-
-        assert_eq!(idx, expected_idx);
-        assert_eq!(frac, expected_frac);
     }
 }
 
