@@ -14,15 +14,15 @@ pub mod stereo_sample;
 pub mod types;
 pub mod units;
 
-pub use coeffs::catmull_rom;
+pub use coeffs::{catmull_rom, catmull_rom_from_powers};
 pub use iir_decimator::IirDecimator;
 pub use level_ballistics::{LevelBallistics, StereoLevelBallistics};
-pub use phase::Phase;
+pub use phase::{Phase, PhaseX4};
 pub use smooth::{SmoothedSample, SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
 pub use types::{ComplexSample, Sample};
 pub use units::{
-    C4_NOTE, C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain, db_to_gain_fast, freq_to_c4_pitch,
-    freq_to_pitch, from_ms, from_st, gain_to_db, gain_to_db_fast, note_to_pitch, pan_gain,
-    pitch_to_freq, power_scale,
+    C4_NOTE, C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain, db_to_gain_fast, fast_exp2_x4,
+    fast_pitch_to_freq_x4, freq_to_c4_pitch, freq_to_pitch, from_ms, from_st, gain_to_db,
+    gain_to_db_fast, note_to_pitch, pan_gain, pitch_to_freq, power_scale,
 };

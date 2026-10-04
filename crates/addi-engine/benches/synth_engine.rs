@@ -5,12 +5,14 @@ use addi_engine::{
     NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
     harmonic_editor::HarmonicEditorConfig,
     oscillator::{MAX_UNISON_VOICES, OscillatorConfig},
+    pitch::PitchConfig,
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 const SAMPLE_RATE: Sample = 48_000.0;
 const HARMONIC_EDITOR_ID: ModuleId = 1;
 const OSCILLATOR_ID: ModuleId = 2;
+const PITCH_ID: ModuleId = 3;
 
 fn minimal_engine_config(engine: EngineParams, osc: OscillatorConfig) -> EngineConfig {
     EngineConfig {
@@ -27,6 +29,24 @@ fn minimal_engine_config(engine: EngineParams, osc: OscillatorConfig) -> EngineC
             LinkConfig::direct(OSCILLATOR_ID, OUTPUT_MODULE_ID, Input::Audio),
         ],
     }
+}
+
+/// Like `minimal_engine_config`, plus a `Pitch` module driving the
+/// oscillator's pitch input (as in the default patch), so the oscillator takes
+/// its per-sample pitch path instead of the constant note pitch.
+fn pitched_engine_config(engine: EngineParams, osc: OscillatorConfig) -> EngineConfig {
+    let mut config = minimal_engine_config(engine, osc);
+
+    config
+        .modules
+        .push(ModuleConfig::Pitch(Box::new(PitchConfig {
+            id: PITCH_ID,
+            ..PitchConfig::default()
+        })));
+    config
+        .links
+        .push(LinkConfig::direct(PITCH_ID, OSCILLATOR_ID, Input::Pitch));
+    config
 }
 
 fn make_engine(engine: EngineParams, osc: OscillatorConfig) -> SynthEngine {
@@ -157,5 +177,42 @@ fn bench_process(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_process);
+/// Per-sample cost of the oscillator render loop: one voice, max unison, with
+/// detune, unison phase/gain blends and a pitch input so every per-sample code
+/// path in `render_voice_samples` is exercised.
+fn bench_oscillator_render(c: &mut Criterion) {
+    let mut group = c.benchmark_group("synth_engine/oscillator_render");
+
+    let osc = OscillatorConfig {
+        id: OSCILLATOR_ID,
+        unison_voices: MAX_UNISON_VOICES,
+        detune: StereoSample::splat(0.05),
+        detune_power: StereoSample::splat(0.3),
+        phases_blend: StereoSample::splat(0.5),
+        gains_blend: StereoSample::splat(0.5),
+        ..OscillatorConfig::default()
+    };
+
+    for (name, pitched) in [("note_pitch", false), ("pitch_input", true)] {
+        let config = if pitched {
+            pitched_engine_config(EngineParams::default(), osc.clone())
+        } else {
+            minimal_engine_config(EngineParams::default(), osc.clone())
+        };
+        let mut engine = SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid engine config");
+        trigger_notes(&mut engine, 1);
+
+        let samples = MAX_BLOCK_SIZE;
+        group.throughput(Throughput::Elements(
+            (samples * NUM_CHANNELS * MAX_UNISON_VOICES) as u64,
+        ));
+        group.bench_function(BenchmarkId::new("single_voice_unison16", name), |b| {
+            b.iter(|| black_box(process_block(&mut engine, samples)));
+        });
+    }
+
+    group.finish();
+}
+
+criterion_group!(benches, bench_process, bench_oscillator_render);
 criterion_main!(benches);

@@ -48,6 +48,21 @@ HTML reports are written to `target/criterion/`.
 Throughput for `synth_engine` is reported in stereo output samples per second
 (`samples × channels`, and `× voices` where applicable).
 
+**Oscillator render loop** (group `synth_engine/oscillator_render`): one voice, 16 unison
+voices with detune and unison phase/gain blends, to measure the per-sample cost of
+`Oscillator::render_voice_samples` in isolation from polyphony.
+
+| Benchmark | What it varies |
+|-----------|----------------|
+| `single_voice_unison16/note_pitch` | Constant note pitch (no `Pitch` input) |
+| `single_voice_unison16/pitch_input` | `Pitch` module → oscillator pitch input, as in the default patch |
+
+Throughput here is unison-voice samples per second (`samples × channels × 16`).
+
+```shell
+cargo bench -p addi-engine --bench synth_engine -- oscillator_render
+```
+
 **Filter scenarios:**
 
 | Benchmark | What it measures |

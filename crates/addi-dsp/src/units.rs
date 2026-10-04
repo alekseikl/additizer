@@ -1,4 +1,9 @@
+use wide::{bytemuck::cast, f32x4, i32x4};
+
 use crate::Sample;
+
+#[cfg(test)]
+mod tests;
 
 /// MIDI note number for middle C (C4).
 pub const C4_NOTE: u8 = 60;
@@ -61,6 +66,57 @@ pub const fn note_to_pitch(note: Sample) -> Sample {
 #[inline(always)]
 pub fn pitch_to_freq(pitch: Sample) -> Sample {
     pitch.exp2() * A4_FREQ
+}
+
+/// `2^x` for four lanes as an inline polynomial, with no libm call.
+///
+/// Relative error is below 1e-7 (about half an f32 ulp, on par with `exp2f`)
+/// for `x` in `[-125, 125]`; `x` is clamped to that range. Intended for
+/// converting whole buffers of pitch values where per-sample `exp2f` calls
+/// would dominate.
+#[inline(always)]
+pub fn fast_exp2_x4(x: f32x4) -> f32x4 {
+    // Minimax fit of 2^f on [-0.5, 0.5], max relative error ≈ 1.9e-9 in exact
+    // arithmetic (Remez exchange; see the tests for the f32 bound).
+    // Splatted as `const` so they become vector literals rather than
+    // runtime array fills.
+    const C: [f32x4; 7] = [
+        f32x4::splat(1.0),
+        f32x4::splat(6.931_472e-1),
+        f32x4::splat(2.402_264_7e-1),
+        f32x4::splat(5.550_328_8e-2),
+        f32x4::splat(9.618_489e-3),
+        f32x4::splat(1.339_993_1e-3),
+        f32x4::splat(1.534_581_2e-4),
+    ];
+    const MIN_EXP: f32x4 = f32x4::splat(-125.0);
+    const MAX_EXP: f32x4 = f32x4::splat(125.0);
+
+    let x = x.fast_max(MIN_EXP).fast_min(MAX_EXP);
+    let xi = x.round();
+    let f = x - xi;
+
+    let p = C[6]
+        .mul_add(f, C[5])
+        .mul_add(f, C[4])
+        .mul_add(f, C[3])
+        .mul_add(f, C[2])
+        .mul_add(f, C[1])
+        .mul_add(f, C[0]);
+
+    // `p` is in [2^-0.5, 2^0.5]; scaling by 2^xi is an exact add to its
+    // exponent field, which cannot overflow or denormalize within `MAX_EXP`.
+    let scaled: i32x4 = cast::<f32x4, i32x4>(p) + (xi.trunc_int() << 23);
+
+    cast(scaled)
+}
+
+/// [`pitch_to_freq`] for four lanes, built on [`fast_exp2_x4`].
+#[inline(always)]
+pub fn fast_pitch_to_freq_x4(pitch: f32x4) -> f32x4 {
+    const A4_FREQ_X4: f32x4 = f32x4::splat(A4_FREQ);
+
+    fast_exp2_x4(pitch) * A4_FREQ_X4
 }
 
 #[inline(always)]
