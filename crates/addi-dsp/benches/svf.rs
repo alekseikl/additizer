@@ -4,7 +4,7 @@ use addi_dsp::{
     Sample,
     filters::{
         control::MAX_PRE_Q,
-        svf::{SvfChannel, SvfType},
+        svf::{SvfFilter, SvfState, SvfType},
     },
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
@@ -52,7 +52,7 @@ fn bench_svf(c: &mut Criterion) {
     let gain = [1.0; MAX_BLOCK_SIZE];
 
     for filter_type in FILTER_TYPES {
-        let mut state = SvfChannel::new(filter_type);
+        let mut state = SvfState::new(filter_type);
         let mut output = [0.0; MAX_BLOCK_SIZE];
 
         group.bench_with_input(

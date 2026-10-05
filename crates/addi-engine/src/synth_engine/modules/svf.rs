@@ -12,7 +12,7 @@ pub use link::{SvfAudioEnd, SvfLinks, SvfUiEnd, UiEvent};
 
 use addi_dsp::filters::{
     control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
-    svf::{SvfChannel, SvfType},
+    svf::{SvfFilter, SvfState, SvfType},
 };
 
 use crate::{
@@ -128,7 +128,7 @@ pub struct Svf<L: SvfLinks = stub::Links> {
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
     buffers: Buffers,
-    states: VoicesLayout<SvfChannel>,
+    states: VoicesLayout<SvfState>,
     audio_end: L::AudioEnd,
     ui_end: Option<L::UiEnd>,
     inputs: Inputs,
@@ -194,7 +194,7 @@ impl<L: SvfLinks> Svf<L> {
 
     fn reset_voice(&mut self, voice_idx: usize) {
         for state in self.states.channels_at_mut(voice_idx) {
-            *state = SvfChannel::new(self.params.filter_type);
+            *state = SvfState::new(self.params.filter_type);
         }
     }
 
@@ -236,8 +236,10 @@ impl<L: SvfLinks> Svf<L> {
             *pre_k = q.pre_stage.recip();
         }
 
-        if router.param_stationary_at(&inputs.drive, &channel.drive, 0.0) {
-            self.buffers.drive[..samples].fill(1.0);
+        if let Some(drive) = router.param_stationary(&inputs.drive, &channel.drive) {
+            let gain = db_to_gain_fast(drive.clamp(MIN_DRIVE, MAX_DRIVE));
+
+            self.buffers.drive[..samples].fill(gain);
         } else {
             router.param(&inputs.drive, &channel.drive, &mut self.buffers.drive);
 

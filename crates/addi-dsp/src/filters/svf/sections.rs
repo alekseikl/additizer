@@ -1,5 +1,7 @@
 use crate::Sample;
 
+const MIN_GAIN: Sample = 1e-4;
+
 /// Trapezoidal integrator pair shared by every two-pole section.
 #[derive(Default, Clone, Copy)]
 pub(super) struct Integrator {
@@ -106,7 +108,7 @@ pub(super) struct Peaking {
 impl Peaking {
     #[inline(always)]
     pub(super) fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
-        let gain = gain.max(1e-4);
+        let gain = gain.max(MIN_GAIN);
         let k = k / gain.sqrt();
         let (v1, _v2) = self.integrator.tick(g, k, input);
         // Passband stays at unity; `gain` is the level at the cutoff.
@@ -127,7 +129,7 @@ pub(super) struct ShelfCoeffs {
 impl ShelfCoeffs {
     #[inline(always)]
     pub(super) fn new(gain: Sample) -> Self {
-        let gain = gain.max(1e-4);
+        let gain = gain.max(MIN_GAIN);
         let a = gain.sqrt();
 
         Self {
@@ -140,7 +142,7 @@ impl ShelfCoeffs {
     /// Both sections of a 24 dB shelf run at `√gain`.
     #[inline(always)]
     pub(super) fn cascaded(gain: Sample) -> Self {
-        Self::new(gain.max(1e-4).sqrt())
+        Self::new(gain.max(MIN_GAIN).sqrt())
     }
 }
 

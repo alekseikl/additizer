@@ -500,15 +500,9 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, AudioRouterType, A> 
         self.scalar_param_impl(input, param, this_frame.then_some(self.state.offset))
     }
 
-    pub fn param_stationary_at(
-        &self,
-        input: &InputSlots,
-        param: &SmoothedSample,
-        value: Sample,
-    ) -> bool {
-        !param.check_needs_smoothing(&self.factory.ctx.params.smooth_params)
-            && (param.get() - value).abs() < 1e-6
-            && input.is_empty()
+    pub fn param_stationary(&self, input: &InputSlots, param: &SmoothedSample) -> Option<Sample> {
+        (!param.check_needs_smoothing(&self.factory.ctx.params.smooth_params) && input.is_empty())
+            .then(|| param.get())
     }
 }
 

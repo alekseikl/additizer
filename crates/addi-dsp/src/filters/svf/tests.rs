@@ -1,6 +1,12 @@
 use std::f32::consts::{PI, TAU};
 
-use crate::{ComplexSample, filters::control::MAX_PRE_Q, units::freq_to_c4_pitch};
+use wide::f32x4;
+
+use crate::{
+    ComplexSample,
+    filters::control::MAX_PRE_Q,
+    units::{C4_PITCH, freq_to_c4_pitch, pitch_to_freq},
+};
 
 use super::{
     SvfFilter,
@@ -36,6 +42,71 @@ fn process_clamps_frequency_ratio_to_the_tan_limit() {
 
     assert_eq!(run(0.6), run(1.0));
     assert_ne!(run(0.01), run(1.0));
+}
+
+#[test]
+fn cutoff_to_g_stays_close_to_libm_tan() {
+    let freq_mult = SAMPLE_RATE.recip();
+
+    for i in 0..=200 {
+        let cutoff = -4.0 + i as Sample * 11.0 / 200.0;
+        let g = super::cutoff_to_g_x4(f32x4::splat(cutoff), freq_mult).to_array()[0];
+        let ratio = (pitch_to_freq(C4_PITCH + cutoff) * freq_mult).min(super::MAX_FREQ_RATIO);
+        let expected = (ratio * PI).tan();
+        let rel = ((g - expected) / expected).abs();
+        let limit = if ratio > 0.25 { 1e-4 } else { 1e-6 };
+
+        assert!(
+            rel < limit,
+            "cutoff {cutoff} ratio {ratio}: {g} vs {expected} ({rel})"
+        );
+    }
+}
+
+#[test]
+fn process_lanes_match_one_sample_at_a_time() {
+    let n = 7;
+    let input: Vec<_> = (0..n).map(|i| (i as Sample * 0.37).sin()).collect();
+    // Spans the direct polynomial and the reciprocal side of `fast_tan_pi_x4`,
+    // plus one cutoff past the clamp, and a remainder of 3 after one chunk of 4.
+    let cutoff = [-2.0, 0.5, 2.0, 4.0, 6.0, 6.8, 9.0];
+    let k = [0.5, 0.2, 1.0, 0.05, 2.0, 0.7, 0.3];
+    let pre_k = [2.0, 1.0, 2.0, 1.5, 2.0, 0.8, 1.2];
+    let gain = [0.25, 1.0, 4.0, 1e-8, 0.01, 2.5, 0.5];
+
+    for filter_type in SvfType::ALL {
+        let mut block = SvfState::new(filter_type);
+        let mut step = block;
+        let mut out_block = [0.0; 7];
+        let mut out_step = [0.0; 7];
+
+        block.process(
+            SAMPLE_RATE,
+            &input,
+            &cutoff,
+            &k,
+            &pre_k,
+            &gain,
+            &mut out_block,
+        );
+
+        for i in 0..n {
+            step.process(
+                SAMPLE_RATE,
+                &input[i..i + 1],
+                &cutoff[i..i + 1],
+                &k[i..i + 1],
+                &pre_k[i..i + 1],
+                &gain[i..i + 1],
+                &mut out_step[i..i + 1],
+            );
+        }
+
+        assert_eq!(
+            out_block, out_step,
+            "{filter_type:?} chunked process diverged from per-sample process"
+        );
+    }
 }
 
 fn g_and_k(cutoff: Sample, q: Sample) -> (Sample, Sample) {

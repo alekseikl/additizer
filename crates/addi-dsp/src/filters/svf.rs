@@ -1,14 +1,13 @@
 //! Time-domain state-variable filter in the Cytomic / Andrew Simper form
 
-use std::f32::consts::PI;
-
 use enum_dispatch::enum_dispatch;
 use itertools::izip;
 use serde::{Deserialize, Serialize};
+use wide::f32x4;
 
 use crate::{
     Sample,
-    units::{C4_PITCH, pitch_to_freq},
+    units::{C4_PITCH, fast_pitch_to_freq_x4, fast_tan_pi_x4},
 };
 
 /// Largest `f / sample_rate` fed to `tan`, keeping `g` finite just below Nyquist.
@@ -90,7 +89,7 @@ impl SvfType {
 }
 
 /// Coefficients and input for one sample.
-pub(crate) struct TickParams {
+pub struct TickParams {
     g: Sample,
     /// `1/Q` of the resonant stage.
     k: Sample,
@@ -101,7 +100,7 @@ pub(crate) struct TickParams {
 }
 
 #[enum_dispatch]
-pub(crate) trait SvfFilter {
+pub trait SvfFilter {
     fn tick(&mut self, p: &TickParams) -> Sample;
 
     #[allow(clippy::too_many_arguments)]
@@ -116,115 +115,163 @@ pub(crate) trait SvfFilter {
         output: &mut [Sample],
     ) {
         let freq_mult = sample_rate.recip();
+        let (output, output_tail) = output.as_chunks_mut::<LANES>();
+        let done = output.len() * LANES;
 
-        for (out, &sample, &cutoff, &k, &pre_k, &gain) in
-            izip!(output, input, cutoff, k, pre_k, gain)
-        {
-            let freq = pitch_to_freq(C4_PITCH + cutoff);
+        for (output, cutoff, k, pre_k, gain, input) in izip!(
+            output,
+            cutoff.as_chunks::<LANES>().0,
+            k.as_chunks::<LANES>().0,
+            pre_k.as_chunks::<LANES>().0,
+            gain.as_chunks::<LANES>().0,
+            input.as_chunks::<LANES>().0,
+        ) {
+            let g = cutoff_to_g_x4(f32x4::new(*cutoff), freq_mult).to_array();
 
-            *out = self.tick(&TickParams {
-                g: ((freq * freq_mult).min(MAX_FREQ_RATIO) * PI).tan(),
-                k,
-                pre_k,
-                gain,
-                input: sample,
-            });
+            for (sample, g, &k, &pre_k, &gain, &input) in izip!(output, g, k, pre_k, gain, input) {
+                *sample = self.tick(&TickParams {
+                    g,
+                    k,
+                    pre_k,
+                    gain,
+                    input,
+                });
+            }
+        }
+
+        let tail = output_tail.len();
+
+        if tail > 0 {
+            let mut cutoff_lanes = [0.0; LANES];
+            cutoff_lanes[..tail].copy_from_slice(&cutoff[done..done + tail]);
+            let g = cutoff_to_g_x4(f32x4::new(cutoff_lanes), freq_mult).to_array();
+
+            for (sample, g, &k, &pre_k, &gain, &input) in izip!(
+                output_tail,
+                g,
+                &k[done..],
+                &pre_k[done..],
+                &gain[done..],
+                &input[done..],
+            ) {
+                *sample = self.tick(&TickParams {
+                    g,
+                    k,
+                    pre_k,
+                    gain,
+                    input,
+                });
+            }
         }
     }
 }
 
+const LANES: usize = 4;
+
+/// `g = tan(π f / sample_rate)` for four cutoffs in octaves relative to C4.
+#[inline(always)]
+fn cutoff_to_g_x4(cutoff: f32x4, freq_mult: Sample) -> f32x4 {
+    const MAX_RATIO: f32x4 = f32x4::splat(MAX_FREQ_RATIO);
+    const C4: f32x4 = f32x4::splat(C4_PITCH);
+
+    let freq = fast_pitch_to_freq_x4(cutoff + C4);
+    let ratio = (freq * f32x4::splat(freq_mult)).fast_min(MAX_RATIO);
+
+    fast_tan_pi_x4(ratio)
+}
+
 #[derive(Default, Clone, Copy)]
-pub(crate) struct LowPass12 {
+pub struct LowPass12 {
     resonant: LowPass,
 }
 
 #[derive(Default, Clone, Copy)]
-pub(crate) struct LowPass18 {
+pub struct LowPass18 {
     resonant: LowPass,
     one_pole: OnePoleLowPass,
 }
 
 #[derive(Default, Clone, Copy)]
-pub(crate) struct LowPass24 {
+pub struct LowPass24 {
     pre_stage: LowPass,
     resonant: LowPass,
 }
 
 #[derive(Default, Clone, Copy)]
-pub(crate) struct HighPass12 {
+pub struct HighPass12 {
     resonant: HighPass,
 }
 
 #[derive(Default, Clone, Copy)]
-pub(crate) struct HighPass18 {
+pub struct HighPass18 {
     resonant: HighPass,
     one_pole: OnePoleHighPass,
 }
 
 #[derive(Default, Clone, Copy)]
-pub(crate) struct HighPass24 {
+pub struct HighPass24 {
     pre_stage: HighPass,
     resonant: HighPass,
 }
 
 #[derive(Default, Clone, Copy)]
-pub(crate) struct BandPass6 {
+pub struct BandPass6 {
     resonant: BandPass,
 }
 
 #[derive(Default, Clone, Copy)]
-pub(crate) struct BandPass12 {
+pub struct BandPass12 {
     pre_stage: BandPass,
     resonant: BandPass,
 }
 
 /// 18 dB/oct. Two pre stages at `pre_k`, then the resonant stage.
 #[derive(Default, Clone, Copy)]
-pub(crate) struct BandPass18 {
+pub struct BandPass18 {
     pre_stages: [BandPass; 2],
     resonant: BandPass,
 }
 
 /// 24 dB/oct. Three pre stages at `pre_k`, then the resonant stage.
 #[derive(Default, Clone, Copy)]
-pub(crate) struct BandPass24 {
+pub struct BandPass24 {
     pre_stages: [BandPass; 3],
     resonant: BandPass,
 }
 
 /// Bell. Linear `gain` is the level at the cutoff; DC and high frequencies stay at unity.
 #[derive(Default, Clone, Copy)]
-pub(crate) struct Peaking {
+pub struct Peaking {
     section: sections::Peaking,
 }
 
 #[derive(Default, Clone, Copy)]
-pub(crate) struct Notch {
+pub struct Notch {
     resonant: sections::Notch,
 }
 
 /// Low shelf, 12 dB/oct. Linear `gain` is the DC level; high frequencies stay at unity.
 #[derive(Default, Clone, Copy)]
-pub(crate) struct LowShelf12 {
+pub struct LowShelf12 {
     section: LowShelf,
 }
 
 /// High shelf, 12 dB/oct. Linear `gain` is the high-frequency level; DC stays at unity.
 #[derive(Default, Clone, Copy)]
-pub(crate) struct HighShelf12 {
+pub struct HighShelf12 {
     section: HighShelf,
 }
 
 /// Low shelf, 24 dB/oct. Two 12 dB sections, each at `sqrt(gain)`. One stage uses `pre_k`.
 #[derive(Default, Clone, Copy)]
-pub(crate) struct LowShelf24 {
+pub struct LowShelf24 {
     pre_stage: LowShelf,
     resonant: LowShelf,
 }
 
 /// High shelf, 24 dB/oct. Two 12 dB sections, each at `sqrt(gain)`. One stage uses `pre_k`.
 #[derive(Default, Clone, Copy)]
-pub(crate) struct HighShelf24 {
+pub struct HighShelf24 {
     pre_stage: HighShelf,
     resonant: HighShelf,
 }
@@ -368,7 +415,7 @@ impl SvfFilter for HighShelf24 {
 
 #[enum_dispatch(SvfFilter)]
 #[derive(Clone, Copy)]
-pub(crate) enum SvfState {
+pub enum SvfState {
     LowPass12(LowPass12),
     LowPass18(LowPass18),
     LowPass24(LowPass24),
@@ -437,62 +484,9 @@ impl SvfState {
     }
 
     /// Replaces the variant when `filter_type` changes, which clears integrator state.
-    pub(crate) fn set_type(&mut self, filter_type: SvfType) {
+    pub fn set_type(&mut self, filter_type: SvfType) {
         if self.current_type() != filter_type {
             *self = Self::new(filter_type);
         }
-    }
-}
-
-/// One channel of time-domain SVF state.
-#[derive(Clone, Copy)]
-pub struct SvfChannel {
-    state: SvfState,
-}
-
-impl Default for SvfChannel {
-    fn default() -> Self {
-        Self::new(SvfType::default())
-    }
-}
-
-impl SvfChannel {
-    pub fn new(filter_type: SvfType) -> Self {
-        Self {
-            state: SvfState::new(filter_type),
-        }
-    }
-
-    /// Replaces the filter when `filter_type` changes, which clears integrator state.
-    pub fn set_type(&mut self, filter_type: SvfType) {
-        self.state.set_type(filter_type);
-    }
-
-    /// Filters `input` into `output`.
-    ///
-    /// `cutoff` is octaves relative to C4. `k` and `pre_k` are `1/Q` of the resonant
-    /// stage and the pre stage. `gain` is linear.
-    #[inline(always)]
-    #[allow(clippy::too_many_arguments)]
-    pub fn process(
-        &mut self,
-        sample_rate: Sample,
-        input: &[Sample],
-        cutoff: &[Sample],
-        k: &[Sample],
-        pre_k: &[Sample],
-        gain: &[Sample],
-        output: &mut [Sample],
-    ) {
-        SvfFilter::process(
-            &mut self.state,
-            sample_rate,
-            input,
-            cutoff,
-            k,
-            pre_k,
-            gain,
-            output,
-        );
     }
 }

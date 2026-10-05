@@ -1,6 +1,6 @@
 use wide::f32x4;
 
-use super::{fast_exp2_x4, fast_pitch_to_freq_x4, pitch_to_freq};
+use super::{fast_exp2_x4, fast_pitch_to_freq_x4, fast_tan_pi_x4, pitch_to_freq};
 
 fn fast_exp2(x: f32) -> f32 {
     fast_exp2_x4(f32x4::splat(x)).to_array()[0]
@@ -43,6 +43,52 @@ fn fast_exp2_clamps_out_of_range_inputs() {
     assert_eq!(fast_exp2(-1000.0), fast_exp2(-125.0));
     assert!(fast_exp2(125.0).is_finite());
     assert!(fast_exp2(-125.0).is_normal());
+}
+
+fn fast_tan_pi(x: f32) -> f32 {
+    fast_tan_pi_x4(f32x4::splat(x)).to_array()[0]
+}
+
+#[test]
+fn fast_tan_pi_matches_libm_tan() {
+    let mut worst_low = 0.0f32;
+    let mut worst_high = 0.0f32;
+
+    for i in 0..=20_000 {
+        let ratio = 0.499 * i as f32 / 20_000.0;
+        let approx = fast_tan_pi(ratio);
+        let exact = (ratio * std::f32::consts::PI).tan();
+        let rel = if exact == 0.0 {
+            approx.abs()
+        } else {
+            ((approx - exact) / exact).abs()
+        };
+        if ratio <= 0.25 {
+            worst_low = worst_low.max(rel);
+        } else {
+            worst_high = worst_high.max(rel);
+        }
+    }
+
+    assert!(
+        worst_low < 2e-7,
+        "max relative error below 0.25: {worst_low}"
+    );
+    assert!(
+        worst_high < 5e-5,
+        "max relative error above 0.25: {worst_high}"
+    );
+}
+
+#[test]
+fn fast_tan_pi_lanes_are_independent() {
+    let ratios = [0.01f32, 0.2, 0.4, 0.499];
+    let out = fast_tan_pi_x4(f32x4::new(ratios)).to_array();
+
+    for (ratio, y) in ratios.into_iter().zip(out) {
+        let exact = fast_tan_pi(ratio);
+        assert_eq!(y, exact, "tan(π * {ratio})");
+    }
 }
 
 #[test]

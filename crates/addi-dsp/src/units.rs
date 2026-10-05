@@ -119,6 +119,51 @@ pub fn fast_pitch_to_freq_x4(pitch: f32x4) -> f32x4 {
     fast_exp2_x4(pitch) * A4_FREQ_X4
 }
 
+/// `tan(π x)` for four lanes, with `x` in `[0, 0.499]`.
+///
+/// This is the SVF prewarp `g = tan(π f / sample_rate)`. A degree-6 polynomial
+/// covers a quarter turn. Above that, `tan(π x) = 1 / tan(π (1/2 - x))`, so the
+/// reduced argument stays exact as `x` approaches one half.
+///
+/// Relative error against `(x * π).tan()` is below 2e-7 for `x <= 0.25`, and
+/// below 5e-5 up to `0.499`, where `tan` is steep and the two f32 arguments
+/// differ slightly.
+#[inline(always)]
+pub(crate) fn fast_tan_pi_x4(ratio: f32x4) -> f32x4 {
+    // Minimax fit of tan(x) / x on [0, π/4], evaluated with f32 `mul_add`.
+    const C: [f32x4; 7] = [
+        f32x4::splat(1.0),
+        f32x4::splat(3.333_307_2e-1),
+        f32x4::splat(1.333_994_9e-1),
+        f32x4::splat(5.334_505_4e-2),
+        f32x4::splat(2.461_384_6e-2),
+        f32x4::splat(2.876_793_7e-3),
+        f32x4::splat(9.508_654_5e-3),
+    ];
+    const QUARTER: f32x4 = f32x4::splat(0.25);
+    const HALF: f32x4 = f32x4::splat(0.5);
+    const PI_X4: f32x4 = f32x4::splat(std::f32::consts::PI);
+
+    let over = ratio.simd_gt(QUARTER);
+    let reduced = over.select(HALF - ratio, ratio);
+    let x = reduced * PI_X4;
+    let t = x * x;
+    let p = C[6]
+        .mul_add(t, C[5])
+        .mul_add(t, C[4])
+        .mul_add(t, C[3])
+        .mul_add(t, C[2])
+        .mul_add(t, C[1])
+        .mul_add(t, C[0]);
+    let tan_x = x * p;
+
+    if over.any() {
+        over.select(f32x4::ONE / tan_x, tan_x)
+    } else {
+        tan_x
+    }
+}
+
 #[inline(always)]
 pub fn freq_to_pitch(freq: Sample) -> Sample {
     (freq * A4_FREQ.recip()).log2()

@@ -178,7 +178,15 @@ impl<L: AmplifierLinks> Amplifier<L> {
             *out = input * modulation;
         }
 
-        if !router.param_stationary_at(&inputs.level, &channel.level, 0.0) {
+        if let Some(level) = router.param_stationary(&inputs.level, &channel.level) {
+            if level.abs() >= 1e-6 {
+                let gain = db_to_gain_fast(level.min(MAX_LEVEL_DB));
+
+                for out in output.iter_mut() {
+                    *out *= gain;
+                }
+            }
+        } else {
             router.param(
                 &inputs.level,
                 &channel.level,
@@ -190,7 +198,15 @@ impl<L: AmplifierLinks> Amplifier<L> {
             }
         }
 
-        if !router.param_stationary_at(&inputs.pan, &channel.pan, 0.0) {
+        if let Some(pan) = router.param_stationary(&inputs.pan, &channel.pan) {
+            if pan.abs() >= 1e-6 {
+                let gain = pan_gain(pan, channel_idx);
+
+                for out in output.iter_mut() {
+                    *out *= gain;
+                }
+            }
+        } else {
             router.param(&inputs.pan, &channel.pan, &mut self.buffers.gain_mod_input);
 
             for (out, &pan) in output.iter_mut().zip(&self.buffers.gain_mod_input) {
