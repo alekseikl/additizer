@@ -215,25 +215,33 @@ impl<L: SvfLinks> Svf<L> {
         state.set_type(filter_type);
 
         router.param(&inputs.cutoff, &channel.cutoff, &mut self.buffers.cutoff);
-        router.param(
-            &inputs.resonance,
-            &channel.resonance,
-            &mut self.buffers.resonance,
-        );
 
         let samples = router.samples();
 
-        for (resonance, pre_k) in self
-            .buffers
-            .resonance
-            .iter_mut()
-            .zip(&mut self.buffers.pre_k)
-            .take(samples)
-        {
-            let q = q_from_resonance(*resonance);
+        if let Some(resonance) = router.param_stationary(&inputs.resonance, &channel.resonance) {
+            let q = q_from_resonance(resonance);
 
-            *resonance = q.resonant.recip();
-            *pre_k = q.pre_stage.recip();
+            self.buffers.resonance[..samples].fill(q.resonant.recip());
+            self.buffers.pre_k[..samples].fill(q.pre_stage.recip());
+        } else {
+            router.param(
+                &inputs.resonance,
+                &channel.resonance,
+                &mut self.buffers.resonance,
+            );
+
+            for (resonance, pre_k) in self
+                .buffers
+                .resonance
+                .iter_mut()
+                .zip(&mut self.buffers.pre_k)
+                .take(samples)
+            {
+                let q = q_from_resonance(*resonance);
+
+                *resonance = q.resonant.recip();
+                *pre_k = q.pre_stage.recip();
+            }
         }
 
         if let Some(drive) = router.param_stationary(&inputs.drive, &channel.drive) {
