@@ -119,6 +119,85 @@ pub fn fast_pitch_to_freq_x4(pitch: f32x4) -> f32x4 {
     fast_exp2_x4(pitch) * A4_FREQ_X4
 }
 
+const X4_LANES: usize = 4;
+
+/// Map `samples` through `map` in groups of four and write the results to `out`.
+///
+/// `samples` and `out` must have the same length. A trailing partial group is
+/// zero-padded. Only the lanes that correspond to real input samples are stored.
+#[inline(always)]
+pub fn map_x4(samples: &[Sample], out: &mut [Sample], mut map: impl FnMut(f32x4) -> f32x4) {
+    assert!(samples.len() == out.len());
+
+    let (in_chunks, in_rem) = samples.as_chunks::<X4_LANES>();
+    let (out_chunks, out_rem) = out.as_chunks_mut::<X4_LANES>();
+
+    for (out, input) in out_chunks.iter_mut().zip(in_chunks) {
+        *out = map(f32x4::new(*input)).to_array();
+    }
+
+    let n = in_rem.len();
+
+    if n > 0 {
+        let mut lanes = [0.0; X4_LANES];
+        lanes[..n].copy_from_slice(&in_rem[..n]);
+        let mapped = map(f32x4::new(lanes)).to_array();
+        out_rem[..n].copy_from_slice(&mapped[..n]);
+    }
+}
+
+/// [`map_x4`] over two buffers, passing each group to `map` as a pair of lanes.
+///
+/// `a`, `b`, and `out` must have the same length. A trailing partial group is
+/// zero-padded. Only the lanes that correspond to real samples are stored.
+#[inline(always)]
+pub fn zip_map_x4(
+    a: &[Sample],
+    b: &[Sample],
+    out: &mut [Sample],
+    mut map: impl FnMut(f32x4, f32x4) -> f32x4,
+) {
+    assert!(a.len() == b.len() && a.len() == out.len());
+
+    let (a_chunks, a_rem) = a.as_chunks::<X4_LANES>();
+    let (b_chunks, b_rem) = b.as_chunks::<X4_LANES>();
+    let (out_chunks, out_rem) = out.as_chunks_mut::<X4_LANES>();
+
+    for ((out, a), b) in out_chunks.iter_mut().zip(a_chunks).zip(b_chunks) {
+        *out = map(f32x4::new(*a), f32x4::new(*b)).to_array();
+    }
+
+    let n = a_rem.len();
+
+    if n > 0 {
+        let mut a_lanes = [0.0; X4_LANES];
+        let mut b_lanes = [0.0; X4_LANES];
+        a_lanes[..n].copy_from_slice(&a_rem[..n]);
+        b_lanes[..n].copy_from_slice(&b_rem[..n]);
+        let mapped = map(f32x4::new(a_lanes), f32x4::new(b_lanes)).to_array();
+        out_rem[..n].copy_from_slice(&mapped[..n]);
+    }
+}
+
+/// [`map_x4`] over one buffer, writing each group back in place.
+#[inline(always)]
+pub fn map_x4_in_place(samples: &mut [Sample], mut map: impl FnMut(f32x4) -> f32x4) {
+    let (chunks, rem) = samples.as_chunks_mut::<X4_LANES>();
+
+    for chunk in chunks {
+        *chunk = map(f32x4::new(*chunk)).to_array();
+    }
+
+    let n = rem.len();
+
+    if n > 0 {
+        let mut lanes = [0.0; X4_LANES];
+        lanes[..n].copy_from_slice(rem);
+        let mapped = map(f32x4::new(lanes)).to_array();
+        rem.copy_from_slice(&mapped[..n]);
+    }
+}
+
 /// `tan(π x)` for four lanes, with `x` in `[0, 0.499]`.
 ///
 /// This is the SVF prewarp `g = tan(π f / sample_rate)`. A degree-6 polynomial

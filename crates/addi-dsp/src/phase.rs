@@ -32,6 +32,12 @@ impl Phase {
         Self::FULL_PHASE / sample_rate
     }
 
+    /// Hz from a phase increment built with [`Self::freq_phase_mult`].
+    #[inline(always)]
+    pub fn phase_inc_to_freq(phase_inc: Sample, freq_phase_mult: Sample) -> Sample {
+        phase_inc / freq_phase_mult
+    }
+
     #[inline(always)]
     pub fn from_normalized(phase: Sample) -> Self {
         Self((phase * Self::FULL_PHASE) as i64 as u32)

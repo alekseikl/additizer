@@ -1,6 +1,9 @@
 use wide::f32x4;
 
-use super::{fast_exp2_x4, fast_pitch_to_freq_x4, fast_tan_pi_x4, pitch_to_freq};
+use super::{
+    fast_exp2_x4, fast_pitch_to_freq_x4, fast_tan_pi_x4, map_x4, map_x4_in_place, pitch_to_freq,
+    zip_map_x4,
+};
 
 fn fast_exp2(x: f32) -> f32 {
     fast_exp2_x4(f32x4::splat(x)).to_array()[0]
@@ -89,6 +92,59 @@ fn fast_tan_pi_lanes_are_independent() {
         let exact = fast_tan_pi(ratio);
         assert_eq!(y, exact, "tan(π * {ratio})");
     }
+}
+
+#[test]
+fn map_x4_chunks_and_zeroes_remainder() {
+    let mut out = [0.0; 5];
+    map_x4(&[1.0, 2.0, 3.0, 4.0, 5.0], &mut out, |lanes| {
+        lanes + f32x4::splat(10.0)
+    });
+    assert_eq!(out, [11.0, 12.0, 13.0, 14.0, 15.0]);
+
+    let mut out = [0.0; 2];
+    map_x4(&[1.0, 2.0], &mut out, |lanes| {
+        f32x4::splat(lanes.reduce_add())
+    });
+    assert_eq!(out, [3.0, 3.0]);
+
+    let mut out = [];
+    map_x4(&[], &mut out, |lanes| lanes);
+}
+
+#[test]
+fn zip_map_x4_pairs_lanes_and_zeroes_remainder() {
+    let mut out = [0.0; 5];
+    zip_map_x4(
+        &[1.0, 2.0, 3.0, 4.0, 5.0],
+        &[10.0, 20.0, 30.0, 40.0, 50.0],
+        &mut out,
+        |a, b| a + b,
+    );
+    assert_eq!(out, [11.0, 22.0, 33.0, 44.0, 55.0]);
+
+    let mut out = [0.0; 2];
+    zip_map_x4(&[1.0, 2.0], &[3.0, 4.0], &mut out, |a, b| {
+        f32x4::splat((a + b).reduce_add())
+    });
+    assert_eq!(out, [10.0, 10.0]);
+
+    let mut out = [];
+    zip_map_x4(&[], &[], &mut out, |a, _b| a);
+}
+
+#[test]
+fn map_x4_in_place_matches_map_x4() {
+    let samples = [1.0, 2.0, 3.0, 4.0, 5.0];
+    let mut separate = [0.0; 5];
+    let mut inplace = samples;
+
+    let map = |lanes: f32x4| lanes + f32x4::splat(10.0);
+
+    map_x4(&samples, &mut separate, map);
+    map_x4_in_place(&mut inplace, map);
+
+    assert_eq!(inplace, separate);
 }
 
 #[test]

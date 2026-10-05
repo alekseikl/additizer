@@ -158,6 +158,10 @@ impl Output {
         self.kill_time = Self::clamp_kill_time(kill_time)
     }
 
+    pub fn reset_decimator(&mut self) {
+        self.decimator = IirDecimator::new();
+    }
+
     pub fn read_output(&mut self, oversampling: bool, outputs: &mut [&mut [f32]; NUM_CHANNELS]) {
         if oversampling {
             let (left, right) = outputs.split_at_mut(1);

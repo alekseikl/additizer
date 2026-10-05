@@ -5,6 +5,17 @@ use super::{Phase, PhaseX4};
 const BITS: usize = 11;
 
 #[test]
+fn phase_inc_to_freq_inverts_freq_phase_mult() {
+    let sample_rate = 48_000.0;
+    let mult = Phase::freq_phase_mult(sample_rate);
+
+    for freq in [0.0, 110.0, 440.0, 12_345.0] {
+        let recovered = Phase::phase_inc_to_freq(freq * mult, mult);
+        assert!((recovered - freq).abs() <= freq * 1e-6 + 1e-4);
+    }
+}
+
+#[test]
 fn load_store_round_trips() {
     let phases = [1u32, 2, 3, u32::MAX].map(Phase::from_bits);
     let mut out = [Phase::ZERO; 4];

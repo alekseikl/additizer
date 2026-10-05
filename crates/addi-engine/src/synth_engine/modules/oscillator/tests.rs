@@ -378,7 +378,7 @@ fn render_case(
 }
 
 struct SampleControls {
-    pitch_phase_inc: Sample,
+    phase_inc: Sample,
     phase_shift: Sample,
     frequency_shift: Sample,
 }
@@ -387,7 +387,7 @@ fn sample_controls(index: usize) -> SampleControls {
     let n = index as Sample;
 
     SampleControls {
-        pitch_phase_inc: 262_144.0 + n * 128.0,
+        phase_inc: 262_144.0 + n * 128.0,
         phase_shift: 0.02 + 0.001 * n,
         frequency_shift: 64.0 + 2.0 * n,
     }
@@ -502,7 +502,7 @@ fn reference_render(
     {
         let controls = sample_controls(index);
         let global_shift = Phase::from_normalized(controls.phase_shift);
-        let freq_inc = controls.frequency_shift * FREQ_PHASE_MULT;
+        let phase_inc = controls.phase_inc + controls.frequency_shift * FREQ_PHASE_MULT;
         let mut acc_from = 0.0;
         let mut acc_to = 0.0;
 
@@ -537,7 +537,7 @@ fn reference_render(
                     acc_to += interpolated_sample(wave_to, read, case.to_size, gain);
                 }
 
-                let inc = rate.mul_add(controls.pitch_phase_inc, freq_inc);
+                let inc = rate * phase_inc;
                 phases[voice_idx] += inc;
             }
         };
@@ -625,15 +625,14 @@ fn load_case(
     };
     osc.params.unison = case.unison;
 
-    osc.buffers.pitch_phase_inc.fill(0.0);
+    osc.buffers.phase_inc.fill(0.0);
     osc.buffers.phase_shift.fill(0.0);
-    osc.buffers.frequency_shift.fill(0.0);
 
     for index in 0..case.samples {
         let controls = sample_controls(index);
-        osc.buffers.pitch_phase_inc[index] = controls.pitch_phase_inc;
+        osc.buffers.phase_inc[index] =
+            controls.phase_inc + controls.frequency_shift * FREQ_PHASE_MULT;
         osc.buffers.phase_shift[index] = controls.phase_shift;
-        osc.buffers.frequency_shift[index] = controls.frequency_shift;
     }
 }
 
@@ -642,7 +641,6 @@ fn render_ctx(case: &RenderCase) -> VoiceRenderCtx {
         channel_idx: case.channel,
         voice_idx: case.voice,
         wave_channel: case.wave_channel,
-        freq_phase_mult: FREQ_PHASE_MULT,
         samples: case.samples,
     }
 }

@@ -21,7 +21,9 @@ use crate::{
         synth_module::SynthModule,
         types::{ComplexSample, Sample},
     },
-    synth_engine::{db_to_gain, fast_pitch_to_freq_x4, from_st, pitch_to_freq, power_scale},
+    synth_engine::{
+        db_to_gain, fast_pitch_to_freq_x4, from_st, map_x4, pitch_to_freq, power_scale, zip_map_x4,
+    },
 };
 
 mod config;
@@ -202,7 +204,6 @@ struct VoiceRenderCtx {
     channel_idx: usize,
     voice_idx: usize,
     wave_channel: usize,
-    freq_phase_mult: Sample,
     samples: usize,
 }
 
@@ -262,8 +263,7 @@ struct Buffers {
     tmp_wave: Waveform,
     tmp_spectral: DftBuffer,
     scratch: DftBuffer,
-    pitch: Buffer,
-    pitch_phase_inc: Buffer,
+    phase_inc: Buffer,
     phase_shift: Buffer,
     frequency_shift: Buffer,
 }
@@ -274,8 +274,7 @@ impl Default for Buffers {
             tmp_wave: Waveform::new(),
             tmp_spectral: [ComplexSample::ZERO; DFT_BUFFER_SIZE],
             scratch: [ComplexSample::ZERO; DFT_BUFFER_SIZE],
-            pitch: zero_buffer(),
-            pitch_phase_inc: zero_buffer(),
+            phase_inc: zero_buffer(),
             phase_shift: zero_buffer(),
             frequency_shift: zero_buffer(),
         }
@@ -811,6 +810,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             let params = UnisonLaneParams::from_voices(&unison_voices[start..start + UNISON_LANES]);
             self.lane_params[chunk_idx] = params;
         }
+
         if rem_lanes > 0 {
             let start = full_chunks * UNISON_LANES;
             let params = UnisonLaneParams::from_voices(&unison_voices[start..start + rem_lanes]);
@@ -917,18 +917,17 @@ impl<L: OscillatorLinks> Oscillator<L> {
         steals
     }
 
-    fn pitch_to_phase_inc(pitch: &[Sample], out: &mut [Sample], freq_phase_mult: Sample) {
+    fn pitch_to_phase_inc(
+        pitch: &[Sample],
+        freq_shift: &[Sample],
+        out: &mut [Sample],
+        freq_phase_mult: Sample,
+    ) {
         let mult = f32x4::splat(freq_phase_mult);
-        let (pitch_chunks, pitch_rem) = pitch.as_chunks::<4>();
-        let (out_chunks, out_rem) = out.as_chunks_mut::<4>();
 
-        for (out, pitch) in out_chunks.iter_mut().zip(pitch_chunks) {
-            *out = (fast_pitch_to_freq_x4(f32x4::new(*pitch)) * mult).to_array();
-        }
-
-        for (out, &pitch) in out_rem.iter_mut().zip(pitch_rem) {
-            *out = pitch_to_freq(pitch) * freq_phase_mult;
-        }
+        zip_map_x4(pitch, freq_shift, out, |pitch, shift| {
+            shift.mul_add(mult, fast_pitch_to_freq_x4(pitch) * mult)
+        });
     }
 
     #[inline(never)]
@@ -951,6 +950,9 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let to_size = self.buffers.tmp_wave.size;
 
         match (from_size, to_size) {
+            (WaveformSize::Half, WaveformSize::Half) => {
+                self.render_voice_samples_same::<HALF_WAVEFORM_BITS>(ctx, output, start, end)
+            }
             (WaveformSize::Full, WaveformSize::Full) => {
                 self.render_voice_samples_same::<WAVEFORM_BITS>(ctx, output, start, end)
             }
@@ -962,9 +964,6 @@ impl<L: OscillatorLinks> Oscillator<L> {
                 .render_voice_samples_sized::<HALF_WAVEFORM_BITS, WAVEFORM_BITS>(
                     ctx, output, start, end,
                 ),
-            (WaveformSize::Half, WaveformSize::Half) => {
-                self.render_voice_samples_same::<HALF_WAVEFORM_BITS>(ctx, output, start, end)
-            }
         }
     }
 
@@ -1034,17 +1033,15 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let (full_phases, rem_phases) = phase_chunks.split_at_mut(full_chunks);
         let (full_params, rem_params) = self.lane_params.split_at(full_chunks);
 
-        for (out, &pitch_phase_inc, &phase_shift, &freq_shift) in izip!(
+        for (out, &phase_inc, &phase_shift) in izip!(
             output[start..end].iter_mut(),
-            &self.buffers.pitch_phase_inc[start..end],
+            &self.buffers.phase_inc[start..end],
             &self.buffers.phase_shift[start..end],
-            &self.buffers.frequency_shift[start..end],
         ) {
             let mut s = SampleCtx {
                 buff_t: f32x4::splat(buff_t),
                 phase_shift: PhaseX4::splat(Phase::from_normalized(phase_shift)),
-                pitch_phase_inc: f32x4::splat(pitch_phase_inc),
-                freq_phase_inc: f32x4::splat(freq_shift * ctx.freq_phase_mult),
+                phase_inc: f32x4::splat(phase_inc),
                 wave_from,
                 wave_to,
                 acc_from: [f32x4::ZERO; UNISON_LANES],
@@ -1101,17 +1098,21 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let freq_phase_mult = Phase::freq_phase_mult(router.sample_rate());
 
         if inputs.pitch.is_some() {
-            self.buffers.pitch[..samples].copy_from_slice(router.direct(inputs.pitch));
             Self::pitch_to_phase_inc(
-                &self.buffers.pitch[..samples],
-                &mut self.buffers.pitch_phase_inc[..samples],
+                router.direct(inputs.pitch),
+                &self.buffers.frequency_shift[..samples],
+                &mut self.buffers.phase_inc[..samples],
                 freq_phase_mult,
             );
         } else {
-            let pitch = target.note_pitch();
+            let pitch_inc = f32x4::splat(pitch_to_freq(target.note_pitch()) * freq_phase_mult);
+            let mult = f32x4::splat(freq_phase_mult);
 
-            self.buffers.pitch[..samples].fill(pitch);
-            self.buffers.pitch_phase_inc[..samples].fill(pitch_to_freq(pitch) * freq_phase_mult);
+            map_x4(
+                &self.buffers.frequency_shift[..samples],
+                &mut self.buffers.phase_inc[..samples],
+                |shift| shift.mul_add(mult, pitch_inc),
+            );
         }
 
         let mono_spectrum = self.params.mono_spectrum;
@@ -1126,7 +1127,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
 
             Self::build_wave(
                 &self.ifft,
-                pitch_to_freq(self.buffers.pitch[last]) + self.buffers.frequency_shift[last],
+                Phase::phase_inc_to_freq(self.buffers.phase_inc[last], freq_phase_mult),
                 router.sample_rate(),
                 router.spectral(inputs.spectrum),
                 &mut self.buffers.tmp_spectral,
@@ -1144,7 +1145,6 @@ impl<L: OscillatorLinks> Oscillator<L> {
             channel_idx,
             voice_idx,
             wave_channel,
-            freq_phase_mult,
             samples,
         };
         let output = voice_output.output();

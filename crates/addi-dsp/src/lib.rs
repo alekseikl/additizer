@@ -24,5 +24,5 @@ pub use types::{ComplexSample, Sample};
 pub use units::{
     C4_NOTE, C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain, db_to_gain_fast, fast_exp2_x4,
     fast_pitch_to_freq_x4, freq_to_c4_pitch, freq_to_pitch, from_ms, from_st, gain_to_db,
-    gain_to_db_fast, note_to_pitch, pan_gain, pitch_to_freq, power_scale,
+    gain_to_db_fast, map_x4, note_to_pitch, pan_gain, pitch_to_freq, power_scale, zip_map_x4,
 };

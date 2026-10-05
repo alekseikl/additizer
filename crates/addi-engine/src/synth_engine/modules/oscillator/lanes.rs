@@ -58,8 +58,7 @@ struct WaveTap {
 pub(super) struct SampleCtx<'a> {
     pub(super) buff_t: f32x4,
     pub(super) phase_shift: PhaseX4,
-    pub(super) pitch_phase_inc: f32x4,
-    pub(super) freq_phase_inc: f32x4,
+    pub(super) phase_inc: f32x4,
     pub(super) wave_from: &'a WaveformBuffer,
     pub(super) wave_to: &'a WaveformBuffer,
     pub(super) acc_from: [f32x4; UNISON_LANES],
@@ -87,7 +86,7 @@ pub(super) fn render_same<const BITS: usize>(
     let gt3 = gt2 * t;
 
     let rate = params.rate_delta.mul_add(s.buff_t, params.rate_from);
-    (phase + rate.mul_add(s.pitch_phase_inc, s.freq_phase_inc)).store(phases);
+    (phase + rate * s.phase_inc).store(phases);
 
     for (lane, wave_idx) in idx.into_iter().enumerate().take(lanes) {
         let weights = catmull_rom_from_powers(
@@ -122,7 +121,7 @@ pub(super) fn render_sized<const FROM_BITS: usize, const TO_BITS: usize>(
     let to_tap = wave_tap::<TO_BITS>(read_phase, g);
 
     let rate = params.rate_delta.mul_add(s.buff_t, params.rate_from);
-    (phase + rate.mul_add(s.pitch_phase_inc, s.freq_phase_inc)).store(phases);
+    (phase + rate * s.phase_inc).store(phases);
 
     for lane in 0..lanes {
         let g = g.as_array()[lane];

@@ -58,8 +58,8 @@ pub use voices_handler::Note;
 
 pub use addi_dsp::{
     C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain, db_to_gain_fast, fast_pitch_to_freq_x4,
-    freq_to_c4_pitch, from_ms, from_st, gain_to_db, gain_to_db_fast, note_to_pitch, pan_gain,
-    pitch_to_freq, power_scale,
+    freq_to_c4_pitch, from_ms, from_st, gain_to_db, gain_to_db_fast, map_x4, note_to_pitch,
+    pan_gain, pitch_to_freq, power_scale, zip_map_x4,
 };
 
 pub use addi_dsp::types;
@@ -259,6 +259,12 @@ impl<E: EngineLinks> SynthEngine<E> {
     }
 
     pub fn set_oversampling(&mut self, oversampling: bool) {
+        if oversampling != self.oversampling
+            && let Some(ModuleHandle::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID)
+        {
+            output.reset_decimator();
+        }
+
         self.oversampling = oversampling;
     }
 
