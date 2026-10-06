@@ -3,7 +3,7 @@ use crate::synth_engine::{
     buffer::{VoicesLayout, ZEROES_BUFFER},
     engine_io::EngineAudioEnd,
     routing::{
-        InputSlots, ProcessContext, SamplesOutput, SpectralOutput, process_context::VoiceTarget,
+        MixedSlots, ProcessContext, SamplesOutput, SpectralOutput, process_context::VoiceTarget,
     },
     smooth::SmoothedSample,
 };
@@ -411,7 +411,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D
 
     fn scalar_param_impl(
         &mut self,
-        input: &InputSlots,
+        input: &MixedSlots,
         param: Sample,
         this_frame: Option<usize>,
     ) -> Sample {
@@ -465,7 +465,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, AudioRouterType, A> 
             .unwrap_or(&ZEROES_BUFFER)[self.state.offset..ctx.params.samples]
     }
 
-    pub fn param(&mut self, input: &InputSlots, param: &SmoothedSample, buff: &mut Buffer) {
+    pub fn param(&mut self, input: &MixedSlots, param: &SmoothedSample, buff: &mut Buffer) {
         let buff = &mut buff[..self.samples()];
         let smooth_params = &self.factory.ctx.params.smooth_params;
 
@@ -496,11 +496,11 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, AudioRouterType, A> 
         }
     }
 
-    pub fn scalar(&mut self, input: &InputSlots, param: Sample, this_frame: bool) -> Sample {
+    pub fn scalar(&mut self, input: &MixedSlots, param: Sample, this_frame: bool) -> Sample {
         self.scalar_param_impl(input, param, this_frame.then_some(self.state.offset))
     }
 
-    pub fn param_stationary(&self, input: &InputSlots, param: &SmoothedSample) -> Option<Sample> {
+    pub fn param_stationary(&self, input: &MixedSlots, param: &SmoothedSample) -> Option<Sample> {
         (!param.check_needs_smoothing(&self.factory.ctx.params.smooth_params) && input.is_empty())
             .then(|| param.get())
     }
@@ -529,7 +529,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, ControlRouterType, A
         offset.saturating_sub(self.state.offset)
     }
 
-    pub fn param(&mut self, input: &InputSlots, param: &SmoothedSample, buff: &mut Buffer) {
+    pub fn param(&mut self, input: &MixedSlots, param: &SmoothedSample, buff: &mut Buffer) {
         let buff = &mut buff[..self.samples()];
         let smooth_params = &self.factory.ctx.params.smooth_params;
 
@@ -560,7 +560,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, ControlRouterType, A
         }
     }
 
-    pub fn scalar(&mut self, input: &InputSlots, param: Sample) -> Sample {
+    pub fn scalar(&mut self, input: &MixedSlots, param: Sample) -> Sample {
         self.scalar_param_impl(input, param, Some(self.state.offset))
     }
 }
@@ -613,7 +613,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, SpectralRouterType, 
         })
     }
 
-    pub fn scalar(&mut self, input: &InputSlots, param: Sample) -> Sample {
+    pub fn scalar(&mut self, input: &MixedSlots, param: Sample) -> Sample {
         let this_frame = self
             .factory
             .params()

@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use addi_dsp::db_to_gain_fast;
 
@@ -12,7 +12,7 @@ use crate::{
         level_ballistics::StereoLevelBallistics,
         routing::{
             DataType, EngineAudioEnd, InputMeta, InputSlots, MAX_VOICES, NUM_CHANNELS,
-            ProcessContext, SpectralInputSlot, VoiceEvent, VoiceTarget,
+            ProcessContext, VoiceEvent, VoiceTarget,
         },
         smooth::SmoothedSample,
         voices_handler::DecayingVoice,
@@ -266,8 +266,14 @@ impl SynthModule for Output {
         panic!("Output module doesn't have output slot.")
     }
 
-    fn set_input_slots(&mut self, inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) {
-        self.audio_input = inputs.first().and_then(|s| s.first_slot());
+    fn set_input_slots(&mut self, inputs: &[InputSlots]) {
+        self.audio_input = inputs.iter().find_map(|input| match input {
+            InputSlots::Direct {
+                input_type: Input::Audio,
+                slot,
+            } => Some(*slot),
+            _ => None,
+        });
     }
 
     fn process_events(&mut self, events: &[VoiceEvent]) {

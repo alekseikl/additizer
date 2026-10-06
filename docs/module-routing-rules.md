@@ -52,7 +52,7 @@ Per-link checks only — does **not** check acyclicity. Checks run in this order
 
 ## Acyclicity (`setup_routing`)
 
-`setup_routing` builds the topo sort (`calc_execution_order`) over all links: each destination depends on each of its sources and modulators; unlinked modules are included too. Cycles → `"Cycles detected!"` and the routing update is rejected (the previous routing stays in place). In the resulting order `Output` (`OUTPUT_MODULE_ID`) is always moved to the end. `setup_routing` also reassigns input/output slots (`setup_slots`).
+`setup_routing` builds the topo sort (`process_order`) over all links: each destination depends on each of its sources and modulators; unlinked modules are included too. Cycles → `"Cycles detected!"` and the routing update is rejected (the previous routing stays in place). In the resulting order `Output` (`OUTPUT_MODULE_ID`) is always moved to the end. `setup_routing` also reassigns input/output slots (`setup_slots`).
 
 ## Link mutations
 

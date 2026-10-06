@@ -6,6 +6,9 @@ mod config;
 mod link;
 pub mod stub;
 
+#[cfg(test)]
+pub(crate) mod tests;
+
 pub use config::AmplifierConfig;
 pub use link::{AmplifierAudioEnd, AmplifierLinks, AmplifierUiEnd, UiEvent};
 
@@ -15,8 +18,8 @@ use crate::{
         buffer::{Buffer, VoicesLayout, zero_buffer},
         level_ballistics::LevelBallistics,
         routing::{
-            AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-            ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceTarget,
+            AudioRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
+            NUM_CHANNELS, ProcessContext, RouterFactory, SamplesOutput, VoiceTarget,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
@@ -50,33 +53,40 @@ impl ChannelParams {
 
 pub struct Inputs {
     audio: Option<usize>,
-    gain: InputSlots,
-    level: InputSlots,
-    pan: InputSlots,
+    gain: MixedSlots,
+    level: MixedSlots,
+    pan: MixedSlots,
 }
 
 impl Default for Inputs {
     fn default() -> Self {
         Self {
             audio: None,
-            gain: InputSlots::new(Input::Gain),
-            level: InputSlots::new(Input::Level),
-            pan: InputSlots::new(Input::Pan),
+            gain: MixedSlots::new(Input::Gain),
+            level: MixedSlots::new(Input::Level),
+            pan: MixedSlots::new(Input::Pan),
         }
     }
 }
 
 impl Inputs {
-    fn from_slots(inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) -> Self {
+    fn from_slots(inputs: &[InputSlots]) -> Self {
         let mut result = Self::default();
 
         for input in inputs {
-            match input.input_type {
-                Input::Audio => result.audio = input.slots.first().map(|s| s.src_slot),
-                Input::Gain => result.gain = input.clone(),
-                Input::Level => result.level = input.clone(),
-                Input::Pan => result.pan = input.clone(),
-                _ => (),
+            match input {
+                InputSlots::Direct { input_type, slot } => {
+                    if matches!(input_type, Input::Audio) {
+                        result.audio = Some(*slot);
+                    }
+                }
+                InputSlots::Mixed(input) => match input.input_type {
+                    Input::Gain => result.gain = input.clone(),
+                    Input::Level => result.level = input.clone(),
+                    Input::Pan => result.pan = input.clone(),
+                    _ => (),
+                },
+                InputSlots::Spectral { .. } => (),
             }
         }
 
@@ -220,6 +230,7 @@ impl<L: AmplifierLinks> Amplifier<L> {
             self.audio_end.update_out_volume(target.channel_idx, level);
         }
     }
+
     pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
         ctx.audio(self.id, self.output_slot)
             .for_voices(|rf, target, outputs| {
@@ -260,8 +271,8 @@ impl<L: AmplifierLinks> SynthModule for Amplifier<L> {
         self.output_slot = slot;
     }
 
-    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) {
-        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
+    fn set_input_slots(&mut self, inputs: &[InputSlots]) {
+        self.inputs = Inputs::from_slots(inputs);
     }
 
     fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {

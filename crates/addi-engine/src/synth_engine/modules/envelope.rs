@@ -17,9 +17,8 @@ use crate::{
         buffer::{VoicesLayout, new_voices_layout},
         curves::{CurveFunction, Exponential},
         routing::{
-            ControlRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-            ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent,
-            VoiceTarget,
+            ControlRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
+            NUM_CHANNELS, ProcessContext, RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget,
         },
         synth_module::SynthModule,
         types::Sample,
@@ -229,32 +228,36 @@ impl Default for Voice {
 }
 
 pub struct Inputs {
-    delay: InputSlots,
-    attack: InputSlots,
-    hold: InputSlots,
-    decay: InputSlots,
-    sustain: InputSlots,
-    release: InputSlots,
+    delay: MixedSlots,
+    attack: MixedSlots,
+    hold: MixedSlots,
+    decay: MixedSlots,
+    sustain: MixedSlots,
+    release: MixedSlots,
 }
 
 impl Default for Inputs {
     fn default() -> Self {
         Self {
-            delay: InputSlots::new(Input::Delay),
-            attack: InputSlots::new(Input::Attack),
-            hold: InputSlots::new(Input::Hold),
-            decay: InputSlots::new(Input::Decay),
-            sustain: InputSlots::new(Input::Sustain),
-            release: InputSlots::new(Input::Release),
+            delay: MixedSlots::new(Input::Delay),
+            attack: MixedSlots::new(Input::Attack),
+            hold: MixedSlots::new(Input::Hold),
+            decay: MixedSlots::new(Input::Decay),
+            sustain: MixedSlots::new(Input::Sustain),
+            release: MixedSlots::new(Input::Release),
         }
     }
 }
 
 impl Inputs {
-    fn from_slots(inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) -> Self {
+    fn from_slots(inputs: &[InputSlots]) -> Self {
         let mut result = Self::default();
 
         for input in inputs {
+            let InputSlots::Mixed(input) = input else {
+                continue;
+            };
+
             match input.input_type {
                 Input::Delay => result.delay = input.clone(),
                 Input::Attack => result.attack = input.clone(),
@@ -480,8 +483,8 @@ impl<L: EnvelopeLinks> SynthModule for Envelope<L> {
         self.output_slot = slot;
     }
 
-    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) {
-        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
+    fn set_input_slots(&mut self, inputs: &[InputSlots]) {
+        self.inputs = Inputs::from_slots(inputs);
     }
 
     fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {

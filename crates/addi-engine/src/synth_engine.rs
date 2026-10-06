@@ -1,16 +1,13 @@
 use core::f32;
-use std::collections::{HashMap, HashSet};
 
 use rustc_hash::FxHashMap;
-use std::assert_matches;
-use topo_sort::{SortResults, TopoSort};
 
 use crate::synth_engine::{
     external_param::{ExtParamValue, NUM_EXT_PARAMS},
     modules::Output,
     routing::{
-        InputSlot, InputSlots, MIN_MODULE_ID, MixedSource, ModuleLink, OutputsArena,
-        ProcessContext, ProcessParams, SpectralInputSlot, data_types_compatible,
+        MIN_MODULE_ID, MixedSource, ModuleLink, OutputsArena, ProcessContext, ProcessParams,
+        data_types_compatible,
     },
     synth_module::SynthModule,
     voices_handler::{
@@ -76,6 +73,7 @@ pub(crate) mod module_handle;
 mod modules;
 mod nth_element;
 pub mod routing;
+mod routing_helpers;
 pub mod routing_state;
 pub mod stub;
 pub(crate) mod utils;
@@ -109,7 +107,7 @@ pub struct SynthEngine<E: EngineLinks = stub::StubLinks> {
     oversampling: bool,
     modules: ModulesMap<E>,
     input_sources: RoutingMap,
-    execution_order: Vec<ModuleId>,
+    process_order: Vec<ModuleId>,
     voices_handler: VoicesHandler,
     audio_end: E::AudioEnd,
     ui_end: Option<E::UiEnd>,
@@ -128,7 +126,7 @@ impl<E: EngineLinks> SynthEngine<E> {
             oversampling: cfg.engine.oversampling,
             modules: ModulesMap::<E>::default(),
             input_sources: RoutingMap::default(),
-            execution_order: Vec::new(),
+            process_order: Vec::new(),
             voices_handler: VoicesHandler::new(
                 Self::clamp_num_voices(cfg.engine.num_voices),
                 cfg.engine.legato,
@@ -725,7 +723,7 @@ impl<E: EngineLinks> SynthEngine<E> {
             self.voices_handler
                 .get_decaying_voices(&mut decaying_voices);
 
-            self.execution_order
+            self.process_order
                 .iter()
                 .filter_map(|id| self.modules.get(id))
                 .for_each(|module| module.poll_decaying_voices(&mut decaying_voices));
@@ -775,7 +773,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         };
 
         if !triggered_voices.is_empty() {
-            for module_id in &self.execution_order {
+            for module_id in &self.process_order {
                 if let Some(module) = self.modules.get_mut(module_id) {
                     module.process(&mut ctx);
                 }
@@ -785,7 +783,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         ctx.params.trigger_stage = false;
         ctx.params.active_voices = &playing_voices;
 
-        for module_id in &self.execution_order {
+        for module_id in &self.process_order {
             if let Some(module) = self.modules.get_mut(module_id) {
                 module.process(&mut ctx);
             }
@@ -857,158 +855,26 @@ impl<E: EngineLinks> SynthEngine<E> {
         self.modules.get_mut(&id)
     }
 
-    fn calc_execution_order(
-        links: &[ModuleLink],
-        all_modules: impl IntoIterator<Item = ModuleId>,
-    ) -> Result<Vec<ModuleId>, String> {
-        let mut dependents: HashMap<ModuleId, HashSet<ModuleId>> = HashMap::new();
-
-        for id in all_modules {
-            dependents.entry(id).or_default();
-        }
-
-        for link in links {
-            let src_node = link.src();
-            let dst_node = link.dst().module_id;
-
-            dependents.entry(dst_node).or_default().insert(src_node);
-            dependents.entry(src_node).or_default();
-
-            if let Some(modulation) = link.modulation() {
-                dependents.entry(dst_node).or_default().insert(modulation);
-                dependents.entry(modulation).or_default();
-            }
-        }
-
-        let topo_sort = TopoSort::from_map(dependents);
-
-        match topo_sort.into_vec_nodes() {
-            SortResults::Full(mut nodes) => {
-                if let Some(pos) = nodes.iter().position(|&id| id == OUTPUT_MODULE_ID) {
-                    nodes[pos..].rotate_left(1);
-                }
-                Ok(nodes)
-            }
-            SortResults::Partial(_) => Err("Cycles detected!".to_string()),
-        }
-    }
-
     fn setup_slots(&mut self) {
-        struct ModuleSlots {
-            data_type: DataType,
-            output_slot: usize,
-            inputs: Vec<InputSlots>,
-            spectral_inputs: Vec<SpectralInputSlot>,
-        }
-
-        let mut modules_slots: FxHashMap<_, _> = self
+        let outputs = self
             .modules
             .iter()
-            .map(|(&mod_id, m)| {
-                (
-                    mod_id,
-                    ModuleSlots {
-                        data_type: m.output_type(),
-                        output_slot: m.output_slot(),
-                        inputs: Default::default(),
-                        spectral_inputs: Default::default(),
-                    },
-                )
-            })
+            .map(|(&mod_id, module)| (mod_id, (module.output_type(), module.output_slot())))
             .collect();
+        let assigned = routing_helpers::assign_slots(&outputs, &self.input_sources);
 
-        for (input, sources) in self.input_sources.iter() {
-            match sources {
-                InputSource::Direct(module_id) => {
-                    let src_output_slot = modules_slots
-                        .get(module_id)
-                        .expect("should be in place")
-                        .output_slot;
-                    let src_data_type = modules_slots
-                        .get(module_id)
-                        .expect("should be in place")
-                        .data_type;
-
-                    let dst_module = modules_slots
-                        .get_mut(&input.module_id)
-                        .expect("should be in place");
-
-                    if src_data_type == DataType::Spectral {
-                        dst_module.spectral_inputs.push(SpectralInputSlot {
-                            input_type: input.input_type,
-                            slot: src_output_slot,
-                        });
-                    } else {
-                        assert_matches!(src_data_type, DataType::Audio | DataType::Control);
-
-                        dst_module.inputs.push(InputSlots {
-                            input_type: input.input_type,
-                            slots: vec![InputSlot {
-                                src_slot: src_output_slot,
-                                modulation_slot: None,
-                                amount: StereoSample::ONE,
-                            }],
-                        });
-                    }
-                }
-                InputSource::Mixed(mixed) => {
-                    let mut input_slots = InputSlots {
-                        input_type: input.input_type,
-                        slots: Vec::new(),
-                    };
-
-                    for src in mixed {
-                        let mut input_src = InputSlot {
-                            src_slot: 0,
-                            modulation_slot: None,
-                            amount: src.amount,
-                        };
-
-                        let src_module = modules_slots
-                            .get(&src.module_id)
-                            .expect("should be in place");
-
-                        assert_matches!(src_module.data_type, DataType::Audio | DataType::Control);
-
-                        input_src.src_slot = src_module.output_slot;
-
-                        if let Some(modulation_src) = src.modulation {
-                            let modulation_module = modules_slots
-                                .get(&modulation_src)
-                                .expect("should be in place");
-
-                            assert_matches!(
-                                modulation_module.data_type,
-                                DataType::Audio | DataType::Control
-                            );
-
-                            input_src.modulation_slot = Some(modulation_module.output_slot);
-                        }
-
-                        input_slots.slots.push(input_src);
-                    }
-
-                    let dst_module = modules_slots
-                        .get_mut(&input.module_id)
-                        .expect("should be in place");
-
-                    dst_module.inputs.push(input_slots);
-                }
-            }
-        }
-
-        for (module_id, mod_slots) in modules_slots.iter() {
+        for (module_id, mod_slots) in &assigned {
             let module = self
                 .modules
                 .get_mut(module_id)
                 .expect("module should be in place");
 
-            module.set_input_slots(&mod_slots.inputs, &mod_slots.spectral_inputs);
+            module.set_input_slots(mod_slots);
         }
     }
 
     fn setup_routing(&mut self, links: &[ModuleLink]) -> Result<(), String> {
-        let execution_order = Self::calc_execution_order(links, self.modules.keys().copied())?;
+        let process_order = routing_helpers::process_order(links, self.modules.keys().copied())?;
         let mut routing_map = RoutingMap::default();
 
         for link in links {
@@ -1039,7 +905,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         }
 
         self.input_sources = routing_map;
-        self.execution_order = execution_order;
+        self.process_order = process_order;
         self.setup_slots();
         Ok(())
     }

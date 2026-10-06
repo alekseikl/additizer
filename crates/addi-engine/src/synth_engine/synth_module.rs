@@ -2,7 +2,7 @@ use enum_dispatch::enum_dispatch;
 
 use crate::synth_engine::{
     StereoSample,
-    routing::{DataType, Input, InputMeta, InputSlots, ModuleId, SpectralInputSlot, VoiceEvent},
+    routing::{DataType, Input, InputMeta, InputSlots, ModuleId, VoiceEvent},
     voices_handler::DecayingVoice,
 };
 
@@ -17,7 +17,7 @@ pub trait SynthModule: Send {
 
     fn set_output_slot(&mut self, slot: usize);
     fn output_slot(&self) -> usize;
-    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) {}
+    fn set_input_slots(&mut self, inputs: &[InputSlots]) {}
 
     fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {}
 

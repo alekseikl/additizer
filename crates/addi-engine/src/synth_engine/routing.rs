@@ -458,25 +458,21 @@ pub struct InputSlot {
 }
 
 #[derive(Clone)]
-pub struct InputSlots {
+pub struct MixedSlots {
     pub input_type: Input,
-    pub slots: Vec<InputSlot>,
+    pub slots: SmallVec<[InputSlot; 4]>,
 }
 
-impl InputSlots {
+impl MixedSlots {
     pub fn new(input: Input) -> Self {
         Self {
             input_type: input,
-            slots: Vec::new(),
+            slots: SmallVec::new(),
         }
     }
 
     pub fn is_empty(&self) -> bool {
         self.slots.is_empty()
-    }
-
-    pub fn first_slot(&self) -> Option<usize> {
-        self.slots.first().map(|s| s.src_slot)
     }
 
     pub fn update_amount(&mut self, slot: usize, amount: StereoSample) {
@@ -498,7 +494,9 @@ impl InputSlots {
     }
 }
 
-pub struct SpectralInputSlot {
-    pub input_type: Input,
-    pub slot: usize,
+#[derive(Clone)]
+pub enum InputSlots {
+    Spectral { input_type: Input, slot: usize },
+    Direct { input_type: Input, slot: usize },
+    Mixed(MixedSlots),
 }

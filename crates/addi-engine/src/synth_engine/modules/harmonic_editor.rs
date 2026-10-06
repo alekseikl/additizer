@@ -10,8 +10,8 @@ use crate::{
         harmonic_editor::config::fill_default_harmonics,
         routing::{
             DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, ModuleId, NUM_CHANNELS,
-            ProcessContext, RIGHT_CHANNEL, RouterFactory, SpectralInputSlot, SpectralOutput,
-            SpectralRouterType, VoiceTarget,
+            ProcessContext, RIGHT_CHANNEL, RouterFactory, SpectralOutput, SpectralRouterType,
+            VoiceTarget,
         },
         synth_module::SynthModule,
         voices_handler::BAND_LIMIT_FREQUENCY,
@@ -43,18 +43,22 @@ pub struct Inputs {
 }
 
 impl Inputs {
-    fn from_slots(inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) -> Self {
+    fn from_slots(inputs: &[InputSlots]) -> Self {
         let mut result = Self::default();
 
         for input in inputs {
-            if matches!(input.input_type, Input::Pitch) {
-                result.pitch = input.slots.first().map(|s| s.src_slot);
-            }
-        }
-
-        for input in spectral_inputs {
-            if matches!(input.input_type, Input::Spectrum) {
-                result.spectrum = Some(input.slot);
+            match input {
+                InputSlots::Direct { input_type, slot } => {
+                    if matches!(input_type, Input::Pitch) {
+                        result.pitch = Some(*slot);
+                    }
+                }
+                InputSlots::Spectral { input_type, slot } => {
+                    if matches!(input_type, Input::Spectrum) {
+                        result.spectrum = Some(*slot);
+                    }
+                }
+                InputSlots::Mixed(_) => (),
             }
         }
 
@@ -629,8 +633,8 @@ impl<L: HarmonicEditorLinks> SynthModule for HarmonicEditor<L> {
         self.output_slot = slot;
     }
 
-    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) {
-        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
+    fn set_input_slots(&mut self, inputs: &[InputSlots]) {
+        self.inputs = Inputs::from_slots(inputs);
     }
 
     fn process_ui_events(&mut self) {

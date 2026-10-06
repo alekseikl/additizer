@@ -2,16 +2,32 @@ use realfft::RealFftPlanner;
 
 use super::{
     DFT_BUFFER_SIZE, HALF_WAVEFORM_BITS, IfftPlanners, Interpolated, MAX_UNISON_VOICES, Oscillator,
-    OscillatorConfig, UnisonVoice, VoiceRenderCtx, WAVEFORM_BITS, WAVEFORM_BUFFER_SIZE,
-    WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform, WaveformBuffer, WaveformSize,
+    OscillatorConfig, OscillatorLinks, UnisonVoice, VoiceRenderCtx, WAVEFORM_BITS,
+    WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform, WaveformBuffer, WaveformSize,
     lanes::{UNISON_LANES, UnisonLaneParams},
 };
 use crate::synth_engine::{
     ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, MAX_VOICES, ModuleConfig,
     ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Sample, SynthEngine,
-    coeffs::catmull_rom_from_powers, harmonic_editor::HarmonicEditorConfig, phase::Phase,
-    routing::RIGHT_CHANNEL,
+    coeffs::catmull_rom_from_powers,
+    harmonic_editor::HarmonicEditorConfig,
+    phase::Phase,
+    routing::{InputSlot, RIGHT_CHANNEL},
 };
+
+impl<L: OscillatorLinks> Oscillator<L> {
+    pub(crate) fn spectrum_slot(&self) -> Option<usize> {
+        self.inputs.spectrum
+    }
+
+    pub(crate) fn pitch_slot(&self) -> Option<usize> {
+        self.inputs.pitch
+    }
+
+    pub(crate) fn detune_slots(&self) -> &[InputSlot] {
+        &self.inputs.detune.slots
+    }
+}
 
 const SAMPLE_RATE: Sample = 48_000.0;
 const HARMONIC_EDITOR_ID: ModuleId = 1;

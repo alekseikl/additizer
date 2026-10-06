@@ -21,8 +21,8 @@ use crate::{
         StereoSample,
         buffer::VoicesLayout,
         routing::{
-            DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
-            RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceTarget,
+            DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId, NUM_CHANNELS,
+            ProcessContext, RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget,
         },
         synth_module::SynthModule,
         types::Sample,
@@ -72,9 +72,9 @@ impl ChannelParams {
 pub struct Inputs {
     spectrum: Option<usize>,
     pitch: Option<usize>,
-    cutoff: InputSlots,
-    resonance: InputSlots,
-    drive: InputSlots,
+    cutoff: MixedSlots,
+    resonance: MixedSlots,
+    drive: MixedSlots,
 }
 
 impl Default for Inputs {
@@ -82,30 +82,35 @@ impl Default for Inputs {
         Self {
             spectrum: None,
             pitch: None,
-            cutoff: InputSlots::new(Input::Cutoff),
-            resonance: InputSlots::new(Input::Resonance),
-            drive: InputSlots::new(Input::Drive),
+            cutoff: MixedSlots::new(Input::Cutoff),
+            resonance: MixedSlots::new(Input::Resonance),
+            drive: MixedSlots::new(Input::Drive),
         }
     }
 }
 
 impl Inputs {
-    fn from_slots(inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) -> Self {
+    fn from_slots(inputs: &[InputSlots]) -> Self {
         let mut result = Self::default();
 
         for input in inputs {
-            match input.input_type {
-                Input::Pitch => result.pitch = input.slots.first().map(|s| s.src_slot),
-                Input::Cutoff => result.cutoff = input.clone(),
-                Input::Resonance => result.resonance = input.clone(),
-                Input::Drive => result.drive = input.clone(),
-                _ => (),
-            }
-        }
-
-        for input in spectral_inputs {
-            if matches!(input.input_type, Input::Spectrum) {
-                result.spectrum = Some(input.slot);
+            match input {
+                InputSlots::Direct { input_type, slot } => {
+                    if matches!(input_type, Input::Pitch) {
+                        result.pitch = Some(*slot);
+                    }
+                }
+                InputSlots::Spectral { input_type, slot } => {
+                    if matches!(input_type, Input::Spectrum) {
+                        result.spectrum = Some(*slot);
+                    }
+                }
+                InputSlots::Mixed(input) => match input.input_type {
+                    Input::Cutoff => result.cutoff = input.clone(),
+                    Input::Resonance => result.resonance = input.clone(),
+                    Input::Drive => result.drive = input.clone(),
+                    _ => (),
+                },
             }
         }
 
@@ -280,8 +285,8 @@ impl<L: SpectralFilterLinks> SynthModule for SpectralFilter<L> {
         self.output_slot = slot;
     }
 
-    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) {
-        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
+    fn set_input_slots(&mut self, inputs: &[InputSlots]) {
+        self.inputs = Inputs::from_slots(inputs);
     }
 
     fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {

@@ -20,7 +20,7 @@ use crate::{
         buffer::{DC_OFFSET, VoicesLayout},
         routing::{
             DataType, Input, InputMeta, InputSlots, ModuleId, ProcessContext, RouterFactory,
-            SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceTarget,
+            SpectralOutput, SpectralRouterType, VoiceTarget,
         },
         synth_module::SynthModule,
         types::Sample,
@@ -59,18 +59,22 @@ pub struct Inputs {
 }
 
 impl Inputs {
-    fn from_slots(inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) -> Self {
+    fn from_slots(inputs: &[InputSlots]) -> Self {
         let mut result = Self::default();
 
         for input in inputs {
-            if matches!(input.input_type, Input::Pitch) {
-                result.pitch = input.slots.first().map(|s| s.src_slot);
-            }
-        }
-
-        for input in spectral_inputs {
-            if matches!(input.input_type, Input::Spectrum) {
-                result.spectrum = Some(input.slot);
+            match input {
+                InputSlots::Direct { input_type, slot } => {
+                    if matches!(input_type, Input::Pitch) {
+                        result.pitch = Some(*slot);
+                    }
+                }
+                InputSlots::Spectral { input_type, slot } => {
+                    if matches!(input_type, Input::Spectrum) {
+                        result.spectrum = Some(*slot);
+                    }
+                }
+                InputSlots::Mixed(_) => (),
             }
         }
 
@@ -239,8 +243,8 @@ impl<L: SpectralBandSelectLinks> SynthModule for SpectralBandSelect<L> {
         self.output_slot = slot;
     }
 
-    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) {
-        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
+    fn set_input_slots(&mut self, inputs: &[InputSlots]) {
+        self.inputs = Inputs::from_slots(inputs);
     }
 
     fn process_ui_events(&mut self) {

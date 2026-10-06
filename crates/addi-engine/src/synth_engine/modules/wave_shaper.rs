@@ -8,8 +8,8 @@ use crate::{
         Sample, SmoothedSampleParams, StereoSample,
         buffer::{Buffer, VoicesLayout, zero_buffer},
         routing::{
-            AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-            ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceTarget,
+            AudioRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
+            NUM_CHANNELS, ProcessContext, RouterFactory, SamplesOutput, VoiceTarget,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
@@ -65,30 +65,37 @@ impl ChannelParams {
 
 pub struct Inputs {
     audio: Option<usize>,
-    distortion: InputSlots,
-    clipping_level: InputSlots,
+    distortion: MixedSlots,
+    clipping_level: MixedSlots,
 }
 
 impl Default for Inputs {
     fn default() -> Self {
         Self {
             audio: None,
-            distortion: InputSlots::new(Input::Distortion),
-            clipping_level: InputSlots::new(Input::ClippingLevel),
+            distortion: MixedSlots::new(Input::Distortion),
+            clipping_level: MixedSlots::new(Input::ClippingLevel),
         }
     }
 }
 
 impl Inputs {
-    fn from_slots(inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) -> Self {
+    fn from_slots(inputs: &[InputSlots]) -> Self {
         let mut result = Self::default();
 
         for input in inputs {
-            match input.input_type {
-                Input::Audio => result.audio = input.slots.first().map(|s| s.src_slot),
-                Input::Distortion => result.distortion = input.clone(),
-                Input::ClippingLevel => result.clipping_level = input.clone(),
-                _ => (),
+            match input {
+                InputSlots::Direct { input_type, slot } => {
+                    if matches!(input_type, Input::Audio) {
+                        result.audio = Some(*slot);
+                    }
+                }
+                InputSlots::Mixed(input) => match input.input_type {
+                    Input::Distortion => result.distortion = input.clone(),
+                    Input::ClippingLevel => result.clipping_level = input.clone(),
+                    _ => (),
+                },
+                InputSlots::Spectral { .. } => (),
             }
         }
 
@@ -238,8 +245,8 @@ impl<L: WaveShaperLinks> SynthModule for WaveShaper<L> {
         self.output_slot = slot;
     }
 
-    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) {
-        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
+    fn set_input_slots(&mut self, inputs: &[InputSlots]) {
+        self.inputs = Inputs::from_slots(inputs);
     }
 
     fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {

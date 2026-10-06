@@ -13,8 +13,8 @@ use crate::synth_engine::{
     StereoSample,
     buffer::VoicesLayout,
     routing::{
-        DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS, ProcessContext,
-        RouterFactory, SpectralInputSlot, SpectralOutput, SpectralRouterType, VoiceTarget,
+        DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId, NUM_CHANNELS, ProcessContext,
+        RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget,
     },
     synth_module::SynthModule,
     types::Sample,
@@ -35,7 +35,7 @@ impl ChannelParams {
 pub struct Inputs {
     spectrum: Option<usize>,
     spectrum_to: Option<usize>,
-    blend: InputSlots,
+    blend: MixedSlots,
 }
 
 impl Default for Inputs {
@@ -43,26 +43,28 @@ impl Default for Inputs {
         Self {
             spectrum: None,
             spectrum_to: None,
-            blend: InputSlots::new(Input::Blend),
+            blend: MixedSlots::new(Input::Blend),
         }
     }
 }
 
 impl Inputs {
-    fn from_slots(inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) -> Self {
+    fn from_slots(inputs: &[InputSlots]) -> Self {
         let mut result = Self::default();
 
         for input in inputs {
-            if input.input_type == Input::Blend {
-                result.blend = input.clone();
-            }
-        }
-
-        for input in spectral_inputs {
-            match input.input_type {
-                Input::Spectrum => result.spectrum = Some(input.slot),
-                Input::SpectrumTo => result.spectrum_to = Some(input.slot),
-                _ => (),
+            match input {
+                InputSlots::Spectral { input_type, slot } => match input_type {
+                    Input::Spectrum => result.spectrum = Some(*slot),
+                    Input::SpectrumTo => result.spectrum_to = Some(*slot),
+                    _ => (),
+                },
+                InputSlots::Mixed(input) => {
+                    if input.input_type == Input::Blend {
+                        result.blend = input.clone();
+                    }
+                }
+                InputSlots::Direct { .. } => (),
             }
         }
 
@@ -180,8 +182,8 @@ impl<L: SpectralBlendLinks> SynthModule for SpectralBlend<L> {
         self.output_slot = slot;
     }
 
-    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) {
-        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
+    fn set_input_slots(&mut self, inputs: &[InputSlots]) {
+        self.inputs = Inputs::from_slots(inputs);
     }
 
     fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {

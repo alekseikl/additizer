@@ -12,9 +12,9 @@ use crate::{
         ComplexSample, MAX_BANDWIDTH, Sample, StereoSample,
         buffer::{DC_OFFSET, SPECTRAL_BUFFER_SIZE, VoicesLayout, new_voices_layout_with},
         routing::{
-            DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, MAX_VOICES, ModuleId,
-            NUM_CHANNELS, ProcessContext, RouterFactory, SpectralInputSlot, SpectralOutput,
-            SpectralRouterType, VoiceEvent, VoiceTarget,
+            DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, MAX_VOICES, MixedSlots, ModuleId,
+            NUM_CHANNELS, ProcessContext, RouterFactory, SpectralOutput, SpectralRouterType,
+            VoiceEvent, VoiceTarget,
         },
         synth_module::SynthModule,
         voices_handler::BAND_LIMIT_FREQUENCY,
@@ -43,16 +43,16 @@ struct PhaseReset {
 
 struct Inputs {
     pitch: Option<usize>,
-    amount: InputSlots,
-    level: InputSlots,
+    amount: MixedSlots,
+    level: MixedSlots,
 }
 
 impl Default for Inputs {
     fn default() -> Self {
         Self {
             pitch: None,
-            amount: InputSlots::new(Input::Amount),
-            level: InputSlots::new(Input::Level),
+            amount: MixedSlots::new(Input::Amount),
+            level: MixedSlots::new(Input::Level),
         }
     }
 }
@@ -62,11 +62,18 @@ impl Inputs {
         let mut result = Self::default();
 
         for input in inputs {
-            match input.input_type {
-                Input::Pitch => result.pitch = input.slots.first().map(|s| s.src_slot),
-                Input::Amount => result.amount = input.clone(),
-                Input::Level => result.level = input.clone(),
-                _ => (),
+            match input {
+                InputSlots::Direct { input_type, slot } => {
+                    if matches!(input_type, Input::Pitch) {
+                        result.pitch = Some(*slot);
+                    }
+                }
+                InputSlots::Mixed(input) => match input.input_type {
+                    Input::Amount => result.amount = input.clone(),
+                    Input::Level => result.level = input.clone(),
+                    _ => (),
+                },
+                InputSlots::Spectral { .. } => (),
             }
         }
 
@@ -465,7 +472,7 @@ impl<L: SpectralNoiseLinks> SynthModule for SpectralNoise<L> {
         self.output_slot = slot;
     }
 
-    fn set_input_slots(&mut self, inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) {
+    fn set_input_slots(&mut self, inputs: &[InputSlots]) {
         self.inputs = Inputs::from_slots(inputs);
     }
 

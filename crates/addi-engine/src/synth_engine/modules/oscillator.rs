@@ -14,8 +14,8 @@ use crate::{
         phase::{Phase, PhaseX4},
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, MAX_VOICES,
-            ModuleId, NUM_CHANNELS, ProcessContext, RIGHT_CHANNEL, RouterFactory, SamplesOutput,
-            SpectralInputSlot, VoiceEvent, VoiceRouter, VoiceTarget,
+            MixedSlots, ModuleId, NUM_CHANNELS, ProcessContext, RIGHT_CHANNEL, RouterFactory,
+            SamplesOutput, VoiceEvent, VoiceRouter, VoiceTarget,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
@@ -34,7 +34,7 @@ pub mod stub;
 use lanes::{SampleCtx, UNISON_CHUNKS, UNISON_LANES, UnisonLaneParams};
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 pub use config::OscillatorConfig;
 pub use link::{OscillatorAudioEnd, OscillatorLinks, OscillatorUiEnd, UiEvent, Unison};
@@ -315,13 +315,13 @@ pub enum PhasesDst {
 pub struct Inputs {
     spectrum: Option<usize>,
     pitch: Option<usize>,
-    phase_shift: InputSlots,
-    freq_shift: InputSlots,
-    detune: InputSlots,
-    detune_power: InputSlots,
-    phase_steal: InputSlots,
-    phases_blend: InputSlots,
-    gains_blend: InputSlots,
+    phase_shift: MixedSlots,
+    freq_shift: MixedSlots,
+    detune: MixedSlots,
+    detune_power: MixedSlots,
+    phase_steal: MixedSlots,
+    phases_blend: MixedSlots,
+    gains_blend: MixedSlots,
 }
 
 impl Default for Inputs {
@@ -329,38 +329,43 @@ impl Default for Inputs {
         Self {
             spectrum: None,
             pitch: None,
-            phase_shift: InputSlots::new(Input::PhaseShift),
-            freq_shift: InputSlots::new(Input::FrequencyShift),
-            detune: InputSlots::new(Input::Detune),
-            detune_power: InputSlots::new(Input::DetunePower),
-            phase_steal: InputSlots::new(Input::PhaseSteal),
-            phases_blend: InputSlots::new(Input::PhasesBlend),
-            gains_blend: InputSlots::new(Input::GainsBlend),
+            phase_shift: MixedSlots::new(Input::PhaseShift),
+            freq_shift: MixedSlots::new(Input::FrequencyShift),
+            detune: MixedSlots::new(Input::Detune),
+            detune_power: MixedSlots::new(Input::DetunePower),
+            phase_steal: MixedSlots::new(Input::PhaseSteal),
+            phases_blend: MixedSlots::new(Input::PhasesBlend),
+            gains_blend: MixedSlots::new(Input::GainsBlend),
         }
     }
 }
 
 impl Inputs {
-    fn from_slots(inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) -> Self {
+    fn from_slots(inputs: &[InputSlots]) -> Self {
         let mut result = Self::default();
 
         for input in inputs {
-            match input.input_type {
-                Input::Pitch => result.pitch = input.slots.first().map(|s| s.src_slot),
-                Input::PhaseShift => result.phase_shift = input.clone(),
-                Input::FrequencyShift => result.freq_shift = input.clone(),
-                Input::Detune => result.detune = input.clone(),
-                Input::DetunePower => result.detune_power = input.clone(),
-                Input::PhaseSteal => result.phase_steal = input.clone(),
-                Input::PhasesBlend => result.phases_blend = input.clone(),
-                Input::GainsBlend => result.gains_blend = input.clone(),
-                _ => (),
-            }
-        }
-
-        for input in spectral_inputs {
-            if matches!(input.input_type, Input::Spectrum) {
-                result.spectrum = Some(input.slot);
+            match input {
+                InputSlots::Direct { input_type, slot } => {
+                    if matches!(input_type, Input::Pitch) {
+                        result.pitch = Some(*slot);
+                    }
+                }
+                InputSlots::Spectral { input_type, slot } => {
+                    if matches!(input_type, Input::Spectrum) {
+                        result.spectrum = Some(*slot);
+                    }
+                }
+                InputSlots::Mixed(input) => match input.input_type {
+                    Input::PhaseShift => result.phase_shift = input.clone(),
+                    Input::FrequencyShift => result.freq_shift = input.clone(),
+                    Input::Detune => result.detune = input.clone(),
+                    Input::DetunePower => result.detune_power = input.clone(),
+                    Input::PhaseSteal => result.phase_steal = input.clone(),
+                    Input::PhasesBlend => result.phases_blend = input.clone(),
+                    Input::GainsBlend => result.gains_blend = input.clone(),
+                    _ => (),
+                },
             }
         }
 
@@ -1231,8 +1236,8 @@ impl<L: OscillatorLinks> SynthModule for Oscillator<L> {
         self.output_slot = slot;
     }
 
-    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) {
-        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
+    fn set_input_slots(&mut self, inputs: &[InputSlots]) {
+        self.inputs = Inputs::from_slots(inputs);
     }
 
     fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {

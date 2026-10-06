@@ -7,9 +7,8 @@ use crate::{
         buffer::{Buffer, VoicesLayout, copy_or_add_to_buffer, zero_buffer},
         level_ballistics::LevelBallistics,
         routing::{
-            AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-            ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceTarget,
-            VolumeType,
+            AudioRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
+            NUM_CHANNELS, ProcessContext, RouterFactory, SamplesOutput, VoiceTarget, VolumeType,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
@@ -81,43 +80,50 @@ impl Params {
 }
 
 pub struct Inputs {
-    gain: InputSlots,
-    level: InputSlots,
+    gain: MixedSlots,
+    level: MixedSlots,
     audio_mix: [Option<usize>; MAX_INPUTS as usize],
-    gain_mix: [InputSlots; MAX_INPUTS as usize],
-    level_mix: [InputSlots; MAX_INPUTS as usize],
+    gain_mix: [MixedSlots; MAX_INPUTS as usize],
+    level_mix: [MixedSlots; MAX_INPUTS as usize],
 }
 
 impl Default for Inputs {
     fn default() -> Self {
         Self {
-            gain: InputSlots::new(Input::Gain),
-            level: InputSlots::new(Input::Level),
+            gain: MixedSlots::new(Input::Gain),
+            level: MixedSlots::new(Input::Level),
             audio_mix: [None; MAX_INPUTS as usize],
-            gain_mix: array::from_fn(|idx| InputSlots::new(Input::GainMix(idx as u8))),
-            level_mix: array::from_fn(|idx| InputSlots::new(Input::LevelMix(idx as u8))),
+            gain_mix: array::from_fn(|idx| MixedSlots::new(Input::GainMix(idx as u8))),
+            level_mix: array::from_fn(|idx| MixedSlots::new(Input::LevelMix(idx as u8))),
         }
     }
 }
 
 impl Inputs {
-    fn from_slots(inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) -> Self {
+    fn from_slots(inputs: &[InputSlots]) -> Self {
         let mut result = Self::default();
 
         for input in inputs {
-            match input.input_type {
-                Input::Gain => result.gain = input.clone(),
-                Input::Level => result.level = input.clone(),
-                Input::GainMix(idx) if idx < MAX_INPUTS => {
-                    result.gain_mix[idx as usize] = input.clone();
+            match input {
+                InputSlots::Direct { input_type, slot } => {
+                    if let Input::AudioMix(idx) = input_type
+                        && *idx < MAX_INPUTS
+                    {
+                        result.audio_mix[*idx as usize] = Some(*slot);
+                    }
                 }
-                Input::LevelMix(idx) if idx < MAX_INPUTS => {
-                    result.level_mix[idx as usize] = input.clone();
-                }
-                Input::AudioMix(idx) if idx < MAX_INPUTS => {
-                    result.audio_mix[idx as usize] = input.slots.first().map(|s| s.src_slot);
-                }
-                _ => (),
+                InputSlots::Mixed(input) => match input.input_type {
+                    Input::Gain => result.gain = input.clone(),
+                    Input::Level => result.level = input.clone(),
+                    Input::GainMix(idx) if idx < MAX_INPUTS => {
+                        result.gain_mix[idx as usize] = input.clone();
+                    }
+                    Input::LevelMix(idx) if idx < MAX_INPUTS => {
+                        result.level_mix[idx as usize] = input.clone();
+                    }
+                    _ => (),
+                },
+                InputSlots::Spectral { .. } => (),
             }
         }
 
@@ -426,8 +432,8 @@ impl<L: MixerLinks> SynthModule for Mixer<L> {
         self.output_slot = slot;
     }
 
-    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) {
-        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
+    fn set_input_slots(&mut self, inputs: &[InputSlots]) {
+        self.inputs = Inputs::from_slots(inputs);
     }
 
     fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {

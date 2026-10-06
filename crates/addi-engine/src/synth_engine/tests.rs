@@ -1,15 +1,17 @@
-use super::*;
+use super::{routing_helpers, *};
 use crate::{
     synth_engine::{MAX_CUTOFF, MIN_CUTOFF, from_ms},
     synth_engine::{
         amplifier::AmplifierConfig, envelope::EnvelopeConfig, expressions::ExpressionsConfig,
         external_param::ExternalParamConfig, harmonic_editor::HarmonicEditorConfig, lfo::LfoConfig,
-        mixer::MixerConfig, oscillator::OscillatorConfig, spectral_blend::SpectralBlendConfig,
-        spectral_filter::SpectralFilterConfig, spectral_mixer::SpectralMixerConfig, svf::SvfConfig,
+        mixer::MixerConfig, oscillator::OscillatorConfig, pitch::PitchConfig,
+        spectral_blend::SpectralBlendConfig, spectral_filter::SpectralFilterConfig,
+        spectral_mixer::SpectralMixerConfig, svf::SvfConfig, synth_module::SynthModule,
         wave_shaper::WaveShaperConfig,
     },
 };
 use addi_dsp::filters;
+use rustc_hash::FxHashMap;
 
 const SAMPLE_RATE: Sample = 48_000.0;
 const HARMONIC_EDITOR_ID: ModuleId = 1;
@@ -309,7 +311,7 @@ fn try_new_builds_full_patch() {
         Some(ModuleHandle::Output(_))
     ));
 
-    let order = <SynthEngine>::calc_execution_order(
+    let order = routing_helpers::process_order(
         &cfg.links
             .iter()
             .map(ModuleLink::from_config)
@@ -655,17 +657,17 @@ fn output_gain_setters() {
 // ---- Routing ----
 
 #[test]
-fn execution_order_rejects_cycles() {
+fn process_order_rejects_cycles() {
     let links = vec![
         ModuleLink::direct(1, InputId::new(Input::Audio, 2)),
         ModuleLink::direct(2, InputId::new(Input::Audio, 1)),
     ];
 
-    assert!(<SynthEngine>::calc_execution_order(&links, []).is_err());
+    assert!(routing_helpers::process_order(&links, []).is_err());
 }
 
 #[test]
-fn execution_order_places_output_last() {
+fn process_order_places_output_last() {
     let links = vec![
         ModuleLink::direct(
             HARMONIC_EDITOR_ID,
@@ -674,21 +676,20 @@ fn execution_order_places_output_last() {
         ModuleLink::direct(OSCILLATOR_ID, InputId::new(Input::Audio, OUTPUT_MODULE_ID)),
     ];
 
-    let order = <SynthEngine>::calc_execution_order(&links, []).expect("valid graph");
+    let order = routing_helpers::process_order(&links, []).expect("valid graph");
     assert_eq!(*order.last().unwrap(), OUTPUT_MODULE_ID);
     assert_eq!(order.len(), 3);
 }
 
 #[test]
-fn execution_order_includes_unlinked_modules() {
+fn process_order_includes_unlinked_modules() {
     let links = vec![ModuleLink::direct(
         OSCILLATOR_ID,
         InputId::new(Input::Audio, OUTPUT_MODULE_ID),
     )];
 
-    let order =
-        <SynthEngine>::calc_execution_order(&links, [LFO_ID, OSCILLATOR_ID, OUTPUT_MODULE_ID])
-            .expect("valid graph");
+    let order = routing_helpers::process_order(&links, [LFO_ID, OSCILLATOR_ID, OUTPUT_MODULE_ID])
+        .expect("valid graph");
 
     assert!(order.contains(&LFO_ID));
     assert!(order.contains(&OSCILLATOR_ID));
@@ -700,7 +701,7 @@ fn execution_order_includes_unlinked_modules() {
 }
 
 #[test]
-fn add_module_joins_execution_order_before_output() {
+fn add_module_joins_process_order_before_output() {
     let mut engine = make_engine(
         EngineParams::default(),
         OscillatorConfig {
@@ -710,8 +711,8 @@ fn add_module_joins_execution_order_before_output() {
     );
 
     let lfo_id = engine.add_module(ModuleType::Lfo);
-    assert!(engine.execution_order.contains(&lfo_id));
-    assert_eq!(*engine.execution_order.last().unwrap(), OUTPUT_MODULE_ID);
+    assert!(engine.process_order.contains(&lfo_id));
+    assert_eq!(*engine.process_order.last().unwrap(), OUTPUT_MODULE_ID);
 }
 
 fn oscillator_config(engine: &SynthEngine, id: ModuleId) -> OscillatorConfig {
@@ -743,8 +744,8 @@ fn duplicate_module_copies_settings_without_links() {
     assert_ne!(copy_id, OSCILLATOR_ID);
     assert!(engine.duplicate_module(OUTPUT_MODULE_ID).is_none());
     assert!(engine.duplicate_module(99).is_none());
-    assert!(engine.execution_order.contains(&copy_id));
-    assert_eq!(*engine.execution_order.last().unwrap(), OUTPUT_MODULE_ID);
+    assert!(engine.process_order.contains(&copy_id));
+    assert_eq!(*engine.process_order.last().unwrap(), OUTPUT_MODULE_ID);
 
     let original = oscillator_config(&engine, OSCILLATOR_ID);
     let copy = oscillator_config(&engine, copy_id);
@@ -1536,7 +1537,7 @@ fn link_modulation_in_preset_builds() {
     assert_eq!(env_amp_links.len(), 1);
     assert_eq!(env_amp_links[0].modulator_id(), Some(LFO_ID));
 
-    let order = <SynthEngine>::calc_execution_order(
+    let order = routing_helpers::process_order(
         &cfg.links
             .iter()
             .map(ModuleLink::from_config)
@@ -2062,7 +2063,7 @@ fn oversampling_process() {
 }
 
 #[test]
-fn execution_order_accounts_for_link_modulation() {
+fn process_order_accounts_for_link_modulation() {
     let links = vec![
         ModuleLink::mixed(
             LFO_ID,
@@ -2078,8 +2079,506 @@ fn execution_order_accounts_for_link_modulation() {
         ModuleLink::direct(AMPLIFIER_ID, InputId::new(Input::Audio, OUTPUT_MODULE_ID)),
     ];
 
-    let order = <SynthEngine>::calc_execution_order(&links, []).expect("valid order");
+    let order = routing_helpers::process_order(&links, []).expect("valid order");
     let lfo_pos = order.iter().position(|&id| id == LFO_ID).unwrap();
     let amp_pos = order.iter().position(|&id| id == AMPLIFIER_ID).unwrap();
     assert!(lfo_pos < amp_pos);
+}
+
+fn assert_before(order: &[ModuleId], earlier: ModuleId, later: ModuleId) {
+    let earlier_pos = order
+        .iter()
+        .position(|&id| id == earlier)
+        .unwrap_or_else(|| panic!("{earlier} missing from {order:?}"));
+    let later_pos = order
+        .iter()
+        .position(|&id| id == later)
+        .unwrap_or_else(|| panic!("{later} missing from {order:?}"));
+
+    assert!(
+        earlier_pos < later_pos,
+        "{earlier} should run before {later} in {order:?}"
+    );
+}
+
+fn assert_unique(order: &[ModuleId]) {
+    let mut ids = order.to_vec();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), order.len(), "duplicate modules in {order:?}");
+}
+
+#[test]
+fn process_order_is_a_chain() {
+    let links = vec![
+        ModuleLink::direct(1, InputId::new(Input::Audio, 2)),
+        ModuleLink::direct(2, InputId::new(Input::Audio, 3)),
+        ModuleLink::direct(3, InputId::new(Input::Audio, OUTPUT_MODULE_ID)),
+    ];
+
+    let order = routing_helpers::process_order(&links, []).expect("valid chain");
+
+    assert_eq!(order, vec![1, 2, 3, OUTPUT_MODULE_ID]);
+}
+
+#[test]
+fn process_order_runs_every_source_before_the_destination() {
+    let links = vec![
+        ModuleLink::direct(OSC0_ID, InputId::new(Input::AudioMix(0), MIXER_ID)),
+        ModuleLink::direct(OSC1_ID, InputId::new(Input::AudioMix(1), MIXER_ID)),
+        ModuleLink::direct(MIXER_ID, InputId::new(Input::Audio, OUTPUT_MODULE_ID)),
+    ];
+
+    let order = routing_helpers::process_order(&links, []).expect("valid fan-in");
+
+    assert_before(&order, OSC0_ID, MIXER_ID);
+    assert_before(&order, OSC1_ID, MIXER_ID);
+    assert_before(&order, MIXER_ID, OUTPUT_MODULE_ID);
+    assert_eq!(*order.last().unwrap(), OUTPUT_MODULE_ID);
+    assert_unique(&order);
+}
+
+#[test]
+fn process_order_runs_modulator_before_destination() {
+    let links = vec![
+        ModuleLink::mixed_modulated(
+            ENVELOPE_AMP_ID,
+            InputId::new(Input::Gain, AMPLIFIER_ID),
+            StereoSample::new(0.25, 0.5),
+            Some(LFO_ID),
+        ),
+        ModuleLink::direct(AMPLIFIER_ID, InputId::new(Input::Audio, OUTPUT_MODULE_ID)),
+    ];
+
+    let order = routing_helpers::process_order(&links, [EXPRESSIONS_ID]).expect("valid order");
+
+    assert_before(&order, ENVELOPE_AMP_ID, AMPLIFIER_ID);
+    assert_before(&order, LFO_ID, AMPLIFIER_ID);
+    assert_before(&order, AMPLIFIER_ID, OUTPUT_MODULE_ID);
+    assert!(order.contains(&EXPRESSIONS_ID));
+    assert_eq!(*order.last().unwrap(), OUTPUT_MODULE_ID);
+    assert_unique(&order);
+}
+
+#[test]
+fn process_order_lists_each_module_once() {
+    let links = vec![
+        ModuleLink::direct(1, InputId::new(Input::Audio, 2)),
+        ModuleLink::direct(1, InputId::new(Input::Gain, 2)),
+        ModuleLink::mixed(1, InputId::new(Input::Level, 2), StereoSample::ONE),
+    ];
+
+    let order = routing_helpers::process_order(&links, [1, 2]).expect("valid order");
+
+    assert_eq!(order, vec![1, 2]);
+}
+
+#[test]
+fn process_order_rejects_self_cycle() {
+    let links = vec![ModuleLink::direct(1, InputId::new(Input::Audio, 1))];
+
+    let err = routing_helpers::process_order(&links, []).unwrap_err();
+
+    assert_eq!(err, "Cycles detected!");
+}
+
+#[test]
+fn process_order_rejects_modulation_cycle() {
+    let links = vec![ModuleLink::mixed_modulated(
+        ENVELOPE_AMP_ID,
+        InputId::new(Input::Gain, AMPLIFIER_ID),
+        StereoSample::ONE,
+        Some(AMPLIFIER_ID),
+    )];
+
+    let err = routing_helpers::process_order(&links, [LFO_ID]).unwrap_err();
+
+    assert_eq!(err, "Cycles detected!");
+}
+
+#[test]
+fn process_order_rejects_longer_cycle() {
+    let links = vec![
+        ModuleLink::direct(1, InputId::new(Input::Audio, 2)),
+        ModuleLink::direct(2, InputId::new(Input::Audio, 3)),
+        ModuleLink::direct(3, InputId::new(Input::Audio, 1)),
+    ];
+
+    let err = routing_helpers::process_order(&links, [4]).unwrap_err();
+
+    assert_eq!(err, "Cycles detected!");
+}
+
+fn module_outputs(specs: &[(ModuleId, DataType, usize)]) -> FxHashMap<ModuleId, (DataType, usize)> {
+    specs
+        .iter()
+        .map(|&(id, data_type, slot)| (id, (data_type, slot)))
+        .collect()
+}
+
+fn mapped_slots(
+    specs: &[(ModuleId, DataType, usize)],
+    sources: RoutingMap,
+) -> FxHashMap<ModuleId, Vec<routing::InputSlots>> {
+    routing_helpers::assign_slots(&module_outputs(specs), &sources)
+}
+
+#[test]
+fn map_slots_leaves_unlinked_modules_empty() {
+    let mapped = mapped_slots(
+        &[(1, DataType::Audio, 3), (2, DataType::Spectral, 3)],
+        RoutingMap::default(),
+    );
+
+    assert!(mapped[&1].is_empty());
+    assert!(mapped[&2].is_empty());
+}
+
+#[test]
+fn map_slots_assigns_spectral_and_direct_variants() {
+    let mut sources = RoutingMap::default();
+    sources.insert(
+        InputId::new(Input::Spectrum, OSCILLATOR_ID),
+        InputSource::Direct(HARMONIC_EDITOR_ID),
+    );
+    sources.insert(
+        InputId::new(Input::Pitch, OSCILLATOR_ID),
+        InputSource::Direct(LFO_ID),
+    );
+    sources.insert(
+        InputId::new(Input::Audio, OUTPUT_MODULE_ID),
+        InputSource::Direct(OSCILLATOR_ID),
+    );
+
+    // Spectral and audio arenas both use slot 0 for their first module.
+    let mapped = mapped_slots(
+        &[
+            (HARMONIC_EDITOR_ID, DataType::Spectral, 0),
+            (OSCILLATOR_ID, DataType::Audio, 0),
+            (LFO_ID, DataType::Control, 4),
+            (OUTPUT_MODULE_ID, DataType::Audio, usize::MAX),
+        ],
+        sources,
+    );
+
+    let osc = &mapped[&OSCILLATOR_ID];
+    assert!(osc.iter().any(|input| matches!(
+        input,
+        routing::InputSlots::Spectral {
+            input_type: Input::Spectrum,
+            slot: 0
+        }
+    )));
+    assert!(osc.iter().any(|input| matches!(
+        input,
+        routing::InputSlots::Direct {
+            input_type: Input::Pitch,
+            slot: 4
+        }
+    )));
+
+    let output = &mapped[&OUTPUT_MODULE_ID];
+    assert!(output.iter().any(|input| matches!(
+        input,
+        routing::InputSlots::Direct {
+            input_type: Input::Audio,
+            slot: 0
+        }
+    )));
+    assert!(
+        output
+            .iter()
+            .all(|input| !matches!(input, routing::InputSlots::Spectral { .. }))
+    );
+
+    assert!(mapped[&HARMONIC_EDITOR_ID].is_empty());
+    assert!(mapped[&LFO_ID].is_empty());
+}
+
+#[test]
+fn map_slots_keeps_mixed_amounts_and_modulation_slots() {
+    let amount_env = StereoSample::new(0.25, 0.75);
+    let amount_expr = StereoSample::splat(0.5);
+    let mut sources = RoutingMap::default();
+    sources.insert(
+        InputId::new(Input::Detune, OSCILLATOR_ID),
+        InputSource::Mixed(vec![
+            routing::MixedSource {
+                module_id: ENVELOPE_AMP_ID,
+                amount: amount_env,
+                modulation: Some(LFO_ID),
+            },
+            routing::MixedSource {
+                module_id: EXPRESSIONS_ID,
+                amount: amount_expr,
+                modulation: None,
+            },
+        ]),
+    );
+
+    let mapped = mapped_slots(
+        &[
+            (ENVELOPE_AMP_ID, DataType::Control, 2),
+            (LFO_ID, DataType::Control, 3),
+            (EXPRESSIONS_ID, DataType::Control, 7),
+            (OSCILLATOR_ID, DataType::Audio, 0),
+        ],
+        sources,
+    );
+
+    let detune = mapped[&OSCILLATOR_ID]
+        .iter()
+        .find_map(|input| match input {
+            routing::InputSlots::Mixed(mixed) if mixed.input_type == Input::Detune => Some(mixed),
+            _ => None,
+        })
+        .expect("detune slots");
+
+    assert_eq!(detune.slots.len(), 2);
+    assert_eq!(detune.slots[0].src_slot, 2);
+    assert_eq!(detune.slots[0].modulation_slot, Some(3));
+    assert_eq!(detune.slots[0].amount, amount_env);
+    assert_eq!(detune.slots[1].src_slot, 7);
+    assert_eq!(detune.slots[1].modulation_slot, None);
+    assert_eq!(detune.slots[1].amount, amount_expr);
+    assert!(
+        mapped[&OSCILLATOR_ID]
+            .iter()
+            .all(|input| !matches!(input, routing::InputSlots::Spectral { .. }))
+    );
+    assert!(mapped[&LFO_ID].is_empty());
+}
+
+const SLOT_HE_UNUSED: ModuleId = 21;
+const SLOT_HE: ModuleId = 22;
+const SLOT_OSC: ModuleId = 23;
+const SLOT_PITCH: ModuleId = 24;
+const SLOT_ENV: ModuleId = 25;
+const SLOT_LFO: ModuleId = 26;
+const SLOT_EXPR: ModuleId = 27;
+const SLOT_AMP: ModuleId = 28;
+
+fn slot_mapping_engine() -> SynthEngine {
+    let config = EngineConfig {
+        engine: EngineParams::default(),
+        modules: vec![
+            ModuleConfig::HarmonicEditor(Box::new(HarmonicEditorConfig {
+                id: SLOT_HE_UNUSED,
+                ..HarmonicEditorConfig::default()
+            })),
+            ModuleConfig::HarmonicEditor(Box::new(HarmonicEditorConfig {
+                id: SLOT_HE,
+                ..HarmonicEditorConfig::default()
+            })),
+            ModuleConfig::Oscillator(Box::new(OscillatorConfig {
+                id: SLOT_OSC,
+                ..OscillatorConfig::default()
+            })),
+            ModuleConfig::Pitch(Box::new(PitchConfig {
+                id: SLOT_PITCH,
+                ..PitchConfig::default()
+            })),
+            ModuleConfig::Envelope(Box::new(EnvelopeConfig {
+                id: SLOT_ENV,
+                ..EnvelopeConfig::default()
+            })),
+            ModuleConfig::Lfo(Box::new(LfoConfig {
+                id: SLOT_LFO,
+                ..LfoConfig::default()
+            })),
+            ModuleConfig::Expressions(Box::new(ExpressionsConfig {
+                id: SLOT_EXPR,
+                ..ExpressionsConfig::default()
+            })),
+            ModuleConfig::Amplifier(Box::new(AmplifierConfig {
+                id: SLOT_AMP,
+                ..AmplifierConfig::default()
+            })),
+        ],
+        links: vec![
+            LinkConfig::direct(SLOT_HE, SLOT_OSC, Input::Spectrum),
+            LinkConfig::direct(SLOT_PITCH, SLOT_OSC, Input::Pitch),
+            LinkConfig::mixed_modulated(
+                SLOT_ENV,
+                SLOT_OSC,
+                Input::Detune,
+                StereoSample::new(0.25, 0.75),
+                Some(SLOT_LFO),
+            ),
+            LinkConfig::mixed(SLOT_EXPR, SLOT_OSC, Input::Detune, StereoSample::splat(0.5)),
+            LinkConfig::direct(SLOT_OSC, SLOT_AMP, Input::Audio),
+            LinkConfig::direct(SLOT_AMP, OUTPUT_MODULE_ID, Input::Audio),
+        ],
+    };
+
+    <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("slot mapping patch")
+}
+
+fn output_slot_of(engine: &SynthEngine, id: ModuleId) -> usize {
+    engine.get_module(id).expect("module").output_slot()
+}
+
+fn oscillator_of(engine: &SynthEngine) -> &oscillator::Oscillator {
+    match engine.get_module(SLOT_OSC) {
+        Some(ModuleHandle::Oscillator(osc)) => osc,
+        _ => panic!("expected oscillator"),
+    }
+}
+
+fn amplifier_audio_slot(engine: &SynthEngine) -> Option<usize> {
+    match engine.get_module(SLOT_AMP) {
+        Some(ModuleHandle::Amplifier(amp)) => amp.audio_slot(),
+        _ => panic!("expected amplifier"),
+    }
+}
+
+fn output_audio_slot(engine: &SynthEngine) -> Option<usize> {
+    match engine.get_module(OUTPUT_MODULE_ID) {
+        Some(ModuleHandle::Output(output)) => output.audio_input_slot(),
+        _ => panic!("expected output"),
+    }
+}
+
+#[test]
+fn engine_orders_sources_before_destinations() {
+    let engine = slot_mapping_engine();
+    let order = &engine.process_order;
+
+    assert_before(order, SLOT_HE, SLOT_OSC);
+    assert_before(order, SLOT_PITCH, SLOT_OSC);
+    assert_before(order, SLOT_ENV, SLOT_OSC);
+    assert_before(order, SLOT_LFO, SLOT_OSC);
+    assert_before(order, SLOT_EXPR, SLOT_OSC);
+    assert_before(order, SLOT_OSC, SLOT_AMP);
+    assert_before(order, SLOT_AMP, OUTPUT_MODULE_ID);
+    assert!(order.contains(&SLOT_HE_UNUSED));
+    assert_eq!(*order.last().unwrap(), OUTPUT_MODULE_ID);
+    assert_unique(order);
+}
+
+#[test]
+fn engine_maps_output_slots_onto_inputs() {
+    let engine = slot_mapping_engine();
+    let osc = oscillator_of(&engine);
+
+    assert_ne!(
+        output_slot_of(&engine, SLOT_HE),
+        output_slot_of(&engine, SLOT_HE_UNUSED)
+    );
+    assert_eq!(osc.spectrum_slot(), Some(output_slot_of(&engine, SLOT_HE)));
+    assert_eq!(osc.pitch_slot(), Some(output_slot_of(&engine, SLOT_PITCH)));
+
+    let detune = osc.detune_slots();
+    assert_eq!(detune.len(), 2);
+    assert_eq!(detune[0].src_slot, output_slot_of(&engine, SLOT_ENV));
+    assert_eq!(
+        detune[0].modulation_slot,
+        Some(output_slot_of(&engine, SLOT_LFO))
+    );
+    assert_eq!(detune[0].amount, StereoSample::new(0.25, 0.75));
+    assert_eq!(detune[1].src_slot, output_slot_of(&engine, SLOT_EXPR));
+    assert_eq!(detune[1].modulation_slot, None);
+    assert_eq!(detune[1].amount, StereoSample::splat(0.5));
+
+    assert_eq!(
+        amplifier_audio_slot(&engine),
+        Some(output_slot_of(&engine, SLOT_OSC))
+    );
+    assert_eq!(
+        output_audio_slot(&engine),
+        Some(output_slot_of(&engine, SLOT_AMP))
+    );
+    assert_ne!(
+        output_slot_of(&engine, SLOT_OSC),
+        output_slot_of(&engine, SLOT_AMP)
+    );
+}
+
+#[test]
+fn replacing_direct_link_remaps_the_slot() {
+    let mut engine = slot_mapping_engine();
+
+    engine
+        .set_direct_link(SLOT_HE_UNUSED, InputId::new(Input::Spectrum, SLOT_OSC))
+        .expect("replace spectrum source");
+
+    assert_eq!(
+        oscillator_of(&engine).spectrum_slot(),
+        Some(output_slot_of(&engine, SLOT_HE_UNUSED))
+    );
+    assert_before(&engine.process_order, SLOT_HE_UNUSED, SLOT_OSC);
+}
+
+#[test]
+fn removing_link_clears_mapped_slot() {
+    let mut engine = slot_mapping_engine();
+
+    engine.remove_link(&SLOT_HE, &InputId::new(Input::Spectrum, SLOT_OSC));
+    assert_eq!(oscillator_of(&engine).spectrum_slot(), None);
+
+    engine.remove_link(&SLOT_AMP, &InputId::new(Input::Audio, OUTPUT_MODULE_ID));
+    assert_eq!(output_audio_slot(&engine), None);
+    assert_eq!(*engine.process_order.last().unwrap(), OUTPUT_MODULE_ID);
+}
+
+#[test]
+fn update_link_amount_updates_mapped_slot() {
+    let mut engine = slot_mapping_engine();
+    let amount = StereoSample::new(0.1, 0.2);
+
+    engine.update_link_amount(&SLOT_ENV, &InputId::new(Input::Detune, SLOT_OSC), amount);
+
+    let detune = oscillator_of(&engine).detune_slots();
+    assert_eq!(detune[0].amount, amount);
+    assert_eq!(detune[0].src_slot, output_slot_of(&engine, SLOT_ENV));
+    assert_eq!(
+        detune[0].modulation_slot,
+        Some(output_slot_of(&engine, SLOT_LFO))
+    );
+    assert_eq!(detune[1].amount, StereoSample::splat(0.5));
+}
+
+#[test]
+fn removing_modulator_clears_modulation_slot() {
+    let mut engine = slot_mapping_engine();
+
+    engine.remove_link_modulation(SLOT_ENV, &InputId::new(Input::Detune, SLOT_OSC));
+
+    let detune = oscillator_of(&engine).detune_slots();
+    assert_eq!(detune[0].modulation_slot, None);
+    assert_eq!(detune[0].src_slot, output_slot_of(&engine, SLOT_ENV));
+    assert_eq!(detune[0].amount, StereoSample::new(0.25, 0.75));
+    assert!(engine.process_order.contains(&SLOT_LFO));
+    assert_before(&engine.process_order, SLOT_ENV, SLOT_OSC);
+}
+
+#[test]
+fn reused_output_slot_is_remapped() {
+    let mut engine = slot_mapping_engine();
+    let freed = output_slot_of(&engine, SLOT_ENV);
+
+    engine.remove_module(SLOT_ENV);
+
+    let new_id = engine.add_module(ModuleType::Envelope);
+    assert_eq!(output_slot_of(&engine, new_id), freed);
+    assert!(!engine.process_order.contains(&SLOT_ENV));
+    assert_eq!(*engine.process_order.last().unwrap(), OUTPUT_MODULE_ID);
+
+    engine
+        .add_mixed_link(
+            new_id,
+            InputId::new(Input::Detune, SLOT_OSC),
+            StereoSample::splat(0.3),
+        )
+        .expect("relink reused slot");
+
+    let detune = oscillator_of(&engine).detune_slots();
+    let mapped = detune
+        .iter()
+        .find(|slot| slot.src_slot == freed)
+        .expect("reused slot mapped onto detune");
+    assert_eq!(mapped.amount, StereoSample::splat(0.3));
+    assert_eq!(mapped.modulation_slot, None);
+    assert_before(&engine.process_order, new_id, SLOT_OSC);
+    assert_eq!(*engine.process_order.last().unwrap(), OUTPUT_MODULE_ID);
 }

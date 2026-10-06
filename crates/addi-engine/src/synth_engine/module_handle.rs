@@ -4,7 +4,7 @@ use crate::synth_engine::{
     SpectralFilter, SpectralMixer, SpectralNoise, StereoSample, Svf, VoiceEvent, WaveShaper,
     engine_io::EngineLinks,
     modules::Output,
-    routing::{DataType, InputMeta, InputSlots, ProcessContext, SpectralInputSlot},
+    routing::{DataType, InputMeta, InputSlots, ProcessContext},
     synth_module::SynthModule,
     voices_handler::DecayingVoice,
 };

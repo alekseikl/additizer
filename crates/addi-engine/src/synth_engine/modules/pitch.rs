@@ -13,8 +13,8 @@ use crate::{
         SmoothedSampleParams, StereoSample,
         buffer::{Buffer, VoicesLayout, add_buffer_value, new_voices_layout, zero_buffer},
         routing::{
-            ControlRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, NUM_CHANNELS,
-            PrevNote, ProcessContext, RouterFactory, SamplesOutput, SpectralInputSlot, VoiceEvent,
+            ControlRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
+            NUM_CHANNELS, PrevNote, ProcessContext, RouterFactory, SamplesOutput, VoiceEvent,
             VoiceTarget,
         },
         smooth::SmoothedSample,
@@ -101,26 +101,30 @@ impl Default for Voice {
 }
 
 pub struct Inputs {
-    pitch_shift: InputSlots,
-    glide: InputSlots,
-    glide_slope: InputSlots,
+    pitch_shift: MixedSlots,
+    glide: MixedSlots,
+    glide_slope: MixedSlots,
 }
 
 impl Default for Inputs {
     fn default() -> Self {
         Self {
-            pitch_shift: InputSlots::new(Input::PitchShift),
-            glide: InputSlots::new(Input::Glide),
-            glide_slope: InputSlots::new(Input::GlideSlope),
+            pitch_shift: MixedSlots::new(Input::PitchShift),
+            glide: MixedSlots::new(Input::Glide),
+            glide_slope: MixedSlots::new(Input::GlideSlope),
         }
     }
 }
 
 impl Inputs {
-    fn from_slots(inputs: &[InputSlots], _spectral_inputs: &[SpectralInputSlot]) -> Self {
+    fn from_slots(inputs: &[InputSlots]) -> Self {
         let mut result = Self::default();
 
         for input in inputs {
+            let InputSlots::Mixed(input) = input else {
+                continue;
+            };
+
             match input.input_type {
                 Input::PitchShift => result.pitch_shift = input.clone(),
                 Input::Glide => result.glide = input.clone(),
@@ -388,8 +392,8 @@ impl<L: PitchLinks> SynthModule for Pitch<L> {
         self.output_slot = slot;
     }
 
-    fn set_input_slots(&mut self, inputs: &[InputSlots], spectral_inputs: &[SpectralInputSlot]) {
-        self.inputs = Inputs::from_slots(inputs, spectral_inputs);
+    fn set_input_slots(&mut self, inputs: &[InputSlots]) {
+        self.inputs = Inputs::from_slots(inputs);
     }
 
     fn update_input_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {

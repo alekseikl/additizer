@@ -9,11 +9,17 @@ use crate::synth_engine::{
     harmonic_editor::HarmonicEditorConfig,
     iir_decimator::IirDecimator,
     oscillator::OscillatorConfig,
-    routing::{InputSlot, InputSlots, OutputsArena, SpectralInputSlot},
+    routing::{InputSlots, OutputsArena},
     smooth::SmoothedSampleParams,
     voices_handler::{DecayingVoice, PlayingVoice, VoicesHandlerMetrics},
 };
 use addi_dsp::db_to_gain_fast;
+
+impl Output {
+    pub(crate) fn audio_input_slot(&self) -> Option<usize> {
+        self.audio_input
+    }
+}
 
 const SAMPLE_RATE: Sample = 48_000.0;
 const HARMONIC_EDITOR_ID: ModuleId = 1;
@@ -206,43 +212,28 @@ fn set_output_slot_panics() {
 }
 
 #[test]
-fn audio_input_slot_comes_from_the_first_direct_source() {
+fn audio_input_slot_comes_from_the_direct_source() {
     let mut output = Output::new(StereoSample::ONE, 0.0);
-    let slots = InputSlots {
-        input_type: Input::Audio,
-        slots: vec![
-            InputSlot {
-                src_slot: 4,
-                modulation_slot: None,
-                amount: StereoSample::ONE,
-            },
-            InputSlot {
-                src_slot: 9,
-                modulation_slot: Some(1),
-                amount: StereoSample::ONE,
-            },
-        ],
-    };
 
-    output.set_input_slots(
-        &[slots],
-        &[SpectralInputSlot {
+    output.set_input_slots(&[
+        InputSlots::Spectral {
             input_type: Input::Spectrum,
             slot: 2,
-        }],
-    );
+        },
+        InputSlots::Direct {
+            input_type: Input::Audio,
+            slot: 4,
+        },
+    ]);
     assert_eq!(output.audio_input, Some(4));
 
-    output.set_input_slots(
-        &[InputSlots {
-            input_type: Input::Audio,
-            slots: Vec::new(),
-        }],
-        &[],
-    );
-    assert_eq!(output.audio_input, None);
+    output.set_input_slots(&[InputSlots::Direct {
+        input_type: Input::Audio,
+        slot: 9,
+    }]);
+    assert_eq!(output.audio_input, Some(9));
 
-    output.set_input_slots(&[], &[]);
+    output.set_input_slots(&[]);
     assert_eq!(output.audio_input, None);
 }
 
