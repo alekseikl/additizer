@@ -1,7 +1,7 @@
 use std::assert_matches;
 use std::collections::{HashMap, HashSet};
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 use topo_sort::{SortResults, TopoSort};
 
@@ -9,6 +9,31 @@ use super::{
     DataType, ModuleId, ModuleLink, OUTPUT_MODULE_ID, RoutingMap,
     routing::{InputSlot, InputSlots, InputSource, MixedSlots},
 };
+
+/// Whether `target` is reachable from `from` through link sources and modulators.
+/// `from` reaches itself. Each module is expanded once, so a cycle ends the walk.
+pub(super) fn link_reaches(links: &[ModuleLink], from: ModuleId, target: ModuleId) -> bool {
+    let mut stack = vec![from];
+    let mut seen = FxHashSet::default();
+
+    while let Some(id) = stack.pop() {
+        if id == target {
+            return true;
+        }
+
+        if !seen.insert(id) {
+            continue;
+        }
+
+        for link in links {
+            if link.src() == id || link.modulation() == Some(id) {
+                stack.push(link.dst().module_id);
+            }
+        }
+    }
+
+    false
+}
 
 pub(super) fn process_order(
     links: &[ModuleLink],
@@ -59,14 +84,11 @@ pub(super) fn assign_slots(
     modules: &FxHashMap<ModuleId, (DataType, usize)>,
     input_sources: &RoutingMap,
 ) -> FxHashMap<ModuleId, Vec<InputSlots>> {
-    let mut mapped: FxHashMap<_, _> = modules
-        .keys()
-        .map(|&mod_id| (mod_id, Vec::new()))
-        .collect();
+    let mut mapped: FxHashMap<_, _> = modules.keys().map(|&mod_id| (mod_id, Vec::new())).collect();
 
     for (input, sources) in input_sources {
         match sources {
-            InputSource::Direct(module_id) => {
+            InputSource::Direct { module_id, .. } => {
                 let (src_data_type, src_output_slot) =
                     modules.get(module_id).copied().expect("should be in place");
 

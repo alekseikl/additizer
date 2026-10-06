@@ -1,8 +1,9 @@
 use addi_dsp::{from_ms, from_st};
 use addi_engine::{
-    EngineConfig, Input, LinkConfig, ModuleConfig, ModuleId, OUTPUT_MODULE_ID, StereoSample,
-    amplifier::AmplifierConfig, envelope::EnvelopeConfig, harmonic_editor::HarmonicEditorConfig,
-    oscillator::OscillatorConfig, pitch::PitchConfig, spectral_filter::SpectralFilterConfig,
+    EngineConfig, Input, LinkConfig, ModuleConfig, ModuleId, OUTPUT_MODULE_ID, PITCH_MODULE_ID,
+    StereoSample, amplifier::AmplifierConfig, envelope::EnvelopeConfig,
+    harmonic_editor::HarmonicEditorConfig, oscillator::OscillatorConfig,
+    spectral_filter::SpectralFilterConfig,
 };
 use rustc_hash::FxHashMap;
 
@@ -20,13 +21,12 @@ const FILTER_ID: ModuleId = 3;
 const OSC_ID: ModuleId = 4;
 const AMP_ID: ModuleId = 5;
 const AMP_ENV_ID: ModuleId = 6;
-const PITCH_ID: ModuleId = 7;
 
 fn default_ui_config() -> UiConfig {
     let mut modules = FxHashMap::default();
 
     for (id, label, grid_x, grid_y) in [
-        (PITCH_ID, "Pitch", 0, 0),
+        (PITCH_MODULE_ID, "Pitch", 0, 0),
         (HARMONIC_EDITOR_ID, "Harmonics", 3, 2),
         (FILTER_ENV_ID, "Cutoff Envelope", 3, 4),
         (FILTER_ID, "Filter", 8, 2),
@@ -87,10 +87,6 @@ fn default_engine_config() -> EngineConfig {
             })),
             ModuleConfig::Envelope(Box::new(filter_env)),
             ModuleConfig::SpectralFilter(Box::new(spectral_filter)),
-            ModuleConfig::Pitch(Box::new(PitchConfig {
-                id: PITCH_ID,
-                ..PitchConfig::default()
-            })),
             ModuleConfig::Oscillator(Box::new(OscillatorConfig {
                 id: OSC_ID,
                 ..OscillatorConfig::default()
@@ -105,9 +101,6 @@ fn default_engine_config() -> EngineConfig {
             LinkConfig::direct(HARMONIC_EDITOR_ID, FILTER_ID, Input::Spectrum),
             LinkConfig::mixed(FILTER_ENV_ID, FILTER_ID, Input::Cutoff, from_st(64.0)),
             LinkConfig::direct(FILTER_ID, OSC_ID, Input::Spectrum),
-            LinkConfig::direct(PITCH_ID, HARMONIC_EDITOR_ID, Input::Pitch),
-            LinkConfig::direct(PITCH_ID, FILTER_ID, Input::Pitch),
-            LinkConfig::direct(PITCH_ID, OSC_ID, Input::Pitch),
             LinkConfig::direct(OSC_ID, AMP_ID, Input::Audio),
             LinkConfig::mixed(AMP_ENV_ID, AMP_ID, Input::Gain, StereoSample::ONE),
             LinkConfig::direct(AMP_ID, OUTPUT_MODULE_ID, Input::Audio),

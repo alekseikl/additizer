@@ -3,7 +3,7 @@ use egui::{
 };
 
 use crate::routing_ui_ext::ModuleTypeUi;
-use addi_engine::{ModuleId, ModuleType};
+use addi_engine::{ModuleId, ModuleType, PITCH_MODULE_ID};
 use addi_ui_backend::ui_bridge::UiBridge;
 
 use super::utils::hsva;
@@ -79,10 +79,11 @@ impl Widget for ModuleLabel<'_> {
                 ui.data_mut(|d| d.insert_temp(state_id, buffer));
             }
 
-            if ui
-                .button(RichText::new(REMOVE_ICON).color(REMOVE_TINT))
-                .on_hover_text("Remove Module")
-                .clicked()
+            if module_id != PITCH_MODULE_ID
+                && ui
+                    .button(RichText::new(REMOVE_ICON).color(REMOVE_TINT))
+                    .on_hover_text("Remove Module")
+                    .clicked()
             {
                 bridge.remove_module(module_id);
             }

@@ -25,6 +25,7 @@ pub type ModuleId = i32;
 pub const MAX_VOICES: usize = 20;
 pub use addi_dsp::NUM_CHANNELS;
 pub const OUTPUT_MODULE_ID: ModuleId = 0;
+pub const PITCH_MODULE_ID: ModuleId = -1;
 pub const MIN_MODULE_ID: ModuleId = 1;
 
 pub const LEFT_CHANNEL: usize = 0;
@@ -235,6 +236,9 @@ pub(super) enum ModuleLink {
     Direct {
         src: ModuleId,
         dst: InputId,
+        /// Engine-owned pre-wire. Omitted from presets and from the UI routing snapshot.
+        #[serde(default)]
+        hidden: bool,
     },
     Mixed {
         src: ModuleId,
@@ -246,7 +250,24 @@ pub(super) enum ModuleLink {
 
 impl ModuleLink {
     pub fn direct(src: ModuleId, dst: InputId) -> Self {
-        Self::Direct { src, dst }
+        Self::Direct {
+            src,
+            dst,
+            hidden: false,
+        }
+    }
+
+    pub fn direct_hidden(src: ModuleId, dst: InputId) -> Self {
+        Self::Direct {
+            src,
+            dst,
+            hidden: true,
+        }
+    }
+
+    /// Only direct links can be hidden. Mixed links are always visible.
+    pub fn is_hidden(&self) -> bool {
+        matches!(self, Self::Direct { hidden: true, .. })
     }
 
     pub fn mixed(src: ModuleId, dst: InputId, amount: impl Into<StereoSample>) -> Self {
@@ -341,7 +362,7 @@ impl ModuleLink {
 
     pub fn config(&self) -> LinkConfig {
         match *self {
-            Self::Direct { src, dst } => LinkConfig::direct(src, dst.module_id, dst.input_type),
+            Self::Direct { src, dst, .. } => LinkConfig::direct(src, dst.module_id, dst.input_type),
             Self::Mixed {
                 src,
                 dst,
@@ -377,18 +398,29 @@ impl MixedSource {
 
 #[derive(Debug, Clone)]
 pub enum InputSource {
-    Direct(ModuleId),
+    Direct { module_id: ModuleId, hidden: bool },
     Mixed(Vec<MixedSource>),
 }
 
 impl InputSource {
+    pub fn direct(module_id: ModuleId) -> Self {
+        Self::Direct {
+            module_id,
+            hidden: false,
+        }
+    }
+
+    pub fn is_hidden(&self) -> bool {
+        matches!(self, Self::Direct { hidden: true, .. })
+    }
+
     pub fn source_ids(&self) -> impl Iterator<Item = ModuleId> + '_ {
         let direct = match self {
-            Self::Direct(id) => Some(*id),
+            Self::Direct { module_id, .. } => Some(*module_id),
             Self::Mixed(_) => None,
         };
         let mixed = match self {
-            Self::Direct(_) => None,
+            Self::Direct { .. } => None,
             Self::Mixed(sources) => Some(sources.iter().flat_map(MixedSource::source_ids)),
         };
 
@@ -397,18 +429,25 @@ impl InputSource {
 
     pub fn contains_module(&self, module_id: ModuleId) -> bool {
         match self {
-            Self::Direct(id) => *id == module_id,
+            Self::Direct { module_id: id, .. } => *id == module_id,
             Self::Mixed(sources) => sources.iter().any(|s| s.module_id == module_id),
         }
     }
 
     pub(super) fn links(&self, dst: InputId) -> impl Iterator<Item = ModuleLink> + '_ {
         let direct = match self {
-            Self::Direct(src) => Some(ModuleLink::direct(*src, dst)),
+            Self::Direct {
+                module_id,
+                hidden: true,
+            } => Some(ModuleLink::direct_hidden(*module_id, dst)),
+            Self::Direct {
+                module_id,
+                hidden: false,
+            } => Some(ModuleLink::direct(*module_id, dst)),
             Self::Mixed(_) => None,
         };
         let mixed = match self {
-            Self::Direct(_) => None,
+            Self::Direct { .. } => None,
             Self::Mixed(sources) => Some(sources.iter().map(move |src| {
                 ModuleLink::mixed_modulated(src.module_id, dst, src.amount, src.modulation)
             })),
@@ -427,7 +466,7 @@ impl InputSource {
                     false
                 }
             }
-            Self::Direct(_) => false,
+            Self::Direct { .. } => false,
         }
     }
 
@@ -441,7 +480,7 @@ impl InputSource {
                     false
                 }
             }
-            Self::Direct(_) => false,
+            Self::Direct { .. } => false,
         }
     }
 }

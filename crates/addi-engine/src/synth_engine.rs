@@ -45,8 +45,8 @@ pub use modules::{
 pub(crate) use nth_element::NthElement;
 pub use routing::{
     AUDIO_TO_UI_RING_CAPACITY, DataType, Expression, Input, InputId, InputSource, MAX_VOICES,
-    MixType, ModuleId, NUM_CHANNELS, OUTPUT_MODULE_ID, UI_TO_AUDIO_RING_CAPACITY, VoiceEvent,
-    VolumeType,
+    MixType, ModuleId, NUM_CHANNELS, OUTPUT_MODULE_ID, PITCH_MODULE_ID, UI_TO_AUDIO_RING_CAPACITY,
+    VoiceEvent, VolumeType,
 };
 pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
@@ -74,6 +74,7 @@ mod modules;
 mod nth_element;
 pub mod routing;
 mod routing_helpers;
+
 pub mod routing_state;
 pub mod stub;
 pub(crate) mod utils;
@@ -152,8 +153,8 @@ impl<E: EngineLinks> SynthEngine<E> {
 
             let module_id = module.id();
 
-            if module_id < MIN_MODULE_ID || engine.modules.contains_key(&module_id) {
-                return None;
+            if module_id == OUTPUT_MODULE_ID || engine.modules.contains_key(&module_id) {
+                continue;
             }
 
             if module_id > max_module_id {
@@ -162,6 +163,19 @@ impl<E: EngineLinks> SynthEngine<E> {
 
             engine.outputs_arena.allocate_slot(&mut module);
             engine.modules.insert(module_id, module);
+        }
+
+        if !matches!(
+            engine.modules.get(&PITCH_MODULE_ID),
+            Some(ModuleHandle::Pitch(_))
+        ) {
+            let mut pitch: ModuleHandle<E> =
+                ModuleHandle::Pitch(Box::new(Pitch::new(PITCH_MODULE_ID)));
+            engine.outputs_arena.allocate_slot(&mut pitch);
+
+            if let Some(previous) = engine.modules.insert(PITCH_MODULE_ID, pitch) {
+                engine.outputs_arena.free_slot(&previous);
+            }
         }
 
         engine.next_id = max_module_id + 1;
@@ -193,6 +207,7 @@ impl<E: EngineLinks> SynthEngine<E> {
             links: self
                 .get_links()
                 .into_iter()
+                .filter(|link| !link.is_hidden())
                 .map(|link| link.config())
                 .collect(),
         }
@@ -220,12 +235,20 @@ impl<E: EngineLinks> SynthEngine<E> {
     }
 
     pub fn get_routing_state(&self) -> routing_state::RoutingState {
+        // Pre-wired pitch links stay in the engine. The grid only draws links the user made.
+        let routing = self
+            .input_sources
+            .iter()
+            .filter(|(_, sources)| !sources.is_hidden())
+            .map(|(dst, sources)| (*dst, sources.clone()))
+            .collect();
+
         routing_state::RoutingState::new(
             self.modules
                 .values()
                 .map(|m| (m.id(), routing_state::Module::new(m)))
                 .collect(),
-            self.input_sources.clone(),
+            routing,
         )
     }
 
@@ -315,6 +338,10 @@ impl<E: EngineLinks> SynthEngine<E> {
     }
 
     pub fn duplicate_module(&mut self, id: ModuleId) -> Option<ModuleId> {
+        if id < MIN_MODULE_ID {
+            return None;
+        }
+
         let mut config = self.modules.get(&id)?.config()?;
         let new_id = self.alloc_module_id();
 
@@ -331,6 +358,10 @@ impl<E: EngineLinks> SynthEngine<E> {
     }
 
     pub fn remove_module(&mut self, id: ModuleId) {
+        if id < MIN_MODULE_ID {
+            return;
+        }
+
         let Some(module) = self.modules.get(&id) else {
             return;
         };
@@ -389,30 +420,9 @@ impl<E: EngineLinks> SynthEngine<E> {
         self.setup_routing(&new_links).is_ok()
     }
 
-    /// Re-validate current links against live `inputs()` and rebuild routing via `setup_routing`.
+    /// Rebuild routing from the current links. `prepare_links` drops invalid edges.
     pub fn refresh_routing(&mut self) -> Result<(), String> {
-        let new_links: Vec<_> = self
-            .get_links()
-            .into_iter()
-            .filter_map(|mut link| {
-                if self
-                    .can_be_linked(link.src(), link.dst(), link.is_direct())
-                    .is_err()
-                {
-                    return None;
-                }
-
-                if let Some(modulator_id) = link.modulation()
-                    && self.can_be_linked(modulator_id, link.dst(), false).is_err()
-                {
-                    link.clear_modulation();
-                }
-
-                Some(link)
-            })
-            .collect();
-
-        self.setup_routing(&new_links)
+        self.setup_routing(&self.get_links())
     }
 
     pub fn set_direct_link(&mut self, src: ModuleId, dst: InputId) -> Result<(), String> {
@@ -873,14 +883,78 @@ impl<E: EngineLinks> SynthEngine<E> {
         }
     }
 
+    /// Drop hidden links, drop links that fail `can_be_linked`, clear invalid modulators,
+    /// then pre-wire direct `Input::Pitch` ports that have no source.
+    fn prepare_links(&self, links: &[ModuleLink]) -> Vec<ModuleLink> {
+        let mut links: Vec<_> = links
+            .iter()
+            .filter_map(|link| {
+                if link.is_hidden() {
+                    return None;
+                }
+
+                let mut link = *link;
+
+                if self
+                    .can_be_linked(link.src(), link.dst(), link.is_direct())
+                    .is_err()
+                {
+                    return None;
+                }
+
+                if let Some(modulator_id) = link.modulation()
+                    && self.can_be_linked(modulator_id, link.dst(), false).is_err()
+                {
+                    link.clear_modulation();
+                }
+
+                Some(link)
+            })
+            .collect();
+
+        for module in self.modules.values() {
+            let module_id = module.id();
+
+            if module_id == PITCH_MODULE_ID {
+                continue;
+            }
+
+            for meta in module.inputs() {
+                if meta.input_type != Input::Pitch || !meta.is_direct {
+                    continue;
+                }
+
+                let dst = InputId::new(Input::Pitch, module_id);
+
+                if links.iter().any(|link| link.dst() == dst)
+                    || self.can_be_linked(PITCH_MODULE_ID, dst, true).is_err()
+                    || routing_helpers::link_reaches(&links, module_id, PITCH_MODULE_ID)
+                {
+                    continue;
+                }
+
+                links.push(ModuleLink::direct_hidden(PITCH_MODULE_ID, dst));
+            }
+        }
+
+        links
+    }
+
     fn setup_routing(&mut self, links: &[ModuleLink]) -> Result<(), String> {
-        let process_order = routing_helpers::process_order(links, self.modules.keys().copied())?;
+        let links = self.prepare_links(links);
+        let process_order = routing_helpers::process_order(&links, self.modules.keys().copied())?;
         let mut routing_map = RoutingMap::default();
 
-        for link in links {
+        for link in &links {
             match link {
-                ModuleLink::Direct { src, dst } => {
-                    routing_map.insert(*dst, InputSource::Direct(*src));
+                ModuleLink::Direct { src, dst, hidden } => {
+                    routing_map.insert(
+                        *dst,
+                        InputSource::Direct {
+                            module_id: *src,
+                            hidden: *hidden,
+                        },
+                    );
                 }
                 ModuleLink::Mixed {
                     src,

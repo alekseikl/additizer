@@ -27,7 +27,7 @@ use crate::grid::{
 };
 use crate::routing_ui_ext::{DataTypeUi, InputUi, ModuleTypeUi};
 use addi_engine::{
-    Input, InputId, InputSource, ModuleId, ModuleType,
+    Input, InputId, InputSource, ModuleId, ModuleType, OUTPUT_MODULE_ID, PITCH_MODULE_ID,
     routing_state::{ModuleInput, ModuleIo},
 };
 use addi_ui_backend::ui_bridge::GridVec;
@@ -156,7 +156,7 @@ impl GridWidget {
                 let mut points = Vec::new();
 
                 match &input.sources {
-                    InputSource::Direct(module_id) => {
+                    InputSource::Direct { module_id, .. } => {
                         points.push(InputPoint {
                             module_id: *module_id,
                             point,
@@ -321,7 +321,7 @@ impl GridWidget {
     }
 
     fn context_menu_ui(&self, response: &Response, ctx: &mut WidgetCtx) {
-        if matches!(self.io.module_type, ModuleType::Output) {
+        if self.io.id == OUTPUT_MODULE_ID || self.io.id == PITCH_MODULE_ID {
             return;
         }
 

@@ -239,7 +239,7 @@ fn try_new_builds_full_patch() {
     let engine = make_full_patch_engine(EngineParams::default());
     let cfg = engine.get_config();
 
-    assert_eq!(cfg.modules.len(), 16);
+    assert_eq!(cfg.modules.len(), 17);
     assert_eq!(cfg.links.len(), 17);
 
     assert!(matches!(
@@ -349,7 +349,7 @@ fn full_patch_produces_audio() {
 }
 
 #[test]
-fn try_new_rejects_duplicate_module_id() {
+fn try_new_skips_duplicate_module_id() {
     let config = EngineConfig {
         engine: EngineParams::default(),
         modules: vec![
@@ -365,7 +365,20 @@ fn try_new_rejects_duplicate_module_id() {
         links: vec![],
     };
 
-    assert!(<SynthEngine>::try_new(&config, SAMPLE_RATE).is_none());
+    let engine = <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("duplicate ids are skipped");
+
+    assert!(matches!(
+        engine.get_module(1),
+        Some(ModuleHandle::HarmonicEditor(_))
+    ));
+    assert!(matches!(
+        engine.get_module(OUTPUT_MODULE_ID),
+        Some(ModuleHandle::Output(_))
+    ));
+    assert!(matches!(
+        engine.get_module(PITCH_MODULE_ID),
+        Some(ModuleHandle::Pitch(_))
+    ));
 }
 
 #[test]
@@ -575,7 +588,7 @@ fn config_round_trips_minimal_patch() {
 
     assert_eq!(cfg.engine.num_voices, 4);
     assert_eq!(cfg.engine.block_size, 64);
-    assert_eq!(cfg.modules.len(), 2);
+    assert_eq!(cfg.modules.len(), 3);
     assert_eq!(cfg.links.len(), 2);
 
     let osc = cfg
@@ -1618,6 +1631,191 @@ fn refresh_routing_drops_links_to_removed_inputs() {
 }
 
 #[test]
+fn fixed_pitch_prewires_unconnected_pitch_inputs() {
+    let mut engine = make_engine(
+        EngineParams::default(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            ..OscillatorConfig::default()
+        },
+    );
+
+    assert!(matches!(
+        engine.get_module(PITCH_MODULE_ID),
+        Some(ModuleHandle::Pitch(_))
+    ));
+    assert!(engine.duplicate_module(PITCH_MODULE_ID).is_none());
+    engine.remove_module(PITCH_MODULE_ID);
+    assert!(engine.get_module(PITCH_MODULE_ID).is_some());
+
+    let hidden: Vec<_> = engine
+        .get_links()
+        .into_iter()
+        .filter(|link| link.is_hidden())
+        .collect();
+
+    assert!(hidden.iter().all(|link| link.is_direct()));
+    assert!(hidden.iter().all(|link| link.src() == PITCH_MODULE_ID));
+    assert!(
+        hidden
+            .iter()
+            .any(|link| link.dst() == InputId::new(Input::Pitch, OSCILLATOR_ID))
+    );
+    assert!(
+        hidden
+            .iter()
+            .any(|link| link.dst() == InputId::new(Input::Pitch, HARMONIC_EDITOR_ID))
+    );
+    assert!(!ModuleLink::mixed(1, InputId::new(Input::Gain, 2), StereoSample::ONE).is_hidden());
+
+    let cfg = engine.get_config();
+    assert_eq!(cfg.modules.len(), 3);
+    assert!(
+        cfg.links
+            .iter()
+            .all(|link| link.src_id() != PITCH_MODULE_ID)
+    );
+
+    let state = engine.get_routing_state();
+    assert!(state.modules.contains_key(&PITCH_MODULE_ID));
+    assert!(
+        !state
+            .routing
+            .contains_key(&InputId::new(Input::Pitch, OSCILLATOR_ID))
+    );
+    let osc_io = state
+        .modules_io
+        .as_ref()
+        .expect("modules io")
+        .get(&OSCILLATOR_ID)
+        .expect("oscillator io");
+    assert!(
+        osc_io
+            .inputs
+            .iter()
+            .all(|input| input.meta.input_type != Input::Pitch)
+    );
+
+    assert_before(&engine.process_order, PITCH_MODULE_ID, OSCILLATOR_ID);
+    assert_before(&engine.process_order, PITCH_MODULE_ID, HARMONIC_EDITOR_ID);
+    assert_eq!(*engine.process_order.last().unwrap(), OUTPUT_MODULE_ID);
+}
+
+#[test]
+fn explicit_pitch_link_replaces_hidden_prewire_until_removed() {
+    let mut engine = make_engine(
+        EngineParams::default(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            ..OscillatorConfig::default()
+        },
+    );
+    let user_pitch = engine.add_module(ModuleType::Pitch);
+    let osc_pitch = InputId::new(Input::Pitch, OSCILLATOR_ID);
+
+    engine
+        .set_direct_link(user_pitch, osc_pitch)
+        .expect("user pitch -> oscillator");
+
+    let osc_links: Vec<_> = engine
+        .get_links()
+        .into_iter()
+        .filter(|link| link.dst() == osc_pitch)
+        .collect();
+    assert_eq!(osc_links.len(), 1);
+    assert!(!osc_links[0].is_hidden());
+    assert_eq!(osc_links[0].src(), user_pitch);
+
+    engine
+        .refresh_routing()
+        .expect("refresh keeps the explicit pitch link");
+    assert!(
+        engine.get_links().iter().any(|link| {
+            link.src() == user_pitch && link.dst() == osc_pitch && !link.is_hidden()
+        })
+    );
+    assert!(engine.get_links().iter().any(|link| {
+        link.is_hidden() && link.dst() == InputId::new(Input::Pitch, HARMONIC_EDITOR_ID)
+    }));
+
+    engine.remove_link(&user_pitch, &osc_pitch);
+
+    assert!(engine.get_links().iter().any(|link| {
+        link.is_hidden() && link.src() == PITCH_MODULE_ID && link.dst() == osc_pitch
+    }));
+    assert!(!engine.get_routing_state().routing.contains_key(&osc_pitch));
+}
+
+#[test]
+fn refresh_routing_prewires_pitch_on_new_modules() {
+    let mut engine = make_engine(
+        EngineParams::default(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            ..OscillatorConfig::default()
+        },
+    );
+    let svf_id = engine.add_module(ModuleType::Svf);
+
+    engine
+        .refresh_routing()
+        .expect("refresh keeps default pitch links");
+
+    assert!(engine.get_links().iter().any(|link| {
+        link.is_hidden()
+            && link.src() == PITCH_MODULE_ID
+            && link.dst() == InputId::new(Input::Pitch, svf_id)
+    }));
+    assert!(engine.get_links().iter().any(|link| {
+        link.is_hidden() && link.dst() == InputId::new(Input::Pitch, OSCILLATOR_ID)
+    }));
+    assert_before(&engine.process_order, PITCH_MODULE_ID, svf_id);
+}
+
+#[test]
+fn hand_linked_fixed_pitch_stays_visible() {
+    let mut engine = make_engine(
+        EngineParams::default(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            ..OscillatorConfig::default()
+        },
+    );
+    let osc_pitch = InputId::new(Input::Pitch, OSCILLATOR_ID);
+
+    engine
+        .set_direct_link(PITCH_MODULE_ID, osc_pitch)
+        .expect("fixed pitch -> oscillator");
+    engine
+        .refresh_routing()
+        .expect("refresh keeps the hand-made pitch link");
+
+    let osc_links: Vec<_> = engine
+        .get_links()
+        .into_iter()
+        .filter(|link| link.dst() == osc_pitch)
+        .collect();
+    assert_eq!(osc_links.len(), 1);
+    assert!(!osc_links[0].is_hidden());
+    assert_eq!(osc_links[0].src(), PITCH_MODULE_ID);
+
+    let state = engine.get_routing_state();
+    assert!(state.modules.contains_key(&PITCH_MODULE_ID));
+    assert!(matches!(
+        state.routing.get(&osc_pitch),
+        Some(InputSource::Direct {
+            module_id: PITCH_MODULE_ID,
+            hidden: false
+        })
+    ));
+    assert!(
+        !state
+            .routing
+            .contains_key(&InputId::new(Input::Pitch, HARMONIC_EDITOR_ID))
+    );
+}
+
+#[test]
 fn set_link_modulation_rejects_unknown_link() {
     let engine = make_full_patch_engine(EngineParams::default());
     let mut engine = engine;
@@ -1892,7 +2090,7 @@ fn svf_patch_round_trips_config() {
     });
     let cfg = engine.get_config();
 
-    assert_eq!(cfg.modules.len(), 3);
+    assert_eq!(cfg.modules.len(), 4);
     assert!(matches!(
         engine.get_module(SVF_ID),
         Some(ModuleHandle::Svf(_))
@@ -2239,15 +2437,15 @@ fn map_slots_assigns_spectral_and_direct_variants() {
     let mut sources = RoutingMap::default();
     sources.insert(
         InputId::new(Input::Spectrum, OSCILLATOR_ID),
-        InputSource::Direct(HARMONIC_EDITOR_ID),
+        InputSource::direct(HARMONIC_EDITOR_ID),
     );
     sources.insert(
         InputId::new(Input::Pitch, OSCILLATOR_ID),
-        InputSource::Direct(LFO_ID),
+        InputSource::direct(LFO_ID),
     );
     sources.insert(
         InputId::new(Input::Audio, OUTPUT_MODULE_ID),
-        InputSource::Direct(OSCILLATOR_ID),
+        InputSource::direct(OSCILLATOR_ID),
     );
 
     // Spectral and audio arenas both use slot 0 for their first module.

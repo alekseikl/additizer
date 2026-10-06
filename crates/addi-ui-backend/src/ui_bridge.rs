@@ -1,10 +1,11 @@
 use std::ops::DerefMut;
 
 use enum_dispatch::enum_dispatch;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use addi_engine::{
-    InputId, ModuleHandle, ModuleId, ModuleType, OUTPUT_MODULE_ID, Sample, StereoSample,
+    InputId, ModuleHandle, ModuleId, ModuleType, OUTPUT_MODULE_ID, PITCH_MODULE_ID, Sample,
+    StereoSample,
     config::EngineParams,
     engine_io::EngineLinks,
     routing::{DataType, Input, InputMeta, InputSource, data_types_compatible},
@@ -28,7 +29,7 @@ use modules::{
     spectral_mixer::SpectralMixerUiBridge, spectral_noise::SpectralNoiseUiBridge, svf::SvfUiBridge,
     wave_shaper::WaveShaperUiBridge,
 };
-use ui_config::UiModuleConfig;
+use ui_config::{UiConfig, UiModuleConfig};
 
 pub fn module_default_label(module_type: ModuleType) -> &'static str {
     match module_type {
@@ -119,6 +120,8 @@ pub struct UiBridge<E: EngineLinks = crate::links::PluginLinks> {
     voices: VoicesStatus,
     modulated_inputs: FxHashMap<InputId, ModulatedInput>,
     module_bridges: FxHashMap<ModuleId, Option<ModuleBridge<E>>>,
+    reach_stack: Vec<ModuleId>,
+    reach_seen: FxHashSet<ModuleId>,
 }
 
 impl<E: EngineLinks> UiBridge<E> {
@@ -130,6 +133,8 @@ impl<E: EngineLinks> UiBridge<E> {
         let engine_params = engine_lock.get_engine_params();
 
         drop(engine_lock);
+
+        Self::ensure_fixed_pitch_module(&mut ui_config.lock());
 
         let mut bridges: FxHashMap<ModuleId, Option<ModuleBridge<E>>> = FxHashMap::default();
 
@@ -146,7 +151,32 @@ impl<E: EngineLinks> UiBridge<E> {
             voices: VoicesStatus::default(),
             modulated_inputs: FxHashMap::default(),
             module_bridges: bridges,
+            reach_stack: Vec::new(),
+            reach_seen: FxHashSet::default(),
         })
+    }
+
+    fn ensure_fixed_pitch_module(ui_config: &mut UiConfig) {
+        if ui_config.modules.contains_key(&PITCH_MODULE_ID) {
+            return;
+        }
+
+        let y = ui_config
+            .modules
+            .values()
+            .map(|module| module.position.y)
+            .max()
+            .map(|bottom| bottom + 3)
+            .unwrap_or(0);
+
+        ui_config.modules.insert(
+            PITCH_MODULE_ID,
+            UiModuleConfig {
+                id: PITCH_MODULE_ID,
+                label: String::new(),
+                position: GridVec::new(0, y),
+            },
+        );
     }
 
     fn insert_module_bridge(
@@ -319,45 +349,48 @@ impl<E: EngineLinks> UiBridge<E> {
         self.voices.playing + self.voices.releasing > 0
     }
 
-    pub fn get_linkable_inputs(&self, src: ModuleId, dst: ModuleId) -> Vec<LinkableInput> {
-        let Some(dst_module) = self.routing.modules.get(&dst) else {
+    pub fn get_linkable_inputs(&mut self, src: ModuleId, dst: ModuleId) -> Vec<LinkableInput> {
+        let Some(src_output_type) = self
+            .routing
+            .modules
+            .get(&src)
+            .map(|module| module.output_type)
+        else {
+            return Vec::new();
+        };
+        let Some(inputs) = self.routing.modules.get(&dst).map(|module| module.inputs.clone())
+        else {
             return Vec::new();
         };
 
-        let Some(src_module) = self.routing.modules.get(&src) else {
-            return Vec::new();
-        };
+        let mut linkable = Vec::with_capacity(inputs.len());
 
-        let linkable: Vec<(Input, bool, Vec<ModuleId>)> = dst_module
-            .inputs
-            .iter()
-            .filter_map(|meta| {
-                if !self.is_linkable_input(src, dst, src_module.output_type, meta) {
-                    return None;
-                }
+        for meta in inputs {
+            if !self.is_linkable_input(src, dst, src_output_type, &meta) {
+                continue;
+            }
 
-                let modulations = if meta.is_direct {
-                    Vec::new()
-                } else {
-                    let input_id = InputId::new(meta.input_type, dst);
+            let modulations = if meta.is_direct {
+                Vec::new()
+            } else {
+                let input_id = InputId::new(meta.input_type, dst);
 
-                    self.routing
-                        .routing
-                        .get(&input_id)
-                        .map(|sources| match sources {
-                            InputSource::Mixed(mixed) => mixed
-                                .iter()
-                                .filter(|source| source.modulation != Some(src))
-                                .map(|source| source.module_id)
-                                .collect(),
-                            InputSource::Direct(_) => Vec::new(),
-                        })
-                        .unwrap_or_default()
-                };
+                self.routing
+                    .routing
+                    .get(&input_id)
+                    .map(|sources| match sources {
+                        InputSource::Mixed(mixed) => mixed
+                            .iter()
+                            .filter(|source| source.modulation != Some(src))
+                            .map(|source| source.module_id)
+                            .collect(),
+                        InputSource::Direct { .. } => Vec::new(),
+                    })
+                    .unwrap_or_default()
+            };
 
-                Some((meta.input_type, meta.is_direct, modulations))
-            })
-            .collect();
+            linkable.push((meta.input_type, meta.is_direct, modulations));
+        }
 
         linkable
             .into_iter()
@@ -376,23 +409,27 @@ impl<E: EngineLinks> UiBridge<E> {
     }
 
     /// Whether `src` can connect to any input on `dst`.
-    pub fn has_linkable_input(&self, src: ModuleId, dst: ModuleId) -> bool {
+    pub fn has_linkable_input(&mut self, src: ModuleId, dst: ModuleId) -> bool {
         if src == dst {
             return false;
         }
 
-        let Some(dst_module) = self.routing.modules.get(&dst) else {
+        let Some(src_output_type) = self
+            .routing
+            .modules
+            .get(&src)
+            .map(|module| module.output_type)
+        else {
+            return false;
+        };
+        let Some(inputs) = self.routing.modules.get(&dst).map(|module| module.inputs.clone())
+        else {
             return false;
         };
 
-        let Some(src_module) = self.routing.modules.get(&src) else {
-            return false;
-        };
-
-        dst_module
-            .inputs
+        inputs
             .iter()
-            .any(|meta| self.is_linkable_input(src, dst, src_module.output_type, meta))
+            .any(|meta| self.is_linkable_input(src, dst, src_output_type, meta))
     }
 
     pub fn create_link(&mut self, src: ModuleId, dst: InputId) {
@@ -425,7 +462,7 @@ impl<E: EngineLinks> UiBridge<E> {
         };
 
         match sources {
-            InputSource::Direct(module_id) => {
+            InputSource::Direct { module_id, .. } => {
                 if !self.routing.modules.contains_key(module_id) {
                     return Vec::new();
                 }
@@ -480,9 +517,35 @@ impl<E: EngineLinks> UiBridge<E> {
         }
     }
 
+    /// Whether `target` is reachable from `from` through routed sources and modulators.
+    /// Reuses `reach_stack` and `reach_seen` across calls.
+    fn routing_reaches(&mut self, from: ModuleId, target: ModuleId) -> bool {
+        self.reach_stack.clear();
+        self.reach_seen.clear();
+        self.reach_stack.push(from);
+
+        while let Some(id) = self.reach_stack.pop() {
+            if id == target {
+                return true;
+            }
+
+            if !self.reach_seen.insert(id) {
+                continue;
+            }
+
+            for (input, sources) in &self.routing.routing {
+                if sources.source_ids().any(|source| source == id) {
+                    self.reach_stack.push(input.module_id);
+                }
+            }
+        }
+
+        false
+    }
+
     // Whether `src` may target this destination input
     fn is_linkable_input(
-        &self,
+        &mut self,
         src: ModuleId,
         dst: ModuleId,
         src_output_type: DataType,
@@ -492,26 +555,12 @@ impl<E: EngineLinks> UiBridge<E> {
 
         src != dst
             && data_types_compatible(src_output_type, meta.data_type)
-            && !self.has_cycle(src, dst)
+            && !self.routing_reaches(dst, src)
             && !self
                 .routing
                 .routing
                 .get(&input_id)
                 .is_some_and(|sources| sources.contains_module(src))
-    }
-
-    fn has_cycle(&self, dst_id: ModuleId, src_id: ModuleId) -> bool {
-        for (input, sources) in &self.routing.routing {
-            if input.module_id == dst_id {
-                for source in sources.source_ids() {
-                    if source == src_id || self.has_cycle(source, src_id) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        false
     }
 
     pub fn update(&mut self) {

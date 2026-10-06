@@ -72,14 +72,14 @@ fn make_bridge(engine: SynthEngine<PluginLinks>) -> UiBridge {
 
 #[test]
 fn has_linkable_input_rejects_self() {
-    let bridge = make_bridge(minimal_engine());
+    let mut bridge = make_bridge(minimal_engine());
 
     assert!(!bridge.has_linkable_input(OSCILLATOR_ID, OSCILLATOR_ID));
 }
 
 #[test]
 fn has_linkable_input_false_when_only_compatible_input_already_taken_by_src() {
-    let bridge = make_bridge(minimal_engine());
+    let mut bridge = make_bridge(minimal_engine());
 
     // HE is spectral-only into osc; Spectrum is already HE -> Osc, so no remaining input.
     assert!(!bridge.has_linkable_input(HARMONIC_EDITOR_ID, OSCILLATOR_ID));
@@ -89,14 +89,14 @@ fn has_linkable_input_false_when_only_compatible_input_already_taken_by_src() {
 fn has_linkable_input_true_for_replacement_direct_source() {
     let mut engine = minimal_engine();
     let he2 = engine.add_module(ModuleType::HarmonicEditor);
-    let bridge = make_bridge(engine);
+    let mut bridge = make_bridge(engine);
 
     assert!(bridge.has_linkable_input(he2, OSCILLATOR_ID));
 }
 
 #[test]
 fn get_linkable_inputs_excludes_already_connected() {
-    let bridge = make_bridge(minimal_engine());
+    let mut bridge = make_bridge(minimal_engine());
 
     let linkable = bridge.get_linkable_inputs(HARMONIC_EDITOR_ID, OSCILLATOR_ID);
     assert!(
@@ -111,7 +111,7 @@ fn get_linkable_inputs_excludes_already_connected() {
 fn get_linkable_inputs_includes_alternate_direct_source() {
     let mut engine = minimal_engine();
     let he2 = engine.add_module(ModuleType::HarmonicEditor);
-    let bridge = make_bridge(engine);
+    let mut bridge = make_bridge(engine);
 
     let linkable = bridge.get_linkable_inputs(he2, OSCILLATOR_ID);
     assert!(
@@ -124,7 +124,7 @@ fn get_linkable_inputs_includes_alternate_direct_source() {
 
 #[test]
 fn get_linkable_inputs_excludes_self_and_type_mismatch() {
-    let bridge = make_bridge(minimal_engine());
+    let mut bridge = make_bridge(minimal_engine());
 
     assert!(
         bridge
@@ -180,7 +180,7 @@ fn get_available_mixed_excludes_connected_source() {
         )
         .expect("lfo -> detune");
 
-    let bridge = make_bridge(engine);
+    let mut bridge = make_bridge(engine);
 
     let linkable = bridge.get_linkable_inputs(lfo_id, OSCILLATOR_ID);
     assert!(
@@ -192,7 +192,7 @@ fn get_available_mixed_excludes_connected_source() {
 
 #[test]
 fn has_linkable_input_false_for_spectral_into_audio_only_module() {
-    let bridge = make_bridge(minimal_engine());
+    let mut bridge = make_bridge(minimal_engine());
 
     assert!(!bridge.has_linkable_input(HARMONIC_EDITOR_ID, OUTPUT_MODULE_ID));
 }
