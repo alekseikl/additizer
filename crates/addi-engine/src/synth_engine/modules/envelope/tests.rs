@@ -1,5 +1,9 @@
 use super::*;
-use crate::synth_engine::routing::VoiceEvent;
+use crate::synth_engine::{
+    EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId, Note, OUTPUT_MODULE_ID,
+    SynthEngine, amplifier::AmplifierConfig, harmonic_editor::HarmonicEditorConfig,
+    oscillator::OscillatorConfig, power_scale, routing::VoiceEvent,
+};
 
 fn reset_event(voice_idx: usize, replaced_voice_idx: Option<usize>) -> VoiceEvent {
     VoiceEvent::Reset {
@@ -52,56 +56,128 @@ fn reset_does_not_steal_when_disabled() {
     assert_eq!(env.voices.at(0, 1).start_level, 0.0);
 }
 
+const HE_ID: ModuleId = 1;
+const OSC_ID: ModuleId = 2;
+const ENV_ID: ModuleId = 3;
+const AMP_ID: ModuleId = 4;
+const RENDER_RATE: Sample = 48_000.0;
+
+fn render_engine(env: EnvelopeConfig, amp_gain: Sample, link_envelope: bool) -> SynthEngine {
+    let mut links = vec![
+        LinkConfig::direct(HE_ID, OSC_ID, Input::Spectrum),
+        LinkConfig::direct(OSC_ID, AMP_ID, Input::Audio),
+        LinkConfig::direct(AMP_ID, OUTPUT_MODULE_ID, Input::Audio),
+    ];
+
+    if link_envelope {
+        links.push(LinkConfig::mixed(ENV_ID, AMP_ID, Input::Gain, 1.0));
+    }
+
+    let config = EngineConfig {
+        engine: EngineParams {
+            num_voices: 1,
+            block_size: 128,
+            ..EngineParams::default()
+        },
+        modules: vec![
+            ModuleConfig::HarmonicEditor(Box::new(HarmonicEditorConfig {
+                id: HE_ID,
+                bandwidth: 1,
+                ..HarmonicEditorConfig::default()
+            })),
+            ModuleConfig::Oscillator(Box::new(OscillatorConfig {
+                id: OSC_ID,
+                ..OscillatorConfig::default()
+            })),
+            ModuleConfig::Envelope(Box::new(env)),
+            ModuleConfig::Amplifier(Box::new(AmplifierConfig {
+                id: AMP_ID,
+                gain: amp_gain.into(),
+                ..AmplifierConfig::default()
+            })),
+        ],
+        links,
+    };
+
+    SynthEngine::try_new(&config, RENDER_RATE).expect("valid engine")
+}
+
+fn note(note: u8) -> Note {
+    Note {
+        channel: 0,
+        note,
+        velocity: 1.0,
+        host_id: None,
+    }
+}
+
+fn process(engine: &mut SynthEngine, samples: usize) -> Vec<Sample> {
+    let mut out = Vec::with_capacity(samples);
+    let mut terminated = Vec::new();
+    let mut left = vec![0.0; 128];
+    let mut right = vec![0.0; 128];
+    let mut remaining = samples;
+
+    while remaining > 0 {
+        let n = remaining.min(128);
+        engine.process(n, false, &mut terminated, [&mut left[..n], &mut right[..n]]);
+        out.extend_from_slice(&left[..n]);
+        remaining -= n;
+    }
+
+    out
+}
+
+fn rms(samples: &[Sample]) -> Sample {
+    (samples.iter().map(|sample| sample * sample).sum::<Sample>() / samples.len() as Sample).sqrt()
+}
+
 #[test]
 fn attack_starts_from_stolen_level() {
-    let fill = FillStage {
-        t: 0.0,
-        release: None,
-        start_level: 0.4,
-        delay: 0.0,
-        attack: 1.0,
-        hold: 0.0,
-        decay: 0.0,
-        sustain: 1.0,
-        release_time: 0.0,
-        t_step: 0.25,
-        attack_curve: Exponential::new(0.0),
-        decay_curve: Exponential::new(0.0),
-        release_curve: Exponential::new(0.0),
+    let config = EnvelopeConfig {
+        id: ENV_ID,
+        steal_level: true,
+        attack: 1.0.into(),
+        attack_slope: 0.0,
+        sustain: 1.0.into(),
+        ..EnvelopeConfig::default()
     };
-    let mut out = [0.0; 4];
-    let (n, _) = fill.fill(&mut out);
+    let mut stolen = render_engine(config.clone(), 0.0, true);
+    stolen.handle_note_on(note(60), 0);
+    process(&mut stolen, RENDER_RATE as usize + 128);
+    stolen.handle_note_on(note(64), 0);
+    let stolen_attack = process(&mut stolen, 128);
 
-    assert_eq!(n, 4);
-    assert!((out[0] - 0.4).abs() < 1e-5);
-    assert!(out[0] < out[1]);
-    assert!(out[3] < 1.0);
+    let mut fresh = render_engine(config, 0.0, true);
+    fresh.handle_note_on(note(64), 0);
+    let fresh_attack = process(&mut fresh, 128);
+
+    assert!(rms(&stolen_attack) > rms(&fresh_attack) * 10.0);
 }
 
 #[test]
 fn delay_holds_stolen_level() {
-    let fill = FillStage {
-        t: 0.0,
-        release: None,
-        start_level: 0.55,
-        delay: 1.0,
-        attack: 1.0,
-        hold: 0.0,
-        decay: 0.0,
-        sustain: 1.0,
-        release_time: 0.0,
-        t_step: 0.25,
-        attack_curve: Exponential::new(0.0),
-        decay_curve: Exponential::new(0.0),
-        release_curve: Exponential::new(0.0),
+    let config = EnvelopeConfig {
+        id: ENV_ID,
+        steal_level: true,
+        delay: 1.0.into(),
+        attack: 0.0.into(),
+        sustain: 0.55.into(),
+        decay: 0.0.into(),
+        ..EnvelopeConfig::default()
     };
-    let mut out = [0.0; 4];
-    let (n, _) = fill.fill(&mut out);
+    let mut stolen = render_engine(config.clone(), 0.0, true);
+    stolen.handle_note_on(note(60), 0);
+    process(&mut stolen, RENDER_RATE as usize + 128);
+    stolen.handle_note_on(note(64), 0);
+    let held = process(&mut stolen, 128);
 
-    assert_eq!(n, 4);
-    for sample in out {
-        assert!((sample - 0.55).abs() < 1e-6);
-    }
+    let mut fresh = render_engine(config, 0.0, true);
+    fresh.handle_note_on(note(64), 0);
+    let silent = process(&mut fresh, 128);
+
+    assert!(rms(&held) > 1e-3);
+    assert!(rms(&silent) < rms(&held) * 0.05);
 }
 
 #[test]
@@ -128,5 +204,55 @@ fn both_channels_steal_independently() {
     for (channel_idx, voice) in env.voices.channels_at(4).iter().enumerate() {
         let expected = 0.2 + channel_idx as Sample * 0.3;
         assert!((voice.start_level - expected).abs() < 1e-6);
+    }
+}
+
+#[test]
+fn fill_curve_matches_power_scale() {
+    let duration = 0.2;
+    let warmup = (0.05 * RENDER_RATE) as usize;
+    let measured = 127;
+
+    for slope in [0.0, 0.3, 1.0, -1.0] {
+        let config = EnvelopeConfig {
+            id: ENV_ID,
+            attack: duration.into(),
+            attack_slope: slope,
+            sustain: 1.0.into(),
+            decay: 0.0.into(),
+            ..EnvelopeConfig::default()
+        };
+        let mut wet = render_engine(config, 0.0, true);
+        let mut dry = render_engine(
+            EnvelopeConfig {
+                id: ENV_ID,
+                ..EnvelopeConfig::default()
+            },
+            1.0,
+            false,
+        );
+
+        wet.handle_note_on(note(60), 0);
+        dry.handle_note_on(note(60), 0);
+
+        let wet = process(&mut wet, warmup + measured);
+        let dry = process(&mut dry, warmup + measured);
+        let power = -slope * SLOPE_POWER_SCALE;
+        let recip = duration.recip();
+
+        for (i, (wet, dry)) in wet[warmup..].iter().zip(&dry[warmup..]).enumerate() {
+            if dry.abs() < 1e-2 {
+                continue;
+            }
+
+            let local_t = 0.05 + i as Sample / RENDER_RATE;
+            let expected = power_scale(local_t * recip, power);
+            let rendered = wet / dry;
+
+            assert!(
+                (rendered - expected).abs() < 1e-3,
+                "slope {slope}: {rendered} vs {expected}"
+            );
+        }
     }
 }

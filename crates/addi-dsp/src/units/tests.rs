@@ -2,7 +2,7 @@ use wide::f32x4;
 
 use super::{
     db_to_gain_fast, db_to_gain_fast_x4, fast_exp2_x4, fast_pitch_to_freq_x4, fast_tan_pi_x4,
-    map_x4, map_x4_in_place, pitch_to_freq, zip_map_x4,
+    fill_x4, map_x4, map_x4_in_place, pitch_to_freq, zip_map_x4,
 };
 
 fn fast_exp2(x: f32) -> f32 {
@@ -131,6 +131,32 @@ fn zip_map_x4_pairs_lanes_and_zeroes_remainder() {
 
     let mut out = [];
     zip_map_x4(&[], &[], &mut out, |a, _b| a);
+}
+
+#[test]
+fn fill_x4_writes_groups_and_partial_tail() {
+    let mut out = [0.0; 5];
+    let mut n = 0.0;
+    fill_x4(&mut out, || {
+        let lanes = f32x4::new([n, n + 1.0, n + 2.0, n + 3.0]);
+        n += 4.0;
+        lanes
+    });
+    assert_eq!(out, [0.0, 1.0, 2.0, 3.0, 4.0]);
+    assert_eq!(n, 8.0);
+
+    let mut out = [0.0; 2];
+    n = 0.0;
+    fill_x4(&mut out, || {
+        let lanes = f32x4::new([n, n + 1.0, n + 2.0, n + 3.0]);
+        n += 4.0;
+        lanes
+    });
+    assert_eq!(out, [0.0, 1.0]);
+    assert_eq!(n, 4.0);
+
+    let mut out = [];
+    fill_x4(&mut out, || panic!("empty output"));
 }
 
 #[test]

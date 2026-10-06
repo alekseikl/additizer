@@ -51,12 +51,13 @@ pub use routing::{
 pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
 pub use types::{ComplexSample, Sample};
-pub use voices_handler::Note;
+pub use voices_handler::{Note, PlayingVoice};
 
 pub use addi_dsp::{
     C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain, db_to_gain_fast, db_to_gain_fast_x4,
-    fast_pitch_to_freq_x4, freq_to_c4_pitch, from_ms, from_st, gain_to_db, gain_to_db_fast, map_x4,
-    map_x4_in_place, note_to_pitch, pan_gain, pitch_to_freq, power_scale, zip_map_x4,
+    fast_pitch_to_freq_x4, fill_x4, freq_to_c4_pitch, from_ms, from_st, gain_to_db,
+    gain_to_db_fast, map_x4, map_x4_in_place, note_to_pitch, pan_gain, pitch_to_freq, power_scale,
+    zip_map_x4,
 };
 
 pub use addi_dsp::types;
@@ -67,7 +68,6 @@ pub mod buffer;
 pub mod config;
 #[macro_use]
 pub mod synth_module;
-mod curves;
 pub mod engine_io;
 pub(crate) mod module_handle;
 mod modules;

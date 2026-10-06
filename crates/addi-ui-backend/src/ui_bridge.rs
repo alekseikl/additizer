@@ -161,20 +161,12 @@ impl<E: EngineLinks> UiBridge<E> {
             return;
         }
 
-        let y = ui_config
-            .modules
-            .values()
-            .map(|module| module.position.y)
-            .max()
-            .map(|bottom| bottom + 3)
-            .unwrap_or(0);
-
         ui_config.modules.insert(
             PITCH_MODULE_ID,
             UiModuleConfig {
                 id: PITCH_MODULE_ID,
                 label: String::new(),
-                position: GridVec::new(0, y),
+                position: GridVec::new(0, 0),
             },
         );
     }
@@ -358,7 +350,11 @@ impl<E: EngineLinks> UiBridge<E> {
         else {
             return Vec::new();
         };
-        let Some(inputs) = self.routing.modules.get(&dst).map(|module| module.inputs.clone())
+        let Some(inputs) = self
+            .routing
+            .modules
+            .get(&dst)
+            .map(|module| module.inputs.clone())
         else {
             return Vec::new();
         };
@@ -422,7 +418,11 @@ impl<E: EngineLinks> UiBridge<E> {
         else {
             return false;
         };
-        let Some(inputs) = self.routing.modules.get(&dst).map(|module| module.inputs.clone())
+        let Some(inputs) = self
+            .routing
+            .modules
+            .get(&dst)
+            .map(|module| module.inputs.clone())
         else {
             return false;
         };

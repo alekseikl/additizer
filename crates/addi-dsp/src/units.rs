@@ -190,6 +190,26 @@ pub fn zip_map_x4(
     }
 }
 
+/// Fill `out` with successive groups of four lanes from `fill`.
+///
+/// `fill` is called once per group. A trailing partial group is produced as
+/// four lanes; only the lanes that fit in `out` are stored.
+#[inline(always)]
+pub fn fill_x4(out: &mut [Sample], mut fill: impl FnMut() -> f32x4) {
+    let (chunks, rem) = out.as_chunks_mut::<X4_LANES>();
+
+    for chunk in chunks {
+        *chunk = fill().to_array();
+    }
+
+    let n = rem.len();
+
+    if n > 0 {
+        let filled = fill().to_array();
+        rem.copy_from_slice(&filled[..n]);
+    }
+}
+
 /// [`map_x4`] over one buffer, writing each group back in place.
 #[inline(always)]
 pub fn map_x4_in_place(samples: &mut [Sample], mut map: impl FnMut(f32x4) -> f32x4) {

@@ -1,5 +1,8 @@
 use std::array;
 
+use addi_dsp::fast_exp2_x4;
+use wide::f32x4;
+
 mod config;
 mod link;
 pub mod stub;
@@ -11,11 +14,9 @@ pub use config::EnvelopeConfig;
 pub use link::{EnvelopeAudioEnd, EnvelopeLinks, EnvelopeUiEnd, UiEvent};
 
 use crate::{
-    synth_engine::from_ms,
     synth_engine::{
         StereoSample,
         buffer::{VoicesLayout, new_voices_layout},
-        curves::{CurveFunction, Exponential},
         routing::{
             ControlRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
             NUM_CHANNELS, ProcessContext, RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget,
@@ -24,6 +25,7 @@ use crate::{
         types::Sample,
         voices_handler::DecayingVoice,
     },
+    synth_engine::{fill_x4, from_ms},
 };
 
 pub const SLOPE_POWER_SCALE: Sample = 20.0;
@@ -99,6 +101,10 @@ fn stage_time(time: Sample) -> Sample {
     if time < MIN_TIME_THRESHOLD { 0.0 } else { time }
 }
 
+fn slope_power(slope: Sample) -> Sample {
+    -slope.clamp(-1.0, 1.0) * SLOPE_POWER_SCALE
+}
+
 struct FillStage {
     t: Sample,
     release: Option<Sample>,
@@ -110,12 +116,76 @@ struct FillStage {
     sustain: Sample,
     release_time: Sample,
     t_step: Sample,
-    attack_curve: Exponential,
-    decay_curve: Exponential,
-    release_curve: Exponential,
+    attack_power: Sample,
+    decay_power: Sample,
+    release_power: Sample,
 }
 
 impl FillStage {
+    /// Linear ramp `from + (interval / duration) * t`, four lanes at a time.
+    #[cold]
+    #[inline(never)]
+    fn fill_linear_ramp(
+        out: &mut [Sample],
+        local_t: Sample,
+        t_step: Sample,
+        ramp: Sample,
+        from: Sample,
+    ) {
+        let ramp_x4 = f32x4::splat(ramp);
+        let from_x4 = f32x4::splat(from);
+        let step = f32x4::splat(t_step * 4.0);
+        let mut t = f32x4::new([
+            local_t,
+            local_t + t_step,
+            local_t + 2.0 * t_step,
+            local_t + 3.0 * t_step,
+        ]);
+
+        fill_x4(out, || {
+            let y = ramp_x4.mul_add(t, from_x4);
+            t += step;
+            y
+        });
+    }
+
+    /// Curved segment, four lanes at a time. Outlined so it stays a leaf.
+    #[inline(never)]
+    fn fill_curved(
+        out: &mut [Sample],
+        local_t: Sample,
+        t_step: Sample,
+        recip: Sample,
+        interval: Sample,
+        from: Sample,
+        power: Sample,
+    ) {
+        // power_scale(x) = (exp(p * x) - 1) / (exp(p) - 1), so
+        // interval * power_scale(x) + from = scale * exp(p * x) + offset.
+        let scale = interval / (power.exp() - 1.0);
+        let offset = from - scale;
+        let dx = t_step * recip;
+
+        const LOG2_E: f32x4 = f32x4::splat(std::f32::consts::LOG2_E);
+        let power_log2e = f32x4::splat(power) * LOG2_E;
+        let step = f32x4::splat(dx * 4.0);
+        let scale_x4 = f32x4::splat(scale);
+        let offset_x4 = f32x4::splat(offset);
+        let mut x = f32x4::new([
+            local_t * recip,
+            (local_t + t_step) * recip,
+            (local_t + 2.0 * t_step) * recip,
+            (local_t + 3.0 * t_step) * recip,
+        ]);
+
+        fill_x4(out, || {
+            let exp = fast_exp2_x4(x * power_log2e);
+            let y = scale_x4.mul_add(exp, offset_x4);
+            x += step;
+            y
+        });
+    }
+
     fn samples_until(&self, end: Sample, max: usize) -> usize {
         (((end - self.t).max(0.0) / self.t_step) as usize).min(max)
     }
@@ -123,18 +193,21 @@ impl FillStage {
     fn fill_curve(
         &self,
         out: &mut [Sample],
-        mut local_t: Sample,
+        local_t: Sample,
         duration: Sample,
         from: Sample,
         to: Sample,
-        curve: &Exponential,
+        power: Sample,
     ) {
+        let t_step = self.t_step;
         let recip = duration.recip();
         let interval = to - from;
 
-        for sample in out {
-            *sample = interval.mul_add(curve.calc(local_t * recip), from);
-            local_t += self.t_step;
+        // Same cutoff as `power_scale`: a flat slope is a linear ramp.
+        if power.abs() < 0.005 {
+            Self::fill_linear_ramp(out, local_t, t_step, interval * recip, from);
+        } else {
+            Self::fill_curved(out, local_t, t_step, recip, interval, from, power);
         }
     }
 
@@ -149,7 +222,7 @@ impl FillStage {
             return if t < self.release_time {
                 let n = self.samples_until(self.release_time, max);
                 let out = &mut out[..n];
-                self.fill_curve(out, t, self.release_time, from, 0.0, &self.release_curve);
+                self.fill_curve(out, t, self.release_time, from, 0.0, self.release_power);
                 (n, Some(self.release_time))
             } else {
                 out.fill(0.0);
@@ -175,7 +248,7 @@ impl FillStage {
                 self.attack,
                 self.start_level,
                 1.0,
-                &self.attack_curve,
+                self.attack_power,
             );
             (n, Some(attack_end))
         } else if t < hold_end {
@@ -190,7 +263,7 @@ impl FillStage {
                 self.decay,
                 1.0,
                 self.sustain,
-                &self.decay_curve,
+                self.decay_power,
             );
             (n, Some(decay_end))
         } else {
@@ -396,9 +469,9 @@ impl<L: EnvelopeLinks> Envelope<L> {
                 .clamp(0.0, 1.0),
             release_time: stage_time(router.scalar(&inputs.release, channel.release)),
             t_step,
-            attack_curve: Exponential::new(params.attack_slope),
-            decay_curve: Exponential::new(params.decay_slope),
-            release_curve: Exponential::new(params.release_slope),
+            attack_power: slope_power(params.attack_slope),
+            decay_power: slope_power(params.decay_slope),
+            release_power: slope_power(params.release_slope),
         };
 
         let mut sample_idx = 0;
@@ -445,7 +518,7 @@ impl<L: EnvelopeLinks> Envelope<L> {
             });
         }
     }
-    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+    pub fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
         ctx.control(self.id, self.output_slot)
             .for_voices(|rf, target, outputs| {
                 self.process_voice(target, outputs, rf);

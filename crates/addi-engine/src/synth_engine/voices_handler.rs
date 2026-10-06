@@ -79,7 +79,7 @@ pub struct PlayingVoice {
 }
 
 impl PlayingVoice {
-    fn new(voice_idx: VoiceIdx, note: u8) -> Self {
+    pub fn new(voice_idx: VoiceIdx, note: u8) -> Self {
         Self {
             voice_idx,
             note,

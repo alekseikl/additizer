@@ -25,3 +25,7 @@ serde_json = { workspace = true }
 [[bench]]
 name = "synth_engine"
 harness = false
+
+[[bench]]
+name = "envelope"
+harness = false
