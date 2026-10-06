@@ -45,6 +45,17 @@ pub fn db_to_gain_fast(dbs: f32) -> f32 {
     (dbs * CONVERSION_FACTOR).exp()
 }
 
+/// [`db_to_gain_fast`] for four lanes, built on [`fast_exp2_x4`].
+///
+/// `10^(dB/20) = 2^(dB * log2(10) / 20)`. Drive values stay well inside the
+/// polynomial's accurate range.
+#[inline(always)]
+pub fn db_to_gain_fast_x4(dbs: f32x4) -> f32x4 {
+    const DB_TO_EXP2: f32x4 = f32x4::splat(std::f32::consts::LOG2_10 / 20.0);
+
+    fast_exp2_x4(dbs * DB_TO_EXP2)
+}
+
 /// Approximation of [`gain_to_db`] using `ln()`.
 #[inline]
 pub fn gain_to_db_fast(gain: f32) -> f32 {

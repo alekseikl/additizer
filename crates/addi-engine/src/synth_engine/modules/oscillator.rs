@@ -22,7 +22,7 @@ use crate::{
         types::{ComplexSample, Sample},
     },
     synth_engine::{
-        db_to_gain, fast_pitch_to_freq_x4, from_st, map_x4, pitch_to_freq, power_scale, zip_map_x4,
+        db_to_gain, fast_pitch_to_freq_x4, from_st, pitch_to_freq, power_scale, zip_map_x4,
     },
 };
 
@@ -663,11 +663,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         }
 
         let mut router = rf.for_triggered_voice(target);
-        let pitch = if self.inputs.pitch.is_some() {
-            router.direct(self.inputs.pitch)[0]
-        } else {
-            target.note_pitch()
-        };
+        let pitch = router.direct(self.inputs.pitch)[0];
         let freq_shift = router.scalar(
             &self.inputs.freq_shift,
             self.channel_params[target.channel_idx]
@@ -1102,23 +1098,12 @@ impl<L: OscillatorLinks> Oscillator<L> {
 
         let freq_phase_mult = Phase::freq_phase_mult(router.sample_rate());
 
-        if inputs.pitch.is_some() {
-            Self::pitch_to_phase_inc(
-                router.direct(inputs.pitch),
-                &self.buffers.frequency_shift[..samples],
-                &mut self.buffers.phase_inc[..samples],
-                freq_phase_mult,
-            );
-        } else {
-            let pitch_inc = f32x4::splat(pitch_to_freq(target.note_pitch()) * freq_phase_mult);
-            let mult = f32x4::splat(freq_phase_mult);
-
-            map_x4(
-                &self.buffers.frequency_shift[..samples],
-                &mut self.buffers.phase_inc[..samples],
-                |shift| shift.mul_add(mult, pitch_inc),
-            );
-        }
+        Self::pitch_to_phase_inc(
+            router.direct(inputs.pitch),
+            &self.buffers.frequency_shift[..samples],
+            &mut self.buffers.phase_inc[..samples],
+            freq_phase_mult,
+        );
 
         let mono_spectrum = self.params.mono_spectrum;
         let wave_channel = if mono_spectrum {

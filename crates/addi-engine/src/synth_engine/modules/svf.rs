@@ -14,9 +14,12 @@ use addi_dsp::filters::{
     control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
     svf::{SvfFilter, SvfState, SvfType},
 };
+use wide::f32x4;
 
 use crate::{
-    synth_engine::{C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain_fast},
+    synth_engine::{
+        C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain_fast, db_to_gain_fast_x4, map_x4_in_place,
+    },
     synth_engine::{
         Sample, SmoothedSampleParams, StereoSample,
         buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
@@ -256,35 +259,27 @@ impl<L: SvfLinks> Svf<L> {
         } else {
             router.param(&inputs.drive, &channel.drive, &mut self.buffers.drive);
 
-            for drive in &mut self.buffers.drive[..samples] {
-                *drive = db_to_gain_fast(drive.clamp(MIN_DRIVE, MAX_DRIVE));
-            }
+            const MIN_DRIVE_X4: f32x4 = f32x4::splat(MIN_DRIVE);
+            const MAX_DRIVE_X4: f32x4 = f32x4::splat(MAX_DRIVE);
+
+            map_x4_in_place(&mut self.buffers.drive[..samples], |drive| {
+                db_to_gain_fast_x4(drive.fast_max(MIN_DRIVE_X4).fast_min(MAX_DRIVE_X4))
+            });
         }
 
-        let note_pitch = target.note_pitch();
-        let pitch = inputs.pitch.is_some().then(|| router.direct(inputs.pitch));
+        let pitch = router.direct(inputs.pitch);
         let input = router.direct(inputs.audio);
         let output = voice_output.output();
 
         if router.need_update_ui_mono() {
-            let pitch = pitch.and_then(|p| p.first().copied()).unwrap_or(note_pitch);
-
-            self.audio_end.update_pitch(pitch);
+            self.audio_end.update_pitch(pitch[0]);
         }
 
         let keytrack = params.keytrack;
 
         if keytrack > 1e-5 {
-            if let Some(pitch) = pitch {
-                for (cutoff, pitch) in self.buffers.cutoff.iter_mut().zip(pitch) {
-                    *cutoff += keytrack * (pitch - C4_PITCH);
-                }
-            } else {
-                let offset = keytrack * (note_pitch - C4_PITCH);
-
-                for cutoff in self.buffers.cutoff.iter_mut().take(samples) {
-                    *cutoff += offset;
-                }
+            for (cutoff, pitch) in self.buffers.cutoff.iter_mut().zip(pitch) {
+                *cutoff += keytrack * (pitch - C4_PITCH);
             }
         }
 

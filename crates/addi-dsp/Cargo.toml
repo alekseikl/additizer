@@ -21,8 +21,3 @@ harness = false
 [[bench]]
 name = "spectral_filter"
 harness = false
-
-# Temporary: compare the hand-written x4 loop with `map_x4`. Delete after the check.
-[[bench]]
-name = "map_x4"
-harness = false

@@ -1,8 +1,8 @@
 use wide::f32x4;
 
 use super::{
-    fast_exp2_x4, fast_pitch_to_freq_x4, fast_tan_pi_x4, map_x4, map_x4_in_place, pitch_to_freq,
-    zip_map_x4,
+    db_to_gain_fast, db_to_gain_fast_x4, fast_exp2_x4, fast_pitch_to_freq_x4, fast_tan_pi_x4,
+    map_x4, map_x4_in_place, pitch_to_freq, zip_map_x4,
 };
 
 fn fast_exp2(x: f32) -> f32 {
@@ -145,6 +145,21 @@ fn map_x4_in_place_matches_map_x4() {
     map_x4_in_place(&mut inplace, map);
 
     assert_eq!(inplace, separate);
+}
+
+#[test]
+fn db_to_gain_fast_x4_matches_scalar_over_drive_range() {
+    let lanes = [-60.0, -12.0, 0.0, 24.0];
+    let out = db_to_gain_fast_x4(f32x4::new(lanes)).to_array();
+
+    for (dbs, gain) in lanes.into_iter().zip(out) {
+        let exact = db_to_gain_fast(dbs);
+
+        assert!(
+            ((gain - exact) / exact).abs() < 5e-7,
+            "{dbs} dB: {gain} vs {exact}"
+        );
+    }
 }
 
 #[test]
