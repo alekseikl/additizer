@@ -215,7 +215,7 @@ fn bench_oscillator_render(c: &mut Criterion) {
         id: OSCILLATOR_ID,
         unison_voices: MAX_UNISON_VOICES,
         detune: StereoSample::splat(0.05),
-        detune_power: StereoSample::splat(0.3),
+        detune_focus: StereoSample::splat(0.3),
         phases_blend: StereoSample::splat(0.5),
         gains_blend: StereoSample::splat(0.5),
         ..OscillatorConfig::default()

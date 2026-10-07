@@ -25,8 +25,15 @@ pub(super) struct UnisonLaneParams {
 }
 
 impl UnisonLaneParams {
+    /// `gain_scale_from` / `gain_scale_to` are the unison normalization at the
+    /// block ends. They are baked into the gain ramp here so the sample loop
+    /// does not scale the sum. Stored voice gains stay unscaled.
     #[inline(always)]
-    pub(super) fn from_voices(voices: &[UnisonVoice]) -> Self {
+    pub(super) fn from_voices(
+        voices: &[UnisonVoice],
+        gain_scale_from: Sample,
+        gain_scale_to: Sample,
+    ) -> Self {
         debug_assert!(voices.len() <= UNISON_LANES);
 
         let lanes = |f: fn(&UnisonVoice) -> Sample| {
@@ -35,14 +42,16 @@ impl UnisonLaneParams {
 
         let phase_shift_from = PhaseX4::wrap_normalized(lanes(|uv| uv.phase_shift.from));
         let phase_shift_to = PhaseX4::wrap_normalized(lanes(|uv| uv.phase_shift.to));
+        let gain_from = lanes(|uv| uv.gain.from) * f32x4::splat(gain_scale_from);
+        let gain_to = lanes(|uv| uv.gain.to) * f32x4::splat(gain_scale_to);
 
         Self {
             rate_from: lanes(|uv| uv.rate.from),
             rate_delta: lanes(|uv| uv.rate.to - uv.rate.from),
             phase_shift_from,
             phase_shift_delta: phase_shift_to - phase_shift_from,
-            gain_from: lanes(|uv| uv.gain.from),
-            gain_delta: lanes(|uv| uv.gain.to - uv.gain.from),
+            gain_from,
+            gain_delta: gain_to - gain_from,
         }
     }
 }

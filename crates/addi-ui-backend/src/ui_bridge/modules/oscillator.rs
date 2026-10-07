@@ -35,7 +35,7 @@ impl<L: OscillatorLinks> OscillatorUiBridge<L> {
                 Input::PhaseShift => self.config.phase_shift = value,
                 Input::FrequencyShift => self.config.frequency_shift = value,
                 Input::Detune => self.config.detune = value,
-                Input::DetunePower => self.config.detune_power = value,
+                Input::DetuneFocus => self.config.detune_focus = value,
                 Input::PhasesBlend => self.config.phases_blend = value,
                 Input::GainsBlend => self.config.gains_blend = value,
                 _ => (),
@@ -58,6 +58,12 @@ impl<L: OscillatorLinks> OscillatorUiBridge<L> {
     pub fn set_phase_random(&mut self, phase_random: Sample) {
         if self.ui_end.set_phase_random(phase_random) {
             self.config.phase_random = phase_random;
+        }
+    }
+
+    pub fn set_phase_random_stereo(&mut self, phase_random_stereo: bool) {
+        if self.ui_end.set_phase_random_stereo(phase_random_stereo) {
+            self.config.phase_random_stereo = phase_random_stereo;
         }
     }
 

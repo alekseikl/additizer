@@ -42,6 +42,12 @@ impl UiEnd {
         self.tx.push(UiEvent::PhaseRandom(phase_random)).is_ok()
     }
 
+    pub fn set_phase_random_stereo(&mut self, phase_random_stereo: bool) -> bool {
+        self.tx
+            .push(UiEvent::PhaseRandomStereo(phase_random_stereo))
+            .is_ok()
+    }
+
     pub fn set_mono_spectrum(&mut self, mono_spectrum: bool) -> bool {
         self.tx.push(UiEvent::MonoSpectrum(mono_spectrum)).is_ok()
     }
@@ -171,6 +177,9 @@ impl OscillatorUiEnd for UiEnd {
     }
     fn set_phase_random(&mut self, phase_random: Sample) -> bool {
         UiEnd::set_phase_random(self, phase_random)
+    }
+    fn set_phase_random_stereo(&mut self, phase_random_stereo: bool) -> bool {
+        UiEnd::set_phase_random_stereo(self, phase_random_stereo)
     }
     fn set_mono_spectrum(&mut self, mono_spectrum: bool) -> bool {
         UiEnd::set_mono_spectrum(self, mono_spectrum)

@@ -109,6 +109,7 @@ struct Params {
     unison: usize,
     steal_phase: bool,
     phase_random: Sample, // [0.0, 1.0]
+    phase_random_stereo: bool,
     mono_spectrum: bool,
 }
 
@@ -118,6 +119,7 @@ impl Params {
             unison: c.unison_voices,
             steal_phase: c.steal_phase,
             phase_random: c.phase_random,
+            phase_random_stereo: c.phase_random_stereo,
             mono_spectrum: c.mono_spectrum,
         }
     }
@@ -145,7 +147,7 @@ impl Default for UnisonParams {
 
 struct ChannelParams {
     detune: Sample, // Octaves
-    detune_power: Sample,
+    detune_focus: Sample,
     phase_shift: SmoothedSample,
     frequency_shift: SmoothedSample,
     phases_blend: Sample,
@@ -157,7 +159,7 @@ impl ChannelParams {
     fn from_config(c: &OscillatorConfig, channel_idx: usize) -> Self {
         Self {
             detune: c.detune[channel_idx],
-            detune_power: c.detune_power[channel_idx],
+            detune_focus: c.detune_focus[channel_idx],
             phase_shift: c.phase_shift[channel_idx].into(),
             frequency_shift: c.frequency_shift[channel_idx].into(),
             phases_blend: c.phases_blend[channel_idx],
@@ -318,7 +320,7 @@ pub struct Inputs {
     phase_shift: MixedSlots,
     freq_shift: MixedSlots,
     detune: MixedSlots,
-    detune_power: MixedSlots,
+    detune_focus: MixedSlots,
     phase_steal: MixedSlots,
     phases_blend: MixedSlots,
     gains_blend: MixedSlots,
@@ -332,7 +334,7 @@ impl Default for Inputs {
             phase_shift: MixedSlots::new(Input::PhaseShift),
             freq_shift: MixedSlots::new(Input::FrequencyShift),
             detune: MixedSlots::new(Input::Detune),
-            detune_power: MixedSlots::new(Input::DetunePower),
+            detune_focus: MixedSlots::new(Input::DetuneFocus),
             phase_steal: MixedSlots::new(Input::PhaseSteal),
             phases_blend: MixedSlots::new(Input::PhasesBlend),
             gains_blend: MixedSlots::new(Input::GainsBlend),
@@ -360,7 +362,7 @@ impl Inputs {
                     Input::PhaseShift => result.phase_shift = input.clone(),
                     Input::FrequencyShift => result.freq_shift = input.clone(),
                     Input::Detune => result.detune = input.clone(),
-                    Input::DetunePower => result.detune_power = input.clone(),
+                    Input::DetuneFocus => result.detune_focus = input.clone(),
                     Input::PhaseSteal => result.phase_steal = input.clone(),
                     Input::PhasesBlend => result.phases_blend = input.clone(),
                     Input::GainsBlend => result.gains_blend = input.clone(),
@@ -377,7 +379,7 @@ impl Inputs {
             Input::PhaseShift => self.phase_shift.update_amount(src_slot, amount),
             Input::FrequencyShift => self.freq_shift.update_amount(src_slot, amount),
             Input::Detune => self.detune.update_amount(src_slot, amount),
-            Input::DetunePower => self.detune_power.update_amount(src_slot, amount),
+            Input::DetuneFocus => self.detune_focus.update_amount(src_slot, amount),
             Input::PhaseSteal => self.phase_steal.update_amount(src_slot, amount),
             Input::PhasesBlend => self.phases_blend.update_amount(src_slot, amount),
             Input::GainsBlend => self.gains_blend.update_amount(src_slot, amount),
@@ -402,7 +404,7 @@ pub struct Oscillator<L: OscillatorLinks = stub::Links> {
     voices: VoicesLayout<Voice>,
     voice_buffers: VoicesLayout<VoiceBuffers>,
     lane_params: [UnisonLaneParams; UNISON_CHUNKS],
-    center_phase_sync: Phase,
+    shared_random_phases: [Phase; MAX_UNISON_VOICES],
 }
 
 impl<L: OscillatorLinks> Oscillator<L> {
@@ -436,7 +438,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             voices: new_voices_layout(),
             voice_buffers: new_voices_layout(),
             lane_params: Default::default(),
-            center_phase_sync: Phase::ZERO,
+            shared_random_phases: [Phase::ZERO; MAX_UNISON_VOICES],
         };
 
         osc.publish_unison();
@@ -475,9 +477,10 @@ impl<L: OscillatorLinks> Oscillator<L> {
             unison_voices: self.params.unison,
             steal_phase: self.params.steal_phase,
             phase_random: self.params.phase_random,
+            phase_random_stereo: self.params.phase_random_stereo,
             mono_spectrum: self.params.mono_spectrum,
             detune: get_stereo_param!(self, detune),
-            detune_power: get_stereo_param!(self, detune_power),
+            detune_focus: get_stereo_param!(self, detune_focus),
             phase_shift: get_smoothed_param!(self, phase_shift),
             frequency_shift: get_smoothed_param!(self, frequency_shift),
             phases_blend: get_stereo_param!(self, phases_blend),
@@ -499,13 +502,14 @@ impl<L: OscillatorLinks> Oscillator<L> {
         Sample,
         phase_random.clamp(0.0, 1.0)
     );
+    set_mono_param!(set_phase_random_stereo, phase_random_stereo, bool);
     set_mono_param!(set_mono_spectrum, mono_spectrum, bool);
 
     set_stereo_param!(set_detune, detune, detune.clamp(0.0, from_st(1.0)));
     set_stereo_param!(
-        set_detune_power,
-        detune_power,
-        detune_power.clamp(-1.0, 1.0)
+        set_detune_focus,
+        detune_focus,
+        detune_focus.clamp(-1.0, 1.0)
     );
 
     set_smoothed_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
@@ -702,7 +706,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             .clamp(0.0, MAX_DETUNE);
 
         let detune_power = router
-            .scalar(&inputs.detune_power, channel.detune_power, this_frame)
+            .scalar(&inputs.detune_focus, channel.detune_focus, this_frame)
             .clamp(-1.0, 1.0)
             * MAX_DETUNE_POWER;
 
@@ -804,17 +808,27 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let unison = self.params.unison.clamp(1, MAX_UNISON_VOICES);
         let full_chunks = unison / UNISON_LANES;
         let rem_lanes = unison % UNISON_LANES;
-        let unison_voices = &self.voices.at(channel_idx, voice_idx).unison;
+        let voice = self.voices.at(channel_idx, voice_idx);
+        let gain_scale_from = voice.unison_gain.from;
+        let gain_scale_to = voice.unison_gain.to;
 
         for chunk_idx in 0..full_chunks {
             let start = chunk_idx * UNISON_LANES;
-            let params = UnisonLaneParams::from_voices(&unison_voices[start..start + UNISON_LANES]);
+            let params = UnisonLaneParams::from_voices(
+                &voice.unison[start..start + UNISON_LANES],
+                gain_scale_from,
+                gain_scale_to,
+            );
             self.lane_params[chunk_idx] = params;
         }
 
         if rem_lanes > 0 {
             let start = full_chunks * UNISON_LANES;
-            let params = UnisonLaneParams::from_voices(&unison_voices[start..start + rem_lanes]);
+            let params = UnisonLaneParams::from_voices(
+                &voice.unison[start..start + rem_lanes],
+                gain_scale_from,
+                gain_scale_to,
+            );
             self.lane_params[full_chunks] = params;
         }
     }
@@ -851,24 +865,29 @@ impl<L: OscillatorLinks> Oscillator<L> {
         }
 
         if self.params.phase_random > 1e-6 {
-            for (phase, unison_voice, random) in izip!(
-                voice.phases.iter_mut(),
-                channel.unison.iter(),
-                (&mut self.random).random_iter::<Sample>()
-            )
-            .take(unison)
-            {
-                *phase = Phase::from_normalized(unison_voice.initial_phase)
-                    .add_normalized((random - 0.5) * self.params.phase_random);
+            let stereo = self.params.phase_random_stereo;
+            let amount = self.params.phase_random;
+
+            if stereo || channel_idx == LEFT_CHANNEL {
+                for (phase, unison_voice, random) in izip!(
+                    voice.phases.iter_mut(),
+                    channel.unison.iter(),
+                    (&mut self.random).random_iter::<Sample>()
+                )
+                .take(unison)
+                {
+                    *phase = Phase::from_normalized(unison_voice.initial_phase)
+                        .add_normalized((random - 0.5) * amount);
+                }
             }
 
-            if unison & 1 == 1 {
-                let center = unison / 2;
-
+            if !stereo {
                 if channel_idx == LEFT_CHANNEL {
-                    self.center_phase_sync = voice.phases[center];
+                    self.shared_random_phases[..unison]
+                        .copy_from_slice(&voice.phases[..unison]);
                 } else {
-                    voice.phases[center] = self.center_phase_sync;
+                    voice.phases[..unison]
+                        .copy_from_slice(&self.shared_random_phases[..unison]);
                 }
             }
         } else if unison > 1 {
@@ -1022,9 +1041,6 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let buff_t_inc = (ctx.samples as Sample).recip();
         let mut buff_t = start as Sample * buff_t_inc;
 
-        let unison_gain_from = voice.unison_gain.from;
-        let unison_gain_delta = voice.unison_gain.to - voice.unison_gain.from;
-
         let (phase_chunks, []) = voice.phases.as_chunks_mut::<UNISON_LANES>() else {
             unreachable!("MAX_UNISON_VOICES is a multiple of UNISON_LANES");
         };
@@ -1061,7 +1077,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             let acc_to = (s.acc_to[0] + s.acc_to[1]) + (s.acc_to[2] + s.acc_to[3]);
             let acc = (acc_to - acc_from).mul_add(s.buff_t, acc_from);
 
-            *out = acc.reduce_add() * unison_gain_delta.mul_add(buff_t, unison_gain_from);
+            *out = acc.reduce_add();
             buff_t += buff_t_inc;
         }
     }
@@ -1200,7 +1216,7 @@ impl<L: OscillatorLinks> SynthModule for Oscillator<L> {
             InputMeta::audio(Input::PhaseShift),
             InputMeta::audio(Input::FrequencyShift),
             InputMeta::control(Input::Detune),
-            InputMeta::control(Input::DetunePower),
+            InputMeta::control(Input::DetuneFocus),
             InputMeta::control(Input::PhaseSteal),
             InputMeta::control(Input::PhasesBlend),
             InputMeta::control(Input::GainsBlend),
@@ -1254,7 +1270,7 @@ impl<L: OscillatorLinks> SynthModule for Oscillator<L> {
                     Input::PhaseShift => self.set_phase_shift(value),
                     Input::FrequencyShift => self.set_frequency_shift(value),
                     Input::Detune => self.set_detune(value),
-                    Input::DetunePower => self.set_detune_power(value),
+                    Input::DetuneFocus => self.set_detune_focus(value),
                     Input::PhasesBlend => self.set_phases_blend(value),
                     Input::GainsBlend => self.set_gains_blend(value),
                     _ => (),
@@ -1267,6 +1283,9 @@ impl<L: OscillatorLinks> SynthModule for Oscillator<L> {
                 UiEvent::UnisonGainTo { idx, value } => self.set_unison_gain_to(idx, value),
                 UiEvent::StealPhase(steal_phase) => self.set_steal_phase(steal_phase),
                 UiEvent::PhaseRandom(phase_random) => self.set_phase_random(phase_random),
+                UiEvent::PhaseRandomStereo(phase_random_stereo) => {
+                    self.set_phase_random_stereo(phase_random_stereo);
+                }
                 UiEvent::MonoSpectrum(mono_spectrum) => self.set_mono_spectrum(mono_spectrum),
                 UiEvent::ApplyUnisonLevelShape { center, level, to } => {
                     self.apply_unison_level_shape(center, level, to);

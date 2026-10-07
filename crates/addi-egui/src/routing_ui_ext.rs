@@ -48,7 +48,7 @@ impl InputUi for Input {
             Self::Pitch => "Pitch".to_string(),
             Self::PitchShift => "Pitch Shift".to_string(),
             Self::Detune => "Detune".to_string(),
-            Self::DetunePower => "Detune Power".to_string(),
+            Self::DetuneFocus => "Detune Focus".to_string(),
             Self::Glide => "Glide".to_string(),
             Self::GlideSlope => "Glide Slope".to_string(),
             Self::PhaseShift => "Phase Shift".to_string(),
@@ -90,7 +90,7 @@ impl InputUi for Input {
             Self::Pitch => 0.71,
             Self::PitchShift => 0.70,
             Self::Detune => 0.73,
-            Self::DetunePower => 0.76,
+            Self::DetuneFocus => 0.76,
             Self::Glide => 0.67,
             Self::GlideSlope => 0.64,
             Self::PhaseShift => 0.79,
@@ -149,7 +149,7 @@ impl InputUi for Input {
             Self::Detune => Slider::stereo(amount, 0.0..=from_st(1.0), Some(-from_st(1.0)))
                 .default(0.0)
                 .units(Units::Octaves(OctavesDisplay::Semitones)),
-            Self::DetunePower => Slider::stereo(amount, 0.0..=5.0, Some(-5.0)).default(0.0),
+            Self::DetuneFocus => Slider::stereo(amount, 0.0..=5.0, Some(-5.0)).default(0.0),
             Self::Pitch | Self::PitchShift => Slider::stereo(amount, 0.0..=8.0, Some(-8.0))
                 .skew(1.8)
                 .default(1.0)
@@ -219,7 +219,7 @@ impl InputUi for Input {
             Self::Detune => Slider::stereo(value, 0.0..=from_st(1.0), None)
                 .default(from_st(0.2))
                 .units(Units::Octaves(OctavesDisplay::Semitones)),
-            Self::DetunePower => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
+            Self::DetuneFocus => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
             Self::Pitch | Self::PitchShift => Slider::stereo(value, 0.0..=8.0, Some(-8.0))
                 .skew(1.8)
                 .default(0.0)

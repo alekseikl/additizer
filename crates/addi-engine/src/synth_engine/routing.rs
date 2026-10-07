@@ -55,7 +55,8 @@ pub enum Input {
     Pitch,
     PitchShift,
     Detune,
-    DetunePower,
+    #[serde(alias = "DetunePower")]
+    DetuneFocus,
     Glide,
     GlideSlope,
     PhaseShift,

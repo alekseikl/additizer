@@ -744,6 +744,7 @@ fn duplicate_module_copies_settings_without_links() {
             unison_voices: 3,
             steal_phase: true,
             phase_random: 0.25,
+            phase_random_stereo: true,
             mono_spectrum: true,
             detune: 0.4.into(),
             ..OscillatorConfig::default()
@@ -767,9 +768,10 @@ fn duplicate_module_copies_settings_without_links() {
     assert_eq!(original.unison_voices, copy.unison_voices);
     assert_eq!(original.steal_phase, copy.steal_phase);
     assert_eq!(original.phase_random, copy.phase_random);
+    assert_eq!(original.phase_random_stereo, copy.phase_random_stereo);
     assert_eq!(original.mono_spectrum, copy.mono_spectrum);
     assert_eq!(original.detune, copy.detune);
-    assert_eq!(original.detune_power, copy.detune_power);
+    assert_eq!(original.detune_focus, copy.detune_focus);
     assert_eq!(original.phase_shift, copy.phase_shift);
     assert_eq!(original.frequency_shift, copy.frequency_shift);
     assert_eq!(original.phases_blend, copy.phases_blend);

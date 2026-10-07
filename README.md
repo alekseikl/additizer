@@ -17,7 +17,7 @@ Every slider in the UI is stereo, and each channel can be adjusted by dragging w
 - `Band Select`: Passes a half-open range of harmonics.
 - `Oscillator`: Takes a spectral input, performs an inverse FFT, and then behaves like a wavetable oscillator.
   Supports up to 16 unison voices, each of which is stereo. The phase and gain of each unison voice can be controlled via a stereo slider.
-  Controls that can be modulated: gain, pitch, frequency (through-zero FM), phase, detune, detune power (pitch distribution),
+  Controls that can be modulated: gain, pitch, frequency (through-zero FM), phase, detune, detune focus (pitch distribution),
   unison phases and unison gains blend.
 - `Envelope`: AHDSR envelope generator to control both spectral and audio modules.
 - `LFO`: Low-frequency oscillator (triangle/square/sine) with skew and bipolar modes.

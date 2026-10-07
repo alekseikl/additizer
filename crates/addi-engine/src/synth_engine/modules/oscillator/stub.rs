@@ -59,6 +59,10 @@ impl OscillatorUiEnd for NoUi {
         self.diverge()
     }
 
+    fn set_phase_random_stereo(&mut self, _phase_random_stereo: bool) -> bool {
+        self.diverge()
+    }
+
     fn set_mono_spectrum(&mut self, _mono_spectrum: bool) -> bool {
         self.diverge()
     }

@@ -152,6 +152,59 @@ fn mono_spectrum_round_trips_through_config() {
 }
 
 #[test]
+fn phase_random_stereo_defaults_to_shared_phases() {
+    assert!(!OscillatorConfig::default().phase_random_stereo);
+    assert!(!<Oscillator>::new(1).get_config().phase_random_stereo);
+}
+
+#[test]
+fn phase_random_stereo_defaults_when_missing_from_json() {
+    let mut json = serde_json::to_value(OscillatorConfig::default()).unwrap();
+    json.as_object_mut().unwrap().remove("phase_random_stereo");
+
+    let config: OscillatorConfig = serde_json::from_value(json).unwrap();
+
+    assert!(!config.phase_random_stereo);
+}
+
+#[test]
+fn shared_phase_random_matches_both_channels() {
+    let mut engine = make_engine_with(
+        default_harmonics(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            unison_voices: 2,
+            phase_random: 1.0,
+            phase_random_stereo: false,
+            ..OscillatorConfig::default()
+        },
+    );
+    let (left, right) = play(&mut engine);
+
+    assert!(rms(&left) > 1e-3);
+    assert!(max_abs_diff(&left, &right) < 1e-5);
+}
+
+#[test]
+fn stereo_phase_random_gives_each_channel_its_own_phases() {
+    let mut engine = make_engine_with(
+        default_harmonics(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            unison_voices: 2,
+            phase_random: 1.0,
+            phase_random_stereo: true,
+            ..OscillatorConfig::default()
+        },
+    );
+    let (left, right) = play(&mut engine);
+
+    assert!(rms(&left) > 1e-3);
+    assert!(rms(&right) > 1e-3);
+    assert!(max_abs_diff(&left, &right) > 1e-3);
+}
+
+#[test]
 fn set_mono_spectrum_updates_config() {
     let mut osc = <Oscillator>::new(1);
 
@@ -531,13 +584,16 @@ fn reference_render(
                         let phase_from = wrap_unit(voice.phase_shift.from);
                         let phase_to = wrap_unit(voice.phase_shift.to);
 
+                        let gain_from = voice.gain.from * UNISON_GAIN_FROM;
+                        let gain_to = voice.gain.to * UNISON_GAIN_TO;
+
                         (
                             voice.rate.from,
                             voice.rate.to - voice.rate.from,
                             phase_from,
                             phase_to - phase_from,
-                            voice.gain.from,
-                            voice.gain.to - voice.gain.from,
+                            gain_from,
+                            gain_to - gain_from,
                         )
                     } else {
                         (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
@@ -565,9 +621,7 @@ fn reference_render(
             advance_chunk(full, rem);
         }
 
-        let mixed = (acc_to - acc_from).mul_add(buff_t, acc_from);
-        let unison_gain = (UNISON_GAIN_TO - UNISON_GAIN_FROM).mul_add(buff_t, UNISON_GAIN_FROM);
-        *sample = mixed * unison_gain;
+        *sample = (acc_to - acc_from).mul_add(buff_t, acc_from);
         buff_t += buff_t_inc;
     }
 
@@ -588,13 +642,20 @@ fn store_lane_params(osc: &mut Oscillator, voices: &[UnisonVoice], unison: usize
 
     for chunk in 0..full {
         let start = chunk * UNISON_LANES;
-        osc.lane_params[chunk] =
-            UnisonLaneParams::from_voices(&voices[start..start + UNISON_LANES]);
+        osc.lane_params[chunk] = UnisonLaneParams::from_voices(
+            &voices[start..start + UNISON_LANES],
+            UNISON_GAIN_FROM,
+            UNISON_GAIN_TO,
+        );
     }
 
     if rem > 0 {
         let start = full * UNISON_LANES;
-        osc.lane_params[full] = UnisonLaneParams::from_voices(&voices[start..start + rem]);
+        osc.lane_params[full] = UnisonLaneParams::from_voices(
+            &voices[start..start + rem],
+            UNISON_GAIN_FROM,
+            UNISON_GAIN_TO,
+        );
     }
 }
 

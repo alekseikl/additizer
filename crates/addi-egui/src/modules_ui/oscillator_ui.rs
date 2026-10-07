@@ -409,14 +409,6 @@ impl OscillatorUI {
                     osc_bridge.set_param(Input::PhaseShift, config.phase_shift);
                 }
 
-                ui.label("Phase rand").on_hover_text("Phases randomization");
-                if ui
-                    .add(Slider::mono(&mut config.phase_random, 0.0..=1.0, None).default(0.0))
-                    .changed()
-                {
-                    osc_bridge.set_phase_random(config.phase_random);
-                }
-
                 ui.label("Frequency");
                 if ui
                     .add(StereoInput::new(
@@ -428,6 +420,25 @@ impl OscillatorUI {
                     .changed()
                 {
                     osc_bridge.set_param(Input::FrequencyShift, config.frequency_shift);
+                }
+                ui.end_row();
+
+                ui.label("Phase rand").on_hover_text("Phases randomization");
+                if ui
+                    .add(Slider::mono(&mut config.phase_random, 0.0..=1.0, None).default(0.0))
+                    .changed()
+                {
+                    osc_bridge.set_phase_random(config.phase_random);
+                }
+
+                ui.label("Stereo rand").on_hover_text(
+                    "Each channel draws its own random phases. Off: both channels share the same phases.",
+                );
+                if ui
+                    .add(Checkbox::new(&mut config.phase_random_stereo, ""))
+                    .changed()
+                {
+                    osc_bridge.set_phase_random_stereo(config.phase_random_stereo);
                 }
                 ui.end_row();
 
@@ -444,17 +455,17 @@ impl OscillatorUI {
                     osc_bridge.set_param(Input::Detune, config.detune);
                 }
 
-                ui.label("Detune power");
+                ui.label("Detune focus");
                 if ui
                     .add(StereoInput::new(
-                        Input::DetunePower,
+                        Input::DetuneFocus,
                         module_id,
-                        &mut config.detune_power,
+                        &mut config.detune_focus,
                         bridge,
                     ))
                     .changed()
                 {
-                    osc_bridge.set_param(Input::DetunePower, config.detune_power);
+                    osc_bridge.set_param(Input::DetuneFocus, config.detune_focus);
                 }
                 ui.end_row();
             });

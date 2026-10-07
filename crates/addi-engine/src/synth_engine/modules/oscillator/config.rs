@@ -33,10 +33,14 @@ pub struct OscillatorConfig {
     pub steal_phase: bool,
     #[serde(default)]
     pub phase_random: Sample,
+    /// When set, each channel draws its own random phases. When unset, both channels share them.
+    #[serde(default)]
+    pub phase_random_stereo: bool,
     #[serde(default)]
     pub mono_spectrum: bool,
     pub detune: StereoSample,
-    pub detune_power: StereoSample,
+    #[serde(alias = "detune_power")]
+    pub detune_focus: StereoSample,
     pub phase_shift: StereoSample,
     pub frequency_shift: StereoSample,
     pub phases_blend: StereoSample,
@@ -51,9 +55,10 @@ impl Default for OscillatorConfig {
             unison_voices: 1,
             steal_phase: false,
             phase_random: 0.0,
+            phase_random_stereo: false,
             mono_spectrum: false,
             detune: from_st(0.2).into(),
-            detune_power: 0.0.into(),
+            detune_focus: 0.0.into(),
             phase_shift: 0.0.into(),
             frequency_shift: 0.0.into(),
             phases_blend: 0.0.into(),
