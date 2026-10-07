@@ -31,7 +31,7 @@ pub mod stub;
 mod unison;
 
 use lanes::{SampleCtx, UNISON_CHUNKS, UNISON_LANES, UnisonLaneParams};
-use unison::{CustomUnison, Style1Unison, UnisonType};
+use unison::{ManualUnison, SynthFlatUnison, UnisonType};
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -133,9 +133,9 @@ struct UnisonParams {
     initial_phase: Sample,
     phase_shift: Sample,
     phase_shift_to: Sample,
-    /// Hand-set level. Read by [`UnisonStyle::Custom`] only.
+    /// Hand-set level. Read by [`UnisonStyle::Manual`] only.
     gain: Sample,
-    /// Hand-set level at full gains blend. Read by [`UnisonStyle::Custom`] only.
+    /// Hand-set level at full gains blend. Read by [`UnisonStyle::Manual`] only.
     gain_to: Sample,
 }
 
@@ -696,11 +696,11 @@ impl<L: OscillatorLinks> Oscillator<L> {
         router: &mut Router<'_, '_, '_, L::EngineEnd>,
     ) {
         match self.params.unison_style {
-            UnisonStyle::Custom => {
-                self.fill_unison_voices(channel_idx, voice_idx, router, &CustomUnison);
+            UnisonStyle::Manual => {
+                self.fill_unison_voices(channel_idx, voice_idx, router, &ManualUnison);
             }
-            UnisonStyle::Style1 => {
-                let style = Style1Unison::new(self.params.unison_stereo, channel_idx);
+            UnisonStyle::SynthFlat => {
+                let style = SynthFlatUnison::new(self.params.unison_stereo, channel_idx);
                 self.fill_unison_voices(channel_idx, voice_idx, router, &style);
             }
         }

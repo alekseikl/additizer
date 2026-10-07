@@ -8,8 +8,10 @@ use crate::{
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UnisonStyle {
     #[default]
-    Custom,
-    Style1,
+    #[serde(alias = "Custom")]
+    Manual,
+    #[serde(alias = "Style1")]
+    SynthFlat,
 }
 
 fn default_unison_stereo() -> Sample {
@@ -43,7 +45,7 @@ pub struct OscillatorConfig {
     pub unison_voices: usize,
     #[serde(default)]
     pub unison_style: UnisonStyle,
-    /// Width of Style1 unison across the channels. `0` mixes both channels
+    /// Width of SynthFlat unison across the channels. `0` mixes both channels
     /// together; `1` leaves each detuned oscillator on one channel.
     #[serde(default = "default_unison_stereo")]
     pub unison_stereo: Sample,
@@ -70,7 +72,7 @@ impl Default for OscillatorConfig {
         Self {
             id: -1,
             unison_voices: 1,
-            unison_style: UnisonStyle::Custom,
+            unison_style: UnisonStyle::Manual,
             unison_stereo: default_unison_stereo(),
             steal_phase: false,
             phase_random: 0.0,

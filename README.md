@@ -1,6 +1,6 @@
 ## Overview
 
-Additizer is a modular synthesizer plugin. It consists of a wavetable-like oscillator inspired by Vital
+Additizer is a modular synthesizer plugin. It consists of a wavetable-like oscillator
 and a set of modules that process waveforms in the frequency domain.
 Every slider in the UI is stereo, and each channel can be adjusted by dragging with the right mouse button.
 
@@ -16,7 +16,7 @@ Every slider in the UI is stereo, and each channel can be adjusted by dragging w
 - `Spectral Blend`: Crossfades between two spectrums with a blend control.
 - `Band Select`: Passes a half-open range of harmonics.
 - `Oscillator`: Takes a spectral input, performs an inverse FFT, and then behaves like a wavetable oscillator.
-  Supports up to 16 unison voices, each of which is stereo. Custom unison sets each voice's phase and gain with a stereo slider. Style1 unison shapes gains as a center voice against the detuned voices and spreads them across the channels.
+  Supports up to 16 unison voices, each of which is stereo. Manual unison sets each voice's phase and gain with a stereo slider. SynthFlat unison shapes gains as a center voice against the detuned voices and spreads them across the channels.
   Controls that can be modulated: gain, pitch, frequency (through-zero FM), phase, detune, detune focus (pitch distribution),
   unison phases and unison gains blend.
 - `Envelope`: AHDSR envelope generator to control both spectral and audio modules.

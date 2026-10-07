@@ -10,7 +10,7 @@ use addi_ui_backend::ui_bridge::modules::oscillator::OscillatorUiBridge;
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 use egui::{Checkbox, ComboBox, DragValue, Grid, Id, Modal, Sides, Ui};
 
-const UNISON_STYLES: [UnisonStyle; 2] = [UnisonStyle::Custom, UnisonStyle::Style1];
+const UNISON_STYLES: [UnisonStyle; 2] = [UnisonStyle::Manual, UnisonStyle::SynthFlat];
 
 trait UnisonStyleLabel {
     fn label(&self) -> &'static str;
@@ -19,8 +19,8 @@ trait UnisonStyleLabel {
 impl UnisonStyleLabel for UnisonStyle {
     fn label(&self) -> &'static str {
         match self {
-            Self::Custom => "Custom",
-            Self::Style1 => "Style1",
+            Self::Manual => "Manual",
+            Self::SynthFlat => "SynthFlat",
         }
     }
 }
@@ -325,7 +325,7 @@ impl OscillatorUI {
         }
         ui.end_row();
 
-        if config.unison_style == UnisonStyle::Style1 {
+        if config.unison_style == UnisonStyle::SynthFlat {
             ui.label("Stereo");
             if ui
                 .add(
@@ -396,7 +396,7 @@ impl OscillatorUI {
             ui.end_row();
         }
 
-        ui.label(if config.unison_style == UnisonStyle::Style1 {
+        ui.label(if config.unison_style == UnisonStyle::SynthFlat {
             "Blend"
         } else {
             "Levels Blend"
@@ -408,8 +408,8 @@ impl OscillatorUI {
                 &mut config.gains_blend,
                 synth_bridge,
             ))
-            .on_hover_text(if config.unison_style == UnisonStyle::Style1 {
-                "Style1 unison blend. 0 is the center voice only; 1 brings in the detuned voices."
+            .on_hover_text(if config.unison_style == UnisonStyle::SynthFlat {
+                "SynthFlat unison blend. 0 is the center voice only; 1 brings in the detuned voices."
             } else {
                 "Blend between the two level columns."
             })
@@ -554,8 +554,8 @@ impl OscillatorUI {
                         if ui
                             .selectable_label(config.unison_style == style, style.label())
                             .on_hover_text(match style {
-                                UnisonStyle::Custom => "Set each unison voice level by hand.",
-                                UnisonStyle::Style1 => {
+                                UnisonStyle::Manual => "Set each unison voice level by hand.",
+                                UnisonStyle::SynthFlat => {
                                     "Shape levels and spread them across the channels."
                                 }
                             })

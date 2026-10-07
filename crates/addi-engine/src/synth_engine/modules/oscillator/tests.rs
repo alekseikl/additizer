@@ -2,7 +2,7 @@ use realfft::RealFftPlanner;
 
 use super::{
     DFT_BUFFER_SIZE, HALF_WAVEFORM_BITS, IfftPlanners, Interpolated, MAX_UNISON_VOICES, Oscillator,
-    OscillatorConfig, OscillatorLinks, Style1Unison, UnisonStyle, UnisonVoice, VoiceRenderCtx,
+    OscillatorConfig, OscillatorLinks, SynthFlatUnison, UnisonStyle, UnisonVoice, VoiceRenderCtx,
     WAVEFORM_BITS, WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform,
     WaveformBuffer, WaveformSize,
     lanes::{UNISON_LANES, UnisonLaneParams},
@@ -206,14 +206,14 @@ fn stereo_phase_random_gives_each_channel_its_own_phases() {
 }
 
 #[test]
-fn unison_style_defaults_to_custom_and_full_stereo() {
+fn unison_style_defaults_to_manual_and_full_stereo() {
     let config = OscillatorConfig::default();
 
-    assert_eq!(config.unison_style, UnisonStyle::Custom);
+    assert_eq!(config.unison_style, UnisonStyle::Manual);
     assert_eq!(config.unison_stereo, 1.0);
     assert_eq!(
         <Oscillator>::new(1).get_config().unison_style,
-        UnisonStyle::Custom
+        UnisonStyle::Manual
     );
 }
 
@@ -226,7 +226,7 @@ fn unison_style_defaults_when_missing_from_json() {
 
     let config: OscillatorConfig = serde_json::from_value(json).unwrap();
 
-    assert_eq!(config.unison_style, UnisonStyle::Custom);
+    assert_eq!(config.unison_style, UnisonStyle::Manual);
     assert_eq!(config.unison_stereo, 1.0);
 }
 
@@ -235,10 +235,10 @@ fn approx_eq(actual: Sample, expected: Sample) {
 }
 
 #[test]
-fn style1_rates_follow_paired_spread() {
+fn synth_flat_rates_follow_paired_spread() {
     let unison = 5;
     let detune = 1.0;
-    let style = Style1Unison::new(1.0, LEFT_CHANNEL);
+    let style = SynthFlatUnison::new(1.0, LEFT_CHANNEL);
     let rate = |idx: usize, unison: usize| style.rate_gain(idx, unison, detune, 0.0, (0.0, 0.0)).0;
 
     // Positions are -1, -1/2, 0, +1/2, +1. One octave of detune.
@@ -256,18 +256,18 @@ fn style1_rates_follow_paired_spread() {
 }
 
 #[test]
-fn style1_voice_gain_matches_set_amplitude_and_stereo_blend() {
+fn synth_flat_voice_gain_matches_set_amplitude_and_stereo_blend() {
     let unison = 5;
     // center 0.4, detuned 0.6, two detuned pairs: 1/sqrt(0.16 + 0.36*2)
     let scale = (0.88f32).sqrt().recip();
     let amplitudes = (0.4 * scale, 0.6 * scale);
     let (center_amp, detuned_amp) = amplitudes;
 
-    let wide_left = Style1Unison::new(1.0, LEFT_CHANNEL);
-    let wide_right = Style1Unison::new(1.0, RIGHT_CHANNEL);
-    let folded_left = Style1Unison::new(0.0, LEFT_CHANNEL);
-    let folded_right = Style1Unison::new(0.0, RIGHT_CHANNEL);
-    let gain = |style: Style1Unison, idx: usize, amplitudes: (Sample, Sample)| {
+    let wide_left = SynthFlatUnison::new(1.0, LEFT_CHANNEL);
+    let wide_right = SynthFlatUnison::new(1.0, RIGHT_CHANNEL);
+    let folded_left = SynthFlatUnison::new(0.0, LEFT_CHANNEL);
+    let folded_right = SynthFlatUnison::new(0.0, RIGHT_CHANNEL);
+    let gain = |style: SynthFlatUnison, idx: usize, amplitudes: (Sample, Sample)| {
         style.rate_gain(idx, unison, 0.0, 0.0, amplitudes).1
     };
 
@@ -309,15 +309,15 @@ fn style1_voice_gain_matches_set_amplitude_and_stereo_blend() {
 }
 
 #[test]
-fn style1_even_unison_uses_center_level_for_the_inner_pair() {
+fn synth_flat_even_unison_uses_center_level_for_the_inner_pair() {
     // Four voices: ±1/3 use the center level, ±1 use the detuned level.
     // At full stereo the left channel gets -1/3 and +1.
     let scale = (0.52f32).sqrt().recip();
     let center_amp = 0.4 * scale;
     let detuned_amp = 0.6 * scale;
     let amplitudes = (center_amp, detuned_amp);
-    let wide_left = Style1Unison::new(1.0, LEFT_CHANNEL);
-    let gain = |style: Style1Unison, idx: usize, unison: usize, amplitudes: (Sample, Sample)| {
+    let wide_left = SynthFlatUnison::new(1.0, LEFT_CHANNEL);
+    let gain = |style: SynthFlatUnison, idx: usize, unison: usize, amplitudes: (Sample, Sample)| {
         style.rate_gain(idx, unison, 0.0, 0.0, amplitudes).1
     };
 
@@ -329,14 +329,14 @@ fn style1_even_unison_uses_center_level_for_the_inner_pair() {
 
     // Two voices: hard opposite detune, unity level, no blend.
     let unity = (1.0, 0.0);
-    let wide_right = Style1Unison::new(1.0, RIGHT_CHANNEL);
+    let wide_right = SynthFlatUnison::new(1.0, RIGHT_CHANNEL);
     approx_eq(gain(wide_left, 0, 2, unity), 1.0);
     approx_eq(gain(wide_left, 1, 2, unity), 0.0);
     approx_eq(gain(wide_right, 0, 2, unity), 0.0);
     approx_eq(gain(wide_right, 1, 2, unity), 1.0);
     let mono = std::f32::consts::FRAC_1_SQRT_2;
-    let folded_left = Style1Unison::new(0.0, LEFT_CHANNEL);
-    let folded_right = Style1Unison::new(0.0, RIGHT_CHANNEL);
+    let folded_left = SynthFlatUnison::new(0.0, LEFT_CHANNEL);
+    let folded_right = SynthFlatUnison::new(0.0, RIGHT_CHANNEL);
     approx_eq(gain(folded_left, 0, 2, unity), mono);
     approx_eq(gain(folded_right, 1, 2, unity), mono);
 }
@@ -362,10 +362,10 @@ fn zero_level_unison(style: UnisonStyle, stereo: Sample) -> OscillatorConfig {
 }
 
 #[test]
-fn custom_unison_follows_hand_levels() {
+fn manual_unison_follows_hand_levels() {
     let mut engine = make_engine_with(
         default_harmonics(),
-        zero_level_unison(UnisonStyle::Custom, 1.0),
+        zero_level_unison(UnisonStyle::Manual, 1.0),
     );
     let (left, right) = play(&mut engine);
 
@@ -374,10 +374,10 @@ fn custom_unison_follows_hand_levels() {
 }
 
 #[test]
-fn style1_unison_shapes_levels_and_spreads_channels() {
+fn synth_flat_unison_shapes_levels_and_spreads_channels() {
     let mut mono = make_engine_with(
         default_harmonics(),
-        zero_level_unison(UnisonStyle::Style1, 0.0),
+        zero_level_unison(UnisonStyle::SynthFlat, 0.0),
     );
     let (mono_left, mono_right) = play(&mut mono);
 
@@ -386,7 +386,7 @@ fn style1_unison_shapes_levels_and_spreads_channels() {
 
     let mut wide = make_engine_with(
         default_harmonics(),
-        zero_level_unison(UnisonStyle::Style1, 1.0),
+        zero_level_unison(UnisonStyle::SynthFlat, 1.0),
     );
     let (wide_left, wide_right) = play(&mut wide);
 

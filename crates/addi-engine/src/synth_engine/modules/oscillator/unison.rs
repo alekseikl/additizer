@@ -30,9 +30,9 @@ pub(super) trait UnisonType {
     ) -> impl Iterator<Item = UnisonStateUpdate> + 'a;
 }
 
-pub(super) struct CustomUnison;
+pub(super) struct ManualUnison;
 
-impl CustomUnison {
+impl ManualUnison {
     fn rate(idx: usize, unison: usize, detune: Sample, detune_power: Sample) -> Sample {
         let center = 0.5 * (unison - 1) as Sample;
         let spread = (idx as Sample - center) * center.recip();
@@ -41,7 +41,7 @@ impl CustomUnison {
     }
 }
 
-impl UnisonType for CustomUnison {
+impl UnisonType for ManualUnison {
     fn process<'a, A: EngineAudioEnd>(
         &self,
         this_frame: bool,
@@ -90,19 +90,21 @@ impl UnisonType for CustomUnison {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct Style1Unison {
+pub(super) struct SynthFlatUnison {
     stereo_mult: Sample,
     center_mult: Sample,
     channel_idx: usize,
 }
 
-impl Style1Unison {
+impl SynthFlatUnison {
     pub(super) fn new(stereo: Sample, channel_idx: usize) -> Self {
         let fade = stereo.clamp(0.0, 1.0).mul_add(0.5, 0.5);
         let angle = fade * std::f32::consts::FRAC_PI_2;
+        let (stereo_mult, center_mult) = angle.sin_cos();
+
         Self {
-            stereo_mult: angle.sin(),
-            center_mult: angle.cos(),
+            stereo_mult,
+            center_mult,
             channel_idx,
         }
     }
@@ -160,7 +162,7 @@ impl Style1Unison {
     }
 }
 
-impl UnisonType for Style1Unison {
+impl UnisonType for SynthFlatUnison {
     fn process<'a, A: EngineAudioEnd>(
         &self,
         this_frame: bool,
