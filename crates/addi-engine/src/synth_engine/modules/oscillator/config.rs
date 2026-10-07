@@ -5,17 +5,10 @@ use crate::{
     synth_engine::{ModuleId, Sample, StereoSample, oscillator::MAX_UNISON_VOICES},
 };
 
-/// How unison voice levels are produced.
-///
-/// `Custom` uses the per-voice level sliders. `Style1` pairs voices around
-/// the detune range. The center (or the inner pair, when the count is even)
-/// and the detuned voices use two shared levels, then `unison_stereo`
-/// crossfades the two channels.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UnisonStyle {
     #[default]
     Custom,
-    #[serde(alias = "Vital")]
     Style1,
 }
 

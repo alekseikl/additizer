@@ -21,17 +21,17 @@ use crate::{
         synth_module::SynthModule,
         types::{ComplexSample, Sample},
     },
-    synth_engine::{
-        db_to_gain, fast_pitch_to_freq_x4, from_st, pitch_to_freq, power_scale, zip_map_x4,
-    },
+    synth_engine::{db_to_gain, fast_pitch_to_freq_x4, from_st, pitch_to_freq, zip_map_x4},
 };
 
 mod config;
 mod lanes;
 mod link;
 pub mod stub;
+mod unison;
 
 use lanes::{SampleCtx, UNISON_CHUNKS, UNISON_LANES, UnisonLaneParams};
+use unison::{CustomUnison, Style1Unison, UnisonType};
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -231,49 +231,11 @@ impl Default for UnisonVoice {
     }
 }
 
-struct UnisonStateUpdate {
-    rate: Sample,
-    phase_shift: Sample,
-    gain: Sample,
-}
-
-/// One Style1 oscillator, ordered low detune to high.
-///
-/// Voices are paired. Pair `i` sits at `t = (2i + bump) / (unison - 1)`
-/// (`bump` is 1 for an even count, so there is no zero-detune voice). The
-/// left channel starts flat and the sides alternate each pair. An odd count
-/// keeps pair 0 as one center oscillator shared by both channels.
-struct Style1Oscillator {
-    /// Signed detune before the power curve, in [-1, 1].
-    position: Sample,
-    on_left: bool,
-    on_right: bool,
-    /// Center level. Every other pair uses the detuned level.
-    center_level: bool,
-}
-
-#[derive(Clone, Copy)]
-enum UnisonNormalize {
-    Custom,
-    Style1,
-}
-
+#[derive(Default)]
 struct Voice {
     phase_reset: Option<PhaseReset>,
-    unison_gain: Interpolated,
     unison: [UnisonVoice; MAX_UNISON_VOICES],
     phases: [Phase; MAX_UNISON_VOICES],
-}
-
-impl Default for Voice {
-    fn default() -> Self {
-        Self {
-            phase_reset: None,
-            phases: Default::default(),
-            unison_gain: Interpolated { from: 1.0, to: 1.0 },
-            unison: Default::default(),
-        }
-    }
 }
 
 struct VoiceBuffers {
@@ -727,200 +689,6 @@ impl<L: OscillatorLinks> Oscillator<L> {
         );
     }
 
-    fn calc_unison_update<'a, G, R>(
-        unison: usize,
-        this_frame: bool,
-        channel: &'a ChannelParams,
-        inputs: &Inputs,
-        router: &mut Router<'_, '_, '_, L::EngineEnd>,
-        gain_of: &'a G,
-        rate_of: &'a R,
-    ) -> impl Iterator<Item = UnisonStateUpdate> + 'a
-    where
-        G: Fn(usize, usize, &UnisonParams, Sample) -> Sample,
-        R: Fn(usize, Sample, Sample) -> Sample,
-    {
-        const MAX_DETUNE: Sample = 1.0;
-        const MAX_DETUNE_POWER: Sample = 5.0;
-
-        let detune = router
-            .scalar(&inputs.detune, channel.detune, this_frame)
-            .clamp(0.0, MAX_DETUNE);
-
-        let detune_power = router
-            .scalar(&inputs.detune_focus, channel.detune_focus, this_frame)
-            .clamp(-1.0, 1.0)
-            * MAX_DETUNE_POWER;
-
-        let phases_blend = router
-            .scalar(&inputs.phases_blend, channel.phases_blend, this_frame)
-            .clamp(0.0, 1.0);
-
-        let gains_blend = router
-            .scalar(&inputs.gains_blend, channel.gains_blend, this_frame)
-            .clamp(0.0, 1.0);
-
-        channel
-            .unison
-            .iter()
-            .take(unison)
-            .enumerate()
-            .map(move |(idx, param)| UnisonStateUpdate {
-                rate: rate_of(idx, detune, detune_power),
-                phase_shift: (param.phase_shift_to - param.phase_shift)
-                    .mul_add(phases_blend, param.phase_shift),
-                gain: gain_of(idx, unison, param, gains_blend),
-            })
-    }
-
-    /// Custom detune: voices spaced from -1 to 1 across `unison`, then bent by
-    /// [`power_scale`]. `detune` is the outermost offset in octaves.
-    fn custom_rate(idx: usize, unison: usize, detune: Sample, detune_power: Sample) -> Sample {
-        let center = 0.5 * (unison - 1) as Sample;
-        let spread = (idx as Sample - center) * center.recip();
-
-        (power_scale(spread.abs(), detune_power).copysign(spread) * detune).exp2()
-    }
-
-    fn style1_oscillator(idx: usize, unison: usize) -> Style1Oscillator {
-        if unison <= 1 || idx >= unison {
-            return Style1Oscillator {
-                position: 0.0,
-                on_left: true,
-                on_right: true,
-                center_level: true,
-            };
-        }
-
-        let odd = unison % 2 == 1;
-        let (pair, negative) = if odd {
-            let mid = (unison - 1) / 2;
-            if idx == mid {
-                return Style1Oscillator {
-                    position: 0.0,
-                    on_left: true,
-                    on_right: true,
-                    center_level: true,
-                };
-            } else if idx < mid {
-                (mid - idx, true)
-            } else {
-                (idx - mid, false)
-            }
-        } else {
-            let half = unison / 2;
-            if idx < half {
-                (half - 1 - idx, true)
-            } else {
-                (idx - half, false)
-            }
-        };
-
-        let step = if odd { 2 * pair } else { 2 * pair + 1 };
-        let magnitude = step as Sample / (unison - 1) as Sample;
-        // Pair 0: left is flat. Each next pair swaps which channel is sharp.
-        let left_is_sharp = pair % 2 == 1;
-        let on_left = if negative {
-            !left_is_sharp
-        } else {
-            left_is_sharp
-        };
-
-        Style1Oscillator {
-            position: if negative { -magnitude } else { magnitude },
-            on_left,
-            on_right: !on_left,
-            center_level: pair == 0,
-        }
-    }
-
-    /// Style1 detune: `2^(±powerScale(t) * detune)`.
-    fn style1_rate(idx: usize, unison: usize, detune: Sample, detune_power: Sample) -> Sample {
-        let position = Self::style1_oscillator(idx, unison).position;
-        let curved = power_scale(position.abs(), detune_power).copysign(position);
-
-        (curved * detune).exp2()
-    }
-
-    /// Style1 amplitudes after unity normalization.
-    ///
-    /// Two voices or fewer skip the blend and play at unity. Above that, blend
-    /// fades the raw center level from 1 to 0.4 and the raw detuned level from
-    /// 0 up to 0.6 along `(1 - blend)²`. The scale is
-    /// `1 / sqrt(center² + detuned² * (pairs - 1))`, where `pairs` is
-    /// `unison / 2` rounded up.
-    fn style1_amplitudes(unison: usize, blend: Sample) -> (Sample, Sample) {
-        const CENTER_LOW_AMPLITUDE: Sample = 0.4;
-        const DETUNED_HIGH_AMPLITUDE: Sample = 0.6;
-
-        if unison <= 2 {
-            return (1.0, 0.0);
-        }
-
-        let blend = blend.clamp(0.0, 1.0);
-        let center = (CENTER_LOW_AMPLITUDE - 1.0).mul_add(blend, 1.0);
-        let detuned_blend = 1.0 - blend;
-        let detuned = DETUNED_HIGH_AMPLITUDE * (1.0 - detuned_blend * detuned_blend);
-        let pairs = unison.div_ceil(2);
-        let square_sums = center * center + detuned * detuned * (pairs - 1) as Sample;
-
-        let adjustment = square_sums.sqrt().recip();
-        (adjustment * center, adjustment * detuned)
-    }
-
-    /// Style1 stereo: equal-power crossfade of the two channel sums.
-    ///
-    /// Spread 0 mixes both channels at 1/√2. Spread 1 leaves each channel as it
-    /// was rendered. A center oscillator is the same signal on both channels, so
-    /// the weights add. A detuned oscillator exists on one channel only.
-    fn style1_voice_gain(
-        idx: usize,
-        unison: usize,
-        blend: Sample,
-        stereo: Sample,
-        channel_idx: usize,
-    ) -> Sample {
-        let osc = Self::style1_oscillator(idx, unison);
-        let (center_amp, detuned_amp) = Self::style1_amplitudes(unison, blend);
-        let amp = if osc.center_level {
-            center_amp
-        } else {
-            detuned_amp
-        };
-
-        let fade = stereo.clamp(0.0, 1.0).mul_add(0.5, 0.5);
-        let angle = fade * std::f32::consts::FRAC_PI_2;
-        let stereo_mult = angle.sin();
-        let center_mult = angle.cos();
-
-        let on_left = channel_idx == LEFT_CHANNEL;
-        let native = if on_left { osc.on_left } else { osc.on_right };
-        let other = if on_left { osc.on_right } else { osc.on_left };
-
-        if native && other {
-            amp * (stereo_mult + center_mult)
-        } else if native {
-            amp * stereo_mult
-        } else if other {
-            amp * center_mult
-        } else {
-            0.0
-        }
-    }
-
-    fn normalize_unison(kind: UnisonNormalize, gains: impl Iterator<Item = Sample>) -> Sample {
-        match kind {
-            // Don't amplify a hand-drawn curve whose voices already sum below unity.
-            UnisonNormalize::Custom => {
-                let sum_sq = gains.map(|gain| gain * gain).sum::<Sample>();
-                sum_sq.sqrt().max(1.0).recip()
-            }
-            // `style1_amplitudes` already normalized one channel. The stereo
-            // crossfade sits on top of that and is not normalized again.
-            UnisonNormalize::Style1 => 1.0,
-        }
-    }
-
     fn process_unison(
         &mut self,
         channel_idx: usize,
@@ -928,64 +696,25 @@ impl<L: OscillatorLinks> Oscillator<L> {
         router: &mut Router<'_, '_, '_, L::EngineEnd>,
     ) {
         match self.params.unison_style {
-            UnisonStyle::Custom => self.process_unison_custom(channel_idx, voice_idx, router),
-            UnisonStyle::Style1 => self.process_unison_style1(channel_idx, voice_idx, router),
+            UnisonStyle::Custom => {
+                self.fill_unison_voices(channel_idx, voice_idx, router, &CustomUnison);
+            }
+            UnisonStyle::Style1 => {
+                let style = Style1Unison::new(self.params.unison_stereo, channel_idx);
+                self.fill_unison_voices(channel_idx, voice_idx, router, &style);
+            }
         }
 
         self.store_unison_lanes(channel_idx, voice_idx);
     }
 
-    fn process_unison_custom(
+    fn fill_unison_voices(
         &mut self,
         channel_idx: usize,
         voice_idx: usize,
         router: &mut Router<'_, '_, '_, L::EngineEnd>,
+        style: &impl UnisonType,
     ) {
-        let unison = self.params.unison;
-
-        self.fill_unison_voices(
-            channel_idx,
-            voice_idx,
-            router,
-            UnisonNormalize::Custom,
-            |_, _, param, blend| (param.gain_to - param.gain).mul_add(blend, param.gain),
-            move |idx, detune, detune_power| Self::custom_rate(idx, unison, detune, detune_power),
-        );
-    }
-
-    fn process_unison_style1(
-        &mut self,
-        channel_idx: usize,
-        voice_idx: usize,
-        router: &mut Router<'_, '_, '_, L::EngineEnd>,
-    ) {
-        let stereo = self.params.unison_stereo.clamp(0.0, 1.0);
-        let unison = self.params.unison;
-
-        self.fill_unison_voices(
-            channel_idx,
-            voice_idx,
-            router,
-            UnisonNormalize::Style1,
-            move |idx, unison, _param, blend| {
-                Self::style1_voice_gain(idx, unison, blend, stereo, channel_idx)
-            },
-            move |idx, detune, detune_power| Self::style1_rate(idx, unison, detune, detune_power),
-        );
-    }
-
-    fn fill_unison_voices<G, R>(
-        &mut self,
-        channel_idx: usize,
-        voice_idx: usize,
-        router: &mut Router<'_, '_, '_, L::EngineEnd>,
-        normalize: UnisonNormalize,
-        gain_of: G,
-        rate_of: R,
-    ) where
-        G: Fn(usize, usize, &UnisonParams, Sample) -> Sample,
-        R: Fn(usize, Sample, Sample) -> Sample,
-    {
         let unison = self.params.unison;
         let inputs = &self.inputs;
         let channel = &self.channel_params[channel_idx];
@@ -993,51 +722,34 @@ impl<L: OscillatorLinks> Oscillator<L> {
 
         if unison < 2 {
             voice.unison[0] = UnisonVoice::default();
-            voice.unison_gain = Interpolated { from: 1.0, to: 1.0 };
             return;
         }
 
         if router.triggered() {
             for (state, update) in izip!(
                 &mut voice.unison,
-                Self::calc_unison_update(unison, true, channel, inputs, router, &gain_of, &rate_of)
+                style.process(true, unison, channel, inputs, router)
             ) {
                 state.rate.from = update.rate;
                 state.phase_shift.from = update.phase_shift;
                 state.gain.from = update.gain;
             }
-
-            voice.unison_gain.from = Self::normalize_unison(
-                normalize,
-                voice
-                    .unison
-                    .iter()
-                    .take(unison)
-                    .map(|state| state.gain.from),
-            );
         } else {
             for state in voice.unison.iter_mut().take(unison) {
                 state.rate.advance();
                 state.phase_shift.advance();
                 state.gain.advance();
             }
-
-            voice.unison_gain.advance();
         }
 
         for (state, update) in izip!(
             &mut voice.unison,
-            Self::calc_unison_update(unison, false, channel, inputs, router, &gain_of, &rate_of)
+            style.process(false, unison, channel, inputs, router)
         ) {
             state.rate.to = update.rate;
             state.phase_shift.to = update.phase_shift;
             state.gain.to = update.gain;
         }
-
-        voice.unison_gain.to = Self::normalize_unison(
-            normalize,
-            voice.unison.iter().take(unison).map(|state| state.gain.to),
-        );
     }
 
     fn store_unison_lanes(&mut self, channel_idx: usize, voice_idx: usize) {
@@ -1045,26 +757,16 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let full_chunks = unison / UNISON_LANES;
         let rem_lanes = unison % UNISON_LANES;
         let voice = self.voices.at(channel_idx, voice_idx);
-        let gain_scale_from = voice.unison_gain.from;
-        let gain_scale_to = voice.unison_gain.to;
 
         for chunk_idx in 0..full_chunks {
             let start = chunk_idx * UNISON_LANES;
-            let params = UnisonLaneParams::from_voices(
-                &voice.unison[start..start + UNISON_LANES],
-                gain_scale_from,
-                gain_scale_to,
-            );
+            let params = UnisonLaneParams::from_voices(&voice.unison[start..start + UNISON_LANES]);
             self.lane_params[chunk_idx] = params;
         }
 
         if rem_lanes > 0 {
             let start = full_chunks * UNISON_LANES;
-            let params = UnisonLaneParams::from_voices(
-                &voice.unison[start..start + rem_lanes],
-                gain_scale_from,
-                gain_scale_to,
-            );
+            let params = UnisonLaneParams::from_voices(&voice.unison[start..start + rem_lanes]);
             self.lane_params[full_chunks] = params;
         }
     }

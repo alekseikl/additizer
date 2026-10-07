@@ -2,8 +2,9 @@ use realfft::RealFftPlanner;
 
 use super::{
     DFT_BUFFER_SIZE, HALF_WAVEFORM_BITS, IfftPlanners, Interpolated, MAX_UNISON_VOICES, Oscillator,
-    OscillatorConfig, OscillatorLinks, UnisonStyle, UnisonVoice, VoiceRenderCtx, WAVEFORM_BITS,
-    WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform, WaveformBuffer, WaveformSize,
+    OscillatorConfig, OscillatorLinks, Style1Unison, UnisonStyle, UnisonVoice, VoiceRenderCtx,
+    WAVEFORM_BITS, WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform,
+    WaveformBuffer, WaveformSize,
     lanes::{UNISON_LANES, UnisonLaneParams},
 };
 use crate::synth_engine::{
@@ -237,74 +238,73 @@ fn approx_eq(actual: Sample, expected: Sample) {
 fn style1_rates_follow_paired_spread() {
     let unison = 5;
     let detune = 1.0;
+    let style = Style1Unison::new(1.0, LEFT_CHANNEL);
+    let rate = |idx: usize, unison: usize| style.rate_gain(idx, unison, detune, 0.0, (0.0, 0.0)).0;
 
     // Positions are -1, -1/2, 0, +1/2, +1. One octave of detune.
-    approx_eq(<Oscillator>::style1_rate(0, unison, detune, 0.0), 0.5);
-    approx_eq(
-        <Oscillator>::style1_rate(1, unison, detune, 0.0),
-        (-0.5f32).exp2(),
-    );
-    approx_eq(<Oscillator>::style1_rate(2, unison, detune, 0.0), 1.0);
-    approx_eq(
-        <Oscillator>::style1_rate(3, unison, detune, 0.0),
-        0.5f32.exp2(),
-    );
-    approx_eq(<Oscillator>::style1_rate(4, unison, detune, 0.0), 2.0);
+    approx_eq(rate(0, unison), 0.5);
+    approx_eq(rate(1, unison), (-0.5f32).exp2());
+    approx_eq(rate(2, unison), 1.0);
+    approx_eq(rate(3, unison), 0.5f32.exp2());
+    approx_eq(rate(4, unison), 2.0);
 
     // Even count has no center: ±1/3 and ±1.
-    approx_eq(<Oscillator>::style1_rate(0, 4, detune, 0.0), 0.5);
-    approx_eq(
-        <Oscillator>::style1_rate(1, 4, detune, 0.0),
-        (-1.0f32 / 3.0).exp2(),
-    );
-    approx_eq(
-        <Oscillator>::style1_rate(2, 4, detune, 0.0),
-        (1.0f32 / 3.0).exp2(),
-    );
-    approx_eq(<Oscillator>::style1_rate(3, 4, detune, 0.0), 2.0);
+    approx_eq(rate(0, 4), 0.5);
+    approx_eq(rate(1, 4), (-1.0f32 / 3.0).exp2());
+    approx_eq(rate(2, 4), (1.0f32 / 3.0).exp2());
+    approx_eq(rate(3, 4), 2.0);
 }
 
 #[test]
 fn style1_voice_gain_matches_set_amplitude_and_stereo_blend() {
     let unison = 5;
-    let blend = 1.0;
     // center 0.4, detuned 0.6, two detuned pairs: 1/sqrt(0.16 + 0.36*2)
     let scale = (0.88f32).sqrt().recip();
-    let center_amp = 0.4 * scale;
-    let detuned_amp = 0.6 * scale;
+    let amplitudes = (0.4 * scale, 0.6 * scale);
+    let (center_amp, detuned_amp) = amplitudes;
+
+    let wide_left = Style1Unison::new(1.0, LEFT_CHANNEL);
+    let wide_right = Style1Unison::new(1.0, RIGHT_CHANNEL);
+    let folded_left = Style1Unison::new(0.0, LEFT_CHANNEL);
+    let folded_right = Style1Unison::new(0.0, RIGHT_CHANNEL);
+    let gain = |style: Style1Unison, idx: usize, amplitudes: (Sample, Sample)| {
+        style.rate_gain(idx, unison, 0.0, 0.0, amplitudes).1
+    };
 
     // Full stereo. Left keeps -1 and +1/2, right keeps -1/2 and +1, both keep the center.
     let on_left = [true, false, true, true, false];
     let on_right = [false, true, true, false, true];
     for idx in 0..unison {
         let amp = if idx == 2 { center_amp } else { detuned_amp };
-        let left = <Oscillator>::style1_voice_gain(idx, unison, blend, 1.0, LEFT_CHANNEL);
-        let right = <Oscillator>::style1_voice_gain(idx, unison, blend, 1.0, RIGHT_CHANNEL);
-        approx_eq(left, if on_left[idx] { amp } else { 0.0 });
-        approx_eq(right, if on_right[idx] { amp } else { 0.0 });
+        approx_eq(
+            gain(wide_left, idx, amplitudes),
+            if on_left[idx] { amp } else { 0.0 },
+        );
+        approx_eq(
+            gain(wide_right, idx, amplitudes),
+            if on_right[idx] { amp } else { 0.0 },
+        );
     }
 
     // Spread 0 mixes both channels at 1/√2. The center exists on both, so it adds.
     let half = std::f32::consts::FRAC_1_SQRT_2;
     for idx in 0..unison {
-        let left = <Oscillator>::style1_voice_gain(idx, unison, blend, 0.0, LEFT_CHANNEL);
-        let right = <Oscillator>::style1_voice_gain(idx, unison, blend, 0.0, RIGHT_CHANNEL);
         let expected = if idx == 2 {
             center_amp * std::f32::consts::SQRT_2
         } else {
             detuned_amp * half
         };
-        approx_eq(left, expected);
-        approx_eq(right, expected);
+        approx_eq(gain(folded_left, idx, amplitudes), expected);
+        approx_eq(gain(folded_right, idx, amplitudes), expected);
     }
-    let center_mono = <Oscillator>::style1_voice_gain(2, unison, blend, 0.0, LEFT_CHANNEL);
-    let edge_mono = <Oscillator>::style1_voice_gain(0, unison, blend, 0.0, LEFT_CHANNEL);
+    let center_mono = gain(folded_left, 2, amplitudes);
+    let edge_mono = gain(folded_left, 0, amplitudes);
     approx_eq(center_mono / edge_mono, 4.0 / 3.0);
 
     // Blend 0 drops every detuned voice and leaves the center at unity.
     for idx in 0..unison {
-        let gain = <Oscillator>::style1_voice_gain(idx, unison, 0.0, 1.0, LEFT_CHANNEL);
-        approx_eq(gain, if idx == 2 { 1.0 } else { 0.0 });
+        let voice_gain = gain(wide_left, idx, (1.0, 0.0));
+        approx_eq(voice_gain, if idx == 2 { 1.0 } else { 0.0 });
     }
 }
 
@@ -315,51 +315,30 @@ fn style1_even_unison_uses_center_level_for_the_inner_pair() {
     let scale = (0.52f32).sqrt().recip();
     let center_amp = 0.4 * scale;
     let detuned_amp = 0.6 * scale;
+    let amplitudes = (center_amp, detuned_amp);
+    let wide_left = Style1Unison::new(1.0, LEFT_CHANNEL);
+    let gain = |style: Style1Unison, idx: usize, unison: usize, amplitudes: (Sample, Sample)| {
+        style.rate_gain(idx, unison, 0.0, 0.0, amplitudes).1
+    };
 
-    approx_eq(
-        <Oscillator>::style1_voice_gain(0, 4, 1.0, 1.0, LEFT_CHANNEL),
-        0.0,
-    );
-    approx_eq(
-        <Oscillator>::style1_voice_gain(1, 4, 1.0, 1.0, LEFT_CHANNEL),
-        center_amp,
-    );
-    approx_eq(
-        <Oscillator>::style1_voice_gain(2, 4, 1.0, 1.0, LEFT_CHANNEL),
-        0.0,
-    );
-    approx_eq(
-        <Oscillator>::style1_voice_gain(3, 4, 1.0, 1.0, LEFT_CHANNEL),
-        detuned_amp,
-    );
+    approx_eq(gain(wide_left, 0, 4, amplitudes), 0.0);
+    approx_eq(gain(wide_left, 1, 4, amplitudes), center_amp);
+    approx_eq(gain(wide_left, 2, 4, amplitudes), 0.0);
+    approx_eq(gain(wide_left, 3, 4, amplitudes), detuned_amp);
     assert!(center_amp < detuned_amp);
 
     // Two voices: hard opposite detune, unity level, no blend.
-    approx_eq(
-        <Oscillator>::style1_voice_gain(0, 2, 1.0, 1.0, LEFT_CHANNEL),
-        1.0,
-    );
-    approx_eq(
-        <Oscillator>::style1_voice_gain(1, 2, 1.0, 1.0, LEFT_CHANNEL),
-        0.0,
-    );
-    approx_eq(
-        <Oscillator>::style1_voice_gain(0, 2, 0.0, 1.0, RIGHT_CHANNEL),
-        0.0,
-    );
-    approx_eq(
-        <Oscillator>::style1_voice_gain(1, 2, 0.0, 1.0, RIGHT_CHANNEL),
-        1.0,
-    );
+    let unity = (1.0, 0.0);
+    let wide_right = Style1Unison::new(1.0, RIGHT_CHANNEL);
+    approx_eq(gain(wide_left, 0, 2, unity), 1.0);
+    approx_eq(gain(wide_left, 1, 2, unity), 0.0);
+    approx_eq(gain(wide_right, 0, 2, unity), 0.0);
+    approx_eq(gain(wide_right, 1, 2, unity), 1.0);
     let mono = std::f32::consts::FRAC_1_SQRT_2;
-    approx_eq(
-        <Oscillator>::style1_voice_gain(0, 2, 1.0, 0.0, LEFT_CHANNEL),
-        mono,
-    );
-    approx_eq(
-        <Oscillator>::style1_voice_gain(1, 2, 1.0, 0.0, RIGHT_CHANNEL),
-        mono,
-    );
+    let folded_left = Style1Unison::new(0.0, LEFT_CHANNEL);
+    let folded_right = Style1Unison::new(0.0, RIGHT_CHANNEL);
+    approx_eq(gain(folded_left, 0, 2, unity), mono);
+    approx_eq(gain(folded_right, 1, 2, unity), mono);
 }
 
 fn zero_level_unison(style: UnisonStyle, stereo: Sample) -> OscillatorConfig {
@@ -621,8 +600,6 @@ fn build_wave_keeps_full_resolution_past_half_table() {
 
 const RENDER_SENTINEL: Sample = 50.0;
 const FREQ_PHASE_MULT: Sample = 16.0;
-const UNISON_GAIN_FROM: Sample = 0.55;
-const UNISON_GAIN_TO: Sample = 0.85;
 const DECOY_PHASE: u32 = 0x1111_1111;
 
 struct RenderCase {
@@ -796,8 +773,8 @@ fn reference_render(
                         let phase_from = wrap_unit(voice.phase_shift.from);
                         let phase_to = wrap_unit(voice.phase_shift.to);
 
-                        let gain_from = voice.gain.from * UNISON_GAIN_FROM;
-                        let gain_to = voice.gain.to * UNISON_GAIN_TO;
+                        let gain_from = voice.gain.from;
+                        let gain_to = voice.gain.to;
 
                         (
                             voice.rate.from,
@@ -854,20 +831,13 @@ fn store_lane_params(osc: &mut Oscillator, voices: &[UnisonVoice], unison: usize
 
     for chunk in 0..full {
         let start = chunk * UNISON_LANES;
-        osc.lane_params[chunk] = UnisonLaneParams::from_voices(
-            &voices[start..start + UNISON_LANES],
-            UNISON_GAIN_FROM,
-            UNISON_GAIN_TO,
-        );
+        osc.lane_params[chunk] =
+            UnisonLaneParams::from_voices(&voices[start..start + UNISON_LANES]);
     }
 
     if rem > 0 {
         let start = full * UNISON_LANES;
-        osc.lane_params[full] = UnisonLaneParams::from_voices(
-            &voices[start..start + rem],
-            UNISON_GAIN_FROM,
-            UNISON_GAIN_TO,
-        );
+        osc.lane_params[full] = UnisonLaneParams::from_voices(&voices[start..start + rem]);
     }
 }
 
@@ -887,7 +857,6 @@ fn load_case(
             let slot = osc.voices.at_mut(channel, voice);
             slot.phases = [Phase::from_bits(DECOY_PHASE); MAX_UNISON_VOICES];
             slot.unison = std::array::from_fn(|_| decoy_unison_voice());
-            slot.unison_gain = Interpolated { from: 4.0, to: 4.0 };
         }
     }
 
@@ -908,10 +877,6 @@ fn load_case(
     let slot = osc.voices.at_mut(case.channel, case.voice);
     slot.phases = initial_phases();
     slot.unison = voices;
-    slot.unison_gain = Interpolated {
-        from: UNISON_GAIN_FROM,
-        to: UNISON_GAIN_TO,
-    };
     osc.params.unison = case.unison;
 
     osc.buffers.phase_inc.fill(0.0);
