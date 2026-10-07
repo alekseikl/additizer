@@ -16,7 +16,7 @@ Every slider in the UI is stereo, and each channel can be adjusted by dragging w
 - `Spectral Blend`: Crossfades between two spectrums with a blend control.
 - `Band Select`: Passes a half-open range of harmonics.
 - `Oscillator`: Takes a spectral input, performs an inverse FFT, and then behaves like a wavetable oscillator.
-  Supports up to 16 unison voices, each of which is stereo. The phase and gain of each unison voice can be controlled via a stereo slider.
+  Supports up to 16 unison voices, each of which is stereo. Custom unison sets each voice's phase and gain with a stereo slider. Style1 unison shapes gains as a center voice against the detuned voices and spreads them across the channels.
   Controls that can be modulated: gain, pitch, frequency (through-zero FM), phase, detune, detune focus (pitch distribution),
   unison phases and unison gains blend.
 - `Envelope`: AHDSR envelope generator to control both spectral and audio modules.

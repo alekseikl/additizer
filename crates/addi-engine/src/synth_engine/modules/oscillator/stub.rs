@@ -1,4 +1,6 @@
-use super::{OscillatorAudioEnd, OscillatorLinks, OscillatorUiEnd, PhasesDst, UiEvent, Unison};
+use super::{
+    OscillatorAudioEnd, OscillatorLinks, OscillatorUiEnd, PhasesDst, UiEvent, Unison, UnisonStyle,
+};
 
 use crate::synth_engine::{ComplexSample, DisplaySpectrum, Input, Sample, StereoSample};
 
@@ -48,6 +50,14 @@ impl OscillatorUiEnd for NoUi {
     }
 
     fn set_unison(&mut self, _unison: usize) -> bool {
+        self.diverge()
+    }
+
+    fn set_unison_style(&mut self, _style: UnisonStyle) -> bool {
+        self.diverge()
+    }
+
+    fn set_unison_stereo(&mut self, _stereo: Sample) -> bool {
         self.diverge()
     }
 

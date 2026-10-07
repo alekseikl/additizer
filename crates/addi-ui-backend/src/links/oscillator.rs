@@ -6,7 +6,7 @@ use addi_engine::{
 };
 
 use addi_engine::oscillator::{
-    OscillatorAudioEnd, OscillatorLinks, OscillatorUiEnd, UiEvent, Unison,
+    OscillatorAudioEnd, OscillatorLinks, OscillatorUiEnd, UiEvent, Unison, UnisonStyle,
 };
 
 pub struct UiEnd {
@@ -32,6 +32,14 @@ impl UiEnd {
 
     pub fn set_unison(&mut self, unison: usize) -> bool {
         self.tx.push(UiEvent::Unison(unison)).is_ok()
+    }
+
+    pub fn set_unison_style(&mut self, style: UnisonStyle) -> bool {
+        self.tx.push(UiEvent::UnisonStyle(style)).is_ok()
+    }
+
+    pub fn set_unison_stereo(&mut self, stereo: Sample) -> bool {
+        self.tx.push(UiEvent::UnisonStereo(stereo)).is_ok()
     }
 
     pub fn set_steal_phase(&mut self, steal_phase: bool) -> bool {
@@ -171,6 +179,12 @@ impl OscillatorUiEnd for UiEnd {
     }
     fn set_unison(&mut self, unison: usize) -> bool {
         UiEnd::set_unison(self, unison)
+    }
+    fn set_unison_style(&mut self, style: UnisonStyle) -> bool {
+        UiEnd::set_unison_style(self, style)
+    }
+    fn set_unison_stereo(&mut self, stereo: Sample) -> bool {
+        UiEnd::set_unison_stereo(self, stereo)
     }
     fn set_steal_phase(&mut self, steal_phase: bool) -> bool {
         UiEnd::set_steal_phase(self, steal_phase)

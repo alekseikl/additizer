@@ -209,9 +209,8 @@ impl InputUi for Input {
             Self::Distortion => Slider::stereo(value, 0.0..=40.0, None)
                 .default(0.0)
                 .units(Units::Db),
-            Self::Blend | Self::GainsBlend | Self::PhasesBlend => {
-                Slider::stereo(value, 0.0..=1.0, None).default(0.0)
-            }
+            Self::Blend | Self::PhasesBlend => Slider::stereo(value, 0.0..=1.0, None).default(0.0),
+            Self::GainsBlend => Slider::stereo(value, 0.0..=1.0, None).default(0.8),
             Self::Cutoff => Slider::stereo(value, MIN_CUTOFF..=MAX_CUTOFF, None)
                 .default(0.0)
                 .units(Units::Octaves(OctavesDisplay::Frequency)),

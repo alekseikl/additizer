@@ -1,6 +1,6 @@
 use crate::ui_bridge::ModuleUiBridge;
 use addi_engine::oscillator::{
-    Oscillator, OscillatorConfig, OscillatorLinks, OscillatorUiEnd, PhasesDst, Unison,
+    Oscillator, OscillatorConfig, OscillatorLinks, OscillatorUiEnd, PhasesDst, Unison, UnisonStyle,
 };
 use addi_engine::{DisplaySpectrum, Input, Sample, StereoSample};
 
@@ -46,6 +46,18 @@ impl<L: OscillatorLinks> OscillatorUiBridge<L> {
     pub fn set_unison(&mut self, unison: usize) {
         if self.ui_end.set_unison(unison) {
             self.config.unison_voices = unison;
+        }
+    }
+
+    pub fn set_unison_style(&mut self, style: UnisonStyle) {
+        if self.ui_end.set_unison_style(style) {
+            self.config.unison_style = style;
+        }
+    }
+
+    pub fn set_unison_stereo(&mut self, stereo: Sample) {
+        if self.ui_end.set_unison_stereo(stereo) {
+            self.config.unison_stereo = stereo;
         }
     }
 

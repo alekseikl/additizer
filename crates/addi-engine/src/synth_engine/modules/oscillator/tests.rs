@@ -2,7 +2,7 @@ use realfft::RealFftPlanner;
 
 use super::{
     DFT_BUFFER_SIZE, HALF_WAVEFORM_BITS, IfftPlanners, Interpolated, MAX_UNISON_VOICES, Oscillator,
-    OscillatorConfig, OscillatorLinks, UnisonVoice, VoiceRenderCtx, WAVEFORM_BITS,
+    OscillatorConfig, OscillatorLinks, UnisonStyle, UnisonVoice, VoiceRenderCtx, WAVEFORM_BITS,
     WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform, WaveformBuffer, WaveformSize,
     lanes::{UNISON_LANES, UnisonLaneParams},
 };
@@ -12,7 +12,7 @@ use crate::synth_engine::{
     coeffs::catmull_rom_from_powers,
     harmonic_editor::HarmonicEditorConfig,
     phase::Phase,
-    routing::{InputSlot, RIGHT_CHANNEL},
+    routing::{InputSlot, LEFT_CHANNEL, RIGHT_CHANNEL},
 };
 
 impl<L: OscillatorLinks> Oscillator<L> {
@@ -202,6 +202,218 @@ fn stereo_phase_random_gives_each_channel_its_own_phases() {
     assert!(rms(&left) > 1e-3);
     assert!(rms(&right) > 1e-3);
     assert!(max_abs_diff(&left, &right) > 1e-3);
+}
+
+#[test]
+fn unison_style_defaults_to_custom_and_full_stereo() {
+    let config = OscillatorConfig::default();
+
+    assert_eq!(config.unison_style, UnisonStyle::Custom);
+    assert_eq!(config.unison_stereo, 1.0);
+    assert_eq!(
+        <Oscillator>::new(1).get_config().unison_style,
+        UnisonStyle::Custom
+    );
+}
+
+#[test]
+fn unison_style_defaults_when_missing_from_json() {
+    let mut json = serde_json::to_value(OscillatorConfig::default()).unwrap();
+    let object = json.as_object_mut().unwrap();
+    object.remove("unison_style");
+    object.remove("unison_stereo");
+
+    let config: OscillatorConfig = serde_json::from_value(json).unwrap();
+
+    assert_eq!(config.unison_style, UnisonStyle::Custom);
+    assert_eq!(config.unison_stereo, 1.0);
+}
+
+fn approx_eq(actual: Sample, expected: Sample) {
+    assert!((actual - expected).abs() < 1e-5, "{actual} != {expected}");
+}
+
+#[test]
+fn style1_rates_follow_paired_spread() {
+    let unison = 5;
+    let detune = 1.0;
+
+    // Positions are -1, -1/2, 0, +1/2, +1. One octave of detune.
+    approx_eq(<Oscillator>::style1_rate(0, unison, detune, 0.0), 0.5);
+    approx_eq(
+        <Oscillator>::style1_rate(1, unison, detune, 0.0),
+        (-0.5f32).exp2(),
+    );
+    approx_eq(<Oscillator>::style1_rate(2, unison, detune, 0.0), 1.0);
+    approx_eq(
+        <Oscillator>::style1_rate(3, unison, detune, 0.0),
+        0.5f32.exp2(),
+    );
+    approx_eq(<Oscillator>::style1_rate(4, unison, detune, 0.0), 2.0);
+
+    // Even count has no center: ±1/3 and ±1.
+    approx_eq(<Oscillator>::style1_rate(0, 4, detune, 0.0), 0.5);
+    approx_eq(
+        <Oscillator>::style1_rate(1, 4, detune, 0.0),
+        (-1.0f32 / 3.0).exp2(),
+    );
+    approx_eq(
+        <Oscillator>::style1_rate(2, 4, detune, 0.0),
+        (1.0f32 / 3.0).exp2(),
+    );
+    approx_eq(<Oscillator>::style1_rate(3, 4, detune, 0.0), 2.0);
+}
+
+#[test]
+fn style1_voice_gain_matches_set_amplitude_and_stereo_blend() {
+    let unison = 5;
+    let blend = 1.0;
+    // center 0.4, detuned 0.6, two detuned pairs: 1/sqrt(0.16 + 0.36*2)
+    let scale = (0.88f32).sqrt().recip();
+    let center_amp = 0.4 * scale;
+    let detuned_amp = 0.6 * scale;
+
+    // Full stereo. Left keeps -1 and +1/2, right keeps -1/2 and +1, both keep the center.
+    let on_left = [true, false, true, true, false];
+    let on_right = [false, true, true, false, true];
+    for idx in 0..unison {
+        let amp = if idx == 2 { center_amp } else { detuned_amp };
+        let left = <Oscillator>::style1_voice_gain(idx, unison, blend, 1.0, LEFT_CHANNEL);
+        let right = <Oscillator>::style1_voice_gain(idx, unison, blend, 1.0, RIGHT_CHANNEL);
+        approx_eq(left, if on_left[idx] { amp } else { 0.0 });
+        approx_eq(right, if on_right[idx] { amp } else { 0.0 });
+    }
+
+    // Spread 0 mixes both channels at 1/√2. The center exists on both, so it adds.
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    for idx in 0..unison {
+        let left = <Oscillator>::style1_voice_gain(idx, unison, blend, 0.0, LEFT_CHANNEL);
+        let right = <Oscillator>::style1_voice_gain(idx, unison, blend, 0.0, RIGHT_CHANNEL);
+        let expected = if idx == 2 {
+            center_amp * std::f32::consts::SQRT_2
+        } else {
+            detuned_amp * half
+        };
+        approx_eq(left, expected);
+        approx_eq(right, expected);
+    }
+    let center_mono = <Oscillator>::style1_voice_gain(2, unison, blend, 0.0, LEFT_CHANNEL);
+    let edge_mono = <Oscillator>::style1_voice_gain(0, unison, blend, 0.0, LEFT_CHANNEL);
+    approx_eq(center_mono / edge_mono, 4.0 / 3.0);
+
+    // Blend 0 drops every detuned voice and leaves the center at unity.
+    for idx in 0..unison {
+        let gain = <Oscillator>::style1_voice_gain(idx, unison, 0.0, 1.0, LEFT_CHANNEL);
+        approx_eq(gain, if idx == 2 { 1.0 } else { 0.0 });
+    }
+}
+
+#[test]
+fn style1_even_unison_uses_center_level_for_the_inner_pair() {
+    // Four voices: ±1/3 use the center level, ±1 use the detuned level.
+    // At full stereo the left channel gets -1/3 and +1.
+    let scale = (0.52f32).sqrt().recip();
+    let center_amp = 0.4 * scale;
+    let detuned_amp = 0.6 * scale;
+
+    approx_eq(
+        <Oscillator>::style1_voice_gain(0, 4, 1.0, 1.0, LEFT_CHANNEL),
+        0.0,
+    );
+    approx_eq(
+        <Oscillator>::style1_voice_gain(1, 4, 1.0, 1.0, LEFT_CHANNEL),
+        center_amp,
+    );
+    approx_eq(
+        <Oscillator>::style1_voice_gain(2, 4, 1.0, 1.0, LEFT_CHANNEL),
+        0.0,
+    );
+    approx_eq(
+        <Oscillator>::style1_voice_gain(3, 4, 1.0, 1.0, LEFT_CHANNEL),
+        detuned_amp,
+    );
+    assert!(center_amp < detuned_amp);
+
+    // Two voices: hard opposite detune, unity level, no blend.
+    approx_eq(
+        <Oscillator>::style1_voice_gain(0, 2, 1.0, 1.0, LEFT_CHANNEL),
+        1.0,
+    );
+    approx_eq(
+        <Oscillator>::style1_voice_gain(1, 2, 1.0, 1.0, LEFT_CHANNEL),
+        0.0,
+    );
+    approx_eq(
+        <Oscillator>::style1_voice_gain(0, 2, 0.0, 1.0, RIGHT_CHANNEL),
+        0.0,
+    );
+    approx_eq(
+        <Oscillator>::style1_voice_gain(1, 2, 0.0, 1.0, RIGHT_CHANNEL),
+        1.0,
+    );
+    let mono = std::f32::consts::FRAC_1_SQRT_2;
+    approx_eq(
+        <Oscillator>::style1_voice_gain(0, 2, 1.0, 0.0, LEFT_CHANNEL),
+        mono,
+    );
+    approx_eq(
+        <Oscillator>::style1_voice_gain(1, 2, 1.0, 0.0, RIGHT_CHANNEL),
+        mono,
+    );
+}
+
+fn zero_level_unison(style: UnisonStyle, stereo: Sample) -> OscillatorConfig {
+    let mut config = OscillatorConfig {
+        id: OSCILLATOR_ID,
+        unison_voices: 5,
+        unison_style: style,
+        unison_stereo: stereo,
+        gains_blend: 1.0.into(),
+        detune: 0.25.into(),
+        ..OscillatorConfig::default()
+    };
+
+    for (idx, voice) in config.unison.iter_mut().enumerate() {
+        voice.initial_phase = (idx as Sample * 0.17).into();
+        voice.gain = 0.0.into();
+        voice.gain_to = 0.0.into();
+    }
+
+    config
+}
+
+#[test]
+fn custom_unison_follows_hand_levels() {
+    let mut engine = make_engine_with(
+        default_harmonics(),
+        zero_level_unison(UnisonStyle::Custom, 1.0),
+    );
+    let (left, right) = play(&mut engine);
+
+    assert!(rms(&left) < 1e-5);
+    assert!(rms(&right) < 1e-5);
+}
+
+#[test]
+fn style1_unison_shapes_levels_and_spreads_channels() {
+    let mut mono = make_engine_with(
+        default_harmonics(),
+        zero_level_unison(UnisonStyle::Style1, 0.0),
+    );
+    let (mono_left, mono_right) = play(&mut mono);
+
+    assert!(rms(&mono_left) > 1e-3);
+    assert!(max_abs_diff(&mono_left, &mono_right) < 1e-4);
+
+    let mut wide = make_engine_with(
+        default_harmonics(),
+        zero_level_unison(UnisonStyle::Style1, 1.0),
+    );
+    let (wide_left, wide_right) = play(&mut wide);
+
+    assert!(rms(&wide_left) > 1e-3);
+    assert!(rms(&wide_right) > 1e-3);
+    assert!(max_abs_diff(&wide_left, &wide_right) > 1e-3);
 }
 
 #[test]

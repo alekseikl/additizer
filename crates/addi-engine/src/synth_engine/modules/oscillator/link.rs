@@ -1,5 +1,6 @@
 use crate::synth_engine::{
-    DisplaySpectrum, Input, Sample, StereoSample, engine_io, oscillator::PhasesDst,
+    DisplaySpectrum, Input, Sample, StereoSample, engine_io,
+    oscillator::{PhasesDst, UnisonStyle},
     types::ComplexSample,
 };
 
@@ -32,6 +33,8 @@ pub enum UiEvent {
         value: StereoSample,
     },
     Unison(usize),
+    UnisonStyle(UnisonStyle),
+    UnisonStereo(Sample),
     UnisonInitialPhase {
         idx: usize,
         value: StereoSample,
@@ -79,6 +82,8 @@ pub trait OscillatorUiEnd: Send {
     fn get_unison_mut(&mut self) -> &mut Unison;
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
     fn set_unison(&mut self, unison: usize) -> bool;
+    fn set_unison_style(&mut self, style: UnisonStyle) -> bool;
+    fn set_unison_stereo(&mut self, stereo: Sample) -> bool;
     fn set_steal_phase(&mut self, steal_phase: bool) -> bool;
     fn set_phase_random(&mut self, phase_random: Sample) -> bool;
     fn set_phase_random_stereo(&mut self, phase_random_stereo: bool) -> bool;
