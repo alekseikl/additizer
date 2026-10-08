@@ -205,7 +205,7 @@ impl VoicesHandler {
         }
     }
 
-    fn prev_note(&self, channel: u8) -> Option<PrevNote> {
+    fn prev_note(&self, channel: u8, restored: bool) -> Option<PrevNote> {
         let channel = channel.min(MAX_MIDI_CHANNEL);
         let note = self.prev_notes[channel as usize]?;
         let is_same = |n: &Note| n.channel == channel && n.note == note;
@@ -216,16 +216,17 @@ impl VoicesHandler {
             .chain(self.killing.iter())
             .find(|playing| is_same(&playing.note))
             .map(|playing| playing.voice_idx);
-        let pressed = self
-            .waiting
-            .iter()
-            .chain(self.playing.iter().map(|p| &p.note))
-            .any(is_same);
+        let overlap = restored
+            || self
+                .waiting
+                .iter()
+                .chain(self.playing.iter().map(|p| &p.note))
+                .any(is_same);
 
         Some(PrevNote {
             note,
             voice_idx,
-            pressed,
+            overlap,
         })
     }
 
@@ -234,9 +235,10 @@ impl VoicesHandler {
         replaced_voice_idx: Option<VoiceIdx>,
         note: Note,
         offset: usize,
+        restored: bool,
         events: &mut VoiceEvents,
     ) {
-        let prev_note = self.prev_note(note.channel);
+        let prev_note = self.prev_note(note.channel, restored);
 
         let voice_idx = if let Some(voice_idx) = self.free_voices.pop() {
             voice_idx
@@ -288,7 +290,13 @@ impl VoicesHandler {
         events.kill(playing.voice_idx, offset);
     }
 
-    fn note_on_monophonic(&mut self, new_note: Note, offset: usize, events: &mut VoiceEvents) {
+    fn note_on_monophonic(
+        &mut self,
+        new_note: Note,
+        offset: usize,
+        restored: bool,
+        events: &mut VoiceEvents,
+    ) {
         // Kill playing note on same channel
         if let Some(playing_idx) = self
             .playing
@@ -303,7 +311,7 @@ impl VoicesHandler {
                 self.legato(playing.voice_idx, new_note, offset, events);
             } else {
                 self.kill(playing, offset, events);
-                self.grab_and_reset(Some(playing.voice_idx), new_note, offset, events);
+                self.grab_and_reset(Some(playing.voice_idx), new_note, offset, restored, events);
             }
         }
         // Kill releasing note on same channel
@@ -315,13 +323,19 @@ impl VoicesHandler {
             let releasing = self.releasing.remove(releasing_idx).unwrap();
 
             self.kill(releasing, offset, events);
-            self.grab_and_reset(Some(releasing.voice_idx), new_note, offset, events);
+            self.grab_and_reset(Some(releasing.voice_idx), new_note, offset, restored, events);
         } else {
-            self.grab_and_reset(None, new_note, offset, events);
+            self.grab_and_reset(None, new_note, offset, restored, events);
         }
     }
 
-    fn note_on_polyphonic(&mut self, new_note: Note, offset: usize, events: &mut VoiceEvents) {
+    fn note_on_polyphonic(
+        &mut self,
+        new_note: Note,
+        offset: usize,
+        restored: bool,
+        events: &mut VoiceEvents,
+    ) {
         let mut replaced_voice_idx = None;
 
         // Kill same releasing note
@@ -346,10 +360,16 @@ impl VoicesHandler {
             }
         }
 
-        self.grab_and_reset(replaced_voice_idx, new_note, offset, events);
+        self.grab_and_reset(replaced_voice_idx, new_note, offset, restored, events);
     }
 
-    fn note_on_impl(&mut self, new_note: Note, offset: usize, events: &mut VoiceEvents) {
+    fn note_on_impl(
+        &mut self,
+        new_note: Note,
+        offset: usize,
+        restored: bool,
+        events: &mut VoiceEvents,
+    ) {
         let monophonic = self.num_voices == 1;
 
         // Ignore already pressed notes
@@ -367,9 +387,9 @@ impl VoicesHandler {
         }
 
         if monophonic {
-            self.note_on_monophonic(new_note, offset, events);
+            self.note_on_monophonic(new_note, offset, restored, events);
         } else {
-            self.note_on_polyphonic(new_note, offset, events);
+            self.note_on_polyphonic(new_note, offset, restored, events);
         }
 
         self.prev_notes[new_note.channel.min(MAX_MIDI_CHANNEL) as usize] = Some(new_note.note);
@@ -380,7 +400,7 @@ impl VoicesHandler {
     }
 
     pub fn handle_note_on(&mut self, note: Note, offset: usize, events: &mut VoiceEvents) {
-        self.note_on_impl(note, offset, events);
+        self.note_on_impl(note, offset, false, events);
     }
 
     pub fn handle_note_off(&mut self, note: Note, offset: usize, events: &mut VoiceEvents) {
@@ -444,7 +464,7 @@ impl VoicesHandler {
         };
 
         if let Some(waiting_note) = waiting_note {
-            self.note_on_impl(waiting_note, offset, events);
+            self.note_on_impl(waiting_note, offset, true, events);
         }
     }
 

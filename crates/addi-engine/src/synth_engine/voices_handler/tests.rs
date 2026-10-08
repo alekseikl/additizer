@@ -212,7 +212,7 @@ fn reset_prev_note_follows_last_note_on_channel() {
             assert_eq!(prev.note, 60);
             assert_eq!(prev.pitch(), note_pitch(60));
             assert_eq!(prev.voice_idx(), Some(voice_60));
-            assert!(prev.pressed);
+            assert!(prev.overlap);
         }
         _ => panic!("expected Reset"),
     }
@@ -250,7 +250,7 @@ fn reset_prev_note_follows_last_note_on_channel() {
             assert_eq!(prev.note, 64);
             assert_eq!(prev.pitch(), note_pitch(64));
             assert_eq!(prev.voice_idx(), Some(voice_64));
-            assert!(prev.pressed);
+            assert!(prev.overlap);
         }
         _ => panic!("expected Reset"),
     }
@@ -301,7 +301,7 @@ fn reset_prev_note_voice_idx_from_releasing() {
             let prev = prev_note.expect("prev note");
             assert_eq!(prev.note, 60);
             assert_eq!(prev.voice_idx(), Some(voice_60));
-            assert!(!prev.pressed);
+            assert!(!prev.overlap);
         }
         _ => panic!("expected Reset"),
     }
@@ -355,14 +355,14 @@ fn reset_prev_note_voice_idx_none_after_decay() {
             assert_eq!(prev.note, 60);
             assert_eq!(prev.pitch(), note_pitch(60));
             assert_eq!(prev.voice_idx(), None);
-            assert!(!prev.pressed);
+            assert!(!prev.overlap);
         }
         _ => panic!("expected Reset"),
     }
 }
 
 #[test]
-fn reset_prev_note_pressed_when_waiting() {
+fn reset_prev_note_overlap_when_waiting() {
     let mut h = handler(1);
     let mut ev = events();
 
@@ -399,7 +399,120 @@ fn reset_prev_note_pressed_when_waiting() {
         .expect("expected Reset");
     let prev = reset.expect("prev note");
     assert_eq!(prev.note, 60);
-    assert!(prev.pressed);
+    assert!(prev.overlap);
+}
+
+#[test]
+fn mono_note_off_restored_waiting_note_overlaps_previous() {
+    let mut h = handler(1);
+    let mut ev = events();
+
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+
+    ev = events();
+    h.handle_note_off(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+
+    let reset = ev
+        .events()
+        .iter()
+        .find_map(|e| match e {
+            VoiceEvent::Reset { prev_note, .. } => Some(*prev_note),
+            _ => None,
+        })
+        .expect("expected Reset");
+    let prev = reset.expect("prev note");
+    assert_eq!(prev.note, 64);
+    assert!(prev.overlap);
+}
+
+#[test]
+fn poly_note_off_restored_waiting_note_overlaps_previous() {
+    let mut h = handler(2);
+    let mut ev = events();
+
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    h.handle_note_on(
+        Note {
+            channel: 0,
+            note: 67,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+    assert_eq!(h.get_metrics().waiting, 1);
+
+    ev = events();
+    h.handle_note_off(
+        Note {
+            channel: 0,
+            note: 67,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+        &mut ev,
+    );
+
+    let reset = ev
+        .events()
+        .iter()
+        .find_map(|e| match e {
+            VoiceEvent::Reset { prev_note, .. } => Some(*prev_note),
+            _ => None,
+        })
+        .expect("expected Reset");
+    let prev = reset.expect("prev note");
+    assert_eq!(prev.note, 67);
+    assert!(prev.overlap);
 }
 
 #[test]
@@ -2140,7 +2253,7 @@ fn mono_legato_return_updates_prev_note() {
     let prev = reset.expect("prev note");
     assert_eq!(prev.note, 60);
     assert!(prev.voice_idx().is_some());
-    assert!(!prev.pressed);
+    assert!(!prev.overlap);
 }
 
 #[test]

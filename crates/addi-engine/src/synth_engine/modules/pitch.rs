@@ -29,7 +29,7 @@ const GLIDE_TIME_THRESHOLD: Sample = from_ms(0.1);
 
 struct Params {
     keytrack: bool,
-    glide_always: bool, // also glide from an unpressed previous note
+    glide_always: bool, // also glide when the previous note does not overlap
     glide_per_octave: bool,
 }
 
@@ -324,7 +324,7 @@ impl<L: PitchLinks> Pitch<L> {
             self.voices.at_mut(channel_idx, voice_idx).pitch = pitch;
 
             if let Some(pitch_from) = prev_note
-                .filter(|prev| prev.pressed || self.params.glide_always)
+                .filter(|prev| prev.overlap || self.params.glide_always)
                 .map(|prev| {
                     prev.voice_idx()
                         .and_then(|from_idx| self.voices.at(channel_idx, from_idx).glide.as_ref())

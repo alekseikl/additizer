@@ -146,7 +146,7 @@ pub enum Expression {
 pub struct PrevNote {
     pub note: u8,
     pub voice_idx: Option<u8>,
-    pub pressed: bool, // key currently held
+    pub overlap: bool, // new note overlapped the previous one
 }
 
 impl PrevNote {
