@@ -8,7 +8,7 @@ use addi_engine::{
 };
 use addi_ui_backend::ui_bridge::modules::oscillator::OscillatorUiBridge;
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
-use egui::{Checkbox, ComboBox, DragValue, Grid, Id, Modal, Sides, Ui};
+use egui::{Checkbox, ComboBox, DragValue, FontFamily, Grid, Id, Modal, RichText, Sides, Ui};
 
 const UNISON_STYLES: [UnisonStyle; 3] =
     [UnisonStyle::Manual, UnisonStyle::Flat, UnisonStyle::Convex];
@@ -234,9 +234,13 @@ impl OscillatorUI {
         result
     }
 
+    fn block_label(ui: &mut Ui, text: &str, tip: &str) {
+        ui.label(RichText::new(text).family(FontFamily::Name("Bold".into())))
+            .on_hover_text(tip);
+        ui.add_space(4.0);
+    }
+
     fn show_unison_section(
-        module_id: ModuleId,
-        synth_bridge: &mut UiBridge,
         bridge: &mut OscillatorUiBridge,
         config: &mut OscillatorConfig,
         unison_state: &mut UnisonState,
@@ -244,47 +248,29 @@ impl OscillatorUI {
     ) {
         let unison_voices = config.unison_voices;
 
-        ui.label("Initial Phase");
-        ui.vertical(|ui| {
-            let changed = {
-                let unison = bridge.unison_mut();
-                Self::show_phases(ui, &mut unison.initial_phases[..unison_voices])
-            };
-            if let Some((voice_idx, phase)) = changed {
-                bridge.set_unison_initial_phase(voice_idx, phase);
-            }
-
-            ui.add_space(8.0);
-
-            if ui.button("Randomize").clicked() {
-                unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
-                    amount: 0.2,
-                    stereo_spread: 0.5,
-                    dst: PhasesDst::Initial,
-                }));
-            }
-        });
-        ui.end_row();
-
-        ui.label("Phase Shift");
-        ui.vertical(|ui| {
+        if !shapes_unison_levels(config.unison_style) {
+            Self::block_label(
+                ui,
+                "Levels",
+                "Level of each unison voice. The right column is blended in by Levels Blend.",
+            );
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
                     let changed = {
                         let unison = bridge.unison_mut();
-                        Self::show_phases(ui, &mut unison.phase_shifts[..unison_voices])
+                        Self::show_gains(ui, &mut unison.gains[..unison_voices])
                     };
-                    if let Some((voice_idx, phase)) = changed {
-                        bridge.set_unison_phase_shift(voice_idx, phase);
+                    if let Some((voice_idx, gain)) = changed {
+                        bridge.set_unison_gain(voice_idx, gain);
                     }
 
                     ui.add_space(8.0);
 
-                    if ui.button("Randomize").clicked() {
-                        unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
-                            amount: 0.2,
-                            stereo_spread: 0.5,
-                            dst: PhasesDst::From,
+                    if ui.button("Shape").clicked() {
+                        unison_state.gain_shape_state = Some(Box::new(GainShapeState {
+                            center: 0.5.into(),
+                            level: (-24.0).into(),
+                            to: false,
                         }));
                     }
                 });
@@ -297,27 +283,187 @@ impl OscillatorUI {
                 ui.vertical(|ui| {
                     let changed = {
                         let unison = bridge.unison_mut();
-                        Self::show_phases(ui, &mut unison.phase_shifts_to[..unison_voices])
+                        Self::show_gains(ui, &mut unison.gains_to[..unison_voices])
                     };
-                    if let Some((voice_idx, phase)) = changed {
-                        bridge.set_unison_phase_shift_to(voice_idx, phase);
+                    if let Some((voice_idx, gain)) = changed {
+                        bridge.set_unison_gain_to(voice_idx, gain);
                     }
 
                     ui.add_space(8.0);
 
-                    if ui.button("Randomize").clicked() {
-                        unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
-                            amount: 0.2,
-                            stereo_spread: 0.5,
-                            dst: PhasesDst::To,
+                    if ui.button("Shape").clicked() {
+                        unison_state.gain_shape_state = Some(Box::new(GainShapeState {
+                            center: 0.5.into(),
+                            level: (-24.0).into(),
+                            to: true,
                         }));
                     }
                 });
             });
+
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(8.0);
+        }
+
+        Self::block_label(ui, "Initial Phases", "Starting phase of each unison voice.");
+        let changed = {
+            let unison = bridge.unison_mut();
+            Self::show_phases(ui, &mut unison.initial_phases[..unison_voices])
+        };
+        if let Some((voice_idx, phase)) = changed {
+            bridge.set_unison_initial_phase(voice_idx, phase);
+        }
+
+        ui.add_space(8.0);
+
+        if ui.button("Randomize").clicked() {
+            unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
+                amount: 0.2,
+                stereo_spread: 0.5,
+                dst: PhasesDst::Initial,
+            }));
+        }
+
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(8.0);
+
+        Self::block_label(
+            ui,
+            "Phases Shift",
+            "Phase offset of each unison voice. The right column is blended in by Phases Blend.",
+        );
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                let changed = {
+                    let unison = bridge.unison_mut();
+                    Self::show_phases(ui, &mut unison.phase_shifts[..unison_voices])
+                };
+                if let Some((voice_idx, phase)) = changed {
+                    bridge.set_unison_phase_shift(voice_idx, phase);
+                }
+
+                ui.add_space(8.0);
+
+                if ui.button("Randomize").clicked() {
+                    unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
+                        amount: 0.2,
+                        stereo_spread: 0.5,
+                        dst: PhasesDst::From,
+                    }));
+                }
+            });
+
+            ui.vertical(|ui| {
+                ui.add_space(40.0);
+                ui.label("->");
+            });
+
+            ui.vertical(|ui| {
+                let changed = {
+                    let unison = bridge.unison_mut();
+                    Self::show_phases(ui, &mut unison.phase_shifts_to[..unison_voices])
+                };
+                if let Some((voice_idx, phase)) = changed {
+                    bridge.set_unison_phase_shift_to(voice_idx, phase);
+                }
+
+                ui.add_space(8.0);
+
+                if ui.button("Randomize").clicked() {
+                    unison_state.randomize_phase_state = Some(Box::new(RandomizePhaseState {
+                        amount: 0.2,
+                        stereo_spread: 0.5,
+                        dst: PhasesDst::To,
+                    }));
+                }
+            });
         });
+    }
+
+    fn show_unison_spread(
+        module_id: ModuleId,
+        synth_bridge: &mut UiBridge,
+        bridge: &mut OscillatorUiBridge,
+        config: &mut OscillatorConfig,
+        ui: &mut Ui,
+    ) {
+        ui.label("Detune");
+        if ui
+            .add(StereoInput::new(
+                Input::Detune,
+                module_id,
+                &mut config.detune,
+                synth_bridge,
+            ))
+            .changed()
+        {
+            bridge.set_param(Input::Detune, config.detune);
+        }
+
+        ui.label("Focus").on_hover_text(
+            "Curves the detune spread. Positive gathers detune near the center voice; negative pushes it toward the outer voices.",
+        );
+        if ui
+            .add(StereoInput::new(
+                Input::DetuneFocus,
+                module_id,
+                &mut config.detune_focus,
+                synth_bridge,
+            ))
+            .changed()
+        {
+            bridge.set_param(Input::DetuneFocus, config.detune_focus);
+        }
         ui.end_row();
 
-        ui.label("Phases Blend");
+        let show_stereo = shapes_unison_levels(config.unison_style);
+
+        if config.unison_style == UnisonStyle::Manual {
+            Self::show_blend(module_id, synth_bridge, bridge, config, ui);
+            Self::show_phases_blend(module_id, synth_bridge, bridge, config, ui);
+            ui.end_row();
+            return;
+        }
+
+        if show_stereo {
+            ui.label("Stereo").on_hover_text(
+                "Spreads unison voices across the channels. 0 keeps both channels equal.",
+            );
+            if ui
+                .add(Slider::mono(&mut config.unison_stereo, 0.0..=1.0, None).default(1.0))
+                .on_hover_text(
+                    "Spreads unison voices across the channels. 0 keeps both channels equal.",
+                )
+                .changed()
+            {
+                bridge.set_unison_stereo(config.unison_stereo);
+            }
+        }
+
+        if config.unison_style == UnisonStyle::Flat {
+            Self::show_blend(module_id, synth_bridge, bridge, config, ui);
+            ui.end_row();
+            Self::show_phases_blend(module_id, synth_bridge, bridge, config, ui);
+            ui.end_row();
+            return;
+        }
+
+        Self::show_phases_blend(module_id, synth_bridge, bridge, config, ui);
+        ui.end_row();
+    }
+
+    fn show_phases_blend(
+        module_id: ModuleId,
+        synth_bridge: &mut UiBridge,
+        bridge: &mut OscillatorUiBridge,
+        config: &mut OscillatorConfig,
+        ui: &mut Ui,
+    ) {
+        ui.label("Phases Blend").on_hover_text(
+            "Blend between the two phase-shift columns. 0 is the left column; 1 is the right.",
+        );
         if ui
             .add(StereoInput::new(
                 Input::PhasesBlend,
@@ -329,105 +475,41 @@ impl OscillatorUI {
         {
             bridge.set_param(Input::PhasesBlend, config.phases_blend);
         }
-        ui.end_row();
+    }
 
-        if shapes_unison_levels(config.unison_style) {
-            ui.label("Stereo");
-            if ui
-                .add(
-                    Slider::mono(&mut config.unison_stereo, 0.0..=1.0, None)
-                        .default(1.0)
-                        .show_label(),
-                )
-                .on_hover_text(
-                    "Spreads unison voices across the channels. 0 keeps both channels equal.",
-                )
-                .changed()
-            {
-                bridge.set_unison_stereo(config.unison_stereo);
+    fn show_blend(
+        module_id: ModuleId,
+        synth_bridge: &mut UiBridge,
+        bridge: &mut OscillatorUiBridge,
+        config: &mut OscillatorConfig,
+        ui: &mut Ui,
+    ) {
+        ui.label(match config.unison_style {
+            UnisonStyle::Manual => "Levels Blend",
+            UnisonStyle::Flat | UnisonStyle::Convex => "Blend",
+        })
+        .on_hover_text(match config.unison_style {
+            UnisonStyle::Flat => {
+                "Flat unison blend. 0 is the center voice only; 1 brings in the detuned voices."
             }
-            ui.end_row();
-        } else {
-            ui.label("Levels");
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
-                        let changed = {
-                            let unison = bridge.unison_mut();
-                            Self::show_gains(ui, &mut unison.gains[..unison_voices])
-                        };
-                        if let Some((voice_idx, gain)) = changed {
-                            bridge.set_unison_gain(voice_idx, gain);
-                        }
-
-                        ui.add_space(8.0);
-
-                        if ui.button("Shape").clicked() {
-                            unison_state.gain_shape_state = Some(Box::new(GainShapeState {
-                                center: 0.5.into(),
-                                level: (-24.0).into(),
-                                to: false,
-                            }));
-                        }
-                    });
-
-                    ui.vertical(|ui| {
-                        ui.add_space(40.0);
-                        ui.label("->");
-                    });
-
-                    ui.vertical(|ui| {
-                        let changed = {
-                            let unison = bridge.unison_mut();
-                            Self::show_gains(ui, &mut unison.gains_to[..unison_voices])
-                        };
-                        if let Some((voice_idx, gain)) = changed {
-                            bridge.set_unison_gain_to(voice_idx, gain);
-                        }
-
-                        ui.add_space(8.0);
-
-                        if ui.button("Shape").clicked() {
-                            unison_state.gain_shape_state = Some(Box::new(GainShapeState {
-                                center: 0.5.into(),
-                                level: (-24.0).into(),
-                                to: true,
-                            }));
-                        }
-                    });
-
-                    ui.add_space(8.0);
-                });
-            });
-            ui.end_row();
-        }
-
-        if config.unison_style != UnisonStyle::Convex {
-            ui.label(if shapes_unison_levels(config.unison_style) {
-                "Blend"
-            } else {
-                "Levels Blend"
-            });
-            if ui
-                .add(StereoInput::new(
-                    Input::GainsBlend,
-                    module_id,
-                    &mut config.gains_blend,
-                    synth_bridge,
-                ))
-                .on_hover_text(match config.unison_style {
-                    UnisonStyle::Flat => {
-                        "Flat unison blend. 0 is the center voice only; 1 brings in the detuned voices."
-                    }
-                    UnisonStyle::Manual | UnisonStyle::Convex => {
-                        "Blend between the two level columns."
-                    }
-                })
-                .changed()
-            {
-                bridge.set_param(Input::GainsBlend, config.gains_blend);
-            }
-            ui.end_row();
+            UnisonStyle::Manual | UnisonStyle::Convex => "Blend between the two level columns.",
+        });
+        if ui
+            .add(StereoInput::new(
+                Input::GainsBlend,
+                module_id,
+                &mut config.gains_blend,
+                synth_bridge,
+            ))
+            .on_hover_text(match config.unison_style {
+                UnisonStyle::Flat => {
+                    "Flat unison blend. 0 is the center voice only; 1 brings in the detuned voices."
+                }
+                UnisonStyle::Manual | UnisonStyle::Convex => "Blend between the two level columns.",
+            })
+            .changed()
+        {
+            bridge.set_param(Input::GainsBlend, config.gains_blend);
         }
     }
 
@@ -474,6 +556,13 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_param(Input::FrequencyShift, config.frequency_shift);
                 }
+
+                if ui
+                    .add(Checkbox::new(&mut config.steal_phase, "Steal phase"))
+                    .changed()
+                {
+                    osc_bridge.set_steal_phase(config.steal_phase);
+                }
                 ui.end_row();
 
                 ui.label("Phase rand")
@@ -496,112 +585,68 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_phase_random_stereo(config.phase_random_stereo);
                 }
-                ui.end_row();
 
-                ui.label("Detune");
                 if ui
-                    .add(StereoInput::new(
-                        Input::Detune,
-                        module_id,
-                        &mut config.detune,
-                        bridge,
-                    ))
+                    .add(Checkbox::new(&mut config.mono_spectrum, "Mono spectrum"))
+                    .on_hover_text(
+                        "Build the waveform for the left channel only and reuse it for the right.",
+                    )
                     .changed()
                 {
-                    osc_bridge.set_param(Input::Detune, config.detune);
-                }
-
-                ui.label("Detune focus");
-                if ui
-                    .add(StereoInput::new(
-                        Input::DetuneFocus,
-                        module_id,
-                        &mut config.detune_focus,
-                        bridge,
-                    ))
-                    .changed()
-                {
-                    osc_bridge.set_param(Input::DetuneFocus, config.detune_focus);
+                    osc_bridge.set_mono_spectrum(config.mono_spectrum);
                 }
                 ui.end_row();
+
+                ui.label("Unison");
+                if ui
+                    .add(DragValue::new(&mut config.unison_voices).range(1..=16))
+                    .changed()
+                {
+                    osc_bridge.set_unison(config.unison_voices);
+                }
+
+                if config.unison_voices > 1 {
+                    ui.label("Style").on_hover_text(
+                        "How unison levels are produced. Manual is drawn per voice. Flat and Convex shape them and can spread voices across the channels.",
+                    );
+                    ComboBox::from_id_salt("unison-style")
+                        .selected_text(config.unison_style.label())
+                        .show_ui(ui, |ui| {
+                            for style in UNISON_STYLES {
+                                if ui
+                                    .selectable_label(config.unison_style == style, style.label())
+                                    .on_hover_text(match style {
+                                        UnisonStyle::Manual => {
+                                            "Set each unison voice level by hand."
+                                        }
+                                        UnisonStyle::Flat => {
+                                            "Shape levels and spread them across the channels."
+                                        }
+                                        UnisonStyle::Convex => {
+                                            "At full stereo, native voices rise from the center to about +3 dB at the sides on a square-root curve. The opposite channel is (1/√2)² on the first detuned voice, then that base raised to the distance from center, with edge voices silent. Folded, both channels match and fall to about −3 dB."
+                                        }
+                                    })
+                                    .clicked()
+                                {
+                                    config.unison_style = style;
+                                    osc_bridge.set_unison_style(style);
+                                }
+                            }
+                        });
+                }
+                ui.end_row();
+
+                if config.unison_voices > 1 {
+                    Self::show_unison_spread(self.module_id, bridge, osc_bridge, &mut config, ui);
+                }
             });
 
-        ui.add_space(8.0);
-
-        ui.horizontal(|ui| {
-            ui.label("Unison");
-            if ui
-                .add(DragValue::new(&mut config.unison_voices).range(1..=16))
-                .changed()
-            {
-                osc_bridge.set_unison(config.unison_voices);
-            }
-
-            ui.add_space(8.0);
-
-            if ui
-                .add(Checkbox::new(&mut config.steal_phase, "Steal phase"))
-                .changed()
-            {
-                osc_bridge.set_steal_phase(config.steal_phase);
-            }
-
-            ui.add_space(8.0);
-
-            if ui
-                .add(Checkbox::new(&mut config.mono_spectrum, "Mono spectrum"))
-                .on_hover_text(
-                    "Build the waveform for the left channel only and reuse it for the right.",
-                )
-                .changed()
-            {
-                osc_bridge.set_mono_spectrum(config.mono_spectrum);
-            }
-
-            ui.add_space(8.0);
-
-            ui.label("Style");
-            ComboBox::from_id_salt("unison-style")
-                .selected_text(config.unison_style.label())
-                .show_ui(ui, |ui| {
-                    for style in UNISON_STYLES {
-                        if ui
-                            .selectable_label(config.unison_style == style, style.label())
-                            .on_hover_text(match style {
-                                UnisonStyle::Manual => "Set each unison voice level by hand.",
-                                UnisonStyle::Flat => {
-                                    "Shape levels and spread them across the channels."
-                                }
-                                UnisonStyle::Convex => {
-                                    "At full stereo, native voices rise from the center to about +3 dB at the sides on a square-root curve. The opposite channel is (1/√2)² on the first detuned voice, then that base raised to the distance from center, with edge voices silent. Folded, both channels match and fall to about −3 dB."
-                                }
-                            })
-                            .clicked()
-                        {
-                            config.unison_style = style;
-                            osc_bridge.set_unison_style(style);
-                        }
-                    }
-                });
-        });
-
         if config.unison_voices > 1 {
-            ui.add_space(16.0);
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(8.0);
 
-            Grid::new("osc_unison_grid")
-                .num_columns(2)
-                .spacing([24.0, 24.0])
-                .striped(true)
-                .show(ui, |ui| {
-                    Self::show_unison_section(
-                        self.module_id,
-                        bridge,
-                        osc_bridge,
-                        &mut config,
-                        &mut self.unison_state,
-                        ui,
-                    );
-                });
+            Self::show_unison_section(osc_bridge, &mut config, &mut self.unison_state, ui);
         }
 
         if let Some(mut state) = self.unison_state.gain_shape_state.take()
