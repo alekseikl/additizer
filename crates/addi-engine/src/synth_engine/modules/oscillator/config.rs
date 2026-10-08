@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
     synth_engine::from_st,
@@ -18,6 +18,24 @@ pub enum UnisonStyle {
 
 fn default_unison_stereo() -> Sample {
     1.0
+}
+
+fn deserialize_phase_random_stereo<'de, D>(deserializer: D) -> Result<Sample, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum BoolOrSample {
+        Sample(Sample),
+        Bool(bool),
+    }
+
+    match BoolOrSample::deserialize(deserializer)? {
+        BoolOrSample::Sample(value) => Ok(value),
+        BoolOrSample::Bool(true) => Ok(1.0),
+        BoolOrSample::Bool(false) => Ok(0.0),
+    }
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -54,9 +72,11 @@ pub struct OscillatorConfig {
     pub steal_phase: bool,
     #[serde(default)]
     pub phase_random: Sample,
-    /// When set, each channel draws its own random phases. When unset, both channels share them.
-    #[serde(default)]
-    pub phase_random_stereo: bool,
+    /// Extra random offset of each channel away from the shared random phases.
+    /// `0` keeps both channels on those phases; `1` offsets each by up to half a cycle.
+    /// Older presets stored this as a bool; `true` loads as `1`.
+    #[serde(default, deserialize_with = "deserialize_phase_random_stereo")]
+    pub phase_random_stereo: Sample,
     #[serde(default)]
     pub mono_spectrum: bool,
     pub detune: StereoSample,
@@ -78,7 +98,7 @@ impl Default for OscillatorConfig {
             unison_stereo: default_unison_stereo(),
             steal_phase: false,
             phase_random: 0.0,
-            phase_random_stereo: false,
+            phase_random_stereo: 0.0,
             mono_spectrum: false,
             detune: from_st(0.2).into(),
             detune_focus: 0.0.into(),

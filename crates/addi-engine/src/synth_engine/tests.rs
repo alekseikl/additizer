@@ -744,7 +744,7 @@ fn duplicate_module_copies_settings_without_links() {
             unison_voices: 3,
             steal_phase: true,
             phase_random: 0.25,
-            phase_random_stereo: true,
+            phase_random_stereo: 1.0,
             mono_spectrum: true,
             detune: 0.4.into(),
             ..OscillatorConfig::default()

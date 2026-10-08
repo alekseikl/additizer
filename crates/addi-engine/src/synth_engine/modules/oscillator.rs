@@ -110,8 +110,8 @@ struct Params {
     unison_style: UnisonStyle,
     unison_stereo: Sample, // [0.0, 1.0]
     steal_phase: bool,
-    phase_random: Sample, // [0.0, 1.0]
-    phase_random_stereo: bool,
+    phase_random: Sample,        // [0.0, 1.0]
+    phase_random_stereo: Sample, // [0.0, 1.0]
     mono_spectrum: bool,
 }
 
@@ -500,7 +500,12 @@ impl<L: OscillatorLinks> Oscillator<L> {
         Sample,
         phase_random.clamp(0.0, 1.0)
     );
-    set_mono_param!(set_phase_random_stereo, phase_random_stereo, bool);
+    set_mono_param!(
+        set_phase_random_stereo,
+        phase_random_stereo,
+        Sample,
+        phase_random_stereo.clamp(0.0, 1.0)
+    );
     set_mono_param!(set_mono_spectrum, mono_spectrum, bool);
 
     set_stereo_param!(set_detune, detune, detune.clamp(0.0, from_st(1.0)));
@@ -806,13 +811,14 @@ impl<L: OscillatorLinks> Oscillator<L> {
             return;
         }
 
-        if self.params.phase_random > 1e-6 {
-            let stereo = self.params.phase_random_stereo;
-            let amount = self.params.phase_random;
+        let amount = self.params.phase_random;
+        let stereo = self.params.phase_random_stereo;
 
-            if stereo || channel_idx == LEFT_CHANNEL {
+        if amount > 1e-6 || stereo > 1e-6 {
+            // Left runs first and stores the shared base. Each channel then offsets it.
+            if channel_idx == LEFT_CHANNEL {
                 for (phase, unison_voice, random) in izip!(
-                    voice.phases.iter_mut(),
+                    self.shared_random_phases.iter_mut(),
                     channel.unison.iter(),
                     (&mut self.random).random_iter::<Sample>()
                 )
@@ -823,12 +829,14 @@ impl<L: OscillatorLinks> Oscillator<L> {
                 }
             }
 
-            if !stereo {
-                if channel_idx == LEFT_CHANNEL {
-                    self.shared_random_phases[..unison].copy_from_slice(&voice.phases[..unison]);
-                } else {
-                    voice.phases[..unison].copy_from_slice(&self.shared_random_phases[..unison]);
-                }
+            for (phase, base, random) in izip!(
+                voice.phases.iter_mut(),
+                self.shared_random_phases.iter().copied(),
+                (&mut self.random).random_iter::<Sample>()
+            )
+            .take(unison)
+            {
+                *phase = base.add_normalized((random - 0.5) * stereo);
             }
         } else if unison > 1 {
             for (phase, unison_voice) in voice.phases.iter_mut().zip(&channel.unison).take(unison) {

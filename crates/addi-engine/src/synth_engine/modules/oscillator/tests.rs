@@ -154,8 +154,8 @@ fn mono_spectrum_round_trips_through_config() {
 
 #[test]
 fn phase_random_stereo_defaults_to_shared_phases() {
-    assert!(!OscillatorConfig::default().phase_random_stereo);
-    assert!(!<Oscillator>::new(1).get_config().phase_random_stereo);
+    assert_eq!(OscillatorConfig::default().phase_random_stereo, 0.0);
+    assert_eq!(<Oscillator>::new(1).get_config().phase_random_stereo, 0.0);
 }
 
 #[test]
@@ -165,7 +165,20 @@ fn phase_random_stereo_defaults_when_missing_from_json() {
 
     let config: OscillatorConfig = serde_json::from_value(json).unwrap();
 
-    assert!(!config.phase_random_stereo);
+    assert_eq!(config.phase_random_stereo, 0.0);
+}
+
+#[test]
+fn phase_random_stereo_accepts_legacy_bool() {
+    let mut json = serde_json::to_value(OscillatorConfig::default()).unwrap();
+
+    json["phase_random_stereo"] = serde_json::json!(true);
+    let config: OscillatorConfig = serde_json::from_value(json.clone()).unwrap();
+    assert_eq!(config.phase_random_stereo, 1.0);
+
+    json["phase_random_stereo"] = serde_json::json!(false);
+    let config: OscillatorConfig = serde_json::from_value(json).unwrap();
+    assert_eq!(config.phase_random_stereo, 0.0);
 }
 
 #[test]
@@ -176,7 +189,7 @@ fn shared_phase_random_matches_both_channels() {
             id: OSCILLATOR_ID,
             unison_voices: 2,
             phase_random: 1.0,
-            phase_random_stereo: false,
+            phase_random_stereo: 0.0,
             ..OscillatorConfig::default()
         },
     );
@@ -194,7 +207,26 @@ fn stereo_phase_random_gives_each_channel_its_own_phases() {
             id: OSCILLATOR_ID,
             unison_voices: 2,
             phase_random: 1.0,
-            phase_random_stereo: true,
+            phase_random_stereo: 1.0,
+            ..OscillatorConfig::default()
+        },
+    );
+    let (left, right) = play(&mut engine);
+
+    assert!(rms(&left) > 1e-3);
+    assert!(rms(&right) > 1e-3);
+    assert!(max_abs_diff(&left, &right) > 1e-3);
+}
+
+#[test]
+fn stereo_phase_offset_spreads_channels_without_shared_random() {
+    let mut engine = make_engine_with(
+        default_harmonics(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            unison_voices: 2,
+            phase_random: 0.0,
+            phase_random_stereo: 1.0,
             ..OscillatorConfig::default()
         },
     );

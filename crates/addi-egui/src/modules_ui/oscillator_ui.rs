@@ -476,7 +476,8 @@ impl OscillatorUI {
                 }
                 ui.end_row();
 
-                ui.label("Phase rand").on_hover_text("Phases randomization");
+                ui.label("Phase rand")
+                    .on_hover_text("Shared random phase offset. Both channels start from these phases.");
                 if ui
                     .add(Slider::mono(&mut config.phase_random, 0.0..=1.0, None).default(0.0))
                     .changed()
@@ -485,10 +486,12 @@ impl OscillatorUI {
                 }
 
                 ui.label("Stereo rand").on_hover_text(
-                    "Each channel draws its own random phases. Off: both channels share the same phases.",
+                    "Random phase offset of each channel away from the shared random phases. 0 keeps both channels equal.",
                 );
                 if ui
-                    .add(Checkbox::new(&mut config.phase_random_stereo, ""))
+                    .add(
+                        Slider::mono(&mut config.phase_random_stereo, 0.0..=1.0, None).default(0.0),
+                    )
                     .changed()
                 {
                     osc_bridge.set_phase_random_stereo(config.phase_random_stereo);

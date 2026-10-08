@@ -73,7 +73,7 @@ impl<L: OscillatorLinks> OscillatorUiBridge<L> {
         }
     }
 
-    pub fn set_phase_random_stereo(&mut self, phase_random_stereo: bool) {
+    pub fn set_phase_random_stereo(&mut self, phase_random_stereo: Sample) {
         if self.ui_end.set_phase_random_stereo(phase_random_stereo) {
             self.config.phase_random_stereo = phase_random_stereo;
         }
