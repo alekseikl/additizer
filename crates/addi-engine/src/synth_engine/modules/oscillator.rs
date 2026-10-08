@@ -31,7 +31,7 @@ pub mod stub;
 mod unison;
 
 use lanes::{SampleCtx, UNISON_CHUNKS, UNISON_LANES, UnisonLaneParams};
-use unison::{ManualUnison, SynthFlatUnison, UnisonType};
+use unison::{ConvexUnison, FlatUnison, ManualUnison, UnisonType};
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -699,8 +699,12 @@ impl<L: OscillatorLinks> Oscillator<L> {
             UnisonStyle::Manual => {
                 self.fill_unison_voices(channel_idx, voice_idx, router, &ManualUnison);
             }
-            UnisonStyle::SynthFlat => {
-                let style = SynthFlatUnison::new(self.params.unison_stereo, channel_idx);
+            UnisonStyle::Flat => {
+                let style = FlatUnison::new(self.params.unison_stereo, channel_idx);
+                self.fill_unison_voices(channel_idx, voice_idx, router, &style);
+            }
+            UnisonStyle::Convex => {
+                let style = ConvexUnison::new(self.params.unison_stereo, channel_idx);
                 self.fill_unison_voices(channel_idx, voice_idx, router, &style);
             }
         }

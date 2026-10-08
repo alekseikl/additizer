@@ -1,10 +1,10 @@
 use realfft::RealFftPlanner;
 
 use super::{
-    DFT_BUFFER_SIZE, HALF_WAVEFORM_BITS, IfftPlanners, Interpolated, MAX_UNISON_VOICES, Oscillator,
-    OscillatorConfig, OscillatorLinks, SynthFlatUnison, UnisonStyle, UnisonVoice, VoiceRenderCtx,
-    WAVEFORM_BITS, WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform,
-    WaveformBuffer, WaveformSize,
+    ConvexUnison, DFT_BUFFER_SIZE, FlatUnison, HALF_WAVEFORM_BITS, IfftPlanners, Interpolated,
+    MAX_UNISON_VOICES, Oscillator, OscillatorConfig, OscillatorLinks, UnisonStyle, UnisonVoice,
+    VoiceRenderCtx, WAVEFORM_BITS, WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE,
+    Waveform, WaveformBuffer, WaveformSize,
     lanes::{UNISON_LANES, UnisonLaneParams},
 };
 use crate::synth_engine::{
@@ -235,10 +235,10 @@ fn approx_eq(actual: Sample, expected: Sample) {
 }
 
 #[test]
-fn synth_flat_rates_follow_paired_spread() {
+fn flat_rates_follow_paired_spread() {
     let unison = 5;
     let detune = 1.0;
-    let style = SynthFlatUnison::new(1.0, LEFT_CHANNEL);
+    let style = FlatUnison::new(1.0, LEFT_CHANNEL);
     let rate = |idx: usize, unison: usize| style.rate_gain(idx, unison, detune, 0.0, (0.0, 0.0)).0;
 
     // Positions are -1, -1/2, 0, +1/2, +1. One octave of detune.
@@ -256,18 +256,18 @@ fn synth_flat_rates_follow_paired_spread() {
 }
 
 #[test]
-fn synth_flat_voice_gain_matches_set_amplitude_and_stereo_blend() {
+fn flat_voice_gain_matches_set_amplitude_and_stereo_blend() {
     let unison = 5;
     // center 0.4, detuned 0.6, two detuned pairs: 1/sqrt(0.16 + 0.36*2)
     let scale = (0.88f32).sqrt().recip();
     let amplitudes = (0.4 * scale, 0.6 * scale);
     let (center_amp, detuned_amp) = amplitudes;
 
-    let wide_left = SynthFlatUnison::new(1.0, LEFT_CHANNEL);
-    let wide_right = SynthFlatUnison::new(1.0, RIGHT_CHANNEL);
-    let folded_left = SynthFlatUnison::new(0.0, LEFT_CHANNEL);
-    let folded_right = SynthFlatUnison::new(0.0, RIGHT_CHANNEL);
-    let gain = |style: SynthFlatUnison, idx: usize, amplitudes: (Sample, Sample)| {
+    let wide_left = FlatUnison::new(1.0, LEFT_CHANNEL);
+    let wide_right = FlatUnison::new(1.0, RIGHT_CHANNEL);
+    let folded_left = FlatUnison::new(0.0, LEFT_CHANNEL);
+    let folded_right = FlatUnison::new(0.0, RIGHT_CHANNEL);
+    let gain = |style: FlatUnison, idx: usize, amplitudes: (Sample, Sample)| {
         style.rate_gain(idx, unison, 0.0, 0.0, amplitudes).1
     };
 
@@ -309,15 +309,15 @@ fn synth_flat_voice_gain_matches_set_amplitude_and_stereo_blend() {
 }
 
 #[test]
-fn synth_flat_even_unison_uses_center_level_for_the_inner_pair() {
+fn flat_even_unison_uses_center_level_for_the_inner_pair() {
     // Four voices: ±1/3 use the center level, ±1 use the detuned level.
     // At full stereo the left channel gets -1/3 and +1.
     let scale = (0.52f32).sqrt().recip();
     let center_amp = 0.4 * scale;
     let detuned_amp = 0.6 * scale;
     let amplitudes = (center_amp, detuned_amp);
-    let wide_left = SynthFlatUnison::new(1.0, LEFT_CHANNEL);
-    let gain = |style: SynthFlatUnison, idx: usize, unison: usize, amplitudes: (Sample, Sample)| {
+    let wide_left = FlatUnison::new(1.0, LEFT_CHANNEL);
+    let gain = |style: FlatUnison, idx: usize, unison: usize, amplitudes: (Sample, Sample)| {
         style.rate_gain(idx, unison, 0.0, 0.0, amplitudes).1
     };
 
@@ -329,14 +329,14 @@ fn synth_flat_even_unison_uses_center_level_for_the_inner_pair() {
 
     // Two voices: hard opposite detune, unity level, no blend.
     let unity = (1.0, 0.0);
-    let wide_right = SynthFlatUnison::new(1.0, RIGHT_CHANNEL);
+    let wide_right = FlatUnison::new(1.0, RIGHT_CHANNEL);
     approx_eq(gain(wide_left, 0, 2, unity), 1.0);
     approx_eq(gain(wide_left, 1, 2, unity), 0.0);
     approx_eq(gain(wide_right, 0, 2, unity), 0.0);
     approx_eq(gain(wide_right, 1, 2, unity), 1.0);
     let mono = std::f32::consts::FRAC_1_SQRT_2;
-    let folded_left = SynthFlatUnison::new(0.0, LEFT_CHANNEL);
-    let folded_right = SynthFlatUnison::new(0.0, RIGHT_CHANNEL);
+    let folded_left = FlatUnison::new(0.0, LEFT_CHANNEL);
+    let folded_right = FlatUnison::new(0.0, RIGHT_CHANNEL);
     approx_eq(gain(folded_left, 0, 2, unity), mono);
     approx_eq(gain(folded_right, 1, 2, unity), mono);
 }
@@ -374,20 +374,112 @@ fn manual_unison_follows_hand_levels() {
 }
 
 #[test]
-fn synth_flat_unison_shapes_levels_and_spreads_channels() {
-    let mut mono = make_engine_with(
-        default_harmonics(),
-        zero_level_unison(UnisonStyle::SynthFlat, 0.0),
+fn flat_unison_shapes_levels_and_spreads_channels() {
+    shaped_unison_shapes_levels_and_spreads_channels(UnisonStyle::Flat);
+}
+
+#[test]
+fn convex_unison_shapes_levels_and_spreads_channels() {
+    shaped_unison_shapes_levels_and_spreads_channels(UnisonStyle::Convex);
+}
+
+#[test]
+fn convex_levels_fall_when_folded_and_rise_on_native_stereo() {
+    let folded_side = std::f32::consts::FRAC_1_SQRT_2;
+    let native_side = std::f32::consts::SQRT_2;
+
+    approx_eq(ConvexUnison::mono_level(0.0), 1.0);
+    approx_eq(ConvexUnison::mono_level(1.0), folded_side);
+    approx_eq(ConvexUnison::native_level(1.0), native_side);
+    approx_eq(
+        ConvexUnison::native_level(0.5),
+        (native_side - 1.0).mul_add(0.5f32.sqrt(), 1.0),
     );
+
+    let unison = 5usize;
+    let adjustment = ConvexUnison::adjustment(unison);
+    let square_sums = [0.0, 0.5, 1.0]
+        .into_iter()
+        .map(ConvexUnison::mono_level)
+        .map(|level| level * level)
+        .sum::<Sample>();
+    approx_eq(adjustment, square_sums.sqrt().recip());
+
+    let wide_left = ConvexUnison::new(1.0, LEFT_CHANNEL);
+    let gain = |idx: usize| wide_left.rate_gain(idx, unison, 0.0, 0.0, adjustment).1;
+    let base = std::f32::consts::FRAC_1_SQRT_2 * std::f32::consts::FRAC_1_SQRT_2;
+    approx_eq(gain(0), 0.0);
+    approx_eq(gain(1), ConvexUnison::native_level(0.5) * adjustment);
+    approx_eq(gain(2), adjustment);
+    approx_eq(gain(3), base * adjustment);
+    approx_eq(gain(4), ConvexUnison::native_level(1.0) * adjustment);
+
+    let folded_left = ConvexUnison::new(0.0, LEFT_CHANNEL);
+    let folded_right = ConvexUnison::new(0.0, RIGHT_CHANNEL);
+    let folded_edge = ConvexUnison::mono_level(1.0) * adjustment;
+    approx_eq(
+        folded_left.rate_gain(2, unison, 0.0, 0.0, adjustment).1,
+        adjustment,
+    );
+    approx_eq(
+        folded_right.rate_gain(2, unison, 0.0, 0.0, adjustment).1,
+        adjustment,
+    );
+    approx_eq(
+        folded_left.rate_gain(0, unison, 0.0, 0.0, adjustment).1,
+        folded_edge,
+    );
+    approx_eq(
+        folded_right.rate_gain(0, unison, 0.0, 0.0, adjustment).1,
+        folded_edge,
+    );
+    let folded_inner = ConvexUnison::mono_level(0.5) * adjustment;
+    approx_eq(
+        folded_left.rate_gain(3, unison, 0.0, 0.0, adjustment).1,
+        folded_inner,
+    );
+    approx_eq(
+        folded_right.rate_gain(3, unison, 0.0, 0.0, adjustment).1,
+        folded_inner,
+    );
+
+    let four = ConvexUnison::adjustment(4);
+    let gain4 = |idx: usize| wide_left.rate_gain(idx, 4, 0.0, 0.0, four).1;
+    approx_eq(gain4(0), ConvexUnison::native_level(1.0) * four);
+    approx_eq(gain4(1), base * four);
+    approx_eq(gain4(2), ConvexUnison::native_level(1.0 / 3.0) * four);
+    approx_eq(gain4(3), 0.0);
+
+    let two = ConvexUnison::adjustment(2);
+    approx_eq(wide_left.rate_gain(0, 2, 0.0, 0.0, two).1, 0.0);
+    approx_eq(wide_left.rate_gain(1, 2, 0.0, 0.0, two).1, 2.0);
+
+    let mid = ConvexUnison::new(0.5, LEFT_CHANNEL);
+    let blend = |wide: Sample, mono: Sample| (wide - mono).mul_add(0.5f32.sqrt(), mono);
+    let mono_edge = ConvexUnison::mono_level(1.0);
+    let mono_inner = ConvexUnison::mono_level(0.5);
+    approx_eq(
+        mid.rate_gain(0, unison, 0.0, 0.0, adjustment).1,
+        blend(0.0, mono_edge) * adjustment,
+    );
+    approx_eq(
+        mid.rate_gain(3, unison, 0.0, 0.0, adjustment).1,
+        blend(base, mono_inner) * adjustment,
+    );
+    approx_eq(
+        mid.rate_gain(4, unison, 0.0, 0.0, adjustment).1,
+        blend(ConvexUnison::native_level(1.0), mono_edge) * adjustment,
+    );
+}
+
+fn shaped_unison_shapes_levels_and_spreads_channels(style: UnisonStyle) {
+    let mut mono = make_engine_with(default_harmonics(), zero_level_unison(style, 0.0));
     let (mono_left, mono_right) = play(&mut mono);
 
     assert!(rms(&mono_left) > 1e-3);
     assert!(max_abs_diff(&mono_left, &mono_right) < 1e-4);
 
-    let mut wide = make_engine_with(
-        default_harmonics(),
-        zero_level_unison(UnisonStyle::SynthFlat, 1.0),
-    );
+    let mut wide = make_engine_with(default_harmonics(), zero_level_unison(style, 1.0));
     let (wide_left, wide_right) = play(&mut wide);
 
     assert!(rms(&wide_left) > 1e-3);

@@ -10,7 +10,12 @@ use addi_ui_backend::ui_bridge::modules::oscillator::OscillatorUiBridge;
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 use egui::{Checkbox, ComboBox, DragValue, Grid, Id, Modal, Sides, Ui};
 
-const UNISON_STYLES: [UnisonStyle; 2] = [UnisonStyle::Manual, UnisonStyle::SynthFlat];
+const UNISON_STYLES: [UnisonStyle; 3] =
+    [UnisonStyle::Manual, UnisonStyle::Flat, UnisonStyle::Convex];
+
+fn shapes_unison_levels(style: UnisonStyle) -> bool {
+    matches!(style, UnisonStyle::Flat | UnisonStyle::Convex)
+}
 
 trait UnisonStyleLabel {
     fn label(&self) -> &'static str;
@@ -20,7 +25,8 @@ impl UnisonStyleLabel for UnisonStyle {
     fn label(&self) -> &'static str {
         match self {
             Self::Manual => "Manual",
-            Self::SynthFlat => "SynthFlat",
+            Self::Flat => "Flat",
+            Self::Convex => "Convex",
         }
     }
 }
@@ -325,7 +331,7 @@ impl OscillatorUI {
         }
         ui.end_row();
 
-        if config.unison_style == UnisonStyle::SynthFlat {
+        if shapes_unison_levels(config.unison_style) {
             ui.label("Stereo");
             if ui
                 .add(
@@ -396,28 +402,33 @@ impl OscillatorUI {
             ui.end_row();
         }
 
-        ui.label(if config.unison_style == UnisonStyle::SynthFlat {
-            "Blend"
-        } else {
-            "Levels Blend"
-        });
-        if ui
-            .add(StereoInput::new(
-                Input::GainsBlend,
-                module_id,
-                &mut config.gains_blend,
-                synth_bridge,
-            ))
-            .on_hover_text(if config.unison_style == UnisonStyle::SynthFlat {
-                "SynthFlat unison blend. 0 is the center voice only; 1 brings in the detuned voices."
+        if config.unison_style != UnisonStyle::Convex {
+            ui.label(if shapes_unison_levels(config.unison_style) {
+                "Blend"
             } else {
-                "Blend between the two level columns."
-            })
-            .changed()
-        {
-            bridge.set_param(Input::GainsBlend, config.gains_blend);
+                "Levels Blend"
+            });
+            if ui
+                .add(StereoInput::new(
+                    Input::GainsBlend,
+                    module_id,
+                    &mut config.gains_blend,
+                    synth_bridge,
+                ))
+                .on_hover_text(match config.unison_style {
+                    UnisonStyle::Flat => {
+                        "Flat unison blend. 0 is the center voice only; 1 brings in the detuned voices."
+                    }
+                    UnisonStyle::Manual | UnisonStyle::Convex => {
+                        "Blend between the two level columns."
+                    }
+                })
+                .changed()
+            {
+                bridge.set_param(Input::GainsBlend, config.gains_blend);
+            }
+            ui.end_row();
         }
-        ui.end_row();
     }
 
     fn paint_ui(
@@ -555,8 +566,11 @@ impl OscillatorUI {
                             .selectable_label(config.unison_style == style, style.label())
                             .on_hover_text(match style {
                                 UnisonStyle::Manual => "Set each unison voice level by hand.",
-                                UnisonStyle::SynthFlat => {
+                                UnisonStyle::Flat => {
                                     "Shape levels and spread them across the channels."
+                                }
+                                UnisonStyle::Convex => {
+                                    "At full stereo, native voices rise from the center to about +3 dB at the sides on a square-root curve. The opposite channel is (1/√2)² on the first detuned voice, then that base raised to the distance from center, with edge voices silent. Folded, both channels match and fall to about −3 dB."
                                 }
                             })
                             .clicked()

@@ -10,8 +10,10 @@ pub enum UnisonStyle {
     #[default]
     #[serde(alias = "Custom")]
     Manual,
-    #[serde(alias = "Style1")]
-    SynthFlat,
+    #[serde(alias = "Style1", alias = "SynthFlat")]
+    Flat,
+    #[serde(alias = "SynthConvex")]
+    Convex,
 }
 
 fn default_unison_stereo() -> Sample {
@@ -45,7 +47,7 @@ pub struct OscillatorConfig {
     pub unison_voices: usize,
     #[serde(default)]
     pub unison_style: UnisonStyle,
-    /// Width of SynthFlat unison across the channels. `0` mixes both channels
+    /// Width of Flat and Convex unison across the channels. `0` mixes both channels
     /// together; `1` leaves each detuned oscillator on one channel.
     #[serde(default = "default_unison_stereo")]
     pub unison_stereo: Sample,
