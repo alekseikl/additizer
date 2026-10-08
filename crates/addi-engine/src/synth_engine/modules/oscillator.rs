@@ -815,28 +815,30 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let stereo = self.params.phase_random_stereo;
 
         if amount > 1e-6 || stereo > 1e-6 {
-            // Left runs first and stores the shared base. Each channel then offsets it.
+            // Left runs first and stores the shared random phases. Each channel then
+            // adds its own initial phase and a stereo offset.
             if channel_idx == LEFT_CHANNEL {
-                for (phase, unison_voice, random) in izip!(
+                for (phase, random) in izip!(
                     self.shared_random_phases.iter_mut(),
-                    channel.unison.iter(),
                     (&mut self.random).random_iter::<Sample>()
                 )
                 .take(unison)
                 {
-                    *phase = Phase::from_normalized(unison_voice.initial_phase)
-                        .add_normalized((random - 0.5) * amount);
+                    *phase = Phase::from_normalized((random - 0.5) * amount);
                 }
             }
 
-            for (phase, base, random) in izip!(
+            for (phase, base, unison_voice, random) in izip!(
                 voice.phases.iter_mut(),
                 self.shared_random_phases.iter().copied(),
+                channel.unison.iter(),
                 (&mut self.random).random_iter::<Sample>()
             )
             .take(unison)
             {
-                *phase = base.add_normalized((random - 0.5) * stereo);
+                *phase = base
+                    .add_normalized(unison_voice.initial_phase)
+                    .add_normalized((random - 0.5) * stereo);
             }
         } else if unison > 1 {
             for (phase, unison_voice) in voice.phases.iter_mut().zip(&channel.unison).take(unison) {
