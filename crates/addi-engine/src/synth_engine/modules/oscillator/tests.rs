@@ -430,11 +430,10 @@ fn convex_levels_fall_when_folded_and_rise_on_native_stereo() {
 
     let unison = 5usize;
     let adjustment = ConvexUnison::adjustment(unison);
-    let square_sums = [0.0, 0.5, 1.0]
-        .into_iter()
-        .map(ConvexUnison::mono_level)
-        .map(|level| level * level)
-        .sum::<Sample>();
+    let center = ConvexUnison::mono_level(0.0);
+    let inner = ConvexUnison::mono_level(0.5);
+    let edge = ConvexUnison::mono_level(1.0);
+    let square_sums = center * center + 2.0 * (inner * inner + edge * edge);
     approx_eq(adjustment, square_sums.sqrt().recip());
 
     let wide_left = ConvexUnison::new(1.0, LEFT_CHANNEL);
@@ -484,7 +483,10 @@ fn convex_levels_fall_when_folded_and_rise_on_native_stereo() {
 
     let two = ConvexUnison::adjustment(2);
     approx_eq(wide_left.rate_gain(0, 2, 0.0, 0.0, two).1, 0.0);
-    approx_eq(wide_left.rate_gain(1, 2, 0.0, 0.0, two).1, 2.0);
+    approx_eq(
+        wide_left.rate_gain(1, 2, 0.0, 0.0, two).1,
+        std::f32::consts::SQRT_2,
+    );
 
     let mid = ConvexUnison::new(0.5, LEFT_CHANNEL);
     let blend = |wide: Sample, mono: Sample| (wide - mono).mul_add(0.5f32.sqrt(), mono);

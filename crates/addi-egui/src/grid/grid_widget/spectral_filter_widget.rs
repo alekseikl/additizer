@@ -10,7 +10,7 @@ use addi_dsp::{
     },
     gain_to_db_fast,
 };
-use addi_engine::{ComplexSample, Input, MAX_LEVEL_DB, MIN_LEVEL_DB, ModuleId, Sample};
+use addi_engine::{ComplexSample, Input, MAX_LEVEL_DB, ModuleId, Sample};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
 use super::GridWidgetContent;
@@ -93,7 +93,8 @@ impl SpectralFilterWidget {
         filter: &SpectralFilterEngine,
         cutoff_log2: Sample,
     ) -> Vec<Pos2> {
-        const DB_RANGE_MULT: f32 = (MAX_LEVEL_DB - MIN_LEVEL_DB).recip();
+        const MIN_DB: f32 = -40.0;
+        const DB_RANGE_MULT: f32 = (MAX_LEVEL_DB - MIN_DB).recip();
         let t_mult = ((COLUMNS - 1) as f32).recip();
         let log2_range = MAX_CUTOFF - MIN_CUTOFF;
 
@@ -136,7 +137,7 @@ impl SpectralFilterWidget {
             .map(|(&col, response)| {
                 let t = col * t_mult;
                 let db = gain_to_db_fast(response.norm());
-                let y_t = ((db - MIN_LEVEL_DB) * DB_RANGE_MULT).clamp(0.0, 1.0);
+                let y_t = ((db - MIN_DB) * DB_RANGE_MULT).clamp(0.0, 1.0);
 
                 Pos2::new(
                     rect.left() + t * rect.width(),

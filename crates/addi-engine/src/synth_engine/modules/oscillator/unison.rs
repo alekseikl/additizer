@@ -277,12 +277,11 @@ impl ConvexUnison {
     }
 
     pub(super) fn adjustment(unison: usize) -> Sample {
-        let pairs = unison.div_ceil(2);
         let span = unison - 1;
         let mut square_sums = 0.0;
 
-        for pair in 0..pairs {
-            let spread = (2 * pair + (span & 1)) as Sample / span as Sample;
+        for idx in 0..unison {
+            let spread = ((2 * idx) as Sample - span as Sample).abs() / span as Sample;
             let level = Self::mono_level(spread);
 
             square_sums += level * level;

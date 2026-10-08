@@ -10,7 +10,7 @@ use addi_dsp::{
     },
     gain_to_db_fast, pitch_to_freq,
 };
-use addi_engine::{Input, MAX_LEVEL_DB, MIN_LEVEL_DB, ModuleId, Sample};
+use addi_engine::{Input, MAX_LEVEL_DB, ModuleId, Sample};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
 use super::GridWidgetContent;
@@ -91,7 +91,8 @@ impl SvfWidget {
         cutoff_log2: Sample,
         drive_db: Sample,
     ) {
-        const DB_RANGE_MULT: f32 = (MAX_LEVEL_DB - MIN_LEVEL_DB).recip();
+        const MIN_DB: f32 = -40.0;
+        const DB_RANGE_MULT: f32 = (MAX_LEVEL_DB - MIN_DB).recip();
         let t_mult = ((COLUMNS - 1) as f32).recip();
         let log2_range = MAX_CUTOFF - MIN_CUTOFF;
         let cutoff_col = (cutoff_log2 - MIN_CUTOFF) / log2_range * (COLUMNS - 1) as f32;
@@ -114,7 +115,7 @@ impl SvfWidget {
                 _ => drive_db,
             };
             let db = gain_to_db_fast(gain) + drive_offset;
-            let y_t = ((db - MIN_LEVEL_DB) * DB_RANGE_MULT).clamp(0.0, 1.0);
+            let y_t = ((db - MIN_DB) * DB_RANGE_MULT).clamp(0.0, 1.0);
 
             points.push(Pos2::new(
                 rect.left() + t * rect.width(),
