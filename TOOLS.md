@@ -6,8 +6,9 @@ Commands and workflows for benchmarks and test coverage in this repository.
 
 Performance benchmarks use [Criterion](https://github.com/bheisler/criterion.rs).
 `crates/addi-engine/benches/synth_engine.rs` exercises the full `SynthEngine::process` path (same as the
-audio thread). `crates/addi-dsp/benches/svf.rs` and `crates/addi-dsp/benches/spectral_filter.rs` measure the filter
-implementations on their own.
+audio thread). `crates/addi-engine/benches/svf.rs` and `crates/addi-engine/benches/spectral_filter.rs` time
+those modules at 16 voices. `crates/addi-dsp/benches/svf.rs` and
+`crates/addi-dsp/benches/spectral_filter.rs` measure the filter implementations on their own.
 
 **Patch under test:** HarmonicEditor → Oscillator → Output (minimum config; `Output` is
 added automatically by `SynthEngine::try_new`).
@@ -22,6 +23,7 @@ cargo bench --workspace
 # Run one target
 cargo bench -p addi-engine --bench synth_engine
 cargo bench -p addi-engine --bench svf
+cargo bench -p addi-engine --bench spectral_filter
 cargo bench -p addi-dsp --bench svf
 cargo bench -p addi-dsp --bench spectral_filter
 
@@ -29,6 +31,7 @@ cargo bench -p addi-dsp --bench spectral_filter
 cargo bench -p addi-engine --bench synth_engine -- heavy_patch
 cargo bench -p addi-engine --bench synth_engine -- 'unison/16'
 cargo bench -p addi-engine --bench svf -- LowPass24
+cargo bench -p addi-engine --bench spectral_filter -- LowPass24
 cargo bench -p addi-dsp --bench svf -- LowPass24
 cargo bench -p addi-dsp --bench spectral_filter -- 'linear_phase/LowPass24'
 

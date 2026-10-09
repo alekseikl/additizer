@@ -248,7 +248,8 @@ impl<L: SpectralFilterLinks> SpectralFilter<L> {
 
         filter.apply_response(input, output);
     }
-    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+
+    pub fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
         ctx.spectral(self.id, self.output_slot)
             .for_voices(|rf, target, outputs| {
                 self.process_voice(target, outputs, rf);
