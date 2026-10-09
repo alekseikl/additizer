@@ -293,7 +293,7 @@ impl<L: SvfLinks> Svf<L> {
             output,
         );
     }
-    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+    pub fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
         ctx.audio(self.id, self.output_slot)
             .for_voices(|rf, target, outputs| {
                 self.process_voice(target, outputs, rf);

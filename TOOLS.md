@@ -21,12 +21,14 @@ cargo bench --workspace
 
 # Run one target
 cargo bench -p addi-engine --bench synth_engine
+cargo bench -p addi-engine --bench svf
 cargo bench -p addi-dsp --bench svf
 cargo bench -p addi-dsp --bench spectral_filter
 
 # Run a single scenario (Criterion filter is a regex on the benchmark id)
 cargo bench -p addi-engine --bench synth_engine -- heavy_patch
 cargo bench -p addi-engine --bench synth_engine -- 'unison/16'
+cargo bench -p addi-engine --bench svf -- LowPass24
 cargo bench -p addi-dsp --bench svf -- LowPass24
 cargo bench -p addi-dsp --bench spectral_filter -- 'linear_phase/LowPass24'
 
@@ -68,10 +70,13 @@ cargo bench -p addi-engine --bench synth_engine -- oscillator_render
 
 | Benchmark | What it measures |
 |-----------|------------------|
-| `svf/<type>` | One channel, 128-sample block, cutoff +2 octaves from C4, Q = 1 |
+| `addi-dsp` `svf/<type>` | One channel, 128-sample block, cutoff +2 octaves from C4, Q = 1 |
+| `addi-engine` `synth_engine/svf/<type>` | `Svf::process`, 16 voices, stereo, same cutoff and Q |
 | `spectral_filter/linear_phase/<type>` | 1024-bin spectrum, `apply_response`, magnitude-only |
 
-SVF throughput is samples per second for that channel. Spectral throughput is bins per second.
+DSP SVF throughput is samples per second for that channel. Engine SVF throughput is
+stereo samples per second across the 16 voices (`samples × channels × 16`).
+Spectral throughput is bins per second.
 
 ## Test coverage
 

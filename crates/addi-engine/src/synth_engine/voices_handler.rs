@@ -323,7 +323,13 @@ impl VoicesHandler {
             let releasing = self.releasing.remove(releasing_idx).unwrap();
 
             self.kill(releasing, offset, events);
-            self.grab_and_reset(Some(releasing.voice_idx), new_note, offset, restored, events);
+            self.grab_and_reset(
+                Some(releasing.voice_idx),
+                new_note,
+                offset,
+                restored,
+                events,
+            );
         } else {
             self.grab_and_reset(None, new_note, offset, restored, events);
         }

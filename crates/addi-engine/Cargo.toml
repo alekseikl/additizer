@@ -29,3 +29,7 @@ harness = false
 [[bench]]
 name = "envelope"
 harness = false
+
+[[bench]]
+name = "svf"
+harness = false
