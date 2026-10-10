@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use addi_engine::{
     DataType, ModuleId, Sample,
     routing::{EngineAudioEnd, InputMeta, ProcessContext},

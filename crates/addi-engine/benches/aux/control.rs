@@ -24,7 +24,6 @@ impl Control {
         }
     }
 
-    #[allow(dead_code)]
     pub fn set_constant(&mut self, value: Sample) {
         self.fill = Fill::Constant(value);
     }

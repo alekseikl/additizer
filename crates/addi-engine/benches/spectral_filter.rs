@@ -3,9 +3,10 @@
 //! Cutoff is +2 octaves, resonant-stage Q is 1, Q-cutoff is 8 octaves, and
 //! Q-rolloff is the module minimum, matching `addi-dsp`'s `spectral_filter`
 //! bench. Linear phase matches that bench too. Voices sit on C4, so key
-//! tracking adds no cutoff offset. A full-length sawtooth spectrum is rendered
-//! once; only `SpectralFilter::process` is timed.
+//! tracking adds no cutoff offset. An auxiliary spectral module writes a
+//! full-length sawtooth once; only `SpectralFilter::process` is timed.
 
+use std::f32::consts::{PI, TAU};
 use std::hint::black_box;
 
 use addi_dsp::filters::{
@@ -13,15 +14,19 @@ use addi_dsp::filters::{
     spectral_filter::FilterType,
 };
 use addi_engine::{
-    HarmonicEditor, MAX_BANDWIDTH, ModuleHandle, NUM_CHANNELS, PlayingVoice, SPECTRAL_BUFFER_SIZE,
-    Sample, SmoothedSampleParams, SpectralFilter, StereoSample,
-    harmonic_editor::HarmonicEditorConfig,
+    ComplexSample, NUM_CHANNELS, PlayingVoice, SPECTRAL_BUFFER_SIZE, Sample, SmoothedSampleParams,
+    SpectralBuffer, SpectralFilter, StereoSample,
     routing::{Input, InputSlots, OutputsArena, ProcessContext, ProcessParams},
     spectral_filter::{MIN_Q_ROLLOFF, SpectralFilterConfig},
-    stub::{AudioEnd, StubLinks},
+    stub::AudioEnd,
     synth_module::SynthModule,
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+
+#[path = "aux/mod.rs"]
+mod aux;
+
+use aux::Spectral;
 
 const SAMPLE_RATE: Sample = 48_000.0;
 
@@ -40,6 +45,20 @@ fn resonance_for_q(q: Sample) -> Sample {
     ((q - ZERO_RESONANCE_Q) / (MAX_RESONANCE_Q - ZERO_RESONANCE_Q)).cbrt()
 }
 
+/// Amplitude `1 / (n π)`, alternating quadrature phase. Same bins the harmonic
+/// editor writes for its default sawtooth, across the whole spectrum.
+fn sawtooth() -> SpectralBuffer {
+    let mut spectrum = [ComplexSample::ZERO; SPECTRAL_BUFFER_SIZE];
+
+    for (harmonic, bin) in spectrum.iter_mut().enumerate().skip(1) {
+        let phase = if harmonic & 1 == 0 { 0.25 } else { 0.75 };
+
+        *bin = ComplexSample::from_polar(1.0 / (harmonic as Sample * PI), phase * TAU);
+    }
+
+    spectrum
+}
+
 fn voices() -> [PlayingVoice; VOICES] {
     std::array::from_fn(|i| PlayingVoice::new(i as u8, 60))
 }
@@ -56,32 +75,16 @@ fn process_params<'a>(voices: &'a [PlayingVoice]) -> ProcessParams<'a> {
     }
 }
 
-/// Renders a full-length sawtooth into an arena slot the filter can read.
-fn render_spectrum(voices: &[PlayingVoice]) -> (OutputsArena, usize) {
-    let editor = HarmonicEditor::from_config(&HarmonicEditorConfig {
-        id: 1,
-        // Fixed harmonic count so every voice writes `SPECTRAL_BUFFER_SIZE` bins.
-        bandwidth: MAX_BANDWIDTH as i32,
-        ..HarmonicEditorConfig::default()
-    });
-    let mut handle = ModuleHandle::<StubLinks>::HarmonicEditor(Box::new(editor));
-    let mut arena = OutputsArena::new();
-    arena.allocate_slot(&mut handle);
-
-    let ModuleHandle::HarmonicEditor(editor) = handle else {
-        unreachable!("harmonic editor handle");
-    };
-    let mut editor = *editor;
-    let spectrum_slot = editor.output_slot();
-    let mut audio_end = AudioEnd;
-
-    editor.process(&mut ProcessContext {
-        outputs_arena: &mut arena,
-        audio_end: &mut audio_end,
+fn ctx<'a>(
+    arena: &'a mut OutputsArena,
+    audio_end: &'a mut AudioEnd,
+    voices: &'a [PlayingVoice],
+) -> ProcessContext<'a, AudioEnd> {
+    ProcessContext {
+        outputs_arena: arena,
+        audio_end,
         params: process_params(voices),
-    });
-
-    (arena, spectrum_slot)
+    }
 }
 
 fn spectral_filter(
@@ -89,7 +92,7 @@ fn spectral_filter(
     spectrum_slot: usize,
     arena: &mut OutputsArena,
 ) -> SpectralFilter {
-    let filter = SpectralFilter::from_config(&SpectralFilterConfig {
+    let mut filter = SpectralFilter::from_config(&SpectralFilterConfig {
         id: 2,
         filter_type,
         linear_phase: true,
@@ -100,18 +103,12 @@ fn spectral_filter(
         resonance: StereoSample::splat(resonance_for_q(Q)),
         ..SpectralFilterConfig::default()
     });
-    let mut handle = ModuleHandle::<StubLinks>::SpectralFilter(Box::new(filter));
-    arena.allocate_slot(&mut handle);
-
-    let ModuleHandle::SpectralFilter(filter) = handle else {
-        unreachable!("spectral filter handle");
-    };
-    let mut filter = *filter;
 
     filter.set_input_slots(&[InputSlots::Spectral {
         input_type: Input::Spectrum,
         slot: spectrum_slot,
     }]);
+    arena.allocate_slot(&mut filter);
 
     filter
 }
@@ -125,21 +122,23 @@ fn bench_spectral_filter(c: &mut Criterion) {
     ));
 
     let voices = voices();
-    let (mut arena, spectrum_slot) = render_spectrum(&voices);
+    let mut arena = OutputsArena::new();
+    let mut spectrum = Spectral::new(1, &sawtooth());
+    let mut audio_end = AudioEnd;
+
+    arena.allocate_slot(&mut spectrum);
+    spectrum.process(&mut ctx(&mut arena, &mut audio_end, &voices));
+
+    let spectrum_slot = spectrum.output_slot();
 
     for filter_type in FilterType::ALL {
         let mut filter = spectral_filter(filter_type, spectrum_slot, &mut arena);
-        let mut audio_end = AudioEnd;
 
         group.bench_function(
             BenchmarkId::from_parameter(format!("{filter_type:?}")),
             |b| {
                 b.iter(|| {
-                    let mut ctx = ProcessContext {
-                        outputs_arena: &mut arena,
-                        audio_end: &mut audio_end,
-                        params: process_params(&voices),
-                    };
+                    let mut ctx = ctx(&mut arena, &mut audio_end, &voices);
 
                     filter.process(black_box(&mut ctx));
                     black_box(&ctx);
