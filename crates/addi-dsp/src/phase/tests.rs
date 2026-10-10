@@ -78,6 +78,29 @@ fn from_wrapped_matches_scalar_inside_half_cycle() {
 }
 
 #[test]
+fn from_normalized_matches_scalar_across_the_half_cycle() {
+    let inputs = [-1.0f32, -0.75, -0.5, 0.0, 0.49, 0.5, 0.51, 0.75, 1.0];
+
+    for chunk in inputs.chunks(4) {
+        let mut arr = [0.0; 4];
+        arr[..chunk.len()].copy_from_slice(chunk);
+
+        let mut out = [Phase::ZERO; 4];
+        PhaseX4::from_normalized(f32x4::new(arr)).store(&mut out);
+
+        for (lane, &norm) in arr.iter().enumerate() {
+            let expected = Phase::from_normalized(norm).bits();
+            let actual = out[lane].bits();
+            let diff = expected
+                .wrapping_sub(actual)
+                .min(actual.wrapping_sub(expected));
+
+            assert!(diff <= 1, "norm {norm}: expected {expected}, got {actual}");
+        }
+    }
+}
+
+#[test]
 fn wave_index_and_fraction_match_scalar() {
     let phases = [0u32, 0x7fff_ffff, 0x8000_0000, 0xffff_ffff].map(Phase::from_bits);
     let simd = PhaseX4::load(&phases);

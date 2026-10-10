@@ -1,18 +1,19 @@
 use realfft::RealFftPlanner;
+use wide::f32x4;
 
 use super::{
     ConvexUnison, DFT_BUFFER_SIZE, FlatUnison, HALF_WAVEFORM_BITS, IfftPlanners, Interpolated,
     MAX_UNISON_VOICES, Oscillator, OscillatorConfig, OscillatorLinks, UnisonStyle, UnisonVoice,
     VoiceRenderCtx, WAVEFORM_BITS, WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE,
     Waveform, WaveformBuffer, WaveformSize,
-    lanes::{UNISON_LANES, UnisonLaneParams},
+    lanes::{SampleCtx, UNISON_LANES, UnisonLaneParams, render_same},
 };
 use crate::synth_engine::{
     ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, MAX_VOICES, ModuleConfig,
     ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Sample, SynthEngine,
     coeffs::catmull_rom_from_powers,
     harmonic_editor::HarmonicEditorConfig,
-    phase::Phase,
+    phase::{Phase, PhaseX4},
     routing::{InputSlot, LEFT_CHANNEL, RIGHT_CHANNEL},
 };
 
@@ -817,11 +818,6 @@ fn initial_voices() -> [UnisonVoice; MAX_UNISON_VOICES] {
     std::array::from_fn(test_unison_voice)
 }
 
-/// Same wrap as `PhaseX4::wrap_normalized`: one cycle, half away from zero.
-fn wrap_unit(phase: Sample) -> Sample {
-    phase - phase.round()
-}
-
 fn interpolated_sample(
     wave: &WaveformBuffer,
     phase: Phase,
@@ -896,8 +892,8 @@ fn reference_render(
                 let (rate_from, rate_delta, phase_from, phase_delta, gain_from, gain_delta) =
                     if lane < lanes {
                         let voice = &voices[voice_idx];
-                        let phase_from = wrap_unit(voice.phase_shift.from);
-                        let phase_to = wrap_unit(voice.phase_shift.to);
+                        let phase_from = voice.phase_shift.from;
+                        let phase_to = voice.phase_shift.to;
 
                         let gain_from = voice.gain.from;
                         let gain_to = voice.gain.to;
@@ -1202,5 +1198,56 @@ fn render_voice_samples_empty_range_is_a_no_op() {
     assert_eq!(
         osc.voices.at(case.channel, case.voice).phases,
         phases_before
+    );
+}
+
+/// A ramp through half a cycle must keep moving forward. Wrapping the block
+/// endpoints first turns `0.49 → 0.51` into a near-full-cycle rewind.
+#[test]
+fn unison_phase_ramp_across_half_cycle_follows_the_parameter() {
+    let from = 0.49;
+    let to = 0.51;
+    let buff_t = 0.5;
+    let voices = [UnisonVoice {
+        rate: Interpolated { from: 1.0, to: 1.0 },
+        phase_shift: Interpolated { from, to },
+        gain: Interpolated { from: 1.0, to: 1.0 },
+    }];
+    let params = UnisonLaneParams::from_voices(&voices);
+    let wave = patterned_wave(WaveformSize::Full, 1.0);
+    let phase = Phase::from_bits(0x1000_0000);
+    let mut phases = [phase; UNISON_LANES];
+    let mut ctx = SampleCtx {
+        buff_t: f32x4::splat(buff_t),
+        phase_shift: PhaseX4::splat(Phase::ZERO),
+        phase_inc: f32x4::ZERO,
+        wave_from: &wave,
+        wave_to: &wave,
+        acc_from: [f32x4::ZERO; UNISON_LANES],
+        acc_to: [f32x4::ZERO; UNISON_LANES],
+    };
+
+    render_same::<WAVEFORM_BITS>(&mut phases, &params, &mut ctx, 1);
+
+    let shift = (to - from).mul_add(buff_t, from);
+    let expected = interpolated_sample(
+        &wave,
+        phase + Phase::from_normalized(shift),
+        WaveformSize::Full,
+        1.0,
+    );
+    let actual = ctx.acc_from[0].reduce_add();
+
+    assert!(
+        (actual - expected).abs() < 1e-4,
+        "mid-ramp sample {actual} != forward phase {expected}"
+    );
+
+    let rewound = phase + Phase::ZERO;
+    let wrong = interpolated_sample(&wave, rewound, WaveformSize::Full, 1.0);
+
+    assert!(
+        (actual - wrong).abs() > 0.05,
+        "ramp rewound across the half-cycle cut"
     );
 }

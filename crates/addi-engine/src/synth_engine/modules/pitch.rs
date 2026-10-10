@@ -353,7 +353,7 @@ impl<L: PitchLinks> Pitch<L> {
         }
     }
 
-    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+    pub fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
         ctx.control(self.id, self.output_slot)
             .for_voices(|rf, target, outputs| {
                 self.process_voice(target, outputs, rf);

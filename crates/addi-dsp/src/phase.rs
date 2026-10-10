@@ -136,6 +136,14 @@ impl PhaseX4 {
         Self(cast((phase * Self::FULL_PHASE).trunc_int()))
     }
 
+    /// Lane-wise [`Phase::from_normalized`].
+    ///
+    /// Wraps into `[-0.5, 0.5]` so [`Self::from_wrapped`] does not saturate.
+    #[inline(always)]
+    pub fn from_normalized(phase: f32x4) -> Self {
+        Self::from_wrapped(Self::wrap_normalized(phase))
+    }
+
     /// Lane-wise [`Phase::wave_index`].
     #[inline(always)]
     pub fn wave_index<const WAVEFORM_BITS: usize>(self) -> [u32; 4] {

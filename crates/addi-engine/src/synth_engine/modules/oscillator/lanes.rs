@@ -34,8 +34,8 @@ impl UnisonLaneParams {
             f32x4::new(array::from_fn(|i| voices.get(i).map(f).unwrap_or(0.0)))
         };
 
-        let phase_shift_from = PhaseX4::wrap_normalized(lanes(|uv| uv.phase_shift.from));
-        let phase_shift_to = PhaseX4::wrap_normalized(lanes(|uv| uv.phase_shift.to));
+        let phase_shift_from = lanes(|uv| uv.phase_shift.from);
+        let phase_shift_to = lanes(|uv| uv.phase_shift.to);
         let gain_from = lanes(|uv| uv.gain.from);
         let gain_to = lanes(|uv| uv.gain.to);
 
@@ -80,7 +80,7 @@ pub(super) fn render_same<const BITS: usize>(
     let unison_shift = params
         .phase_shift_delta
         .mul_add(s.buff_t, params.phase_shift_from);
-    let read_phase = phase + s.phase_shift + PhaseX4::from_wrapped(unison_shift);
+    let read_phase = phase + s.phase_shift + PhaseX4::from_normalized(unison_shift);
     let idx = read_phase.wave_index::<BITS>();
     let t = read_phase.wave_index_fraction::<BITS>();
     let g = params.gain_delta.mul_add(s.buff_t, params.gain_from);
@@ -118,7 +118,7 @@ pub(super) fn render_sized<const FROM_BITS: usize, const TO_BITS: usize>(
     let unison_shift = params
         .phase_shift_delta
         .mul_add(s.buff_t, params.phase_shift_from);
-    let read_phase = phase + s.phase_shift + PhaseX4::from_wrapped(unison_shift);
+    let read_phase = phase + s.phase_shift + PhaseX4::from_normalized(unison_shift);
     let g = params.gain_delta.mul_add(s.buff_t, params.gain_from);
     let from_tap = wave_tap::<FROM_BITS>(read_phase, g);
     let to_tap = wave_tap::<TO_BITS>(read_phase, g);

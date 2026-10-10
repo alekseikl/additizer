@@ -35,5 +35,9 @@ name = "svf"
 harness = false
 
 [[bench]]
+name = "oscillator"
+harness = false
+
+[[bench]]
 name = "spectral_filter"
 harness = false

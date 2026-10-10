@@ -1139,7 +1139,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         });
     }
 
-    pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
+    pub fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
         ctx.audio(self.id, self.output_slot)
             .for_triggered_voices(|rf, target| {
                 self.build_this_frame_wave(target, rf);
