@@ -83,6 +83,10 @@ impl UiEnd {
         self.tx.push(UiEvent::Legato(legato)).is_ok()
     }
 
+    pub fn set_kill_same_note(&mut self, kill_same_note: bool) -> bool {
+        self.tx.push(UiEvent::KillSameNote(kill_same_note)).is_ok()
+    }
+
     pub fn set_block_size(&mut self, block_size: usize) -> bool {
         self.tx.push(UiEvent::BlockSize(block_size)).is_ok()
     }
@@ -165,6 +169,10 @@ impl EngineUiEnd for UiEnd {
 
     fn set_legato(&mut self, legato: bool) -> bool {
         UiEnd::set_legato(self, legato)
+    }
+
+    fn set_kill_same_note(&mut self, kill_same_note: bool) -> bool {
+        UiEnd::set_kill_same_note(self, kill_same_note)
     }
 
     fn set_block_size(&mut self, block_size: usize) -> bool {

@@ -14,10 +14,17 @@ use crate::{
     },
 };
 
+fn default_kill_same_note() -> bool {
+    true
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct EngineParams {
     pub num_voices: usize,
     pub legato: bool,
+    /// Retriggering a releasing note kills that voice. When false, the new note layers on it.
+    #[serde(default = "default_kill_same_note")]
+    pub kill_same_note: bool,
     pub block_size: usize,
     pub oversampling: bool,
     pub voice_kill_time: Sample,
@@ -29,6 +36,7 @@ impl Default for EngineParams {
         Self {
             num_voices: 1,
             legato: false,
+            kill_same_note: default_kill_same_note(),
             block_size: MAX_BLOCK_SIZE,
             oversampling: false,
             voice_kill_time: from_ms(30.0),

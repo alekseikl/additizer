@@ -139,17 +139,18 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, AudioRouterType, A> {
                 .expect("slot should be in place");
 
             // Untriggered first so triggered voices can steal already-advanced phase.
+            let last_voice_idx = self.ctx.params.last_voice_idx;
+
             for triggered in [false, true] {
-                for (seq_idx, voice) in self
+                for voice in self
                     .ctx
                     .params
                     .active_voices
                     .iter()
-                    .enumerate()
-                    .filter(|(_, voice)| voice.triggered().is_some() == triggered)
+                    .filter(|voice| voice.triggered().is_some() == triggered)
                 {
                     for channel_idx in 0..NUM_CHANNELS {
-                        let target = VoiceTarget::new(channel_idx, voice, seq_idx);
+                        let target = VoiceTarget::new(channel_idx, voice, last_voice_idx);
 
                         f(self, &target, &mut slot);
                     }
@@ -169,9 +170,11 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, AudioRouterType, A> {
         mut f: impl FnMut(&mut Self, &VoiceTarget),
     ) -> &mut Self {
         if self.ctx.params.trigger_stage {
-            for (seq_idx, voice) in self.ctx.params.active_voices.iter().enumerate() {
+            let last_voice_idx = self.ctx.params.last_voice_idx;
+
+            for voice in self.ctx.params.active_voices {
                 for channel_idx in 0..NUM_CHANNELS {
-                    let target = VoiceTarget::new(channel_idx, voice, seq_idx);
+                    let target = VoiceTarget::new(channel_idx, voice, last_voice_idx);
 
                     f(self, &target);
                 }
@@ -249,13 +252,15 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, ControlRouterType, A> {
             .take()
             .expect("slot should be in place");
 
+        let last_voice_idx = self.ctx.params.last_voice_idx;
+
         for channel_idx in 0..NUM_CHANNELS {
-            for (seq_idx, voice) in self.ctx.params.active_voices.iter().enumerate() {
+            for voice in self.ctx.params.active_voices {
                 if !self.ctx.params.trigger_stage && voice.triggered().is_some() {
                     continue;
                 }
 
-                let target = VoiceTarget::new(channel_idx, voice, seq_idx);
+                let target = VoiceTarget::new(channel_idx, voice, last_voice_idx);
 
                 f(self, &target, &mut slot);
             }
@@ -320,9 +325,11 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, SpectralRouterType, A> {
             .take()
             .expect("slot should be in place");
 
+        let last_voice_idx = self.ctx.params.last_voice_idx;
+
         for channel_idx in 0..NUM_CHANNELS {
-            for (seq_idx, voice) in self.ctx.params.active_voices.iter().enumerate() {
-                let target = VoiceTarget::new(channel_idx, voice, seq_idx);
+            for voice in self.ctx.params.active_voices {
+                let target = VoiceTarget::new(channel_idx, voice, last_voice_idx);
 
                 f(self, &target, &mut slot);
             }

@@ -745,6 +745,12 @@ impl<E: EngineLinks> UiBridge<E> {
         }
     }
 
+    pub fn set_kill_same_note(&mut self, kill_same_note: bool) {
+        if self.ui_end.set_kill_same_note(kill_same_note) {
+            self.engine_params.kill_same_note = kill_same_note;
+        }
+    }
+
     pub fn set_block_size(&mut self, block_size: usize) {
         if self.ui_end.set_block_size(block_size) {
             self.engine_params.block_size = block_size;

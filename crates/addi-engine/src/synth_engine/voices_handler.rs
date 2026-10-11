@@ -1,5 +1,3 @@
-use std::{cmp::Reverse, collections::VecDeque};
-
 use smallvec::SmallVec;
 
 use crate::synth_engine::{
@@ -14,7 +12,10 @@ pub const BAND_LIMIT_FREQUENCY: Sample = 24_000.0;
 const NUM_MIDI_CHANNELS: usize = 16;
 const MAX_MIDI_CHANNEL: u8 = NUM_MIDI_CHANNELS as u8 - 1;
 
-type VoiceIdx = u8;
+/// Slots are grouped as `(0, 1)`, `(2, 3)`, … so modules can process a pair as SIMD lanes.
+const VOICE_PAIR_LEN: usize = 2;
+const _: () = assert!(MAX_VOICES.is_multiple_of(VOICE_PAIR_LEN));
+const _: () = assert!(MAX_VOICES <= u8::MAX as usize);
 
 #[derive(Debug, Clone, Copy)]
 pub struct Note {
@@ -34,20 +35,27 @@ impl Note {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Phase {
+    NoteOn,
+    Release,
+    Kill,
+}
+
 #[derive(Clone, Copy)]
 struct PlayingNote {
     note: Note,
-    voice_idx: VoiceIdx,
     seq_idx: u32,
+    phase: Phase,
 }
 
 pub struct DecayingVoice {
-    voice_idx: VoiceIdx,
+    voice_idx: u8,
     still_active: bool,
 }
 
 impl DecayingVoice {
-    pub fn new(voice_idx: VoiceIdx) -> Self {
+    pub fn new(voice_idx: u8) -> Self {
         Self {
             voice_idx,
             still_active: false,
@@ -73,13 +81,13 @@ impl DecayingVoice {
 
 #[derive(Debug, Clone, Copy)]
 pub struct PlayingVoice {
-    voice_idx: VoiceIdx,
+    voice_idx: u8,
     note: u8,
     triggered: Option<u16>,
 }
 
 impl PlayingVoice {
-    pub fn new(voice_idx: VoiceIdx, note: u8) -> Self {
+    pub fn new(voice_idx: u8, note: u8) -> Self {
         Self {
             voice_idx,
             note,
@@ -124,15 +132,15 @@ impl VoiceEvents {
 
     fn reset(
         &mut self,
-        voice_idx: VoiceIdx,
-        replaced_voice_idx: Option<VoiceIdx>,
+        voice_idx: usize,
+        replaced_idx: Option<usize>,
         prev_note: Option<PrevNote>,
         note: Note,
         offset: usize,
     ) {
         self.events.push(VoiceEvent::Reset {
-            voice_idx: voice_idx as usize,
-            replaced_voice_idx: replaced_voice_idx.map(|idx| idx as usize),
+            voice_idx,
+            replaced_voice_idx: replaced_idx,
             prev_note,
             pitch: Self::note_to_pitch(note.note),
             velocity: note.velocity,
@@ -140,34 +148,32 @@ impl VoiceEvents {
         });
     }
 
-    fn update(&mut self, voice_idx: VoiceIdx, note: Note, offset: usize) {
+    fn update(&mut self, voice_idx: usize, note: Note, offset: usize) {
         self.events.push(VoiceEvent::Update {
-            voice_idx: voice_idx as usize,
+            voice_idx,
             pitch: Self::note_to_pitch(note.note),
             velocity: note.velocity,
             offset,
         });
     }
 
-    fn release(&mut self, voice_idx: VoiceIdx, velocity: Sample, offset: usize) {
+    fn release(&mut self, voice_idx: usize, velocity: Sample, offset: usize) {
         self.events.push(VoiceEvent::Release {
-            voice_idx: voice_idx as usize,
+            voice_idx,
             velocity,
             offset,
         });
     }
 
-    fn kill(&mut self, voice_idx: VoiceIdx, offset: usize) {
-        self.events.push(VoiceEvent::Kill {
-            voice_idx: voice_idx as usize,
-            offset,
-        });
+    fn kill(&mut self, voice_idx: usize, offset: usize) {
+        self.events.push(VoiceEvent::Kill { voice_idx, offset });
     }
 }
 
 pub struct VoicesHandlerMetrics {
     pub num_voices: usize,
     pub legato: bool,
+    pub kill_same_note: bool,
     pub waiting: usize,
     pub playing: usize,
     pub releasing: usize,
@@ -177,62 +183,146 @@ pub struct VoicesHandlerMetrics {
 pub struct VoicesHandler {
     num_voices: usize,
     legato: bool,
+    kill_same_note: bool,
     waiting: Vec<Note>,
-    playing: VecDeque<PlayingNote>,
-    releasing: VecDeque<PlayingNote>,
-    killing: VecDeque<PlayingNote>,
+    voices: [Option<PlayingNote>; MAX_VOICES],
     terminate: Vec<Note>,
-    free_voices: Vec<VoiceIdx>,
     prev_notes: [Option<u8>; NUM_MIDI_CHANNELS],
     triggers: MonoVoicesLayout<Option<u16>>,
     seq_idx: u32,
 }
 
 impl VoicesHandler {
-    pub fn new(num_voices: usize, legato: bool) -> Self {
+    pub fn new(num_voices: usize, legato: bool, kill_same_note: bool) -> Self {
         Self {
             num_voices: num_voices.clamp(1, MAX_AVAILABLE_VOICES),
             legato,
+            kill_same_note,
             waiting: Vec::with_capacity(64),
-            playing: VecDeque::with_capacity(MAX_VOICES),
-            releasing: VecDeque::with_capacity(MAX_VOICES),
-            killing: VecDeque::with_capacity(MAX_VOICES),
+            voices: [None; MAX_VOICES],
             terminate: Vec::with_capacity(64),
-            free_voices: (0..(MAX_VOICES as u8)).rev().collect(),
             prev_notes: [None; NUM_MIDI_CHANNELS],
             triggers: new_mono_voices_layout(),
             seq_idx: 0,
         }
     }
 
+    /// Prefer the free slot of a pair that already has one voice, so both lanes stay occupied.
+    /// Otherwise take the first slot of the first fully free pair.
+    fn alloc_voice(&self) -> Option<usize> {
+        let mut free_pair = None;
+        let (pairs, _) = self.voices.as_chunks::<VOICE_PAIR_LEN>();
+
+        for (pair_idx, [left, right]) in pairs.iter().enumerate() {
+            let base = pair_idx * VOICE_PAIR_LEN;
+
+            match (left.is_some(), right.is_some()) {
+                (true, false) => return Some(base + 1),
+                (false, true) => return Some(base),
+                (false, false) if free_pair.is_none() => free_pair = Some(base),
+                _ => {}
+            }
+        }
+
+        free_pair
+    }
+
+    fn count_phase(&self, phase: Phase) -> usize {
+        self.voices
+            .iter()
+            .flatten()
+            .filter(|note| note.phase == phase)
+            .count()
+    }
+
+    fn any_phase(&self, phase: Phase, pred: impl Fn(&PlayingNote) -> bool) -> bool {
+        self.voices
+            .iter()
+            .flatten()
+            .any(|note| note.phase == phase && pred(note))
+    }
+
+    fn find_phase(
+        &self,
+        phase: Phase,
+        pred: impl Fn(&PlayingNote) -> bool,
+    ) -> Option<(usize, PlayingNote)> {
+        self.voices.iter().enumerate().find_map(|(idx, slot)| {
+            let note = *slot.as_ref()?;
+            (note.phase == phase && pred(&note)).then_some((idx, note))
+        })
+    }
+
+    fn find_phase_note(&self, phase: Phase, note: &Note) -> Option<(usize, PlayingNote)> {
+        self.find_phase(phase, |playing| playing.note.is_same_note(note))
+    }
+
+    fn find_phase_channel(&self, phase: Phase, channel: u8) -> Option<(usize, PlayingNote)> {
+        self.find_phase(phase, |playing| playing.note.channel == channel)
+    }
+
+    fn find_phase_any(&self, phase: Phase) -> Option<(usize, PlayingNote)> {
+        self.find_phase(phase, |_| true)
+    }
+
+    /// Oldest voice in `phase`, by allocation order (`seq_idx`).
+    fn find_phase_oldest(&self, phase: Phase) -> Option<(usize, PlayingNote)> {
+        self.voices
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, slot)| {
+                let note = *slot.as_ref()?;
+                (note.phase == phase).then_some((idx, note))
+            })
+            .min_by_key(|(_, note)| note.seq_idx)
+    }
+
+    fn find_active(&self, pred: impl Fn(&PlayingNote) -> bool) -> Option<usize> {
+        self.find_phase(Phase::NoteOn, &pred)
+            .or_else(|| self.find_phase(Phase::Release, &pred))
+            .or_else(|| self.find_phase(Phase::Kill, &pred))
+            .map(|(idx, _)| idx)
+    }
+
+    fn take_phase(&mut self, phase: Phase) -> Option<(usize, PlayingNote)> {
+        let (voice_idx, note) = self.find_phase_any(phase)?;
+        self.voices[voice_idx] = None;
+        Some((voice_idx, note))
+    }
+
+    fn assign_playing(&mut self, voice_idx: usize, note: Note) {
+        let seq_idx = self.seq_idx;
+        self.seq_idx = self.seq_idx.wrapping_add(1);
+        self.voices[voice_idx] = Some(PlayingNote {
+            note,
+            seq_idx,
+            phase: Phase::NoteOn,
+        });
+    }
+
+    fn enter_phase(&mut self, voice_idx: usize, phase: Phase) {
+        self.voices[voice_idx].as_mut().unwrap().phase = phase;
+    }
+
     fn prev_note(&self, channel: u8, restored: bool) -> Option<PrevNote> {
         let channel = channel.min(MAX_MIDI_CHANNEL);
         let note = self.prev_notes[channel as usize]?;
         let is_same = |n: &Note| n.channel == channel && n.note == note;
-        let voice_idx = self
-            .playing
-            .iter()
-            .chain(self.releasing.iter())
-            .chain(self.killing.iter())
-            .find(|playing| is_same(&playing.note))
-            .map(|playing| playing.voice_idx);
+        let voice_idx = self.find_active(|playing| is_same(&playing.note));
         let overlap = restored
-            || self
-                .waiting
-                .iter()
-                .chain(self.playing.iter().map(|p| &p.note))
-                .any(is_same);
+            || self.waiting.iter().any(&is_same)
+            || self.any_phase(Phase::NoteOn, |playing| is_same(&playing.note));
 
         Some(PrevNote {
             note,
-            voice_idx,
+            voice_idx: voice_idx.map(|idx| idx as u8),
             overlap,
         })
     }
 
     fn grab_and_reset(
         &mut self,
-        replaced_voice_idx: Option<VoiceIdx>,
+        replaced_idx: Option<usize>,
         note: Note,
         offset: usize,
         restored: bool,
@@ -240,54 +330,49 @@ impl VoicesHandler {
     ) {
         let prev_note = self.prev_note(note.channel, restored);
 
-        let voice_idx = if let Some(voice_idx) = self.free_voices.pop() {
+        let voice_idx = if let Some(voice_idx) = self.alloc_voice() {
             voice_idx
-        } else if let Some(killing) = self.killing.pop_back() {
+        } else if let Some((voice_idx, killing)) = self.take_phase(Phase::Kill) {
             self.terminate_killed(killing.note);
-            killing.voice_idx
-        } else if let Some(releasing) = self.releasing.pop_back() {
+            voice_idx
+        } else if let Some((voice_idx, releasing)) = self.take_phase(Phase::Release) {
             self.terminate.push(releasing.note);
-            releasing.voice_idx
-        } else if let Some(playing) = self.playing.pop_back() {
+            voice_idx
+        } else if let Some((voice_idx, playing)) = self.take_phase(Phase::NoteOn) {
             self.waiting.push(playing.note);
-            playing.voice_idx
+            voice_idx
         } else {
             panic!("grab_and_reset(): Note processing error")
         };
 
-        self.playing.push_front(PlayingNote {
-            note,
-            voice_idx,
-            seq_idx: self.seq_idx,
-        });
-        self.seq_idx = self.seq_idx.wrapping_add(1);
-        self.triggers[voice_idx as usize] = Some(offset as u16);
+        self.assign_playing(voice_idx, note);
+        self.triggers[voice_idx] = Some(offset as u16);
 
-        events.reset(voice_idx, replaced_voice_idx, prev_note, note, offset);
+        events.reset(voice_idx, replaced_idx, prev_note, note, offset);
     }
 
-    fn legato(&mut self, voice_idx: VoiceIdx, note: Note, offset: usize, events: &mut VoiceEvents) {
-        self.playing.push_front(PlayingNote {
-            note,
-            voice_idx,
-            seq_idx: self.seq_idx,
-        });
-        self.seq_idx = self.seq_idx.wrapping_add(1);
+    fn legato(&mut self, voice_idx: usize, note: Note, offset: usize, events: &mut VoiceEvents) {
+        self.assign_playing(voice_idx, note);
         events.update(voice_idx, note, offset);
     }
 
     fn terminate_killed(&mut self, note: Note) {
-        let still_in_use = self.waiting.iter().any(|w| w.is_same_instance(&note))
-            || self.playing.iter().any(|p| p.note.is_same_instance(&note));
+        let still_in_use = self
+            .waiting
+            .iter()
+            .any(|waiting| waiting.is_same_instance(&note))
+            || self.any_phase(Phase::NoteOn, |playing| {
+                playing.note.is_same_instance(&note)
+            });
 
         if !still_in_use {
             self.terminate.push(note);
         }
     }
 
-    fn kill(&mut self, playing: PlayingNote, offset: usize, events: &mut VoiceEvents) {
-        self.killing.push_front(playing);
-        events.kill(playing.voice_idx, offset);
+    fn kill(&mut self, voice_idx: usize, offset: usize, events: &mut VoiceEvents) {
+        self.enter_phase(voice_idx, Phase::Kill);
+        events.kill(voice_idx, offset);
     }
 
     fn note_on_monophonic(
@@ -298,38 +383,23 @@ impl VoicesHandler {
         events: &mut VoiceEvents,
     ) {
         // Kill playing note on same channel
-        if let Some(playing_idx) = self
-            .playing
-            .iter()
-            .position(|playing| playing.note.channel == new_note.channel)
+        if let Some((voice_idx, playing)) = self.find_phase_channel(Phase::NoteOn, new_note.channel)
         {
-            let playing = self.playing.remove(playing_idx).unwrap();
-
             self.waiting.push(playing.note);
 
             if self.legato {
-                self.legato(playing.voice_idx, new_note, offset, events);
+                self.legato(voice_idx, new_note, offset, events);
             } else {
-                self.kill(playing, offset, events);
-                self.grab_and_reset(Some(playing.voice_idx), new_note, offset, restored, events);
+                self.kill(voice_idx, offset, events);
+                self.grab_and_reset(Some(voice_idx), new_note, offset, restored, events);
             }
         }
         // Kill releasing note on same channel
-        else if let Some(releasing_idx) = self
-            .releasing
-            .iter()
-            .position(|releasing| releasing.note.channel == new_note.channel)
+        else if let Some((voice_idx, _)) =
+            self.find_phase_channel(Phase::Release, new_note.channel)
         {
-            let releasing = self.releasing.remove(releasing_idx).unwrap();
-
-            self.kill(releasing, offset, events);
-            self.grab_and_reset(
-                Some(releasing.voice_idx),
-                new_note,
-                offset,
-                restored,
-                events,
-            );
+            self.kill(voice_idx, offset, events);
+            self.grab_and_reset(Some(voice_idx), new_note, offset, restored, events);
         } else {
             self.grab_and_reset(None, new_note, offset, restored, events);
         }
@@ -344,25 +414,22 @@ impl VoicesHandler {
     ) {
         let mut replaced_voice_idx = None;
 
-        // Kill same releasing note
-        if let Some(idx) = self
-            .releasing
-            .iter()
-            .position(|releasing| releasing.note.is_same_note(&new_note))
+        // Kill the same releasing note so the retrigger replaces it. When disabled, the
+        // new note layers on that release until a voice has to be stolen.
+        if self.kill_same_note
+            && let Some((voice_idx, _)) = self.find_phase_note(Phase::Release, &new_note)
         {
-            let releasing = self.releasing.remove(idx).unwrap();
-
-            self.kill(releasing, offset, events);
-            replaced_voice_idx = Some(releasing.voice_idx);
+            self.kill(voice_idx, offset, events);
+            replaced_voice_idx = Some(voice_idx);
         }
 
-        // All available voices have been occupied, kill the oldest one
-        if self.playing.len() + self.releasing.len() >= self.num_voices {
-            if let Some(releasing) = self.releasing.pop_back() {
-                self.kill(releasing, offset, events);
-            } else if let Some(playing) = self.playing.pop_back() {
+        // All available voices have been occupied; free the oldest, preferring a releasing voice.
+        if self.count_phase(Phase::NoteOn) + self.count_phase(Phase::Release) >= self.num_voices {
+            if let Some((voice_idx, _)) = self.find_phase_oldest(Phase::Release) {
+                self.kill(voice_idx, offset, events);
+            } else if let Some((voice_idx, playing)) = self.find_phase_oldest(Phase::NoteOn) {
                 self.waiting.push(playing.note);
-                self.kill(playing, offset, events);
+                self.kill(voice_idx, offset, events);
             }
         }
 
@@ -383,10 +450,9 @@ impl VoicesHandler {
             .waiting
             .iter()
             .any(|waiting| waiting.is_same_note(&new_note))
-            || self
-                .playing
-                .iter()
-                .any(|playing| playing.note.is_same_note(&new_note))
+            || self.any_phase(Phase::NoteOn, |playing| {
+                playing.note.is_same_note(&new_note)
+            })
         {
             tracing::info!("Already pressed note came: {:?}", new_note);
             return;
@@ -419,26 +485,18 @@ impl VoicesHandler {
             .position(|waiting| waiting.is_same_note(&note))
         {
             let waiting = self.waiting.remove(waiting_idx);
-            if !self
-                .killing
-                .iter()
-                .any(|k| k.note.is_same_instance(&waiting))
-            {
+            if !self.any_phase(Phase::Kill, |killing| {
+                killing.note.is_same_instance(&waiting)
+            }) {
                 self.terminate.push(waiting);
             }
             return;
         }
 
-        let Some(playing_idx) = self
-            .playing
-            .iter()
-            .position(|playing| playing.note.is_same_note(&note))
-        else {
+        let Some((voice_idx, playing)) = self.find_phase_note(Phase::NoteOn, &note) else {
             tracing::info!("Unknown note lifted: {:?}", note);
             return;
         };
-
-        let playing = self.playing.remove(playing_idx).unwrap();
 
         if monophonic
             && self.legato
@@ -451,12 +509,12 @@ impl VoicesHandler {
 
             self.terminate.push(playing.note);
             self.prev_notes[note.channel.min(MAX_MIDI_CHANNEL) as usize] = Some(waiting_note.note);
-            self.legato(playing.voice_idx, waiting_note, offset, events);
+            self.legato(voice_idx, waiting_note, offset, events);
             return;
         }
 
-        self.releasing.push_front(playing);
-        events.release(playing.voice_idx, note.velocity, offset);
+        self.enter_phase(voice_idx, Phase::Release);
+        events.release(voice_idx, note.velocity, offset);
 
         // In mono mode `waiting` is a per-channel held-notes stack; only restore
         // notes from the released note's channel.
@@ -477,30 +535,22 @@ impl VoicesHandler {
     pub fn handle_choke(&mut self, note: Note) {
         let mut found = false;
 
-        if let Some(playing_idx) = self.playing.iter().position(|p| p.note.is_same_note(&note)) {
-            let playing = self.playing.remove(playing_idx).unwrap();
-
-            self.free_voices.push(playing.voice_idx);
+        if let Some((voice_idx, _)) = self.find_phase_note(Phase::NoteOn, &note) {
+            self.voices[voice_idx] = None;
             found = true;
-        } else if let Some(releasing_idx) = self
-            .releasing
-            .iter()
-            .position(|r| r.note.is_same_note(&note))
-        {
-            let releasing = self.releasing.remove(releasing_idx).unwrap();
-
-            self.free_voices.push(releasing.voice_idx);
+        } else if let Some((voice_idx, _)) = self.find_phase_note(Phase::Release, &note) {
+            self.voices[voice_idx] = None;
             found = true;
-        } else if let Some(killing_idx) =
-            self.killing.iter().position(|k| k.note.is_same_note(&note))
-        {
-            let killing = self.killing.remove(killing_idx).unwrap();
-
-            self.free_voices.push(killing.voice_idx);
+        } else if let Some((voice_idx, _)) = self.find_phase_note(Phase::Kill, &note) {
+            self.voices[voice_idx] = None;
             found = true;
         }
 
-        if let Some(waiting_idx) = self.waiting.iter().position(|w| w.is_same_note(&note)) {
+        if let Some(waiting_idx) = self
+            .waiting
+            .iter()
+            .position(|waiting| waiting.is_same_note(&note))
+        {
             self.waiting.remove(waiting_idx);
             found = true;
         }
@@ -511,25 +561,25 @@ impl VoicesHandler {
     }
 
     pub fn choke_all_voices(&mut self) {
-        for playing in self.playing.drain(..) {
-            self.terminate.push(playing.note);
-            self.free_voices.push(playing.voice_idx);
-        }
+        for idx in 0..MAX_VOICES {
+            let Some(voice) = self.voices[idx].take() else {
+                continue;
+            };
 
-        for releasing in self.releasing.drain(..) {
-            self.terminate.push(releasing.note);
-            self.free_voices.push(releasing.voice_idx);
-        }
-
-        for killing in self.killing.drain(..) {
-            if !self
-                .waiting
-                .iter()
-                .any(|w| w.is_same_instance(&killing.note))
-            {
-                self.terminate.push(killing.note);
+            match voice.phase {
+                Phase::NoteOn | Phase::Release => {
+                    self.terminate.push(voice.note);
+                }
+                Phase::Kill => {
+                    if !self
+                        .waiting
+                        .iter()
+                        .any(|waiting| waiting.is_same_instance(&voice.note))
+                    {
+                        self.terminate.push(voice.note);
+                    }
+                }
             }
-            self.free_voices.push(killing.voice_idx);
         }
 
         for waiting in self.waiting.drain(..) {
@@ -545,19 +595,12 @@ impl VoicesHandler {
         value: Sample,
     ) -> Option<ExpressionEvent> {
         let voice_idx = self
-            .playing
-            .iter()
-            .find(|p| p.note.is_same_note(&note))
-            .map(|p| p.voice_idx)
-            .or_else(|| {
-                self.releasing
-                    .iter()
-                    .find(|r| r.note.is_same_note(&note))
-                    .map(|r| r.voice_idx)
-            });
+            .find_phase_note(Phase::NoteOn, &note)
+            .or_else(|| self.find_phase_note(Phase::Release, &note))
+            .map(|(voice_idx, _)| voice_idx);
 
         voice_idx.map(|voice_idx| ExpressionEvent {
-            voice_idx: voice_idx as usize,
+            voice_idx,
             expression,
             offset,
             value,
@@ -565,12 +608,7 @@ impl VoicesHandler {
     }
 
     pub fn voice_idx_for_host_id(&self, host_id: i32) -> Option<usize> {
-        self.playing
-            .iter()
-            .chain(self.releasing.iter())
-            .chain(self.killing.iter())
-            .find(|note| note.note.host_id == Some(host_id))
-            .map(|note| note.voice_idx as usize)
+        self.find_active(|note| note.note.host_id == Some(host_id))
     }
 
     pub fn set_num_voices(&mut self, num_voices: usize) {
@@ -581,24 +619,31 @@ impl VoicesHandler {
         self.legato = legato;
     }
 
+    pub fn set_kill_same_note(&mut self, kill_same_note: bool) {
+        self.kill_same_note = kill_same_note;
+    }
+
     pub fn get_metrics(&self) -> VoicesHandlerMetrics {
         VoicesHandlerMetrics {
             num_voices: self.num_voices,
             legato: self.legato,
+            kill_same_note: self.kill_same_note,
             waiting: self.waiting.len(),
-            playing: self.playing.len(),
-            releasing: self.releasing.len(),
-            killing: self.killing.len(),
+            playing: self.count_phase(Phase::NoteOn),
+            releasing: self.count_phase(Phase::Release),
+            killing: self.count_phase(Phase::Kill),
         }
     }
 
     pub fn get_decaying_voices(&self, decaying_voices: &mut DecayingVoices) {
-        decaying_voices.extend(
-            self.releasing
-                .iter()
-                .map(|r| DecayingVoice::new(r.voice_idx)),
-        );
-        decaying_voices.extend(self.killing.iter().map(|k| DecayingVoice::new(k.voice_idx)));
+        for (idx, slot) in self.voices.iter().enumerate() {
+            let Some(note) = slot else {
+                continue;
+            };
+            if note.phase == Phase::Release || note.phase == Phase::Kill {
+                decaying_voices.push(DecayingVoice::new(idx as u8));
+            }
+        }
     }
 
     pub fn update_decaying_voices(
@@ -606,62 +651,50 @@ impl VoicesHandler {
         decaying_voices: &[DecayingVoice],
         terminated: &mut Vec<Note>,
     ) {
-        for decaying in decaying_voices.iter().filter(|d| d.is_done()) {
-            if let Some(releasing_idx) = self
-                .releasing
-                .iter()
-                .position(|r| r.voice_idx == decaying.voice_idx)
-            {
-                let releasing = self.releasing.remove(releasing_idx).unwrap();
+        for decaying in decaying_voices.iter().filter(|decaying| decaying.is_done()) {
+            let idx = decaying.index();
+            let Some(voice) = self.voices[idx] else {
+                continue;
+            };
 
-                self.terminate.push(releasing.note);
-                self.free_voices.push(decaying.voice_idx);
-            } else if let Some(killing_idx) = self
-                .killing
-                .iter()
-                .position(|k| k.voice_idx == decaying.voice_idx)
-            {
-                let killing = self.killing.remove(killing_idx).unwrap();
-
-                self.terminate_killed(killing.note);
-                self.free_voices.push(decaying.voice_idx);
+            match voice.phase {
+                Phase::Release => {
+                    self.voices[idx] = None;
+                    self.terminate.push(voice.note);
+                }
+                Phase::Kill => {
+                    self.voices[idx] = None;
+                    self.terminate_killed(voice.note);
+                }
+                Phase::NoteOn => {}
             }
         }
 
         terminated.append(&mut self.terminate);
     }
 
-    pub fn get_playing_voices(&mut self, playing_voices: &mut PlayingVoices) {
-        // Latest voice should be first in array
-        let mut playing_and_releasing: SmallVec<[(u8, u8, u32); MAX_VOICES]> = SmallVec::new();
+    pub fn get_playing_voices(&mut self, playing_voices: &mut PlayingVoices) -> Option<usize> {
+        let mut last_voice_idx = None;
+        let mut last_seq = 0;
 
-        playing_and_releasing.extend(
-            self.playing
-                .iter()
-                .map(|p| (p.voice_idx, p.note.note, p.seq_idx)),
-        );
-        playing_and_releasing.extend(
-            self.releasing
-                .iter()
-                .map(|p| (p.voice_idx, p.note.note, p.seq_idx)),
-        );
+        for (idx, slot) in self.voices.iter().enumerate() {
+            let Some(note) = slot else {
+                continue;
+            };
 
-        playing_and_releasing.sort_unstable_by_key(|&(_, _, seq_idx)| Reverse(seq_idx));
+            if last_voice_idx.is_none() || note.seq_idx >= last_seq {
+                last_seq = note.seq_idx;
+                last_voice_idx = Some(idx);
+            }
 
-        playing_voices.extend(
-            playing_and_releasing
-                .iter()
-                .map(|&(voice_idx, note, _)| PlayingVoice::new(voice_idx, note)),
-        );
-        playing_voices.extend(
-            self.killing
-                .iter()
-                .map(|k| PlayingVoice::new(k.voice_idx, k.note.note)),
-        );
+            playing_voices.push(PlayingVoice::new(idx as u8, note.note.note));
+        }
 
         for playing in playing_voices.iter_mut() {
             playing.triggered = self.triggers[playing.voice_idx()];
         }
+
+        last_voice_idx
     }
 }
 

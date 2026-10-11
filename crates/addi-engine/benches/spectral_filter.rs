@@ -72,6 +72,7 @@ fn process_params<'a>(voices: &'a [PlayingVoice]) -> ProcessParams<'a> {
         needs_update_ui: false,
         smooth_params: SmoothedSampleParams::new(SAMPLE_RATE),
         active_voices: voices,
+        last_voice_idx: Some(0),
     }
 }
 

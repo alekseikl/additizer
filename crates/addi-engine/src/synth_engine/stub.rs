@@ -89,6 +89,10 @@ impl engine_io::EngineUiEnd for NoUi {
         self.diverge()
     }
 
+    fn set_kill_same_note(&mut self, _kill_same_note: bool) -> bool {
+        self.diverge()
+    }
+
     fn set_block_size(&mut self, _block_size: usize) -> bool {
         self.diverge()
     }

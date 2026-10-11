@@ -647,6 +647,9 @@ fn num_voices_and_legato_setters() {
 
     engine.set_legato(true);
     assert!(engine.get_config().engine.legato);
+
+    engine.set_kill_same_note(false);
+    assert!(!engine.get_config().engine.kill_same_note);
 }
 
 #[test]

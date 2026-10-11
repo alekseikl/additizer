@@ -6,7 +6,7 @@ fn note_pitch(note: u8) -> Sample {
 }
 
 fn handler(num_voices: usize) -> VoicesHandler {
-    let mut h = VoicesHandler::new(num_voices, false);
+    let mut h = VoicesHandler::new(num_voices, false, true);
     h.set_num_voices(num_voices);
     h
 }
@@ -48,7 +48,7 @@ fn count_by_kind(ev: &VoiceEvents) -> (usize, usize, usize, usize) {
 
 #[test]
 fn new_defaults() {
-    let h = VoicesHandler::new(1, false);
+    let h = VoicesHandler::new(1, false, true);
     let ui = h.get_metrics();
     assert_eq!(ui.num_voices, 1);
     assert!(!ui.legato);
@@ -60,7 +60,7 @@ fn new_defaults() {
 
 #[test]
 fn set_num_voices_clamps() {
-    let mut h = VoicesHandler::new(1, false);
+    let mut h = VoicesHandler::new(1, false, true);
 
     h.set_num_voices(0);
     assert_eq!(h.get_metrics().num_voices, 1);
@@ -74,7 +74,7 @@ fn set_num_voices_clamps() {
 
 #[test]
 fn set_legato_toggles() {
-    let mut h = VoicesHandler::new(1, false);
+    let mut h = VoicesHandler::new(1, false, true);
     assert!(!h.legato);
     h.set_legato(true);
     assert!(h.legato);
@@ -646,6 +646,83 @@ fn poly_steals_releasing_before_playing() {
     assert_eq!(ui.waiting, 0);
 }
 
+fn midi(note: u8) -> Note {
+    Note {
+        channel: 0,
+        note,
+        velocity: 1.0,
+        host_id: None,
+    }
+}
+
+/// Free slot 0, then allocate into it so it is newer than slot 1.
+fn newer_note_in_first_slot(h: &mut VoicesHandler, ev: &mut VoiceEvents, note: u8) {
+    h.handle_note_off(midi(60), 0, ev);
+    let mut decaying = DecayingVoices::new();
+    h.get_decaying_voices(&mut decaying);
+    let _ = flush_terminated(h, &decaying);
+    h.handle_note_on(midi(note), 0, ev);
+}
+
+#[test]
+fn poly_steals_oldest_releasing_voice() {
+    let mut h = handler(2);
+    let mut ev = events();
+
+    h.handle_note_on(midi(60), 0, &mut ev);
+    h.handle_note_on(midi(64), 0, &mut ev);
+    newer_note_in_first_slot(&mut h, &mut ev, 67);
+
+    h.handle_note_off(midi(67), 0, &mut ev);
+    h.handle_note_off(midi(64), 0, &mut ev);
+    h.handle_note_on(midi(72), 0, &mut ev);
+
+    assert!(
+        h.voices
+            .iter()
+            .flatten()
+            .any(|playing| { playing.phase == Phase::Release && playing.note.note == 67 })
+    );
+    assert!(
+        h.voices
+            .iter()
+            .flatten()
+            .any(|playing| { playing.phase == Phase::NoteOn && playing.note.note == 72 })
+    );
+}
+
+#[test]
+fn poly_steals_oldest_playing_voice() {
+    let mut h = handler(3);
+    let mut ev = events();
+
+    h.handle_note_on(midi(60), 0, &mut ev);
+    h.handle_note_on(midi(64), 0, &mut ev);
+    newer_note_in_first_slot(&mut h, &mut ev, 67);
+    h.set_num_voices(2);
+    h.handle_note_on(midi(72), 0, &mut ev);
+
+    assert!(h.waiting.iter().any(|waiting| waiting.note == 64));
+    assert!(
+        h.voices
+            .iter()
+            .flatten()
+            .any(|playing| { playing.phase == Phase::Kill && playing.note.note == 64 })
+    );
+    assert!(
+        h.voices
+            .iter()
+            .flatten()
+            .any(|playing| { playing.phase == Phase::NoteOn && playing.note.note == 67 })
+    );
+    assert!(
+        h.voices
+            .iter()
+            .flatten()
+            .any(|playing| { playing.phase == Phase::NoteOn && playing.note.note == 72 })
+    );
+}
+
 // ---- Polyphonic note-off ----
 
 #[test]
@@ -798,6 +875,63 @@ fn poly_retrigger_releasing_note() {
     let ui = h.get_metrics();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.releasing, 0);
+}
+
+#[test]
+fn poly_retrigger_layers_when_kill_same_note_disabled() {
+    let mut h = handler(4);
+    h.set_kill_same_note(false);
+    let mut ev = events();
+
+    h.handle_note_on(midi(60), 0, &mut ev);
+    h.handle_note_off(midi(60), 0, &mut ev);
+    h.handle_note_on(midi(60), 0, &mut ev);
+
+    let ui = h.get_metrics();
+    assert_eq!(ui.playing, 1);
+    assert_eq!(ui.releasing, 1);
+    assert_eq!(ui.killing, 0);
+    assert!(
+        h.voices
+            .iter()
+            .flatten()
+            .any(|playing| { playing.phase == Phase::Release && playing.note.note == 60 })
+    );
+    assert!(
+        h.voices
+            .iter()
+            .flatten()
+            .any(|playing| { playing.phase == Phase::NoteOn && playing.note.note == 60 })
+    );
+}
+
+#[test]
+fn poly_retrigger_steals_same_release_when_full() {
+    let mut h = handler(2);
+    h.set_kill_same_note(false);
+    let mut ev = events();
+
+    h.handle_note_on(midi(60), 0, &mut ev);
+    h.handle_note_on(midi(64), 0, &mut ev);
+    h.handle_note_off(midi(60), 0, &mut ev);
+    h.handle_note_on(midi(60), 0, &mut ev);
+
+    let ui = h.get_metrics();
+    assert_eq!(ui.playing, 2);
+    assert_eq!(ui.releasing, 0);
+    assert_eq!(ui.waiting, 0);
+    assert!(
+        h.voices
+            .iter()
+            .flatten()
+            .any(|playing| { playing.phase == Phase::NoteOn && playing.note.note == 60 })
+    );
+    assert!(
+        h.voices
+            .iter()
+            .flatten()
+            .any(|playing| { playing.phase == Phase::NoteOn && playing.note.note == 64 })
+    );
 }
 
 // ---- Monophonic (no legato) ----
@@ -1150,7 +1284,7 @@ fn choke_playing_note_frees_voice() {
         0,
         &mut ev,
     );
-    let free_before = h.free_voices.len();
+    assert!(h.voices[0].is_some());
 
     h.handle_choke(Note {
         channel: 0,
@@ -1160,7 +1294,7 @@ fn choke_playing_note_frees_voice() {
     });
 
     assert_eq!(h.get_metrics().playing, 0);
-    assert_eq!(h.free_voices.len(), free_before + 1);
+    assert!(h.voices[0].is_none());
 
     let terminated = flush_terminated(&mut h, &[]);
     assert_eq!(terminated.len(), 1);
@@ -1193,7 +1327,7 @@ fn choke_releasing_note_frees_voice() {
         0,
         &mut ev,
     );
-    let free_before = h.free_voices.len();
+    assert!(h.voices[0].is_some());
 
     h.handle_choke(Note {
         channel: 0,
@@ -1203,7 +1337,7 @@ fn choke_releasing_note_frees_voice() {
     });
 
     assert_eq!(h.get_metrics().releasing, 0);
-    assert_eq!(h.free_voices.len(), free_before + 1);
+    assert!(h.voices[0].is_none());
 
     let terminated = flush_terminated(&mut h, &[]);
     assert_eq!(terminated.len(), 1);
@@ -1214,14 +1348,13 @@ fn choke_releasing_note_frees_voice() {
 #[test]
 fn choke_unknown_is_noop() {
     let mut h = handler(4);
-    let free_before = h.free_voices.len();
     h.handle_choke(Note {
         channel: 0,
         note: 60,
         velocity: 0.0,
         host_id: None,
     });
-    assert_eq!(h.free_voices.len(), free_before);
+    assert!(h.voices.iter().all(|slot| slot.is_none()));
     assert!(flush_terminated(&mut h, &[]).is_empty());
 }
 
@@ -1413,14 +1546,7 @@ fn assert_all_voices_free(h: &VoicesHandler) {
     assert_eq!(ui.releasing, 0);
     assert_eq!(ui.killing, 0);
     assert_eq!(ui.waiting, 0);
-    assert_eq!(h.free_voices.len(), MAX_VOICES);
-
-    let mut idxs = h.free_voices.clone();
-    idxs.sort_unstable();
-    idxs.dedup();
-    assert_eq!(idxs.len(), MAX_VOICES);
-    assert_eq!(idxs[0], 0);
-    assert_eq!(idxs[MAX_VOICES - 1], (MAX_VOICES - 1) as u8);
+    assert!(h.voices.iter().all(|slot| slot.is_none()));
 }
 
 #[test]
@@ -1832,12 +1958,12 @@ fn update_decaying_voices_frees_done() {
 
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
-    let free_before = h.free_voices.len();
+    assert!(h.voices[0].is_some());
 
     let terminated = flush_terminated(&mut h, &decaying);
 
     assert_eq!(h.get_metrics().releasing, 0);
-    assert_eq!(h.free_voices.len(), free_before + 1);
+    assert!(h.voices[0].is_none());
     assert_eq!(terminated.len(), 1);
     assert_eq!(terminated[0].note, 60);
     assert_eq!(terminated[0].channel, 0);
@@ -1873,11 +1999,10 @@ fn update_decaying_voices_keeps_active() {
     h.get_decaying_voices(&mut decaying);
     decaying[0].mark_active();
 
-    let free_before = h.free_voices.len();
     let terminated = flush_terminated(&mut h, &decaying);
 
     assert_eq!(h.get_metrics().releasing, 1);
-    assert_eq!(h.free_voices.len(), free_before);
+    assert!(h.voices[0].is_some());
     assert!(terminated.is_empty());
 }
 
@@ -1907,15 +2032,16 @@ fn update_decaying_voices_frees_killing() {
         &mut ev,
     );
 
-    let killing_before = h.get_metrics().killing;
-    let free_before = h.free_voices.len();
+    assert!(h.voices[0].is_some());
+    assert!(h.voices[1].is_some());
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
 
     let terminated = flush_terminated(&mut h, &decaying);
 
     assert_eq!(h.get_metrics().killing, 0);
-    assert_eq!(h.free_voices.len(), free_before + killing_before);
+    assert!(h.voices[0].is_none());
+    assert!(h.voices[1].is_some());
     // The killed note is still waiting, so it must not be reported as terminated.
     assert!(terminated.is_empty());
 }
@@ -2154,11 +2280,9 @@ fn mono_note_off_restores_waiting_note_from_same_channel_only() {
     );
 
     assert_eq!(h.get_metrics().waiting, 1);
-    assert!(
-        h.playing
-            .iter()
-            .any(|p| p.note.channel == 1 && p.note.note == 64)
-    );
+    assert!(h.voices.iter().flatten().any(|playing| {
+        playing.phase == Phase::NoteOn && playing.note.channel == 1 && playing.note.note == 64
+    }));
 
     // Releasing channel 1's playing note restores its own waiting note.
     h.handle_note_off(
@@ -2173,11 +2297,9 @@ fn mono_note_off_restores_waiting_note_from_same_channel_only() {
     );
 
     assert_eq!(h.get_metrics().waiting, 0);
-    assert!(
-        h.playing
-            .iter()
-            .any(|p| p.note.channel == 1 && p.note.note == 60)
-    );
+    assert!(h.voices.iter().flatten().any(|playing| {
+        playing.phase == Phase::NoteOn && playing.note.channel == 1 && playing.note.note == 60
+    }));
 }
 
 #[test]
@@ -2366,6 +2488,39 @@ fn waiting_note_off_after_kill_then_terminates() {
     assert_eq!(terminated[0].host_id, Some(1));
 }
 
+#[test]
+fn alloc_voice_fills_partial_pair_before_opening_a_new_one() {
+    let mut h = handler(MAX_AVAILABLE_VOICES);
+    let note = |midi: u8| Note {
+        channel: 0,
+        note: midi,
+        velocity: 1.0,
+        host_id: None,
+    };
+
+    for midi in [60, 61, 62, 63] {
+        let idx = h.alloc_voice().unwrap();
+        h.assign_playing(idx, note(midi));
+    }
+    assert_eq!(
+        (0..4).map(|i| h.voices[i].is_some()).collect::<Vec<_>>(),
+        vec![true, true, true, true]
+    );
+
+    // Pair (0, 1) is fully free. Pair (2, 3) has only the right slot taken.
+    h.voices[0] = None;
+    h.voices[1] = None;
+    h.voices[2] = None;
+
+    assert_eq!(h.alloc_voice(), Some(2));
+    h.assign_playing(2, note(64));
+
+    // Both earlier pairs are full or empty, so the next note opens pair (0, 1).
+    assert_eq!(h.alloc_voice(), Some(0));
+    h.assign_playing(0, note(65));
+    assert_eq!(h.alloc_voice(), Some(1));
+}
+
 // ---- get_playing_voices ----
 
 #[test]
@@ -2405,9 +2560,14 @@ fn get_playing_voices_includes_all_active() {
     );
 
     let mut playing = PlayingVoices::new();
-    h.get_playing_voices(&mut playing);
+    let last = h.get_playing_voices(&mut playing);
 
     assert_eq!(playing.len(), 2);
+    assert_eq!(playing[0].voice_idx(), 0);
+    assert_eq!(playing[0].note(), 60);
+    assert_eq!(playing[1].voice_idx(), 1);
+    assert_eq!(playing[1].note(), 64);
+    assert_eq!(last, Some(1));
 }
 
 #[test]
@@ -2437,10 +2597,13 @@ fn get_playing_voices_includes_killing() {
     );
 
     let mut playing = PlayingVoices::new();
-    h.get_playing_voices(&mut playing);
+    let last = h.get_playing_voices(&mut playing);
 
     let ui = h.get_metrics();
     assert_eq!(playing.len(), ui.playing + ui.releasing + ui.killing);
+    assert_eq!(playing[0].note(), 60);
+    assert_eq!(playing[1].note(), 64);
+    assert_eq!(last, Some(playing[1].voice_idx()));
 }
 
 // ---- Cross-channel / edge cases ----
@@ -2544,7 +2707,8 @@ fn voice_reuse_after_full_lifecycle() {
         0,
         &mut ev,
     );
-    let free_after_two = h.free_voices.len();
+    assert!(h.voices[0].is_some());
+    assert!(h.voices[1].is_some());
 
     h.handle_note_off(
         Note {
@@ -2571,7 +2735,8 @@ fn voice_reuse_after_full_lifecycle() {
     h.get_decaying_voices(&mut decaying);
     let terminated = flush_terminated(&mut h, &decaying);
 
-    assert_eq!(h.free_voices.len(), free_after_two + 2);
+    assert!(h.voices[0].is_none());
+    assert!(h.voices[1].is_none());
     assert_eq!(h.get_metrics().releasing, 0);
     assert_eq!(h.get_metrics().playing, 0);
     assert_eq!(terminated.len(), 2);

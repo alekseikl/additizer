@@ -101,6 +101,7 @@ fn run_process(
                 needs_update_ui: update_ui,
                 smooth_params: SmoothedSampleParams::new(SAMPLE_RATE),
                 active_voices: active,
+                last_voice_idx: None,
             },
         };
 

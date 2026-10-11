@@ -184,6 +184,7 @@ impl ModuleUi for ParamsUi {
                 let mut kill_time_ms = controls.voice_kill_time * 1000.0;
                 let mut voices = controls.num_voices;
                 let mut legato = controls.legato;
+                let mut kill_same_note = controls.kill_same_note;
                 let mut block_size = controls.block_size;
                 let mut oversampling = controls.oversampling;
 
@@ -199,6 +200,15 @@ impl ModuleUi for ParamsUi {
                 ui.label("Legato");
                 if ui.add(Checkbox::without_text(&mut legato)).changed() {
                     bridge.set_legato(legato);
+                }
+                ui.end_row();
+
+                ui.label("Kill same note");
+                if ui
+                    .add(Checkbox::without_text(&mut kill_same_note))
+                    .changed()
+                {
+                    bridge.set_kill_same_note(kill_same_note);
                 }
                 ui.end_row();
 

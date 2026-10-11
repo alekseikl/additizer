@@ -66,6 +66,7 @@ fn bench_envelope(c: &mut Criterion) {
                             needs_update_ui: false,
                             smooth_params: SmoothedSampleParams::new(SAMPLE_RATE),
                             active_voices: &voices,
+                            last_voice_idx: Some(0),
                         },
                     };
 

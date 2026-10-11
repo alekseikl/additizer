@@ -16,6 +16,7 @@ pub struct ProcessParams<'a> {
     pub needs_update_ui: bool,
     pub smooth_params: SmoothedSampleParams,
     pub active_voices: &'a [PlayingVoice],
+    pub last_voice_idx: Option<usize>,
 }
 
 pub struct ProcessContext<'c, A: EngineAudioEnd> {
@@ -34,13 +35,15 @@ pub struct VoiceTarget {
 }
 
 impl VoiceTarget {
-    pub fn new(channel_idx: usize, voice: &PlayingVoice, seq_idx: usize) -> Self {
+    pub fn new(channel_idx: usize, voice: &PlayingVoice, last_voice_idx: Option<usize>) -> Self {
+        let voice_idx = voice.voice_idx();
+
         VoiceTarget {
             channel_idx,
-            voice_idx: voice.voice_idx(),
+            voice_idx,
             note: voice.note(),
             triggered: voice.triggered(),
-            is_last: seq_idx == 0,
+            is_last: Some(voice_idx) == last_voice_idx,
         }
     }
 

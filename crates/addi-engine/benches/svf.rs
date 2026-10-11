@@ -68,6 +68,7 @@ fn process_params<'a>(
         needs_update_ui: false,
         smooth_params,
         active_voices: voices,
+        last_voice_idx: Some(0),
     }
 }
 

@@ -131,6 +131,7 @@ impl<E: EngineLinks> SynthEngine<E> {
             voices_handler: VoicesHandler::new(
                 Self::clamp_num_voices(cfg.engine.num_voices),
                 cfg.engine.legato,
+                cfg.engine.kill_same_note,
             ),
             audio_end,
             ui_end,
@@ -227,6 +228,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         EngineParams {
             num_voices: voices.num_voices,
             legato: voices.legato,
+            kill_same_note: voices.kill_same_note,
             block_size: self.block_size,
             oversampling: self.oversampling,
             voice_kill_time: self.get_voice_kill_time(),
@@ -263,6 +265,10 @@ impl<E: EngineLinks> SynthEngine<E> {
 
     pub fn set_legato(&mut self, legato: bool) {
         self.voices_handler.set_legato(legato);
+    }
+
+    pub fn set_kill_same_note(&mut self, kill_same_note: bool) {
+        self.voices_handler.set_kill_same_note(kill_same_note);
     }
 
     pub fn block_size(&self) -> usize {
@@ -704,6 +710,7 @@ impl<E: EngineLinks> SynthEngine<E> {
                 }
                 UiEvent::Voices(voices) => self.set_num_voices(voices),
                 UiEvent::Legato(legato) => self.set_legato(legato),
+                UiEvent::KillSameNote(kill_same_note) => self.set_kill_same_note(kill_same_note),
                 UiEvent::BlockSize(block_size) => self.set_block_size(block_size),
                 UiEvent::VoiceKillTime(voice_kill_time) => {
                     self.set_voice_kill_time(voice_kill_time);
@@ -748,8 +755,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         }
 
         let mut playing_voices = PlayingVoices::new();
-
-        self.voices_handler.get_playing_voices(&mut playing_voices);
+        let last_voice_idx = self.voices_handler.get_playing_voices(&mut playing_voices);
 
         let mut triggered_voices = PlayingVoices::new();
 
@@ -779,6 +785,7 @@ impl<E: EngineLinks> SynthEngine<E> {
                 smooth_params,
                 needs_update_ui: update_ui,
                 active_voices: &triggered_voices,
+                last_voice_idx,
             },
         };
 

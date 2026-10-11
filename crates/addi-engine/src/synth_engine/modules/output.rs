@@ -194,7 +194,8 @@ impl Output {
             {
                 for seq_idx in 0..num_active_voices {
                     let playing = rf.params().active_voices[seq_idx];
-                    let target = VoiceTarget::new(channel_idx, &playing, seq_idx);
+                    let target =
+                        VoiceTarget::new(channel_idx, &playing, rf.params().last_voice_idx);
                     let mut router = rf.for_voice(&target);
                     let input_buffer = &mut self.input_buffer[..samples];
 
