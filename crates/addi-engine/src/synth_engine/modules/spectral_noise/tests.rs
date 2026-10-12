@@ -266,9 +266,9 @@ fn amount_rolls_off_linearly_in_db_per_octave() {
     let two_octaves = rolloff_gain(2.0, MIN_ROLLOFF);
     let steep = rolloff_gain(1.0, MAX_ROLLOFF);
 
-    assert!((one_octave - db_to_gain(-6.0)).abs() < 1e-5);
-    assert!((two_octaves - db_to_gain(-12.0)).abs() < 1e-5);
-    assert!((steep - db_to_gain(-60.0)).abs() < 1e-5);
+    assert!((one_octave - db_to_gain(-MIN_ROLLOFF)).abs() < 1e-5);
+    assert!((two_octaves - db_to_gain(-2.0 * MIN_ROLLOFF)).abs() < 1e-5);
+    assert!((steep - db_to_gain(-MAX_ROLLOFF)).abs() < 1e-5);
 }
 
 #[test]

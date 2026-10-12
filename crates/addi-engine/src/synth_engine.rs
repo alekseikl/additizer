@@ -670,22 +670,18 @@ impl<E: EngineLinks> SynthEngine<E> {
             return;
         }
 
-        let mut i = 0;
-        while i < self.pending_poly_modulations.len() {
-            if self.pending_poly_modulations[i].host_id == host_id {
-                let event = self.pending_poly_modulations.remove(i);
-                for &voice_idx in &voice_indices {
-                    self.apply_poly_modulation(
-                        event.param_idx,
-                        voice_idx,
-                        event.offset,
-                        event.value_offset,
-                    );
-                }
-            } else {
-                i += 1;
+        let mut pending = std::mem::take(&mut self.pending_poly_modulations);
+        for event in pending.extract_if(.., |event| event.host_id == host_id) {
+            for &voice_idx in &voice_indices {
+                self.apply_poly_modulation(
+                    event.param_idx,
+                    voice_idx,
+                    event.offset,
+                    event.value_offset,
+                );
             }
         }
+        self.pending_poly_modulations = pending;
     }
 
     fn apply_poly_modulation(

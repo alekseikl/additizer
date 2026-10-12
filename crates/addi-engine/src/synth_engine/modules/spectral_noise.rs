@@ -32,7 +32,7 @@ pub use config::{NoiseColor, SpectralNoiseConfig};
 
 pub use link::{SpectralNoiseAudioEnd, SpectralNoiseLinks, SpectralNoiseUiEnd, UiEvent};
 
-pub const MIN_ROLLOFF: Sample = 6.0;
+pub const MIN_ROLLOFF: Sample = 3.0;
 pub const MAX_ROLLOFF: Sample = 60.0;
 const FULL_AMOUNT_THRESHOLD: Sample = 0.9999;
 
