@@ -588,10 +588,6 @@ impl<E: EngineLinks> SynthEngine<E> {
         }
     }
 
-    pub fn note_for_host_id(&self, host_id: i32) -> Option<Note> {
-        self.voices_handler.note_for_host_id(host_id)
-    }
-
     pub fn handle_note_expression(
         &mut self,
         note: Note,

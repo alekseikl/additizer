@@ -26,7 +26,6 @@ pub struct Note {
 }
 
 impl Note {
-    /// Same key on the same channel. `host_id` is only for polyphonic modulation.
     fn matches(&self, event: &Self) -> bool {
         self.channel == event.channel && self.note == event.note
     }
@@ -44,6 +43,7 @@ struct Slot {
     note: Note,
     seq_idx: u32,
     phase: Phase,
+    owns_host_id: bool,
 }
 
 pub struct DecayingVoice {
@@ -254,7 +254,6 @@ impl VoicesHandler {
         self.find_slot(phase, |playing| playing.note.channel == channel)
     }
 
-    /// Oldest voice in `phase`, by allocation order (`seq_idx`).
     fn oldest_slot(&self, phase: Phase) -> Option<(usize, Slot)> {
         self.voices
             .iter()
@@ -279,6 +278,7 @@ impl VoicesHandler {
             note,
             seq_idx,
             phase: Phase::NoteOn,
+            owns_host_id: true,
         });
     }
 
@@ -326,10 +326,10 @@ impl VoicesHandler {
         let voice_idx = if let Some(voice_idx) = self.alloc_voice() {
             voice_idx
         } else if let Some((voice_idx, killing)) = self.take_slot(Phase::Kill) {
-            self.terminate_killed(killing.note);
+            self.terminate(&killing);
             voice_idx
         } else if let Some((voice_idx, releasing)) = self.take_slot(Phase::Release) {
-            self.terminate.push(releasing.note);
+            self.terminate(&releasing);
             voice_idx
         } else if let Some((voice_idx, playing)) = self.take_slot(Phase::NoteOn) {
             self.waiting.push(playing.note);
@@ -349,21 +349,23 @@ impl VoicesHandler {
         events.update(voice_idx, note, offset);
     }
 
-    fn terminate_killed(&mut self, note: Note) {
-        let still_in_use = note.host_id.is_some_and(|id| {
-            self.waiting
-                .iter()
-                .any(|waiting| waiting.host_id == Some(id))
-        });
-
-        if !still_in_use {
-            self.terminate.push(note);
+    fn terminate(&mut self, slot: &Slot) {
+        if slot.owns_host_id {
+            self.terminate.push(slot.note);
         }
     }
 
     fn kill(&mut self, voice_idx: usize, offset: usize, events: &mut VoiceEvents) {
         self.enter_phase(voice_idx, Phase::Kill);
         events.kill(voice_idx, offset);
+    }
+
+    fn kill_and_disown(&mut self, voice_idx: usize, offset: usize, events: &mut VoiceEvents) {
+        self.voices[voice_idx]
+            .as_mut()
+            .expect("voice slot is in place")
+            .owns_host_id = false;
+        self.kill(voice_idx, offset, events);
     }
 
     fn note_on_monophonic(
@@ -381,7 +383,7 @@ impl VoicesHandler {
             if self.legato {
                 self.legato(voice_idx, new_note, offset, events);
             } else {
-                self.kill(voice_idx, offset, events);
+                self.kill_and_disown(voice_idx, offset, events);
                 self.grab(
                     Some(voice_idx),
                     new_note,
@@ -429,7 +431,7 @@ impl VoicesHandler {
             } else if let Some((voice_idx, playing)) = self.oldest_slot(Phase::NoteOn) {
                 stolen = Some(playing.note);
                 self.waiting.push(playing.note);
-                self.kill(voice_idx, offset, events);
+                self.kill_and_disown(voice_idx, offset, events);
             }
         }
 
@@ -495,16 +497,13 @@ impl VoicesHandler {
     ) -> Option<Note> {
         let monophonic = self.num_voices == 1;
 
-        // Waiting note lifted - just remove it from the list.
+        // A parked note owns its host id, so lifting it terminates that id.
         if let Some(waiting_idx) = self
             .waiting
             .iter()
             .position(|waiting| waiting.matches(&note))
         {
-            let waiting = self.waiting.remove(waiting_idx);
-            if !self.has_slot_with_note(Phase::Kill, &waiting) {
-                self.terminate.push(waiting);
-            }
+            self.terminate.push(self.waiting.remove(waiting_idx));
             return None;
         }
 
@@ -524,7 +523,7 @@ impl VoicesHandler {
         {
             let waiting_note = self.waiting.remove(waiting_idx);
 
-            self.terminate.push(playing.note);
+            self.terminate(&playing);
             self.prev_notes[channel.min(MAX_MIDI_CHANNEL) as usize] = Some(waiting_note.note);
             self.legato(voice_idx, waiting_note, offset, events);
             return Some(waiting_note);
@@ -567,16 +566,12 @@ impl VoicesHandler {
 
         for voice_idx in voices {
             if let Some(playing) = self.voices[voice_idx].take() {
-                self.terminate.push(playing.note);
+                self.terminate(&playing);
             }
         }
 
-        let waiting = &mut self.waiting;
-        let terminate = &mut self.terminate;
-        for held in waiting.extract_if(.., |held| held.matches(&note)) {
-            if !terminate.iter().any(|terminated| terminated.matches(&held)) {
-                terminate.push(held);
-            }
+        for held in self.waiting.extract_if(.., |held| held.matches(&note)) {
+            self.terminate.push(held);
         }
     }
 
@@ -586,20 +581,7 @@ impl VoicesHandler {
                 continue;
             };
 
-            match voice.phase {
-                Phase::NoteOn | Phase::Release => {
-                    self.terminate.push(voice.note);
-                }
-                Phase::Kill => {
-                    if !self
-                        .waiting
-                        .iter()
-                        .any(|waiting| waiting.matches(&voice.note))
-                    {
-                        self.terminate.push(voice.note);
-                    }
-                }
-            }
+            self.terminate(&voice);
         }
 
         for waiting in self.waiting.drain(..) {
@@ -634,20 +616,6 @@ impl VoicesHandler {
             })
             .take(2)
             .collect()
-    }
-
-    pub fn note_for_host_id(&self, host_id: i32) -> Option<Note> {
-        self.voices
-            .iter()
-            .flatten()
-            .find(|playing| playing.note.host_id == Some(host_id))
-            .map(|playing| playing.note)
-            .or_else(|| {
-                self.waiting
-                    .iter()
-                    .copied()
-                    .find(|note| note.host_id == Some(host_id))
-            })
     }
 
     pub fn set_num_voices(&mut self, num_voices: usize) {
@@ -709,13 +677,9 @@ impl VoicesHandler {
             };
 
             match voice.phase {
-                Phase::Release => {
+                Phase::Release | Phase::Kill => {
                     self.voices[idx] = None;
-                    self.terminate.push(voice.note);
-                }
-                Phase::Kill => {
-                    self.voices[idx] = None;
-                    self.terminate_killed(voice.note);
+                    self.terminate(&voice);
                 }
                 Phase::NoteOn => {}
             }

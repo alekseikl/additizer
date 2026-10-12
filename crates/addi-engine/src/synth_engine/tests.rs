@@ -687,7 +687,6 @@ fn restored_voice_receives_pending_poly_modulation() {
             .iter()
             .all(|event| event.host_id != 1)
     );
-    assert_eq!(engine.note_for_host_id(1).map(|note| note.note), Some(60));
 }
 
 #[test]

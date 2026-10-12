@@ -620,12 +620,9 @@ fn poly_retrigger_different_host_id_kills_release() {
             .flatten()
             .any(|playing| { playing.phase == Phase::NoteOn && playing.note.host_id == Some(2) })
     );
-    assert!(
-        h.voices
-            .iter()
-            .flatten()
-            .any(|playing| { playing.phase == Phase::Kill && playing.note.host_id == Some(1) })
-    );
+    assert!(h.voices.iter().flatten().any(|playing| {
+        playing.phase == Phase::Kill && playing.note.host_id == Some(1) && playing.owns_host_id
+    }));
 }
 
 #[test]
@@ -895,12 +892,9 @@ fn poly_steals_oldest_playing_voice() {
     h.handle_note_on(midi(72), 0, &mut ev);
 
     assert!(h.waiting.iter().any(|waiting| waiting.note == 64));
-    assert!(
-        h.voices
-            .iter()
-            .flatten()
-            .any(|playing| { playing.phase == Phase::Kill && playing.note.note == 64 })
-    );
+    assert!(h.voices.iter().flatten().any(|playing| {
+        playing.phase == Phase::Kill && playing.note.note == 64 && !playing.owns_host_id
+    }));
     assert!(
         h.voices
             .iter()
@@ -2248,15 +2242,20 @@ fn update_decaying_voices_frees_killing() {
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
 
+    assert!(
+        h.voices.iter().flatten().any(|slot| {
+            slot.phase == Phase::Kill && slot.note.note == 60 && !slot.owns_host_id
+        })
+    );
+
     let terminated = flush_terminated(&mut h, &decaying);
 
     assert_eq!(h.get_metrics().killing, 0);
     assert!(h.voices[0].is_none());
     assert!(h.voices[1].is_some());
-    // No host id, so the killed voice ends even though the same key is still waiting.
-    assert_eq!(terminated.len(), 1);
-    assert_eq!(terminated[0].note, 60);
-    assert!(terminated[0].host_id.is_none());
+    // The note is parked in `waiting`, so the killed slot does not terminate it.
+    assert!(terminated.is_empty());
+    assert!(h.waiting.iter().any(|waiting| waiting.note == 60));
 }
 
 #[test]
@@ -2319,7 +2318,7 @@ fn waiting_note_off_terminates() {
 }
 
 #[test]
-fn restored_waiting_note_kill_ends_once_host_id_leaves_waiting() {
+fn restored_waiting_note_keeps_host_id_until_its_own_release() {
     let mut h = handler(1);
     let mut ev = events();
 
@@ -2357,21 +2356,20 @@ fn restored_waiting_note_kill_ends_once_host_id_leaves_waiting() {
 
     assert_eq!(h.get_metrics().playing, 1);
     assert_eq!(h.get_metrics().waiting, 0);
+    assert!(h.voices.iter().flatten().any(|slot| {
+        slot.phase == Phase::NoteOn && slot.note.host_id == Some(1) && slot.owns_host_id
+    }));
 
-    // The restored note is playing, and its host id has left `waiting`, so the
-    // finished kill is reported along with the note that was replaced.
+    // The parked kill no longer owns host id 1, so only the replaced note ends.
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
-    let mut terminated = flush_terminated(&mut h, &decaying);
-    terminated.sort_by_key(|n| n.note);
+    let terminated = flush_terminated(&mut h, &decaying);
 
-    assert_eq!(terminated.len(), 2);
-    assert_eq!(terminated[0].note, 60);
-    assert_eq!(terminated[0].host_id, Some(1));
-    assert_eq!(terminated[1].note, 64);
-    assert_eq!(terminated[1].host_id, Some(2));
+    assert_eq!(terminated.len(), 1);
+    assert_eq!(terminated[0].note, 64);
+    assert_eq!(terminated[0].host_id, Some(2));
 
-    // The restored note terminates again when its own release finishes.
+    // The restored note terminates once, when its own release finishes.
     h.handle_note_off(
         Note {
             channel: 0,
