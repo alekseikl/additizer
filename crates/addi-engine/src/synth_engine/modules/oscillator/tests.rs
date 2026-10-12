@@ -490,7 +490,7 @@ fn convex_levels_fall_when_folded_and_rise_on_native_stereo() {
     );
 
     let mid = ConvexUnison::new(0.5, LEFT_CHANNEL);
-    let blend = |wide: Sample, mono: Sample| (wide - mono).mul_add(0.5f32.sqrt(), mono);
+    let blend = |wide: Sample, mono: Sample| (wide - mono).mul_add(0.5, mono);
     let mono_edge = ConvexUnison::mono_level(1.0);
     let mono_inner = ConvexUnison::mono_level(0.5);
     approx_eq(

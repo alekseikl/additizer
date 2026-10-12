@@ -214,7 +214,7 @@ impl ConvexUnison {
         let stereo = stereo.clamp(0.0, 1.0);
 
         Self {
-            stereo: stereo.sqrt(),
+            stereo,
             channel_idx,
         }
     }

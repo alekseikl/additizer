@@ -653,6 +653,44 @@ fn num_voices_and_legato_setters() {
 }
 
 #[test]
+fn restored_voice_receives_pending_poly_modulation() {
+    let mut engine = make_engine(
+        EngineParams::default(),
+        OscillatorConfig {
+            id: OSCILLATOR_ID,
+            ..OscillatorConfig::default()
+        },
+    );
+    engine.set_legato(true);
+
+    let note = |key: u8, host_id: i32| Note {
+        channel: 0,
+        note: key,
+        velocity: 1.0,
+        host_id: Some(host_id),
+    };
+
+    engine.handle_note_on(note(60, 1), 0);
+    engine.handle_note_on(note(64, 2), 0);
+    engine.handle_poly_modulation(0, 1, 0, 0.25);
+    assert!(
+        engine
+            .pending_poly_modulations
+            .iter()
+            .any(|event| event.host_id == 1)
+    );
+
+    engine.handle_note_off(note(64, 2), 0);
+    assert!(
+        engine
+            .pending_poly_modulations
+            .iter()
+            .all(|event| event.host_id != 1)
+    );
+    assert_eq!(engine.note_for_host_id(1).map(|note| note.note), Some(60));
+}
+
+#[test]
 fn output_gain_setters() {
     let mut engine = make_engine(
         EngineParams::default(),

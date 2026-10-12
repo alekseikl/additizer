@@ -546,6 +546,189 @@ fn poly_duplicate_note_ignored() {
 }
 
 #[test]
+fn poly_same_key_different_host_id_is_ignored() {
+    let mut h = handler(4);
+    let mut ev = events();
+
+    h.handle_note_on(voiced(60, 1), 0, &mut ev);
+    h.handle_note_on(voiced(60, 2), 0, &mut ev);
+
+    assert_eq!(ev.events().len(), 1);
+    assert_eq!(h.get_metrics().playing, 1);
+    assert_eq!(
+        h.voices.iter().flatten().next().unwrap().note.host_id,
+        Some(1)
+    );
+}
+
+#[test]
+fn poly_retrigger_same_host_id_kills_release() {
+    let mut h = handler(4);
+    let mut ev = events();
+
+    h.handle_note_on(voiced(60, 4), 0, &mut ev);
+    h.handle_note_off(voiced(60, 4), 0, &mut ev);
+    h.handle_note_on(voiced(60, 4), 0, &mut ev);
+
+    assert_eq!(h.get_metrics().playing, 1);
+    assert_eq!(h.get_metrics().releasing, 0);
+    assert_eq!(h.get_metrics().killing, 1);
+    assert!(
+        h.voices
+            .iter()
+            .flatten()
+            .any(|playing| { playing.phase == Phase::NoteOn && playing.note.host_id == Some(4) })
+    );
+    assert!(
+        h.voices
+            .iter()
+            .flatten()
+            .any(|playing| { playing.phase == Phase::Kill && playing.note.host_id == Some(4) })
+    );
+}
+
+#[test]
+fn poly_retrigger_same_host_id_layers_when_kill_same_note_disabled() {
+    let mut h = handler(4);
+    h.set_kill_same_note(false);
+    let mut ev = events();
+
+    h.handle_note_on(voiced(60, 4), 0, &mut ev);
+    h.handle_note_off(voiced(60, 4), 0, &mut ev);
+    h.handle_note_on(voiced(60, 4), 0, &mut ev);
+
+    assert_eq!(h.get_metrics().playing, 1);
+    assert_eq!(h.get_metrics().releasing, 1);
+    assert_eq!(h.get_metrics().killing, 0);
+}
+
+#[test]
+fn poly_retrigger_different_host_id_kills_release() {
+    let mut h = handler(4);
+    let mut ev = events();
+
+    h.handle_note_on(voiced(60, 1), 0, &mut ev);
+    h.handle_note_off(voiced(60, 1), 0, &mut ev);
+    h.handle_note_on(voiced(60, 2), 0, &mut ev);
+
+    assert_eq!(h.get_metrics().playing, 1);
+    assert_eq!(h.get_metrics().releasing, 0);
+    assert_eq!(h.get_metrics().killing, 1);
+    assert!(
+        h.voices
+            .iter()
+            .flatten()
+            .any(|playing| { playing.phase == Phase::NoteOn && playing.note.host_id == Some(2) })
+    );
+    assert!(
+        h.voices
+            .iter()
+            .flatten()
+            .any(|playing| { playing.phase == Phase::Kill && playing.note.host_id == Some(1) })
+    );
+}
+
+#[test]
+fn voice_idx_for_host_id_includes_every_phase() {
+    let mut h = handler(4);
+    let mut ev = events();
+
+    h.handle_note_on(voiced(60, 1), 0, &mut ev);
+    h.handle_note_off(voiced(60, 1), 0, &mut ev);
+    h.handle_note_on(voiced(60, 1), 0, &mut ev);
+
+    let indices = h.voice_idx_for_host_id(1);
+    assert_eq!(indices.len(), 2);
+    assert!(
+        indices
+            .iter()
+            .any(|&idx| h.voices[idx].unwrap().phase == Phase::Kill)
+    );
+    assert!(
+        indices
+            .iter()
+            .any(|&idx| h.voices[idx].unwrap().phase == Phase::NoteOn)
+    );
+    assert!(h.voice_idx_for_host_id(2).is_empty());
+}
+
+#[test]
+fn expression_and_choke_ignore_host_id() {
+    let mut h = handler(4);
+    let mut ev = events();
+
+    h.handle_note_on(voiced(60, 1), 0, &mut ev);
+
+    let event = h
+        .handle_expression(voiced(60, 2), Expression::Pitch, 3, 0.25)
+        .expect("expression");
+    assert_eq!(event.voice_idx, 0);
+
+    h.handle_choke(voiced(60, 2));
+
+    assert_eq!(h.get_metrics().playing, 0);
+    let terminated = flush_terminated(&mut h, &[]);
+    assert_eq!(terminated.len(), 1);
+    assert_eq!(terminated[0].host_id, Some(1));
+}
+
+#[test]
+fn note_off_requires_key_when_host_id_is_set() {
+    let mut h = handler(4);
+    let mut ev = events();
+
+    h.handle_note_on(voiced(60, 1), 0, &mut ev);
+    h.handle_note_off(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: Some(1),
+        },
+        0,
+        &mut ev,
+    );
+
+    assert_eq!(h.get_metrics().playing, 1);
+    assert_eq!(h.get_metrics().releasing, 0);
+}
+
+#[test]
+fn note_off_ignores_host_id() {
+    let mut h = handler(4);
+    let mut ev = events();
+
+    h.handle_note_on(voiced(60, 1), 0, &mut ev);
+    h.handle_note_off(midi(60), 0, &mut ev);
+
+    assert_eq!(h.get_metrics().playing, 0);
+    assert_eq!(h.get_metrics().releasing, 1);
+    assert_eq!(
+        h.voices.iter().flatten().next().unwrap().note.host_id,
+        Some(1)
+    );
+}
+
+#[test]
+fn expression_and_choke_match_channel_and_key() {
+    let mut h = handler(4);
+    let mut ev = events();
+
+    h.handle_note_on(voiced(60, 1), 0, &mut ev);
+
+    assert!(
+        h.handle_expression(midi(60), Expression::Pitch, 0, 0.5)
+            .is_some()
+    );
+
+    h.handle_choke(midi(60));
+    assert_eq!(h.get_metrics().playing, 0);
+    let terminated = flush_terminated(&mut h, &[]);
+    assert_eq!(terminated.len(), 1);
+    assert_eq!(terminated[0].host_id, Some(1));
+}
+
+#[test]
 fn poly_voice_stealing_when_full() {
     let mut h = handler(2);
     let mut ev = events();
@@ -652,6 +835,15 @@ fn midi(note: u8) -> Note {
         note,
         velocity: 1.0,
         host_id: None,
+    }
+}
+
+fn voiced(note: u8, host_id: i32) -> Note {
+    Note {
+        channel: 0,
+        note,
+        velocity: 1.0,
+        host_id: Some(host_id),
     }
 }
 
@@ -1810,8 +2002,8 @@ fn expression_on_releasing_note() {
     );
     assert_eq!(h.get_metrics().releasing, 1);
 
-    let event = h
-        .handle_expression(
+    assert!(
+        h.handle_expression(
             Note {
                 channel: 0,
                 note: 60,
@@ -1822,11 +2014,30 @@ fn expression_on_releasing_note() {
             0,
             0.3,
         )
-        .expect("expression on releasing note");
+        .is_none()
+    );
+}
 
-    assert_eq!(event.expression, Expression::Pressure);
-    assert_eq!(event.offset, 0);
-    assert_eq!(event.value, 0.3);
+#[test]
+fn expression_on_killing_note() {
+    let mut h = handler(4);
+    let mut ev = events();
+
+    h.handle_note_on(voiced(60, 1), 0, &mut ev);
+    h.handle_note_off(voiced(60, 1), 0, &mut ev);
+    h.handle_note_on(voiced(60, 2), 0, &mut ev);
+    assert_eq!(h.get_metrics().killing, 1);
+
+    let event = h
+        .handle_expression(midi(60), Expression::Pitch, 4, 0.7)
+        .expect("expression on the retriggered note");
+    assert_eq!(event.expression, Expression::Pitch);
+    assert_eq!(event.offset, 4);
+    assert_eq!(event.value, 0.7);
+    assert!(matches!(
+        h.voices[event.voice_idx].unwrap().phase,
+        Phase::NoteOn
+    ));
 }
 
 #[test]
@@ -2042,8 +2253,10 @@ fn update_decaying_voices_frees_killing() {
     assert_eq!(h.get_metrics().killing, 0);
     assert!(h.voices[0].is_none());
     assert!(h.voices[1].is_some());
-    // The killed note is still waiting, so it must not be reported as terminated.
-    assert!(terminated.is_empty());
+    // No host id, so the killed voice ends even though the same key is still waiting.
+    assert_eq!(terminated.len(), 1);
+    assert_eq!(terminated[0].note, 60);
+    assert!(terminated[0].host_id.is_none());
 }
 
 #[test]
@@ -2106,7 +2319,7 @@ fn waiting_note_off_terminates() {
 }
 
 #[test]
-fn restored_waiting_note_terminates_once_after_final_release() {
+fn restored_waiting_note_kill_ends_once_host_id_leaves_waiting() {
     let mut h = handler(1);
     let mut ev = events();
 
@@ -2145,17 +2358,20 @@ fn restored_waiting_note_terminates_once_after_final_release() {
     assert_eq!(h.get_metrics().playing, 1);
     assert_eq!(h.get_metrics().waiting, 0);
 
-    // The old kill of note 60 completes while its restored copy is still
-    // playing: only note 64 must be reported terminated.
+    // The restored note is playing, and its host id has left `waiting`, so the
+    // finished kill is reported along with the note that was replaced.
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
-    let terminated = flush_terminated(&mut h, &decaying);
+    let mut terminated = flush_terminated(&mut h, &decaying);
+    terminated.sort_by_key(|n| n.note);
 
-    assert_eq!(terminated.len(), 1);
-    assert_eq!(terminated[0].note, 64);
-    assert_eq!(terminated[0].host_id, Some(2));
+    assert_eq!(terminated.len(), 2);
+    assert_eq!(terminated[0].note, 60);
+    assert_eq!(terminated[0].host_id, Some(1));
+    assert_eq!(terminated[1].note, 64);
+    assert_eq!(terminated[1].host_id, Some(2));
 
-    // The restored note terminates exactly once, after its own release decays.
+    // The restored note terminates again when its own release finishes.
     h.handle_note_off(
         Note {
             channel: 0,
@@ -2201,7 +2417,6 @@ fn retriggered_note_old_instance_still_terminates() {
         0,
         &mut ev,
     );
-    // Retrigger the same note while the old instance's kill is decaying.
     h.handle_note_on(
         Note {
             channel: 0,
@@ -2214,10 +2429,10 @@ fn retriggered_note_old_instance_still_terminates() {
     );
 
     assert_eq!(h.get_metrics().playing, 1);
+    assert_eq!(h.get_metrics().releasing, 0);
     assert_eq!(h.get_metrics().killing, 1);
 
-    // The old instance is a different host note; it must terminate even
-    // though the same key is still playing.
+    // The old host id still ends, even though the same key is playing again.
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
     let terminated = flush_terminated(&mut h, &decaying);
@@ -2500,7 +2715,7 @@ fn alloc_voice_fills_partial_pair_before_opening_a_new_one() {
 
     for midi in [60, 61, 62, 63] {
         let idx = h.alloc_voice().unwrap();
-        h.assign_playing(idx, note(midi));
+        h.assign_slot(idx, note(midi));
     }
     assert_eq!(
         (0..4).map(|i| h.voices[i].is_some()).collect::<Vec<_>>(),
@@ -2513,11 +2728,11 @@ fn alloc_voice_fills_partial_pair_before_opening_a_new_one() {
     h.voices[2] = None;
 
     assert_eq!(h.alloc_voice(), Some(2));
-    h.assign_playing(2, note(64));
+    h.assign_slot(2, note(64));
 
     // Both earlier pairs are full or empty, so the next note opens pair (0, 1).
     assert_eq!(h.alloc_voice(), Some(0));
-    h.assign_playing(0, note(65));
+    h.assign_slot(0, note(65));
     assert_eq!(h.alloc_voice(), Some(1));
 }
 

@@ -44,9 +44,9 @@ pub use modules::{
 };
 pub(crate) use nth_element::NthElement;
 pub use routing::{
-    AUDIO_TO_UI_RING_CAPACITY, DataType, Expression, Input, InputId, InputSource, MAX_VOICES,
-    MixType, ModuleId, NUM_CHANNELS, OUTPUT_MODULE_ID, PITCH_MODULE_ID, UI_TO_AUDIO_RING_CAPACITY,
-    VoiceEvent, VolumeType,
+    AUDIO_TO_UI_RING_CAPACITY, DataType, Expression, ExpressionEvent, Input, InputId, InputSource,
+    MAX_VOICES, MixType, ModuleId, NUM_CHANNELS, OUTPUT_MODULE_ID, PITCH_MODULE_ID,
+    UI_TO_AUDIO_RING_CAPACITY, VoiceEvent, VolumeType,
 };
 pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
@@ -574,12 +574,22 @@ impl<E: EngineLinks> SynthEngine<E> {
         let mut voice_events = VoiceEvents::new();
         let offset = self.to_internal_offset(offset);
 
-        self.voices_handler
-            .handle_note_off(note, offset, &mut voice_events);
+        let restored_host_id = self
+            .voices_handler
+            .handle_note_off(note, offset, &mut voice_events)
+            .and_then(|restored| restored.host_id);
 
         self.modules
             .values_mut()
             .for_each(|m| m.process_events(voice_events.events()));
+
+        if let Some(host_id) = restored_host_id {
+            self.apply_pending_poly_modulations(host_id);
+        }
+    }
+
+    pub fn note_for_host_id(&self, host_id: i32) -> Option<Note> {
+        self.voices_handler.note_for_host_id(host_id)
     }
 
     pub fn handle_note_expression(
@@ -642,7 +652,8 @@ impl<E: EngineLinks> SynthEngine<E> {
             return;
         }
 
-        let Some(voice_idx) = self.voices_handler.voice_idx_for_host_id(host_id) else {
+        let voice_indices = self.voices_handler.voice_idx_for_host_id(host_id);
+        if voice_indices.is_empty() {
             self.pending_poly_modulations.push(PendingPolyModulation {
                 param_idx,
                 host_id,
@@ -650,26 +661,31 @@ impl<E: EngineLinks> SynthEngine<E> {
                 value_offset,
             });
             return;
-        };
+        }
 
-        self.apply_poly_modulation(param_idx, voice_idx, offset, value_offset);
+        for voice_idx in voice_indices {
+            self.apply_poly_modulation(param_idx, voice_idx, offset, value_offset);
+        }
     }
 
     fn apply_pending_poly_modulations(&mut self, host_id: i32) {
-        let Some(voice_idx) = self.voices_handler.voice_idx_for_host_id(host_id) else {
+        let voice_indices = self.voices_handler.voice_idx_for_host_id(host_id);
+        if voice_indices.is_empty() {
             return;
-        };
+        }
 
         let mut i = 0;
         while i < self.pending_poly_modulations.len() {
             if self.pending_poly_modulations[i].host_id == host_id {
                 let event = self.pending_poly_modulations.remove(i);
-                self.apply_poly_modulation(
-                    event.param_idx,
-                    voice_idx,
-                    event.offset,
-                    event.value_offset,
-                );
+                for &voice_idx in &voice_indices {
+                    self.apply_poly_modulation(
+                        event.param_idx,
+                        voice_idx,
+                        event.offset,
+                        event.value_offset,
+                    );
+                }
             } else {
                 i += 1;
             }
@@ -694,10 +710,6 @@ impl<E: EngineLinks> SynthEngine<E> {
 
     pub fn handle_choke(&mut self, note: Note) {
         self.voices_handler.handle_choke(note);
-    }
-
-    pub fn handle_choke_all(&mut self) {
-        self.voices_handler.choke_all_voices();
     }
 
     fn handle_ui_events(&mut self) {

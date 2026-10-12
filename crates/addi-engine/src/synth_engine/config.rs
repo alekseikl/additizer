@@ -15,7 +15,7 @@ use crate::{
 };
 
 fn default_kill_same_note() -> bool {
-    true
+    false
 }
 
 #[derive(Clone, Serialize, Deserialize)]

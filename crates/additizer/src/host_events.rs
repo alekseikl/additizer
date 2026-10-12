@@ -1,8 +1,10 @@
 use crate::params::ExtParam;
-use addi_engine::{EngineLinks, Expression, Note, SynthEngine, external_param::NUM_EXT_PARAMS};
+use addi_engine::{
+    EngineLinks, Expression, Note, Sample, SynthEngine, external_param::NUM_EXT_PARAMS,
+};
 use nice_plug::midi::{Channel, Key, NoteEvent, VoiceID};
 
-fn note_from_event(voice_id: VoiceID, channel: Channel, key: Key, velocity: f32) -> Option<Note> {
+fn addressed_note(voice_id: VoiceID, channel: Channel, key: Key, velocity: Sample) -> Option<Note> {
     Some(Note {
         channel: channel.number()?,
         note: key.number()?,
@@ -25,8 +27,16 @@ pub fn process_event(
             key,
             velocity,
         } => {
-            if let Some(note) = note_from_event(voice_id, channel, key, velocity) {
-                synth.handle_note_on(note, timing as usize - block_start);
+            if let (Some(channel), Some(note)) = (channel.number(), key.number()) {
+                synth.handle_note_on(
+                    Note {
+                        channel,
+                        note,
+                        velocity,
+                        host_id: voice_id.id(),
+                    },
+                    timing as usize - block_start,
+                );
             }
         }
         NoteEvent::NoteOff {
@@ -36,8 +46,16 @@ pub fn process_event(
             key,
             velocity,
         } => {
-            if let Some(note) = note_from_event(voice_id, channel, key, velocity) {
-                synth.handle_note_off(note, timing as usize - block_start);
+            if let (Some(channel), Some(note)) = (channel.number(), key.number()) {
+                synth.handle_note_off(
+                    Note {
+                        channel,
+                        note,
+                        velocity,
+                        host_id: voice_id.id(),
+                    },
+                    timing as usize - block_start,
+                );
             }
         }
         NoteEvent::Choke {
@@ -46,10 +64,13 @@ pub fn process_event(
             key,
             ..
         } => {
-            if let Some(note) = note_from_event(voice_id, channel, key, 0.0) {
-                synth.handle_choke(note);
-            } else {
-                synth.handle_choke_all();
+            if let (Some(channel), Some(note)) = (channel.number(), key.number()) {
+                synth.handle_choke(Note {
+                    channel,
+                    note,
+                    velocity: 0.0,
+                    host_id: voice_id.id(),
+                });
             }
         }
         NoteEvent::PolyVolume {
@@ -59,7 +80,7 @@ pub fn process_event(
             key,
             gain,
         } => {
-            if let Some(note) = note_from_event(voice_id, channel, key, 0.0) {
+            if let Some(note) = addressed_note(voice_id, channel, key, 0.0) {
                 synth.handle_note_expression(
                     note,
                     Expression::Gain,
@@ -75,7 +96,7 @@ pub fn process_event(
             key,
             pan,
         } => {
-            if let Some(note) = note_from_event(voice_id, channel, key, 0.0) {
+            if let Some(note) = addressed_note(voice_id, channel, key, 0.0) {
                 synth.handle_note_expression(
                     note,
                     Expression::Pan,
@@ -91,7 +112,7 @@ pub fn process_event(
             key,
             tuning,
         } => {
-            if let Some(note) = note_from_event(voice_id, channel, key, 0.0) {
+            if let Some(note) = addressed_note(voice_id, channel, key, 0.0) {
                 synth.handle_note_expression(
                     note,
                     Expression::Pitch,
@@ -107,7 +128,7 @@ pub fn process_event(
             key,
             brightness,
         } => {
-            if let Some(note) = note_from_event(voice_id, channel, key, 0.0) {
+            if let Some(note) = addressed_note(voice_id, channel, key, 0.0) {
                 synth.handle_note_expression(
                     note,
                     Expression::Timbre,
@@ -123,7 +144,7 @@ pub fn process_event(
             key,
             pressure,
         } => {
-            if let Some(note) = note_from_event(voice_id, channel, key, 0.0) {
+            if let Some(note) = addressed_note(voice_id, channel, key, 0.0) {
                 synth.handle_note_expression(
                     note,
                     Expression::Pressure,
