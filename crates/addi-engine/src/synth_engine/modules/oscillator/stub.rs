@@ -77,6 +77,10 @@ impl OscillatorUiEnd for NoUi {
         self.diverge()
     }
 
+    fn set_full_fft_size(&mut self, _full_fft_size: bool) -> bool {
+        self.diverge()
+    }
+
     fn set_unison_initial_phase(&mut self, _idx: usize, _value: StereoSample) -> bool {
         self.diverge()
     }

@@ -60,6 +60,10 @@ impl UiEnd {
         self.tx.push(UiEvent::MonoSpectrum(mono_spectrum)).is_ok()
     }
 
+    pub fn set_full_fft_size(&mut self, full_fft_size: bool) -> bool {
+        self.tx.push(UiEvent::FullFftSize(full_fft_size)).is_ok()
+    }
+
     pub fn set_unison_initial_phase(&mut self, idx: usize, value: StereoSample) -> bool {
         self.tx
             .push(UiEvent::UnisonInitialPhase { idx, value })
@@ -197,6 +201,9 @@ impl OscillatorUiEnd for UiEnd {
     }
     fn set_mono_spectrum(&mut self, mono_spectrum: bool) -> bool {
         UiEnd::set_mono_spectrum(self, mono_spectrum)
+    }
+    fn set_full_fft_size(&mut self, full_fft_size: bool) -> bool {
+        UiEnd::set_full_fft_size(self, full_fft_size)
     }
     fn set_unison_initial_phase(&mut self, idx: usize, value: StereoSample) -> bool {
         UiEnd::set_unison_initial_phase(self, idx, value)

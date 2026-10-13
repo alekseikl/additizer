@@ -595,6 +595,16 @@ impl OscillatorUI {
                 {
                     osc_bridge.set_mono_spectrum(config.mono_spectrum);
                 }
+
+                if ui
+                    .add(Checkbox::new(&mut config.full_fft_size, "Full FFT"))
+                    .on_hover_text(
+                        "Always inverse-FFT the full waveform table. Otherwise a shorter table is used when the note does not reach the upper bins.",
+                    )
+                    .changed()
+                {
+                    osc_bridge.set_full_fft_size(config.full_fft_size);
+                }
                 ui.end_row();
 
                 ui.label("Unison");

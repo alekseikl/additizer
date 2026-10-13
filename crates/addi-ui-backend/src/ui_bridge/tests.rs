@@ -229,6 +229,18 @@ fn ui_event_sets_mono_spectrum() {
 }
 
 #[test]
+fn ui_event_sets_full_fft_size() {
+    let mut osc = Oscillator::<crate::links::oscillator::Links>::new(1);
+    let mut bridge = OscillatorUiBridge::try_new(&mut osc).expect("ui end");
+
+    bridge.set_full_fft_size(true);
+    osc.process_ui_events();
+
+    assert!(bridge.config().full_fft_size);
+    assert!(osc.get_config().full_fft_size);
+}
+
+#[test]
 fn move_filter_reorders_bands() {
     let bands = [100.0, 1_000.0, 8_000.0].map(|cutoff_hz| EqFilter {
         cutoff_hz,

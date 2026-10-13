@@ -85,6 +85,12 @@ impl<L: OscillatorLinks> OscillatorUiBridge<L> {
         }
     }
 
+    pub fn set_full_fft_size(&mut self, full_fft_size: bool) {
+        if self.ui_end.set_full_fft_size(full_fft_size) {
+            self.config.full_fft_size = full_fft_size;
+        }
+    }
+
     pub fn set_unison_initial_phase(&mut self, idx: usize, value: StereoSample) {
         self.ui_end.set_unison_initial_phase(idx, value);
     }

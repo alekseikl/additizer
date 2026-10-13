@@ -532,6 +532,42 @@ fn set_mono_spectrum_updates_config() {
 }
 
 #[test]
+fn full_fft_size_defaults_to_false() {
+    assert!(!OscillatorConfig::default().full_fft_size);
+    assert!(!<Oscillator>::new(1).get_config().full_fft_size);
+}
+
+#[test]
+fn full_fft_size_defaults_when_missing_from_json() {
+    let mut json = serde_json::to_value(OscillatorConfig::default()).unwrap();
+    json.as_object_mut().unwrap().remove("full_fft_size");
+
+    let config: OscillatorConfig = serde_json::from_value(json).unwrap();
+
+    assert!(!config.full_fft_size);
+}
+
+#[test]
+fn full_fft_size_round_trips_through_config() {
+    let osc = <Oscillator>::from_config(&OscillatorConfig {
+        id: 1,
+        full_fft_size: true,
+        ..OscillatorConfig::default()
+    });
+
+    assert!(osc.get_config().full_fft_size);
+}
+
+#[test]
+fn set_full_fft_size_updates_config() {
+    let mut osc = <Oscillator>::new(1);
+
+    osc.set_full_fft_size(true);
+
+    assert!(osc.get_config().full_fft_size);
+}
+
+#[test]
 fn stereo_spectrum_keeps_silent_right_channel_silent() {
     let mut engine = make_engine(silent_right_harmonics(), false);
     let (left, right) = play(&mut engine);
@@ -633,7 +669,7 @@ fn reference_full_wave(spectrum: &[ComplexSample], cutoff: usize) -> Box<Wavefor
     wave
 }
 
-fn build_test_wave(frequency: Sample, spectrum: &[ComplexSample]) -> Waveform {
+fn build_test_wave(frequency: Sample, spectrum: &[ComplexSample], full_fft_size: bool) -> Waveform {
     let ifft = IfftPlanners::new();
     let mut dft = [ComplexSample::ZERO; DFT_BUFFER_SIZE];
     let mut scratch = [ComplexSample::ZERO; DFT_BUFFER_SIZE];
@@ -647,6 +683,7 @@ fn build_test_wave(frequency: Sample, spectrum: &[ComplexSample]) -> Waveform {
         &mut dft,
         &mut scratch,
         &mut wave,
+        full_fft_size,
     );
 
     wave
@@ -659,7 +696,7 @@ fn body(wave: &WaveformBuffer, len: usize) -> &[Sample] {
 fn assert_wave_matches_full(frequency: Sample, spectrum: &[ComplexSample], size: WaveformSize) {
     let cutoff = wave_cutoff(frequency, SAMPLE_RATE, spectrum.len());
     let reference = reference_full_wave(spectrum, cutoff);
-    let wave = build_test_wave(frequency, spectrum);
+    let wave = build_test_wave(frequency, spectrum, false);
     let len = size.len();
     let stride = WAVEFORM_SIZE / len;
     let actual = body(&wave.samples, len);
@@ -711,6 +748,31 @@ fn build_wave_keeps_full_resolution_when_cutoff_reaches_half_nyquist() {
     assert_eq!(cutoff, WaveformSize::Half.len() / 2 + 1);
 
     assert_wave_matches_full(46.8, &spectrum, WaveformSize::Full);
+}
+
+#[test]
+fn build_wave_uses_full_resolution_when_full_fft_size_is_set() {
+    let mut spectrum = vec![ComplexSample::ZERO; DFT_BUFFER_SIZE];
+    spectrum[1] = ComplexSample::new(0.8, 0.1);
+    spectrum[80] = ComplexSample::new(0.4, -0.3);
+
+    let cutoff = wave_cutoff(200.0, SAMPLE_RATE, spectrum.len());
+    assert!(cutoff < WaveformSize::Half.len() / 2 + 1);
+
+    let wave = build_test_wave(200.0, &spectrum, true);
+    let reference = reference_full_wave(&spectrum, cutoff);
+    let actual = body(&wave.samples, WAVEFORM_SIZE);
+    let expected = body(&reference, WAVEFORM_SIZE);
+    let peak = expected.iter().fold(0.0_f32, |acc, s| acc.max(s.abs()));
+    let max_diff = actual
+        .iter()
+        .zip(expected)
+        .map(|(sample, expected)| (sample - expected).abs())
+        .fold(0.0_f32, Sample::max);
+
+    assert_eq!(wave.size, WaveformSize::Full);
+    assert!(peak > 1.0);
+    assert!(max_diff < peak * 1e-4, "max diff {max_diff}, peak {peak}");
 }
 
 #[test]

@@ -96,11 +96,15 @@ impl IfftPlanners {
         }
     }
 
-    fn select(&self, cutoff_index: usize) -> (WaveformSize, &dyn ComplexToReal<Sample>) {
-        if cutoff_index < self.half.complex_len() {
-            (WaveformSize::Half, self.half.as_ref())
-        } else {
+    fn select(
+        &self,
+        cutoff_index: usize,
+        full_fft_size: bool,
+    ) -> (WaveformSize, &dyn ComplexToReal<Sample>) {
+        if full_fft_size || cutoff_index >= self.half.complex_len() {
             (WaveformSize::Full, self.full.as_ref())
+        } else {
+            (WaveformSize::Half, self.half.as_ref())
         }
     }
 }
@@ -113,6 +117,7 @@ struct Params {
     phase_random: Sample,        // [0.0, 1.0]
     phase_random_stereo: Sample, // [0.0, 1.0]
     mono_spectrum: bool,
+    full_fft_size: bool,
 }
 
 impl Params {
@@ -125,6 +130,7 @@ impl Params {
             phase_random: c.phase_random,
             phase_random_stereo: c.phase_random_stereo,
             mono_spectrum: c.mono_spectrum,
+            full_fft_size: c.full_fft_size,
         }
     }
 }
@@ -470,6 +476,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             phase_random: self.params.phase_random,
             phase_random_stereo: self.params.phase_random_stereo,
             mono_spectrum: self.params.mono_spectrum,
+            full_fft_size: self.params.full_fft_size,
             detune: get_stereo_param!(self, detune),
             detune_focus: get_stereo_param!(self, detune_focus),
             phase_shift: get_smoothed_param!(self, phase_shift),
@@ -507,6 +514,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         phase_random_stereo.clamp(0.0, 1.0)
     );
     set_mono_param!(set_mono_spectrum, mono_spectrum, bool);
+    set_mono_param!(set_full_fft_size, full_fft_size, bool);
 
     set_stereo_param!(set_detune, detune, detune.clamp(0.0, from_st(1.0)));
     set_stereo_param!(
@@ -632,6 +640,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         dft_buff: &mut DftBuffer,
         scratch_buff: &mut DftBuffer,
         out_wave: &mut Waveform,
+        full_fft_size: bool,
     ) {
         let frequency = frequency.abs();
         let max_frequency = 0.5 * sample_rate;
@@ -639,7 +648,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let cutoff_index =
             ((max_frequency / frequency).floor() as usize + 1).min(spectral_buff.len());
 
-        let (size, inverse_fft) = ifft.select(cutoff_index);
+        let (size, inverse_fft) = ifft.select(cutoff_index, full_fft_size);
         let complex_len = inverse_fft.complex_len();
         debug_assert!(cutoff_index <= complex_len);
         debug_assert_eq!(inverse_fft.len(), size.len());
@@ -691,6 +700,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
                 .voice_buffers
                 .at_mut(target.channel_idx, target.voice_idx)
                 .wave,
+            self.params.full_fft_size,
         );
     }
 
@@ -1089,6 +1099,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
                 &mut self.buffers.tmp_spectral,
                 &mut self.buffers.scratch,
                 &mut self.buffers.tmp_wave,
+                self.params.full_fft_size,
             );
         }
 
@@ -1239,6 +1250,7 @@ impl<L: OscillatorLinks> SynthModule for Oscillator<L> {
                     self.set_phase_random_stereo(phase_random_stereo);
                 }
                 UiEvent::MonoSpectrum(mono_spectrum) => self.set_mono_spectrum(mono_spectrum),
+                UiEvent::FullFftSize(full_fft_size) => self.set_full_fft_size(full_fft_size),
                 UiEvent::ApplyUnisonLevelShape { center, level, to } => {
                     self.apply_unison_level_shape(center, level, to);
                 }

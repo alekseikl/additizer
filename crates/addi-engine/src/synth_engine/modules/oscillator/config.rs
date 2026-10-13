@@ -79,6 +79,10 @@ pub struct OscillatorConfig {
     pub phase_random_stereo: Sample,
     #[serde(default)]
     pub mono_spectrum: bool,
+    /// Always inverse-FFT the full waveform table. Otherwise a shorter table is
+    /// used when the note's cutoff fits inside it.
+    #[serde(default)]
+    pub full_fft_size: bool,
     pub detune: StereoSample,
     #[serde(alias = "detune_power")]
     pub detune_focus: StereoSample,
@@ -100,6 +104,7 @@ impl Default for OscillatorConfig {
             phase_random: 0.0,
             phase_random_stereo: 0.0,
             mono_spectrum: false,
+            full_fft_size: false,
             detune: from_st(0.2).into(),
             detune_focus: 0.0.into(),
             phase_shift: 0.0.into(),
