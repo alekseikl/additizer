@@ -632,6 +632,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         wave_buff[last + 2] = wave_buff[WAVEFORM_PAD_LEFT + 1];
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build_wave(
         ifft: &IfftPlanners,
         frequency: f32,

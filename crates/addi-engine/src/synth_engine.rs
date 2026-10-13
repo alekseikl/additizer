@@ -293,6 +293,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         }
 
         self.oversampling = oversampling;
+        self.voices_handler.choke_all_voices();
     }
 
     /// Map a host-buffer sample offset into the internal (possibly oversampled) block.
