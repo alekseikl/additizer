@@ -1,134 +1,164 @@
-use crate::Sample;
+//! SIMD integrators and the filter sections built on them. Each `f32x4` lane is
+//! one voice channel and stays in that slot for the life of the filter.
 
-const MIN_GAIN: Sample = 1e-4;
+use wide::f32x4;
 
-/// Trapezoidal integrator pair shared by every two-pole section.
-#[derive(Default, Clone, Copy)]
+const ONE: f32x4 = f32x4::splat(1.0);
+const TWO: f32x4 = f32x4::splat(2.0);
+const MIN_GAIN: f32x4 = f32x4::splat(1e-4);
+
+#[derive(Clone, Copy, Default)]
 pub(super) struct Integrator {
-    ic1eq: Sample,
-    ic2eq: Sample,
+    ic1eq: f32x4,
+    ic2eq: f32x4,
 }
 
 impl Integrator {
-    /// Returns `(v1, v2)` for input `v0`.
     #[inline(always)]
-    pub(super) fn tick(&mut self, g: Sample, k: Sample, v0: Sample) -> (Sample, Sample) {
-        let a1 = 1.0 / g.mul_add(g + k, 1.0);
+    pub(super) fn tick(&mut self, g: f32x4, k: f32x4, v0: f32x4) -> (f32x4, f32x4) {
+        let a1 = ONE / g.mul_add(g + k, ONE);
         let v3 = v0 - self.ic2eq;
         let v1 = a1 * g.mul_add(v3, self.ic1eq);
         let v2 = g.mul_add(v1, self.ic2eq);
 
-        self.ic1eq = v1.mul_add(2.0, -self.ic1eq);
-        self.ic2eq = v2.mul_add(2.0, -self.ic2eq);
+        self.ic1eq = v1.mul_add(TWO, -self.ic1eq);
+        self.ic2eq = v2.mul_add(TWO, -self.ic2eq);
 
         (v1, v2)
     }
+
+    #[inline(always)]
+    pub(super) fn reset(&mut self, mask: f32x4) {
+        self.ic1eq = mask.select(f32x4::ZERO, self.ic1eq);
+        self.ic2eq = mask.select(f32x4::ZERO, self.ic2eq);
+    }
 }
 
-/// One-pole integrator. `tick` returns the lowpass.
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub(super) struct OnePoleIntegrator {
-    s: Sample,
+    s: f32x4,
 }
 
 impl OnePoleIntegrator {
     #[inline(always)]
-    pub(super) fn tick(&mut self, g: Sample, input: Sample) -> Sample {
-        let g = g / (1.0 + g);
-        let v = (input - self.s) * g;
-        let lp = v + self.s;
+    pub(super) fn tick(&mut self, g: f32x4, input: f32x4) -> f32x4 {
+        let prev = self.s;
+        let g = g / (ONE + g);
+        let v = (input - prev) * g;
+        let lp = v + prev;
 
         self.s = lp + v;
-
         lp
+    }
+
+    #[inline(always)]
+    pub(super) fn reset(&mut self, mask: f32x4) {
+        self.s = mask.select(f32x4::ZERO, self.s);
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub(super) struct LowPass {
     integrator: Integrator,
 }
 
 impl LowPass {
     #[inline(always)]
-    pub(super) fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample {
+    pub(super) fn tick(&mut self, g: f32x4, k: f32x4, input: f32x4) -> f32x4 {
         let (_v1, v2) = self.integrator.tick(g, k, input);
-
         v2
+    }
+
+    #[inline(always)]
+    pub(super) fn clear(&mut self, mask: f32x4) {
+        self.integrator.reset(mask);
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub(super) struct HighPass {
     integrator: Integrator,
 }
 
 impl HighPass {
     #[inline(always)]
-    pub(super) fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample {
+    pub(super) fn tick(&mut self, g: f32x4, k: f32x4, input: f32x4) -> f32x4 {
         let (v1, v2) = self.integrator.tick(g, k, input);
-
         k.mul_add(-v1, input) - v2
+    }
+
+    #[inline(always)]
+    pub(super) fn clear(&mut self, mask: f32x4) {
+        self.integrator.reset(mask);
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub(super) struct BandPass {
     integrator: Integrator,
 }
 
 impl BandPass {
     #[inline(always)]
-    pub(super) fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample {
+    pub(super) fn tick(&mut self, g: f32x4, k: f32x4, input: f32x4) -> f32x4 {
         let (v1, _v2) = self.integrator.tick(g, k, input);
-
         k * v1
+    }
+
+    #[inline(always)]
+    pub(super) fn clear(&mut self, mask: f32x4) {
+        self.integrator.reset(mask);
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub(super) struct Notch {
     integrator: Integrator,
 }
 
 impl Notch {
     #[inline(always)]
-    pub(super) fn tick(&mut self, g: Sample, k: Sample, input: Sample) -> Sample {
+    pub(super) fn tick(&mut self, g: f32x4, k: f32x4, input: f32x4) -> f32x4 {
         let (v1, _v2) = self.integrator.tick(g, k, input);
-
         k.mul_add(-v1, input)
+    }
+
+    #[inline(always)]
+    pub(super) fn clear(&mut self, mask: f32x4) {
+        self.integrator.reset(mask);
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub(super) struct Peaking {
     integrator: Integrator,
 }
 
 impl Peaking {
     #[inline(always)]
-    pub(super) fn tick(&mut self, g: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+    pub(super) fn tick(&mut self, g: f32x4, k: f32x4, gain: f32x4, input: f32x4) -> f32x4 {
         let gain = gain.max(MIN_GAIN);
         let k = k / gain.sqrt();
         let (v1, _v2) = self.integrator.tick(g, k, input);
-        // Passband stays at unity; `gain` is the level at the cutoff.
-        ((gain - 1.0) * k).mul_add(v1, input)
+        ((gain - ONE) * k).mul_add(v1, input)
+    }
+
+    #[inline(always)]
+    pub(super) fn clear(&mut self, mask: f32x4) {
+        self.integrator.reset(mask);
     }
 }
 
-/// `A = √gain` and `√A`, shared by every section of one shelf.
 #[derive(Clone, Copy)]
 pub(super) struct ShelfCoeffs {
-    /// `A = √gain`.
-    a: Sample,
-    /// `√A`. Low shelf tunes at `g / sqrt_a`, high shelf at `g * sqrt_a`.
-    sqrt_a: Sample,
-    gain: Sample,
+    a: f32x4,
+    sqrt_a: f32x4,
+    gain: f32x4,
 }
 
 impl ShelfCoeffs {
     #[inline(always)]
-    pub(super) fn new(gain: Sample) -> Self {
+    pub(super) fn new(gain: f32x4) -> Self {
         let gain = gain.max(MIN_GAIN);
         let a = gain.sqrt();
 
@@ -139,78 +169,81 @@ impl ShelfCoeffs {
         }
     }
 
-    /// Both sections of a 24 dB shelf run at `√gain`.
     #[inline(always)]
-    pub(super) fn cascaded(gain: Sample) -> Self {
+    pub(super) fn cascaded(gain: f32x4) -> Self {
         Self::new(gain.max(MIN_GAIN).sqrt())
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub(super) struct LowShelf {
     integrator: Integrator,
 }
 
 impl LowShelf {
     #[inline(always)]
-    pub(super) fn tick(
-        &mut self,
-        g: Sample,
-        k: Sample,
-        coeffs: ShelfCoeffs,
-        input: Sample,
-    ) -> Sample {
-        // Poles sit at fc / √A so the shelf centers on the cutoff.
+    pub(super) fn tick(&mut self, g: f32x4, k: f32x4, coeffs: ShelfCoeffs, input: f32x4) -> f32x4 {
         let (v1, v2) = self.integrator.tick(g / coeffs.sqrt_a, k, input);
+        (coeffs.gain - ONE).mul_add(v2, ((coeffs.a - ONE) * k).mul_add(v1, input))
+    }
 
-        (coeffs.gain - 1.0).mul_add(v2, ((coeffs.a - 1.0) * k).mul_add(v1, input))
+    #[inline(always)]
+    pub(super) fn clear(&mut self, mask: f32x4) {
+        self.integrator.reset(mask);
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub(super) struct HighShelf {
     integrator: Integrator,
 }
 
 impl HighShelf {
     #[inline(always)]
-    pub(super) fn tick(
-        &mut self,
-        g: Sample,
-        k: Sample,
-        coeffs: ShelfCoeffs,
-        input: Sample,
-    ) -> Sample {
-        // Poles sit at fc * √A so the shelf centers on the cutoff.
+    pub(super) fn tick(&mut self, g: f32x4, k: f32x4, coeffs: ShelfCoeffs, input: f32x4) -> f32x4 {
         let (v1, v2) = self.integrator.tick(g * coeffs.sqrt_a, k, input);
-
-        (1.0 - coeffs.gain).mul_add(
+        (ONE - coeffs.gain).mul_add(
             v2,
             ((coeffs.a - coeffs.gain) * k).mul_add(v1, coeffs.gain * input),
         )
     }
+
+    #[inline(always)]
+    pub(super) fn clear(&mut self, mask: f32x4) {
+        self.integrator.reset(mask);
+    }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub(super) struct OnePoleLowPass {
     integrator: OnePoleIntegrator,
 }
 
 impl OnePoleLowPass {
     #[inline(always)]
-    pub(super) fn tick(&mut self, g: Sample, input: Sample) -> Sample {
+    pub(super) fn tick(&mut self, g: f32x4, input: f32x4) -> f32x4 {
         self.integrator.tick(g, input)
+    }
+
+    #[inline(always)]
+    pub(super) fn clear(&mut self, mask: f32x4) {
+        self.integrator.reset(mask);
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub(super) struct OnePoleHighPass {
     integrator: OnePoleIntegrator,
 }
 
 impl OnePoleHighPass {
     #[inline(always)]
-    pub(super) fn tick(&mut self, g: Sample, input: Sample) -> Sample {
+    pub(super) fn tick(&mut self, g: f32x4, input: f32x4) -> f32x4 {
         input - self.integrator.tick(g, input)
+    }
+
+    #[inline(always)]
+    pub(super) fn clear(&mut self, mask: f32x4) {
+        self.integrator.reset(mask);
     }
 }

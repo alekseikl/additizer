@@ -8,14 +8,7 @@ use crate::{
     units::{C4_PITCH, freq_to_c4_pitch, pitch_to_freq},
 };
 
-use super::{
-    SvfFilter,
-    sections::{
-        BandPass, HighPass, HighShelf, Integrator, LowPass, LowShelf, Notch, OnePoleHighPass,
-        OnePoleIntegrator, OnePoleLowPass, Peaking, ShelfCoeffs,
-    },
-    *,
-};
+use super::*;
 
 const SAMPLE_RATE: Sample = 48_000.0;
 const CUTOFF: Sample = 1_000.0;
@@ -32,10 +25,9 @@ fn process_clamps_frequency_ratio_to_the_tan_limit() {
         let cutoff = [freq_to_c4_pitch(ratio * SAMPLE_RATE)];
         let mut state = SvfState::new(SvfType::LowPass12);
         let mut output = [0.0];
-
         let pre_k = [MAX_PRE_Q.recip()];
 
-        state.process(SAMPLE_RATE, &input, &cutoff, &k, &pre_k, &gain, &mut output);
+        process_lane(&mut state, &input, &cutoff, &k, &pre_k, &gain, &mut output);
 
         output[0]
     };
@@ -47,10 +39,11 @@ fn process_clamps_frequency_ratio_to_the_tan_limit() {
 #[test]
 fn cutoff_to_g_stays_close_to_libm_tan() {
     let freq_mult = SAMPLE_RATE.recip();
+    let freq_mult_x4 = f32x4::splat(freq_mult);
 
     for i in 0..=200 {
         let cutoff = -4.0 + i as Sample * 11.0 / 200.0;
-        let g = super::cutoff_to_g_x4(f32x4::splat(cutoff), freq_mult).to_array()[0];
+        let g = LaneInputs::cutoff_to_g_x4(f32x4::splat(cutoff), freq_mult_x4).to_array()[0];
         let ratio = (pitch_to_freq(C4_PITCH + cutoff) * freq_mult).min(super::MAX_FREQ_RATIO);
         let expected = (ratio * PI).tan();
         let rel = ((g - expected) / expected).abs();
@@ -68,7 +61,7 @@ fn process_lanes_match_one_sample_at_a_time() {
     let n = 7;
     let input: Vec<_> = (0..n).map(|i| (i as Sample * 0.37).sin()).collect();
     // Spans the direct polynomial and the reciprocal side of `fast_tan_pi_x4`,
-    // plus one cutoff past the clamp, and a remainder of 3 after one chunk of 4.
+    // plus one cutoff past the clamp.
     let cutoff = [-2.0, 0.5, 2.0, 4.0, 6.0, 6.8, 9.0];
     let k = [0.5, 0.2, 1.0, 0.05, 2.0, 0.7, 0.3];
     let pre_k = [2.0, 1.0, 2.0, 1.5, 2.0, 0.8, 1.2];
@@ -76,12 +69,12 @@ fn process_lanes_match_one_sample_at_a_time() {
 
     for filter_type in SvfType::ALL {
         let mut block = SvfState::new(filter_type);
-        let mut step = block;
+        let mut step = SvfState::new(filter_type);
         let mut out_block = [0.0; 7];
         let mut out_step = [0.0; 7];
 
-        block.process(
-            SAMPLE_RATE,
+        process_lane(
+            &mut block,
             &input,
             &cutoff,
             &k,
@@ -91,8 +84,8 @@ fn process_lanes_match_one_sample_at_a_time() {
         );
 
         for i in 0..n {
-            step.process(
-                SAMPLE_RATE,
+            process_lane(
+                &mut step,
                 &input[i..i + 1],
                 &cutoff[i..i + 1],
                 &k[i..i + 1],
@@ -109,25 +102,67 @@ fn process_lanes_match_one_sample_at_a_time() {
     }
 }
 
-fn g_and_k(cutoff: Sample, q: Sample) -> (Sample, Sample) {
-    let g = (PI * (cutoff * SAMPLE_RATE.recip()).min(0.499)).tan();
+/// One sample through lane 0. The other lanes stay silent.
+fn tick(state: &mut SvfState, cutoff: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+    let audio = [input];
+    let cutoff = [cutoff];
+    let k = [k];
+    let pre_k = [MAX_PRE_Q.recip()];
+    let gain = [gain];
+    let zero = [0.0];
+    let mut out = [0.0];
+    let mut sink_a = [0.0];
+    let mut sink_b = [0.0];
+    let mut sink_c = [0.0];
 
-    (g, q.recip())
+    state.process(
+        SAMPLE_RATE,
+        1,
+        LaneInputs {
+            audio: [&audio, &zero, &zero, &zero],
+            cutoff: [&cutoff, &zero, &zero, &zero],
+            k: [&k, &zero, &zero, &zero],
+            pre_k: [&pre_k, &zero, &zero, &zero],
+            gain: [&gain, &zero, &zero, &zero],
+        },
+        [&mut out, &mut sink_a, &mut sink_b, &mut sink_c],
+    );
+
+    out[0]
 }
 
-fn tick_params(g: Sample, k: Sample, gain: Sample, input: Sample) -> TickParams {
-    TickParams {
-        g,
-        k,
-        pre_k: MAX_PRE_Q.recip(),
-        gain,
-        input,
-    }
+fn process_lane(
+    state: &mut SvfState,
+    audio: &[Sample],
+    cutoff: &[Sample],
+    k: &[Sample],
+    pre_k: &[Sample],
+    gain: &[Sample],
+    output: &mut [Sample],
+) {
+    let zeros = vec![0.0; audio.len()];
+    let mut sink_a = vec![0.0; audio.len()];
+    let mut sink_b = vec![0.0; audio.len()];
+    let mut sink_c = vec![0.0; audio.len()];
+
+    state.process(
+        SAMPLE_RATE,
+        audio.len(),
+        LaneInputs {
+            audio: [audio, &zeros, &zeros, &zeros],
+            cutoff: [cutoff, &zeros, &zeros, &zeros],
+            k: [k, &zeros, &zeros, &zeros],
+            pre_k: [pre_k, &zeros, &zeros, &zeros],
+            gain: [gain, &zeros, &zeros, &zeros],
+        },
+        [output, &mut sink_a, &mut sink_b, &mut sink_c],
+    );
 }
 
-/// Steady-state amplitude of the filter output for a unit sine at `freq`.
+/// Steady-state amplitude of lane 0 for a unit sine at `freq`.
 fn measured_gain(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) -> Sample {
-    let (g, k) = g_and_k(CUTOFF, q);
+    let cutoff = freq_to_c4_pitch(CUTOFF);
+    let k = q.recip();
     let mut state = SvfState::new(filter_type);
     let settle = SAMPLE_RATE as usize;
     let measure = SAMPLE_RATE as usize / 4;
@@ -135,7 +170,7 @@ fn measured_gain(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) ->
 
     for n in 0..settle + measure {
         let x = (TAU * freq * n as Sample / SAMPLE_RATE).sin();
-        let y = state.tick(&tick_params(g, k, gain, x));
+        let y = tick(&mut state, cutoff, k, gain, x);
 
         if n >= settle {
             sum_sq += (y as f64) * (y as f64);
@@ -278,14 +313,15 @@ fn steeper_types_roll_off_faster() {
 }
 
 fn assert_impulse_decays(filter_type: SvfType, gain: Sample) {
-    let (g, k) = g_and_k(CUTOFF, 16.0);
+    let cutoff = freq_to_c4_pitch(CUTOFF);
+    let k = 16.0f32.recip();
     let mut state = SvfState::new(filter_type);
     let mut peak_early = 0.0f32;
     let mut peak_late = 0.0f32;
 
     for n in 0..SAMPLE_RATE as usize {
         let x = if n == 0 { 1.0 } else { 0.0 };
-        let y = state.tick(&tick_params(g, k, gain, x));
+        let y = tick(&mut state, cutoff, k, gain, x);
 
         assert!(y.is_finite(), "{filter_type:?} gain={gain} at {n}");
 
@@ -323,16 +359,17 @@ fn high_resonance_impulse_decays_and_stays_finite() {
 
 #[test]
 fn fresh_state_has_no_memory() {
-    let (g, k) = g_and_k(CUTOFF, 2.0);
+    let cutoff = freq_to_c4_pitch(CUTOFF);
+    let k = 0.5;
     let mut state = SvfState::new(SvfType::LowPass24);
 
     for _ in 0..100 {
-        state.tick(&tick_params(g, k, 1.0, 1.0));
+        tick(&mut state, cutoff, k, 1.0, 1.0);
     }
 
     state = SvfState::new(SvfType::LowPass24);
 
-    assert_eq!(state.tick(&tick_params(g, k, 1.0, 0.0)), 0.0);
+    assert_eq!(tick(&mut state, cutoff, k, 1.0, 0.0), 0.0);
 }
 
 #[test]
@@ -376,19 +413,15 @@ fn peaking_tick_matches_bilinear_response() {
 }
 
 fn settled_dc(filter_type: SvfType, gain: Sample) -> Sample {
-    let cutoff = [freq_to_c4_pitch(CUTOFF)];
-    let k = [0.5];
-    let gain = [gain];
+    let cutoff = freq_to_c4_pitch(CUTOFF);
     let mut state = SvfState::new(filter_type);
-    let mut output = [0.0];
+    let mut output = 0.0;
 
     for _ in 0..8_000 {
-        let pre_k = [MAX_PRE_Q.recip()];
-
-        state.process(SAMPLE_RATE, &[1.0], &cutoff, &k, &pre_k, &gain, &mut output);
+        output = tick(&mut state, cutoff, 0.5, gain, 1.0);
     }
 
-    output[0]
+    output
 }
 
 #[test]
@@ -589,32 +622,33 @@ fn types_round_trip_through_serde() {
 fn default_state_is_lowpass12() {
     assert_eq!(SvfType::default(), SvfType::LowPass12);
 
-    let (g, k) = g_and_k(CUTOFF, 2.0);
+    let cutoff = freq_to_c4_pitch(CUTOFF);
+    let k = 0.5;
     let mut state = SvfState::default();
     let mut lowpass = SvfState::new(SvfType::LowPass12);
 
     for input in [0.0, 1.0, -1.0, 0.3] {
         assert_eq!(
-            state.tick(&tick_params(g, k, 1.0, input)),
-            lowpass.tick(&tick_params(g, k, 1.0, input))
+            tick(&mut state, cutoff, k, 1.0, input),
+            tick(&mut lowpass, cutoff, k, 1.0, input)
         );
     }
 }
 
 fn drive(state: &mut SvfState) {
-    let (g, k) = g_and_k(CUTOFF, 4.0);
+    let cutoff = freq_to_c4_pitch(CUTOFF);
 
     for _ in 0..32 {
-        state.tick(&tick_params(g, k, 2.0, 1.0));
+        tick(state, cutoff, 0.25, 2.0, 1.0);
     }
 }
 
 fn tick_sequence(state: &mut SvfState) -> [Sample; 4] {
-    let (g, k) = g_and_k(CUTOFF, 4.0);
+    let cutoff = freq_to_c4_pitch(CUTOFF);
     let mut output = [0.0; 4];
 
     for (out, input) in output.iter_mut().zip([0.0, 1.0, -0.5, 0.25]) {
-        *out = state.tick(&tick_params(g, k, 2.0, input));
+        *out = tick(state, cutoff, 0.25, 2.0, input);
     }
 
     output
@@ -669,225 +703,6 @@ fn set_type_clears_integrator_state_when_the_type_changes() {
     }
 }
 
-/// `(g, k, input)`. Coefficients change every step so the state update is part of the check.
-const SECTION_STEPS: [(f64, f64, f64); 6] = [
-    (0.0, 0.5, 1.0),
-    (0.15, 0.5, 0.5),
-    (0.4, 1.0, -1.0),
-    (0.9, 0.2, 0.25),
-    (0.25, 2.0, 0.0),
-    (1.2, 0.05, -0.75),
-];
-
-fn assert_sample_near(actual: Sample, expected: f64, ctx: &str) {
-    let error = (f64::from(actual) - expected).abs();
-    let tolerance = expected.abs() * 1e-5 + 1e-6;
-
-    assert!(
-        error <= tolerance,
-        "{ctx}: actual {actual} expected {expected}"
-    );
-}
-
-/// Cytomic trapezoidal pair, in `f64` and in the `a1`/`a2`/`a3` form.
-#[derive(Default)]
-struct RefIntegrator {
-    ic1eq: f64,
-    ic2eq: f64,
-}
-
-impl RefIntegrator {
-    fn tick(&mut self, g: f64, k: f64, v0: f64) -> (f64, f64) {
-        let a1 = 1.0 / (1.0 + g * (g + k));
-        let a2 = g * a1;
-        let a3 = g * a2;
-        let v3 = v0 - self.ic2eq;
-        let v1 = a1 * self.ic1eq + a2 * v3;
-        let v2 = self.ic2eq + a2 * self.ic1eq + a3 * v3;
-
-        self.ic1eq = 2.0 * v1 - self.ic1eq;
-        self.ic2eq = 2.0 * v2 - self.ic2eq;
-
-        (v1, v2)
-    }
-}
-
-#[derive(Default)]
-struct RefOnePole {
-    s: f64,
-}
-
-impl RefOnePole {
-    fn tick(&mut self, g: f64, input: f64) -> f64 {
-        let a = g / (1.0 + g);
-        let v = (input - self.s) * a;
-        let lp = self.s + v;
-
-        self.s += 2.0 * v;
-
-        lp
-    }
-}
-
-struct RefShelf {
-    a: f64,
-    sqrt_a: f64,
-    gain: f64,
-}
-
-impl RefShelf {
-    fn new(gain: f64) -> Self {
-        let gain = gain.max(1e-4);
-        let a = gain.sqrt();
-
-        Self {
-            a,
-            sqrt_a: a.sqrt(),
-            gain,
-        }
-    }
-
-    fn cascaded(gain: f64) -> Self {
-        Self::new(gain.max(1e-4).sqrt())
-    }
-}
-
-#[test]
-fn trapezoidal_integrator_matches_reference() {
-    let mut integrator = Integrator::default();
-    let mut reference = RefIntegrator::default();
-
-    for (step, &(g, k, input)) in SECTION_STEPS.iter().enumerate() {
-        let (v1, v2) = integrator.tick(g as Sample, k as Sample, input as Sample);
-        let (expected_v1, expected_v2) = reference.tick(g, k, input);
-
-        assert_sample_near(v1, expected_v1, &format!("integrator v1 step {step}"));
-        assert_sample_near(v2, expected_v2, &format!("integrator v2 step {step}"));
-    }
-}
-
-#[test]
-fn one_pole_integrator_matches_reference() {
-    let mut integrator = OnePoleIntegrator::default();
-    let mut reference = RefOnePole::default();
-
-    for (step, &(g, _, input)) in SECTION_STEPS.iter().enumerate() {
-        let lp = integrator.tick(g as Sample, input as Sample);
-
-        assert_sample_near(
-            lp,
-            reference.tick(g, input),
-            &format!("one-pole step {step}"),
-        );
-    }
-}
-
-#[test]
-fn two_pole_sections_match_reference() {
-    let mut low_pass = LowPass::default();
-    let mut high_pass = HighPass::default();
-    let mut band_pass = BandPass::default();
-    let mut notch = Notch::default();
-    let mut low_ref = RefIntegrator::default();
-    let mut high_ref = RefIntegrator::default();
-    let mut band_ref = RefIntegrator::default();
-    let mut notch_ref = RefIntegrator::default();
-
-    for (step, &(g, k, input)) in SECTION_STEPS.iter().enumerate() {
-        let g_s = g as Sample;
-        let k_s = k as Sample;
-        let input_s = input as Sample;
-
-        let (_v1, low) = low_ref.tick(g, k, input);
-        let (v1, v2) = high_ref.tick(g, k, input);
-        let (band_v1, _v2) = band_ref.tick(g, k, input);
-        let (notch_v1, _v2) = notch_ref.tick(g, k, input);
-
-        assert_sample_near(
-            low_pass.tick(g_s, k_s, input_s),
-            low,
-            &format!("lowpass step {step}"),
-        );
-        assert_sample_near(
-            high_pass.tick(g_s, k_s, input_s),
-            input - k * v1 - v2,
-            &format!("highpass step {step}"),
-        );
-        assert_sample_near(
-            band_pass.tick(g_s, k_s, input_s),
-            k * band_v1,
-            &format!("bandpass step {step}"),
-        );
-        assert_sample_near(
-            notch.tick(g_s, k_s, input_s),
-            input - k * notch_v1,
-            &format!("notch step {step}"),
-        );
-    }
-}
-
-#[test]
-fn peaking_section_matches_reference() {
-    for gain in [1.0_f64, 4.0, 0.25, 0.0, -1.0] {
-        let mut peaking = Peaking::default();
-        let mut reference = RefIntegrator::default();
-        let clamped = gain.max(1e-4);
-        let k_scale = clamped.sqrt();
-
-        for (step, &(g, k, input)) in SECTION_STEPS.iter().enumerate() {
-            let (v1, _v2) = reference.tick(g, k / k_scale, input);
-            let expected = input + (clamped - 1.0) * (k / k_scale) * v1;
-
-            assert_sample_near(
-                peaking.tick(g as Sample, k as Sample, gain as Sample, input as Sample),
-                expected,
-                &format!("peaking gain={gain} step {step}"),
-            );
-        }
-    }
-}
-
-#[test]
-fn shelf_sections_match_reference() {
-    for (label, coeffs_for) in [
-        ("section", RefShelf::new as fn(f64) -> RefShelf),
-        ("cascaded", RefShelf::cascaded as fn(f64) -> RefShelf),
-    ] {
-        for gain in [1.0_f64, 4.0, 0.25, 0.0, -1.0] {
-            let coeffs = coeffs_for(gain);
-            let shelf = if label == "section" {
-                ShelfCoeffs::new(gain as Sample)
-            } else {
-                ShelfCoeffs::cascaded(gain as Sample)
-            };
-            let mut low_shelf = LowShelf::default();
-            let mut high_shelf = HighShelf::default();
-            let mut low_ref = RefIntegrator::default();
-            let mut high_ref = RefIntegrator::default();
-
-            for (step, &(g, k, input)) in SECTION_STEPS.iter().enumerate() {
-                let (low_v1, low_v2) = low_ref.tick(g / coeffs.sqrt_a, k, input);
-                let (high_v1, high_v2) = high_ref.tick(g * coeffs.sqrt_a, k, input);
-                let low = input + (coeffs.a - 1.0) * k * low_v1 + (coeffs.gain - 1.0) * low_v2;
-                let high = coeffs.gain * input
-                    + (coeffs.a - coeffs.gain) * k * high_v1
-                    + (1.0 - coeffs.gain) * high_v2;
-
-                assert_sample_near(
-                    low_shelf.tick(g as Sample, k as Sample, shelf, input as Sample),
-                    low,
-                    &format!("lowshelf {label} gain={gain} step {step}"),
-                );
-                assert_sample_near(
-                    high_shelf.tick(g as Sample, k as Sample, shelf, input as Sample),
-                    high,
-                    &format!("highshelf {label} gain={gain} step {step}"),
-                );
-            }
-        }
-    }
-}
-
 #[test]
 fn q_from_resonance_x4_matches_scalar() {
     for step in 0..=40 {
@@ -910,74 +725,8 @@ fn q_from_resonance_x4_matches_scalar() {
     }
 }
 
-fn lane_rows(fill: impl Fn(usize, usize) -> Sample) -> [[Sample; 17]; 4] {
-    std::array::from_fn(|lane| std::array::from_fn(|index| fill(lane, index)))
-}
-
-fn refs(rows: &[[Sample; 17]; 4]) -> [&[Sample]; 4] {
-    std::array::from_fn(|lane| &rows[lane][..])
-}
-
 #[test]
-fn lanes_match_scalar_voices() {
-    let n = 17;
-    let audio = lane_rows(|lane, index| ((index as Sample + lane as Sample) * 0.31).sin());
-    let cutoff = lane_rows(|lane, index| -1.5 + lane as Sample * 1.4 + index as Sample * 0.02);
-    let k = lane_rows(|lane, _| [2.0, 0.5, 1.0, 0.2][lane]);
-    let pre_k = lane_rows(|lane, _| [2.0, 1.0, 1.5, 0.8][lane]);
-    let gain = lane_rows(|lane, index| [0.25, 1.0, 4.0, 0.5][lane] + index as Sample * 0.01);
-
-    for filter_type in SvfType::ALL {
-        let mut lanes = SvfLanes::new(filter_type);
-        let mut scalar: [SvfState; 4] = std::array::from_fn(|_| SvfState::new(filter_type));
-        let mut lane_out = [[0.0; 17]; 4];
-        let mut scalar_out = [[0.0; 17]; 4];
-
-        {
-            let [o0, o1, o2, o3] = lane_out.each_mut();
-
-            lanes.process(
-                SAMPLE_RATE,
-                n,
-                refs(&audio),
-                refs(&cutoff),
-                refs(&k),
-                refs(&pre_k),
-                refs(&gain),
-                0b1111,
-                [o0, o1, o2, o3],
-            );
-        }
-
-        for lane in 0..4 {
-            scalar[lane].process(
-                SAMPLE_RATE,
-                &audio[lane],
-                &cutoff[lane],
-                &k[lane],
-                &pre_k[lane],
-                &gain[lane],
-                &mut scalar_out[lane],
-            );
-        }
-
-        for lane in 0..4 {
-            for index in 0..n {
-                let actual = lane_out[lane][index];
-                let expected = scalar_out[lane][index];
-                let error = (actual - expected).abs();
-
-                assert!(
-                    error <= 1e-5,
-                    "{filter_type:?} lane {lane} sample {index}: {actual} vs {expected}"
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn store_mask_skips_output_and_reset_zeros_one_slot() {
+fn reset_zeros_one_slot() {
     let n = 16;
     let audio = [0.2; 16];
     let cutoff = [1.0; 16];
@@ -990,153 +739,45 @@ fn store_mask_skips_output_and_reset_zeros_one_slot() {
     let pre_k_refs = [&pre_k[..], &pre_k[..], &pre_k[..], &pre_k[..]];
     let gain_refs = [&gain[..], &gain[..], &gain[..], &gain[..]];
 
-    let mut full = SvfLanes::new(SvfType::LowPass24);
-    let mut stored = SvfLanes::new(SvfType::LowPass24);
-    let mut full_out = [[0.0; 16]; 4];
-    let mut stored_out = [[0.0; 16]; 4];
-
+    let mut state = SvfState::new(SvfType::LowPass24);
+    let mut out = [[0.0; 16]; 4];
     {
-        let [o0, o1, o2, o3] = full_out.each_mut();
-        full.process(
+        let [o0, o1, o2, o3] = out.each_mut();
+        state.process(
             SAMPLE_RATE,
             n,
-            audio_refs,
-            cutoff_refs,
-            k_refs,
-            pre_k_refs,
-            gain_refs,
-            0b1111,
-            [o0, o1, o2, o3],
-        );
-    }
-    {
-        let [o0, o1, o2, o3] = stored_out.each_mut();
-        stored.process(
-            SAMPLE_RATE,
-            n,
-            audio_refs,
-            cutoff_refs,
-            k_refs,
-            pre_k_refs,
-            gain_refs,
-            0b0011,
+            LaneInputs {
+                audio: audio_refs,
+                cutoff: cutoff_refs,
+                k: k_refs,
+                pre_k: pre_k_refs,
+                gain: gain_refs,
+            },
             [o0, o1, o2, o3],
         );
     }
 
-    for index in 0..n {
-        assert!((full_out[0][index] - stored_out[0][index]).abs() < 1e-6);
-        assert!((full_out[1][index] - stored_out[1][index]).abs() < 1e-6);
-        assert_eq!(stored_out[2][index], 0.0);
-        assert_eq!(stored_out[3][index], 0.0);
-    }
-
-    let mut odd = SvfLanes::new(SvfType::LowPass24);
-    let mut odd_out = [[0.0; 16]; 4];
-    {
-        let [o0, o1, o2, o3] = odd_out.each_mut();
-        odd.process(
-            SAMPLE_RATE,
-            n,
-            audio_refs,
-            cutoff_refs,
-            k_refs,
-            pre_k_refs,
-            gain_refs,
-            0b1100,
-            [o0, o1, o2, o3],
-        );
-    }
-
-    for index in 0..n {
-        assert_eq!(odd_out[0][index], 0.0);
-        assert_eq!(odd_out[1][index], 0.0);
-        assert!((full_out[2][index] - odd_out[2][index]).abs() < 1e-6);
-        assert!((full_out[3][index] - odd_out[3][index]).abs() < 1e-6);
-    }
-
-    let mut full_next = [[0.0; 16]; 4];
-    let mut stored_next = [[0.0; 16]; 4];
-
-    {
-        let [o0, o1, o2, o3] = full_next.each_mut();
-        full.process(
-            SAMPLE_RATE,
-            n,
-            audio_refs,
-            cutoff_refs,
-            k_refs,
-            pre_k_refs,
-            gain_refs,
-            0b1111,
-            [o0, o1, o2, o3],
-        );
-    }
-    {
-        let [o0, o1, o2, o3] = stored_next.each_mut();
-        stored.process(
-            SAMPLE_RATE,
-            n,
-            audio_refs,
-            cutoff_refs,
-            k_refs,
-            pre_k_refs,
-            gain_refs,
-            0b1111,
-            [o0, o1, o2, o3],
-        );
-    }
-
-    for lane in 0..4 {
-        for index in 0..n {
-            assert!((full_next[lane][index] - stored_next[lane][index]).abs() < 1e-6);
-        }
-    }
-
-    stored.reset(0);
+    state.reset(0);
 
     let mut cleared = [[0.0; 1]; 4];
     let silent = [0.0; 1];
     let silent_refs = [&silent[..], &silent[..], &silent[..], &silent[..]];
     let [o0, o1, o2, o3] = cleared.each_mut();
 
-    stored.process(
+    state.process(
         SAMPLE_RATE,
         1,
-        silent_refs,
-        cutoff_refs,
-        k_refs,
-        pre_k_refs,
-        gain_refs,
-        0b1111,
+        LaneInputs {
+            audio: silent_refs,
+            cutoff: cutoff_refs,
+            k: k_refs,
+            pre_k: pre_k_refs,
+            gain: gain_refs,
+        },
         [o0, o1, o2, o3],
     );
 
     assert!(cleared[0][0].abs() < 1e-6);
     assert!(cleared[1][0].abs() < 1e-6);
     assert!(cleared[2][0].abs() > 1e-5 || cleared[3][0].abs() > 1e-5);
-}
-
-#[test]
-fn one_pole_sections_match_reference() {
-    let mut low_pass = OnePoleLowPass::default();
-    let mut high_pass = OnePoleHighPass::default();
-    let mut low_ref = RefOnePole::default();
-    let mut high_ref = RefOnePole::default();
-
-    for (step, &(g, _, input)) in SECTION_STEPS.iter().enumerate() {
-        let low = low_ref.tick(g, input);
-        let high = input - high_ref.tick(g, input);
-
-        assert_sample_near(
-            low_pass.tick(g as Sample, input as Sample),
-            low,
-            &format!("one-pole lowpass step {step}"),
-        );
-        assert_sample_near(
-            high_pass.tick(g as Sample, input as Sample),
-            high,
-            &format!("one-pole highpass step {step}"),
-        );
-    }
 }

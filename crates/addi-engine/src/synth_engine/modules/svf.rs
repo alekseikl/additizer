@@ -12,14 +12,13 @@ pub use link::{SvfAudioEnd, SvfLinks, SvfUiEnd, UiEvent};
 
 use addi_dsp::filters::{
     control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
-    svf::{SvfLanes, SvfType},
+    svf::{LaneInputs, SvfState, SvfType},
 };
 use wide::f32x4;
 
 use crate::{
     synth_engine::{
-        C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, PlayingVoice, db_to_gain_fast, db_to_gain_fast_x4,
-        map_x4_in_place,
+        C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain_fast, db_to_gain_fast_x4, map_x4_in_place,
     },
     synth_engine::{
         Sample, SmoothedSampleParams, StereoSample,
@@ -147,7 +146,7 @@ pub struct Svf<L: SvfLinks = stub::Links> {
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
     buffers: Buffers,
-    states: [SvfLanes; VOICE_PAIRS],
+    states: [SvfState; VOICE_PAIRS],
     audio_end: L::AudioEnd,
     ui_end: Option<L::UiEnd>,
     inputs: Inputs,
@@ -182,7 +181,7 @@ impl<L: SvfLinks> Svf<L> {
                 pre_k: lane_buffers(),
                 drive: lane_buffers(),
             },
-            states: array::from_fn(|_| SvfLanes::new(config.filter_type)),
+            states: array::from_fn(|_| SvfState::new(config.filter_type)),
             audio_end,
             ui_end,
             inputs: Inputs::default(),
@@ -306,12 +305,13 @@ impl<L: SvfLinks> Svf<L> {
         state.process(
             params.sample_rate,
             params.samples,
-            block_refs(&buffers.audio),
-            block_refs(&buffers.cutoff),
-            block_refs(&buffers.resonance),
-            block_refs(&buffers.pre_k),
-            block_refs(&buffers.drive),
-            lane_store(&block.voices),
+            LaneInputs {
+                audio: block_refs(&buffers.audio),
+                cutoff: block_refs(&buffers.cutoff),
+                k: block_refs(&buffers.resonance),
+                pre_k: block_refs(&buffers.pre_k),
+                gain: block_refs(&buffers.drive),
+            },
             outputs.pair_buffers_mut(pair_idx),
         );
     }
@@ -324,19 +324,6 @@ impl<L: SvfLinks> Svf<L> {
                     .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
             });
     }
-}
-
-fn lane_store(voices: &[Option<PlayingVoice>; VOICE_PAIR_LEN]) -> u8 {
-    let mut store = 0u8;
-
-    if voices[0].is_some() {
-        store |= 0b0011;
-    }
-    if voices[1].is_some() {
-        store |= 0b1100;
-    }
-
-    store
 }
 
 fn block_refs(buffers: &[Buffer; LANES]) -> [&[Sample]; LANES] {

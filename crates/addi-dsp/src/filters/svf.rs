@@ -1,7 +1,6 @@
-//! Time-domain state-variable filter in the Cytomic / Andrew Simper form
+//! Time-domain state-variable filter in the Cytomic / Andrew Simper form.
 
 use enum_dispatch::enum_dispatch;
-use itertools::izip;
 use serde::{Deserialize, Serialize};
 use wide::f32x4;
 
@@ -16,16 +15,18 @@ const MAX_FREQ_RATIO: Sample = 0.499;
 #[cfg(test)]
 mod tests;
 
-mod lanes;
 mod response;
 mod sections;
 
-pub use lanes::SvfLanes;
 pub use response::SvfResponse;
 
 use sections::{
-    BandPass, HighPass, HighShelf, LowPass, LowShelf, OnePoleHighPass, OnePoleLowPass, ShelfCoeffs,
+    BandPass, HighPass, HighShelf, LowPass, LowShelf, Notch, OnePoleHighPass, OnePoleLowPass,
+    Peaking, ShelfCoeffs,
 };
+
+/// Four lanes: even-left, even-right, odd-left, odd-right.
+const LANES: usize = 4;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SvfType {
@@ -90,355 +91,360 @@ impl SvfType {
     }
 }
 
-/// Coefficients and input for one sample.
-pub struct TickParams {
-    g: Sample,
-    /// `1/Q` of the resonant stage.
-    k: Sample,
-    /// `1/Q` of the pre stage.
-    pre_k: Sample,
-    gain: Sample,
-    input: Sample,
+struct LaneParams {
+    g: f32x4,
+    k: f32x4,
+    pre_k: f32x4,
+    gain: f32x4,
+    input: f32x4,
 }
 
 #[enum_dispatch]
-pub trait SvfFilter {
-    fn tick(&mut self, p: &TickParams) -> Sample;
+trait SvfFilter {
+    fn tick(&mut self, p: &LaneParams) -> f32x4;
 
-    #[allow(clippy::too_many_arguments)]
+    fn reset(&mut self, mask: f32x4);
+
     fn process(
         &mut self,
         sample_rate: Sample,
-        input: &[Sample],
-        cutoff: &[Sample],
-        k: &[Sample],     // k = 1/Q of the resonant stage
-        pre_k: &[Sample], // k = 1/Q of the pre stage
-        gain: &[Sample],
-        output: &mut [Sample],
+        samples: usize,
+        inputs: LaneInputs<'_>,
+        output: [&mut [Sample]; LANES],
     ) {
-        let freq_mult = sample_rate.recip();
-        let (output, output_tail) = output.as_chunks_mut::<LANES>();
-        let done = output.len() * LANES;
+        let freq_mult = f32x4::splat(sample_rate.recip());
+        let inputs = inputs.take(samples);
+        let [o0, o1, o2, o3] = take_lanes_mut(output, samples);
+        let samples = o0.len();
 
-        for (output, cutoff, k, pre_k, gain, input) in izip!(
-            output,
-            cutoff.as_chunks::<LANES>().0,
-            k.as_chunks::<LANES>().0,
-            pre_k.as_chunks::<LANES>().0,
-            gain.as_chunks::<LANES>().0,
-            input.as_chunks::<LANES>().0,
-        ) {
-            let g = cutoff_to_g_x4(f32x4::new(*cutoff), freq_mult).to_array();
+        for index in 0..samples {
+            let y = self.tick(&inputs.params(freq_mult, index)).to_array();
 
-            for (sample, g, &k, &pre_k, &gain, &input) in izip!(output, g, k, pre_k, gain, input) {
-                *sample = self.tick(&TickParams {
-                    g,
-                    k,
-                    pre_k,
-                    gain,
-                    input,
-                });
-            }
-        }
-
-        let tail = output_tail.len();
-
-        if tail > 0 {
-            let mut cutoff_lanes = [0.0; LANES];
-            cutoff_lanes[..tail].copy_from_slice(&cutoff[done..done + tail]);
-            let g = cutoff_to_g_x4(f32x4::new(cutoff_lanes), freq_mult).to_array();
-
-            for (sample, g, &k, &pre_k, &gain, &input) in izip!(
-                output_tail,
-                g,
-                &k[done..],
-                &pre_k[done..],
-                &gain[done..],
-                &input[done..],
-            ) {
-                *sample = self.tick(&TickParams {
-                    g,
-                    k,
-                    pre_k,
-                    gain,
-                    input,
-                });
-            }
+            o0[index] = y[0];
+            o1[index] = y[1];
+            o2[index] = y[2];
+            o3[index] = y[3];
         }
     }
 }
 
-const LANES: usize = 4;
-
-/// `g = tan(π f / sample_rate)` for four cutoffs in octaves relative to C4.
-#[inline(always)]
-fn cutoff_to_g_x4(cutoff: f32x4, freq_mult: Sample) -> f32x4 {
-    const MAX_RATIO: f32x4 = f32x4::splat(MAX_FREQ_RATIO);
-    const C4: f32x4 = f32x4::splat(C4_PITCH);
-
-    let freq = fast_pitch_to_freq_x4(cutoff + C4);
-    let ratio = (freq * f32x4::splat(freq_mult)).fast_min(MAX_RATIO);
-
-    fast_tan_pi_x4(ratio)
-}
-
-#[derive(Default, Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct LowPass12 {
     resonant: LowPass,
 }
 
-#[derive(Default, Clone, Copy)]
+impl SvfFilter for LowPass12 {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        self.resonant.tick(p.g, p.k, p.input * p.gain)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.resonant.clear(mask);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct LowPass18 {
     resonant: LowPass,
     one_pole: OnePoleLowPass,
 }
 
-#[derive(Default, Clone, Copy)]
+impl SvfFilter for LowPass18 {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        let x = self.resonant.tick(p.g, p.k, p.input * p.gain);
+        self.one_pole.tick(p.g, x)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.resonant.clear(mask);
+        self.one_pole.clear(mask);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct LowPass24 {
     pre_stage: LowPass,
     resonant: LowPass,
 }
 
-#[derive(Default, Clone, Copy)]
+impl SvfFilter for LowPass24 {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        let x = self.pre_stage.tick(p.g, p.pre_k, p.input * p.gain);
+        self.resonant.tick(p.g, p.k, x)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.pre_stage.clear(mask);
+        self.resonant.clear(mask);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct HighPass12 {
     resonant: HighPass,
 }
 
-#[derive(Default, Clone, Copy)]
+impl SvfFilter for HighPass12 {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        self.resonant.tick(p.g, p.k, p.input * p.gain)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.resonant.clear(mask);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct HighPass18 {
     resonant: HighPass,
     one_pole: OnePoleHighPass,
 }
 
-#[derive(Default, Clone, Copy)]
+impl SvfFilter for HighPass18 {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        let x = self.resonant.tick(p.g, p.k, p.input * p.gain);
+        self.one_pole.tick(p.g, x)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.resonant.clear(mask);
+        self.one_pole.clear(mask);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct HighPass24 {
     pre_stage: HighPass,
     resonant: HighPass,
 }
 
-#[derive(Default, Clone, Copy)]
+impl SvfFilter for HighPass24 {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        let x = self.pre_stage.tick(p.g, p.pre_k, p.input * p.gain);
+        self.resonant.tick(p.g, p.k, x)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.pre_stage.clear(mask);
+        self.resonant.clear(mask);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct BandPass6 {
     resonant: BandPass,
 }
 
-#[derive(Default, Clone, Copy)]
+impl SvfFilter for BandPass6 {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        self.resonant.tick(p.g, p.k, p.input * p.gain)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.resonant.clear(mask);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct BandPass12 {
     pre_stage: BandPass,
     resonant: BandPass,
 }
 
-/// 18 dB/oct. Two pre stages at `pre_k`, then the resonant stage.
-#[derive(Default, Clone, Copy)]
+impl SvfFilter for BandPass12 {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        let x = self.pre_stage.tick(p.g, p.pre_k, p.input * p.gain);
+        self.resonant.tick(p.g, p.k, x)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.pre_stage.clear(mask);
+        self.resonant.clear(mask);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct BandPass18 {
     pre_stages: [BandPass; 2],
     resonant: BandPass,
 }
 
-/// 24 dB/oct. Three pre stages at `pre_k`, then the resonant stage.
-#[derive(Default, Clone, Copy)]
+impl SvfFilter for BandPass18 {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        let x = self.pre_stages[0].tick(p.g, p.pre_k, p.input * p.gain);
+        let x = self.pre_stages[1].tick(p.g, p.pre_k, x);
+        self.resonant.tick(p.g, p.k, x)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.pre_stages[0].clear(mask);
+        self.pre_stages[1].clear(mask);
+        self.resonant.clear(mask);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct BandPass24 {
     pre_stages: [BandPass; 3],
     resonant: BandPass,
 }
 
-/// Bell. Linear `gain` is the level at the cutoff; DC and high frequencies stay at unity.
-#[derive(Default, Clone, Copy)]
-pub struct Peaking {
-    section: sections::Peaking,
+impl SvfFilter for BandPass24 {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        let x = self.pre_stages[0].tick(p.g, p.pre_k, p.input * p.gain);
+        let x = self.pre_stages[1].tick(p.g, p.pre_k, x);
+        let x = self.pre_stages[2].tick(p.g, p.pre_k, x);
+        self.resonant.tick(p.g, p.k, x)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.pre_stages[0].clear(mask);
+        self.pre_stages[1].clear(mask);
+        self.pre_stages[2].clear(mask);
+        self.resonant.clear(mask);
+    }
 }
 
-#[derive(Default, Clone, Copy)]
-pub struct Notch {
-    resonant: sections::Notch,
+#[derive(Clone, Copy, Default)]
+pub struct PeakingFilter {
+    section: Peaking,
 }
 
-/// Low shelf, 12 dB/oct. Linear `gain` is the DC level; high frequencies stay at unity.
-#[derive(Default, Clone, Copy)]
+impl SvfFilter for PeakingFilter {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        self.section.tick(p.g, p.k, p.gain, p.input)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.section.clear(mask);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct NotchFilter {
+    resonant: Notch,
+}
+
+impl SvfFilter for NotchFilter {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        self.resonant.tick(p.g, p.k, p.input * p.gain)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.resonant.clear(mask);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct LowShelf12 {
     section: LowShelf,
 }
 
-/// High shelf, 12 dB/oct. Linear `gain` is the high-frequency level; DC stays at unity.
-#[derive(Default, Clone, Copy)]
+impl SvfFilter for LowShelf12 {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        self.section
+            .tick(p.g, p.k, ShelfCoeffs::new(p.gain), p.input)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.section.clear(mask);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct HighShelf12 {
     section: HighShelf,
 }
 
-/// Low shelf, 24 dB/oct. Two 12 dB sections, each at `sqrt(gain)`. One stage uses `pre_k`.
-#[derive(Default, Clone, Copy)]
+impl SvfFilter for HighShelf12 {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        self.section
+            .tick(p.g, p.k, ShelfCoeffs::new(p.gain), p.input)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.section.clear(mask);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct LowShelf24 {
     pre_stage: LowShelf,
     resonant: LowShelf,
 }
 
-/// High shelf, 24 dB/oct. Two 12 dB sections, each at `sqrt(gain)`. One stage uses `pre_k`.
-#[derive(Default, Clone, Copy)]
+impl SvfFilter for LowShelf24 {
+    #[inline(always)]
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
+        let coeffs = ShelfCoeffs::cascaded(p.gain);
+        let x = self.pre_stage.tick(p.g, p.pre_k, coeffs, p.input);
+        self.resonant.tick(p.g, p.k, coeffs, x)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.pre_stage.clear(mask);
+        self.resonant.clear(mask);
+    }
+}
+
+#[derive(Clone, Copy, Default)]
 pub struct HighShelf24 {
     pre_stage: HighShelf,
     resonant: HighShelf,
 }
 
-impl SvfFilter for LowPass12 {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        self.resonant.tick(p.g, p.k, p.input * p.gain)
-    }
-}
-
-impl SvfFilter for LowPass18 {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        let x = self.resonant.tick(p.g, p.k, p.input * p.gain);
-
-        self.one_pole.tick(p.g, x)
-    }
-}
-
-impl SvfFilter for LowPass24 {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        let x = self.pre_stage.tick(p.g, p.pre_k, p.input * p.gain);
-
-        self.resonant.tick(p.g, p.k, x)
-    }
-}
-
-impl SvfFilter for HighPass12 {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        self.resonant.tick(p.g, p.k, p.input * p.gain)
-    }
-}
-
-impl SvfFilter for HighPass18 {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        let x = self.resonant.tick(p.g, p.k, p.input * p.gain);
-
-        self.one_pole.tick(p.g, x)
-    }
-}
-
-impl SvfFilter for HighPass24 {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        let x = self.pre_stage.tick(p.g, p.pre_k, p.input * p.gain);
-
-        self.resonant.tick(p.g, p.k, x)
-    }
-}
-
-impl SvfFilter for BandPass6 {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        self.resonant.tick(p.g, p.k, p.input * p.gain)
-    }
-}
-
-impl SvfFilter for BandPass12 {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        let x = self.pre_stage.tick(p.g, p.pre_k, p.input * p.gain);
-
-        self.resonant.tick(p.g, p.k, x)
-    }
-}
-
-impl SvfFilter for BandPass18 {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        let x = self.pre_stages[0].tick(p.g, p.pre_k, p.input * p.gain);
-        let x = self.pre_stages[1].tick(p.g, p.pre_k, x);
-
-        self.resonant.tick(p.g, p.k, x)
-    }
-}
-
-impl SvfFilter for BandPass24 {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        let x = self.pre_stages[0].tick(p.g, p.pre_k, p.input * p.gain);
-        let x = self.pre_stages[1].tick(p.g, p.pre_k, x);
-        let x = self.pre_stages[2].tick(p.g, p.pre_k, x);
-
-        self.resonant.tick(p.g, p.k, x)
-    }
-}
-
-impl SvfFilter for Peaking {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        self.section.tick(p.g, p.k, p.gain, p.input)
-    }
-}
-
-impl SvfFilter for Notch {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        self.resonant.tick(p.g, p.k, p.input * p.gain)
-    }
-}
-
-impl SvfFilter for LowShelf12 {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        self.section
-            .tick(p.g, p.k, ShelfCoeffs::new(p.gain), p.input)
-    }
-}
-
-impl SvfFilter for HighShelf12 {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        self.section
-            .tick(p.g, p.k, ShelfCoeffs::new(p.gain), p.input)
-    }
-}
-
-impl SvfFilter for LowShelf24 {
-    #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
-        let coeffs = ShelfCoeffs::cascaded(p.gain);
-        let x = self.pre_stage.tick(p.g, p.pre_k, coeffs, p.input);
-
-        self.resonant.tick(p.g, p.k, coeffs, x)
-    }
-}
-
 impl SvfFilter for HighShelf24 {
     #[inline(always)]
-    fn tick(&mut self, p: &TickParams) -> Sample {
+    fn tick(&mut self, p: &LaneParams) -> f32x4 {
         let coeffs = ShelfCoeffs::cascaded(p.gain);
         let x = self.pre_stage.tick(p.g, p.pre_k, coeffs, p.input);
-
         self.resonant.tick(p.g, p.k, coeffs, x)
+    }
+
+    fn reset(&mut self, mask: f32x4) {
+        self.pre_stage.clear(mask);
+        self.resonant.clear(mask);
     }
 }
 
 #[enum_dispatch(SvfFilter)]
 #[derive(Clone, Copy)]
 pub enum SvfState {
-    LowPass12(LowPass12),
-    LowPass18(LowPass18),
-    LowPass24(LowPass24),
-    HighPass12(HighPass12),
-    HighPass18(HighPass18),
-    HighPass24(HighPass24),
-    BandPass6(BandPass6),
-    BandPass12(BandPass12),
-    BandPass18(BandPass18),
-    BandPass24(BandPass24),
-    Peaking(Peaking),
-    Notch(Notch),
-    LowShelf12(LowShelf12),
-    LowShelf24(LowShelf24),
-    HighShelf12(HighShelf12),
-    HighShelf24(HighShelf24),
+    LowPass12,
+    LowPass18,
+    LowPass24,
+    HighPass12,
+    HighPass18,
+    HighPass24,
+    BandPass6,
+    BandPass12,
+    BandPass18,
+    BandPass24,
+    PeakingFilter,
+    NotchFilter,
+    LowShelf12,
+    LowShelf24,
+    HighShelf12,
+    HighShelf24,
 }
 
 impl Default for SvfState {
     fn default() -> Self {
-        Self::LowPass12(LowPass12::default())
+        Self::new(SvfType::LowPass12)
     }
 }
 
@@ -455,8 +461,8 @@ impl SvfState {
             SvfType::BandPass12 => Self::BandPass12(BandPass12::default()),
             SvfType::BandPass18 => Self::BandPass18(BandPass18::default()),
             SvfType::BandPass24 => Self::BandPass24(BandPass24::default()),
-            SvfType::Peaking => Self::Peaking(Peaking::default()),
-            SvfType::Notch => Self::Notch(Notch::default()),
+            SvfType::Peaking => Self::PeakingFilter(PeakingFilter::default()),
+            SvfType::Notch => Self::NotchFilter(NotchFilter::default()),
             SvfType::LowShelf12 => Self::LowShelf12(LowShelf12::default()),
             SvfType::LowShelf24 => Self::LowShelf24(LowShelf24::default()),
             SvfType::HighShelf12 => Self::HighShelf12(HighShelf12::default()),
@@ -464,7 +470,7 @@ impl SvfState {
         }
     }
 
-    fn current_type(&self) -> SvfType {
+    fn filter_type(self) -> SvfType {
         match self {
             Self::LowPass12(_) => SvfType::LowPass12,
             Self::LowPass18(_) => SvfType::LowPass18,
@@ -476,8 +482,8 @@ impl SvfState {
             Self::BandPass12(_) => SvfType::BandPass12,
             Self::BandPass18(_) => SvfType::BandPass18,
             Self::BandPass24(_) => SvfType::BandPass24,
-            Self::Peaking(_) => SvfType::Peaking,
-            Self::Notch(_) => SvfType::Notch,
+            Self::PeakingFilter(_) => SvfType::Peaking,
+            Self::NotchFilter(_) => SvfType::Notch,
             Self::LowShelf12(_) => SvfType::LowShelf12,
             Self::LowShelf24(_) => SvfType::LowShelf24,
             Self::HighShelf12(_) => SvfType::HighShelf12,
@@ -485,10 +491,92 @@ impl SvfState {
         }
     }
 
-    /// Replaces the variant when `filter_type` changes, which clears integrator state.
+    /// Replaces the variant when `filter_type` changes, which clears every lane.
     pub fn set_type(&mut self, filter_type: SvfType) {
-        if self.current_type() != filter_type {
+        if self.filter_type() != filter_type {
             *self = Self::new(filter_type);
+        }
+    }
+
+    /// Zeros one voice's lanes. `slot` is 0 for lanes 0–1 and 1 for lanes 2–3.
+    pub fn reset(&mut self, slot: usize) {
+        let on = f32::from_bits(u32::MAX);
+        let mask = match slot {
+            0 => f32x4::new([on, on, 0.0, 0.0]),
+            1 => f32x4::new([0.0, 0.0, on, on]),
+            _ => panic!("voice slot in a pair is 0 or 1"),
+        };
+
+        SvfFilter::reset(self, mask);
+    }
+
+    pub fn process(
+        &mut self,
+        sample_rate: Sample,
+        samples: usize,
+        inputs: LaneInputs<'_>,
+        output: [&mut [Sample]; LANES],
+    ) {
+        SvfFilter::process(self, sample_rate, samples, inputs, output);
+    }
+}
+
+#[inline(always)]
+fn take_lanes_mut(lanes: [&mut [Sample]; LANES], samples: usize) -> [&mut [Sample]; LANES] {
+    lanes.map(|lane| &mut lane[..samples])
+}
+
+#[derive(Clone, Copy)]
+pub struct LaneInputs<'a> {
+    pub audio: [&'a [Sample]; LANES],
+    pub cutoff: [&'a [Sample]; LANES],
+    pub k: [&'a [Sample]; LANES],
+    pub pre_k: [&'a [Sample]; LANES],
+    pub gain: [&'a [Sample]; LANES],
+}
+
+impl LaneInputs<'_> {
+    #[inline(always)]
+    fn take(&self, samples: usize) -> Self {
+        Self {
+            audio: self.audio.map(|lane| &lane[..samples]),
+            cutoff: self.cutoff.map(|lane| &lane[..samples]),
+            k: self.k.map(|lane| &lane[..samples]),
+            pre_k: self.pre_k.map(|lane| &lane[..samples]),
+            gain: self.gain.map(|lane| &lane[..samples]),
+        }
+    }
+
+    /// `g = tan(π f / sample_rate)` for four cutoffs in octaves relative to C4.
+    #[inline(always)]
+    fn cutoff_to_g_x4(cutoff: f32x4, freq_mult: f32x4) -> f32x4 {
+        const MAX_RATIO: f32x4 = f32x4::splat(MAX_FREQ_RATIO);
+        const C4: f32x4 = f32x4::splat(C4_PITCH);
+
+        let freq = fast_pitch_to_freq_x4(cutoff + C4);
+        let ratio = (freq * freq_mult).fast_min(MAX_RATIO);
+
+        fast_tan_pi_x4(ratio)
+    }
+
+    #[inline(always)]
+    fn load(lanes: [&[Sample]; LANES], index: usize) -> f32x4 {
+        f32x4::new([
+            lanes[0][index],
+            lanes[1][index],
+            lanes[2][index],
+            lanes[3][index],
+        ])
+    }
+
+    #[inline(always)]
+    fn params(&self, freq_mult: f32x4, index: usize) -> LaneParams {
+        LaneParams {
+            g: Self::cutoff_to_g_x4(Self::load(self.cutoff, index), freq_mult),
+            k: Self::load(self.k, index),
+            pre_k: Self::load(self.pre_k, index),
+            gain: Self::load(self.gain, index),
+            input: Self::load(self.audio, index),
         }
     }
 }

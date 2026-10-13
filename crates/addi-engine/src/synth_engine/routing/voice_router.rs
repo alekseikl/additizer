@@ -182,12 +182,7 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, AudioRouterType, A> {
         &mut self,
         module: &mut M,
         mut prepare: impl FnMut(&mut M, &mut Self, &VoiceTarget, usize),
-        mut process: impl FnMut(
-            &mut M,
-            &mut Self,
-            &VoicesBlock,
-            &mut VoicesLayout<SamplesOutput>,
-        ),
+        mut process: impl FnMut(&mut M, &mut Self, &VoicesBlock, &mut VoicesLayout<SamplesOutput>),
     ) -> &mut Self {
         if !self.ctx.params.trigger_stage {
             let mut slot = self.ctx.outputs_arena.samples[self.data_type.samples_slot]
@@ -196,11 +191,12 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, AudioRouterType, A> {
                 .expect("slot should be in place");
 
             let last_voice_idx = self.ctx.params.last_voice_idx;
-            let mut pairs: [VoicesBlock; VOICE_PAIRS] = std::array::from_fn(|pair_idx| VoicesBlock {
-                pair_idx,
-                voices: [None; VOICE_PAIR_LEN],
-                last_voice_idx,
-            });
+            let mut pairs: [VoicesBlock; VOICE_PAIRS] =
+                std::array::from_fn(|pair_idx| VoicesBlock {
+                    pair_idx,
+                    voices: [None; VOICE_PAIR_LEN],
+                    last_voice_idx,
+                });
             let mut occupied = [false; VOICE_PAIRS];
 
             for voice in self.ctx.params.active_voices {
