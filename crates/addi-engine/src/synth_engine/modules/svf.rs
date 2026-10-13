@@ -12,25 +12,31 @@ pub use link::{SvfAudioEnd, SvfLinks, SvfUiEnd, UiEvent};
 
 use addi_dsp::filters::{
     control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
-    svf::{SvfFilter, SvfState, SvfType},
+    svf::{SvfLanes, SvfType},
 };
 use wide::f32x4;
 
 use crate::{
     synth_engine::{
-        C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain_fast, db_to_gain_fast_x4, map_x4_in_place,
+        C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, PlayingVoice, db_to_gain_fast, db_to_gain_fast_x4,
+        map_x4_in_place,
     },
     synth_engine::{
         Sample, SmoothedSampleParams, StereoSample,
-        buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
+        buffer::{Buffer, VoicesLayout, zero_buffer},
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
-            NUM_CHANNELS, ProcessContext, RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget,
+            NUM_CHANNELS, ProcessContext, RouterFactory, SamplesOutput, VOICE_PAIR_LEN,
+            VOICE_PAIRS, VoiceEvent, VoiceTarget, VoicesBlock,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
     },
 };
+
+/// Even voice left, even voice right, odd voice left, odd voice right.
+const LANES: usize = VOICE_PAIR_LEN * NUM_CHANNELS;
+const _: () = assert!(LANES == 4);
 
 struct Params {
     filter_type: SvfType,
@@ -125,10 +131,15 @@ impl Inputs {
 }
 
 struct Buffers {
-    cutoff: Buffer,
-    resonance: Buffer,
-    pre_k: Buffer,
-    drive: Buffer,
+    audio: [Buffer; LANES],
+    cutoff: [Buffer; LANES],
+    resonance: [Buffer; LANES],
+    pre_k: [Buffer; LANES],
+    drive: [Buffer; LANES],
+}
+
+fn lane_buffers() -> [Buffer; LANES] {
+    array::from_fn(|_| zero_buffer())
 }
 
 pub struct Svf<L: SvfLinks = stub::Links> {
@@ -136,7 +147,7 @@ pub struct Svf<L: SvfLinks = stub::Links> {
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
     buffers: Buffers,
-    states: VoicesLayout<SvfState>,
+    states: [SvfLanes; VOICE_PAIRS],
     audio_end: L::AudioEnd,
     ui_end: Option<L::UiEnd>,
     inputs: Inputs,
@@ -165,12 +176,13 @@ impl<L: SvfLinks> Svf<L> {
                 ChannelParams::from_config(config, channel_idx)
             }),
             buffers: Buffers {
-                cutoff: zero_buffer(),
-                resonance: zero_buffer(),
-                pre_k: zero_buffer(),
-                drive: zero_buffer(),
+                audio: lane_buffers(),
+                cutoff: lane_buffers(),
+                resonance: lane_buffers(),
+                pre_k: lane_buffers(),
+                drive: lane_buffers(),
             },
-            states: new_voices_layout(),
+            states: array::from_fn(|_| SvfLanes::new(config.filter_type)),
             audio_end,
             ui_end,
             inputs: Inputs::default(),
@@ -201,50 +213,45 @@ impl<L: SvfLinks> Svf<L> {
     set_smoothed_param!(set_drive, drive, drive.clamp(MIN_DRIVE, MAX_DRIVE));
 
     fn reset_voice(&mut self, voice_idx: usize) {
-        for state in self.states.channels_at_mut(voice_idx) {
-            *state = SvfState::new(self.params.filter_type);
-        }
-    }
-
-    fn process_voice(
-        &mut self,
-        target: &VoiceTarget,
-        outputs: &mut VoicesLayout<SamplesOutput>,
-        rf: &mut RouterFactory<AudioRouterType, L::EngineEnd>,
-    ) {
-        let (mut router, mut voice_output) = rf.for_voice(target, outputs);
-        let inputs = &self.inputs;
-        let params = &self.params;
-        let channel = &self.channel_params[target.channel_idx];
-        let state = self.states.at_mut(target.channel_idx, target.voice_idx);
-        let sample_rate = router.sample_rate();
-        let filter_type = params.filter_type;
+        let pair_idx = voice_idx / VOICE_PAIR_LEN;
+        let slot = voice_idx % VOICE_PAIR_LEN;
+        let filter_type = self.params.filter_type;
+        let state = &mut self.states[pair_idx];
 
         state.set_type(filter_type);
+        state.reset(slot);
+    }
 
-        router.param(&inputs.cutoff, &channel.cutoff, &mut self.buffers.cutoff);
+    fn prepare_voice(
+        &mut self,
+        rf: &mut RouterFactory<AudioRouterType, L::EngineEnd>,
+        target: &VoiceTarget,
+        lane_idx: usize,
+    ) {
+        let mut router = rf.router(target);
+        let keytrack = self.params.keytrack;
+        let lane = router.lane(lane_idx);
+        let channel = &self.channel_params[target.channel_idx];
 
-        let samples = router.samples();
+        let audio = lane.buff(&mut self.buffers.audio);
+        let cutoff = lane.buff(&mut self.buffers.cutoff);
+        let resonance = lane.buff(&mut self.buffers.resonance);
+        let pre_k = lane.buff(&mut self.buffers.pre_k);
+        let drive = lane.buff(&mut self.buffers.drive);
 
-        if let Some(resonance) = router.param_stationary(&inputs.resonance, &channel.resonance) {
-            let q = q_from_resonance(resonance);
+        router.param(&self.inputs.cutoff, &channel.cutoff, cutoff);
 
-            self.buffers.resonance[..samples].fill(q.resonant.recip());
-            self.buffers.pre_k[..samples].fill(q.pre_stage.recip());
+        if let Some(resonance_value) =
+            router.param_stationary(&self.inputs.resonance, &channel.resonance)
+        {
+            let q = q_from_resonance(resonance_value);
+
+            resonance.fill(q.resonant.recip());
+            pre_k.fill(q.pre_stage.recip());
         } else {
-            router.param(
-                &inputs.resonance,
-                &channel.resonance,
-                &mut self.buffers.resonance,
-            );
+            router.param(&self.inputs.resonance, &channel.resonance, resonance);
 
-            for (resonance, pre_k) in self
-                .buffers
-                .resonance
-                .iter_mut()
-                .zip(&mut self.buffers.pre_k)
-                .take(samples)
-            {
+            for (resonance, pre_k) in resonance.iter_mut().zip(pre_k.iter_mut()) {
                 let q = q_from_resonance(*resonance);
 
                 *resonance = q.resonant.recip();
@@ -252,57 +259,88 @@ impl<L: SvfLinks> Svf<L> {
             }
         }
 
-        if let Some(drive) = router.param_stationary(&inputs.drive, &channel.drive) {
-            let gain = db_to_gain_fast(drive.clamp(MIN_DRIVE, MAX_DRIVE));
+        if let Some(drive_value) = router.param_stationary(&self.inputs.drive, &channel.drive) {
+            let gain = db_to_gain_fast(drive_value.clamp(MIN_DRIVE, MAX_DRIVE));
 
-            self.buffers.drive[..samples].fill(gain);
+            drive.fill(gain);
         } else {
-            router.param(&inputs.drive, &channel.drive, &mut self.buffers.drive);
+            router.param(&self.inputs.drive, &channel.drive, drive);
 
             const MIN_DRIVE_X4: f32x4 = f32x4::splat(MIN_DRIVE);
             const MAX_DRIVE_X4: f32x4 = f32x4::splat(MAX_DRIVE);
 
-            map_x4_in_place(&mut self.buffers.drive[..samples], |drive| {
+            map_x4_in_place(drive, |drive| {
                 db_to_gain_fast_x4(drive.fast_max(MIN_DRIVE_X4).fast_min(MAX_DRIVE_X4))
             });
         }
 
-        let pitch = router.direct(inputs.pitch);
-        let input = router.direct(inputs.audio);
-        let output = voice_output.output();
+        let pitch = router.direct(self.inputs.pitch);
+        let audio_in = router.direct(self.inputs.audio);
 
         if router.need_update_ui_mono() {
             self.audio_end.update_pitch(pitch[0]);
         }
 
-        let keytrack = params.keytrack;
+        audio.copy_from_slice(audio_in);
 
         if keytrack > 1e-5 {
-            for (cutoff, pitch) in self.buffers.cutoff.iter_mut().zip(pitch) {
+            for (cutoff, pitch) in cutoff.iter_mut().zip(pitch) {
                 *cutoff += keytrack * (pitch - C4_PITCH);
             }
         }
+    }
 
+    fn process_block(
+        &mut self,
+        rf: &mut RouterFactory<AudioRouterType, L::EngineEnd>,
+        block: &VoicesBlock,
+        outputs: &mut VoicesLayout<SamplesOutput>,
+    ) {
+        let pair_idx = block.pair_idx;
+        let filter_type = self.params.filter_type;
+        let buffers = &self.buffers;
+        let state = &mut self.states[pair_idx];
+        let params = rf.params();
+
+        state.set_type(filter_type);
         state.process(
-            sample_rate,
-            input,
-            &self.buffers.cutoff,
-            &self.buffers.resonance,
-            &self.buffers.pre_k,
-            &self.buffers.drive,
-            output,
+            params.sample_rate,
+            params.samples,
+            block_refs(&buffers.audio),
+            block_refs(&buffers.cutoff),
+            block_refs(&buffers.resonance),
+            block_refs(&buffers.pre_k),
+            block_refs(&buffers.drive),
+            lane_store(&block.voices),
+            outputs.pair_buffers_mut(pair_idx),
         );
     }
+
     pub fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
         ctx.audio(self.id, self.output_slot)
-            .for_voices(|rf, target, outputs| {
-                self.process_voice(target, outputs, rf);
-            })
+            .for_lanes(self, Self::prepare_voice, Self::process_block)
             .for_channels(|rf, channel_idx| {
                 self.channel_params[channel_idx]
                     .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
             });
     }
+}
+
+fn lane_store(voices: &[Option<PlayingVoice>; VOICE_PAIR_LEN]) -> u8 {
+    let mut store = 0u8;
+
+    if voices[0].is_some() {
+        store |= 0b0011;
+    }
+    if voices[1].is_some() {
+        store |= 0b1100;
+    }
+
+    store
+}
+
+fn block_refs(buffers: &[Buffer; LANES]) -> [&[Sample]; LANES] {
+    buffers.each_ref().map(|buffer| buffer.as_slice())
 }
 
 impl<L: SvfLinks> SynthModule for Svf<L> {

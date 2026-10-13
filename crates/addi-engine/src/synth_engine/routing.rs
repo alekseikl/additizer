@@ -16,13 +16,17 @@ pub use outputs::{SamplesOutput, SpectralOutput};
 pub use outputs_arena::OutputsArena;
 pub use process_context::{ProcessContext, ProcessParams, VoiceTarget};
 pub use voice_router::{
-    AudioRouterType, ControlRouterType, OutputRouterType, RouterFactory, SpectralRouterType,
-    VoiceRouter,
+    AudioRouterType, ControlRouterType, OutputRouterType, RouterFactory, VoicesBlock,
+    SpectralRouterType, VoiceRouter,
 };
 
 pub type ModuleId = i32;
 
 pub const MAX_VOICES: usize = 20;
+/// Slots are grouped as `(0, 1)`, `(2, 3)`, … so a module can process a pair as SIMD lanes.
+pub const VOICE_PAIR_LEN: usize = 2;
+pub const VOICE_PAIRS: usize = MAX_VOICES / VOICE_PAIR_LEN;
+const _: () = assert!(MAX_VOICES.is_multiple_of(VOICE_PAIR_LEN));
 pub use addi_dsp::NUM_CHANNELS;
 pub const OUTPUT_MODULE_ID: ModuleId = 0;
 pub const PITCH_MODULE_ID: ModuleId = -1;

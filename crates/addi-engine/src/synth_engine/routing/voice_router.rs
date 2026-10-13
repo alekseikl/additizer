@@ -3,9 +3,11 @@ use crate::synth_engine::{
     buffer::{VoicesLayout, ZEROES_BUFFER},
     engine_io::EngineAudioEnd,
     routing::{
-        MixedSlots, ProcessContext, SamplesOutput, SpectralOutput, process_context::VoiceTarget,
+        MixedSlots, ProcessContext, SamplesOutput, SpectralOutput, VOICE_PAIR_LEN, VOICE_PAIRS,
+        process_context::VoiceTarget,
     },
     smooth::SmoothedSample,
+    voices_handler::PlayingVoice,
 };
 
 pub trait RouterDataType {
@@ -27,6 +29,14 @@ pub struct AudioVoiceState {
 
 pub struct AudioRouterType {
     pub(super) samples_slot: usize,
+}
+
+/// One SIMD pair. `voices[0]` is the even slot and `voices[1]` the odd slot.
+#[derive(Clone, Copy)]
+pub struct VoicesBlock {
+    pub pair_idx: usize,
+    pub voices: [Option<PlayingVoice>; VOICE_PAIR_LEN],
+    pub last_voice_idx: Option<usize>,
 }
 
 impl RouterDataType for AudioRouterType {
@@ -165,6 +175,72 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, AudioRouterType, A> {
         self
     }
 
+    /// Groups active voices into SIMD pairs `(0, 1)`, `(2, 3)`, ….
+    /// `prepare` runs once per occupied lane. `process` runs the filter for that pair's block.
+    /// Slot order inside the pair is fixed, so state can stay in those lanes.
+    pub fn for_lanes<M>(
+        &mut self,
+        module: &mut M,
+        mut prepare: impl FnMut(&mut M, &mut Self, &VoiceTarget, usize),
+        mut process: impl FnMut(
+            &mut M,
+            &mut Self,
+            &VoicesBlock,
+            &mut VoicesLayout<SamplesOutput>,
+        ),
+    ) -> &mut Self {
+        if !self.ctx.params.trigger_stage {
+            let mut slot = self.ctx.outputs_arena.samples[self.data_type.samples_slot]
+                .slot
+                .take()
+                .expect("slot should be in place");
+
+            let last_voice_idx = self.ctx.params.last_voice_idx;
+            let mut pairs: [VoicesBlock; VOICE_PAIRS] = std::array::from_fn(|pair_idx| VoicesBlock {
+                pair_idx,
+                voices: [None; VOICE_PAIR_LEN],
+                last_voice_idx,
+            });
+            let mut occupied = [false; VOICE_PAIRS];
+
+            for voice in self.ctx.params.active_voices {
+                let voice_idx = voice.voice_idx();
+                let pair_idx = voice_idx / VOICE_PAIR_LEN;
+                let slot_idx = voice_idx % VOICE_PAIR_LEN;
+
+                pairs[pair_idx].voices[slot_idx] = Some(*voice);
+                occupied[pair_idx] = true;
+            }
+
+            for (pair, is_occupied) in pairs.iter().zip(occupied) {
+                if !is_occupied {
+                    continue;
+                }
+
+                for (voice_slot, voice) in pair.voices.iter().enumerate() {
+                    let Some(voice) = voice else {
+                        continue;
+                    };
+
+                    for channel_idx in 0..NUM_CHANNELS {
+                        let target = VoiceTarget::new(channel_idx, voice, pair.last_voice_idx);
+                        let lane_idx = voice_slot * NUM_CHANNELS + channel_idx;
+
+                        prepare(module, self, &target, lane_idx);
+                    }
+                }
+
+                process(module, self, pair, &mut slot);
+            }
+
+            self.ctx.outputs_arena.samples[self.data_type.samples_slot]
+                .slot
+                .replace(slot);
+        }
+
+        self
+    }
+
     pub fn for_triggered_voices(
         &mut self,
         mut f: impl FnMut(&mut Self, &VoiceTarget),
@@ -191,7 +267,7 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, AudioRouterType, A> {
         }
     }
 
-    pub fn for_triggered_voice<'voice>(
+    pub fn router<'voice>(
         &'voice mut self,
         target: &'voice VoiceTarget,
     ) -> VoiceRouter<'voice, 'f, 'c, AudioRouterType, A>
@@ -205,6 +281,16 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, AudioRouterType, A> {
             target,
             state,
         }
+    }
+
+    pub fn for_triggered_voice<'voice>(
+        &'voice mut self,
+        target: &'voice VoiceTarget,
+    ) -> VoiceRouter<'voice, 'f, 'c, AudioRouterType, A>
+    where
+        'f: 'voice,
+    {
+        self.router(target)
     }
 
     pub fn for_voice<'voice>(
@@ -455,7 +541,32 @@ impl<'v, 'f, 'c, A: EngineAudioEnd, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D
     }
 }
 
+/// One lane of a voice, placed at the trigger offset.
+pub struct VoiceLane {
+    lane_idx: usize,
+    offset: usize,
+    samples: usize,
+}
+
+impl VoiceLane {
+    /// Active samples of this lane in `buffers`. Samples before the trigger offset are cleared.
+    pub fn buff<'a>(&self, buffers: &'a mut [Buffer]) -> &'a mut [Sample] {
+        let buffer = &mut buffers[self.lane_idx];
+
+        buffer[..self.offset].fill(0.0);
+        &mut buffer[self.offset..self.offset + self.samples]
+    }
+}
+
 impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, AudioRouterType, A> {
+    pub fn lane(&self, lane_idx: usize) -> VoiceLane {
+        VoiceLane {
+            lane_idx,
+            offset: self.state.offset,
+            samples: self.samples(),
+        }
+    }
+
     pub fn samples(&self) -> usize {
         self.factory.ctx.params.samples - self.state.offset
     }
@@ -472,7 +583,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, AudioRouterType, A> 
             .unwrap_or(&ZEROES_BUFFER)[self.state.offset..ctx.params.samples]
     }
 
-    pub fn param(&mut self, input: &MixedSlots, param: &SmoothedSample, buff: &mut Buffer) {
+    pub fn param(&mut self, input: &MixedSlots, param: &SmoothedSample, buff: &mut [Sample]) {
         let buff = &mut buff[..self.samples()];
         let smooth_params = &self.factory.ctx.params.smooth_params;
 
@@ -656,5 +767,33 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, OutputRouterType, A>
         &ctx.outputs_arena
             .get_buff(slot, self.target.channel_idx, self.target.voice_idx)
             .unwrap_or(&ZEROES_BUFFER)[..ctx.params.samples]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::VoiceLane;
+    use crate::synth_engine::buffer::{BUFFER_SIZE, zero_buffer};
+
+    #[test]
+    fn lane_clears_samples_before_trigger() {
+        let lane = VoiceLane {
+            lane_idx: 2,
+            offset: 3,
+            samples: 4,
+        };
+        let mut buffers = [zero_buffer(); 4];
+
+        buffers[2].fill(1.0);
+
+        let active = lane.buff(&mut buffers);
+        let active = active.to_vec();
+
+        assert_eq!(active, [1.0; 4]);
+        assert_eq!(&buffers[2][..3], &[0.0; 3]);
+        assert_eq!(buffers[2][3], 1.0);
+        assert_eq!(buffers[2][7], 1.0);
+        assert_eq!(buffers[1][0], 0.0);
+        assert_eq!(buffers[2].len(), BUFFER_SIZE);
     }
 }

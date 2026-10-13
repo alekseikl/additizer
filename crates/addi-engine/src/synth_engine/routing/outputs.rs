@@ -14,6 +14,11 @@ impl SamplesOutput {
         &self.buffer
     }
 
+    #[inline]
+    pub(crate) fn buffer_mut(&mut self) -> &mut [Sample] {
+        &mut self.buffer
+    }
+
     pub(super) fn scalar(&self, this_frame: Option<usize>) -> Sample {
         if let Some(offset) = this_frame {
             self.buffer[offset]

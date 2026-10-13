@@ -4,7 +4,7 @@ use crate::synth_engine::{
     Expression, Sample,
     buffer::{MonoVoicesLayout, new_mono_voices_layout},
     note_to_pitch,
-    routing::{ExpressionEvent, MAX_VOICES, PrevNote, VoiceEvent},
+    routing::{ExpressionEvent, MAX_VOICES, PrevNote, VOICE_PAIR_LEN, VoiceEvent},
 };
 
 pub const MAX_AVAILABLE_VOICES: usize = MAX_VOICES - 4;
@@ -12,9 +12,6 @@ pub const BAND_LIMIT_FREQUENCY: Sample = 24_000.0;
 const NUM_MIDI_CHANNELS: usize = 16;
 const MAX_MIDI_CHANNEL: u8 = NUM_MIDI_CHANNELS as u8 - 1;
 
-/// Slots are grouped as `(0, 1)`, `(2, 3)`, … so modules can process a pair as SIMD lanes.
-const VOICE_PAIR_LEN: usize = 2;
-const _: () = assert!(MAX_VOICES.is_multiple_of(VOICE_PAIR_LEN));
 const _: () = assert!(MAX_VOICES <= u8::MAX as usize);
 
 #[derive(Debug, Clone, Copy)]

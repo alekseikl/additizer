@@ -2190,6 +2190,73 @@ fn svf_highpass_above_fundamental_removes_most_signal() {
 }
 
 #[test]
+fn svf_voice_pair_and_mid_block_note_stay_finite() {
+    let mut engine = svf_engine(SvfConfig {
+        cutoff: 1.0.into(),
+        resonance: 0.4.into(),
+        ..SvfConfig::default()
+    });
+
+    engine.set_num_voices(4);
+
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 64,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
+
+    let (left, right) = process_block(&mut engine, 128);
+
+    assert!(
+        left.iter()
+            .chain(right.iter())
+            .all(|sample| sample.is_finite())
+    );
+    assert!(rms(&left) > 1e-4, "{}", rms(&left));
+
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note: 67,
+            velocity: 1.0,
+            host_id: None,
+        },
+        40,
+    );
+
+    let (left, right) = process_block(&mut engine, 128);
+    let early = left[..40]
+        .iter()
+        .copied()
+        .fold(0.0f32, |max, sample| max.max(sample.abs()));
+    let late = left[40..]
+        .iter()
+        .copied()
+        .fold(0.0f32, |max, sample| max.max(sample.abs()));
+
+    assert!(
+        left.iter()
+            .chain(right.iter())
+            .all(|sample| sample.is_finite())
+    );
+    assert!(early > 1e-4, "held pair went silent: {early}");
+    assert!(late > 1e-4, "mid-block note produced no audio: {late}");
+}
+
+#[test]
 fn svf_all_modes_produce_finite_audio() {
     for filter_type in filters::svf::SvfType::ALL {
         let level = svf_output_rms(SvfConfig {

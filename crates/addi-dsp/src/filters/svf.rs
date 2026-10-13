@@ -16,9 +16,11 @@ const MAX_FREQ_RATIO: Sample = 0.499;
 #[cfg(test)]
 mod tests;
 
+mod lanes;
 mod response;
 mod sections;
 
+pub use lanes::SvfLanes;
 pub use response::SvfResponse;
 
 use sections::{

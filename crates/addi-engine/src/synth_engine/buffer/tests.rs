@@ -1,7 +1,9 @@
 use std::mem::size_of;
 
 use super::{VoicesLayout, new_voices_layout, new_voices_layout_with};
-use crate::synth_engine::routing::{LEFT_CHANNEL, MAX_VOICES, NUM_CHANNELS, RIGHT_CHANNEL};
+use crate::synth_engine::routing::{
+    LEFT_CHANNEL, MAX_VOICES, NUM_CHANNELS, RIGHT_CHANNEL, SamplesOutput,
+};
 
 fn filled_in_voice_order() -> VoicesLayout<i32> {
     let mut next = 0;
@@ -108,6 +110,49 @@ fn at_pair_mut_keeps_argument_order() {
     assert_pair_writes(RIGHT_CHANNEL, 9, RIGHT_CHANNEL, 2);
     assert_pair_writes(RIGHT_CHANNEL, 0, LEFT_CHANNEL, MAX_VOICES - 1);
     assert_pair_writes(LEFT_CHANNEL, MAX_VOICES - 1, RIGHT_CHANNEL, 0);
+}
+
+#[test]
+fn channels_pair_mut_exposes_both_voices() {
+    let mut layout = new_voices_layout::<i32>();
+
+    {
+        let (even, odd) = layout.channels_pair_mut(2, 3);
+        even[LEFT_CHANNEL] = 1;
+        even[RIGHT_CHANNEL] = 2;
+        odd[LEFT_CHANNEL] = 3;
+        odd[RIGHT_CHANNEL] = 4;
+    }
+
+    assert_eq!(*layout.at(LEFT_CHANNEL, 2), 1);
+    assert_eq!(*layout.at(RIGHT_CHANNEL, 2), 2);
+    assert_eq!(*layout.at(LEFT_CHANNEL, 3), 3);
+    assert_eq!(*layout.at(RIGHT_CHANNEL, 3), 4);
+}
+
+#[test]
+fn pair_buffers_mut_orders_stereo_pairs() {
+    let mut layout = new_voices_layout::<SamplesOutput>();
+
+    {
+        let buffers = layout.pair_buffers_mut(1);
+        buffers[0][0] = 1.0;
+        buffers[1][0] = 2.0;
+        buffers[2][0] = 3.0;
+        buffers[3][0] = 4.0;
+    }
+
+    let buffers = layout.pair_buffers_mut(1);
+    assert_eq!(
+        [buffers[0][0], buffers[1][0], buffers[2][0], buffers[3][0]],
+        [1.0, 2.0, 3.0, 4.0]
+    );
+
+    let other = layout.pair_buffers_mut(0);
+    assert_eq!(
+        [other[0][0], other[1][0], other[2][0], other[3][0]],
+        [0.0, 0.0, 0.0, 0.0]
+    );
 }
 
 #[test]

@@ -1,7 +1,7 @@
 use std::mem::MaybeUninit;
 
 use crate::synth_engine::{
-    routing::{MAX_VOICES, NUM_CHANNELS},
+    routing::{MAX_VOICES, NUM_CHANNELS, SamplesOutput, VOICE_PAIR_LEN},
     types::{ComplexSample, Sample},
 };
 
@@ -54,6 +54,18 @@ impl<T> VoicesLayout<T> {
         &mut self.voices[voice_idx]
     }
 
+    /// Both channel arrays of two voices. `voice_a` must be less than `voice_b`.
+    pub fn channels_pair_mut(
+        &mut self,
+        voice_a: usize,
+        voice_b: usize,
+    ) -> (&mut [T; NUM_CHANNELS], &mut [T; NUM_CHANNELS]) {
+        assert!(voice_a < voice_b, "voice_a must precede voice_b");
+
+        let (left, right) = self.voices.split_at_mut(voice_b);
+        (&mut left[voice_a], &mut right[0])
+    }
+
     /// Mutable references to two different slots. Argument order is preserved.
     pub fn at_pair_mut(
         &mut self,
@@ -84,6 +96,24 @@ impl<T> VoicesLayout<T> {
             let (left, right) = self.voices.split_at_mut(voice_a);
             (&mut right[0][channel_a], &mut left[voice_b][channel_b])
         }
+    }
+}
+
+impl VoicesLayout<SamplesOutput> {
+    /// Sample buffers of voice pair `pair_idx`.
+    /// Order is even left, even right, odd left, odd right.
+    pub fn pair_buffers_mut(&mut self, pair_idx: usize) -> [&mut [Sample]; 4] {
+        let voice0 = pair_idx * VOICE_PAIR_LEN;
+        let (even, odd) = self.channels_pair_mut(voice0, voice0 + 1);
+        let [even_left, even_right] = even.each_mut();
+        let [odd_left, odd_right] = odd.each_mut();
+
+        [
+            even_left.buffer_mut(),
+            even_right.buffer_mut(),
+            odd_left.buffer_mut(),
+            odd_right.buffer_mut(),
+        ]
     }
 }
 

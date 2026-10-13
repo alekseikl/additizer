@@ -4,7 +4,7 @@ use wide::f32x4;
 
 use crate::{
     ComplexSample,
-    filters::control::MAX_PRE_Q,
+    filters::control::{MAX_PRE_Q, q_from_resonance, q_from_resonance_x4},
     units::{C4_PITCH, freq_to_c4_pitch, pitch_to_freq},
 };
 
@@ -886,6 +886,235 @@ fn shelf_sections_match_reference() {
             }
         }
     }
+}
+
+#[test]
+fn q_from_resonance_x4_matches_scalar() {
+    for step in 0..=40 {
+        let resonance = -1.0 + step as Sample * 2.0 / 40.0;
+        let scalar = q_from_resonance(resonance);
+        let (q, pre) = q_from_resonance_x4(f32x4::splat(resonance));
+        let q = q.to_array()[0];
+        let pre = pre.to_array()[0];
+
+        assert!(
+            (q - scalar.resonant).abs() < 1e-6,
+            "resonant {resonance}: {q} vs {}",
+            scalar.resonant
+        );
+        assert!(
+            (pre - scalar.pre_stage).abs() < 1e-6,
+            "pre {resonance}: {pre} vs {}",
+            scalar.pre_stage
+        );
+    }
+}
+
+fn lane_rows(fill: impl Fn(usize, usize) -> Sample) -> [[Sample; 17]; 4] {
+    std::array::from_fn(|lane| std::array::from_fn(|index| fill(lane, index)))
+}
+
+fn refs(rows: &[[Sample; 17]; 4]) -> [&[Sample]; 4] {
+    std::array::from_fn(|lane| &rows[lane][..])
+}
+
+#[test]
+fn lanes_match_scalar_voices() {
+    let n = 17;
+    let audio = lane_rows(|lane, index| ((index as Sample + lane as Sample) * 0.31).sin());
+    let cutoff = lane_rows(|lane, index| -1.5 + lane as Sample * 1.4 + index as Sample * 0.02);
+    let k = lane_rows(|lane, _| [2.0, 0.5, 1.0, 0.2][lane]);
+    let pre_k = lane_rows(|lane, _| [2.0, 1.0, 1.5, 0.8][lane]);
+    let gain = lane_rows(|lane, index| [0.25, 1.0, 4.0, 0.5][lane] + index as Sample * 0.01);
+
+    for filter_type in SvfType::ALL {
+        let mut lanes = SvfLanes::new(filter_type);
+        let mut scalar: [SvfState; 4] = std::array::from_fn(|_| SvfState::new(filter_type));
+        let mut lane_out = [[0.0; 17]; 4];
+        let mut scalar_out = [[0.0; 17]; 4];
+
+        {
+            let [o0, o1, o2, o3] = lane_out.each_mut();
+
+            lanes.process(
+                SAMPLE_RATE,
+                n,
+                refs(&audio),
+                refs(&cutoff),
+                refs(&k),
+                refs(&pre_k),
+                refs(&gain),
+                0b1111,
+                [o0, o1, o2, o3],
+            );
+        }
+
+        for lane in 0..4 {
+            scalar[lane].process(
+                SAMPLE_RATE,
+                &audio[lane],
+                &cutoff[lane],
+                &k[lane],
+                &pre_k[lane],
+                &gain[lane],
+                &mut scalar_out[lane],
+            );
+        }
+
+        for lane in 0..4 {
+            for index in 0..n {
+                let actual = lane_out[lane][index];
+                let expected = scalar_out[lane][index];
+                let error = (actual - expected).abs();
+
+                assert!(
+                    error <= 1e-5,
+                    "{filter_type:?} lane {lane} sample {index}: {actual} vs {expected}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn store_mask_skips_output_and_reset_zeros_one_slot() {
+    let n = 16;
+    let audio = [0.2; 16];
+    let cutoff = [1.0; 16];
+    let k = [0.5; 16];
+    let pre_k = [2.0; 16];
+    let gain = [1.0; 16];
+    let audio_refs = [&audio[..], &audio[..], &audio[..], &audio[..]];
+    let cutoff_refs = [&cutoff[..], &cutoff[..], &cutoff[..], &cutoff[..]];
+    let k_refs = [&k[..], &k[..], &k[..], &k[..]];
+    let pre_k_refs = [&pre_k[..], &pre_k[..], &pre_k[..], &pre_k[..]];
+    let gain_refs = [&gain[..], &gain[..], &gain[..], &gain[..]];
+
+    let mut full = SvfLanes::new(SvfType::LowPass24);
+    let mut stored = SvfLanes::new(SvfType::LowPass24);
+    let mut full_out = [[0.0; 16]; 4];
+    let mut stored_out = [[0.0; 16]; 4];
+
+    {
+        let [o0, o1, o2, o3] = full_out.each_mut();
+        full.process(
+            SAMPLE_RATE,
+            n,
+            audio_refs,
+            cutoff_refs,
+            k_refs,
+            pre_k_refs,
+            gain_refs,
+            0b1111,
+            [o0, o1, o2, o3],
+        );
+    }
+    {
+        let [o0, o1, o2, o3] = stored_out.each_mut();
+        stored.process(
+            SAMPLE_RATE,
+            n,
+            audio_refs,
+            cutoff_refs,
+            k_refs,
+            pre_k_refs,
+            gain_refs,
+            0b0011,
+            [o0, o1, o2, o3],
+        );
+    }
+
+    for index in 0..n {
+        assert!((full_out[0][index] - stored_out[0][index]).abs() < 1e-6);
+        assert!((full_out[1][index] - stored_out[1][index]).abs() < 1e-6);
+        assert_eq!(stored_out[2][index], 0.0);
+        assert_eq!(stored_out[3][index], 0.0);
+    }
+
+    let mut odd = SvfLanes::new(SvfType::LowPass24);
+    let mut odd_out = [[0.0; 16]; 4];
+    {
+        let [o0, o1, o2, o3] = odd_out.each_mut();
+        odd.process(
+            SAMPLE_RATE,
+            n,
+            audio_refs,
+            cutoff_refs,
+            k_refs,
+            pre_k_refs,
+            gain_refs,
+            0b1100,
+            [o0, o1, o2, o3],
+        );
+    }
+
+    for index in 0..n {
+        assert_eq!(odd_out[0][index], 0.0);
+        assert_eq!(odd_out[1][index], 0.0);
+        assert!((full_out[2][index] - odd_out[2][index]).abs() < 1e-6);
+        assert!((full_out[3][index] - odd_out[3][index]).abs() < 1e-6);
+    }
+
+    let mut full_next = [[0.0; 16]; 4];
+    let mut stored_next = [[0.0; 16]; 4];
+
+    {
+        let [o0, o1, o2, o3] = full_next.each_mut();
+        full.process(
+            SAMPLE_RATE,
+            n,
+            audio_refs,
+            cutoff_refs,
+            k_refs,
+            pre_k_refs,
+            gain_refs,
+            0b1111,
+            [o0, o1, o2, o3],
+        );
+    }
+    {
+        let [o0, o1, o2, o3] = stored_next.each_mut();
+        stored.process(
+            SAMPLE_RATE,
+            n,
+            audio_refs,
+            cutoff_refs,
+            k_refs,
+            pre_k_refs,
+            gain_refs,
+            0b1111,
+            [o0, o1, o2, o3],
+        );
+    }
+
+    for lane in 0..4 {
+        for index in 0..n {
+            assert!((full_next[lane][index] - stored_next[lane][index]).abs() < 1e-6);
+        }
+    }
+
+    stored.reset(0);
+
+    let mut cleared = [[0.0; 1]; 4];
+    let silent = [0.0; 1];
+    let silent_refs = [&silent[..], &silent[..], &silent[..], &silent[..]];
+    let [o0, o1, o2, o3] = cleared.each_mut();
+
+    stored.process(
+        SAMPLE_RATE,
+        1,
+        silent_refs,
+        cutoff_refs,
+        k_refs,
+        pre_k_refs,
+        gain_refs,
+        0b1111,
+        [o0, o1, o2, o3],
+    );
+
+    assert!(cleared[0][0].abs() < 1e-6);
+    assert!(cleared[1][0].abs() < 1e-6);
+    assert!(cleared[2][0].abs() > 1e-5 || cleared[3][0].abs() > 1e-5);
 }
 
 #[test]

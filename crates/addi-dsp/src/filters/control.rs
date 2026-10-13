@@ -1,3 +1,5 @@
+use wide::f32x4;
+
 use crate::Sample;
 
 pub const MIN_DRIVE: Sample = -60.0;
@@ -44,4 +46,30 @@ pub fn q_from_resonance(resonance: Sample) -> ResonanceQ {
             resonant: NEGATIVE_RESONANCE_Q + (ZERO_RESONANCE_Q - NEGATIVE_RESONANCE_Q) * (1.0 + r),
         }
     }
+}
+
+/// [`q_from_resonance`] for four lanes. Returns `(resonant Q, pre-stage Q)`.
+#[inline(always)]
+pub fn q_from_resonance_x4(resonance: f32x4) -> (f32x4, f32x4) {
+    const MIN_R: f32x4 = f32x4::splat(MIN_RESONANCE);
+    const MAX_R: f32x4 = f32x4::splat(MAX_RESONANCE);
+    const ZERO_Q: f32x4 = f32x4::splat(ZERO_RESONANCE_Q);
+    const MAX_Q: f32x4 = f32x4::splat(MAX_RESONANCE_Q);
+    const NEG_Q: f32x4 = f32x4::splat(NEGATIVE_RESONANCE_Q);
+    const MIN_PRE: f32x4 = f32x4::splat(MIN_PRE_Q);
+    const MAX_PRE: f32x4 = f32x4::splat(MAX_PRE_Q);
+    const ONE: f32x4 = f32x4::ONE;
+
+    let r = resonance.max(MIN_R).min(MAX_R);
+    let positive = r.simd_gt(f32x4::ZERO);
+    // Negative lanes would make `sqrt` NaN. Those lanes take the linear branch below.
+    let curve = r * r * r;
+    let pre_pos = MIN_PRE + (MAX_PRE - MIN_PRE) * positive.select(r, f32x4::ZERO).sqrt();
+    let res_pos = ZERO_Q + (MAX_Q - ZERO_Q) * curve;
+    let res_neg = NEG_Q + (ZERO_Q - NEG_Q) * (ONE + r);
+
+    (
+        positive.select(res_pos, res_neg),
+        positive.select(pre_pos, MIN_PRE),
+    )
 }
