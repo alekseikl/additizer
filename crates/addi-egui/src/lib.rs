@@ -70,7 +70,15 @@ impl EguiEditor {
     }
 
     pub fn reset(&mut self) {
-        self.grid_module_ui = None;
+        let showing_params = self
+            .grid_module_ui
+            .as_ref()
+            .is_some_and(|panel| panel.module_id().is_none());
+
+        if !showing_params {
+            self.grid_module_ui = None;
+        }
+
         self.grid = grid::Grid::new();
     }
 

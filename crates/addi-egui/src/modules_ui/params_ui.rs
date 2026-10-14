@@ -186,7 +186,7 @@ impl ModuleUi for ParamsUi {
                 let mut legato = controls.legato;
                 let mut kill_same_note = controls.kill_same_note;
                 let mut block_size = controls.block_size;
-                let mut oversampling = controls.oversampling;
+                let mut oversampling = self.engine_factory.oversampling();
 
                 ui.label("Voices");
                 if ui
@@ -248,7 +248,7 @@ impl ModuleUi for ParamsUi {
 
                 ui.label("Oversampling x2");
                 if ui.add(Checkbox::without_text(&mut oversampling)).changed() {
-                    bridge.set_oversampling(oversampling);
+                    self.engine_factory.set_oversampling(oversampling);
                 }
                 ui.end_row();
 

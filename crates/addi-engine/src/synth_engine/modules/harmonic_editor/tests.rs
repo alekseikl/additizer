@@ -165,7 +165,7 @@ fn sampling_engine(capture_input: bool) -> SynthEngine {
         links: vec![LinkConfig::direct(SRC_ID, DST_ID, Input::Spectrum)],
     };
 
-    SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid engine")
+    SynthEngine::try_new(&config, SAMPLE_RATE, false).expect("valid engine")
 }
 
 fn play(engine: &mut SynthEngine) -> (Vec<Sample>, Vec<Sample>) {
@@ -281,7 +281,7 @@ fn sampled_spectrum_matches_direct_source_on_note() {
             ],
         };
 
-        SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid engine")
+        SynthEngine::try_new(&config, SAMPLE_RATE, false).expect("valid engine")
     };
 
     let mut sampled = {
@@ -307,7 +307,7 @@ fn sampled_spectrum_matches_direct_source_on_note() {
             ],
         };
 
-        SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid engine")
+        SynthEngine::try_new(&config, SAMPLE_RATE, false).expect("valid engine")
     };
 
     let (direct_left, direct_right) = play(&mut direct);

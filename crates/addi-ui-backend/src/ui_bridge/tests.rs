@@ -44,7 +44,7 @@ fn minimal_engine() -> SynthEngine<PluginLinks> {
         ],
     };
 
-    SynthEngine::<PluginLinks>::try_new(&config, SAMPLE_RATE).expect("valid engine")
+    SynthEngine::<PluginLinks>::try_new(&config, SAMPLE_RATE, false).expect("valid engine")
 }
 
 fn make_bridge(engine: SynthEngine<PluginLinks>) -> UiBridge {

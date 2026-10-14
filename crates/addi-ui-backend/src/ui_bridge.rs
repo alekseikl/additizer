@@ -763,12 +763,6 @@ impl<E: EngineLinks> UiBridge<E> {
         }
     }
 
-    pub fn set_oversampling(&mut self, oversampling: bool) {
-        if self.ui_end.set_oversampling(oversampling) {
-            self.engine_params.oversampling = oversampling;
-        }
-    }
-
     pub fn set_output_gain(&mut self, output_gain: StereoSample) {
         if self.ui_end.set_output_gain(output_gain) {
             self.engine_params.output_gain = output_gain;

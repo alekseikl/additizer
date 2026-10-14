@@ -26,7 +26,6 @@ pub struct EngineParams {
     #[serde(default = "default_kill_same_note")]
     pub kill_same_note: bool,
     pub block_size: usize,
-    pub oversampling: bool,
     pub voice_kill_time: Sample,
     pub output_gain: StereoSample,
 }
@@ -38,7 +37,6 @@ impl Default for EngineParams {
             legato: false,
             kill_same_note: default_kill_same_note(),
             block_size: MAX_BLOCK_SIZE,
-            oversampling: false,
             voice_kill_time: from_ms(30.0),
             output_gain: 0.25.into(),
         }

@@ -44,7 +44,6 @@ pub enum UiEvent {
     KillSameNote(bool),
     BlockSize(usize),
     VoiceKillTime(Sample),
-    Oversampling(bool),
     OutputGain(StereoSample),
 }
 
@@ -90,8 +89,6 @@ pub trait EngineUiEnd: Send {
     fn set_block_size(&mut self, block_size: usize) -> bool;
 
     fn set_voice_kill_time(&mut self, voice_kill_time: Sample) -> bool;
-
-    fn set_oversampling(&mut self, oversampling: bool) -> bool;
 
     fn set_output_gain(&mut self, output_gain: StereoSample) -> bool;
 

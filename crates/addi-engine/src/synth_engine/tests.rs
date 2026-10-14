@@ -54,7 +54,7 @@ fn minimal_engine_config(engine: EngineParams, osc: OscillatorConfig) -> EngineC
 fn make_engine(engine: EngineParams, osc: OscillatorConfig) -> SynthEngine {
     let config = minimal_engine_config(engine, osc);
 
-    <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("valid engine config")
+    <SynthEngine>::try_new(&config, SAMPLE_RATE, false).expect("valid engine config")
 }
 
 fn process_block(engine: &mut SynthEngine, samples: usize) -> (Vec<Sample>, Vec<Sample>) {
@@ -205,7 +205,7 @@ fn full_patch_engine_config(engine: EngineParams) -> EngineConfig {
 fn make_full_patch_engine(engine: EngineParams) -> SynthEngine {
     let config = full_patch_engine_config(engine);
 
-    <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("valid full patch config")
+    <SynthEngine>::try_new(&config, SAMPLE_RATE, false).expect("valid full patch config")
 }
 
 // ---- Construction ----
@@ -365,7 +365,8 @@ fn try_new_skips_duplicate_module_id() {
         links: vec![],
     };
 
-    let engine = <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("duplicate ids are skipped");
+    let engine =
+        <SynthEngine>::try_new(&config, SAMPLE_RATE, false).expect("duplicate ids are skipped");
 
     assert!(matches!(
         engine.get_module(1),
@@ -403,8 +404,8 @@ fn try_new_skips_invalid_link() {
         )],
     };
 
-    let engine =
-        <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("invalid links are skipped on load");
+    let engine = <SynthEngine>::try_new(&config, SAMPLE_RATE, false)
+        .expect("invalid links are skipped on load");
 
     assert!(
         engine
@@ -425,8 +426,8 @@ fn try_new_skips_link_with_missing_modulator() {
         .expect("env -> amp link");
     set_link_modulator(&mut config.links[modulated], Some(9999));
 
-    let engine =
-        <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("bad modulator skips that preset link");
+    let engine = <SynthEngine>::try_new(&config, SAMPLE_RATE, false)
+        .expect("bad modulator skips that preset link");
 
     assert!(
         engine.get_config().links.iter().all(|link| {
@@ -449,7 +450,7 @@ fn try_new_skips_link_with_incompatible_modulator() {
     // Spectral source cannot modulate a control (gain) input.
     set_link_modulator(&mut config.links[modulated], Some(HE0_ID));
 
-    let engine = <SynthEngine>::try_new(&config, SAMPLE_RATE)
+    let engine = <SynthEngine>::try_new(&config, SAMPLE_RATE, false)
         .expect("incompatible modulator skips that preset link");
 
     assert!(engine.get_config().links.iter().all(|link| {
@@ -465,7 +466,7 @@ fn set_config_links_direct_exclusivity_keeps_last_source() {
     // full_patch already has HE0 -> OSC1.Spectrum; a later Direct replaces it.
     config.links.push(link(HE1_ID, OSC1_ID, Input::Spectrum));
 
-    let mut engine = <SynthEngine>::try_new(&config, SAMPLE_RATE)
+    let mut engine = <SynthEngine>::try_new(&config, SAMPLE_RATE, false)
         .expect("extra spectral sources collapse to one");
 
     let cfg = engine.get_config();
@@ -501,7 +502,7 @@ fn set_config_links_skips_mixed_kind_on_direct_input() {
         StereoSample::ONE,
     ));
 
-    let engine = <SynthEngine>::try_new(&config, SAMPLE_RATE)
+    let engine = <SynthEngine>::try_new(&config, SAMPLE_RATE, false)
         .expect("wrong-kind mixed link should be skipped");
 
     let cfg = engine.get_config();
@@ -1412,7 +1413,7 @@ fn full_patch_config_round_trips() {
     });
     let cfg = engine.get_config();
     let rebuilt =
-        <SynthEngine>::try_new(&cfg, SAMPLE_RATE).expect("full patch config deserializes");
+        <SynthEngine>::try_new(&cfg, SAMPLE_RATE, false).expect("full patch config deserializes");
 
     assert_eq!(rebuilt.get_config().modules.len(), cfg.modules.len());
     assert_eq!(rebuilt.get_config().links.len(), cfg.links.len());
@@ -1434,7 +1435,6 @@ fn engine_extended_setters_round_trip() {
     engine.set_legato(true);
     engine.set_block_size(32);
     engine.set_voice_kill_time(kill_time);
-    engine.set_oversampling(true);
     engine.set_output_gain(StereoSample::splat(0.5));
 
     let lfo_id = engine.add_module(ModuleType::Lfo);
@@ -1449,7 +1449,6 @@ fn engine_extended_setters_round_trip() {
     assert!(cfg.engine.legato);
     assert_eq!(cfg.engine.block_size, 32);
     assert_eq!(engine.get_voice_kill_time(), kill_time);
-    assert!(cfg.engine.oversampling);
     assert_eq!(cfg.engine.output_gain, StereoSample::splat(0.5));
 
     let link = cfg
@@ -1581,7 +1580,7 @@ fn link_modulation_in_preset_builds() {
 
     config.links.push(config.links[modulated].clone());
 
-    let mut engine = <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("modulated preset");
+    let mut engine = <SynthEngine>::try_new(&config, SAMPLE_RATE, false).expect("modulated preset");
 
     let cfg = engine.get_config();
     let env_amp_links: Vec<_> = cfg
@@ -1626,8 +1625,8 @@ fn set_config_links_dedupes_duplicate_preset_links() {
     config.links.push(osc_out.clone());
     config.links.push(osc_out);
 
-    let engine =
-        <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("duplicate links should be skipped");
+    let engine = <SynthEngine>::try_new(&config, SAMPLE_RATE, false)
+        .expect("duplicate links should be skipped");
 
     let count = engine
         .get_config()
@@ -2095,7 +2094,7 @@ fn svf_engine(svf: SvfConfig) -> SynthEngine {
         ],
     };
 
-    <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("valid svf patch")
+    <SynthEngine>::try_new(&config, SAMPLE_RATE, false).expect("valid svf patch")
 }
 
 fn svf_output_rms(svf: SvfConfig) -> Sample {
@@ -2345,15 +2344,16 @@ fn handle_note_expression_and_choke_process() {
 
 #[test]
 fn oversampling_process() {
-    let mut engine = make_engine(
+    let config = minimal_engine_config(
         EngineParams::default(),
         OscillatorConfig {
             id: OSCILLATOR_ID,
             ..OscillatorConfig::default()
         },
     );
+    let mut engine =
+        <SynthEngine>::try_new(&config, SAMPLE_RATE, true).expect("valid engine config");
 
-    engine.set_oversampling(true);
     engine.handle_note_on(
         Note {
             channel: 0,
@@ -2718,7 +2718,7 @@ fn slot_mapping_engine() -> SynthEngine {
         ],
     };
 
-    <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("slot mapping patch")
+    <SynthEngine>::try_new(&config, SAMPLE_RATE, false).expect("slot mapping patch")
 }
 
 fn output_slot_of(engine: &SynthEngine, id: ModuleId) -> usize {

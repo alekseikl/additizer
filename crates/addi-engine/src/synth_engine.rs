@@ -117,14 +117,18 @@ pub struct SynthEngine<E: EngineLinks = stub::StubLinks> {
 }
 
 impl<E: EngineLinks> SynthEngine<E> {
-    pub fn try_new(cfg: &EngineConfig, host_sample_rate: Sample) -> Option<Self> {
+    pub fn try_new(
+        cfg: &EngineConfig,
+        host_sample_rate: Sample,
+        oversampling: bool,
+    ) -> Option<Self> {
         let (audio_end, ui_end) = E::create_link_pair();
 
         let mut engine = Self {
             next_id: 1,
             host_sample_rate,
             block_size: Self::clamp_block_size(cfg.engine.block_size),
-            oversampling: cfg.engine.oversampling,
+            oversampling,
             modules: ModulesMap::<E>::default(),
             input_sources: RoutingMap::default(),
             process_order: Vec::new(),
@@ -230,7 +234,6 @@ impl<E: EngineLinks> SynthEngine<E> {
             legato: voices.legato,
             kill_same_note: voices.kill_same_note,
             block_size: self.block_size,
-            oversampling: self.oversampling,
             voice_kill_time: self.get_voice_kill_time(),
             output_gain: self.get_output_gain(),
         }
@@ -283,17 +286,6 @@ impl<E: EngineLinks> SynthEngine<E> {
         if let Some(ModuleHandle::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID) {
             output.set_voice_kill_time(voice_kill_time);
         }
-    }
-
-    pub fn set_oversampling(&mut self, oversampling: bool) {
-        if oversampling != self.oversampling
-            && let Some(ModuleHandle::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID)
-        {
-            output.reset_decimator();
-        }
-
-        self.oversampling = oversampling;
-        self.voices_handler.choke_all_voices();
     }
 
     /// Map a host-buffer sample offset into the internal (possibly oversampled) block.
@@ -720,7 +712,6 @@ impl<E: EngineLinks> SynthEngine<E> {
                 UiEvent::VoiceKillTime(voice_kill_time) => {
                     self.set_voice_kill_time(voice_kill_time);
                 }
-                UiEvent::Oversampling(oversampling) => self.set_oversampling(oversampling),
                 UiEvent::OutputGain(output_gain) => self.set_output_gain(output_gain),
             }
         }

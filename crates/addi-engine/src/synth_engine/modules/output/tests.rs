@@ -141,7 +141,7 @@ fn make_engine(engine: EngineParams, link_output: bool) -> SynthEngine {
         links,
     };
 
-    SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid engine config")
+    SynthEngine::try_new(&config, SAMPLE_RATE, false).expect("valid engine config")
 }
 
 fn note(midi: u8) -> Note {

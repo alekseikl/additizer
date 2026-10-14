@@ -99,7 +99,7 @@ fn render_engine(env: EnvelopeConfig, amp_gain: Sample, link_envelope: bool) -> 
         links,
     };
 
-    SynthEngine::try_new(&config, RENDER_RATE).expect("valid engine")
+    SynthEngine::try_new(&config, RENDER_RATE, false).expect("valid engine")
 }
 
 fn note(note: u8) -> Note {

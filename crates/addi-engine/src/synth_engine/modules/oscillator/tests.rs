@@ -59,7 +59,7 @@ fn make_engine_with(he: HarmonicEditorConfig, osc: OscillatorConfig) -> SynthEng
         ],
     };
 
-    SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid engine config")
+    SynthEngine::try_new(&config, SAMPLE_RATE, false).expect("valid engine config")
 }
 
 fn process_block(engine: &mut SynthEngine, samples: usize) -> (Vec<Sample>, Vec<Sample>) {

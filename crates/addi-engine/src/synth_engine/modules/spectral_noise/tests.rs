@@ -397,7 +397,7 @@ fn play(bandwidth: i32) -> Vec<Sample> {
         ],
     };
 
-    let mut engine = <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("valid engine");
+    let mut engine = <SynthEngine>::try_new(&config, SAMPLE_RATE, false).expect("valid engine");
 
     engine.handle_note_on(
         Note {
@@ -464,7 +464,7 @@ fn each_process_draws_a_new_spectrum() {
         ],
     };
 
-    let mut engine = <SynthEngine>::try_new(&config, SAMPLE_RATE).expect("valid engine");
+    let mut engine = <SynthEngine>::try_new(&config, SAMPLE_RATE, false).expect("valid engine");
 
     engine.handle_note_on(
         Note {

@@ -28,6 +28,7 @@ fn empty_bridge() -> UiBridge {
             links: Vec::new(),
         },
         48_000.0,
+        false,
     )
     .expect("engine");
     let engine: EngineHandle = Arc::new(Mutex::new(engine));

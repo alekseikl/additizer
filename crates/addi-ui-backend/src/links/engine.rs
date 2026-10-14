@@ -97,10 +97,6 @@ impl UiEnd {
             .is_ok()
     }
 
-    pub fn set_oversampling(&mut self, oversampling: bool) -> bool {
-        self.tx.push(UiEvent::Oversampling(oversampling)).is_ok()
-    }
-
     pub fn set_output_gain(&mut self, output_gain: StereoSample) -> bool {
         self.tx.push(UiEvent::OutputGain(output_gain)).is_ok()
     }
@@ -181,10 +177,6 @@ impl EngineUiEnd for UiEnd {
 
     fn set_voice_kill_time(&mut self, voice_kill_time: Sample) -> bool {
         UiEnd::set_voice_kill_time(self, voice_kill_time)
-    }
-
-    fn set_oversampling(&mut self, oversampling: bool) -> bool {
-        UiEnd::set_oversampling(self, oversampling)
     }
 
     fn set_output_gain(&mut self, output_gain: StereoSample) -> bool {

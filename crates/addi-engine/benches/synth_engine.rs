@@ -32,7 +32,7 @@ fn minimal_engine_config(engine: EngineParams, osc: OscillatorConfig) -> EngineC
 fn make_engine(engine: EngineParams, osc: OscillatorConfig) -> SynthEngine {
     let config = minimal_engine_config(engine, osc);
 
-    SynthEngine::try_new(&config, SAMPLE_RATE).expect("valid engine config")
+    SynthEngine::try_new(&config, SAMPLE_RATE, false).expect("valid engine config")
 }
 
 fn trigger_notes(engine: &mut SynthEngine, count: usize) {

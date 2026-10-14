@@ -112,6 +112,7 @@ pub fn build_default_preset() -> Preset {
     Preset {
         info: PresetInfo::default(),
         engine: default_engine_config(),
+        oversampling: true,
         ui: default_ui_config(),
     }
 }

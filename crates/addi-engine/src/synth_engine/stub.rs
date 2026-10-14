@@ -101,10 +101,6 @@ impl engine_io::EngineUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_oversampling(&mut self, _oversampling: bool) -> bool {
-        self.diverge()
-    }
-
     fn set_output_gain(&mut self, _output_gain: StereoSample) -> bool {
         self.diverge()
     }
