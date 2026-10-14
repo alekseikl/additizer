@@ -101,7 +101,7 @@ impl IfftPlanners {
         cutoff_index: usize,
         full_fft_size: bool,
     ) -> (WaveformSize, &dyn ComplexToReal<Sample>) {
-        if full_fft_size || cutoff_index >= self.half.complex_len() {
+        if full_fft_size || cutoff_index > WAVEFORM_SIZE / 8 {
             (WaveformSize::Full, self.full.as_ref())
         } else {
             (WaveformSize::Half, self.half.as_ref())
@@ -649,8 +649,8 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let frequency = frequency.abs();
         let max_frequency = 0.5 * sample_rate;
 
-        let cutoff_index =
-            ((max_frequency / frequency).floor() as usize + 1).min(spectral_buff.len());
+        // Exclusive end, so a harmonic exactly at Nyquist is excluded.
+        let cutoff_index = ((max_frequency / frequency).ceil() as usize).min(spectral_buff.len());
 
         let (size, inverse_fft) = ifft.select(cutoff_index, full_fft_size);
         let complex_len = inverse_fft.complex_len();

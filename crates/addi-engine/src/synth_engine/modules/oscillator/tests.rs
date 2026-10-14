@@ -656,7 +656,7 @@ fn coherent_unison_scales_single_voice_by_sqrt_n() {
 
 fn wave_cutoff(frequency: Sample, sample_rate: Sample, spectrum_len: usize) -> usize {
     let max_frequency = 0.5 * sample_rate;
-    ((max_frequency / frequency).floor() as usize + 1).min(spectrum_len)
+    ((max_frequency / frequency).ceil() as usize).min(spectrum_len)
 }
 
 fn reference_full_wave(spectrum: &[ComplexSample], cutoff: usize) -> Box<WaveformBuffer> {
@@ -730,6 +730,32 @@ fn assert_wave_matches_full(frequency: Sample, spectrum: &[ComplexSample], size:
 }
 
 #[test]
+fn build_wave_drops_harmonic_exactly_at_nyquist() {
+    let harmonic = 54;
+    let nyquist = 0.5 * SAMPLE_RATE;
+    let frequency = nyquist / harmonic as Sample;
+    let mut spectrum = vec![ComplexSample::ZERO; DFT_BUFFER_SIZE];
+    spectrum[harmonic] = ComplexSample::new(0.7, 0.2);
+
+    assert_eq!(
+        wave_cutoff(frequency, SAMPLE_RATE, spectrum.len()),
+        harmonic
+    );
+
+    let dropped = build_test_wave(frequency, &spectrum, false);
+    let dropped_peak = body(&dropped.samples, dropped.size.len())
+        .iter()
+        .fold(0.0_f32, |acc, sample| acc.max(sample.abs()));
+    assert_eq!(dropped_peak, 0.0);
+
+    let kept = build_test_wave(frequency.next_down(), &spectrum, false);
+    let kept_peak = body(&kept.samples, kept.size.len())
+        .iter()
+        .fold(0.0_f32, |acc, sample| acc.max(sample.abs()));
+    assert!(kept_peak > 0.1, "peak {kept_peak}");
+}
+
+#[test]
 fn build_wave_uses_half_resolution_for_high_notes() {
     let mut spectrum = vec![ComplexSample::ZERO; DFT_BUFFER_SIZE];
     spectrum[1] = ComplexSample::new(0.8, 0.1);
@@ -744,7 +770,7 @@ fn build_wave_uses_half_resolution_for_mid_notes() {
     spectrum[1] = ComplexSample::new(0.8, 0.1);
     spectrum[200] = ComplexSample::new(0.35, 0.25);
 
-    assert_wave_matches_full(80.0, &spectrum, WaveformSize::Half);
+    assert_wave_matches_full(100.0, &spectrum, WaveformSize::Half);
 }
 
 #[test]
