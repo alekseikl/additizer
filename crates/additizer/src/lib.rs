@@ -88,13 +88,15 @@ impl Plugin for Additizer {
     ) -> bool {
         self.factory.set_host_sample_rate(buffer_config.sample_rate);
         self.params.config.set_factory(self.factory.clone());
-        self.engine = Some(self.factory.get_engine());
+        self.engine = self.factory.get_engine();
 
         true
     }
 
     fn reset(&mut self) {
-        self.engine.as_deref().unwrap().lock().reset();
+        if let Some(engine) = &self.engine {
+            engine.lock().reset();
+        }
     }
 
     fn process(
@@ -108,11 +110,18 @@ impl Plugin for Additizer {
             .as_ref()
             .is_none_or(|engine| self.factory.engine_changed(engine))
         {
-            self.engine = Some(self.factory.get_engine());
+            self.engine = self.factory.get_engine();
         }
 
+        let Some(engine) = &self.engine else {
+            for channel in buffer.as_slice() {
+                channel.fill(0.0);
+            }
+            return ProcessStatus::KeepAlive;
+        };
+
         // Mutex is contended only when routing is changed from the UI.
-        let mut synth = self.engine.as_deref().unwrap().lock();
+        let mut synth = engine.lock();
 
         assert_no_alloc::assert_no_alloc(|| {
             let block_size = synth.block_size();

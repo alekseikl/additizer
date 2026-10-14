@@ -56,60 +56,50 @@ impl DetailViewKey {
     }
 }
 
-pub struct EditorState {
-    engine_factory: Arc<EngineFactory>,
-    ui_bridge: UiBridge,
+pub struct EguiEditor {
     grid_module_ui: Option<ModuleUIBox>,
     grid: grid::Grid,
 }
 
-impl EditorState {
-    pub fn new(engine_factory: Arc<EngineFactory>) -> Self {
-        let bridge =
-            UiBridge::create(engine_factory.get_engine(), engine_factory.get_ui_config()).unwrap();
-
+impl EguiEditor {
+    pub fn new() -> Self {
         Self {
-            engine_factory: engine_factory.clone(),
-            ui_bridge: bridge,
             grid_module_ui: None,
             grid: grid::Grid::new(),
         }
     }
 
-    pub fn show(&mut self, ui: &mut Ui) {
-        if self.engine_factory.engine_changed(self.ui_bridge.engine()) {
-            self.ui_bridge = UiBridge::create(
-                self.engine_factory.get_engine(),
-                self.engine_factory.get_ui_config(),
-            )
-            .unwrap();
+    pub fn reset(&mut self) {
+        self.grid_module_ui = None;
+        self.grid = grid::Grid::new();
+    }
 
-            self.grid_module_ui = None;
-            self.grid = grid::Grid::new();
-        }
-
-        self.ui_bridge.update();
-
-        if let Some(modules_io) = self.ui_bridge.take_modules_io() {
-            self.grid.update_widgets(modules_io, &mut self.ui_bridge);
+    pub fn show(
+        &mut self,
+        ui: &mut Ui,
+        engine_factory: &Arc<EngineFactory>,
+        ui_bridge: &mut UiBridge,
+    ) {
+        if let Some(modules_io) = ui_bridge.take_modules_io() {
+            self.grid.update_widgets(modules_io, ui_bridge);
         }
 
         if self
             .grid_module_ui
             .as_ref()
             .and_then(|panel| panel.module_id())
-            .is_some_and(|module_id| !self.ui_bridge.has_module_id(module_id))
+            .is_some_and(|module_id| !ui_bridge.has_module_id(module_id))
         {
             self.grid_module_ui = None;
         }
 
         for event in self.grid.events() {
             if let GridEvent::Selected(module_id) = event {
-                self.grid_module_ui = module_ui_for_id(&self.ui_bridge, *module_id);
+                self.grid_module_ui = module_ui_for_id(ui_bridge, *module_id);
             }
         }
 
-        show_top_bar(ui, self);
+        self.show_top_bar(ui, engine_factory);
 
         let grid_selected_id = self
             .grid_module_ui
@@ -136,7 +126,7 @@ impl EditorState {
                                         bottom: 16,
                                     })
                                     .show(ui, |ui| {
-                                        module_ui.ui(&mut self.ui_bridge, ui);
+                                        module_ui.ui(ui_bridge, ui);
                                     });
                             }
                         });
@@ -144,7 +134,30 @@ impl EditorState {
         }
 
         CentralPanel::no_frame().show(ui, |ui| {
-            self.grid.ui(ui, &mut self.ui_bridge, grid_selected_id);
+            self.grid.ui(ui, ui_bridge, grid_selected_id);
+        });
+    }
+
+    fn show_top_bar(&mut self, ui: &mut Ui, engine_factory: &Arc<EngineFactory>) {
+        Frame::new().inner_margin(vec2(8.0, 4.0)).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let showing_params = self
+                    .grid_module_ui
+                    .as_ref()
+                    .is_some_and(|panel| panel.module_id().is_none());
+
+                if ui
+                    .selectable_label(showing_params, "Engine settings")
+                    .clicked()
+                {
+                    if showing_params {
+                        self.grid_module_ui = None;
+                    } else {
+                        self.grid_module_ui =
+                            Some(Box::new(ParamsUi::new(Arc::clone(engine_factory))));
+                    }
+                }
+            });
         });
     }
 }
@@ -184,29 +197,6 @@ fn module_ui_for_id(bridge: &UiBridge, id: ModuleId) -> Option<ModuleUIBox> {
         .into_iter()
         .find(|module| module.id == id)
         .map(|module| module.module_type.ui(module.id))
-}
-
-fn show_top_bar(ui: &mut Ui, editor_state: &mut EditorState) {
-    Frame::new().inner_margin(vec2(8.0, 4.0)).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            let showing_params = editor_state
-                .grid_module_ui
-                .as_ref()
-                .is_some_and(|panel| panel.module_id().is_none());
-
-            if ui
-                .selectable_label(showing_params, "Engine settings")
-                .clicked()
-            {
-                if showing_params {
-                    editor_state.grid_module_ui = None;
-                } else {
-                    editor_state.grid_module_ui =
-                        Some(Box::new(ParamsUi::new(editor_state.engine_factory.clone())));
-                }
-            }
-        });
-    });
 }
 
 /// Registers the bundled bold font as a `FontFamily::Name("Bold")` family so widgets

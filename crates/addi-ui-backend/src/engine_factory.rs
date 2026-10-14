@@ -1,10 +1,10 @@
 use std::sync::{Arc, atomic::Ordering};
 
-use arc_swap::ArcSwap;
+use arc_swap::{ArcSwap, ArcSwapOption};
 use atomic_float::AtomicF32;
 use parking_lot::Mutex;
 
-use addi_engine::{EngineConfig, Sample, SynthEngine};
+use addi_engine::{Sample, SynthEngine};
 
 use crate::{
     links::PluginLinks,
@@ -17,7 +17,7 @@ pub type UiConfigHandle = Arc<Mutex<UiConfig>>;
 
 pub struct EngineFactory {
     host_sample_rate: AtomicF32,
-    engine: ArcSwap<Mutex<SynthEngine<PluginLinks>>>,
+    engine: ArcSwapOption<Mutex<SynthEngine<PluginLinks>>>,
     ui_config: ArcSwap<Mutex<UiConfig>>,
 }
 
@@ -25,14 +25,12 @@ impl EngineFactory {
     pub fn new() -> Self {
         Self {
             host_sample_rate: AtomicF32::new(44100.0),
-            engine: ArcSwap::from_pointee(Mutex::new(
-                SynthEngine::<PluginLinks>::try_new(&EngineConfig::default(), 44100.0).unwrap(),
-            )),
+            engine: ArcSwapOption::empty(),
             ui_config: ArcSwap::from_pointee(Mutex::new(UiConfig::default())),
         }
     }
 
-    pub fn get_engine(&self) -> EngineHandle {
+    pub fn get_engine(&self) -> Option<EngineHandle> {
         self.engine.load_full()
     }
 
@@ -41,7 +39,10 @@ impl EngineFactory {
     }
 
     pub fn engine_changed(&self, cached: &EngineHandle) -> bool {
-        !Arc::ptr_eq(&*self.engine.load(), cached)
+        self.engine
+            .load()
+            .as_ref()
+            .is_none_or(|current| !Arc::ptr_eq(current, cached))
     }
 
     pub fn set_host_sample_rate(&self, sample_rate: Sample) {
@@ -49,9 +50,13 @@ impl EngineFactory {
     }
 
     pub fn get_preset(&self) -> Preset {
+        let Some(engine) = self.engine.load_full() else {
+            return Preset::default();
+        };
+
         Preset {
             info: PresetInfo::default(),
-            engine: self.engine.load().lock().get_config(),
+            engine: engine.lock().get_config(),
             ui: self.ui_config.load().lock().clone(),
         }
     }
@@ -66,7 +71,7 @@ impl EngineFactory {
 
         self.ui_config
             .store(Arc::new(Mutex::new(preset.ui.clone())));
-        self.engine.store(Arc::new(Mutex::new(new_engine)));
+        self.engine.store(Some(Arc::new(Mutex::new(new_engine))));
         true
     }
 }

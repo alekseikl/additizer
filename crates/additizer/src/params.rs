@@ -61,9 +61,13 @@ impl PresetWrapper {
     }
 
     pub fn set_factory(&self, factory: Arc<EngineFactory>) {
-        if let Some(cfg) = self.preset_from_host.lock().as_ref() {
-            factory.load_preset(cfg);
-        } else {
+        let loaded = self
+            .preset_from_host
+            .lock()
+            .as_ref()
+            .is_some_and(|cfg| factory.load_preset(cfg));
+
+        if !loaded {
             factory.load_preset(&build_default_preset());
         }
 
