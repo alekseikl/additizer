@@ -728,6 +728,12 @@ impl<E: EngineLinks> SynthEngine<E> {
         terminated_notes: &mut Vec<Note>,
         mut outputs: [&mut [f32]; NUM_CHANNELS],
     ) {
+        assert!(
+            samples > 0 && samples <= self.block_size,
+            "host block of {samples} samples is outside 1..={}",
+            self.block_size
+        );
+
         self.handle_ui_events();
 
         {
@@ -763,11 +769,6 @@ impl<E: EngineLinks> SynthEngine<E> {
         );
 
         let samples = samples * self.oversampling;
-        debug_assert!(
-            samples + CONTROL_EXT <= self.buffer_size,
-            "internal block of {samples} samples exceeds buffer size {}",
-            self.buffer_size
-        );
         let sample_rate = self.sample_rate();
         let smooth_params = SmoothedSampleParams::new(sample_rate);
 

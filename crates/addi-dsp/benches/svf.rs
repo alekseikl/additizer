@@ -1,13 +1,13 @@
 use std::{f32::consts::TAU, hint::black_box};
 
 use addi_dsp::{
+    Sample,
     filters::{
         control::MAX_PRE_Q,
         svf::{LaneInputs, SvfState, SvfType},
     },
-    Sample,
 };
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 /// 48 kHz host block.
 const MAX_BLOCK_SIZE: usize = 128;

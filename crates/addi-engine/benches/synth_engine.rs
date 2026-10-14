@@ -1,14 +1,16 @@
 use std::hint::black_box;
 
 use addi_engine::{
-    EngineConfig, EngineParams, Input, LinkConfig, MAX_BLOCK_SIZE, ModuleConfig, ModuleId,
-    NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
+    EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId, NUM_CHANNELS, Note,
+    OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
     harmonic_editor::HarmonicEditorConfig,
     oscillator::{MAX_UNISON_VOICES, OscillatorConfig},
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
 const SAMPLE_RATE: Sample = 48_000.0;
+/// 48 kHz host block.
+const BLOCK: usize = 128;
 const HARMONIC_EDITOR_ID: ModuleId = 1;
 const OSCILLATOR_ID: ModuleId = 2;
 
@@ -53,9 +55,9 @@ fn trigger_notes_at(engine: &mut SynthEngine, count: usize, base_note: u8) {
     }
 }
 
-fn process_block(engine: &mut SynthEngine, samples: usize) -> [Sample; MAX_BLOCK_SIZE] {
-    let mut left = [0.0; MAX_BLOCK_SIZE];
-    let mut right = [0.0; MAX_BLOCK_SIZE];
+fn process_block(engine: &mut SynthEngine, samples: usize) -> [Sample; BLOCK] {
+    let mut left = [0.0; BLOCK];
+    let mut right = [0.0; BLOCK];
 
     let mut terminated = Vec::new();
     engine.process(
@@ -82,7 +84,7 @@ fn bench_process(c: &mut Criterion) {
         );
         trigger_notes(&mut engine, 1);
 
-        let samples = MAX_BLOCK_SIZE;
+        let samples = BLOCK;
         group.throughput(Throughput::Elements((samples * NUM_CHANNELS) as u64));
         group.bench_function("unison/1", |b| {
             b.iter(|| black_box(process_block(&mut engine, samples)));
@@ -102,7 +104,7 @@ fn bench_process(c: &mut Criterion) {
         );
         trigger_notes_at(&mut engine, 1, note);
 
-        let samples = MAX_BLOCK_SIZE;
+        let samples = BLOCK;
         group.throughput(Throughput::Elements((samples * NUM_CHANNELS) as u64));
         group.bench_function(BenchmarkId::new("unison16", name), |b| {
             b.iter(|| black_box(process_block(&mut engine, samples)));
@@ -123,7 +125,7 @@ fn bench_process(c: &mut Criterion) {
         );
         trigger_notes(&mut engine, voice_count);
 
-        let samples = MAX_BLOCK_SIZE;
+        let samples = BLOCK;
         group.throughput(Throughput::Elements(
             (samples * NUM_CHANNELS * voice_count) as u64,
         ));
@@ -136,12 +138,9 @@ fn bench_process(c: &mut Criterion) {
         );
     }
 
-    for samples in [8, 32, 64, MAX_BLOCK_SIZE] {
+    for samples in [8, 32, 64, BLOCK] {
         let mut engine = make_engine(
-            EngineParams {
-                block_size: samples,
-                ..EngineParams::default()
-            },
+            EngineParams::default(),
             OscillatorConfig {
                 id: OSCILLATOR_ID,
                 unison_voices: 4,
@@ -174,7 +173,7 @@ fn bench_process(c: &mut Criterion) {
         // must be distinct to occupy all 16 voices.
         trigger_notes_at(&mut engine, 16, 15);
 
-        let samples = MAX_BLOCK_SIZE;
+        let samples = BLOCK;
         group.throughput(Throughput::Elements((samples * NUM_CHANNELS * 16) as u64));
         group.bench_function("heavy_patch", |b| {
             b.iter(|| black_box(process_block(&mut engine, samples)));

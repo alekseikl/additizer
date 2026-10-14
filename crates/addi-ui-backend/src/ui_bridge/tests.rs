@@ -246,13 +246,10 @@ fn move_filter_reorders_bands() {
         cutoff_hz,
         ..EqFilter::default()
     });
-    let mut eq = SpectralEq::<crate::links::spectral_eq::Links>::from_config(
-        &SpectralEqConfig {
-            filters: bands.to_vec(),
-            ..SpectralEqConfig::default()
-        },
-        16,
-    );
+    let mut eq = SpectralEq::<crate::links::spectral_eq::Links>::from_config(&SpectralEqConfig {
+        filters: bands.to_vec(),
+        ..SpectralEqConfig::default()
+    });
     let mut bridge = SpectralEqUiBridge::try_new(&mut eq).unwrap();
 
     bridge.move_filter(0, 0);
