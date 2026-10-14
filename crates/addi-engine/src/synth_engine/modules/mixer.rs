@@ -149,10 +149,10 @@ struct Buffers {
     level_mod: Buffer,
 }
 
-impl Default for Buffers {
-    fn default() -> Self {
+impl Buffers {
+    fn new(buffer_size: usize) -> Self {
         Self {
-            level_mod: zero_buffer(),
+            level_mod: zero_buffer(buffer_size),
         }
     }
 }
@@ -177,14 +177,17 @@ impl<L: MixerLinks> Mixer<L> {
 
     pub const MAX_INPUTS: u8 = MAX_INPUTS;
 
-    pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&MixerConfig {
-            id,
-            ..MixerConfig::default()
-        })
+    pub fn new(id: ModuleId, buffer_size: usize) -> Self {
+        Self::from_config(
+            &MixerConfig {
+                id,
+                ..MixerConfig::default()
+            },
+            buffer_size,
+        )
     }
 
-    pub fn from_config(config: &config::MixerConfig) -> Self {
+    pub fn from_config(config: &config::MixerConfig, buffer_size: usize) -> Self {
         let (audio_end, ui_end) = L::create_link_pair();
 
         let mut result = Self {
@@ -193,7 +196,7 @@ impl<L: MixerLinks> Mixer<L> {
             channel_params: array::from_fn(|channel_idx| {
                 ChannelParams::from_config(config, channel_idx)
             }),
-            buffers: Buffers::default(),
+            buffers: Buffers::new(buffer_size),
             audio_end,
             ui_end,
             inputs: Inputs::default(),

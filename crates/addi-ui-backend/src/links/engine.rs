@@ -1,11 +1,11 @@
 use triple_buffer::triple_buffer;
 
 use addi_engine::{
-    Input, InputId, ModuleId, NUM_CHANNELS, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY,
     engine_io::{
         EngineAudioEnd, EngineUiEnd, OutputMeter, UiEvent, UiUpdate, VoicesHandlerMetrics,
         VoicesStatus,
     },
+    Input, InputId, ModuleId, Sample, StereoSample, NUM_CHANNELS, UI_TO_AUDIO_RING_CAPACITY,
 };
 
 // Larger than module links: this carries per-input modulation telemetry.
@@ -87,10 +87,6 @@ impl UiEnd {
         self.tx.push(UiEvent::KillSameNote(kill_same_note)).is_ok()
     }
 
-    pub fn set_block_size(&mut self, block_size: usize) -> bool {
-        self.tx.push(UiEvent::BlockSize(block_size)).is_ok()
-    }
-
     pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) -> bool {
         self.tx
             .push(UiEvent::VoiceKillTime(voice_kill_time))
@@ -169,10 +165,6 @@ impl EngineUiEnd for UiEnd {
 
     fn set_kill_same_note(&mut self, kill_same_note: bool) -> bool {
         UiEnd::set_kill_same_note(self, kill_same_note)
-    }
-
-    fn set_block_size(&mut self, block_size: usize) -> bool {
-        UiEnd::set_block_size(self, block_size)
     }
 
     fn set_voice_kill_time(&mut self, voice_kill_time: Sample) -> bool {

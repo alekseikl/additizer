@@ -10,7 +10,7 @@ use crate::{
     synth_engine::{
         Buffer, Expression, ModuleId, Sample,
         buffer::{
-            MonoVoicesLayout, ValueBuffer, VoicesLayout, new_mono_voices_layout, zero_buffer,
+            MonoVoicesLayout, ValueBuffer, VoicesLayout, new_mono_voices_layout_with, zero_buffer,
         },
         routing::{
             ControlRouterType, DataType, ExpressionEvent, InputMeta, ProcessContext, RouterFactory,
@@ -43,11 +43,11 @@ struct Voice {
     smoother: Smoother,
 }
 
-impl Default for Voice {
-    fn default() -> Self {
+impl Voice {
+    fn new(buffer_size: usize) -> Self {
         Self {
-            values: ValueBuffer::default(),
-            buffer: zero_buffer(),
+            values: ValueBuffer::new(buffer_size),
+            buffer: zero_buffer(buffer_size),
             smoother: Smoother::default(),
         }
     }
@@ -67,14 +67,17 @@ impl<L: ExpressionsLinks> Expressions<L> {
         self.ui_end.take()
     }
 
-    pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&ExpressionsConfig {
-            id,
-            ..ExpressionsConfig::default()
-        })
+    pub fn new(id: ModuleId, buffer_size: usize) -> Self {
+        Self::from_config(
+            &ExpressionsConfig {
+                id,
+                ..ExpressionsConfig::default()
+            },
+            buffer_size,
+        )
     }
 
-    pub fn from_config(config: &config::ExpressionsConfig) -> Self {
+    pub fn from_config(config: &config::ExpressionsConfig, buffer_size: usize) -> Self {
         let (audio_end, ui_end) = L::create_link_pair();
 
         Self {
@@ -83,7 +86,7 @@ impl<L: ExpressionsLinks> Expressions<L> {
             audio_end,
             ui_end,
             output_slot: usize::MAX,
-            mono_voices: new_mono_voices_layout(),
+            mono_voices: new_mono_voices_layout_with(|| Voice::new(buffer_size)),
         }
     }
 

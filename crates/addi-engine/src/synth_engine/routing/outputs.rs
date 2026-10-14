@@ -9,6 +9,13 @@ pub struct SamplesOutput {
 }
 
 impl SamplesOutput {
+    pub(crate) fn new(len: usize) -> Self {
+        Self {
+            buffer: zero_buffer(len),
+            next_frame_sample: 0.0,
+        }
+    }
+
     #[inline]
     pub(super) fn buffer(&self) -> &[Sample] {
         &self.buffer
@@ -24,15 +31,6 @@ impl SamplesOutput {
             self.buffer[offset]
         } else {
             self.next_frame_sample
-        }
-    }
-}
-
-impl Default for SamplesOutput {
-    fn default() -> Self {
-        Self {
-            buffer: zero_buffer(),
-            next_frame_sample: 0.0,
         }
     }
 }

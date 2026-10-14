@@ -42,7 +42,6 @@ pub enum UiEvent {
     Voices(usize),
     Legato(bool),
     KillSameNote(bool),
-    BlockSize(usize),
     VoiceKillTime(Sample),
     OutputGain(StereoSample),
 }
@@ -85,8 +84,6 @@ pub trait EngineUiEnd: Send {
     fn set_legato(&mut self, legato: bool) -> bool;
 
     fn set_kill_same_note(&mut self, kill_same_note: bool) -> bool;
-
-    fn set_block_size(&mut self, block_size: usize) -> bool;
 
     fn set_voice_kill_time(&mut self, voice_kill_time: Sample) -> bool;
 

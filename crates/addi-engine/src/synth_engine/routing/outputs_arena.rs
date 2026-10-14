@@ -2,28 +2,19 @@ use std::ops::{Deref, DerefMut};
 
 use crate::synth_engine::{
     ComplexSample, Sample, SynthModule,
-    buffer::{VoicesLayout, add_to_buffer, new_voices_layout},
+    buffer::{VoicesLayout, add_to_buffer, new_voices_layout_with, zero_buffer},
     routing::{
         DataType, InputSlot,
         outputs::{SamplesOutput, SpectralOutput},
     },
 };
 
-pub(super) struct ArenaSlot<T: Default + Send> {
+pub(super) struct ArenaSlot<T: Send> {
     pub(super) slot: Option<VoicesLayout<T>>,
     pub(super) is_control: bool,
 }
 
-impl<T: Default + Send> Default for ArenaSlot<T> {
-    fn default() -> Self {
-        Self {
-            slot: Some(new_voices_layout()),
-            is_control: false,
-        }
-    }
-}
-
-impl<T: Default + Send> Deref for ArenaSlot<T> {
+impl<T: Send> Deref for ArenaSlot<T> {
     type Target = VoicesLayout<T>;
 
     fn deref(&self) -> &Self::Target {
@@ -31,13 +22,15 @@ impl<T: Default + Send> Deref for ArenaSlot<T> {
     }
 }
 
-impl<T: Default + Send> DerefMut for ArenaSlot<T> {
+impl<T: Send> DerefMut for ArenaSlot<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.slot.as_mut().expect("buffer slot should be in place")
     }
 }
 
 pub struct OutputsArena {
+    buffer_size: usize,
+    zeroes: Box<[Sample]>,
     pub(super) samples: Vec<ArenaSlot<SamplesOutput>>,
     pub(super) spectral: Vec<ArenaSlot<SpectralOutput>>,
     free_samples_slots: Vec<usize>,
@@ -45,8 +38,10 @@ pub struct OutputsArena {
 }
 
 impl OutputsArena {
-    pub fn new() -> Self {
+    pub fn new(buffer_size: usize) -> Self {
         Self {
+            buffer_size,
+            zeroes: zero_buffer(buffer_size),
             samples: Vec::new(),
             spectral: Vec::new(),
             free_samples_slots: Vec::new(),
@@ -54,34 +49,45 @@ impl OutputsArena {
         }
     }
 
-    fn allocate_impl<T: Default + Send>(
+    pub(super) fn zeroes(&self) -> &[Sample] {
+        &self.zeroes
+    }
+
+    fn allocate_impl<T: Send>(
         slots: &mut Vec<ArenaSlot<T>>,
         free_slots: &mut Vec<usize>,
+        mut init: impl FnMut() -> T,
     ) -> usize {
         if let Some(slot_idx) = free_slots.pop() {
-            slots[slot_idx].slot = Some(new_voices_layout());
+            slots[slot_idx].slot = Some(new_voices_layout_with(&mut init));
             slot_idx
         } else {
-            slots.push(ArenaSlot::default());
+            slots.push(ArenaSlot {
+                slot: Some(new_voices_layout_with(init)),
+                is_control: false,
+            });
             slots.len() - 1
         }
     }
 
     fn allocate_samples_slot(&mut self, is_control: bool) -> usize {
-        let slot_idx = Self::allocate_impl(&mut self.samples, &mut self.free_samples_slots);
+        let buffer_size = self.buffer_size;
+        let slot_idx = Self::allocate_impl(&mut self.samples, &mut self.free_samples_slots, || {
+            SamplesOutput::new(buffer_size)
+        });
         self.samples[slot_idx].is_control = is_control;
         slot_idx
     }
 
     fn allocate_spectral_slot(&mut self) -> usize {
-        Self::allocate_impl(&mut self.spectral, &mut self.free_spectral_slots)
+        Self::allocate_impl(
+            &mut self.spectral,
+            &mut self.free_spectral_slots,
+            SpectralOutput::default,
+        )
     }
 
-    fn free_impl<T: Default + Send>(
-        slots: &mut [ArenaSlot<T>],
-        free_slots: &mut Vec<usize>,
-        slot: usize,
-    ) {
+    fn free_impl<T: Send>(slots: &mut [ArenaSlot<T>], free_slots: &mut Vec<usize>, slot: usize) {
         assert!(slot < slots.len());
 
         slots[slot].slot = None;

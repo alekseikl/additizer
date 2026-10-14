@@ -8,8 +8,9 @@ use addi_engine::{
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
-/// Matches `addi_engine::MAX_BLOCK_SIZE`.
+/// 48 kHz host block.
 const BLOCK: usize = 128;
+const BUFFER_SIZE: usize = BLOCK + 1;
 
 const SAMPLE_RATE: Sample = 48_000.0;
 
@@ -23,7 +24,7 @@ fn envelope(slope: Sample) -> (Envelope<Links>, OutputsArena) {
         ..EnvelopeConfig::default()
     });
     let mut handle = ModuleHandle::<StubLinks>::Envelope(Box::new(envelope));
-    let mut arena = OutputsArena::new();
+    let mut arena = OutputsArena::new(BUFFER_SIZE);
     arena.allocate_slot(&mut handle);
 
     let ModuleHandle::Envelope(envelope) = handle else {

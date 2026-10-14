@@ -127,6 +127,16 @@ struct Buffers {
     skew: Buffer,
 }
 
+impl Buffers {
+    fn new(buffer_size: usize) -> Self {
+        Self {
+            frequency: zero_buffer(buffer_size),
+            phase_shift: zero_buffer(buffer_size),
+            skew: zero_buffer(buffer_size),
+        }
+    }
+}
+
 pub struct Lfo<L: LfoLinks = stub::Links> {
     id: ModuleId,
     params: Params,
@@ -144,14 +154,17 @@ impl<L: LfoLinks> Lfo<L> {
         self.ui_end.take()
     }
 
-    pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&LfoConfig {
-            id,
-            ..LfoConfig::default()
-        })
+    pub fn new(id: ModuleId, buffer_size: usize) -> Self {
+        Self::from_config(
+            &LfoConfig {
+                id,
+                ..LfoConfig::default()
+            },
+            buffer_size,
+        )
     }
 
-    pub fn from_config(config: &config::LfoConfig) -> Self {
+    pub fn from_config(config: &config::LfoConfig, buffer_size: usize) -> Self {
         let (audio_end, ui_end) = L::create_link_pair();
 
         Self {
@@ -160,11 +173,7 @@ impl<L: LfoLinks> Lfo<L> {
             channel_params: array::from_fn(|channel_idx| {
                 ChannelParams::from_config(config, channel_idx)
             }),
-            buffers: Buffers {
-                frequency: zero_buffer(),
-                phase_shift: zero_buffer(),
-                skew: zero_buffer(),
-            },
+            buffers: Buffers::new(buffer_size),
             audio_end,
             ui_end,
             inputs: Inputs::default(),

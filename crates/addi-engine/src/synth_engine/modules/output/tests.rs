@@ -3,7 +3,6 @@ use crate::synth_engine::{
     DataType, EngineAudioEnd, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig,
     ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, OutputMeter, ProcessContext, ProcessParams,
     Sample, StereoSample, SynthEngine, VoiceEvent,
-    buffer::BUFFER_SIZE,
     engine_io::UiEvent,
     from_ms,
     harmonic_editor::HarmonicEditorConfig,
@@ -22,6 +21,7 @@ impl Output {
 }
 
 const SAMPLE_RATE: Sample = 48_000.0;
+const BUFFER_SIZE: usize = 32;
 const HARMONIC_EDITOR_ID: ModuleId = 1;
 const OSCILLATOR_ID: ModuleId = 2;
 
@@ -83,7 +83,7 @@ fn run_process(
     trigger_stage: bool,
     update_ui: bool,
 ) -> OutputMeter {
-    let mut arena = OutputsArena::new();
+    let mut arena = OutputsArena::new(BUFFER_SIZE);
     let mut audio_end = RecordingAudioEnd {
         meter: OutputMeter::default(),
     };
@@ -175,7 +175,7 @@ fn play(engine: &mut SynthEngine, midi: u8) -> (Vec<Sample>, Vec<Sample>) {
 
 #[test]
 fn gain_and_kill_time_are_clamped() {
-    let mut output = Output::new(StereoSample::new(-1.0, 8.0), from_ms(80.0));
+    let mut output = Output::new(StereoSample::new(-1.0, 8.0), from_ms(80.0), BUFFER_SIZE);
 
     assert_eq!(output.get_gain(), StereoSample::new(0.0, 4.0));
     assert_eq!(output.get_voice_kill_time(), from_ms(50.0));
@@ -192,7 +192,7 @@ fn gain_and_kill_time_are_clamped() {
 
 #[test]
 fn module_identity_is_fixed() {
-    let output = Output::new(StereoSample::ONE, 0.0);
+    let output = Output::new(StereoSample::ONE, 0.0, BUFFER_SIZE);
 
     assert_eq!(output.id(), OUTPUT_MODULE_ID);
     assert_eq!(output.output_type(), DataType::Audio);
@@ -208,13 +208,13 @@ fn module_identity_is_fixed() {
 #[test]
 #[should_panic(expected = "Output module doesn't have output slot.")]
 fn set_output_slot_panics() {
-    let mut output = Output::new(StereoSample::ONE, 0.0);
+    let mut output = Output::new(StereoSample::ONE, 0.0, BUFFER_SIZE);
     output.set_output_slot(0);
 }
 
 #[test]
 fn audio_input_slot_comes_from_the_direct_source() {
-    let mut output = Output::new(StereoSample::ONE, 0.0);
+    let mut output = Output::new(StereoSample::ONE, 0.0, BUFFER_SIZE);
 
     output.set_input_slots(&[
         InputSlots::Spectral {
@@ -240,7 +240,7 @@ fn audio_input_slot_comes_from_the_direct_source() {
 
 #[test]
 fn kill_and_reset_events_update_every_channel() {
-    let mut output = Output::new(StereoSample::ONE, from_ms(10.0));
+    let mut output = Output::new(StereoSample::ONE, from_ms(10.0), BUFFER_SIZE);
 
     output.process_events(&[
         kill_event(2, 6),
@@ -282,7 +282,7 @@ fn kill_and_reset_events_update_every_channel() {
 
 #[test]
 fn poll_ignores_voices_that_are_already_done() {
-    let output = Output::new(StereoSample::ONE, from_ms(10.0));
+    let output = Output::new(StereoSample::ONE, from_ms(10.0), BUFFER_SIZE);
     let mut decaying = [DecayingVoice::new(0)];
 
     output.poll_decaying_voices(&mut decaying);
@@ -293,7 +293,7 @@ fn poll_ignores_voices_that_are_already_done() {
 #[test]
 fn poll_keeps_an_active_voice_until_the_kill_fade_finishes() {
     let kill_time = from_ms(10.0);
-    let mut output = Output::new(StereoSample::ONE, kill_time);
+    let mut output = Output::new(StereoSample::ONE, kill_time, BUFFER_SIZE);
 
     let mut active = [DecayingVoice::new(3)];
     active[0].mark_active();
@@ -333,7 +333,7 @@ fn poll_keeps_an_active_voice_until_the_kill_fade_finishes() {
 #[test]
 fn poll_stays_active_when_one_channel_is_still_fading() {
     let kill_time = from_ms(10.0);
-    let mut output = Output::new(StereoSample::ONE, kill_time);
+    let mut output = Output::new(StereoSample::ONE, kill_time, BUFFER_SIZE);
 
     for channel in 0..NUM_CHANNELS {
         let voice = voice_mut(&mut output, channel, 1);
@@ -351,7 +351,7 @@ fn poll_stays_active_when_one_channel_is_still_fading() {
 
 #[test]
 fn kill_fade_is_a_no_op_until_the_voice_is_killing() {
-    let mut output = Output::new(StereoSample::ONE, from_ms(10.0));
+    let mut output = Output::new(StereoSample::ONE, from_ms(10.0), BUFFER_SIZE);
     let voice = voice_mut(&mut output, 0, 0);
     voice.killing_offset = Some(2);
     let mut buffer = [0.4; 4];
@@ -365,7 +365,7 @@ fn kill_fade_is_a_no_op_until_the_voice_is_killing() {
 
 #[test]
 fn short_kill_time_mutes_from_the_offset() {
-    let mut output = Output::new(StereoSample::ONE, 0.0);
+    let mut output = Output::new(StereoSample::ONE, 0.0, BUFFER_SIZE);
     output.process_events(&[kill_event(0, 3)]);
 
     let voice = voice_mut(&mut output, 0, 0);
@@ -389,7 +389,7 @@ fn short_kill_time_mutes_from_the_offset() {
     assert_eq!(muted, [0.0; 4]);
     assert_eq!(voice.killing_time, super::INSTANT_KILL_TIME * 0.5);
 
-    let mut curve = Output::new(StereoSample::ONE, super::INSTANT_KILL_TIME);
+    let mut curve = Output::new(StereoSample::ONE, super::INSTANT_KILL_TIME, BUFFER_SIZE);
     let voice = voice_mut(&mut curve, 0, 0);
     voice.killing = true;
     let mut boundary = [1.0; 2];
@@ -401,7 +401,7 @@ fn short_kill_time_mutes_from_the_offset() {
 #[test]
 fn kill_fade_starts_at_unity_and_reaches_silence() {
     let kill_time = from_ms(2.0);
-    let mut output = Output::new(StereoSample::ONE, kill_time);
+    let mut output = Output::new(StereoSample::ONE, kill_time, BUFFER_SIZE);
     let voice = voice_mut(&mut output, 0, 0);
     voice.killing = true;
     voice.killing_offset = Some(2);
@@ -425,8 +425,8 @@ fn kill_fade_starts_at_unity_and_reaches_silence() {
 #[test]
 fn kill_fade_continues_across_calls() {
     let kill_time = from_ms(5.0);
-    let mut continued = Output::new(StereoSample::ONE, kill_time);
-    let mut once = Output::new(StereoSample::ONE, kill_time);
+    let mut continued = Output::new(StereoSample::ONE, kill_time, BUFFER_SIZE);
+    let mut once = Output::new(StereoSample::ONE, kill_time, BUFFER_SIZE);
 
     for output in [&mut continued, &mut once] {
         voice_mut(output, 0, 0).killing = true;
@@ -462,7 +462,7 @@ fn kill_fade_continues_across_calls() {
 #[test]
 fn kill_at_the_end_of_the_block_waits_for_the_next_block() {
     let kill_time = from_ms(10.0);
-    let mut output = Output::new(StereoSample::ONE, kill_time);
+    let mut output = Output::new(StereoSample::ONE, kill_time, BUFFER_SIZE);
     let voice = voice_mut(&mut output, 0, 0);
     voice.killing = true;
     voice.killing_offset = Some(4);
@@ -525,7 +525,7 @@ fn volume_replaces_non_finite_samples_with_silence() {
 
 #[test]
 fn read_output_copies_each_channel() {
-    let mut output = Output::new(StereoSample::ONE, 0.0);
+    let mut output = Output::new(StereoSample::ONE, 0.0, BUFFER_SIZE);
 
     for (channel, buffer) in output.output.iter_mut().enumerate() {
         for (index, sample) in buffer.iter_mut().enumerate() {
@@ -543,7 +543,7 @@ fn read_output_copies_each_channel() {
 
 #[test]
 fn read_output_decimates_when_oversampling() {
-    let mut output = Output::new(StereoSample::ONE, 0.0);
+    let mut output = Output::new(StereoSample::ONE, 0.0, BUFFER_SIZE);
     let mut oracle = IirDecimator::new();
 
     for sample in &mut output.output[0][..8] {
@@ -560,20 +560,21 @@ fn read_output_decimates_when_oversampling() {
         [&mut expected_left, &mut expected_right],
     );
 
-    let mut left = vec![-1.0; 130];
-    let mut right = vec![-1.0; 130];
+    let decimated = BUFFER_SIZE / 2;
+    let mut left = vec![-1.0; decimated + 2];
+    let mut right = vec![-1.0; decimated + 2];
     output.read_output(true, &mut [&mut left[..], &mut right[..]]);
 
     assert_eq!(&left[..4], expected_left.as_slice());
     assert_eq!(&right[..4], expected_right.as_slice());
     assert!(left[..4].iter().all(|sample| sample.is_finite()));
-    assert!(left[128..].iter().all(|sample| *sample == -1.0));
-    assert!(right[128..].iter().all(|sample| *sample == -1.0));
+    assert!(left[decimated..].iter().all(|sample| *sample == -1.0));
+    assert!(right[decimated..].iter().all(|sample| *sample == -1.0));
 }
 
 #[test]
 fn trigger_stage_leaves_output_and_meters_untouched() {
-    let mut output = Output::new(StereoSample::ONE, 0.0);
+    let mut output = Output::new(StereoSample::ONE, 0.0, BUFFER_SIZE);
     output.output[0][0] = Sample::NAN;
     output.output[1][BUFFER_SIZE - 1] = 3.0;
 
@@ -587,7 +588,7 @@ fn trigger_stage_leaves_output_and_meters_untouched() {
 
 #[test]
 fn process_with_no_voices_clears_output_and_publishes_silence() {
-    let mut output = Output::new(StereoSample::splat(2.0), 0.0);
+    let mut output = Output::new(StereoSample::splat(2.0), 0.0, BUFFER_SIZE);
     output.output[0].fill(0.7);
     output.output[1].fill(-0.4);
 

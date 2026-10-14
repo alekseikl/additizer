@@ -1,15 +1,15 @@
 use std::{f32::consts::TAU, hint::black_box};
 
 use addi_dsp::{
-    Sample,
     filters::{
         control::MAX_PRE_Q,
         svf::{LaneInputs, SvfState, SvfType},
     },
+    Sample,
 };
-use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 
-/// Matches `addi_engine::MAX_BLOCK_SIZE`.
+/// 48 kHz host block.
 const MAX_BLOCK_SIZE: usize = 128;
 
 const SAMPLE_RATE: Sample = 48_000.0;

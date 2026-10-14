@@ -117,6 +117,7 @@ pub struct UiBridge<E: EngineLinks = crate::links::PluginLinks> {
     ui_end: E::UiEnd,
     routing: RoutingState,
     engine_params: EngineParams,
+    block_size: usize,
     voices: VoicesStatus,
     modulated_inputs: FxHashMap<InputId, ModulatedInput>,
     module_bridges: FxHashMap<ModuleId, Option<ModuleBridge<E>>>,
@@ -131,6 +132,7 @@ impl<E: EngineLinks> UiBridge<E> {
         let ui_end = engine_lock.take_ui_end()?;
         let routing = engine_lock.get_routing_state();
         let engine_params = engine_lock.get_engine_params();
+        let block_size = engine_lock.block_size();
 
         drop(engine_lock);
 
@@ -148,6 +150,7 @@ impl<E: EngineLinks> UiBridge<E> {
             ui_end,
             routing,
             engine_params,
+            block_size,
             voices: VoicesStatus::default(),
             modulated_inputs: FxHashMap::default(),
             module_bridges: bridges,
@@ -237,6 +240,10 @@ impl<E: EngineLinks> UiBridge<E> {
 
     pub fn engine_params(&self) -> &EngineParams {
         &self.engine_params
+    }
+
+    pub fn block_size(&self) -> usize {
+        self.block_size
     }
 
     pub fn voices_status(&self) -> &VoicesStatus {
@@ -748,12 +755,6 @@ impl<E: EngineLinks> UiBridge<E> {
     pub fn set_kill_same_note(&mut self, kill_same_note: bool) {
         if self.ui_end.set_kill_same_note(kill_same_note) {
             self.engine_params.kill_same_note = kill_same_note;
-        }
-    }
-
-    pub fn set_block_size(&mut self, block_size: usize) {
-        if self.ui_end.set_block_size(block_size) {
-            self.engine_params.block_size = block_size;
         }
     }
 

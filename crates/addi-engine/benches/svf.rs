@@ -25,8 +25,9 @@ mod aux;
 
 use aux::Audio;
 
-/// Matches `addi_engine::MAX_BLOCK_SIZE`.
+/// 48 kHz host block.
 const BLOCK: usize = 128;
+const BUFFER_SIZE: usize = BLOCK + 1;
 
 const SAMPLE_RATE: Sample = 48_000.0;
 
@@ -86,13 +87,16 @@ fn ctx<'a>(
 }
 
 fn svf(filter_type: SvfType, audio_slot: usize, arena: &mut OutputsArena) -> Svf {
-    let mut svf = Svf::from_config(&SvfConfig {
-        id: 2,
-        filter_type,
-        cutoff: StereoSample::splat(CUTOFF_OCTAVES),
-        resonance: StereoSample::splat(resonance_for_q(Q)),
-        ..SvfConfig::default()
-    });
+    let mut svf = Svf::from_config(
+        &SvfConfig {
+            id: 2,
+            filter_type,
+            cutoff: StereoSample::splat(CUTOFF_OCTAVES),
+            resonance: StereoSample::splat(resonance_for_q(Q)),
+            ..SvfConfig::default()
+        },
+        BUFFER_SIZE,
+    );
 
     svf.set_input_slots(&[InputSlots::Direct {
         input_type: Input::Audio,
@@ -111,7 +115,7 @@ fn bench_svf(c: &mut Criterion) {
 
     let voices = voices();
     let smooth_params = SmoothedSampleParams::new(SAMPLE_RATE);
-    let mut arena = OutputsArena::new();
+    let mut arena = OutputsArena::new(BUFFER_SIZE);
     let mut audio = Audio::constant(1, 0.0);
     let mut audio_end = AudioEnd;
 

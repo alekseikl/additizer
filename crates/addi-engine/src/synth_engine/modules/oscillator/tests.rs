@@ -129,7 +129,7 @@ fn inverted_right_harmonics() -> HarmonicEditorConfig {
 #[test]
 fn mono_spectrum_defaults_to_false() {
     assert!(!OscillatorConfig::default().mono_spectrum);
-    assert!(!<Oscillator>::new(1).get_config().mono_spectrum);
+    assert!(!<Oscillator>::new(1, 16).get_config().mono_spectrum);
 }
 
 #[test]
@@ -144,11 +144,14 @@ fn mono_spectrum_defaults_when_missing_from_json() {
 
 #[test]
 fn mono_spectrum_round_trips_through_config() {
-    let osc = <Oscillator>::from_config(&OscillatorConfig {
-        id: 1,
-        mono_spectrum: true,
-        ..OscillatorConfig::default()
-    });
+    let osc = <Oscillator>::from_config(
+        &OscillatorConfig {
+            id: 1,
+            mono_spectrum: true,
+            ..OscillatorConfig::default()
+        },
+        16,
+    );
 
     assert!(osc.get_config().mono_spectrum);
 }
@@ -156,7 +159,10 @@ fn mono_spectrum_round_trips_through_config() {
 #[test]
 fn phase_random_stereo_defaults_to_shared_phases() {
     assert_eq!(OscillatorConfig::default().phase_random_stereo, 0.0);
-    assert_eq!(<Oscillator>::new(1).get_config().phase_random_stereo, 0.0);
+    assert_eq!(
+        <Oscillator>::new(1, 16).get_config().phase_random_stereo,
+        0.0
+    );
 }
 
 #[test]
@@ -245,7 +251,7 @@ fn unison_style_defaults_to_manual_and_full_stereo() {
     assert_eq!(config.unison_style, UnisonStyle::Manual);
     assert_eq!(config.unison_stereo, 1.0);
     assert_eq!(
-        <Oscillator>::new(1).get_config().unison_style,
+        <Oscillator>::new(1, 16).get_config().unison_style,
         UnisonStyle::Manual
     );
 }
@@ -524,7 +530,7 @@ fn shaped_unison_shapes_levels_and_spreads_channels(style: UnisonStyle) {
 
 #[test]
 fn set_mono_spectrum_updates_config() {
-    let mut osc = <Oscillator>::new(1);
+    let mut osc = <Oscillator>::new(1, 16);
 
     osc.set_mono_spectrum(true);
 
@@ -534,7 +540,7 @@ fn set_mono_spectrum_updates_config() {
 #[test]
 fn full_fft_size_defaults_to_false() {
     assert!(!OscillatorConfig::default().full_fft_size);
-    assert!(!<Oscillator>::new(1).get_config().full_fft_size);
+    assert!(!<Oscillator>::new(1, 16).get_config().full_fft_size);
 }
 
 #[test]
@@ -549,18 +555,21 @@ fn full_fft_size_defaults_when_missing_from_json() {
 
 #[test]
 fn full_fft_size_round_trips_through_config() {
-    let osc = <Oscillator>::from_config(&OscillatorConfig {
-        id: 1,
-        full_fft_size: true,
-        ..OscillatorConfig::default()
-    });
+    let osc = <Oscillator>::from_config(
+        &OscillatorConfig {
+            id: 1,
+            full_fft_size: true,
+            ..OscillatorConfig::default()
+        },
+        16,
+    );
 
     assert!(osc.get_config().full_fft_size);
 }
 
 #[test]
 fn set_full_fft_size_updates_config() {
-    let mut osc = <Oscillator>::new(1);
+    let mut osc = <Oscillator>::new(1, 16);
 
     osc.set_full_fft_size(true);
 
@@ -1190,7 +1199,7 @@ fn render_voice_samples_matches_scalar_reference() {
         ),
     ];
 
-    let mut osc = Oscillator::new(1);
+    let mut osc = Oscillator::new(1, 32);
 
     for case in cases {
         let wave_from = patterned_wave(case.from_size, 1.7);
@@ -1225,7 +1234,7 @@ fn render_voice_samples_continues_across_a_split_range() {
     let wave_to = patterned_wave(case.to_size, 2.9);
     let (expected, expected_phases) = reference_render(&case, &wave_from, &wave_to);
 
-    let mut osc = Oscillator::new(1);
+    let mut osc = Oscillator::new(1, case.samples);
     load_case(&mut osc, &case, &wave_from, &wave_to);
 
     let mut actual = vec![RENDER_SENTINEL; case.samples];
@@ -1246,7 +1255,7 @@ fn render_voice_samples_empty_range_is_a_no_op() {
     let case = render_case("empty", 4, WaveformSize::Full, WaveformSize::Half);
     let wave_from = patterned_wave(case.from_size, 1.7);
     let wave_to = patterned_wave(case.to_size, 2.9);
-    let mut osc = Oscillator::new(1);
+    let mut osc = Oscillator::new(1, 32);
     load_case(&mut osc, &case, &wave_from, &wave_to);
 
     let phases_before = osc.voices.at(case.channel, case.voice).phases;

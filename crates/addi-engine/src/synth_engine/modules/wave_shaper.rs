@@ -116,6 +116,15 @@ struct Buffers {
     clipping_level_mod_input: Buffer,
 }
 
+impl Buffers {
+    fn new(buffer_size: usize) -> Self {
+        Self {
+            distortion_mod_input: zero_buffer(buffer_size),
+            clipping_level_mod_input: zero_buffer(buffer_size),
+        }
+    }
+}
+
 pub struct WaveShaper<L: WaveShaperLinks = stub::Links> {
     id: ModuleId,
     params: Params,
@@ -132,14 +141,17 @@ impl<L: WaveShaperLinks> WaveShaper<L> {
         self.ui_end.take()
     }
 
-    pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&WaveShaperConfig {
-            id,
-            ..WaveShaperConfig::default()
-        })
+    pub fn new(id: ModuleId, buffer_size: usize) -> Self {
+        Self::from_config(
+            &WaveShaperConfig {
+                id,
+                ..WaveShaperConfig::default()
+            },
+            buffer_size,
+        )
     }
 
-    pub fn from_config(config: &config::WaveShaperConfig) -> Self {
+    pub fn from_config(config: &config::WaveShaperConfig, buffer_size: usize) -> Self {
         let (audio_end, ui_end) = L::create_link_pair();
 
         Self {
@@ -148,10 +160,7 @@ impl<L: WaveShaperLinks> WaveShaper<L> {
             channel_params: array::from_fn(|channel_idx| {
                 ChannelParams::from_config(config, channel_idx)
             }),
-            buffers: Buffers {
-                distortion_mod_input: zero_buffer(),
-                clipping_level_mod_input: zero_buffer(),
-            },
+            buffers: Buffers::new(buffer_size),
             audio_end,
             ui_end,
             inputs: Inputs::default(),

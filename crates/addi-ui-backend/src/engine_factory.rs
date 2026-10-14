@@ -1,6 +1,6 @@
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, Ordering},
+    Arc,
 };
 
 use arc_swap::{ArcSwap, ArcSwapOption};
@@ -99,7 +99,9 @@ impl EngineFactory {
     }
 
     pub fn load_preset(&self, preset: &Preset) -> bool {
-        let previous = self.oversampling.swap(preset.oversampling, Ordering::AcqRel);
+        let previous = self
+            .oversampling
+            .swap(preset.oversampling, Ordering::AcqRel);
 
         let Some(new_engine) = self.build_engine(&preset.engine) else {
             self.oversampling.store(previous, Ordering::Release);

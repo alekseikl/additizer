@@ -265,15 +265,15 @@ struct Buffers {
     frequency_shift: Buffer,
 }
 
-impl Default for Buffers {
-    fn default() -> Self {
+impl Buffers {
+    fn new(buffer_size: usize) -> Self {
         Self {
             tmp_wave: Waveform::new(),
             tmp_spectral: [ComplexSample::ZERO; DFT_BUFFER_SIZE],
             scratch: [ComplexSample::ZERO; DFT_BUFFER_SIZE],
-            phase_inc: zero_buffer(),
-            phase_shift: zero_buffer(),
-            frequency_shift: zero_buffer(),
+            phase_inc: zero_buffer(buffer_size),
+            phase_shift: zero_buffer(buffer_size),
+            frequency_shift: zero_buffer(buffer_size),
         }
     }
 }
@@ -407,14 +407,17 @@ impl<L: OscillatorLinks> Oscillator<L> {
         self.ui_end.take()
     }
 
-    pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&OscillatorConfig {
-            id,
-            ..OscillatorConfig::default()
-        })
+    pub fn new(id: ModuleId, buffer_size: usize) -> Self {
+        Self::from_config(
+            &OscillatorConfig {
+                id,
+                ..OscillatorConfig::default()
+            },
+            buffer_size,
+        )
     }
 
-    pub fn from_config(config: &config::OscillatorConfig) -> Self {
+    pub fn from_config(config: &config::OscillatorConfig, buffer_size: usize) -> Self {
         let (audio_end, ui_end) = L::create_link_pair();
 
         let mut osc = Self {
@@ -423,7 +426,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             channel_params: array::from_fn(|channel_idx| {
                 ChannelParams::from_config(config, channel_idx)
             }),
-            buffers: Buffers::default(),
+            buffers: Buffers::new(buffer_size),
             ifft: IfftPlanners::new(),
             random: Pcg32::new(420, 1337),
             audio_end,

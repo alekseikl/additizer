@@ -11,7 +11,7 @@ fn slot(src_slot: usize) -> InputSlot {
 
 #[test]
 fn get_scalar_reads_control_output() {
-    let mut arena = OutputsArena::new();
+    let mut arena = OutputsArena::new(8);
     let src_slot = arena.allocate_samples_slot(true);
 
     assert_eq!(
@@ -23,7 +23,7 @@ fn get_scalar_reads_control_output() {
 #[test]
 #[should_panic(expected = "audio-rate")]
 fn get_scalar_panics_for_audio_output() {
-    let mut arena = OutputsArena::new();
+    let mut arena = OutputsArena::new(8);
     let src_slot = arena.allocate_samples_slot(false);
 
     let _ = arena.get_scalar(&[slot(src_slot)], 0, 0, Some(0));
@@ -32,7 +32,7 @@ fn get_scalar_panics_for_audio_output() {
 #[test]
 #[should_panic(expected = "audio-rate")]
 fn get_scalar_panics_for_audio_rate_modulator() {
-    let mut arena = OutputsArena::new();
+    let mut arena = OutputsArena::new(8);
     let slots = [InputSlot {
         src_slot: arena.allocate_samples_slot(true),
         modulation_slot: Some(arena.allocate_samples_slot(false)),
@@ -44,7 +44,7 @@ fn get_scalar_panics_for_audio_rate_modulator() {
 
 #[test]
 fn reused_slot_updates_rate() {
-    let mut arena = OutputsArena::new();
+    let mut arena = OutputsArena::new(8);
     let src_slot = arena.allocate_samples_slot(false);
     arena.free_samples_slot(src_slot);
 
@@ -62,7 +62,7 @@ fn add_buff(arena: &OutputsArena, slots: &[InputSlot], is_control: bool) -> bool
 
 #[test]
 fn add_buff_to_reads_control_as_control() {
-    let mut arena = OutputsArena::new();
+    let mut arena = OutputsArena::new(8);
     let src_slot = arena.allocate_samples_slot(true);
 
     assert!(add_buff(&arena, &[slot(src_slot)], true));
@@ -70,7 +70,7 @@ fn add_buff_to_reads_control_as_control() {
 
 #[test]
 fn add_buff_to_reads_audio_or_control_as_audio() {
-    let mut arena = OutputsArena::new();
+    let mut arena = OutputsArena::new(8);
     let audio_slot = arena.allocate_samples_slot(false);
     let control_slot = arena.allocate_samples_slot(true);
 
@@ -81,7 +81,7 @@ fn add_buff_to_reads_audio_or_control_as_audio() {
 #[test]
 #[should_panic(expected = "audio-rate")]
 fn add_buff_to_panics_for_audio_as_control() {
-    let mut arena = OutputsArena::new();
+    let mut arena = OutputsArena::new(8);
     let src_slot = arena.allocate_samples_slot(false);
 
     let _ = add_buff(&arena, &[slot(src_slot)], true);
@@ -90,7 +90,7 @@ fn add_buff_to_panics_for_audio_as_control() {
 #[test]
 #[should_panic(expected = "audio-rate")]
 fn add_buff_to_panics_for_audio_rate_modulator_as_control() {
-    let mut arena = OutputsArena::new();
+    let mut arena = OutputsArena::new(8);
     let slots = [InputSlot {
         src_slot: arena.allocate_samples_slot(true),
         modulation_slot: Some(arena.allocate_samples_slot(false)),

@@ -93,10 +93,6 @@ impl engine_io::EngineUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_block_size(&mut self, _block_size: usize) -> bool {
-        self.diverge()
-    }
-
     fn set_voice_kill_time(&mut self, _voice_kill_time: Sample) -> bool {
         self.diverge()
     }

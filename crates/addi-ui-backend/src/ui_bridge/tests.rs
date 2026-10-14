@@ -218,7 +218,7 @@ fn duplicate_module_places_copy_at_the_given_position() {
 
 #[test]
 fn ui_event_sets_mono_spectrum() {
-    let mut osc = Oscillator::<crate::links::oscillator::Links>::new(1);
+    let mut osc = Oscillator::<crate::links::oscillator::Links>::new(1, 16);
     let mut bridge = OscillatorUiBridge::try_new(&mut osc).expect("ui end");
 
     bridge.set_mono_spectrum(true);
@@ -230,7 +230,7 @@ fn ui_event_sets_mono_spectrum() {
 
 #[test]
 fn ui_event_sets_full_fft_size() {
-    let mut osc = Oscillator::<crate::links::oscillator::Links>::new(1);
+    let mut osc = Oscillator::<crate::links::oscillator::Links>::new(1, 16);
     let mut bridge = OscillatorUiBridge::try_new(&mut osc).expect("ui end");
 
     bridge.set_full_fft_size(true);
@@ -246,10 +246,13 @@ fn move_filter_reorders_bands() {
         cutoff_hz,
         ..EqFilter::default()
     });
-    let mut eq = SpectralEq::<crate::links::spectral_eq::Links>::from_config(&SpectralEqConfig {
-        filters: bands.to_vec(),
-        ..SpectralEqConfig::default()
-    });
+    let mut eq = SpectralEq::<crate::links::spectral_eq::Links>::from_config(
+        &SpectralEqConfig {
+            filters: bands.to_vec(),
+            ..SpectralEqConfig::default()
+        },
+        16,
+    );
     let mut bridge = SpectralEqUiBridge::try_new(&mut eq).unwrap();
 
     bridge.move_filter(0, 0);

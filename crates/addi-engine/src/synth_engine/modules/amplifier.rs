@@ -107,6 +107,14 @@ struct Buffers {
     gain_mod_input: Buffer,
 }
 
+impl Buffers {
+    fn new(buffer_size: usize) -> Self {
+        Self {
+            gain_mod_input: zero_buffer(buffer_size),
+        }
+    }
+}
+
 pub struct Amplifier<L: AmplifierLinks = stub::Links> {
     id: ModuleId,
     channel_params: [ChannelParams; NUM_CHANNELS],
@@ -123,14 +131,17 @@ impl<L: AmplifierLinks> Amplifier<L> {
         self.ui_end.take()
     }
 
-    pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&AmplifierConfig {
-            id,
-            ..AmplifierConfig::default()
-        })
+    pub fn new(id: ModuleId, buffer_size: usize) -> Self {
+        Self::from_config(
+            &AmplifierConfig {
+                id,
+                ..AmplifierConfig::default()
+            },
+            buffer_size,
+        )
     }
 
-    pub fn from_config(config: &config::AmplifierConfig) -> Self {
+    pub fn from_config(config: &config::AmplifierConfig, buffer_size: usize) -> Self {
         let (audio_end, ui_end) = L::create_link_pair();
 
         Self {
@@ -138,9 +149,7 @@ impl<L: AmplifierLinks> Amplifier<L> {
             channel_params: array::from_fn(|channel_idx| {
                 ChannelParams::from_config(config, channel_idx)
             }),
-            buffers: Buffers {
-                gain_mod_input: zero_buffer(),
-            },
+            buffers: Buffers::new(buffer_size),
             audio_end,
             ui_end,
             inputs: Inputs::default(),

@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     synth_engine::from_ms,
     synth_engine::{
-        Input, MAX_BLOCK_SIZE, SPECTRAL_BUFFER_SIZE, Sample, StereoSample,
-        amplifier::AmplifierConfig, envelope::EnvelopeConfig, expressions::ExpressionsConfig,
+        Input, SPECTRAL_BUFFER_SIZE, Sample, StereoSample, amplifier::AmplifierConfig,
+        envelope::EnvelopeConfig, expressions::ExpressionsConfig,
         external_param::ExternalParamConfig, harmonic_editor::HarmonicEditorConfig, lfo::LfoConfig,
         mixer::MixerConfig, oscillator::OscillatorConfig, pitch::PitchConfig, routing::ModuleId,
         spectral_band_select::SpectralBandSelectConfig, spectral_blend::SpectralBlendConfig,
@@ -25,7 +25,6 @@ pub struct EngineParams {
     /// Retriggering a releasing note kills that voice. When false, the new note layers on it.
     #[serde(default = "default_kill_same_note")]
     pub kill_same_note: bool,
-    pub block_size: usize,
     pub voice_kill_time: Sample,
     pub output_gain: StereoSample,
 }
@@ -36,7 +35,6 @@ impl Default for EngineParams {
             num_voices: 1,
             legato: false,
             kill_same_note: default_kill_same_note(),
-            block_size: MAX_BLOCK_SIZE,
             voice_kill_time: from_ms(30.0),
             output_gain: 0.25.into(),
         }

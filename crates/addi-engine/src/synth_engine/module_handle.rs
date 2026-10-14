@@ -126,17 +126,17 @@ impl<E: EngineLinks> ModuleHandle<E> {
         }
     }
 
-    pub(super) fn new(module_type: ModuleType, id: ModuleId) -> Self {
+    pub(super) fn new(module_type: ModuleType, id: ModuleId, buffer_size: usize) -> Self {
         match module_type {
             ModuleType::Output => unreachable!("output is created with the engine"),
-            ModuleType::Oscillator => Self::Oscillator(Box::new(Oscillator::new(id))),
+            ModuleType::Oscillator => Self::Oscillator(Box::new(Oscillator::new(id, buffer_size))),
             ModuleType::Envelope => Self::Envelope(Box::new(Envelope::new(id))),
-            ModuleType::Lfo => Self::Lfo(Box::new(Lfo::new(id))),
-            ModuleType::Pitch => Self::Pitch(Box::new(Pitch::new(id))),
-            ModuleType::Amplifier => Self::Amplifier(Box::new(Amplifier::new(id))),
-            ModuleType::Mixer => Self::Mixer(Box::new(Mixer::new(id))),
-            ModuleType::WaveShaper => Self::WaveShaper(Box::new(WaveShaper::new(id))),
-            ModuleType::Svf => Self::Svf(Box::new(Svf::new(id))),
+            ModuleType::Lfo => Self::Lfo(Box::new(Lfo::new(id, buffer_size))),
+            ModuleType::Pitch => Self::Pitch(Box::new(Pitch::new(id, buffer_size))),
+            ModuleType::Amplifier => Self::Amplifier(Box::new(Amplifier::new(id, buffer_size))),
+            ModuleType::Mixer => Self::Mixer(Box::new(Mixer::new(id, buffer_size))),
+            ModuleType::WaveShaper => Self::WaveShaper(Box::new(WaveShaper::new(id, buffer_size))),
+            ModuleType::Svf => Self::Svf(Box::new(Svf::new(id, buffer_size))),
             ModuleType::SpectralFilter => Self::SpectralFilter(Box::new(SpectralFilter::new(id))),
             ModuleType::SpectralEq => Self::SpectralEq(Box::new(SpectralEq::new(id))),
             ModuleType::SpectralBandSelect => {
@@ -146,25 +146,31 @@ impl<E: EngineLinks> ModuleHandle<E> {
             ModuleType::SpectralMixer => Self::SpectralMixer(Box::new(SpectralMixer::new(id))),
             ModuleType::HarmonicEditor => Self::HarmonicEditor(Box::new(HarmonicEditor::new(id))),
             ModuleType::SpectralNoise => Self::SpectralNoise(Box::new(SpectralNoise::new(id))),
-            ModuleType::Expressions => Self::Expressions(Box::new(Expressions::new(id))),
-            ModuleType::ExternalParam => Self::ExternalParam(Box::new(ExternalParam::new(id))),
+            ModuleType::Expressions => {
+                Self::Expressions(Box::new(Expressions::new(id, buffer_size)))
+            }
+            ModuleType::ExternalParam => {
+                Self::ExternalParam(Box::new(ExternalParam::new(id, buffer_size)))
+            }
         }
     }
 
-    pub(super) fn from_config(module_cfg: &ModuleConfig) -> Self {
+    pub(super) fn from_config(module_cfg: &ModuleConfig, buffer_size: usize) -> Self {
         match module_cfg {
             ModuleConfig::Oscillator(cfg) => {
-                Self::Oscillator(Box::new(Oscillator::from_config(cfg)))
+                Self::Oscillator(Box::new(Oscillator::from_config(cfg, buffer_size)))
             }
             ModuleConfig::Envelope(cfg) => Self::Envelope(Box::new(Envelope::from_config(cfg))),
-            ModuleConfig::Lfo(cfg) => Self::Lfo(Box::new(Lfo::from_config(cfg))),
-            ModuleConfig::Pitch(cfg) => Self::Pitch(Box::new(Pitch::from_config(cfg))),
-            ModuleConfig::Amplifier(cfg) => Self::Amplifier(Box::new(Amplifier::from_config(cfg))),
-            ModuleConfig::Mixer(cfg) => Self::Mixer(Box::new(Mixer::from_config(cfg))),
-            ModuleConfig::WaveShaper(cfg) => {
-                Self::WaveShaper(Box::new(WaveShaper::from_config(cfg)))
+            ModuleConfig::Lfo(cfg) => Self::Lfo(Box::new(Lfo::from_config(cfg, buffer_size))),
+            ModuleConfig::Pitch(cfg) => Self::Pitch(Box::new(Pitch::from_config(cfg, buffer_size))),
+            ModuleConfig::Amplifier(cfg) => {
+                Self::Amplifier(Box::new(Amplifier::from_config(cfg, buffer_size)))
             }
-            ModuleConfig::Svf(cfg) => Self::Svf(Box::new(Svf::from_config(cfg))),
+            ModuleConfig::Mixer(cfg) => Self::Mixer(Box::new(Mixer::from_config(cfg, buffer_size))),
+            ModuleConfig::WaveShaper(cfg) => {
+                Self::WaveShaper(Box::new(WaveShaper::from_config(cfg, buffer_size)))
+            }
+            ModuleConfig::Svf(cfg) => Self::Svf(Box::new(Svf::from_config(cfg, buffer_size))),
             ModuleConfig::SpectralFilter(cfg) => {
                 Self::SpectralFilter(Box::new(SpectralFilter::from_config(cfg)))
             }
@@ -187,10 +193,10 @@ impl<E: EngineLinks> ModuleHandle<E> {
                 Self::SpectralNoise(Box::new(SpectralNoise::from_config(cfg)))
             }
             ModuleConfig::Expressions(cfg) => {
-                Self::Expressions(Box::new(Expressions::from_config(cfg)))
+                Self::Expressions(Box::new(Expressions::from_config(cfg, buffer_size)))
             }
             ModuleConfig::ExternalParam(cfg) => {
-                Self::ExternalParam(Box::new(ExternalParam::from_config(cfg)))
+                Self::ExternalParam(Box::new(ExternalParam::from_config(cfg, buffer_size)))
             }
         }
     }

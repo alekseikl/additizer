@@ -10,8 +10,8 @@ use std::hint::black_box;
 use std::time::Instant;
 
 use addi_engine::{
-    ComplexSample, MAX_BLOCK_SIZE, NUM_CHANNELS, Oscillator, PlayingVoice, SPECTRAL_BUFFER_SIZE,
-    Sample, SmoothedSampleParams, SpectralBuffer, StereoSample, note_to_pitch,
+    ComplexSample, NUM_CHANNELS, Oscillator, PlayingVoice, SPECTRAL_BUFFER_SIZE, Sample,
+    SmoothedSampleParams, SpectralBuffer, StereoSample, note_to_pitch,
     oscillator::{MAX_UNISON_VOICES, OscillatorConfig},
     routing::{Input, InputSlots, OutputsArena, ProcessContext, ProcessParams},
     stub::AudioEnd,
@@ -24,7 +24,9 @@ mod aux;
 
 use aux::{Control, Spectral};
 
-const BLOCK: usize = MAX_BLOCK_SIZE;
+/// 48 kHz host block.
+const BLOCK: usize = 128;
+const BUFFER_SIZE: usize = BLOCK + 1;
 const SAMPLE_RATE: Sample = 48_000.0;
 const VOICE: usize = 0;
 
@@ -84,7 +86,7 @@ fn ctx<'a>(
 
 impl Rig {
     fn new(config: OscillatorConfig) -> Self {
-        let mut arena = OutputsArena::new();
+        let mut arena = OutputsArena::new(BUFFER_SIZE);
         let mut spectrum = Spectral::new(1, &spectrum());
         let mut pitch = Control::constant(3, 0.0);
         let mut audio_end = AudioEnd;
@@ -96,7 +98,7 @@ impl Rig {
         let voices = [voice];
         spectrum.process(&mut ctx(&mut arena, &mut audio_end, &voices));
 
-        let mut osc = Oscillator::from_config(&config);
+        let mut osc = Oscillator::from_config(&config, BUFFER_SIZE);
         osc.set_input_slots(&[
             InputSlots::Spectral {
                 input_type: Input::Spectrum,

@@ -132,7 +132,7 @@ fn channels_pair_mut_exposes_both_voices() {
 
 #[test]
 fn pair_buffers_mut_orders_stereo_pairs() {
-    let mut layout = new_voices_layout::<SamplesOutput>();
+    let mut layout = new_voices_layout_with(|| SamplesOutput::new(4));
 
     {
         let buffers = layout.pair_buffers_mut(1);

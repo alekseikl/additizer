@@ -87,8 +87,11 @@ pub use utils::{MAX_LEVEL_DB, MIN_LEVEL_DB};
 #[cfg(test)]
 mod tests;
 
-pub const MAX_BLOCK_SIZE: usize = 128;
 pub const AVAILABLE_VOICES: usize = MAX_AVAILABLE_VOICES;
+
+/// One sample past the internal block. Control-rate signals store the
+/// first sample of the next frame there.
+pub const CONTROL_EXT: usize = 1;
 
 type ModulesMap<E> = FxHashMap<ModuleId, ModuleHandle<E>>;
 pub type RoutingMap = FxHashMap<InputId, InputSource>;
@@ -105,7 +108,8 @@ pub struct SynthEngine<E: EngineLinks = stub::StubLinks> {
     next_id: ModuleId,
     host_sample_rate: f32,
     block_size: usize,
-    oversampling: bool,
+    oversampling: usize,
+    buffer_size: usize,
     modules: ModulesMap<E>,
     input_sources: RoutingMap,
     process_order: Vec<ModuleId>,
@@ -124,11 +128,24 @@ impl<E: EngineLinks> SynthEngine<E> {
     ) -> Option<Self> {
         let (audio_end, ui_end) = E::create_link_pair();
 
+        const BASE_SAMPLE_RATE: Sample = 48_000.0;
+        const BASE_BLOCK_SIZE: usize = 128;
+        let power = (host_sample_rate / BASE_SAMPLE_RATE).log2();
+        let power = if power.is_finite() {
+            power.round().clamp(0.0, 2.0) as u32
+        } else {
+            0
+        };
+        let oversampling = if power == 0 && oversampling { 2 } else { 1 };
+        let block_size = BASE_BLOCK_SIZE << power;
+        let buffer_size = block_size * oversampling + CONTROL_EXT;
+
         let mut engine = Self {
             next_id: 1,
             host_sample_rate,
-            block_size: Self::clamp_block_size(cfg.engine.block_size),
+            block_size,
             oversampling,
+            buffer_size,
             modules: ModulesMap::<E>::default(),
             input_sources: RoutingMap::default(),
             process_order: Vec::new(),
@@ -139,7 +156,7 @@ impl<E: EngineLinks> SynthEngine<E> {
             ),
             audio_end,
             ui_end,
-            outputs_arena: OutputsArena::new(),
+            outputs_arena: OutputsArena::new(buffer_size),
             pending_poly_modulations: Vec::with_capacity(64),
         };
 
@@ -148,13 +165,14 @@ impl<E: EngineLinks> SynthEngine<E> {
             ModuleHandle::Output(Box::new(Output::new(
                 cfg.engine.output_gain,
                 cfg.engine.voice_kill_time,
+                buffer_size,
             ))),
         );
 
         let mut max_module_id = MIN_MODULE_ID;
 
         for module_cfg in cfg.modules.iter() {
-            let mut module = ModuleHandle::<E>::from_config(module_cfg);
+            let mut module = ModuleHandle::<E>::from_config(module_cfg, buffer_size);
 
             let module_id = module.id();
 
@@ -175,7 +193,7 @@ impl<E: EngineLinks> SynthEngine<E> {
             Some(ModuleHandle::Pitch(_))
         ) {
             let mut pitch: ModuleHandle<E> =
-                ModuleHandle::Pitch(Box::new(Pitch::new(PITCH_MODULE_ID)));
+                ModuleHandle::Pitch(Box::new(Pitch::new(PITCH_MODULE_ID, buffer_size)));
             engine.outputs_arena.allocate_slot(&mut pitch);
 
             if let Some(previous) = engine.modules.insert(PITCH_MODULE_ID, pitch) {
@@ -219,11 +237,7 @@ impl<E: EngineLinks> SynthEngine<E> {
     }
 
     fn sample_rate(&self) -> Sample {
-        if self.oversampling {
-            2.0 * self.host_sample_rate
-        } else {
-            self.host_sample_rate
-        }
+        self.host_sample_rate * self.oversampling as Sample
     }
 
     pub fn get_engine_params(&self) -> EngineParams {
@@ -233,7 +247,6 @@ impl<E: EngineLinks> SynthEngine<E> {
             num_voices: voices.num_voices,
             legato: voices.legato,
             kill_same_note: voices.kill_same_note,
-            block_size: self.block_size,
             voice_kill_time: self.get_voice_kill_time(),
             output_gain: self.get_output_gain(),
         }
@@ -278,10 +291,6 @@ impl<E: EngineLinks> SynthEngine<E> {
         self.block_size
     }
 
-    pub fn set_block_size(&mut self, block_size: usize) {
-        self.block_size = Self::clamp_block_size(block_size);
-    }
-
     pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) {
         if let Some(ModuleHandle::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID) {
             output.set_voice_kill_time(voice_kill_time);
@@ -290,11 +299,7 @@ impl<E: EngineLinks> SynthEngine<E> {
 
     /// Map a host-buffer sample offset into the internal (possibly oversampled) block.
     fn to_internal_offset(&self, host_offset: usize) -> usize {
-        if self.oversampling {
-            host_offset * 2
-        } else {
-            host_offset
-        }
+        host_offset * self.oversampling
     }
 
     pub fn get_output_gain(&self) -> StereoSample {
@@ -321,13 +326,9 @@ impl<E: EngineLinks> SynthEngine<E> {
         num_voices.clamp(1, AVAILABLE_VOICES)
     }
 
-    fn clamp_block_size(block_size: usize) -> usize {
-        (block_size).clamp(4, MAX_BLOCK_SIZE)
-    }
-
     pub fn add_module(&mut self, module_type: ModuleType) -> ModuleId {
         let id = self.alloc_module_id();
-        let mut module = ModuleHandle::<E>::new(module_type, id);
+        let mut module = ModuleHandle::<E>::new(module_type, id, self.buffer_size);
 
         self.outputs_arena.allocate_slot(&mut module);
         self.modules.insert(id, module);
@@ -346,7 +347,7 @@ impl<E: EngineLinks> SynthEngine<E> {
 
         config.set_id(new_id);
 
-        let mut module = ModuleHandle::<E>::from_config(&config);
+        let mut module = ModuleHandle::<E>::from_config(&config, self.buffer_size);
 
         self.outputs_arena.allocate_slot(&mut module);
         self.modules.insert(new_id, module);
@@ -708,7 +709,6 @@ impl<E: EngineLinks> SynthEngine<E> {
                 UiEvent::Voices(voices) => self.set_num_voices(voices),
                 UiEvent::Legato(legato) => self.set_legato(legato),
                 UiEvent::KillSameNote(kill_same_note) => self.set_kill_same_note(kill_same_note),
-                UiEvent::BlockSize(block_size) => self.set_block_size(block_size),
                 UiEvent::VoiceKillTime(voice_kill_time) => {
                     self.set_voice_kill_time(voice_kill_time);
                 }
@@ -762,11 +762,12 @@ impl<E: EngineLinks> SynthEngine<E> {
                 .filter(|voice| voice.triggered().is_some()),
         );
 
-        let samples = if self.oversampling {
-            2 * samples
-        } else {
-            samples
-        };
+        let samples = samples * self.oversampling;
+        debug_assert!(
+            samples + CONTROL_EXT <= self.buffer_size,
+            "internal block of {samples} samples exceeds buffer size {}",
+            self.buffer_size
+        );
         let sample_rate = self.sample_rate();
         let smooth_params = SmoothedSampleParams::new(sample_rate);
 
@@ -803,7 +804,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         }
 
         if let Some(ModuleHandle::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID) {
-            output.read_output(self.oversampling, &mut outputs);
+            output.read_output(self.oversampling > 1, &mut outputs);
         }
 
         self.voices_handler.reset_triggers();

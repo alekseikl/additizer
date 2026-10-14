@@ -150,6 +150,14 @@ struct Buffers {
     pitch: Buffer,
 }
 
+impl Buffers {
+    fn new(buffer_size: usize) -> Self {
+        Self {
+            pitch: zero_buffer(buffer_size),
+        }
+    }
+}
+
 pub struct Pitch<L: PitchLinks = stub::Links> {
     id: ModuleId,
     params: Params,
@@ -167,14 +175,17 @@ impl<L: PitchLinks> Pitch<L> {
         self.ui_end.take()
     }
 
-    pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&PitchConfig {
-            id,
-            ..PitchConfig::default()
-        })
+    pub fn new(id: ModuleId, buffer_size: usize) -> Self {
+        Self::from_config(
+            &PitchConfig {
+                id,
+                ..PitchConfig::default()
+            },
+            buffer_size,
+        )
     }
 
-    pub fn from_config(config: &PitchConfig) -> Self {
+    pub fn from_config(config: &PitchConfig, buffer_size: usize) -> Self {
         let (audio_end, ui_end) = L::create_link_pair();
 
         Self {
@@ -183,9 +194,7 @@ impl<L: PitchLinks> Pitch<L> {
             channel_params: array::from_fn(|channel_idx| {
                 ChannelParams::from_config(config, channel_idx)
             }),
-            buffers: Buffers {
-                pitch: zero_buffer(),
-            },
+            buffers: Buffers::new(buffer_size),
             audio_end,
             ui_end,
             inputs: Inputs::default(),

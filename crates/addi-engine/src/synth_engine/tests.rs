@@ -407,13 +407,11 @@ fn try_new_skips_invalid_link() {
     let engine = <SynthEngine>::try_new(&config, SAMPLE_RATE, false)
         .expect("invalid links are skipped on load");
 
-    assert!(
-        engine
-            .get_config()
-            .links
-            .iter()
-            .all(|link| !(link.src_id() == HARMONIC_EDITOR_ID && link.dst_id() == OUTPUT_MODULE_ID))
-    );
+    assert!(engine
+        .get_config()
+        .links
+        .iter()
+        .all(|link| !(link.src_id() == HARMONIC_EDITOR_ID && link.dst_id() == OUTPUT_MODULE_ID)));
 }
 
 #[test]
@@ -575,7 +573,6 @@ fn config_round_trips_minimal_patch() {
     let engine = make_engine(
         EngineParams {
             num_voices: 4,
-            block_size: 64,
             ..EngineParams::default()
         },
         OscillatorConfig {
@@ -588,7 +585,7 @@ fn config_round_trips_minimal_patch() {
     let cfg = engine.get_config();
 
     assert_eq!(cfg.engine.num_voices, 4);
-    assert_eq!(cfg.engine.block_size, 64);
+    assert_eq!(engine.block_size(), 128);
     assert_eq!(cfg.modules.len(), 3);
     assert_eq!(cfg.links.len(), 2);
 
@@ -608,23 +605,66 @@ fn config_round_trips_minimal_patch() {
 // ---- Engine parameter setters ----
 
 #[test]
-fn block_size_clamps() {
-    let mut engine = make_engine(
-        EngineParams::default(),
-        OscillatorConfig {
-            id: OSCILLATOR_ID,
-            ..OscillatorConfig::default()
+fn block_size_follows_host_sample_rate() {
+    let cases = [
+        (8_000.0, 128),
+        (44_100.0, 128),
+        (48_000.0, 128),
+        (67_000.0, 128),
+        (68_000.0, 256),
+        (88_200.0, 256),
+        (96_000.0, 256),
+        (135_000.0, 256),
+        (136_000.0, 512),
+        (176_400.0, 512),
+        (192_000.0, 512),
+        (384_000.0, 512),
+    ];
+
+    for (rate, expected) in cases {
+        let engine = <SynthEngine>::try_new(&EngineConfig::default(), rate, true).expect("engine");
+        assert_eq!(engine.block_size(), expected, "engine at {rate}");
+        assert_eq!(
+            engine.oversampling,
+            if expected == 128 { 2 } else { 1 },
+            "oversampling at {rate}"
+        );
+    }
+
+    let not_oversampled =
+        <SynthEngine>::try_new(&EngineConfig::default(), 48_000.0, false).expect("engine");
+    assert_eq!(not_oversampled.oversampling, 1);
+}
+
+#[test]
+fn legacy_block_size_field_is_ignored() {
+    let mut value = serde_json::to_value(EngineParams::default()).expect("params");
+    value["block_size"] = serde_json::json!(32);
+
+    let params: EngineParams = serde_json::from_value(value).expect("legacy params");
+    let engine = <SynthEngine>::try_new(
+        &EngineConfig {
+            engine: params,
+            ..EngineConfig::default()
         },
-    );
+        96_000.0,
+        false,
+    )
+    .expect("engine");
 
-    engine.set_block_size(0);
-    assert_eq!(engine.block_size(), 4);
+    assert_eq!(engine.block_size(), 256);
+}
 
-    engine.set_block_size(999);
-    assert_eq!(engine.block_size(), MAX_BLOCK_SIZE);
+#[test]
+fn oversampled_192k_block_fits() {
+    let mut engine =
+        <SynthEngine>::try_new(&EngineConfig::default(), 192_000.0, true).expect("engine");
 
-    engine.set_block_size(32);
-    assert_eq!(engine.get_config().engine.block_size, 32);
+    let block_size = engine.block_size();
+    assert_eq!(block_size, 512);
+    assert_eq!(engine.oversampling, 1);
+    let (left, right) = process_block(&mut engine, block_size);
+    assert!(left.iter().chain(right.iter()).all(|sample| *sample == 0.0));
 }
 
 #[test]
@@ -1408,7 +1448,6 @@ fn polyphonic_notes_mix_to_output() {
 fn full_patch_config_round_trips() {
     let engine = make_full_patch_engine(EngineParams {
         num_voices: 2,
-        block_size: 64,
         ..EngineParams::default()
     });
     let cfg = engine.get_config();
@@ -1417,7 +1456,7 @@ fn full_patch_config_round_trips() {
 
     assert_eq!(rebuilt.get_config().modules.len(), cfg.modules.len());
     assert_eq!(rebuilt.get_config().links.len(), cfg.links.len());
-    assert_eq!(rebuilt.get_config().engine.block_size, 64);
+    assert_eq!(rebuilt.block_size(), engine.block_size());
 }
 
 #[test]
@@ -1433,7 +1472,6 @@ fn engine_extended_setters_round_trip() {
     let kill_time = from_ms(20.0);
     engine.set_num_voices(3);
     engine.set_legato(true);
-    engine.set_block_size(32);
     engine.set_voice_kill_time(kill_time);
     engine.set_output_gain(StereoSample::splat(0.5));
 
@@ -1447,7 +1485,7 @@ fn engine_extended_setters_round_trip() {
     let cfg = engine.get_config();
     assert_eq!(cfg.engine.num_voices, 3);
     assert!(cfg.engine.legato);
-    assert_eq!(cfg.engine.block_size, 32);
+    assert_eq!(engine.block_size(), 128);
     assert_eq!(engine.get_voice_kill_time(), kill_time);
     assert_eq!(cfg.engine.output_gain, StereoSample::splat(0.5));
 

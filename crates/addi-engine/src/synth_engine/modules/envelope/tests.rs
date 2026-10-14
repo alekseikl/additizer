@@ -76,7 +76,6 @@ fn render_engine(env: EnvelopeConfig, amp_gain: Sample, link_envelope: bool) -> 
     let config = EngineConfig {
         engine: EngineParams {
             num_voices: 1,
-            block_size: 128,
             ..EngineParams::default()
         },
         modules: vec![

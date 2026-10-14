@@ -29,6 +29,7 @@ mod aux;
 use aux::Spectral;
 
 const SAMPLE_RATE: Sample = 48_000.0;
+const BUFFER_SIZE: usize = 2;
 
 const VOICES: usize = 16;
 
@@ -123,7 +124,7 @@ fn bench_spectral_filter(c: &mut Criterion) {
     ));
 
     let voices = voices();
-    let mut arena = OutputsArena::new();
+    let mut arena = OutputsArena::new(BUFFER_SIZE);
     let mut spectrum = Spectral::new(1, &sawtooth());
     let mut audio_end = AudioEnd;
 

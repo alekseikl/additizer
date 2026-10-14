@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use egui::{
-    Button, Checkbox, Color32, ComboBox, Frame, Grid, Id, Label, Modal, RichText, Sense, Sides,
-    Slider, TextEdit, Ui, vec2,
+    Button, Checkbox, Color32, Frame, Grid, Id, Label, Modal, RichText, Sense, Sides, Slider,
+    TextEdit, Ui, vec2,
 };
 use egui_extras::{Column, TableBuilder};
 
@@ -178,14 +178,12 @@ impl ModuleUi for ParamsUi {
             .striped(true)
             .show(ui, |ui| {
                 let controls = bridge.engine_params();
-                let block_sizes = [8, 16, 32, 64, 128];
                 let voices_status = *bridge.voices_status();
 
                 let mut kill_time_ms = controls.voice_kill_time * 1000.0;
                 let mut voices = controls.num_voices;
                 let mut legato = controls.legato;
                 let mut kill_same_note = controls.kill_same_note;
-                let mut block_size = controls.block_size;
                 let mut oversampling = self.engine_factory.oversampling();
 
                 ui.label("Voices");
@@ -232,18 +230,7 @@ impl ModuleUi for ParamsUi {
                 ui.end_row();
 
                 ui.label("Block Size");
-                ComboBox::from_id_salt("buff-size-select")
-                    .selected_text(format!("{} samples", block_size))
-                    .show_ui(ui, |ui| {
-                        for sz in &block_sizes {
-                            if ui
-                                .selectable_value(&mut block_size, *sz, format!("{} samples", sz))
-                                .clicked()
-                            {
-                                bridge.set_block_size(*sz);
-                            }
-                        }
-                    });
+                ui.label(format!("{} samples", bridge.block_size()));
                 ui.end_row();
 
                 ui.label("Oversampling x2");

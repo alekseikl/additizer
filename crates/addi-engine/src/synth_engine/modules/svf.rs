@@ -137,8 +137,17 @@ struct Buffers {
     drive: [Buffer; LANES],
 }
 
-fn lane_buffers() -> [Buffer; LANES] {
-    array::from_fn(|_| zero_buffer())
+impl Buffers {
+    fn new(buffer_size: usize) -> Self {
+        let lanes = || array::from_fn(|_| zero_buffer(buffer_size));
+        Self {
+            audio: lanes(),
+            cutoff: lanes(),
+            resonance: lanes(),
+            pre_k: lanes(),
+            drive: lanes(),
+        }
+    }
 }
 
 pub struct Svf<L: SvfLinks = stub::Links> {
@@ -158,14 +167,17 @@ impl<L: SvfLinks> Svf<L> {
         self.ui_end.take()
     }
 
-    pub fn new(id: ModuleId) -> Self {
-        Self::from_config(&SvfConfig {
-            id,
-            ..SvfConfig::default()
-        })
+    pub fn new(id: ModuleId, buffer_size: usize) -> Self {
+        Self::from_config(
+            &SvfConfig {
+                id,
+                ..SvfConfig::default()
+            },
+            buffer_size,
+        )
     }
 
-    pub fn from_config(config: &SvfConfig) -> Self {
+    pub fn from_config(config: &SvfConfig, buffer_size: usize) -> Self {
         let (audio_end, ui_end) = L::create_link_pair();
 
         Self {
@@ -174,13 +186,7 @@ impl<L: SvfLinks> Svf<L> {
             channel_params: array::from_fn(|channel_idx| {
                 ChannelParams::from_config(config, channel_idx)
             }),
-            buffers: Buffers {
-                audio: lane_buffers(),
-                cutoff: lane_buffers(),
-                resonance: lane_buffers(),
-                pre_k: lane_buffers(),
-                drive: lane_buffers(),
-            },
+            buffers: Buffers::new(buffer_size),
             states: array::from_fn(|_| SvfState::new(config.filter_type)),
             audio_end,
             ui_end,
@@ -327,7 +333,7 @@ impl<L: SvfLinks> Svf<L> {
 }
 
 fn block_refs(buffers: &[Buffer; LANES]) -> [&[Sample]; LANES] {
-    buffers.each_ref().map(|buffer| buffer.as_slice())
+    buffers.each_ref().map(|buffer| &buffer[..])
 }
 
 impl<L: SvfLinks> SynthModule for Svf<L> {

@@ -60,7 +60,7 @@ pub struct Output {
 }
 
 impl Output {
-    pub fn new(gain: StereoSample, kill_time: Sample) -> Self {
+    pub fn new(gain: StereoSample, kill_time: Sample, buffer_size: usize) -> Self {
         Self {
             audio_input: None,
             gain: [
@@ -69,8 +69,8 @@ impl Output {
             ],
             kill_time: Self::clamp_kill_time(kill_time),
             channels: Default::default(),
-            input_buffer: zero_buffer(),
-            output: [zero_buffer(), zero_buffer()],
+            input_buffer: zero_buffer(buffer_size),
+            output: [zero_buffer(buffer_size), zero_buffer(buffer_size)],
             decimator: IirDecimator::new(),
             out_volume_ballistics: StereoLevelBallistics::default(),
         }

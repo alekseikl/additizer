@@ -5,22 +5,17 @@ use crate::synth_engine::{
     types::{ComplexSample, Sample},
 };
 
-// One sample extra for control rate signals. Its value - first sample of the next frame.
-// Required by spectral module inputs.
-pub const BUFFER_SIZE: usize = 256 + 1;
 pub const SPECTRUM_BITS: usize = 10;
 pub const SPECTRAL_BUFFER_SIZE: usize = 1 << SPECTRUM_BITS;
 pub const DISPLAY_SPECTRUM_SIZE: usize = 512;
 pub const DC_OFFSET: usize = 1;
 
-pub type Buffer = [Sample; BUFFER_SIZE];
+pub type Buffer = Box<[Sample]>;
 pub type SpectralBuffer = [ComplexSample; SPECTRAL_BUFFER_SIZE];
 pub type DisplaySpectrum = [ComplexSample; DISPLAY_SPECTRUM_SIZE];
 
-pub static ZEROES_BUFFER: Buffer = [0.0; BUFFER_SIZE];
-
-pub const fn zero_buffer() -> Buffer {
-    [0.0; BUFFER_SIZE]
+pub fn zero_buffer(len: usize) -> Buffer {
+    vec![0.0; len].into_boxed_slice()
 }
 
 pub const fn zero_spectral_buffer() -> SpectralBuffer {
@@ -139,8 +134,13 @@ pub fn new_voices_layout_with<U: Send>(init: impl FnMut() -> U) -> VoicesLayout<
 }
 
 pub fn new_mono_voices_layout<U: Default + Send>() -> MonoVoicesLayout<U> {
+    new_mono_voices_layout_with(U::default)
+}
+
+pub fn new_mono_voices_layout_with<U: Send>(init: impl FnMut() -> U) -> MonoVoicesLayout<U> {
     let mut voices: Box<MaybeUninit<[U; MAX_VOICES]>> = Box::new(MaybeUninit::uninit());
-    init_array_in_place::<U, MAX_VOICES>(voices.as_mut_ptr(), &mut U::default);
+    let mut init = init;
+    init_array_in_place::<U, MAX_VOICES>(voices.as_mut_ptr(), &mut init);
     unsafe { Box::from_raw(Box::into_raw(voices).cast::<[U; MAX_VOICES]>()) }
 }
 
@@ -159,16 +159,14 @@ pub struct ValueBuffer {
     buffer: Buffer,
 }
 
-impl Default for ValueBuffer {
-    fn default() -> Self {
+impl ValueBuffer {
+    pub fn new(len: usize) -> Self {
         Self {
             change_at: 0,
-            buffer: zero_buffer(),
+            buffer: zero_buffer(len),
         }
     }
-}
 
-impl ValueBuffer {
     pub fn set(&mut self, value: Sample, at: usize) {
         if at > self.change_at {
             let prev = self.buffer[self.change_at];

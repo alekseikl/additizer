@@ -1,6 +1,6 @@
 use crate::synth_engine::{
-    Buffer, ComplexSample, ModuleId, NUM_CHANNELS, ProcessParams, Sample,
-    buffer::{VoicesLayout, ZEROES_BUFFER},
+    Buffer, CONTROL_EXT, ComplexSample, ModuleId, NUM_CHANNELS, ProcessParams, Sample,
+    buffer::VoicesLayout,
     engine_io::EngineAudioEnd,
     routing::{
         MixedSlots, ProcessContext, SamplesOutput, SpectralOutput, VOICE_PAIR_LEN, VOICE_PAIRS,
@@ -576,7 +576,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, AudioRouterType, A> 
 
         &ctx.outputs_arena
             .get_buff(slot, self.target.channel_idx, self.target.voice_idx)
-            .unwrap_or(&ZEROES_BUFFER)[self.state.offset..ctx.params.samples]
+            .unwrap_or(ctx.outputs_arena.zeroes())[self.state.offset..ctx.params.samples]
     }
 
     pub fn param(&mut self, input: &MixedSlots, param: &SmoothedSample, buff: &mut [Sample]) {
@@ -631,7 +631,7 @@ impl<'v> VoiceOutput<'v, AudioRouterType> {
 
 impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, ControlRouterType, A> {
     fn samples(&self) -> usize {
-        self.factory.ctx.params.samples - self.state.offset + 1
+        self.factory.ctx.params.samples - self.state.offset + CONTROL_EXT
     }
 
     pub fn triggered(&self) -> bool {
@@ -684,7 +684,7 @@ impl<'v> VoiceOutput<'v, ControlRouterType> {
         &mut self
             .outputs
             .at_mut(self.target.channel_idx, self.target.voice_idx)
-            .buffer[self.state.offset..self.samples + 1]
+            .buffer[self.state.offset..self.samples + CONTROL_EXT]
     }
 
     /// External control sources are not written 1 sample ahead.
@@ -762,14 +762,16 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, OutputRouterType, A>
 
         &ctx.outputs_arena
             .get_buff(slot, self.target.channel_idx, self.target.voice_idx)
-            .unwrap_or(&ZEROES_BUFFER)[..ctx.params.samples]
+            .unwrap_or(ctx.outputs_arena.zeroes())[..ctx.params.samples]
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::VoiceLane;
-    use crate::synth_engine::buffer::{BUFFER_SIZE, zero_buffer};
+    use std::array;
+
+    use crate::synth_engine::buffer::zero_buffer;
 
     #[test]
     fn lane_clears_samples_before_trigger() {
@@ -778,7 +780,7 @@ mod tests {
             offset: 3,
             samples: 4,
         };
-        let mut buffers = [zero_buffer(); 4];
+        let mut buffers: [_; 4] = array::from_fn(|_| zero_buffer(16));
 
         buffers[2].fill(1.0);
 
@@ -790,6 +792,6 @@ mod tests {
         assert_eq!(buffers[2][3], 1.0);
         assert_eq!(buffers[2][7], 1.0);
         assert_eq!(buffers[1][0], 0.0);
-        assert_eq!(buffers[2].len(), BUFFER_SIZE);
+        assert_eq!(buffers[2].len(), 16);
     }
 }
