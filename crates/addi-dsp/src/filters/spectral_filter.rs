@@ -12,9 +12,6 @@ mod simd;
 use sections::{BandPass, HighPass, HighShelf, LowPass, LowShelf, OnePoleHighPass, OnePoleLowPass};
 use simd::ComplexX4;
 
-#[cfg(test)]
-use sections::TAU;
-
 pub trait FilterImpl: Clone + Copy + 'static {
     fn new(gain: Smp, cutoff_freq: Smp, q: Smp, pre_q: Smp) -> Self;
 }

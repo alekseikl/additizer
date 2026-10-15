@@ -767,31 +767,4 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, OutputRouterType, A>
 }
 
 #[cfg(test)]
-mod tests {
-    use super::VoiceLane;
-    use std::array;
-
-    use crate::synth_engine::buffer::zero_buffer;
-
-    #[test]
-    fn lane_clears_samples_before_trigger() {
-        let lane = VoiceLane {
-            lane_idx: 2,
-            offset: 3,
-            samples: 4,
-        };
-        let mut buffers: [_; 4] = array::from_fn(|_| zero_buffer(16));
-
-        buffers[2].fill(1.0);
-
-        let active = lane.buff(&mut buffers);
-        let active = active.to_vec();
-
-        assert_eq!(active, [1.0; 4]);
-        assert_eq!(&buffers[2][..3], &[0.0; 3]);
-        assert_eq!(buffers[2][3], 1.0);
-        assert_eq!(buffers[2][7], 1.0);
-        assert_eq!(buffers[1][0], 0.0);
-        assert_eq!(buffers[2].len(), 16);
-    }
-}
+mod tests;
