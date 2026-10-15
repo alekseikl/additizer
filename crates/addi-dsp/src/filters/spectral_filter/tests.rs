@@ -1,11 +1,11 @@
 use super::{sections::TAU, *};
 
 use crate::{
-    filters::control::{
-        q_from_resonance, MAX_PRE_Q, MAX_RESONANCE, MAX_RESONANCE_Q, MIN_PRE_Q, MIN_RESONANCE,
-        NEGATIVE_RESONANCE_Q, ZERO_RESONANCE_Q,
-    },
     WideSmp,
+    filters::control::{
+        MAX_PRE_Q, MAX_RESONANCE, MAX_RESONANCE_Q, MIN_PRE_Q, MIN_RESONANCE, NEGATIVE_RESONANCE_Q,
+        ZERO_RESONANCE_Q, q_from_resonance,
+    },
 };
 
 /// Same bounds as the spectral filter module's Q-rolloff parameter.

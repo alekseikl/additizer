@@ -557,12 +557,11 @@ impl SpectralFilter {
 
     fn apply_impl<T: FilterLanes>(&self, input: &[ComplexSample], output: &mut [ComplexSample]) {
         let filter_impl = T::new(self.gain, self.cutoff_freq, self.q, self.pre_q);
-        let len = input.len().min(output.len());
 
         if self.linear_phase {
-            apply::<T, true>(&filter_impl, input, output, len);
+            apply::<T, true>(&filter_impl, input, output);
         } else {
-            apply::<T, false>(&filter_impl, input, output, len);
+            apply::<T, false>(&filter_impl, input, output);
         }
     }
 
@@ -615,6 +614,7 @@ fn write_responses<T: FilterLanes, const LINEAR: bool>(
     }
 }
 
+/// Scale `input` by `response`. A short tail stores only its real bins.
 #[inline(always)]
 fn store_lanes<const LINEAR: bool>(
     response: WideComplex,
@@ -622,14 +622,15 @@ fn store_lanes<const LINEAR: bool>(
     output: &mut [ComplexSample],
 ) {
     if LINEAR {
-        for ((out, sample), mag) in output.iter_mut().zip(input).zip(response.norm().to_array()) {
-            *out = *sample * mag;
+        let mag = response.norm().to_array();
+        for ((out, inp), mag) in output.iter_mut().zip(input).zip(mag) {
+            *out = *inp * mag;
         }
     } else {
         let re = response.re.to_array();
         let im = response.im.to_array();
-        for ((out, sample), (re, im)) in output.iter_mut().zip(input).zip(re.into_iter().zip(im)) {
-            *out = *sample * ComplexSample::new(re, im);
+        for ((out, inp), (re, im)) in output.iter_mut().zip(input).zip(re.into_iter().zip(im)) {
+            *out = *inp * ComplexSample::new(re, im);
         }
     }
 }
@@ -638,35 +639,36 @@ fn apply<T: FilterLanes, const LINEAR: bool>(
     filter: &T,
     input: &[ComplexSample],
     output: &mut [ComplexSample],
-    len: usize,
 ) {
+    let len = input.len().min(output.len());
     // Skip DC. Bin indices are the frequencies.
-    if len <= DC_OFFSET {
+    let Some(input) = input.get(DC_OFFSET..len) else {
         return;
+    };
+    let Some(output) = output.get_mut(DC_OFFSET..len) else {
+        return;
+    };
+
+    let (in_chunks, in_rem) = input.as_chunks::<SIMD_LANES>();
+    let (out_chunks, out_rem) = output.as_chunks_mut::<SIMD_LANES>();
+    let mut freq = bin_freqs(DC_OFFSET);
+    let step = WideSmp::splat(SIMD_LANES as Smp);
+
+    for (input, output) in in_chunks.iter().zip(out_chunks) {
+        store_lanes::<LINEAR>(filter.at(freq), input, output);
+        freq += step;
     }
 
-    let input = &input[DC_OFFSET..len];
-    let output = &mut output[DC_OFFSET..len];
-    let (input_chunks, input_tail) = input.as_chunks::<SIMD_LANES>();
-    let (output_chunks, output_tail) = output.as_chunks_mut::<SIMD_LANES>();
-
-    for (start, (input_chunk, output_chunk)) in (DC_OFFSET..)
-        .step_by(SIMD_LANES)
-        .zip(input_chunks.iter().zip(output_chunks))
-    {
-        store_lanes::<LINEAR>(filter.at(bin_freqs(start)), input_chunk, output_chunk);
-    }
-
-    if !input_tail.is_empty() {
-        let start = DC_OFFSET + input_chunks.len() * SIMD_LANES;
-        store_lanes::<LINEAR>(filter.at(bin_freqs(start)), input_tail, output_tail);
+    if !in_rem.is_empty() {
+        store_lanes::<LINEAR>(filter.at(freq), in_rem, out_rem);
     }
 }
 
 #[inline(always)]
-fn apply_lanes_in_place<const LINEAR: bool>(response: WideComplex, samples: &mut [ComplexSample]) {
+fn scale_lanes<const LINEAR: bool>(response: WideComplex, samples: &mut [ComplexSample]) {
     if LINEAR {
-        for (sample, mag) in samples.iter_mut().zip(response.norm().to_array()) {
+        let mag = response.norm().to_array();
+        for (sample, mag) in samples.iter_mut().zip(mag) {
             *sample *= mag;
         }
     } else {
@@ -680,20 +682,21 @@ fn apply_lanes_in_place<const LINEAR: bool>(response: WideComplex, samples: &mut
 
 fn apply_in_place<T: FilterLanes, const LINEAR: bool>(filter: &T, samples: &mut [ComplexSample]) {
     // Skip DC. Bin indices are the frequencies.
-    if samples.len() <= DC_OFFSET {
+    let Some(samples) = samples.get_mut(DC_OFFSET..) else {
         return;
+    };
+
+    let (chunks, rem) = samples.as_chunks_mut::<SIMD_LANES>();
+    let mut freq = bin_freqs(DC_OFFSET);
+    let step = WideSmp::splat(SIMD_LANES as Smp);
+
+    for chunk in chunks {
+        scale_lanes::<LINEAR>(filter.at(freq), chunk);
+        freq += step;
     }
 
-    let samples = &mut samples[DC_OFFSET..];
-    let (chunks, tail) = samples.as_chunks_mut::<SIMD_LANES>();
-
-    for (start, chunk) in (DC_OFFSET..).step_by(SIMD_LANES).zip(&mut *chunks) {
-        apply_lanes_in_place::<LINEAR>(filter.at(bin_freqs(start)), chunk);
-    }
-
-    if !tail.is_empty() {
-        let start = DC_OFFSET + chunks.len() * SIMD_LANES;
-        apply_lanes_in_place::<LINEAR>(filter.at(bin_freqs(start)), tail);
+    if !rem.is_empty() {
+        scale_lanes::<LINEAR>(filter.at(freq), rem);
     }
 }
 
