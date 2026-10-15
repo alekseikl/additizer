@@ -14,7 +14,7 @@ pub use link::{AmplifierAudioEnd, AmplifierLinks, AmplifierUiEnd, UiEvent};
 
 use crate::{
     synth_engine::{
-        Smp, SmoothedSampleParams, StereoSample,
+        SmoothedSampleParams, Smp, StereoSample,
         buffer::{Buffer, VoicesLayout, zero_buffer},
         level_ballistics::LevelBallistics,
         routing::{

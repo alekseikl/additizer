@@ -110,12 +110,7 @@ impl OscillatorUiEnd for NoUi {
         self.diverge()
     }
 
-    fn randomize_phases(
-        &mut self,
-        _amount: Smp,
-        _stereo_spread: Smp,
-        _dst: PhasesDst,
-    ) -> bool {
+    fn randomize_phases(&mut self, _amount: Smp, _stereo_spread: Smp, _dst: PhasesDst) -> bool {
         self.diverge()
     }
 }

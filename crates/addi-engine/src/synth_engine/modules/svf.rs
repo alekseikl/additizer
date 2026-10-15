@@ -17,11 +17,11 @@ use addi_dsp::filters::{
 
 use crate::{
     synth_engine::{
-        C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, SIMD_LANES, db_to_gain_fast, db_to_gain_fast_x4,
-        map_x4_in_place,
+        C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, SIMD_LANES, db_to_gain_fast, db_to_gain_fast_wide,
+        map_wide_in_place,
     },
     synth_engine::{
-        Smp, SmoothedSampleParams, StereoSample, WideSmp,
+        SmoothedSampleParams, Smp, StereoSample, WideSmp,
         buffer::{Buffer, VoicesLayout, zero_buffer},
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
@@ -273,8 +273,8 @@ impl<L: SvfLinks> Svf<L> {
             const MIN_DRIVE_X4: WideSmp = WideSmp::splat(MIN_DRIVE);
             const MAX_DRIVE_X4: WideSmp = WideSmp::splat(MAX_DRIVE);
 
-            map_x4_in_place(drive, |drive| {
-                db_to_gain_fast_x4(drive.fast_max(MIN_DRIVE_X4).fast_min(MAX_DRIVE_X4))
+            map_wide_in_place(drive, |drive| {
+                db_to_gain_fast_wide(drive.fast_max(MIN_DRIVE_X4).fast_min(MAX_DRIVE_X4))
             });
         }
 

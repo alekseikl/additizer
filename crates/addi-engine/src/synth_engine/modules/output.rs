@@ -85,12 +85,7 @@ impl Output {
     }
 
     #[inline]
-    fn apply_kill_fade(
-        buffer: &mut [Smp],
-        voice: &mut Voice,
-        kill_time: Smp,
-        sample_rate: Smp,
-    ) {
+    fn apply_kill_fade(buffer: &mut [Smp], voice: &mut Voice, kill_time: Smp, sample_rate: Smp) {
         if !voice.killing {
             return;
         }

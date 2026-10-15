@@ -1,6 +1,6 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{Smp, units::from_ms};
+use crate::{Smp, math::from_ms};
 
 const SMOOTHING_TIME: Smp = from_ms(300.0);
 

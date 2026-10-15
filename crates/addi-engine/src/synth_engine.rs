@@ -54,15 +54,17 @@ pub use types::{ComplexSample, Smp, WideSmp};
 pub use voices_handler::{Note, PlayingVoice};
 
 pub use addi_dsp::{
-    C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, SIMD_LANES, db_to_gain, db_to_gain_fast, db_to_gain_fast_x4,
-    fast_pitch_to_freq_x4, fill_x4, freq_to_c4_pitch, from_ms, from_st, gain_to_db,
-    gain_to_db_fast, map_x4, map_x4_in_place, note_to_pitch, pan_gain, pitch_to_freq, power_scale,
-    zip_map_x4,
+    C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, SIMD_LANES, db_to_gain, db_to_gain_fast,
+    db_to_gain_fast_wide, fast_pitch_to_freq_wide, fill_wide, freq_to_c4_pitch, from_ms, from_st,
+    gain_to_db, gain_to_db_fast, map_wide, map_wide_in_place, note_to_pitch, pan_gain,
+    pitch_to_freq, power_scale, zip_map_wide,
 };
 
 pub use addi_dsp::types;
 
-pub(crate) use addi_dsp::{coeffs, iir_decimator, level_ballistics, phase, smooth, stereo_sample};
+pub(crate) use addi_dsp::{
+    fast_math, iir_decimator, level_ballistics, phase, smooth, stereo_sample,
+};
 
 pub mod buffer;
 pub mod config;

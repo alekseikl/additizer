@@ -110,8 +110,8 @@ pub enum EditRequest {
     Slope {
         range: HarmonicsRange,
         harmonic_from: u16, // Cutoff point
-        level_from: Smp, // dB
-        slope: Smp,      // dB/octave (positive = rise, negative = fall)
+        level_from: Smp,    // dB
+        slope: Smp,         // dB/octave (positive = rise, negative = fall)
     },
 }
 
@@ -431,8 +431,7 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
         slope: Smp,
     ) {
         let level_from = level_from.clamp(MIN_LEVEL_DB, MAX_LEVEL_DB);
-        let reference =
-            (harmonic_from as usize).clamp(DC_OFFSET, SPECTRAL_BUFFER_SIZE - 1) as Smp;
+        let reference = (harmonic_from as usize).clamp(DC_OFFSET, SPECTRAL_BUFFER_SIZE - 1) as Smp;
 
         for idx in range.matching_indices() {
             let octaves = (idx as Smp / reference).log2();

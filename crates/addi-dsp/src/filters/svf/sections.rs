@@ -136,7 +136,13 @@ pub(super) struct Peaking {
 
 impl Peaking {
     #[inline(always)]
-    pub(super) fn tick(&mut self, g: WideSmp, k: WideSmp, gain: WideSmp, input: WideSmp) -> WideSmp {
+    pub(super) fn tick(
+        &mut self,
+        g: WideSmp,
+        k: WideSmp,
+        gain: WideSmp,
+        input: WideSmp,
+    ) -> WideSmp {
         let gain = gain.max(MIN_GAIN);
         let k = k / gain.sqrt();
         let (v1, _v2) = self.integrator.tick(g, k, input);
@@ -182,7 +188,13 @@ pub(super) struct LowShelf {
 
 impl LowShelf {
     #[inline(always)]
-    pub(super) fn tick(&mut self, g: WideSmp, k: WideSmp, coeffs: ShelfCoeffs, input: WideSmp) -> WideSmp {
+    pub(super) fn tick(
+        &mut self,
+        g: WideSmp,
+        k: WideSmp,
+        coeffs: ShelfCoeffs,
+        input: WideSmp,
+    ) -> WideSmp {
         let (v1, v2) = self.integrator.tick(g / coeffs.sqrt_a, k, input);
         (coeffs.gain - ONE).mul_add(v2, ((coeffs.a - ONE) * k).mul_add(v1, input))
     }
@@ -200,7 +212,13 @@ pub(super) struct HighShelf {
 
 impl HighShelf {
     #[inline(always)]
-    pub(super) fn tick(&mut self, g: WideSmp, k: WideSmp, coeffs: ShelfCoeffs, input: WideSmp) -> WideSmp {
+    pub(super) fn tick(
+        &mut self,
+        g: WideSmp,
+        k: WideSmp,
+        coeffs: ShelfCoeffs,
+        input: WideSmp,
+    ) -> WideSmp {
         let (v1, v2) = self.integrator.tick(g * coeffs.sqrt_a, k, input);
         (ONE - coeffs.gain).mul_add(
             v2,

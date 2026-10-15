@@ -2,8 +2,9 @@ use std::f32::consts::{PI, TAU};
 
 use crate::{
     ComplexSample, WideSmp,
+    consts::C4_PITCH,
     filters::control::MAX_PRE_Q,
-    units::{C4_PITCH, freq_to_c4_pitch, pitch_to_freq},
+    math::{freq_to_c4_pitch, pitch_to_freq},
 };
 
 use super::*;
@@ -58,7 +59,7 @@ fn cutoff_to_g_stays_close_to_libm_tan() {
 fn process_lanes_match_one_sample_at_a_time() {
     let n = 7;
     let input: Vec<_> = (0..n).map(|i| (i as Smp * 0.37).sin()).collect();
-    // Spans the direct polynomial and the reciprocal side of `fast_tan_pi_x4`,
+    // Spans the direct polynomial and the reciprocal side of `fast_tan_pi_wide`,
     // plus one cutoff past the clamp.
     let cutoff = [-2.0, 0.5, 2.0, 4.0, 6.0, 6.8, 9.0];
     let k = [0.5, 0.2, 1.0, 0.05, 2.0, 0.7, 0.3];

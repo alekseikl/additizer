@@ -10,7 +10,7 @@ use super::{
 use crate::synth_engine::{
     ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, MAX_VOICES, ModuleConfig,
     ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, SIMD_LANES, Smp, SynthEngine, WideSmp,
-    coeffs::catmull_rom_from_powers,
+    fast_math::catmull_rom_from_powers,
     harmonic_editor::HarmonicEditorConfig,
     phase::{Phase, PhaseX4},
     routing::{InputSlot, LEFT_CHANNEL, RIGHT_CHANNEL},
@@ -914,12 +914,7 @@ fn initial_voices() -> [UnisonVoice; MAX_UNISON_VOICES] {
     std::array::from_fn(test_unison_voice)
 }
 
-fn interpolated_sample(
-    wave: &WaveformBuffer,
-    phase: Phase,
-    size: WaveformSize,
-    gain: Smp,
-) -> Smp {
+fn interpolated_sample(wave: &WaveformBuffer, phase: Phase, size: WaveformSize, gain: Smp) -> Smp {
     let (idx, t) = match size {
         WaveformSize::Full => (
             phase.wave_index::<WAVEFORM_BITS>(),
@@ -1049,8 +1044,7 @@ fn store_lane_params(osc: &mut Oscillator, voices: &[UnisonVoice], unison: usize
 
     for chunk in 0..full {
         let start = chunk * SIMD_LANES;
-        osc.lane_params[chunk] =
-            UnisonLaneParams::from_voices(&voices[start..start + SIMD_LANES]);
+        osc.lane_params[chunk] = UnisonLaneParams::from_voices(&voices[start..start + SIMD_LANES]);
     }
 
     if rem > 0 {

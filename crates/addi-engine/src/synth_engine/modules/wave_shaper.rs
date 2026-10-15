@@ -5,7 +5,7 @@ use itertools::izip;
 use crate::{
     synth_engine::db_to_gain_fast,
     synth_engine::{
-        Smp, SmoothedSampleParams, StereoSample,
+        SmoothedSampleParams, Smp, StereoSample,
         buffer::{Buffer, VoicesLayout, zero_buffer},
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,

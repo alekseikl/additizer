@@ -1,4 +1,4 @@
-use crate::{NUM_CHANNELS, Smp, units::from_ms};
+use crate::{NUM_CHANNELS, Smp, math::from_ms};
 
 const ATTACK_TIME: Smp = from_ms(2.0);
 const RELEASE_TIME: Smp = from_ms(250.0);

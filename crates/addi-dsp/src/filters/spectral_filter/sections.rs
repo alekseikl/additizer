@@ -87,7 +87,8 @@ impl BandPass {
         let x = freq * TAU_X4;
         let wx_q = self.w_q * x;
 
-        ComplexX4::new(WideSmp::ZERO, self.gain * wx_q) / ComplexX4::new(self.w_squared - x * x, wx_q)
+        ComplexX4::new(WideSmp::ZERO, self.gain * wx_q)
+            / ComplexX4::new(self.w_squared - x * x, wx_q)
     }
 }
 

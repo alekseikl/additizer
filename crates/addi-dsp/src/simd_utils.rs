@@ -1,19 +1,16 @@
 //! Lane-wise walks over sample buffers.
 
-use crate::{Smp, WideSmp};
+use crate::{SIMD_LANES, Smp, WideSmp};
 
 #[cfg(test)]
 mod tests;
-
-/// Width of a [`WideSmp`] vector.
-pub const SIMD_LANES: usize = 4;
 
 /// Map `samples` through `map` in groups of four and write the results to `out`.
 ///
 /// `samples` and `out` must have the same length. A trailing partial group is
 /// zero-padded. Only the lanes that correspond to real input samples are stored.
 #[inline(always)]
-pub fn map_x4(samples: &[Smp], out: &mut [Smp], mut map: impl FnMut(WideSmp) -> WideSmp) {
+pub fn map_wide(samples: &[Smp], out: &mut [Smp], mut map: impl FnMut(WideSmp) -> WideSmp) {
     assert!(samples.len() == out.len());
 
     let (in_chunks, in_rem) = samples.as_chunks::<SIMD_LANES>();
@@ -33,12 +30,12 @@ pub fn map_x4(samples: &[Smp], out: &mut [Smp], mut map: impl FnMut(WideSmp) -> 
     }
 }
 
-/// [`map_x4`] over two buffers, passing each group to `map` as a pair of lanes.
+/// [`map_wide`] over two buffers, passing each group to `map` as a pair of lanes.
 ///
 /// `a`, `b`, and `out` must have the same length. A trailing partial group is
 /// zero-padded. Only the lanes that correspond to real samples are stored.
 #[inline(always)]
-pub fn zip_map_x4(
+pub fn zip_map_wide(
     a: &[Smp],
     b: &[Smp],
     out: &mut [Smp],
@@ -71,7 +68,7 @@ pub fn zip_map_x4(
 /// `fill` is called once per group. A trailing partial group is produced as
 /// four lanes; only the lanes that fit in `out` are stored.
 #[inline(always)]
-pub fn fill_x4(out: &mut [Smp], mut fill: impl FnMut() -> WideSmp) {
+pub fn fill_wide(out: &mut [Smp], mut fill: impl FnMut() -> WideSmp) {
     let (chunks, rem) = out.as_chunks_mut::<SIMD_LANES>();
 
     for chunk in chunks {
@@ -86,9 +83,9 @@ pub fn fill_x4(out: &mut [Smp], mut fill: impl FnMut() -> WideSmp) {
     }
 }
 
-/// [`map_x4`] over one buffer, writing each group back in place.
+/// [`map_wide`] over one buffer, writing each group back in place.
 #[inline(always)]
-pub fn map_x4_in_place(samples: &mut [Smp], mut map: impl FnMut(WideSmp) -> WideSmp) {
+pub fn map_wide_in_place(samples: &mut [Smp], mut map: impl FnMut(WideSmp) -> WideSmp) {
     let (chunks, rem) = samples.as_chunks_mut::<SIMD_LANES>();
 
     for chunk in chunks {

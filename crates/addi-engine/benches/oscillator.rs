@@ -10,8 +10,8 @@ use std::hint::black_box;
 use std::time::Instant;
 
 use addi_engine::{
-    ComplexSample, NUM_CHANNELS, Oscillator, PlayingVoice, SPECTRAL_BUFFER_SIZE, Smp,
-    SmoothedSampleParams, SpectralBuffer, StereoSample, note_to_pitch,
+    ComplexSample, NUM_CHANNELS, Oscillator, PlayingVoice, SPECTRAL_BUFFER_SIZE,
+    SmoothedSampleParams, Smp, SpectralBuffer, StereoSample, note_to_pitch,
     oscillator::{MAX_UNISON_VOICES, OscillatorConfig},
     routing::{Input, InputSlots, OutputsArena, ProcessContext, ProcessParams},
     stub::AudioEnd,

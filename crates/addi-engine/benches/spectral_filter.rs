@@ -14,7 +14,7 @@ use addi_dsp::filters::{
     spectral_filter::FilterType,
 };
 use addi_engine::{
-    ComplexSample, NUM_CHANNELS, PlayingVoice, SPECTRAL_BUFFER_SIZE, Smp, SmoothedSampleParams,
+    ComplexSample, NUM_CHANNELS, PlayingVoice, SPECTRAL_BUFFER_SIZE, SmoothedSampleParams, Smp,
     SpectralBuffer, SpectralFilter, StereoSample,
     routing::{Input, InputSlots, OutputsArena, ProcessContext, ProcessParams},
     spectral_filter::{MIN_Q_ROLLOFF, SpectralFilterConfig},

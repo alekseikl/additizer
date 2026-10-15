@@ -8,6 +8,9 @@ use smallvec::SmallVec;
 
 use crate::{
     synth_engine::{
+        SIMD_LANES, db_to_gain, fast_pitch_to_freq_wide, from_st, pitch_to_freq, zip_map_wide,
+    },
+    synth_engine::{
         SmoothedSampleParams, StereoSample,
         buffer::{Buffer, SPECTRUM_BITS, VoicesLayout, new_voices_layout, zero_buffer},
         phase::{Phase, PhaseX4},
@@ -19,9 +22,6 @@ use crate::{
         smooth::SmoothedSample,
         synth_module::SynthModule,
         types::{ComplexSample, Smp, WideSmp},
-    },
-    synth_engine::{
-        SIMD_LANES, db_to_gain, fast_pitch_to_freq_x4, from_st, pitch_to_freq, zip_map_x4,
     },
 };
 
@@ -910,8 +910,8 @@ impl<L: OscillatorLinks> Oscillator<L> {
     ) {
         let mult = WideSmp::splat(freq_phase_mult);
 
-        zip_map_x4(pitch, freq_shift, out, |pitch, shift| {
-            shift.mul_add(mult, fast_pitch_to_freq_x4(pitch) * mult)
+        zip_map_wide(pitch, freq_shift, out, |pitch, shift| {
+            shift.mul_add(mult, fast_pitch_to_freq_wide(pitch) * mult)
         });
     }
 
@@ -987,12 +987,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         output: &mut [Smp],
         start: usize,
         end: usize,
-        mut render_lanes: impl FnMut(
-            &mut [Phase; SIMD_LANES],
-            &UnisonLaneParams,
-            &mut SampleCtx,
-            usize,
-        ),
+        mut render_lanes: impl FnMut(&mut [Phase; SIMD_LANES], &UnisonLaneParams, &mut SampleCtx, usize),
     ) {
         let unison = self.params.unison.clamp(1, MAX_UNISON_VOICES);
         let voice = self.voices.at_mut(ctx.channel_idx, ctx.voice_idx);

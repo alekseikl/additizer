@@ -2,7 +2,7 @@ use std::array;
 
 use crate::synth_engine::{
     SIMD_LANES,
-    coeffs::catmull_rom_from_powers,
+    fast_math::catmull_rom_from_powers,
     phase::{Phase, PhaseX4},
     types::{Smp, WideSmp},
 };

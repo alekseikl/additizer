@@ -1,5 +1,5 @@
 use crate::synth_engine::{
-    ModuleId, Smp, SmoothedSampleParams,
+    ModuleId, SmoothedSampleParams, Smp,
     engine_io::EngineAudioEnd,
     routing::{
         AudioRouterType, ControlRouterType, OutputRouterType, OutputsArena, RouterFactory,

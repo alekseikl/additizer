@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     ComplexSample, SIMD_LANES, Smp, WideSmp,
     filters::control::ZERO_RESONANCE_Q,
-    units::{db_to_gain, db_to_gain_fast},
+    math::{db_to_gain, db_to_gain_fast},
 };
 
 mod sections;

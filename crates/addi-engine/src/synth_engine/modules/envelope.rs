@@ -1,6 +1,6 @@
 use std::array;
 
-use addi_dsp::fast_exp2_x4;
+use addi_dsp::fast_exp2_wide;
 
 mod config;
 mod link;
@@ -24,7 +24,7 @@ use crate::{
         types::{Smp, WideSmp},
         voices_handler::DecayingVoice,
     },
-    synth_engine::{fill_x4, from_ms},
+    synth_engine::{fill_wide, from_ms},
 };
 
 pub const SLOPE_POWER_SCALE: Smp = 20.0;
@@ -135,7 +135,7 @@ impl FillStage {
             local_t + 3.0 * t_step,
         ]);
 
-        fill_x4(out, || {
+        fill_wide(out, || {
             let y = ramp_x4.mul_add(t, from_x4);
             t += step;
             y
@@ -171,8 +171,8 @@ impl FillStage {
             (local_t + 3.0 * t_step) * recip,
         ]);
 
-        fill_x4(out, || {
-            let exp = fast_exp2_x4(x * power_log2e);
+        fill_wide(out, || {
+            let exp = fast_exp2_wide(x * power_log2e);
             let y = scale_x4.mul_add(exp, offset_x4);
             x += step;
             y

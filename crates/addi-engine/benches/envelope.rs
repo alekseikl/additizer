@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use addi_engine::{
-    Envelope, ModuleHandle, PlayingVoice, Smp, SmoothedSampleParams,
+    Envelope, ModuleHandle, PlayingVoice, SmoothedSampleParams, Smp,
     envelope::{EnvelopeConfig, stub::Links},
     routing::{OutputsArena, ProcessContext, ProcessParams},
     stub::{AudioEnd, StubLinks},

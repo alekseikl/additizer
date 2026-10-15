@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     SIMD_LANES, Smp, WideSmp,
-    units::{C4_PITCH, fast_pitch_to_freq_x4, fast_tan_pi_x4},
+    consts::C4_PITCH,
+    fast_math::{fast_pitch_to_freq_wide, fast_tan_pi_wide},
 };
 
 /// Largest `f / sample_rate` fed to `tan`, keeping `g` finite just below Nyquist.
@@ -549,10 +550,10 @@ impl LaneInputs<'_> {
         const MAX_RATIO: WideSmp = WideSmp::splat(MAX_FREQ_RATIO);
         const C4: WideSmp = WideSmp::splat(C4_PITCH);
 
-        let freq = fast_pitch_to_freq_x4(cutoff + C4);
+        let freq = fast_pitch_to_freq_wide(cutoff + C4);
         let ratio = (freq * freq_mult).fast_min(MAX_RATIO);
 
-        fast_tan_pi_x4(ratio)
+        fast_tan_pi_wide(ratio)
     }
 
     #[inline(always)]
