@@ -22,22 +22,22 @@ use crate::{
             NUM_CHANNELS, ProcessContext, RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget,
         },
         synth_module::SynthModule,
-        types::Sample,
+        types::Smp,
         voices_handler::DecayingVoice,
     },
     synth_engine::{fill_x4, from_ms},
 };
 
-pub const SLOPE_POWER_SCALE: Sample = 20.0;
+pub const SLOPE_POWER_SCALE: Smp = 20.0;
 
-const MIN_TIME_THRESHOLD: Sample = from_ms(0.5);
+const MIN_TIME_THRESHOLD: Smp = from_ms(0.5);
 
 struct Params {
     keep_voice_alive: bool,
     steal_level: bool,
-    attack_slope: Sample,
-    decay_slope: Sample,
-    release_slope: Sample,
+    attack_slope: Smp,
+    decay_slope: Smp,
+    release_slope: Smp,
 }
 
 impl Params {
@@ -53,12 +53,12 @@ impl Params {
 }
 
 struct ChannelParams {
-    delay: Sample,
-    attack: Sample,
-    hold: Sample,
-    decay: Sample,
-    sustain: Sample,
-    release: Sample,
+    delay: Smp,
+    attack: Smp,
+    hold: Smp,
+    decay: Smp,
+    sustain: Smp,
+    release: Smp,
 }
 
 impl ChannelParams {
@@ -78,9 +78,9 @@ impl ChannelParams {
 #[derive(Clone, Copy)]
 pub struct EnvelopePhase {
     /// Seconds since trigger, or since release started once [`Self::released`].
-    pub t: Sample,
+    pub t: Smp,
     /// Envelope value at trigger; attack interpolates from this to 1.
-    pub start_level: Sample,
+    pub start_level: Smp,
     pub released: bool,
     pub done: bool,
 }
@@ -97,41 +97,35 @@ impl Default for EnvelopePhase {
 }
 
 /// Stage times shorter than [`MIN_TIME_THRESHOLD`] collapse to zero length.
-fn stage_time(time: Sample) -> Sample {
+fn stage_time(time: Smp) -> Smp {
     if time < MIN_TIME_THRESHOLD { 0.0 } else { time }
 }
 
-fn slope_power(slope: Sample) -> Sample {
+fn slope_power(slope: Smp) -> Smp {
     -slope.clamp(-1.0, 1.0) * SLOPE_POWER_SCALE
 }
 
 struct FillStage {
-    t: Sample,
-    release: Option<Sample>,
-    start_level: Sample,
-    delay: Sample,
-    attack: Sample,
-    hold: Sample,
-    decay: Sample,
-    sustain: Sample,
-    release_time: Sample,
-    t_step: Sample,
-    attack_power: Sample,
-    decay_power: Sample,
-    release_power: Sample,
+    t: Smp,
+    release: Option<Smp>,
+    start_level: Smp,
+    delay: Smp,
+    attack: Smp,
+    hold: Smp,
+    decay: Smp,
+    sustain: Smp,
+    release_time: Smp,
+    t_step: Smp,
+    attack_power: Smp,
+    decay_power: Smp,
+    release_power: Smp,
 }
 
 impl FillStage {
     /// Linear ramp `from + (interval / duration) * t`, four lanes at a time.
     #[cold]
     #[inline(never)]
-    fn fill_linear_ramp(
-        out: &mut [Sample],
-        local_t: Sample,
-        t_step: Sample,
-        ramp: Sample,
-        from: Sample,
-    ) {
+    fn fill_linear_ramp(out: &mut [Smp], local_t: Smp, t_step: Smp, ramp: Smp, from: Smp) {
         let ramp_x4 = f32x4::splat(ramp);
         let from_x4 = f32x4::splat(from);
         let step = f32x4::splat(t_step * 4.0);
@@ -152,13 +146,13 @@ impl FillStage {
     /// Curved segment, four lanes at a time. Outlined so it stays a leaf.
     #[inline(never)]
     fn fill_curved(
-        out: &mut [Sample],
-        local_t: Sample,
-        t_step: Sample,
-        recip: Sample,
-        interval: Sample,
-        from: Sample,
-        power: Sample,
+        out: &mut [Smp],
+        local_t: Smp,
+        t_step: Smp,
+        recip: Smp,
+        interval: Smp,
+        from: Smp,
+        power: Smp,
     ) {
         // power_scale(x) = (exp(p * x) - 1) / (exp(p) - 1), so
         // interval * power_scale(x) + from = scale * exp(p * x) + offset.
@@ -186,18 +180,18 @@ impl FillStage {
         });
     }
 
-    fn samples_until(&self, end: Sample, max: usize) -> usize {
+    fn samples_until(&self, end: Smp, max: usize) -> usize {
         (((end - self.t).max(0.0) / self.t_step) as usize).min(max)
     }
 
     fn fill_curve(
         &self,
-        out: &mut [Sample],
-        local_t: Sample,
-        duration: Sample,
-        from: Sample,
-        to: Sample,
-        power: Sample,
+        out: &mut [Smp],
+        local_t: Smp,
+        duration: Smp,
+        from: Smp,
+        to: Smp,
+        power: Smp,
     ) {
         let t_step = self.t_step;
         let recip = duration.recip();
@@ -214,7 +208,7 @@ impl FillStage {
     /// Fills the current envelope stage into `out`.
     /// Returns `(samples_written, stage_end)` — `stage_end` is used to snap `t`
     /// forward when a timed stage has a sub-sample remainder (`samples_written == 0`).
-    fn fill(&self, out: &mut [Sample]) -> (usize, Option<Sample>) {
+    fn fill(&self, out: &mut [Smp]) -> (usize, Option<Smp>) {
         let max = out.len();
         let t = self.t;
 
@@ -275,15 +269,15 @@ impl FillStage {
 
 struct Voice {
     /// Seconds since trigger, or since release started once `release` is set.
-    t: Sample,
+    t: Smp,
     /// Envelope value at which the release started.
-    release: Option<Sample>,
+    release: Option<Smp>,
     /// Pending release event from `process_events`.
     released: Option<usize>,
     /// Last written envelope sample; also the release start level.
-    next_frame_value: Sample,
+    next_frame_value: Smp,
     /// Envelope value at trigger; attack interpolates from this to 1.
-    start_level: Sample,
+    start_level: Smp,
     done: bool,
 }
 
@@ -417,9 +411,9 @@ impl<L: EnvelopeLinks> Envelope<L> {
 
     set_mono_param!(set_keep_voice_alive, keep_voice_alive, bool);
     set_mono_param!(set_steal_level, steal_level, bool);
-    set_mono_param!(set_attack_slope, attack_slope, Sample);
-    set_mono_param!(set_decay_slope, decay_slope, Sample);
-    set_mono_param!(set_release_slope, release_slope, Sample);
+    set_mono_param!(set_attack_slope, attack_slope, Smp);
+    set_mono_param!(set_decay_slope, decay_slope, Smp);
+    set_mono_param!(set_release_slope, release_slope, Smp);
 
     set_stereo_param!(set_delay, delay);
     set_stereo_param!(set_attack, attack);
@@ -501,7 +495,7 @@ impl<L: EnvelopeLinks> Envelope<L> {
             }
 
             voice.next_frame_value = output[sample_idx + n - 1];
-            fill.t += n as Sample * fill.t_step;
+            fill.t += n as Smp * fill.t_step;
             sample_idx += n;
         }
 

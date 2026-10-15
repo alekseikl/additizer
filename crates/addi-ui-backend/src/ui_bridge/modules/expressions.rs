@@ -2,7 +2,7 @@ use crate::ui_bridge::ModuleUiBridge;
 use addi_engine::expressions::{
     Expressions, ExpressionsConfig, ExpressionsLinks, ExpressionsUiEnd,
 };
-use addi_engine::{Expression, Sample};
+use addi_engine::{Expression, Smp};
 
 pub struct ExpressionsUiBridge<L: ExpressionsLinks = crate::links::expressions::Links> {
     ui_end: L::UiEnd,
@@ -21,7 +21,7 @@ impl<L: ExpressionsLinks> ExpressionsUiBridge<L> {
         &self.config
     }
 
-    pub fn get_value(&mut self) -> Sample {
+    pub fn get_value(&mut self) -> Smp {
         self.ui_end.get_value()
     }
 
@@ -37,7 +37,7 @@ impl<L: ExpressionsLinks> ExpressionsUiBridge<L> {
         }
     }
 
-    pub fn set_smooth(&mut self, value: Sample) {
+    pub fn set_smooth(&mut self, value: Smp) {
         if self.ui_end.set_smooth(value) {
             self.config.smooth = value;
         }

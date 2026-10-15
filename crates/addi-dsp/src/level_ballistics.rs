@@ -1,19 +1,19 @@
-use crate::{NUM_CHANNELS, Sample, units::from_ms};
+use crate::{NUM_CHANNELS, Smp, units::from_ms};
 
-const ATTACK_TIME: Sample = from_ms(2.0);
-const RELEASE_TIME: Sample = from_ms(250.0);
+const ATTACK_TIME: Smp = from_ms(2.0);
+const RELEASE_TIME: Smp = from_ms(250.0);
 
 #[derive(Default, Clone, Copy)]
 pub struct LevelBallistics {
-    level: Sample,
+    level: Smp,
 }
 
 impl LevelBallistics {
-    fn coeff(sample_rate: Sample, time: Sample) -> Sample {
+    fn coeff(sample_rate: Smp, time: Smp) -> Smp {
         (-5.0 / (sample_rate * time.max(from_ms(1.0)))).exp2()
     }
 
-    pub fn process(&mut self, samples: &[Sample], sample_rate: Sample) -> Sample {
+    pub fn process(&mut self, samples: &[Smp], sample_rate: Smp) -> Smp {
         if samples.is_empty() {
             return self.level;
         }
@@ -50,9 +50,9 @@ impl Default for StereoLevelBallistics {
 impl StereoLevelBallistics {
     pub fn process(
         &mut self,
-        channels: [&[Sample]; NUM_CHANNELS],
-        sample_rate: Sample,
-    ) -> [Sample; NUM_CHANNELS] {
+        channels: [&[Smp]; NUM_CHANNELS],
+        sample_rate: Smp,
+    ) -> [Smp; NUM_CHANNELS] {
         let mut levels = [0.0; NUM_CHANNELS];
 
         for ((samples, ballistics), level) in channels

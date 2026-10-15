@@ -1,5 +1,5 @@
 use crate::synth_engine::{
-    DisplaySpectrum, Input, Sample, StereoSample, engine_io,
+    DisplaySpectrum, Input, Smp, StereoSample, engine_io,
     oscillator::{PhasesDst, UnisonStyle},
     types::ComplexSample,
 };
@@ -34,7 +34,7 @@ pub enum UiEvent {
     },
     Unison(usize),
     UnisonStyle(UnisonStyle),
-    UnisonStereo(Sample),
+    UnisonStereo(Smp),
     UnisonInitialPhase {
         idx: usize,
         value: StereoSample,
@@ -56,8 +56,8 @@ pub enum UiEvent {
         value: StereoSample,
     },
     StealPhase(bool),
-    PhaseRandom(Sample),
-    PhaseRandomStereo(Sample),
+    PhaseRandom(Smp),
+    PhaseRandomStereo(Smp),
     MonoSpectrum(bool),
     FullFftSize(bool),
     ApplyUnisonLevelShape {
@@ -66,8 +66,8 @@ pub enum UiEvent {
         to: bool,
     },
     RandomizePhases {
-        amount: Sample,
-        stereo_spread: Sample,
+        amount: Smp,
+        stereo_spread: Smp,
         dst: PhasesDst,
     },
 }
@@ -84,10 +84,10 @@ pub trait OscillatorUiEnd: Send {
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
     fn set_unison(&mut self, unison: usize) -> bool;
     fn set_unison_style(&mut self, style: UnisonStyle) -> bool;
-    fn set_unison_stereo(&mut self, stereo: Sample) -> bool;
+    fn set_unison_stereo(&mut self, stereo: Smp) -> bool;
     fn set_steal_phase(&mut self, steal_phase: bool) -> bool;
-    fn set_phase_random(&mut self, phase_random: Sample) -> bool;
-    fn set_phase_random_stereo(&mut self, phase_random_stereo: Sample) -> bool;
+    fn set_phase_random(&mut self, phase_random: Smp) -> bool;
+    fn set_phase_random_stereo(&mut self, phase_random_stereo: Smp) -> bool;
     fn set_mono_spectrum(&mut self, mono_spectrum: bool) -> bool;
     fn set_full_fft_size(&mut self, full_fft_size: bool) -> bool;
     fn set_unison_initial_phase(&mut self, idx: usize, value: StereoSample) -> bool;
@@ -101,7 +101,7 @@ pub trait OscillatorUiEnd: Send {
         level: StereoSample,
         to: bool,
     ) -> bool;
-    fn randomize_phases(&mut self, amount: Sample, stereo_spread: Sample, dst: PhasesDst) -> bool;
+    fn randomize_phases(&mut self, amount: Smp, stereo_spread: Smp, dst: PhasesDst) -> bool;
 }
 
 pub trait OscillatorLinks: Send {

@@ -1,6 +1,6 @@
 use super::*;
 
-const SAMPLE_RATE: Sample = 48_000.0;
+const SAMPLE_RATE: Smp = 48_000.0;
 
 #[test]
 fn silence_stays_at_zero() {

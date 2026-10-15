@@ -2,7 +2,7 @@ use std::mem::MaybeUninit;
 
 use crate::synth_engine::{
     routing::{MAX_VOICES, NUM_CHANNELS, SamplesOutput, VOICE_PAIR_LEN},
-    types::{ComplexSample, Sample},
+    types::{ComplexSample, Smp},
 };
 
 pub const SPECTRUM_BITS: usize = 10;
@@ -10,7 +10,7 @@ pub const SPECTRAL_BUFFER_SIZE: usize = 1 << SPECTRUM_BITS;
 pub const DISPLAY_SPECTRUM_SIZE: usize = 512;
 pub const DC_OFFSET: usize = 1;
 
-pub type Buffer = Box<[Sample]>;
+pub type Buffer = Box<[Smp]>;
 pub type SpectralBuffer = [ComplexSample; SPECTRAL_BUFFER_SIZE];
 pub type DisplaySpectrum = [ComplexSample; DISPLAY_SPECTRUM_SIZE];
 
@@ -97,7 +97,7 @@ impl<T> VoicesLayout<T> {
 impl VoicesLayout<SamplesOutput> {
     /// Sample buffers of voice pair `pair_idx`.
     /// Order is even left, even right, odd left, odd right.
-    pub fn pair_buffers_mut(&mut self, pair_idx: usize) -> [&mut [Sample]; 4] {
+    pub fn pair_buffers_mut(&mut self, pair_idx: usize) -> [&mut [Smp]; 4] {
         let voice0 = pair_idx * VOICE_PAIR_LEN;
         let (even, odd) = self.channels_pair_mut(voice0, voice0 + 1);
         let [even_left, even_right] = even.each_mut();
@@ -167,7 +167,7 @@ impl ValueBuffer {
         }
     }
 
-    pub fn set(&mut self, value: Sample, at: usize) {
+    pub fn set(&mut self, value: Smp, at: usize) {
         if at > self.change_at {
             let prev = self.buffer[self.change_at];
             self.buffer[self.change_at + 1..at].fill(prev);
@@ -177,7 +177,7 @@ impl ValueBuffer {
         self.change_at = at;
     }
 
-    pub fn read_and_reset(&mut self, out: &mut [Sample]) {
+    pub fn read_and_reset(&mut self, out: &mut [Smp]) {
         let filled_len = self.change_at + 1;
         let copy_len = filled_len.min(out.len());
 
@@ -198,23 +198,23 @@ pub fn copy_to_display_spectrum(dst: &mut [ComplexSample], src: &[ComplexSample]
     dst[len..].fill(ComplexSample::ZERO);
 }
 
-pub fn copy_to_buffer(buff: &mut [Sample], iter: impl Iterator<Item = Sample>) {
+pub fn copy_to_buffer(buff: &mut [Smp], iter: impl Iterator<Item = Smp>) {
     buff.iter_mut()
         .zip(iter)
         .for_each(|(buff, value)| *buff = value);
 }
 
-pub fn add_to_buffer(buff: &mut [Sample], iter: impl Iterator<Item = Sample>) {
+pub fn add_to_buffer(buff: &mut [Smp], iter: impl Iterator<Item = Smp>) {
     buff.iter_mut()
         .zip(iter)
         .for_each(|(buff, value)| *buff += value);
 }
 
-pub fn add_buffer_value(buff: &mut [Sample], value: Sample) {
+pub fn add_buffer_value(buff: &mut [Smp], value: Smp) {
     buff.iter_mut().for_each(|buff_value| *buff_value += value);
 }
 
-pub fn copy_or_add_to_buffer(copy: bool, buff: &mut [Sample], input: impl Iterator<Item = Sample>) {
+pub fn copy_or_add_to_buffer(copy: bool, buff: &mut [Smp], input: impl Iterator<Item = Smp>) {
     if copy {
         copy_to_buffer(buff, input);
     } else {

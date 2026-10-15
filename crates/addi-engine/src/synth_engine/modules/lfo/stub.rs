@@ -1,6 +1,6 @@
 use super::{LfoAudioEnd, LfoLinks, LfoShape, LfoUiEnd, UiEvent};
 
-use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::synth_engine::{Input, Smp, StereoSample};
 
 pub struct AudioEnd;
 
@@ -29,11 +29,11 @@ impl LfoAudioEnd for AudioEnd {
         None
     }
 
-    fn update_phase(&mut self, _phase: Sample) {}
+    fn update_phase(&mut self, _phase: Smp) {}
 }
 
 impl LfoUiEnd for NoUi {
-    fn get_phase(&mut self) -> Sample {
+    fn get_phase(&mut self) -> Smp {
         self.diverge()
     }
 

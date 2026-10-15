@@ -33,14 +33,14 @@ use crate::{
         },
         spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF},
         synth_module::SynthModule,
-        types::Sample,
+        types::Smp,
     },
 };
 
 struct Params {
     filters: SmallVec<[EqFilter; MAX_EQ_FILTERS]>,
     linear_phase: bool,
-    keytrack: Sample,
+    keytrack: Smp,
 }
 
 impl Params {
@@ -61,10 +61,10 @@ impl Params {
 }
 
 struct ChannelParams {
-    cutoff: Sample,
-    q_cutoff: Sample,
-    q_rolloff: Sample,
-    output_level: Sample,
+    cutoff: Smp,
+    q_cutoff: Smp,
+    q_rolloff: Smp,
+    output_level: Smp,
 }
 
 impl ChannelParams {
@@ -184,7 +184,7 @@ impl<L: SpectralEqLinks> SpectralEq<L> {
     }
 
     set_mono_param!(set_linear_phase, linear_phase, bool);
-    set_mono_param!(set_keytrack, keytrack, Sample, keytrack.clamp(0.0, 1.0));
+    set_mono_param!(set_keytrack, keytrack, Smp, keytrack.clamp(0.0, 1.0));
 
     set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF));
     set_stereo_param!(

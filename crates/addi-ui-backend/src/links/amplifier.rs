@@ -1,6 +1,6 @@
 use triple_buffer::triple_buffer;
 
-use addi_engine::{Input, NUM_CHANNELS, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
+use addi_engine::{Input, NUM_CHANNELS, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 use addi_engine::amplifier::{AmplifierAudioEnd, AmplifierLinks, AmplifierUiEnd, UiEvent};
 
@@ -29,7 +29,7 @@ impl AudioEnd {
         self.rx.pop().ok()
     }
 
-    pub fn update_out_volume(&mut self, channel_idx: usize, out_volume: Sample) {
+    pub fn update_out_volume(&mut self, channel_idx: usize, out_volume: Smp) {
         self.out_volume.input_buffer_mut()[channel_idx] = out_volume;
 
         if channel_idx == NUM_CHANNELS - 1 {
@@ -58,7 +58,7 @@ impl AmplifierAudioEnd for AudioEnd {
     fn pop_event(&mut self) -> Option<UiEvent> {
         AudioEnd::pop_event(self)
     }
-    fn update_out_volume(&mut self, channel_idx: usize, out_volume: Sample) {
+    fn update_out_volume(&mut self, channel_idx: usize, out_volume: Smp) {
         AudioEnd::update_out_volume(self, channel_idx, out_volume)
     }
 }

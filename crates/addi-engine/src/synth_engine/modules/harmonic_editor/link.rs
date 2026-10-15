@@ -1,14 +1,14 @@
 use std::array;
 
 use crate::synth_engine::{
-    ComplexSample, DisplaySpectrum, NUM_CHANNELS, SPECTRAL_BUFFER_SIZE, Sample, StereoSample,
+    ComplexSample, DisplaySpectrum, NUM_CHANNELS, SPECTRAL_BUFFER_SIZE, Smp, StereoSample,
     engine_io, harmonic_editor::EditRequest,
 };
 
 #[derive(Clone)]
 pub struct Harmonics {
-    amplitudes: [Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
-    phases: [Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+    amplitudes: [Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+    phases: [Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
 }
 
 impl Default for Harmonics {
@@ -43,8 +43,8 @@ impl Harmonics {
 
     pub fn copy_channels(
         &mut self,
-        amplitudes: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
-        phases: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+        amplitudes: &[Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+        phases: &[Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
     ) {
         for (dst, src) in self.amplitudes.iter_mut().zip(amplitudes.iter()) {
             dst.copy_from_slice(src.as_slice());
@@ -78,8 +78,8 @@ pub trait HarmonicEditorAudioEnd: Send {
     fn update_display_spectrum(&mut self, spectrum: &[ComplexSample]);
     fn publish_harmonics(
         &mut self,
-        amplitudes: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
-        phases: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+        amplitudes: &[Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+        phases: &[Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
     );
 }
 

@@ -1,6 +1,6 @@
 use super::{EqFilter, SpectralEqAudioEnd, SpectralEqLinks, SpectralEqUiEnd, UiEvent};
 
-use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::synth_engine::{Input, Smp, StereoSample};
 
 pub struct AudioEnd;
 
@@ -29,11 +29,11 @@ impl SpectralEqAudioEnd for AudioEnd {
         None
     }
 
-    fn update_pitch(&mut self, _pitch: Sample) {}
+    fn update_pitch(&mut self, _pitch: Smp) {}
 }
 
 impl SpectralEqUiEnd for NoUi {
-    fn pitch(&mut self) -> Sample {
+    fn pitch(&mut self) -> Smp {
         self.diverge()
     }
 
@@ -45,7 +45,7 @@ impl SpectralEqUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_keytrack(&mut self, _value: Sample) -> bool {
+    fn set_keytrack(&mut self, _value: Smp) -> bool {
         self.diverge()
     }
 

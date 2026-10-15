@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::{ModuleId, Sample, StereoSample};
+use crate::synth_engine::{ModuleId, Smp, StereoSample};
 use addi_dsp::filters::svf::SvfType;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -8,7 +8,7 @@ pub struct SvfConfig {
     pub id: ModuleId,
     pub filter_type: SvfType,
     #[serde(default)]
-    pub keytrack: Sample,
+    pub keytrack: Smp,
     pub cutoff: StereoSample,
     pub resonance: StereoSample,
     pub drive: StereoSample,

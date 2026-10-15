@@ -3,7 +3,7 @@ use smallvec::SmallVec;
 
 use crate::{
     synth_engine::note_to_pitch,
-    synth_engine::{Sample, StereoSample, config::LinkConfig},
+    synth_engine::{Smp, StereoSample, config::LinkConfig},
 };
 
 mod outputs;
@@ -154,8 +154,8 @@ pub struct PrevNote {
 }
 
 impl PrevNote {
-    pub fn pitch(&self) -> Sample {
-        note_to_pitch(self.note as Sample)
+    pub fn pitch(&self) -> Smp {
+        note_to_pitch(self.note as Smp)
     }
 
     pub fn voice_idx(&self) -> Option<usize> {
@@ -169,19 +169,19 @@ pub enum VoiceEvent {
         voice_idx: usize,
         replaced_voice_idx: Option<usize>,
         prev_note: Option<PrevNote>,
-        pitch: Sample,
-        velocity: Sample,
+        pitch: Smp,
+        velocity: Smp,
         offset: usize, // In-block sample offset
     },
     Update {
         voice_idx: usize,
-        pitch: Sample,
-        velocity: Sample,
+        pitch: Smp,
+        velocity: Smp,
         offset: usize, // In-block sample offset
     },
     Release {
         voice_idx: usize,
-        velocity: Sample,
+        velocity: Smp,
         offset: usize, // In-block sample offset
     },
     Kill {
@@ -194,7 +194,7 @@ pub struct ExpressionEvent {
     pub voice_idx: usize,
     pub expression: Expression,
     pub offset: usize, // In-block sample offset
-    pub value: Sample,
+    pub value: Smp,
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -526,13 +526,13 @@ impl MixedSlots {
     }
 
     // Modulated input value projected into [0.0, 1.0] range for control rate input indicator
-    pub fn normalized_modulated(&self, channel_idx: usize, modulated_amount: Sample) -> Sample {
+    pub fn normalized_modulated(&self, channel_idx: usize, modulated_amount: Smp) -> Smp {
         let max_mod_amount = self
             .slots
             .iter()
             .map(|s| s.amount[channel_idx])
-            .sum::<Sample>()
-            + Sample::EPSILON;
+            .sum::<Smp>()
+            + Smp::EPSILON;
 
         (modulated_amount / max_mod_amount).clamp(-1.0, 1.0).abs()
     }

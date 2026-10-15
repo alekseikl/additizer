@@ -50,11 +50,11 @@ pub use routing::{
 };
 pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
-pub use types::{ComplexSample, Sample};
+pub use types::{ComplexSample, Smp};
 pub use voices_handler::{Note, PlayingVoice};
 
 pub use addi_dsp::{
-    C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain, db_to_gain_fast, db_to_gain_fast_x4,
+    C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, SIMD_LANES, db_to_gain, db_to_gain_fast, db_to_gain_fast_x4,
     fast_pitch_to_freq_x4, fill_x4, freq_to_c4_pitch, from_ms, from_st, gain_to_db,
     gain_to_db_fast, map_x4, map_x4_in_place, note_to_pitch, pan_gain, pitch_to_freq, power_scale,
     zip_map_x4,
@@ -101,7 +101,7 @@ struct PendingPolyModulation {
     param_idx: usize,
     host_id: i32,
     offset: usize,
-    value_offset: Sample,
+    value_offset: Smp,
 }
 
 pub struct SynthEngine<E: EngineLinks = stub::StubLinks> {
@@ -121,14 +121,10 @@ pub struct SynthEngine<E: EngineLinks = stub::StubLinks> {
 }
 
 impl<E: EngineLinks> SynthEngine<E> {
-    pub fn try_new(
-        cfg: &EngineConfig,
-        host_sample_rate: Sample,
-        oversampling: bool,
-    ) -> Option<Self> {
+    pub fn try_new(cfg: &EngineConfig, host_sample_rate: Smp, oversampling: bool) -> Option<Self> {
         let (audio_end, ui_end) = E::create_link_pair();
 
-        const BASE_SAMPLE_RATE: Sample = 48_000.0;
+        const BASE_SAMPLE_RATE: Smp = 48_000.0;
         const BASE_BLOCK_SIZE: usize = 128;
         let power = (host_sample_rate / BASE_SAMPLE_RATE).log2();
         let power = if power.is_finite() {
@@ -236,8 +232,8 @@ impl<E: EngineLinks> SynthEngine<E> {
         }
     }
 
-    fn sample_rate(&self) -> Sample {
-        self.host_sample_rate * self.oversampling as Sample
+    fn sample_rate(&self) -> Smp {
+        self.host_sample_rate * self.oversampling as Smp
     }
 
     pub fn get_engine_params(&self) -> EngineParams {
@@ -291,7 +287,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         self.block_size
     }
 
-    pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) {
+    pub fn set_voice_kill_time(&mut self, voice_kill_time: Smp) {
         if let Some(ModuleHandle::Output(output)) = self.modules.get_mut(&OUTPUT_MODULE_ID) {
             output.set_voice_kill_time(voice_kill_time);
         }
@@ -309,7 +305,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         }
     }
 
-    pub fn get_voice_kill_time(&self) -> Sample {
+    pub fn get_voice_kill_time(&self) -> Smp {
         match self.modules.get(&OUTPUT_MODULE_ID) {
             Some(ModuleHandle::Output(output)) => output.get_voice_kill_time(),
             _ => 0.0,
@@ -587,7 +583,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         note: Note,
         expression: Expression,
         offset: usize, // In-block host-sample offset
-        value: Sample,
+        value: Smp,
     ) {
         let offset = self.to_internal_offset(offset);
 
@@ -615,7 +611,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         &mut self,
         param_idx: usize,
         offset: usize,
-        value: Sample,
+        value: Smp,
         params: &[P; NUM_EXT_PARAMS],
     ) {
         if param_idx >= NUM_EXT_PARAMS {
@@ -636,7 +632,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         param_idx: usize,
         host_id: i32,
         offset: usize,
-        value_offset: Sample,
+        value_offset: Smp,
     ) {
         if param_idx >= NUM_EXT_PARAMS {
             return;
@@ -683,7 +679,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         param_idx: usize,
         voice_idx: usize,
         offset: usize,
-        value_offset: Sample,
+        value_offset: Smp,
     ) {
         let offset = self.to_internal_offset(offset);
 

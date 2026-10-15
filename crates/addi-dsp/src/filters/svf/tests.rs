@@ -4,16 +4,16 @@ use wide::f32x4;
 
 use crate::{
     ComplexSample,
-    filters::control::{MAX_PRE_Q, q_from_resonance, q_from_resonance_x4},
+    filters::control::MAX_PRE_Q,
     units::{C4_PITCH, freq_to_c4_pitch, pitch_to_freq},
 };
 
 use super::*;
 
-const SAMPLE_RATE: Sample = 48_000.0;
-const CUTOFF: Sample = 1_000.0;
+const SAMPLE_RATE: Smp = 48_000.0;
+const CUTOFF: Smp = 1_000.0;
 /// Butterworth Q. A 2-pole low-pass is −6 dB at the cutoff.
-const FLAT_Q: Sample = 0.5;
+const FLAT_Q: Smp = 0.5;
 
 #[test]
 fn process_clamps_frequency_ratio_to_the_tan_limit() {
@@ -21,7 +21,7 @@ fn process_clamps_frequency_ratio_to_the_tan_limit() {
     let gain = [1.0];
     let input = [1.0];
 
-    let run = |ratio: Sample| {
+    let run = |ratio: Smp| {
         let cutoff = [freq_to_c4_pitch(ratio * SAMPLE_RATE)];
         let mut state = SvfState::new(SvfType::LowPass12);
         let mut output = [0.0];
@@ -42,7 +42,7 @@ fn cutoff_to_g_stays_close_to_libm_tan() {
     let freq_mult_x4 = f32x4::splat(freq_mult);
 
     for i in 0..=200 {
-        let cutoff = -4.0 + i as Sample * 11.0 / 200.0;
+        let cutoff = -4.0 + i as Smp * 11.0 / 200.0;
         let g = LaneInputs::cutoff_to_g_x4(f32x4::splat(cutoff), freq_mult_x4).to_array()[0];
         let ratio = (pitch_to_freq(C4_PITCH + cutoff) * freq_mult).min(super::MAX_FREQ_RATIO);
         let expected = (ratio * PI).tan();
@@ -59,7 +59,7 @@ fn cutoff_to_g_stays_close_to_libm_tan() {
 #[test]
 fn process_lanes_match_one_sample_at_a_time() {
     let n = 7;
-    let input: Vec<_> = (0..n).map(|i| (i as Sample * 0.37).sin()).collect();
+    let input: Vec<_> = (0..n).map(|i| (i as Smp * 0.37).sin()).collect();
     // Spans the direct polynomial and the reciprocal side of `fast_tan_pi_x4`,
     // plus one cutoff past the clamp.
     let cutoff = [-2.0, 0.5, 2.0, 4.0, 6.0, 6.8, 9.0];
@@ -103,7 +103,7 @@ fn process_lanes_match_one_sample_at_a_time() {
 }
 
 /// One sample through lane 0. The other lanes stay silent.
-fn tick(state: &mut SvfState, cutoff: Sample, k: Sample, gain: Sample, input: Sample) -> Sample {
+fn tick(state: &mut SvfState, cutoff: Smp, k: Smp, gain: Smp, input: Smp) -> Smp {
     let audio = [input];
     let cutoff = [cutoff];
     let k = [k];
@@ -133,12 +133,12 @@ fn tick(state: &mut SvfState, cutoff: Sample, k: Sample, gain: Sample, input: Sa
 
 fn process_lane(
     state: &mut SvfState,
-    audio: &[Sample],
-    cutoff: &[Sample],
-    k: &[Sample],
-    pre_k: &[Sample],
-    gain: &[Sample],
-    output: &mut [Sample],
+    audio: &[Smp],
+    cutoff: &[Smp],
+    k: &[Smp],
+    pre_k: &[Smp],
+    gain: &[Smp],
+    output: &mut [Smp],
 ) {
     let zeros = vec![0.0; audio.len()];
     let mut sink_a = vec![0.0; audio.len()];
@@ -160,7 +160,7 @@ fn process_lane(
 }
 
 /// Steady-state amplitude of lane 0 for a unit sine at `freq`.
-fn measured_gain(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) -> Sample {
+fn measured_gain(filter_type: SvfType, q: Smp, gain: Smp, freq: Smp) -> Smp {
     let cutoff = freq_to_c4_pitch(CUTOFF);
     let k = q.recip();
     let mut state = SvfState::new(filter_type);
@@ -169,7 +169,7 @@ fn measured_gain(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) ->
     let mut sum_sq = 0.0f64;
 
     for n in 0..settle + measure {
-        let x = (TAU * freq * n as Sample / SAMPLE_RATE).sin();
+        let x = (TAU * freq * n as Smp / SAMPLE_RATE).sin();
         let y = tick(&mut state, cutoff, k, gain, x);
 
         if n >= settle {
@@ -177,10 +177,10 @@ fn measured_gain(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) ->
         }
     }
 
-    ((sum_sq / measure as f64).sqrt() * std::f64::consts::SQRT_2) as Sample
+    ((sum_sq / measure as f64).sqrt() * std::f64::consts::SQRT_2) as Smp
 }
 
-fn predicted_gain(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) -> Sample {
+fn predicted_gain(filter_type: SvfType, q: Smp, gain: Smp, freq: Smp) -> Smp {
     let w = (PI * freq / SAMPLE_RATE).tan();
     let g = (PI * CUTOFF / SAMPLE_RATE).tan();
 
@@ -195,11 +195,11 @@ fn predicted_gain(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) -
     response.at(w).norm()
 }
 
-fn analog_gain(filter_type: SvfType, q: Sample, freq: Sample) -> Sample {
+fn analog_gain(filter_type: SvfType, q: Smp, freq: Smp) -> Smp {
     analog_gain_with(filter_type, q, 1.0, freq)
 }
 
-fn analog_gain_with(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) -> Sample {
+fn analog_gain_with(filter_type: SvfType, q: Smp, gain: Smp, freq: Smp) -> Smp {
     let response = SvfResponse {
         filter_type,
         q,
@@ -211,7 +211,7 @@ fn analog_gain_with(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample)
     response.at(freq).norm()
 }
 
-fn assert_close(measured: Sample, predicted: Sample, ctx: &str) {
+fn assert_close(measured: Smp, predicted: Smp, ctx: &str) {
     let tolerance = (predicted * 0.03).max(2e-3);
 
     assert!(
@@ -312,7 +312,7 @@ fn steeper_types_roll_off_faster() {
     assert!(gain(SvfType::HighPass18) > gain(SvfType::HighPass24));
 }
 
-fn assert_impulse_decays(filter_type: SvfType, gain: Sample) {
+fn assert_impulse_decays(filter_type: SvfType, gain: Smp) {
     let cutoff = freq_to_c4_pitch(CUTOFF);
     let k = 16.0f32.recip();
     let mut state = SvfState::new(filter_type);
@@ -412,7 +412,7 @@ fn peaking_tick_matches_bilinear_response() {
     }
 }
 
-fn settled_dc(filter_type: SvfType, gain: Sample) -> Sample {
+fn settled_dc(filter_type: SvfType, gain: Smp) -> Smp {
     let cutoff = freq_to_c4_pitch(CUTOFF);
     let mut state = SvfState::new(filter_type);
     let mut output = 0.0;
@@ -431,7 +431,7 @@ fn peaking_dc_stays_unity_while_drive_scales_the_other_types() {
     assert!((settled_dc(SvfType::LowPass12, 4.0) - 4.0).abs() < 1e-2);
 }
 
-fn analog_h(filter_type: SvfType, q: Sample, gain: Sample, freq: Sample) -> ComplexSample {
+fn analog_h(filter_type: SvfType, q: Smp, gain: Smp, freq: Smp) -> ComplexSample {
     SvfResponse {
         filter_type,
         q,
@@ -502,7 +502,7 @@ fn shelves_are_identity_at_unity_gain() {
 #[test]
 fn shelf_boost_and_cut_are_inverses() {
     let freq = 1.7 * CUTOFF;
-    let gain: Sample = 4.0;
+    let gain: Smp = 4.0;
     let cut = gain.recip();
 
     for filter_type in [
@@ -643,7 +643,7 @@ fn drive(state: &mut SvfState) {
     }
 }
 
-fn tick_sequence(state: &mut SvfState) -> [Sample; 4] {
+fn tick_sequence(state: &mut SvfState) -> [Smp; 4] {
     let cutoff = freq_to_c4_pitch(CUTOFF);
     let mut output = [0.0; 4];
 
@@ -704,28 +704,6 @@ fn set_type_clears_integrator_state_when_the_type_changes() {
 }
 
 #[test]
-fn q_from_resonance_x4_matches_scalar() {
-    for step in 0..=40 {
-        let resonance = -1.0 + step as Sample * 2.0 / 40.0;
-        let scalar = q_from_resonance(resonance);
-        let (q, pre) = q_from_resonance_x4(f32x4::splat(resonance));
-        let q = q.to_array()[0];
-        let pre = pre.to_array()[0];
-
-        assert!(
-            (q - scalar.resonant).abs() < 1e-6,
-            "resonant {resonance}: {q} vs {}",
-            scalar.resonant
-        );
-        assert!(
-            (pre - scalar.pre_stage).abs() < 1e-6,
-            "pre {resonance}: {pre} vs {}",
-            scalar.pre_stage
-        );
-    }
-}
-
-#[test]
 fn reset_zeros_one_slot() {
     let n = 16;
     let audio = [0.2; 16];
@@ -733,14 +711,14 @@ fn reset_zeros_one_slot() {
     let k = [0.5; 16];
     let pre_k = [2.0; 16];
     let gain = [1.0; 16];
-    let audio_refs = [&audio[..], &audio[..], &audio[..], &audio[..]];
-    let cutoff_refs = [&cutoff[..], &cutoff[..], &cutoff[..], &cutoff[..]];
-    let k_refs = [&k[..], &k[..], &k[..], &k[..]];
-    let pre_k_refs = [&pre_k[..], &pre_k[..], &pre_k[..], &pre_k[..]];
-    let gain_refs = [&gain[..], &gain[..], &gain[..], &gain[..]];
+    let audio_refs = [&audio[..]; LANES];
+    let cutoff_refs = [&cutoff[..]; LANES];
+    let k_refs = [&k[..]; LANES];
+    let pre_k_refs = [&pre_k[..]; LANES];
+    let gain_refs = [&gain[..]; LANES];
 
     let mut state = SvfState::new(SvfType::LowPass24);
-    let mut out = [[0.0; 16]; 4];
+    let mut out = [[0.0; 16]; LANES];
     {
         let [o0, o1, o2, o3] = out.each_mut();
         state.process(
@@ -759,9 +737,9 @@ fn reset_zeros_one_slot() {
 
     state.reset(0);
 
-    let mut cleared = [[0.0; 1]; 4];
+    let mut cleared = [[0.0; 1]; LANES];
     let silent = [0.0; 1];
-    let silent_refs = [&silent[..], &silent[..], &silent[..], &silent[..]];
+    let silent_refs = [&silent[..]; LANES];
     let [o0, o1, o2, o3] = cleared.each_mut();
 
     state.process(

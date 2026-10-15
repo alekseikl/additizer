@@ -4,7 +4,7 @@ use parking_lot::Mutex;
 
 use addi_engine::{
     EngineConfig, EngineParams, Input, InputId, LinkConfig, ModuleConfig, ModuleId, ModuleType,
-    OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
+    OUTPUT_MODULE_ID, Smp, StereoSample, SynthEngine,
     harmonic_editor::HarmonicEditorConfig,
     oscillator::{Oscillator, OscillatorConfig},
     spectral_eq::{EqFilter, SpectralEq, SpectralEqConfig},
@@ -21,7 +21,7 @@ use crate::{
     },
 };
 
-const SAMPLE_RATE: Sample = 48_000.0;
+const SAMPLE_RATE: Smp = 48_000.0;
 const HARMONIC_EDITOR_ID: ModuleId = 1;
 const OSCILLATOR_ID: ModuleId = 2;
 

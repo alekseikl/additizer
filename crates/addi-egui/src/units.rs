@@ -1,16 +1,16 @@
 use addi_dsp::{C4_PITCH, freq_to_c4_pitch, pitch_to_freq};
-use addi_engine::{Sample, StereoSample};
+use addi_engine::{Smp, StereoSample};
 
 enum DisplayUnit {
-    Percents(Sample),
-    Db(Sample),
-    Semitones(Sample),
-    Semicents(Sample),
-    Hz(Sample),
-    Khz(Sample),
-    Ms(Sample),
-    Secs(Sample),
-    Rolloff(Sample),
+    Percents(Smp),
+    Db(Smp),
+    Semitones(Smp),
+    Semicents(Smp),
+    Hz(Smp),
+    Khz(Smp),
+    Ms(Smp),
+    Secs(Smp),
+    Rolloff(Smp),
 }
 
 impl DisplayUnit {
@@ -76,7 +76,7 @@ impl DisplayUnit {
         }
     }
 
-    fn hz_precision(value: Sample) -> usize {
+    fn hz_precision(value: Smp) -> usize {
         if value.abs() < 1.0 {
             2
         } else if value.abs() < 10.0 {
@@ -116,7 +116,7 @@ pub enum Units {
 }
 
 impl Units {
-    fn frequency_display_unit(value: Sample) -> DisplayUnit {
+    fn frequency_display_unit(value: Smp) -> DisplayUnit {
         if value.abs() > 1_000.0 {
             DisplayUnit::Khz(value / 1_000.0)
         } else {
@@ -124,7 +124,7 @@ impl Units {
         }
     }
 
-    fn display_unit(&self, value: Sample) -> DisplayUnit {
+    fn display_unit(&self, value: Smp) -> DisplayUnit {
         match self {
             Self::Db => DisplayUnit::Db(value),
             Self::Rolloff => DisplayUnit::Rolloff(value),
@@ -156,11 +156,11 @@ impl Units {
         }
     }
 
-    pub fn format(&self, value: Sample) -> String {
+    pub fn format(&self, value: Smp) -> String {
         self.display_unit(value).format()
     }
 
-    pub(crate) fn format_input(&self, value: Sample) -> String {
+    pub(crate) fn format_input(&self, value: Smp) -> String {
         self.display_unit(value).format_input()
     }
 
@@ -181,7 +181,7 @@ impl Units {
         }
     }
 
-    fn parse_one(&self, text: &str) -> Option<Sample> {
+    fn parse_one(&self, text: &str) -> Option<Smp> {
         let (number, unit) = split_number_and_unit(text)?;
 
         match self {
@@ -212,7 +212,7 @@ impl Units {
     }
 }
 
-fn split_number_and_unit(text: &str) -> Option<(Sample, &str)> {
+fn split_number_and_unit(text: &str) -> Option<(Smp, &str)> {
     let text = text.trim();
     let bytes = text.as_bytes();
     let mut i = 0;

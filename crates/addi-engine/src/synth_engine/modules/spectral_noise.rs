@@ -9,7 +9,7 @@ use crate::{
         pitch_to_freq,
     },
     synth_engine::{
-        ComplexSample, MAX_BANDWIDTH, Sample, StereoSample,
+        ComplexSample, MAX_BANDWIDTH, Smp, StereoSample,
         buffer::{DC_OFFSET, SPECTRAL_BUFFER_SIZE, VoicesLayout, new_voices_layout_with},
         routing::{
             DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, MAX_VOICES, MixedSlots, ModuleId,
@@ -32,9 +32,9 @@ pub use config::{NoiseColor, SpectralNoiseConfig};
 
 pub use link::{SpectralNoiseAudioEnd, SpectralNoiseLinks, SpectralNoiseUiEnd, UiEvent};
 
-pub const MIN_ROLLOFF: Sample = 3.0;
-pub const MAX_ROLLOFF: Sample = 60.0;
-const FULL_AMOUNT_THRESHOLD: Sample = 0.9999;
+pub const MIN_ROLLOFF: Smp = 3.0;
+pub const MAX_ROLLOFF: Smp = 60.0;
+const FULL_AMOUNT_THRESHOLD: Smp = 0.9999;
 
 #[derive(Clone, Copy)]
 struct PhaseReset {
@@ -90,8 +90,8 @@ impl Inputs {
 }
 
 struct ChannelParams {
-    amount: Sample,
-    level: Sample,
+    amount: Smp,
+    level: Smp,
 }
 
 impl ChannelParams {
@@ -107,11 +107,11 @@ pub fn clamp_bandwidth(bandwidth: i32) -> i32 {
     bandwidth.clamp(0, MAX_BANDWIDTH as i32)
 }
 
-fn clamp_level(level: Sample) -> Sample {
+fn clamp_level(level: Smp) -> Smp {
     level.clamp(MIN_LEVEL_DB, MAX_LEVEL_DB)
 }
 
-fn clamp_amount(amount: Sample) -> Sample {
+fn clamp_amount(amount: Smp) -> Smp {
     amount.clamp(0.0, 1.0)
 }
 
@@ -137,12 +137,12 @@ pub struct SpectralNoise<L: SpectralNoiseLinks = stub::Links> {
     rolloff: StereoSample,
     steal_phase: bool,
     /// `power_scale(color) / π`, shared by every voice.
-    magnitude_scale: Sample,
+    magnitude_scale: Smp,
     random: Pcg32,
     /// Harmonic phase in radians, per channel and voice. DC stays at 0.
-    phases: VoicesLayout<[Sample; SPECTRAL_BUFFER_SIZE]>,
+    phases: VoicesLayout<[Smp; SPECTRAL_BUFFER_SIZE]>,
     /// `log2` of harmonic indices. Index 0 is unused.
-    log2: [Sample; SPECTRAL_BUFFER_SIZE],
+    log2: [Smp; SPECTRAL_BUFFER_SIZE],
     /// Pending note-on. Applied on the voice's next left-channel render.
     phase_reset: [Option<PhaseReset>; MAX_VOICES],
 }
@@ -183,7 +183,7 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
                 if harmonic == 0 {
                     0.0
                 } else {
-                    (harmonic as Sample).log2()
+                    (harmonic as Smp).log2()
                 }
             }),
             phase_reset: [None; MAX_VOICES],
@@ -238,7 +238,7 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
         self.steal_phase = steal_phase;
     }
 
-    fn level_gain(level_db: Sample) -> Sample {
+    fn level_gain(level_db: Smp) -> Smp {
         if level_db <= MIN_LEVEL_DB {
             0.0
         } else {
@@ -247,8 +247,8 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
     }
 
     /// Unnormalized harmonic weight. White is flat, pink is `1/sqrt(n)`, brown is `1/n`.
-    fn color_weight(color: NoiseColor, harmonic: usize) -> Sample {
-        let n = harmonic as Sample;
+    fn color_weight(color: NoiseColor, harmonic: usize) -> Smp {
+        let n = harmonic as Smp;
 
         match color {
             NoiseColor::White => 1.0,
@@ -258,7 +258,7 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
     }
 
     /// Scales a color onto brown noise's total power across the full harmonic buffer.
-    fn magnitude_scale(color: NoiseColor) -> Sample {
+    fn magnitude_scale(color: NoiseColor) -> Smp {
         let mut color_power = 0.0;
         let mut brown_power = 0.0;
 
@@ -266,7 +266,7 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
             let weight = Self::color_weight(color, idx);
             color_power += weight * weight;
 
-            let n = idx as Sample;
+            let n = idx as Smp;
             brown_power += 1.0 / (n * n);
         }
 
@@ -312,15 +312,15 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
     }
 
     #[inline]
-    fn turn_phase(phase: &mut Sample, max_turn: Sample, rng: &mut Pcg32) {
-        let turn = (rng.random::<Sample>() * 2.0 - 1.0) * max_turn;
+    fn turn_phase(phase: &mut Smp, max_turn: Smp, rng: &mut Pcg32) {
+        let turn = (rng.random::<Smp>() * 2.0 - 1.0) * max_turn;
 
         *phase = (*phase + turn).rem_euclid(f32::consts::TAU);
     }
 
     #[inline]
-    fn reset_phase(phase: &mut Sample, rng: &mut Pcg32) {
-        *phase = rng.random::<Sample>() * f32::consts::TAU;
+    fn reset_phase(phase: &mut Smp, rng: &mut Pcg32) {
+        *phase = rng.random::<Smp>() * f32::consts::TAU;
     }
 
     /// Writes this voice's harmonics into `out`. `out.len()` is the bandlimited
@@ -329,7 +329,7 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
         &self,
         voice_idx: usize,
         channel: usize,
-        gain: Sample,
+        gain: Smp,
         out: &mut [ComplexSample],
     ) {
         let Some((dc, harmonics)) = out.split_first_mut() else {
@@ -348,13 +348,13 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
         }
     }
 
-    fn pitch_bandwidth(pitch: Sample) -> usize {
+    fn pitch_bandwidth(pitch: Smp) -> usize {
         let frequency = pitch_to_freq(pitch).max(1.0);
 
         (BAND_LIMIT_FREQUENCY / frequency).floor() as usize
     }
 
-    fn spectrum_length(&self, pitch: Sample) -> usize {
+    fn spectrum_length(&self, pitch: Smp) -> usize {
         let bandwidth = if self.bandwidth == 0 {
             Self::pitch_bandwidth(pitch)
         } else {

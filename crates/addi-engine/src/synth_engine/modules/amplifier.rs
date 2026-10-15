@@ -14,7 +14,7 @@ pub use link::{AmplifierAudioEnd, AmplifierLinks, AmplifierUiEnd, UiEvent};
 
 use crate::{
     synth_engine::{
-        Sample, SmoothedSampleParams, StereoSample,
+        Smp, SmoothedSampleParams, StereoSample,
         buffer::{Buffer, VoicesLayout, zero_buffer},
         level_ballistics::LevelBallistics,
         routing::{
@@ -27,7 +27,7 @@ use crate::{
     synth_engine::{db_to_gain_fast, pan_gain},
 };
 
-const MAX_LEVEL_DB: Sample = 6.0;
+const MAX_LEVEL_DB: Smp = 6.0;
 
 struct ChannelParams {
     gain: SmoothedSample,

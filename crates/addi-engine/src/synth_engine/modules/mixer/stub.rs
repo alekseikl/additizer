@@ -1,6 +1,6 @@
 use super::{MixerAudioEnd, MixerLinks, MixerUiEnd, UiEvent, UiUpdate};
 
-use crate::synth_engine::{Input, Sample, StereoSample, VolumeType};
+use crate::synth_engine::{Input, Smp, StereoSample, VolumeType};
 
 pub struct AudioEnd;
 
@@ -33,7 +33,7 @@ impl MixerAudioEnd for AudioEnd {
         false
     }
 
-    fn update_out_volume(&mut self, _channel_idx: usize, _out_volume: Sample) {}
+    fn update_out_volume(&mut self, _channel_idx: usize, _out_volume: Smp) {}
 }
 
 impl MixerUiEnd for NoUi {

@@ -1,7 +1,7 @@
 use triple_buffer::triple_buffer;
 
 use addi_engine::{
-    AUDIO_TO_UI_RING_CAPACITY, Input, NUM_CHANNELS, Sample, StereoSample,
+    AUDIO_TO_UI_RING_CAPACITY, Input, NUM_CHANNELS, Smp, StereoSample,
     UI_TO_AUDIO_RING_CAPACITY, VolumeType,
 };
 
@@ -59,7 +59,7 @@ impl AudioEnd {
         self.tx.push(UiUpdate::RefreshRouting).is_ok()
     }
 
-    pub fn update_out_volume(&mut self, channel_idx: usize, out_volume: Sample) {
+    pub fn update_out_volume(&mut self, channel_idx: usize, out_volume: Smp) {
         self.out_volume.input_buffer_mut()[channel_idx] = out_volume;
 
         if channel_idx == NUM_CHANNELS - 1 {
@@ -94,7 +94,7 @@ impl MixerAudioEnd for AudioEnd {
     fn refresh_routing(&mut self) -> bool {
         AudioEnd::refresh_routing(self)
     }
-    fn update_out_volume(&mut self, channel_idx: usize, out_volume: Sample) {
+    fn update_out_volume(&mut self, channel_idx: usize, out_volume: Smp) {
         AudioEnd::update_out_volume(self, channel_idx, out_volume)
     }
 }

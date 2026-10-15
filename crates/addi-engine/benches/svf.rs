@@ -12,7 +12,7 @@ use addi_dsp::filters::{
     svf::SvfType,
 };
 use addi_engine::{
-    NUM_CHANNELS, PlayingVoice, Sample, SmoothedSampleParams, StereoSample, Svf,
+    NUM_CHANNELS, PlayingVoice, SmoothedSampleParams, Smp, StereoSample, Svf,
     routing::{Input, InputSlots, OutputsArena, ProcessContext, ProcessParams},
     stub::AudioEnd,
     svf::SvfConfig,
@@ -29,28 +29,28 @@ use aux::Audio;
 const BLOCK: usize = 128;
 const BUFFER_SIZE: usize = BLOCK + 1;
 
-const SAMPLE_RATE: Sample = 48_000.0;
+const SAMPLE_RATE: Smp = 48_000.0;
 
 const VOICES: usize = 16;
 
 /// Octaves relative to C4. Two octaves up is about 1 kHz.
-const CUTOFF_OCTAVES: Sample = 2.0;
+const CUTOFF_OCTAVES: Smp = 2.0;
 
 /// Resonant-stage Q, matching `crates/addi-dsp/benches/svf.rs`.
-const Q: Sample = 1.0;
+const Q: Smp = 1.0;
 
 /// Seconds. The block is the start of this attack.
-const ATTACK: Sample = 0.01;
+const ATTACK: Smp = 0.01;
 
-fn resonance_for_q(q: Sample) -> Sample {
+fn resonance_for_q(q: Smp) -> Smp {
     ((q - ZERO_RESONANCE_Q) / (MAX_RESONANCE_Q - ZERO_RESONANCE_Q)).cbrt()
 }
 
 /// Linear rise from silence over [`ATTACK`].
-fn rising_ramp() -> [Sample; BLOCK] {
+fn rising_ramp() -> [Smp; BLOCK] {
     let slope = SAMPLE_RATE.recip() / ATTACK;
 
-    std::array::from_fn(|i| slope * i as Sample)
+    std::array::from_fn(|i| slope * i as Smp)
 }
 
 fn voices() -> [PlayingVoice; VOICES] {

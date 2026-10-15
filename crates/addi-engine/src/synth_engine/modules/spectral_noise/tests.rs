@@ -9,13 +9,13 @@ use crate::{
     },
     synth_engine::{
         ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId, Note,
-        OUTPUT_MODULE_ID, SPECTRAL_BUFFER_SIZE, Sample, SynthEngine, VoiceEvent, buffer::DC_OFFSET,
+        OUTPUT_MODULE_ID, SPECTRAL_BUFFER_SIZE, Smp, SynthEngine, VoiceEvent, buffer::DC_OFFSET,
         oscillator::OscillatorConfig, routing::LEFT_CHANNEL, synth_module::SynthModule,
         voices_handler::BAND_LIMIT_FREQUENCY,
     },
 };
 
-const SAMPLE_RATE: Sample = 48_000.0;
+const SAMPLE_RATE: Smp = 48_000.0;
 const DRAW_LEN: usize = 32;
 
 fn noise_with(color: NoiseColor, level: StereoSample, bandwidth: i32) -> SpectralNoise {
@@ -86,7 +86,7 @@ fn draw(
     out
 }
 
-fn rolloff_gain(octaves_below: Sample, db_per_oct: Sample) -> Sample {
+fn rolloff_gain(octaves_below: Smp, db_per_oct: Smp) -> Smp {
     let octaves_below = octaves_below.max(0.0);
     let db_per_oct = db_per_oct.clamp(MIN_ROLLOFF, MAX_ROLLOFF);
 
@@ -187,7 +187,7 @@ fn min_level_silences_harmonics() {
     assert_eq!(spectrum[8].norm(), 0.0);
 }
 
-fn circular_distance(a: Sample, b: Sample) -> Sample {
+fn circular_distance(a: Smp, b: Smp) -> Smp {
     let delta = (a - b).abs() % std::f32::consts::TAU;
     delta.min(std::f32::consts::TAU - delta)
 }
@@ -373,7 +373,7 @@ fn config_round_trips() {
     assert!(restored.get_config().steal_phase);
 }
 
-fn play(bandwidth: i32) -> Vec<Sample> {
+fn play(bandwidth: i32) -> Vec<Smp> {
     const NOISE_ID: ModuleId = 1;
     const OSC_ID: ModuleId = 2;
 
@@ -419,8 +419,8 @@ fn play(bandwidth: i32) -> Vec<Sample> {
     left
 }
 
-fn rms(samples: &[Sample]) -> Sample {
-    (samples.iter().map(|s| s * s).sum::<Sample>() / samples.len() as Sample).sqrt()
+fn rms(samples: &[Smp]) -> Smp {
+    (samples.iter().map(|s| s * s).sum::<Smp>() / samples.len() as Smp).sqrt()
 }
 
 #[test]
@@ -434,7 +434,7 @@ fn bandlimiting_changes_the_rendered_wave() {
         .iter()
         .zip(&wide)
         .map(|(a, b)| (a - b).abs())
-        .fold(0.0, Sample::max);
+        .fold(0.0, Smp::max);
 
     assert!(diff > 0.05, "bandwidth 8 and 64 rendered the same wave");
 }
@@ -493,7 +493,7 @@ fn each_process_draws_a_new_spectrum() {
         .iter()
         .zip(&second)
         .map(|(a, b)| (a - b).abs())
-        .fold(0.0, Sample::max);
+        .fold(0.0, Smp::max);
 
     assert!(diff > 0.05, "two process calls rendered the same wave");
 }

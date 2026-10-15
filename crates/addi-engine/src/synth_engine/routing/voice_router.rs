@@ -1,5 +1,5 @@
 use crate::synth_engine::{
-    Buffer, CONTROL_EXT, ComplexSample, ModuleId, NUM_CHANNELS, ProcessParams, Sample,
+    Buffer, CONTROL_EXT, ComplexSample, ModuleId, NUM_CHANNELS, ProcessParams, Smp,
     buffer::VoicesLayout,
     engine_io::EngineAudioEnd,
     routing::{
@@ -486,7 +486,7 @@ pub struct VoiceOutput<'v, D: RouterDataType> {
 }
 
 impl<'v, 'f, 'c, A: EngineAudioEnd, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D, A> {
-    pub fn sample_rate(&self) -> Sample {
+    pub fn sample_rate(&self) -> Smp {
         self.factory.ctx.params.sample_rate
     }
 
@@ -501,9 +501,9 @@ impl<'v, 'f, 'c, A: EngineAudioEnd, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D
     fn scalar_param_impl(
         &mut self,
         input: &MixedSlots,
-        param: Sample,
+        param: Smp,
         this_frame: Option<usize>,
-    ) -> Sample {
+    ) -> Smp {
         if let Some(modulated_amount) = self.factory.ctx.outputs_arena.get_scalar(
             &input.slots,
             self.target.channel_idx,
@@ -546,7 +546,7 @@ pub struct VoiceLane {
 
 impl VoiceLane {
     /// Active samples of this lane in `buffers`. Samples before the trigger offset are cleared.
-    pub fn buff<'a>(&self, buffers: &'a mut [Buffer]) -> &'a mut [Sample] {
+    pub fn buff<'a>(&self, buffers: &'a mut [Buffer]) -> &'a mut [Smp] {
         let buffer = &mut buffers[self.lane_idx];
 
         buffer[..self.offset].fill(0.0);
@@ -571,7 +571,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, AudioRouterType, A> 
         self.target.triggered.is_some()
     }
 
-    pub fn direct(&self, slot: Option<usize>) -> &[Sample] {
+    pub fn direct(&self, slot: Option<usize>) -> &[Smp] {
         let ctx = &self.factory.ctx;
 
         &ctx.outputs_arena
@@ -579,7 +579,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, AudioRouterType, A> 
             .unwrap_or(ctx.outputs_arena.zeroes())[self.state.offset..ctx.params.samples]
     }
 
-    pub fn param(&mut self, input: &MixedSlots, param: &SmoothedSample, buff: &mut [Sample]) {
+    pub fn param(&mut self, input: &MixedSlots, param: &SmoothedSample, buff: &mut [Smp]) {
         let buff = &mut buff[..self.samples()];
         let smooth_params = &self.factory.ctx.params.smooth_params;
 
@@ -610,18 +610,18 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, AudioRouterType, A> 
         }
     }
 
-    pub fn scalar(&mut self, input: &MixedSlots, param: Sample, this_frame: bool) -> Sample {
+    pub fn scalar(&mut self, input: &MixedSlots, param: Smp, this_frame: bool) -> Smp {
         self.scalar_param_impl(input, param, this_frame.then_some(self.state.offset))
     }
 
-    pub fn param_stationary(&self, input: &MixedSlots, param: &SmoothedSample) -> Option<Sample> {
+    pub fn param_stationary(&self, input: &MixedSlots, param: &SmoothedSample) -> Option<Smp> {
         (!param.check_needs_smoothing(&self.factory.ctx.params.smooth_params) && input.is_empty())
             .then(|| param.get())
     }
 }
 
 impl<'v> VoiceOutput<'v, AudioRouterType> {
-    pub fn output(&mut self) -> &mut [Sample] {
+    pub fn output(&mut self) -> &mut [Smp] {
         &mut self
             .outputs
             .at_mut(self.target.channel_idx, self.target.voice_idx)
@@ -674,13 +674,13 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, ControlRouterType, A
         }
     }
 
-    pub fn scalar(&mut self, input: &MixedSlots, param: Sample) -> Sample {
+    pub fn scalar(&mut self, input: &MixedSlots, param: Smp) -> Smp {
         self.scalar_param_impl(input, param, Some(self.state.offset))
     }
 }
 
 impl<'v> VoiceOutput<'v, ControlRouterType> {
-    pub fn output(&mut self) -> &mut [Sample] {
+    pub fn output(&mut self) -> &mut [Smp] {
         &mut self
             .outputs
             .at_mut(self.target.channel_idx, self.target.voice_idx)
@@ -689,7 +689,7 @@ impl<'v> VoiceOutput<'v, ControlRouterType> {
 
     /// External control sources are not written 1 sample ahead.
     /// in_buff is aligned with processing block.
-    pub fn fill_with_ext_control(&mut self, in_buff: &[Sample]) {
+    pub fn fill_with_ext_control(&mut self, in_buff: &[Smp]) {
         let offset = if self.target.triggered.is_some() {
             self.state.offset
         } else {
@@ -709,7 +709,7 @@ impl<'v> VoiceOutput<'v, ControlRouterType> {
 }
 
 impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, SpectralRouterType, A> {
-    pub fn direct_opt(&self, slot: Option<usize>) -> Option<Sample> {
+    pub fn direct_opt(&self, slot: Option<usize>) -> Option<Smp> {
         let this_frame = self
             .factory
             .params()
@@ -727,7 +727,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, SpectralRouterType, 
         })
     }
 
-    pub fn scalar(&mut self, input: &MixedSlots, param: Sample) -> Sample {
+    pub fn scalar(&mut self, input: &MixedSlots, param: Smp) -> Smp {
         let this_frame = self
             .factory
             .params()
@@ -757,7 +757,7 @@ impl<'v, D: RouterDataType> Drop for VoiceOutput<'v, D> {
 }
 
 impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, OutputRouterType, A> {
-    pub fn direct(&mut self, slot: Option<usize>) -> &[Sample] {
+    pub fn direct(&mut self, slot: Option<usize>) -> &[Smp] {
         let ctx = &self.factory.ctx;
 
         &ctx.outputs_arena

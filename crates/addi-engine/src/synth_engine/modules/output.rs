@@ -6,7 +6,7 @@ use addi_dsp::db_to_gain_fast;
 use crate::{
     synth_engine::from_ms,
     synth_engine::{
-        Input, ModuleId, OUTPUT_MODULE_ID, Sample, StereoSample, SynthModule,
+        Input, ModuleId, OUTPUT_MODULE_ID, Smp, StereoSample, SynthModule,
         buffer::{Buffer, copy_or_add_to_buffer, copy_to_buffer, zero_buffer},
         iir_decimator::IirDecimator,
         level_ballistics::StereoLevelBallistics,
@@ -22,15 +22,15 @@ use crate::{
 const _: () = assert!(NUM_CHANNELS == 2);
 
 /// Hard-clip ceiling for the summed output.
-const OUTPUT_CLIP_DB: Sample = 12.0;
+const OUTPUT_CLIP_DB: Smp = 12.0;
 /// Fade shorter than this is treated as an instant mute (including `kill_time == 0`).
-const INSTANT_KILL_TIME: Sample = from_ms(0.5);
+const INSTANT_KILL_TIME: Smp = from_ms(0.5);
 
 struct Voice {
     killing: bool,
     /// In-block sample index where the kill fade starts; taken on the next process.
     killing_offset: Option<usize>,
-    killing_time: Sample,
+    killing_time: Smp,
 }
 
 impl Default for Voice {
@@ -51,7 +51,7 @@ struct Channel {
 pub struct Output {
     audio_input: Option<usize>,
     gain: [SmoothedSample; NUM_CHANNELS],
-    kill_time: Sample,
+    kill_time: Smp,
     channels: [Channel; NUM_CHANNELS],
     input_buffer: Buffer,
     output: [Buffer; NUM_CHANNELS],
@@ -60,7 +60,7 @@ pub struct Output {
 }
 
 impl Output {
-    pub fn new(gain: StereoSample, kill_time: Sample, buffer_size: usize) -> Self {
+    pub fn new(gain: StereoSample, kill_time: Smp, buffer_size: usize) -> Self {
         Self {
             audio_input: None,
             gain: [
@@ -76,20 +76,20 @@ impl Output {
         }
     }
 
-    fn clamp_kill_time(kill_time: Sample) -> Sample {
+    fn clamp_kill_time(kill_time: Smp) -> Smp {
         kill_time.clamp(0.0, from_ms(50.0))
     }
 
-    fn clamp_gain(gain: Sample) -> Sample {
+    fn clamp_gain(gain: Smp) -> Smp {
         gain.clamp(0.0, 4.0)
     }
 
     #[inline]
     fn apply_kill_fade(
-        buffer: &mut [Sample],
+        buffer: &mut [Smp],
         voice: &mut Voice,
-        kill_time: Sample,
-        sample_rate: Sample,
+        kill_time: Smp,
+        sample_rate: Smp,
     ) {
         if !voice.killing {
             return;
@@ -102,9 +102,9 @@ impl Output {
             buffer[start..].fill(0.0);
             voice.killing_time = kill_time;
         } else {
-            let power: Sample = -5.0;
-            let curve_mult: Sample = (power.exp() - 1.0).recip();
-            let time_mult: Sample = kill_time.recip();
+            let power: Smp = -5.0;
+            let curve_mult: Smp = (power.exp() - 1.0).recip();
+            let time_mult: Smp = kill_time.recip();
             let t_step = sample_rate.recip();
 
             for out in buffer.iter_mut().skip(start) {
@@ -118,8 +118,8 @@ impl Output {
     }
 
     fn apply_volume<'a>(
-        output: impl Iterator<Item = &'a mut Sample>,
-        gain: impl Iterator<Item = Sample>,
+        output: impl Iterator<Item = &'a mut Smp>,
+        gain: impl Iterator<Item = Smp>,
         samples: usize,
     ) -> bool {
         let clip_level = db_to_gain_fast(OUTPUT_CLIP_DB);
@@ -150,11 +150,11 @@ impl Output {
         }
     }
 
-    pub fn get_voice_kill_time(&self) -> Sample {
+    pub fn get_voice_kill_time(&self) -> Smp {
         self.kill_time
     }
 
-    pub fn set_voice_kill_time(&mut self, kill_time: Sample) {
+    pub fn set_voice_kill_time(&mut self, kill_time: Smp) {
         self.kill_time = Self::clamp_kill_time(kill_time)
     }
 

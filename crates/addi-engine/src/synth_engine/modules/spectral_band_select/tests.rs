@@ -1,7 +1,7 @@
 use super::*;
 use crate::synth_engine::{C4_PITCH, pitch_to_freq};
 
-fn quantized_bounds(freq_from: Sample, freq_to: Sample, pitch: Sample) -> (u16, u16) {
+fn quantized_bounds(freq_from: Smp, freq_to: Smp, pitch: Smp) -> (u16, u16) {
     let fundamental = pitch_to_freq(pitch).max(1.0);
 
     (

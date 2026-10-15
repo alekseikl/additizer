@@ -2,13 +2,13 @@ use std::hint::black_box;
 
 use addi_engine::{
     EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId, NUM_CHANNELS, Note,
-    OUTPUT_MODULE_ID, Sample, StereoSample, SynthEngine,
+    OUTPUT_MODULE_ID, Smp, StereoSample, SynthEngine,
     harmonic_editor::HarmonicEditorConfig,
     oscillator::{MAX_UNISON_VOICES, OscillatorConfig},
 };
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 
-const SAMPLE_RATE: Sample = 48_000.0;
+const SAMPLE_RATE: Smp = 48_000.0;
 /// 48 kHz host block.
 const BLOCK: usize = 128;
 const HARMONIC_EDITOR_ID: ModuleId = 1;
@@ -55,7 +55,7 @@ fn trigger_notes_at(engine: &mut SynthEngine, count: usize, base_note: u8) {
     }
 }
 
-fn process_block(engine: &mut SynthEngine, samples: usize) -> [Sample; BLOCK] {
+fn process_block(engine: &mut SynthEngine, samples: usize) -> [Smp; BLOCK] {
     let mut left = [0.0; BLOCK];
     let mut right = [0.0; BLOCK];
 

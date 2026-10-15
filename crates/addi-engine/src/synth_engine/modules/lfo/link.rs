@@ -1,4 +1,4 @@
-use crate::synth_engine::{Input, Sample, StereoSample, engine_io};
+use crate::synth_engine::{Input, Smp, StereoSample, engine_io};
 
 use super::config::LfoShape;
 
@@ -12,11 +12,11 @@ pub enum UiEvent {
 
 pub trait LfoAudioEnd: Send {
     fn pop_event(&mut self) -> Option<UiEvent>;
-    fn update_phase(&mut self, phase: Sample);
+    fn update_phase(&mut self, phase: Smp);
 }
 
 pub trait LfoUiEnd: Send {
-    fn get_phase(&mut self) -> Sample;
+    fn get_phase(&mut self) -> Smp;
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
     fn set_shape(&mut self, shape: LfoShape) -> bool;
     fn set_bipolar(&mut self, value: bool) -> bool;

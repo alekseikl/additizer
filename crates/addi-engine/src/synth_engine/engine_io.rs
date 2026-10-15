@@ -1,5 +1,5 @@
 use crate::synth_engine::{
-    Input, InputId, ModuleId, NUM_CHANNELS, Sample, StereoSample, amplifier::AmplifierLinks,
+    Input, InputId, ModuleId, NUM_CHANNELS, Smp, StereoSample, amplifier::AmplifierLinks,
     envelope::EnvelopeLinks, expressions::ExpressionsLinks, external_param::ExternalParamLinks,
     harmonic_editor::HarmonicEditorLinks, lfo::LfoLinks, mixer::MixerLinks,
     oscillator::OscillatorLinks, pitch::PitchLinks, spectral_band_select::SpectralBandSelectLinks,
@@ -42,7 +42,7 @@ pub enum UiEvent {
     Voices(usize),
     Legato(bool),
     KillSameNote(bool),
-    VoiceKillTime(Sample),
+    VoiceKillTime(Smp),
     OutputGain(StereoSample),
 }
 
@@ -51,8 +51,8 @@ pub enum UiUpdate {
         module_id: ModuleId,
         input: Input,
         channel: u8,
-        value: Sample,
-        normalized_value: Sample,
+        value: Smp,
+        normalized_value: Smp,
     },
     VoicesStatus(VoicesStatus),
 }
@@ -63,8 +63,8 @@ pub trait EngineAudioEnd: Send {
         module_id: ModuleId,
         input: Input,
         channel: u8,
-        value: Sample,
-        normalized_value: Sample,
+        value: Smp,
+        normalized_value: Smp,
     ) -> bool;
 
     fn update_voices_status(&mut self, metrics: &VoicesHandlerMetrics) -> bool;
@@ -85,7 +85,7 @@ pub trait EngineUiEnd: Send {
 
     fn set_kill_same_note(&mut self, kill_same_note: bool) -> bool;
 
-    fn set_voice_kill_time(&mut self, voice_kill_time: Sample) -> bool;
+    fn set_voice_kill_time(&mut self, voice_kill_time: Smp) -> bool;
 
     fn set_output_gain(&mut self, output_gain: StereoSample) -> bool;
 

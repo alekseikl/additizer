@@ -1,6 +1,6 @@
 use triple_buffer::triple_buffer;
 
-use addi_engine::{Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
+use addi_engine::{Input, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 use addi_engine::lfo::LfoShape;
 
@@ -8,11 +8,11 @@ use addi_engine::lfo::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
-    phase: triple_buffer::Output<Sample>,
+    phase: triple_buffer::Output<Smp>,
 }
 
 impl UiEnd {
-    pub fn get_phase(&mut self) -> Sample {
+    pub fn get_phase(&mut self) -> Smp {
         *self.phase.read()
     }
 
@@ -39,7 +39,7 @@ impl UiEnd {
 
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
-    phase: triple_buffer::Input<Sample>,
+    phase: triple_buffer::Input<Smp>,
 }
 
 impl AudioEnd {
@@ -47,7 +47,7 @@ impl AudioEnd {
         self.rx.pop().ok()
     }
 
-    pub fn update_phase(&mut self, phase: Sample) {
+    pub fn update_phase(&mut self, phase: Smp) {
         self.phase.write(phase);
     }
 }
@@ -72,13 +72,13 @@ impl LfoAudioEnd for AudioEnd {
     fn pop_event(&mut self) -> Option<UiEvent> {
         AudioEnd::pop_event(self)
     }
-    fn update_phase(&mut self, phase: Sample) {
+    fn update_phase(&mut self, phase: Smp) {
         AudioEnd::update_phase(self, phase)
     }
 }
 
 impl LfoUiEnd for UiEnd {
-    fn get_phase(&mut self) -> Sample {
+    fn get_phase(&mut self) -> Smp {
         UiEnd::get_phase(self)
     }
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool {

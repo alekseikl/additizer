@@ -10,7 +10,7 @@ use addi_dsp::{
     },
     gain_to_db_fast, pitch_to_freq,
 };
-use addi_engine::{Input, MAX_LEVEL_DB, ModuleId, Sample};
+use addi_engine::{Input, MAX_LEVEL_DB, ModuleId, Smp};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
 use super::GridWidgetContent;
@@ -88,8 +88,8 @@ impl SvfWidget {
         &mut self,
         rect: Rect,
         response: &SvfResponse,
-        cutoff_log2: Sample,
-        drive_db: Sample,
+        cutoff_log2: Smp,
+        drive_db: Smp,
     ) {
         const MIN_DB: f32 = -40.0;
         const DB_RANGE_MULT: f32 = (MAX_LEVEL_DB - MIN_DB).recip();

@@ -1,5 +1,5 @@
 use crate::synth_engine::{
-    ModuleId, Sample, SmoothedSampleParams,
+    ModuleId, Smp, SmoothedSampleParams,
     engine_io::EngineAudioEnd,
     routing::{
         AudioRouterType, ControlRouterType, OutputRouterType, OutputsArena, RouterFactory,
@@ -12,7 +12,7 @@ pub struct ProcessParams<'a> {
     pub trigger_stage: bool,
     pub has_triggered_voices: bool,
     pub samples: usize,
-    pub sample_rate: Sample,
+    pub sample_rate: Smp,
     pub needs_update_ui: bool,
     pub smooth_params: SmoothedSampleParams,
     pub active_voices: &'a [PlayingVoice],
@@ -47,8 +47,8 @@ impl VoiceTarget {
         }
     }
 
-    pub fn note_pitch(&self) -> Sample {
-        crate::synth_engine::note_to_pitch(self.note as Sample)
+    pub fn note_pitch(&self) -> Smp {
+        crate::synth_engine::note_to_pitch(self.note as Smp)
     }
 }
 

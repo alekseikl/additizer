@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use wide::f32x4;
 
 use crate::{
-    ComplexSample, Sample,
+    ComplexSample, SIMD_LANES, Smp,
     filters::control::ZERO_RESONANCE_Q,
     units::{db_to_gain, db_to_gain_fast},
 };
@@ -17,7 +17,7 @@ use simd::ComplexX4;
 use sections::TAU;
 
 pub trait FilterImpl: Clone + Copy + 'static {
-    fn new(gain: Sample, cutoff_freq: Sample, q: Sample, pre_q: Sample) -> Self;
+    fn new(gain: Smp, cutoff_freq: Smp, q: Smp, pre_q: Smp) -> Self;
 }
 
 trait FilterLanes: FilterImpl {
@@ -114,7 +114,7 @@ pub struct HighShelf24 {
 }
 
 impl FilterImpl for LowPass12 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, _pre_q: Smp) -> Self {
         Self {
             resonant: LowPass::new(gain, cutoff, q),
         }
@@ -129,7 +129,7 @@ impl FilterLanes for LowPass12 {
 }
 
 impl FilterImpl for LowPass18 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, _pre_q: Smp) -> Self {
         Self {
             pre_stage: OnePoleLowPass::new(cutoff),
             resonant: LowPass::new(gain, cutoff, q),
@@ -145,7 +145,7 @@ impl FilterLanes for LowPass18 {
 }
 
 impl FilterImpl for LowPass24 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, pre_q: Smp) -> Self {
         Self {
             pre_stage: LowPass::new(1.0, cutoff, pre_q),
             resonant: LowPass::new(gain, cutoff, q),
@@ -161,7 +161,7 @@ impl FilterLanes for LowPass24 {
 }
 
 impl FilterImpl for HighPass12 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, _pre_q: Smp) -> Self {
         Self {
             resonant: HighPass::new(gain, cutoff, q),
         }
@@ -176,7 +176,7 @@ impl FilterLanes for HighPass12 {
 }
 
 impl FilterImpl for HighPass18 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, _pre_q: Smp) -> Self {
         Self {
             pre_stage: OnePoleHighPass::new(cutoff),
             resonant: HighPass::new(gain, cutoff, q),
@@ -192,7 +192,7 @@ impl FilterLanes for HighPass18 {
 }
 
 impl FilterImpl for HighPass24 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, pre_q: Smp) -> Self {
         Self {
             pre_stage: HighPass::new(1.0, cutoff, pre_q),
             resonant: HighPass::new(gain, cutoff, q),
@@ -208,7 +208,7 @@ impl FilterLanes for HighPass24 {
 }
 
 impl FilterImpl for BandPass6 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, _pre_q: Smp) -> Self {
         Self {
             resonant: BandPass::new(gain, cutoff, q),
         }
@@ -223,7 +223,7 @@ impl FilterLanes for BandPass6 {
 }
 
 impl FilterImpl for BandPass12 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, pre_q: Smp) -> Self {
         Self {
             pre_stage: BandPass::new(1.0, cutoff, pre_q),
             resonant: BandPass::new(gain, cutoff, q),
@@ -239,7 +239,7 @@ impl FilterLanes for BandPass12 {
 }
 
 impl FilterImpl for BandPass18 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, pre_q: Smp) -> Self {
         Self {
             pre_stage: BandPass::new(1.0, cutoff, pre_q),
             resonant: BandPass::new(gain, cutoff, q),
@@ -257,7 +257,7 @@ impl FilterLanes for BandPass18 {
 }
 
 impl FilterImpl for BandPass24 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, pre_q: Smp) -> Self {
         Self {
             pre_stage: BandPass::new(1.0, cutoff, pre_q),
             resonant: BandPass::new(gain, cutoff, q),
@@ -276,7 +276,7 @@ impl FilterLanes for BandPass24 {
 }
 
 impl FilterImpl for Peaking {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, _pre_q: Smp) -> Self {
         Self {
             section: sections::Peaking::new(gain, cutoff, q),
         }
@@ -291,7 +291,7 @@ impl FilterLanes for Peaking {
 }
 
 impl FilterImpl for Notch {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, _pre_q: Smp) -> Self {
         Self {
             resonant: sections::Notch::new(gain, cutoff, q),
         }
@@ -306,7 +306,7 @@ impl FilterLanes for Notch {
 }
 
 impl FilterImpl for LowShelf12 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, _pre_q: Smp) -> Self {
         Self {
             section: LowShelf::new(gain, cutoff, q),
         }
@@ -321,7 +321,7 @@ impl FilterLanes for LowShelf12 {
 }
 
 impl FilterImpl for HighShelf12 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, _pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, _pre_q: Smp) -> Self {
         Self {
             section: HighShelf::new(gain, cutoff, q),
         }
@@ -336,7 +336,7 @@ impl FilterLanes for HighShelf12 {
 }
 
 impl FilterImpl for LowShelf24 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, pre_q: Smp) -> Self {
         let g12 = gain.max(0.0).sqrt();
 
         Self {
@@ -354,7 +354,7 @@ impl FilterLanes for LowShelf24 {
 }
 
 impl FilterImpl for HighShelf24 {
-    fn new(gain: Sample, cutoff: Sample, q: Sample, pre_q: Sample) -> Self {
+    fn new(gain: Smp, cutoff: Smp, q: Smp, pre_q: Smp) -> Self {
         let g12 = gain.max(0.0).sqrt();
 
         Self {
@@ -439,22 +439,22 @@ impl FilterType {
 
 #[derive(Clone, Copy)]
 pub struct FilterParams {
-    pub drive: Sample,
-    pub cutoff: Sample, // Octaves of the note fundamental (harmonic space).
-    pub q: Sample,
+    pub drive: Smp,
+    pub cutoff: Smp, // Octaves of the note fundamental (harmonic space).
+    pub q: Smp,
     /// Pre-stage Q in a cascade.
-    pub pre_q: Sample,
-    pub q_cutoff: Sample,  // Octaves. At and above this, Q is not reduced.
-    pub q_rolloff: Sample, // dB per octave below q_cutoff.
+    pub pre_q: Smp,
+    pub q_cutoff: Smp,  // Octaves. At and above this, Q is not reduced.
+    pub q_rolloff: Smp, // dB per octave below q_cutoff.
     pub linear_phase: bool,
 }
 
 pub struct SpectralFilter {
     filter_type: FilterType,
-    gain: Sample,
-    cutoff_freq: Sample,
-    q: Sample,
-    pre_q: Sample,
+    gain: Smp,
+    cutoff_freq: Smp,
+    q: Smp,
+    pre_q: Smp,
     linear_phase: bool,
 }
 
@@ -470,7 +470,7 @@ impl SpectralFilter {
         }
     }
 
-    fn q_from_params(params: &FilterParams) -> Sample {
+    fn q_from_params(params: &FilterParams) -> Smp {
         let q = params.q;
         let excess = q - ZERO_RESONANCE_Q;
 
@@ -526,7 +526,7 @@ impl SpectralFilter {
         }
     }
 
-    pub fn response_at_freqs(&self, freqs: &[Sample], out: &mut [ComplexSample]) {
+    pub fn response_at_freqs(&self, freqs: &[Smp], out: &mut [ComplexSample]) {
         match self.filter_type {
             FilterType::LowPass12 => self.response_freqs_impl::<LowPass12>(freqs, out),
             FilterType::LowPass18 => self.response_freqs_impl::<LowPass18>(freqs, out),
@@ -547,7 +547,7 @@ impl SpectralFilter {
         }
     }
 
-    fn response_freqs_impl<T: FilterLanes>(&self, freqs: &[Sample], out: &mut [ComplexSample]) {
+    fn response_freqs_impl<T: FilterLanes>(&self, freqs: &[Smp], out: &mut [ComplexSample]) {
         let filter_impl = T::new(self.gain, self.cutoff_freq, self.q, self.pre_q);
 
         if self.linear_phase {
@@ -579,12 +579,12 @@ impl SpectralFilter {
     }
 }
 
-const LANES: usize = 4;
+const LANES: usize = SIMD_LANES;
 const DC_OFFSET: usize = 1;
 
 /// Up to four frequencies. Lanes past the slice stay zero and are not stored.
 #[inline(always)]
-fn load_freq_lanes(freqs: &[Sample]) -> f32x4 {
+fn load_freq_lanes(freqs: &[Smp]) -> f32x4 {
     let mut lanes = [0.0; LANES];
     let n = freqs.len().min(LANES);
     lanes[..n].copy_from_slice(&freqs[..n]);
@@ -614,7 +614,7 @@ fn write_response_lanes<const LINEAR: bool>(
 
 fn write_responses<T: FilterLanes, const LINEAR: bool>(
     filter: &T,
-    freqs: &[Sample],
+    freqs: &[Smp],
     out: &mut [ComplexSample],
 ) {
     let n = freqs.len().min(out.len());
@@ -702,7 +702,7 @@ fn apply_lanes<T: FilterLanes, const LINEAR: bool>(
     // Skip DC. Bin indices are the frequencies.
     let mut i = DC_OFFSET;
     let mut freq = f32x4::new([1.0, 2.0, 3.0, 4.0]);
-    let step = f32x4::splat(LANES as Sample);
+    let step = f32x4::splat(LANES as Smp);
 
     while i + LANES <= len {
         store_lanes::<LINEAR>(filter.at_x4(freq), input, output, i, LANES);
@@ -723,7 +723,7 @@ fn apply_lanes_in_place<T: FilterLanes, const LINEAR: bool>(
     let len = samples.len();
     let mut i = DC_OFFSET;
     let mut freq = f32x4::new([1.0, 2.0, 3.0, 4.0]);
-    let step = f32x4::splat(LANES as Sample);
+    let step = f32x4::splat(LANES as Smp);
 
     while i + LANES <= len {
         scale_lanes_in_place::<LINEAR>(filter.at_x4(freq), samples, i, LANES);

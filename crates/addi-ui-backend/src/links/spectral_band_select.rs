@@ -1,7 +1,7 @@
 use triple_buffer::triple_buffer;
 
 use addi_engine::spectral_band_select::BandSelectMode;
-use addi_engine::{DISPLAY_SPECTRUM_SIZE, Sample, UI_TO_AUDIO_RING_CAPACITY, types::ComplexSample};
+use addi_engine::{DISPLAY_SPECTRUM_SIZE, Smp, UI_TO_AUDIO_RING_CAPACITY, types::ComplexSample};
 
 use addi_engine::spectral_band_select::{
     SpectralBandSelectAudioEnd, SpectralBandSelectLinks, SpectralBandSelectUiEnd, UiEvent,
@@ -30,11 +30,11 @@ impl UiEnd {
         self.tx.push(UiEvent::HarmonicTo(value)).is_ok()
     }
 
-    pub fn set_freq_from(&mut self, value: Sample) -> bool {
+    pub fn set_freq_from(&mut self, value: Smp) -> bool {
         self.tx.push(UiEvent::FreqFrom(value)).is_ok()
     }
 
-    pub fn set_freq_to(&mut self, value: Sample) -> bool {
+    pub fn set_freq_to(&mut self, value: Smp) -> bool {
         self.tx.push(UiEvent::FreqTo(value)).is_ok()
     }
 }
@@ -100,10 +100,10 @@ impl SpectralBandSelectUiEnd for UiEnd {
     fn set_harmonic_to(&mut self, value: u16) -> bool {
         UiEnd::set_harmonic_to(self, value)
     }
-    fn set_freq_from(&mut self, value: Sample) -> bool {
+    fn set_freq_from(&mut self, value: Smp) -> bool {
         UiEnd::set_freq_from(self, value)
     }
-    fn set_freq_to(&mut self, value: Sample) -> bool {
+    fn set_freq_to(&mut self, value: Smp) -> bool {
         UiEnd::set_freq_to(self, value)
     }
 }

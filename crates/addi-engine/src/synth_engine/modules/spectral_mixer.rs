@@ -12,7 +12,7 @@ use crate::{
             VolumeType,
         },
         synth_module::SynthModule,
-        types::{ComplexSample, Sample},
+        types::{ComplexSample, Smp},
     },
 };
 
@@ -24,14 +24,14 @@ pub use config::{MAX_INPUTS, SpectralMixerConfig};
 pub use link::{SpectralMixerAudioEnd, SpectralMixerLinks, SpectralMixerUiEnd, UiEvent, UiUpdate};
 
 struct InputChannelParams {
-    level: Sample,
-    gain: Sample,
+    level: Smp,
+    gain: Smp,
 }
 
 struct ChannelParams {
     input_params: [InputChannelParams; MAX_INPUTS as usize],
-    output_level: Sample,
-    output_gain: Sample,
+    output_level: Smp,
+    output_gain: Smp,
 }
 
 impl ChannelParams {
@@ -269,7 +269,7 @@ impl<L: SpectralMixerLinks> SpectralMixer<L> {
     }
 
     #[inline(always)]
-    fn to_gain(vol: Sample) -> Sample {
+    fn to_gain(vol: Smp) -> Smp {
         db_to_gain_fast(vol.min(MAX_LEVEL_DB))
     }
 
@@ -322,7 +322,7 @@ impl<L: SpectralMixerLinks> SpectralMixer<L> {
                     }
                     MixType::Multiply => {
                         iter.enumerate().for_each(|(idx, (out, input))| {
-                            *out *= input * idx as Sample * f32::consts::PI
+                            *out *= input * idx as Smp * f32::consts::PI
                         });
                     }
                 }

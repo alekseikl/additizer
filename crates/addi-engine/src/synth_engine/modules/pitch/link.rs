@@ -1,4 +1,4 @@
-use crate::synth_engine::{Input, Sample, StereoSample, engine_io};
+use crate::synth_engine::{Input, Smp, StereoSample, engine_io};
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
@@ -9,11 +9,11 @@ pub enum UiEvent {
 
 pub trait PitchAudioEnd: Send {
     fn pop_event(&mut self) -> Option<UiEvent>;
-    fn update_pitch(&mut self, pitch: Sample);
+    fn update_pitch(&mut self, pitch: Smp);
 }
 
 pub trait PitchUiEnd: Send {
-    fn get_pitch(&mut self) -> Sample;
+    fn get_pitch(&mut self) -> Smp;
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
     fn set_keytrack(&mut self, value: bool) -> bool;
     fn set_glide_always(&mut self, value: bool) -> bool;

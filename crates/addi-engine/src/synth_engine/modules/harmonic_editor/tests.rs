@@ -1,11 +1,11 @@
 use super::*;
 use crate::synth_engine::{
     ComplexSample, DataType, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId,
-    NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Sample, SynthEngine, oscillator::OscillatorConfig,
+    NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Smp, SynthEngine, oscillator::OscillatorConfig,
     routing::LEFT_CHANNEL, synth_module::SynthModule,
 };
 
-const SAMPLE_RATE: Sample = 48_000.0;
+const SAMPLE_RATE: Smp = 48_000.0;
 const SRC_ID: ModuleId = 1;
 const DST_ID: ModuleId = 2;
 
@@ -168,7 +168,7 @@ fn sampling_engine(capture_input: bool) -> SynthEngine {
     SynthEngine::try_new(&config, SAMPLE_RATE, false).expect("valid engine")
 }
 
-fn play(engine: &mut SynthEngine) -> (Vec<Sample>, Vec<Sample>) {
+fn play(engine: &mut SynthEngine) -> (Vec<Smp>, Vec<Smp>) {
     engine.handle_note_on(
         Note {
             channel: 0,
@@ -187,11 +187,11 @@ fn play(engine: &mut SynthEngine) -> (Vec<Sample>, Vec<Sample>) {
     (left, right)
 }
 
-fn max_abs_diff(a: &[Sample], b: &[Sample]) -> Sample {
+fn max_abs_diff(a: &[Smp], b: &[Smp]) -> Smp {
     a.iter()
         .zip(b)
         .map(|(x, y)| (x - y).abs())
-        .fold(0.0, Sample::max)
+        .fold(0.0, Smp::max)
 }
 
 fn editor_config(engine: &SynthEngine, id: ModuleId) -> HarmonicEditorConfig {

@@ -1,5 +1,5 @@
 use super::SvfType;
-use crate::{ComplexSample, Sample};
+use crate::{ComplexSample, Smp};
 
 /// Analog prototype frequency response. Frequencies passed to [`Self::at`] use the same units as `cutoff`.
 ///
@@ -8,16 +8,16 @@ use crate::{ComplexSample, Sample};
 #[derive(Clone, Copy)]
 pub struct SvfResponse {
     pub filter_type: SvfType,
-    pub q: Sample,
+    pub q: Smp,
     /// Pre-stage Q in a cascade.
-    pub pre_q: Sample,
-    pub cutoff: Sample,
-    pub gain: Sample,
+    pub pre_q: Smp,
+    pub cutoff: Smp,
+    pub gain: Smp,
 }
 
 impl SvfResponse {
     #[inline(always)]
-    fn low_pass(k: Sample, s: ComplexSample) -> ComplexSample {
+    fn low_pass(k: Smp, s: ComplexSample) -> ComplexSample {
         (s * s + s * k + 1.0).inv()
     }
 
@@ -27,7 +27,7 @@ impl SvfResponse {
     }
 
     #[inline(always)]
-    fn high_pass(k: Sample, s: ComplexSample) -> ComplexSample {
+    fn high_pass(k: Smp, s: ComplexSample) -> ComplexSample {
         let d = s * s + s * k + 1.0;
 
         s * s / d
@@ -39,13 +39,13 @@ impl SvfResponse {
     }
 
     #[inline(always)]
-    fn band_pass(k: Sample, s: ComplexSample) -> ComplexSample {
+    fn band_pass(k: Smp, s: ComplexSample) -> ComplexSample {
         let d = s * s + s * k + 1.0;
 
         s * k / d
     }
 
-    fn notch(q: Sample, s: ComplexSample) -> ComplexSample {
+    fn notch(q: Smp, s: ComplexSample) -> ComplexSample {
         let k = q.recip();
         let d = s * s + s * k + 1.0;
 
@@ -53,7 +53,7 @@ impl SvfResponse {
     }
 
     /// `(s^2 + (A/Q) s + 1) / (s^2 + s/(A*Q) + 1)`, with `A^2 = gain`.
-    fn peaking(q: Sample, gain: Sample, s: ComplexSample) -> ComplexSample {
+    fn peaking(q: Smp, gain: Smp, s: ComplexSample) -> ComplexSample {
         let gain = gain.max(1e-4);
         let k = q.recip() / gain.sqrt();
         let s2 = s * s;
@@ -63,7 +63,7 @@ impl SvfResponse {
     }
 
     /// `A * (s^2 + (√A/Q) s + A) / (A s^2 + (√A/Q) s + 1)`, with `A^2 = gain`.
-    fn low_shelf(q: Sample, gain: Sample, s: ComplexSample) -> ComplexSample {
+    fn low_shelf(q: Smp, gain: Smp, s: ComplexSample) -> ComplexSample {
         let gain = gain.max(1e-4);
         let a = gain.sqrt();
         let s2 = s * s;
@@ -73,7 +73,7 @@ impl SvfResponse {
     }
 
     /// `A * (A s^2 + (√A/Q) s + 1) / (s^2 + (√A/Q) s + A)`, with `A^2 = gain`.
-    fn high_shelf(q: Sample, gain: Sample, s: ComplexSample) -> ComplexSample {
+    fn high_shelf(q: Smp, gain: Smp, s: ComplexSample) -> ComplexSample {
         let gain = gain.max(1e-4);
         let a = gain.sqrt();
         let s2 = s * s;
@@ -83,14 +83,14 @@ impl SvfResponse {
     }
 
     /// Two 12 dB low shelves. Each section uses `sqrt(gain)`; the second uses `pre_q`.
-    fn low_shelf24(q: Sample, pre_q: Sample, gain: Sample, s: ComplexSample) -> ComplexSample {
+    fn low_shelf24(q: Smp, pre_q: Smp, gain: Smp, s: ComplexSample) -> ComplexSample {
         let section_gain = gain.max(1e-4).sqrt();
 
         Self::low_shelf(q, section_gain, s) * Self::low_shelf(pre_q, section_gain, s)
     }
 
     /// Two 12 dB high shelves. Each section uses `sqrt(gain)`; the second uses `pre_q`.
-    fn high_shelf24(q: Sample, pre_q: Sample, gain: Sample, s: ComplexSample) -> ComplexSample {
+    fn high_shelf24(q: Smp, pre_q: Smp, gain: Smp, s: ComplexSample) -> ComplexSample {
         let section_gain = gain.max(1e-4).sqrt();
 
         Self::high_shelf(q, section_gain, s) * Self::high_shelf(pre_q, section_gain, s)
@@ -98,9 +98,9 @@ impl SvfResponse {
 
     fn of_type(
         filter_type: SvfType,
-        q: Sample,
-        pre_q: Sample,
-        gain: Sample,
+        q: Smp,
+        pre_q: Smp,
+        gain: Smp,
         s: ComplexSample,
     ) -> ComplexSample {
         match filter_type {
@@ -135,7 +135,7 @@ impl SvfResponse {
         }
     }
 
-    pub fn at(&self, freq: Sample) -> ComplexSample {
+    pub fn at(&self, freq: Smp) -> ComplexSample {
         let s = ComplexSample::new(0.0, freq / self.cutoff);
 
         Self::of_type(self.filter_type, self.q, self.pre_q, self.gain, s)

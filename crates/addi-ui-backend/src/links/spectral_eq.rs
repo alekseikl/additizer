@@ -1,6 +1,6 @@
 use triple_buffer::triple_buffer;
 
-use addi_engine::{Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
+use addi_engine::{Input, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 use addi_engine::spectral_eq::EqFilter;
 
@@ -8,11 +8,11 @@ use addi_engine::spectral_eq::{SpectralEqAudioEnd, SpectralEqLinks, SpectralEqUi
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
-    pitch: triple_buffer::Output<Sample>,
+    pitch: triple_buffer::Output<Smp>,
 }
 
 impl UiEnd {
-    pub fn pitch(&mut self) -> Sample {
+    pub fn pitch(&mut self) -> Smp {
         *self.pitch.read()
     }
 
@@ -24,7 +24,7 @@ impl UiEnd {
         self.tx.push(UiEvent::LinearPhase(value)).is_ok()
     }
 
-    pub fn set_keytrack(&mut self, value: Sample) -> bool {
+    pub fn set_keytrack(&mut self, value: Smp) -> bool {
         self.tx.push(UiEvent::Keytrack(value)).is_ok()
     }
 
@@ -55,7 +55,7 @@ impl UiEnd {
 
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
-    pitch: triple_buffer::Input<Sample>,
+    pitch: triple_buffer::Input<Smp>,
 }
 
 impl AudioEnd {
@@ -63,7 +63,7 @@ impl AudioEnd {
         self.rx.pop().ok()
     }
 
-    pub fn update_pitch(&mut self, pitch: Sample) {
+    pub fn update_pitch(&mut self, pitch: Smp) {
         self.pitch.write(pitch);
     }
 }
@@ -88,13 +88,13 @@ impl SpectralEqAudioEnd for AudioEnd {
     fn pop_event(&mut self) -> Option<UiEvent> {
         AudioEnd::pop_event(self)
     }
-    fn update_pitch(&mut self, pitch: Sample) {
+    fn update_pitch(&mut self, pitch: Smp) {
         AudioEnd::update_pitch(self, pitch)
     }
 }
 
 impl SpectralEqUiEnd for UiEnd {
-    fn pitch(&mut self) -> Sample {
+    fn pitch(&mut self) -> Smp {
         UiEnd::pitch(self)
     }
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
@@ -103,7 +103,7 @@ impl SpectralEqUiEnd for UiEnd {
     fn set_linear_phase(&mut self, value: bool) -> bool {
         UiEnd::set_linear_phase(self, value)
     }
-    fn set_keytrack(&mut self, value: Sample) -> bool {
+    fn set_keytrack(&mut self, value: Smp) -> bool {
         UiEnd::set_keytrack(self, value)
     }
     fn set_q_cutoff(&mut self, value: StereoSample) -> bool {

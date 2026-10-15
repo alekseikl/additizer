@@ -1,6 +1,6 @@
 use super::{ExternalParamAudioEnd, ExternalParamLinks, ExternalParamUiEnd, UiEvent};
 
-use crate::synth_engine::Sample;
+use crate::synth_engine::Smp;
 
 pub struct AudioEnd;
 
@@ -29,11 +29,11 @@ impl ExternalParamAudioEnd for AudioEnd {
         None
     }
 
-    fn update_value(&mut self, _value: Sample) {}
+    fn update_value(&mut self, _value: Smp) {}
 }
 
 impl ExternalParamUiEnd for NoUi {
-    fn get_value(&mut self) -> Sample {
+    fn get_value(&mut self) -> Smp {
         self.diverge()
     }
 
@@ -41,7 +41,7 @@ impl ExternalParamUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_smooth(&mut self, _value: Sample) -> bool {
+    fn set_smooth(&mut self, _value: Smp) -> bool {
         self.diverge()
     }
 

@@ -10,7 +10,7 @@ use super::{
 };
 use crate::synth_engine::{
     ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, MAX_VOICES, ModuleConfig,
-    ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Sample, SynthEngine,
+    ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Smp, SynthEngine,
     coeffs::catmull_rom_from_powers,
     harmonic_editor::HarmonicEditorConfig,
     phase::{Phase, PhaseX4},
@@ -31,7 +31,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
     }
 }
 
-const SAMPLE_RATE: Sample = 48_000.0;
+const SAMPLE_RATE: Smp = 48_000.0;
 const HARMONIC_EDITOR_ID: ModuleId = 1;
 const OSCILLATOR_ID: ModuleId = 2;
 
@@ -62,7 +62,7 @@ fn make_engine_with(he: HarmonicEditorConfig, osc: OscillatorConfig) -> SynthEng
     SynthEngine::try_new(&config, SAMPLE_RATE, false).expect("valid engine config")
 }
 
-fn process_block(engine: &mut SynthEngine, samples: usize) -> (Vec<Sample>, Vec<Sample>) {
+fn process_block(engine: &mut SynthEngine, samples: usize) -> (Vec<Smp>, Vec<Smp>) {
     let mut left = vec![0.0; samples];
     let mut right = vec![0.0; samples];
     let mut terminated = Vec::new();
@@ -77,7 +77,7 @@ fn process_block(engine: &mut SynthEngine, samples: usize) -> (Vec<Sample>, Vec<
     (left, right)
 }
 
-fn play(engine: &mut SynthEngine) -> (Vec<Sample>, Vec<Sample>) {
+fn play(engine: &mut SynthEngine) -> (Vec<Smp>, Vec<Smp>) {
     engine.handle_note_on(
         Note {
             channel: 0,
@@ -91,15 +91,15 @@ fn play(engine: &mut SynthEngine) -> (Vec<Sample>, Vec<Sample>) {
     process_block(engine, 64)
 }
 
-fn rms(samples: &[Sample]) -> Sample {
-    (samples.iter().map(|s| s * s).sum::<Sample>() / samples.len() as Sample).sqrt()
+fn rms(samples: &[Smp]) -> Smp {
+    (samples.iter().map(|s| s * s).sum::<Smp>() / samples.len() as Smp).sqrt()
 }
 
-fn max_abs_diff(a: &[Sample], b: &[Sample]) -> Sample {
+fn max_abs_diff(a: &[Smp], b: &[Smp]) -> Smp {
     a.iter()
         .zip(b)
         .map(|(x, y)| (x - y).abs())
-        .fold(0.0, Sample::max)
+        .fold(0.0, Smp::max)
 }
 
 fn silent_right_harmonics() -> HarmonicEditorConfig {
@@ -269,7 +269,7 @@ fn unison_style_defaults_when_missing_from_json() {
     assert_eq!(config.unison_stereo, 1.0);
 }
 
-fn approx_eq(actual: Sample, expected: Sample) {
+fn approx_eq(actual: Smp, expected: Smp) {
     assert!((actual - expected).abs() < 1e-5, "{actual} != {expected}");
 }
 
@@ -306,7 +306,7 @@ fn flat_voice_gain_matches_set_amplitude_and_stereo_blend() {
     let wide_right = FlatUnison::new(1.0, RIGHT_CHANNEL);
     let folded_left = FlatUnison::new(0.0, LEFT_CHANNEL);
     let folded_right = FlatUnison::new(0.0, RIGHT_CHANNEL);
-    let gain = |style: FlatUnison, idx: usize, amplitudes: (Sample, Sample)| {
+    let gain = |style: FlatUnison, idx: usize, amplitudes: (Smp, Smp)| {
         style.rate_gain(idx, unison, 0.0, 0.0, amplitudes).1
     };
 
@@ -356,7 +356,7 @@ fn flat_even_unison_uses_center_level_for_the_inner_pair() {
     let detuned_amp = 0.6 * scale;
     let amplitudes = (center_amp, detuned_amp);
     let wide_left = FlatUnison::new(1.0, LEFT_CHANNEL);
-    let gain = |style: FlatUnison, idx: usize, unison: usize, amplitudes: (Sample, Sample)| {
+    let gain = |style: FlatUnison, idx: usize, unison: usize, amplitudes: (Smp, Smp)| {
         style.rate_gain(idx, unison, 0.0, 0.0, amplitudes).1
     };
 
@@ -380,7 +380,7 @@ fn flat_even_unison_uses_center_level_for_the_inner_pair() {
     approx_eq(gain(folded_right, 1, 2, unity), mono);
 }
 
-fn zero_level_unison(style: UnisonStyle, stereo: Sample) -> OscillatorConfig {
+fn zero_level_unison(style: UnisonStyle, stereo: Smp) -> OscillatorConfig {
     let mut config = OscillatorConfig {
         id: OSCILLATOR_ID,
         unison_voices: 5,
@@ -392,7 +392,7 @@ fn zero_level_unison(style: UnisonStyle, stereo: Sample) -> OscillatorConfig {
     };
 
     for (idx, voice) in config.unison.iter_mut().enumerate() {
-        voice.initial_phase = (idx as Sample * 0.17).into();
+        voice.initial_phase = (idx as Smp * 0.17).into();
         voice.gain = 0.0.into();
         voice.gain_to = 0.0.into();
     }
@@ -496,7 +496,7 @@ fn convex_levels_fall_when_folded_and_rise_on_native_stereo() {
     );
 
     let mid = ConvexUnison::new(0.5, LEFT_CHANNEL);
-    let blend = |wide: Sample, mono: Sample| (wide - mono).mul_add(0.5, mono);
+    let blend = |wide: Smp, mono: Smp| (wide - mono).mul_add(0.5, mono);
     let mono_edge = ConvexUnison::mono_level(1.0);
     let mono_inner = ConvexUnison::mono_level(0.5);
     approx_eq(
@@ -640,10 +640,10 @@ fn coherent_unison_scales_single_voice_by_sqrt_n() {
     for unison_voices in [2, 3, 4, 5, 7, 8, 13, 16] {
         let mut engine = make_engine_with(default_harmonics(), coherent(unison_voices));
         let (left, right) = play(&mut engine);
-        let scale = (unison_voices as Sample).sqrt();
+        let scale = (unison_voices as Smp).sqrt();
 
         for (expected, actual) in [(&single_left, &left), (&single_right, &right)] {
-            let scaled: Vec<Sample> = expected.iter().map(|s| s * scale).collect();
+            let scaled: Vec<Smp> = expected.iter().map(|s| s * scale).collect();
 
             assert!(
                 max_abs_diff(&scaled, actual) < 1e-4,
@@ -654,13 +654,13 @@ fn coherent_unison_scales_single_voice_by_sqrt_n() {
     }
 }
 
-fn wave_cutoff(frequency: Sample, sample_rate: Sample, spectrum_len: usize) -> usize {
+fn wave_cutoff(frequency: Smp, sample_rate: Smp, spectrum_len: usize) -> usize {
     let max_frequency = 0.5 * sample_rate;
     ((max_frequency / frequency).ceil() as usize).min(spectrum_len)
 }
 
 fn reference_full_wave(spectrum: &[ComplexSample], cutoff: usize) -> Box<WaveformBuffer> {
-    let fft = RealFftPlanner::<Sample>::new().plan_fft_inverse(WAVEFORM_SIZE);
+    let fft = RealFftPlanner::<Smp>::new().plan_fft_inverse(WAVEFORM_SIZE);
     let mut dft = [ComplexSample::ZERO; DFT_BUFFER_SIZE];
     let mut scratch = [ComplexSample::ZERO; DFT_BUFFER_SIZE];
     let mut wave = Box::new([0.0; WAVEFORM_BUFFER_SIZE]);
@@ -678,7 +678,7 @@ fn reference_full_wave(spectrum: &[ComplexSample], cutoff: usize) -> Box<Wavefor
     wave
 }
 
-fn build_test_wave(frequency: Sample, spectrum: &[ComplexSample], full_fft_size: bool) -> Waveform {
+fn build_test_wave(frequency: Smp, spectrum: &[ComplexSample], full_fft_size: bool) -> Waveform {
     let ifft = IfftPlanners::new();
     let mut dft = [ComplexSample::ZERO; DFT_BUFFER_SIZE];
     let mut scratch = [ComplexSample::ZERO; DFT_BUFFER_SIZE];
@@ -698,11 +698,11 @@ fn build_test_wave(frequency: Sample, spectrum: &[ComplexSample], full_fft_size:
     wave
 }
 
-fn body(wave: &WaveformBuffer, len: usize) -> &[Sample] {
+fn body(wave: &WaveformBuffer, len: usize) -> &[Smp] {
     &wave[WAVEFORM_PAD_LEFT..WAVEFORM_PAD_LEFT + len]
 }
 
-fn assert_wave_matches_full(frequency: Sample, spectrum: &[ComplexSample], size: WaveformSize) {
+fn assert_wave_matches_full(frequency: Smp, spectrum: &[ComplexSample], size: WaveformSize) {
     let cutoff = wave_cutoff(frequency, SAMPLE_RATE, spectrum.len());
     let reference = reference_full_wave(spectrum, cutoff);
     let wave = build_test_wave(frequency, spectrum, false);
@@ -715,7 +715,7 @@ fn assert_wave_matches_full(frequency: Sample, spectrum: &[ComplexSample], size:
         .iter()
         .enumerate()
         .map(|(i, sample)| (sample - expected[i * stride]).abs())
-        .fold(0.0_f32, Sample::max);
+        .fold(0.0_f32, Smp::max);
     let last = WAVEFORM_PAD_LEFT + len - 1;
 
     assert_eq!(wave.size, size);
@@ -733,7 +733,7 @@ fn assert_wave_matches_full(frequency: Sample, spectrum: &[ComplexSample], size:
 fn build_wave_drops_harmonic_exactly_at_nyquist() {
     let harmonic = 54;
     let nyquist = 0.5 * SAMPLE_RATE;
-    let frequency = nyquist / harmonic as Sample;
+    let frequency = nyquist / harmonic as Smp;
     let mut spectrum = vec![ComplexSample::ZERO; DFT_BUFFER_SIZE];
     spectrum[harmonic] = ComplexSample::new(0.7, 0.2);
 
@@ -803,7 +803,7 @@ fn build_wave_uses_full_resolution_when_full_fft_size_is_set() {
         .iter()
         .zip(expected)
         .map(|(sample, expected)| (sample - expected).abs())
-        .fold(0.0_f32, Sample::max);
+        .fold(0.0_f32, Smp::max);
 
     assert_eq!(wave.size, WaveformSize::Full);
     assert!(peak > 1.0);
@@ -822,8 +822,8 @@ fn build_wave_keeps_full_resolution_past_half_table() {
     assert_wave_matches_full(46.0, &spectrum, WaveformSize::Full);
 }
 
-const RENDER_SENTINEL: Sample = 50.0;
-const FREQ_PHASE_MULT: Sample = 16.0;
+const RENDER_SENTINEL: Smp = 50.0;
+const FREQ_PHASE_MULT: Smp = 16.0;
 const DECOY_PHASE: u32 = 0x1111_1111;
 
 struct RenderCase {
@@ -860,13 +860,13 @@ fn render_case(
 }
 
 struct SampleControls {
-    phase_inc: Sample,
-    phase_shift: Sample,
-    frequency_shift: Sample,
+    phase_inc: Smp,
+    phase_shift: Smp,
+    frequency_shift: Smp,
 }
 
 fn sample_controls(index: usize) -> SampleControls {
-    let n = index as Sample;
+    let n = index as Smp;
 
     SampleControls {
         phase_inc: 262_144.0 + n * 128.0,
@@ -889,7 +889,7 @@ fn test_phase(index: usize) -> Phase {
 }
 
 fn test_unison_voice(index: usize) -> UnisonVoice {
-    let i = index as Sample;
+    let i = index as Smp;
 
     UnisonVoice {
         rate: Interpolated {
@@ -919,8 +919,8 @@ fn interpolated_sample(
     wave: &WaveformBuffer,
     phase: Phase,
     size: WaveformSize,
-    gain: Sample,
-) -> Sample {
+    gain: Smp,
+) -> Smp {
     let (idx, t) = match size {
         WaveformSize::Full => (
             phase.wave_index::<WAVEFORM_BITS>(),
@@ -943,12 +943,12 @@ fn interpolated_sample(
         .sum()
 }
 
-fn patterned_wave(size: WaveformSize, seed: Sample) -> Box<WaveformBuffer> {
+fn patterned_wave(size: WaveformSize, seed: Smp) -> Box<WaveformBuffer> {
     let mut samples = Box::new([RENDER_SENTINEL; WAVEFORM_BUFFER_SIZE]);
     let len = size.len();
 
     for i in 0..len {
-        let n = (i + 1) as Sample;
+        let n = (i + 1) as Smp;
         samples[WAVEFORM_PAD_LEFT + i] = (seed * n).sin() * 0.5 + (n * 0.17 + seed).cos() * 0.25;
     }
 
@@ -962,12 +962,12 @@ fn reference_render(
     case: &RenderCase,
     wave_from: &WaveformBuffer,
     wave_to: &WaveformBuffer,
-) -> (Vec<Sample>, [Phase; MAX_UNISON_VOICES]) {
+) -> (Vec<Smp>, [Phase; MAX_UNISON_VOICES]) {
     let voices = initial_voices();
     let mut phases = initial_phases();
     let mut output = vec![RENDER_SENTINEL; case.samples];
-    let buff_t_inc = (case.samples as Sample).recip();
-    let mut buff_t = case.start as Sample * buff_t_inc;
+    let buff_t_inc = (case.samples as Smp).recip();
+    let mut buff_t = case.start as Smp * buff_t_inc;
     let full = case.unison / UNISON_LANES;
     let rem = case.unison % UNISON_LANES;
 
@@ -1118,7 +1118,7 @@ fn render_ctx(case: &RenderCase) -> VoiceRenderCtx {
     }
 }
 
-fn assert_samples_close(name: &str, expected: &[Sample], actual: &[Sample]) {
+fn assert_samples_close(name: &str, expected: &[Smp], actual: &[Smp]) {
     let mut max_diff = 0.0;
     let mut at = 0;
 

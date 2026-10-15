@@ -1,10 +1,10 @@
 use crate::params::ExtParam;
 use addi_engine::{
-    EngineLinks, Expression, Note, Sample, SynthEngine, external_param::NUM_EXT_PARAMS,
+    EngineLinks, Expression, Note, Smp, SynthEngine, external_param::NUM_EXT_PARAMS,
 };
 use nice_plug::midi::{Channel, Key, NoteEvent, VoiceID};
 
-fn addressed_note(voice_id: VoiceID, channel: Channel, key: Key, velocity: Sample) -> Option<Note> {
+fn addressed_note(voice_id: VoiceID, channel: Channel, key: Key, velocity: Smp) -> Option<Note> {
     Some(Note {
         channel: channel.number()?,
         note: key.number()?,

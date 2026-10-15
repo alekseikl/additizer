@@ -1,17 +1,17 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{Sample, units::from_ms};
+use crate::{Smp, units::from_ms};
 
-const SMOOTHING_TIME: Sample = from_ms(300.0);
+const SMOOTHING_TIME: Smp = from_ms(300.0);
 
 #[derive(Clone, Copy)]
 pub struct SmoothedSampleParams {
-    smooth_mult: Sample,
+    smooth_mult: Smp,
     smooth_steps: u32,
 }
 
 impl SmoothedSampleParams {
-    pub fn new(sample_rate: Sample) -> Self {
+    pub fn new(sample_rate: Smp) -> Self {
         Self {
             smooth_mult: 0.0001f64.powf((sample_rate * SMOOTHING_TIME).recip() as f64) as f32,
             smooth_steps: (sample_rate * SMOOTHING_TIME).round() as u32,
@@ -21,13 +21,13 @@ impl SmoothedSampleParams {
 
 #[derive(Default, Clone, Copy)]
 pub struct SmoothedSample {
-    value: Sample,
-    prev_value: Sample,
+    value: Smp,
+    prev_value: Smp,
     steps: u32,
 }
 
 impl SmoothedSample {
-    pub fn new(value: Sample) -> Self {
+    pub fn new(value: Smp) -> Self {
         Self {
             value,
             prev_value: value,
@@ -35,11 +35,11 @@ impl SmoothedSample {
         }
     }
 
-    pub fn get(&self) -> Sample {
+    pub fn get(&self) -> Smp {
         self.value
     }
 
-    pub fn set(&mut self, new_value: Sample) {
+    pub fn set(&mut self, new_value: Smp) {
         if self.steps == u32::MAX {
             self.prev_value = self.value;
         }
@@ -72,7 +72,7 @@ impl SmoothedSample {
         }
     }
 
-    pub fn smoothed_buff(&self, buff: &mut [Sample], params: &SmoothedSampleParams) {
+    pub fn smoothed_buff(&self, buff: &mut [Smp], params: &SmoothedSampleParams) {
         let rev_smooth_mult = 1.0 - params.smooth_mult;
         let mut prev_value = self.prev_value;
 
@@ -95,15 +95,15 @@ impl SmoothedSample {
 
 pub struct SmoothedSampleIter<'a> {
     smoother: &'a SmoothedSample,
-    smooth_mult: Sample,
-    prev_value: Sample,
+    smooth_mult: Smp,
+    prev_value: Smp,
 }
 
 impl Iterator for SmoothedSampleIter<'_> {
-    type Item = Sample;
+    type Item = Smp;
 
     #[inline(always)]
-    fn next(&mut self) -> Option<Sample> {
+    fn next(&mut self) -> Option<Smp> {
         self.prev_value = self
             .smoother
             .value
@@ -120,7 +120,7 @@ impl Serialize for SmoothedSample {
 
 impl<'de> Deserialize<'de> for SmoothedSample {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = Sample::deserialize(deserializer)?;
+        let value = Smp::deserialize(deserializer)?;
         Ok(Self::new(value))
     }
 }

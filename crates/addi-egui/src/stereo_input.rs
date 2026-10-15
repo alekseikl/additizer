@@ -2,7 +2,7 @@ use egui::{Response, Sense, Ui, Widget, emath, lerp, vec2};
 
 use crate::routing_ui_ext::InputUi;
 use crate::{grid::input_mixer_popup::InputMixerPopup, slider::Slider};
-use addi_engine::{Input, InputId, ModuleId, ModuleType, Sample, StereoSample};
+use addi_engine::{Input, InputId, ModuleId, ModuleType, Smp, StereoSample};
 use addi_ui_backend::ui_bridge::{ModulatedValue, UiBridge};
 
 const IO_DOT_SIZE: f32 = 8.0;
@@ -12,7 +12,7 @@ pub struct StereoInput<'a> {
     input: InputId,
     value: &'a mut StereoSample,
     bridge: &'a mut UiBridge,
-    default: Option<Sample>,
+    default: Option<Smp>,
     map_slider: Option<for<'b> fn(Slider<'b>) -> Slider<'b>>,
 }
 
@@ -32,7 +32,7 @@ impl<'a> StereoInput<'a> {
         }
     }
 
-    pub fn default(mut self, default: Sample) -> Self {
+    pub fn default(mut self, default: Smp) -> Self {
         self.default = Some(default);
         self
     }

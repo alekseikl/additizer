@@ -5,7 +5,7 @@ use itertools::izip;
 use crate::{
     synth_engine::db_to_gain_fast,
     synth_engine::{
-        Sample, SmoothedSampleParams, StereoSample,
+        Smp, SmoothedSampleParams, StereoSample,
         buffer::{Buffer, VoicesLayout, zero_buffer},
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
@@ -28,7 +28,7 @@ struct Params {
 }
 
 impl ShaperType {
-    pub fn apply(self, input: Sample, gain: Sample, clipping_gain: Sample) -> Sample {
+    pub fn apply(self, input: Smp, gain: Smp, clipping_gain: Smp) -> Smp {
         match self {
             Self::HardClip => (input * gain).clamp(-clipping_gain, clipping_gain),
             Self::Sigmoid => clipping_gain * (input * gain / clipping_gain).tanh(),

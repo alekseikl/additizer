@@ -6,7 +6,7 @@ pub use config::ExternalParamConfig;
 pub use link::{ExternalParamAudioEnd, ExternalParamLinks, ExternalParamUiEnd, UiEvent};
 
 use crate::synth_engine::{
-    Buffer, ModuleId, Sample,
+    Buffer, ModuleId, Smp,
     buffer::{
         MonoVoicesLayout, ValueBuffer, VoicesLayout, new_mono_voices_layout_with, zero_buffer,
     },
@@ -21,13 +21,13 @@ use crate::synth_engine::{
 pub const NUM_EXT_PARAMS: usize = 8;
 
 pub trait ExtParamValue {
-    fn unmodulated(&self) -> Sample;
-    fn modulated(&self) -> Sample;
+    fn unmodulated(&self) -> Smp;
+    fn modulated(&self) -> Smp;
 }
 
 struct Params {
     selected_param_index: usize,
-    smooth: Sample,
+    smooth: Smp,
     sample_on_trigger: bool,
     make_bipolar: bool,
     polyphonic: bool,
@@ -47,7 +47,7 @@ impl Params {
 
 struct Voice {
     values: ValueBuffer,
-    value_at_trigger: Sample,
+    value_at_trigger: Smp,
     buffer: Buffer,
     smoother: Smoother,
 }
@@ -121,7 +121,7 @@ impl<L: ExternalParamLinks> ExternalParam<L> {
         usize,
         selected_param_index.min(NUM_EXT_PARAMS - 1)
     );
-    set_mono_param!(set_smooth, smooth, Sample);
+    set_mono_param!(set_smooth, smooth, Smp);
     set_mono_param!(set_sample_on_trigger, sample_on_trigger, bool);
     set_mono_param!(set_make_bipolar, make_bipolar, bool);
     set_mono_param!(set_polyphonic, polyphonic, bool);
@@ -142,7 +142,7 @@ impl<L: ExternalParamLinks> ExternalParam<L> {
         &mut self,
         param_idx: usize,
         offset: usize,
-        value: Sample,
+        value: Smp,
         params: &[P; NUM_EXT_PARAMS],
     ) {
         if param_idx == self.params.selected_param_index {
@@ -162,7 +162,7 @@ impl<L: ExternalParamLinks> ExternalParam<L> {
         param_idx: usize,
         voice_idx: usize,
         offset: usize,
-        value_offset: Sample,
+        value_offset: Smp,
     ) {
         if self.params.polyphonic && param_idx == self.params.selected_param_index {
             self.voices[voice_idx].values.set(value_offset, offset);

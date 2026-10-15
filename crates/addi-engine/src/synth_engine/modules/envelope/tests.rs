@@ -60,9 +60,9 @@ const HE_ID: ModuleId = 1;
 const OSC_ID: ModuleId = 2;
 const ENV_ID: ModuleId = 3;
 const AMP_ID: ModuleId = 4;
-const RENDER_RATE: Sample = 48_000.0;
+const RENDER_RATE: Smp = 48_000.0;
 
-fn render_engine(env: EnvelopeConfig, amp_gain: Sample, link_envelope: bool) -> SynthEngine {
+fn render_engine(env: EnvelopeConfig, amp_gain: Smp, link_envelope: bool) -> SynthEngine {
     let mut links = vec![
         LinkConfig::direct(HE_ID, OSC_ID, Input::Spectrum),
         LinkConfig::direct(OSC_ID, AMP_ID, Input::Audio),
@@ -110,7 +110,7 @@ fn note(note: u8) -> Note {
     }
 }
 
-fn process(engine: &mut SynthEngine, samples: usize) -> Vec<Sample> {
+fn process(engine: &mut SynthEngine, samples: usize) -> Vec<Smp> {
     let mut out = Vec::with_capacity(samples);
     let mut terminated = Vec::new();
     let mut left = vec![0.0; 128];
@@ -127,8 +127,8 @@ fn process(engine: &mut SynthEngine, samples: usize) -> Vec<Sample> {
     out
 }
 
-fn rms(samples: &[Sample]) -> Sample {
-    (samples.iter().map(|sample| sample * sample).sum::<Sample>() / samples.len() as Sample).sqrt()
+fn rms(samples: &[Smp]) -> Smp {
+    (samples.iter().map(|sample| sample * sample).sum::<Smp>() / samples.len() as Smp).sqrt()
 }
 
 #[test]
@@ -195,13 +195,13 @@ fn steal_level_round_trips_in_config() {
 fn both_channels_steal_independently() {
     let mut env = envelope(true);
     for (channel_idx, voice) in env.voices.channels_at_mut(0).iter_mut().enumerate() {
-        voice.next_frame_value = 0.2 + channel_idx as Sample * 0.3;
+        voice.next_frame_value = 0.2 + channel_idx as Smp * 0.3;
     }
 
     env.process_events(&[reset_event(4, Some(0))]);
 
     for (channel_idx, voice) in env.voices.channels_at(4).iter().enumerate() {
-        let expected = 0.2 + channel_idx as Sample * 0.3;
+        let expected = 0.2 + channel_idx as Smp * 0.3;
         assert!((voice.start_level - expected).abs() < 1e-6);
     }
 }
@@ -244,7 +244,7 @@ fn fill_curve_matches_power_scale() {
                 continue;
             }
 
-            let local_t = 0.05 + i as Sample / RENDER_RATE;
+            let local_t = 0.05 + i as Smp / RENDER_RATE;
             let expected = power_scale(local_t * recip, power);
             let rendered = wet / dry;
 

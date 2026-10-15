@@ -1,11 +1,11 @@
 use crate::synth_engine::{
-    Buffer, ComplexSample, Sample, SpectralBuffer,
+    Buffer, ComplexSample, Smp, SpectralBuffer,
     buffer::{zero_buffer, zero_spectral_buffer},
 };
 
 pub struct SamplesOutput {
     pub(super) buffer: Buffer,
-    pub(super) next_frame_sample: Sample,
+    pub(super) next_frame_sample: Smp,
 }
 
 impl SamplesOutput {
@@ -17,16 +17,16 @@ impl SamplesOutput {
     }
 
     #[inline]
-    pub(super) fn buffer(&self) -> &[Sample] {
+    pub(super) fn buffer(&self) -> &[Smp] {
         &self.buffer
     }
 
     #[inline]
-    pub(crate) fn buffer_mut(&mut self) -> &mut [Sample] {
+    pub(crate) fn buffer_mut(&mut self) -> &mut [Smp] {
         &mut self.buffer
     }
 
-    pub(super) fn scalar(&self, this_frame: Option<usize>) -> Sample {
+    pub(super) fn scalar(&self, this_frame: Option<usize>) -> Smp {
         if let Some(offset) = this_frame {
             self.buffer[offset]
         } else {

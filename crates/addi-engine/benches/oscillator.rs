@@ -10,7 +10,7 @@ use std::hint::black_box;
 use std::time::Instant;
 
 use addi_engine::{
-    ComplexSample, NUM_CHANNELS, Oscillator, PlayingVoice, SPECTRAL_BUFFER_SIZE, Sample,
+    ComplexSample, NUM_CHANNELS, Oscillator, PlayingVoice, SPECTRAL_BUFFER_SIZE, Smp,
     SmoothedSampleParams, SpectralBuffer, StereoSample, note_to_pitch,
     oscillator::{MAX_UNISON_VOICES, OscillatorConfig},
     routing::{Input, InputSlots, OutputsArena, ProcessContext, ProcessParams},
@@ -27,7 +27,7 @@ use aux::{Control, Spectral};
 /// 48 kHz host block.
 const BLOCK: usize = 128;
 const BUFFER_SIZE: usize = BLOCK + 1;
-const SAMPLE_RATE: Sample = 48_000.0;
+const SAMPLE_RATE: Smp = 48_000.0;
 const VOICE: usize = 0;
 
 /// C4. A one-semitone ramp from here stays on the half table at 48 kHz.
@@ -43,16 +43,16 @@ fn spectrum() -> SpectralBuffer {
     let mut spectrum = [ComplexSample::ZERO; SPECTRAL_BUFFER_SIZE];
 
     for (harmonic, bin) in spectrum.iter_mut().enumerate().skip(1) {
-        *bin = ComplexSample::new(1.0 / harmonic as Sample, 0.0);
+        *bin = ComplexSample::new(1.0 / harmonic as Smp, 0.0);
     }
 
     spectrum
 }
 
-fn pitch_ramp(from: Sample, to: Sample) -> [Sample; BLOCK] {
-    let steps = (BLOCK - 1) as Sample;
+fn pitch_ramp(from: Smp, to: Smp) -> [Smp; BLOCK] {
+    let steps = (BLOCK - 1) as Smp;
 
-    std::array::from_fn(|i| from + (to - from) * (i as Sample / steps))
+    std::array::from_fn(|i| from + (to - from) * (i as Smp / steps))
 }
 
 struct Rig {
@@ -133,8 +133,8 @@ impl Rig {
     /// ramp's end until the next pass.
     fn set_pitch_ramp(&mut self, note: u8) {
         self.voice = PlayingVoice::new(VOICE as u8, note);
-        let from = note_to_pitch(note as Sample);
-        let to = note_to_pitch((note + 1) as Sample);
+        let from = note_to_pitch(note as Smp);
+        let to = note_to_pitch((note + 1) as Smp);
 
         self.pitch.set_samples(&pitch_ramp(from, to));
         self.render_pitch();

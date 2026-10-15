@@ -1,6 +1,6 @@
 use super::{PitchAudioEnd, PitchLinks, PitchUiEnd, UiEvent};
 
-use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::synth_engine::{Input, Smp, StereoSample};
 
 pub struct AudioEnd;
 
@@ -29,11 +29,11 @@ impl PitchAudioEnd for AudioEnd {
         None
     }
 
-    fn update_pitch(&mut self, _pitch: Sample) {}
+    fn update_pitch(&mut self, _pitch: Smp) {}
 }
 
 impl PitchUiEnd for NoUi {
-    fn get_pitch(&mut self) -> Sample {
+    fn get_pitch(&mut self) -> Smp {
         self.diverge()
     }
 

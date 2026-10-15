@@ -1,6 +1,6 @@
 use crate::ui_bridge::ModuleUiBridge;
 use addi_engine::pitch::{Pitch, PitchConfig, PitchLinks, PitchUiEnd};
-use addi_engine::{Input, Sample, StereoSample};
+use addi_engine::{Input, Smp, StereoSample};
 
 pub struct PitchUiBridge<L: PitchLinks = crate::links::pitch::Links> {
     ui_end: L::UiEnd,
@@ -19,7 +19,7 @@ impl<L: PitchLinks> PitchUiBridge<L> {
         &self.config
     }
 
-    pub fn get_pitch(&mut self) -> Sample {
+    pub fn get_pitch(&mut self) -> Smp {
         self.ui_end.get_pitch()
     }
 

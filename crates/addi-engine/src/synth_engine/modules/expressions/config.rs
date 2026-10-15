@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::from_ms,
-    synth_engine::{Expression, ModuleId, Sample},
+    synth_engine::{Expression, ModuleId, Smp},
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -10,7 +10,7 @@ pub struct ExpressionsConfig {
     pub id: ModuleId,
     pub expression: Expression,
     pub use_release_velocity: bool,
-    pub smooth: Sample,
+    pub smooth: Smp,
 }
 
 impl Default for ExpressionsConfig {

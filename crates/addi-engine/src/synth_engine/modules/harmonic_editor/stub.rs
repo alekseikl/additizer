@@ -4,7 +4,7 @@ use super::{
 };
 
 use crate::synth_engine::{
-    ComplexSample, DisplaySpectrum, NUM_CHANNELS, SPECTRAL_BUFFER_SIZE, Sample, StereoSample,
+    ComplexSample, DisplaySpectrum, NUM_CHANNELS, SPECTRAL_BUFFER_SIZE, Smp, StereoSample,
 };
 
 pub struct AudioEnd;
@@ -38,8 +38,8 @@ impl HarmonicEditorAudioEnd for AudioEnd {
 
     fn publish_harmonics(
         &mut self,
-        _amplitudes: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
-        _phases: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+        _amplitudes: &[Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+        _phases: &[Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
     ) {
     }
 }

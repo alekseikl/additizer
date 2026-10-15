@@ -1,16 +1,16 @@
 use egui::{Color32, Painter, Pos2, Rect};
 
 use addi_dsp::gain_to_db;
-use addi_engine::{MIN_LEVEL_DB, NUM_CHANNELS, Sample, Smoother, StereoSample};
+use addi_engine::{MIN_LEVEL_DB, NUM_CHANNELS, Smp, Smoother, StereoSample};
 
 const BAR_GAP: f32 = 6.0;
 const NUM_SEGMENTS: usize = 12;
 const LINEAR_SEGMENTS: usize = 10;
 const GREEN_SEGMENTS: usize = 8;
 const SEGMENT_GAP: f32 = 2.0;
-const LINEAR_MAX_DB: Sample = 0.0;
-const VOLUME_SMOOTH_TIME: Sample = 0.15;
-const UI_SAMPLE_RATE: Sample = 60.0;
+const LINEAR_MAX_DB: Smp = 0.0;
+const VOLUME_SMOOTH_TIME: Smp = 0.15;
+const UI_SAMPLE_RATE: Smp = 60.0;
 
 const OFF_COLOR: Color32 = Color32::from_rgb(36, 38, 50);
 const GREEN: Color32 = Color32::from_rgb(0x06, 0xaa, 0x1c);
@@ -68,7 +68,7 @@ impl VolumeMeter {
         self.paint_bar(painter, right_rect, volume.right(), clipped[1]);
     }
 
-    fn paint_bar(&self, painter: &Painter, rect: Rect, level: Sample, clipped: bool) {
+    fn paint_bar(&self, painter: &Painter, rect: Rect, level: Smp, clipped: bool) {
         let db = Self::level_to_db(level);
         let segment_height =
             (rect.height() - SEGMENT_GAP * (NUM_SEGMENTS - 1) as f32) / NUM_SEGMENTS as f32;
@@ -90,7 +90,7 @@ impl VolumeMeter {
         }
     }
 
-    fn level_to_db(level: Sample) -> Sample {
+    fn level_to_db(level: Smp) -> Smp {
         if level <= 1e-6 {
             return MIN_LEVEL_DB;
         }
@@ -98,7 +98,7 @@ impl VolumeMeter {
         gain_to_db(level).max(MIN_LEVEL_DB)
     }
 
-    fn segment_brightness(segment_idx: usize, db: Sample) -> Sample {
+    fn segment_brightness(segment_idx: usize, db: Smp) -> Smp {
         let (lower, upper) = Self::segment_bounds(segment_idx);
 
         if db <= lower {
@@ -110,7 +110,7 @@ impl VolumeMeter {
         }
     }
 
-    fn segment_bounds(segment_idx: usize) -> (Sample, Sample) {
+    fn segment_bounds(segment_idx: usize) -> (Smp, Smp) {
         match segment_idx {
             0 => (MIN_LEVEL_DB, Self::linear_segment_threshold(0)),
             1..10 => (
@@ -122,13 +122,13 @@ impl VolumeMeter {
         }
     }
 
-    fn linear_segment_threshold(segment_idx: usize) -> Sample {
+    fn linear_segment_threshold(segment_idx: usize) -> Smp {
         MIN_LEVEL_DB
-            + (segment_idx + 1) as Sample * (LINEAR_MAX_DB - MIN_LEVEL_DB)
-                / LINEAR_SEGMENTS as Sample
+            + (segment_idx + 1) as Smp * (LINEAR_MAX_DB - MIN_LEVEL_DB)
+                / LINEAR_SEGMENTS as Smp
     }
 
-    fn segment_fill_color(segment_idx: usize, brightness: Sample, clipped: bool) -> Color32 {
+    fn segment_fill_color(segment_idx: usize, brightness: Smp, clipped: bool) -> Color32 {
         if brightness <= 0.0 {
             return OFF_COLOR;
         }

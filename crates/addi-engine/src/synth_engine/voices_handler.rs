@@ -1,14 +1,14 @@
 use smallvec::SmallVec;
 
 use crate::synth_engine::{
-    Expression, Sample,
+    Expression, Smp,
     buffer::{MonoVoicesLayout, new_mono_voices_layout},
     note_to_pitch,
     routing::{ExpressionEvent, MAX_VOICES, PrevNote, VOICE_PAIR_LEN, VoiceEvent},
 };
 
 pub const MAX_AVAILABLE_VOICES: usize = MAX_VOICES - 4;
-pub const BAND_LIMIT_FREQUENCY: Sample = 24_000.0;
+pub const BAND_LIMIT_FREQUENCY: Smp = 24_000.0;
 const NUM_MIDI_CHANNELS: usize = 16;
 const MAX_MIDI_CHANNEL: u8 = NUM_MIDI_CHANNELS as u8 - 1;
 
@@ -18,7 +18,7 @@ const _: () = assert!(MAX_VOICES <= u8::MAX as usize);
 pub struct Note {
     pub channel: u8,
     pub note: u8,
-    pub velocity: Sample,
+    pub velocity: Smp,
     pub host_id: Option<i32>,
 }
 
@@ -120,7 +120,7 @@ impl VoiceEvents {
         &self.events
     }
 
-    fn note_to_pitch(note: u8) -> Sample {
+    fn note_to_pitch(note: u8) -> Smp {
         note_to_pitch(note as f32)
     }
 
@@ -151,7 +151,7 @@ impl VoiceEvents {
         });
     }
 
-    fn release(&mut self, voice_idx: usize, velocity: Sample, offset: usize) {
+    fn release(&mut self, voice_idx: usize, velocity: Smp, offset: usize) {
         self.events.push(VoiceEvent::Release {
             voice_idx,
             velocity,
@@ -591,7 +591,7 @@ impl VoicesHandler {
         note: Note,
         expression: Expression,
         offset: usize,
-        value: Sample,
+        value: Smp,
     ) -> Option<ExpressionEvent> {
         let (voice_idx, _) = self.slot_with_note(Phase::NoteOn, &note)?;
 

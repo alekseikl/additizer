@@ -20,7 +20,7 @@ use addi_dsp::{
     from_st,
 };
 use addi_engine::{
-    Input, ModuleId, ModuleType, Sample,
+    Input, ModuleId, ModuleType, Smp,
     spectral_eq::{EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MAX_Q, MIN_CUTOFF_HZ, MIN_Q},
     spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF},
 };
@@ -282,13 +282,13 @@ impl SpectralEqUi {
         Some((index + 1, rect.bottom(), bounds.x_range()))
     }
 
-    fn cutoff_drag(cutoff_hz: &mut Sample) -> DragValue<'_> {
+    fn cutoff_drag(cutoff_hz: &mut Smp) -> DragValue<'_> {
         let speed = (cutoff_hz.abs() * 0.002).max(0.05);
 
         DragValue::new(cutoff_hz)
             .range(MIN_CUTOFF_HZ..=MAX_CUTOFF_HZ)
             .speed(speed)
-            .custom_formatter(|value, _| Units::Frequency.format(value as Sample))
+            .custom_formatter(|value, _| Units::Frequency.format(value as Smp))
             .custom_parser(|text| {
                 Units::Frequency
                     .parse(text, false)
@@ -296,18 +296,18 @@ impl SpectralEqUi {
             })
     }
 
-    fn q_drag(q: &mut Sample) -> DragValue<'_> {
+    fn q_drag(q: &mut Smp) -> DragValue<'_> {
         DragValue::new(q)
             .range(MIN_Q..=MAX_Q)
             .speed(0.01)
             .fixed_decimals(3)
     }
 
-    fn drive_drag(drive: &mut Sample) -> DragValue<'_> {
+    fn drive_drag(drive: &mut Smp) -> DragValue<'_> {
         DragValue::new(drive)
             .range(MIN_DRIVE..=MAX_DRIVE)
             .speed(0.1)
-            .custom_formatter(|value, _| Units::Db.format(value as Sample))
+            .custom_formatter(|value, _| Units::Db.format(value as Smp))
             .custom_parser(|text| {
                 Units::Db
                     .parse(text, false)

@@ -4,7 +4,7 @@ use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, epaint::PathStroke};
 use crate::grid::WidgetCtx;
 use addi_dsp::power_scale;
 use addi_engine::{
-    Input, ModuleId, Sample,
+    Input, ModuleId, Smp,
     envelope::{EnvelopeConfig, EnvelopePhase, SLOPE_POWER_SCALE},
 };
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
@@ -15,25 +15,25 @@ const PADDING: f32 = 4.0;
 const POINTS_PER_SECTION: usize = 32;
 const PHASE_RADIUS: f32 = 3.5;
 const LINE_WIDTH: f32 = 1.0;
-const MIN_TOTAL_TIME: Sample = 1e-3;
+const MIN_TOTAL_TIME: Smp = 1e-3;
 
 const STROKE_COLOR: Color32 = Color32::from_rgb(0x06, 0xaa, 0x1c);
 
 struct EnvelopeShape {
-    delay: Sample,
-    attack: Sample,
-    hold: Sample,
-    decay: Sample,
-    sustain: Sample,
-    release: Sample,
-    start_level: Sample,
-    attack_slope: Sample,
-    decay_slope: Sample,
-    release_slope: Sample,
+    delay: Smp,
+    attack: Smp,
+    hold: Smp,
+    decay: Smp,
+    sustain: Smp,
+    release: Smp,
+    start_level: Smp,
+    attack_slope: Smp,
+    decay_slope: Smp,
+    release_slope: Smp,
 }
 
 impl EnvelopeShape {
-    fn from_config(config: &EnvelopeConfig, start_level: Sample) -> Self {
+    fn from_config(config: &EnvelopeConfig, start_level: Smp) -> Self {
         Self {
             delay: config.delay[0].max(0.0),
             attack: config.attack[0].max(0.0),
@@ -52,7 +52,7 @@ impl EnvelopeShape {
         }
     }
 
-    fn total_time(&self) -> Sample {
+    fn total_time(&self) -> Smp {
         (self.delay + self.attack + self.hold + self.decay + self.release).max(MIN_TOTAL_TIME)
     }
 }
@@ -101,12 +101,12 @@ impl EnvelopeWidget {
         }
     }
 
-    fn curve_value(t: Sample, slope: Sample, from: Sample, to: Sample) -> Sample {
+    fn curve_value(t: Smp, slope: Smp, from: Smp, to: Smp) -> Smp {
         let power = -slope.clamp(-1.0, 1.0) * SLOPE_POWER_SCALE;
         (to - from).mul_add(power_scale(t.clamp(0.0, 1.0), power), from)
     }
 
-    fn to_pos(rect: Rect, total: Sample, time: Sample, value: Sample) -> Pos2 {
+    fn to_pos(rect: Rect, total: Smp, time: Smp, value: Smp) -> Pos2 {
         Pos2::new(
             rect.left() + (time / total).clamp(0.0, 1.0) * rect.width(),
             rect.bottom() - value.clamp(0.0, 1.0) * rect.height(),
@@ -126,7 +126,7 @@ impl EnvelopeWidget {
         let attack_start = shape.delay;
 
         for i in 1..=POINTS_PER_SECTION {
-            let t = i as Sample / POINTS_PER_SECTION as Sample;
+            let t = i as Smp / POINTS_PER_SECTION as Smp;
             let value = Self::curve_value(t, shape.attack_slope, shape.start_level, 1.0);
             points.push(Self::to_pos(
                 rect,
@@ -145,7 +145,7 @@ impl EnvelopeWidget {
         let decay_start = hold_start + shape.hold;
 
         for i in 1..=POINTS_PER_SECTION {
-            let t = i as Sample / POINTS_PER_SECTION as Sample;
+            let t = i as Smp / POINTS_PER_SECTION as Smp;
             let value = Self::curve_value(t, shape.decay_slope, 1.0, shape.sustain);
             points.push(Self::to_pos(
                 rect,
@@ -158,7 +158,7 @@ impl EnvelopeWidget {
         let release_start = decay_start + shape.decay;
 
         for i in 1..=POINTS_PER_SECTION {
-            let t = i as Sample / POINTS_PER_SECTION as Sample;
+            let t = i as Smp / POINTS_PER_SECTION as Smp;
             let value = Self::curve_value(t, shape.release_slope, shape.sustain, 0.0);
             points.push(Self::to_pos(
                 rect,

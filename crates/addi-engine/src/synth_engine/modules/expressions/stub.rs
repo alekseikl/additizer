@@ -1,6 +1,6 @@
 use super::{ExpressionsAudioEnd, ExpressionsLinks, ExpressionsUiEnd, UiEvent};
 
-use crate::synth_engine::{Expression, Sample};
+use crate::synth_engine::{Expression, Smp};
 
 pub struct AudioEnd;
 
@@ -29,11 +29,11 @@ impl ExpressionsAudioEnd for AudioEnd {
         None
     }
 
-    fn update_value(&mut self, _value: Sample) {}
+    fn update_value(&mut self, _value: Smp) {}
 }
 
 impl ExpressionsUiEnd for NoUi {
-    fn get_value(&mut self) -> Sample {
+    fn get_value(&mut self) -> Smp {
         self.diverge()
     }
 
@@ -45,7 +45,7 @@ impl ExpressionsUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_smooth(&mut self, _value: Sample) -> bool {
+    fn set_smooth(&mut self, _value: Smp) -> bool {
         self.diverge()
     }
 }

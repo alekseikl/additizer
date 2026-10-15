@@ -18,10 +18,11 @@ use wide::f32x4;
 
 use crate::{
     synth_engine::{
-        C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain_fast, db_to_gain_fast_x4, map_x4_in_place,
+        C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, SIMD_LANES, db_to_gain_fast, db_to_gain_fast_x4,
+        map_x4_in_place,
     },
     synth_engine::{
-        Sample, SmoothedSampleParams, StereoSample,
+        Smp, SmoothedSampleParams, StereoSample,
         buffer::{Buffer, VoicesLayout, zero_buffer},
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
@@ -35,11 +36,11 @@ use crate::{
 
 /// Even voice left, even voice right, odd voice left, odd voice right.
 const LANES: usize = VOICE_PAIR_LEN * NUM_CHANNELS;
-const _: () = assert!(LANES == 4);
+const _: () = assert!(LANES == SIMD_LANES);
 
 struct Params {
     filter_type: SvfType,
-    keytrack: Sample,
+    keytrack: Smp,
 }
 
 impl Params {
@@ -207,7 +208,7 @@ impl<L: SvfLinks> Svf<L> {
     }
 
     set_mono_param!(set_filter_type, filter_type, SvfType);
-    set_mono_param!(set_keytrack, keytrack, Sample, keytrack.clamp(0.0, 1.0));
+    set_mono_param!(set_keytrack, keytrack, Smp, keytrack.clamp(0.0, 1.0));
 
     set_smoothed_param!(set_cutoff, cutoff, cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF));
     set_smoothed_param!(
@@ -332,7 +333,7 @@ impl<L: SvfLinks> Svf<L> {
     }
 }
 
-fn block_refs(buffers: &[Buffer; LANES]) -> [&[Sample]; LANES] {
+fn block_refs(buffers: &[Buffer; LANES]) -> [&[Smp]; LANES] {
     buffers.each_ref().map(|buffer| &buffer[..])
 }
 

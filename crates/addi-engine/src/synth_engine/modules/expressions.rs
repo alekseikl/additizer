@@ -8,7 +8,7 @@ pub use link::{ExpressionsAudioEnd, ExpressionsLinks, ExpressionsUiEnd, UiEvent}
 use crate::{
     synth_engine::from_st,
     synth_engine::{
-        Buffer, Expression, ModuleId, Sample,
+        Buffer, Expression, ModuleId, Smp,
         buffer::{
             MonoVoicesLayout, ValueBuffer, VoicesLayout, new_mono_voices_layout_with, zero_buffer,
         },
@@ -24,7 +24,7 @@ use crate::{
 struct Params {
     expression: Expression,
     use_release_velocity: bool,
-    smooth: Sample,
+    smooth: Smp,
 }
 
 impl Params {
@@ -101,23 +101,23 @@ impl<L: ExpressionsLinks> Expressions<L> {
 
     set_mono_param!(set_expression, expression, Expression);
     set_mono_param!(set_use_release_velocity, use_release_velocity, bool);
-    set_mono_param!(set_smooth, smooth, Sample);
+    set_mono_param!(set_smooth, smooth, Smp);
 
-    fn transform_value(expression: Expression, value: Sample) -> Sample {
+    fn transform_value(expression: Expression, value: Smp) -> Smp {
         match expression {
             Expression::Pitch => from_st(value),
             _ => value,
         }
     }
 
-    fn default_value(expression: Expression) -> Sample {
+    fn default_value(expression: Expression) -> Smp {
         match expression {
             Expression::Gain => 1.0,
             _ => 0.0,
         }
     }
 
-    fn normalize_display_value(expression: Expression, value: Sample) -> Sample {
+    fn normalize_display_value(expression: Expression, value: Smp) -> Smp {
         match expression {
             Expression::Pitch => (value.abs() / from_st(12.0)).clamp(0.0, 1.0),
             Expression::Pan => ((value + 1.0) * 0.5).clamp(0.0, 1.0),
@@ -125,7 +125,7 @@ impl<L: ExpressionsLinks> Expressions<L> {
         }
     }
 
-    fn handle_trigger(voice: &mut Voice, params: &Params, velocity: Sample) {
+    fn handle_trigger(voice: &mut Voice, params: &Params, velocity: Smp) {
         let value = if matches!(params.expression, Expression::Velocity) {
             velocity
         } else {
@@ -135,7 +135,7 @@ impl<L: ExpressionsLinks> Expressions<L> {
         voice.values.set(value, 0);
     }
 
-    fn handle_update(voice: &mut Voice, params: &Params, velocity: Sample, at: usize) {
+    fn handle_update(voice: &mut Voice, params: &Params, velocity: Smp, at: usize) {
         let value = if matches!(params.expression, Expression::Velocity) {
             velocity
         } else {
@@ -145,7 +145,7 @@ impl<L: ExpressionsLinks> Expressions<L> {
         voice.values.set(value, at);
     }
 
-    fn handle_release(voice: &mut Voice, params: &Params, velocity: Sample, at: usize) {
+    fn handle_release(voice: &mut Voice, params: &Params, velocity: Smp, at: usize) {
         if matches!(params.expression, Expression::Velocity) && params.use_release_velocity {
             voice.values.set(velocity, at);
         }

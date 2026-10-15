@@ -1,5 +1,5 @@
 use crate::ui_bridge::ModuleUiBridge;
-use addi_engine::Sample;
+use addi_engine::Smp;
 use addi_engine::external_param::{
     ExternalParam, ExternalParamConfig, ExternalParamLinks, ExternalParamUiEnd, NUM_EXT_PARAMS,
 };
@@ -21,7 +21,7 @@ impl<L: ExternalParamLinks> ExternalParamUiBridge<L> {
         &self.config
     }
 
-    pub fn get_value(&mut self) -> Sample {
+    pub fn get_value(&mut self) -> Smp {
         self.ui_end.get_value()
     }
 
@@ -31,7 +31,7 @@ impl<L: ExternalParamLinks> ExternalParamUiBridge<L> {
         }
     }
 
-    pub fn set_smooth(&mut self, value: Sample) {
+    pub fn set_smooth(&mut self, value: Smp) {
         if self.ui_end.set_smooth(value) {
             self.config.smooth = value;
         }

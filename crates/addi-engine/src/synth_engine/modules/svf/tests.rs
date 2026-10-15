@@ -4,7 +4,7 @@ use addi_dsp::filters::control::{
     MAX_PRE_Q, MAX_RESONANCE_Q, MIN_PRE_Q, NEGATIVE_RESONANCE_Q, ZERO_RESONANCE_Q,
 };
 
-fn assert_approx(a: Sample, b: Sample) {
+fn assert_approx(a: Smp, b: Smp) {
     assert!((a - b).abs() < 1e-3 * b.abs().max(1.0), "{a} ≈ {b}");
 }
 
@@ -63,7 +63,7 @@ fn q_from_resonance_follows_cubic_curve() {
     assert!((zero.resonant - ZERO_RESONANCE_Q).abs() < 1e-6);
     assert!((zero.pre_stage - MIN_PRE_Q).abs() < 1e-6);
 
-    let resonance: Sample = 0.5;
+    let resonance: Smp = 0.5;
     let curve = resonance * resonance * resonance;
     let q = q_from_resonance(resonance);
 
@@ -111,7 +111,7 @@ fn resonance_is_clamped_to_minus_one_and_one() {
 
 #[test]
 fn drive_gain_is_clamped_db() {
-    let gain = |drive_db: Sample| db_to_gain_fast(drive_db.clamp(MIN_DRIVE, MAX_DRIVE));
+    let gain = |drive_db: Smp| db_to_gain_fast(drive_db.clamp(MIN_DRIVE, MAX_DRIVE));
     let quiet = gain(-60.0);
     let unity = gain(0.0);
     let hot = gain(12.0);

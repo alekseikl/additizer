@@ -2,7 +2,7 @@ use triple_buffer::triple_buffer;
 
 use addi_engine::{
     ComplexSample, DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, NUM_CHANNELS, SPECTRAL_BUFFER_SIZE,
-    Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY, buffer::copy_to_display_spectrum,
+    Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY, buffer::copy_to_display_spectrum,
     harmonic_editor::EditRequest,
 };
 
@@ -112,8 +112,8 @@ impl AudioEnd {
 
     pub fn publish_harmonics(
         &mut self,
-        amplitudes: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
-        phases: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+        amplitudes: &[Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+        phases: &[Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
     ) {
         let dst = self.harmonics.input_buffer_mut();
         dst.copy_channels(amplitudes, phases);
@@ -150,8 +150,8 @@ impl HarmonicEditorAudioEnd for AudioEnd {
     }
     fn publish_harmonics(
         &mut self,
-        amplitudes: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
-        phases: &[Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+        amplitudes: &[Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+        phases: &[Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
     ) {
         AudioEnd::publish_harmonics(self, amplitudes, phases)
     }

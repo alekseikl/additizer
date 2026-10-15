@@ -1,6 +1,6 @@
 use crate::ui_bridge::ModuleUiBridge;
 use addi_engine::lfo::{Lfo, LfoConfig, LfoLinks, LfoShape, LfoUiEnd};
-use addi_engine::{Input, Sample, StereoSample};
+use addi_engine::{Input, Smp, StereoSample};
 
 pub struct LfoUiBridge<L: LfoLinks = crate::links::lfo::Links> {
     ui_end: L::UiEnd,
@@ -19,7 +19,7 @@ impl<L: LfoLinks> LfoUiBridge<L> {
         &self.config
     }
 
-    pub fn get_phase(&mut self) -> Sample {
+    pub fn get_phase(&mut self) -> Smp {
         self.ui_end.get_phase()
     }
 

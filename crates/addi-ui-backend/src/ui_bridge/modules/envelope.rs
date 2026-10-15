@@ -1,7 +1,7 @@
 use crate::ui_bridge::ModuleUiBridge;
 use addi_engine::envelope::EnvelopePhase;
 use addi_engine::envelope::{Envelope, EnvelopeConfig, EnvelopeLinks, EnvelopeUiEnd};
-use addi_engine::{Input, Sample, StereoSample};
+use addi_engine::{Input, Smp, StereoSample};
 
 pub struct EnvelopeUiBridge<L: EnvelopeLinks = crate::links::envelope::Links> {
     ui_end: L::UiEnd,
@@ -40,19 +40,19 @@ impl<L: EnvelopeLinks> EnvelopeUiBridge<L> {
         }
     }
 
-    pub fn set_attack_slope(&mut self, value: Sample) {
+    pub fn set_attack_slope(&mut self, value: Smp) {
         if self.ui_end.set_attack_slope(value) {
             self.config.attack_slope = value;
         }
     }
 
-    pub fn set_decay_slope(&mut self, value: Sample) {
+    pub fn set_decay_slope(&mut self, value: Smp) {
         if self.ui_end.set_decay_slope(value) {
             self.config.decay_slope = value;
         }
     }
 
-    pub fn set_release_slope(&mut self, value: Sample) {
+    pub fn set_release_slope(&mut self, value: Smp) {
         if self.ui_end.set_release_slope(value) {
             self.config.release_slope = value;
         }

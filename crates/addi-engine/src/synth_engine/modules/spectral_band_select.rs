@@ -23,19 +23,19 @@ use crate::{
             SpectralOutput, SpectralRouterType, VoiceTarget,
         },
         synth_module::SynthModule,
-        types::Sample,
+        types::Smp,
     },
 };
 
 /// Pulls a frequency ratio that landed a hair off an integer back onto that bin.
-const HARMONIC_TOLERANCE: Sample = 1e-3;
+const HARMONIC_TOLERANCE: Smp = 1e-3;
 
 struct Params {
     mode: BandSelectMode,
     harmonic_from: u16,
     harmonic_to: u16,
-    freq_from: Sample,
-    freq_to: Sample,
+    freq_from: Smp,
+    freq_to: Smp,
 }
 
 impl Params {
@@ -144,22 +144,22 @@ impl<L: SpectralBandSelectLinks> SpectralBandSelect<L> {
     set_mono_param!(
         set_freq_from,
         freq_from,
-        Sample,
+        Smp,
         freq_from.clamp(MIN_BAND_HZ, MAX_BAND_HZ)
     );
     set_mono_param!(
         set_freq_to,
         freq_to,
-        Sample,
+        Smp,
         freq_to.clamp(MIN_BAND_HZ, MAX_BAND_HZ)
     );
 
-    fn quantize_harmonic(ratio: Sample) -> u16 {
+    fn quantize_harmonic(ratio: Smp) -> u16 {
         let snapped = (ratio - HARMONIC_TOLERANCE).ceil();
 
         if !snapped.is_finite() || snapped <= 0.0 {
             0
-        } else if snapped >= u16::MAX as Sample {
+        } else if snapped >= u16::MAX as Smp {
             u16::MAX
         } else {
             snapped as u16

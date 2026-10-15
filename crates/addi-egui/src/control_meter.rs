@@ -1,6 +1,6 @@
 use egui::{Color32, Painter, Pos2, Rect};
 
-use addi_engine::Sample;
+use addi_engine::Smp;
 
 const NUM_SEGMENTS: usize = 12;
 const SEGMENT_GAP: f32 = 2.0;
@@ -14,7 +14,7 @@ const GREEN: Color32 = Color32::from_rgb(0x06, 0xaa, 0x1c);
 pub struct ControlMeter {}
 
 impl ControlMeter {
-    pub fn paint_mono(&self, painter: &Painter, rect: Rect, value: Sample) {
+    pub fn paint_mono(&self, painter: &Painter, rect: Rect, value: Smp) {
         let bar_width = rect.width().clamp(BAR_MIN_WIDTH, BAR_MAX_WIDTH);
         let left = rect.center().x - bar_width * 0.5;
         let bar_rect = Rect::from_min_max(
@@ -46,9 +46,9 @@ impl ControlMeter {
         }
     }
 
-    fn segment_brightness(segment_idx: usize, value: Sample) -> Sample {
-        let lower = segment_idx as Sample / NUM_SEGMENTS as Sample;
-        let upper = (segment_idx + 1) as Sample / NUM_SEGMENTS as Sample;
+    fn segment_brightness(segment_idx: usize, value: Smp) -> Smp {
+        let lower = segment_idx as Smp / NUM_SEGMENTS as Smp;
+        let upper = (segment_idx + 1) as Smp / NUM_SEGMENTS as Smp;
 
         if value <= lower {
             0.0

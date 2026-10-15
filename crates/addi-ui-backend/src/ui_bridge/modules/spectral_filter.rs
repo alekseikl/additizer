@@ -3,7 +3,7 @@ use addi_dsp::filters::spectral_filter::FilterType;
 use addi_engine::spectral_filter::{
     SpectralFilter, SpectralFilterConfig, SpectralFilterLinks, SpectralFilterUiEnd,
 };
-use addi_engine::{Input, Sample, StereoSample};
+use addi_engine::{Input, Smp, StereoSample};
 
 pub struct SpectralFilterUiBridge<L: SpectralFilterLinks = crate::links::spectral_filter::Links> {
     ui_end: L::UiEnd,
@@ -22,7 +22,7 @@ impl<L: SpectralFilterLinks> SpectralFilterUiBridge<L> {
         &self.config
     }
 
-    pub fn pitch(&mut self) -> Sample {
+    pub fn pitch(&mut self) -> Smp {
         self.ui_end.pitch()
     }
 
@@ -51,7 +51,7 @@ impl<L: SpectralFilterLinks> SpectralFilterUiBridge<L> {
         }
     }
 
-    pub fn set_keytrack(&mut self, value: Sample) {
+    pub fn set_keytrack(&mut self, value: Smp) {
         if self.ui_end.set_keytrack(value) {
             self.config.keytrack = value;
         }

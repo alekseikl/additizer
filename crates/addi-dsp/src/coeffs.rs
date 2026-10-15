@@ -2,7 +2,7 @@
 
 use wide::f32x4;
 
-use crate::Sample;
+use crate::Smp;
 
 /// Coefficients of `((b0 * t + b1) * t + b2) * t + b3`, weighting `[s0, s1, s2, s3]`.
 const CATMULL_ROM: [f32x4; 4] = [
@@ -14,7 +14,7 @@ const CATMULL_ROM: [f32x4; 4] = [
 
 /// Weights for samples `[s0, s1, s2, s3]` at fractional position `t`.
 #[inline(always)]
-pub fn catmull_rom(t: Sample) -> f32x4 {
+pub fn catmull_rom(t: Smp) -> f32x4 {
     let [b0, b1, b2, b3] = CATMULL_ROM;
     let t = f32x4::splat(t);
 
@@ -29,7 +29,7 @@ pub fn catmull_rom(t: Sample) -> f32x4 {
 /// cost one multiply plus three FMAs with a broadcast lane operand, with no
 /// copies of the basis constants.
 #[inline(always)]
-pub fn catmull_rom_from_powers(g: Sample, gt: Sample, gt2: Sample, gt3: Sample) -> f32x4 {
+pub fn catmull_rom_from_powers(g: Smp, gt: Smp, gt2: Smp, gt3: Smp) -> f32x4 {
     let [b0, b1, b2, b3] = CATMULL_ROM;
 
     let w = b3 * f32x4::splat(g);

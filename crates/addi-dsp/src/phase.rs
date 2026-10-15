@@ -3,7 +3,7 @@ use std::ops::{Add, AddAssign};
 use serde::{Deserialize, Serialize};
 use wide::{bytemuck::cast, f32x4, i32x4, u32x4};
 
-use crate::Sample;
+use crate::{SIMD_LANES, Smp};
 
 #[cfg(test)]
 mod tests;
@@ -15,7 +15,7 @@ pub struct Phase(u32);
 impl Phase {
     pub const ZERO: Self = Self(0);
 
-    const FULL_PHASE: Sample = ((u32::MAX as u64) + 1) as Sample;
+    const FULL_PHASE: Smp = ((u32::MAX as u64) + 1) as Smp;
 
     #[inline(always)]
     pub const fn bits(self) -> u32 {
@@ -28,18 +28,18 @@ impl Phase {
     }
 
     #[inline(always)]
-    pub const fn freq_phase_mult(sample_rate: Sample) -> Sample {
+    pub const fn freq_phase_mult(sample_rate: Smp) -> Smp {
         Self::FULL_PHASE / sample_rate
     }
 
     /// Hz from a phase increment built with [`Self::freq_phase_mult`].
     #[inline(always)]
-    pub fn phase_inc_to_freq(phase_inc: Sample, freq_phase_mult: Sample) -> Sample {
+    pub fn phase_inc_to_freq(phase_inc: Smp, freq_phase_mult: Smp) -> Smp {
         phase_inc / freq_phase_mult
     }
 
     #[inline(always)]
-    pub fn from_normalized(phase: Sample) -> Self {
+    pub fn from_normalized(phase: Smp) -> Self {
         Self((phase * Self::FULL_PHASE) as i64 as u32)
     }
 
@@ -51,8 +51,8 @@ impl Phase {
         (1 << Self::intermediate_bits::<WAVEFORM_BITS>()) - 1
     }
 
-    const fn intermediate_mult<const WAVEFORM_BITS: usize>() -> Sample {
-        ((1 << Self::intermediate_bits::<WAVEFORM_BITS>()) as Sample).recip()
+    const fn intermediate_mult<const WAVEFORM_BITS: usize>() -> Smp {
+        ((1 << Self::intermediate_bits::<WAVEFORM_BITS>()) as Smp).recip()
     }
 
     #[inline(always)]
@@ -61,16 +61,16 @@ impl Phase {
     }
 
     #[inline(always)]
-    pub fn wave_index_fraction<const WAVEFORM_BITS: usize>(&self) -> Sample {
-        (self.0 & Self::intermediate_mask::<WAVEFORM_BITS>()) as Sample
+    pub fn wave_index_fraction<const WAVEFORM_BITS: usize>(&self) -> Smp {
+        (self.0 & Self::intermediate_mask::<WAVEFORM_BITS>()) as Smp
             * Self::intermediate_mult::<WAVEFORM_BITS>()
     }
 
-    pub fn normalized(&self) -> Sample {
-        self.0 as Sample / Self::FULL_PHASE
+    pub fn normalized(&self) -> Smp {
+        self.0 as Smp / Self::FULL_PHASE
     }
 
-    pub fn add_normalized(self, norm: Sample) -> Self {
+    pub fn add_normalized(self, norm: Smp) -> Self {
         self + Self::from_normalized(norm)
     }
 }
@@ -84,18 +84,18 @@ impl Add for Phase {
     }
 }
 
-impl Add<Sample> for Phase {
+impl Add<Smp> for Phase {
     type Output = Self;
 
     #[inline(always)]
-    fn add(self, rhs: Sample) -> Self::Output {
+    fn add(self, rhs: Smp) -> Self::Output {
         self + Self(rhs as i64 as u32)
     }
 }
 
-impl AddAssign<Sample> for Phase {
+impl AddAssign<Smp> for Phase {
     #[inline(always)]
-    fn add_assign(&mut self, rhs: Sample) {
+    fn add_assign(&mut self, rhs: Smp) {
         *self = *self + rhs;
     }
 }
@@ -105,12 +105,12 @@ pub struct PhaseX4(u32x4);
 
 impl PhaseX4 {
     #[inline(always)]
-    pub fn load(phases: &[Phase; 4]) -> Self {
+    pub fn load(phases: &[Phase; SIMD_LANES]) -> Self {
         Self(u32x4::new(phases.map(Phase::bits)))
     }
 
     #[inline(always)]
-    pub fn store(self, phases: &mut [Phase; 4]) {
+    pub fn store(self, phases: &mut [Phase; SIMD_LANES]) {
         *phases = self.0.to_array().map(Phase::from_bits);
     }
 
@@ -146,7 +146,7 @@ impl PhaseX4 {
 
     /// Lane-wise [`Phase::wave_index`].
     #[inline(always)]
-    pub fn wave_index<const WAVEFORM_BITS: usize>(self) -> [u32; 4] {
+    pub fn wave_index<const WAVEFORM_BITS: usize>(self) -> [u32; SIMD_LANES] {
         (self.0 >> Phase::intermediate_bits::<WAVEFORM_BITS>() as u32).to_array()
     }
 

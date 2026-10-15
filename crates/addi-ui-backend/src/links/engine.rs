@@ -5,7 +5,7 @@ use addi_engine::{
         EngineAudioEnd, EngineUiEnd, OutputMeter, UiEvent, UiUpdate, VoicesHandlerMetrics,
         VoicesStatus,
     },
-    Input, InputId, ModuleId, Sample, StereoSample, NUM_CHANNELS, UI_TO_AUDIO_RING_CAPACITY,
+    Input, InputId, ModuleId, Smp, StereoSample, NUM_CHANNELS, UI_TO_AUDIO_RING_CAPACITY,
 };
 
 // Larger than module links: this carries per-input modulation telemetry.
@@ -23,8 +23,8 @@ impl AudioEnd {
         module_id: ModuleId,
         input: Input,
         channel: u8,
-        value: Sample,
-        normalized_value: Sample,
+        value: Smp,
+        normalized_value: Smp,
     ) -> bool {
         self.tx
             .push(UiUpdate::ModulatedInput {
@@ -87,7 +87,7 @@ impl UiEnd {
         self.tx.push(UiEvent::KillSameNote(kill_same_note)).is_ok()
     }
 
-    pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) -> bool {
+    pub fn set_voice_kill_time(&mut self, voice_kill_time: Smp) -> bool {
         self.tx
             .push(UiEvent::VoiceKillTime(voice_kill_time))
             .is_ok()
@@ -127,8 +127,8 @@ impl EngineAudioEnd for AudioEnd {
         module_id: ModuleId,
         input: Input,
         channel: u8,
-        value: Sample,
-        normalized_value: Sample,
+        value: Smp,
+        normalized_value: Smp,
     ) -> bool {
         AudioEnd::update_modulated_input(self, module_id, input, channel, value, normalized_value)
     }
@@ -167,7 +167,7 @@ impl EngineUiEnd for UiEnd {
         UiEnd::set_kill_same_note(self, kill_same_note)
     }
 
-    fn set_voice_kill_time(&mut self, voice_kill_time: Sample) -> bool {
+    fn set_voice_kill_time(&mut self, voice_kill_time: Smp) -> bool {
         UiEnd::set_voice_kill_time(self, voice_kill_time)
     }
 

@@ -1,7 +1,7 @@
 use super::*;
 use crate::synth_engine::routing::{Expression, VoiceEvent};
 
-fn note_pitch(note: u8) -> Sample {
+fn note_pitch(note: u8) -> Smp {
     VoiceEvents::note_to_pitch(note)
 }
 

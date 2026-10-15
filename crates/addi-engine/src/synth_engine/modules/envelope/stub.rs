@@ -1,6 +1,6 @@
 use super::{EnvelopeAudioEnd, EnvelopeLinks, EnvelopePhase, EnvelopeUiEnd, UiEvent};
 
-use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::synth_engine::{Input, Smp, StereoSample};
 
 pub struct AudioEnd;
 
@@ -41,15 +41,15 @@ impl EnvelopeUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_attack_slope(&mut self, _value: Sample) -> bool {
+    fn set_attack_slope(&mut self, _value: Smp) -> bool {
         self.diverge()
     }
 
-    fn set_decay_slope(&mut self, _value: Sample) -> bool {
+    fn set_decay_slope(&mut self, _value: Smp) -> bool {
         self.diverge()
     }
 
-    fn set_release_slope(&mut self, _value: Sample) -> bool {
+    fn set_release_slope(&mut self, _value: Smp) -> bool {
         self.diverge()
     }
 

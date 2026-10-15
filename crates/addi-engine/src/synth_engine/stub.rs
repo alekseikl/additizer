@@ -2,7 +2,7 @@
 //! Module link stubs live next to each module.
 
 use crate::synth_engine::{
-    Input, InputId, ModuleId, NUM_CHANNELS, Sample, StereoSample, amplifier, engine_io, envelope,
+    Input, InputId, ModuleId, NUM_CHANNELS, Smp, StereoSample, amplifier, engine_io, envelope,
     expressions, external_param, harmonic_editor, lfo, mixer, oscillator, pitch,
     spectral_band_select, spectral_blend, spectral_eq, spectral_filter, spectral_mixer,
     spectral_noise, svf, wave_shaper,
@@ -55,8 +55,8 @@ impl engine_io::EngineAudioEnd for AudioEnd {
         _module_id: ModuleId,
         _input: Input,
         _channel: u8,
-        _value: Sample,
-        _normalized_value: Sample,
+        _value: Smp,
+        _normalized_value: Smp,
     ) -> bool {
         false
     }
@@ -93,7 +93,7 @@ impl engine_io::EngineUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_voice_kill_time(&mut self, _voice_kill_time: Sample) -> bool {
+    fn set_voice_kill_time(&mut self, _voice_kill_time: Smp) -> bool {
         self.diverge()
     }
 

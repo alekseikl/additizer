@@ -1,6 +1,6 @@
 use super::{AmplifierAudioEnd, AmplifierLinks, AmplifierUiEnd, UiEvent};
 
-use crate::synth_engine::{Input, Sample, StereoSample};
+use crate::synth_engine::{Input, Smp, StereoSample};
 
 pub struct AudioEnd;
 
@@ -29,7 +29,7 @@ impl AmplifierAudioEnd for AudioEnd {
         None
     }
 
-    fn update_out_volume(&mut self, _channel_idx: usize, _out_volume: Sample) {}
+    fn update_out_volume(&mut self, _channel_idx: usize, _out_volume: Smp) {}
 }
 
 impl AmplifierUiEnd for NoUi {

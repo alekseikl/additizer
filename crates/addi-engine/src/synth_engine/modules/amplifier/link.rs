@@ -1,4 +1,4 @@
-use crate::synth_engine::{Input, Sample, StereoSample, engine_io};
+use crate::synth_engine::{Input, Smp, StereoSample, engine_io};
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
@@ -6,7 +6,7 @@ pub enum UiEvent {
 
 pub trait AmplifierAudioEnd: Send {
     fn pop_event(&mut self) -> Option<UiEvent>;
-    fn update_out_volume(&mut self, channel_idx: usize, out_volume: Sample);
+    fn update_out_volume(&mut self, channel_idx: usize, out_volume: Smp);
 }
 
 pub trait AmplifierUiEnd: Send {

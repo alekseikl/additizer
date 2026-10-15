@@ -2,7 +2,7 @@ use super::{Output, SynthModule, Voice};
 use crate::synth_engine::{
     DataType, EngineAudioEnd, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig,
     ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, OutputMeter, ProcessContext, ProcessParams,
-    Sample, StereoSample, SynthEngine, VoiceEvent,
+    Smp, StereoSample, SynthEngine, VoiceEvent,
     engine_io::UiEvent,
     from_ms,
     harmonic_editor::HarmonicEditorConfig,
@@ -20,12 +20,12 @@ impl Output {
     }
 }
 
-const SAMPLE_RATE: Sample = 48_000.0;
+const SAMPLE_RATE: Smp = 48_000.0;
 const BUFFER_SIZE: usize = 32;
 const HARMONIC_EDITOR_ID: ModuleId = 1;
 const OSCILLATOR_ID: ModuleId = 2;
 
-fn assert_close(a: Sample, b: Sample) {
+fn assert_close(a: Smp, b: Smp) {
     assert!((a - b).abs() <= 1e-4, "{a} ≈ {b}");
 }
 
@@ -58,8 +58,8 @@ impl EngineAudioEnd for RecordingAudioEnd {
         _module_id: ModuleId,
         _input: Input,
         _channel: u8,
-        _value: Sample,
-        _normalized_value: Sample,
+        _value: Smp,
+        _normalized_value: Smp,
     ) -> bool {
         false
     }
@@ -153,7 +153,7 @@ fn note(midi: u8) -> Note {
     }
 }
 
-fn process_block(engine: &mut SynthEngine, samples: usize) -> (Vec<Sample>, Vec<Sample>) {
+fn process_block(engine: &mut SynthEngine, samples: usize) -> (Vec<Smp>, Vec<Smp>) {
     let mut left = vec![0.0; samples];
     let mut right = vec![0.0; samples];
     let mut terminated = Vec::new();
@@ -168,7 +168,7 @@ fn process_block(engine: &mut SynthEngine, samples: usize) -> (Vec<Sample>, Vec<
     (left, right)
 }
 
-fn play(engine: &mut SynthEngine, midi: u8) -> (Vec<Sample>, Vec<Sample>) {
+fn play(engine: &mut SynthEngine, midi: u8) -> (Vec<Smp>, Vec<Smp>) {
     engine.handle_note_on(note(midi), 0);
     process_block(engine, 64)
 }
@@ -507,7 +507,7 @@ fn volume_scales_and_clips_at_12_db() {
 #[test]
 fn volume_replaces_non_finite_samples_with_silence() {
     let clip = db_to_gain_fast(super::OUTPUT_CLIP_DB);
-    let mut buffer = [Sample::NAN, Sample::INFINITY, Sample::NEG_INFINITY, 0.25];
+    let mut buffer = [Smp::NAN, Smp::INFINITY, Smp::NEG_INFINITY, 0.25];
     let clipped = Output::apply_volume(buffer.iter_mut(), std::iter::repeat(1.0), 4);
 
     assert!(clipped);
@@ -517,7 +517,7 @@ fn volume_replaces_non_finite_samples_with_silence() {
     assert_eq!(buffer[3], 0.25);
 
     let mut nan_gain = [0.5];
-    let clipped = Output::apply_volume(nan_gain.iter_mut(), std::iter::once(Sample::NAN), 1);
+    let clipped = Output::apply_volume(nan_gain.iter_mut(), std::iter::once(Smp::NAN), 1);
 
     assert!(clipped);
     assert_eq!(nan_gain[0], 0.0);
@@ -529,7 +529,7 @@ fn read_output_copies_each_channel() {
 
     for (channel, buffer) in output.output.iter_mut().enumerate() {
         for (index, sample) in buffer.iter_mut().enumerate() {
-            *sample = channel as Sample + index as Sample * 0.01;
+            *sample = channel as Smp + index as Smp * 0.01;
         }
     }
 
@@ -575,7 +575,7 @@ fn read_output_decimates_when_oversampling() {
 #[test]
 fn trigger_stage_leaves_output_and_meters_untouched() {
     let mut output = Output::new(StereoSample::ONE, 0.0, BUFFER_SIZE);
-    output.output[0][0] = Sample::NAN;
+    output.output[0][0] = Smp::NAN;
     output.output[1][BUFFER_SIZE - 1] = 3.0;
 
     let meter = run_process(&mut output, 16, true, true);
@@ -734,7 +734,7 @@ fn output_is_hard_clipped_at_12_db() {
     );
 }
 
-fn peak(samples: &[Sample]) -> Sample {
+fn peak(samples: &[Smp]) -> Smp {
     samples
         .iter()
         .fold(0.0, |peak, sample| peak.max(sample.abs()))

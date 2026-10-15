@@ -1,13 +1,13 @@
 use wide::f32x4;
 
 use super::simd::ComplexX4;
-use crate::Sample;
+use crate::Smp;
 
-pub(super) const TAU: Sample = std::f32::consts::TAU;
+pub(super) const TAU: Smp = std::f32::consts::TAU;
 pub(super) const TAU_X4: f32x4 = f32x4::splat(TAU);
 
 #[inline(always)]
-fn splat(x: Sample) -> f32x4 {
+fn splat(x: Smp) -> f32x4 {
     f32x4::splat(x)
 }
 
@@ -19,7 +19,7 @@ pub(super) struct LowPass {
 }
 
 impl LowPass {
-    pub(super) fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    pub(super) fn new(gain: Smp, cutoff: Smp, q: Smp) -> Self {
         let w = cutoff * TAU;
         let w_squared = w * w;
 
@@ -46,7 +46,7 @@ pub(super) struct HighPass {
 }
 
 impl HighPass {
-    pub(super) fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    pub(super) fn new(gain: Smp, cutoff: Smp, q: Smp) -> Self {
         let w = cutoff * TAU;
 
         Self {
@@ -74,7 +74,7 @@ pub(super) struct BandPass {
 }
 
 impl BandPass {
-    pub(super) fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    pub(super) fn new(gain: Smp, cutoff: Smp, q: Smp) -> Self {
         let w = cutoff * TAU;
 
         Self {
@@ -101,7 +101,7 @@ pub(super) struct Peaking {
 }
 
 impl Peaking {
-    pub(super) fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    pub(super) fn new(gain: Smp, cutoff: Smp, q: Smp) -> Self {
         let w = cutoff * TAU;
         let a = gain.max(0.0).sqrt();
 
@@ -129,7 +129,7 @@ pub(super) struct Notch {
 }
 
 impl Notch {
-    pub(super) fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    pub(super) fn new(gain: Smp, cutoff: Smp, q: Smp) -> Self {
         let w = cutoff * TAU;
 
         Self {
@@ -154,7 +154,7 @@ pub(super) struct OnePoleLowPass {
 }
 
 impl OnePoleLowPass {
-    pub(super) fn new(cutoff: Sample) -> Self {
+    pub(super) fn new(cutoff: Smp) -> Self {
         Self {
             w: splat(cutoff * TAU),
         }
@@ -174,7 +174,7 @@ pub(super) struct OnePoleHighPass {
 }
 
 impl OnePoleHighPass {
-    pub(super) fn new(cutoff: Sample) -> Self {
+    pub(super) fn new(cutoff: Smp) -> Self {
         Self {
             w: splat(cutoff * TAU),
         }
@@ -197,7 +197,7 @@ pub(super) struct LowShelf {
 }
 
 impl LowShelf {
-    pub(super) fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    pub(super) fn new(gain: Smp, cutoff: Smp, q: Smp) -> Self {
         let w = cutoff * TAU;
         let a = gain.max(0.0).sqrt();
         let w_sq = w * w;
@@ -230,7 +230,7 @@ pub(super) struct HighShelf {
 }
 
 impl HighShelf {
-    pub(super) fn new(gain: Sample, cutoff: Sample, q: Sample) -> Self {
+    pub(super) fn new(gain: Smp, cutoff: Smp, q: Smp) -> Self {
         let w = cutoff * TAU;
         let a = gain.max(0.0).sqrt();
         let w_sq = w * w;

@@ -12,7 +12,7 @@ use crate::{
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
-        types::Sample,
+        types::Smp,
     },
 };
 
@@ -290,15 +290,15 @@ impl<L: MixerLinks> Mixer<L> {
     }
 
     #[inline(always)]
-    fn to_gain(dbs: Sample) -> Sample {
+    fn to_gain(dbs: Smp) -> Smp {
         db_to_gain_fast(dbs.min(MAX_LEVEL_DB))
     }
 
     #[inline(always)]
     fn mix_input(
-        output: &mut [Sample],
-        input: &[Sample],
-        gain_mod: impl Iterator<Item = Sample>,
+        output: &mut [Smp],
+        input: &[Smp],
+        gain_mod: impl Iterator<Item = Smp>,
         input_idx: u8,
     ) {
         let input = input
@@ -310,7 +310,7 @@ impl<L: MixerLinks> Mixer<L> {
     }
 
     #[inline(always)]
-    fn modulate_output(output: &mut [Sample], gain_mod: impl Iterator<Item = Sample>) {
+    fn modulate_output(output: &mut [Smp], gain_mod: impl Iterator<Item = Smp>) {
         for (out, gain_mod) in output.iter_mut().zip(gain_mod) {
             *out *= gain_mod;
         }

@@ -2,7 +2,7 @@ use crate::ui_bridge::ModuleUiBridge;
 use addi_engine::spectral_eq::{
     EqFilter, MAX_EQ_FILTERS, SpectralEq, SpectralEqConfig, SpectralEqLinks, SpectralEqUiEnd,
 };
-use addi_engine::{Input, Sample, StereoSample};
+use addi_engine::{Input, Smp, StereoSample};
 
 pub struct SpectralEqUiBridge<L: SpectralEqLinks = crate::links::spectral_eq::Links> {
     ui_end: L::UiEnd,
@@ -21,7 +21,7 @@ impl<L: SpectralEqLinks> SpectralEqUiBridge<L> {
         &self.config
     }
 
-    pub fn pitch(&mut self) -> Sample {
+    pub fn pitch(&mut self) -> Smp {
         self.ui_end.pitch()
     }
 
@@ -43,7 +43,7 @@ impl<L: SpectralEqLinks> SpectralEqUiBridge<L> {
         }
     }
 
-    pub fn set_keytrack(&mut self, value: Sample) {
+    pub fn set_keytrack(&mut self, value: Smp) {
         if self.ui_end.set_keytrack(value) {
             self.config.keytrack = value;
         }

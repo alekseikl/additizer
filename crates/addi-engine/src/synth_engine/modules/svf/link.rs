@@ -1,22 +1,22 @@
-use crate::synth_engine::{Input, Sample, StereoSample, engine_io};
+use crate::synth_engine::{Input, Smp, StereoSample, engine_io};
 use addi_dsp::filters::svf::SvfType;
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
     FilterType(SvfType),
-    Keytrack(Sample),
+    Keytrack(Smp),
 }
 
 pub trait SvfAudioEnd: Send {
     fn pop_event(&mut self) -> Option<UiEvent>;
-    fn update_pitch(&mut self, pitch: Sample);
+    fn update_pitch(&mut self, pitch: Smp);
 }
 
 pub trait SvfUiEnd: Send {
-    fn pitch(&mut self) -> Sample;
+    fn pitch(&mut self) -> Smp;
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
     fn set_filter_type(&mut self, filter_type: SvfType) -> bool;
-    fn set_keytrack(&mut self, value: Sample) -> bool;
+    fn set_keytrack(&mut self, value: Smp) -> bool;
 }
 
 pub trait SvfLinks: Send {

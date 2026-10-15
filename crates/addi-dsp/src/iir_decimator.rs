@@ -1,7 +1,7 @@
 use itertools::izip;
 use wide::f32x4;
 
-use crate::Sample;
+use crate::Smp;
 
 const fn tap(x1: f32, x2: f32) -> f32x4 {
     f32x4::new([x1, x2, x1, x2])
@@ -32,7 +32,7 @@ impl IirDecimator {
         }
     }
 
-    pub fn process(&mut self, input: [&[Sample]; CHANNELS], mut output: [&mut [Sample]; CHANNELS]) {
+    pub fn process(&mut self, input: [&[Smp]; CHANNELS], mut output: [&mut [Smp]; CHANNELS]) {
         let (out_left, out_right) = output.split_at_mut(1);
         let (in_left, _) = input[0].as_chunks::<2>();
         let (in_right, _) = input[1].as_chunks::<2>();

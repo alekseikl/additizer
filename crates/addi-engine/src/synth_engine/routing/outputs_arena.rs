@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::synth_engine::{
-    ComplexSample, Sample, SynthModule,
+    ComplexSample, Smp, SynthModule,
     buffer::{VoicesLayout, add_to_buffer, new_voices_layout_with, zero_buffer},
     routing::{
         DataType, InputSlot,
@@ -30,7 +30,7 @@ impl<T: Send> DerefMut for ArenaSlot<T> {
 
 pub struct OutputsArena {
     buffer_size: usize,
-    zeroes: Box<[Sample]>,
+    zeroes: Box<[Smp]>,
     pub(super) samples: Vec<ArenaSlot<SamplesOutput>>,
     pub(super) spectral: Vec<ArenaSlot<SpectralOutput>>,
     free_samples_slots: Vec<usize>,
@@ -49,7 +49,7 @@ impl OutputsArena {
         }
     }
 
-    pub(super) fn zeroes(&self) -> &[Sample] {
+    pub(super) fn zeroes(&self) -> &[Smp] {
         &self.zeroes
     }
 
@@ -122,7 +122,7 @@ impl OutputsArena {
         slot: Option<usize>,
         channel_idx: usize,
         voice_idx: usize,
-    ) -> Option<&[Sample]> {
+    ) -> Option<&[Smp]> {
         slot.map(|slot| self.samples[slot].at(channel_idx, voice_idx).buffer())
     }
 
@@ -140,7 +140,7 @@ impl OutputsArena {
         channel_idx: usize,
         voice_idx: usize,
         offset: usize,
-        result: &mut [Sample], // Number of samples is controlled but result slice length
+        result: &mut [Smp], // Number of samples is controlled but result slice length
     ) -> bool {
         if slots.is_empty() {
             return false;
@@ -189,7 +189,7 @@ impl OutputsArena {
         channel_idx: usize,
         voice_idx: usize,
         this_frame: Option<usize>,
-    ) -> Sample {
+    ) -> Smp {
         self.assert_control_rate(slot);
         self.samples[slot]
             .at(channel_idx, voice_idx)
@@ -202,12 +202,12 @@ impl OutputsArena {
         channel_idx: usize,
         voice_idx: usize,
         this_frame: Option<usize>,
-    ) -> Option<Sample> {
+    ) -> Option<Smp> {
         if slots.is_empty() {
             return None;
         }
 
-        let mut result: Sample = 0.0;
+        let mut result: Smp = 0.0;
 
         for slot in slots {
             let mut value = self.control_scalar(slot.src_slot, channel_idx, voice_idx, this_frame)

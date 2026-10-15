@@ -4,7 +4,7 @@ use enum_dispatch::enum_dispatch;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use addi_engine::{
-    InputId, ModuleHandle, ModuleId, ModuleType, OUTPUT_MODULE_ID, PITCH_MODULE_ID, Sample,
+    InputId, ModuleHandle, ModuleId, ModuleType, OUTPUT_MODULE_ID, PITCH_MODULE_ID, Smp,
     StereoSample,
     config::EngineParams,
     engine_io::EngineLinks,
@@ -758,7 +758,7 @@ impl<E: EngineLinks> UiBridge<E> {
         }
     }
 
-    pub fn set_voice_kill_time(&mut self, voice_kill_time: Sample) {
+    pub fn set_voice_kill_time(&mut self, voice_kill_time: Smp) {
         if self.ui_end.set_voice_kill_time(voice_kill_time) {
             self.engine_params.voice_kill_time = voice_kill_time;
         }

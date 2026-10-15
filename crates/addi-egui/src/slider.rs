@@ -11,7 +11,7 @@ use egui::{
     vec2,
 };
 
-use addi_engine::{Sample, StereoSample};
+use addi_engine::{Smp, StereoSample};
 
 use super::{units::Units, utils::hsva};
 
@@ -133,7 +133,7 @@ impl RoundedEdges {
 const ROUNDED_SAMPLES_PER_COLUMN: usize = 4;
 
 enum Value<'a> {
-    Mono(&'a mut Sample),
+    Mono(&'a mut Smp),
     Stereo(&'a mut StereoSample),
 }
 
@@ -152,12 +152,12 @@ struct EnterState {
 pub struct Slider<'a> {
     value: Value<'a>,
     modulated_value: Option<StereoSample>,
-    range: RangeInclusive<Sample>,
-    inverse_to: Option<Sample>,
-    over_from: Option<Sample>,
+    range: RangeInclusive<Smp>,
+    inverse_to: Option<Smp>,
+    over_from: Option<Smp>,
     units: Units,
-    skew: Sample,
-    default: Option<Sample>,
+    skew: Smp,
+    default: Option<Smp>,
     length: f32,
     thickness: f32,
     orientation: Orientation,
@@ -165,7 +165,7 @@ pub struct Slider<'a> {
 }
 
 impl<'a> Slider<'a> {
-    fn new(value: Value<'a>, range: RangeInclusive<Sample>, inverse_to: Option<Sample>) -> Self {
+    fn new(value: Value<'a>, range: RangeInclusive<Smp>, inverse_to: Option<Smp>) -> Self {
         assert!(range.end() > range.start());
 
         if let Some(inverse) = inverse_to {
@@ -189,17 +189,17 @@ impl<'a> Slider<'a> {
     }
 
     pub fn mono(
-        value: &'a mut Sample,
-        range: RangeInclusive<Sample>,
-        inverse_to: Option<Sample>,
+        value: &'a mut Smp,
+        range: RangeInclusive<Smp>,
+        inverse_to: Option<Smp>,
     ) -> Self {
         Self::new(Value::Mono(value), range, inverse_to)
     }
 
     pub fn stereo(
         value: &'a mut StereoSample,
-        range: RangeInclusive<Sample>,
-        inverse_to: Option<Sample>,
+        range: RangeInclusive<Smp>,
+        inverse_to: Option<Smp>,
     ) -> Self {
         Self::new(Value::Stereo(value), range, inverse_to)
     }
@@ -209,7 +209,7 @@ impl<'a> Slider<'a> {
         self
     }
 
-    pub fn over(mut self, over_from: Sample) -> Self {
+    pub fn over(mut self, over_from: Smp) -> Self {
         self.over_from = Some(over_from.clamp(*self.range.start(), *self.range.end()));
         self
     }
@@ -219,12 +219,12 @@ impl<'a> Slider<'a> {
         self
     }
 
-    pub fn skew(mut self, skew: Sample) -> Self {
+    pub fn skew(mut self, skew: Smp) -> Self {
         self.skew = skew;
         self
     }
 
-    pub fn default(mut self, default: Sample) -> Self {
+    pub fn default(mut self, default: Smp) -> Self {
         self.default = Some(default);
         self
     }
@@ -256,24 +256,24 @@ impl<'a> Slider<'a> {
     }
 
     /// Normalize so zero stays zero; scale by the larger of `|from|` and `|to|`.
-    fn pre_normalize_scale(&self) -> Sample {
+    fn pre_normalize_scale(&self) -> Smp {
         self.range.end().abs().max(self.range.start().abs())
     }
 
-    fn skew_normalized(&self, normalized: Sample) -> Sample {
+    fn skew_normalized(&self, normalized: Smp) -> Smp {
         normalized.abs().powf(self.skew.recip()) * normalized.signum()
     }
 
-    fn unskew_normalized(&self, skewed: Sample) -> Sample {
+    fn unskew_normalized(&self, skewed: Smp) -> Smp {
         skewed.abs().powf(self.skew) * skewed.signum()
     }
 
     /// Value space → skew domain: pre-normalize by range scale, then skew around zero.
-    fn to_skew_domain(&self, value: Sample) -> Sample {
+    fn to_skew_domain(&self, value: Smp) -> Smp {
         self.skew_normalized(value / self.pre_normalize_scale())
     }
 
-    fn value_to_normalized(&self, value: Sample) -> Sample {
+    fn value_to_normalized(&self, value: Smp) -> Smp {
         // 1) normalize in value space (0 → 0, scale by max(|from|, |to|))
         // 2) skew around zero
         let skewed = self.to_skew_domain(value);
@@ -291,7 +291,7 @@ impl<'a> Slider<'a> {
         }
     }
 
-    fn normalized_to_value(&self, normalized: Sample) -> Sample {
+    fn normalized_to_value(&self, normalized: Smp) -> Smp {
         let min = if self.inverse_to.is_some() { -1.0 } else { 0.0 };
         let normalized = normalized.clamp(min, 1.0);
         let skewed_from = self.to_skew_domain(*self.range.start());
@@ -332,7 +332,7 @@ impl<'a> Slider<'a> {
         matches!(self.value, Value::Stereo(_))
     }
 
-    fn value_min(&self) -> Sample {
+    fn value_min(&self) -> Smp {
         *self.range.start()
     }
 
@@ -621,7 +621,7 @@ impl<'a> Slider<'a> {
         }
     }
 
-    fn bar_color(&self, norm_value: Sample) -> Color32 {
+    fn bar_color(&self, norm_value: Smp) -> Color32 {
         if norm_value < 0.0 {
             Color32::from(INVERSE_LEVEL_COLOR)
         } else if self
@@ -635,7 +635,7 @@ impl<'a> Slider<'a> {
         }
     }
 
-    fn tip_color(&self, norm_value: Sample) -> Color32 {
+    fn tip_color(&self, norm_value: Smp) -> Color32 {
         if norm_value < 0.0 {
             Color32::from(INVERSE_LEVEL_TIP_COLOR)
         } else if self
@@ -649,7 +649,7 @@ impl<'a> Slider<'a> {
         }
     }
 
-    fn paint_tip(&self, painter: &Painter, rect: Rect, norm_value: Sample, rounded: RoundedEdges) {
+    fn paint_tip(&self, painter: &Painter, rect: Rect, norm_value: Smp, rounded: RoundedEdges) {
         let color = self.tip_color(norm_value);
         let span = self.orientation.along_span(rect);
         let abs_position = norm_value.abs() * span;
@@ -670,7 +670,7 @@ impl<'a> Slider<'a> {
         painter.add(Shape::mesh(mesh));
     }
 
-    fn paint_mono_bar(&self, painter: &Painter, rect: Rect, end_norm: Sample) {
+    fn paint_mono_bar(&self, painter: &Painter, rect: Rect, end_norm: Smp) {
         let mut mesh = Mesh::with_texture(TextureId::default());
 
         self.append_bar_part(&mut mesh, rect, RoundedEdges::ALL, 0.0, end_norm);
@@ -707,8 +707,8 @@ impl<'a> Slider<'a> {
         mesh: &mut Mesh,
         rect: Rect,
         rounded: RoundedEdges,
-        start_norm: Sample,
-        end_norm: Sample,
+        start_norm: Smp,
+        end_norm: Smp,
     ) {
         let span = self.orientation.along_span(rect);
         let length = (end_norm - start_norm).abs() * span;

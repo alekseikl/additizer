@@ -12,7 +12,7 @@ use addi_dsp::{
     freq_to_c4_pitch, gain_to_db_fast,
 };
 use addi_engine::{
-    ComplexSample, Input, MAX_LEVEL_DB, MIN_LEVEL_DB, ModuleId, Sample, spectral_eq::MAX_EQ_FILTERS,
+    ComplexSample, Input, MAX_LEVEL_DB, MIN_LEVEL_DB, ModuleId, Smp, spectral_eq::MAX_EQ_FILTERS,
 };
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
@@ -27,7 +27,7 @@ const MAX_POINTS: usize = COLUMNS + MAX_EQ_FILTERS;
 
 pub struct SpectralEqWidget {
     cols: Vec<f32>,
-    freqs: Vec<Sample>,
+    freqs: Vec<Smp>,
     responses: Vec<ComplexSample>,
     band_responses: Vec<ComplexSample>,
 }
@@ -78,7 +78,7 @@ impl SpectralEqWidget {
         let gain = db_to_gain_fast(config.output_level[0]);
         let cutoff_offset = config.cutoff[0];
 
-        let cutoffs: SmallVec<[Sample; MAX_EQ_FILTERS]> = config
+        let cutoffs: SmallVec<[Smp; MAX_EQ_FILTERS]> = config
             .filters
             .iter()
             .take(MAX_EQ_FILTERS)
@@ -115,7 +115,7 @@ impl SpectralEqWidget {
         self.paint_response(ui.painter(), rect);
     }
 
-    fn sample_curve(&mut self, cutoffs: &[Sample]) {
+    fn sample_curve(&mut self, cutoffs: &[Smp]) {
         let t_mult = ((COLUMNS - 1) as f32).recip();
         let log2_range = MAX_CUTOFF - MIN_CUTOFF;
         let col_range = 0.0..=(COLUMNS - 1) as f32;

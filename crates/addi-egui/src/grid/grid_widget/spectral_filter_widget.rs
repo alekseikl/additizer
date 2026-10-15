@@ -10,7 +10,7 @@ use addi_dsp::{
     },
     gain_to_db_fast,
 };
-use addi_engine::{ComplexSample, Input, MAX_LEVEL_DB, ModuleId, Sample};
+use addi_engine::{ComplexSample, Input, MAX_LEVEL_DB, ModuleId, Smp};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
 use super::GridWidgetContent;
@@ -24,7 +24,7 @@ const MAX_POINTS: usize = COLUMNS + 1;
 
 pub struct SpectralFilterWidget {
     cols: Vec<f32>,
-    freqs: Vec<Sample>,
+    freqs: Vec<Smp>,
     responses: Vec<ComplexSample>,
 }
 
@@ -91,7 +91,7 @@ impl SpectralFilterWidget {
         &mut self,
         rect: Rect,
         filter: &SpectralFilterEngine,
-        cutoff_log2: Sample,
+        cutoff_log2: Smp,
     ) -> Vec<Pos2> {
         const MIN_DB: f32 = -40.0;
         const DB_RANGE_MULT: f32 = (MAX_LEVEL_DB - MIN_DB).recip();
@@ -152,7 +152,7 @@ impl SpectralFilterWidget {
         painter: &Painter,
         rect: Rect,
         filter: &SpectralFilterEngine,
-        cutoff_log2: Sample,
+        cutoff_log2: Smp,
     ) {
         let painter = painter.with_clip_rect(Rect::from_min_max(
             rect.left_top(),

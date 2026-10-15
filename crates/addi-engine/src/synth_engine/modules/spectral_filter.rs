@@ -25,18 +25,18 @@ use crate::{
             ProcessContext, RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget,
         },
         synth_module::SynthModule,
-        types::Sample,
+        types::Smp,
     },
 };
 
-pub const MIN_Q_ROLLOFF: Sample = 3.0;
-pub const MAX_Q_ROLLOFF: Sample = 48.0;
+pub const MIN_Q_ROLLOFF: Smp = 3.0;
+pub const MAX_Q_ROLLOFF: Smp = 48.0;
 
 struct Params {
     filter_type: FilterType,
     linear_phase: bool,
     /// 0 = C4-relative cutoff, 1 = full key tracking (relative to the note).
-    keytrack: Sample,
+    keytrack: Smp,
 }
 
 impl Params {
@@ -50,11 +50,11 @@ impl Params {
 }
 
 struct ChannelParams {
-    cutoff: Sample,
-    resonance: Sample,
-    drive: Sample,
-    q_cutoff: Sample,
-    q_rolloff: Sample,
+    cutoff: Smp,
+    resonance: Smp,
+    drive: Smp,
+    q_cutoff: Smp,
+    q_rolloff: Smp,
 }
 
 impl ChannelParams {
@@ -181,7 +181,7 @@ impl<L: SpectralFilterLinks> SpectralFilter<L> {
 
     set_mono_param!(set_filter_type, filter_type, FilterType);
     set_mono_param!(set_linear_phase, linear_phase, bool);
-    set_mono_param!(set_keytrack, keytrack, Sample, keytrack.clamp(0.0, 1.0));
+    set_mono_param!(set_keytrack, keytrack, Smp, keytrack.clamp(0.0, 1.0));
 
     set_stereo_param!(set_cutoff, cutoff, cutoff.clamp(MIN_CUTOFF, MAX_CUTOFF));
     set_stereo_param!(

@@ -17,11 +17,11 @@ use crate::synth_engine::{
         RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget,
     },
     synth_module::SynthModule,
-    types::Sample,
+    types::Smp,
 };
 
 struct ChannelParams {
-    blend: Sample,
+    blend: Smp,
 }
 
 impl ChannelParams {

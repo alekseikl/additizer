@@ -7,7 +7,7 @@ use crate::{
 };
 use addi_dsp::db_to_gain;
 use addi_engine::{
-    MAX_BANDWIDTH, MAX_LEVEL_DB, MIN_LEVEL_DB, ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, Sample,
+    MAX_BANDWIDTH, MAX_LEVEL_DB, MIN_LEVEL_DB, ModuleId, ModuleType, SPECTRAL_BUFFER_SIZE, Smp,
     StereoSample,
     harmonic_editor::{EditRequest, HarmonicsRange, sawtooth_phase},
 };
@@ -20,8 +20,8 @@ use egui::{
 
 const MIN_HARMONIC: u16 = 1;
 const MAX_HARMONIC: u16 = (SPECTRAL_BUFFER_SIZE - 1) as u16;
-const GAIN_DB_RANGE: std::ops::RangeInclusive<Sample> = MIN_LEVEL_DB..=MAX_LEVEL_DB;
-const SLOPE_DB_RANGE: std::ops::RangeInclusive<Sample> = 0.0..=-MIN_LEVEL_DB;
+const GAIN_DB_RANGE: std::ops::RangeInclusive<Smp> = MIN_LEVEL_DB..=MAX_LEVEL_DB;
+const SLOPE_DB_RANGE: std::ops::RangeInclusive<Smp> = 0.0..=-MIN_LEVEL_DB;
 const HARMONICS_HEIGHT: f32 = 160.0;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -47,11 +47,11 @@ struct EditFormState {
     kind: EditKind,
     range: HarmonicsRange,
     gain_db: StereoSample,
-    random_level_from: Sample,
-    random_level_to: Sample,
-    stereo: Sample,
-    slope_level_from: Sample,
-    slope: Sample,
+    random_level_from: Smp,
+    random_level_to: Smp,
+    stereo: Smp,
+    slope_level_from: Smp,
+    slope: Smp,
     harmonic_from: u16,
 }
 

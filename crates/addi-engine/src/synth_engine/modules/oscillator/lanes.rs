@@ -3,14 +3,15 @@ use std::array;
 use wide::f32x4;
 
 use crate::synth_engine::{
+    SIMD_LANES,
     coeffs::catmull_rom_from_powers,
     phase::{Phase, PhaseX4},
-    types::Sample,
+    types::Smp,
 };
 
 use super::{MAX_UNISON_VOICES, UnisonVoice, WaveformBuffer};
 
-pub(super) const UNISON_LANES: usize = 4;
+pub(super) const UNISON_LANES: usize = SIMD_LANES;
 pub(super) const UNISON_CHUNKS: usize = MAX_UNISON_VOICES / UNISON_LANES;
 const _: () = assert!(UNISON_CHUNKS * UNISON_LANES == MAX_UNISON_VOICES);
 
@@ -30,7 +31,7 @@ impl UnisonLaneParams {
     pub(super) fn from_voices(voices: &[UnisonVoice]) -> Self {
         debug_assert!(voices.len() <= UNISON_LANES);
 
-        let lanes = |f: fn(&UnisonVoice) -> Sample| {
+        let lanes = |f: fn(&UnisonVoice) -> Smp| {
             f32x4::new(array::from_fn(|i| voices.get(i).map(f).unwrap_or(0.0)))
         };
 

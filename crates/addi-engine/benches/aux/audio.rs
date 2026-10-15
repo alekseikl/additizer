@@ -1,5 +1,5 @@
 use addi_engine::{
-    DataType, ModuleId, Sample,
+    DataType, ModuleId, Smp,
     routing::{EngineAudioEnd, InputMeta, ProcessContext},
     synth_module::SynthModule,
 };
@@ -14,7 +14,7 @@ pub struct Audio {
 }
 
 impl Audio {
-    pub fn constant(id: ModuleId, value: Sample) -> Self {
+    pub fn constant(id: ModuleId, value: Smp) -> Self {
         Self {
             id,
             output_slot: usize::MAX,
@@ -22,11 +22,11 @@ impl Audio {
         }
     }
 
-    pub fn set_constant(&mut self, value: Sample) {
+    pub fn set_constant(&mut self, value: Smp) {
         self.fill = Fill::Constant(value);
     }
 
-    pub fn set_samples(&mut self, samples: &[Sample]) {
+    pub fn set_samples(&mut self, samples: &[Smp]) {
         assert!(!samples.is_empty(), "audio fill needs at least one sample");
 
         self.fill = Fill::Samples(samples.to_vec());

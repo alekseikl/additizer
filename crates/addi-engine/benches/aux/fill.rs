@@ -1,12 +1,12 @@
-use addi_engine::Sample;
+use addi_engine::Smp;
 
 pub(super) enum Fill {
-    Constant(Sample),
-    Samples(Vec<Sample>),
+    Constant(Smp),
+    Samples(Vec<Smp>),
 }
 
 impl Fill {
-    pub(super) fn write(&self, output: &mut [Sample]) {
+    pub(super) fn write(&self, output: &mut [Smp]) {
         match self {
             Self::Constant(value) => output.fill(*value),
             Self::Samples(values) => {

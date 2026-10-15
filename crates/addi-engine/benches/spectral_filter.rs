@@ -14,7 +14,7 @@ use addi_dsp::filters::{
     spectral_filter::FilterType,
 };
 use addi_engine::{
-    ComplexSample, NUM_CHANNELS, PlayingVoice, SPECTRAL_BUFFER_SIZE, Sample, SmoothedSampleParams,
+    ComplexSample, NUM_CHANNELS, PlayingVoice, SPECTRAL_BUFFER_SIZE, Smp, SmoothedSampleParams,
     SpectralBuffer, SpectralFilter, StereoSample,
     routing::{Input, InputSlots, OutputsArena, ProcessContext, ProcessParams},
     spectral_filter::{MIN_Q_ROLLOFF, SpectralFilterConfig},
@@ -28,21 +28,21 @@ mod aux;
 
 use aux::Spectral;
 
-const SAMPLE_RATE: Sample = 48_000.0;
+const SAMPLE_RATE: Smp = 48_000.0;
 const BUFFER_SIZE: usize = 2;
 
 const VOICES: usize = 16;
 
 /// Octaves of the note fundamental. Two octaves up is the 4th harmonic.
-const CUTOFF_OCTAVES: Sample = 2.0;
+const CUTOFF_OCTAVES: Smp = 2.0;
 
 /// Resonant-stage Q, matching `crates/addi-dsp/benches/spectral_filter.rs`.
-const Q: Sample = 1.0;
+const Q: Smp = 1.0;
 
 /// Octaves. At and above this, Q is not reduced.
-const Q_CUTOFF_OCTAVES: Sample = 8.0;
+const Q_CUTOFF_OCTAVES: Smp = 8.0;
 
-fn resonance_for_q(q: Sample) -> Sample {
+fn resonance_for_q(q: Smp) -> Smp {
     ((q - ZERO_RESONANCE_Q) / (MAX_RESONANCE_Q - ZERO_RESONANCE_Q)).cbrt()
 }
 
@@ -54,7 +54,7 @@ fn sawtooth() -> SpectralBuffer {
     for (harmonic, bin) in spectrum.iter_mut().enumerate().skip(1) {
         let phase = if harmonic & 1 == 0 { 0.25 } else { 0.75 };
 
-        *bin = ComplexSample::from_polar(1.0 / (harmonic as Sample * PI), phase * TAU);
+        *bin = ComplexSample::from_polar(1.0 / (harmonic as Smp * PI), phase * TAU);
     }
 
     spectrum

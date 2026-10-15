@@ -1,11 +1,11 @@
-use crate::synth_engine::{Input, Sample, StereoSample, engine_io};
+use crate::synth_engine::{Input, Smp, StereoSample, engine_io};
 
 use super::config::EqFilter;
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
     LinearPhase(bool),
-    Keytrack(Sample),
+    Keytrack(Smp),
     QCutoff(StereoSample),
     QRolloff(StereoSample),
     SetFilter { index: u8, filter: EqFilter },
@@ -16,14 +16,14 @@ pub enum UiEvent {
 
 pub trait SpectralEqAudioEnd: Send {
     fn pop_event(&mut self) -> Option<UiEvent>;
-    fn update_pitch(&mut self, pitch: Sample);
+    fn update_pitch(&mut self, pitch: Smp);
 }
 
 pub trait SpectralEqUiEnd: Send {
-    fn pitch(&mut self) -> Sample;
+    fn pitch(&mut self) -> Smp;
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
     fn set_linear_phase(&mut self, value: bool) -> bool;
-    fn set_keytrack(&mut self, value: Sample) -> bool;
+    fn set_keytrack(&mut self, value: Smp) -> bool;
     fn set_q_cutoff(&mut self, value: StereoSample) -> bool;
     fn set_q_rolloff(&mut self, value: StereoSample) -> bool;
     fn set_filter(&mut self, index: u8, filter: EqFilter) -> bool;

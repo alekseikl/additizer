@@ -2,14 +2,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::from_ms,
-    synth_engine::{ModuleId, Sample},
+    synth_engine::{ModuleId, Smp},
 };
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ExternalParamConfig {
     pub id: ModuleId,
     pub selected_param_index: usize,
-    pub smooth: Sample,
+    pub smooth: Smp,
     pub sample_on_trigger: bool,
     #[serde(default)]
     pub make_bipolar: bool,

@@ -1,21 +1,21 @@
-use crate::synth_engine::{Expression, Sample, engine_io};
+use crate::synth_engine::{Expression, Smp, engine_io};
 
 pub enum UiEvent {
     Expression(Expression),
     UseReleaseVelocity(bool),
-    Smooth(Sample),
+    Smooth(Smp),
 }
 
 pub trait ExpressionsAudioEnd: Send {
     fn pop_event(&mut self) -> Option<UiEvent>;
-    fn update_value(&mut self, value: Sample);
+    fn update_value(&mut self, value: Smp);
 }
 
 pub trait ExpressionsUiEnd: Send {
-    fn get_value(&mut self) -> Sample;
+    fn get_value(&mut self) -> Smp;
     fn set_expression(&mut self, expression: Expression) -> bool;
     fn set_use_release_velocity(&mut self, value: bool) -> bool;
-    fn set_smooth(&mut self, value: Sample) -> bool;
+    fn set_smooth(&mut self, value: Smp) -> bool;
 }
 
 pub trait ExpressionsLinks: Send {

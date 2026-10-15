@@ -6,7 +6,7 @@ use crate::{
     waveform::{self, WaveformOptions},
 };
 use addi_engine::{
-    Input, ModuleId, Sample,
+    Input, ModuleId, Smp,
     lfo::{Lfo, LfoShape},
 };
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
@@ -19,7 +19,7 @@ const PHASE_RADIUS: f32 = 3.5;
 const WAVE_COLOR: Color32 = Color32::from_rgb(0x4a, 0xb0, 0xff);
 
 pub struct LfoWidget {
-    waveform: [Sample; DISPLAY_SAMPLES],
+    waveform: [Smp; DISPLAY_SAMPLES],
 }
 
 impl Default for LfoWidget {
@@ -34,14 +34,14 @@ impl LfoWidget {
     fn build_waveform(
         &mut self,
         shape: LfoShape,
-        phase_shift: Sample,
-        skew: Sample,
+        phase_shift: Smp,
+        skew: Smp,
         bipolar: bool,
     ) {
-        let last = (DISPLAY_SAMPLES) as Sample;
+        let last = (DISPLAY_SAMPLES) as Smp;
 
         for (i, sample) in self.waveform.iter_mut().enumerate() {
-            let t = i as Sample / last;
+            let t = i as Smp / last;
             *sample = Lfo::<addi_ui_backend::links::lfo::Links>::evaluate(
                 shape,
                 t,
@@ -52,7 +52,7 @@ impl LfoWidget {
         }
     }
 
-    fn phase_pos(rect: Rect, phase: Sample, value: Sample, bipolar: bool) -> Pos2 {
+    fn phase_pos(rect: Rect, phase: Smp, value: Smp, bipolar: bool) -> Pos2 {
         Pos2::new(
             rect.left() + phase.clamp(0.0, 1.0) * rect.width(),
             if bipolar {

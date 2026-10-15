@@ -3,7 +3,7 @@ use std::sync::Arc;
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, ecolor::Hsva};
 use realfft::{ComplexToReal, RealFftPlanner};
 
-use addi_engine::{ComplexSample, Sample};
+use addi_engine::{ComplexSample, Smp};
 
 #[cfg(test)]
 mod tests;
@@ -12,10 +12,10 @@ mod tests;
 /// waveform for grid tiles (oscillator, harmonic editor, …).
 pub struct WaveformBuilder {
     spectrum_size: usize,
-    inverse_fft: Arc<dyn ComplexToReal<Sample>>,
+    inverse_fft: Arc<dyn ComplexToReal<Smp>>,
     dft_buff: Box<[ComplexSample]>,
     scratch_buff: Box<[ComplexSample]>,
-    waveform: Box<[Sample]>,
+    waveform: Box<[Smp]>,
 }
 
 impl WaveformBuilder {
@@ -25,7 +25,7 @@ impl WaveformBuilder {
 
         Self {
             spectrum_size,
-            inverse_fft: RealFftPlanner::<Sample>::new().plan_fft_inverse(waveform_size),
+            inverse_fft: RealFftPlanner::<Smp>::new().plan_fft_inverse(waveform_size),
             dft_buff: vec![ComplexSample::ZERO; dft_size].into_boxed_slice(),
             scratch_buff: vec![ComplexSample::ZERO; dft_size].into_boxed_slice(),
             waveform: vec![0.0; waveform_size].into_boxed_slice(),
@@ -34,7 +34,7 @@ impl WaveformBuilder {
 
     /// Rebuilds the time-domain waveform from `spectrum` (truncated/zero-padded to the
     /// builder's spectrum size) and returns a view of the samples.
-    pub fn build(&mut self, spectrum: &[ComplexSample]) -> &[Sample] {
+    pub fn build(&mut self, spectrum: &[ComplexSample]) -> &[Smp] {
         let len = spectrum.len().min(self.spectrum_size);
 
         self.dft_buff[..len].copy_from_slice(&spectrum[..len]);

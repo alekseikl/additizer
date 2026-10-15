@@ -5,7 +5,7 @@ use rand_pcg::Pcg32;
 
 use crate::{
     synth_engine::{
-        ComplexSample, MAX_BANDWIDTH, Sample, StereoSample,
+        ComplexSample, MAX_BANDWIDTH, Smp, StereoSample,
         buffer::{DC_OFFSET, SPECTRAL_BUFFER_SIZE, SpectralBuffer, VoicesLayout},
         harmonic_editor::config::fill_default_harmonics,
         routing::{
@@ -103,15 +103,15 @@ pub enum EditRequest {
     },
     RandomLevel {
         range: HarmonicsRange,
-        level_from: Sample, // dB
-        level_to: Sample,   // dB
-        stereo: Sample,
+        level_from: Smp, // dB
+        level_to: Smp,   // dB
+        stereo: Smp,
     },
     Slope {
         range: HarmonicsRange,
         harmonic_from: u16, // Cutoff point
-        level_from: Sample, // dB
-        slope: Sample,      // dB/octave (positive = rise, negative = fall)
+        level_from: Smp, // dB
+        slope: Smp,      // dB/octave (positive = rise, negative = fall)
     },
 }
 
@@ -121,9 +121,9 @@ pub struct HarmonicEditor<L: HarmonicEditorLinks = stub::Links> {
     ui_end: Option<L::UiEnd>,
     inputs: Inputs,
     output_slot: usize,
-    amplitudes: [Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
-    phases: [Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
-    amplitudes_draft: [Box<[Sample; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+    amplitudes: [Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+    phases: [Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
+    amplitudes_draft: [Box<[Smp; SPECTRAL_BUFFER_SIZE]>; NUM_CHANNELS],
     draft_enabled: bool,
     output_harmonics: [Box<SpectralBuffer>; NUM_CHANNELS],
     random: Pcg32,
@@ -235,13 +235,13 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
         self.capture_input = capture_input;
     }
 
-    fn pitch_bandwidth(pitch: Sample) -> usize {
+    fn pitch_bandwidth(pitch: Smp) -> usize {
         let frequency = pitch_to_freq(pitch).max(1.0);
 
         (BAND_LIMIT_FREQUENCY / frequency).floor() as usize
     }
 
-    fn spectrum_length(&self, pitch: Sample) -> usize {
+    fn spectrum_length(&self, pitch: Smp) -> usize {
         let bandwidth = if self.bandwidth == 0 {
             Self::pitch_bandwidth(pitch)
         } else {
@@ -251,15 +251,15 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
         (bandwidth + 1).min(SPECTRAL_BUFFER_SIZE)
     }
 
-    fn frequency_bin(idx: usize, amp: Sample, phase: Sample) -> ComplexSample {
+    fn frequency_bin(idx: usize, amp: Smp, phase: Smp) -> ComplexSample {
         ComplexSample::from_polar(
-            amp / (idx as Sample * std::f32::consts::PI),
+            amp / (idx as Smp * std::f32::consts::PI),
             phase * std::f32::consts::TAU,
         )
     }
 
-    fn from_frequency_bin(idx: usize, bin: ComplexSample) -> (Sample, Sample) {
-        let amp = (bin.norm() * idx as Sample * std::f32::consts::PI).min(db_to_gain(MAX_LEVEL_DB));
+    fn from_frequency_bin(idx: usize, bin: ComplexSample) -> (Smp, Smp) {
+        let amp = (bin.norm() * idx as Smp * std::f32::consts::PI).min(db_to_gain(MAX_LEVEL_DB));
 
         if amp <= 0.0 {
             return (0.0, 0.0);
@@ -371,7 +371,7 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
         }
     }
 
-    fn reflect_into_range(value: Sample, min: Sample, max: Sample) -> Sample {
+    fn reflect_into_range(value: Smp, min: Smp, max: Smp) -> Smp {
         if min >= max {
             return min;
         }
@@ -390,9 +390,9 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
     fn apply_random_amplitudes(
         &mut self,
         range: HarmonicsRange,
-        level_from: Sample,
-        level_to: Sample,
-        stereo: Sample,
+        level_from: Smp,
+        level_to: Smp,
+        stereo: Smp,
     ) {
         let level_from = level_from.clamp(MIN_LEVEL_DB, MAX_LEVEL_DB);
         let level_to = level_to.clamp(MIN_LEVEL_DB, MAX_LEVEL_DB);
@@ -406,14 +406,14 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
         let gain_limit = db_to_gain(MAX_LEVEL_DB);
 
         for idx in range.matching_indices() {
-            let center = level_from + (level_to - level_from) * self.random.random::<Sample>();
+            let center = level_from + (level_to - level_from) * self.random.random::<Smp>();
             let left_db = Self::reflect_into_range(
-                center + stereo_amount * (self.random.random::<Sample>() - 0.5),
+                center + stereo_amount * (self.random.random::<Smp>() - 0.5),
                 level_from,
                 level_to,
             );
             let right_db = Self::reflect_into_range(
-                center + stereo_amount * (self.random.random::<Sample>() - 0.5),
+                center + stereo_amount * (self.random.random::<Smp>() - 0.5),
                 level_from,
                 level_to,
             );
@@ -427,15 +427,15 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
         &mut self,
         range: HarmonicsRange,
         harmonic_from: u16,
-        level_from: Sample,
-        slope: Sample,
+        level_from: Smp,
+        slope: Smp,
     ) {
         let level_from = level_from.clamp(MIN_LEVEL_DB, MAX_LEVEL_DB);
         let reference =
-            (harmonic_from as usize).clamp(DC_OFFSET, SPECTRAL_BUFFER_SIZE - 1) as Sample;
+            (harmonic_from as usize).clamp(DC_OFFSET, SPECTRAL_BUFFER_SIZE - 1) as Smp;
 
         for idx in range.matching_indices() {
-            let octaves = (idx as Sample / reference).log2();
+            let octaves = (idx as Smp / reference).log2();
             let level_db = level_from + slope * octaves;
             let gain = if level_db <= MIN_LEVEL_DB {
                 0.0
@@ -555,13 +555,13 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
             .publish_harmonics(&self.amplitudes, &self.phases);
     }
 
-    fn fill_random_phases(phases: &mut [Sample], rng: &mut Pcg32) {
+    fn fill_random_phases(phases: &mut [Smp], rng: &mut Pcg32) {
         if let Some(dc_phase) = phases.first_mut() {
             *dc_phase = 0.0;
         }
 
         for phase in phases.iter_mut().skip(DC_OFFSET) {
-            *phase = rng.random::<Sample>();
+            *phase = rng.random::<Smp>();
         }
     }
 

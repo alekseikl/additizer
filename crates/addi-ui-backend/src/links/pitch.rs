@@ -1,16 +1,16 @@
 use triple_buffer::triple_buffer;
 
-use addi_engine::{Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
+use addi_engine::{Input, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 use addi_engine::pitch::{PitchAudioEnd, PitchLinks, PitchUiEnd, UiEvent};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
-    pitch: triple_buffer::Output<Sample>,
+    pitch: triple_buffer::Output<Smp>,
 }
 
 impl UiEnd {
-    pub fn get_pitch(&mut self) -> Sample {
+    pub fn get_pitch(&mut self) -> Smp {
         *self.pitch.read()
     }
 
@@ -33,7 +33,7 @@ impl UiEnd {
 
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
-    pitch: triple_buffer::Input<Sample>,
+    pitch: triple_buffer::Input<Smp>,
 }
 
 impl AudioEnd {
@@ -41,7 +41,7 @@ impl AudioEnd {
         self.rx.pop().ok()
     }
 
-    pub fn update_pitch(&mut self, pitch: Sample) {
+    pub fn update_pitch(&mut self, pitch: Smp) {
         self.pitch.write(pitch);
     }
 }
@@ -66,13 +66,13 @@ impl PitchAudioEnd for AudioEnd {
     fn pop_event(&mut self) -> Option<UiEvent> {
         AudioEnd::pop_event(self)
     }
-    fn update_pitch(&mut self, pitch: Sample) {
+    fn update_pitch(&mut self, pitch: Smp) {
         AudioEnd::update_pitch(self, pitch)
     }
 }
 
 impl PitchUiEnd for UiEnd {
-    fn get_pitch(&mut self) -> Sample {
+    fn get_pitch(&mut self) -> Smp {
         UiEnd::get_pitch(self)
     }
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool {

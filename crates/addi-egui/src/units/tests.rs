@@ -1,6 +1,6 @@
 use super::*;
 
-fn approx(a: Sample, b: Sample) -> bool {
+fn approx(a: Smp, b: Smp) -> bool {
     (a - b).abs() < 1e-4
 }
 

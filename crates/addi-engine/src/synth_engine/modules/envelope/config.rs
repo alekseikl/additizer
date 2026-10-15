@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::from_ms,
-    synth_engine::{ModuleId, Sample, StereoSample},
+    synth_engine::{ModuleId, Smp, StereoSample},
 };
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -14,15 +14,15 @@ pub struct EnvelopeConfig {
     pub delay: StereoSample,
     pub attack: StereoSample,
     #[serde(alias = "attack_curvature")]
-    pub attack_slope: Sample,
+    pub attack_slope: Smp,
     pub hold: StereoSample,
     pub decay: StereoSample,
     #[serde(alias = "decay_curvature")]
-    pub decay_slope: Sample,
+    pub decay_slope: Smp,
     pub sustain: StereoSample,
     pub release: StereoSample,
     #[serde(alias = "release_curvature")]
-    pub release_slope: Sample,
+    pub release_slope: Smp,
 }
 
 impl Default for EnvelopeConfig {

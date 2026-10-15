@@ -1,4 +1,4 @@
 use num_complex::Complex;
 
-pub type Sample = f32;
-pub type ComplexSample = Complex<Sample>;
+pub type Smp = f32;
+pub type ComplexSample = Complex<Smp>;

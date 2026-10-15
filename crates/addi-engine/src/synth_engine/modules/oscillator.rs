@@ -19,7 +19,7 @@ use crate::{
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
-        types::{ComplexSample, Sample},
+        types::{ComplexSample, Smp},
     },
     synth_engine::{db_to_gain, fast_pitch_to_freq_x4, from_st, pitch_to_freq, zip_map_x4},
 };
@@ -49,7 +49,7 @@ const DFT_BUFFER_SIZE: usize = (1 << (WAVEFORM_BITS - 1)) + 1;
 
 pub const MAX_UNISON_VOICES: usize = 16;
 
-type WaveformBuffer = [Sample; WAVEFORM_BUFFER_SIZE];
+type WaveformBuffer = [Smp; WAVEFORM_BUFFER_SIZE];
 type DftBuffer = [ComplexSample; DFT_BUFFER_SIZE];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,13 +82,13 @@ impl Waveform {
 }
 
 struct IfftPlanners {
-    full: Arc<dyn ComplexToReal<Sample>>,
-    half: Arc<dyn ComplexToReal<Sample>>,
+    full: Arc<dyn ComplexToReal<Smp>>,
+    half: Arc<dyn ComplexToReal<Smp>>,
 }
 
 impl IfftPlanners {
     fn new() -> Self {
-        let mut planner = RealFftPlanner::<Sample>::new();
+        let mut planner = RealFftPlanner::<Smp>::new();
 
         Self {
             full: planner.plan_fft_inverse(WAVEFORM_SIZE),
@@ -100,7 +100,7 @@ impl IfftPlanners {
         &self,
         cutoff_index: usize,
         full_fft_size: bool,
-    ) -> (WaveformSize, &dyn ComplexToReal<Sample>) {
+    ) -> (WaveformSize, &dyn ComplexToReal<Smp>) {
         if full_fft_size || cutoff_index > WAVEFORM_SIZE / 8 {
             (WaveformSize::Full, self.full.as_ref())
         } else {
@@ -112,10 +112,10 @@ impl IfftPlanners {
 struct Params {
     unison: usize,
     unison_style: UnisonStyle,
-    unison_stereo: Sample, // [0.0, 1.0]
+    unison_stereo: Smp, // [0.0, 1.0]
     steal_phase: bool,
-    phase_random: Sample,        // [0.0, 1.0]
-    phase_random_stereo: Sample, // [0.0, 1.0]
+    phase_random: Smp,        // [0.0, 1.0]
+    phase_random_stereo: Smp, // [0.0, 1.0]
     mono_spectrum: bool,
     full_fft_size: bool,
 }
@@ -136,13 +136,13 @@ impl Params {
 }
 
 struct UnisonParams {
-    initial_phase: Sample,
-    phase_shift: Sample,
-    phase_shift_to: Sample,
+    initial_phase: Smp,
+    phase_shift: Smp,
+    phase_shift_to: Smp,
     /// Hand-set level. Read by [`UnisonStyle::Manual`] only.
-    gain: Sample,
+    gain: Smp,
     /// Hand-set level at full gains blend. Read by [`UnisonStyle::Manual`] only.
-    gain_to: Sample,
+    gain_to: Smp,
 }
 
 impl Default for UnisonParams {
@@ -158,12 +158,12 @@ impl Default for UnisonParams {
 }
 
 struct ChannelParams {
-    detune: Sample, // Octaves
-    detune_focus: Sample,
+    detune: Smp, // Octaves
+    detune_focus: Smp,
     phase_shift: SmoothedSample,
     frequency_shift: SmoothedSample,
-    phases_blend: Sample,
-    gains_blend: Sample,
+    phases_blend: Smp,
+    gains_blend: Smp,
     unison: [UnisonParams; MAX_UNISON_VOICES],
 }
 
@@ -193,8 +193,8 @@ impl ChannelParams {
 }
 
 struct Interpolated {
-    from: Sample,
-    to: Sample,
+    from: Smp,
+    to: Smp,
 }
 
 impl Interpolated {
@@ -500,20 +500,20 @@ impl<L: OscillatorLinks> Oscillator<L> {
     set_mono_param!(
         set_unison_stereo,
         unison_stereo,
-        Sample,
+        Smp,
         unison_stereo.clamp(0.0, 1.0)
     );
     set_mono_param!(set_steal_phase, steal_phase, bool);
     set_mono_param!(
         set_phase_random,
         phase_random,
-        Sample,
+        Smp,
         phase_random.clamp(0.0, 1.0)
     );
     set_mono_param!(
         set_phase_random_stereo,
         phase_random_stereo,
-        Sample,
+        Smp,
         phase_random_stereo.clamp(0.0, 1.0)
     );
     set_mono_param!(set_mono_spectrum, mono_spectrum, bool);
@@ -561,7 +561,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             izip!(center.iter(), level.iter(), self.channel_params.iter_mut())
         {
             let center = center.clamp(0.0, 1.0);
-            let step = ((self.params.unison - 1) as Sample).recip();
+            let step = ((self.params.unison - 1) as Smp).recip();
 
             for (idx, unison_params) in channel
                 .unison
@@ -575,7 +575,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
                     &mut unison_params.gain
                 };
 
-                let pos = idx as Sample * step;
+                let pos = idx as Smp * step;
 
                 let level = if pos < center {
                     let t = pos / center;
@@ -592,15 +592,15 @@ impl<L: OscillatorLinks> Oscillator<L> {
         self.publish_unison();
     }
 
-    pub fn randomize_phases(&mut self, amount: Sample, stereo_spread: Sample, dst: PhasesDst) {
+    pub fn randomize_phases(&mut self, amount: Smp, stereo_spread: Smp, dst: PhasesDst) {
         let amount = amount.clamp(0.0, 1.0);
         let stereo_spread = stereo_spread.clamp(0.0, 1.0);
 
         let randoms: [StereoSample; MAX_UNISON_VOICES] = array::from_fn(|_| {
-            let center = amount * (self.random.random::<Sample>() - 0.5);
+            let center = amount * (self.random.random::<Smp>() - 0.5);
             let stereo_amount = amount * stereo_spread;
-            let left = center + stereo_amount * (self.random.random::<Sample>() - 0.5);
-            let right = center + stereo_amount * (self.random.random::<Sample>() - 0.5);
+            let left = center + stereo_amount * (self.random.random::<Smp>() - 0.5);
+            let right = center + stereo_amount * (self.random.random::<Smp>() - 0.5);
 
             StereoSample::new(left, right).map(|phase| phase.rem_euclid(1.0))
         });
@@ -621,7 +621,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
     }
 
     #[inline]
-    fn waveform_body_mut(wave_buff: &mut WaveformBuffer, size: WaveformSize) -> &mut [Sample] {
+    fn waveform_body_mut(wave_buff: &mut WaveformBuffer, size: WaveformSize) -> &mut [Smp] {
         let len = size.len();
 
         &mut wave_buff[WAVEFORM_PAD_LEFT..WAVEFORM_PAD_LEFT + len]
@@ -816,7 +816,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         // When steal_phase set to false - control that toggle by input value
         let steal_phase = router.scalar(
             &self.inputs.phase_steal,
-            Sample::from(self.params.steal_phase),
+            Smp::from(self.params.steal_phase),
             true,
         ) >= 0.5;
 
@@ -834,7 +834,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             if channel_idx == LEFT_CHANNEL {
                 for (phase, random) in izip!(
                     self.shared_random_phases.iter_mut(),
-                    (&mut self.random).random_iter::<Sample>()
+                    (&mut self.random).random_iter::<Smp>()
                 )
                 .take(unison)
                 {
@@ -846,7 +846,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
                 voice.phases.iter_mut(),
                 self.shared_random_phases.iter().copied(),
                 channel.unison.iter(),
-                (&mut self.random).random_iter::<Sample>()
+                (&mut self.random).random_iter::<Smp>()
             )
             .take(unison)
             {
@@ -902,10 +902,10 @@ impl<L: OscillatorLinks> Oscillator<L> {
     }
 
     fn pitch_to_phase_inc(
-        pitch: &[Sample],
-        freq_shift: &[Sample],
-        out: &mut [Sample],
-        freq_phase_mult: Sample,
+        pitch: &[Smp],
+        freq_shift: &[Smp],
+        out: &mut [Smp],
+        freq_phase_mult: Smp,
     ) {
         let mult = f32x4::splat(freq_phase_mult);
 
@@ -918,7 +918,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
     fn render_voice_samples(
         &mut self,
         ctx: &VoiceRenderCtx,
-        output: &mut [Sample],
+        output: &mut [Smp],
         start: usize,
         end: usize,
     ) {
@@ -955,7 +955,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
     fn render_voice_samples_same<const BITS: usize>(
         &mut self,
         ctx: &VoiceRenderCtx,
-        output: &mut [Sample],
+        output: &mut [Smp],
         start: usize,
         end: usize,
     ) {
@@ -966,7 +966,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
     fn render_voice_samples_sized<const FROM_BITS: usize, const TO_BITS: usize>(
         &mut self,
         ctx: &VoiceRenderCtx,
-        output: &mut [Sample],
+        output: &mut [Smp],
         start: usize,
         end: usize,
     ) {
@@ -983,7 +983,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
     fn render_voice_loop(
         &mut self,
         ctx: &VoiceRenderCtx,
-        output: &mut [Sample],
+        output: &mut [Smp],
         start: usize,
         end: usize,
         mut render_lanes: impl FnMut(
@@ -1002,8 +1002,8 @@ impl<L: OscillatorLinks> Oscillator<L> {
             .samples
             .as_ref();
         let wave_to = self.buffers.tmp_wave.samples.as_ref();
-        let buff_t_inc = (ctx.samples as Sample).recip();
-        let mut buff_t = start as Sample * buff_t_inc;
+        let buff_t_inc = (ctx.samples as Smp).recip();
+        let mut buff_t = start as Smp * buff_t_inc;
 
         let (phase_chunks, []) = voice.phases.as_chunks_mut::<UNISON_LANES>() else {
             unreachable!("MAX_UNISON_VOICES is a multiple of UNISON_LANES");

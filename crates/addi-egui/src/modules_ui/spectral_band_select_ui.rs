@@ -5,7 +5,7 @@ use egui::{ComboBox, DragValue, Ui};
 
 use crate::{ModuleUi, module_label::ModuleLabel, units::Units};
 use addi_engine::{
-    ModuleId, ModuleType, Sample,
+    ModuleId, ModuleType, Smp,
     spectral_band_select::{
         BandSelectMode, MAX_BAND_HZ, MAX_HARMONIC, MAX_HARMONIC_END, MIN_BAND_HZ, MIN_HARMONIC,
     },
@@ -118,13 +118,13 @@ impl SpectralBandSelectUi {
         });
     }
 
-    fn freq_drag(freq_hz: &mut Sample, range: RangeInclusive<Sample>) -> DragValue<'_> {
+    fn freq_drag(freq_hz: &mut Smp, range: RangeInclusive<Smp>) -> DragValue<'_> {
         let speed = (freq_hz.abs() * 0.002).max(0.05);
 
         DragValue::new(freq_hz)
             .range(range)
             .speed(speed)
-            .custom_formatter(|value, _| Units::Frequency.format(value as Sample))
+            .custom_formatter(|value, _| Units::Frequency.format(value as Smp))
             .custom_parser(|text| {
                 Units::Frequency
                     .parse(text, false)

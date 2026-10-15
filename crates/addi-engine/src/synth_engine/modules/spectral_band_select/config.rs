@@ -1,13 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::{ModuleId, SPECTRAL_BUFFER_SIZE, Sample};
+use crate::synth_engine::{ModuleId, SPECTRAL_BUFFER_SIZE, Smp};
 
 pub const MIN_HARMONIC: u16 = 1;
 pub const MAX_HARMONIC: u16 = (SPECTRAL_BUFFER_SIZE - 1) as u16;
 /// Exclusive end of a harmonic range. One past the last bin.
 pub const MAX_HARMONIC_END: u16 = SPECTRAL_BUFFER_SIZE as u16;
-pub const MIN_BAND_HZ: Sample = 16.0;
-pub const MAX_BAND_HZ: Sample = 33_000.0;
+pub const MIN_BAND_HZ: Smp = 16.0;
+pub const MAX_BAND_HZ: Smp = 33_000.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum BandSelectMode {
@@ -33,8 +33,8 @@ pub struct SpectralBandSelectConfig {
     pub mode: BandSelectMode,
     pub harmonic_from: u16,
     pub harmonic_to: u16,
-    pub freq_from: Sample,
-    pub freq_to: Sample,
+    pub freq_from: Smp,
+    pub freq_to: Smp,
 }
 
 impl Default for SpectralBandSelectConfig {

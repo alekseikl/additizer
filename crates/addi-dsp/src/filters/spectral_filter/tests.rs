@@ -7,19 +7,19 @@ use crate::filters::control::{
 };
 
 /// Same bounds as the spectral filter module's Q-rolloff parameter.
-const MIN_Q_ROLLOFF: Sample = 3.0;
-const MAX_Q_ROLLOFF: Sample = 48.0;
+const MIN_Q_ROLLOFF: Smp = 3.0;
+const MAX_Q_ROLLOFF: Smp = 48.0;
 
-const EPS: Sample = 1e-4;
-const CUTOFF: Sample = 1.0;
-const GAIN: Sample = 1.0;
-const Q: Sample = ZERO_RESONANCE_Q;
+const EPS: Smp = 1e-4;
+const CUTOFF: Smp = 1.0;
+const GAIN: Smp = 1.0;
+const Q: Smp = ZERO_RESONANCE_Q;
 
-fn assert_approx(a: Sample, b: Sample) {
+fn assert_approx(a: Smp, b: Smp) {
     assert_approx_eps(a, b, EPS);
 }
 
-fn assert_approx_eps(a: Sample, b: Sample, eps: Sample) {
+fn assert_approx_eps(a: Smp, b: Smp, eps: Smp) {
     assert!(
         (a - b).abs() < eps,
         "{a} ≈ {b} (diff {}, eps {eps})",
@@ -32,7 +32,7 @@ fn assert_complex_eq(a: ComplexSample, b: ComplexSample) {
     assert_approx(a.im, b.im);
 }
 
-fn params(cutoff: Sample, q: Sample, q_cutoff: Sample) -> FilterParams {
+fn params(cutoff: Smp, q: Smp, q_cutoff: Smp) -> FilterParams {
     FilterParams {
         drive: 0.0,
         cutoff,
@@ -52,13 +52,13 @@ fn filter(filter_type: FilterType, p: FilterParams) -> SpectralFilter {
     SpectralFilter::new(filter_type, p)
 }
 
-fn cutoff_freq(p: FilterParams) -> Sample {
+fn cutoff_freq(p: FilterParams) -> Smp {
     filter(FilterType::LowPass12, p).cutoff_freq
 }
 
 /// Lane 0 of [`FilterLanes::at_x4`] at a single frequency.
 trait AtFreq: FilterLanes {
-    fn at(&self, freq: Sample) -> ComplexSample {
+    fn at(&self, freq: Smp) -> ComplexSample {
         let response = self.at_x4(f32x4::splat(freq));
         let re = response.re.to_array();
         let im = response.im.to_array();
@@ -68,15 +68,15 @@ trait AtFreq: FilterLanes {
 
 impl<T: FilterLanes> AtFreq for T {}
 
-fn mag<T: FilterLanes>(freq: Sample) -> Sample {
+fn mag<T: FilterLanes>(freq: Smp) -> Smp {
     mag_params::<T>(GAIN, CUTOFF, Q, freq)
 }
 
-fn mag_params<T: FilterLanes>(gain: Sample, cutoff: Sample, q: Sample, freq: Sample) -> Sample {
+fn mag_params<T: FilterLanes>(gain: Smp, cutoff: Smp, q: Smp, freq: Smp) -> Smp {
     T::new(gain, cutoff, q, MAX_PRE_Q).at(freq).norm()
 }
 
-fn at<T: FilterLanes>(freq: Sample) -> ComplexSample {
+fn at<T: FilterLanes>(freq: Smp) -> ComplexSample {
     T::new(GAIN, CUTOFF, Q, MAX_PRE_Q).at(freq)
 }
 
@@ -195,7 +195,7 @@ fn linear_phase_flag_is_stored() {
 
 // ---- Q mapping ----
 
-fn q_of(p: FilterParams) -> Sample {
+fn q_of(p: FilterParams) -> Smp {
     filter(FilterType::LowPass12, p).q
 }
 
@@ -225,7 +225,7 @@ fn negative_resonance_maps_to_negative_q() {
 
 #[test]
 fn positive_resonance_uses_cubic_curve() {
-    let resonance: Sample = 0.5;
+    let resonance: Smp = 0.5;
     let curve = resonance.powf(3.0);
     let q = q_from_resonance(resonance);
 
@@ -273,7 +273,7 @@ fn q_limit_skipped_when_cutoff_above_limit() {
     assert_approx(unlimited, MAX_RESONANCE_Q);
 }
 
-fn limited_q(cutoff: Sample, q_cutoff: Sample, db_per_oct: Sample) -> Sample {
+fn limited_q(cutoff: Smp, q_cutoff: Smp, db_per_oct: Smp) -> Smp {
     let octaves_below = q_cutoff - cutoff;
     ZERO_RESONANCE_Q
         + (MAX_RESONANCE_Q - ZERO_RESONANCE_Q) * db_to_gain(-db_per_oct * octaves_below)
@@ -449,7 +449,7 @@ fn shelves_are_identity_at_unity_gain() {
 #[test]
 fn shelf_boost_and_cut_are_inverses() {
     let freq = 1.7;
-    let gain: Sample = 2.0;
+    let gain: Smp = 2.0;
     let cut = gain.recip();
     let identity = ComplexSample::new(1.0, 0.0);
 
@@ -511,7 +511,7 @@ fn higher_q_shelf_has_sharper_transition() {
 #[test]
 fn lowshelf24_is_fixed_times_resonant() {
     let freq = 1.7;
-    let gain: Sample = 0.5;
+    let gain: Smp = 0.5;
     let q = 4.0;
     let g12 = gain.sqrt();
     let pre_q = 0.75;
@@ -525,7 +525,7 @@ fn lowshelf24_is_fixed_times_resonant() {
 #[test]
 fn highshelf24_is_fixed_times_resonant() {
     let freq = 1.7;
-    let gain: Sample = 0.5;
+    let gain: Smp = 0.5;
     let q = 4.0;
     let g12 = gain.sqrt();
     let pre_q = 0.75;
@@ -699,7 +699,7 @@ fn zeros(len: usize) -> Vec<ComplexSample> {
     vec![ComplexSample::new(0.0, 0.0); len]
 }
 
-fn eval_at(f: &SpectralFilter, freq: Sample) -> ComplexSample {
+fn eval_at(f: &SpectralFilter, freq: Smp) -> ComplexSample {
     let mut out = ComplexSample::new(0.0, 0.0);
     f.response_at_freqs(&[freq], std::slice::from_mut(&mut out));
     out
@@ -778,7 +778,7 @@ fn apply_response_matches_response_at_freqs() {
         ComplexSample::new(-0.5, 0.5),
         ComplexSample::new(0.75, 0.1),
     ];
-    let freqs: Vec<Sample> = (1..input.len()).map(|i| i as Sample).collect();
+    let freqs: Vec<Smp> = (1..input.len()).map(|i| i as Smp).collect();
 
     for ty in FilterType::ALL {
         for linear_phase in [false, true] {

@@ -1,20 +1,20 @@
 use super::*;
 use crate::synth_engine::C4_PITCH;
 
-fn keytrack_offset(keytrack: Sample, pitch: Sample) -> Sample {
+fn keytrack_offset(keytrack: Smp, pitch: Smp) -> Smp {
     (C4_PITCH - pitch) * (1.0 - keytrack)
 }
 
-fn harmonic_cutoff(keytrack: Sample, cutoff: Sample, pitch: Sample) -> Sample {
+fn harmonic_cutoff(keytrack: Smp, cutoff: Smp, pitch: Smp) -> Smp {
     cutoff + keytrack_offset(keytrack, pitch)
 }
 
-fn assert_approx(a: Sample, b: Sample) {
+fn assert_approx(a: Smp, b: Smp) {
     assert!((a - b).abs() < 1e-5, "{a} ≈ {b}");
 }
 
-fn pitch_of_note(note: u8) -> Sample {
-    crate::synth_engine::note_to_pitch(note as Sample)
+fn pitch_of_note(note: u8) -> Smp {
+    crate::synth_engine::note_to_pitch(note as Smp)
 }
 
 #[test]
@@ -64,7 +64,7 @@ fn config_from_keytrack(value: Option<serde_json::Value>) -> SpectralFilterConfi
     serde_json::from_value(json).unwrap()
 }
 
-fn display_offset(keytrack: Sample, pitch: Sample) -> Sample {
+fn display_offset(keytrack: Smp, pitch: Smp) -> Smp {
     (pitch - C4_PITCH) * keytrack
 }
 

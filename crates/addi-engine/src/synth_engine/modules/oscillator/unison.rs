@@ -1,22 +1,22 @@
 use crate::synth_engine::{
     power_scale,
     routing::{EngineAudioEnd, LEFT_CHANNEL},
-    types::Sample,
+    types::Smp,
 };
 
 use super::{ChannelParams, Inputs, MAX_UNISON_VOICES, Router};
 
-const MAX_DETUNE: Sample = 1.0;
-const MAX_DETUNE_POWER: Sample = 5.0;
+const MAX_DETUNE: Smp = 1.0;
+const MAX_DETUNE_POWER: Smp = 5.0;
 
-fn blend(from: Sample, to: Sample, amount: Sample) -> Sample {
+fn blend(from: Smp, to: Smp, amount: Smp) -> Smp {
     (to - from).mul_add(amount, from)
 }
 
 pub(super) struct UnisonStateUpdate {
-    pub(super) rate: Sample,
-    pub(super) phase_shift: Sample,
-    pub(super) gain: Sample,
+    pub(super) rate: Smp,
+    pub(super) phase_shift: Smp,
+    pub(super) gain: Smp,
 }
 
 pub(super) trait UnisonType {
@@ -33,9 +33,9 @@ pub(super) trait UnisonType {
 pub(super) struct ManualUnison;
 
 impl ManualUnison {
-    fn rate(idx: usize, unison: usize, detune: Sample, detune_power: Sample) -> Sample {
-        let center = 0.5 * (unison - 1) as Sample;
-        let spread = (idx as Sample - center) * center.recip();
+    fn rate(idx: usize, unison: usize, detune: Smp, detune_power: Smp) -> Smp {
+        let center = 0.5 * (unison - 1) as Smp;
+        let spread = (idx as Smp - center) * center.recip();
 
         (power_scale(spread.abs(), detune_power).copysign(spread) * detune).exp2()
     }
@@ -91,13 +91,13 @@ impl UnisonType for ManualUnison {
 
 #[derive(Clone, Copy)]
 pub(super) struct FlatUnison {
-    stereo_mult: Sample,
-    center_mult: Sample,
+    stereo_mult: Smp,
+    center_mult: Smp,
     channel_idx: usize,
 }
 
 impl FlatUnison {
-    pub(super) fn new(stereo: Sample, channel_idx: usize) -> Self {
+    pub(super) fn new(stereo: Smp, channel_idx: usize) -> Self {
         let fade = stereo.clamp(0.0, 1.0).mul_add(0.5, 0.5);
         let angle = fade * std::f32::consts::FRAC_PI_2;
         let (stereo_mult, center_mult) = angle.sin_cos();
@@ -113,10 +113,10 @@ impl FlatUnison {
         &self,
         idx: usize,
         unison: usize,
-        detune: Sample,
-        detune_power: Sample,
-        amplitudes: (Sample, Sample),
-    ) -> (Sample, Sample) {
+        detune: Smp,
+        detune_power: Smp,
+        amplitudes: (Smp, Smp),
+    ) -> (Smp, Smp) {
         debug_assert!(unison >= 2 && idx < unison);
 
         let (center_amp, detuned_amp) = amplitudes;
@@ -124,27 +124,27 @@ impl FlatUnison {
         let span = unison - 1;
         let distance = (2 * idx).abs_diff(span);
         let pair = distance / 2;
-        let position = ((2 * idx) as Sample - span as Sample) / span as Sample;
+        let position = ((2 * idx) as Smp - span as Smp) / span as Smp;
 
         let curved = power_scale(position.abs(), detune_power).copysign(position);
         let rate = (curved * detune).exp2();
 
-        let center = Sample::from(pair == 0);
+        let center = Smp::from(pair == 0);
         let amp = (center_amp - detuned_amp).mul_add(center, detuned_amp);
         let negative = 2 * idx < span;
         let voice_on_left = negative ^ ((pair & 1) == 1);
         let on_left = self.channel_idx == LEFT_CHANNEL;
         let both = distance == 0;
-        let native = Sample::from(both || voice_on_left == on_left);
-        let other = Sample::from(both || voice_on_left != on_left);
+        let native = Smp::from(both || voice_on_left == on_left);
+        let other = Smp::from(both || voice_on_left != on_left);
         let gain = amp * (self.stereo_mult * native + self.center_mult * other);
 
         (rate, gain)
     }
 
-    fn amplitudes(unison: usize, blend: Sample) -> (Sample, Sample) {
-        const CENTER_LOW_AMPLITUDE: Sample = 0.4;
-        const DETUNED_HIGH_AMPLITUDE: Sample = 0.6;
+    fn amplitudes(unison: usize, blend: Smp) -> (Smp, Smp) {
+        const CENTER_LOW_AMPLITUDE: Smp = 0.4;
+        const DETUNED_HIGH_AMPLITUDE: Smp = 0.6;
 
         if unison <= 2 {
             return (1.0, 0.0);
@@ -155,7 +155,7 @@ impl FlatUnison {
         let detuned_blend = 1.0 - blend;
         let detuned = DETUNED_HIGH_AMPLITUDE * (1.0 - detuned_blend * detuned_blend);
         let pairs = unison.div_ceil(2);
-        let square_sums = center * center + detuned * detuned * (pairs - 1) as Sample;
+        let square_sums = center * center + detuned * detuned * (pairs - 1) as Smp;
 
         let adjustment = square_sums.sqrt().recip();
         (adjustment * center, adjustment * detuned)
@@ -205,12 +205,12 @@ impl UnisonType for FlatUnison {
 
 #[derive(Clone, Copy)]
 pub(super) struct ConvexUnison {
-    stereo: Sample,
+    stereo: Smp,
     channel_idx: usize,
 }
 
 impl ConvexUnison {
-    pub(super) fn new(stereo: Sample, channel_idx: usize) -> Self {
+    pub(super) fn new(stereo: Smp, channel_idx: usize) -> Self {
         let stereo = stereo.clamp(0.0, 1.0);
 
         Self {
@@ -223,16 +223,16 @@ impl ConvexUnison {
         &self,
         idx: usize,
         unison: usize,
-        detune: Sample,
-        detune_power: Sample,
-        adjustment: Sample,
-    ) -> (Sample, Sample) {
+        detune: Smp,
+        detune_power: Smp,
+        adjustment: Smp,
+    ) -> (Smp, Smp) {
         debug_assert!(unison >= 2 && idx < unison);
 
         let span = unison - 1;
         let distance = (2 * idx).abs_diff(span);
         let pair = distance / 2;
-        let position = ((2 * idx) as Sample - span as Sample) / span as Sample;
+        let position = ((2 * idx) as Smp - span as Smp) / span as Smp;
         let spread = position.abs();
 
         let curved = power_scale(spread, detune_power).copysign(position);
@@ -252,22 +252,22 @@ impl ConvexUnison {
         (rate, gain * adjustment)
     }
 
-    fn shaped_level(amount: Sample, side: Sample) -> Sample {
-        const CENTER_AMPLITUDE: Sample = 1.0;
+    fn shaped_level(amount: Smp, side: Smp) -> Smp {
+        const CENTER_AMPLITUDE: Smp = 1.0;
 
         (side - CENTER_AMPLITUDE).mul_add(amount, CENTER_AMPLITUDE)
     }
 
-    pub(super) fn mono_level(spread: Sample) -> Sample {
+    pub(super) fn mono_level(spread: Smp) -> Smp {
         Self::shaped_level(spread * spread, std::f32::consts::FRAC_1_SQRT_2)
     }
 
-    pub(super) fn native_level(spread: Sample) -> Sample {
+    pub(super) fn native_level(spread: Smp) -> Smp {
         Self::shaped_level(spread.sqrt(), std::f32::consts::SQRT_2)
     }
 
-    fn other_level(steps: usize, unison: usize) -> Sample {
-        const BASE: Sample = std::f32::consts::FRAC_1_SQRT_2 * std::f32::consts::FRAC_1_SQRT_2;
+    fn other_level(steps: usize, unison: usize) -> Smp {
+        const BASE: Smp = std::f32::consts::FRAC_1_SQRT_2 * std::f32::consts::FRAC_1_SQRT_2;
 
         if steps == (unison - 1).div_ceil(2) {
             0.0
@@ -276,12 +276,12 @@ impl ConvexUnison {
         }
     }
 
-    pub(super) fn adjustment(unison: usize) -> Sample {
+    pub(super) fn adjustment(unison: usize) -> Smp {
         let span = unison - 1;
         let mut square_sums = 0.0;
 
         for idx in 0..unison {
-            let spread = ((2 * idx) as Sample - span as Sample).abs() / span as Sample;
+            let spread = ((2 * idx) as Smp - span as Smp).abs() / span as Smp;
             let level = Self::mono_level(spread);
 
             square_sums += level * level;

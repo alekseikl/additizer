@@ -1,13 +1,13 @@
 use egui::{Align, Label, Layout, RichText};
 
 use crate::grid::WidgetCtx;
-use addi_engine::{ModuleId, Sample};
+use addi_engine::{ModuleId, Smp};
 use addi_ui_backend::ui_bridge::{GridVec, ModuleBridge};
 
 use super::GridWidgetContent;
 
 /// Pitch in octave units (relative to A4) → note name, e.g. "C4", "A#3".
-fn pitch_to_note_name(pitch: Sample) -> String {
+fn pitch_to_note_name(pitch: Smp) -> String {
     const NAMES: [&str; 12] = [
         "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
     ];

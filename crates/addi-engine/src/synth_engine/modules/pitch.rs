@@ -19,13 +19,13 @@ use crate::{
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
-        types::Sample,
+        types::Smp,
     },
 };
 
-pub const MAX_GLIDE_TIME: Sample = 8.0;
-const MAX_GLIDE_POWER: Sample = 8.0;
-const GLIDE_TIME_THRESHOLD: Sample = from_ms(0.1);
+pub const MAX_GLIDE_TIME: Smp = 8.0;
+const MAX_GLIDE_POWER: Smp = 8.0;
+const GLIDE_TIME_THRESHOLD: Smp = from_ms(0.1);
 
 struct Params {
     keytrack: bool,
@@ -45,8 +45,8 @@ impl Params {
 
 struct ChannelParams {
     pitch_shift: SmoothedSample, // Octaves
-    glide: Sample,
-    glide_slope: Sample,
+    glide: Smp,
+    glide_slope: Smp,
 }
 
 impl ChannelParams {
@@ -64,13 +64,13 @@ impl ChannelParams {
 }
 
 struct Glide {
-    t: Sample,
-    pitch_from: Sample,
-    current_pitch: Sample,
+    t: Smp,
+    pitch_from: Smp,
+    current_pitch: Smp,
 }
 
 impl Glide {
-    fn new(pitch_from: Sample) -> Self {
+    fn new(pitch_from: Smp) -> Self {
         Self {
             pitch_from,
             current_pitch: pitch_from,
@@ -80,7 +80,7 @@ impl Glide {
 }
 
 struct Voice {
-    pitch: Sample, // Octave units
+    pitch: Smp, // Octave units
     glide: Option<Glide>,
 }
 
@@ -229,12 +229,12 @@ impl<L: PitchLinks> Pitch<L> {
 
     #[inline]
     fn apply_glide(
-        buff: &mut [Sample],
+        buff: &mut [Smp],
         glide: &mut Glide,
-        glide_time: Sample,
-        pitch: Sample,
-        t_step: Sample,
-        curve: impl Fn(Sample) -> Sample,
+        glide_time: Smp,
+        pitch: Smp,
+        t_step: Smp,
+        curve: impl Fn(Smp) -> Smp,
     ) {
         let pitch_diff = pitch - glide.pitch_from;
         let glide_time_recip = glide_time.recip();
@@ -273,7 +273,7 @@ impl<L: PitchLinks> Pitch<L> {
         );
         add_buffer_value(&mut buffers.pitch[..samples], pitch);
 
-        const POWER_LINEAR_THRESHOLD: Sample = 0.005;
+        const POWER_LINEAR_THRESHOLD: Smp = 0.005;
 
         let mut glide_time = router
             .scalar(&inputs.glide, channel.glide)
@@ -325,7 +325,7 @@ impl<L: PitchLinks> Pitch<L> {
         channel_idx: usize,
         prev_note: Option<PrevNote>,
         voice_idx: usize,
-        pitch: Sample,
+        pitch: Smp,
     ) {
         self.voices.at_mut(channel_idx, voice_idx).reset();
 
@@ -345,7 +345,7 @@ impl<L: PitchLinks> Pitch<L> {
         }
     }
 
-    fn handle_update(&mut self, channel_idx: usize, voice_idx: usize, pitch: Sample) {
+    fn handle_update(&mut self, channel_idx: usize, voice_idx: usize, pitch: Smp) {
         let voice = self.voices.at_mut(channel_idx, voice_idx);
 
         if self.params.keytrack {

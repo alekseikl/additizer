@@ -1,7 +1,7 @@
 use std::{f32::consts::TAU, hint::black_box};
 
 use addi_dsp::{
-    Sample,
+    Smp,
     filters::{
         control::MAX_PRE_Q,
         svf::{LaneInputs, SvfState, SvfType},
@@ -12,11 +12,11 @@ use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_m
 /// 48 kHz host block.
 const MAX_BLOCK_SIZE: usize = 128;
 
-const SAMPLE_RATE: Sample = 48_000.0;
+const SAMPLE_RATE: Smp = 48_000.0;
 /// Octaves relative to C4. Two octaves up is about 1 kHz.
-const CUTOFF_OCTAVES: Sample = 2.0;
+const CUTOFF_OCTAVES: Smp = 2.0;
 /// Resonant-stage Q. `k` passed to the filter is `1/Q`.
-const Q: Sample = 1.0;
+const Q: Smp = 1.0;
 
 const FILTER_TYPES: [SvfType; 16] = [
     SvfType::LowPass12,
@@ -37,8 +37,8 @@ const FILTER_TYPES: [SvfType; 16] = [
     SvfType::HighShelf24,
 ];
 
-fn sine_block() -> [Sample; MAX_BLOCK_SIZE] {
-    std::array::from_fn(|i| (TAU * 440.0 * i as Sample / SAMPLE_RATE).sin())
+fn sine_block() -> [Smp; MAX_BLOCK_SIZE] {
+    std::array::from_fn(|i| (TAU * 440.0 * i as Smp / SAMPLE_RATE).sin())
 }
 
 fn bench_svf(c: &mut Criterion) {

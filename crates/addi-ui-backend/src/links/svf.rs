@@ -1,17 +1,17 @@
 use triple_buffer::triple_buffer;
 
 use addi_dsp::filters::svf::SvfType;
-use addi_engine::{Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
+use addi_engine::{Input, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 use addi_engine::svf::{SvfAudioEnd, SvfLinks, SvfUiEnd, UiEvent};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
-    pitch: triple_buffer::Output<Sample>,
+    pitch: triple_buffer::Output<Smp>,
 }
 
 impl UiEnd {
-    pub fn pitch(&mut self) -> Sample {
+    pub fn pitch(&mut self) -> Smp {
         *self.pitch.read()
     }
 
@@ -23,14 +23,14 @@ impl UiEnd {
         self.tx.push(UiEvent::FilterType(filter_type)).is_ok()
     }
 
-    pub fn set_keytrack(&mut self, value: Sample) -> bool {
+    pub fn set_keytrack(&mut self, value: Smp) -> bool {
         self.tx.push(UiEvent::Keytrack(value)).is_ok()
     }
 }
 
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
-    pitch: triple_buffer::Input<Sample>,
+    pitch: triple_buffer::Input<Smp>,
 }
 
 impl AudioEnd {
@@ -38,7 +38,7 @@ impl AudioEnd {
         self.rx.pop().ok()
     }
 
-    pub fn update_pitch(&mut self, pitch: Sample) {
+    pub fn update_pitch(&mut self, pitch: Smp) {
         self.pitch.write(pitch);
     }
 }
@@ -63,13 +63,13 @@ impl SvfAudioEnd for AudioEnd {
     fn pop_event(&mut self) -> Option<UiEvent> {
         AudioEnd::pop_event(self)
     }
-    fn update_pitch(&mut self, pitch: Sample) {
+    fn update_pitch(&mut self, pitch: Smp) {
         AudioEnd::update_pitch(self, pitch)
     }
 }
 
 impl SvfUiEnd for UiEnd {
-    fn pitch(&mut self) -> Sample {
+    fn pitch(&mut self) -> Smp {
         UiEnd::pitch(self)
     }
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
@@ -78,7 +78,7 @@ impl SvfUiEnd for UiEnd {
     fn set_filter_type(&mut self, filter_type: SvfType) -> bool {
         UiEnd::set_filter_type(self, filter_type)
     }
-    fn set_keytrack(&mut self, value: Sample) -> bool {
+    fn set_keytrack(&mut self, value: Smp) -> bool {
         UiEnd::set_keytrack(self, value)
     }
 }

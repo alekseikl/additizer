@@ -2,7 +2,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
     synth_engine::from_st,
-    synth_engine::{ModuleId, Sample, StereoSample, oscillator::MAX_UNISON_VOICES},
+    synth_engine::{ModuleId, Smp, StereoSample, oscillator::MAX_UNISON_VOICES},
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,18 +16,18 @@ pub enum UnisonStyle {
     Convex,
 }
 
-fn default_unison_stereo() -> Sample {
+fn default_unison_stereo() -> Smp {
     1.0
 }
 
-fn deserialize_phase_random_stereo<'de, D>(deserializer: D) -> Result<Sample, D::Error>
+fn deserialize_phase_random_stereo<'de, D>(deserializer: D) -> Result<Smp, D::Error>
 where
     D: Deserializer<'de>,
 {
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum BoolOrSample {
-        Sample(Sample),
+        Sample(Smp),
         Bool(bool),
     }
 
@@ -68,15 +68,15 @@ pub struct OscillatorConfig {
     /// Width of Flat and Convex unison across the channels. `0` mixes both channels
     /// together; `1` leaves each detuned oscillator on one channel.
     #[serde(default = "default_unison_stereo")]
-    pub unison_stereo: Sample,
+    pub unison_stereo: Smp,
     pub steal_phase: bool,
     #[serde(default)]
-    pub phase_random: Sample,
+    pub phase_random: Smp,
     /// Extra random offset of each channel away from the shared random phases.
     /// `0` keeps both channels on those phases; `1` offsets each by up to half a cycle.
     /// Older presets stored this as a bool; `true` loads as `1`.
     #[serde(default, deserialize_with = "deserialize_phase_random_stereo")]
-    pub phase_random_stereo: Sample,
+    pub phase_random_stereo: Smp,
     #[serde(default)]
     pub mono_spectrum: bool,
     /// Always inverse-FFT the full waveform table. Otherwise a shorter table is

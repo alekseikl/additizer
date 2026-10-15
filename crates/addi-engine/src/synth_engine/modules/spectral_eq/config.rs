@@ -8,24 +8,24 @@ use addi_dsp::filters::{
 use crate::{
     synth_engine::MIN_CUTOFF,
     synth_engine::{
-        ModuleId, Sample, StereoSample,
+        ModuleId, Smp, StereoSample,
         spectral_filter::{MAX_Q_ROLLOFF, MIN_Q_ROLLOFF},
     },
 };
 
 pub const MAX_EQ_FILTERS: usize = 16;
-pub const MIN_CUTOFF_HZ: Sample = 16.0;
-pub const MAX_CUTOFF_HZ: Sample = 33_000.0;
-pub const MIN_Q: Sample = 0.02;
-pub const MAX_Q: Sample = 40.0;
+pub const MIN_CUTOFF_HZ: Smp = 16.0;
+pub const MAX_CUTOFF_HZ: Smp = 33_000.0;
+pub const MIN_Q: Smp = 0.02;
+pub const MAX_Q: Smp = 40.0;
 
 /// Per-band settings.
 #[derive(Clone, Copy, PartialEq, Serialize)]
 pub struct EqFilter {
     pub filter_type: FilterType,
-    pub cutoff_hz: Sample,
-    pub q: Sample,
-    pub drive: Sample,
+    pub cutoff_hz: Smp,
+    pub q: Smp,
+    pub drive: Smp,
 }
 
 impl Default for EqFilter {
@@ -55,12 +55,12 @@ impl<'de> Deserialize<'de> for EqFilter {
         #[derive(Deserialize)]
         struct Raw {
             filter_type: FilterType,
-            cutoff_hz: Sample,
+            cutoff_hz: Smp,
             #[serde(default)]
-            q: Option<Sample>,
+            q: Option<Smp>,
             #[serde(default)]
-            resonance: Option<Sample>,
-            drive: Sample,
+            resonance: Option<Smp>,
+            drive: Smp,
         }
 
         let raw = Raw::deserialize(deserializer)?;
@@ -84,7 +84,7 @@ pub struct SpectralEqConfig {
     pub id: ModuleId,
     pub filters: Vec<EqFilter>,
     pub linear_phase: bool,
-    pub keytrack: Sample,
+    pub keytrack: Smp,
     #[serde(alias = "q_limit_to")]
     pub q_cutoff: StereoSample,
     #[serde(alias = "q_limit_slope")]

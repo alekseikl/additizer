@@ -1,12 +1,12 @@
 use super::BandSelectMode;
-use crate::synth_engine::{Sample, engine_io, types::ComplexSample};
+use crate::synth_engine::{Smp, engine_io, types::ComplexSample};
 
 pub enum UiEvent {
     Mode(BandSelectMode),
     HarmonicFrom(u16),
     HarmonicTo(u16),
-    FreqFrom(Sample),
-    FreqTo(Sample),
+    FreqFrom(Smp),
+    FreqTo(Smp),
 }
 
 pub trait SpectralBandSelectAudioEnd: Send {
@@ -19,8 +19,8 @@ pub trait SpectralBandSelectUiEnd: Send {
     fn set_mode(&mut self, mode: BandSelectMode) -> bool;
     fn set_harmonic_from(&mut self, value: u16) -> bool;
     fn set_harmonic_to(&mut self, value: u16) -> bool;
-    fn set_freq_from(&mut self, value: Sample) -> bool;
-    fn set_freq_to(&mut self, value: Sample) -> bool;
+    fn set_freq_from(&mut self, value: Smp) -> bool;
+    fn set_freq_to(&mut self, value: Smp) -> bool;
 }
 
 pub trait SpectralBandSelectLinks: Send {

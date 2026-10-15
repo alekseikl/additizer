@@ -3,7 +3,7 @@ use super::{
     UiEvent,
 };
 
-use crate::synth_engine::{ComplexSample, Sample};
+use crate::synth_engine::{ComplexSample, Smp};
 
 pub struct AudioEnd;
 
@@ -52,11 +52,11 @@ impl SpectralBandSelectUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_freq_from(&mut self, _value: Sample) -> bool {
+    fn set_freq_from(&mut self, _value: Smp) -> bool {
         self.diverge()
     }
 
-    fn set_freq_to(&mut self, _value: Sample) -> bool {
+    fn set_freq_to(&mut self, _value: Smp) -> bool {
         self.diverge()
     }
 }

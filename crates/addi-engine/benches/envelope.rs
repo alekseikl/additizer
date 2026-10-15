@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use addi_engine::{
-    Envelope, ModuleHandle, PlayingVoice, Sample, SmoothedSampleParams,
+    Envelope, ModuleHandle, PlayingVoice, Smp, SmoothedSampleParams,
     envelope::{EnvelopeConfig, stub::Links},
     routing::{OutputsArena, ProcessContext, ProcessParams},
     stub::{AudioEnd, StubLinks},
@@ -12,9 +12,9 @@ use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_m
 const BLOCK: usize = 128;
 const BUFFER_SIZE: usize = BLOCK + 1;
 
-const SAMPLE_RATE: Sample = 48_000.0;
+const SAMPLE_RATE: Smp = 48_000.0;
 
-fn envelope(slope: Sample) -> (Envelope<Links>, OutputsArena) {
+fn envelope(slope: Smp) -> (Envelope<Links>, OutputsArena) {
     let envelope = Envelope::<Links>::from_config(&EnvelopeConfig {
         id: 1,
         // Stays inside the attack for the whole measurement.

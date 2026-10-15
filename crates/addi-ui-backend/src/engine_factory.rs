@@ -7,7 +7,7 @@ use arc_swap::{ArcSwap, ArcSwapOption};
 use atomic_float::AtomicF32;
 use parking_lot::Mutex;
 
-use addi_engine::{EngineConfig, Sample, SynthEngine};
+use addi_engine::{EngineConfig, Smp, SynthEngine};
 
 use crate::{
     links::PluginLinks,
@@ -50,7 +50,7 @@ impl EngineFactory {
             .is_none_or(|current| !Arc::ptr_eq(current, cached))
     }
 
-    pub fn set_host_sample_rate(&self, sample_rate: Sample) {
+    pub fn set_host_sample_rate(&self, sample_rate: Smp) {
         self.host_sample_rate.store(sample_rate, Ordering::Release);
     }
 

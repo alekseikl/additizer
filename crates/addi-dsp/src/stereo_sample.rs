@@ -2,56 +2,56 @@ use serde::{Deserialize, Serialize};
 use std::iter::Sum;
 use std::ops::{Add, Div, Index, IndexMut, Mul, Sub};
 
-use crate::{NUM_CHANNELS, Sample};
+use crate::{NUM_CHANNELS, Smp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct StereoSample {
-    channels: [Sample; NUM_CHANNELS],
+    channels: [Smp; NUM_CHANNELS],
 }
 
 impl StereoSample {
     pub const ZERO: StereoSample = StereoSample::splat(0.0);
     pub const ONE: StereoSample = StereoSample::splat(1.0);
 
-    pub const fn new(l: Sample, r: Sample) -> Self {
+    pub const fn new(l: Smp, r: Smp) -> Self {
         Self { channels: [l, r] }
     }
 
-    pub const fn splat(lr: Sample) -> Self {
+    pub const fn splat(lr: Smp) -> Self {
         Self { channels: [lr, lr] }
     }
 
-    pub fn channels(&self) -> &[Sample; NUM_CHANNELS] {
+    pub fn channels(&self) -> &[Smp; NUM_CHANNELS] {
         &self.channels
     }
 
-    pub fn left(&self) -> Sample {
+    pub fn left(&self) -> Smp {
         self.channels[0]
     }
 
-    pub fn right(&self) -> Sample {
+    pub fn right(&self) -> Smp {
         self.channels[1]
     }
 
-    pub fn set_left(&mut self, left: Sample) {
+    pub fn set_left(&mut self, left: Smp) {
         self.channels[0] = left;
     }
 
-    pub fn set_right(&mut self, right: Sample) {
+    pub fn set_right(&mut self, right: Smp) {
         self.channels[1] = right;
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Sample> {
+    pub fn iter(&self) -> impl Iterator<Item = &Smp> {
         self.channels.iter()
     }
 
-    pub fn map(&self, f: impl FnMut(Sample) -> Sample) -> Self {
+    pub fn map(&self, f: impl FnMut(Smp) -> Smp) -> Self {
         Self {
             channels: self.channels.map(f),
         }
     }
 
-    pub fn clamp(&self, min: Sample, max: Sample) -> Self {
+    pub fn clamp(&self, min: Smp, max: Smp) -> Self {
         self.map(|channel| channel.clamp(min, max))
     }
 }
@@ -63,7 +63,7 @@ impl Default for StereoSample {
 }
 
 impl Index<usize> for StereoSample {
-    type Output = Sample;
+    type Output = Smp;
 
     #[inline(always)]
     fn index(&self, index: usize) -> &Self::Output {
@@ -91,11 +91,11 @@ macro_rules! stereo_op {
             }
         }
 
-        impl $trait<Sample> for StereoSample {
+        impl $trait<Smp> for StereoSample {
             type Output = Self;
 
             #[allow(clippy::assign_op_pattern)]
-            fn $func(mut self, rhs: Sample) -> Self::Output {
+            fn $func(mut self, rhs: Smp) -> Self::Output {
                 for lhs in &mut self.channels {
                     *lhs = *lhs $op rhs;
                 }
@@ -122,8 +122,8 @@ impl From<f32> for StereoSample {
     }
 }
 
-impl FromIterator<Sample> for StereoSample {
-    fn from_iter<T: IntoIterator<Item = Sample>>(iter: T) -> Self {
+impl FromIterator<Smp> for StereoSample {
+    fn from_iter<T: IntoIterator<Item = Smp>>(iter: T) -> Self {
         let mut value = Self::splat(0.0);
 
         for (lhs, rhs) in value.channels.iter_mut().zip(iter) {

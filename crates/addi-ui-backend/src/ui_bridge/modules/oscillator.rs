@@ -2,7 +2,7 @@ use crate::ui_bridge::ModuleUiBridge;
 use addi_engine::oscillator::{
     Oscillator, OscillatorConfig, OscillatorLinks, OscillatorUiEnd, PhasesDst, Unison, UnisonStyle,
 };
-use addi_engine::{DisplaySpectrum, Input, Sample, StereoSample};
+use addi_engine::{DisplaySpectrum, Input, Smp, StereoSample};
 
 pub struct OscillatorUiBridge<L: OscillatorLinks = crate::links::oscillator::Links> {
     ui_end: L::UiEnd,
@@ -55,7 +55,7 @@ impl<L: OscillatorLinks> OscillatorUiBridge<L> {
         }
     }
 
-    pub fn set_unison_stereo(&mut self, stereo: Sample) {
+    pub fn set_unison_stereo(&mut self, stereo: Smp) {
         if self.ui_end.set_unison_stereo(stereo) {
             self.config.unison_stereo = stereo;
         }
@@ -67,13 +67,13 @@ impl<L: OscillatorLinks> OscillatorUiBridge<L> {
         }
     }
 
-    pub fn set_phase_random(&mut self, phase_random: Sample) {
+    pub fn set_phase_random(&mut self, phase_random: Smp) {
         if self.ui_end.set_phase_random(phase_random) {
             self.config.phase_random = phase_random;
         }
     }
 
-    pub fn set_phase_random_stereo(&mut self, phase_random_stereo: Sample) {
+    pub fn set_phase_random_stereo(&mut self, phase_random_stereo: Smp) {
         if self.ui_end.set_phase_random_stereo(phase_random_stereo) {
             self.config.phase_random_stereo = phase_random_stereo;
         }
@@ -120,7 +120,7 @@ impl<L: OscillatorLinks> OscillatorUiBridge<L> {
         self.ui_end.apply_unison_level_shape(center, level, to);
     }
 
-    pub fn randomize_phases(&mut self, amount: Sample, stereo_spread: Sample, dst: PhasesDst) {
+    pub fn randomize_phases(&mut self, amount: Smp, stereo_spread: Smp, dst: PhasesDst) {
         self.ui_end.randomize_phases(amount, stereo_spread, dst);
     }
 }

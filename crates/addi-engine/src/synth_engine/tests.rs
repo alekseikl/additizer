@@ -13,7 +13,7 @@ use crate::{
 use addi_dsp::filters;
 use rustc_hash::FxHashMap;
 
-const SAMPLE_RATE: Sample = 48_000.0;
+const SAMPLE_RATE: Smp = 48_000.0;
 const HARMONIC_EDITOR_ID: ModuleId = 1;
 const OSCILLATOR_ID: ModuleId = 2;
 
@@ -57,7 +57,7 @@ fn make_engine(engine: EngineParams, osc: OscillatorConfig) -> SynthEngine {
     <SynthEngine>::try_new(&config, SAMPLE_RATE, false).expect("valid engine config")
 }
 
-fn process_block(engine: &mut SynthEngine, samples: usize) -> (Vec<Sample>, Vec<Sample>) {
+fn process_block(engine: &mut SynthEngine, samples: usize) -> (Vec<Smp>, Vec<Smp>) {
     process_block_with_ui(engine, samples, false)
 }
 
@@ -65,7 +65,7 @@ fn process_block_with_ui(
     engine: &mut SynthEngine,
     samples: usize,
     update_ui: bool,
-) -> (Vec<Sample>, Vec<Sample>) {
+) -> (Vec<Smp>, Vec<Smp>) {
     let mut left = vec![0.0; samples];
     let mut right = vec![0.0; samples];
     let mut terminated = Vec::new();
@@ -80,8 +80,8 @@ fn process_block_with_ui(
     (left, right)
 }
 
-fn rms(samples: &[Sample]) -> Sample {
-    (samples.iter().map(|s| s * s).sum::<Sample>() / samples.len() as Sample).sqrt()
+fn rms(samples: &[Smp]) -> Smp {
+    (samples.iter().map(|s| s * s).sum::<Smp>() / samples.len() as Smp).sqrt()
 }
 
 fn link(src_id: ModuleId, dst_id: ModuleId, dst_input: Input) -> LinkConfig {
@@ -2135,7 +2135,7 @@ fn svf_engine(svf: SvfConfig) -> SynthEngine {
     <SynthEngine>::try_new(&config, SAMPLE_RATE, false).expect("valid svf patch")
 }
 
-fn svf_output_rms(svf: SvfConfig) -> Sample {
+fn svf_output_rms(svf: SvfConfig) -> Smp {
     let mut engine = svf_engine(svf);
 
     engine.handle_note_on(

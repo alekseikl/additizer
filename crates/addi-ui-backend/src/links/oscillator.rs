@@ -1,7 +1,7 @@
 use triple_buffer::triple_buffer;
 
 use addi_engine::{
-    DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY,
+    DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, Input, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY,
     buffer::copy_to_display_spectrum, oscillator::PhasesDst, types::ComplexSample,
 };
 
@@ -38,7 +38,7 @@ impl UiEnd {
         self.tx.push(UiEvent::UnisonStyle(style)).is_ok()
     }
 
-    pub fn set_unison_stereo(&mut self, stereo: Sample) -> bool {
+    pub fn set_unison_stereo(&mut self, stereo: Smp) -> bool {
         self.tx.push(UiEvent::UnisonStereo(stereo)).is_ok()
     }
 
@@ -46,11 +46,11 @@ impl UiEnd {
         self.tx.push(UiEvent::StealPhase(steal_phase)).is_ok()
     }
 
-    pub fn set_phase_random(&mut self, phase_random: Sample) -> bool {
+    pub fn set_phase_random(&mut self, phase_random: Smp) -> bool {
         self.tx.push(UiEvent::PhaseRandom(phase_random)).is_ok()
     }
 
-    pub fn set_phase_random_stereo(&mut self, phase_random_stereo: Sample) -> bool {
+    pub fn set_phase_random_stereo(&mut self, phase_random_stereo: Smp) -> bool {
         self.tx
             .push(UiEvent::PhaseRandomStereo(phase_random_stereo))
             .is_ok()
@@ -103,8 +103,8 @@ impl UiEnd {
 
     pub fn randomize_phases(
         &mut self,
-        amount: Sample,
-        stereo_spread: Sample,
+        amount: Smp,
+        stereo_spread: Smp,
         dst: PhasesDst,
     ) -> bool {
         self.tx
@@ -187,16 +187,16 @@ impl OscillatorUiEnd for UiEnd {
     fn set_unison_style(&mut self, style: UnisonStyle) -> bool {
         UiEnd::set_unison_style(self, style)
     }
-    fn set_unison_stereo(&mut self, stereo: Sample) -> bool {
+    fn set_unison_stereo(&mut self, stereo: Smp) -> bool {
         UiEnd::set_unison_stereo(self, stereo)
     }
     fn set_steal_phase(&mut self, steal_phase: bool) -> bool {
         UiEnd::set_steal_phase(self, steal_phase)
     }
-    fn set_phase_random(&mut self, phase_random: Sample) -> bool {
+    fn set_phase_random(&mut self, phase_random: Smp) -> bool {
         UiEnd::set_phase_random(self, phase_random)
     }
-    fn set_phase_random_stereo(&mut self, phase_random_stereo: Sample) -> bool {
+    fn set_phase_random_stereo(&mut self, phase_random_stereo: Smp) -> bool {
         UiEnd::set_phase_random_stereo(self, phase_random_stereo)
     }
     fn set_mono_spectrum(&mut self, mono_spectrum: bool) -> bool {
@@ -228,7 +228,7 @@ impl OscillatorUiEnd for UiEnd {
     ) -> bool {
         UiEnd::apply_unison_level_shape(self, center, level, to)
     }
-    fn randomize_phases(&mut self, amount: Sample, stereo_spread: Sample, dst: PhasesDst) -> bool {
+    fn randomize_phases(&mut self, amount: Smp, stereo_spread: Smp, dst: PhasesDst) -> bool {
         UiEnd::randomize_phases(self, amount, stereo_spread, dst)
     }
 }

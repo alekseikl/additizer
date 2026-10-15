@@ -1,6 +1,6 @@
 use triple_buffer::triple_buffer;
 
-use addi_engine::{Input, Sample, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
+use addi_engine::{Input, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 use addi_engine::envelope::EnvelopePhase;
 
@@ -20,15 +20,15 @@ impl UiEnd {
         self.tx.push(UiEvent::InputParam { input, value }).is_ok()
     }
 
-    pub fn set_attack_slope(&mut self, value: Sample) -> bool {
+    pub fn set_attack_slope(&mut self, value: Smp) -> bool {
         self.tx.push(UiEvent::AttackSlope(value)).is_ok()
     }
 
-    pub fn set_decay_slope(&mut self, value: Sample) -> bool {
+    pub fn set_decay_slope(&mut self, value: Smp) -> bool {
         self.tx.push(UiEvent::DecaySlope(value)).is_ok()
     }
 
-    pub fn set_release_slope(&mut self, value: Sample) -> bool {
+    pub fn set_release_slope(&mut self, value: Smp) -> bool {
         self.tx.push(UiEvent::ReleaseSlope(value)).is_ok()
     }
 
@@ -88,13 +88,13 @@ impl EnvelopeUiEnd for UiEnd {
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
         UiEnd::set_param(self, input, value)
     }
-    fn set_attack_slope(&mut self, value: Sample) -> bool {
+    fn set_attack_slope(&mut self, value: Smp) -> bool {
         UiEnd::set_attack_slope(self, value)
     }
-    fn set_decay_slope(&mut self, value: Sample) -> bool {
+    fn set_decay_slope(&mut self, value: Smp) -> bool {
         UiEnd::set_decay_slope(self, value)
     }
-    fn set_release_slope(&mut self, value: Sample) -> bool {
+    fn set_release_slope(&mut self, value: Smp) -> bool {
         UiEnd::set_release_slope(self, value)
     }
     fn set_keep_voice_alive(&mut self, value: bool) -> bool {

@@ -3,7 +3,7 @@ use crate::{
 };
 use addi_dsp::{db_to_gain, gain_to_db};
 use addi_engine::{
-    Input, MIN_LEVEL_DB, ModuleId, ModuleType, Sample, StereoSample,
+    Input, MIN_LEVEL_DB, ModuleId, ModuleType, Smp, StereoSample,
     oscillator::{OscillatorConfig, PhasesDst, UnisonStyle},
 };
 use addi_ui_backend::ui_bridge::modules::oscillator::OscillatorUiBridge;
@@ -38,8 +38,8 @@ struct GainShapeState {
 }
 
 struct RandomizePhaseState {
-    amount: Sample,
-    stereo_spread: Sample,
+    amount: Smp,
+    stereo_spread: Smp,
     dst: PhasesDst,
 }
 

@@ -2,11 +2,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     synth_engine::from_st,
-    synth_engine::{ModuleId, Sample, StereoSample},
+    synth_engine::{ModuleId, Smp, StereoSample},
 };
 use addi_dsp::filters::spectral_filter::FilterType;
 
-fn default_keytrack() -> Sample {
+fn default_keytrack() -> Smp {
     1.0
 }
 
@@ -16,7 +16,7 @@ pub struct SpectralFilterConfig {
     pub filter_type: FilterType,
     pub linear_phase: bool,
     #[serde(default = "default_keytrack")]
-    pub keytrack: Sample,
+    pub keytrack: Smp,
     #[serde(alias = "q_limit_to")]
     pub q_cutoff: StereoSample,
     #[serde(alias = "q_limit_slope", alias = "q_limit_curve")]

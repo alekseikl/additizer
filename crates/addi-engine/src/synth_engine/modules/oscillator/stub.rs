@@ -2,7 +2,7 @@ use super::{
     OscillatorAudioEnd, OscillatorLinks, OscillatorUiEnd, PhasesDst, UiEvent, Unison, UnisonStyle,
 };
 
-use crate::synth_engine::{ComplexSample, DisplaySpectrum, Input, Sample, StereoSample};
+use crate::synth_engine::{ComplexSample, DisplaySpectrum, Input, Smp, StereoSample};
 
 pub struct AudioEnd;
 
@@ -57,7 +57,7 @@ impl OscillatorUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_unison_stereo(&mut self, _stereo: Sample) -> bool {
+    fn set_unison_stereo(&mut self, _stereo: Smp) -> bool {
         self.diverge()
     }
 
@@ -65,11 +65,11 @@ impl OscillatorUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_phase_random(&mut self, _phase_random: Sample) -> bool {
+    fn set_phase_random(&mut self, _phase_random: Smp) -> bool {
         self.diverge()
     }
 
-    fn set_phase_random_stereo(&mut self, _phase_random_stereo: Sample) -> bool {
+    fn set_phase_random_stereo(&mut self, _phase_random_stereo: Smp) -> bool {
         self.diverge()
     }
 
@@ -112,8 +112,8 @@ impl OscillatorUiEnd for NoUi {
 
     fn randomize_phases(
         &mut self,
-        _amount: Sample,
-        _stereo_spread: Sample,
+        _amount: Smp,
+        _stereo_spread: Smp,
         _dst: PhasesDst,
     ) -> bool {
         self.diverge()

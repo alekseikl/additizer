@@ -5,12 +5,12 @@ use serde::{Deserialize, Serialize};
 use wide::f32x4;
 
 use crate::{
-    Sample,
+    SIMD_LANES, Smp,
     units::{C4_PITCH, fast_pitch_to_freq_x4, fast_tan_pi_x4},
 };
 
 /// Largest `f / sample_rate` fed to `tan`, keeping `g` finite just below Nyquist.
-const MAX_FREQ_RATIO: Sample = 0.499;
+const MAX_FREQ_RATIO: Smp = 0.499;
 
 #[cfg(test)]
 mod tests;
@@ -26,7 +26,7 @@ use sections::{
 };
 
 /// Four lanes: even-left, even-right, odd-left, odd-right.
-const LANES: usize = 4;
+const LANES: usize = SIMD_LANES;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SvfType {
@@ -107,10 +107,10 @@ trait SvfFilter {
 
     fn process(
         &mut self,
-        sample_rate: Sample,
+        sample_rate: Smp,
         samples: usize,
         inputs: LaneInputs<'_>,
-        output: [&mut [Sample]; LANES],
+        output: [&mut [Smp]; LANES],
     ) {
         let freq_mult = f32x4::splat(sample_rate.recip());
         let inputs = inputs.take(samples);
@@ -512,27 +512,27 @@ impl SvfState {
 
     pub fn process(
         &mut self,
-        sample_rate: Sample,
+        sample_rate: Smp,
         samples: usize,
         inputs: LaneInputs<'_>,
-        output: [&mut [Sample]; LANES],
+        output: [&mut [Smp]; LANES],
     ) {
         SvfFilter::process(self, sample_rate, samples, inputs, output);
     }
 }
 
 #[inline(always)]
-fn take_lanes_mut(lanes: [&mut [Sample]; LANES], samples: usize) -> [&mut [Sample]; LANES] {
+fn take_lanes_mut(lanes: [&mut [Smp]; LANES], samples: usize) -> [&mut [Smp]; LANES] {
     lanes.map(|lane| &mut lane[..samples])
 }
 
 #[derive(Clone, Copy)]
 pub struct LaneInputs<'a> {
-    pub audio: [&'a [Sample]; LANES],
-    pub cutoff: [&'a [Sample]; LANES],
-    pub k: [&'a [Sample]; LANES],
-    pub pre_k: [&'a [Sample]; LANES],
-    pub gain: [&'a [Sample]; LANES],
+    pub audio: [&'a [Smp]; LANES],
+    pub cutoff: [&'a [Smp]; LANES],
+    pub k: [&'a [Smp]; LANES],
+    pub pre_k: [&'a [Smp]; LANES],
+    pub gain: [&'a [Smp]; LANES],
 }
 
 impl LaneInputs<'_> {
@@ -560,7 +560,7 @@ impl LaneInputs<'_> {
     }
 
     #[inline(always)]
-    fn load(lanes: [&[Sample]; LANES], index: usize) -> f32x4 {
+    fn load(lanes: [&[Smp]; LANES], index: usize) -> f32x4 {
         f32x4::new([
             lanes[0][index],
             lanes[1][index],

@@ -10,7 +10,7 @@ pub use config::{LfoConfig, LfoShape};
 pub use link::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
 
 use crate::synth_engine::{
-    Input, ModuleId, Sample, SmoothedSampleParams, StereoSample,
+    Input, ModuleId, SmoothedSampleParams, Smp, StereoSample,
     buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
     phase::Phase,
     routing::{
@@ -25,7 +25,7 @@ struct ChannelParams {
     frequency: SmoothedSample,
     phase_shift: SmoothedSample,
     skew: SmoothedSample,
-    smooth_time: Sample,
+    smooth_time: Smp,
 }
 
 impl ChannelParams {
@@ -204,21 +204,21 @@ impl<L: LfoLinks> Lfo<L> {
     set_smoothed_param!(set_skew, skew, skew.clamp(0.0, 1.0));
     set_stereo_param!(set_smooth_time, smooth_time, smooth_time.max(0.0));
 
-    fn triangle(x: Sample) -> Sample {
+    fn triangle(x: Smp) -> Smp {
         2.0 * x.min(1.0 - x)
     }
 
-    fn square(x: Sample) -> Sample {
-        Sample::from(x < 0.5)
+    fn square(x: Smp) -> Smp {
+        Smp::from(x < 0.5)
     }
 
-    fn sine(x: Sample) -> Sample {
+    fn sine(x: Smp) -> Smp {
         let sine = (f32::consts::PI * x).sin();
 
         sine * sine
     }
 
-    fn shape_function(shape: LfoShape) -> fn(Sample) -> Sample {
+    fn shape_function(shape: LfoShape) -> fn(Smp) -> Smp {
         match shape {
             LfoShape::Triangle => Self::triangle,
             LfoShape::Square => Self::square,
@@ -227,27 +227,20 @@ impl<L: LfoLinks> Lfo<L> {
     }
 
     #[inline]
-    fn skew_arg(arg: Sample, skew: Sample) -> Sample {
+    fn skew_arg(arg: Smp, skew: Smp) -> Smp {
         let arg_less = arg < skew;
 
-        Sample::from(arg_less) * (0.5 * arg / skew.max(Sample::EPSILON))
-            + Sample::from(!arg_less)
-                * (0.5 + (arg - skew) * 0.5 / (1.0 - skew).max(Sample::EPSILON))
+        Smp::from(arg_less) * (0.5 * arg / skew.max(Smp::EPSILON))
+            + Smp::from(!arg_less) * (0.5 + (arg - skew) * 0.5 / (1.0 - skew).max(Smp::EPSILON))
     }
 
     #[inline]
-    fn apply_bipolar(value: Sample, bipolar: bool) -> Sample {
-        Sample::from(bipolar) * value.mul_add(2.0, -1.0) + Sample::from(!bipolar) * value
+    fn apply_bipolar(value: Smp, bipolar: bool) -> Smp {
+        Smp::from(bipolar) * value.mul_add(2.0, -1.0) + Smp::from(!bipolar) * value
     }
 
     /// Evaluate the LFO curve at normalized phase `t` ∈ [0, 1].
-    pub fn evaluate(
-        shape: LfoShape,
-        t: Sample,
-        phase_shift: Sample,
-        skew: Sample,
-        bipolar: bool,
-    ) -> Sample {
+    pub fn evaluate(shape: LfoShape, t: Smp, phase_shift: Smp, skew: Smp, bipolar: bool) -> Smp {
         let arg = Phase::from_normalized(t.clamp(0.0, 1.0))
             .add_normalized(phase_shift.clamp(-1.0, 1.0))
             .normalized();

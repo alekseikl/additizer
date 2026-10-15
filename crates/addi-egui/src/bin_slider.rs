@@ -1,14 +1,14 @@
 use egui::{Color32, PointerButton, Rect, Response, Sense, Ui, Widget, vec2};
 
 use addi_dsp::{db_to_gain, gain_to_db};
-use addi_engine::{MAX_LEVEL_DB, MIN_LEVEL_DB, Sample, StereoSample};
+use addi_engine::{MAX_LEVEL_DB, MIN_LEVEL_DB, Smp, StereoSample};
 
 const BG_COLOR: Color32 = Color32::from_rgb(0, 0, 0);
 const ATTENUATED_COLOR: Color32 = Color32::from_rgb(0x0b, 0x42, 0x67);
 const AMPLIFIED_COLOR: Color32 = Color32::from_rgb(0x72, 0x12, 0x12);
 const PHASE_COLOR: Color32 = Color32::from_rgb(0x42, 0x0b, 0x67);
 const SLIDER_WIDTH: f32 = 12.0;
-const DB_RANGE: Sample = MAX_LEVEL_DB - MIN_LEVEL_DB;
+const DB_RANGE: Smp = MAX_LEVEL_DB - MIN_LEVEL_DB;
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum BinSliderMode {
@@ -69,11 +69,11 @@ impl<'a> BinSlider<'a> {
         self
     }
 
-    fn db_to_normalized(dbs: Sample) -> Sample {
+    fn db_to_normalized(dbs: Smp) -> Smp {
         ((dbs - MIN_LEVEL_DB) / DB_RANGE).clamp(0.0, 1.0)
     }
 
-    fn gain_to_normalized(gain: Sample) -> Sample {
+    fn gain_to_normalized(gain: Smp) -> Smp {
         if gain <= 0.0 {
             0.0
         } else {
@@ -81,7 +81,7 @@ impl<'a> BinSlider<'a> {
         }
     }
 
-    fn normalized_to_gain(norm: Sample) -> Sample {
+    fn normalized_to_gain(norm: Smp) -> Smp {
         let norm = norm.clamp(0.0, 1.0);
 
         if norm <= 0.0 {
@@ -91,14 +91,14 @@ impl<'a> BinSlider<'a> {
         }
     }
 
-    fn value_to_normalized(&self, value: Sample) -> Sample {
+    fn value_to_normalized(&self, value: Smp) -> Smp {
         match self.mode {
             BinSliderMode::Amplitude => Self::gain_to_normalized(value),
             BinSliderMode::Phase => value.clamp(0.0, 1.0),
         }
     }
 
-    fn normalized_to_value(&self, norm: Sample) -> Sample {
+    fn normalized_to_value(&self, norm: Smp) -> Smp {
         match self.mode {
             BinSliderMode::Amplitude => Self::normalized_to_gain(norm),
             BinSliderMode::Phase => norm.clamp(0.0, 1.0),
@@ -153,7 +153,7 @@ impl<'a> BinSlider<'a> {
         }
     }
 
-    fn updated_value(&self, normalized_delta: f32, value: Sample) -> Sample {
+    fn updated_value(&self, normalized_delta: f32, value: Smp) -> Smp {
         self.normalized_to_value(
             (self.value_to_normalized(value) + normalized_delta).clamp(0.0, 1.0),
         )
@@ -182,8 +182,8 @@ impl<'a> BinSlider<'a> {
         }
     }
 
-    fn is_default_value(&self, value: Sample) -> bool {
-        (value - self.reset_value().left()).abs() <= Sample::EPSILON
+    fn is_default_value(&self, value: Smp) -> bool {
+        (value - self.reset_value().left()).abs() <= Smp::EPSILON
     }
 
     fn reset_value(&self) -> StereoSample {
@@ -200,7 +200,7 @@ impl<'a> BinSlider<'a> {
         }
     }
 
-    fn handle_dragging(&mut self, ui: &mut Ui, response: &mut Response, normalized_delta: Sample) {
+    fn handle_dragging(&mut self, ui: &mut Ui, response: &mut Response, normalized_delta: Smp) {
         if response.dragged_by(PointerButton::Primary) {
             self.value
                 .set_left(self.updated_value(normalized_delta, self.value.left()));

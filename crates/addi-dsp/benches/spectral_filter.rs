@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use addi_dsp::{
-    ComplexSample, Sample,
+    ComplexSample, Smp,
     filters::{
         control::MAX_PRE_Q,
         spectral_filter::{FilterParams, FilterType, SpectralFilter},
@@ -12,12 +12,12 @@ use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_m
 /// Matches the engine spectrum length (`1 << SPECTRUM_BITS`).
 const SPECTRAL_BUFFER_SIZE: usize = 1024;
 /// Same lower bound as the spectral filter module's Q-rolloff parameter.
-const MIN_Q_ROLLOFF: Sample = 3.0;
+const MIN_Q_ROLLOFF: Smp = 3.0;
 
 /// Octaves of the note fundamental. Two octaves up is the 4th harmonic.
-const CUTOFF_OCTAVES: Sample = 2.0;
-const Q: Sample = 1.0;
-const Q_CUTOFF_OCTAVES: Sample = 8.0;
+const CUTOFF_OCTAVES: Smp = 2.0;
+const Q: Smp = 1.0;
+const Q_CUTOFF_OCTAVES: Smp = 8.0;
 
 fn params() -> FilterParams {
     FilterParams {
@@ -32,7 +32,7 @@ fn params() -> FilterParams {
 }
 
 fn spectrum() -> [ComplexSample; SPECTRAL_BUFFER_SIZE] {
-    std::array::from_fn(|i| ComplexSample::new(0.5, i as Sample * 1e-4))
+    std::array::from_fn(|i| ComplexSample::new(0.5, i as Smp * 1e-4))
 }
 
 fn bench_spectral_filter(c: &mut Criterion) {

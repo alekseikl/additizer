@@ -3,7 +3,7 @@ use addi_engine::spectral_band_select::{
     BandSelectMode, MAX_BAND_HZ, MAX_HARMONIC, MAX_HARMONIC_END, MIN_BAND_HZ, MIN_HARMONIC,
     SpectralBandSelect, SpectralBandSelectConfig, SpectralBandSelectLinks, SpectralBandSelectUiEnd,
 };
-use addi_engine::{Sample, types::ComplexSample};
+use addi_engine::{Smp, types::ComplexSample};
 
 pub struct SpectralBandSelectUiBridge<
     L: SpectralBandSelectLinks = crate::links::spectral_band_select::Links,
@@ -50,7 +50,7 @@ impl<L: SpectralBandSelectLinks> SpectralBandSelectUiBridge<L> {
         }
     }
 
-    pub fn set_freq_from(&mut self, value: Sample) {
+    pub fn set_freq_from(&mut self, value: Smp) {
         let value = value.clamp(MIN_BAND_HZ, MAX_BAND_HZ);
 
         if self.ui_end.set_freq_from(value) {
@@ -58,7 +58,7 @@ impl<L: SpectralBandSelectLinks> SpectralBandSelectUiBridge<L> {
         }
     }
 
-    pub fn set_freq_to(&mut self, value: Sample) {
+    pub fn set_freq_to(&mut self, value: Smp) {
         let value = value.clamp(MIN_BAND_HZ, MAX_BAND_HZ);
 
         if self.ui_end.set_freq_to(value) {
