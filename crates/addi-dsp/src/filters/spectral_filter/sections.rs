@@ -27,7 +27,8 @@ impl LowPass {
     pub(super) fn at(&self, freq: WideSmp) -> WideComplex {
         let x = freq * TAU_WIDE;
 
-        WideComplex::from_real(self.numerator) / WideComplex::new(self.w_squared - x * x, self.w_q * x)
+        WideComplex::from_real(self.numerator)
+            / WideComplex::new(self.w_squared - x * x, self.w_q * x)
     }
 }
 

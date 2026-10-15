@@ -1,11 +1,11 @@
 use super::{sections::TAU, *};
 
 use crate::{
-    WideSmp,
     filters::control::{
-        MAX_PRE_Q, MAX_RESONANCE, MAX_RESONANCE_Q, MIN_PRE_Q, MIN_RESONANCE, NEGATIVE_RESONANCE_Q,
-        ZERO_RESONANCE_Q, q_from_resonance,
+        q_from_resonance, MAX_PRE_Q, MAX_RESONANCE, MAX_RESONANCE_Q, MIN_PRE_Q, MIN_RESONANCE,
+        NEGATIVE_RESONANCE_Q, ZERO_RESONANCE_Q,
     },
+    WideSmp,
 };
 
 /// Same bounds as the spectral filter module's Q-rolloff parameter.
@@ -520,7 +520,10 @@ fn lowshelf24_is_fixed_times_resonant() {
     let expected = LowShelf12::new(g12, CUTOFF, pre_q, pre_q).at_freq(freq)
         * LowShelf12::new(g12, CUTOFF, q, pre_q).at_freq(freq);
 
-    assert_complex_eq(LowShelf24::new(gain, CUTOFF, q, pre_q).at_freq(freq), expected);
+    assert_complex_eq(
+        LowShelf24::new(gain, CUTOFF, q, pre_q).at_freq(freq),
+        expected,
+    );
     assert_approx(mag_params::<LowShelf24>(gain, CUTOFF, q, 0.0), gain);
 }
 
@@ -534,7 +537,10 @@ fn highshelf24_is_fixed_times_resonant() {
     let expected = HighShelf12::new(g12, CUTOFF, pre_q, pre_q).at_freq(freq)
         * HighShelf12::new(g12, CUTOFF, q, pre_q).at_freq(freq);
 
-    assert_complex_eq(HighShelf24::new(gain, CUTOFF, q, pre_q).at_freq(freq), expected);
+    assert_complex_eq(
+        HighShelf24::new(gain, CUTOFF, q, pre_q).at_freq(freq),
+        expected,
+    );
 }
 
 #[test]
@@ -602,7 +608,10 @@ fn lowpass24_is_fixed_times_resonant() {
     let expected = LowPass12::new(1.0, CUTOFF, pre_q, pre_q).at_freq(freq)
         * LowPass12::new(gain, CUTOFF, q, pre_q).at_freq(freq);
 
-    assert_complex_eq(LowPass24::new(gain, CUTOFF, q, pre_q).at_freq(freq), expected);
+    assert_complex_eq(
+        LowPass24::new(gain, CUTOFF, q, pre_q).at_freq(freq),
+        expected,
+    );
     assert_approx(mag_params::<LowPass24>(gain, CUTOFF, q, 0.0), gain);
 }
 
@@ -615,7 +624,10 @@ fn highpass24_is_fixed_times_resonant() {
     let expected = HighPass12::new(1.0, CUTOFF, pre_q, pre_q).at_freq(freq)
         * HighPass12::new(gain, CUTOFF, q, pre_q).at_freq(freq);
 
-    assert_complex_eq(HighPass24::new(gain, CUTOFF, q, pre_q).at_freq(freq), expected);
+    assert_complex_eq(
+        HighPass24::new(gain, CUTOFF, q, pre_q).at_freq(freq),
+        expected,
+    );
 }
 
 #[test]
@@ -716,24 +728,48 @@ fn response_at_freqs_matches_filter_impl_for_every_type() {
         let f = filter(ty, p);
         let response = eval_at(&f, freq);
         let expected = match ty {
-            FilterType::LowPass12 => LowPass12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
-            FilterType::LowPass18 => LowPass18::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
-            FilterType::LowPass24 => LowPass24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
-            FilterType::LowShelf12 => LowShelf12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
-            FilterType::LowShelf24 => LowShelf24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
-            FilterType::HighPass12 => HighPass12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
-            FilterType::HighPass18 => HighPass18::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
-            FilterType::HighPass24 => HighPass24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
+            FilterType::LowPass12 => {
+                LowPass12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
+            }
+            FilterType::LowPass18 => {
+                LowPass18::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
+            }
+            FilterType::LowPass24 => {
+                LowPass24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
+            }
+            FilterType::LowShelf12 => {
+                LowShelf12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
+            }
+            FilterType::LowShelf24 => {
+                LowShelf24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
+            }
+            FilterType::HighPass12 => {
+                HighPass12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
+            }
+            FilterType::HighPass18 => {
+                HighPass18::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
+            }
+            FilterType::HighPass24 => {
+                HighPass24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
+            }
             FilterType::HighShelf12 => {
                 HighShelf12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
             }
             FilterType::HighShelf24 => {
                 HighShelf24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
             }
-            FilterType::BandPass6 => BandPass6::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
-            FilterType::BandPass12 => BandPass12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
-            FilterType::BandPass18 => BandPass18::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
-            FilterType::BandPass24 => BandPass24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
+            FilterType::BandPass6 => {
+                BandPass6::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
+            }
+            FilterType::BandPass12 => {
+                BandPass12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
+            }
+            FilterType::BandPass18 => {
+                BandPass18::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
+            }
+            FilterType::BandPass24 => {
+                BandPass24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
+            }
             FilterType::Peaking => Peaking::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
             FilterType::Notch => Notch::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
         };
