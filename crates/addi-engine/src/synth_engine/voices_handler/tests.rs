@@ -2705,7 +2705,7 @@ fn waiting_note_off_after_kill_then_terminates() {
 }
 
 #[test]
-fn alloc_voice_fills_partial_pair_before_opening_a_new_one() {
+fn alloc_voice_fills_partial_block_before_opening_a_new_one() {
     let mut h = handler(AVAILABLE_VOICES);
     let note = |midi: u8| Note {
         channel: 0,
@@ -2714,26 +2714,25 @@ fn alloc_voice_fills_partial_pair_before_opening_a_new_one() {
         host_id: None,
     };
 
-    for midi in [60, 61, 62, 63] {
+    for slot in 0..VOICE_BLOCK_LEN * 2 {
         let idx = h.alloc_voice().unwrap();
-        h.assign_slot(idx, note(midi));
+        assert_eq!(idx, slot);
+        h.assign_slot(idx, note(60 + slot as u8));
     }
-    assert_eq!(
-        (0..4).map(|i| h.voices[i].is_some()).collect::<Vec<_>>(),
-        vec![true, true, true, true]
-    );
 
-    // Pair (0, 1) is fully free. Pair (2, 3) has only the right slot taken.
-    h.voices[0] = None;
-    h.voices[1] = None;
-    h.voices[2] = None;
+    // Block 0 is fully free. Block 1 keeps only its last slot.
+    for slot in 0..VOICE_BLOCK_LEN * 2 - 1 {
+        h.voices[slot] = None;
+    }
 
-    assert_eq!(h.alloc_voice(), Some(2));
-    h.assign_slot(2, note(64));
+    for offset in 0..VOICE_BLOCK_LEN - 1 {
+        assert_eq!(h.alloc_voice(), Some(VOICE_BLOCK_LEN + offset));
+        h.assign_slot(VOICE_BLOCK_LEN + offset, note(80 + offset as u8));
+    }
 
-    // Both earlier pairs are full or empty, so the next note opens pair (0, 1).
+    // Block 1 is full, so the next note opens block 0.
     assert_eq!(h.alloc_voice(), Some(0));
-    h.assign_slot(0, note(65));
+    h.assign_slot(0, note(90));
     assert_eq!(h.alloc_voice(), Some(1));
 }
 

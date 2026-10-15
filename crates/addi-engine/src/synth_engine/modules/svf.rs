@@ -297,10 +297,10 @@ impl<L: SvfLinks> Svf<L> {
         block: &VoicesBlock,
         outputs: &mut VoicesLayout<SamplesOutput>,
     ) {
-        let pair_idx = block.pair_idx;
+        let block_idx = block.block_idx;
         let filter_type = self.params.filter_type;
         let buffers = &self.buffers;
-        let state = &mut self.states[pair_idx];
+        let state = &mut self.states[block_idx];
         let params = rf.params();
 
         state.set_type(filter_type);
@@ -314,7 +314,7 @@ impl<L: SvfLinks> Svf<L> {
                 pre_k: block_refs(&buffers.pre_k),
                 gain: block_refs(&buffers.drive),
             },
-            outputs.pair_buffers_mut(pair_idx),
+            outputs.buffers_block_mut(block_idx),
         );
     }
 

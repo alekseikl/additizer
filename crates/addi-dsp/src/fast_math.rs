@@ -1,8 +1,8 @@
 //! Polynomial approximations and interpolation for SIMD lanes.
 
-use wide::{bytemuck::cast, i32x4};
+use wide::bytemuck::cast;
 
-use crate::{Smp, WideSmp, consts::A4_FREQ};
+use crate::{Smp, WideI32, WideSmp, consts::A4_FREQ};
 
 #[cfg(test)]
 mod tests;
@@ -45,7 +45,7 @@ pub fn fast_exp2_wide(x: WideSmp) -> WideSmp {
 
     // `p` is in [2^-0.5, 2^0.5]; scaling by 2^xi is an exact add to its
     // exponent field, which cannot overflow or denormalize within `MAX_EXP`.
-    let scaled: i32x4 = cast::<WideSmp, i32x4>(p) + (xi.trunc_int() << 23);
+    let scaled: WideI32 = cast::<WideSmp, WideI32>(p) + (xi.trunc_int() << 23);
 
     cast(scaled)
 }

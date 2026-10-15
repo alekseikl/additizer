@@ -132,24 +132,24 @@ fn channels_pair_mut_exposes_both_voices() {
 }
 
 #[test]
-fn pair_buffers_mut_orders_stereo_pairs() {
+fn buffers_block_mut_orders_stereo_pairs() {
     let mut layout = new_voices_layout_with(|| SamplesOutput::new(4));
 
     {
-        let buffers = layout.pair_buffers_mut(1);
+        let buffers = layout.buffers_block_mut(1);
         buffers[0][0] = 1.0;
         buffers[1][0] = 2.0;
         buffers[2][0] = 3.0;
         buffers[3][0] = 4.0;
     }
 
-    let buffers = layout.pair_buffers_mut(1);
+    let buffers = layout.buffers_block_mut(1);
     assert_eq!(
         [buffers[0][0], buffers[1][0], buffers[2][0], buffers[3][0]],
         [1.0, 2.0, 3.0, 4.0]
     );
 
-    let other = layout.pair_buffers_mut(0);
+    let other = layout.buffers_block_mut(0);
     assert_eq!(
         [other[0][0], other[1][0], other[2][0], other[3][0]],
         [0.0, 0.0, 0.0, 0.0]

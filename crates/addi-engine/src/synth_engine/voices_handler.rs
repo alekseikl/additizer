@@ -201,24 +201,35 @@ impl VoicesHandler {
         }
     }
 
-    /// Prefer the free slot of a pair that already has one voice, so both lanes stay occupied.
-    /// Otherwise take the first slot of the first fully free pair.
+    /// Prefer a free slot in a block that already holds a voice, so its lanes stay occupied.
+    /// Otherwise take the first slot of the first fully free block.
     fn alloc_voice(&self) -> Option<usize> {
-        let mut free_pair = None;
-        let (pairs, _) = self.voices.as_chunks::<VOICE_BLOCK_LEN>();
+        let mut free_slot = None;
+        let (blocks, _) = self.voices.as_chunks::<VOICE_BLOCK_LEN>();
 
-        for (pair_idx, [left, right]) in pairs.iter().enumerate() {
-            let base = pair_idx * VOICE_BLOCK_LEN;
+        for (block_idx, block) in blocks.iter().enumerate() {
+            let base = block_idx * VOICE_BLOCK_LEN;
+            let mut occupied = 0;
+            let mut first_free = None;
 
-            match (left.is_some(), right.is_some()) {
-                (true, false) => return Some(base + 1),
-                (false, true) => return Some(base),
-                (false, false) if free_pair.is_none() => free_pair = Some(base),
-                _ => {}
+            for (offset, slot) in block.iter().enumerate() {
+                if slot.is_some() {
+                    occupied += 1;
+                } else if first_free.is_none() {
+                    first_free = Some(base + offset);
+                }
+            }
+
+            if occupied > 0 && occupied < VOICE_BLOCK_LEN {
+                return first_free;
+            }
+
+            if occupied == 0 && free_slot.is_none() {
+                free_slot = Some(base);
             }
         }
 
-        free_pair
+        free_slot
     }
 
     fn occupied_voices(&self) -> usize {

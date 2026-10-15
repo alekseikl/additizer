@@ -29,4 +29,4 @@ pub use phase::{Phase, WidePhase};
 pub use simd_utils::{fill_wide, map_wide, map_wide_in_place, zip_map_wide};
 pub use smooth::{SmoothedSample, SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
-pub use types::{ComplexSample, SIMD_LANES, Smp, WideSmp};
+pub use types::{ComplexSample, SIMD_LANES, Smp, WideI32, WideSmp, WideU32};

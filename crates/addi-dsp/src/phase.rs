@@ -1,9 +1,9 @@
 use std::ops::{Add, AddAssign};
 
 use serde::{Deserialize, Serialize};
-use wide::{bytemuck::cast, i32x4, u32x4};
+use wide::bytemuck::cast;
 
-use crate::{SIMD_LANES, Smp, WideSmp};
+use crate::{SIMD_LANES, Smp, WideI32, WideSmp, WideU32};
 
 #[cfg(test)]
 mod tests;
@@ -101,12 +101,12 @@ impl AddAssign<Smp> for Phase {
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct WidePhase(u32x4);
+pub struct WidePhase(WideU32);
 
 impl WidePhase {
     #[inline(always)]
     pub fn load(phases: &[Phase; SIMD_LANES]) -> Self {
-        Self(u32x4::new(phases.map(Phase::bits)))
+        Self(WideU32::new(phases.map(Phase::bits)))
     }
 
     #[inline(always)]
@@ -116,7 +116,7 @@ impl WidePhase {
 
     #[inline(always)]
     pub fn splat(phase: Phase) -> Self {
-        Self(u32x4::splat(phase.bits()))
+        Self(WideU32::splat(phase.bits()))
     }
 
     const FULL_PHASE: WideSmp = WideSmp::splat(Phase::FULL_PHASE);
@@ -139,9 +139,9 @@ impl WidePhase {
 
     #[inline(always)]
     pub fn wave_index_fraction<const WAVEFORM_BITS: usize>(self) -> WideSmp {
-        let mask = const { u32x4::splat(Phase::intermediate_mask::<WAVEFORM_BITS>()) };
+        let mask = const { WideU32::splat(Phase::intermediate_mask::<WAVEFORM_BITS>()) };
         let mult = const { WideSmp::splat(Phase::intermediate_mult::<WAVEFORM_BITS>()) };
-        let masked: i32x4 = cast(self.0 & mask);
+        let masked: WideI32 = cast(self.0 & mask);
 
         masked.round_float() * mult
     }

@@ -1,6 +1,7 @@
 use std::mem::MaybeUninit;
 
 use crate::synth_engine::{
+    SIMD_LANES,
     routing::SamplesOutput,
     types::{ComplexSample, Smp},
     voices::{MAX_VOICES, NUM_CHANNELS, VOICE_BLOCK_LEN},
@@ -96,20 +97,26 @@ impl<T> VoicesLayout<T> {
 }
 
 impl VoicesLayout<SamplesOutput> {
-    /// Sample buffers of voice pair `pair_idx`.
-    /// Order is even left, even right, odd left, odd right.
-    pub fn pair_buffers_mut(&mut self, pair_idx: usize) -> [&mut [Smp]; 4] {
-        let voice0 = pair_idx * VOICE_BLOCK_LEN;
-        let (even, odd) = self.channels_pair_mut(voice0, voice0 + 1);
-        let [even_left, even_right] = even.each_mut();
-        let [odd_left, odd_right] = odd.each_mut();
+    /// Sample buffers of voice block `block_idx`.
+    /// Lane `voice_slot * NUM_CHANNELS + channel` is that voice's channel.
+    pub fn buffers_block_mut(&mut self, block_idx: usize) -> [&mut [Smp]; SIMD_LANES] {
+        let start = block_idx * VOICE_BLOCK_LEN;
+        let mut lanes: [MaybeUninit<&mut [Smp]>; SIMD_LANES] =
+            [const { MaybeUninit::uninit() }; SIMD_LANES];
+        let mut rest = &mut self.voices[start..start + VOICE_BLOCK_LEN];
 
-        [
-            even_left.buffer_mut(),
-            even_right.buffer_mut(),
-            odd_left.buffer_mut(),
-            odd_right.buffer_mut(),
-        ]
+        for voice_slot in 0..VOICE_BLOCK_LEN {
+            let (voice, tail) = rest.split_first_mut().expect("voice block");
+            rest = tail;
+
+            for (channel_idx, channel) in voice.iter_mut().enumerate() {
+                lanes[voice_slot * NUM_CHANNELS + channel_idx].write(channel.buffer_mut());
+            }
+        }
+
+        // Every lane was written: VOICE_BLOCK_LEN * NUM_CHANNELS == SIMD_LANES.
+        // `[MaybeUninit<T>; N]` and `[T; N]` have the same layout.
+        unsafe { std::mem::transmute::<_, [&mut [Smp]; SIMD_LANES]>(lanes) }
     }
 }
 

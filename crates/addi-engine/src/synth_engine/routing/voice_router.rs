@@ -34,7 +34,7 @@ pub struct AudioRouterType {
 /// One SIMD pair. `voices[0]` is the even slot and `voices[1]` the odd slot.
 #[derive(Clone, Copy)]
 pub struct VoicesBlock {
-    pub pair_idx: usize,
+    pub block_idx: usize,
     pub voices: [Option<PlayingVoice>; VOICE_BLOCK_LEN],
     pub last_voice_idx: Option<usize>,
 }
@@ -175,9 +175,9 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, AudioRouterType, A> {
         self
     }
 
-    /// Groups active voices into SIMD pairs `(0, 1)`, `(2, 3)`, ….
-    /// `prepare` runs once per occupied lane. `process` runs the filter for that pair's block.
-    /// Slot order inside the pair is fixed, so state can stay in those lanes.
+    /// Groups active voices into SIMD blocks of `VOICE_BLOCK_LEN`.
+    /// `prepare` runs once per occupied lane. `process` runs the filter for that block.
+    /// Slot order inside the block is fixed, so state can stay in those lanes.
     pub fn for_lanes<M>(
         &mut self,
         module: &mut M,
@@ -191,9 +191,9 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, AudioRouterType, A> {
                 .expect("slot should be in place");
 
             let last_voice_idx = self.ctx.params.last_voice_idx;
-            let mut pairs: [VoicesBlock; VOICE_BLOCKS] =
-                std::array::from_fn(|pair_idx| VoicesBlock {
-                    pair_idx,
+            let mut blocks: [VoicesBlock; VOICE_BLOCKS] =
+                std::array::from_fn(|block_idx| VoicesBlock {
+                    block_idx,
                     voices: [None; VOICE_BLOCK_LEN],
                     last_voice_idx,
                 });
@@ -201,32 +201,32 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, AudioRouterType, A> {
 
             for voice in self.ctx.params.active_voices {
                 let voice_idx = voice.voice_idx();
-                let pair_idx = voice_idx / VOICE_BLOCK_LEN;
+                let block_idx = voice_idx / VOICE_BLOCK_LEN;
                 let slot_idx = voice_idx % VOICE_BLOCK_LEN;
 
-                pairs[pair_idx].voices[slot_idx] = Some(*voice);
-                occupied[pair_idx] = true;
+                blocks[block_idx].voices[slot_idx] = Some(*voice);
+                occupied[block_idx] = true;
             }
 
-            for (pair, is_occupied) in pairs.iter().zip(occupied) {
+            for (block, is_occupied) in blocks.iter().zip(occupied) {
                 if !is_occupied {
                     continue;
                 }
 
-                for (voice_slot, voice) in pair.voices.iter().enumerate() {
+                for (voice_slot, voice) in block.voices.iter().enumerate() {
                     let Some(voice) = voice else {
                         continue;
                     };
 
                     for channel_idx in 0..NUM_CHANNELS {
-                        let target = VoiceTarget::new(channel_idx, voice, pair.last_voice_idx);
+                        let target = VoiceTarget::new(channel_idx, voice, block.last_voice_idx);
                         let lane_idx = voice_slot * NUM_CHANNELS + channel_idx;
 
                         prepare(module, self, &target, lane_idx);
                     }
                 }
 
-                process(module, self, pair, &mut slot);
+                process(module, self, block, &mut slot);
             }
 
             self.ctx.outputs_arena.samples[self.data_type.samples_slot]

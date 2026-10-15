@@ -509,7 +509,7 @@ fn for_lanes_keeps_each_voice_in_its_pair_slot() {
     );
     assert_eq!(trace.blocks.len(), 1);
     let block = &trace.blocks[0];
-    assert_eq!(block.pair_idx, 0);
+    assert_eq!(block.block_idx, 0);
     assert_eq!(block.last_voice_idx, Some(0));
     assert_eq!(block.voices[0].map(|voice| voice.voice_idx()), Some(0));
     assert_eq!(block.voices[1].map(|voice| voice.voice_idx()), Some(1));
@@ -546,13 +546,13 @@ fn for_lanes_skips_empty_pairs_and_empty_slots() {
         ]
     );
     assert_eq!(trace.blocks.len(), 2);
-    assert_eq!(trace.blocks[0].pair_idx, 0);
+    assert_eq!(trace.blocks[0].block_idx, 0);
     assert!(trace.blocks[0].voices[0].is_none());
     assert_eq!(
         trace.blocks[0].voices[1].map(|voice| voice.voice_idx()),
         Some(1)
     );
-    assert_eq!(trace.blocks[1].pair_idx, 1);
+    assert_eq!(trace.blocks[1].block_idx, 1);
     assert_eq!(
         trace.blocks[1].voices[0].map(|voice| voice.voice_idx()),
         Some(2)
