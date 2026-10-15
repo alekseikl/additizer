@@ -1,5 +1,7 @@
 use std::array;
 
+use wide::f32x4;
+
 use crate::synth_engine::{
     SIMD_LANES,
     fast_math::{CATMULL_TAPS, catmull_rom_from_powers},
@@ -62,8 +64,8 @@ pub struct SampleCtx<'a> {
     pub phase_inc: WideSmp,
     pub wave_from: &'a WaveformBuffer,
     pub wave_to: &'a WaveformBuffer,
-    pub acc_from: [WideSmp; SIMD_LANES],
-    pub acc_to: [WideSmp; SIMD_LANES],
+    pub acc_from: [f32x4; SIMD_LANES],
+    pub acc_to: [f32x4; SIMD_LANES],
 }
 
 #[inline(always)]
@@ -148,9 +150,9 @@ pub fn render_sized<const FROM_BITS: usize, const TO_BITS: usize>(
 
 /// Sum the per-voice tap vectors in this chunk. Unused voices stay zero.
 ///
-/// Adjacent pairs, so four lanes stay `(a0 + a1) + (a2 + a3)`.
+/// Adjacent pairs, so the reduction tree stays balanced.
 #[inline(always)]
-pub fn sum_lanes(acc: &[WideSmp; SIMD_LANES]) -> WideSmp {
+pub fn sum_lanes(acc: &[f32x4; SIMD_LANES]) -> f32x4 {
     let mut level = *acc;
     let mut n = SIMD_LANES;
 
@@ -169,12 +171,10 @@ pub fn sum_lanes(acc: &[WideSmp; SIMD_LANES]) -> WideSmp {
 }
 
 #[inline(always)]
-fn load_segment(wave_buffer: &WaveformBuffer, idx: usize) -> WideSmp {
-    let src = &wave_buffer[idx..idx + CATMULL_TAPS];
-    let mut lanes = [0.0; SIMD_LANES];
-    lanes[..CATMULL_TAPS].copy_from_slice(src);
+fn load_segment(wave_buffer: &WaveformBuffer, idx: usize) -> f32x4 {
+    let s = &wave_buffer[idx..idx + CATMULL_TAPS];
 
-    WideSmp::new(lanes)
+    f32x4::new([s[0], s[1], s[2], s[3]])
 }
 
 #[inline(always)]

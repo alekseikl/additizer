@@ -1,8 +1,9 @@
 //! Polynomial approximations and interpolation for SIMD lanes.
 
 use wide::bytemuck::cast;
+use wide::f32x4;
 
-use crate::{SIMD_LANES, Smp, WideI32, WideSmp, consts::A4_FREQ};
+use crate::{Smp, WideI32, WideSmp, consts::A4_FREQ};
 
 #[cfg(test)]
 mod tests;
@@ -114,37 +115,23 @@ pub(crate) fn fast_tan_pi_wide(ratio: WideSmp) -> WideSmp {
     }
 }
 
-/// Catmull–Rom reads four neighbors. Wider vectors leave the remaining lanes at 0.
+/// Catmull–Rom reads four neighbors, so the kernel stays [`f32x4`].
 pub const CATMULL_TAPS: usize = 4;
-const _: () = assert!(SIMD_LANES >= CATMULL_TAPS);
-
-/// Four taps in the low lanes of a [`WideSmp`]. Lanes past the kernel stay 0.
-#[inline(always)]
-const fn wide_taps(taps: [Smp; CATMULL_TAPS]) -> WideSmp {
-    let mut lanes = [0.0; SIMD_LANES];
-    let mut tap = 0;
-
-    while tap < CATMULL_TAPS {
-        lanes[tap] = taps[tap];
-        tap += 1;
-    }
-
-    WideSmp::new(lanes)
-}
+const _: () = assert!(CATMULL_TAPS == 4);
 
 /// Coefficients of `((b0 * t + b1) * t + b2) * t + b3`, weighting `[s0, s1, s2, s3]`.
-const CATMULL_ROM: [WideSmp; 4] = [
-    wide_taps([-1.0 / 2.0, 3.0 / 2.0, -3.0 / 2.0, 1.0 / 2.0]),
-    wide_taps([1.0, -5.0 / 2.0, 4.0 / 2.0, -1.0 / 2.0]),
-    wide_taps([-1.0 / 2.0, 0.0 / 2.0, 1.0 / 2.0, 0.0 / 2.0]),
-    wide_taps([0.0 / 2.0, 1.0, 0.0 / 2.0, 0.0 / 2.0]),
+const CATMULL_ROM: [f32x4; 4] = [
+    f32x4::new([-1.0 / 2.0, 3.0 / 2.0, -3.0 / 2.0, 1.0 / 2.0]),
+    f32x4::new([1.0, -5.0 / 2.0, 4.0 / 2.0, -1.0 / 2.0]),
+    f32x4::new([-1.0 / 2.0, 0.0 / 2.0, 1.0 / 2.0, 0.0 / 2.0]),
+    f32x4::new([0.0 / 2.0, 1.0, 0.0 / 2.0, 0.0 / 2.0]),
 ];
 
 /// Weights for samples `[s0, s1, s2, s3]` at fractional position `t`.
 #[inline(always)]
-pub fn catmull_rom(t: Smp) -> WideSmp {
+pub fn catmull_rom(t: Smp) -> f32x4 {
     let [b0, b1, b2, b3] = CATMULL_ROM;
-    let t = WideSmp::splat(t);
+    let t = f32x4::splat(t);
 
     b0.mul_add(t, b1).mul_add(t, b2).mul_add(t, b3)
 }
@@ -157,12 +144,12 @@ pub fn catmull_rom(t: Smp) -> WideSmp {
 /// cost one multiply plus three FMAs with a broadcast lane operand, with no
 /// copies of the basis constants.
 #[inline(always)]
-pub fn catmull_rom_from_powers(g: Smp, gt: Smp, gt2: Smp, gt3: Smp) -> WideSmp {
+pub fn catmull_rom_from_powers(g: Smp, gt: Smp, gt2: Smp, gt3: Smp) -> f32x4 {
     let [b0, b1, b2, b3] = CATMULL_ROM;
 
-    let w = b3 * WideSmp::splat(g);
-    let w = b2.mul_add(WideSmp::splat(gt), w);
-    let w = b1.mul_add(WideSmp::splat(gt2), w);
+    let w = b3 * f32x4::splat(g);
+    let w = b2.mul_add(f32x4::splat(gt), w);
+    let w = b1.mul_add(f32x4::splat(gt2), w);
 
-    b0.mul_add(WideSmp::splat(gt3), w)
+    b0.mul_add(f32x4::splat(gt3), w)
 }

@@ -58,17 +58,17 @@ fn cutoff_freq(p: FilterParams) -> Smp {
     filter(FilterType::LowPass12, p).cutoff_freq
 }
 
-/// Lane 0 of [`FilterLanes::at`] at a single frequency.
-trait AtFreq: FilterLanes {
+/// Lane 0 of [`FilterImpl::at`] at a single frequency.
+trait AtFreq: FilterImpl {
     fn at_freq(&self, freq: Smp) -> ComplexSample {
-        let response = FilterLanes::at(self, WideSmp::splat(freq));
+        let response = FilterImpl::at(self, WideSmp::splat(freq));
         let re = response.re.to_array();
         let im = response.im.to_array();
         ComplexSample::new(re[0], im[0])
     }
 }
 
-impl<T: FilterLanes> AtFreq for T {}
+impl<T: FilterImpl> AtFreq for T {}
 
 fn mag<T: AtFreq>(freq: Smp) -> Smp {
     mag_params::<T>(GAIN, CUTOFF, Q, freq)

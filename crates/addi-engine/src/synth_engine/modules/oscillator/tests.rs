@@ -1,4 +1,5 @@
 use realfft::RealFftPlanner;
+use wide::f32x4;
 
 use super::{
     ConvexUnison, DFT_BUFFER_SIZE, FlatUnison, HALF_WAVEFORM_BITS, IfftPlanners, MAX_UNISON_VOICES,
@@ -1315,8 +1316,8 @@ fn unison_phase_ramp_across_half_cycle_follows_the_parameter() {
         phase_inc: WideSmp::ZERO,
         wave_from: &wave,
         wave_to: &wave,
-        acc_from: [WideSmp::ZERO; SIMD_LANES],
-        acc_to: [WideSmp::ZERO; SIMD_LANES],
+        acc_from: [f32x4::ZERO; SIMD_LANES],
+        acc_to: [f32x4::ZERO; SIMD_LANES],
     };
 
     render_same::<WAVEFORM_BITS>(&mut phases, &params, &mut ctx, 1);

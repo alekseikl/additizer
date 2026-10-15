@@ -14,11 +14,9 @@ mod simd;
 use sections::{BandPass, HighPass, HighShelf, LowPass, LowShelf, OnePoleHighPass, OnePoleLowPass};
 use simd::WideComplex;
 
-pub trait FilterImpl: Clone + Copy + 'static {
+trait FilterImpl: Clone + Copy + 'static {
     fn new(gain: Smp, cutoff_freq: Smp, q: Smp, pre_q: Smp) -> Self;
-}
 
-trait FilterLanes: FilterImpl {
     fn at(&self, freq: WideSmp) -> WideComplex;
 }
 
@@ -117,9 +115,7 @@ impl FilterImpl for LowPass12 {
             resonant: LowPass::new(gain, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for LowPass12 {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         self.resonant.at(freq)
@@ -133,9 +129,7 @@ impl FilterImpl for LowPass18 {
             resonant: LowPass::new(gain, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for LowPass18 {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         self.pre_stage.at(freq) * self.resonant.at(freq)
@@ -149,9 +143,7 @@ impl FilterImpl for LowPass24 {
             resonant: LowPass::new(gain, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for LowPass24 {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         self.pre_stage.at(freq) * self.resonant.at(freq)
@@ -164,9 +156,7 @@ impl FilterImpl for HighPass12 {
             resonant: HighPass::new(gain, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for HighPass12 {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         self.resonant.at(freq)
@@ -180,9 +170,7 @@ impl FilterImpl for HighPass18 {
             resonant: HighPass::new(gain, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for HighPass18 {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         self.pre_stage.at(freq) * self.resonant.at(freq)
@@ -196,9 +184,7 @@ impl FilterImpl for HighPass24 {
             resonant: HighPass::new(gain, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for HighPass24 {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         self.pre_stage.at(freq) * self.resonant.at(freq)
@@ -211,9 +197,7 @@ impl FilterImpl for BandPass6 {
             resonant: BandPass::new(gain, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for BandPass6 {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         self.resonant.at(freq)
@@ -227,9 +211,7 @@ impl FilterImpl for BandPass12 {
             resonant: BandPass::new(gain, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for BandPass12 {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         self.pre_stage.at(freq) * self.resonant.at(freq)
@@ -243,9 +225,7 @@ impl FilterImpl for BandPass18 {
             resonant: BandPass::new(gain, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for BandPass18 {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         let pre_stage = self.pre_stage.at(freq);
@@ -261,9 +241,7 @@ impl FilterImpl for BandPass24 {
             resonant: BandPass::new(gain, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for BandPass24 {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         let pre_stage = self.pre_stage.at(freq);
@@ -279,9 +257,7 @@ impl FilterImpl for Peaking {
             section: sections::Peaking::new(gain, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for Peaking {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         self.section.at(freq)
@@ -294,9 +270,7 @@ impl FilterImpl for Notch {
             resonant: sections::Notch::new(gain, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for Notch {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         self.resonant.at(freq)
@@ -309,9 +283,7 @@ impl FilterImpl for LowShelf12 {
             section: LowShelf::new(gain, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for LowShelf12 {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         self.section.at(freq)
@@ -324,9 +296,7 @@ impl FilterImpl for HighShelf12 {
             section: HighShelf::new(gain, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for HighShelf12 {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         self.section.at(freq)
@@ -342,9 +312,7 @@ impl FilterImpl for LowShelf24 {
             resonant: LowShelf::new(g12, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for LowShelf24 {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         self.pre_stage.at(freq) * self.resonant.at(freq)
@@ -360,9 +328,7 @@ impl FilterImpl for HighShelf24 {
             resonant: HighShelf::new(g12, cutoff, q),
         }
     }
-}
 
-impl FilterLanes for HighShelf24 {
     #[inline(always)]
     fn at(&self, freq: WideSmp) -> WideComplex {
         self.pre_stage.at(freq) * self.resonant.at(freq)
@@ -545,7 +511,7 @@ impl SpectralFilter {
         }
     }
 
-    fn response_freqs_impl<T: FilterLanes>(&self, freqs: &[Smp], out: &mut [ComplexSample]) {
+    fn response_freqs_impl<T: FilterImpl>(&self, freqs: &[Smp], out: &mut [ComplexSample]) {
         let filter_impl = T::new(self.gain, self.cutoff_freq, self.q, self.pre_q);
 
         if self.linear_phase {
@@ -555,7 +521,7 @@ impl SpectralFilter {
         }
     }
 
-    fn apply_impl<T: FilterLanes>(&self, input: &[ComplexSample], output: &mut [ComplexSample]) {
+    fn apply_impl<T: FilterImpl>(&self, input: &[ComplexSample], output: &mut [ComplexSample]) {
         let filter_impl = T::new(self.gain, self.cutoff_freq, self.q, self.pre_q);
 
         if self.linear_phase {
@@ -565,7 +531,7 @@ impl SpectralFilter {
         }
     }
 
-    fn apply_in_place_impl<T: FilterLanes>(&self, samples: &mut [ComplexSample]) {
+    fn apply_in_place_impl<T: FilterImpl>(&self, samples: &mut [ComplexSample]) {
         let filter_impl = T::new(self.gain, self.cutoff_freq, self.q, self.pre_q);
 
         if self.linear_phase {
@@ -599,7 +565,7 @@ fn write_response_lanes<const LINEAR: bool>(response: WideComplex, out: &mut [Co
     }
 }
 
-fn write_responses<T: FilterLanes, const LINEAR: bool>(
+fn write_responses<T: FilterImpl, const LINEAR: bool>(
     filter: &T,
     freqs: &[Smp],
     out: &mut [ComplexSample],
@@ -635,7 +601,7 @@ fn store_lanes<const LINEAR: bool>(
     }
 }
 
-fn apply<T: FilterLanes, const LINEAR: bool>(
+fn apply<T: FilterImpl, const LINEAR: bool>(
     filter: &T,
     input: &[ComplexSample],
     output: &mut [ComplexSample],
@@ -680,7 +646,7 @@ fn scale_lanes<const LINEAR: bool>(response: WideComplex, samples: &mut [Complex
     }
 }
 
-fn apply_in_place<T: FilterLanes, const LINEAR: bool>(filter: &T, samples: &mut [ComplexSample]) {
+fn apply_in_place<T: FilterImpl, const LINEAR: bool>(filter: &T, samples: &mut [ComplexSample]) {
     // Skip DC. Bin indices are the frequencies.
     let Some(samples) = samples.get_mut(DC_OFFSET..) else {
         return;

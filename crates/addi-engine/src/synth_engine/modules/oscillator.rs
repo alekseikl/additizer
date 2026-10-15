@@ -5,6 +5,7 @@ use rand::RngExt;
 use rand_pcg::Pcg32;
 use realfft::{ComplexToReal, RealFftPlanner};
 use smallvec::SmallVec;
+use wide::f32x4;
 
 use crate::{
     oscillator::sample_block::{render_same, render_sized},
@@ -835,8 +836,8 @@ impl<L: OscillatorLinks> Oscillator<L> {
                 phase_inc: WideSmp::splat(phase_inc),
                 wave_from,
                 wave_to,
-                acc_from: [WideSmp::ZERO; SIMD_LANES],
-                acc_to: [WideSmp::ZERO; SIMD_LANES],
+                acc_from: [f32x4::ZERO; SIMD_LANES],
+                acc_to: [f32x4::ZERO; SIMD_LANES],
             };
 
             for (phases, params) in full_phases.iter_mut().zip(full_params) {
@@ -849,7 +850,8 @@ impl<L: OscillatorLinks> Oscillator<L> {
 
             let acc_from = sum_lanes(&s.acc_from);
             let acc_to = sum_lanes(&s.acc_to);
-            let acc = (acc_to - acc_from).mul_add(s.buff_t, acc_from);
+            let blend = f32x4::splat(buff_t);
+            let acc = (acc_to - acc_from).mul_add(blend, acc_from);
 
             *out = acc.reduce_add();
             buff_t += buff_t_inc;
