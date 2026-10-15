@@ -1,8 +1,4 @@
-use crate::synth_engine::{
-    power_scale,
-    routing::{EngineAudioEnd, LEFT_CHANNEL},
-    types::Smp,
-};
+use crate::synth_engine::{power_scale, routing::EngineAudioEnd, types::Smp, voices::LEFT_CHANNEL};
 
 use super::{ChannelParams, Inputs, MAX_UNISON_VOICES, Router};
 
@@ -36,13 +32,13 @@ impl Default for UnisonVoice {
     }
 }
 
-pub(super) struct UnisonStateUpdate {
-    pub(super) rate: Smp,
-    pub(super) phase_shift: Smp,
-    pub(super) gain: Smp,
+pub struct UnisonStateUpdate {
+    pub rate: Smp,
+    pub phase_shift: Smp,
+    pub gain: Smp,
 }
 
-pub(super) trait UnisonType {
+pub trait UnisonType {
     fn process<'a, A: EngineAudioEnd>(
         &self,
         this_frame: bool,
@@ -57,7 +53,7 @@ fn blend(from: Smp, to: Smp, amount: Smp) -> Smp {
     (to - from).mul_add(amount, from)
 }
 
-pub(super) struct ManualUnison;
+pub struct ManualUnison;
 
 impl ManualUnison {
     fn rate(idx: usize, unison: usize, detune: Smp, detune_power: Smp) -> Smp {
@@ -117,14 +113,14 @@ impl UnisonType for ManualUnison {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct FlatUnison {
+pub struct FlatUnison {
     stereo_mult: Smp,
     center_mult: Smp,
     channel_idx: usize,
 }
 
 impl FlatUnison {
-    pub(super) fn new(stereo: Smp, channel_idx: usize) -> Self {
+    pub fn new(stereo: Smp, channel_idx: usize) -> Self {
         let fade = stereo.clamp(0.0, 1.0).mul_add(0.5, 0.5);
         let angle = fade * std::f32::consts::FRAC_PI_2;
         let (stereo_mult, center_mult) = angle.sin_cos();
@@ -136,7 +132,7 @@ impl FlatUnison {
         }
     }
 
-    pub(super) fn rate_gain(
+    pub fn rate_gain(
         &self,
         idx: usize,
         unison: usize,
@@ -231,13 +227,13 @@ impl UnisonType for FlatUnison {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct ConvexUnison {
+pub struct ConvexUnison {
     stereo: Smp,
     channel_idx: usize,
 }
 
 impl ConvexUnison {
-    pub(super) fn new(stereo: Smp, channel_idx: usize) -> Self {
+    pub fn new(stereo: Smp, channel_idx: usize) -> Self {
         let stereo = stereo.clamp(0.0, 1.0);
 
         Self {
@@ -246,7 +242,7 @@ impl ConvexUnison {
         }
     }
 
-    pub(super) fn rate_gain(
+    pub fn rate_gain(
         &self,
         idx: usize,
         unison: usize,
@@ -285,11 +281,11 @@ impl ConvexUnison {
         (side - CENTER_AMPLITUDE).mul_add(amount, CENTER_AMPLITUDE)
     }
 
-    pub(super) fn mono_level(spread: Smp) -> Smp {
+    pub fn mono_level(spread: Smp) -> Smp {
         Self::shaped_level(spread * spread, std::f32::consts::FRAC_1_SQRT_2)
     }
 
-    pub(super) fn native_level(spread: Smp) -> Smp {
+    pub fn native_level(spread: Smp) -> Smp {
         Self::shaped_level(spread.sqrt(), std::f32::consts::SQRT_2)
     }
 
@@ -303,7 +299,7 @@ impl ConvexUnison {
         }
     }
 
-    pub(super) fn adjustment(unison: usize) -> Smp {
+    pub fn adjustment(unison: usize) -> Smp {
         let span = unison - 1;
         let mut square_sums = 0.0;
 

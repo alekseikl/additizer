@@ -18,10 +18,11 @@ use crate::{
         buffer::{VoicesLayout, new_voices_layout},
         routing::{
             ControlRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
-            NUM_CHANNELS, ProcessContext, RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget,
+            ProcessContext, RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget,
         },
         synth_module::SynthModule,
         types::{Smp, WideSmp},
+        voices::NUM_CHANNELS,
         voices_handler::DecayingVoice,
     },
     synth_engine::{fill_wide, from_ms},

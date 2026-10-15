@@ -14,7 +14,8 @@ use crate::synth_engine::{
     fast_math::catmull_rom_from_powers,
     harmonic_editor::HarmonicEditorConfig,
     phase::{Phase, WidePhase},
-    routing::{InputSlot, LEFT_CHANNEL, RIGHT_CHANNEL},
+    routing::InputSlot,
+    voices::{LEFT_CHANNEL, RIGHT_CHANNEL},
 };
 
 impl<L: OscillatorLinks> Oscillator<L> {

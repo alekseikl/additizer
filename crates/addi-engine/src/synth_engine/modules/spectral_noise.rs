@@ -12,11 +12,11 @@ use crate::{
         ComplexSample, MAX_BANDWIDTH, Smp, StereoSample,
         buffer::{DC_OFFSET, SPECTRAL_BUFFER_SIZE, VoicesLayout, new_voices_layout_with},
         routing::{
-            DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, MAX_VOICES, MixedSlots, ModuleId,
-            NUM_CHANNELS, ProcessContext, RouterFactory, SpectralOutput, SpectralRouterType,
-            VoiceEvent, VoiceTarget,
+            DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId, ProcessContext,
+            RouterFactory, SpectralOutput, SpectralRouterType, VoiceEvent, VoiceTarget,
         },
         synth_module::SynthModule,
+        voices::{LEFT_CHANNEL, MAX_VOICES, NUM_CHANNELS},
         voices_handler::BAND_LIMIT_FREQUENCY,
     },
 };

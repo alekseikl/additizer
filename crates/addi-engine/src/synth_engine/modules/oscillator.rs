@@ -15,12 +15,12 @@ use crate::{
         phase::{Phase, WidePhase},
         pitch_to_freq,
         routing::{
-            AudioRouterType, DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, MAX_VOICES,
-            ModuleId, NUM_CHANNELS, ProcessContext, RIGHT_CHANNEL, RouterFactory, SamplesOutput,
-            VoiceEvent, VoiceRouter, VoiceTarget,
+            AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, ProcessContext,
+            RouterFactory, SamplesOutput, VoiceEvent, VoiceRouter, VoiceTarget,
         },
         synth_module::SynthModule,
         types::{ComplexSample, Smp, WideSmp},
+        voices::{LEFT_CHANNEL, MAX_VOICES, NUM_CHANNELS, RIGHT_CHANNEL},
         zip_map_wide,
     },
 };

@@ -25,16 +25,13 @@ use crate::{
         buffer::{Buffer, VoicesLayout, zero_buffer},
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
-            NUM_CHANNELS, ProcessContext, RouterFactory, SamplesOutput, VOICE_PAIR_LEN,
-            VOICE_PAIRS, VoiceEvent, VoiceTarget, VoicesBlock,
+            ProcessContext, RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget, VoicesBlock,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
+        voices::{NUM_CHANNELS, VOICE_BLOCK_LEN, VOICE_BLOCKS},
     },
 };
-
-/// Even voice left, even voice right, odd voice left, odd voice right.
-const _: () = assert!(VOICE_PAIR_LEN * NUM_CHANNELS == SIMD_LANES);
 
 struct Params {
     filter_type: SvfType,
@@ -154,7 +151,7 @@ pub struct Svf<L: SvfLinks = stub::Links> {
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
     buffers: Buffers,
-    states: [SvfState; VOICE_PAIRS],
+    states: [SvfState; VOICE_BLOCKS],
     audio_end: L::AudioEnd,
     ui_end: Option<L::UiEnd>,
     inputs: Inputs,
@@ -217,8 +214,8 @@ impl<L: SvfLinks> Svf<L> {
     set_smoothed_param!(set_drive, drive, drive.clamp(MIN_DRIVE, MAX_DRIVE));
 
     fn reset_voice(&mut self, voice_idx: usize) {
-        let pair_idx = voice_idx / VOICE_PAIR_LEN;
-        let slot = voice_idx % VOICE_PAIR_LEN;
+        let pair_idx = voice_idx / VOICE_BLOCK_LEN;
+        let slot = voice_idx % VOICE_BLOCK_LEN;
         let filter_type = self.params.filter_type;
         let state = &mut self.states[pair_idx];
 

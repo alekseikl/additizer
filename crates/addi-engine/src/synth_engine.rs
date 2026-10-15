@@ -10,9 +10,7 @@ use crate::synth_engine::{
         data_types_compatible,
     },
     synth_module::SynthModule,
-    voices_handler::{
-        DecayingVoices, MAX_AVAILABLE_VOICES, PlayingVoices, VoiceEvents, VoicesHandler,
-    },
+    voices_handler::{DecayingVoices, PlayingVoices, VoiceEvents, VoicesHandler},
 };
 
 pub use buffer::{
@@ -45,12 +43,13 @@ pub use modules::{
 pub(crate) use nth_element::NthElement;
 pub use routing::{
     AUDIO_TO_UI_RING_CAPACITY, DataType, Expression, ExpressionEvent, Input, InputId, InputSource,
-    MAX_VOICES, MixType, ModuleId, NUM_CHANNELS, OUTPUT_MODULE_ID, PITCH_MODULE_ID,
-    UI_TO_AUDIO_RING_CAPACITY, VoiceEvent, VolumeType,
+    MixType, ModuleId, OUTPUT_MODULE_ID, PITCH_MODULE_ID, UI_TO_AUDIO_RING_CAPACITY, VoiceEvent,
+    VolumeType,
 };
 pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
 pub use types::{ComplexSample, Smp, WideSmp};
+pub use voices::{AVAILABLE_VOICES, MAX_VOICES, NUM_CHANNELS};
 pub use voices_handler::{Note, PlayingVoice};
 
 pub use addi_dsp::{
@@ -80,6 +79,7 @@ mod routing_helpers;
 pub mod routing_state;
 pub mod stub;
 pub(crate) mod utils;
+pub mod voices;
 mod voices_handler;
 
 pub use engine_io::{EngineAudioEnd, EngineLinks, OutputMeter};
@@ -88,8 +88,6 @@ pub use utils::{MAX_LEVEL_DB, MIN_LEVEL_DB};
 
 #[cfg(test)]
 mod tests;
-
-pub const AVAILABLE_VOICES: usize = MAX_AVAILABLE_VOICES;
 
 /// One sample past the internal block. Control-rate signals store the
 /// first sample of the next frame there.

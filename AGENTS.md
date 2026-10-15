@@ -171,9 +171,9 @@ stereo/smoothed parameter plumbing.
 - **UI ↔ audio only via the link / ring-buffer / triple-buffer mechanism**, never by mutating
   engine state from the UI thread while audio runs. Preset/structural changes go through
   `EngineFactory` swaps.
-- Voice limits: `MAX_VOICES == 20` (internal slots); user polyphony caps at
-  `MAX_AVAILABLE_VOICES == 16` (`MAX_VOICES - 4`). Oscillator unison: up to 16
-  (`MAX_UNISON_VOICES`).
+- Voice limits: `AVAILABLE_VOICES == 16` (user polyphony); `KILL_HEADROOM == 4`
+  extra slots for voice kill, so `MAX_VOICES == AVAILABLE_VOICES + KILL_HEADROOM`.
+  Oscillator unison: up to 16 (`MAX_UNISON_VOICES`).
 - Prefer `parking_lot` locks, `rustc_hash::FxHashMap`, `smallvec`, and `enum_dispatch`
   consistent with existing code.
 

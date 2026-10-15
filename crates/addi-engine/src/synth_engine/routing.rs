@@ -22,18 +22,9 @@ pub use voice_router::{
 
 pub type ModuleId = i32;
 
-pub const MAX_VOICES: usize = 20;
-/// Slots are grouped as `(0, 1)`, `(2, 3)`, … so a module can process a pair as SIMD lanes.
-pub const VOICE_PAIR_LEN: usize = 2;
-pub const VOICE_PAIRS: usize = MAX_VOICES / VOICE_PAIR_LEN;
-const _: () = assert!(MAX_VOICES.is_multiple_of(VOICE_PAIR_LEN));
-pub use addi_dsp::NUM_CHANNELS;
 pub const OUTPUT_MODULE_ID: ModuleId = 0;
 pub const PITCH_MODULE_ID: ModuleId = -1;
 pub const MIN_MODULE_ID: ModuleId = 1;
-
-pub const LEFT_CHANNEL: usize = 0;
-pub const RIGHT_CHANNEL: usize = 1;
 
 pub const UI_TO_AUDIO_RING_CAPACITY: usize = 64;
 pub const AUDIO_TO_UI_RING_CAPACITY: usize = 64;

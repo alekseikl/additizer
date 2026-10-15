@@ -14,12 +14,12 @@ use crate::{
         buffer::{Buffer, VoicesLayout, add_buffer_value, new_voices_layout, zero_buffer},
         routing::{
             ControlRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
-            NUM_CHANNELS, PrevNote, ProcessContext, RouterFactory, SamplesOutput, VoiceEvent,
-            VoiceTarget,
+            PrevNote, ProcessContext, RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
         types::Smp,
+        voices::NUM_CHANNELS,
     },
 };
 

@@ -3,10 +3,10 @@ use crate::synth_engine::{
     buffer::VoicesLayout,
     engine_io::EngineAudioEnd,
     routing::{
-        MixedSlots, ProcessContext, SamplesOutput, SpectralOutput, VOICE_PAIR_LEN, VOICE_PAIRS,
-        process_context::VoiceTarget,
+        MixedSlots, ProcessContext, SamplesOutput, SpectralOutput, process_context::VoiceTarget,
     },
     smooth::SmoothedSample,
+    voices::{VOICE_BLOCK_LEN, VOICE_BLOCKS},
     voices_handler::PlayingVoice,
 };
 
@@ -35,7 +35,7 @@ pub struct AudioRouterType {
 #[derive(Clone, Copy)]
 pub struct VoicesBlock {
     pub pair_idx: usize,
-    pub voices: [Option<PlayingVoice>; VOICE_PAIR_LEN],
+    pub voices: [Option<PlayingVoice>; VOICE_BLOCK_LEN],
     pub last_voice_idx: Option<usize>,
 }
 
@@ -191,18 +191,18 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, AudioRouterType, A> {
                 .expect("slot should be in place");
 
             let last_voice_idx = self.ctx.params.last_voice_idx;
-            let mut pairs: [VoicesBlock; VOICE_PAIRS] =
+            let mut pairs: [VoicesBlock; VOICE_BLOCKS] =
                 std::array::from_fn(|pair_idx| VoicesBlock {
                     pair_idx,
-                    voices: [None; VOICE_PAIR_LEN],
+                    voices: [None; VOICE_BLOCK_LEN],
                     last_voice_idx,
                 });
-            let mut occupied = [false; VOICE_PAIRS];
+            let mut occupied = [false; VOICE_BLOCKS];
 
             for voice in self.ctx.params.active_voices {
                 let voice_idx = voice.voice_idx();
-                let pair_idx = voice_idx / VOICE_PAIR_LEN;
-                let slot_idx = voice_idx % VOICE_PAIR_LEN;
+                let pair_idx = voice_idx / VOICE_BLOCK_LEN;
+                let slot_idx = voice_idx % VOICE_BLOCK_LEN;
 
                 pairs[pair_idx].voices[slot_idx] = Some(*voice);
                 occupied[pair_idx] = true;

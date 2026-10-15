@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::synth_engine::{
     ModuleId, Smp,
     buffer::{DC_OFFSET, SPECTRAL_BUFFER_SIZE},
-    routing::NUM_CHANNELS,
+    voices::NUM_CHANNELS,
 };
 
 #[derive(Clone, Serialize, Deserialize)]

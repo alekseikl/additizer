@@ -11,10 +11,11 @@ use crate::{
         iir_decimator::IirDecimator,
         level_ballistics::StereoLevelBallistics,
         routing::{
-            DataType, EngineAudioEnd, InputMeta, InputSlots, MAX_VOICES, NUM_CHANNELS,
-            ProcessContext, VoiceEvent, VoiceTarget,
+            DataType, EngineAudioEnd, InputMeta, InputSlots, ProcessContext, VoiceEvent,
+            VoiceTarget,
         },
         smooth::SmoothedSample,
+        voices::{MAX_VOICES, NUM_CHANNELS},
         voices_handler::DecayingVoice,
     },
 };

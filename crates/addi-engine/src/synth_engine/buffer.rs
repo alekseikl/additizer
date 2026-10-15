@@ -1,8 +1,9 @@
 use std::mem::MaybeUninit;
 
 use crate::synth_engine::{
-    routing::{MAX_VOICES, NUM_CHANNELS, SamplesOutput, VOICE_PAIR_LEN},
+    routing::SamplesOutput,
     types::{ComplexSample, Smp},
+    voices::{MAX_VOICES, NUM_CHANNELS, VOICE_BLOCK_LEN},
 };
 
 pub const SPECTRUM_BITS: usize = 10;
@@ -98,7 +99,7 @@ impl VoicesLayout<SamplesOutput> {
     /// Sample buffers of voice pair `pair_idx`.
     /// Order is even left, even right, odd left, odd right.
     pub fn pair_buffers_mut(&mut self, pair_idx: usize) -> [&mut [Smp]; 4] {
-        let voice0 = pair_idx * VOICE_PAIR_LEN;
+        let voice0 = pair_idx * VOICE_BLOCK_LEN;
         let (even, odd) = self.channels_pair_mut(voice0, voice0 + 1);
         let [even_left, even_right] = even.each_mut();
         let [odd_left, odd_right] = odd.each_mut();

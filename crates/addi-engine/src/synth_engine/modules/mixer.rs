@@ -8,11 +8,12 @@ use crate::{
         level_ballistics::LevelBallistics,
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
-            NUM_CHANNELS, ProcessContext, RouterFactory, SamplesOutput, VoiceTarget, VolumeType,
+            ProcessContext, RouterFactory, SamplesOutput, VoiceTarget, VolumeType,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
         types::Smp,
+        voices::NUM_CHANNELS,
     },
 };
 

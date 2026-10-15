@@ -21,11 +21,12 @@ use crate::{
         StereoSample,
         buffer::VoicesLayout,
         routing::{
-            DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId, NUM_CHANNELS,
-            ProcessContext, RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget,
+            DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId, ProcessContext,
+            RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget,
         },
         synth_module::SynthModule,
         types::Smp,
+        voices::NUM_CHANNELS,
     },
 };
 

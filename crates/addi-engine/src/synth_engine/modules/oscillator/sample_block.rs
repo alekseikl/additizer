@@ -9,11 +9,11 @@ use crate::synth_engine::{
 
 use super::{MAX_UNISON_VOICES, UnisonVoice, WaveformBuffer};
 
-pub(super) const UNISON_CHUNKS: usize = MAX_UNISON_VOICES / SIMD_LANES;
+pub const UNISON_CHUNKS: usize = MAX_UNISON_VOICES / SIMD_LANES;
 const _: () = assert!(UNISON_CHUNKS * SIMD_LANES == MAX_UNISON_VOICES);
 
 #[derive(Clone, Copy, Default)]
-pub(super) struct UnisonBlockParams {
+pub struct UnisonBlockParams {
     rate_from: WideSmp,
     rate_delta: WideSmp,
     phase_shift_from: WideSmp,
@@ -25,7 +25,7 @@ pub(super) struct UnisonBlockParams {
 impl UnisonBlockParams {
     /// Voice gains are already normalized by the unison layout.
     #[inline(always)]
-    pub(super) fn from_voices(voices: &[UnisonVoice]) -> Self {
+    pub fn from_voices(voices: &[UnisonVoice]) -> Self {
         debug_assert!(voices.len() <= SIMD_LANES);
 
         let lanes = |f: fn(&UnisonVoice) -> Smp| {
@@ -56,18 +56,18 @@ struct WaveTap {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct SampleCtx<'a> {
-    pub(super) buff_t: WideSmp,
-    pub(super) phase_shift: WidePhase,
-    pub(super) phase_inc: WideSmp,
-    pub(super) wave_from: &'a WaveformBuffer,
-    pub(super) wave_to: &'a WaveformBuffer,
-    pub(super) acc_from: [WideSmp; SIMD_LANES],
-    pub(super) acc_to: [WideSmp; SIMD_LANES],
+pub struct SampleCtx<'a> {
+    pub buff_t: WideSmp,
+    pub phase_shift: WidePhase,
+    pub phase_inc: WideSmp,
+    pub wave_from: &'a WaveformBuffer,
+    pub wave_to: &'a WaveformBuffer,
+    pub acc_from: [WideSmp; SIMD_LANES],
+    pub acc_to: [WideSmp; SIMD_LANES],
 }
 
 #[inline(always)]
-pub(super) fn render_same<const BITS: usize>(
+pub fn render_same<const BITS: usize>(
     phases: &mut [Phase; SIMD_LANES],
     params: &UnisonBlockParams,
     s: &mut SampleCtx,
@@ -105,7 +105,7 @@ pub(super) fn render_same<const BITS: usize>(
 }
 
 #[inline(always)]
-pub(super) fn render_sized<const FROM_BITS: usize, const TO_BITS: usize>(
+pub fn render_sized<const FROM_BITS: usize, const TO_BITS: usize>(
     phases: &mut [Phase; SIMD_LANES],
     params: &UnisonBlockParams,
     s: &mut SampleCtx,

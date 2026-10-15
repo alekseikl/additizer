@@ -14,11 +14,12 @@ use crate::synth_engine::{
     buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
     phase::Phase,
     routing::{
-        ControlRouterType, DataType, InputMeta, InputSlots, MixedSlots, NUM_CHANNELS,
-        ProcessContext, RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget,
+        ControlRouterType, DataType, InputMeta, InputSlots, MixedSlots, ProcessContext,
+        RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget,
     },
     smooth::{SmoothedSample, Smoother},
     synth_module::SynthModule,
+    voices::NUM_CHANNELS,
 };
 
 struct ChannelParams {

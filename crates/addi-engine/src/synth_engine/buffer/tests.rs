@@ -1,8 +1,9 @@
 use std::mem::size_of;
 
 use super::{VoicesLayout, new_voices_layout, new_voices_layout_with};
-use crate::synth_engine::routing::{
-    LEFT_CHANNEL, MAX_VOICES, NUM_CHANNELS, RIGHT_CHANNEL, SamplesOutput,
+use crate::synth_engine::{
+    routing::SamplesOutput,
+    voices::{LEFT_CHANNEL, MAX_VOICES, NUM_CHANNELS, RIGHT_CHANNEL},
 };
 
 fn filled_in_voice_order() -> VoicesLayout<i32> {

@@ -2,7 +2,7 @@ use super::*;
 use crate::synth_engine::{
     ComplexSample, DataType, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId,
     NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Smp, SynthEngine, oscillator::OscillatorConfig,
-    routing::LEFT_CHANNEL, synth_module::SynthModule,
+    synth_module::SynthModule, voices::LEFT_CHANNEL,
 };
 
 const SAMPLE_RATE: Smp = 48_000.0;

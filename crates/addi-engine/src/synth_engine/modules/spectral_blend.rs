@@ -13,11 +13,12 @@ use crate::synth_engine::{
     StereoSample,
     buffer::VoicesLayout,
     routing::{
-        DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId, NUM_CHANNELS, ProcessContext,
+        DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId, ProcessContext,
         RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget,
     },
     synth_module::SynthModule,
     types::Smp,
+    voices::NUM_CHANNELS,
 };
 
 struct ChannelParams {

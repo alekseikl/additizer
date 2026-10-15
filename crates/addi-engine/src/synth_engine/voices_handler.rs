@@ -4,10 +4,10 @@ use crate::synth_engine::{
     Expression, Smp,
     buffer::{MonoVoicesLayout, new_mono_voices_layout},
     note_to_pitch,
-    routing::{ExpressionEvent, MAX_VOICES, PrevNote, VOICE_PAIR_LEN, VoiceEvent},
+    routing::{ExpressionEvent, PrevNote, VoiceEvent},
+    voices::{AVAILABLE_VOICES, MAX_VOICES, VOICE_BLOCK_LEN},
 };
 
-pub const MAX_AVAILABLE_VOICES: usize = MAX_VOICES - 4;
 pub const BAND_LIMIT_FREQUENCY: Smp = 24_000.0;
 const NUM_MIDI_CHANNELS: usize = 16;
 const MAX_MIDI_CHANNEL: u8 = NUM_MIDI_CHANNELS as u8 - 1;
@@ -189,7 +189,7 @@ pub struct VoicesHandler {
 impl VoicesHandler {
     pub fn new(num_voices: usize, legato: bool, kill_same_note: bool) -> Self {
         Self {
-            num_voices: num_voices.clamp(1, MAX_AVAILABLE_VOICES),
+            num_voices: num_voices.clamp(1, AVAILABLE_VOICES),
             legato,
             kill_same_note,
             waiting: Vec::with_capacity(64),
@@ -205,10 +205,10 @@ impl VoicesHandler {
     /// Otherwise take the first slot of the first fully free pair.
     fn alloc_voice(&self) -> Option<usize> {
         let mut free_pair = None;
-        let (pairs, _) = self.voices.as_chunks::<VOICE_PAIR_LEN>();
+        let (pairs, _) = self.voices.as_chunks::<VOICE_BLOCK_LEN>();
 
         for (pair_idx, [left, right]) in pairs.iter().enumerate() {
-            let base = pair_idx * VOICE_PAIR_LEN;
+            let base = pair_idx * VOICE_BLOCK_LEN;
 
             match (left.is_some(), right.is_some()) {
                 (true, false) => return Some(base + 1),
@@ -616,7 +616,7 @@ impl VoicesHandler {
     }
 
     pub fn set_num_voices(&mut self, num_voices: usize) {
-        self.num_voices = num_voices.clamp(1, MAX_AVAILABLE_VOICES);
+        self.num_voices = num_voices.clamp(1, AVAILABLE_VOICES);
     }
 
     pub fn set_legato(&mut self, legato: bool) {

@@ -10,7 +10,7 @@ use crate::{
     synth_engine::{
         ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId, Note,
         OUTPUT_MODULE_ID, SPECTRAL_BUFFER_SIZE, Smp, SynthEngine, VoiceEvent, buffer::DC_OFFSET,
-        oscillator::OscillatorConfig, routing::LEFT_CHANNEL, synth_module::SynthModule,
+        oscillator::OscillatorConfig, synth_module::SynthModule, voices::LEFT_CHANNEL,
         voices_handler::BAND_LIMIT_FREQUENCY,
     },
 };

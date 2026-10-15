@@ -7,12 +7,12 @@ use crate::{
         StereoSample,
         buffer::VoicesLayout,
         routing::{
-            DataType, Input, InputMeta, InputSlots, MixType, MixedSlots, ModuleId, NUM_CHANNELS,
-            ProcessContext, RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget,
-            VolumeType,
+            DataType, Input, InputMeta, InputSlots, MixType, MixedSlots, ModuleId, ProcessContext,
+            RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget, VolumeType,
         },
         synth_module::SynthModule,
         types::{ComplexSample, Smp},
+        voices::NUM_CHANNELS,
     },
 };
 

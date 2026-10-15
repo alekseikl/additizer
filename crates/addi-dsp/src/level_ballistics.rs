@@ -1,4 +1,6 @@
-use crate::{NUM_CHANNELS, Smp, math::from_ms};
+use crate::{Smp, math::from_ms};
+
+const CHANNELS: usize = 2;
 
 const ATTACK_TIME: Smp = from_ms(2.0);
 const RELEASE_TIME: Smp = from_ms(250.0);
@@ -36,24 +38,20 @@ impl LevelBallistics {
 }
 
 pub struct StereoLevelBallistics {
-    channels: [LevelBallistics; NUM_CHANNELS],
+    channels: [LevelBallistics; CHANNELS],
 }
 
 impl Default for StereoLevelBallistics {
     fn default() -> Self {
         Self {
-            channels: [LevelBallistics::default(); NUM_CHANNELS],
+            channels: [LevelBallistics::default(); CHANNELS],
         }
     }
 }
 
 impl StereoLevelBallistics {
-    pub fn process(
-        &mut self,
-        channels: [&[Smp]; NUM_CHANNELS],
-        sample_rate: Smp,
-    ) -> [Smp; NUM_CHANNELS] {
-        let mut levels = [0.0; NUM_CHANNELS];
+    pub fn process(&mut self, channels: [&[Smp]; CHANNELS], sample_rate: Smp) -> [Smp; CHANNELS] {
+        let mut levels = [0.0; CHANNELS];
 
         for ((samples, ballistics), level) in channels
             .into_iter()

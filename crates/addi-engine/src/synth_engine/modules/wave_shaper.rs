@@ -9,10 +9,11 @@ use crate::{
         buffer::{Buffer, VoicesLayout, zero_buffer},
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
-            NUM_CHANNELS, ProcessContext, RouterFactory, SamplesOutput, VoiceTarget,
+            ProcessContext, RouterFactory, SamplesOutput, VoiceTarget,
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
+        voices::NUM_CHANNELS,
     },
 };
 

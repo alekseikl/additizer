@@ -1,5 +1,8 @@
 use super::*;
-use crate::synth_engine::routing::{Expression, VoiceEvent};
+use crate::synth_engine::{
+    routing::{Expression, VoiceEvent},
+    voices::AVAILABLE_VOICES,
+};
 
 fn note_pitch(note: u8) -> Smp {
     VoiceEvents::note_to_pitch(note)
@@ -66,7 +69,7 @@ fn set_num_voices_clamps() {
     assert_eq!(h.get_metrics().num_voices, 1);
 
     h.set_num_voices(999);
-    assert_eq!(h.get_metrics().num_voices, MAX_AVAILABLE_VOICES);
+    assert_eq!(h.get_metrics().num_voices, AVAILABLE_VOICES);
 
     h.set_num_voices(8);
     assert_eq!(h.get_metrics().num_voices, 8);
@@ -2703,7 +2706,7 @@ fn waiting_note_off_after_kill_then_terminates() {
 
 #[test]
 fn alloc_voice_fills_partial_pair_before_opening_a_new_one() {
-    let mut h = handler(MAX_AVAILABLE_VOICES);
+    let mut h = handler(AVAILABLE_VOICES);
     let note = |midi: u8| Note {
         channel: 0,
         note: midi,

@@ -2,8 +2,6 @@
 
 //! Time-domain and spectral DSP used by Additizer.
 
-pub const NUM_CHANNELS: usize = 2;
-
 pub mod consts;
 pub mod fast_math;
 pub mod filters;

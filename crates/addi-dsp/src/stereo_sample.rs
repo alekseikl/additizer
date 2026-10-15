@@ -2,11 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::iter::Sum;
 use std::ops::{Add, Div, Index, IndexMut, Mul, Sub};
 
-use crate::{NUM_CHANNELS, Smp};
+use crate::Smp;
+
+const CHANNELS: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct StereoSample {
-    channels: [Smp; NUM_CHANNELS],
+    channels: [Smp; CHANNELS],
 }
 
 impl StereoSample {
@@ -21,7 +23,7 @@ impl StereoSample {
         Self { channels: [lr, lr] }
     }
 
-    pub fn channels(&self) -> &[Smp; NUM_CHANNELS] {
+    pub fn channels(&self) -> &[Smp; CHANNELS] {
         &self.channels
     }
 
