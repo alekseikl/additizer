@@ -1,18 +1,19 @@
 use realfft::RealFftPlanner;
 
 use super::{
-    ConvexUnison, DFT_BUFFER_SIZE, FlatUnison, HALF_WAVEFORM_BITS, IfftPlanners, Interpolated,
-    MAX_UNISON_VOICES, Oscillator, OscillatorConfig, OscillatorLinks, UnisonStyle, UnisonVoice,
-    VoiceRenderCtx, WAVEFORM_BITS, WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE,
-    Waveform, WaveformBuffer, WaveformSize,
-    lanes::{SampleCtx, UnisonLaneParams, render_same},
+    ConvexUnison, DFT_BUFFER_SIZE, FlatUnison, HALF_WAVEFORM_BITS, IfftPlanners, MAX_UNISON_VOICES,
+    Oscillator, OscillatorConfig, OscillatorLinks, UnisonStyle, UnisonVoice, VoiceRenderCtx,
+    WAVEFORM_BITS, WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform,
+    WaveformBuffer, WaveformSize,
+    sample_block::{SampleCtx, UnisonBlockParams, render_same},
+    unison::Interpolated,
 };
 use crate::synth_engine::{
     ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, MAX_VOICES, ModuleConfig,
     ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, SIMD_LANES, Smp, SynthEngine, WideSmp,
     fast_math::catmull_rom_from_powers,
     harmonic_editor::HarmonicEditorConfig,
-    phase::{Phase, PhaseX4},
+    phase::{Phase, WidePhase},
     routing::{InputSlot, LEFT_CHANNEL, RIGHT_CHANNEL},
 };
 
@@ -1044,12 +1045,12 @@ fn store_lane_params(osc: &mut Oscillator, voices: &[UnisonVoice], unison: usize
 
     for chunk in 0..full {
         let start = chunk * SIMD_LANES;
-        osc.lane_params[chunk] = UnisonLaneParams::from_voices(&voices[start..start + SIMD_LANES]);
+        osc.lane_params[chunk] = UnisonBlockParams::from_voices(&voices[start..start + SIMD_LANES]);
     }
 
     if rem > 0 {
         let start = full * SIMD_LANES;
-        osc.lane_params[full] = UnisonLaneParams::from_voices(&voices[start..start + rem]);
+        osc.lane_params[full] = UnisonBlockParams::from_voices(&voices[start..start + rem]);
     }
 }
 
@@ -1229,7 +1230,7 @@ fn render_voice_samples_matches_scalar_reference() {
 
         let mut actual = vec![RENDER_SENTINEL; case.samples];
         let ctx = render_ctx(&case);
-        osc.render_voice_samples(&ctx, &mut actual, case.start, case.end);
+        osc.render_samples(&ctx, &mut actual, case.start, case.end);
 
         assert_samples_close(case.name, &expected, &actual);
         assert_phases(
@@ -1258,8 +1259,8 @@ fn render_voice_samples_continues_across_a_split_range() {
 
     let mut actual = vec![RENDER_SENTINEL; case.samples];
     let ctx = render_ctx(&case);
-    osc.render_voice_samples(&ctx, &mut actual, 0, 17);
-    osc.render_voice_samples(&ctx, &mut actual, 17, 48);
+    osc.render_samples(&ctx, &mut actual, 0, 17);
+    osc.render_samples(&ctx, &mut actual, 17, 48);
 
     assert_samples_close(case.name, &expected, &actual);
     assert_phases(
@@ -1281,8 +1282,8 @@ fn render_voice_samples_empty_range_is_a_no_op() {
     let mut output = vec![RENDER_SENTINEL; case.samples];
     let ctx = render_ctx(&case);
 
-    osc.render_voice_samples(&ctx, &mut output, 4, 4);
-    osc.render_voice_samples(&ctx, &mut output, 10, 4);
+    osc.render_samples(&ctx, &mut output, 4, 4);
+    osc.render_samples(&ctx, &mut output, 10, 4);
 
     assert!(output.iter().all(|sample| *sample == RENDER_SENTINEL));
     assert_eq!(
@@ -1303,13 +1304,13 @@ fn unison_phase_ramp_across_half_cycle_follows_the_parameter() {
         phase_shift: Interpolated { from, to },
         gain: Interpolated { from: 1.0, to: 1.0 },
     }];
-    let params = UnisonLaneParams::from_voices(&voices);
+    let params = UnisonBlockParams::from_voices(&voices);
     let wave = patterned_wave(WaveformSize::Full, 1.0);
     let phase = Phase::from_bits(0x1000_0000);
     let mut phases = [phase; SIMD_LANES];
     let mut ctx = SampleCtx {
         buff_t: WideSmp::splat(buff_t),
-        phase_shift: PhaseX4::splat(Phase::ZERO),
+        phase_shift: WidePhase::splat(Phase::ZERO),
         phase_inc: WideSmp::ZERO,
         wave_from: &wave,
         wave_to: &wave,

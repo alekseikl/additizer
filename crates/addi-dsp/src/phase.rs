@@ -101,9 +101,9 @@ impl AddAssign<Smp> for Phase {
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct PhaseX4(u32x4);
+pub struct WidePhase(u32x4);
 
-impl PhaseX4 {
+impl WidePhase {
     #[inline(always)]
     pub fn load(phases: &[Phase; SIMD_LANES]) -> Self {
         Self(u32x4::new(phases.map(Phase::bits)))
@@ -121,27 +121,14 @@ impl PhaseX4 {
 
     const FULL_PHASE: WideSmp = WideSmp::splat(Phase::FULL_PHASE);
 
-    /// Wraps each lane into `[-0.5, 0.5]` (exact modulo one cycle).
-    #[inline(always)]
-    pub fn wrap_normalized(phase: WideSmp) -> WideSmp {
-        phase - phase.round()
-    }
-
-    /// Lane-wise [`Phase::from_normalized`] for a phase already in `[-0.5, 0.5]`.
-    ///
-    /// `+0.5` does not fit in `i32` after scaling by `2^32` and saturates one
-    /// LSB short of half a cycle.
-    #[inline(always)]
-    pub fn from_wrapped(phase: WideSmp) -> Self {
-        Self(cast((phase * Self::FULL_PHASE).trunc_int()))
-    }
-
     /// Lane-wise [`Phase::from_normalized`].
     ///
-    /// Wraps into `[-0.5, 0.5]` so [`Self::from_wrapped`] does not saturate.
+    /// Wraps into `[-0.5, 0.5]` first: `+0.5` does not fit in `i32` after
+    /// scaling by `2^32` and would saturate one LSB short of half a cycle.
     #[inline(always)]
     pub fn from_normalized(phase: WideSmp) -> Self {
-        Self::from_wrapped(Self::wrap_normalized(phase))
+        let wrapped = phase - phase.round();
+        Self(cast((wrapped * Self::FULL_PHASE).trunc_int()))
     }
 
     /// Lane-wise [`Phase::wave_index`].
@@ -160,7 +147,7 @@ impl PhaseX4 {
     }
 }
 
-impl Add for PhaseX4 {
+impl Add for WidePhase {
     type Output = Self;
 
     #[inline(always)]
@@ -169,7 +156,7 @@ impl Add for PhaseX4 {
     }
 }
 
-impl Add<WideSmp> for PhaseX4 {
+impl Add<WideSmp> for WidePhase {
     type Output = Self;
 
     #[inline(always)]

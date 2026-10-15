@@ -7,32 +7,36 @@ use realfft::{ComplexToReal, RealFftPlanner};
 use smallvec::SmallVec;
 
 use crate::{
+    oscillator::sample_block::{render_same, render_sized},
     synth_engine::{
-        SIMD_LANES, db_to_gain, fast_pitch_to_freq_wide, from_st, pitch_to_freq, zip_map_wide,
-    },
-    synth_engine::{
-        SmoothedSampleParams, StereoSample,
+        SIMD_LANES, StereoSample,
         buffer::{Buffer, SPECTRUM_BITS, VoicesLayout, new_voices_layout, zero_buffer},
-        phase::{Phase, PhaseX4},
+        db_to_gain, fast_pitch_to_freq_wide, from_st,
+        phase::{Phase, WidePhase},
+        pitch_to_freq,
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, LEFT_CHANNEL, MAX_VOICES,
-            MixedSlots, ModuleId, NUM_CHANNELS, ProcessContext, RIGHT_CHANNEL, RouterFactory,
-            SamplesOutput, VoiceEvent, VoiceRouter, VoiceTarget,
+            ModuleId, NUM_CHANNELS, ProcessContext, RIGHT_CHANNEL, RouterFactory, SamplesOutput,
+            VoiceEvent, VoiceRouter, VoiceTarget,
         },
-        smooth::SmoothedSample,
         synth_module::SynthModule,
         types::{ComplexSample, Smp, WideSmp},
+        zip_map_wide,
     },
 };
 
 mod config;
-mod lanes;
+mod inputs;
 mod link;
+mod params;
+mod sample_block;
 pub mod stub;
 mod unison;
 
-use lanes::{SampleCtx, UNISON_CHUNKS, UnisonLaneParams};
-use unison::{ConvexUnison, FlatUnison, ManualUnison, UnisonType};
+use inputs::Inputs;
+use params::{ChannelParams, Params};
+use sample_block::{SampleCtx, UNISON_CHUNKS, UnisonBlockParams};
+use unison::{ConvexUnison, FlatUnison, ManualUnison, UnisonType, UnisonVoice};
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -110,101 +114,6 @@ impl IfftPlanners {
     }
 }
 
-struct Params {
-    unison: usize,
-    unison_style: UnisonStyle,
-    unison_stereo: Smp, // [0.0, 1.0]
-    steal_phase: bool,
-    phase_random: Smp,        // [0.0, 1.0]
-    phase_random_stereo: Smp, // [0.0, 1.0]
-    mono_spectrum: bool,
-    full_fft_size: bool,
-}
-
-impl Params {
-    fn from_config(c: &config::OscillatorConfig) -> Self {
-        Self {
-            unison: c.unison_voices,
-            unison_style: c.unison_style,
-            unison_stereo: c.unison_stereo,
-            steal_phase: c.steal_phase,
-            phase_random: c.phase_random,
-            phase_random_stereo: c.phase_random_stereo,
-            mono_spectrum: c.mono_spectrum,
-            full_fft_size: c.full_fft_size,
-        }
-    }
-}
-
-struct UnisonParams {
-    initial_phase: Smp,
-    phase_shift: Smp,
-    phase_shift_to: Smp,
-    /// Hand-set level. Read by [`UnisonStyle::Manual`] only.
-    gain: Smp,
-    /// Hand-set level at full gains blend. Read by [`UnisonStyle::Manual`] only.
-    gain_to: Smp,
-}
-
-impl Default for UnisonParams {
-    fn default() -> Self {
-        Self {
-            initial_phase: 0.0,
-            phase_shift: 0.0,
-            phase_shift_to: 0.0,
-            gain: 1.0,
-            gain_to: 1.0,
-        }
-    }
-}
-
-struct ChannelParams {
-    detune: Smp, // Octaves
-    detune_focus: Smp,
-    phase_shift: SmoothedSample,
-    frequency_shift: SmoothedSample,
-    phases_blend: Smp,
-    gains_blend: Smp,
-    unison: [UnisonParams; MAX_UNISON_VOICES],
-}
-
-impl ChannelParams {
-    fn from_config(c: &OscillatorConfig, channel_idx: usize) -> Self {
-        Self {
-            detune: c.detune[channel_idx],
-            detune_focus: c.detune_focus[channel_idx],
-            phase_shift: c.phase_shift[channel_idx].into(),
-            frequency_shift: c.frequency_shift[channel_idx].into(),
-            phases_blend: c.phases_blend[channel_idx],
-            gains_blend: c.gains_blend[channel_idx],
-            unison: array::from_fn(|i| UnisonParams {
-                initial_phase: c.unison[i].initial_phase[channel_idx],
-                phase_shift: c.unison[i].phase_shift[channel_idx],
-                phase_shift_to: c.unison[i].phase_shift_to[channel_idx],
-                gain: c.unison[i].gain[channel_idx],
-                gain_to: c.unison[i].gain_to[channel_idx],
-            }),
-        }
-    }
-
-    pub fn advance_smoothers(&mut self, smooth_params: &SmoothedSampleParams, samples: usize) {
-        self.phase_shift.advance(smooth_params, samples);
-        self.frequency_shift.advance(smooth_params, samples);
-    }
-}
-
-struct Interpolated {
-    from: Smp,
-    to: Smp,
-}
-
-impl Interpolated {
-    #[inline(always)]
-    fn advance(&mut self) {
-        self.from = self.to;
-    }
-}
-
 struct PhaseReset {
     steal_from: Option<usize>,
     stolen: bool,
@@ -220,22 +129,6 @@ struct VoiceRenderCtx {
     voice_idx: usize,
     wave_channel: usize,
     samples: usize,
-}
-
-struct UnisonVoice {
-    rate: Interpolated,
-    phase_shift: Interpolated,
-    gain: Interpolated,
-}
-
-impl Default for UnisonVoice {
-    fn default() -> Self {
-        Self {
-            rate: Interpolated { from: 1.0, to: 1.0 },
-            phase_shift: Interpolated { from: 0.0, to: 0.0 },
-            gain: Interpolated { from: 1.0, to: 1.0 },
-        }
-    }
 }
 
 #[derive(Default)]
@@ -310,80 +203,6 @@ pub enum PhasesDst {
     To,
 }
 
-pub struct Inputs {
-    spectrum: Option<usize>,
-    pitch: Option<usize>,
-    phase_shift: MixedSlots,
-    freq_shift: MixedSlots,
-    detune: MixedSlots,
-    detune_focus: MixedSlots,
-    phase_steal: MixedSlots,
-    phases_blend: MixedSlots,
-    gains_blend: MixedSlots,
-}
-
-impl Default for Inputs {
-    fn default() -> Self {
-        Self {
-            spectrum: None,
-            pitch: None,
-            phase_shift: MixedSlots::new(Input::PhaseShift),
-            freq_shift: MixedSlots::new(Input::FrequencyShift),
-            detune: MixedSlots::new(Input::Detune),
-            detune_focus: MixedSlots::new(Input::DetuneFocus),
-            phase_steal: MixedSlots::new(Input::PhaseSteal),
-            phases_blend: MixedSlots::new(Input::PhasesBlend),
-            gains_blend: MixedSlots::new(Input::GainsBlend),
-        }
-    }
-}
-
-impl Inputs {
-    fn from_slots(inputs: &[InputSlots]) -> Self {
-        let mut result = Self::default();
-
-        for input in inputs {
-            match input {
-                InputSlots::Direct { input_type, slot } => {
-                    if matches!(input_type, Input::Pitch) {
-                        result.pitch = Some(*slot);
-                    }
-                }
-                InputSlots::Spectral { input_type, slot } => {
-                    if matches!(input_type, Input::Spectrum) {
-                        result.spectrum = Some(*slot);
-                    }
-                }
-                InputSlots::Mixed(input) => match input.input_type {
-                    Input::PhaseShift => result.phase_shift = input.clone(),
-                    Input::FrequencyShift => result.freq_shift = input.clone(),
-                    Input::Detune => result.detune = input.clone(),
-                    Input::DetuneFocus => result.detune_focus = input.clone(),
-                    Input::PhaseSteal => result.phase_steal = input.clone(),
-                    Input::PhasesBlend => result.phases_blend = input.clone(),
-                    Input::GainsBlend => result.gains_blend = input.clone(),
-                    _ => (),
-                },
-            }
-        }
-
-        result
-    }
-
-    fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
-        match input_type {
-            Input::PhaseShift => self.phase_shift.update_amount(src_slot, amount),
-            Input::FrequencyShift => self.freq_shift.update_amount(src_slot, amount),
-            Input::Detune => self.detune.update_amount(src_slot, amount),
-            Input::DetuneFocus => self.detune_focus.update_amount(src_slot, amount),
-            Input::PhaseSteal => self.phase_steal.update_amount(src_slot, amount),
-            Input::PhasesBlend => self.phases_blend.update_amount(src_slot, amount),
-            Input::GainsBlend => self.gains_blend.update_amount(src_slot, amount),
-            _ => (),
-        }
-    }
-}
-
 type Router<'v, 'f, 'c, A> = VoiceRouter<'v, 'f, 'c, AudioRouterType, A>;
 
 pub struct Oscillator<L: OscillatorLinks = stub::Links> {
@@ -399,7 +218,7 @@ pub struct Oscillator<L: OscillatorLinks = stub::Links> {
     output_slot: usize,
     voices: VoicesLayout<Voice>,
     voice_buffers: VoicesLayout<VoiceBuffers>,
-    lane_params: [UnisonLaneParams; UNISON_CHUNKS],
+    lane_params: [UnisonBlockParams; UNISON_CHUNKS],
     shared_random_phases: [Phase; MAX_UNISON_VOICES],
 }
 
@@ -784,13 +603,13 @@ impl<L: OscillatorLinks> Oscillator<L> {
 
         for chunk_idx in 0..full_chunks {
             let start = chunk_idx * SIMD_LANES;
-            let params = UnisonLaneParams::from_voices(&voice.unison[start..start + SIMD_LANES]);
+            let params = UnisonBlockParams::from_voices(&voice.unison[start..start + SIMD_LANES]);
             self.lane_params[chunk_idx] = params;
         }
 
         if rem_lanes > 0 {
             let start = full_chunks * SIMD_LANES;
-            let params = UnisonLaneParams::from_voices(&voice.unison[start..start + rem_lanes]);
+            let params = UnisonBlockParams::from_voices(&voice.unison[start..start + rem_lanes]);
             self.lane_params[full_chunks] = params;
         }
     }
@@ -916,7 +735,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
     }
 
     #[inline(never)]
-    fn render_voice_samples(
+    fn render_samples(
         &mut self,
         ctx: &VoiceRenderCtx,
         output: &mut [Smp],
@@ -936,58 +755,53 @@ impl<L: OscillatorLinks> Oscillator<L> {
 
         match (from_size, to_size) {
             (WaveformSize::Half, WaveformSize::Half) => {
-                self.render_voice_samples_same::<HALF_WAVEFORM_BITS>(ctx, output, start, end)
+                self.render_samples_same::<HALF_WAVEFORM_BITS>(ctx, output, start, end)
             }
             (WaveformSize::Full, WaveformSize::Full) => {
-                self.render_voice_samples_same::<WAVEFORM_BITS>(ctx, output, start, end)
+                self.render_samples_same::<WAVEFORM_BITS>(ctx, output, start, end)
             }
             (WaveformSize::Full, WaveformSize::Half) => self
-                .render_voice_samples_sized::<WAVEFORM_BITS, HALF_WAVEFORM_BITS>(
-                    ctx, output, start, end,
-                ),
+                .render_samples_sized::<WAVEFORM_BITS, HALF_WAVEFORM_BITS>(ctx, output, start, end),
             (WaveformSize::Half, WaveformSize::Full) => self
-                .render_voice_samples_sized::<HALF_WAVEFORM_BITS, WAVEFORM_BITS>(
-                    ctx, output, start, end,
-                ),
+                .render_samples_sized::<HALF_WAVEFORM_BITS, WAVEFORM_BITS>(ctx, output, start, end),
         }
     }
 
     #[inline(never)]
-    fn render_voice_samples_same<const BITS: usize>(
+    fn render_samples_same<const BITS: usize>(
         &mut self,
         ctx: &VoiceRenderCtx,
         output: &mut [Smp],
         start: usize,
         end: usize,
     ) {
-        self.render_voice_loop(ctx, output, start, end, lanes::render_same::<BITS>);
+        self.render_samples_loop(ctx, output, start, end, render_same::<BITS>);
     }
 
     #[inline(never)]
-    fn render_voice_samples_sized<const FROM_BITS: usize, const TO_BITS: usize>(
+    fn render_samples_sized<const FROM_BITS: usize, const TO_BITS: usize>(
         &mut self,
         ctx: &VoiceRenderCtx,
         output: &mut [Smp],
         start: usize,
         end: usize,
     ) {
-        self.render_voice_loop(
-            ctx,
-            output,
-            start,
-            end,
-            lanes::render_sized::<FROM_BITS, TO_BITS>,
-        );
+        self.render_samples_loop(ctx, output, start, end, render_sized::<FROM_BITS, TO_BITS>);
     }
 
     #[inline(always)]
-    fn render_voice_loop(
+    fn render_samples_loop(
         &mut self,
         ctx: &VoiceRenderCtx,
         output: &mut [Smp],
         start: usize,
         end: usize,
-        mut render_lanes: impl FnMut(&mut [Phase; SIMD_LANES], &UnisonLaneParams, &mut SampleCtx, usize),
+        mut render_block: impl FnMut(
+            &mut [Phase; SIMD_LANES],
+            &UnisonBlockParams,
+            &mut SampleCtx,
+            usize,
+        ),
     ) {
         let unison = self.params.unison.clamp(1, MAX_UNISON_VOICES);
         let voice = self.voices.at_mut(ctx.channel_idx, ctx.voice_idx);
@@ -1017,7 +831,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         ) {
             let mut s = SampleCtx {
                 buff_t: WideSmp::splat(buff_t),
-                phase_shift: PhaseX4::splat(Phase::from_normalized(phase_shift)),
+                phase_shift: WidePhase::splat(Phase::from_normalized(phase_shift)),
                 phase_inc: WideSmp::splat(phase_inc),
                 wave_from,
                 wave_to,
@@ -1026,11 +840,11 @@ impl<L: OscillatorLinks> Oscillator<L> {
             };
 
             for (phases, params) in full_phases.iter_mut().zip(full_params) {
-                render_lanes(phases, params, &mut s, SIMD_LANES);
+                render_block(phases, params, &mut s, SIMD_LANES);
             }
 
             if rem_lanes > 0 {
-                render_lanes(&mut rem_phases[0], &rem_params[0], &mut s, rem_lanes);
+                render_block(&mut rem_phases[0], &rem_params[0], &mut s, rem_lanes);
             }
 
             let acc_from = (s.acc_from[0] + s.acc_from[1]) + (s.acc_from[2] + s.acc_from[3]);
@@ -1120,7 +934,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         for steal in &steals {
             let offset = (steal.offset as usize).min(ctx.samples);
 
-            self.render_voice_samples(&ctx, output, start, offset);
+            self.render_samples(&ctx, output, start, offset);
 
             let phases = self.voices.at(channel_idx, voice_idx).phases;
             let requester = self.voices.at_mut(channel_idx, steal.voice_idx as usize);
@@ -1133,7 +947,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             start = offset;
         }
 
-        self.render_voice_samples(&ctx, output, start, ctx.samples);
+        self.render_samples(&ctx, output, start, ctx.samples);
 
         if !mono_spectrum || channel_idx == RIGHT_CHANNEL {
             mem::swap(

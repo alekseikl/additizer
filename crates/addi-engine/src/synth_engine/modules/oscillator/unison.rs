@@ -8,9 +8,32 @@ use super::{ChannelParams, Inputs, MAX_UNISON_VOICES, Router};
 
 const MAX_DETUNE: Smp = 1.0;
 const MAX_DETUNE_POWER: Smp = 5.0;
+pub struct Interpolated {
+    pub from: Smp,
+    pub to: Smp,
+}
 
-fn blend(from: Smp, to: Smp, amount: Smp) -> Smp {
-    (to - from).mul_add(amount, from)
+impl Interpolated {
+    #[inline(always)]
+    pub fn advance(&mut self) {
+        self.from = self.to;
+    }
+}
+
+pub struct UnisonVoice {
+    pub rate: Interpolated,
+    pub phase_shift: Interpolated,
+    pub gain: Interpolated,
+}
+
+impl Default for UnisonVoice {
+    fn default() -> Self {
+        Self {
+            rate: Interpolated { from: 1.0, to: 1.0 },
+            phase_shift: Interpolated { from: 0.0, to: 0.0 },
+            gain: Interpolated { from: 1.0, to: 1.0 },
+        }
+    }
 }
 
 pub(super) struct UnisonStateUpdate {
@@ -28,6 +51,10 @@ pub(super) trait UnisonType {
         inputs: &Inputs,
         router: &mut Router<'_, '_, '_, A>,
     ) -> impl Iterator<Item = UnisonStateUpdate> + 'a;
+}
+
+fn blend(from: Smp, to: Smp, amount: Smp) -> Smp {
+    (to - from).mul_add(amount, from)
 }
 
 pub(super) struct ManualUnison;

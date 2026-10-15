@@ -3,7 +3,7 @@ use std::array;
 use crate::synth_engine::{
     SIMD_LANES,
     fast_math::catmull_rom_from_powers,
-    phase::{Phase, PhaseX4},
+    phase::{Phase, WidePhase},
     types::{Smp, WideSmp},
 };
 
@@ -13,7 +13,7 @@ pub(super) const UNISON_CHUNKS: usize = MAX_UNISON_VOICES / SIMD_LANES;
 const _: () = assert!(UNISON_CHUNKS * SIMD_LANES == MAX_UNISON_VOICES);
 
 #[derive(Clone, Copy, Default)]
-pub(super) struct UnisonLaneParams {
+pub(super) struct UnisonBlockParams {
     rate_from: WideSmp,
     rate_delta: WideSmp,
     phase_shift_from: WideSmp,
@@ -22,7 +22,7 @@ pub(super) struct UnisonLaneParams {
     gain_delta: WideSmp,
 }
 
-impl UnisonLaneParams {
+impl UnisonBlockParams {
     /// Voice gains are already normalized by the unison layout.
     #[inline(always)]
     pub(super) fn from_voices(voices: &[UnisonVoice]) -> Self {
@@ -58,7 +58,7 @@ struct WaveTap {
 #[derive(Clone, Copy)]
 pub(super) struct SampleCtx<'a> {
     pub(super) buff_t: WideSmp,
-    pub(super) phase_shift: PhaseX4,
+    pub(super) phase_shift: WidePhase,
     pub(super) phase_inc: WideSmp,
     pub(super) wave_from: &'a WaveformBuffer,
     pub(super) wave_to: &'a WaveformBuffer,
@@ -69,16 +69,16 @@ pub(super) struct SampleCtx<'a> {
 #[inline(always)]
 pub(super) fn render_same<const BITS: usize>(
     phases: &mut [Phase; SIMD_LANES],
-    params: &UnisonLaneParams,
+    params: &UnisonBlockParams,
     s: &mut SampleCtx,
     lanes: usize,
 ) {
-    let phase = PhaseX4::load(phases);
+    let phase = WidePhase::load(phases);
 
     let unison_shift = params
         .phase_shift_delta
         .mul_add(s.buff_t, params.phase_shift_from);
-    let read_phase = phase + s.phase_shift + PhaseX4::from_normalized(unison_shift);
+    let read_phase = phase + s.phase_shift + WidePhase::from_normalized(unison_shift);
     let idx = read_phase.wave_index::<BITS>();
     let t = read_phase.wave_index_fraction::<BITS>();
     let g = params.gain_delta.mul_add(s.buff_t, params.gain_from);
@@ -107,16 +107,16 @@ pub(super) fn render_same<const BITS: usize>(
 #[inline(always)]
 pub(super) fn render_sized<const FROM_BITS: usize, const TO_BITS: usize>(
     phases: &mut [Phase; SIMD_LANES],
-    params: &UnisonLaneParams,
+    params: &UnisonBlockParams,
     s: &mut SampleCtx,
     lanes: usize,
 ) {
-    let phase = PhaseX4::load(phases);
+    let phase = WidePhase::load(phases);
 
     let unison_shift = params
         .phase_shift_delta
         .mul_add(s.buff_t, params.phase_shift_from);
-    let read_phase = phase + s.phase_shift + PhaseX4::from_normalized(unison_shift);
+    let read_phase = phase + s.phase_shift + WidePhase::from_normalized(unison_shift);
     let g = params.gain_delta.mul_add(s.buff_t, params.gain_from);
     let from_tap = wave_tap::<FROM_BITS>(read_phase, g);
     let to_tap = wave_tap::<TO_BITS>(read_phase, g);
@@ -154,7 +154,7 @@ fn load_segment(wave_buffer: &WaveformBuffer, idx: usize) -> WideSmp {
 }
 
 #[inline(always)]
-fn wave_tap<const BITS: usize>(read_phase: PhaseX4, g: WideSmp) -> WaveTap {
+fn wave_tap<const BITS: usize>(read_phase: WidePhase, g: WideSmp) -> WaveTap {
     let t = read_phase.wave_index_fraction::<BITS>();
     let gt = g * t;
     let gt2 = gt * t;
