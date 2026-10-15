@@ -1,12 +1,10 @@
 use std::array;
 
-use wide::f32x4;
-
 use crate::synth_engine::{
     SIMD_LANES,
     coeffs::catmull_rom_from_powers,
     phase::{Phase, PhaseX4},
-    types::Smp,
+    types::{Smp, WideSmp},
 };
 
 use super::{MAX_UNISON_VOICES, UnisonVoice, WaveformBuffer};
@@ -17,12 +15,12 @@ const _: () = assert!(UNISON_CHUNKS * UNISON_LANES == MAX_UNISON_VOICES);
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct UnisonLaneParams {
-    rate_from: f32x4,
-    rate_delta: f32x4,
-    phase_shift_from: f32x4,
-    phase_shift_delta: f32x4,
-    gain_from: f32x4,
-    gain_delta: f32x4,
+    rate_from: WideSmp,
+    rate_delta: WideSmp,
+    phase_shift_from: WideSmp,
+    phase_shift_delta: WideSmp,
+    gain_from: WideSmp,
+    gain_delta: WideSmp,
 }
 
 impl UnisonLaneParams {
@@ -32,7 +30,7 @@ impl UnisonLaneParams {
         debug_assert!(voices.len() <= UNISON_LANES);
 
         let lanes = |f: fn(&UnisonVoice) -> Smp| {
-            f32x4::new(array::from_fn(|i| voices.get(i).map(f).unwrap_or(0.0)))
+            WideSmp::new(array::from_fn(|i| voices.get(i).map(f).unwrap_or(0.0)))
         };
 
         let phase_shift_from = lanes(|uv| uv.phase_shift.from);
@@ -53,20 +51,20 @@ impl UnisonLaneParams {
 
 struct WaveTap {
     idx: [u32; UNISON_LANES],
-    gt: f32x4,
-    gt2: f32x4,
-    gt3: f32x4,
+    gt: WideSmp,
+    gt2: WideSmp,
+    gt3: WideSmp,
 }
 
 #[derive(Clone, Copy)]
 pub(super) struct SampleCtx<'a> {
-    pub(super) buff_t: f32x4,
+    pub(super) buff_t: WideSmp,
     pub(super) phase_shift: PhaseX4,
-    pub(super) phase_inc: f32x4,
+    pub(super) phase_inc: WideSmp,
     pub(super) wave_from: &'a WaveformBuffer,
     pub(super) wave_to: &'a WaveformBuffer,
-    pub(super) acc_from: [f32x4; UNISON_LANES],
-    pub(super) acc_to: [f32x4; UNISON_LANES],
+    pub(super) acc_from: [WideSmp; UNISON_LANES],
+    pub(super) acc_to: [WideSmp; UNISON_LANES],
 }
 
 #[inline(always)]
@@ -150,14 +148,14 @@ pub(super) fn render_sized<const FROM_BITS: usize, const TO_BITS: usize>(
 }
 
 #[inline(always)]
-fn load_segment(wave_buffer: &WaveformBuffer, idx: usize) -> f32x4 {
+fn load_segment(wave_buffer: &WaveformBuffer, idx: usize) -> WideSmp {
     let s = &wave_buffer[idx..idx + 4];
 
-    f32x4::new([s[0], s[1], s[2], s[3]])
+    WideSmp::new([s[0], s[1], s[2], s[3]])
 }
 
 #[inline(always)]
-fn wave_tap<const BITS: usize>(read_phase: PhaseX4, g: f32x4) -> WaveTap {
+fn wave_tap<const BITS: usize>(read_phase: PhaseX4, g: WideSmp) -> WaveTap {
     let t = read_phase.wave_index_fraction::<BITS>();
     let gt = g * t;
     let gt2 = gt * t;

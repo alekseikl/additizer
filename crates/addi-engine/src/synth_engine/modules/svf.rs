@@ -14,7 +14,6 @@ use addi_dsp::filters::{
     control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},
     svf::{LaneInputs, SvfState, SvfType},
 };
-use wide::f32x4;
 
 use crate::{
     synth_engine::{
@@ -22,7 +21,7 @@ use crate::{
         map_x4_in_place,
     },
     synth_engine::{
-        Smp, SmoothedSampleParams, StereoSample,
+        Smp, SmoothedSampleParams, StereoSample, WideSmp,
         buffer::{Buffer, VoicesLayout, zero_buffer},
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
@@ -272,8 +271,8 @@ impl<L: SvfLinks> Svf<L> {
         } else {
             router.param(&self.inputs.drive, &channel.drive, drive);
 
-            const MIN_DRIVE_X4: f32x4 = f32x4::splat(MIN_DRIVE);
-            const MAX_DRIVE_X4: f32x4 = f32x4::splat(MAX_DRIVE);
+            const MIN_DRIVE_X4: WideSmp = WideSmp::splat(MIN_DRIVE);
+            const MAX_DRIVE_X4: WideSmp = WideSmp::splat(MAX_DRIVE);
 
             map_x4_in_place(drive, |drive| {
                 db_to_gain_fast_x4(drive.fast_max(MIN_DRIVE_X4).fast_min(MAX_DRIVE_X4))

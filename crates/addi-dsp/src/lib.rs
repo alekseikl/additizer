@@ -22,7 +22,7 @@ pub use phase::{Phase, PhaseX4};
 pub use simd_utils::{SIMD_LANES, fill_x4, map_x4, map_x4_in_place, zip_map_x4};
 pub use smooth::{SmoothedSample, SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
-pub use types::{ComplexSample, Smp};
+pub use types::{ComplexSample, Smp, WideSmp};
 pub use units::{
     C4_NOTE, C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, db_to_gain, db_to_gain_fast, db_to_gain_fast_x4,
     fast_exp2_x4, fast_pitch_to_freq_x4, freq_to_c4_pitch, freq_to_pitch, from_ms, from_st,

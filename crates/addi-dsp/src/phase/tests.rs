@@ -1,6 +1,4 @@
-use wide::f32x4;
-
-use crate::SIMD_LANES;
+use crate::{SIMD_LANES, WideSmp};
 
 use super::{Phase, PhaseX4};
 
@@ -39,7 +37,7 @@ fn wrap_normalized_matches_scalar_modulo_one_cycle() {
         let mut arr = [0.0; SIMD_LANES];
         arr[..chunk.len()].copy_from_slice(chunk);
 
-        let simd = PhaseX4::from_wrapped(PhaseX4::wrap_normalized(f32x4::new(arr)));
+        let simd = PhaseX4::from_wrapped(PhaseX4::wrap_normalized(WideSmp::new(arr)));
         let mut out = [Phase::ZERO; SIMD_LANES];
         simd.store(&mut out);
 
@@ -67,7 +65,7 @@ fn from_wrapped_matches_scalar_inside_half_cycle() {
         arr[..chunk.len()].copy_from_slice(chunk);
 
         let mut out = [Phase::ZERO; SIMD_LANES];
-        PhaseX4::from_wrapped(f32x4::new(arr)).store(&mut out);
+        PhaseX4::from_wrapped(WideSmp::new(arr)).store(&mut out);
 
         for (lane, &norm) in arr.iter().enumerate() {
             assert_eq!(
@@ -88,7 +86,7 @@ fn from_normalized_matches_scalar_across_the_half_cycle() {
         arr[..chunk.len()].copy_from_slice(chunk);
 
         let mut out = [Phase::ZERO; SIMD_LANES];
-        PhaseX4::from_normalized(f32x4::new(arr)).store(&mut out);
+        PhaseX4::from_normalized(WideSmp::new(arr)).store(&mut out);
 
         for (lane, &norm) in arr.iter().enumerate() {
             let expected = Phase::from_normalized(norm).bits();
@@ -122,7 +120,7 @@ fn add_increment_matches_scalar() {
     let incs = [1.5f32, -2.5, 1000.75, 123_456.0];
 
     let mut out = [Phase::ZERO; SIMD_LANES];
-    (PhaseX4::load(&phases) + f32x4::new(incs)).store(&mut out);
+    (PhaseX4::load(&phases) + WideSmp::new(incs)).store(&mut out);
 
     for lane in 0..SIMD_LANES {
         assert_eq!(out[lane], phases[lane] + incs[lane]);

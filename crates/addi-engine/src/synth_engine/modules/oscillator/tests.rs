@@ -1,5 +1,4 @@
 use realfft::RealFftPlanner;
-use wide::f32x4;
 
 use super::{
     ConvexUnison, DFT_BUFFER_SIZE, FlatUnison, HALF_WAVEFORM_BITS, IfftPlanners, Interpolated,
@@ -10,7 +9,7 @@ use super::{
 };
 use crate::synth_engine::{
     ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, MAX_VOICES, ModuleConfig,
-    ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Smp, SynthEngine,
+    ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Smp, SynthEngine, WideSmp,
     coeffs::catmull_rom_from_powers,
     harmonic_editor::HarmonicEditorConfig,
     phase::{Phase, PhaseX4},
@@ -1315,13 +1314,13 @@ fn unison_phase_ramp_across_half_cycle_follows_the_parameter() {
     let phase = Phase::from_bits(0x1000_0000);
     let mut phases = [phase; UNISON_LANES];
     let mut ctx = SampleCtx {
-        buff_t: f32x4::splat(buff_t),
+        buff_t: WideSmp::splat(buff_t),
         phase_shift: PhaseX4::splat(Phase::ZERO),
-        phase_inc: f32x4::ZERO,
+        phase_inc: WideSmp::ZERO,
         wave_from: &wave,
         wave_to: &wave,
-        acc_from: [f32x4::ZERO; UNISON_LANES],
-        acc_to: [f32x4::ZERO; UNISON_LANES],
+        acc_from: [WideSmp::ZERO; UNISON_LANES],
+        acc_to: [WideSmp::ZERO; UNISON_LANES],
     };
 
     render_same::<WAVEFORM_BITS>(&mut phases, &params, &mut ctx, 1);

@@ -1,6 +1,6 @@
-use wide::{bytemuck::cast, f32x4, i32x4};
+use wide::{bytemuck::cast, i32x4};
 
-use crate::Smp;
+use crate::{Smp, WideSmp};
 
 #[cfg(test)]
 mod tests;
@@ -50,8 +50,8 @@ pub fn db_to_gain_fast(dbs: f32) -> f32 {
 /// `10^(dB/20) = 2^(dB * log2(10) / 20)`. Drive values stay well inside the
 /// polynomial's accurate range.
 #[inline(always)]
-pub fn db_to_gain_fast_x4(dbs: f32x4) -> f32x4 {
-    const DB_TO_EXP2: f32x4 = f32x4::splat(std::f32::consts::LOG2_10 / 20.0);
+pub fn db_to_gain_fast_x4(dbs: WideSmp) -> WideSmp {
+    const DB_TO_EXP2: WideSmp = WideSmp::splat(std::f32::consts::LOG2_10 / 20.0);
 
     fast_exp2_x4(dbs * DB_TO_EXP2)
 }
@@ -86,22 +86,22 @@ pub fn pitch_to_freq(pitch: Smp) -> Smp {
 /// converting whole buffers of pitch values where per-sample `exp2f` calls
 /// would dominate.
 #[inline(always)]
-pub fn fast_exp2_x4(x: f32x4) -> f32x4 {
+pub fn fast_exp2_x4(x: WideSmp) -> WideSmp {
     // Minimax fit of 2^f on [-0.5, 0.5], max relative error ≈ 1.9e-9 in exact
     // arithmetic (Remez exchange; see the tests for the f32 bound).
     // Splatted as `const` so they become vector literals rather than
     // runtime array fills.
-    const C: [f32x4; 7] = [
-        f32x4::splat(1.0),
-        f32x4::splat(6.931_472e-1),
-        f32x4::splat(2.402_264_7e-1),
-        f32x4::splat(5.550_328_8e-2),
-        f32x4::splat(9.618_489e-3),
-        f32x4::splat(1.339_993_1e-3),
-        f32x4::splat(1.534_581_2e-4),
+    const C: [WideSmp; 7] = [
+        WideSmp::splat(1.0),
+        WideSmp::splat(6.931_472e-1),
+        WideSmp::splat(2.402_264_7e-1),
+        WideSmp::splat(5.550_328_8e-2),
+        WideSmp::splat(9.618_489e-3),
+        WideSmp::splat(1.339_993_1e-3),
+        WideSmp::splat(1.534_581_2e-4),
     ];
-    const MIN_EXP: f32x4 = f32x4::splat(-125.0);
-    const MAX_EXP: f32x4 = f32x4::splat(125.0);
+    const MIN_EXP: WideSmp = WideSmp::splat(-125.0);
+    const MAX_EXP: WideSmp = WideSmp::splat(125.0);
 
     let x = x.fast_max(MIN_EXP).fast_min(MAX_EXP);
     let xi = x.round();
@@ -117,15 +117,15 @@ pub fn fast_exp2_x4(x: f32x4) -> f32x4 {
 
     // `p` is in [2^-0.5, 2^0.5]; scaling by 2^xi is an exact add to its
     // exponent field, which cannot overflow or denormalize within `MAX_EXP`.
-    let scaled: i32x4 = cast::<f32x4, i32x4>(p) + (xi.trunc_int() << 23);
+    let scaled: i32x4 = cast::<WideSmp, i32x4>(p) + (xi.trunc_int() << 23);
 
     cast(scaled)
 }
 
 /// [`pitch_to_freq`] for four lanes, built on [`fast_exp2_x4`].
 #[inline(always)]
-pub fn fast_pitch_to_freq_x4(pitch: f32x4) -> f32x4 {
-    const A4_FREQ_X4: f32x4 = f32x4::splat(A4_FREQ);
+pub fn fast_pitch_to_freq_x4(pitch: WideSmp) -> WideSmp {
+    const A4_FREQ_X4: WideSmp = WideSmp::splat(A4_FREQ);
 
     fast_exp2_x4(pitch) * A4_FREQ_X4
 }
@@ -140,20 +140,20 @@ pub fn fast_pitch_to_freq_x4(pitch: f32x4) -> f32x4 {
 /// below 5e-5 up to `0.499`, where `tan` is steep and the two f32 arguments
 /// differ slightly.
 #[inline(always)]
-pub(crate) fn fast_tan_pi_x4(ratio: f32x4) -> f32x4 {
+pub(crate) fn fast_tan_pi_x4(ratio: WideSmp) -> WideSmp {
     // Minimax fit of tan(x) / x on [0, π/4], evaluated with f32 `mul_add`.
-    const C: [f32x4; 7] = [
-        f32x4::splat(1.0),
-        f32x4::splat(3.333_307_2e-1),
-        f32x4::splat(1.333_994_9e-1),
-        f32x4::splat(5.334_505_4e-2),
-        f32x4::splat(2.461_384_6e-2),
-        f32x4::splat(2.876_793_7e-3),
-        f32x4::splat(9.508_654_5e-3),
+    const C: [WideSmp; 7] = [
+        WideSmp::splat(1.0),
+        WideSmp::splat(3.333_307_2e-1),
+        WideSmp::splat(1.333_994_9e-1),
+        WideSmp::splat(5.334_505_4e-2),
+        WideSmp::splat(2.461_384_6e-2),
+        WideSmp::splat(2.876_793_7e-3),
+        WideSmp::splat(9.508_654_5e-3),
     ];
-    const QUARTER: f32x4 = f32x4::splat(0.25);
-    const HALF: f32x4 = f32x4::splat(0.5);
-    const PI_X4: f32x4 = f32x4::splat(std::f32::consts::PI);
+    const QUARTER: WideSmp = WideSmp::splat(0.25);
+    const HALF: WideSmp = WideSmp::splat(0.5);
+    const PI_X4: WideSmp = WideSmp::splat(std::f32::consts::PI);
 
     let over = ratio.simd_gt(QUARTER);
     let reduced = over.select(HALF - ratio, ratio);
@@ -169,7 +169,7 @@ pub(crate) fn fast_tan_pi_x4(ratio: f32x4) -> f32x4 {
     let tan_x = x * p;
 
     if over.any() {
-        over.select(f32x4::ONE / tan_x, tan_x)
+        over.select(WideSmp::ONE / tan_x, tan_x)
     } else {
         tan_x
     }

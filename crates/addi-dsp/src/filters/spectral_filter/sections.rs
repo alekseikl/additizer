@@ -1,21 +1,19 @@
-use wide::f32x4;
-
 use super::simd::ComplexX4;
-use crate::Smp;
+use crate::{Smp, WideSmp};
 
 pub(super) const TAU: Smp = std::f32::consts::TAU;
-pub(super) const TAU_X4: f32x4 = f32x4::splat(TAU);
+pub(super) const TAU_X4: WideSmp = WideSmp::splat(TAU);
 
 #[inline(always)]
-fn splat(x: Smp) -> f32x4 {
-    f32x4::splat(x)
+fn splat(x: Smp) -> WideSmp {
+    WideSmp::splat(x)
 }
 
 #[derive(Clone, Copy)]
 pub(super) struct LowPass {
-    numerator: f32x4,
-    w_squared: f32x4,
-    w_q: f32x4,
+    numerator: WideSmp,
+    w_squared: WideSmp,
+    w_q: WideSmp,
 }
 
 impl LowPass {
@@ -31,7 +29,7 @@ impl LowPass {
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         let x = freq * TAU_X4;
 
         ComplexX4::from_real(self.numerator) / ComplexX4::new(self.w_squared - x * x, self.w_q * x)
@@ -40,9 +38,9 @@ impl LowPass {
 
 #[derive(Clone, Copy)]
 pub(super) struct HighPass {
-    neg_gain: f32x4,
-    w_squared: f32x4,
-    w_q: f32x4,
+    neg_gain: WideSmp,
+    w_squared: WideSmp,
+    w_q: WideSmp,
 }
 
 impl HighPass {
@@ -57,7 +55,7 @@ impl HighPass {
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         let x = freq * TAU_X4;
         let x_squared = x * x;
 
@@ -68,9 +66,9 @@ impl HighPass {
 
 #[derive(Clone, Copy)]
 pub(super) struct BandPass {
-    gain: f32x4,
-    w_squared: f32x4,
-    w_q: f32x4,
+    gain: WideSmp,
+    w_squared: WideSmp,
+    w_q: WideSmp,
 }
 
 impl BandPass {
@@ -85,19 +83,19 @@ impl BandPass {
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         let x = freq * TAU_X4;
         let wx_q = self.w_q * x;
 
-        ComplexX4::new(f32x4::ZERO, self.gain * wx_q) / ComplexX4::new(self.w_squared - x * x, wx_q)
+        ComplexX4::new(WideSmp::ZERO, self.gain * wx_q) / ComplexX4::new(self.w_squared - x * x, wx_q)
     }
 }
 
 #[derive(Clone, Copy)]
 pub(super) struct Peaking {
-    w_squared: f32x4,
-    wa_q: f32x4,
-    w_aq: f32x4,
+    w_squared: WideSmp,
+    wa_q: WideSmp,
+    w_aq: WideSmp,
 }
 
 impl Peaking {
@@ -113,7 +111,7 @@ impl Peaking {
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         let x = freq * TAU_X4;
         let wx_diff = self.w_squared - x * x;
 
@@ -123,9 +121,9 @@ impl Peaking {
 
 #[derive(Clone, Copy)]
 pub(super) struct Notch {
-    gain: f32x4,
-    w_squared: f32x4,
-    w_q: f32x4,
+    gain: WideSmp,
+    w_squared: WideSmp,
+    w_q: WideSmp,
 }
 
 impl Notch {
@@ -140,7 +138,7 @@ impl Notch {
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         let x = freq * TAU_X4;
         let wx_diff = self.w_squared - x * x;
 
@@ -150,7 +148,7 @@ impl Notch {
 
 #[derive(Clone, Copy)]
 pub(super) struct OnePoleLowPass {
-    w: f32x4,
+    w: WideSmp,
 }
 
 impl OnePoleLowPass {
@@ -161,7 +159,7 @@ impl OnePoleLowPass {
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         let x = freq * TAU_X4;
 
         ComplexX4::from_real(self.w) / ComplexX4::new(self.w, x)
@@ -170,7 +168,7 @@ impl OnePoleLowPass {
 
 #[derive(Clone, Copy)]
 pub(super) struct OnePoleHighPass {
-    w: f32x4,
+    w: WideSmp,
 }
 
 impl OnePoleHighPass {
@@ -181,19 +179,19 @@ impl OnePoleHighPass {
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         let x = freq * TAU_X4;
 
-        ComplexX4::new(f32x4::ZERO, x) / ComplexX4::new(self.w, x)
+        ComplexX4::new(WideSmp::ZERO, x) / ComplexX4::new(self.w, x)
     }
 }
 
 #[derive(Clone, Copy)]
 pub(super) struct LowShelf {
-    a: f32x4,
-    a_w_sq: f32x4,
-    w_sq: f32x4,
-    w_damp: f32x4,
+    a: WideSmp,
+    a_w_sq: WideSmp,
+    w_sq: WideSmp,
+    w_damp: WideSmp,
 }
 
 impl LowShelf {
@@ -211,7 +209,7 @@ impl LowShelf {
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         let x = freq * TAU_X4;
         let x_sq = x * x;
         let j_damp = self.w_damp * x;
@@ -223,10 +221,10 @@ impl LowShelf {
 
 #[derive(Clone, Copy)]
 pub(super) struct HighShelf {
-    a: f32x4,
-    a_w_sq: f32x4,
-    w_sq: f32x4,
-    w_damp: f32x4,
+    a: WideSmp,
+    a_w_sq: WideSmp,
+    w_sq: WideSmp,
+    w_damp: WideSmp,
 }
 
 impl HighShelf {
@@ -244,7 +242,7 @@ impl HighShelf {
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         let x = freq * TAU_X4;
         let x_sq = x * x;
         let j_damp = self.w_damp * x;

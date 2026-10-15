@@ -50,7 +50,7 @@ pub use routing::{
 };
 pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
-pub use types::{ComplexSample, Smp};
+pub use types::{ComplexSample, Smp, WideSmp};
 pub use voices_handler::{Note, PlayingVoice};
 
 pub use addi_dsp::{

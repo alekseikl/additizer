@@ -1,31 +1,31 @@
 use std::ops::{Div, Mul};
 
-use wide::f32x4;
+use crate::WideSmp;
 
 /// Four complex values, real and imag in separate lanes.
 #[derive(Clone, Copy)]
 pub(super) struct ComplexX4 {
-    pub(super) re: f32x4,
-    pub(super) im: f32x4,
+    pub(super) re: WideSmp,
+    pub(super) im: WideSmp,
 }
 
 impl ComplexX4 {
     #[inline(always)]
-    pub(super) fn new(re: f32x4, im: f32x4) -> Self {
+    pub(super) fn new(re: WideSmp, im: WideSmp) -> Self {
         Self { re, im }
     }
 
     #[inline(always)]
-    pub(super) fn from_real(re: f32x4) -> Self {
+    pub(super) fn from_real(re: WideSmp) -> Self {
         Self {
             re,
-            im: f32x4::ZERO,
+            im: WideSmp::ZERO,
         }
     }
 
     /// `|z|` as `sqrt(re² + im²)`. Matches `f32` hypot for filter-sized values.
     #[inline(always)]
-    pub(super) fn norm(self) -> f32x4 {
+    pub(super) fn norm(self) -> WideSmp {
         self.re.mul_add(self.re, self.im * self.im).sqrt()
     }
 }
@@ -42,11 +42,11 @@ impl Mul for ComplexX4 {
     }
 }
 
-impl Mul<f32x4> for ComplexX4 {
+impl Mul<WideSmp> for ComplexX4 {
     type Output = Self;
 
     #[inline(always)]
-    fn mul(self, rhs: f32x4) -> Self {
+    fn mul(self, rhs: WideSmp) -> Self {
         Self {
             re: self.re * rhs,
             im: self.im * rhs,

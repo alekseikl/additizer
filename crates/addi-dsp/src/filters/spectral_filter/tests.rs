@@ -1,9 +1,11 @@
 use super::*;
-use wide::f32x4;
 
-use crate::filters::control::{
-    MAX_PRE_Q, MAX_RESONANCE, MAX_RESONANCE_Q, MIN_PRE_Q, MIN_RESONANCE, NEGATIVE_RESONANCE_Q,
-    ZERO_RESONANCE_Q, q_from_resonance,
+use crate::{
+    WideSmp,
+    filters::control::{
+        MAX_PRE_Q, MAX_RESONANCE, MAX_RESONANCE_Q, MIN_PRE_Q, MIN_RESONANCE, NEGATIVE_RESONANCE_Q,
+        ZERO_RESONANCE_Q, q_from_resonance,
+    },
 };
 
 /// Same bounds as the spectral filter module's Q-rolloff parameter.
@@ -59,7 +61,7 @@ fn cutoff_freq(p: FilterParams) -> Smp {
 /// Lane 0 of [`FilterLanes::at_x4`] at a single frequency.
 trait AtFreq: FilterLanes {
     fn at(&self, freq: Smp) -> ComplexSample {
-        let response = self.at_x4(f32x4::splat(freq));
+        let response = self.at_x4(WideSmp::splat(freq));
         let re = response.re.to_array();
         let im = response.im.to_array();
         ComplexSample::new(re[0], im[0])

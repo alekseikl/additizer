@@ -1,7 +1,6 @@
 use std::array;
 
 use addi_dsp::fast_exp2_x4;
-use wide::f32x4;
 
 mod config;
 mod link;
@@ -22,7 +21,7 @@ use crate::{
             NUM_CHANNELS, ProcessContext, RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget,
         },
         synth_module::SynthModule,
-        types::Smp,
+        types::{Smp, WideSmp},
         voices_handler::DecayingVoice,
     },
     synth_engine::{fill_x4, from_ms},
@@ -126,10 +125,10 @@ impl FillStage {
     #[cold]
     #[inline(never)]
     fn fill_linear_ramp(out: &mut [Smp], local_t: Smp, t_step: Smp, ramp: Smp, from: Smp) {
-        let ramp_x4 = f32x4::splat(ramp);
-        let from_x4 = f32x4::splat(from);
-        let step = f32x4::splat(t_step * 4.0);
-        let mut t = f32x4::new([
+        let ramp_x4 = WideSmp::splat(ramp);
+        let from_x4 = WideSmp::splat(from);
+        let step = WideSmp::splat(t_step * 4.0);
+        let mut t = WideSmp::new([
             local_t,
             local_t + t_step,
             local_t + 2.0 * t_step,
@@ -160,12 +159,12 @@ impl FillStage {
         let offset = from - scale;
         let dx = t_step * recip;
 
-        const LOG2_E: f32x4 = f32x4::splat(std::f32::consts::LOG2_E);
-        let power_log2e = f32x4::splat(power) * LOG2_E;
-        let step = f32x4::splat(dx * 4.0);
-        let scale_x4 = f32x4::splat(scale);
-        let offset_x4 = f32x4::splat(offset);
-        let mut x = f32x4::new([
+        const LOG2_E: WideSmp = WideSmp::splat(std::f32::consts::LOG2_E);
+        let power_log2e = WideSmp::splat(power) * LOG2_E;
+        let step = WideSmp::splat(dx * 4.0);
+        let scale_x4 = WideSmp::splat(scale);
+        let offset_x4 = WideSmp::splat(offset);
+        let mut x = WideSmp::new([
             local_t * recip,
             (local_t + t_step) * recip,
             (local_t + 2.0 * t_step) * recip,

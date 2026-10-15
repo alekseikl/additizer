@@ -1,9 +1,7 @@
 use std::f32::consts::{PI, TAU};
 
-use wide::f32x4;
-
 use crate::{
-    ComplexSample,
+    ComplexSample, WideSmp,
     filters::control::MAX_PRE_Q,
     units::{C4_PITCH, freq_to_c4_pitch, pitch_to_freq},
 };
@@ -39,11 +37,11 @@ fn process_clamps_frequency_ratio_to_the_tan_limit() {
 #[test]
 fn cutoff_to_g_stays_close_to_libm_tan() {
     let freq_mult = SAMPLE_RATE.recip();
-    let freq_mult_x4 = f32x4::splat(freq_mult);
+    let freq_mult_x4 = WideSmp::splat(freq_mult);
 
     for i in 0..=200 {
         let cutoff = -4.0 + i as Smp * 11.0 / 200.0;
-        let g = LaneInputs::cutoff_to_g_x4(f32x4::splat(cutoff), freq_mult_x4).to_array()[0];
+        let g = LaneInputs::cutoff_to_g_x4(WideSmp::splat(cutoff), freq_mult_x4).to_array()[0];
         let ratio = (pitch_to_freq(C4_PITCH + cutoff) * freq_mult).min(super::MAX_FREQ_RATIO);
         let expected = (ratio * PI).tan();
         let rel = ((g - expected) / expected).abs();

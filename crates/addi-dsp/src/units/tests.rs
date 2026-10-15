@@ -1,4 +1,4 @@
-use wide::f32x4;
+use crate::WideSmp;
 
 use super::{
     db_to_gain_fast, db_to_gain_fast_x4, fast_exp2_x4, fast_pitch_to_freq_x4, fast_tan_pi_x4,
@@ -6,7 +6,7 @@ use super::{
 };
 
 fn fast_exp2(x: f32) -> f32 {
-    fast_exp2_x4(f32x4::splat(x)).to_array()[0]
+    fast_exp2_x4(WideSmp::splat(x)).to_array()[0]
 }
 
 #[test]
@@ -26,7 +26,7 @@ fn fast_exp2_is_accurate_across_range() {
 
 #[test]
 fn fast_exp2_lanes_are_independent() {
-    let out = fast_exp2_x4(f32x4::new([-3.0, 0.5, 2.25, 10.0])).to_array();
+    let out = fast_exp2_x4(WideSmp::new([-3.0, 0.5, 2.25, 10.0])).to_array();
 
     for (x, y) in [-3.0f32, 0.5, 2.25, 10.0].into_iter().zip(out) {
         assert!(((y - x.exp2()) / x.exp2()).abs() < 1.5e-7, "2^{x} = {y}");
@@ -49,7 +49,7 @@ fn fast_exp2_clamps_out_of_range_inputs() {
 }
 
 fn fast_tan_pi(x: f32) -> f32 {
-    fast_tan_pi_x4(f32x4::splat(x)).to_array()[0]
+    fast_tan_pi_x4(WideSmp::splat(x)).to_array()[0]
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn fast_tan_pi_matches_libm_tan() {
 #[test]
 fn fast_tan_pi_lanes_are_independent() {
     let ratios = [0.01f32, 0.2, 0.4, 0.499];
-    let out = fast_tan_pi_x4(f32x4::new(ratios)).to_array();
+    let out = fast_tan_pi_x4(WideSmp::new(ratios)).to_array();
 
     for (ratio, y) in ratios.into_iter().zip(out) {
         let exact = fast_tan_pi(ratio);
@@ -97,7 +97,7 @@ fn fast_tan_pi_lanes_are_independent() {
 #[test]
 fn db_to_gain_fast_x4_matches_scalar_over_drive_range() {
     let lanes = [-60.0, -12.0, 0.0, 24.0];
-    let out = db_to_gain_fast_x4(f32x4::new(lanes)).to_array();
+    let out = db_to_gain_fast_x4(WideSmp::new(lanes)).to_array();
 
     for (dbs, gain) in lanes.into_iter().zip(out) {
         let exact = db_to_gain_fast(dbs);
@@ -114,7 +114,7 @@ fn fast_pitch_to_freq_matches_pitch_to_freq() {
     for i in -120..=120 {
         let pitch = i as f32 / 12.0;
         let exact = pitch_to_freq(pitch);
-        let fast = fast_pitch_to_freq_x4(f32x4::splat(pitch)).to_array()[0];
+        let fast = fast_pitch_to_freq_x4(WideSmp::splat(pitch)).to_array()[0];
 
         assert!(
             ((fast - exact) / exact).abs() < 2e-7,

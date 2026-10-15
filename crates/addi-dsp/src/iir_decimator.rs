@@ -1,16 +1,15 @@
 use itertools::izip;
-use wide::f32x4;
 
-use crate::Smp;
+use crate::{Smp, WideSmp};
 
-const fn tap(x1: f32, x2: f32) -> f32x4 {
-    f32x4::new([x1, x2, x1, x2])
+const fn tap(x1: f32, x2: f32) -> WideSmp {
+    WideSmp::new([x1, x2, x1, x2])
 }
 
 const NUM_TAPS: usize = 6;
 const CHANNELS: usize = 2;
 
-static TAPS: [f32x4; NUM_TAPS] = [
+static TAPS: [WideSmp; NUM_TAPS] = [
     tap(0.093_022_42, 0.024_388_384),
     tap(0.312_318_06, 0.194_029_99),
     tap(0.548_379_06, 0.433_855_68),
@@ -20,8 +19,8 @@ static TAPS: [f32x4; NUM_TAPS] = [
 ];
 
 pub struct IirDecimator {
-    in_memory: [f32x4; NUM_TAPS],
-    out_memory: [f32x4; NUM_TAPS],
+    in_memory: [WideSmp; NUM_TAPS],
+    out_memory: [WideSmp; NUM_TAPS],
 }
 
 impl IirDecimator {
@@ -43,7 +42,7 @@ impl IirDecimator {
             in_left,
             in_right,
         ) {
-            let mut result = f32x4::new([in_left[0], in_left[1], in_right[0], in_right[1]]);
+            let mut result = WideSmp::new([in_left[0], in_left[1], in_right[0], in_right[1]]);
 
             for (in_mem, out_mem, tap) in izip!(
                 self.in_memory.iter_mut(),

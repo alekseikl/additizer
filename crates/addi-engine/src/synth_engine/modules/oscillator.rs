@@ -5,7 +5,6 @@ use rand::RngExt;
 use rand_pcg::Pcg32;
 use realfft::{ComplexToReal, RealFftPlanner};
 use smallvec::SmallVec;
-use wide::f32x4;
 
 use crate::{
     synth_engine::{
@@ -19,7 +18,7 @@ use crate::{
         },
         smooth::SmoothedSample,
         synth_module::SynthModule,
-        types::{ComplexSample, Smp},
+        types::{ComplexSample, Smp, WideSmp},
     },
     synth_engine::{db_to_gain, fast_pitch_to_freq_x4, from_st, pitch_to_freq, zip_map_x4},
 };
@@ -907,7 +906,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         out: &mut [Smp],
         freq_phase_mult: Smp,
     ) {
-        let mult = f32x4::splat(freq_phase_mult);
+        let mult = WideSmp::splat(freq_phase_mult);
 
         zip_map_x4(pitch, freq_shift, out, |pitch, shift| {
             shift.mul_add(mult, fast_pitch_to_freq_x4(pitch) * mult)
@@ -1020,13 +1019,13 @@ impl<L: OscillatorLinks> Oscillator<L> {
             &self.buffers.phase_shift[start..end],
         ) {
             let mut s = SampleCtx {
-                buff_t: f32x4::splat(buff_t),
+                buff_t: WideSmp::splat(buff_t),
                 phase_shift: PhaseX4::splat(Phase::from_normalized(phase_shift)),
-                phase_inc: f32x4::splat(phase_inc),
+                phase_inc: WideSmp::splat(phase_inc),
                 wave_from,
                 wave_to,
-                acc_from: [f32x4::ZERO; UNISON_LANES],
-                acc_to: [f32x4::ZERO; UNISON_LANES],
+                acc_from: [WideSmp::ZERO; UNISON_LANES],
+                acc_to: [WideSmp::ZERO; UNISON_LANES],
             };
 
             for (phases, params) in full_phases.iter_mut().zip(full_params) {

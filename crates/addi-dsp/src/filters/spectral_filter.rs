@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
-use wide::f32x4;
 
 use crate::{
-    ComplexSample, SIMD_LANES, Smp,
+    ComplexSample, SIMD_LANES, Smp, WideSmp,
     filters::control::ZERO_RESONANCE_Q,
     units::{db_to_gain, db_to_gain_fast},
 };
@@ -21,7 +20,7 @@ pub trait FilterImpl: Clone + Copy + 'static {
 }
 
 trait FilterLanes: FilterImpl {
-    fn at_x4(&self, freq: f32x4) -> ComplexX4;
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4;
 }
 
 #[derive(Clone, Copy)]
@@ -123,7 +122,7 @@ impl FilterImpl for LowPass12 {
 
 impl FilterLanes for LowPass12 {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         self.resonant.at_x4(freq)
     }
 }
@@ -139,7 +138,7 @@ impl FilterImpl for LowPass18 {
 
 impl FilterLanes for LowPass18 {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         self.pre_stage.at_x4(freq) * self.resonant.at_x4(freq)
     }
 }
@@ -155,7 +154,7 @@ impl FilterImpl for LowPass24 {
 
 impl FilterLanes for LowPass24 {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         self.pre_stage.at_x4(freq) * self.resonant.at_x4(freq)
     }
 }
@@ -170,7 +169,7 @@ impl FilterImpl for HighPass12 {
 
 impl FilterLanes for HighPass12 {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         self.resonant.at_x4(freq)
     }
 }
@@ -186,7 +185,7 @@ impl FilterImpl for HighPass18 {
 
 impl FilterLanes for HighPass18 {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         self.pre_stage.at_x4(freq) * self.resonant.at_x4(freq)
     }
 }
@@ -202,7 +201,7 @@ impl FilterImpl for HighPass24 {
 
 impl FilterLanes for HighPass24 {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         self.pre_stage.at_x4(freq) * self.resonant.at_x4(freq)
     }
 }
@@ -217,7 +216,7 @@ impl FilterImpl for BandPass6 {
 
 impl FilterLanes for BandPass6 {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         self.resonant.at_x4(freq)
     }
 }
@@ -233,7 +232,7 @@ impl FilterImpl for BandPass12 {
 
 impl FilterLanes for BandPass12 {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         self.pre_stage.at_x4(freq) * self.resonant.at_x4(freq)
     }
 }
@@ -249,7 +248,7 @@ impl FilterImpl for BandPass18 {
 
 impl FilterLanes for BandPass18 {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         let pre_stage = self.pre_stage.at_x4(freq);
 
         pre_stage * pre_stage * self.resonant.at_x4(freq)
@@ -267,7 +266,7 @@ impl FilterImpl for BandPass24 {
 
 impl FilterLanes for BandPass24 {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         let pre_stage = self.pre_stage.at_x4(freq);
         let pre_stage_sq = pre_stage * pre_stage;
 
@@ -285,7 +284,7 @@ impl FilterImpl for Peaking {
 
 impl FilterLanes for Peaking {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         self.section.at_x4(freq)
     }
 }
@@ -300,7 +299,7 @@ impl FilterImpl for Notch {
 
 impl FilterLanes for Notch {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         self.resonant.at_x4(freq)
     }
 }
@@ -315,7 +314,7 @@ impl FilterImpl for LowShelf12 {
 
 impl FilterLanes for LowShelf12 {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         self.section.at_x4(freq)
     }
 }
@@ -330,7 +329,7 @@ impl FilterImpl for HighShelf12 {
 
 impl FilterLanes for HighShelf12 {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         self.section.at_x4(freq)
     }
 }
@@ -348,7 +347,7 @@ impl FilterImpl for LowShelf24 {
 
 impl FilterLanes for LowShelf24 {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         self.pre_stage.at_x4(freq) * self.resonant.at_x4(freq)
     }
 }
@@ -366,7 +365,7 @@ impl FilterImpl for HighShelf24 {
 
 impl FilterLanes for HighShelf24 {
     #[inline(always)]
-    fn at_x4(&self, freq: f32x4) -> ComplexX4 {
+    fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
         self.pre_stage.at_x4(freq) * self.resonant.at_x4(freq)
     }
 }
@@ -584,11 +583,11 @@ const DC_OFFSET: usize = 1;
 
 /// Up to four frequencies. Lanes past the slice stay zero and are not stored.
 #[inline(always)]
-fn load_freq_lanes(freqs: &[Smp]) -> f32x4 {
+fn load_freq_lanes(freqs: &[Smp]) -> WideSmp {
     let mut lanes = [0.0; LANES];
     let n = freqs.len().min(LANES);
     lanes[..n].copy_from_slice(&freqs[..n]);
-    f32x4::new(lanes)
+    WideSmp::new(lanes)
 }
 
 #[inline(always)]
@@ -622,7 +621,7 @@ fn write_responses<T: FilterLanes, const LINEAR: bool>(
 
     while i + LANES <= n {
         write_response_lanes::<LINEAR>(
-            filter.at_x4(f32x4::new([
+            filter.at_x4(WideSmp::new([
                 freqs[i],
                 freqs[i + 1],
                 freqs[i + 2],
@@ -685,12 +684,12 @@ fn scale_lanes_in_place<const LINEAR: bool>(
 
 /// Frequencies for one chunk. Lanes past `n` are zero and must not be stored.
 #[inline(always)]
-fn chunk_freq(freq: f32x4, n: usize) -> f32x4 {
+fn chunk_freq(freq: WideSmp, n: usize) -> WideSmp {
     let mut lanes = freq.to_array();
     for lane in lanes.iter_mut().skip(n) {
         *lane = 0.0;
     }
-    f32x4::new(lanes)
+    WideSmp::new(lanes)
 }
 
 fn apply_lanes<T: FilterLanes, const LINEAR: bool>(
@@ -701,8 +700,8 @@ fn apply_lanes<T: FilterLanes, const LINEAR: bool>(
 ) {
     // Skip DC. Bin indices are the frequencies.
     let mut i = DC_OFFSET;
-    let mut freq = f32x4::new([1.0, 2.0, 3.0, 4.0]);
-    let step = f32x4::splat(LANES as Smp);
+    let mut freq = WideSmp::new([1.0, 2.0, 3.0, 4.0]);
+    let step = WideSmp::splat(LANES as Smp);
 
     while i + LANES <= len {
         store_lanes::<LINEAR>(filter.at_x4(freq), input, output, i, LANES);
@@ -722,8 +721,8 @@ fn apply_lanes_in_place<T: FilterLanes, const LINEAR: bool>(
 ) {
     let len = samples.len();
     let mut i = DC_OFFSET;
-    let mut freq = f32x4::new([1.0, 2.0, 3.0, 4.0]);
-    let step = f32x4::splat(LANES as Smp);
+    let mut freq = WideSmp::new([1.0, 2.0, 3.0, 4.0]);
+    let step = WideSmp::splat(LANES as Smp);
 
     while i + LANES <= len {
         scale_lanes_in_place::<LINEAR>(filter.at_x4(freq), samples, i, LANES);

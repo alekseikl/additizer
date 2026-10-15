@@ -1,9 +1,9 @@
 use std::ops::{Add, AddAssign};
 
 use serde::{Deserialize, Serialize};
-use wide::{bytemuck::cast, f32x4, i32x4, u32x4};
+use wide::{bytemuck::cast, i32x4, u32x4};
 
-use crate::{SIMD_LANES, Smp};
+use crate::{SIMD_LANES, Smp, WideSmp};
 
 #[cfg(test)]
 mod tests;
@@ -119,11 +119,11 @@ impl PhaseX4 {
         Self(u32x4::splat(phase.bits()))
     }
 
-    const FULL_PHASE: f32x4 = f32x4::splat(Phase::FULL_PHASE);
+    const FULL_PHASE: WideSmp = WideSmp::splat(Phase::FULL_PHASE);
 
     /// Wraps each lane into `[-0.5, 0.5]` (exact modulo one cycle).
     #[inline(always)]
-    pub fn wrap_normalized(phase: f32x4) -> f32x4 {
+    pub fn wrap_normalized(phase: WideSmp) -> WideSmp {
         phase - phase.round()
     }
 
@@ -132,7 +132,7 @@ impl PhaseX4 {
     /// `+0.5` does not fit in `i32` after scaling by `2^32` and saturates one
     /// LSB short of half a cycle.
     #[inline(always)]
-    pub fn from_wrapped(phase: f32x4) -> Self {
+    pub fn from_wrapped(phase: WideSmp) -> Self {
         Self(cast((phase * Self::FULL_PHASE).trunc_int()))
     }
 
@@ -140,7 +140,7 @@ impl PhaseX4 {
     ///
     /// Wraps into `[-0.5, 0.5]` so [`Self::from_wrapped`] does not saturate.
     #[inline(always)]
-    pub fn from_normalized(phase: f32x4) -> Self {
+    pub fn from_normalized(phase: WideSmp) -> Self {
         Self::from_wrapped(Self::wrap_normalized(phase))
     }
 
@@ -151,9 +151,9 @@ impl PhaseX4 {
     }
 
     #[inline(always)]
-    pub fn wave_index_fraction<const WAVEFORM_BITS: usize>(self) -> f32x4 {
+    pub fn wave_index_fraction<const WAVEFORM_BITS: usize>(self) -> WideSmp {
         let mask = const { u32x4::splat(Phase::intermediate_mask::<WAVEFORM_BITS>()) };
-        let mult = const { f32x4::splat(Phase::intermediate_mult::<WAVEFORM_BITS>()) };
+        let mult = const { WideSmp::splat(Phase::intermediate_mult::<WAVEFORM_BITS>()) };
         let masked: i32x4 = cast(self.0 & mask);
 
         masked.round_float() * mult
@@ -169,11 +169,11 @@ impl Add for PhaseX4 {
     }
 }
 
-impl Add<f32x4> for PhaseX4 {
+impl Add<WideSmp> for PhaseX4 {
     type Output = Self;
 
     #[inline(always)]
-    fn add(self, rhs: f32x4) -> Self::Output {
+    fn add(self, rhs: WideSmp) -> Self::Output {
         self + Self(cast(rhs.trunc_int()))
     }
 }
