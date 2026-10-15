@@ -111,16 +111,15 @@ trait SvfFilter {
     ) {
         let freq_mult = WideSmp::splat(sample_rate.recip());
         let inputs = inputs.take(samples);
-        let [o0, o1, o2, o3] = take_lanes_mut(output, samples);
-        let samples = o0.len();
+        let mut output = take_lanes_mut(output, samples);
+        let samples = output[0].len();
 
         for index in 0..samples {
             let y = self.tick(&inputs.params(freq_mult, index)).to_array();
 
-            o0[index] = y[0];
-            o1[index] = y[1];
-            o2[index] = y[2];
-            o3[index] = y[3];
+            for (lane, sample) in output.iter_mut().zip(y) {
+                lane[index] = sample;
+            }
         }
     }
 }

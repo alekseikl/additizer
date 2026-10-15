@@ -2,14 +2,14 @@ use std::ops::{Div, Mul};
 
 use crate::WideSmp;
 
-/// Four complex values, real and imag in separate lanes.
+/// One complex value per SIMD lane, real and imag in separate vectors.
 #[derive(Clone, Copy)]
-pub(super) struct ComplexX4 {
+pub(super) struct WideComplex {
     pub(super) re: WideSmp,
     pub(super) im: WideSmp,
 }
 
-impl ComplexX4 {
+impl WideComplex {
     #[inline(always)]
     pub(super) fn new(re: WideSmp, im: WideSmp) -> Self {
         Self { re, im }
@@ -30,7 +30,7 @@ impl ComplexX4 {
     }
 }
 
-impl Mul for ComplexX4 {
+impl Mul for WideComplex {
     type Output = Self;
 
     #[inline(always)]
@@ -42,7 +42,7 @@ impl Mul for ComplexX4 {
     }
 }
 
-impl Mul<WideSmp> for ComplexX4 {
+impl Mul<WideSmp> for WideComplex {
     type Output = Self;
 
     #[inline(always)]
@@ -54,7 +54,7 @@ impl Mul<WideSmp> for ComplexX4 {
     }
 }
 
-impl Div for ComplexX4 {
+impl Div for WideComplex {
     type Output = Self;
 
     #[inline(always)]

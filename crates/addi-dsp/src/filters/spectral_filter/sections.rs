@@ -1,13 +1,8 @@
-use super::simd::ComplexX4;
+use super::simd::WideComplex;
 use crate::{Smp, WideSmp};
 
 pub(super) const TAU: Smp = std::f32::consts::TAU;
-pub(super) const TAU_X4: WideSmp = WideSmp::splat(TAU);
-
-#[inline(always)]
-fn splat(x: Smp) -> WideSmp {
-    WideSmp::splat(x)
-}
+pub(super) const TAU_WIDE: WideSmp = WideSmp::splat(TAU);
 
 #[derive(Clone, Copy)]
 pub(super) struct LowPass {
@@ -22,17 +17,17 @@ impl LowPass {
         let w_squared = w * w;
 
         Self {
-            numerator: splat(gain * w_squared),
-            w_squared: splat(w_squared),
-            w_q: splat(w / q),
+            numerator: WideSmp::splat(gain * w_squared),
+            w_squared: WideSmp::splat(w_squared),
+            w_q: WideSmp::splat(w / q),
         }
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
-        let x = freq * TAU_X4;
+    pub(super) fn at(&self, freq: WideSmp) -> WideComplex {
+        let x = freq * TAU_WIDE;
 
-        ComplexX4::from_real(self.numerator) / ComplexX4::new(self.w_squared - x * x, self.w_q * x)
+        WideComplex::from_real(self.numerator) / WideComplex::new(self.w_squared - x * x, self.w_q * x)
     }
 }
 
@@ -48,19 +43,19 @@ impl HighPass {
         let w = cutoff * TAU;
 
         Self {
-            neg_gain: splat(-gain),
-            w_squared: splat(w * w),
-            w_q: splat(w / q),
+            neg_gain: WideSmp::splat(-gain),
+            w_squared: WideSmp::splat(w * w),
+            w_q: WideSmp::splat(w / q),
         }
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
-        let x = freq * TAU_X4;
+    pub(super) fn at(&self, freq: WideSmp) -> WideComplex {
+        let x = freq * TAU_WIDE;
         let x_squared = x * x;
 
-        ComplexX4::from_real(self.neg_gain * x_squared)
-            / ComplexX4::new(self.w_squared - x_squared, self.w_q * x)
+        WideComplex::from_real(self.neg_gain * x_squared)
+            / WideComplex::new(self.w_squared - x_squared, self.w_q * x)
     }
 }
 
@@ -76,19 +71,19 @@ impl BandPass {
         let w = cutoff * TAU;
 
         Self {
-            gain: splat(gain),
-            w_squared: splat(w * w),
-            w_q: splat(w / q),
+            gain: WideSmp::splat(gain),
+            w_squared: WideSmp::splat(w * w),
+            w_q: WideSmp::splat(w / q),
         }
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
-        let x = freq * TAU_X4;
+    pub(super) fn at(&self, freq: WideSmp) -> WideComplex {
+        let x = freq * TAU_WIDE;
         let wx_q = self.w_q * x;
 
-        ComplexX4::new(WideSmp::ZERO, self.gain * wx_q)
-            / ComplexX4::new(self.w_squared - x * x, wx_q)
+        WideComplex::new(WideSmp::ZERO, self.gain * wx_q)
+            / WideComplex::new(self.w_squared - x * x, wx_q)
     }
 }
 
@@ -105,18 +100,18 @@ impl Peaking {
         let a = gain.max(0.0).sqrt();
 
         Self {
-            w_squared: splat(w * w),
-            wa_q: splat((w * a) / q),
-            w_aq: splat(w / (a * q)),
+            w_squared: WideSmp::splat(w * w),
+            wa_q: WideSmp::splat((w * a) / q),
+            w_aq: WideSmp::splat(w / (a * q)),
         }
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
-        let x = freq * TAU_X4;
+    pub(super) fn at(&self, freq: WideSmp) -> WideComplex {
+        let x = freq * TAU_WIDE;
         let wx_diff = self.w_squared - x * x;
 
-        ComplexX4::new(wx_diff, self.wa_q * x) / ComplexX4::new(wx_diff, self.w_aq * x)
+        WideComplex::new(wx_diff, self.wa_q * x) / WideComplex::new(wx_diff, self.w_aq * x)
     }
 }
 
@@ -132,18 +127,18 @@ impl Notch {
         let w = cutoff * TAU;
 
         Self {
-            gain: splat(gain),
-            w_squared: splat(w * w),
-            w_q: splat(w / q),
+            gain: WideSmp::splat(gain),
+            w_squared: WideSmp::splat(w * w),
+            w_q: WideSmp::splat(w / q),
         }
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
-        let x = freq * TAU_X4;
+    pub(super) fn at(&self, freq: WideSmp) -> WideComplex {
+        let x = freq * TAU_WIDE;
         let wx_diff = self.w_squared - x * x;
 
-        ComplexX4::from_real(self.gain * wx_diff) / ComplexX4::new(wx_diff, self.w_q * x)
+        WideComplex::from_real(self.gain * wx_diff) / WideComplex::new(wx_diff, self.w_q * x)
     }
 }
 
@@ -155,15 +150,15 @@ pub(super) struct OnePoleLowPass {
 impl OnePoleLowPass {
     pub(super) fn new(cutoff: Smp) -> Self {
         Self {
-            w: splat(cutoff * TAU),
+            w: WideSmp::splat(cutoff * TAU),
         }
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
-        let x = freq * TAU_X4;
+    pub(super) fn at(&self, freq: WideSmp) -> WideComplex {
+        let x = freq * TAU_WIDE;
 
-        ComplexX4::from_real(self.w) / ComplexX4::new(self.w, x)
+        WideComplex::from_real(self.w) / WideComplex::new(self.w, x)
     }
 }
 
@@ -175,15 +170,15 @@ pub(super) struct OnePoleHighPass {
 impl OnePoleHighPass {
     pub(super) fn new(cutoff: Smp) -> Self {
         Self {
-            w: splat(cutoff * TAU),
+            w: WideSmp::splat(cutoff * TAU),
         }
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
-        let x = freq * TAU_X4;
+    pub(super) fn at(&self, freq: WideSmp) -> WideComplex {
+        let x = freq * TAU_WIDE;
 
-        ComplexX4::new(WideSmp::ZERO, x) / ComplexX4::new(self.w, x)
+        WideComplex::new(WideSmp::ZERO, x) / WideComplex::new(self.w, x)
     }
 }
 
@@ -202,21 +197,21 @@ impl LowShelf {
         let w_sq = w * w;
 
         Self {
-            a: splat(a),
-            a_w_sq: splat(a * w_sq),
-            w_sq: splat(w_sq),
-            w_damp: splat(a.sqrt() * w / q),
+            a: WideSmp::splat(a),
+            a_w_sq: WideSmp::splat(a * w_sq),
+            w_sq: WideSmp::splat(w_sq),
+            w_damp: WideSmp::splat(a.sqrt() * w / q),
         }
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
-        let x = freq * TAU_X4;
+    pub(super) fn at(&self, freq: WideSmp) -> WideComplex {
+        let x = freq * TAU_WIDE;
         let x_sq = x * x;
         let j_damp = self.w_damp * x;
 
-        (ComplexX4::new(self.a_w_sq - x_sq, j_damp) * self.a)
-            / ComplexX4::new(self.w_sq - self.a * x_sq, j_damp)
+        (WideComplex::new(self.a_w_sq - x_sq, j_damp) * self.a)
+            / WideComplex::new(self.w_sq - self.a * x_sq, j_damp)
     }
 }
 
@@ -235,20 +230,20 @@ impl HighShelf {
         let w_sq = w * w;
 
         Self {
-            a: splat(a),
-            a_w_sq: splat(a * w_sq),
-            w_sq: splat(w_sq),
-            w_damp: splat(a.sqrt() * w / q),
+            a: WideSmp::splat(a),
+            a_w_sq: WideSmp::splat(a * w_sq),
+            w_sq: WideSmp::splat(w_sq),
+            w_damp: WideSmp::splat(a.sqrt() * w / q),
         }
     }
 
     #[inline(always)]
-    pub(super) fn at_x4(&self, freq: WideSmp) -> ComplexX4 {
-        let x = freq * TAU_X4;
+    pub(super) fn at(&self, freq: WideSmp) -> WideComplex {
+        let x = freq * TAU_WIDE;
         let x_sq = x * x;
         let j_damp = self.w_damp * x;
 
-        (ComplexX4::new(self.w_sq - self.a * x_sq, j_damp) * self.a)
-            / ComplexX4::new(self.a_w_sq - x_sq, j_damp)
+        (WideComplex::new(self.w_sq - self.a * x_sq, j_damp) * self.a)
+            / WideComplex::new(self.a_w_sq - x_sq, j_damp)
     }
 }

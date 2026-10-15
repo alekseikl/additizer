@@ -21,7 +21,7 @@ use crate::{
             ProcessContext, RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget,
         },
         synth_module::SynthModule,
-        types::{Smp, WideSmp},
+        types::{SIMD_LANES, Smp, WideSmp},
         voices::NUM_CHANNELS,
         voices_handler::DecayingVoice,
     },
@@ -122,19 +122,15 @@ struct FillStage {
 }
 
 impl FillStage {
-    /// Linear ramp `from + (interval / duration) * t`, four lanes at a time.
+    /// Linear ramp `from + (interval / duration) * t`, one vector of lanes at a time.
     #[cold]
     #[inline(never)]
     fn fill_linear_ramp(out: &mut [Smp], local_t: Smp, t_step: Smp, ramp: Smp, from: Smp) {
         let ramp_x4 = WideSmp::splat(ramp);
         let from_x4 = WideSmp::splat(from);
-        let step = WideSmp::splat(t_step * 4.0);
-        let mut t = WideSmp::new([
-            local_t,
-            local_t + t_step,
-            local_t + 2.0 * t_step,
-            local_t + 3.0 * t_step,
-        ]);
+        let step = WideSmp::splat(t_step * SIMD_LANES as Smp);
+        let lanes: [Smp; SIMD_LANES] = array::from_fn(|lane| local_t + lane as Smp * t_step);
+        let mut t = WideSmp::new(lanes);
 
         fill_wide(out, || {
             let y = ramp_x4.mul_add(t, from_x4);
@@ -143,7 +139,7 @@ impl FillStage {
         });
     }
 
-    /// Curved segment, four lanes at a time. Outlined so it stays a leaf.
+    /// Curved segment, one vector of lanes at a time. Outlined so it stays a leaf.
     #[inline(never)]
     fn fill_curved(
         out: &mut [Smp],
@@ -162,15 +158,12 @@ impl FillStage {
 
         const LOG2_E: WideSmp = WideSmp::splat(std::f32::consts::LOG2_E);
         let power_log2e = WideSmp::splat(power) * LOG2_E;
-        let step = WideSmp::splat(dx * 4.0);
+        let step = WideSmp::splat(dx * SIMD_LANES as Smp);
         let scale_x4 = WideSmp::splat(scale);
         let offset_x4 = WideSmp::splat(offset);
-        let mut x = WideSmp::new([
-            local_t * recip,
-            (local_t + t_step) * recip,
-            (local_t + 2.0 * t_step) * recip,
-            (local_t + 3.0 * t_step) * recip,
-        ]);
+        let x0 = local_t * recip;
+        let lanes: [Smp; SIMD_LANES] = array::from_fn(|lane| x0 + lane as Smp * dx);
+        let mut x = WideSmp::new(lanes);
 
         fill_wide(out, || {
             let exp = fast_exp2_wide(x * power_log2e);

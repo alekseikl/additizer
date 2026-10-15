@@ -58,10 +58,10 @@ fn cutoff_freq(p: FilterParams) -> Smp {
     filter(FilterType::LowPass12, p).cutoff_freq
 }
 
-/// Lane 0 of [`FilterLanes::at_x4`] at a single frequency.
+/// Lane 0 of [`FilterLanes::at`] at a single frequency.
 trait AtFreq: FilterLanes {
-    fn at(&self, freq: Smp) -> ComplexSample {
-        let response = self.at_x4(WideSmp::splat(freq));
+    fn at_freq(&self, freq: Smp) -> ComplexSample {
+        let response = FilterLanes::at(self, WideSmp::splat(freq));
         let re = response.re.to_array();
         let im = response.im.to_array();
         ComplexSample::new(re[0], im[0])
@@ -70,16 +70,16 @@ trait AtFreq: FilterLanes {
 
 impl<T: FilterLanes> AtFreq for T {}
 
-fn mag<T: FilterLanes>(freq: Smp) -> Smp {
+fn mag<T: AtFreq>(freq: Smp) -> Smp {
     mag_params::<T>(GAIN, CUTOFF, Q, freq)
 }
 
-fn mag_params<T: FilterLanes>(gain: Smp, cutoff: Smp, q: Smp, freq: Smp) -> Smp {
-    T::new(gain, cutoff, q, MAX_PRE_Q).at(freq).norm()
+fn mag_params<T: AtFreq>(gain: Smp, cutoff: Smp, q: Smp, freq: Smp) -> Smp {
+    T::new(gain, cutoff, q, MAX_PRE_Q).at_freq(freq).norm()
 }
 
-fn at<T: FilterLanes>(freq: Smp) -> ComplexSample {
-    T::new(GAIN, CUTOFF, Q, MAX_PRE_Q).at(freq)
+fn at<T: AtFreq>(freq: Smp) -> ComplexSample {
+    T::new(GAIN, CUTOFF, Q, MAX_PRE_Q).at_freq(freq)
 }
 
 // ---- FilterType ----
@@ -430,19 +430,19 @@ fn shelves_are_identity_at_unity_gain() {
     for freq in [0.0, 0.25 * CUTOFF, CUTOFF, 4.0 * CUTOFF] {
         let identity = ComplexSample::new(1.0, 0.0);
         assert_complex_eq(
-            LowShelf12::new(1.0, CUTOFF, Q, MAX_PRE_Q).at(freq),
+            LowShelf12::new(1.0, CUTOFF, Q, MAX_PRE_Q).at_freq(freq),
             identity,
         );
         assert_complex_eq(
-            LowShelf24::new(1.0, CUTOFF, Q, MAX_PRE_Q).at(freq),
+            LowShelf24::new(1.0, CUTOFF, Q, MAX_PRE_Q).at_freq(freq),
             identity,
         );
         assert_complex_eq(
-            HighShelf12::new(1.0, CUTOFF, Q, MAX_PRE_Q).at(freq),
+            HighShelf12::new(1.0, CUTOFF, Q, MAX_PRE_Q).at_freq(freq),
             identity,
         );
         assert_complex_eq(
-            HighShelf24::new(1.0, CUTOFF, Q, MAX_PRE_Q).at(freq),
+            HighShelf24::new(1.0, CUTOFF, Q, MAX_PRE_Q).at_freq(freq),
             identity,
         );
     }
@@ -456,23 +456,23 @@ fn shelf_boost_and_cut_are_inverses() {
     let identity = ComplexSample::new(1.0, 0.0);
 
     assert_complex_eq(
-        LowShelf12::new(gain, CUTOFF, Q, MAX_PRE_Q).at(freq)
-            * LowShelf12::new(cut, CUTOFF, Q, MAX_PRE_Q).at(freq),
+        LowShelf12::new(gain, CUTOFF, Q, MAX_PRE_Q).at_freq(freq)
+            * LowShelf12::new(cut, CUTOFF, Q, MAX_PRE_Q).at_freq(freq),
         identity,
     );
     assert_complex_eq(
-        LowShelf24::new(gain, CUTOFF, Q, MAX_PRE_Q).at(freq)
-            * LowShelf24::new(cut, CUTOFF, Q, MAX_PRE_Q).at(freq),
+        LowShelf24::new(gain, CUTOFF, Q, MAX_PRE_Q).at_freq(freq)
+            * LowShelf24::new(cut, CUTOFF, Q, MAX_PRE_Q).at_freq(freq),
         identity,
     );
     assert_complex_eq(
-        HighShelf12::new(gain, CUTOFF, Q, MAX_PRE_Q).at(freq)
-            * HighShelf12::new(cut, CUTOFF, Q, MAX_PRE_Q).at(freq),
+        HighShelf12::new(gain, CUTOFF, Q, MAX_PRE_Q).at_freq(freq)
+            * HighShelf12::new(cut, CUTOFF, Q, MAX_PRE_Q).at_freq(freq),
         identity,
     );
     assert_complex_eq(
-        HighShelf24::new(gain, CUTOFF, Q, MAX_PRE_Q).at(freq)
-            * HighShelf24::new(cut, CUTOFF, Q, MAX_PRE_Q).at(freq),
+        HighShelf24::new(gain, CUTOFF, Q, MAX_PRE_Q).at_freq(freq)
+            * HighShelf24::new(cut, CUTOFF, Q, MAX_PRE_Q).at_freq(freq),
         identity,
     );
 }
@@ -484,13 +484,13 @@ fn low_and_high_shelf_product_is_flat_gain() {
     let expected = ComplexSample::new(gain, 0.0);
 
     assert_complex_eq(
-        LowShelf12::new(gain, CUTOFF, Q, MAX_PRE_Q).at(freq)
-            * HighShelf12::new(gain, CUTOFF, Q, MAX_PRE_Q).at(freq),
+        LowShelf12::new(gain, CUTOFF, Q, MAX_PRE_Q).at_freq(freq)
+            * HighShelf12::new(gain, CUTOFF, Q, MAX_PRE_Q).at_freq(freq),
         expected,
     );
     assert_complex_eq(
-        LowShelf24::new(gain, CUTOFF, Q, MAX_PRE_Q).at(freq)
-            * HighShelf24::new(gain, CUTOFF, Q, MAX_PRE_Q).at(freq),
+        LowShelf24::new(gain, CUTOFF, Q, MAX_PRE_Q).at_freq(freq)
+            * HighShelf24::new(gain, CUTOFF, Q, MAX_PRE_Q).at_freq(freq),
         expected,
     );
 }
@@ -517,10 +517,10 @@ fn lowshelf24_is_fixed_times_resonant() {
     let q = 4.0;
     let g12 = gain.sqrt();
     let pre_q = 0.75;
-    let expected = LowShelf12::new(g12, CUTOFF, pre_q, pre_q).at(freq)
-        * LowShelf12::new(g12, CUTOFF, q, pre_q).at(freq);
+    let expected = LowShelf12::new(g12, CUTOFF, pre_q, pre_q).at_freq(freq)
+        * LowShelf12::new(g12, CUTOFF, q, pre_q).at_freq(freq);
 
-    assert_complex_eq(LowShelf24::new(gain, CUTOFF, q, pre_q).at(freq), expected);
+    assert_complex_eq(LowShelf24::new(gain, CUTOFF, q, pre_q).at_freq(freq), expected);
     assert_approx(mag_params::<LowShelf24>(gain, CUTOFF, q, 0.0), gain);
 }
 
@@ -531,10 +531,10 @@ fn highshelf24_is_fixed_times_resonant() {
     let q = 4.0;
     let g12 = gain.sqrt();
     let pre_q = 0.75;
-    let expected = HighShelf12::new(g12, CUTOFF, pre_q, pre_q).at(freq)
-        * HighShelf12::new(g12, CUTOFF, q, pre_q).at(freq);
+    let expected = HighShelf12::new(g12, CUTOFF, pre_q, pre_q).at_freq(freq)
+        * HighShelf12::new(g12, CUTOFF, q, pre_q).at_freq(freq);
 
-    assert_complex_eq(HighShelf24::new(gain, CUTOFF, q, pre_q).at(freq), expected);
+    assert_complex_eq(HighShelf24::new(gain, CUTOFF, q, pre_q).at_freq(freq), expected);
 }
 
 #[test]
@@ -599,10 +599,10 @@ fn lowpass24_is_fixed_times_resonant() {
     let gain = 0.5;
     let q = 4.0;
     let pre_q = 0.75;
-    let expected = LowPass12::new(1.0, CUTOFF, pre_q, pre_q).at(freq)
-        * LowPass12::new(gain, CUTOFF, q, pre_q).at(freq);
+    let expected = LowPass12::new(1.0, CUTOFF, pre_q, pre_q).at_freq(freq)
+        * LowPass12::new(gain, CUTOFF, q, pre_q).at_freq(freq);
 
-    assert_complex_eq(LowPass24::new(gain, CUTOFF, q, pre_q).at(freq), expected);
+    assert_complex_eq(LowPass24::new(gain, CUTOFF, q, pre_q).at_freq(freq), expected);
     assert_approx(mag_params::<LowPass24>(gain, CUTOFF, q, 0.0), gain);
 }
 
@@ -612,10 +612,10 @@ fn highpass24_is_fixed_times_resonant() {
     let gain = 0.5;
     let q = 4.0;
     let pre_q = 0.75;
-    let expected = HighPass12::new(1.0, CUTOFF, pre_q, pre_q).at(freq)
-        * HighPass12::new(gain, CUTOFF, q, pre_q).at(freq);
+    let expected = HighPass12::new(1.0, CUTOFF, pre_q, pre_q).at_freq(freq)
+        * HighPass12::new(gain, CUTOFF, q, pre_q).at_freq(freq);
 
-    assert_complex_eq(HighPass24::new(gain, CUTOFF, q, pre_q).at(freq), expected);
+    assert_complex_eq(HighPass24::new(gain, CUTOFF, q, pre_q).at_freq(freq), expected);
 }
 
 #[test]
@@ -624,19 +624,19 @@ fn bandpass_cascades() {
     let gain = 0.5;
     let q = 4.0;
     let pre_q = 0.75;
-    let neutral = BandPass6::new(1.0, CUTOFF, pre_q, pre_q).at(freq);
-    let resonant = BandPass6::new(gain, CUTOFF, q, pre_q).at(freq);
+    let neutral = BandPass6::new(1.0, CUTOFF, pre_q, pre_q).at_freq(freq);
+    let resonant = BandPass6::new(gain, CUTOFF, q, pre_q).at_freq(freq);
 
     assert_complex_eq(
-        BandPass12::new(gain, CUTOFF, q, pre_q).at(freq),
+        BandPass12::new(gain, CUTOFF, q, pre_q).at_freq(freq),
         neutral * resonant,
     );
     assert_complex_eq(
-        BandPass18::new(gain, CUTOFF, q, pre_q).at(freq),
+        BandPass18::new(gain, CUTOFF, q, pre_q).at_freq(freq),
         neutral * neutral * resonant,
     );
     assert_complex_eq(
-        BandPass24::new(gain, CUTOFF, q, pre_q).at(freq),
+        BandPass24::new(gain, CUTOFF, q, pre_q).at_freq(freq),
         neutral * neutral * neutral * resonant,
     );
 
@@ -716,26 +716,26 @@ fn response_at_freqs_matches_filter_impl_for_every_type() {
         let f = filter(ty, p);
         let response = eval_at(&f, freq);
         let expected = match ty {
-            FilterType::LowPass12 => LowPass12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq),
-            FilterType::LowPass18 => LowPass18::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq),
-            FilterType::LowPass24 => LowPass24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq),
-            FilterType::LowShelf12 => LowShelf12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq),
-            FilterType::LowShelf24 => LowShelf24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq),
-            FilterType::HighPass12 => HighPass12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq),
-            FilterType::HighPass18 => HighPass18::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq),
-            FilterType::HighPass24 => HighPass24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq),
+            FilterType::LowPass12 => LowPass12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
+            FilterType::LowPass18 => LowPass18::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
+            FilterType::LowPass24 => LowPass24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
+            FilterType::LowShelf12 => LowShelf12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
+            FilterType::LowShelf24 => LowShelf24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
+            FilterType::HighPass12 => HighPass12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
+            FilterType::HighPass18 => HighPass18::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
+            FilterType::HighPass24 => HighPass24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
             FilterType::HighShelf12 => {
-                HighShelf12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq)
+                HighShelf12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
             }
             FilterType::HighShelf24 => {
-                HighShelf24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq)
+                HighShelf24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq)
             }
-            FilterType::BandPass6 => BandPass6::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq),
-            FilterType::BandPass12 => BandPass12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq),
-            FilterType::BandPass18 => BandPass18::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq),
-            FilterType::BandPass24 => BandPass24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq),
-            FilterType::Peaking => Peaking::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq),
-            FilterType::Notch => Notch::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at(freq),
+            FilterType::BandPass6 => BandPass6::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
+            FilterType::BandPass12 => BandPass12::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
+            FilterType::BandPass18 => BandPass18::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
+            FilterType::BandPass24 => BandPass24::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
+            FilterType::Peaking => Peaking::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
+            FilterType::Notch => Notch::new(f.gain, f.cutoff_freq, f.q, f.pre_q).at_freq(freq),
         };
         assert_complex_eq(response, expected);
     }
