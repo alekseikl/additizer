@@ -24,9 +24,6 @@ use sections::{
     Peaking, ShelfCoeffs,
 };
 
-/// Four lanes: even-left, even-right, odd-left, odd-right.
-const LANES: usize = SIMD_LANES;
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SvfType {
     #[default]
@@ -109,7 +106,7 @@ trait SvfFilter {
         sample_rate: Smp,
         samples: usize,
         inputs: LaneInputs<'_>,
-        output: [&mut [Smp]; LANES],
+        output: [&mut [Smp]; SIMD_LANES],
     ) {
         let freq_mult = WideSmp::splat(sample_rate.recip());
         let inputs = inputs.take(samples);
@@ -514,24 +511,24 @@ impl SvfState {
         sample_rate: Smp,
         samples: usize,
         inputs: LaneInputs<'_>,
-        output: [&mut [Smp]; LANES],
+        output: [&mut [Smp]; SIMD_LANES],
     ) {
         SvfFilter::process(self, sample_rate, samples, inputs, output);
     }
 }
 
 #[inline(always)]
-fn take_lanes_mut(lanes: [&mut [Smp]; LANES], samples: usize) -> [&mut [Smp]; LANES] {
+fn take_lanes_mut(lanes: [&mut [Smp]; SIMD_LANES], samples: usize) -> [&mut [Smp]; SIMD_LANES] {
     lanes.map(|lane| &mut lane[..samples])
 }
 
 #[derive(Clone, Copy)]
 pub struct LaneInputs<'a> {
-    pub audio: [&'a [Smp]; LANES],
-    pub cutoff: [&'a [Smp]; LANES],
-    pub k: [&'a [Smp]; LANES],
-    pub pre_k: [&'a [Smp]; LANES],
-    pub gain: [&'a [Smp]; LANES],
+    pub audio: [&'a [Smp]; SIMD_LANES],
+    pub cutoff: [&'a [Smp]; SIMD_LANES],
+    pub k: [&'a [Smp]; SIMD_LANES],
+    pub pre_k: [&'a [Smp]; SIMD_LANES],
+    pub gain: [&'a [Smp]; SIMD_LANES],
 }
 
 impl LaneInputs<'_> {
@@ -559,7 +556,7 @@ impl LaneInputs<'_> {
     }
 
     #[inline(always)]
-    fn load(lanes: [&[Smp]; LANES], index: usize) -> WideSmp {
+    fn load(lanes: [&[Smp]; SIMD_LANES], index: usize) -> WideSmp {
         WideSmp::new([
             lanes[0][index],
             lanes[1][index],

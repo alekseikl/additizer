@@ -709,14 +709,14 @@ fn reset_zeros_one_slot() {
     let k = [0.5; 16];
     let pre_k = [2.0; 16];
     let gain = [1.0; 16];
-    let audio_refs = [&audio[..]; LANES];
-    let cutoff_refs = [&cutoff[..]; LANES];
-    let k_refs = [&k[..]; LANES];
-    let pre_k_refs = [&pre_k[..]; LANES];
-    let gain_refs = [&gain[..]; LANES];
+    let audio_refs = [&audio[..]; SIMD_LANES];
+    let cutoff_refs = [&cutoff[..]; SIMD_LANES];
+    let k_refs = [&k[..]; SIMD_LANES];
+    let pre_k_refs = [&pre_k[..]; SIMD_LANES];
+    let gain_refs = [&gain[..]; SIMD_LANES];
 
     let mut state = SvfState::new(SvfType::LowPass24);
-    let mut out = [[0.0; 16]; LANES];
+    let mut out = [[0.0; 16]; SIMD_LANES];
     {
         let [o0, o1, o2, o3] = out.each_mut();
         state.process(
@@ -735,9 +735,9 @@ fn reset_zeros_one_slot() {
 
     state.reset(0);
 
-    let mut cleared = [[0.0; 1]; LANES];
+    let mut cleared = [[0.0; 1]; SIMD_LANES];
     let silent = [0.0; 1];
-    let silent_refs = [&silent[..]; LANES];
+    let silent_refs = [&silent[..]; SIMD_LANES];
     let [o0, o1, o2, o3] = cleared.each_mut();
 
     state.process(

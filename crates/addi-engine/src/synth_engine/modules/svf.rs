@@ -34,8 +34,7 @@ use crate::{
 };
 
 /// Even voice left, even voice right, odd voice left, odd voice right.
-const LANES: usize = VOICE_PAIR_LEN * NUM_CHANNELS;
-const _: () = assert!(LANES == SIMD_LANES);
+const _: () = assert!(VOICE_PAIR_LEN * NUM_CHANNELS == SIMD_LANES);
 
 struct Params {
     filter_type: SvfType,
@@ -130,11 +129,11 @@ impl Inputs {
 }
 
 struct Buffers {
-    audio: [Buffer; LANES],
-    cutoff: [Buffer; LANES],
-    resonance: [Buffer; LANES],
-    pre_k: [Buffer; LANES],
-    drive: [Buffer; LANES],
+    audio: [Buffer; SIMD_LANES],
+    cutoff: [Buffer; SIMD_LANES],
+    resonance: [Buffer; SIMD_LANES],
+    pre_k: [Buffer; SIMD_LANES],
+    drive: [Buffer; SIMD_LANES],
 }
 
 impl Buffers {
@@ -332,7 +331,7 @@ impl<L: SvfLinks> Svf<L> {
     }
 }
 
-fn block_refs(buffers: &[Buffer; LANES]) -> [&[Smp]; LANES] {
+fn block_refs(buffers: &[Buffer; SIMD_LANES]) -> [&[Smp]; SIMD_LANES] {
     buffers.each_ref().map(|buffer| &buffer[..])
 }
 

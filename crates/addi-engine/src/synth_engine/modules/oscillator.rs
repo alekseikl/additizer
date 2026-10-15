@@ -20,7 +20,9 @@ use crate::{
         synth_module::SynthModule,
         types::{ComplexSample, Smp, WideSmp},
     },
-    synth_engine::{db_to_gain, fast_pitch_to_freq_x4, from_st, pitch_to_freq, zip_map_x4},
+    synth_engine::{
+        SIMD_LANES, db_to_gain, fast_pitch_to_freq_x4, from_st, pitch_to_freq, zip_map_x4,
+    },
 };
 
 mod config;
@@ -29,7 +31,7 @@ mod link;
 pub mod stub;
 mod unison;
 
-use lanes::{SampleCtx, UNISON_CHUNKS, UNISON_LANES, UnisonLaneParams};
+use lanes::{SampleCtx, UNISON_CHUNKS, UnisonLaneParams};
 use unison::{ConvexUnison, FlatUnison, ManualUnison, UnisonType};
 
 #[cfg(test)]
@@ -776,18 +778,18 @@ impl<L: OscillatorLinks> Oscillator<L> {
 
     fn store_unison_lanes(&mut self, channel_idx: usize, voice_idx: usize) {
         let unison = self.params.unison.clamp(1, MAX_UNISON_VOICES);
-        let full_chunks = unison / UNISON_LANES;
-        let rem_lanes = unison % UNISON_LANES;
+        let full_chunks = unison / SIMD_LANES;
+        let rem_lanes = unison % SIMD_LANES;
         let voice = self.voices.at(channel_idx, voice_idx);
 
         for chunk_idx in 0..full_chunks {
-            let start = chunk_idx * UNISON_LANES;
-            let params = UnisonLaneParams::from_voices(&voice.unison[start..start + UNISON_LANES]);
+            let start = chunk_idx * SIMD_LANES;
+            let params = UnisonLaneParams::from_voices(&voice.unison[start..start + SIMD_LANES]);
             self.lane_params[chunk_idx] = params;
         }
 
         if rem_lanes > 0 {
-            let start = full_chunks * UNISON_LANES;
+            let start = full_chunks * SIMD_LANES;
             let params = UnisonLaneParams::from_voices(&voice.unison[start..start + rem_lanes]);
             self.lane_params[full_chunks] = params;
         }
@@ -986,7 +988,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         start: usize,
         end: usize,
         mut render_lanes: impl FnMut(
-            &mut [Phase; UNISON_LANES],
+            &mut [Phase; SIMD_LANES],
             &UnisonLaneParams,
             &mut SampleCtx,
             usize,
@@ -1004,12 +1006,12 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let buff_t_inc = (ctx.samples as Smp).recip();
         let mut buff_t = start as Smp * buff_t_inc;
 
-        let (phase_chunks, []) = voice.phases.as_chunks_mut::<UNISON_LANES>() else {
-            unreachable!("MAX_UNISON_VOICES is a multiple of UNISON_LANES");
+        let (phase_chunks, []) = voice.phases.as_chunks_mut::<SIMD_LANES>() else {
+            unreachable!("MAX_UNISON_VOICES is a multiple of SIMD_LANES");
         };
 
-        let full_chunks = unison / UNISON_LANES;
-        let rem_lanes = unison % UNISON_LANES;
+        let full_chunks = unison / SIMD_LANES;
+        let rem_lanes = unison % SIMD_LANES;
         let (full_phases, rem_phases) = phase_chunks.split_at_mut(full_chunks);
         let (full_params, rem_params) = self.lane_params.split_at(full_chunks);
 
@@ -1024,12 +1026,12 @@ impl<L: OscillatorLinks> Oscillator<L> {
                 phase_inc: WideSmp::splat(phase_inc),
                 wave_from,
                 wave_to,
-                acc_from: [WideSmp::ZERO; UNISON_LANES],
-                acc_to: [WideSmp::ZERO; UNISON_LANES],
+                acc_from: [WideSmp::ZERO; SIMD_LANES],
+                acc_to: [WideSmp::ZERO; SIMD_LANES],
             };
 
             for (phases, params) in full_phases.iter_mut().zip(full_params) {
-                render_lanes(phases, params, &mut s, UNISON_LANES);
+                render_lanes(phases, params, &mut s, SIMD_LANES);
             }
 
             if rem_lanes > 0 {

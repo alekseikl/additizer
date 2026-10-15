@@ -578,14 +578,13 @@ impl SpectralFilter {
     }
 }
 
-const LANES: usize = SIMD_LANES;
 const DC_OFFSET: usize = 1;
 
 /// Up to four frequencies. Lanes past the slice stay zero and are not stored.
 #[inline(always)]
 fn load_freq_lanes(freqs: &[Smp]) -> WideSmp {
-    let mut lanes = [0.0; LANES];
-    let n = freqs.len().min(LANES);
+    let mut lanes = [0.0; SIMD_LANES];
+    let n = freqs.len().min(SIMD_LANES);
     lanes[..n].copy_from_slice(&freqs[..n]);
     WideSmp::new(lanes)
 }
@@ -619,7 +618,7 @@ fn write_responses<T: FilterLanes, const LINEAR: bool>(
     let n = freqs.len().min(out.len());
     let mut i = 0;
 
-    while i + LANES <= n {
+    while i + SIMD_LANES <= n {
         write_response_lanes::<LINEAR>(
             filter.at_x4(WideSmp::new([
                 freqs[i],
@@ -629,9 +628,9 @@ fn write_responses<T: FilterLanes, const LINEAR: bool>(
             ])),
             out,
             i,
-            LANES,
+            SIMD_LANES,
         );
-        i += LANES;
+        i += SIMD_LANES;
     }
 
     if i < n {
@@ -701,12 +700,12 @@ fn apply_lanes<T: FilterLanes, const LINEAR: bool>(
     // Skip DC. Bin indices are the frequencies.
     let mut i = DC_OFFSET;
     let mut freq = WideSmp::new([1.0, 2.0, 3.0, 4.0]);
-    let step = WideSmp::splat(LANES as Smp);
+    let step = WideSmp::splat(SIMD_LANES as Smp);
 
-    while i + LANES <= len {
-        store_lanes::<LINEAR>(filter.at_x4(freq), input, output, i, LANES);
+    while i + SIMD_LANES <= len {
+        store_lanes::<LINEAR>(filter.at_x4(freq), input, output, i, SIMD_LANES);
         freq += step;
-        i += LANES;
+        i += SIMD_LANES;
     }
 
     if i < len {
@@ -722,12 +721,12 @@ fn apply_lanes_in_place<T: FilterLanes, const LINEAR: bool>(
     let len = samples.len();
     let mut i = DC_OFFSET;
     let mut freq = WideSmp::new([1.0, 2.0, 3.0, 4.0]);
-    let step = WideSmp::splat(LANES as Smp);
+    let step = WideSmp::splat(SIMD_LANES as Smp);
 
-    while i + LANES <= len {
-        scale_lanes_in_place::<LINEAR>(filter.at_x4(freq), samples, i, LANES);
+    while i + SIMD_LANES <= len {
+        scale_lanes_in_place::<LINEAR>(filter.at_x4(freq), samples, i, SIMD_LANES);
         freq += step;
-        i += LANES;
+        i += SIMD_LANES;
     }
 
     if i < len {

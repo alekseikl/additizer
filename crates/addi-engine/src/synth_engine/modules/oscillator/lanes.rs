@@ -9,9 +9,8 @@ use crate::synth_engine::{
 
 use super::{MAX_UNISON_VOICES, UnisonVoice, WaveformBuffer};
 
-pub(super) const UNISON_LANES: usize = SIMD_LANES;
-pub(super) const UNISON_CHUNKS: usize = MAX_UNISON_VOICES / UNISON_LANES;
-const _: () = assert!(UNISON_CHUNKS * UNISON_LANES == MAX_UNISON_VOICES);
+pub(super) const UNISON_CHUNKS: usize = MAX_UNISON_VOICES / SIMD_LANES;
+const _: () = assert!(UNISON_CHUNKS * SIMD_LANES == MAX_UNISON_VOICES);
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct UnisonLaneParams {
@@ -27,7 +26,7 @@ impl UnisonLaneParams {
     /// Voice gains are already normalized by the unison layout.
     #[inline(always)]
     pub(super) fn from_voices(voices: &[UnisonVoice]) -> Self {
-        debug_assert!(voices.len() <= UNISON_LANES);
+        debug_assert!(voices.len() <= SIMD_LANES);
 
         let lanes = |f: fn(&UnisonVoice) -> Smp| {
             WideSmp::new(array::from_fn(|i| voices.get(i).map(f).unwrap_or(0.0)))
@@ -50,7 +49,7 @@ impl UnisonLaneParams {
 }
 
 struct WaveTap {
-    idx: [u32; UNISON_LANES],
+    idx: [u32; SIMD_LANES],
     gt: WideSmp,
     gt2: WideSmp,
     gt3: WideSmp,
@@ -63,13 +62,13 @@ pub(super) struct SampleCtx<'a> {
     pub(super) phase_inc: WideSmp,
     pub(super) wave_from: &'a WaveformBuffer,
     pub(super) wave_to: &'a WaveformBuffer,
-    pub(super) acc_from: [WideSmp; UNISON_LANES],
-    pub(super) acc_to: [WideSmp; UNISON_LANES],
+    pub(super) acc_from: [WideSmp; SIMD_LANES],
+    pub(super) acc_to: [WideSmp; SIMD_LANES],
 }
 
 #[inline(always)]
 pub(super) fn render_same<const BITS: usize>(
-    phases: &mut [Phase; UNISON_LANES],
+    phases: &mut [Phase; SIMD_LANES],
     params: &UnisonLaneParams,
     s: &mut SampleCtx,
     lanes: usize,
@@ -107,7 +106,7 @@ pub(super) fn render_same<const BITS: usize>(
 
 #[inline(always)]
 pub(super) fn render_sized<const FROM_BITS: usize, const TO_BITS: usize>(
-    phases: &mut [Phase; UNISON_LANES],
+    phases: &mut [Phase; SIMD_LANES],
     params: &UnisonLaneParams,
     s: &mut SampleCtx,
     lanes: usize,

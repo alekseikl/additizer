@@ -5,11 +5,11 @@ use super::{
     MAX_UNISON_VOICES, Oscillator, OscillatorConfig, OscillatorLinks, UnisonStyle, UnisonVoice,
     VoiceRenderCtx, WAVEFORM_BITS, WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE,
     Waveform, WaveformBuffer, WaveformSize,
-    lanes::{SampleCtx, UNISON_LANES, UnisonLaneParams, render_same},
+    lanes::{SampleCtx, UnisonLaneParams, render_same},
 };
 use crate::synth_engine::{
     ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, MAX_VOICES, ModuleConfig,
-    ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Smp, SynthEngine, WideSmp,
+    ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, SIMD_LANES, Smp, SynthEngine, WideSmp,
     coeffs::catmull_rom_from_powers,
     harmonic_editor::HarmonicEditorConfig,
     phase::{Phase, PhaseX4},
@@ -967,8 +967,8 @@ fn reference_render(
     let mut output = vec![RENDER_SENTINEL; case.samples];
     let buff_t_inc = (case.samples as Smp).recip();
     let mut buff_t = case.start as Smp * buff_t_inc;
-    let full = case.unison / UNISON_LANES;
-    let rem = case.unison % UNISON_LANES;
+    let full = case.unison / SIMD_LANES;
+    let rem = case.unison % SIMD_LANES;
 
     for (index, sample) in output
         .iter_mut()
@@ -983,8 +983,8 @@ fn reference_render(
         let mut acc_to = 0.0;
 
         let mut advance_chunk = |chunk: usize, lanes: usize| {
-            for lane in 0..UNISON_LANES {
-                let voice_idx = chunk * UNISON_LANES + lane;
+            for lane in 0..SIMD_LANES {
+                let voice_idx = chunk * SIMD_LANES + lane;
                 let (rate_from, rate_delta, phase_from, phase_delta, gain_from, gain_delta) =
                     if lane < lanes {
                         let voice = &voices[voice_idx];
@@ -1022,7 +1022,7 @@ fn reference_render(
         };
 
         for chunk in 0..full {
-            advance_chunk(chunk, UNISON_LANES);
+            advance_chunk(chunk, SIMD_LANES);
         }
         if rem > 0 {
             advance_chunk(full, rem);
@@ -1044,17 +1044,17 @@ fn decoy_unison_voice() -> UnisonVoice {
 }
 
 fn store_lane_params(osc: &mut Oscillator, voices: &[UnisonVoice], unison: usize) {
-    let full = unison / UNISON_LANES;
-    let rem = unison % UNISON_LANES;
+    let full = unison / SIMD_LANES;
+    let rem = unison % SIMD_LANES;
 
     for chunk in 0..full {
-        let start = chunk * UNISON_LANES;
+        let start = chunk * SIMD_LANES;
         osc.lane_params[chunk] =
-            UnisonLaneParams::from_voices(&voices[start..start + UNISON_LANES]);
+            UnisonLaneParams::from_voices(&voices[start..start + SIMD_LANES]);
     }
 
     if rem > 0 {
-        let start = full * UNISON_LANES;
+        let start = full * SIMD_LANES;
         osc.lane_params[full] = UnisonLaneParams::from_voices(&voices[start..start + rem]);
     }
 }
@@ -1312,15 +1312,15 @@ fn unison_phase_ramp_across_half_cycle_follows_the_parameter() {
     let params = UnisonLaneParams::from_voices(&voices);
     let wave = patterned_wave(WaveformSize::Full, 1.0);
     let phase = Phase::from_bits(0x1000_0000);
-    let mut phases = [phase; UNISON_LANES];
+    let mut phases = [phase; SIMD_LANES];
     let mut ctx = SampleCtx {
         buff_t: WideSmp::splat(buff_t),
         phase_shift: PhaseX4::splat(Phase::ZERO),
         phase_inc: WideSmp::ZERO,
         wave_from: &wave,
         wave_to: &wave,
-        acc_from: [WideSmp::ZERO; UNISON_LANES],
-        acc_to: [WideSmp::ZERO; UNISON_LANES],
+        acc_from: [WideSmp::ZERO; SIMD_LANES],
+        acc_to: [WideSmp::ZERO; SIMD_LANES],
     };
 
     render_same::<WAVEFORM_BITS>(&mut phases, &params, &mut ctx, 1);
