@@ -1,7 +1,14 @@
 use crate::{
-    WideSmp,
+    SIMD_LANES, WideSmp,
     math::{db_to_gain_fast, pitch_to_freq},
 };
+
+fn wide(values: &[f32]) -> WideSmp {
+    let mut lanes = [0.0; SIMD_LANES];
+    lanes[..values.len()].copy_from_slice(values);
+
+    WideSmp::new(lanes)
+}
 
 use super::{db_to_gain_fast_wide, fast_exp2_wide, fast_pitch_to_freq_wide, fast_tan_pi_wide};
 
@@ -26,7 +33,7 @@ fn fast_exp2_is_accurate_across_range() {
 
 #[test]
 fn fast_exp2_lanes_are_independent() {
-    let out = fast_exp2_wide(WideSmp::new([-3.0, 0.5, 2.25, 10.0])).to_array();
+    let out = fast_exp2_wide(wide(&[-3.0, 0.5, 2.25, 10.0])).to_array();
 
     for (x, y) in [-3.0f32, 0.5, 2.25, 10.0].into_iter().zip(out) {
         assert!(((y - x.exp2()) / x.exp2()).abs() < 1.5e-7, "2^{x} = {y}");
@@ -86,7 +93,7 @@ fn fast_tan_pi_matches_libm_tan() {
 #[test]
 fn fast_tan_pi_lanes_are_independent() {
     let ratios = [0.01f32, 0.2, 0.4, 0.499];
-    let out = fast_tan_pi_wide(WideSmp::new(ratios)).to_array();
+    let out = fast_tan_pi_wide(wide(&ratios)).to_array();
 
     for (ratio, y) in ratios.into_iter().zip(out) {
         let exact = fast_tan_pi(ratio);
@@ -97,7 +104,7 @@ fn fast_tan_pi_lanes_are_independent() {
 #[test]
 fn db_to_gain_fast_wide_matches_scalar_over_drive_range() {
     let lanes = [-60.0, -12.0, 0.0, 24.0];
-    let out = db_to_gain_fast_wide(WideSmp::new(lanes)).to_array();
+    let out = db_to_gain_fast_wide(wide(&lanes)).to_array();
 
     for (dbs, gain) in lanes.into_iter().zip(out) {
         let exact = db_to_gain_fast(dbs);

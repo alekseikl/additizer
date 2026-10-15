@@ -494,16 +494,20 @@ impl SvfState {
         }
     }
 
-    /// Zeros one voice's lanes. `slot` is 0 for lanes 0–1 and 1 for lanes 2–3.
+    /// Zeros one voice. Lanes are stereo pairs: `slot * 2` and `slot * 2 + 1`.
     pub fn reset(&mut self, slot: usize) {
+        const LANES_PER_VOICE: usize = 2;
         let on = f32::from_bits(u32::MAX);
-        let mask = match slot {
-            0 => WideSmp::new([on, on, 0.0, 0.0]),
-            1 => WideSmp::new([0.0, 0.0, on, on]),
-            _ => panic!("voice slot in a pair is 0 or 1"),
-        };
+        let mut lanes = [0.0; SIMD_LANES];
+        let base = slot * LANES_PER_VOICE;
 
-        SvfFilter::reset(self, mask);
+        if base + 1 >= SIMD_LANES {
+            panic!("voice slot {slot} does not fit in {SIMD_LANES} lanes");
+        }
+
+        lanes[base] = on;
+        lanes[base + 1] = on;
+        SvfFilter::reset(self, WideSmp::new(lanes));
     }
 
     pub fn process(
@@ -543,7 +547,7 @@ impl LaneInputs<'_> {
         }
     }
 
-    /// `g = tan(π f / sample_rate)` for four cutoffs in octaves relative to C4.
+    /// `g = tan(π f / sample_rate)` for each lane, in octaves relative to C4.
     #[inline(always)]
     fn cutoff_to_g_x4(cutoff: WideSmp, freq_mult: WideSmp) -> WideSmp {
         const MAX_RATIO: WideSmp = WideSmp::splat(MAX_FREQ_RATIO);
@@ -557,12 +561,7 @@ impl LaneInputs<'_> {
 
     #[inline(always)]
     fn load(lanes: [&[Smp]; SIMD_LANES], index: usize) -> WideSmp {
-        WideSmp::new([
-            lanes[0][index],
-            lanes[1][index],
-            lanes[2][index],
-            lanes[3][index],
-        ])
+        WideSmp::new(std::array::from_fn(|lane| lanes[lane][index]))
     }
 
     #[inline(always)]

@@ -1,4 +1,8 @@
-use crate::WideSmp;
+use crate::{SIMD_LANES, WideSmp};
+
+fn successive(start: f32) -> WideSmp {
+    WideSmp::new(std::array::from_fn(|lane| start + lane as f32))
+}
 
 use super::{fill_wide, map_wide, map_wide_in_place, zip_map_wide};
 
@@ -46,22 +50,22 @@ fn fill_wide_writes_groups_and_partial_tail() {
     let mut out = [0.0; 5];
     let mut n = 0.0;
     fill_wide(&mut out, || {
-        let lanes = WideSmp::new([n, n + 1.0, n + 2.0, n + 3.0]);
-        n += 4.0;
+        let lanes = successive(n);
+        n += SIMD_LANES as f32;
         lanes
     });
     assert_eq!(out, [0.0, 1.0, 2.0, 3.0, 4.0]);
-    assert_eq!(n, 8.0);
+    assert_eq!(n, out.len().div_ceil(SIMD_LANES) as f32 * SIMD_LANES as f32);
 
     let mut out = [0.0; 2];
     n = 0.0;
     fill_wide(&mut out, || {
-        let lanes = WideSmp::new([n, n + 1.0, n + 2.0, n + 3.0]);
-        n += 4.0;
+        let lanes = successive(n);
+        n += SIMD_LANES as f32;
         lanes
     });
     assert_eq!(out, [0.0, 1.0]);
-    assert_eq!(n, 4.0);
+    assert_eq!(n, SIMD_LANES as f32);
 
     let mut out = [];
     fill_wide(&mut out, || panic!("empty output"));

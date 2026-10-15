@@ -4,17 +4,17 @@ use addi_dsp::SmoothedSample;
 
 use super::{OutputRouterType, OutputVoiceState, VoiceLane, VoiceOutput, VoicesBlock};
 use crate::synth_engine::{
-    buffer::{zero_buffer, VoicesLayout},
+    CONTROL_EXT, ComplexSample, DataType, EngineAudioEnd, Input, ModuleId, NUM_CHANNELS,
+    SPECTRAL_BUFFER_SIZE, SmoothedSampleParams, Smp, StereoSample,
+    buffer::{VoicesLayout, zero_buffer},
     engine_io::{UiEvent, VoicesHandlerMetrics},
     routing::{
         InputSlot, MixedSlots, OutputsArena, ProcessContext, ProcessParams, SamplesOutput,
         SpectralOutput, VoiceTarget,
     },
     synth_module::SynthModule,
-    voices::VOICE_BLOCKS,
+    voices::{VOICE_BLOCK_LEN, VOICE_BLOCKS},
     voices_handler::{Note, PlayingVoice, PlayingVoices, VoiceEvents, VoicesHandler},
-    ComplexSample, DataType, EngineAudioEnd, Input, ModuleId, SmoothedSampleParams, Smp,
-    StereoSample, CONTROL_EXT, NUM_CHANNELS, SPECTRAL_BUFFER_SIZE,
 };
 
 const SAMPLE_RATE: Smp = 48_000.0;
@@ -431,7 +431,6 @@ fn audio_for_voices_visits_untriggered_voices_before_triggered_ones() {
             },
         ]
     );
-    drop(ctx);
     assert_eq!(rig.arena.samples[slot].at(0, 0).buffer()[0], 3.5);
 }
 
@@ -448,7 +447,6 @@ fn audio_for_voices_with_no_voices_restores_the_slot() {
         .for_channels(|_, _| {});
 
     assert_eq!(visits, 0);
-    drop(ctx);
     assert_eq!(rig.arena.samples[slot].at(0, 0).buffer()[0], 2.0);
 }
 
@@ -513,13 +511,16 @@ fn for_lanes_keeps_each_voice_in_its_pair_slot() {
     assert_eq!(block.last_voice_idx, Some(0));
     assert_eq!(block.voices[0].map(|voice| voice.voice_idx()), Some(0));
     assert_eq!(block.voices[1].map(|voice| voice.voice_idx()), Some(1));
-    drop(ctx);
     assert_eq!(rig.arena.samples[slot].at(0, 0).buffer()[0], 6.0);
 }
 
 #[test]
 fn for_lanes_skips_empty_pairs_and_empty_slots() {
-    let mut rig = Rig::new(vec![PlayingVoice::new(1, 62), PlayingVoice::new(2, 67)]);
+    let next_block = VOICE_BLOCK_LEN;
+    let mut rig = Rig::new(vec![
+        PlayingVoice::new(1, 62),
+        PlayingVoice::new(next_block as u8, 67),
+    ]);
     let slot = rig.alloc_audio();
     let mut trace = LaneTrace {
         prepares: Vec::new(),
@@ -541,8 +542,8 @@ fn for_lanes_skips_empty_pairs_and_empty_slots() {
         [
             (1, 0, NUM_CHANNELS),
             (1, 1, NUM_CHANNELS + 1),
-            (2, 0, 0),
-            (2, 1, 1),
+            (next_block, 0, 0),
+            (next_block, 1, 1),
         ]
     );
     assert_eq!(trace.blocks.len(), 2);
@@ -552,12 +553,21 @@ fn for_lanes_skips_empty_pairs_and_empty_slots() {
         trace.blocks[0].voices[1].map(|voice| voice.voice_idx()),
         Some(1)
     );
+    assert!(
+        trace.blocks[0].voices[2..]
+            .iter()
+            .all(|voice| voice.is_none())
+    );
     assert_eq!(trace.blocks[1].block_idx, 1);
     assert_eq!(
         trace.blocks[1].voices[0].map(|voice| voice.voice_idx()),
-        Some(2)
+        Some(next_block)
     );
-    assert!(trace.blocks[1].voices[1].is_none());
+    assert!(
+        trace.blocks[1].voices[1..]
+            .iter()
+            .all(|voice| voice.is_none())
+    );
     assert!(trace.blocks.len() < VOICE_BLOCKS);
 }
 
@@ -997,7 +1007,6 @@ fn control_for_voices_skips_triggered_voices_until_the_trigger_stage() {
             },
         ]
     );
-    drop(ctx);
 
     rig.trigger_stage = true;
     let mut trigger = Vec::new();
@@ -1031,7 +1040,6 @@ fn control_for_voices_skips_triggered_voices_until_the_trigger_stage() {
             },
         ]
     );
-    drop(ctx);
     assert_eq!(rig.arena.samples[slot].at(0, 0).buffer()[0], 1.5);
 }
 

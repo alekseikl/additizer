@@ -101,6 +101,11 @@ fn process_lanes_match_one_sample_at_a_time() {
     }
 }
 
+/// Lane 0 carries `head`. Every other lane is `rest`.
+fn with_rest<'a>(head: &'a [Smp], rest: &'a [Smp]) -> [&'a [Smp]; SIMD_LANES] {
+    std::array::from_fn(|lane| if lane == 0 { head } else { rest })
+}
+
 /// One sample through lane 0. The other lanes stay silent.
 fn tick(state: &mut SvfState, cutoff: Smp, k: Smp, gain: Smp, input: Smp) -> Smp {
     let audio = [input];
@@ -109,25 +114,22 @@ fn tick(state: &mut SvfState, cutoff: Smp, k: Smp, gain: Smp, input: Smp) -> Smp
     let pre_k = [MAX_PRE_Q.recip()];
     let gain = [gain];
     let zero = [0.0];
-    let mut out = [0.0];
-    let mut sink_a = [0.0];
-    let mut sink_b = [0.0];
-    let mut sink_c = [0.0];
+    let mut outputs = [[0.0]; SIMD_LANES];
 
     state.process(
         SAMPLE_RATE,
         1,
         LaneInputs {
-            audio: [&audio, &zero, &zero, &zero],
-            cutoff: [&cutoff, &zero, &zero, &zero],
-            k: [&k, &zero, &zero, &zero],
-            pre_k: [&pre_k, &zero, &zero, &zero],
-            gain: [&gain, &zero, &zero, &zero],
+            audio: with_rest(&audio, &zero),
+            cutoff: with_rest(&cutoff, &zero),
+            k: with_rest(&k, &zero),
+            pre_k: with_rest(&pre_k, &zero),
+            gain: with_rest(&gain, &zero),
         },
-        [&mut out, &mut sink_a, &mut sink_b, &mut sink_c],
+        outputs.each_mut().map(|lane| &mut lane[..]),
     );
 
-    out[0]
+    outputs[0][0]
 }
 
 fn process_lane(
@@ -140,22 +142,22 @@ fn process_lane(
     output: &mut [Smp],
 ) {
     let zeros = vec![0.0; audio.len()];
-    let mut sink_a = vec![0.0; audio.len()];
-    let mut sink_b = vec![0.0; audio.len()];
-    let mut sink_c = vec![0.0; audio.len()];
+    let mut outputs = std::array::from_fn(|_| vec![0.0; audio.len()]);
 
     state.process(
         SAMPLE_RATE,
         audio.len(),
         LaneInputs {
-            audio: [audio, &zeros, &zeros, &zeros],
-            cutoff: [cutoff, &zeros, &zeros, &zeros],
-            k: [k, &zeros, &zeros, &zeros],
-            pre_k: [pre_k, &zeros, &zeros, &zeros],
-            gain: [gain, &zeros, &zeros, &zeros],
+            audio: with_rest(audio, &zeros),
+            cutoff: with_rest(cutoff, &zeros),
+            k: with_rest(k, &zeros),
+            pre_k: with_rest(pre_k, &zeros),
+            gain: with_rest(gain, &zeros),
         },
-        [output, &mut sink_a, &mut sink_b, &mut sink_c],
+        outputs.each_mut().map(|lane| lane.as_mut_slice()),
     );
+
+    output.copy_from_slice(&outputs[0]);
 }
 
 /// Steady-state amplitude of lane 0 for a unit sine at `freq`.
@@ -719,7 +721,6 @@ fn reset_zeros_one_slot() {
     let mut state = SvfState::new(SvfType::LowPass24);
     let mut out = [[0.0; 16]; SIMD_LANES];
     {
-        let [o0, o1, o2, o3] = out.each_mut();
         state.process(
             SAMPLE_RATE,
             n,
@@ -730,7 +731,7 @@ fn reset_zeros_one_slot() {
                 pre_k: pre_k_refs,
                 gain: gain_refs,
             },
-            [o0, o1, o2, o3],
+            out.each_mut().map(|lane| &mut lane[..]),
         );
     }
 
@@ -739,8 +740,6 @@ fn reset_zeros_one_slot() {
     let mut cleared = [[0.0; 1]; SIMD_LANES];
     let silent = [0.0; 1];
     let silent_refs = [&silent[..]; SIMD_LANES];
-    let [o0, o1, o2, o3] = cleared.each_mut();
-
     state.process(
         SAMPLE_RATE,
         1,
@@ -751,7 +750,7 @@ fn reset_zeros_one_slot() {
             pre_k: pre_k_refs,
             gain: gain_refs,
         },
-        [o0, o1, o2, o3],
+        cleared.each_mut().map(|lane| &mut lane[..]),
     );
 
     assert!(cleared[0][0].abs() < 1e-6);

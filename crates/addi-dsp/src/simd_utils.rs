@@ -5,7 +5,7 @@ use crate::{SIMD_LANES, Smp, WideSmp};
 #[cfg(test)]
 mod tests;
 
-/// Map `samples` through `map` in groups of four and write the results to `out`.
+/// Map `samples` through `map` in groups of [`SIMD_LANES`] and write the results to `out`.
 ///
 /// `samples` and `out` must have the same length. A trailing partial group is
 /// zero-padded. Only the lanes that correspond to real input samples are stored.
@@ -63,10 +63,10 @@ pub fn zip_map_wide(
     }
 }
 
-/// Fill `out` with successive groups of four lanes from `fill`.
+/// Fill `out` with successive groups of [`SIMD_LANES`] from `fill`.
 ///
 /// `fill` is called once per group. A trailing partial group is produced as
-/// four lanes; only the lanes that fit in `out` are stored.
+/// [`SIMD_LANES`] lanes; only the lanes that fit in `out` are stored.
 #[inline(always)]
 pub fn fill_wide(out: &mut [Smp], mut fill: impl FnMut() -> WideSmp) {
     let (chunks, rem) = out.as_chunks_mut::<SIMD_LANES>();

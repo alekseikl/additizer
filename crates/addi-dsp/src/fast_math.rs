@@ -2,12 +2,12 @@
 
 use wide::bytemuck::cast;
 
-use crate::{Smp, WideI32, WideSmp, consts::A4_FREQ};
+use crate::{SIMD_LANES, Smp, WideI32, WideSmp, consts::A4_FREQ};
 
 #[cfg(test)]
 mod tests;
 
-/// `2^x` for four lanes as an inline polynomial, with no libm call.
+/// `2^x` for each lane as an inline polynomial, with no libm call.
 ///
 /// Relative error is below 1e-7 (about half an f32 ulp, on par with `exp2f`)
 /// for `x` in `[-125, 125]`; `x` is clamped to that range. Intended for
@@ -50,7 +50,7 @@ pub fn fast_exp2_wide(x: WideSmp) -> WideSmp {
     cast(scaled)
 }
 
-/// [`db_to_gain_fast`](crate::math::db_to_gain_fast) for four lanes, built on [`fast_exp2_wide`].
+/// [`db_to_gain_fast`](crate::math::db_to_gain_fast) for each lane, built on [`fast_exp2_wide`].
 ///
 /// `10^(dB/20) = 2^(dB * log2(10) / 20)`. Drive values stay well inside the
 /// polynomial's accurate range.
@@ -61,7 +61,7 @@ pub fn db_to_gain_fast_wide(dbs: WideSmp) -> WideSmp {
     fast_exp2_wide(dbs * DB_TO_EXP2)
 }
 
-/// [`pitch_to_freq`](crate::math::pitch_to_freq) for four lanes, built on [`fast_exp2_wide`].
+/// [`pitch_to_freq`](crate::math::pitch_to_freq) for each lane, built on [`fast_exp2_wide`].
 #[inline(always)]
 pub fn fast_pitch_to_freq_wide(pitch: WideSmp) -> WideSmp {
     const A4_FREQ_X4: WideSmp = WideSmp::splat(A4_FREQ);
@@ -69,7 +69,7 @@ pub fn fast_pitch_to_freq_wide(pitch: WideSmp) -> WideSmp {
     fast_exp2_wide(pitch) * A4_FREQ_X4
 }
 
-/// `tan(π x)` for four lanes, with `x` in `[0, 0.499]`.
+/// `tan(π x)` for each lane, with `x` in `[0, 0.499]`.
 ///
 /// This is the SVF prewarp `g = tan(π f / sample_rate)`. A degree-6 polynomial
 /// covers a quarter turn. Above that, `tan(π x) = 1 / tan(π (1/2 - x))`, so the
@@ -114,12 +114,30 @@ pub(crate) fn fast_tan_pi_wide(ratio: WideSmp) -> WideSmp {
     }
 }
 
+/// Catmull–Rom reads four neighbors. Wider vectors leave the remaining lanes at 0.
+pub const CATMULL_TAPS: usize = 4;
+const _: () = assert!(SIMD_LANES >= CATMULL_TAPS);
+
+/// Four taps in the low lanes of a [`WideSmp`]. Lanes past the kernel stay 0.
+#[inline(always)]
+const fn wide_taps(taps: [Smp; CATMULL_TAPS]) -> WideSmp {
+    let mut lanes = [0.0; SIMD_LANES];
+    let mut tap = 0;
+
+    while tap < CATMULL_TAPS {
+        lanes[tap] = taps[tap];
+        tap += 1;
+    }
+
+    WideSmp::new(lanes)
+}
+
 /// Coefficients of `((b0 * t + b1) * t + b2) * t + b3`, weighting `[s0, s1, s2, s3]`.
 const CATMULL_ROM: [WideSmp; 4] = [
-    WideSmp::new([-1.0 / 2.0, 3.0 / 2.0, -3.0 / 2.0, 1.0 / 2.0]),
-    WideSmp::new([1.0, -5.0 / 2.0, 4.0 / 2.0, -1.0 / 2.0]),
-    WideSmp::new([-1.0 / 2.0, 0.0 / 2.0, 1.0 / 2.0, 0.0 / 2.0]),
-    WideSmp::new([0.0 / 2.0, 1.0, 0.0 / 2.0, 0.0 / 2.0]),
+    wide_taps([-1.0 / 2.0, 3.0 / 2.0, -3.0 / 2.0, 1.0 / 2.0]),
+    wide_taps([1.0, -5.0 / 2.0, 4.0 / 2.0, -1.0 / 2.0]),
+    wide_taps([-1.0 / 2.0, 0.0 / 2.0, 1.0 / 2.0, 0.0 / 2.0]),
+    wide_taps([0.0 / 2.0, 1.0, 0.0 / 2.0, 0.0 / 2.0]),
 ];
 
 /// Weights for samples `[s0, s1, s2, s3]` at fractional position `t`.

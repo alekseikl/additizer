@@ -17,7 +17,9 @@ fn phase_inc_to_freq_inverts_freq_phase_mult() {
 
 #[test]
 fn load_store_round_trips() {
-    let phases = [1u32, 2, 3, u32::MAX].map(Phase::from_bits);
+    let mut phases = [Phase::ZERO; SIMD_LANES];
+    let values = [1u32, 2, 3, u32::MAX].map(Phase::from_bits);
+    phases[..values.len()].copy_from_slice(&values);
     let mut out = [Phase::ZERO; SIMD_LANES];
 
     WidePhase::load(&phases).store(&mut out);
@@ -56,7 +58,9 @@ fn from_normalized_matches_scalar_across_the_half_cycle() {
 
 #[test]
 fn wave_index_and_fraction_match_scalar() {
-    let phases = [0u32, 0x7fff_ffff, 0x8000_0000, 0xffff_ffff].map(Phase::from_bits);
+    let mut phases = [Phase::ZERO; SIMD_LANES];
+    let values = [0u32, 0x7fff_ffff, 0x8000_0000, 0xffff_ffff].map(Phase::from_bits);
+    phases[..values.len()].copy_from_slice(&values);
     let simd = WidePhase::load(&phases);
 
     let idx = simd.wave_index::<BITS>();
@@ -70,8 +74,12 @@ fn wave_index_and_fraction_match_scalar() {
 
 #[test]
 fn add_increment_matches_scalar() {
-    let phases = [0u32, 1000, 0xffff_ff00, 0x8000_0000].map(Phase::from_bits);
-    let incs = [1.5f32, -2.5, 1000.75, 123_456.0];
+    let mut phases = [Phase::ZERO; SIMD_LANES];
+    let values = [0u32, 1000, 0xffff_ff00, 0x8000_0000].map(Phase::from_bits);
+    phases[..values.len()].copy_from_slice(&values);
+    let mut incs = [0.0; SIMD_LANES];
+    let inc_values = [1.5f32, -2.5, 1000.75, 123_456.0];
+    incs[..inc_values.len()].copy_from_slice(&inc_values);
 
     let mut out = [Phase::ZERO; SIMD_LANES];
     (WidePhase::load(&phases) + WideSmp::new(incs)).store(&mut out);

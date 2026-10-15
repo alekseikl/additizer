@@ -2,7 +2,7 @@ use std::array;
 
 use crate::synth_engine::{
     SIMD_LANES,
-    fast_math::catmull_rom_from_powers,
+    fast_math::{CATMULL_TAPS, catmull_rom_from_powers},
     phase::{Phase, WidePhase},
     types::{Smp, WideSmp},
 };
@@ -146,11 +146,35 @@ pub fn render_sized<const FROM_BITS: usize, const TO_BITS: usize>(
     }
 }
 
+/// Sum the per-voice tap vectors in this chunk. Unused voices stay zero.
+///
+/// Adjacent pairs, so four lanes stay `(a0 + a1) + (a2 + a3)`.
+#[inline(always)]
+pub fn sum_lanes(acc: &[WideSmp; SIMD_LANES]) -> WideSmp {
+    let mut level = *acc;
+    let mut n = SIMD_LANES;
+
+    while n > 1 {
+        let mut i = 0;
+
+        while i < n {
+            level[i / 2] = level[i] + level[i + 1];
+            i += 2;
+        }
+
+        n /= 2;
+    }
+
+    level[0]
+}
+
 #[inline(always)]
 fn load_segment(wave_buffer: &WaveformBuffer, idx: usize) -> WideSmp {
-    let s = &wave_buffer[idx..idx + 4];
+    let src = &wave_buffer[idx..idx + CATMULL_TAPS];
+    let mut lanes = [0.0; SIMD_LANES];
+    lanes[..CATMULL_TAPS].copy_from_slice(src);
 
-    WideSmp::new([s[0], s[1], s[2], s[3]])
+    WideSmp::new(lanes)
 }
 
 #[inline(always)]

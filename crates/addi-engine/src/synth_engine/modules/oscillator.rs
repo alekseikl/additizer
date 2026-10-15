@@ -35,7 +35,7 @@ mod unison;
 
 use inputs::Inputs;
 use params::{ChannelParams, Params};
-use sample_block::{SampleCtx, UNISON_CHUNKS, UnisonBlockParams};
+use sample_block::{SampleCtx, UNISON_CHUNKS, UnisonBlockParams, sum_lanes};
 use unison::{ConvexUnison, FlatUnison, ManualUnison, UnisonType, UnisonVoice};
 
 #[cfg(test)]
@@ -847,8 +847,8 @@ impl<L: OscillatorLinks> Oscillator<L> {
                 render_block(&mut rem_phases[0], &rem_params[0], &mut s, rem_lanes);
             }
 
-            let acc_from = (s.acc_from[0] + s.acc_from[1]) + (s.acc_from[2] + s.acc_from[3]);
-            let acc_to = (s.acc_to[0] + s.acc_to[1]) + (s.acc_to[2] + s.acc_to[3]);
+            let acc_from = sum_lanes(&s.acc_from);
+            let acc_to = sum_lanes(&s.acc_to);
             let acc = (acc_to - acc_from).mul_add(s.buff_t, acc_from);
 
             *out = acc.reduce_add();
