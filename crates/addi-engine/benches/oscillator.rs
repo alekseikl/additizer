@@ -1,15 +1,11 @@
-//! `Oscillator::process` for one voice at 16 unison, and for 4 and 8 voices at
-//! 1 unison.
+//! `Oscillator::process` for one voice at 1, 4, and 16 unison.
 //!
 //! A spectral module writes a harmonic series. A control module writes a
-//! one-semitone pitch ramp. Both run outside the timer. `half_fft` ramps
-//! from C4 and stays on the half table. `full_fft` ramps from C1, so each
-//! block rebuilds and reads the full table. `size_crossfade` alternates a C2
-//! ramp (half table) and a C1 ramp (full table). Every active voice shares that
-//! ramp.
+//! one-semitone pitch ramp. Both run outside the timer. `half_fft` is
+//! triggered from C4 and stays on the half table. `full_fft` is triggered
+//! from C1 and stays on the full table. Every active voice shares that ramp.
 
 use std::hint::black_box;
-use std::time::Instant;
 
 use addi_engine::{
     ComplexSample, NUM_CHANNELS, Oscillator, PlayingVoice, SPECTRAL_BUFFER_SIZE,
@@ -29,15 +25,13 @@ mod aux;
 
 use aux::{Control, Spectral};
 
-/// 48 kHz host block.
-const BLOCK: usize = 128;
+/// 256-sample block at 48 kHz.
+const BLOCK: usize = 256;
 const BUFFER_SIZE: usize = BLOCK + 1;
 const SAMPLE_RATE: Smp = 48_000.0;
 
 /// C4. A one-semitone ramp from here stays on the half table at 48 kHz.
 const HALF_NOTE: u8 = 60;
-/// C2. A one-semitone ramp from here stays on the half table at 48 kHz.
-const UPPER_HALF_NOTE: u8 = 36;
 /// C1. A one-semitone ramp from here stays on the full table at 48 kHz.
 const FULL_NOTE: u8 = 24;
 
@@ -67,19 +61,19 @@ struct Case {
 
 const CASES: &[Case] = &[
     Case {
+        id: "voices1_unison1",
+        voices: 1,
+        unison: 1,
+    },
+    Case {
+        id: "voices1_unison4",
+        voices: 1,
+        unison: 4,
+    },
+    Case {
         id: "single_voice_unison16",
         voices: 1,
         unison: MAX_UNISON_VOICES,
-    },
-    Case {
-        id: "voices4_unison1",
-        voices: 4,
-        unison: 1,
-    },
-    Case {
-        id: "voices8_unison1",
-        voices: 8,
-        unison: 1,
     },
 ];
 
@@ -95,6 +89,7 @@ fn ctx<'a>(
     arena: &'a mut OutputsArena,
     audio_end: &'a mut AudioEnd,
     voices: &'a [PlayingVoice],
+    trigger_stage: bool,
 ) -> ProcessContext<'a, AudioEnd> {
     let last_voice_idx = voices.last().map(|voice| voice.voice_idx());
 
@@ -102,7 +97,7 @@ fn ctx<'a>(
         outputs_arena: arena,
         audio_end,
         params: ProcessParams {
-            trigger_stage: false,
+            trigger_stage,
             has_triggered_voices: false,
             samples: BLOCK,
             sample_rate: SAMPLE_RATE,
@@ -127,7 +122,7 @@ impl Rig {
         arena.allocate_slot(&mut spectrum);
         arena.allocate_slot(&mut pitch);
 
-        spectrum.process(&mut ctx(&mut arena, &mut audio_end, &voices));
+        spectrum.process(&mut ctx(&mut arena, &mut audio_end, &voices, false));
 
         let mut osc = Oscillator::from_config(&osc_config(unison), BUFFER_SIZE);
         osc.set_input_slots(&[
@@ -152,8 +147,12 @@ impl Rig {
     }
 
     fn render_pitch(&mut self) {
-        self.pitch
-            .process(&mut ctx(&mut self.arena, &mut self.audio_end, &self.voices));
+        self.pitch.process(&mut ctx(
+            &mut self.arena,
+            &mut self.audio_end,
+            &self.voices,
+            false,
+        ));
     }
 
     /// Writes a one-semitone ramp starting at `note` into every active voice.
@@ -172,16 +171,24 @@ impl Rig {
         self.render_pitch();
     }
 
-    /// Two control passes fill the whole block with the ramp. The oscillator
-    /// pass then installs the wavetable for that ramp's end.
+    /// Two control passes fill the whole block with the ramp. The trigger pass
+    /// latches that ramp's table size, and the oscillator pass installs the wave.
     fn settle(&mut self, note: u8) {
         self.set_pitch_ramp(note);
         self.set_pitch_ramp(note);
+        self.process_trigger();
         self.process();
     }
 
+    fn process_trigger(&mut self) {
+        let mut ctx = ctx(&mut self.arena, &mut self.audio_end, &self.voices, true);
+
+        self.osc.process(black_box(&mut ctx));
+        black_box(ctx);
+    }
+
     fn process(&mut self) {
-        let mut ctx = ctx(&mut self.arena, &mut self.audio_end, &self.voices);
+        let mut ctx = ctx(&mut self.arena, &mut self.audio_end, &self.voices, false);
 
         self.osc.process(black_box(&mut ctx));
         black_box(ctx);
@@ -200,12 +207,12 @@ fn osc_config(unison: usize) -> OscillatorConfig {
     }
 }
 
-fn elements(case: &Case, blocks: usize) -> u64 {
-    (BLOCK * NUM_CHANNELS * case.voices * case.unison * blocks) as u64
+fn elements(case: &Case) -> u64 {
+    (BLOCK * NUM_CHANNELS * case.voices * case.unison) as u64
 }
 
 fn bench_case(group: &mut BenchmarkGroup<WallTime>, case: &Case) {
-    group.throughput(Throughput::Elements(elements(case, 1)));
+    group.throughput(Throughput::Elements(elements(case)));
 
     {
         let mut rig = Rig::new(case.voices, case.unison);
@@ -222,34 +229,6 @@ fn bench_case(group: &mut BenchmarkGroup<WallTime>, case: &Case) {
 
         group.bench_function(BenchmarkId::new(case.id, "full_fft"), |b| {
             b.iter(|| rig.process())
-        });
-    }
-
-    // One iteration times both directions. Retuning happens outside the timer,
-    // and each timed block crossfades the previous table size into the new one.
-    {
-        let mut rig = Rig::new(case.voices, case.unison);
-        rig.settle(FULL_NOTE);
-
-        group.throughput(Throughput::Elements(elements(case, 2)));
-        group.bench_function(BenchmarkId::new(case.id, "size_crossfade"), |b| {
-            b.iter_custom(|iters| {
-                let mut total = std::time::Duration::ZERO;
-
-                for _ in 0..iters {
-                    rig.set_pitch_ramp(UPPER_HALF_NOTE);
-                    let start = Instant::now();
-                    rig.process();
-                    total += start.elapsed();
-
-                    rig.set_pitch_ramp(FULL_NOTE);
-                    let start = Instant::now();
-                    rig.process();
-                    total += start.elapsed();
-                }
-
-                total
-            });
         });
     }
 }

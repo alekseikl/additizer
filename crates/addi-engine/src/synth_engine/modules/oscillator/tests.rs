@@ -2,17 +2,18 @@ use realfft::RealFftPlanner;
 use wide::f32x4;
 
 use super::{
-    ConvexUnison, DFT_BUFFER_SIZE, FlatUnison, HALF_WAVEFORM_BITS, IfftPlanners, MAX_UNISON_VOICES,
-    Oscillator, OscillatorConfig, OscillatorLinks, UnisonStyle, UnisonVoice, VoiceRenderCtx,
-    WAVEFORM_BITS, WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform,
-    WaveformBuffer, WaveformSize,
-    sample_block::{SampleCtx, UnisonBlockParams, render_same},
+    ConvexUnison, DFT_BUFFER_SIZE, FlatUnison, HALF_WAVEFORM_BITS, MAX_UNISON_VOICES, Oscillator,
+    OscillatorConfig, OscillatorLinks, UnisonStyle, UnisonVoice, VoiceRenderCtx, WAVEFORM_BITS,
+    WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform, WaveformBuffer,
+    sample_block::{SampleCtx, UnisonBlockParams, render_block},
     unison::Interpolated,
 };
 use crate::synth_engine::{
     ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, MAX_VOICES, ModuleConfig,
-    ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, SIMD_LANES, Smp, SynthEngine, WideSmp,
+    ModuleHandle, ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, PITCH_MODULE_ID, SIMD_LANES, Smp,
+    StereoSample, SynthEngine, WideSmp,
     fast_math::catmull_rom_from_powers,
+    from_st,
     harmonic_editor::HarmonicEditorConfig,
     phase::{Phase, WidePhase},
     routing::InputSlot,
@@ -672,7 +673,7 @@ fn reference_full_wave(spectrum: &[ComplexSample], cutoff: usize) -> Box<Wavefor
     dft[..copy_len].copy_from_slice(&spectrum[..copy_len]);
     fft.process_with_scratch(
         &mut dft[..complex_len],
-        Oscillator::<super::stub::Links>::waveform_body_mut(&mut wave, WaveformSize::Full),
+        &mut wave[WAVEFORM_PAD_LEFT..WAVEFORM_PAD_LEFT + WAVEFORM_SIZE],
         &mut scratch,
     )
     .expect("reference ifft");
@@ -681,34 +682,25 @@ fn reference_full_wave(spectrum: &[ComplexSample], cutoff: usize) -> Box<Wavefor
 }
 
 fn build_test_wave(frequency: Smp, spectrum: &[ComplexSample], full_fft_size: bool) -> Waveform {
-    let ifft = IfftPlanners::new();
-    let mut dft = [ComplexSample::ZERO; DFT_BUFFER_SIZE];
-    let mut scratch = [ComplexSample::ZERO; DFT_BUFFER_SIZE];
-    let mut wave = Waveform::new();
-
-    Oscillator::<super::stub::Links>::build_wave(
-        &ifft,
-        frequency,
-        SAMPLE_RATE,
-        spectrum,
-        &mut dft,
-        &mut scratch,
-        &mut wave,
-        full_fft_size,
-    );
-
-    wave
+    let mut osc = Oscillator::<super::stub::Links>::new(1, 16);
+    osc.params.full_fft_size = full_fft_size;
+    osc.build_wave(frequency, SAMPLE_RATE, spectrum, None, super::WaveDst::Tmp);
+    std::mem::replace(&mut osc.buffers.tmp_wave, Waveform::new())
 }
 
 fn body(wave: &WaveformBuffer, len: usize) -> &[Smp] {
     &wave[WAVEFORM_PAD_LEFT..WAVEFORM_PAD_LEFT + len]
 }
 
-fn assert_wave_matches_full(frequency: Smp, spectrum: &[ComplexSample], size: WaveformSize) {
+fn assert_wave_matches_full(frequency: Smp, spectrum: &[ComplexSample], full: bool) {
     let cutoff = wave_cutoff(frequency, SAMPLE_RATE, spectrum.len());
     let reference = reference_full_wave(spectrum, cutoff);
     let wave = build_test_wave(frequency, spectrum, false);
-    let len = size.len();
+    let len = if full {
+        WAVEFORM_SIZE
+    } else {
+        WAVEFORM_SIZE / 2
+    };
     let stride = WAVEFORM_SIZE / len;
     let actual = body(&wave.samples, len);
     let expected = body(&reference, WAVEFORM_SIZE);
@@ -720,7 +712,7 @@ fn assert_wave_matches_full(frequency: Smp, spectrum: &[ComplexSample], size: Wa
         .fold(0.0_f32, Smp::max);
     let last = WAVEFORM_PAD_LEFT + len - 1;
 
-    assert_eq!(wave.size, size);
+    assert_eq!(wave.full, full);
     assert!(peak > 1.0, "frequency {frequency}: reference peak {peak}");
     assert!(
         max_diff < peak * 1e-4,
@@ -745,15 +737,29 @@ fn build_wave_drops_harmonic_exactly_at_nyquist() {
     );
 
     let dropped = build_test_wave(frequency, &spectrum, false);
-    let dropped_peak = body(&dropped.samples, dropped.size.len())
-        .iter()
-        .fold(0.0_f32, |acc, sample| acc.max(sample.abs()));
+    let dropped_peak = body(
+        &dropped.samples,
+        if dropped.full {
+            WAVEFORM_SIZE
+        } else {
+            WAVEFORM_SIZE / 2
+        },
+    )
+    .iter()
+    .fold(0.0_f32, |acc, sample| acc.max(sample.abs()));
     assert_eq!(dropped_peak, 0.0);
 
     let kept = build_test_wave(frequency.next_down(), &spectrum, false);
-    let kept_peak = body(&kept.samples, kept.size.len())
-        .iter()
-        .fold(0.0_f32, |acc, sample| acc.max(sample.abs()));
+    let kept_peak = body(
+        &kept.samples,
+        if kept.full {
+            WAVEFORM_SIZE
+        } else {
+            WAVEFORM_SIZE / 2
+        },
+    )
+    .iter()
+    .fold(0.0_f32, |acc, sample| acc.max(sample.abs()));
     assert!(kept_peak > 0.1, "peak {kept_peak}");
 }
 
@@ -763,7 +769,7 @@ fn build_wave_uses_half_resolution_for_high_notes() {
     spectrum[1] = ComplexSample::new(0.8, 0.1);
     spectrum[80] = ComplexSample::new(0.4, -0.3);
 
-    assert_wave_matches_full(200.0, &spectrum, WaveformSize::Half);
+    assert_wave_matches_full(200.0, &spectrum, false);
 }
 
 #[test]
@@ -772,7 +778,7 @@ fn build_wave_uses_half_resolution_for_mid_notes() {
     spectrum[1] = ComplexSample::new(0.8, 0.1);
     spectrum[200] = ComplexSample::new(0.35, 0.25);
 
-    assert_wave_matches_full(100.0, &spectrum, WaveformSize::Half);
+    assert_wave_matches_full(100.0, &spectrum, false);
 }
 
 #[test]
@@ -782,9 +788,9 @@ fn build_wave_keeps_full_resolution_when_cutoff_reaches_half_nyquist() {
     spectrum[200] = ComplexSample::new(0.2, 0.1);
 
     let cutoff = wave_cutoff(46.8, SAMPLE_RATE, spectrum.len());
-    assert_eq!(cutoff, WaveformSize::Half.len() / 2 + 1);
+    assert_eq!(cutoff, WAVEFORM_SIZE / 4 + 1);
 
-    assert_wave_matches_full(46.8, &spectrum, WaveformSize::Full);
+    assert_wave_matches_full(46.8, &spectrum, true);
 }
 
 #[test]
@@ -794,7 +800,7 @@ fn build_wave_uses_full_resolution_when_full_fft_size_is_set() {
     spectrum[80] = ComplexSample::new(0.4, -0.3);
 
     let cutoff = wave_cutoff(200.0, SAMPLE_RATE, spectrum.len());
-    assert!(cutoff < WaveformSize::Half.len() / 2 + 1);
+    assert!(cutoff < WAVEFORM_SIZE / 4 + 1);
 
     let wave = build_test_wave(200.0, &spectrum, true);
     let reference = reference_full_wave(&spectrum, cutoff);
@@ -807,9 +813,99 @@ fn build_wave_uses_full_resolution_when_full_fft_size_is_set() {
         .map(|(sample, expected)| (sample - expected).abs())
         .fold(0.0_f32, Smp::max);
 
-    assert_eq!(wave.size, WaveformSize::Full);
+    assert!(wave.full);
     assert!(peak > 1.0);
     assert!(max_diff < peak * 1e-4, "max diff {max_diff}, peak {peak}");
+}
+
+fn make_two_voice_engine() -> SynthEngine {
+    let config = EngineConfig {
+        engine: EngineParams {
+            num_voices: 2,
+            ..EngineParams::default()
+        },
+        modules: vec![
+            ModuleConfig::HarmonicEditor(Box::new(default_harmonics())),
+            ModuleConfig::Oscillator(Box::new(OscillatorConfig {
+                id: OSCILLATOR_ID,
+                ..OscillatorConfig::default()
+            })),
+        ],
+        links: vec![
+            LinkConfig::direct(HARMONIC_EDITOR_ID, OSCILLATOR_ID, Input::Spectrum),
+            LinkConfig::direct(OSCILLATOR_ID, OUTPUT_MODULE_ID, Input::Audio),
+        ],
+    };
+
+    SynthEngine::try_new(&config, SAMPLE_RATE, false).expect("valid engine config")
+}
+
+fn voice_wave_full(engine: &SynthEngine, voice: usize) -> [bool; NUM_CHANNELS] {
+    let Some(ModuleHandle::Oscillator(osc)) = engine.get_module(OSCILLATOR_ID) else {
+        panic!("oscillator");
+    };
+
+    std::array::from_fn(|channel| osc.voice_buffers.at(channel, voice).wave.full)
+}
+
+fn set_pitch_shift(engine: &mut SynthEngine, semitones: Smp) {
+    let Some(ModuleHandle::Pitch(pitch)) = engine.get_module_mut(PITCH_MODULE_ID) else {
+        panic!("pitch");
+    };
+
+    pitch.set_pitch_shift(StereoSample::splat(from_st(semitones)));
+}
+
+fn hold_note(engine: &mut SynthEngine, note: u8) {
+    engine.handle_note_on(
+        Note {
+            channel: 0,
+            note,
+            velocity: 1.0,
+            host_id: None,
+        },
+        0,
+    );
+    process_block(engine, 128);
+}
+
+/// Pitch smoothing is 300 ms. 130 blocks of 128 samples pass that.
+fn settle_pitch_shift(engine: &mut SynthEngine) {
+    for _ in 0..130 {
+        process_block(engine, 128);
+    }
+}
+
+#[test]
+fn triggered_half_table_stays_half_when_pitch_falls() {
+    let mut engine = make_two_voice_engine();
+
+    hold_note(&mut engine, 60);
+    assert_eq!(voice_wave_full(&engine, 0), [false; NUM_CHANNELS]);
+
+    set_pitch_shift(&mut engine, -48.0);
+    settle_pitch_shift(&mut engine);
+    // C5 shifted down four octaves needs the full table. The held C4 does not switch.
+    hold_note(&mut engine, 72);
+
+    assert_eq!(voice_wave_full(&engine, 0), [false; NUM_CHANNELS]);
+    assert_eq!(voice_wave_full(&engine, 1), [true; NUM_CHANNELS]);
+}
+
+#[test]
+fn triggered_full_table_stays_full_when_pitch_rises() {
+    let mut engine = make_two_voice_engine();
+
+    hold_note(&mut engine, 24);
+    assert_eq!(voice_wave_full(&engine, 0), [true; NUM_CHANNELS]);
+
+    set_pitch_shift(&mut engine, 48.0);
+    settle_pitch_shift(&mut engine);
+    // C0 shifted up four octaves needs the half table. The held C1 does not switch.
+    hold_note(&mut engine, 12);
+
+    assert_eq!(voice_wave_full(&engine, 0), [true; NUM_CHANNELS]);
+    assert_eq!(voice_wave_full(&engine, 1), [false; NUM_CHANNELS]);
 }
 
 #[test]
@@ -819,9 +915,9 @@ fn build_wave_keeps_full_resolution_past_half_table() {
     spectrum[520] = ComplexSample::new(0.05, 0.2);
 
     let cutoff = wave_cutoff(46.0, SAMPLE_RATE, spectrum.len());
-    assert!(cutoff > WaveformSize::Half.len() / 2 + 1);
+    assert!(cutoff > WAVEFORM_SIZE / 4 + 1);
 
-    assert_wave_matches_full(46.0, &spectrum, WaveformSize::Full);
+    assert_wave_matches_full(46.0, &spectrum, true);
 }
 
 const RENDER_SENTINEL: Smp = 50.0;
@@ -831,8 +927,8 @@ const DECOY_PHASE: u32 = 0x1111_1111;
 struct RenderCase {
     name: &'static str,
     unison: usize,
-    from_size: WaveformSize,
-    to_size: WaveformSize,
+    from_full: bool,
+    to_full: bool,
     samples: usize,
     start: usize,
     end: usize,
@@ -841,17 +937,12 @@ struct RenderCase {
     wave_channel: usize,
 }
 
-fn render_case(
-    name: &'static str,
-    unison: usize,
-    from_size: WaveformSize,
-    to_size: WaveformSize,
-) -> RenderCase {
+fn render_case(name: &'static str, unison: usize, from_full: bool, to_full: bool) -> RenderCase {
     RenderCase {
         name,
         unison,
-        from_size,
-        to_size,
+        from_full,
+        to_full,
         samples: 32,
         start: 0,
         end: 32,
@@ -917,16 +1008,17 @@ fn initial_voices() -> [UnisonVoice; MAX_UNISON_VOICES] {
     std::array::from_fn(test_unison_voice)
 }
 
-fn interpolated_sample(wave: &WaveformBuffer, phase: Phase, size: WaveformSize, gain: Smp) -> Smp {
-    let (idx, t) = match size {
-        WaveformSize::Full => (
+fn interpolated_sample(wave: &WaveformBuffer, phase: Phase, full: bool, gain: Smp) -> Smp {
+    let (idx, t) = if full {
+        (
             phase.wave_index::<WAVEFORM_BITS>(),
             phase.wave_index_fraction::<WAVEFORM_BITS>(),
-        ),
-        WaveformSize::Half => (
+        )
+    } else {
+        (
             phase.wave_index::<HALF_WAVEFORM_BITS>(),
             phase.wave_index_fraction::<HALF_WAVEFORM_BITS>(),
-        ),
+        )
     };
     let gt = gain * t;
     let gt2 = gt * t;
@@ -940,16 +1032,23 @@ fn interpolated_sample(wave: &WaveformBuffer, phase: Phase, size: WaveformSize, 
         .sum()
 }
 
-fn patterned_wave(size: WaveformSize, seed: Smp) -> Box<WaveformBuffer> {
+fn patterned_wave(full: bool, seed: Smp) -> Box<WaveformBuffer> {
     let mut samples = Box::new([RENDER_SENTINEL; WAVEFORM_BUFFER_SIZE]);
-    let len = size.len();
+    let len = if full {
+        WAVEFORM_SIZE
+    } else {
+        WAVEFORM_SIZE / 2
+    };
 
     for i in 0..len {
         let n = (i + 1) as Smp;
         samples[WAVEFORM_PAD_LEFT + i] = (seed * n).sin() * 0.5 + (n * 0.17 + seed).cos() * 0.25;
     }
 
-    Oscillator::<super::stub::Links>::wrap_waveform(&mut samples, size);
+    let last = WAVEFORM_PAD_LEFT + len - 1;
+    samples[0] = samples[last];
+    samples[last + 1] = samples[WAVEFORM_PAD_LEFT];
+    samples[last + 2] = samples[WAVEFORM_PAD_LEFT + 1];
     samples
 }
 
@@ -1010,8 +1109,8 @@ fn reference_render(
                 let read = phases[voice_idx] + global_shift + Phase::from_normalized(unison_shift);
 
                 if lane < lanes {
-                    acc_from += interpolated_sample(wave_from, read, case.from_size, gain);
-                    acc_to += interpolated_sample(wave_to, read, case.to_size, gain);
+                    acc_from += interpolated_sample(wave_from, read, case.from_full, gain);
+                    acc_to += interpolated_sample(wave_to, read, case.to_full, gain);
                 }
 
                 let inc = rate * phase_inc;
@@ -1062,12 +1161,12 @@ fn load_case(
     wave_from: &WaveformBuffer,
     wave_to: &WaveformBuffer,
 ) {
-    let decoy = patterned_wave(WaveformSize::Full, 9.5);
+    let decoy = patterned_wave(true, 9.5);
 
     for channel in 0..NUM_CHANNELS {
         for voice in 0..MAX_VOICES {
             osc.voice_buffers.at_mut(channel, voice).wave.samples = decoy.clone();
-            osc.voice_buffers.at_mut(channel, voice).wave.size = WaveformSize::Full;
+            osc.voice_buffers.at_mut(channel, voice).wave.full = true;
 
             let slot = osc.voices.at_mut(channel, voice);
             slot.phases = [Phase::from_bits(DECOY_PHASE); MAX_UNISON_VOICES];
@@ -1082,9 +1181,9 @@ fn load_case(
     osc.voice_buffers
         .at_mut(case.wave_channel, case.voice)
         .wave
-        .size = case.from_size;
+        .full = case.from_full;
     *osc.buffers.tmp_wave.samples = *wave_to;
-    osc.buffers.tmp_wave.size = case.to_size;
+    osc.buffers.tmp_wave.full = case.to_full;
 
     let voices = initial_voices();
     store_lane_params(osc, &voices, case.unison);
@@ -1170,62 +1269,42 @@ fn assert_other_voices_unchanged(osc: &Oscillator, case: &RenderCase) {
 }
 
 /// Rendered samples and advanced phases match an independent scalar
-/// Catmull-Rom lookup. Covers both table sizes, a size crossfade, partial SIMD
-/// lanes, a mid-block range, and reading the spectrum channel's wavetable.
+/// Catmull-Rom lookup. Covers both table sizes, partial SIMD lanes, a mid-block
+/// range, and reading the spectrum channel's wavetable.
 #[test]
 fn render_voice_samples_matches_scalar_reference() {
-    let mut mid_block = render_case("mid-block range", 7, WaveformSize::Half, WaveformSize::Full);
+    let mut mid_block = render_case("mid-block range", 7, false, false);
     mid_block.start = 6;
     mid_block.end = 28;
 
-    let mut other_channel = render_case("right channel", 3, WaveformSize::Half, WaveformSize::Half);
+    let mut other_channel = render_case("right channel", 3, false, false);
     other_channel.channel = 1;
 
-    let mut other_wave = render_case("sixteen voices", 16, WaveformSize::Full, WaveformSize::Full);
+    let mut other_wave = render_case("sixteen voices", 16, true, true);
     other_wave.samples = 16;
     other_wave.end = 16;
     other_wave.voice = 2;
     other_wave.wave_channel = 1;
 
-    let mut sized = render_case(
-        "partial chunk, full to half",
-        5,
-        WaveformSize::Full,
-        WaveformSize::Half,
-    );
+    let mut sized = render_case("partial chunk, full table", 5, true, true);
     sized.samples = 24;
     sized.end = 24;
 
     let cases = [
-        render_case(
-            "one voice, full table",
-            1,
-            WaveformSize::Full,
-            WaveformSize::Full,
-        ),
-        render_case(
-            "simd chunk, half table",
-            4,
-            WaveformSize::Half,
-            WaveformSize::Half,
-        ),
+        render_case("one voice, full table", 1, true, true),
+        render_case("simd chunk, half table", 4, false, false),
         sized,
         mid_block,
         other_wave,
         other_channel,
-        render_case(
-            "thirteen voices, half to full",
-            13,
-            WaveformSize::Half,
-            WaveformSize::Full,
-        ),
+        render_case("thirteen voices, half table", 13, false, false),
     ];
 
     let mut osc = Oscillator::new(1, 32);
 
     for case in cases {
-        let wave_from = patterned_wave(case.from_size, 1.7);
-        let wave_to = patterned_wave(case.to_size, 2.9);
+        let wave_from = patterned_wave(case.from_full, 1.7);
+        let wave_to = patterned_wave(case.to_full, 2.9);
         let (expected, expected_phases) = reference_render(&case, &wave_from, &wave_to);
 
         load_case(&mut osc, &case, &wave_from, &wave_to);
@@ -1248,12 +1327,12 @@ fn render_voice_samples_matches_scalar_reference() {
 /// `buff_t` is still the index inside the whole block.
 #[test]
 fn render_voice_samples_continues_across_a_split_range() {
-    let mut case = render_case("split block", 6, WaveformSize::Half, WaveformSize::Full);
+    let mut case = render_case("split block", 6, false, false);
     case.samples = 48;
     case.end = 48;
 
-    let wave_from = patterned_wave(case.from_size, 1.7);
-    let wave_to = patterned_wave(case.to_size, 2.9);
+    let wave_from = patterned_wave(case.from_full, 1.7);
+    let wave_to = patterned_wave(case.to_full, 2.9);
     let (expected, expected_phases) = reference_render(&case, &wave_from, &wave_to);
 
     let mut osc = Oscillator::new(1, case.samples);
@@ -1274,9 +1353,9 @@ fn render_voice_samples_continues_across_a_split_range() {
 
 #[test]
 fn render_voice_samples_empty_range_is_a_no_op() {
-    let case = render_case("empty", 4, WaveformSize::Full, WaveformSize::Half);
-    let wave_from = patterned_wave(case.from_size, 1.7);
-    let wave_to = patterned_wave(case.to_size, 2.9);
+    let case = render_case("empty", 4, true, true);
+    let wave_from = patterned_wave(case.from_full, 1.7);
+    let wave_to = patterned_wave(case.to_full, 2.9);
     let mut osc = Oscillator::new(1, 32);
     load_case(&mut osc, &case, &wave_from, &wave_to);
 
@@ -1307,7 +1386,7 @@ fn unison_phase_ramp_across_half_cycle_follows_the_parameter() {
         gain: Interpolated { from: 1.0, to: 1.0 },
     }];
     let params = UnisonBlockParams::from_voices(&voices);
-    let wave = patterned_wave(WaveformSize::Full, 1.0);
+    let wave = patterned_wave(true, 1.0);
     let phase = Phase::from_bits(0x1000_0000);
     let mut phases = [phase; SIMD_LANES];
     let mut ctx = SampleCtx {
@@ -1320,15 +1399,10 @@ fn unison_phase_ramp_across_half_cycle_follows_the_parameter() {
         acc_to: [f32x4::ZERO; SIMD_LANES],
     };
 
-    render_same::<WAVEFORM_BITS>(&mut phases, &params, &mut ctx, 1);
+    render_block::<WAVEFORM_BITS>(&mut phases, &params, &mut ctx, 1);
 
     let shift = (to - from).mul_add(buff_t, from);
-    let expected = interpolated_sample(
-        &wave,
-        phase + Phase::from_normalized(shift),
-        WaveformSize::Full,
-        1.0,
-    );
+    let expected = interpolated_sample(&wave, phase + Phase::from_normalized(shift), true, 1.0);
     let actual = ctx.acc_from[0].reduce_add();
 
     assert!(
@@ -1337,7 +1411,7 @@ fn unison_phase_ramp_across_half_cycle_follows_the_parameter() {
     );
 
     let rewound = phase + Phase::ZERO;
-    let wrong = interpolated_sample(&wave, rewound, WaveformSize::Full, 1.0);
+    let wrong = interpolated_sample(&wave, rewound, true, 1.0);
 
     assert!(
         (actual - wrong).abs() > 0.05,
