@@ -3,35 +3,34 @@ use std::array;
 use wide::f32x4;
 
 use crate::synth_engine::{
-    SIMD_LANES,
     fast_math::{CATMULL_TAPS, catmull_rom_from_powers},
-    phase::{Phase, WidePhase},
-    types::{Smp, WideSmp},
+    phase::{Phase, PhaseX4},
+    types::Smp,
 };
 
-use super::{MAX_UNISON_VOICES, UnisonVoice, WaveformBuffer};
+use super::{MAX_UNISON_VOICES, OSC_LANES, UnisonVoice, WaveformBuffer};
 
-pub const UNISON_CHUNKS: usize = MAX_UNISON_VOICES / SIMD_LANES;
-const _: () = assert!(UNISON_CHUNKS * SIMD_LANES == MAX_UNISON_VOICES);
+pub const UNISON_CHUNKS: usize = MAX_UNISON_VOICES / OSC_LANES;
+const _: () = assert!(UNISON_CHUNKS * OSC_LANES == MAX_UNISON_VOICES);
 
 #[derive(Clone, Copy, Default)]
 pub struct UnisonBlockParams {
-    rate_from: WideSmp,
-    rate_delta: WideSmp,
-    phase_shift_from: WideSmp,
-    phase_shift_delta: WideSmp,
-    gain_from: WideSmp,
-    gain_delta: WideSmp,
+    rate_from: f32x4,
+    rate_delta: f32x4,
+    phase_shift_from: f32x4,
+    phase_shift_delta: f32x4,
+    gain_from: f32x4,
+    gain_delta: f32x4,
 }
 
 impl UnisonBlockParams {
     /// Voice gains are already normalized by the unison layout.
     #[inline(always)]
     pub fn from_voices(voices: &[UnisonVoice]) -> Self {
-        debug_assert!(voices.len() <= SIMD_LANES);
+        debug_assert!(voices.len() <= OSC_LANES);
 
         let lanes = |f: fn(&UnisonVoice) -> Smp| {
-            WideSmp::new(array::from_fn(|i| voices.get(i).map(f).unwrap_or(0.0)))
+            f32x4::new(array::from_fn(|i| voices.get(i).map(f).unwrap_or(0.0)))
         };
 
         let phase_shift_from = lanes(|uv| uv.phase_shift.from);
@@ -52,28 +51,28 @@ impl UnisonBlockParams {
 
 #[derive(Clone, Copy)]
 pub struct SampleCtx<'a> {
-    pub buff_t: WideSmp,
-    pub phase_shift: WidePhase,
-    pub phase_inc: WideSmp,
+    pub buff_t: f32x4,
+    pub phase_shift: PhaseX4,
+    pub phase_inc: f32x4,
     pub wave_from: &'a WaveformBuffer,
     pub wave_to: &'a WaveformBuffer,
-    pub acc_from: [f32x4; SIMD_LANES],
-    pub acc_to: [f32x4; SIMD_LANES],
+    pub acc_from: [f32x4; OSC_LANES],
+    pub acc_to: [f32x4; OSC_LANES],
 }
 
 #[inline(always)]
 pub fn render_block<const BITS: usize>(
-    phases: &mut [Phase; SIMD_LANES],
+    phases: &mut [Phase; OSC_LANES],
     params: &UnisonBlockParams,
     s: &mut SampleCtx,
     lanes: usize,
 ) {
-    let phase = WidePhase::load(phases);
+    let phase = PhaseX4::load(phases);
 
     let unison_shift = params
         .phase_shift_delta
         .mul_add(s.buff_t, params.phase_shift_from);
-    let read_phase = phase + s.phase_shift + WidePhase::from_normalized(unison_shift);
+    let read_phase = phase + s.phase_shift + PhaseX4::from_normalized(unison_shift);
     let idx = read_phase.wave_index::<BITS>();
     let t = read_phase.wave_index_fraction::<BITS>();
     let g = params.gain_delta.mul_add(s.buff_t, params.gain_from);
@@ -103,9 +102,9 @@ pub fn render_block<const BITS: usize>(
 ///
 /// Adjacent pairs, so the reduction tree stays balanced.
 #[inline(always)]
-pub fn sum_lanes(acc: &[f32x4; SIMD_LANES]) -> f32x4 {
+pub fn sum_lanes(acc: &[f32x4; OSC_LANES]) -> f32x4 {
     let mut level = *acc;
-    let mut n = SIMD_LANES;
+    let mut n = OSC_LANES;
 
     while n > 1 {
         let mut i = 0;

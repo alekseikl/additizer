@@ -10,10 +10,10 @@ use wide::f32x4;
 use crate::{
     oscillator::sample_block::render_block,
     synth_engine::{
-        SIMD_LANES, StereoSample,
+        StereoSample,
         buffer::{Buffer, SPECTRUM_BITS, VoicesLayout, new_voices_layout, zero_buffer},
         db_to_gain, fast_pitch_to_freq_wide, from_st,
-        phase::{Phase, WidePhase},
+        phase::{Phase, PhaseX4},
         pitch_to_freq,
         routing::{
             AudioRouterType, DataType, Input, InputMeta, InputSlots, ModuleId, ProcessContext,
@@ -54,6 +54,9 @@ const WAVEFORM_BUFFER_SIZE: usize = WAVEFORM_SIZE + WAVEFORM_PAD_LEFT + WAVEFORM
 const DFT_BUFFER_SIZE: usize = (1 << (WAVEFORM_BITS - 1)) + 1;
 
 pub const MAX_UNISON_VOICES: usize = 16;
+
+/// Unison voices rendered together. Per-voice render stays on `f32x4`.
+const OSC_LANES: usize = 4;
 
 type WaveformBuffer = [Smp; WAVEFORM_BUFFER_SIZE];
 type DftBuffer = [ComplexSample; DFT_BUFFER_SIZE];
@@ -560,18 +563,18 @@ impl<L: OscillatorLinks> Oscillator<L> {
 
     fn store_unison_lanes(&mut self, channel_idx: usize, voice_idx: usize) {
         let unison = self.params.unison.clamp(1, MAX_UNISON_VOICES);
-        let full_chunks = unison / SIMD_LANES;
-        let rem_lanes = unison % SIMD_LANES;
+        let full_chunks = unison / OSC_LANES;
+        let rem_lanes = unison % OSC_LANES;
         let voice = self.voices.at(channel_idx, voice_idx);
 
         for chunk_idx in 0..full_chunks {
-            let start = chunk_idx * SIMD_LANES;
-            let params = UnisonBlockParams::from_voices(&voice.unison[start..start + SIMD_LANES]);
+            let start = chunk_idx * OSC_LANES;
+            let params = UnisonBlockParams::from_voices(&voice.unison[start..start + OSC_LANES]);
             self.lane_params[chunk_idx] = params;
         }
 
         if rem_lanes > 0 {
-            let start = full_chunks * SIMD_LANES;
+            let start = full_chunks * OSC_LANES;
             let params = UnisonBlockParams::from_voices(&voice.unison[start..start + rem_lanes]);
             self.lane_params[full_chunks] = params;
         }
@@ -743,12 +746,12 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let buff_t_inc = (ctx.samples as Smp).recip();
         let mut buff_t = start as Smp * buff_t_inc;
 
-        let (phase_chunks, []) = voice.phases.as_chunks_mut::<SIMD_LANES>() else {
-            unreachable!("MAX_UNISON_VOICES is a multiple of SIMD_LANES");
+        let (phase_chunks, []) = voice.phases.as_chunks_mut::<OSC_LANES>() else {
+            unreachable!("MAX_UNISON_VOICES is a multiple of OSC_LANES");
         };
 
-        let full_chunks = unison / SIMD_LANES;
-        let rem_lanes = unison % SIMD_LANES;
+        let full_chunks = unison / OSC_LANES;
+        let rem_lanes = unison % OSC_LANES;
         let (full_phases, rem_phases) = phase_chunks.split_at_mut(full_chunks);
         let (full_params, rem_params) = self.lane_params.split_at(full_chunks);
 
@@ -758,17 +761,17 @@ impl<L: OscillatorLinks> Oscillator<L> {
             &self.buffers.phase_shift[start..end],
         ) {
             let mut s = SampleCtx {
-                buff_t: WideSmp::splat(buff_t),
-                phase_shift: WidePhase::splat(Phase::from_normalized(phase_shift)),
-                phase_inc: WideSmp::splat(phase_inc),
+                buff_t: f32x4::splat(buff_t),
+                phase_shift: PhaseX4::splat(Phase::from_normalized(phase_shift)),
+                phase_inc: f32x4::splat(phase_inc),
                 wave_from,
                 wave_to,
-                acc_from: [f32x4::ZERO; SIMD_LANES],
-                acc_to: [f32x4::ZERO; SIMD_LANES],
+                acc_from: [f32x4::ZERO; OSC_LANES],
+                acc_to: [f32x4::ZERO; OSC_LANES],
             };
 
             for (phases, params) in full_phases.iter_mut().zip(full_params) {
-                render_block::<BITS>(phases, params, &mut s, SIMD_LANES);
+                render_block::<BITS>(phases, params, &mut s, OSC_LANES);
             }
 
             if rem_lanes > 0 {

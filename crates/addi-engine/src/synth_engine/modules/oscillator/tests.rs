@@ -2,20 +2,21 @@ use realfft::RealFftPlanner;
 use wide::f32x4;
 
 use super::{
-    ConvexUnison, DFT_BUFFER_SIZE, FlatUnison, HALF_WAVEFORM_BITS, MAX_UNISON_VOICES, Oscillator,
-    OscillatorConfig, OscillatorLinks, UnisonStyle, UnisonVoice, VoiceRenderCtx, WAVEFORM_BITS,
-    WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform, WaveformBuffer,
+    ConvexUnison, DFT_BUFFER_SIZE, FlatUnison, HALF_WAVEFORM_BITS, MAX_UNISON_VOICES, OSC_LANES,
+    Oscillator, OscillatorConfig, OscillatorLinks, UnisonStyle, UnisonVoice, VoiceRenderCtx,
+    WAVEFORM_BITS, WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform,
+    WaveformBuffer,
     sample_block::{SampleCtx, UnisonBlockParams, render_block},
     unison::Interpolated,
 };
 use crate::synth_engine::{
     ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, MAX_VOICES, ModuleConfig,
-    ModuleHandle, ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, PITCH_MODULE_ID, SIMD_LANES, Smp,
-    StereoSample, SynthEngine, WideSmp,
+    ModuleHandle, ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, PITCH_MODULE_ID, Smp,
+    StereoSample, SynthEngine,
     fast_math::catmull_rom_from_powers,
     from_st,
     harmonic_editor::HarmonicEditorConfig,
-    phase::{Phase, WidePhase},
+    phase::{Phase, PhaseX4},
     routing::InputSlot,
     voices::{LEFT_CHANNEL, RIGHT_CHANNEL},
 };
@@ -1064,8 +1065,8 @@ fn reference_render(
     let mut output = vec![RENDER_SENTINEL; case.samples];
     let buff_t_inc = (case.samples as Smp).recip();
     let mut buff_t = case.start as Smp * buff_t_inc;
-    let full = case.unison / SIMD_LANES;
-    let rem = case.unison % SIMD_LANES;
+    let full = case.unison / OSC_LANES;
+    let rem = case.unison % OSC_LANES;
 
     for (index, sample) in output
         .iter_mut()
@@ -1080,8 +1081,8 @@ fn reference_render(
         let mut acc_to = 0.0;
 
         let mut advance_chunk = |chunk: usize, lanes: usize| {
-            for lane in 0..SIMD_LANES {
-                let voice_idx = chunk * SIMD_LANES + lane;
+            for lane in 0..OSC_LANES {
+                let voice_idx = chunk * OSC_LANES + lane;
                 let (rate_from, rate_delta, phase_from, phase_delta, gain_from, gain_delta) =
                     if lane < lanes {
                         let voice = &voices[voice_idx];
@@ -1119,7 +1120,7 @@ fn reference_render(
         };
 
         for chunk in 0..full {
-            advance_chunk(chunk, SIMD_LANES);
+            advance_chunk(chunk, OSC_LANES);
         }
         if rem > 0 {
             advance_chunk(full, rem);
@@ -1141,16 +1142,16 @@ fn decoy_unison_voice() -> UnisonVoice {
 }
 
 fn store_lane_params(osc: &mut Oscillator, voices: &[UnisonVoice], unison: usize) {
-    let full = unison / SIMD_LANES;
-    let rem = unison % SIMD_LANES;
+    let full = unison / OSC_LANES;
+    let rem = unison % OSC_LANES;
 
     for chunk in 0..full {
-        let start = chunk * SIMD_LANES;
-        osc.lane_params[chunk] = UnisonBlockParams::from_voices(&voices[start..start + SIMD_LANES]);
+        let start = chunk * OSC_LANES;
+        osc.lane_params[chunk] = UnisonBlockParams::from_voices(&voices[start..start + OSC_LANES]);
     }
 
     if rem > 0 {
-        let start = full * SIMD_LANES;
+        let start = full * OSC_LANES;
         osc.lane_params[full] = UnisonBlockParams::from_voices(&voices[start..start + rem]);
     }
 }
@@ -1388,15 +1389,15 @@ fn unison_phase_ramp_across_half_cycle_follows_the_parameter() {
     let params = UnisonBlockParams::from_voices(&voices);
     let wave = patterned_wave(true, 1.0);
     let phase = Phase::from_bits(0x1000_0000);
-    let mut phases = [phase; SIMD_LANES];
+    let mut phases = [phase; OSC_LANES];
     let mut ctx = SampleCtx {
-        buff_t: WideSmp::splat(buff_t),
-        phase_shift: WidePhase::splat(Phase::ZERO),
-        phase_inc: WideSmp::ZERO,
+        buff_t: f32x4::splat(buff_t),
+        phase_shift: PhaseX4::splat(Phase::ZERO),
+        phase_inc: f32x4::ZERO,
         wave_from: &wave,
         wave_to: &wave,
-        acc_from: [f32x4::ZERO; SIMD_LANES],
-        acc_to: [f32x4::ZERO; SIMD_LANES],
+        acc_from: [f32x4::ZERO; OSC_LANES],
+        acc_to: [f32x4::ZERO; OSC_LANES],
     };
 
     render_block::<WAVEFORM_BITS>(&mut phases, &params, &mut ctx, 1);

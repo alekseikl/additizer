@@ -1,6 +1,8 @@
-use crate::{SIMD_LANES, WideSmp};
+use wide::f32x4;
 
-use super::{Phase, WidePhase};
+use super::{Phase, PhaseX4};
+
+const LANES: usize = 4;
 
 const BITS: usize = 11;
 
@@ -17,12 +19,12 @@ fn phase_inc_to_freq_inverts_freq_phase_mult() {
 
 #[test]
 fn load_store_round_trips() {
-    let mut phases = [Phase::ZERO; SIMD_LANES];
+    let mut phases = [Phase::ZERO; LANES];
     let values = [1u32, 2, 3, u32::MAX].map(Phase::from_bits);
     phases[..values.len()].copy_from_slice(&values);
-    let mut out = [Phase::ZERO; SIMD_LANES];
+    let mut out = [Phase::ZERO; LANES];
 
-    WidePhase::load(&phases).store(&mut out);
+    PhaseX4::load(&phases).store(&mut out);
 
     assert_eq!(out, phases);
 }
@@ -35,12 +37,12 @@ fn from_normalized_matches_scalar_across_the_half_cycle() {
         -1.0f32, -0.75, -0.5, -0.25, 0.0, 0.125, 0.49, 0.5, 0.51, 0.75, 1.0, 1.3, -1.7,
     ];
 
-    for chunk in inputs.chunks(SIMD_LANES) {
-        let mut arr = [0.0; SIMD_LANES];
+    for chunk in inputs.chunks(LANES) {
+        let mut arr = [0.0; LANES];
         arr[..chunk.len()].copy_from_slice(chunk);
 
-        let mut out = [Phase::ZERO; SIMD_LANES];
-        WidePhase::from_normalized(WideSmp::new(arr)).store(&mut out);
+        let mut out = [Phase::ZERO; LANES];
+        PhaseX4::from_normalized(f32x4::new(arr)).store(&mut out);
 
         for (lane, &norm) in arr.iter().enumerate() {
             let expected = Phase::from_normalized(norm).bits();
@@ -58,15 +60,15 @@ fn from_normalized_matches_scalar_across_the_half_cycle() {
 
 #[test]
 fn wave_index_and_fraction_match_scalar() {
-    let mut phases = [Phase::ZERO; SIMD_LANES];
+    let mut phases = [Phase::ZERO; LANES];
     let values = [0u32, 0x7fff_ffff, 0x8000_0000, 0xffff_ffff].map(Phase::from_bits);
     phases[..values.len()].copy_from_slice(&values);
-    let simd = WidePhase::load(&phases);
+    let simd = PhaseX4::load(&phases);
 
     let idx = simd.wave_index::<BITS>();
     let frac = simd.wave_index_fraction::<BITS>().to_array();
 
-    for lane in 0..SIMD_LANES {
+    for lane in 0..LANES {
         assert_eq!(idx[lane] as usize, phases[lane].wave_index::<BITS>());
         assert_eq!(frac[lane], phases[lane].wave_index_fraction::<BITS>());
     }
@@ -74,26 +76,26 @@ fn wave_index_and_fraction_match_scalar() {
 
 #[test]
 fn add_increment_matches_scalar() {
-    let mut phases = [Phase::ZERO; SIMD_LANES];
+    let mut phases = [Phase::ZERO; LANES];
     let values = [0u32, 1000, 0xffff_ff00, 0x8000_0000].map(Phase::from_bits);
     phases[..values.len()].copy_from_slice(&values);
-    let mut incs = [0.0; SIMD_LANES];
+    let mut incs = [0.0; LANES];
     let inc_values = [1.5f32, -2.5, 1000.75, 123_456.0];
     incs[..inc_values.len()].copy_from_slice(&inc_values);
 
-    let mut out = [Phase::ZERO; SIMD_LANES];
-    (WidePhase::load(&phases) + WideSmp::new(incs)).store(&mut out);
+    let mut out = [Phase::ZERO; LANES];
+    (PhaseX4::load(&phases) + f32x4::new(incs)).store(&mut out);
 
-    for lane in 0..SIMD_LANES {
+    for lane in 0..LANES {
         assert_eq!(out[lane], phases[lane] + incs[lane]);
     }
 }
 
 #[test]
 fn add_phases_wraps() {
-    let a = WidePhase::splat(Phase::from_bits(u32::MAX));
-    let b = WidePhase::splat(Phase::from_bits(2));
-    let mut out = [Phase::ZERO; SIMD_LANES];
+    let a = PhaseX4::splat(Phase::from_bits(u32::MAX));
+    let b = PhaseX4::splat(Phase::from_bits(2));
+    let mut out = [Phase::ZERO; LANES];
 
     (a + b).store(&mut out);
 
