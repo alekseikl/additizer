@@ -54,7 +54,7 @@ pub use voices_handler::{Note, PlayingVoice};
 
 pub use addi_dsp::{
     C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, SIMD_LANES, db_to_gain, db_to_gain_fast,
-    db_to_gain_fast_wide, fast_pitch_to_freq_wide, fill_wide, freq_to_c4_pitch, from_ms, from_st,
+    db_to_gain_fast_wide, pitch_to_freq_wide, fill_wide, freq_to_c4_pitch, from_ms, from_st,
     gain_to_db, gain_to_db_fast, map_wide, map_wide_in_place, note_to_pitch, pan_gain,
     pitch_to_freq, power_scale, zip_map_wide,
 };

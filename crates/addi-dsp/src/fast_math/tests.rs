@@ -10,7 +10,7 @@ fn wide(values: &[f32]) -> WideSmp {
     WideSmp::new(lanes)
 }
 
-use super::{db_to_gain_fast_wide, fast_exp2_wide, fast_pitch_to_freq_wide, fast_tan_pi_wide};
+use super::{db_to_gain_fast_wide, fast_exp2_wide, pitch_to_freq_wide, fast_tan_pi_wide};
 
 fn fast_exp2(x: f32) -> f32 {
     fast_exp2_wide(WideSmp::splat(x)).to_array()[0]
@@ -121,7 +121,7 @@ fn fast_pitch_to_freq_matches_pitch_to_freq() {
     for i in -120..=120 {
         let pitch = i as f32 / 12.0;
         let exact = pitch_to_freq(pitch);
-        let fast = fast_pitch_to_freq_wide(WideSmp::splat(pitch)).to_array()[0];
+        let fast = pitch_to_freq_wide(WideSmp::splat(pitch)).to_array()[0];
 
         assert!(
             ((fast - exact) / exact).abs() < 2e-7,

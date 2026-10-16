@@ -49,22 +49,25 @@ impl UnisonBlockParams {
     }
 }
 
-#[derive(Clone, Copy)]
 pub struct SampleCtx<'a> {
     pub buff_t: f32x4,
     pub phase_shift: PhaseX4,
     pub phase_inc: f32x4,
     pub wave_from: &'a WaveformBuffer,
     pub wave_to: &'a WaveformBuffer,
-    pub acc_from: [f32x4; OSC_LANES],
-    pub acc_to: [f32x4; OSC_LANES],
+}
+
+pub struct SampleAcc {
+    pub from: [f32x4; OSC_LANES],
+    pub to: [f32x4; OSC_LANES],
 }
 
 #[inline(always)]
 pub fn render_block<const BITS: usize>(
     phases: &mut [Phase; OSC_LANES],
     params: &UnisonBlockParams,
-    s: &mut SampleCtx,
+    s: &SampleCtx,
+    acc: &mut SampleAcc,
     lanes: usize,
 ) {
     let phase = PhaseX4::load(phases);
@@ -93,31 +96,23 @@ pub fn render_block<const BITS: usize>(
 
         let from = load_segment(s.wave_from, wave_idx as usize);
         let to = load_segment(s.wave_to, wave_idx as usize);
-        s.acc_from[lane] = from.mul_add(weights, s.acc_from[lane]);
-        s.acc_to[lane] = to.mul_add(weights, s.acc_to[lane]);
+        acc.from[lane] = from.mul_add(weights, acc.from[lane]);
+        acc.to[lane] = to.mul_add(weights, acc.to[lane]);
     }
 }
 
-/// Sum the per-voice tap vectors in this chunk. Unused voices stay zero.
-///
-/// Adjacent pairs, so the reduction tree stays balanced.
 #[inline(always)]
 pub fn sum_lanes(acc: &[f32x4; OSC_LANES]) -> f32x4 {
-    let mut level = *acc;
-    let mut n = OSC_LANES;
+    let [a, b, c, d] = *acc;
 
-    while n > 1 {
-        let mut i = 0;
+    (a + b) + (c + d)
+}
 
-        while i < n {
-            level[i / 2] = level[i] + level[i + 1];
-            i += 2;
-        }
+#[inline(always)]
+pub fn horizontal_sum(v: f32x4) -> Smp {
+    let [a, b, c, d] = v.to_array();
 
-        n /= 2;
-    }
-
-    level[0]
+    (a + c) + (b + d)
 }
 
 #[inline(always)]

@@ -6,7 +6,7 @@ use super::{
     Oscillator, OscillatorConfig, OscillatorLinks, UnisonStyle, UnisonVoice, VoiceRenderCtx,
     WAVEFORM_BITS, WAVEFORM_BUFFER_SIZE, WAVEFORM_PAD_LEFT, WAVEFORM_SIZE, Waveform,
     WaveformBuffer,
-    sample_block::{SampleCtx, UnisonBlockParams, render_block},
+    sample_block::{SampleAcc, SampleCtx, UnisonBlockParams, render_block},
     unison::Interpolated,
 };
 use crate::synth_engine::{
@@ -686,7 +686,7 @@ fn build_test_wave(frequency: Smp, spectrum: &[ComplexSample], full_fft_size: bo
     let mut osc = Oscillator::<super::stub::Links>::new(1, 16);
     osc.params.full_fft_size = full_fft_size;
     osc.build_wave(frequency, SAMPLE_RATE, spectrum, None, super::WaveDst::Tmp);
-    std::mem::replace(&mut osc.buffers.tmp_wave, Waveform::new())
+    std::mem::take(&mut osc.buffers.tmp_wave)
 }
 
 fn body(wave: &WaveformBuffer, len: usize) -> &[Smp] {
@@ -846,7 +846,7 @@ fn voice_wave_full(engine: &SynthEngine, voice: usize) -> [bool; NUM_CHANNELS] {
         panic!("oscillator");
     };
 
-    std::array::from_fn(|channel| osc.voice_buffers.at(channel, voice).wave.full)
+    std::array::from_fn(|channel| osc.waves.at(channel, voice).full)
 }
 
 fn set_pitch_shift(engine: &mut SynthEngine, semitones: Smp) {
@@ -1166,8 +1166,8 @@ fn load_case(
 
     for channel in 0..NUM_CHANNELS {
         for voice in 0..MAX_VOICES {
-            osc.voice_buffers.at_mut(channel, voice).wave.samples = decoy.clone();
-            osc.voice_buffers.at_mut(channel, voice).wave.full = true;
+            osc.waves.at_mut(channel, voice).samples = decoy.clone();
+            osc.waves.at_mut(channel, voice).full = true;
 
             let slot = osc.voices.at_mut(channel, voice);
             slot.phases = [Phase::from_bits(DECOY_PHASE); MAX_UNISON_VOICES];
@@ -1175,14 +1175,8 @@ fn load_case(
         }
     }
 
-    *osc.voice_buffers
-        .at_mut(case.wave_channel, case.voice)
-        .wave
-        .samples = *wave_from;
-    osc.voice_buffers
-        .at_mut(case.wave_channel, case.voice)
-        .wave
-        .full = case.from_full;
+    *osc.waves.at_mut(case.wave_channel, case.voice).samples = *wave_from;
+    osc.waves.at_mut(case.wave_channel, case.voice).full = case.from_full;
     *osc.buffers.tmp_wave.samples = *wave_to;
     osc.buffers.tmp_wave.full = case.to_full;
 
@@ -1390,21 +1384,23 @@ fn unison_phase_ramp_across_half_cycle_follows_the_parameter() {
     let wave = patterned_wave(true, 1.0);
     let phase = Phase::from_bits(0x1000_0000);
     let mut phases = [phase; OSC_LANES];
-    let mut ctx = SampleCtx {
+    let ctx = SampleCtx {
         buff_t: f32x4::splat(buff_t),
         phase_shift: PhaseX4::splat(Phase::ZERO),
         phase_inc: f32x4::ZERO,
         wave_from: &wave,
         wave_to: &wave,
-        acc_from: [f32x4::ZERO; OSC_LANES],
-        acc_to: [f32x4::ZERO; OSC_LANES],
+    };
+    let mut acc = SampleAcc {
+        from: [f32x4::ZERO; OSC_LANES],
+        to: [f32x4::ZERO; OSC_LANES],
     };
 
-    render_block::<WAVEFORM_BITS>(&mut phases, &params, &mut ctx, 1);
+    render_block::<WAVEFORM_BITS>(&mut phases, &params, &ctx, &mut acc, 1);
 
     let shift = (to - from).mul_add(buff_t, from);
     let expected = interpolated_sample(&wave, phase + Phase::from_normalized(shift), true, 1.0);
-    let actual = ctx.acc_from[0].reduce_add();
+    let actual = acc.from[0].reduce_add();
 
     assert!(
         (actual - expected).abs() < 1e-4,

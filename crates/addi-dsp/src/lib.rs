@@ -16,8 +16,7 @@ pub mod types;
 
 pub use consts::{C4_NOTE, C4_PITCH, MAX_CUTOFF, MIN_CUTOFF};
 pub use fast_math::{
-    catmull_rom, catmull_rom_from_powers, db_to_gain_fast_wide, fast_exp2_wide,
-    fast_pitch_to_freq_wide,
+    catmull_rom, catmull_rom_from_powers, db_to_gain_fast_wide, fast_exp2_wide, pitch_to_freq_wide,
 };
 pub use iir_decimator::IirDecimator;
 pub use level_ballistics::{LevelBallistics, StereoLevelBallistics};

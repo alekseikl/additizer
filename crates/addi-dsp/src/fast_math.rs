@@ -64,7 +64,7 @@ pub fn db_to_gain_fast_wide(dbs: WideSmp) -> WideSmp {
 
 /// [`pitch_to_freq`](crate::math::pitch_to_freq) for each lane, built on [`fast_exp2_wide`].
 #[inline(always)]
-pub fn fast_pitch_to_freq_wide(pitch: WideSmp) -> WideSmp {
+pub fn pitch_to_freq_wide(pitch: WideSmp) -> WideSmp {
     const A4_FREQ_X4: WideSmp = WideSmp::splat(A4_FREQ);
 
     fast_exp2_wide(pitch) * A4_FREQ_X4
