@@ -7,14 +7,14 @@ use crate::synth_engine::{
     CONTROL_EXT, ComplexSample, DataType, EngineAudioEnd, Input, ModuleId, NUM_CHANNELS,
     SPECTRAL_BUFFER_SIZE, SmoothedSampleParams, Smp, StereoSample,
     buffer::{VoicesLayout, zero_buffer},
-    engine_io::{UiEvent, VoicesHandlerMetrics},
+    engine_io::{UiEvent, VoicesTelemetry},
     routing::{
         InputSlot, MixedSlots, OutputsArena, ProcessContext, ProcessParams, SamplesOutput,
         SpectralOutput, VoiceTarget,
     },
     synth_module::SynthModule,
     voices::{VOICE_BLOCK_LEN, VOICE_BLOCKS},
-    voices_handler::{Note, PlayingVoice, PlayingVoices, VoiceEvents, VoicesHandler},
+    voices_handler::{Note, PlayingVoice, PlayingVoices, VoicesHandler},
 };
 
 const SAMPLE_RATE: Smp = 48_000.0;
@@ -55,7 +55,7 @@ impl EngineAudioEnd for RecordingEnd {
         true
     }
 
-    fn update_voices_status(&mut self, _metrics: &VoicesHandlerMetrics) -> bool {
+    fn update_voices_status(&mut self, _telemetry: &VoicesTelemetry) -> bool {
         false
     }
 
@@ -252,8 +252,7 @@ fn midi(note: u8) -> Note {
 
 fn note_on_voice(offset: usize) -> PlayingVoice {
     let mut handler = VoicesHandler::new(4, false, false);
-    let mut events = VoiceEvents::new();
-    handler.handle_note_on(midi(60), offset, &mut events);
+    handler.handle_note_on(midi(60), offset);
 
     let mut playing = PlayingVoices::new();
     handler.get_playing_voices(&mut playing);

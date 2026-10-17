@@ -11,6 +11,7 @@ use crate::synth_engine::{
 pub const BAND_LIMIT_FREQUENCY: Smp = 24_000.0;
 const NUM_MIDI_CHANNELS: usize = 16;
 const MAX_MIDI_CHANNEL: u8 = NUM_MIDI_CHANNELS as u8 - 1;
+const MAX_NOTE_EVENTS: usize = MAX_VOICES * 4;
 
 const _: () = assert!(MAX_VOICES <= u8::MAX as usize);
 
@@ -105,69 +106,13 @@ impl PlayingVoice {
 pub type DecayingVoices = SmallVec<[DecayingVoice; MAX_VOICES]>;
 pub type PlayingVoices = SmallVec<[PlayingVoice; MAX_VOICES]>;
 
-pub struct VoiceEvents {
-    events: SmallVec<[VoiceEvent; 4]>,
-}
-
-impl VoiceEvents {
-    pub fn new() -> Self {
-        Self {
-            events: SmallVec::new(),
-        }
-    }
-
-    pub fn events(&self) -> &[VoiceEvent] {
-        &self.events
-    }
-
-    fn note_to_pitch(note: u8) -> Smp {
-        note_to_pitch(note as f32)
-    }
-
-    fn reset(
-        &mut self,
-        voice_idx: usize,
-        replaced_idx: Option<usize>,
-        prev_note: Option<PrevNote>,
-        note: Note,
-        offset: usize,
-    ) {
-        self.events.push(VoiceEvent::Reset {
-            voice_idx,
-            replaced_voice_idx: replaced_idx,
-            prev_note,
-            pitch: Self::note_to_pitch(note.note),
-            velocity: note.velocity,
-            offset,
-        });
-    }
-
-    fn update(&mut self, voice_idx: usize, note: Note, offset: usize) {
-        self.events.push(VoiceEvent::Update {
-            voice_idx,
-            pitch: Self::note_to_pitch(note.note),
-            velocity: note.velocity,
-            offset,
-        });
-    }
-
-    fn release(&mut self, voice_idx: usize, velocity: Smp, offset: usize) {
-        self.events.push(VoiceEvent::Release {
-            voice_idx,
-            velocity,
-            offset,
-        });
-    }
-
-    fn kill(&mut self, voice_idx: usize, offset: usize) {
-        self.events.push(VoiceEvent::Kill { voice_idx, offset });
-    }
-}
-
-pub struct VoicesHandlerMetrics {
+pub struct VoicesConfig {
     pub num_voices: usize,
     pub legato: bool,
     pub kill_same_note: bool,
+}
+
+pub struct VoicesTelemetry {
     pub waiting: usize,
     pub playing: usize,
     pub releasing: usize,
@@ -184,6 +129,7 @@ pub struct VoicesHandler {
     prev_notes: [Option<u8>; NUM_MIDI_CHANNELS],
     triggers: MonoVoicesLayout<Option<u16>>,
     seq_idx: u32,
+    events: Vec<VoiceEvent>,
 }
 
 impl VoicesHandler {
@@ -198,7 +144,55 @@ impl VoicesHandler {
             prev_notes: [None; NUM_MIDI_CHANNELS],
             triggers: new_mono_voices_layout(),
             seq_idx: 0,
+            events: Vec::with_capacity(MAX_NOTE_EVENTS),
         }
+    }
+
+    pub fn get_events(&self) -> &[VoiceEvent] {
+        &self.events
+    }
+
+    pub fn clear_events(&mut self) {
+        self.events.clear();
+    }
+
+    fn push_reset(
+        &mut self,
+        voice_idx: usize,
+        replaced_idx: Option<usize>,
+        prev_note: Option<PrevNote>,
+        note: Note,
+        offset: usize,
+    ) {
+        self.events.push(VoiceEvent::Reset {
+            voice_idx,
+            replaced_voice_idx: replaced_idx,
+            prev_note,
+            pitch: note_to_pitch(note.note as f32),
+            velocity: note.velocity,
+            offset,
+        });
+    }
+
+    fn push_update(&mut self, voice_idx: usize, note: Note, offset: usize) {
+        self.events.push(VoiceEvent::Update {
+            voice_idx,
+            pitch: note_to_pitch(note.note as f32),
+            velocity: note.velocity,
+            offset,
+        });
+    }
+
+    fn push_release(&mut self, voice_idx: usize, velocity: Smp, offset: usize) {
+        self.events.push(VoiceEvent::Release {
+            voice_idx,
+            velocity,
+            offset,
+        });
+    }
+
+    fn push_kill(&mut self, voice_idx: usize, offset: usize) {
+        self.events.push(VoiceEvent::Kill { voice_idx, offset });
     }
 
     /// Prefer a free slot in a block that already holds a voice, so its lanes stay occupied.
@@ -327,7 +321,6 @@ impl VoicesHandler {
         note: Note,
         offset: usize,
         overlapped: Option<Note>,
-        events: &mut VoiceEvents,
     ) {
         let prev_note = self.prev_note(note.channel, overlapped);
 
@@ -349,12 +342,12 @@ impl VoicesHandler {
         self.assign_slot(voice_idx, note);
         self.triggers[voice_idx] = Some(offset as u16);
 
-        events.reset(voice_idx, replaced_idx, prev_note, note, offset);
+        self.push_reset(voice_idx, replaced_idx, prev_note, note, offset);
     }
 
-    fn legato(&mut self, voice_idx: usize, note: Note, offset: usize, events: &mut VoiceEvents) {
+    fn legato(&mut self, voice_idx: usize, note: Note, offset: usize) {
         self.assign_slot(voice_idx, note);
-        events.update(voice_idx, note, offset);
+        self.push_update(voice_idx, note, offset);
     }
 
     fn terminate(&mut self, slot: &Slot) {
@@ -363,63 +356,45 @@ impl VoicesHandler {
         }
     }
 
-    fn kill(&mut self, voice_idx: usize, offset: usize, events: &mut VoiceEvents) {
+    fn kill(&mut self, voice_idx: usize, offset: usize) {
         self.enter_phase(voice_idx, Phase::Kill);
-        events.kill(voice_idx, offset);
+        self.push_kill(voice_idx, offset);
     }
 
-    fn kill_and_disown(&mut self, voice_idx: usize, offset: usize, events: &mut VoiceEvents) {
+    fn kill_and_disown(&mut self, voice_idx: usize, offset: usize) {
         self.voices[voice_idx]
             .as_mut()
             .expect("voice slot is in place")
             .owns_host_id = false;
-        self.kill(voice_idx, offset, events);
+        self.kill(voice_idx, offset);
     }
 
-    fn note_on_monophonic(
-        &mut self,
-        new_note: Note,
-        offset: usize,
-        restored_after: Option<Slot>,
-        events: &mut VoiceEvents,
-    ) {
+    fn note_on_monophonic(&mut self, new_note: Note, offset: usize, restored_after: Option<Slot>) {
         // Kill playing note on same channel
         if let Some((voice_idx, playing)) = self.slot_with_channel(Phase::NoteOn, new_note.channel)
         {
             self.waiting.push(playing.note);
 
             if self.legato {
-                self.legato(voice_idx, new_note, offset, events);
+                self.legato(voice_idx, new_note, offset);
             } else {
-                self.kill_and_disown(voice_idx, offset, events);
-                self.grab(
-                    Some(voice_idx),
-                    new_note,
-                    offset,
-                    Some(playing.note),
-                    events,
-                );
+                self.kill_and_disown(voice_idx, offset);
+                self.grab(Some(voice_idx), new_note, offset, Some(playing.note));
             }
         }
         // Kill releasing note on same channel
         else if let Some((voice_idx, _)) =
             self.slot_with_channel(Phase::Release, new_note.channel)
         {
-            self.kill(voice_idx, offset, events);
+            self.kill(voice_idx, offset);
             let overlapped = restored_after.map(|slot| slot.note);
-            self.grab(Some(voice_idx), new_note, offset, overlapped, events);
+            self.grab(Some(voice_idx), new_note, offset, overlapped);
         } else {
-            self.grab(None, new_note, offset, None, events);
+            self.grab(None, new_note, offset, None);
         }
     }
 
-    fn note_on_polyphonic(
-        &mut self,
-        new_note: Note,
-        offset: usize,
-        restored_after: Option<Slot>,
-        events: &mut VoiceEvents,
-    ) {
+    fn note_on_polyphonic(&mut self, new_note: Note, offset: usize, restored_after: Option<Slot>) {
         let mut replaced_idx = None;
 
         // Kill the same releasing note so the retrigger replaces it. When disabled, the
@@ -427,7 +402,7 @@ impl VoicesHandler {
         if self.kill_same_note
             && let Some((voice_idx, _)) = self.slot_with_note(Phase::Release, &new_note)
         {
-            self.kill(voice_idx, offset, events);
+            self.kill(voice_idx, offset);
             replaced_idx = Some(voice_idx);
         }
 
@@ -435,11 +410,11 @@ impl VoicesHandler {
         let mut stolen = None;
         if self.occupied_voices() >= self.num_voices {
             if let Some((voice_idx, _)) = self.oldest_slot(Phase::Release) {
-                self.kill(voice_idx, offset, events);
+                self.kill(voice_idx, offset);
             } else if let Some((voice_idx, playing)) = self.oldest_slot(Phase::NoteOn) {
                 stolen = Some(playing.note);
                 self.waiting.push(playing.note);
-                self.kill_and_disown(voice_idx, offset, events);
+                self.kill_and_disown(voice_idx, offset);
             }
         }
 
@@ -455,7 +430,7 @@ impl VoicesHandler {
                 .map(|slot| slot.note)
                 .or_else(|| stolen.filter(|note| note.channel == channel))
         };
-        self.grab(replaced_idx, new_note, offset, overlapped, events);
+        self.grab(replaced_idx, new_note, offset, overlapped);
     }
 
     fn note_on_impl(
@@ -463,7 +438,6 @@ impl VoicesHandler {
         new_note: Note,
         offset: usize,
         restored_after: Option<Slot>,
-        events: &mut VoiceEvents,
     ) -> bool {
         let monophonic = self.num_voices == 1;
 
@@ -478,9 +452,9 @@ impl VoicesHandler {
         }
 
         if monophonic {
-            self.note_on_monophonic(new_note, offset, restored_after, events);
+            self.note_on_monophonic(new_note, offset, restored_after);
         } else {
-            self.note_on_polyphonic(new_note, offset, restored_after, events);
+            self.note_on_polyphonic(new_note, offset, restored_after);
         }
 
         self.prev_notes[new_note.channel.min(MAX_MIDI_CHANNEL) as usize] = Some(new_note.note);
@@ -491,18 +465,13 @@ impl VoicesHandler {
         self.triggers.fill(None);
     }
 
-    pub fn handle_note_on(&mut self, note: Note, offset: usize, events: &mut VoiceEvents) {
-        self.note_on_impl(note, offset, None, events);
+    pub fn handle_note_on(&mut self, note: Note, offset: usize) {
+        self.note_on_impl(note, offset, None);
     }
 
     /// Releases `note`. Returns a note that started playing again, so pending modulation for its
     /// host id can be applied.
-    pub fn handle_note_off(
-        &mut self,
-        note: Note,
-        offset: usize,
-        events: &mut VoiceEvents,
-    ) -> Option<Note> {
+    pub fn handle_note_off(&mut self, note: Note, offset: usize) -> Option<Note> {
         let monophonic = self.num_voices == 1;
 
         // A parked note owns its host id, so lifting it terminates that id.
@@ -533,12 +502,12 @@ impl VoicesHandler {
 
             self.terminate(&playing);
             self.prev_notes[channel.min(MAX_MIDI_CHANNEL) as usize] = Some(waiting_note.note);
-            self.legato(voice_idx, waiting_note, offset, events);
+            self.legato(voice_idx, waiting_note, offset);
             return Some(waiting_note);
         }
 
         self.enter_phase(voice_idx, Phase::Release);
-        events.release(voice_idx, note.velocity, offset);
+        self.push_release(voice_idx, note.velocity, offset);
 
         // In mono mode `waiting` is a per-channel held-notes stack; only restore
         // notes from the released note's channel.
@@ -552,7 +521,7 @@ impl VoicesHandler {
         };
 
         if let Some(waiting_note) = waiting_note
-            && self.note_on_impl(waiting_note, offset, self.voices[voice_idx], events)
+            && self.note_on_impl(waiting_note, offset, self.voices[voice_idx])
         {
             return Some(waiting_note);
         }
@@ -628,6 +597,30 @@ impl VoicesHandler {
 
     pub fn set_num_voices(&mut self, num_voices: usize) {
         self.num_voices = num_voices.clamp(1, AVAILABLE_VOICES);
+
+        let excess = self.occupied_voices().saturating_sub(self.num_voices);
+
+        if excess == 0 {
+            return;
+        }
+
+        let mut excess_voices = SmallVec::<[usize; MAX_VOICES]>::new();
+
+        for (idx, slot) in self.voices.iter().enumerate() {
+            if excess_voices.len() == excess {
+                break;
+            }
+
+            if let Some(slot) = slot
+                && slot.phase != Phase::Kill
+            {
+                excess_voices.push(idx);
+            }
+        }
+
+        for voice_idx in excess_voices {
+            self.kill(voice_idx, 0);
+        }
     }
 
     pub fn set_legato(&mut self, legato: bool) {
@@ -638,7 +631,15 @@ impl VoicesHandler {
         self.kill_same_note = kill_same_note;
     }
 
-    pub fn get_metrics(&self) -> VoicesHandlerMetrics {
+    pub fn get_config(&self) -> VoicesConfig {
+        VoicesConfig {
+            num_voices: self.num_voices,
+            legato: self.legato,
+            kill_same_note: self.kill_same_note,
+        }
+    }
+
+    pub fn get_telemetry(&self) -> VoicesTelemetry {
         let mut playing = 0;
         let mut releasing = 0;
         let mut killing = 0;
@@ -651,10 +652,7 @@ impl VoicesHandler {
             }
         }
 
-        VoicesHandlerMetrics {
-            num_voices: self.num_voices,
-            legato: self.legato,
-            kill_same_note: self.kill_same_note,
+        VoicesTelemetry {
             waiting: self.waiting.len(),
             playing,
             releasing,

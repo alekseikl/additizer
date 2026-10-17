@@ -2,8 +2,7 @@ use triple_buffer::triple_buffer;
 
 use addi_engine::{
     engine_io::{
-        EngineAudioEnd, EngineUiEnd, OutputMeter, UiEvent, UiUpdate, VoicesHandlerMetrics,
-        VoicesStatus,
+        EngineAudioEnd, EngineUiEnd, OutputMeter, UiEvent, UiUpdate, VoicesStatus, VoicesTelemetry,
     },
     Input, InputId, ModuleId, Smp, StereoSample, NUM_CHANNELS, UI_TO_AUDIO_RING_CAPACITY,
 };
@@ -37,7 +36,7 @@ impl AudioEnd {
             .is_ok()
     }
 
-    pub fn update_voices_status(&mut self, d: &VoicesHandlerMetrics) -> bool {
+    pub fn update_voices_status(&mut self, d: &VoicesTelemetry) -> bool {
         self.tx
             .push(UiUpdate::VoicesStatus(VoicesStatus {
                 waiting_notes: d.waiting as u8,
@@ -133,8 +132,8 @@ impl EngineAudioEnd for AudioEnd {
         AudioEnd::update_modulated_input(self, module_id, input, channel, value, normalized_value)
     }
 
-    fn update_voices_status(&mut self, metrics: &VoicesHandlerMetrics) -> bool {
-        AudioEnd::update_voices_status(self, metrics)
+    fn update_voices_status(&mut self, telemetry: &VoicesTelemetry) -> bool {
+        AudioEnd::update_voices_status(self, telemetry)
     }
 
     fn pop_event(&mut self) -> Option<UiEvent> {

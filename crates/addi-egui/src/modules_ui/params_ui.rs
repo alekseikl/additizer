@@ -221,10 +221,11 @@ impl ModuleUi for ParamsUi {
 
                 ui.label("Voices state");
                 ui.label(format!(
-                    "Playing: {:02}, Releasing: {:02}, Killing: {:02}, Waiting Notes: {:02}",
+                    "NoteOn: {:02}, Release: {:02}, Kill: {:02}, All: {:02}, Waiting: {:02}",
                     voices_status.playing,
                     voices_status.releasing,
                     voices_status.killing,
+                    voices_status.playing + voices_status.releasing,
                     voices_status.waiting_notes
                 ));
                 ui.end_row();

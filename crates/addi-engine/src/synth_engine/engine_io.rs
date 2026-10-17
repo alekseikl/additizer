@@ -8,7 +8,7 @@ use crate::synth_engine::{
     spectral_noise::SpectralNoiseLinks, svf::SvfLinks, wave_shaper::WaveShaperLinks,
 };
 
-pub use crate::synth_engine::voices_handler::VoicesHandlerMetrics;
+pub use crate::synth_engine::voices_handler::VoicesTelemetry;
 
 #[derive(Clone, Copy, Default)]
 pub struct VoicesStatus {
@@ -67,7 +67,7 @@ pub trait EngineAudioEnd: Send {
         normalized_value: Smp,
     ) -> bool;
 
-    fn update_voices_status(&mut self, metrics: &VoicesHandlerMetrics) -> bool;
+    fn update_voices_status(&mut self, telemetry: &VoicesTelemetry) -> bool;
 
     fn pop_event(&mut self) -> Option<UiEvent>;
 

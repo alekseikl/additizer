@@ -61,7 +61,7 @@ impl engine_io::EngineAudioEnd for AudioEnd {
         false
     }
 
-    fn update_voices_status(&mut self, _metrics: &engine_io::VoicesHandlerMetrics) -> bool {
+    fn update_voices_status(&mut self, _telemetry: &engine_io::VoicesTelemetry) -> bool {
         false
     }
 

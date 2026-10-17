@@ -10,7 +10,7 @@ use crate::synth_engine::{
     oscillator::OscillatorConfig,
     routing::{InputSlots, OutputsArena},
     smooth::SmoothedSampleParams,
-    voices_handler::{DecayingVoice, PlayingVoice, VoicesHandlerMetrics},
+    voices_handler::{DecayingVoice, PlayingVoice, VoicesTelemetry},
 };
 use addi_dsp::db_to_gain_fast;
 
@@ -64,7 +64,7 @@ impl EngineAudioEnd for RecordingAudioEnd {
         false
     }
 
-    fn update_voices_status(&mut self, _metrics: &VoicesHandlerMetrics) -> bool {
+    fn update_voices_status(&mut self, _telemetry: &VoicesTelemetry) -> bool {
         false
     }
 

@@ -1,11 +1,12 @@
 use super::*;
 use crate::synth_engine::{
+    note_to_pitch,
     routing::{Expression, VoiceEvent},
     voices::AVAILABLE_VOICES,
 };
 
 fn note_pitch(note: u8) -> Smp {
-    VoiceEvents::note_to_pitch(note)
+    note_to_pitch(note as f32)
 }
 
 fn handler(num_voices: usize) -> VoicesHandler {
@@ -14,18 +15,14 @@ fn handler(num_voices: usize) -> VoicesHandler {
     h
 }
 
-fn events() -> VoiceEvents {
-    VoiceEvents::new()
-}
-
 fn flush_terminated(h: &mut VoicesHandler, decaying: &[DecayingVoice]) -> Vec<Note> {
     let mut terminated = Vec::new();
     h.update_decaying_voices(decaying, &mut terminated);
     terminated
 }
 
-fn trigger_indices(ev: &VoiceEvents) -> Vec<usize> {
-    ev.events()
+fn trigger_indices(events: &[VoiceEvent]) -> Vec<usize> {
+    events
         .iter()
         .filter_map(|e| match e {
             VoiceEvent::Reset { voice_idx, .. } => Some(*voice_idx),
@@ -34,9 +31,9 @@ fn trigger_indices(ev: &VoiceEvents) -> Vec<usize> {
         .collect()
 }
 
-fn count_by_kind(ev: &VoiceEvents) -> (usize, usize, usize, usize) {
+fn count_by_kind(events: &[VoiceEvent]) -> (usize, usize, usize, usize) {
     let (mut trig, mut upd, mut rel, mut kill) = (0, 0, 0, 0);
-    for e in ev.events() {
+    for e in events {
         match e {
             VoiceEvent::Reset { .. } => trig += 1,
             VoiceEvent::Update { .. } => upd += 1,
@@ -52,13 +49,14 @@ fn count_by_kind(ev: &VoiceEvents) -> (usize, usize, usize, usize) {
 #[test]
 fn new_defaults() {
     let h = VoicesHandler::new(1, false, true);
-    let ui = h.get_metrics();
-    assert_eq!(ui.num_voices, 1);
-    assert!(!ui.legato);
-    assert_eq!(ui.waiting, 0);
-    assert_eq!(ui.playing, 0);
-    assert_eq!(ui.releasing, 0);
-    assert_eq!(ui.killing, 0);
+    let config = h.get_config();
+    let telemetry = h.get_telemetry();
+    assert_eq!(config.num_voices, 1);
+    assert!(!config.legato);
+    assert_eq!(telemetry.waiting, 0);
+    assert_eq!(telemetry.playing, 0);
+    assert_eq!(telemetry.releasing, 0);
+    assert_eq!(telemetry.killing, 0);
 }
 
 #[test]
@@ -66,13 +64,59 @@ fn set_num_voices_clamps() {
     let mut h = VoicesHandler::new(1, false, true);
 
     h.set_num_voices(0);
-    assert_eq!(h.get_metrics().num_voices, 1);
+    assert_eq!(h.get_config().num_voices, 1);
 
     h.set_num_voices(999);
-    assert_eq!(h.get_metrics().num_voices, AVAILABLE_VOICES);
+    assert_eq!(h.get_config().num_voices, AVAILABLE_VOICES);
 
     h.set_num_voices(8);
-    assert_eq!(h.get_metrics().num_voices, 8);
+    assert_eq!(h.get_config().num_voices, 8);
+}
+
+#[test]
+fn set_num_voices_kills_first_occupied_slots() {
+    let mut h = handler(4);
+
+    h.handle_note_on(midi(60), 0);
+    h.handle_note_on(midi(64), 0);
+    h.handle_note_off(midi(60), 0);
+    let mut decaying = DecayingVoices::new();
+    h.get_decaying_voices(&mut decaying);
+    let _ = flush_terminated(&mut h, &decaying);
+    h.handle_note_on(midi(67), 0);
+    h.handle_note_off(midi(67), 0);
+    h.handle_note_on(midi(72), 0);
+    h.clear_events();
+
+    // Slot 0 is 67 (releasing, newer). Slot 1 is 64 (held, older). Slot 2 is 72.
+    h.set_num_voices(8);
+    assert_eq!(h.get_telemetry().killing, 0);
+    assert!(h.get_events().is_empty());
+
+    h.set_num_voices(2);
+
+    assert_eq!(h.get_telemetry().playing, 2);
+    assert_eq!(h.get_telemetry().releasing, 0);
+    assert_eq!(h.get_telemetry().killing, 1);
+    assert_eq!(h.get_telemetry().waiting, 0);
+    assert!(h.voices[0].is_some_and(|slot| {
+        slot.phase == Phase::Kill && slot.note.note == 67 && slot.owns_host_id
+    }));
+    assert!(h.voices[1].is_some_and(|slot| slot.phase == Phase::NoteOn && slot.note.note == 64));
+    assert!(h.voices[2].is_some_and(|slot| slot.phase == Phase::NoteOn && slot.note.note == 72));
+    assert_eq!(count_by_kind(h.get_events()).3, 1);
+
+    h.set_num_voices(1);
+
+    assert_eq!(h.get_telemetry().playing, 1);
+    assert_eq!(h.get_telemetry().releasing, 0);
+    assert_eq!(h.get_telemetry().killing, 2);
+    assert_eq!(h.get_telemetry().waiting, 0);
+    assert!(h.voices[1].is_some_and(|slot| {
+        slot.phase == Phase::Kill && slot.note.note == 64 && slot.owns_host_id
+    }));
+    assert!(h.voices[2].is_some_and(|slot| slot.phase == Phase::NoteOn && slot.note.note == 72));
+    assert_eq!(count_by_kind(h.get_events()).3, 2);
 }
 
 #[test]
@@ -85,12 +129,12 @@ fn set_legato_toggles() {
     assert!(!h.legato);
 }
 
-// ---- VoiceEvents helpers ----
+// ---- Pitch ----
 
 #[test]
 fn note_to_pitch_known_values() {
-    assert_eq!(VoiceEvents::note_to_pitch(69), 0.0); // A4
-    assert_eq!(VoiceEvents::note_to_pitch(81), 1.0); // A5
+    assert_eq!(note_to_pitch(69.0), 0.0); // A4
+    assert_eq!(note_to_pitch(81.0), 1.0); // A5
 }
 
 // ---- Polyphonic note-on ----
@@ -98,7 +142,6 @@ fn note_to_pitch_known_values() {
 #[test]
 fn poly_single_note_on() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -108,12 +151,11 @@ fn poly_single_note_on() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let (trig, _, _, _) = count_by_kind(&ev);
+    let (trig, _, _, _) = count_by_kind(&h.events);
     assert_eq!(trig, 1);
-    match &ev.events()[0] {
+    match &h.events[0] {
         VoiceEvent::Reset {
             replaced_voice_idx,
             prev_note,
@@ -128,13 +170,12 @@ fn poly_single_note_on() {
         }
         _ => panic!("expected Reset"),
     }
-    assert_eq!(h.get_metrics().playing, 1);
+    assert_eq!(h.get_telemetry().playing, 1);
 }
 
 #[test]
 fn poly_multiple_notes_get_unique_voices() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -144,7 +185,6 @@ fn poly_multiple_notes_get_unique_voices() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -154,7 +194,6 @@ fn poly_multiple_notes_get_unique_voices() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -164,12 +203,11 @@ fn poly_multiple_notes_get_unique_voices() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().playing, 3);
+    assert_eq!(h.get_telemetry().playing, 3);
 
-    let mut indices = trigger_indices(&ev);
+    let mut indices = trigger_indices(&h.events);
     let orig_len = indices.len();
     indices.sort();
     indices.dedup();
@@ -179,7 +217,6 @@ fn poly_multiple_notes_get_unique_voices() {
 #[test]
 fn reset_prev_note_follows_last_note_on_channel() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -189,15 +226,14 @@ fn reset_prev_note_follows_last_note_on_channel() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    let voice_60 = trigger_indices(&ev)[0];
-    match &ev.events()[0] {
+    let voice_60 = trigger_indices(&h.events)[0];
+    match &h.events[0] {
         VoiceEvent::Reset { prev_note, .. } => assert_eq!(*prev_note, None),
         _ => panic!("expected Reset"),
     }
 
-    ev = events();
+    h.clear_events();
     h.handle_note_on(
         Note {
             channel: 0,
@@ -206,10 +242,9 @@ fn reset_prev_note_follows_last_note_on_channel() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    let voice_64 = trigger_indices(&ev)[0];
-    match &ev.events()[0] {
+    let voice_64 = trigger_indices(&h.events)[0];
+    match &h.events[0] {
         VoiceEvent::Reset { prev_note, .. } => {
             let prev = prev_note.expect("prev note");
             assert_eq!(prev.note, 60);
@@ -220,7 +255,7 @@ fn reset_prev_note_follows_last_note_on_channel() {
         _ => panic!("expected Reset"),
     }
 
-    ev = events();
+    h.clear_events();
     h.handle_note_on(
         Note {
             channel: 1,
@@ -229,14 +264,13 @@ fn reset_prev_note_follows_last_note_on_channel() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    match &ev.events()[0] {
+    match &h.events[0] {
         VoiceEvent::Reset { prev_note, .. } => assert_eq!(*prev_note, None),
         _ => panic!("expected Reset"),
     }
 
-    ev = events();
+    h.clear_events();
     h.handle_note_on(
         Note {
             channel: 0,
@@ -245,9 +279,8 @@ fn reset_prev_note_follows_last_note_on_channel() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    match &ev.events()[0] {
+    match &h.events[0] {
         VoiceEvent::Reset { prev_note, .. } => {
             let prev = prev_note.expect("prev note");
             assert_eq!(prev.note, 64);
@@ -262,7 +295,6 @@ fn reset_prev_note_follows_last_note_on_channel() {
 #[test]
 fn reset_prev_note_voice_idx_from_releasing() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -272,9 +304,8 @@ fn reset_prev_note_voice_idx_from_releasing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    let voice_60 = trigger_indices(&ev)[0];
+    let voice_60 = trigger_indices(&h.events)[0];
 
     h.handle_note_off(
         Note {
@@ -284,11 +315,10 @@ fn reset_prev_note_voice_idx_from_releasing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    assert_eq!(h.get_metrics().releasing, 1);
+    assert_eq!(h.get_telemetry().releasing, 1);
 
-    ev = events();
+    h.clear_events();
     h.handle_note_on(
         Note {
             channel: 0,
@@ -297,9 +327,8 @@ fn reset_prev_note_voice_idx_from_releasing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    match &ev.events()[0] {
+    match &h.events[0] {
         VoiceEvent::Reset { prev_note, .. } => {
             let prev = prev_note.expect("prev note");
             assert_eq!(prev.note, 60);
@@ -313,7 +342,6 @@ fn reset_prev_note_voice_idx_from_releasing() {
 #[test]
 fn reset_prev_note_voice_idx_none_after_decay() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -323,7 +351,6 @@ fn reset_prev_note_voice_idx_none_after_decay() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -333,15 +360,14 @@ fn reset_prev_note_voice_idx_none_after_decay() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
     let _ = flush_terminated(&mut h, &decaying);
-    assert_eq!(h.get_metrics().releasing, 0);
+    assert_eq!(h.get_telemetry().releasing, 0);
 
-    ev = events();
+    h.clear_events();
     h.handle_note_on(
         Note {
             channel: 0,
@@ -350,9 +376,8 @@ fn reset_prev_note_voice_idx_none_after_decay() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    match &ev.events()[0] {
+    match &h.events[0] {
         VoiceEvent::Reset { prev_note, .. } => {
             let prev = prev_note.expect("prev note");
             assert_eq!(prev.note, 60);
@@ -367,7 +392,6 @@ fn reset_prev_note_voice_idx_none_after_decay() {
 #[test]
 fn reset_prev_note_overlap_when_waiting() {
     let mut h = handler(1);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -377,10 +401,9 @@ fn reset_prev_note_overlap_when_waiting() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    ev = events();
+    h.clear_events();
     h.handle_note_on(
         Note {
             channel: 0,
@@ -389,11 +412,10 @@ fn reset_prev_note_overlap_when_waiting() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let reset = ev
-        .events()
+    let reset = h
+        .events
         .iter()
         .find_map(|e| match e {
             VoiceEvent::Reset { prev_note, .. } => Some(*prev_note),
@@ -408,7 +430,6 @@ fn reset_prev_note_overlap_when_waiting() {
 #[test]
 fn mono_note_off_restored_waiting_note_overlaps_previous() {
     let mut h = handler(1);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -418,7 +439,6 @@ fn mono_note_off_restored_waiting_note_overlaps_previous() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -428,10 +448,9 @@ fn mono_note_off_restored_waiting_note_overlaps_previous() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    ev = events();
+    h.clear_events();
     h.handle_note_off(
         Note {
             channel: 0,
@@ -440,11 +459,10 @@ fn mono_note_off_restored_waiting_note_overlaps_previous() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let reset = ev
-        .events()
+    let reset = h
+        .events
         .iter()
         .find_map(|e| match e {
             VoiceEvent::Reset { prev_note, .. } => Some(*prev_note),
@@ -459,7 +477,6 @@ fn mono_note_off_restored_waiting_note_overlaps_previous() {
 #[test]
 fn poly_note_off_restored_waiting_note_overlaps_previous() {
     let mut h = handler(2);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -469,7 +486,6 @@ fn poly_note_off_restored_waiting_note_overlaps_previous() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -479,7 +495,6 @@ fn poly_note_off_restored_waiting_note_overlaps_previous() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -489,11 +504,10 @@ fn poly_note_off_restored_waiting_note_overlaps_previous() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    assert_eq!(h.get_metrics().waiting, 1);
+    assert_eq!(h.get_telemetry().waiting, 1);
 
-    ev = events();
+    h.clear_events();
     h.handle_note_off(
         Note {
             channel: 0,
@@ -502,11 +516,10 @@ fn poly_note_off_restored_waiting_note_overlaps_previous() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let reset = ev
-        .events()
+    let reset = h
+        .events
         .iter()
         .find_map(|e| match e {
             VoiceEvent::Reset { prev_note, .. } => Some(*prev_note),
@@ -521,7 +534,6 @@ fn poly_note_off_restored_waiting_note_overlaps_previous() {
 #[test]
 fn poly_duplicate_note_ignored() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -531,7 +543,6 @@ fn poly_duplicate_note_ignored() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -541,23 +552,21 @@ fn poly_duplicate_note_ignored() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(ev.events().len(), 1);
-    assert_eq!(h.get_metrics().playing, 1);
+    assert_eq!(h.events.len(), 1);
+    assert_eq!(h.get_telemetry().playing, 1);
 }
 
 #[test]
 fn poly_same_key_different_host_id_is_ignored() {
     let mut h = handler(4);
-    let mut ev = events();
 
-    h.handle_note_on(voiced(60, 1), 0, &mut ev);
-    h.handle_note_on(voiced(60, 2), 0, &mut ev);
+    h.handle_note_on(voiced(60, 1), 0);
+    h.handle_note_on(voiced(60, 2), 0);
 
-    assert_eq!(ev.events().len(), 1);
-    assert_eq!(h.get_metrics().playing, 1);
+    assert_eq!(h.events.len(), 1);
+    assert_eq!(h.get_telemetry().playing, 1);
     assert_eq!(
         h.voices.iter().flatten().next().unwrap().note.host_id,
         Some(1)
@@ -567,15 +576,14 @@ fn poly_same_key_different_host_id_is_ignored() {
 #[test]
 fn poly_retrigger_same_host_id_kills_release() {
     let mut h = handler(4);
-    let mut ev = events();
 
-    h.handle_note_on(voiced(60, 4), 0, &mut ev);
-    h.handle_note_off(voiced(60, 4), 0, &mut ev);
-    h.handle_note_on(voiced(60, 4), 0, &mut ev);
+    h.handle_note_on(voiced(60, 4), 0);
+    h.handle_note_off(voiced(60, 4), 0);
+    h.handle_note_on(voiced(60, 4), 0);
 
-    assert_eq!(h.get_metrics().playing, 1);
-    assert_eq!(h.get_metrics().releasing, 0);
-    assert_eq!(h.get_metrics().killing, 1);
+    assert_eq!(h.get_telemetry().playing, 1);
+    assert_eq!(h.get_telemetry().releasing, 0);
+    assert_eq!(h.get_telemetry().killing, 1);
     assert!(
         h.voices
             .iter()
@@ -594,29 +602,27 @@ fn poly_retrigger_same_host_id_kills_release() {
 fn poly_retrigger_same_host_id_layers_when_kill_same_note_disabled() {
     let mut h = handler(4);
     h.set_kill_same_note(false);
-    let mut ev = events();
 
-    h.handle_note_on(voiced(60, 4), 0, &mut ev);
-    h.handle_note_off(voiced(60, 4), 0, &mut ev);
-    h.handle_note_on(voiced(60, 4), 0, &mut ev);
+    h.handle_note_on(voiced(60, 4), 0);
+    h.handle_note_off(voiced(60, 4), 0);
+    h.handle_note_on(voiced(60, 4), 0);
 
-    assert_eq!(h.get_metrics().playing, 1);
-    assert_eq!(h.get_metrics().releasing, 1);
-    assert_eq!(h.get_metrics().killing, 0);
+    assert_eq!(h.get_telemetry().playing, 1);
+    assert_eq!(h.get_telemetry().releasing, 1);
+    assert_eq!(h.get_telemetry().killing, 0);
 }
 
 #[test]
 fn poly_retrigger_different_host_id_kills_release() {
     let mut h = handler(4);
-    let mut ev = events();
 
-    h.handle_note_on(voiced(60, 1), 0, &mut ev);
-    h.handle_note_off(voiced(60, 1), 0, &mut ev);
-    h.handle_note_on(voiced(60, 2), 0, &mut ev);
+    h.handle_note_on(voiced(60, 1), 0);
+    h.handle_note_off(voiced(60, 1), 0);
+    h.handle_note_on(voiced(60, 2), 0);
 
-    assert_eq!(h.get_metrics().playing, 1);
-    assert_eq!(h.get_metrics().releasing, 0);
-    assert_eq!(h.get_metrics().killing, 1);
+    assert_eq!(h.get_telemetry().playing, 1);
+    assert_eq!(h.get_telemetry().releasing, 0);
+    assert_eq!(h.get_telemetry().killing, 1);
     assert!(
         h.voices
             .iter()
@@ -631,11 +637,10 @@ fn poly_retrigger_different_host_id_kills_release() {
 #[test]
 fn voice_idx_for_host_id_includes_every_phase() {
     let mut h = handler(4);
-    let mut ev = events();
 
-    h.handle_note_on(voiced(60, 1), 0, &mut ev);
-    h.handle_note_off(voiced(60, 1), 0, &mut ev);
-    h.handle_note_on(voiced(60, 1), 0, &mut ev);
+    h.handle_note_on(voiced(60, 1), 0);
+    h.handle_note_off(voiced(60, 1), 0);
+    h.handle_note_on(voiced(60, 1), 0);
 
     let indices = h.voice_idx_for_host_id(1);
     assert_eq!(indices.len(), 2);
@@ -655,9 +660,8 @@ fn voice_idx_for_host_id_includes_every_phase() {
 #[test]
 fn expression_and_choke_ignore_host_id() {
     let mut h = handler(4);
-    let mut ev = events();
 
-    h.handle_note_on(voiced(60, 1), 0, &mut ev);
+    h.handle_note_on(voiced(60, 1), 0);
 
     let event = h
         .handle_expression(voiced(60, 2), Expression::Pitch, 3, 0.25)
@@ -666,7 +670,7 @@ fn expression_and_choke_ignore_host_id() {
 
     h.handle_choke(voiced(60, 2));
 
-    assert_eq!(h.get_metrics().playing, 0);
+    assert_eq!(h.get_telemetry().playing, 0);
     let terminated = flush_terminated(&mut h, &[]);
     assert_eq!(terminated.len(), 1);
     assert_eq!(terminated[0].host_id, Some(1));
@@ -675,9 +679,8 @@ fn expression_and_choke_ignore_host_id() {
 #[test]
 fn note_off_requires_key_when_host_id_is_set() {
     let mut h = handler(4);
-    let mut ev = events();
 
-    h.handle_note_on(voiced(60, 1), 0, &mut ev);
+    h.handle_note_on(voiced(60, 1), 0);
     h.handle_note_off(
         Note {
             channel: 0,
@@ -686,23 +689,21 @@ fn note_off_requires_key_when_host_id_is_set() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().playing, 1);
-    assert_eq!(h.get_metrics().releasing, 0);
+    assert_eq!(h.get_telemetry().playing, 1);
+    assert_eq!(h.get_telemetry().releasing, 0);
 }
 
 #[test]
 fn note_off_ignores_host_id() {
     let mut h = handler(4);
-    let mut ev = events();
 
-    h.handle_note_on(voiced(60, 1), 0, &mut ev);
-    h.handle_note_off(midi(60), 0, &mut ev);
+    h.handle_note_on(voiced(60, 1), 0);
+    h.handle_note_off(midi(60), 0);
 
-    assert_eq!(h.get_metrics().playing, 0);
-    assert_eq!(h.get_metrics().releasing, 1);
+    assert_eq!(h.get_telemetry().playing, 0);
+    assert_eq!(h.get_telemetry().releasing, 1);
     assert_eq!(
         h.voices.iter().flatten().next().unwrap().note.host_id,
         Some(1)
@@ -712,9 +713,8 @@ fn note_off_ignores_host_id() {
 #[test]
 fn expression_and_choke_match_channel_and_key() {
     let mut h = handler(4);
-    let mut ev = events();
 
-    h.handle_note_on(voiced(60, 1), 0, &mut ev);
+    h.handle_note_on(voiced(60, 1), 0);
 
     assert!(
         h.handle_expression(midi(60), Expression::Pitch, 0, 0.5)
@@ -722,7 +722,7 @@ fn expression_and_choke_match_channel_and_key() {
     );
 
     h.handle_choke(midi(60));
-    assert_eq!(h.get_metrics().playing, 0);
+    assert_eq!(h.get_telemetry().playing, 0);
     let terminated = flush_terminated(&mut h, &[]);
     assert_eq!(terminated.len(), 1);
     assert_eq!(terminated[0].host_id, Some(1));
@@ -731,7 +731,6 @@ fn expression_and_choke_match_channel_and_key() {
 #[test]
 fn poly_voice_stealing_when_full() {
     let mut h = handler(2);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -741,7 +740,6 @@ fn poly_voice_stealing_when_full() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -751,7 +749,6 @@ fn poly_voice_stealing_when_full() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -761,14 +758,13 @@ fn poly_voice_stealing_when_full() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let (trig, _, _, kill) = count_by_kind(&ev);
+    let (trig, _, _, kill) = count_by_kind(&h.events);
     assert_eq!(trig, 3);
     assert_eq!(kill, 1);
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.playing, 2);
     assert_eq!(ui.waiting, 1);
 }
@@ -776,7 +772,6 @@ fn poly_voice_stealing_when_full() {
 #[test]
 fn poly_steals_releasing_before_playing() {
     let mut h = handler(2);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -786,7 +781,6 @@ fn poly_steals_releasing_before_playing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -796,7 +790,6 @@ fn poly_steals_releasing_before_playing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -806,10 +799,9 @@ fn poly_steals_releasing_before_playing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.releasing, 1);
 
@@ -821,10 +813,9 @@ fn poly_steals_releasing_before_playing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.playing, 2);
     assert_eq!(ui.waiting, 0);
 }
@@ -848,26 +839,25 @@ fn voiced(note: u8, host_id: i32) -> Note {
 }
 
 /// Free slot 0, then allocate into it so it is newer than slot 1.
-fn newer_note_in_first_slot(h: &mut VoicesHandler, ev: &mut VoiceEvents, note: u8) {
-    h.handle_note_off(midi(60), 0, ev);
+fn newer_note_in_first_slot(h: &mut VoicesHandler, note: u8) {
+    h.handle_note_off(midi(60), 0);
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
     let _ = flush_terminated(h, &decaying);
-    h.handle_note_on(midi(note), 0, ev);
+    h.handle_note_on(midi(note), 0);
 }
 
 #[test]
 fn poly_steals_oldest_releasing_voice() {
     let mut h = handler(2);
-    let mut ev = events();
 
-    h.handle_note_on(midi(60), 0, &mut ev);
-    h.handle_note_on(midi(64), 0, &mut ev);
-    newer_note_in_first_slot(&mut h, &mut ev, 67);
+    h.handle_note_on(midi(60), 0);
+    h.handle_note_on(midi(64), 0);
+    newer_note_in_first_slot(&mut h, 67);
 
-    h.handle_note_off(midi(67), 0, &mut ev);
-    h.handle_note_off(midi(64), 0, &mut ev);
-    h.handle_note_on(midi(72), 0, &mut ev);
+    h.handle_note_off(midi(67), 0);
+    h.handle_note_off(midi(64), 0);
+    h.handle_note_on(midi(72), 0);
 
     assert!(
         h.voices
@@ -886,13 +876,12 @@ fn poly_steals_oldest_releasing_voice() {
 #[test]
 fn poly_steals_oldest_playing_voice() {
     let mut h = handler(3);
-    let mut ev = events();
 
-    h.handle_note_on(midi(60), 0, &mut ev);
-    h.handle_note_on(midi(64), 0, &mut ev);
-    newer_note_in_first_slot(&mut h, &mut ev, 67);
+    h.handle_note_on(midi(60), 0);
+    h.handle_note_on(midi(64), 0);
+    newer_note_in_first_slot(&mut h, 67);
     h.set_num_voices(2);
-    h.handle_note_on(midi(72), 0, &mut ev);
+    h.handle_note_on(midi(72), 0);
 
     assert!(h.waiting.iter().any(|waiting| waiting.note == 64));
     assert!(h.voices.iter().flatten().any(|playing| {
@@ -917,7 +906,6 @@ fn poly_steals_oldest_playing_voice() {
 #[test]
 fn poly_note_off_releases() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -927,9 +915,8 @@ fn poly_note_off_releases() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    ev = events();
+    h.clear_events();
     h.handle_note_off(
         Note {
             channel: 0,
@@ -938,13 +925,12 @@ fn poly_note_off_releases() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let (_, _, rel, _) = count_by_kind(&ev);
+    let (_, _, rel, _) = count_by_kind(&h.events);
     assert_eq!(rel, 1);
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.playing, 0);
     assert_eq!(ui.releasing, 1);
 }
@@ -952,7 +938,6 @@ fn poly_note_off_releases() {
 #[test]
 fn poly_note_off_unknown_is_noop() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_off(
         Note {
@@ -962,15 +947,13 @@ fn poly_note_off_unknown_is_noop() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    assert!(ev.events().is_empty());
+    assert!(h.events.is_empty());
 }
 
 #[test]
 fn poly_note_off_activates_waiting_note() {
     let mut h = handler(2);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -980,7 +963,6 @@ fn poly_note_off_activates_waiting_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -990,7 +972,6 @@ fn poly_note_off_activates_waiting_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1000,10 +981,9 @@ fn poly_note_off_activates_waiting_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().waiting, 1);
+    assert_eq!(h.get_telemetry().waiting, 1);
 
     h.handle_note_off(
         Note {
@@ -1013,10 +993,9 @@ fn poly_note_off_activates_waiting_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.waiting, 0);
     assert_eq!(ui.playing, 2);
 }
@@ -1026,7 +1005,6 @@ fn poly_note_off_activates_waiting_note() {
 #[test]
 fn poly_retrigger_releasing_note() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1036,7 +1014,6 @@ fn poly_retrigger_releasing_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -1046,9 +1023,8 @@ fn poly_retrigger_releasing_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    assert_eq!(h.get_metrics().releasing, 1);
+    assert_eq!(h.get_telemetry().releasing, 1);
 
     h.handle_note_on(
         Note {
@@ -1058,10 +1034,9 @@ fn poly_retrigger_releasing_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.releasing, 0);
 }
@@ -1070,13 +1045,12 @@ fn poly_retrigger_releasing_note() {
 fn poly_retrigger_layers_when_kill_same_note_disabled() {
     let mut h = handler(4);
     h.set_kill_same_note(false);
-    let mut ev = events();
 
-    h.handle_note_on(midi(60), 0, &mut ev);
-    h.handle_note_off(midi(60), 0, &mut ev);
-    h.handle_note_on(midi(60), 0, &mut ev);
+    h.handle_note_on(midi(60), 0);
+    h.handle_note_off(midi(60), 0);
+    h.handle_note_on(midi(60), 0);
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.releasing, 1);
     assert_eq!(ui.killing, 0);
@@ -1098,14 +1072,13 @@ fn poly_retrigger_layers_when_kill_same_note_disabled() {
 fn poly_retrigger_steals_same_release_when_full() {
     let mut h = handler(2);
     h.set_kill_same_note(false);
-    let mut ev = events();
 
-    h.handle_note_on(midi(60), 0, &mut ev);
-    h.handle_note_on(midi(64), 0, &mut ev);
-    h.handle_note_off(midi(60), 0, &mut ev);
-    h.handle_note_on(midi(60), 0, &mut ev);
+    h.handle_note_on(midi(60), 0);
+    h.handle_note_on(midi(64), 0);
+    h.handle_note_off(midi(60), 0);
+    h.handle_note_on(midi(60), 0);
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.playing, 2);
     assert_eq!(ui.releasing, 0);
     assert_eq!(ui.waiting, 0);
@@ -1128,7 +1101,6 @@ fn poly_retrigger_steals_same_release_when_full() {
 #[test]
 fn mono_note_on_replaces_playing() {
     let mut h = handler(1);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1138,7 +1110,6 @@ fn mono_note_on_replaces_playing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1148,10 +1119,9 @@ fn mono_note_on_replaces_playing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.waiting, 1);
 }
@@ -1159,7 +1129,6 @@ fn mono_note_on_replaces_playing() {
 #[test]
 fn mono_no_legato_kills_and_retriggers() {
     let mut h = handler(1);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1169,7 +1138,6 @@ fn mono_no_legato_kills_and_retriggers() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1179,10 +1147,9 @@ fn mono_no_legato_kills_and_retriggers() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let (trig, _, _, kill) = count_by_kind(&ev);
+    let (trig, _, _, kill) = count_by_kind(&h.events);
     assert_eq!(kill, 1);
     assert_eq!(trig, 2);
 }
@@ -1190,7 +1157,6 @@ fn mono_no_legato_kills_and_retriggers() {
 #[test]
 fn mono_note_on_kills_releasing_on_same_channel() {
     let mut h = handler(1);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1200,7 +1166,6 @@ fn mono_note_on_kills_releasing_on_same_channel() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -1210,9 +1175,8 @@ fn mono_note_on_kills_releasing_on_same_channel() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    assert_eq!(h.get_metrics().releasing, 1);
+    assert_eq!(h.get_telemetry().releasing, 1);
 
     h.handle_note_on(
         Note {
@@ -1222,10 +1186,9 @@ fn mono_note_on_kills_releasing_on_same_channel() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.releasing, 0);
 }
@@ -1236,7 +1199,6 @@ fn mono_note_on_kills_releasing_on_same_channel() {
 fn mono_legato_updates_instead_of_retriggering() {
     let mut h = handler(1);
     h.set_legato(true);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1246,7 +1208,6 @@ fn mono_legato_updates_instead_of_retriggering() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1256,15 +1217,14 @@ fn mono_legato_updates_instead_of_retriggering() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let (trig, upd, _, kill) = count_by_kind(&ev);
+    let (trig, upd, _, kill) = count_by_kind(&h.events);
     assert_eq!(trig, 1);
     assert_eq!(upd, 1);
     assert_eq!(kill, 0);
 
-    match &ev.events()[1] {
+    match &h.events[1] {
         VoiceEvent::Update { pitch, .. } => {
             assert_eq!(*pitch, note_pitch(64));
         }
@@ -1276,7 +1236,6 @@ fn mono_legato_updates_instead_of_retriggering() {
 fn mono_legato_note_off_returns_to_previous() {
     let mut h = handler(1);
     h.set_legato(true);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1286,7 +1245,6 @@ fn mono_legato_note_off_returns_to_previous() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1296,7 +1254,6 @@ fn mono_legato_note_off_returns_to_previous() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -1306,15 +1263,14 @@ fn mono_legato_note_off_returns_to_previous() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.waiting, 0);
     assert_eq!(ui.releasing, 0);
 
-    match ev.events().last().unwrap() {
+    match h.events.last().unwrap() {
         VoiceEvent::Update { pitch, .. } => {
             assert_eq!(*pitch, note_pitch(60));
         }
@@ -1331,7 +1287,6 @@ fn mono_legato_note_off_returns_to_previous() {
 fn mono_legato_three_notes_unwind() {
     let mut h = handler(1);
     h.set_legato(true);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1341,7 +1296,6 @@ fn mono_legato_three_notes_unwind() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1351,7 +1305,6 @@ fn mono_legato_three_notes_unwind() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1361,10 +1314,9 @@ fn mono_legato_three_notes_unwind() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().waiting, 2);
+    assert_eq!(h.get_telemetry().waiting, 2);
 
     h.handle_note_off(
         Note {
@@ -1374,9 +1326,8 @@ fn mono_legato_three_notes_unwind() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    match ev.events().last().unwrap() {
+    match h.events.last().unwrap() {
         VoiceEvent::Update { pitch, .. } => assert_eq!(*pitch, note_pitch(64)),
         _ => panic!("expected Update"),
     }
@@ -1389,14 +1340,13 @@ fn mono_legato_three_notes_unwind() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    match ev.events().last().unwrap() {
+    match h.events.last().unwrap() {
         VoiceEvent::Update { pitch, .. } => assert_eq!(*pitch, note_pitch(60)),
         _ => panic!("expected Update"),
     }
 
-    ev = events();
+    h.clear_events();
     h.handle_note_off(
         Note {
             channel: 0,
@@ -1405,11 +1355,10 @@ fn mono_legato_three_notes_unwind() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    let (_, _, rel, _) = count_by_kind(&ev);
+    let (_, _, rel, _) = count_by_kind(&h.events);
     assert!(rel >= 1);
-    assert_eq!(h.get_metrics().playing, 0);
+    assert_eq!(h.get_telemetry().playing, 0);
 }
 
 // ---- Waiting note removal ----
@@ -1417,7 +1366,6 @@ fn mono_legato_three_notes_unwind() {
 #[test]
 fn note_off_waiting_note_just_removes() {
     let mut h = handler(1);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1427,7 +1375,6 @@ fn note_off_waiting_note_just_removes() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1437,9 +1384,8 @@ fn note_off_waiting_note_just_removes() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    let before_len = ev.events().len();
+    let before_len = h.events.len();
 
     h.handle_note_off(
         Note {
@@ -1449,11 +1395,10 @@ fn note_off_waiting_note_just_removes() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(ev.events().len(), before_len);
-    assert_eq!(h.get_metrics().waiting, 0);
+    assert_eq!(h.events.len(), before_len);
+    assert_eq!(h.get_telemetry().waiting, 0);
 }
 
 // ---- handle_choke ----
@@ -1461,7 +1406,6 @@ fn note_off_waiting_note_just_removes() {
 #[test]
 fn choke_playing_note_frees_voice() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1471,7 +1415,6 @@ fn choke_playing_note_frees_voice() {
             host_id: Some(7),
         },
         0,
-        &mut ev,
     );
     assert!(h.voices[0].is_some());
 
@@ -1482,7 +1425,7 @@ fn choke_playing_note_frees_voice() {
         host_id: Some(7),
     });
 
-    assert_eq!(h.get_metrics().playing, 0);
+    assert_eq!(h.get_telemetry().playing, 0);
     assert!(h.voices[0].is_none());
 
     let terminated = flush_terminated(&mut h, &[]);
@@ -1494,7 +1437,6 @@ fn choke_playing_note_frees_voice() {
 #[test]
 fn choke_releasing_note_frees_voice() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1504,7 +1446,6 @@ fn choke_releasing_note_frees_voice() {
             host_id: Some(8),
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -1514,7 +1455,6 @@ fn choke_releasing_note_frees_voice() {
             host_id: Some(8),
         },
         0,
-        &mut ev,
     );
     assert!(h.voices[0].is_some());
 
@@ -1525,7 +1465,7 @@ fn choke_releasing_note_frees_voice() {
         host_id: Some(8),
     });
 
-    assert_eq!(h.get_metrics().releasing, 0);
+    assert_eq!(h.get_telemetry().releasing, 0);
     assert!(h.voices[0].is_none());
 
     let terminated = flush_terminated(&mut h, &[]);
@@ -1550,7 +1490,6 @@ fn choke_unknown_is_noop() {
 #[test]
 fn choke_stolen_waiting_note_terminates_and_does_not_resound() {
     let mut h = handler(2);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1560,7 +1499,6 @@ fn choke_stolen_waiting_note_terminates_and_does_not_resound() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1570,7 +1508,6 @@ fn choke_stolen_waiting_note_terminates_and_does_not_resound() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1580,11 +1517,10 @@ fn choke_stolen_waiting_note_terminates_and_does_not_resound() {
             host_id: Some(3),
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().waiting, 1);
-    assert_eq!(h.get_metrics().killing, 1);
+    assert_eq!(h.get_telemetry().waiting, 1);
+    assert_eq!(h.get_telemetry().killing, 1);
 
     h.handle_choke(Note {
         channel: 0,
@@ -1593,8 +1529,8 @@ fn choke_stolen_waiting_note_terminates_and_does_not_resound() {
         host_id: Some(1),
     });
 
-    assert_eq!(h.get_metrics().waiting, 0);
-    assert_eq!(h.get_metrics().killing, 0);
+    assert_eq!(h.get_telemetry().waiting, 0);
+    assert_eq!(h.get_telemetry().killing, 0);
 
     let terminated = flush_terminated(&mut h, &[]);
     assert_eq!(terminated.len(), 1);
@@ -1609,10 +1545,9 @@ fn choke_stolen_waiting_note_terminates_and_does_not_resound() {
             host_id: Some(3),
         },
         0,
-        &mut ev,
     );
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.waiting, 0);
     assert_eq!(ui.playing, 1);
 }
@@ -1620,7 +1555,6 @@ fn choke_stolen_waiting_note_terminates_and_does_not_resound() {
 #[test]
 fn choke_waiting_only_note_terminates() {
     let mut h = handler(1);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1630,7 +1564,6 @@ fn choke_waiting_only_note_terminates() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1640,15 +1573,14 @@ fn choke_waiting_only_note_terminates() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
 
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
     let terminated = flush_terminated(&mut h, &decaying);
     assert!(terminated.is_empty());
-    assert_eq!(h.get_metrics().waiting, 1);
-    assert_eq!(h.get_metrics().killing, 0);
+    assert_eq!(h.get_telemetry().waiting, 1);
+    assert_eq!(h.get_telemetry().killing, 0);
 
     h.handle_choke(Note {
         channel: 0,
@@ -1657,7 +1589,7 @@ fn choke_waiting_only_note_terminates() {
         host_id: Some(1),
     });
 
-    assert_eq!(h.get_metrics().waiting, 0);
+    assert_eq!(h.get_telemetry().waiting, 0);
     let terminated = flush_terminated(&mut h, &[]);
     assert_eq!(terminated.len(), 1);
     assert_eq!(terminated[0].note, 60);
@@ -1667,7 +1599,6 @@ fn choke_waiting_only_note_terminates() {
 #[test]
 fn choke_killing_only_note_terminates() {
     let mut h = handler(2);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1677,7 +1608,6 @@ fn choke_killing_only_note_terminates() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1687,7 +1617,6 @@ fn choke_killing_only_note_terminates() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -1697,7 +1626,6 @@ fn choke_killing_only_note_terminates() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1707,11 +1635,10 @@ fn choke_killing_only_note_terminates() {
             host_id: Some(3),
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().killing, 1);
-    assert_eq!(h.get_metrics().waiting, 0);
+    assert_eq!(h.get_telemetry().killing, 1);
+    assert_eq!(h.get_telemetry().waiting, 0);
 
     h.handle_choke(Note {
         channel: 0,
@@ -1720,7 +1647,7 @@ fn choke_killing_only_note_terminates() {
         host_id: Some(1),
     });
 
-    assert_eq!(h.get_metrics().killing, 0);
+    assert_eq!(h.get_telemetry().killing, 0);
     let terminated = flush_terminated(&mut h, &[]);
     assert_eq!(terminated.len(), 1);
     assert_eq!(terminated[0].note, 60);
@@ -1730,7 +1657,7 @@ fn choke_killing_only_note_terminates() {
 // ---- choke_all_voices ----
 
 fn assert_all_voices_free(h: &VoicesHandler) {
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.playing, 0);
     assert_eq!(ui.releasing, 0);
     assert_eq!(ui.killing, 0);
@@ -1741,7 +1668,6 @@ fn assert_all_voices_free(h: &VoicesHandler) {
 #[test]
 fn choke_all_voices_returns_all_slots_and_terminates() {
     let mut h = handler(2);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1751,7 +1677,6 @@ fn choke_all_voices_returns_all_slots_and_terminates() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1761,7 +1686,6 @@ fn choke_all_voices_returns_all_slots_and_terminates() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -1771,7 +1695,6 @@ fn choke_all_voices_returns_all_slots_and_terminates() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1781,10 +1704,9 @@ fn choke_all_voices_returns_all_slots_and_terminates() {
             host_id: Some(3),
         },
         0,
-        &mut ev,
     );
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.playing, 2);
     assert_eq!(ui.releasing, 0);
     assert_eq!(ui.killing, 1);
@@ -1807,7 +1729,6 @@ fn choke_all_voices_returns_all_slots_and_terminates() {
 #[test]
 fn choke_all_voices_stolen_note_terminates_once() {
     let mut h = handler(2);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1817,7 +1738,6 @@ fn choke_all_voices_stolen_note_terminates_once() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1827,7 +1747,6 @@ fn choke_all_voices_stolen_note_terminates_once() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1837,11 +1756,10 @@ fn choke_all_voices_stolen_note_terminates_once() {
             host_id: Some(3),
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().waiting, 1);
-    assert_eq!(h.get_metrics().killing, 1);
+    assert_eq!(h.get_telemetry().waiting, 1);
+    assert_eq!(h.get_telemetry().killing, 1);
 
     h.choke_all_voices();
     assert_all_voices_free(&h);
@@ -1860,7 +1778,6 @@ fn choke_all_voices_stolen_note_terminates_once() {
 #[test]
 fn choke_all_voices_allows_retrigger() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1870,13 +1787,12 @@ fn choke_all_voices_allows_retrigger() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
 
     h.choke_all_voices();
     let _ = flush_terminated(&mut h, &[]);
 
-    ev = events();
+    h.clear_events();
     h.handle_note_on(
         Note {
             channel: 0,
@@ -1885,19 +1801,17 @@ fn choke_all_voices_allows_retrigger() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(ui.playing, 1);
     assert_eq!(ui.waiting, 0);
-    assert_eq!(count_by_kind(&ev).0, 1);
+    assert_eq!(count_by_kind(&h.events).0, 1);
 }
 
 #[test]
 fn choke_all_voices_terminates_waiting_only_note() {
     let mut h = handler(1);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1907,7 +1821,6 @@ fn choke_all_voices_terminates_waiting_only_note() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -1917,14 +1830,13 @@ fn choke_all_voices_terminates_waiting_only_note() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
 
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
     assert!(flush_terminated(&mut h, &decaying).is_empty());
-    assert_eq!(h.get_metrics().waiting, 1);
-    assert_eq!(h.get_metrics().killing, 0);
+    assert_eq!(h.get_telemetry().waiting, 1);
+    assert_eq!(h.get_telemetry().killing, 0);
 
     h.choke_all_voices();
     assert_all_voices_free(&h);
@@ -1941,7 +1853,6 @@ fn choke_all_voices_terminates_waiting_only_note() {
 #[test]
 fn expression_on_playing_note() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1951,7 +1862,6 @@ fn expression_on_playing_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     let event = h
         .handle_expression(
@@ -1975,7 +1885,6 @@ fn expression_on_playing_note() {
 #[test]
 fn expression_on_releasing_note() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -1985,7 +1894,6 @@ fn expression_on_releasing_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -1995,9 +1903,8 @@ fn expression_on_releasing_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    assert_eq!(h.get_metrics().releasing, 1);
+    assert_eq!(h.get_telemetry().releasing, 1);
 
     assert!(
         h.handle_expression(
@@ -2018,12 +1925,11 @@ fn expression_on_releasing_note() {
 #[test]
 fn expression_on_killing_note() {
     let mut h = handler(4);
-    let mut ev = events();
 
-    h.handle_note_on(voiced(60, 1), 0, &mut ev);
-    h.handle_note_off(voiced(60, 1), 0, &mut ev);
-    h.handle_note_on(voiced(60, 2), 0, &mut ev);
-    assert_eq!(h.get_metrics().killing, 1);
+    h.handle_note_on(voiced(60, 1), 0);
+    h.handle_note_off(voiced(60, 1), 0);
+    h.handle_note_on(voiced(60, 2), 0);
+    assert_eq!(h.get_telemetry().killing, 1);
 
     let event = h
         .handle_expression(midi(60), Expression::Pitch, 4, 0.7)
@@ -2077,7 +1983,6 @@ fn decaying_voice_lifecycle() {
 #[test]
 fn get_decaying_voices_includes_releasing() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2087,7 +1992,6 @@ fn get_decaying_voices_includes_releasing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -2097,7 +2001,6 @@ fn get_decaying_voices_includes_releasing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
     let mut decaying = DecayingVoices::new();
@@ -2108,7 +2011,6 @@ fn get_decaying_voices_includes_releasing() {
 #[test]
 fn get_decaying_voices_includes_killing() {
     let mut h = handler(1);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2118,7 +2020,6 @@ fn get_decaying_voices_includes_killing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2128,12 +2029,11 @@ fn get_decaying_voices_includes_killing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
-    assert_eq!(decaying.len(), h.get_metrics().killing);
+    assert_eq!(decaying.len(), h.get_telemetry().killing);
 }
 
 // ---- update_decaying_voices ----
@@ -2141,7 +2041,6 @@ fn get_decaying_voices_includes_killing() {
 #[test]
 fn update_decaying_voices_frees_done() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2151,7 +2050,6 @@ fn update_decaying_voices_frees_done() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -2161,7 +2059,6 @@ fn update_decaying_voices_frees_done() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
     let mut decaying = DecayingVoices::new();
@@ -2170,7 +2067,7 @@ fn update_decaying_voices_frees_done() {
 
     let terminated = flush_terminated(&mut h, &decaying);
 
-    assert_eq!(h.get_metrics().releasing, 0);
+    assert_eq!(h.get_telemetry().releasing, 0);
     assert!(h.voices[0].is_none());
     assert_eq!(terminated.len(), 1);
     assert_eq!(terminated[0].note, 60);
@@ -2180,7 +2077,6 @@ fn update_decaying_voices_frees_done() {
 #[test]
 fn update_decaying_voices_keeps_active() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2190,7 +2086,6 @@ fn update_decaying_voices_keeps_active() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -2200,7 +2095,6 @@ fn update_decaying_voices_keeps_active() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
     let mut decaying = DecayingVoices::new();
@@ -2209,7 +2103,7 @@ fn update_decaying_voices_keeps_active() {
 
     let terminated = flush_terminated(&mut h, &decaying);
 
-    assert_eq!(h.get_metrics().releasing, 1);
+    assert_eq!(h.get_telemetry().releasing, 1);
     assert!(h.voices[0].is_some());
     assert!(terminated.is_empty());
 }
@@ -2217,7 +2111,6 @@ fn update_decaying_voices_keeps_active() {
 #[test]
 fn update_decaying_voices_frees_killing() {
     let mut h = handler(1);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2227,7 +2120,6 @@ fn update_decaying_voices_frees_killing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2237,7 +2129,6 @@ fn update_decaying_voices_frees_killing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
     assert!(h.voices[0].is_some());
@@ -2253,7 +2144,7 @@ fn update_decaying_voices_frees_killing() {
 
     let terminated = flush_terminated(&mut h, &decaying);
 
-    assert_eq!(h.get_metrics().killing, 0);
+    assert_eq!(h.get_telemetry().killing, 0);
     assert!(h.voices[0].is_none());
     assert!(h.voices[1].is_some());
     // The note is parked in `waiting`, so the killed slot does not terminate it.
@@ -2264,7 +2155,6 @@ fn update_decaying_voices_frees_killing() {
 #[test]
 fn waiting_note_off_terminates() {
     let mut h = handler(2);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2274,7 +2164,6 @@ fn waiting_note_off_terminates() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2284,7 +2173,6 @@ fn waiting_note_off_terminates() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2294,9 +2182,8 @@ fn waiting_note_off_terminates() {
             host_id: Some(3),
         },
         0,
-        &mut ev,
     );
-    assert_eq!(h.get_metrics().waiting, 1);
+    assert_eq!(h.get_telemetry().waiting, 1);
 
     h.handle_note_off(
         Note {
@@ -2306,11 +2193,10 @@ fn waiting_note_off_terminates() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().waiting, 0);
-    assert_eq!(h.get_metrics().playing, 2);
+    assert_eq!(h.get_telemetry().waiting, 0);
+    assert_eq!(h.get_telemetry().playing, 2);
 
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
@@ -2323,7 +2209,6 @@ fn waiting_note_off_terminates() {
 #[test]
 fn restored_waiting_note_keeps_host_id_until_its_own_release() {
     let mut h = handler(1);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2333,7 +2218,6 @@ fn restored_waiting_note_keeps_host_id_until_its_own_release() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2343,7 +2227,6 @@ fn restored_waiting_note_keeps_host_id_until_its_own_release() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
 
     h.handle_note_off(
@@ -2354,11 +2237,10 @@ fn restored_waiting_note_keeps_host_id_until_its_own_release() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().playing, 1);
-    assert_eq!(h.get_metrics().waiting, 0);
+    assert_eq!(h.get_telemetry().playing, 1);
+    assert_eq!(h.get_telemetry().waiting, 0);
     assert!(h.voices.iter().flatten().any(|slot| {
         slot.phase == Phase::NoteOn && slot.note.host_id == Some(1) && slot.owns_host_id
     }));
@@ -2381,7 +2263,6 @@ fn restored_waiting_note_keeps_host_id_until_its_own_release() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
 
     let mut decaying = DecayingVoices::new();
@@ -2396,7 +2277,6 @@ fn restored_waiting_note_keeps_host_id_until_its_own_release() {
 #[test]
 fn retriggered_note_old_instance_still_terminates() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2406,7 +2286,6 @@ fn retriggered_note_old_instance_still_terminates() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -2416,7 +2295,6 @@ fn retriggered_note_old_instance_still_terminates() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2426,12 +2304,11 @@ fn retriggered_note_old_instance_still_terminates() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().playing, 1);
-    assert_eq!(h.get_metrics().releasing, 0);
-    assert_eq!(h.get_metrics().killing, 1);
+    assert_eq!(h.get_telemetry().playing, 1);
+    assert_eq!(h.get_telemetry().releasing, 0);
+    assert_eq!(h.get_telemetry().killing, 1);
 
     // The old host id still ends, even though the same key is playing again.
     let mut decaying = DecayingVoices::new();
@@ -2446,7 +2323,6 @@ fn retriggered_note_old_instance_still_terminates() {
 #[test]
 fn mono_note_off_restores_waiting_note_from_same_channel_only() {
     let mut h = handler(1);
-    let mut ev = events();
 
     // Channel 1: stack two notes; note 60 goes to waiting.
     h.handle_note_on(
@@ -2457,7 +2333,6 @@ fn mono_note_off_restores_waiting_note_from_same_channel_only() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2467,7 +2342,6 @@ fn mono_note_off_restores_waiting_note_from_same_channel_only() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     // Channel 0: independent note.
     h.handle_note_on(
@@ -2478,10 +2352,9 @@ fn mono_note_off_restores_waiting_note_from_same_channel_only() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().waiting, 1);
+    assert_eq!(h.get_telemetry().waiting, 1);
 
     // Releasing the channel 0 note must not restore channel 1's waiting note.
     h.handle_note_off(
@@ -2492,10 +2365,9 @@ fn mono_note_off_restores_waiting_note_from_same_channel_only() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().waiting, 1);
+    assert_eq!(h.get_telemetry().waiting, 1);
     assert!(h.voices.iter().flatten().any(|playing| {
         playing.phase == Phase::NoteOn && playing.note.channel == 1 && playing.note.note == 64
     }));
@@ -2509,10 +2381,9 @@ fn mono_note_off_restores_waiting_note_from_same_channel_only() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().waiting, 0);
+    assert_eq!(h.get_telemetry().waiting, 0);
     assert!(h.voices.iter().flatten().any(|playing| {
         playing.phase == Phase::NoteOn && playing.note.channel == 1 && playing.note.note == 60
     }));
@@ -2522,7 +2393,6 @@ fn mono_note_off_restores_waiting_note_from_same_channel_only() {
 fn mono_legato_return_updates_prev_note() {
     let mut h = handler(1);
     h.set_legato(true);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2532,7 +2402,6 @@ fn mono_legato_return_updates_prev_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2542,7 +2411,6 @@ fn mono_legato_return_updates_prev_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     // Legato return to note 60.
     h.handle_note_off(
@@ -2553,7 +2421,6 @@ fn mono_legato_return_updates_prev_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     // Full release; the voice starts decaying.
     h.handle_note_off(
@@ -2564,11 +2431,10 @@ fn mono_legato_return_updates_prev_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
     // The next Reset must glide from note 60 (last sounding), not note 64.
-    ev = events();
+    h.clear_events();
     h.handle_note_on(
         Note {
             channel: 0,
@@ -2577,11 +2443,10 @@ fn mono_legato_return_updates_prev_note() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let reset = ev
-        .events()
+    let reset = h
+        .events
         .iter()
         .find_map(|e| match e {
             VoiceEvent::Reset { prev_note, .. } => Some(*prev_note),
@@ -2597,7 +2462,6 @@ fn mono_legato_return_updates_prev_note() {
 #[test]
 fn stolen_releasing_note_terminates_when_kill_completes() {
     let mut h = handler(2);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2607,7 +2471,6 @@ fn stolen_releasing_note_terminates_when_kill_completes() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2617,7 +2480,6 @@ fn stolen_releasing_note_terminates_when_kill_completes() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -2627,7 +2489,6 @@ fn stolen_releasing_note_terminates_when_kill_completes() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2637,11 +2498,10 @@ fn stolen_releasing_note_terminates_when_kill_completes() {
             host_id: Some(3),
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().killing, 1);
-    assert_eq!(h.get_metrics().waiting, 0);
+    assert_eq!(h.get_telemetry().killing, 1);
+    assert_eq!(h.get_telemetry().waiting, 0);
 
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
@@ -2650,13 +2510,12 @@ fn stolen_releasing_note_terminates_when_kill_completes() {
     assert_eq!(terminated.len(), 1);
     assert_eq!(terminated[0].note, 60);
     assert_eq!(terminated[0].host_id, Some(1));
-    assert_eq!(h.get_metrics().killing, 0);
+    assert_eq!(h.get_telemetry().killing, 0);
 }
 
 #[test]
 fn waiting_note_off_after_kill_then_terminates() {
     let mut h = handler(1);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2666,7 +2525,6 @@ fn waiting_note_off_after_kill_then_terminates() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2676,16 +2534,15 @@ fn waiting_note_off_after_kill_then_terminates() {
             host_id: Some(2),
         },
         0,
-        &mut ev,
     );
-    assert_eq!(h.get_metrics().waiting, 1);
-    assert_eq!(h.get_metrics().killing, 1);
+    assert_eq!(h.get_telemetry().waiting, 1);
+    assert_eq!(h.get_telemetry().killing, 1);
 
     let mut decaying = DecayingVoices::new();
     h.get_decaying_voices(&mut decaying);
     let terminated = flush_terminated(&mut h, &decaying);
     assert!(terminated.is_empty());
-    assert_eq!(h.get_metrics().killing, 0);
+    assert_eq!(h.get_telemetry().killing, 0);
 
     h.handle_note_off(
         Note {
@@ -2695,7 +2552,6 @@ fn waiting_note_off_after_kill_then_terminates() {
             host_id: Some(1),
         },
         0,
-        &mut ev,
     );
 
     let terminated = flush_terminated(&mut h, &[]);
@@ -2741,7 +2597,6 @@ fn alloc_voice_fills_partial_block_before_opening_a_new_one() {
 #[test]
 fn get_playing_voices_includes_all_active() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2751,7 +2606,6 @@ fn get_playing_voices_includes_all_active() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2761,7 +2615,6 @@ fn get_playing_voices_includes_all_active() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -2771,7 +2624,6 @@ fn get_playing_voices_includes_all_active() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
     let mut playing = PlayingVoices::new();
@@ -2788,7 +2640,6 @@ fn get_playing_voices_includes_all_active() {
 #[test]
 fn get_playing_voices_includes_killing() {
     let mut h = handler(1);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2798,7 +2649,6 @@ fn get_playing_voices_includes_killing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2808,13 +2658,12 @@ fn get_playing_voices_includes_killing() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
     let mut playing = PlayingVoices::new();
     let last = h.get_playing_voices(&mut playing);
 
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert_eq!(playing.len(), ui.playing + ui.releasing + ui.killing);
     assert_eq!(playing[0].note(), 60);
     assert_eq!(playing[1].note(), 64);
@@ -2826,7 +2675,6 @@ fn get_playing_voices_includes_killing() {
 #[test]
 fn different_channels_same_note_are_independent() {
     let mut h = handler(4);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2836,7 +2684,6 @@ fn different_channels_same_note_are_independent() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2846,10 +2693,9 @@ fn different_channels_same_note_are_independent() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    assert_eq!(h.get_metrics().playing, 2);
+    assert_eq!(h.get_telemetry().playing, 2);
 
     h.handle_note_off(
         Note {
@@ -2859,16 +2705,14 @@ fn different_channels_same_note_are_independent() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
-    assert_eq!(h.get_metrics().playing, 1);
-    assert_eq!(h.get_metrics().releasing, 1);
+    assert_eq!(h.get_telemetry().playing, 1);
+    assert_eq!(h.get_telemetry().releasing, 1);
 }
 
 #[test]
 fn mono_different_channel_does_not_steal() {
     let mut h = handler(1);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2878,7 +2722,6 @@ fn mono_different_channel_does_not_steal() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2888,19 +2731,17 @@ fn mono_different_channel_does_not_steal() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
     // Channel 1 has no prior note, so it grabs a voice independently
     // (monophonic stealing is per-channel)
-    let ui = h.get_metrics();
+    let ui = h.get_telemetry();
     assert!(ui.playing >= 1);
 }
 
 #[test]
 fn voice_reuse_after_full_lifecycle() {
     let mut h = handler(2);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2910,7 +2751,6 @@ fn voice_reuse_after_full_lifecycle() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2920,7 +2760,6 @@ fn voice_reuse_after_full_lifecycle() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     assert!(h.voices[0].is_some());
     assert!(h.voices[1].is_some());
@@ -2933,7 +2772,6 @@ fn voice_reuse_after_full_lifecycle() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -2943,7 +2781,6 @@ fn voice_reuse_after_full_lifecycle() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
     let mut decaying = DecayingVoices::new();
@@ -2952,8 +2789,8 @@ fn voice_reuse_after_full_lifecycle() {
 
     assert!(h.voices[0].is_none());
     assert!(h.voices[1].is_none());
-    assert_eq!(h.get_metrics().releasing, 0);
-    assert_eq!(h.get_metrics().playing, 0);
+    assert_eq!(h.get_telemetry().releasing, 0);
+    assert_eq!(h.get_telemetry().playing, 0);
     assert_eq!(terminated.len(), 2);
 }
 
@@ -2961,7 +2798,6 @@ fn voice_reuse_after_full_lifecycle() {
 fn get_ui_data_reflects_complex_state() {
     let mut h = handler(4);
     h.set_legato(true);
-    let mut ev = events();
 
     h.handle_note_on(
         Note {
@@ -2971,7 +2807,6 @@ fn get_ui_data_reflects_complex_state() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2981,7 +2816,6 @@ fn get_ui_data_reflects_complex_state() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_on(
         Note {
@@ -2991,7 +2825,6 @@ fn get_ui_data_reflects_complex_state() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
     h.handle_note_off(
         Note {
@@ -3001,11 +2834,11 @@ fn get_ui_data_reflects_complex_state() {
             host_id: None,
         },
         0,
-        &mut ev,
     );
 
-    let ui = h.get_metrics();
-    assert_eq!(ui.num_voices, 4);
-    assert!(ui.legato);
-    assert!(ui.playing + ui.waiting + ui.releasing + ui.killing > 0);
+    let config = h.get_config();
+    let telemetry = h.get_telemetry();
+    assert_eq!(config.num_voices, 4);
+    assert!(config.legato);
+    assert!(telemetry.playing + telemetry.waiting + telemetry.releasing + telemetry.killing > 0);
 }

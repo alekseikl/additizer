@@ -10,7 +10,7 @@ use crate::synth_engine::{
         data_types_compatible,
     },
     synth_module::SynthModule,
-    voices_handler::{DecayingVoices, PlayingVoices, VoiceEvents, VoicesHandler},
+    voices_handler::{DecayingVoices, PlayingVoices, VoicesHandler},
 };
 
 pub use buffer::{
@@ -54,9 +54,9 @@ pub use voices_handler::{Note, PlayingVoice};
 
 pub use addi_dsp::{
     C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, SIMD_LANES, db_to_gain, db_to_gain_fast,
-    db_to_gain_fast_wide, pitch_to_freq_wide, fill_wide, freq_to_c4_pitch, from_ms, from_st,
-    gain_to_db, gain_to_db_fast, map_wide, map_wide_in_place, note_to_pitch, pan_gain,
-    pitch_to_freq, power_scale, zip_map_wide,
+    db_to_gain_fast_wide, fill_wide, freq_to_c4_pitch, from_ms, from_st, gain_to_db,
+    gain_to_db_fast, map_wide, map_wide_in_place, note_to_pitch, pan_gain, pitch_to_freq,
+    pitch_to_freq_wide, power_scale, zip_map_wide,
 };
 
 pub use addi_dsp::types;
@@ -237,7 +237,7 @@ impl<E: EngineLinks> SynthEngine<E> {
     }
 
     pub fn get_engine_params(&self) -> EngineParams {
-        let voices = self.voices_handler.get_metrics();
+        let voices = self.voices_handler.get_config();
 
         EngineParams {
             num_voices: voices.num_voices,
@@ -545,15 +545,10 @@ impl<E: EngineLinks> SynthEngine<E> {
     }
 
     pub fn handle_note_on(&mut self, note: Note, offset: usize) {
-        let mut voice_events = VoiceEvents::new();
         let offset = self.to_internal_offset(offset);
 
-        self.voices_handler
-            .handle_note_on(note, offset, &mut voice_events);
-
-        self.modules
-            .values_mut()
-            .for_each(|m| m.process_events(voice_events.events()));
+        self.voices_handler.handle_note_on(note, offset);
+        self.dispatch_voice_events();
 
         if let Some(host_id) = note.host_id {
             self.apply_pending_poly_modulations(host_id);
@@ -561,21 +556,26 @@ impl<E: EngineLinks> SynthEngine<E> {
     }
 
     pub fn handle_note_off(&mut self, note: Note, offset: usize) {
-        let mut voice_events = VoiceEvents::new();
         let offset = self.to_internal_offset(offset);
 
         let restored_host_id = self
             .voices_handler
-            .handle_note_off(note, offset, &mut voice_events)
+            .handle_note_off(note, offset)
             .and_then(|restored| restored.host_id);
 
-        self.modules
-            .values_mut()
-            .for_each(|m| m.process_events(voice_events.events()));
+        self.dispatch_voice_events();
 
         if let Some(host_id) = restored_host_id {
             self.apply_pending_poly_modulations(host_id);
         }
+    }
+
+    fn dispatch_voice_events(&mut self) {
+        let events = self.voices_handler.get_events();
+        self.modules
+            .values_mut()
+            .for_each(|m| m.process_events(events));
+        self.voices_handler.clear_events();
     }
 
     pub fn handle_note_expression(
@@ -732,6 +732,10 @@ impl<E: EngineLinks> SynthEngine<E> {
 
         self.handle_ui_events();
 
+        if !self.voices_handler.get_events().is_empty() {
+            self.dispatch_voice_events();
+        }
+
         {
             let mut decaying_voices = DecayingVoices::new();
 
@@ -749,7 +753,7 @@ impl<E: EngineLinks> SynthEngine<E> {
 
         if update_ui {
             self.audio_end
-                .update_voices_status(&self.voices_handler.get_metrics());
+                .update_voices_status(&self.voices_handler.get_telemetry());
         }
 
         let mut playing_voices = PlayingVoices::new();
