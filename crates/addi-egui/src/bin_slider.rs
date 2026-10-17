@@ -1,7 +1,12 @@
-use egui::{Color32, PointerButton, Rect, Response, Sense, Ui, Widget, vec2};
+use egui::{
+    Color32, FontFamily, FontId, Id, LayerId, Order, PointerButton, Pos2, Rect, Response, Sense,
+    Stroke, StrokeKind, Ui, Widget, ecolor::Hsva, vec2,
+};
 
 use addi_dsp::{db_to_gain, gain_to_db};
 use addi_engine::{MAX_LEVEL_DB, MIN_LEVEL_DB, Smp, StereoSample};
+
+use super::utils::hsva;
 
 const BG_COLOR: Color32 = Color32::from_rgb(0, 0, 0);
 const ATTENUATED_COLOR: Color32 = Color32::from_rgb(0x0b, 0x42, 0x67);
@@ -9,6 +14,21 @@ const AMPLIFIED_COLOR: Color32 = Color32::from_rgb(0x72, 0x12, 0x12);
 const PHASE_COLOR: Color32 = Color32::from_rgb(0x42, 0x0b, 0x67);
 const SLIDER_WIDTH: f32 = 12.0;
 const DB_RANGE: Smp = MAX_LEVEL_DB - MIN_LEVEL_DB;
+
+const LABEL_BG_COLOR: Hsva = hsva(0.115, 0.05, 0.01, 1.0);
+const LABEL_BORDER_COLOR: Hsva = hsva(0.115, 0.05, 0.2, 1.0);
+const LABEL_TEXT_COLOR: Hsva = hsva(0.115, 0.05, 0.5, 1.0);
+const LABEL_PADDING: f32 = 6.0;
+const LABEL_MARGIN: f32 = 1.0;
+const LABEL_POINTER_GAP: f32 = 2.0;
+const LABEL_CORNER_RADIUS: f32 = 2.0;
+const HOVER_DELAY: f64 = 0.5;
+
+#[derive(Default, Clone)]
+struct LabelState {
+    visible: bool,
+    hover_since: Option<f64>,
+}
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum BinSliderMode {
@@ -200,6 +220,112 @@ impl<'a> BinSlider<'a> {
         }
     }
 
+    fn format_label(&self) -> Option<String> {
+        if self.value.left() != self.value.right() {
+            let value = format!(
+                "L: {}\nR: {}",
+                self.value_string(self.value.left()),
+                self.value_string(self.value.right())
+            );
+
+            return Some(match self.label {
+                Some(label) => format!("{label}\n{value}"),
+                None => value,
+            });
+        }
+
+        if self.is_default_value(self.value.left()) {
+            return self.label.map(str::to_string);
+        }
+
+        let value = self.value_string(self.value.left());
+
+        Some(match self.label {
+            Some(label) => format!("{label}: {value}"),
+            None => value,
+        })
+    }
+
+    fn paint_label(&self, ui: &Ui, slider_rect: Rect, pointer_y: f32) {
+        let Some(text) = self.format_label() else {
+            return;
+        };
+
+        let text_color = Color32::from(LABEL_TEXT_COLOR);
+        let bg_color = Color32::from(LABEL_BG_COLOR);
+        let border_color = Color32::from(LABEL_BORDER_COLOR);
+
+        let painter = ui.painter();
+        let galley = painter.layout_no_wrap(
+            text,
+            FontId::new(11.0, FontFamily::Name("Bold".into())),
+            text_color,
+        );
+
+        let padding = vec2(LABEL_PADDING, LABEL_PADDING * 0.5);
+        let box_size = galley.size() + padding * 2.0;
+        let bounds = ui.clip_rect();
+        let vertical = bounds.y_range().intersection(slider_rect.y_range());
+
+        let top = (pointer_y - box_size.y - LABEL_POINTER_GAP).clamp(
+            vertical.min,
+            (vertical.max - box_size.y).max(vertical.min),
+        );
+        let left_right = slider_rect.right() + LABEL_MARGIN;
+        let left = if left_right + box_size.x <= bounds.right() {
+            left_right
+        } else {
+            slider_rect.left() - box_size.x - LABEL_MARGIN
+        };
+        let left = left.clamp(
+            bounds.left(),
+            (bounds.right() - box_size.x).max(bounds.left()),
+        );
+        let box_rect = Rect::from_min_size(Pos2::new(left, top), box_size);
+
+        let fg_painter = painter
+            .clone()
+            .with_layer_id(LayerId::new(Order::Foreground, Id::new("bin-slider-label")));
+        fg_painter.rect(
+            box_rect,
+            LABEL_CORNER_RADIUS,
+            bg_color,
+            Stroke::new(1.0, border_color),
+            StrokeKind::Inside,
+        );
+        fg_painter.galley(box_rect.min + padding, galley, text_color);
+    }
+
+    fn label_visible(&self, ui: &Ui, response: &Response) -> bool {
+        let now = ui.input(|i| i.time);
+        let button_down_on = response.is_pointer_button_down_on();
+        let button_down = ui.input(|i| i.pointer.primary_down() || i.pointer.secondary_down());
+        let contains = response.contains_pointer();
+        let menu_open = response.context_menu_opened();
+        let state_id = response.id.with("label-state");
+
+        ui.data_mut(|d| {
+            let state = d.get_temp_mut_or_default::<LabelState>(state_id);
+
+            if menu_open {
+                state.visible = false;
+                state.hover_since = None;
+            } else if button_down_on {
+                state.visible = true;
+                state.hover_since = None;
+            } else if !contains || button_down {
+                state.visible = false;
+                state.hover_since = None;
+            } else {
+                let start = state.hover_since.get_or_insert(now);
+                if now - *start >= HOVER_DELAY {
+                    state.visible = true;
+                }
+            }
+            state.visible
+        })
+    }
+
     fn handle_dragging(&mut self, ui: &mut Ui, response: &mut Response, normalized_delta: Smp) {
         if response.dragged_by(PointerButton::Primary) {
             self.value
@@ -280,24 +406,15 @@ impl<'a> BinSlider<'a> {
             ui.painter().rect_filled(response.rect, 0.0, BG_COLOR);
             self.fill_rect(ui, self.value.left(), lr_rect.0);
             self.fill_rect(ui, self.value.right(), lr_rect.1);
+        }
 
-            let mut parts: Vec<String> = Vec::with_capacity(2);
-
-            if let Some(label) = self.label {
-                parts.push(label.to_string());
-            }
-
-            if self.value.left() != self.value.right() {
-                parts.push(format!(
-                    "L: {}\nR: {}",
-                    self.value_string(self.value.left()),
-                    self.value_string(self.value.right())
-                ));
-            } else if !self.is_default_value(self.value.left()) {
-                parts.push(self.value_string(self.value.left()));
-            }
-
-            response = response.on_hover_text_at_pointer(parts.join("\n"));
+        if self.label_visible(ui, &response)
+            && let Some(pointer_y) = response
+                .interact_pointer_pos()
+                .or(response.hover_pos())
+                .map(|pos| pos.y)
+        {
+            self.paint_label(ui, response.rect, pointer_y);
         }
 
         response

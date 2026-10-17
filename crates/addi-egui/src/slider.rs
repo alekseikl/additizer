@@ -188,11 +188,7 @@ impl<'a> Slider<'a> {
         }
     }
 
-    pub fn mono(
-        value: &'a mut Smp,
-        range: RangeInclusive<Smp>,
-        inverse_to: Option<Smp>,
-    ) -> Self {
+    pub fn mono(value: &'a mut Smp, range: RangeInclusive<Smp>, inverse_to: Option<Smp>) -> Self {
         Self::new(Value::Mono(value), range, inverse_to)
     }
 

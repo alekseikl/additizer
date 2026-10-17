@@ -31,13 +31,7 @@ impl Default for LfoWidget {
 }
 
 impl LfoWidget {
-    fn build_waveform(
-        &mut self,
-        shape: LfoShape,
-        phase_shift: Smp,
-        skew: Smp,
-        bipolar: bool,
-    ) {
+    fn build_waveform(&mut self, shape: LfoShape, phase_shift: Smp, skew: Smp, bipolar: bool) {
         let last = (DISPLAY_SAMPLES) as Smp;
 
         for (i, sample) in self.waveform.iter_mut().enumerate() {

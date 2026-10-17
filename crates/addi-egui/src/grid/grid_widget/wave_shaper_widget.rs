@@ -3,7 +3,7 @@ use egui::{Color32, Pos2, Rect, Stroke, StrokeKind, Vec2, emath::GuiRounding, ep
 
 use crate::grid::WidgetCtx;
 use addi_dsp::db_to_gain_fast;
-use addi_engine::{Input, ModuleId, Smp, ShaperType};
+use addi_engine::{Input, ModuleId, ShaperType, Smp};
 use addi_ui_backend::ui_bridge::{GridVec, ModuleBridge, UiBridge};
 
 use super::GridWidgetContent;
@@ -65,12 +65,7 @@ impl WaveShaperWidget {
         painter.line_segment([rect.center_top(), rect.center_bottom()], stroke);
     }
 
-    fn curve_points(
-        rect: Rect,
-        shaper: ShaperType,
-        gain: Smp,
-        clipping_gain: Smp,
-    ) -> Vec<Pos2> {
+    fn curve_points(rect: Rect, shaper: ShaperType, gain: Smp, clipping_gain: Smp) -> Vec<Pos2> {
         let t_mult = (SAMPLES - 1) as Smp;
         let half_w = rect.width() * 0.5;
         let half_h = rect.height() * 0.5;

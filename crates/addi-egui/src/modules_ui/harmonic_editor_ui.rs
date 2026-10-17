@@ -198,8 +198,6 @@ impl HarmonicEditorUI {
                         let height = ui.available_height();
 
                         ui.style_mut().spacing.item_spacing = Vec2::splat(2.0);
-                        ui.style_mut().interaction.tooltip_delay = 0.1;
-                        ui.style_mut().interaction.show_tooltips_only_when_still = false;
 
                         let mut changed = None;
                         {

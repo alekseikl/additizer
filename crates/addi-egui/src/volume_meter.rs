@@ -1,7 +1,7 @@
 use egui::{Color32, Painter, Pos2, Rect};
 
 use addi_dsp::gain_to_db;
-use addi_engine::{MIN_LEVEL_DB, NUM_CHANNELS, Smp, Smoother, StereoSample};
+use addi_engine::{MIN_LEVEL_DB, NUM_CHANNELS, Smoother, Smp, StereoSample};
 
 const BAR_GAP: f32 = 6.0;
 const NUM_SEGMENTS: usize = 12;
@@ -124,8 +124,7 @@ impl VolumeMeter {
 
     fn linear_segment_threshold(segment_idx: usize) -> Smp {
         MIN_LEVEL_DB
-            + (segment_idx + 1) as Smp * (LINEAR_MAX_DB - MIN_LEVEL_DB)
-                / LINEAR_SEGMENTS as Smp
+            + (segment_idx + 1) as Smp * (LINEAR_MAX_DB - MIN_LEVEL_DB) / LINEAR_SEGMENTS as Smp
     }
 
     fn segment_fill_color(segment_idx: usize, brightness: Smp, clipped: bool) -> Color32 {
