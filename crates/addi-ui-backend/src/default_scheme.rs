@@ -102,7 +102,7 @@ fn default_engine_config() -> EngineConfig {
             LinkConfig::mixed(FILTER_ENV_ID, FILTER_ID, Input::Cutoff, from_st(64.0)),
             LinkConfig::direct(FILTER_ID, OSC_ID, Input::Spectrum),
             LinkConfig::direct(OSC_ID, AMP_ID, Input::Audio),
-            LinkConfig::mixed(AMP_ENV_ID, AMP_ID, Input::Gain, StereoSample::ONE),
+            LinkConfig::mixed(AMP_ENV_ID, AMP_ID, Input::LinLevel, StereoSample::ONE),
             LinkConfig::direct(AMP_ID, OUTPUT_MODULE_ID, Input::Audio),
         ],
     }

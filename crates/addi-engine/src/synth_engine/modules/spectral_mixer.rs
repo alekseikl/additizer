@@ -7,8 +7,8 @@ use crate::{
         StereoSample,
         buffer::VoicesLayout,
         routing::{
-            DataType, Input, InputMeta, InputSlots, MixType, MixedSlots, ModuleId, ProcessContext,
-            RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget, VolumeType,
+            DataType, Input, InputMeta, InputSlots, LevelType, MixType, MixedSlots, ModuleId,
+            ProcessContext, RouterFactory, SpectralOutput, SpectralRouterType, VoiceTarget,
         },
         synth_module::SynthModule,
         types::{ComplexSample, Smp},
@@ -49,13 +49,13 @@ impl ChannelParams {
 
 struct InputParams {
     mix_type: MixType,
-    volume_type: VolumeType,
+    volume_type: LevelType,
 }
 
 struct Params {
     num_inputs: u8,
     inputs: [InputParams; MAX_INPUTS as usize],
-    output_volume_type: VolumeType,
+    output_volume_type: LevelType,
 }
 
 impl Params {
@@ -82,10 +82,10 @@ pub struct Inputs {
 impl Default for Inputs {
     fn default() -> Self {
         Self {
-            gain: MixedSlots::new(Input::Gain),
+            gain: MixedSlots::new(Input::LinLevel),
             level: MixedSlots::new(Input::Level),
             spectrum_mix: [None; MAX_INPUTS as usize],
-            gain_mix: array::from_fn(|idx| MixedSlots::new(Input::GainMix(idx as u8))),
+            gain_mix: array::from_fn(|idx| MixedSlots::new(Input::LinLevelMix(idx as u8))),
             level_mix: array::from_fn(|idx| MixedSlots::new(Input::LevelMix(idx as u8))),
         }
     }
@@ -105,9 +105,9 @@ impl Inputs {
                     }
                 }
                 InputSlots::Mixed(input) => match input.input_type {
-                    Input::Gain => result.gain = input.clone(),
+                    Input::LinLevel => result.gain = input.clone(),
                     Input::Level => result.level = input.clone(),
-                    Input::GainMix(idx) if idx < MAX_INPUTS => {
+                    Input::LinLevelMix(idx) if idx < MAX_INPUTS => {
                         result.gain_mix[idx as usize] = input.clone();
                     }
                     Input::LevelMix(idx) if idx < MAX_INPUTS => {
@@ -124,9 +124,9 @@ impl Inputs {
 
     fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
         match input_type {
-            Input::Gain => self.gain.update_amount(src_slot, amount),
+            Input::LinLevel => self.gain.update_amount(src_slot, amount),
             Input::Level => self.level.update_amount(src_slot, amount),
-            Input::GainMix(idx) if idx < MAX_INPUTS => {
+            Input::LinLevelMix(idx) if idx < MAX_INPUTS => {
                 self.gain_mix[idx as usize].update_amount(src_slot, amount);
             }
             Input::LevelMix(idx) if idx < MAX_INPUTS => {
@@ -218,13 +218,13 @@ impl<L: SpectralMixerLinks> SpectralMixer<L> {
         self.params.inputs[input_idx].mix_type = mix_type;
     }
 
-    pub fn set_volume_type(&mut self, input_idx: u8, volume_type: VolumeType) {
+    pub fn set_volume_type(&mut self, input_idx: u8, volume_type: LevelType) {
         let input_idx = input_idx.clamp(0, MAX_INPUTS) as usize;
         self.params.inputs[input_idx].volume_type = volume_type;
         self.build_inputs_meta();
     }
 
-    pub fn set_output_volume_type(&mut self, output_volume_type: VolumeType) {
+    pub fn set_output_volume_type(&mut self, output_volume_type: LevelType) {
         self.params.output_volume_type = output_volume_type;
         self.build_inputs_meta();
     }
@@ -253,18 +253,18 @@ impl<L: SpectralMixerLinks> SpectralMixer<L> {
                 .push(InputMeta::spectral(Input::SpectrumMix(input_idx)));
 
             match self.params.inputs[input_idx as usize].volume_type {
-                VolumeType::Db => self
+                LevelType::Db => self
                     .inputs_meta
                     .push(InputMeta::control(Input::LevelMix(input_idx))),
-                VolumeType::Gain => self
+                LevelType::Linear => self
                     .inputs_meta
-                    .push(InputMeta::control(Input::GainMix(input_idx))),
+                    .push(InputMeta::control(Input::LinLevelMix(input_idx))),
             }
         }
 
         match self.params.output_volume_type {
-            VolumeType::Db => self.inputs_meta.push(InputMeta::control(Input::Level)),
-            VolumeType::Gain => self.inputs_meta.push(InputMeta::control(Input::Gain)),
+            LevelType::Db => self.inputs_meta.push(InputMeta::control(Input::Level)),
+            LevelType::Linear => self.inputs_meta.push(InputMeta::control(Input::LinLevel)),
         }
     }
 
@@ -296,10 +296,10 @@ impl<L: SpectralMixerLinks> SpectralMixer<L> {
             let input_channel = &channel.input_params[input_idx as usize];
 
             let gain = match input_params.volume_type {
-                VolumeType::Db => Self::to_gain(
+                LevelType::Db => Self::to_gain(
                     router.scalar(&inputs.level_mix[input_idx as usize], input_channel.level),
                 ),
-                VolumeType::Gain => {
+                LevelType::Linear => {
                     router.scalar(&inputs.gain_mix[input_idx as usize], input_channel.gain)
                 }
             };
@@ -330,8 +330,8 @@ impl<L: SpectralMixerLinks> SpectralMixer<L> {
         }
 
         let output_gain = match self.params.output_volume_type {
-            VolumeType::Db => Self::to_gain(router.scalar(&inputs.level, channel.output_level)),
-            VolumeType::Gain => router.scalar(&inputs.gain, channel.output_gain),
+            LevelType::Db => Self::to_gain(router.scalar(&inputs.level, channel.output_level)),
+            LevelType::Linear => router.scalar(&inputs.gain, channel.output_gain),
         };
 
         for out in voice_output.iter_mut() {
@@ -383,9 +383,9 @@ impl<L: SpectralMixerLinks> SynthModule for SpectralMixer<L> {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
                 UiEvent::InputParam { input, value } => match input {
-                    Input::Gain => self.set_output_gain(value),
+                    Input::LinLevel => self.set_output_gain(value),
                     Input::Level => self.set_output_level(value),
-                    Input::GainMix(idx) => self.set_input_gain(idx, value),
+                    Input::LinLevelMix(idx) => self.set_input_gain(idx, value),
                     Input::LevelMix(idx) => self.set_input_level(idx, value),
                     _ => (),
                 },
@@ -397,7 +397,7 @@ impl<L: SpectralMixerLinks> SynthModule for SpectralMixer<L> {
                     input_idx,
                     mix_type,
                 } => self.set_mix_type(input_idx, mix_type),
-                UiEvent::VolumeType {
+                UiEvent::LevelType {
                     input_idx,
                     volume_type,
                 } => {

@@ -1,6 +1,6 @@
 use super::{MixerAudioEnd, MixerLinks, MixerUiEnd, UiEvent, UiUpdate};
 
-use crate::synth_engine::{Input, Smp, StereoSample, VolumeType};
+use crate::synth_engine::{Input, LevelType, Smp, StereoSample};
 
 pub struct AudioEnd;
 
@@ -49,11 +49,11 @@ impl MixerUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_volume_type(&mut self, _input_idx: u8, _volume_type: VolumeType) -> bool {
+    fn set_volume_type(&mut self, _input_idx: u8, _volume_type: LevelType) -> bool {
         self.diverge()
     }
 
-    fn set_output_volume_type(&mut self, _volume_type: VolumeType) -> bool {
+    fn set_output_volume_type(&mut self, _volume_type: LevelType) -> bool {
         self.diverge()
     }
 

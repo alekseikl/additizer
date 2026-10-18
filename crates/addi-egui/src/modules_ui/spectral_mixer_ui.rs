@@ -4,7 +4,7 @@ use std::{cell::Cell, rc::Rc};
 use egui::{ComboBox, DragValue, Grid, Ui};
 
 use crate::{ModuleUi, module_label::ModuleLabel, stereo_input::StereoInput};
-use addi_engine::{Input, MixType, ModuleId, ModuleType, VolumeType};
+use addi_engine::{Input, LevelType, MixType, ModuleId, ModuleType};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
 trait MixTypeLabel {
@@ -77,12 +77,12 @@ impl SpectralMixerUi {
                     let mut mix_type = config.inputs[i].mix_type;
                     let mut volume_type = config.inputs[i].volume_type;
                     let mut value = match volume_type {
-                        VolumeType::Db => config.inputs[i].level,
-                        VolumeType::Gain => config.inputs[i].gain,
+                        LevelType::Db => config.inputs[i].level,
+                        LevelType::Linear => config.inputs[i].gain,
                     };
                     let input = match volume_type {
-                        VolumeType::Db => Input::LevelMix(input_idx),
-                        VolumeType::Gain => Input::GainMix(input_idx),
+                        LevelType::Db => Input::LevelMix(input_idx),
+                        LevelType::Linear => Input::LinLevelMix(input_idx),
                     };
 
                     ui.label(format!("Input {}", input_idx + 1));
@@ -115,8 +115,8 @@ impl SpectralMixerUi {
                             .selected_text(volume_type.label())
                             .width(0.0)
                             .show_ui(ui, |ui| {
-                                const TYPE_OPTIONS: &[VolumeType] =
-                                    &[VolumeType::Gain, VolumeType::Db];
+                                const TYPE_OPTIONS: &[LevelType] =
+                                    &[LevelType::Linear, LevelType::Db];
 
                                 for vol_type_item in TYPE_OPTIONS {
                                     if ui
@@ -138,11 +138,11 @@ impl SpectralMixerUi {
                         .changed()
                     {
                         match volume_type {
-                            VolumeType::Db => {
+                            LevelType::Db => {
                                 mixer_bridge.set_param(Input::LevelMix(input_idx), value);
                             }
-                            VolumeType::Gain => {
-                                mixer_bridge.set_param(Input::GainMix(input_idx), value);
+                            LevelType::Linear => {
+                                mixer_bridge.set_param(Input::LinLevelMix(input_idx), value);
                             }
                         }
                     }
@@ -151,14 +151,14 @@ impl SpectralMixerUi {
                     config.inputs[i].mix_type = mix_type;
                     config.inputs[i].volume_type = volume_type;
                     match volume_type {
-                        VolumeType::Db => config.inputs[i].level = value,
-                        VolumeType::Gain => config.inputs[i].gain = value,
+                        LevelType::Db => config.inputs[i].level = value,
+                        LevelType::Linear => config.inputs[i].gain = value,
                     }
                 }
 
                 let (input, value) = match config.output_volume_type {
-                    VolumeType::Db => (Input::Level, &mut config.output_level),
-                    VolumeType::Gain => (Input::Gain, &mut config.output_gain),
+                    LevelType::Db => (Input::Level, &mut config.output_level),
+                    LevelType::Linear => (Input::LinLevel, &mut config.output_gain),
                 };
 
                 ui.label("Output");
@@ -171,7 +171,7 @@ impl SpectralMixerUi {
                         .selected_text(config.output_volume_type.label())
                         .width(0.0)
                         .show_ui(ui, |ui| {
-                            const TYPE_OPTIONS: &[VolumeType] = &[VolumeType::Gain, VolumeType::Db];
+                            const TYPE_OPTIONS: &[LevelType] = &[LevelType::Linear, LevelType::Db];
 
                             for vol_type_item in TYPE_OPTIONS {
                                 if ui
@@ -193,11 +193,11 @@ impl SpectralMixerUi {
                     .changed()
                 {
                     match config.output_volume_type {
-                        VolumeType::Db => {
+                        LevelType::Db => {
                             mixer_bridge.set_param(Input::Level, config.output_level);
                         }
-                        VolumeType::Gain => {
-                            mixer_bridge.set_param(Input::Gain, config.output_gain);
+                        LevelType::Linear => {
+                            mixer_bridge.set_param(Input::LinLevel, config.output_gain);
                         }
                     }
                 }

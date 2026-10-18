@@ -63,7 +63,7 @@ impl Default for Inputs {
     fn default() -> Self {
         Self {
             audio: None,
-            gain: MixedSlots::new(Input::Gain),
+            gain: MixedSlots::new(Input::LinLevel),
             level: MixedSlots::new(Input::Level),
             pan: MixedSlots::new(Input::Pan),
         }
@@ -82,7 +82,7 @@ impl Inputs {
                     }
                 }
                 InputSlots::Mixed(input) => match input.input_type {
-                    Input::Gain => result.gain = input.clone(),
+                    Input::LinLevel => result.gain = input.clone(),
                     Input::Level => result.level = input.clone(),
                     Input::Pan => result.pan = input.clone(),
                     _ => (),
@@ -96,7 +96,7 @@ impl Inputs {
 
     fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
         match input_type {
-            Input::Gain => self.gain.update_amount(src_slot, amount),
+            Input::LinLevel => self.gain.update_amount(src_slot, amount),
             Input::Level => self.level.update_amount(src_slot, amount),
             Input::Pan => self.pan.update_amount(src_slot, amount),
             _ => (),
@@ -261,7 +261,7 @@ impl<L: AmplifierLinks> SynthModule for Amplifier<L> {
     fn inputs(&self) -> &'static [InputMeta] {
         static INPUTS: &[InputMeta] = &[
             InputMeta::direct_audio(Input::Audio),
-            InputMeta::control(Input::Gain),
+            InputMeta::control(Input::LinLevel),
             InputMeta::control(Input::Level),
             InputMeta::control(Input::Pan),
         ];
@@ -293,7 +293,7 @@ impl<L: AmplifierLinks> SynthModule for Amplifier<L> {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
                 UiEvent::InputParam { input, value } => match input {
-                    Input::Gain => self.set_gain(value),
+                    Input::LinLevel => self.set_gain(value),
                     Input::Level => self.set_level(value),
                     Input::Pan => self.set_pan(value),
                     _ => (),

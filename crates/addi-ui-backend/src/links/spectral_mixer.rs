@@ -1,8 +1,8 @@
 use triple_buffer::triple_buffer;
 
 use addi_engine::{
-    AUDIO_TO_UI_RING_CAPACITY, DISPLAY_SPECTRUM_SIZE, Input, MixType, StereoSample,
-    UI_TO_AUDIO_RING_CAPACITY, VolumeType, types::ComplexSample,
+    AUDIO_TO_UI_RING_CAPACITY, DISPLAY_SPECTRUM_SIZE, Input, LevelType, MixType, StereoSample,
+    UI_TO_AUDIO_RING_CAPACITY, types::ComplexSample,
 };
 
 use addi_engine::spectral_mixer::{
@@ -38,16 +38,16 @@ impl UiEnd {
             .is_ok()
     }
 
-    pub fn set_volume_type(&mut self, input_idx: u8, volume_type: VolumeType) -> bool {
+    pub fn set_volume_type(&mut self, input_idx: u8, volume_type: LevelType) -> bool {
         self.tx
-            .push(UiEvent::VolumeType {
+            .push(UiEvent::LevelType {
                 input_idx,
                 volume_type,
             })
             .is_ok()
     }
 
-    pub fn set_output_volume_type(&mut self, volume_type: VolumeType) -> bool {
+    pub fn set_output_volume_type(&mut self, volume_type: LevelType) -> bool {
         self.tx.push(UiEvent::OutputVolumeType(volume_type)).is_ok()
     }
 
@@ -128,10 +128,10 @@ impl SpectralMixerUiEnd for UiEnd {
     fn set_mix_type(&mut self, input_idx: u8, mix_type: MixType) -> bool {
         UiEnd::set_mix_type(self, input_idx, mix_type)
     }
-    fn set_volume_type(&mut self, input_idx: u8, volume_type: VolumeType) -> bool {
+    fn set_volume_type(&mut self, input_idx: u8, volume_type: LevelType) -> bool {
         UiEnd::set_volume_type(self, input_idx, volume_type)
     }
-    fn set_output_volume_type(&mut self, volume_type: VolumeType) -> bool {
+    fn set_output_volume_type(&mut self, volume_type: LevelType) -> bool {
         UiEnd::set_output_volume_type(self, volume_type)
     }
     fn pop_update(&mut self) -> Option<UiUpdate> {

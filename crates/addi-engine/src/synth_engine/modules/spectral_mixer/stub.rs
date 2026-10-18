@@ -1,6 +1,6 @@
 use super::{SpectralMixerAudioEnd, SpectralMixerLinks, SpectralMixerUiEnd, UiEvent, UiUpdate};
 
-use crate::synth_engine::{ComplexSample, Input, MixType, StereoSample, VolumeType};
+use crate::synth_engine::{ComplexSample, Input, LevelType, MixType, StereoSample};
 
 pub struct AudioEnd;
 
@@ -53,11 +53,11 @@ impl SpectralMixerUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_volume_type(&mut self, _input_idx: u8, _volume_type: VolumeType) -> bool {
+    fn set_volume_type(&mut self, _input_idx: u8, _volume_type: LevelType) -> bool {
         self.diverge()
     }
 
-    fn set_output_volume_type(&mut self, _volume_type: VolumeType) -> bool {
+    fn set_output_volume_type(&mut self, _volume_type: LevelType) -> bool {
         self.diverge()
     }
 

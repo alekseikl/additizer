@@ -43,8 +43,8 @@ pub use modules::{
 pub(crate) use nth_element::NthElement;
 pub use routing::{
     AUDIO_TO_UI_RING_CAPACITY, DataType, Expression, ExpressionEvent, Input, InputId, InputSource,
-    MixType, ModuleId, OUTPUT_MODULE_ID, PITCH_MODULE_ID, UI_TO_AUDIO_RING_CAPACITY, VoiceEvent,
-    VolumeType,
+    LevelType, MixType, ModuleId, OUTPUT_MODULE_ID, PITCH_MODULE_ID, UI_TO_AUDIO_RING_CAPACITY,
+    VoiceEvent,
 };
 pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;

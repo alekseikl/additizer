@@ -26,18 +26,18 @@ impl AmplifierUI {
             .num_columns(4)
             .spacing([8.0, 8.0])
             .show(ui, |ui| {
-                ui.label("Gain");
+                ui.label("Level");
                 if ui
                     .add(
-                        StereoInput::new(Input::Gain, module_id, &mut config.gain, bridge)
+                        StereoInput::new(Input::LinLevel, module_id, &mut config.gain, bridge)
                             .default(0.0),
                     )
                     .changed()
                 {
-                    amp_bridge.set_param(Input::Gain, config.gain);
+                    amp_bridge.set_param(Input::LinLevel, config.gain);
                 }
 
-                ui.label("Level");
+                ui.label("Level dB");
                 if ui
                     .add(
                         StereoInput::new(Input::Level, module_id, &mut config.level, bridge)

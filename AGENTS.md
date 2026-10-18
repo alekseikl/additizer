@@ -100,7 +100,7 @@ topo sort of source → destination (including modulators).
 Full rules (validation, acyclicity, mutation APIs): `docs/module-routing-rules.md`.
 
 `Input` is an untyped routing key shared across all modules; reuse existing variants where the
-semantic matches (e.g. `Gain`, `Level`, `Cutoff`) and document units (dB vs. linear) as done in
+semantic matches (e.g. `LinLevel`, `Level`, `Cutoff`) and document units (dB vs. linear) as done in
 `routing.rs`.
 
 ## The module pattern (important)

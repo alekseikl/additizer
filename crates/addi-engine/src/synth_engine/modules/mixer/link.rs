@@ -1,4 +1,4 @@
-use crate::synth_engine::{Input, Smp, StereoSample, VolumeType, engine_io};
+use crate::synth_engine::{Input, LevelType, Smp, StereoSample, engine_io};
 
 pub enum UiEvent {
     InputParam {
@@ -8,9 +8,9 @@ pub enum UiEvent {
     NumInputs(u8),
     InputVolumeType {
         input_idx: u8,
-        volume_type: VolumeType,
+        volume_type: LevelType,
     },
-    OutputVolumeType(VolumeType),
+    OutputVolumeType(LevelType),
 }
 
 pub enum UiUpdate {
@@ -27,8 +27,8 @@ pub trait MixerUiEnd: Send {
     fn get_out_volume(&mut self) -> StereoSample;
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
     fn set_num_inputs(&mut self, num_inputs: u8) -> bool;
-    fn set_volume_type(&mut self, input_idx: u8, volume_type: VolumeType) -> bool;
-    fn set_output_volume_type(&mut self, volume_type: VolumeType) -> bool;
+    fn set_volume_type(&mut self, input_idx: u8, volume_type: LevelType) -> bool;
+    fn set_output_volume_type(&mut self, volume_type: LevelType) -> bool;
     fn pop_update(&mut self) -> Option<UiUpdate>;
 }
 

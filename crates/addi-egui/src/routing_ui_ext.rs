@@ -38,10 +38,10 @@ impl InputUi for Input {
         match self {
             Self::Audio => "Audio".to_string(),
             Self::AudioMix(idx) => format!("Audio #{}", idx + 1),
-            Self::Gain => "Gain".to_string(),
-            Self::GainMix(idx) => format!("Gain #{}", idx + 1),
-            Self::Level => "Level".to_string(),
-            Self::LevelMix(idx) => format!("Level #{}", idx + 1),
+            Self::LinLevel => "Level".to_string(),
+            Self::LinLevelMix(idx) => format!("Level #{}", idx + 1),
+            Self::Level => "Level dB".to_string(),
+            Self::LevelMix(idx) => format!("Level dB #{}", idx + 1),
             Self::Pan => "Pan".to_string(),
             Self::Distortion => "Distortion".to_string(),
             Self::ClippingLevel => "Clipping Level".to_string(),
@@ -79,8 +79,8 @@ impl InputUi for Input {
         match self {
             Self::Audio => 0.0,
             Self::AudioMix(idx) => 0.0 + *idx as f32 * 0.012,
-            Self::Gain => 0.10,
-            Self::GainMix(idx) => 0.10 + *idx as f32 * 0.012,
+            Self::LinLevel => 0.10,
+            Self::LinLevelMix(idx) => 0.10 + *idx as f32 * 0.012,
             Self::Level => 0.14,
             Self::LevelMix(idx) => 0.14 + *idx as f32 * 0.012,
             Self::Pan => 0.05,
@@ -126,7 +126,7 @@ impl InputUi for Input {
         }
 
         match self {
-            Self::Gain | Self::GainMix(_) => bipolar(amount),
+            Self::LinLevel | Self::LinLevelMix(_) => bipolar(amount),
             Self::Level | Self::LevelMix(_) => Slider::stereo(amount, 0.0..=100.0, Some(-100.0))
                 .default(0.0)
                 .skew(2.0)
@@ -188,7 +188,7 @@ impl InputUi for Input {
 
     fn param_slider<'a>(&self, value: &'a mut StereoSample) -> Slider<'a> {
         match self {
-            Self::Gain | Self::GainMix(_) => {
+            Self::LinLevel | Self::LinLevelMix(_) => {
                 Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(1.0)
             }
             Self::Level | Self::LevelMix(_) => {
@@ -290,18 +290,18 @@ impl ModuleTypeUi for ModuleType {
     fn input_label(self, input: Input) -> String {
         match self {
             Self::Mixer => match input {
-                Input::Gain => "Output gain".into(),
-                Input::Level => "Output level (dB)".into(),
+                Input::LinLevel => "Out level".into(),
+                Input::Level => "Out level (dB)".into(),
                 Input::AudioMix(i) => format!("Audio In #{}", i + 1),
-                Input::GainMix(i) => format!("Input #{} gain", i + 1),
+                Input::LinLevelMix(i) => format!("Input #{} level", i + 1),
                 Input::LevelMix(i) => format!("Input #{} level (dB)", i + 1),
                 _ => input.label(),
             },
             Self::SpectralMixer => match input {
-                Input::Gain => "Output gain".into(),
-                Input::Level => "Output level (dB)".into(),
+                Input::LinLevel => "Out level".into(),
+                Input::Level => "Out level (dB)".into(),
                 Input::SpectrumMix(i) => format!("Spectral In #{}", i + 1),
-                Input::GainMix(i) => format!("Input #{} gain", i + 1),
+                Input::LinLevelMix(i) => format!("Input #{} level", i + 1),
                 Input::LevelMix(i) => format!("Input #{} level (dB)", i + 1),
                 _ => input.label(),
             },

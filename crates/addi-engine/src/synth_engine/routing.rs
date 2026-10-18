@@ -40,8 +40,10 @@ pub enum DataType {
 pub enum Input {
     Audio,
     AudioMix(u8),
-    Gain, // 0.0 - 1.0
-    GainMix(u8),
+    #[serde(alias = "Gain")]
+    LinLevel, // 0.0 - 1.0
+    #[serde(alias = "GainMix")]
+    LinLevelMix(u8),
     Level,         // dB
     LevelMix(u8),  // dB
     Pan,           // [-1.0, 1.0]
@@ -190,17 +192,18 @@ pub struct ExpressionEvent {
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum VolumeType {
+pub enum LevelType {
     #[default]
-    Gain,
+    #[serde(alias = "Gain")]
+    Linear,
     Db,
 }
 
-impl VolumeType {
+impl LevelType {
     pub fn label(&self) -> &'static str {
         match self {
             Self::Db => "dB",
-            Self::Gain => "Gain",
+            Self::Linear => "Linear",
         }
     }
 }

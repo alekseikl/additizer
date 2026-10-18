@@ -70,7 +70,7 @@ fn render_engine(env: EnvelopeConfig, amp_gain: Smp, link_envelope: bool) -> Syn
     ];
 
     if link_envelope {
-        links.push(LinkConfig::mixed(ENV_ID, AMP_ID, Input::Gain, 1.0));
+        links.push(LinkConfig::mixed(ENV_ID, AMP_ID, Input::LinLevel, 1.0));
     }
 
     let config = EngineConfig {

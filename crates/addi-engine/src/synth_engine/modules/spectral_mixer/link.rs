@@ -1,5 +1,5 @@
 use crate::synth_engine::{
-    Input, MixType, StereoSample, VolumeType, engine_io, types::ComplexSample,
+    Input, LevelType, MixType, StereoSample, engine_io, types::ComplexSample,
 };
 
 pub enum UiEvent {
@@ -12,11 +12,11 @@ pub enum UiEvent {
         input_idx: u8,
         mix_type: MixType,
     },
-    VolumeType {
+    LevelType {
         input_idx: u8,
-        volume_type: VolumeType,
+        volume_type: LevelType,
     },
-    OutputVolumeType(VolumeType),
+    OutputVolumeType(LevelType),
 }
 
 pub enum UiUpdate {
@@ -34,8 +34,8 @@ pub trait SpectralMixerUiEnd: Send {
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
     fn set_num_inputs(&mut self, num_inputs: u8) -> bool;
     fn set_mix_type(&mut self, input_idx: u8, mix_type: MixType) -> bool;
-    fn set_volume_type(&mut self, input_idx: u8, volume_type: VolumeType) -> bool;
-    fn set_output_volume_type(&mut self, volume_type: VolumeType) -> bool;
+    fn set_volume_type(&mut self, input_idx: u8, volume_type: LevelType) -> bool;
+    fn set_output_volume_type(&mut self, volume_type: LevelType) -> bool;
     fn pop_update(&mut self) -> Option<UiUpdate>;
 }
 

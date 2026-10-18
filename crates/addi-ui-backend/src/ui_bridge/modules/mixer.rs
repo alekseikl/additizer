@@ -1,6 +1,6 @@
 use crate::ui_bridge::ModuleUiBridge;
 use addi_engine::mixer::{Mixer, MixerConfig, MixerLinks, MixerUiEnd, UiUpdate};
-use addi_engine::{Input, StereoSample, VolumeType};
+use addi_engine::{Input, LevelType, StereoSample};
 
 pub struct MixerUiBridge<L: MixerLinks = crate::links::mixer::Links> {
     ui_end: L::UiEnd,
@@ -29,9 +29,9 @@ impl<L: MixerLinks> MixerUiBridge<L> {
         }
 
         match input {
-            Input::Gain => self.config.output_gain = value,
+            Input::LinLevel => self.config.output_gain = value,
             Input::Level => self.config.output_level = value,
-            Input::GainMix(idx) => self.config.inputs[idx as usize].gain = value,
+            Input::LinLevelMix(idx) => self.config.inputs[idx as usize].gain = value,
             Input::LevelMix(idx) => self.config.inputs[idx as usize].level = value,
             _ => (),
         }
@@ -43,13 +43,13 @@ impl<L: MixerLinks> MixerUiBridge<L> {
         }
     }
 
-    pub fn set_volume_type(&mut self, input_idx: u8, volume_type: VolumeType) {
+    pub fn set_volume_type(&mut self, input_idx: u8, volume_type: LevelType) {
         if self.ui_end.set_volume_type(input_idx, volume_type) {
             self.config.inputs[input_idx as usize].volume_type = volume_type;
         }
     }
 
-    pub fn set_output_volume_type(&mut self, volume_type: VolumeType) {
+    pub fn set_output_volume_type(&mut self, volume_type: LevelType) {
         if self.ui_end.set_output_volume_type(volume_type) {
             self.config.output_volume_type = volume_type;
         }

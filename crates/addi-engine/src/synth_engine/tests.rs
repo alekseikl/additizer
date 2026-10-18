@@ -193,7 +193,7 @@ fn full_patch_engine_config(engine: EngineParams) -> EngineConfig {
             link(OSC0_ID, MIXER_ID, Input::AudioMix(0)),
             link(OSC1_ID, MIXER_ID, Input::AudioMix(1)),
             link(MIXER_ID, AMPLIFIER_ID, Input::Audio),
-            link(ENVELOPE_AMP_ID, AMPLIFIER_ID, Input::Gain),
+            link(ENVELOPE_AMP_ID, AMPLIFIER_ID, Input::LinLevel),
             link(AMPLIFIER_ID, WAVE_SHAPER_ID, Input::Audio),
             link(EXTERNAL_PARAM_ID, WAVE_SHAPER_ID, Input::ClippingLevel),
             link(EXPRESSIONS_ID, WAVE_SHAPER_ID, Input::Distortion),
@@ -431,7 +431,7 @@ fn try_new_skips_link_with_missing_modulator() {
         engine.get_config().links.iter().all(|link| {
             !(link.src_id() == ENVELOPE_AMP_ID
                 && link.dst_id() == AMPLIFIER_ID
-                && link.dst_input() == Input::Gain)
+                && link.dst_input() == Input::LinLevel)
         }),
         "env -> amp gain link with invalid modulator must be skipped"
     );
@@ -454,7 +454,7 @@ fn try_new_skips_link_with_incompatible_modulator() {
     assert!(engine.get_config().links.iter().all(|link| {
         !(link.src_id() == ENVELOPE_AMP_ID
             && link.dst_id() == AMPLIFIER_ID
-            && link.dst_input() == Input::Gain)
+            && link.dst_input() == Input::LinLevel)
     }));
 }
 
@@ -1113,7 +1113,7 @@ fn add_mixed_link_rejects_audio_into_control() {
 #[test]
 fn add_mixed_link_clears_src_as_modulator_on_same_dst() {
     let mut engine = make_full_patch_engine(EngineParams::default());
-    let gain = InputId::new(Input::Gain, AMPLIFIER_ID);
+    let gain = InputId::new(Input::LinLevel, AMPLIFIER_ID);
 
     engine
         .set_link_modulation(ENVELOPE_AMP_ID, &gain, LFO_ID)
@@ -1127,14 +1127,14 @@ fn add_mixed_link_clears_src_as_modulator_on_same_dst() {
     let env_link = cfg
         .links
         .iter()
-        .find(|link| link.src_id() == ENVELOPE_AMP_ID && link.dst_input() == Input::Gain)
+        .find(|link| link.src_id() == ENVELOPE_AMP_ID && link.dst_input() == Input::LinLevel)
         .expect("env -> gain kept");
     assert!(env_link.modulator_id().is_none());
 
     let lfo_link = cfg
         .links
         .iter()
-        .find(|link| link.src_id() == LFO_ID && link.dst_input() == Input::Gain)
+        .find(|link| link.src_id() == LFO_ID && link.dst_input() == Input::LinLevel)
         .expect("lfo -> gain");
     assert!(lfo_link.modulator_id().is_none());
 }
@@ -1218,7 +1218,7 @@ fn remove_module_rebuilds_routing() {
 #[test]
 fn remove_module_clears_modulation_source() {
     let mut engine = make_full_patch_engine(EngineParams::default());
-    let gain_dst = InputId::new(Input::Gain, AMPLIFIER_ID);
+    let gain_dst = InputId::new(Input::LinLevel, AMPLIFIER_ID);
 
     engine
         .set_link_modulation(ENVELOPE_AMP_ID, &gain_dst, LFO_ID)
@@ -1239,7 +1239,7 @@ fn remove_module_clears_modulation_source() {
 #[test]
 fn remove_output_links_clears_modulation_source() {
     let mut engine = make_full_patch_engine(EngineParams::default());
-    let gain_dst = InputId::new(Input::Gain, AMPLIFIER_ID);
+    let gain_dst = InputId::new(Input::LinLevel, AMPLIFIER_ID);
 
     engine
         .set_link_modulation(ENVELOPE_AMP_ID, &gain_dst, LFO_ID)
@@ -1542,7 +1542,7 @@ fn add_link_connects_new_modules() {
         .set_direct_link(amp_id, osc_to_out)
         .expect("amp -> output");
     engine
-        .add_mixed_link(env_id, InputId::new(Input::Gain, amp_id), StereoSample::ONE)
+        .add_mixed_link(env_id, InputId::new(Input::LinLevel, amp_id), StereoSample::ONE)
         .expect("env -> amp gain");
 
     match engine.get_module_mut(amp_id) {
@@ -1574,7 +1574,7 @@ fn add_link_connects_new_modules() {
 #[test]
 fn link_modulation_round_trips_in_config() {
     let mut engine = make_full_patch_engine(EngineParams::default());
-    let gain_dst = InputId::new(Input::Gain, AMPLIFIER_ID);
+    let gain_dst = InputId::new(Input::LinLevel, AMPLIFIER_ID);
 
     engine
         .set_link_modulation(ENVELOPE_AMP_ID, &gain_dst, LFO_ID)
@@ -1745,7 +1745,7 @@ fn fixed_pitch_prewires_unconnected_pitch_inputs() {
             .iter()
             .any(|link| link.dst() == InputId::new(Input::Pitch, HARMONIC_EDITOR_ID))
     );
-    assert!(!ModuleLink::mixed(1, InputId::new(Input::Gain, 2), StereoSample::ONE).is_hidden());
+    assert!(!ModuleLink::mixed(1, InputId::new(Input::LinLevel, 2), StereoSample::ONE).is_hidden());
 
     let cfg = engine.get_config();
     assert_eq!(cfg.modules.len(), 3);
@@ -1900,7 +1900,7 @@ fn set_link_modulation_rejects_unknown_link() {
     let mut engine = engine;
 
     let err = engine
-        .set_link_modulation(HE0_ID, &InputId::new(Input::Gain, AMPLIFIER_ID), LFO_ID)
+        .set_link_modulation(HE0_ID, &InputId::new(Input::LinLevel, AMPLIFIER_ID), LFO_ID)
         .expect_err("harmonic editor is not wired to amp gain");
 
     assert!(err.contains("Invalid"));
@@ -2412,12 +2412,12 @@ fn process_order_accounts_for_link_modulation() {
     let links = vec![
         ModuleLink::mixed(
             LFO_ID,
-            InputId::new(Input::Gain, AMPLIFIER_ID),
+            InputId::new(Input::LinLevel, AMPLIFIER_ID),
             StereoSample::ONE,
         ),
         ModuleLink::mixed_modulated(
             ENVELOPE_AMP_ID,
-            InputId::new(Input::Gain, AMPLIFIER_ID),
+            InputId::new(Input::LinLevel, AMPLIFIER_ID),
             StereoSample::ONE,
             Some(LFO_ID),
         ),
@@ -2488,7 +2488,7 @@ fn process_order_runs_modulator_before_destination() {
     let links = vec![
         ModuleLink::mixed_modulated(
             ENVELOPE_AMP_ID,
-            InputId::new(Input::Gain, AMPLIFIER_ID),
+            InputId::new(Input::LinLevel, AMPLIFIER_ID),
             StereoSample::new(0.25, 0.5),
             Some(LFO_ID),
         ),
@@ -2509,7 +2509,7 @@ fn process_order_runs_modulator_before_destination() {
 fn process_order_lists_each_module_once() {
     let links = vec![
         ModuleLink::direct(1, InputId::new(Input::Audio, 2)),
-        ModuleLink::direct(1, InputId::new(Input::Gain, 2)),
+        ModuleLink::direct(1, InputId::new(Input::LinLevel, 2)),
         ModuleLink::mixed(1, InputId::new(Input::Level, 2), StereoSample::ONE),
     ];
 
@@ -2531,7 +2531,7 @@ fn process_order_rejects_self_cycle() {
 fn process_order_rejects_modulation_cycle() {
     let links = vec![ModuleLink::mixed_modulated(
         ENVELOPE_AMP_ID,
-        InputId::new(Input::Gain, AMPLIFIER_ID),
+        InputId::new(Input::LinLevel, AMPLIFIER_ID),
         StereoSample::ONE,
         Some(AMPLIFIER_ID),
     )];
