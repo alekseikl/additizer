@@ -1,10 +1,10 @@
 use triple_buffer::triple_buffer;
 
 use addi_engine::{
+    Input, InputId, ModuleId, NUM_CHANNELS, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY,
     engine_io::{
         EngineAudioEnd, EngineUiEnd, OutputMeter, UiEvent, UiUpdate, VoicesStatus, VoicesTelemetry,
     },
-    Input, InputId, ModuleId, Smp, StereoSample, NUM_CHANNELS, UI_TO_AUDIO_RING_CAPACITY,
 };
 
 // Larger than module links: this carries per-input modulation telemetry.

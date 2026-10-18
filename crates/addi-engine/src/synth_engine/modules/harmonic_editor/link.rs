@@ -69,7 +69,7 @@ pub enum UiEvent {
     ApplyDraft,
     DiscardDraft,
     Bandwidth(i32),
-    Mono(bool),
+    Stereo(bool),
     CaptureInput(bool),
 }
 
@@ -98,7 +98,7 @@ pub trait HarmonicEditorUiEnd: Send {
     fn apply_draft(&mut self) -> bool;
     fn discard_draft(&mut self) -> bool;
     fn set_bandwidth(&mut self, bandwidth: i32) -> bool;
-    fn set_mono(&mut self, mono: bool) -> bool;
+    fn set_stereo(&mut self, stereo: bool) -> bool;
     fn set_capture_input(&mut self, capture_input: bool) -> bool;
 }
 

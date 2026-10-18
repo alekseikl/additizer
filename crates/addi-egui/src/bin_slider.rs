@@ -267,10 +267,8 @@ impl<'a> BinSlider<'a> {
         let bounds = ui.clip_rect();
         let vertical = bounds.y_range().intersection(slider_rect.y_range());
 
-        let top = (pointer_y - box_size.y - LABEL_POINTER_GAP).clamp(
-            vertical.min,
-            (vertical.max - box_size.y).max(vertical.min),
-        );
+        let top = (pointer_y - box_size.y - LABEL_POINTER_GAP)
+            .clamp(vertical.min, (vertical.max - box_size.y).max(vertical.min));
         let left_right = slider_rect.right() + LABEL_MARGIN;
         let left = if left_right + box_size.x <= bounds.right() {
             left_right

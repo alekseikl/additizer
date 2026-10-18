@@ -128,7 +128,7 @@ pub struct HarmonicEditor<L: HarmonicEditorLinks = stub::Links> {
     output_harmonics: [Box<SpectralBuffer>; NUM_CHANNELS],
     random: Pcg32,
     bandwidth: i32,
-    mono: bool,
+    stereo: bool,
     capture_input: bool,
 }
 
@@ -189,7 +189,7 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
             output_harmonics,
             random: Pcg32::new(0x2b992ddfa23249d6, 0x9e3779b97f4a7c15),
             bandwidth: clamp_bandwidth(config.bandwidth),
-            mono: config.mono,
+            stereo: config.stereo,
             capture_input: config.capture_input,
         };
 
@@ -206,7 +206,7 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
             amplitudes: array::from_fn(|c| Vec::from_iter(self.amplitudes[c].iter().copied())),
             phases: array::from_fn(|c| Vec::from_iter(self.phases[c].iter().copied())),
             bandwidth: self.bandwidth,
-            mono: self.mono,
+            stereo: self.stereo,
             capture_input: self.capture_input,
         }
     }
@@ -219,12 +219,12 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
         self.bandwidth = clamp_bandwidth(bandwidth);
     }
 
-    pub fn mono(&self) -> bool {
-        self.mono
+    pub fn stereo(&self) -> bool {
+        self.stereo
     }
 
-    pub fn set_mono(&mut self, mono: bool) {
-        self.mono = mono;
+    pub fn set_stereo(&mut self, stereo: bool) {
+        self.stereo = stereo;
     }
 
     pub fn capture_input(&self) -> bool {
@@ -585,7 +585,7 @@ impl<L: HarmonicEditorLinks> HarmonicEditor<L> {
             }
         }
 
-        if self.mono && target.channel_idx == RIGHT_CHANNEL {
+        if !self.stereo && target.channel_idx == RIGHT_CHANNEL {
             voice_output.output(0);
             return;
         }
@@ -677,8 +677,8 @@ impl<L: HarmonicEditorLinks> SynthModule for HarmonicEditor<L> {
                 UiEvent::Bandwidth(bandwidth) => {
                     self.set_bandwidth(bandwidth);
                 }
-                UiEvent::Mono(mono) => {
-                    self.set_mono(mono);
+                UiEvent::Stereo(stereo) => {
+                    self.set_stereo(stereo);
                 }
                 UiEvent::CaptureInput(capture_input) => {
                     self.set_capture_input(capture_input);

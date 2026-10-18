@@ -101,7 +101,7 @@ impl HarmonicEditorUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_mono(&mut self, _mono: bool) -> bool {
+    fn set_stereo(&mut self, _stereo: bool) -> bool {
         self.diverge()
     }
 

@@ -8,7 +8,7 @@ use addi_engine::{ComplexSample, StereoSample};
 pub struct HarmonicEditorUiBridge<L: HarmonicEditorLinks = crate::links::harmonic_editor::Links> {
     ui_end: L::UiEnd,
     bandwidth: i32,
-    mono: bool,
+    stereo: bool,
     capture_input: bool,
 }
 
@@ -16,7 +16,7 @@ impl<L: HarmonicEditorLinks> HarmonicEditorUiBridge<L> {
     pub fn try_new(editor: &mut HarmonicEditor<L>) -> Option<Self> {
         Some(Self {
             bandwidth: editor.bandwidth(),
-            mono: editor.mono(),
+            stereo: editor.stereo(),
             capture_input: editor.capture_input(),
             ui_end: editor.take_ui_end()?,
         })
@@ -42,13 +42,13 @@ impl<L: HarmonicEditorLinks> HarmonicEditorUiBridge<L> {
         }
     }
 
-    pub fn mono(&self) -> bool {
-        self.mono
+    pub fn stereo(&self) -> bool {
+        self.stereo
     }
 
-    pub fn set_mono(&mut self, mono: bool) {
-        if self.ui_end.set_mono(mono) {
-            self.mono = mono;
+    pub fn set_stereo(&mut self, stereo: bool) {
+        if self.ui_end.set_stereo(stereo) {
+            self.stereo = stereo;
         }
     }
 

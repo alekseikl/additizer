@@ -9,6 +9,7 @@ use crate::synth_engine::{
 };
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(from = "HarmonicEditorConfigDe")]
 pub struct HarmonicEditorConfig {
     pub id: ModuleId,
     pub amplitudes: [Vec<Smp>; NUM_CHANNELS],
@@ -16,11 +17,40 @@ pub struct HarmonicEditorConfig {
     /// Positive: fixed harmonic count. `0`: pitch-based bandlimiting.
     #[serde(default)]
     pub bandwidth: i32,
-    #[serde(default)]
-    pub mono: bool,
+    /// Process left and right independently. When false, only the left channel is rendered.
+    pub stereo: bool,
     /// On note-on, replace amplitudes and phases with the spectrum input.
     #[serde(default)]
     pub capture_input: bool,
+}
+
+/// Accepts the current `stereo` field and the previous `mono` field (`stereo = !mono`).
+#[derive(Deserialize)]
+struct HarmonicEditorConfigDe {
+    id: ModuleId,
+    amplitudes: [Vec<Smp>; NUM_CHANNELS],
+    phases: [Vec<Smp>; NUM_CHANNELS],
+    #[serde(default)]
+    bandwidth: i32,
+    #[serde(default)]
+    mono: bool,
+    #[serde(default)]
+    stereo: Option<bool>,
+    #[serde(default)]
+    capture_input: bool,
+}
+
+impl From<HarmonicEditorConfigDe> for HarmonicEditorConfig {
+    fn from(raw: HarmonicEditorConfigDe) -> Self {
+        Self {
+            id: raw.id,
+            amplitudes: raw.amplitudes,
+            phases: raw.phases,
+            bandwidth: raw.bandwidth,
+            stereo: raw.stereo.unwrap_or(!raw.mono),
+            capture_input: raw.capture_input,
+        }
+    }
 }
 
 impl Default for HarmonicEditorConfig {
@@ -39,7 +69,7 @@ impl Default for HarmonicEditorConfig {
             amplitudes,
             phases,
             bandwidth: 0,
-            mono: false,
+            stereo: true,
             capture_input: false,
         }
     }

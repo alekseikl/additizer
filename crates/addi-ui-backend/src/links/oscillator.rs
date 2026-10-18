@@ -101,12 +101,7 @@ impl UiEnd {
             .is_ok()
     }
 
-    pub fn randomize_phases(
-        &mut self,
-        amount: Smp,
-        stereo_spread: Smp,
-        dst: PhasesDst,
-    ) -> bool {
+    pub fn randomize_phases(&mut self, amount: Smp, stereo_spread: Smp, dst: PhasesDst) -> bool {
         self.tx
             .push(UiEvent::RandomizePhases {
                 amount,

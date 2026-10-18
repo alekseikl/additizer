@@ -1,8 +1,8 @@
 use triple_buffer::triple_buffer;
 
 use addi_engine::{
-    AUDIO_TO_UI_RING_CAPACITY, Input, NUM_CHANNELS, Smp, StereoSample,
-    UI_TO_AUDIO_RING_CAPACITY, VolumeType,
+    AUDIO_TO_UI_RING_CAPACITY, Input, NUM_CHANNELS, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY,
+    VolumeType,
 };
 
 use addi_engine::mixer::{MixerAudioEnd, MixerLinks, MixerUiEnd, UiEvent, UiUpdate};

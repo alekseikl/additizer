@@ -1,8 +1,8 @@
 use triple_buffer::triple_buffer;
 
 use addi_engine::{
-    ComplexSample, DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, NUM_CHANNELS, SPECTRAL_BUFFER_SIZE,
-    Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY, buffer::copy_to_display_spectrum,
+    ComplexSample, DISPLAY_SPECTRUM_SIZE, DisplaySpectrum, NUM_CHANNELS, SPECTRAL_BUFFER_SIZE, Smp,
+    StereoSample, UI_TO_AUDIO_RING_CAPACITY, buffer::copy_to_display_spectrum,
     harmonic_editor::EditRequest,
 };
 
@@ -85,8 +85,8 @@ impl UiEnd {
         self.tx.push(UiEvent::Bandwidth(bandwidth)).is_ok()
     }
 
-    pub fn set_mono(&mut self, mono: bool) -> bool {
-        self.tx.push(UiEvent::Mono(mono)).is_ok()
+    pub fn set_stereo(&mut self, stereo: bool) -> bool {
+        self.tx.push(UiEvent::Stereo(stereo)).is_ok()
     }
 
     pub fn set_capture_input(&mut self, capture_input: bool) -> bool {
@@ -200,8 +200,8 @@ impl HarmonicEditorUiEnd for UiEnd {
     fn set_bandwidth(&mut self, bandwidth: i32) -> bool {
         UiEnd::set_bandwidth(self, bandwidth)
     }
-    fn set_mono(&mut self, mono: bool) -> bool {
-        UiEnd::set_mono(self, mono)
+    fn set_stereo(&mut self, stereo: bool) -> bool {
+        UiEnd::set_stereo(self, stereo)
     }
     fn set_capture_input(&mut self, capture_input: bool) -> bool {
         UiEnd::set_capture_input(self, capture_input)

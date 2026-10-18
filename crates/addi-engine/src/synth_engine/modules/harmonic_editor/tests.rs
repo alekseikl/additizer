@@ -322,3 +322,26 @@ fn sampled_spectrum_matches_direct_source_on_note() {
         "right channel of the triggered note must use the captured spectrum"
     );
 }
+
+#[test]
+fn stereo_defaults_to_enabled() {
+    assert!(HarmonicEditorConfig::default().stereo);
+    assert!(<HarmonicEditor>::new(SRC_ID).stereo());
+}
+
+#[test]
+fn stereo_defaults_when_missing_from_json_and_inverts_legacy_mono() {
+    let mut json = serde_json::to_value(HarmonicEditorConfig::default()).unwrap();
+    json.as_object_mut().unwrap().remove("stereo");
+
+    let missing: HarmonicEditorConfig = serde_json::from_value(json.clone()).unwrap();
+    assert!(missing.stereo);
+
+    json["mono"] = serde_json::json!(true);
+    let legacy_mono: HarmonicEditorConfig = serde_json::from_value(json.clone()).unwrap();
+    assert!(!legacy_mono.stereo);
+
+    json["mono"] = serde_json::json!(false);
+    let legacy_stereo: HarmonicEditorConfig = serde_json::from_value(json).unwrap();
+    assert!(legacy_stereo.stereo);
+}

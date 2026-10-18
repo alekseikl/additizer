@@ -164,15 +164,17 @@ impl HarmonicEditorUI {
                 editor_bridge.set_bandwidth(if note_based { 0 } else { MAX_BANDWIDTH as i32 });
             }
 
-            let mut mono = editor_bridge.mono();
+            let mut stereo = editor_bridge.stereo();
 
             ui.separator();
             if ui
-                .add(Checkbox::new(&mut mono, "Mono"))
-                .on_hover_text("Process only a single channel to improve performance.")
+                .add(Checkbox::new(&mut stereo, "Stereo"))
+                .on_hover_text(
+                    "Process both channels. Disable to render only the left channel and improve performance.",
+                )
                 .changed()
             {
-                editor_bridge.set_mono(mono);
+                editor_bridge.set_stereo(stereo);
             }
 
             let mut capture_input = editor_bridge.capture_input();
