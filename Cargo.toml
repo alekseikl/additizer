@@ -9,6 +9,9 @@ members = [
 ]
 default-members = ["crates/additizer"]
 
+[workspace.package]
+license = "GPL-3.0-only"
+
 [workspace.dependencies]
 addi-dsp = { path = "crates/addi-dsp" }
 addi-engine = { path = "crates/addi-engine" }

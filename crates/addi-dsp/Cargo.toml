@@ -2,6 +2,7 @@
 name = "addi-dsp"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
 
 [dependencies]
 enum_dispatch = { workspace = true }
