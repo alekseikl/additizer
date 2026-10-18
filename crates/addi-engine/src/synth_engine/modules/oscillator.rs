@@ -259,7 +259,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
             steal_phase: self.params.steal_phase,
             phase_random: self.params.phase_random,
             phase_random_stereo: self.params.phase_random_stereo,
-            mono_spectrum: self.params.mono_spectrum,
+            stereo_spectrum: self.params.stereo_spectrum,
             full_fft_size: self.params.full_fft_size,
             detune: get_stereo_param!(self, detune),
             detune_focus: get_stereo_param!(self, detune_focus),
@@ -297,7 +297,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         Smp,
         phase_random_stereo.clamp(0.0, 1.0)
     );
-    set_mono_param!(set_mono_spectrum, mono_spectrum, bool);
+    set_mono_param!(set_stereo_spectrum, stereo_spectrum, bool);
     set_mono_param!(set_full_fft_size, full_fft_size, bool);
 
     set_stereo_param!(set_detune, detune, detune.clamp(0.0, from_st(1.0)));
@@ -458,7 +458,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         target: &VoiceTarget,
         rf: &mut RouterFactory<AudioRouterType, L::EngineEnd>,
     ) {
-        if self.params.mono_spectrum && target.channel_idx == RIGHT_CHANNEL {
+        if !self.params.stereo_spectrum && target.channel_idx == RIGHT_CHANNEL {
             return;
         }
 
@@ -801,11 +801,11 @@ impl<L: OscillatorLinks> Oscillator<L> {
             |pitch, shift| shift.mul_add(mult, pitch_to_freq_wide(pitch) * mult),
         );
 
-        let mono_spectrum = self.params.mono_spectrum;
-        let wave_channel = if mono_spectrum {
-            LEFT_CHANNEL
-        } else {
+        let stereo_spectrum = self.params.stereo_spectrum;
+        let wave_channel = if stereo_spectrum {
             channel_idx
+        } else {
+            LEFT_CHANNEL
         };
 
         if channel_idx == wave_channel {
@@ -851,7 +851,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
 
         self.render_samples(&ctx, output, start, ctx.samples);
 
-        if !mono_spectrum || channel_idx == RIGHT_CHANNEL {
+        if stereo_spectrum || channel_idx == RIGHT_CHANNEL {
             mem::swap(
                 self.waves.at_mut(wave_channel, voice_idx),
                 &mut self.buffers.tmp_wave,
@@ -896,7 +896,7 @@ impl<L: OscillatorLinks> SynthModule for Oscillator<L> {
             InputMeta::control(Input::DetuneFocus),
             InputMeta::control(Input::PhaseSteal),
             InputMeta::control(Input::PhasesBlend),
-            InputMeta::control(Input::GainsBlend),
+            InputMeta::control(Input::LevelsBlend),
         ];
 
         INPUTS
@@ -949,7 +949,7 @@ impl<L: OscillatorLinks> SynthModule for Oscillator<L> {
                     Input::Detune => self.set_detune(value),
                     Input::DetuneFocus => self.set_detune_focus(value),
                     Input::PhasesBlend => self.set_phases_blend(value),
-                    Input::GainsBlend => self.set_gains_blend(value),
+                    Input::LevelsBlend => self.set_gains_blend(value),
                     _ => (),
                 },
                 UiEvent::Unison(unison) => self.set_unison(unison),
@@ -965,7 +965,9 @@ impl<L: OscillatorLinks> SynthModule for Oscillator<L> {
                 UiEvent::PhaseRandomStereo(phase_random_stereo) => {
                     self.set_phase_random_stereo(phase_random_stereo);
                 }
-                UiEvent::MonoSpectrum(mono_spectrum) => self.set_mono_spectrum(mono_spectrum),
+                UiEvent::StereoSpectrum(stereo_spectrum) => {
+                    self.set_stereo_spectrum(stereo_spectrum)
+                }
                 UiEvent::FullFftSize(full_fft_size) => self.set_full_fft_size(full_fft_size),
                 UiEvent::ApplyUnisonLevelShape { center, level, to } => {
                     self.apply_unison_level_shape(center, level, to);

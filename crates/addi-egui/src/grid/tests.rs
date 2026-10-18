@@ -66,7 +66,7 @@ fn connect_five_osc_inputs(bridge: &mut UiBridge, osc: ModuleId) {
         Input::DetuneFocus,
         Input::PhaseSteal,
         Input::PhasesBlend,
-        Input::GainsBlend,
+        Input::LevelsBlend,
     ] {
         bridge.create_link(lfo, InputId::new(input, osc));
     }

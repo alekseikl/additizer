@@ -58,7 +58,7 @@ pub enum UiEvent {
     StealPhase(bool),
     PhaseRandom(Smp),
     PhaseRandomStereo(Smp),
-    MonoSpectrum(bool),
+    StereoSpectrum(bool),
     FullFftSize(bool),
     ApplyUnisonLevelShape {
         center: StereoSample,
@@ -88,7 +88,7 @@ pub trait OscillatorUiEnd: Send {
     fn set_steal_phase(&mut self, steal_phase: bool) -> bool;
     fn set_phase_random(&mut self, phase_random: Smp) -> bool;
     fn set_phase_random_stereo(&mut self, phase_random_stereo: Smp) -> bool;
-    fn set_mono_spectrum(&mut self, mono_spectrum: bool) -> bool;
+    fn set_stereo_spectrum(&mut self, stereo_spectrum: bool) -> bool;
     fn set_full_fft_size(&mut self, full_fft_size: bool) -> bool;
     fn set_unison_initial_phase(&mut self, idx: usize, value: StereoSample) -> bool;
     fn set_unison_phase_shift(&mut self, idx: usize, value: StereoSample) -> bool;

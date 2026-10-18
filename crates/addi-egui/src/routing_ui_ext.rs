@@ -59,7 +59,7 @@ impl InputUi for Input {
             Self::SpectrumTo => "Spectrum To".to_string(),
             Self::Blend => "Blend".to_string(),
             Self::PhasesBlend => "Phases Blend".to_string(),
-            Self::GainsBlend => "Gains Blend".to_string(),
+            Self::LevelsBlend => "Levels Blend".to_string(),
             Self::LowFrequency => "Frequency".to_string(),
             Self::Cutoff => "Cutoff".to_string(),
             Self::Resonance => "Resonance".to_string(),
@@ -101,7 +101,7 @@ impl InputUi for Input {
             Self::SpectrumTo => 0.83,
             Self::Blend => 0.42,
             Self::PhasesBlend => 0.39,
-            Self::GainsBlend => 0.45,
+            Self::LevelsBlend => 0.45,
             Self::LowFrequency => 0.30,
             Self::Cutoff => 0.32,
             Self::Resonance => 0.34,
@@ -141,7 +141,7 @@ impl InputUi for Input {
             Self::Distortion => Slider::stereo(amount, 0.0..=48.0, Some(-48.0))
                 .default(0.0)
                 .units(Units::Db),
-            Self::Blend | Self::GainsBlend | Self::PhasesBlend => bipolar(amount),
+            Self::Blend | Self::LevelsBlend | Self::PhasesBlend => bipolar(amount),
             Self::Cutoff => Slider::stereo(amount, 0.0..=10.0, Some(-10.0))
                 .default(0.0)
                 .units(Units::Octaves(OctavesDisplay::Semitones)),
@@ -210,7 +210,7 @@ impl InputUi for Input {
                 .default(0.0)
                 .units(Units::Db),
             Self::Blend | Self::PhasesBlend => Slider::stereo(value, 0.0..=1.0, None).default(0.0),
-            Self::GainsBlend => Slider::stereo(value, 0.0..=1.0, None).default(0.8),
+            Self::LevelsBlend => Slider::stereo(value, 0.0..=1.0, None).default(0.8),
             Self::Cutoff => Slider::stereo(value, MIN_CUTOFF..=MAX_CUTOFF, None)
                 .default(0.0)
                 .units(Units::Octaves(OctavesDisplay::Frequency)),

@@ -56,8 +56,10 @@ impl UiEnd {
             .is_ok()
     }
 
-    pub fn set_mono_spectrum(&mut self, mono_spectrum: bool) -> bool {
-        self.tx.push(UiEvent::MonoSpectrum(mono_spectrum)).is_ok()
+    pub fn set_stereo_spectrum(&mut self, stereo_spectrum: bool) -> bool {
+        self.tx
+            .push(UiEvent::StereoSpectrum(stereo_spectrum))
+            .is_ok()
     }
 
     pub fn set_full_fft_size(&mut self, full_fft_size: bool) -> bool {
@@ -194,8 +196,8 @@ impl OscillatorUiEnd for UiEnd {
     fn set_phase_random_stereo(&mut self, phase_random_stereo: Smp) -> bool {
         UiEnd::set_phase_random_stereo(self, phase_random_stereo)
     }
-    fn set_mono_spectrum(&mut self, mono_spectrum: bool) -> bool {
-        UiEnd::set_mono_spectrum(self, mono_spectrum)
+    fn set_stereo_spectrum(&mut self, stereo_spectrum: bool) -> bool {
+        UiEnd::set_stereo_spectrum(self, stereo_spectrum)
     }
     fn set_full_fft_size(&mut self, full_fft_size: bool) -> bool {
         UiEnd::set_full_fft_size(self, full_fft_size)

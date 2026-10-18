@@ -496,7 +496,7 @@ impl OscillatorUI {
         });
         if ui
             .add(StereoInput::new(
-                Input::GainsBlend,
+                Input::LevelsBlend,
                 module_id,
                 &mut config.gains_blend,
                 synth_bridge,
@@ -509,7 +509,7 @@ impl OscillatorUI {
             })
             .changed()
         {
-            bridge.set_param(Input::GainsBlend, config.gains_blend);
+            bridge.set_param(Input::LevelsBlend, config.gains_blend);
         }
     }
 
@@ -587,19 +587,19 @@ impl OscillatorUI {
                 }
 
                 if ui
-                    .add(Checkbox::new(&mut config.mono_spectrum, "Mono spectrum"))
+                    .add(Checkbox::new(&mut config.stereo_spectrum, "Stereo spectrum"))
                     .on_hover_text(
-                        "Build the waveform for the left channel only and reuse it for the right.",
+                        "Build a waveform for each channel",
                     )
                     .changed()
                 {
-                    osc_bridge.set_mono_spectrum(config.mono_spectrum);
+                    osc_bridge.set_stereo_spectrum(config.stereo_spectrum);
                 }
 
                 if ui
                     .add(Checkbox::new(&mut config.full_fft_size, "Full FFT"))
                     .on_hover_text(
-                        "Always inverse-FFT the full waveform table. Otherwise a shorter table is used when the note does not reach the upper bins.",
+                        "Always inverse-FFT the full waveform table",
                     )
                     .changed()
                 {
@@ -630,10 +630,10 @@ impl OscillatorUI {
                                             "Set each unison voice level by hand."
                                         }
                                         UnisonStyle::Flat => {
-                                            "Shape levels and spread them across the channels."
+                                            "Like in Vital"
                                         }
                                         UnisonStyle::Convex => {
-                                            "At full stereo, native voices rise from the center to about +3 dB at the sides on a square-root curve. The opposite channel is (1/√2)² on the first detuned voice, then that base raised to the distance from center, with edge voices silent. Folded, both channels match and fall to about −3 dB."
+                                            "Like in Bitwig"
                                         }
                                     })
                                     .clicked()

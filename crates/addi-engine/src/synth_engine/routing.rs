@@ -62,7 +62,8 @@ pub enum Input {
     SpectrumTo,
     Blend,
     PhasesBlend,
-    GainsBlend,
+    #[serde(alias = "GainsBlend")]
+    LevelsBlend,
     LowFrequency,
     Cutoff, // Octaves. Spectral EQ adds this offset to each band.
     Resonance,

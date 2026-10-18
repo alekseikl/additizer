@@ -39,12 +39,12 @@ const SAMPLE_RATE: Smp = 48_000.0;
 const HARMONIC_EDITOR_ID: ModuleId = 1;
 const OSCILLATOR_ID: ModuleId = 2;
 
-fn make_engine(he: HarmonicEditorConfig, mono_spectrum: bool) -> SynthEngine {
+fn make_engine(he: HarmonicEditorConfig, stereo_spectrum: bool) -> SynthEngine {
     make_engine_with(
         he,
         OscillatorConfig {
             id: OSCILLATOR_ID,
-            mono_spectrum,
+            stereo_spectrum,
             ..OscillatorConfig::default()
         },
     )
@@ -131,33 +131,40 @@ fn inverted_right_harmonics() -> HarmonicEditorConfig {
 }
 
 #[test]
-fn mono_spectrum_defaults_to_false() {
-    assert!(!OscillatorConfig::default().mono_spectrum);
-    assert!(!<Oscillator>::new(1, 16).get_config().mono_spectrum);
+fn stereo_spectrum_defaults_to_true() {
+    assert!(OscillatorConfig::default().stereo_spectrum);
+    assert!(<Oscillator>::new(1, 16).get_config().stereo_spectrum);
 }
 
 #[test]
-fn mono_spectrum_defaults_when_missing_from_json() {
+fn stereo_spectrum_defaults_when_missing_from_json_and_inverts_legacy_mono() {
     let mut json = serde_json::to_value(OscillatorConfig::default()).unwrap();
-    json.as_object_mut().unwrap().remove("mono_spectrum");
+    json.as_object_mut().unwrap().remove("stereo_spectrum");
 
-    let config: OscillatorConfig = serde_json::from_value(json).unwrap();
+    let missing: OscillatorConfig = serde_json::from_value(json.clone()).unwrap();
+    assert!(missing.stereo_spectrum);
 
-    assert!(!config.mono_spectrum);
+    json["mono_spectrum"] = serde_json::json!(true);
+    let legacy_mono: OscillatorConfig = serde_json::from_value(json.clone()).unwrap();
+    assert!(!legacy_mono.stereo_spectrum);
+
+    json["mono_spectrum"] = serde_json::json!(false);
+    let legacy_stereo: OscillatorConfig = serde_json::from_value(json).unwrap();
+    assert!(legacy_stereo.stereo_spectrum);
 }
 
 #[test]
-fn mono_spectrum_round_trips_through_config() {
+fn stereo_spectrum_round_trips_through_config() {
     let osc = <Oscillator>::from_config(
         &OscillatorConfig {
             id: 1,
-            mono_spectrum: true,
+            stereo_spectrum: false,
             ..OscillatorConfig::default()
         },
         16,
     );
 
-    assert!(osc.get_config().mono_spectrum);
+    assert!(!osc.get_config().stereo_spectrum);
 }
 
 #[test]
@@ -533,18 +540,18 @@ fn shaped_unison_shapes_levels_and_spreads_channels(style: UnisonStyle) {
 }
 
 #[test]
-fn set_mono_spectrum_updates_config() {
+fn set_stereo_spectrum_updates_config() {
     let mut osc = <Oscillator>::new(1, 16);
 
-    osc.set_mono_spectrum(true);
+    osc.set_stereo_spectrum(false);
 
-    assert!(osc.get_config().mono_spectrum);
+    assert!(!osc.get_config().stereo_spectrum);
 }
 
 #[test]
-fn full_fft_size_defaults_to_false() {
-    assert!(!OscillatorConfig::default().full_fft_size);
-    assert!(!<Oscillator>::new(1, 16).get_config().full_fft_size);
+fn full_fft_size_defaults_to_true() {
+    assert!(OscillatorConfig::default().full_fft_size);
+    assert!(<Oscillator>::new(1, 16).get_config().full_fft_size);
 }
 
 #[test]
@@ -554,7 +561,7 @@ fn full_fft_size_defaults_when_missing_from_json() {
 
     let config: OscillatorConfig = serde_json::from_value(json).unwrap();
 
-    assert!(!config.full_fft_size);
+    assert!(config.full_fft_size);
 }
 
 #[test]
@@ -562,27 +569,27 @@ fn full_fft_size_round_trips_through_config() {
     let osc = <Oscillator>::from_config(
         &OscillatorConfig {
             id: 1,
-            full_fft_size: true,
+            full_fft_size: false,
             ..OscillatorConfig::default()
         },
         16,
     );
 
-    assert!(osc.get_config().full_fft_size);
+    assert!(!osc.get_config().full_fft_size);
 }
 
 #[test]
 fn set_full_fft_size_updates_config() {
     let mut osc = <Oscillator>::new(1, 16);
 
-    osc.set_full_fft_size(true);
+    osc.set_full_fft_size(false);
 
-    assert!(osc.get_config().full_fft_size);
+    assert!(!osc.get_config().full_fft_size);
 }
 
 #[test]
 fn stereo_spectrum_keeps_silent_right_channel_silent() {
-    let mut engine = make_engine(silent_right_harmonics(), false);
+    let mut engine = make_engine(silent_right_harmonics(), true);
     let (left, right) = play(&mut engine);
 
     assert!(rms(&left) > 1e-3);
@@ -590,8 +597,8 @@ fn stereo_spectrum_keeps_silent_right_channel_silent() {
 }
 
 #[test]
-fn mono_spectrum_reuses_left_waveform_when_right_spectrum_is_silent() {
-    let mut engine = make_engine(silent_right_harmonics(), true);
+fn shared_spectrum_reuses_left_waveform_when_right_spectrum_is_silent() {
+    let mut engine = make_engine(silent_right_harmonics(), false);
     let (left, right) = play(&mut engine);
 
     assert!(rms(&left) > 1e-3);
@@ -601,7 +608,7 @@ fn mono_spectrum_reuses_left_waveform_when_right_spectrum_is_silent() {
 
 #[test]
 fn stereo_spectrum_keeps_inverted_right_channel_independent() {
-    let mut engine = make_engine(inverted_right_harmonics(), false);
+    let mut engine = make_engine(inverted_right_harmonics(), true);
     let (left, right) = play(&mut engine);
 
     assert!(rms(&left) > 1e-3);
@@ -609,8 +616,8 @@ fn stereo_spectrum_keeps_inverted_right_channel_independent() {
 }
 
 #[test]
-fn mono_spectrum_ignores_inverted_right_spectrum() {
-    let mut engine = make_engine(inverted_right_harmonics(), true);
+fn shared_spectrum_ignores_inverted_right_spectrum() {
+    let mut engine = make_engine(inverted_right_harmonics(), false);
     let (left, right) = play(&mut engine);
 
     assert!(rms(&left) > 1e-3);
@@ -829,6 +836,7 @@ fn make_two_voice_engine() -> SynthEngine {
             ModuleConfig::HarmonicEditor(Box::new(default_harmonics())),
             ModuleConfig::Oscillator(Box::new(OscillatorConfig {
                 id: OSCILLATOR_ID,
+                full_fft_size: false,
                 ..OscillatorConfig::default()
             })),
         ],

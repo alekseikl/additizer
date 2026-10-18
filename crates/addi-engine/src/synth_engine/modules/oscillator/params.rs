@@ -11,7 +11,7 @@ pub struct Params {
     pub steal_phase: bool,
     pub phase_random: Smp,        // [0.0, 1.0]
     pub phase_random_stereo: Smp, // [0.0, 1.0]
-    pub mono_spectrum: bool,
+    pub stereo_spectrum: bool,
     pub full_fft_size: bool,
 }
 
@@ -24,7 +24,7 @@ impl Params {
             steal_phase: c.steal_phase,
             phase_random: c.phase_random,
             phase_random_stereo: c.phase_random_stereo,
-            mono_spectrum: c.mono_spectrum,
+            stereo_spectrum: c.stereo_spectrum,
             full_fft_size: c.full_fft_size,
         }
     }
@@ -36,7 +36,7 @@ pub struct UnisonParams {
     pub phase_shift_to: Smp,
     /// Hand-set level. Read by [`UnisonStyle::Manual`] only.
     pub gain: Smp,
-    /// Hand-set level at full gains blend. Read by [`UnisonStyle::Manual`] only.
+    /// Hand-set level at full levels blend. Read by [`UnisonStyle::Manual`] only.
     pub gain_to: Smp,
 }
 

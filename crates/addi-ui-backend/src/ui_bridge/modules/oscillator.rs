@@ -37,7 +37,7 @@ impl<L: OscillatorLinks> OscillatorUiBridge<L> {
                 Input::Detune => self.config.detune = value,
                 Input::DetuneFocus => self.config.detune_focus = value,
                 Input::PhasesBlend => self.config.phases_blend = value,
-                Input::GainsBlend => self.config.gains_blend = value,
+                Input::LevelsBlend => self.config.gains_blend = value,
                 _ => (),
             }
         }
@@ -79,9 +79,9 @@ impl<L: OscillatorLinks> OscillatorUiBridge<L> {
         }
     }
 
-    pub fn set_mono_spectrum(&mut self, mono_spectrum: bool) {
-        if self.ui_end.set_mono_spectrum(mono_spectrum) {
-            self.config.mono_spectrum = mono_spectrum;
+    pub fn set_stereo_spectrum(&mut self, stereo_spectrum: bool) {
+        if self.ui_end.set_stereo_spectrum(stereo_spectrum) {
+            self.config.stereo_spectrum = stereo_spectrum;
         }
     }
 

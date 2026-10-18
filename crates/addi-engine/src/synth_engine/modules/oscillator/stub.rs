@@ -73,7 +73,7 @@ impl OscillatorUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_mono_spectrum(&mut self, _mono_spectrum: bool) -> bool {
+    fn set_stereo_spectrum(&mut self, _stereo_spectrum: bool) -> bool {
         self.diverge()
     }
 

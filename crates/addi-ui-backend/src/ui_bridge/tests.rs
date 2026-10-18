@@ -217,15 +217,15 @@ fn duplicate_module_places_copy_at_the_given_position() {
 }
 
 #[test]
-fn ui_event_sets_mono_spectrum() {
+fn ui_event_sets_stereo_spectrum() {
     let mut osc = Oscillator::<crate::links::oscillator::Links>::new(1, 16);
     let mut bridge = OscillatorUiBridge::try_new(&mut osc).expect("ui end");
 
-    bridge.set_mono_spectrum(true);
+    bridge.set_stereo_spectrum(false);
     osc.process_ui_events();
 
-    assert!(bridge.config().mono_spectrum);
-    assert!(osc.get_config().mono_spectrum);
+    assert!(!bridge.config().stereo_spectrum);
+    assert!(!osc.get_config().stereo_spectrum);
 }
 
 #[test]
@@ -233,11 +233,11 @@ fn ui_event_sets_full_fft_size() {
     let mut osc = Oscillator::<crate::links::oscillator::Links>::new(1, 16);
     let mut bridge = OscillatorUiBridge::try_new(&mut osc).expect("ui end");
 
-    bridge.set_full_fft_size(true);
+    bridge.set_full_fft_size(false);
     osc.process_ui_events();
 
-    assert!(bridge.config().full_fft_size);
-    assert!(osc.get_config().full_fft_size);
+    assert!(!bridge.config().full_fft_size);
+    assert!(!osc.get_config().full_fft_size);
 }
 
 #[test]

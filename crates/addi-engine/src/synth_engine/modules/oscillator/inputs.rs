@@ -26,7 +26,7 @@ impl Default for Inputs {
             detune_focus: MixedSlots::new(Input::DetuneFocus),
             phase_steal: MixedSlots::new(Input::PhaseSteal),
             phases_blend: MixedSlots::new(Input::PhasesBlend),
-            gains_blend: MixedSlots::new(Input::GainsBlend),
+            gains_blend: MixedSlots::new(Input::LevelsBlend),
         }
     }
 }
@@ -54,7 +54,7 @@ impl Inputs {
                     Input::DetuneFocus => result.detune_focus = input.clone(),
                     Input::PhaseSteal => result.phase_steal = input.clone(),
                     Input::PhasesBlend => result.phases_blend = input.clone(),
-                    Input::GainsBlend => result.gains_blend = input.clone(),
+                    Input::LevelsBlend => result.gains_blend = input.clone(),
                     _ => (),
                 },
             }
@@ -71,7 +71,7 @@ impl Inputs {
             Input::DetuneFocus => self.detune_focus.update_amount(src_slot, amount),
             Input::PhaseSteal => self.phase_steal.update_amount(src_slot, amount),
             Input::PhasesBlend => self.phases_blend.update_amount(src_slot, amount),
-            Input::GainsBlend => self.gains_blend.update_amount(src_slot, amount),
+            Input::LevelsBlend => self.gains_blend.update_amount(src_slot, amount),
             _ => (),
         }
     }

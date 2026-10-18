@@ -826,7 +826,7 @@ fn duplicate_module_copies_settings_without_links() {
             steal_phase: true,
             phase_random: 0.25,
             phase_random_stereo: 1.0,
-            mono_spectrum: true,
+            stereo_spectrum: false,
             detune: 0.4.into(),
             ..OscillatorConfig::default()
         },
@@ -850,7 +850,7 @@ fn duplicate_module_copies_settings_without_links() {
     assert_eq!(original.steal_phase, copy.steal_phase);
     assert_eq!(original.phase_random, copy.phase_random);
     assert_eq!(original.phase_random_stereo, copy.phase_random_stereo);
-    assert_eq!(original.mono_spectrum, copy.mono_spectrum);
+    assert_eq!(original.stereo_spectrum, copy.stereo_spectrum);
     assert_eq!(original.detune, copy.detune);
     assert_eq!(original.detune_focus, copy.detune_focus);
     assert_eq!(original.phase_shift, copy.phase_shift);
