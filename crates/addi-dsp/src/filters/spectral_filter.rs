@@ -344,17 +344,14 @@ pub enum FilterType {
     HighPass12,
     HighPass18,
     HighPass24,
-    #[serde(alias = "BandPass")]
     BandPass6,
     BandPass12,
     BandPass18,
     BandPass24,
     Peaking,
     Notch,
-    #[serde(alias = "LowShelf")]
     LowShelf12,
     LowShelf24,
-    #[serde(alias = "HighShelf")]
     HighShelf12,
     HighShelf24,
 }

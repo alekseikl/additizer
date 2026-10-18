@@ -17,9 +17,7 @@ pub struct SpectralFilterConfig {
     pub linear_phase: bool,
     #[serde(default = "default_keytrack")]
     pub keytrack: Smp,
-    #[serde(alias = "q_limit_to")]
     pub q_cutoff: StereoSample,
-    #[serde(alias = "q_limit_slope", alias = "q_limit_curve")]
     pub q_rolloff: StereoSample,
     pub cutoff: StereoSample,
     pub resonance: StereoSample,

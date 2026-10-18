@@ -34,9 +34,7 @@ pub struct SpectralNoiseConfig {
     pub level: StereoSample,
     pub stereo: bool,
     pub amount: StereoSample,
-    #[serde(alias = "amount_limit_to")]
     pub cutoff: StereoSample,
-    #[serde(alias = "amount_limit_slope")]
     pub rolloff: StereoSample,
     pub steal_phase: bool,
 }

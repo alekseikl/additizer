@@ -138,20 +138,6 @@ fn filter_type_serde_roundtrip() {
     }
 }
 
-#[test]
-fn filter_type_serde_bandpass_alias() {
-    let parsed: FilterType = serde_json::from_str(r#""BandPass""#).unwrap();
-    assert!(parsed == FilterType::BandPass6);
-}
-
-#[test]
-fn filter_type_serde_shelf_aliases() {
-    let low: FilterType = serde_json::from_str(r#""LowShelf""#).unwrap();
-    let high: FilterType = serde_json::from_str(r#""HighShelf""#).unwrap();
-    assert!(low == FilterType::LowShelf12);
-    assert!(high == FilterType::HighShelf12);
-}
-
 // ---- SpectralFilter::new cutoff / drive ----
 
 #[test]

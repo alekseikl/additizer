@@ -637,25 +637,6 @@ fn block_size_follows_host_sample_rate() {
 }
 
 #[test]
-fn legacy_block_size_field_is_ignored() {
-    let mut value = serde_json::to_value(EngineParams::default()).expect("params");
-    value["block_size"] = serde_json::json!(32);
-
-    let params: EngineParams = serde_json::from_value(value).expect("legacy params");
-    let engine = <SynthEngine>::try_new(
-        &EngineConfig {
-            engine: params,
-            ..EngineConfig::default()
-        },
-        96_000.0,
-        false,
-    )
-    .expect("engine");
-
-    assert_eq!(engine.block_size(), 256);
-}
-
-#[test]
 fn oversampled_192k_block_fits() {
     let mut engine =
         <SynthEngine>::try_new(&EngineConfig::default(), 192_000.0, true).expect("engine");
@@ -1542,7 +1523,11 @@ fn add_link_connects_new_modules() {
         .set_direct_link(amp_id, osc_to_out)
         .expect("amp -> output");
     engine
-        .add_mixed_link(env_id, InputId::new(Input::LinLevel, amp_id), StereoSample::ONE)
+        .add_mixed_link(
+            env_id,
+            InputId::new(Input::LinLevel, amp_id),
+            StereoSample::ONE,
+        )
         .expect("env -> amp gain");
 
     match engine.get_module_mut(amp_id) {

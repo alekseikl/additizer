@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer, Serialize, de::Error};
+use serde::{Deserialize, Serialize};
 
 use addi_dsp::filters::{
     control::{MAX_DRIVE, MIN_DRIVE, q_from_resonance},
@@ -20,7 +20,7 @@ pub const MIN_Q: Smp = 0.02;
 pub const MAX_Q: Smp = 40.0;
 
 /// Per-band settings.
-#[derive(Clone, Copy, PartialEq, Serialize)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct EqFilter {
     pub filter_type: FilterType,
     pub cutoff_hz: Smp,
@@ -50,44 +50,13 @@ impl EqFilter {
     }
 }
 
-impl<'de> Deserialize<'de> for EqFilter {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        struct Raw {
-            filter_type: FilterType,
-            cutoff_hz: Smp,
-            #[serde(default)]
-            q: Option<Smp>,
-            #[serde(default)]
-            resonance: Option<Smp>,
-            drive: Smp,
-        }
-
-        let raw = Raw::deserialize(deserializer)?;
-        let q = match (raw.q, raw.resonance) {
-            (Some(q), _) => q,
-            (None, Some(resonance)) => q_from_resonance(resonance).resonant,
-            (None, None) => return Err(D::Error::missing_field("q")),
-        };
-
-        Ok(Self {
-            filter_type: raw.filter_type,
-            cutoff_hz: raw.cutoff_hz,
-            q,
-            drive: raw.drive,
-        })
-    }
-}
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SpectralEqConfig {
     pub id: ModuleId,
     pub filters: Vec<EqFilter>,
     pub linear_phase: bool,
     pub keytrack: Smp,
-    #[serde(alias = "q_limit_to")]
     pub q_cutoff: StereoSample,
-    #[serde(alias = "q_limit_slope")]
     pub q_rolloff: StereoSample,
     pub cutoff: StereoSample,
     pub output_level: StereoSample,

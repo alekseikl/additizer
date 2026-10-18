@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     SIMD_LANES, Smp, WideSmp,
     consts::C4_PITCH,
-    fast_math::{pitch_to_freq_wide, fast_tan_pi_wide},
+    fast_math::{fast_tan_pi_wide, pitch_to_freq_wide},
 };
 
 /// Largest `f / sample_rate` fed to `tan`, keeping `g` finite just below Nyquist.

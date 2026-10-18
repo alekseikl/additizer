@@ -13,15 +13,12 @@ pub struct EnvelopeConfig {
     pub steal_level: bool,
     pub delay: StereoSample,
     pub attack: StereoSample,
-    #[serde(alias = "attack_curvature")]
     pub attack_slope: Smp,
     pub hold: StereoSample,
     pub decay: StereoSample,
-    #[serde(alias = "decay_curvature")]
     pub decay_slope: Smp,
     pub sustain: StereoSample,
     pub release: StereoSample,
-    #[serde(alias = "release_curvature")]
     pub release_slope: Smp,
 }
 

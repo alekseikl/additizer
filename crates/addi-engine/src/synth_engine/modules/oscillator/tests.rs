@@ -137,20 +137,12 @@ fn stereo_spectrum_defaults_to_true() {
 }
 
 #[test]
-fn stereo_spectrum_defaults_when_missing_from_json_and_inverts_legacy_mono() {
+fn stereo_spectrum_defaults_when_missing_from_json() {
     let mut json = serde_json::to_value(OscillatorConfig::default()).unwrap();
     json.as_object_mut().unwrap().remove("stereo_spectrum");
 
-    let missing: OscillatorConfig = serde_json::from_value(json.clone()).unwrap();
+    let missing: OscillatorConfig = serde_json::from_value(json).unwrap();
     assert!(missing.stereo_spectrum);
-
-    json["mono_spectrum"] = serde_json::json!(true);
-    let legacy_mono: OscillatorConfig = serde_json::from_value(json.clone()).unwrap();
-    assert!(!legacy_mono.stereo_spectrum);
-
-    json["mono_spectrum"] = serde_json::json!(false);
-    let legacy_stereo: OscillatorConfig = serde_json::from_value(json).unwrap();
-    assert!(legacy_stereo.stereo_spectrum);
 }
 
 #[test]
@@ -183,19 +175,6 @@ fn phase_random_stereo_defaults_when_missing_from_json() {
 
     let config: OscillatorConfig = serde_json::from_value(json).unwrap();
 
-    assert_eq!(config.phase_random_stereo, 0.0);
-}
-
-#[test]
-fn phase_random_stereo_accepts_legacy_bool() {
-    let mut json = serde_json::to_value(OscillatorConfig::default()).unwrap();
-
-    json["phase_random_stereo"] = serde_json::json!(true);
-    let config: OscillatorConfig = serde_json::from_value(json.clone()).unwrap();
-    assert_eq!(config.phase_random_stereo, 1.0);
-
-    json["phase_random_stereo"] = serde_json::json!(false);
-    let config: OscillatorConfig = serde_json::from_value(json).unwrap();
     assert_eq!(config.phase_random_stereo, 0.0);
 }
 

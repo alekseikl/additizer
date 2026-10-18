@@ -40,9 +40,7 @@ pub enum DataType {
 pub enum Input {
     Audio,
     AudioMix(u8),
-    #[serde(alias = "Gain")]
     LinLevel, // 0.0 - 1.0
-    #[serde(alias = "GainMix")]
     LinLevelMix(u8),
     Level,         // dB
     LevelMix(u8),  // dB
@@ -52,7 +50,6 @@ pub enum Input {
     Pitch,
     PitchShift,
     Detune,
-    #[serde(alias = "DetunePower")]
     DetuneFocus,
     Glide,
     GlideSlope,
@@ -64,7 +61,6 @@ pub enum Input {
     SpectrumTo,
     Blend,
     PhasesBlend,
-    #[serde(alias = "GainsBlend")]
     LevelsBlend,
     LowFrequency,
     Cutoff, // Octaves. Spectral EQ adds this offset to each band.
@@ -194,7 +190,6 @@ pub struct ExpressionEvent {
 #[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum LevelType {
     #[default]
-    #[serde(alias = "Gain")]
     Linear,
     Db,
 }

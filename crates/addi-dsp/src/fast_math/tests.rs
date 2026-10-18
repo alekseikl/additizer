@@ -10,7 +10,7 @@ fn wide(values: &[f32]) -> WideSmp {
     WideSmp::new(lanes)
 }
 
-use super::{db_to_gain_fast_wide, fast_exp2_wide, pitch_to_freq_wide, fast_tan_pi_wide};
+use super::{db_to_gain_fast_wide, fast_exp2_wide, fast_tan_pi_wide, pitch_to_freq_wide};
 
 fn fast_exp2(x: f32) -> f32 {
     fast_exp2_wide(WideSmp::splat(x)).to_array()[0]
