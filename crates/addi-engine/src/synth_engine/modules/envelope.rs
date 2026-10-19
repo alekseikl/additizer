@@ -1,9 +1,8 @@
 use std::array;
 
-use addi_dsp::fast_exp2_wide;
-
 mod config;
 mod link;
+mod stage_render;
 pub mod stub;
 
 #[cfg(test)]
@@ -11,21 +10,22 @@ mod tests;
 
 pub use config::EnvelopeConfig;
 pub use link::{EnvelopeAudioEnd, EnvelopeLinks, EnvelopeUiEnd, UiEvent};
+use stage_render::{render_curve, render_level};
 
 use crate::{
+    synth_engine::from_ms,
     synth_engine::{
         StereoSample,
         buffer::{VoicesLayout, new_voices_layout},
         routing::{
             ControlRouterType, DataType, Input, InputMeta, InputSlots, MixedSlots, ModuleId,
-            ProcessContext, RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget,
+            ProcessContext, RouterFactory, SamplesOutput, VoiceEvent, VoiceRouter, VoiceTarget,
         },
         synth_module::SynthModule,
-        types::{SIMD_LANES, Smp, WideSmp},
+        types::Smp,
         voices::NUM_CHANNELS,
         voices_handler::DecayingVoice,
     },
-    synth_engine::{fill_wide, from_ms},
 };
 
 pub const SLOPE_POWER_SCALE: Smp = 20.0;
@@ -91,50 +91,6 @@ pub enum Stage {
     Done,
 }
 
-impl Stage {
-    fn position(self) -> Smp {
-        match self {
-            Stage::Delay(position)
-            | Stage::Attack(position)
-            | Stage::Hold(position)
-            | Stage::Decay(position) => position,
-            Stage::Release { position, .. } => position,
-            Stage::Sustain | Stage::Done => 0.0,
-        }
-    }
-
-    fn with_position(self, position: Smp) -> Self {
-        match self {
-            Stage::Delay(_) => Stage::Delay(position),
-            Stage::Attack(_) => Stage::Attack(position),
-            Stage::Hold(_) => Stage::Hold(position),
-            Stage::Decay(_) => Stage::Decay(position),
-            Stage::Release { level, .. } => Stage::Release { position, level },
-            Stage::Sustain | Stage::Done => self,
-        }
-    }
-
-    /// Stage that follows once this one has run to completion.
-    fn next(self) -> Self {
-        match self {
-            Stage::Delay(_) => Stage::Attack(0.0),
-            Stage::Attack(_) => Stage::Hold(0.0),
-            Stage::Hold(_) => Stage::Decay(0.0),
-            Stage::Decay(_) => Stage::Sustain,
-            Stage::Release { .. } => Stage::Done,
-            Stage::Sustain | Stage::Done => self,
-        }
-    }
-
-    fn release_started(self) -> bool {
-        matches!(self, Stage::Release { .. } | Stage::Done)
-    }
-
-    fn is_done(self) -> bool {
-        matches!(self, Stage::Done)
-    }
-}
-
 /// Voice stage published to the UI for painting the phase marker.
 #[derive(Clone, Copy, Default)]
 pub struct EnvelopePhase {
@@ -152,219 +108,17 @@ fn slope_power(slope: Smp) -> Smp {
     -slope.clamp(-1.0, 1.0) * SLOPE_POWER_SCALE
 }
 
-struct FillStage {
-    stage: Stage,
-    start_level: Smp,
-    delay: Smp,
-    attack: Smp,
-    hold: Smp,
-    decay: Smp,
-    sustain: Smp,
-    release_time: Smp,
+struct StageCtx<'a> {
     t_step: Smp,
-    attack_power: Smp,
-    decay_power: Smp,
-    release_power: Smp,
+    start_level: Smp,
+    params: &'a Params,
+    inputs: &'a Inputs,
+    channel: &'a ChannelParams,
 }
 
-impl FillStage {
-    /// Linear ramp `from + (interval / duration) * t`, one vector of lanes at a time.
-    #[cold]
-    #[inline(never)]
-    fn fill_linear_ramp(out: &mut [Smp], local_t: Smp, t_step: Smp, ramp: Smp, from: Smp) {
-        let ramp_x4 = WideSmp::splat(ramp);
-        let from_x4 = WideSmp::splat(from);
-        let step = WideSmp::splat(t_step * SIMD_LANES as Smp);
-        let lanes: [Smp; SIMD_LANES] = array::from_fn(|lane| local_t + lane as Smp * t_step);
-        let mut t = WideSmp::new(lanes);
-
-        fill_wide(out, || {
-            let y = ramp_x4.mul_add(t, from_x4);
-            t += step;
-            y
-        });
-    }
-
-    /// Curved segment, one vector of lanes at a time. Outlined so it stays a leaf.
-    #[inline(never)]
-    fn fill_curved(
-        out: &mut [Smp],
-        local_t: Smp,
-        t_step: Smp,
-        recip: Smp,
-        interval: Smp,
-        from: Smp,
-        power: Smp,
-    ) {
-        // power_scale(x) = (exp(p * x) - 1) / (exp(p) - 1), so
-        // interval * power_scale(x) + from = scale * exp(p * x) + offset.
-        let scale = interval / (power.exp() - 1.0);
-        let offset = from - scale;
-        let dx = t_step * recip;
-
-        const LOG2_E: WideSmp = WideSmp::splat(std::f32::consts::LOG2_E);
-        let power_log2e = WideSmp::splat(power) * LOG2_E;
-        let step = WideSmp::splat(dx * SIMD_LANES as Smp);
-        let scale_x4 = WideSmp::splat(scale);
-        let offset_x4 = WideSmp::splat(offset);
-        let x0 = local_t * recip;
-        let lanes: [Smp; SIMD_LANES] = array::from_fn(|lane| x0 + lane as Smp * dx);
-        let mut x = WideSmp::new(lanes);
-
-        fill_wide(out, || {
-            let exp = fast_exp2_wide(x * power_log2e);
-            let y = scale_x4.mul_add(exp, offset_x4);
-            x += step;
-            y
-        });
-    }
-
-    fn duration(&self) -> Smp {
-        match self.stage {
-            Stage::Delay(_) => self.delay,
-            Stage::Attack(_) => self.attack,
-            Stage::Hold(_) => self.hold,
-            Stage::Decay(_) => self.decay,
-            Stage::Release { .. } => self.release_time,
-            Stage::Sustain | Stage::Done => 0.0,
-        }
-    }
-
-    /// Samples still inside the current stage, capped by `max`.
-    /// Zero when the stage has no length or less than one sample left.
-    fn samples_in_stage(&self, max: usize) -> usize {
-        let duration = self.duration();
-
-        if duration <= 0.0 {
-            return 0;
-        }
-
-        let remaining = (1.0 - self.stage.position()).max(0.0) * duration;
-        ((remaining / self.t_step) as usize).min(max)
-    }
-
-    fn fill_curve(
-        &self,
-        out: &mut [Smp],
-        local_t: Smp,
-        duration: Smp,
-        from: Smp,
-        to: Smp,
-        power: Smp,
-    ) {
-        let t_step = self.t_step;
-        let recip = duration.recip();
-        let interval = to - from;
-
-        // Same cutoff as `power_scale`: a flat slope is a linear ramp.
-        if power.abs() < 0.005 {
-            Self::fill_linear_ramp(out, local_t, t_step, interval * recip, from);
-        } else {
-            Self::fill_curved(out, local_t, t_step, recip, interval, from, power);
-        }
-    }
-
-    fn write_stage(&self, out: &mut [Smp]) {
-        let position = self.stage.position();
-
-        match self.stage {
-            Stage::Delay(_) => out.fill(self.start_level),
-            Stage::Attack(_) => self.fill_curve(
-                out,
-                position * self.attack,
-                self.attack,
-                self.start_level,
-                1.0,
-                self.attack_power,
-            ),
-            Stage::Hold(_) => out.fill(1.0),
-            Stage::Decay(_) => self.fill_curve(
-                out,
-                position * self.decay,
-                self.decay,
-                1.0,
-                self.sustain,
-                self.decay_power,
-            ),
-            Stage::Release { level, .. } => self.fill_curve(
-                out,
-                position * self.release_time,
-                self.release_time,
-                level,
-                0.0,
-                self.release_power,
-            ),
-            Stage::Sustain | Stage::Done => unreachable!(),
-        }
-    }
-
-    /// Writes one run of the current stage. A return of 0 means the stage was
-    /// advanced and nothing was written (zero length, or a sub-sample remainder).
-    fn fill_stage(&mut self, out: &mut [Smp]) -> usize {
-        match self.stage {
-            Stage::Sustain => {
-                out.fill(self.sustain);
-                out.len()
-            }
-            Stage::Done => {
-                out.fill(0.0);
-                out.len()
-            }
-            _ => {
-                let n = self.samples_in_stage(out.len());
-
-                if n == 0 {
-                    self.stage = self.stage.next();
-                    return 0;
-                }
-
-                self.write_stage(&mut out[..n]);
-                let position =
-                    (self.stage.position() + n as Smp * self.t_step / self.duration()).min(1.0);
-                self.stage = self.stage.with_position(position);
-                n
-            }
-        }
-    }
-
-    /// Fills `out`, switching to release at `release_idx` when the note ends.
-    /// `level` is the last written sample and the level release starts from.
-    fn render(&mut self, out: &mut [Smp], release_idx: Option<usize>, level: &mut Smp) {
-        let len = out.len();
-        let mut sample_idx = 0;
-
-        while sample_idx < len {
-            if release_idx == Some(sample_idx) && !self.stage.release_started() {
-                self.stage = Stage::Release {
-                    position: 0.0,
-                    level: *level,
-                };
-            }
-
-            let limit = if self.stage.release_started() {
-                len
-            } else {
-                release_idx.unwrap_or(len)
-            };
-            let span = &mut out[sample_idx..limit];
-
-            if span.is_empty() {
-                break;
-            }
-
-            let n = self.fill_stage(span);
-
-            if n == 0 {
-                continue;
-            }
-
-            *level = span[n - 1];
-            sample_idx += n;
-        }
-    }
-}
-
+#[derive(Default)]
 struct Voice {
+    /// Idle slots start at [`Stage::Done`] so they do not hold a voice.
     stage: Stage,
     /// Pending release event from `process_events`.
     released: Option<usize>,
@@ -372,20 +126,6 @@ struct Voice {
     next_frame_value: Smp,
     /// Envelope value at trigger; attack interpolates from this to 1.
     start_level: Smp,
-    /// Release has finished. Idle slots start finished so they do not hold a voice.
-    done: bool,
-}
-
-impl Default for Voice {
-    fn default() -> Self {
-        Self {
-            stage: Stage::Delay(0.0),
-            released: None,
-            next_frame_value: 0.0,
-            start_level: 0.0,
-            done: true,
-        }
-    }
 }
 
 pub struct Inputs {
@@ -516,6 +256,93 @@ impl<L: EnvelopeLinks> Envelope<L> {
     set_stereo_param!(set_sustain, sustain);
     set_stereo_param!(set_release, release);
 
+    /// Renders `stage` into `out`.
+    ///
+    /// `Ok(stage)` — `out` is filled and this stage is still running.
+    /// `Err((next, written))` — this stage ended after `written` samples
+    /// (`0` when it had no time left).
+    fn render<'v, 'f, 'c>(
+        stage: Stage,
+        out: &mut [Smp],
+        ctx: &StageCtx<'_>,
+        router: &mut VoiceRouter<'v, 'f, 'c, ControlRouterType, L::EngineEnd>,
+    ) -> Result<Stage, (Stage, usize)> {
+        let t_step = ctx.t_step;
+        let inputs = ctx.inputs;
+        let channel = ctx.channel;
+
+        match stage {
+            Stage::Sustain => {
+                let sustain = router
+                    .scalar(&inputs.sustain, channel.sustain)
+                    .clamp(0.0, 1.0);
+                out.fill(sustain);
+                Ok(Stage::Sustain)
+            }
+            Stage::Done => {
+                out.fill(0.0);
+                Ok(Stage::Done)
+            }
+            Stage::Delay(position) => {
+                let delay = stage_time(router.scalar(&inputs.delay, channel.delay));
+                render_level(out, position, delay, t_step, ctx.start_level)
+                    .map(Stage::Delay)
+                    .map_err(|n| (Stage::Attack(0.0), n))
+            }
+            Stage::Attack(position) => {
+                let attack = stage_time(router.scalar(&inputs.attack, channel.attack));
+                render_curve(
+                    out,
+                    position,
+                    attack,
+                    t_step,
+                    ctx.start_level,
+                    1.0,
+                    slope_power(ctx.params.attack_slope),
+                )
+                .map(Stage::Attack)
+                .map_err(|n| (Stage::Hold(0.0), n))
+            }
+            Stage::Hold(position) => {
+                let hold = stage_time(router.scalar(&inputs.hold, channel.hold));
+                render_level(out, position, hold, t_step, 1.0)
+                    .map(Stage::Hold)
+                    .map_err(|n| (Stage::Decay(0.0), n))
+            }
+            Stage::Decay(position) => {
+                let decay = stage_time(router.scalar(&inputs.decay, channel.decay));
+                let sustain = router
+                    .scalar(&inputs.sustain, channel.sustain)
+                    .clamp(0.0, 1.0);
+                render_curve(
+                    out,
+                    position,
+                    decay,
+                    t_step,
+                    1.0,
+                    sustain,
+                    slope_power(ctx.params.decay_slope),
+                )
+                .map(Stage::Decay)
+                .map_err(|n| (Stage::Sustain, n))
+            }
+            Stage::Release { position, level } => {
+                let release = stage_time(router.scalar(&inputs.release, channel.release));
+                render_curve(
+                    out,
+                    position,
+                    release,
+                    t_step,
+                    level,
+                    0.0,
+                    slope_power(ctx.params.release_slope),
+                )
+                .map(|position| Stage::Release { position, level })
+                .map_err(|n| (Stage::Done, n))
+            }
+        }
+    }
+
     fn process_voice(
         &mut self,
         target: &VoiceTarget,
@@ -529,47 +356,64 @@ impl<L: EnvelopeLinks> Envelope<L> {
         let params = &self.params;
         let channel = &self.channel_params[channel_idx];
         let voice = self.voices.at_mut(channel_idx, voice_idx);
-        let t_step = router.sample_rate().recip();
         let start_level = voice.start_level;
+        let triggered = router.triggered();
         let mut stage = voice.stage;
-        let mut level = voice.next_frame_value;
 
-        if router.triggered() {
+        if triggered {
             stage = Stage::Delay(0.0);
-            level = start_level;
-            voice.done = false;
         }
 
         let release_idx = voice
             .released
             .take()
             .map(|offset| router.block_to_voice_offset(offset));
-
-        let mut fill = FillStage {
-            stage,
+        let ctx = StageCtx {
+            t_step: router.sample_rate().recip(),
             start_level,
-            delay: stage_time(router.scalar(&inputs.delay, channel.delay)),
-            attack: stage_time(router.scalar(&inputs.attack, channel.attack)),
-            hold: stage_time(router.scalar(&inputs.hold, channel.hold)),
-            decay: stage_time(router.scalar(&inputs.decay, channel.decay)),
-            sustain: router
-                .scalar(&inputs.sustain, channel.sustain)
-                .clamp(0.0, 1.0),
-            release_time: stage_time(router.scalar(&inputs.release, channel.release)),
-            t_step,
-            attack_power: slope_power(params.attack_slope),
-            decay_power: slope_power(params.decay_slope),
-            release_power: slope_power(params.release_slope),
+            params,
+            inputs,
+            channel,
         };
-
         let output = voice_output.output();
-        fill.render(output, release_idx, &mut level);
+        let len = output.len();
+        let mut pos = 0;
+        let mut limit = release_idx.unwrap_or(len);
 
-        voice.stage = fill.stage;
-        voice.next_frame_value = level;
-        if fill.stage.is_done() {
-            voice.done = true;
+        loop {
+            while pos < limit {
+                stage = match Self::render(stage, &mut output[pos..limit], &ctx, &mut router) {
+                    Ok(next) => {
+                        pos = limit;
+                        next
+                    }
+                    Err((next, written)) => {
+                        pos += written;
+                        next
+                    }
+                };
+            }
+
+            if limit == len {
+                break;
+            }
+
+            stage = Stage::Release {
+                position: 0.0,
+                level: pos
+                    .checked_sub(1)
+                    .map(|i| output[i])
+                    .unwrap_or(if triggered {
+                        start_level
+                    } else {
+                        voice.next_frame_value
+                    }),
+            };
+            limit = len;
         }
+
+        voice.stage = stage;
+        voice.next_frame_value = output.last().copied().unwrap_or_default();
 
         if router.need_update_ui_mono() {
             self.audio_end.update_phase(EnvelopePhase {
@@ -646,7 +490,6 @@ impl<L: EnvelopeLinks> SynthModule for Envelope<L> {
                         let voice = self.voices.at_mut(channel_idx, *voice_idx);
                         voice.released = None;
                         voice.stage = Stage::Delay(0.0);
-                        voice.done = false;
                         voice.start_level = start_level;
                     }
                 }
@@ -666,7 +509,7 @@ impl<L: EnvelopeLinks> SynthModule for Envelope<L> {
         if self.params.keep_voice_alive {
             for decaying in decaying_voices.iter_mut().filter(|d| d.is_done()) {
                 for voice in self.voices.channels_at(decaying.index()) {
-                    if !voice.done {
+                    if voice.stage != Stage::Done {
                         decaying.mark_active();
                     }
                 }

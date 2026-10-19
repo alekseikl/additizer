@@ -206,34 +206,131 @@ fn both_channels_steal_independently() {
     }
 }
 
-fn fill_from(stage: Stage) -> FillStage {
-    FillStage {
-        stage,
-        start_level: 0.0,
-        delay: 0.0,
-        attack: 0.0,
-        hold: 0.0,
-        decay: 0.0,
-        sustain: 1.0,
-        release_time: 0.0,
-        t_step: 0.01,
-        attack_power: 0.0,
-        decay_power: 0.0,
-        release_power: 0.0,
+struct Times {
+    rate: Smp,
+    delay: Smp,
+    attack: Smp,
+    hold: Smp,
+    decay: Smp,
+    sustain: Smp,
+    release: Smp,
+}
+
+impl Default for Times {
+    fn default() -> Self {
+        Self {
+            rate: 100.0,
+            delay: 0.0,
+            attack: 0.0,
+            hold: 0.0,
+            decay: 0.0,
+            sustain: 1.0,
+            release: 0.0,
+        }
     }
+}
+
+/// Same block walk as `Envelope::process_voice`, with fixed stage times.
+fn play(
+    mut stage: Stage,
+    out: &mut [Smp],
+    release_at: Option<usize>,
+    level: &mut Smp,
+    times: &Times,
+) -> Stage {
+    let t_step = times.rate.recip();
+    let len = out.len();
+    let mut pos = 0;
+    let mut limit = release_at.unwrap_or(len);
+
+    loop {
+        while pos < limit {
+            stage = match step(stage, &mut out[pos..limit], times, t_step) {
+                Ok(next) => {
+                    pos = limit;
+                    next
+                }
+                Err((next, written)) => {
+                    pos += written;
+                    next
+                }
+            };
+        }
+
+        if limit == len {
+            break;
+        }
+
+        stage = Stage::Release {
+            position: 0.0,
+            level: pos.checked_sub(1).map(|i| out[i]).unwrap_or(*level),
+        };
+        limit = len;
+    }
+
+    *level = out.last().copied().unwrap_or_default();
+    stage
+}
+
+fn step(
+    stage: Stage,
+    out: &mut [Smp],
+    times: &Times,
+    t_step: Smp,
+) -> Result<Stage, (Stage, usize)> {
+    match stage {
+        Stage::Sustain => {
+            out.fill(times.sustain);
+            Ok(Stage::Sustain)
+        }
+        Stage::Done => {
+            out.fill(0.0);
+            Ok(Stage::Done)
+        }
+        Stage::Delay(position) => render_level(out, position, times.delay, t_step, 0.0)
+            .map(Stage::Delay)
+            .map_err(|n| (Stage::Attack(0.0), n)),
+        Stage::Attack(position) => render_curve(out, position, times.attack, t_step, 0.0, 1.0, 0.0)
+            .map(Stage::Attack)
+            .map_err(|n| (Stage::Hold(0.0), n)),
+        Stage::Hold(position) => render_level(out, position, times.hold, t_step, 1.0)
+            .map(Stage::Hold)
+            .map_err(|n| (Stage::Decay(0.0), n)),
+        Stage::Decay(position) => {
+            render_curve(out, position, times.decay, t_step, 1.0, times.sustain, 0.0)
+                .map(Stage::Decay)
+                .map_err(|n| (Stage::Sustain, n))
+        }
+        Stage::Release { position, level } => {
+            render_curve(out, position, times.release, t_step, level, 0.0, 0.0)
+                .map(|position| Stage::Release { position, level })
+                .map_err(|n| (Stage::Done, n))
+        }
+    }
+}
+
+fn render_times(
+    stage: Stage,
+    times: &mut Times,
+    out: &mut [Smp],
+    release_at: Option<usize>,
+    level: &mut Smp,
+) -> Stage {
+    play(stage, out, release_at, level, times)
 }
 
 #[test]
 fn attack_stores_normalized_position() {
-    let mut fill = fill_from(Stage::Attack(0.0));
-    fill.attack = 0.5;
-
+    let mut times = Times {
+        attack: 0.5,
+        ..Times::default()
+    };
     let mut level = 0.0;
     let mut out = [0.0; 10];
-    fill.render(&mut out, None, &mut level);
+    let stage = render_times(Stage::Attack(0.0), &mut times, &mut out, None, &mut level);
 
-    let Stage::Attack(position) = fill.stage else {
-        panic!("expected attack, got {:?}", fill.stage);
+    let Stage::Attack(position) = stage else {
+        panic!("expected attack, got {stage:?}");
     };
     assert!((position - 0.2).abs() < 1e-5);
     assert!((out[0] - 0.0).abs() < 1e-6);
@@ -242,29 +339,31 @@ fn attack_stores_normalized_position() {
 
 #[test]
 fn zero_length_stages_fall_through_to_sustain() {
-    let mut fill = fill_from(Stage::Delay(0.0));
-    fill.sustain = 0.4;
-
+    let mut times = Times {
+        sustain: 0.4,
+        ..Times::default()
+    };
     let mut level = 0.0;
     let mut out = [1.0; 8];
-    fill.render(&mut out, None, &mut level);
+    let stage = render_times(Stage::Delay(0.0), &mut times, &mut out, None, &mut level);
 
-    assert_eq!(fill.stage, Stage::Sustain);
+    assert_eq!(stage, Stage::Sustain);
     assert!(out.iter().all(|sample| (*sample - 0.4).abs() < 1e-6));
 }
 
 #[test]
 fn sub_sample_stage_advances_without_a_sample() {
-    let mut fill = fill_from(Stage::Attack(0.0));
-    fill.attack = 0.001;
-    fill.hold = 1.0;
-
+    let mut times = Times {
+        attack: 0.001,
+        hold: 1.0,
+        ..Times::default()
+    };
     let mut level = 0.0;
     let mut out = [0.0; 10];
-    fill.render(&mut out, None, &mut level);
+    let stage = render_times(Stage::Attack(0.0), &mut times, &mut out, None, &mut level);
 
-    let Stage::Hold(position) = fill.stage else {
-        panic!("expected hold, got {:?}", fill.stage);
+    let Stage::Hold(position) = stage else {
+        panic!("expected hold, got {stage:?}");
     };
     assert!((position - 0.1).abs() < 1e-5);
     assert!(out.iter().all(|sample| (*sample - 1.0).abs() < 1e-6));
@@ -272,16 +371,17 @@ fn sub_sample_stage_advances_without_a_sample() {
 
 #[test]
 fn release_stores_position_and_start_level() {
-    let mut fill = fill_from(Stage::Sustain);
-    fill.sustain = 0.7;
-    fill.release_time = 0.5;
-
+    let mut times = Times {
+        sustain: 0.7,
+        release: 0.5,
+        ..Times::default()
+    };
     let mut level = 0.25;
     let mut out = [0.0; 20];
-    fill.render(&mut out, Some(4), &mut level);
+    let stage = render_times(Stage::Sustain, &mut times, &mut out, Some(4), &mut level);
 
-    let Stage::Release { position, level } = fill.stage else {
-        panic!("expected release, got {:?}", fill.stage);
+    let Stage::Release { position, level } = stage else {
+        panic!("expected release, got {stage:?}");
     };
     assert!((position - 0.32).abs() < 1e-5);
     assert!((level - 0.7).abs() < 1e-6);
@@ -291,37 +391,45 @@ fn release_stores_position_and_start_level() {
 
 #[test]
 fn normalized_position_stays_in_stage_when_its_time_shrinks() {
-    let mut fill = fill_from(Stage::Attack(0.5));
-    fill.attack = 1.0;
-    fill.t_step = 0.1;
-
+    let mut times = Times {
+        rate: 10.0,
+        attack: 1.0,
+        ..Times::default()
+    };
     let mut level = 0.0;
     let mut out = [0.0; 2];
-    fill.render(&mut out, None, &mut level);
+    let stage = play(Stage::Attack(0.5), &mut out, None, &mut level, &times);
 
-    fill.attack = 0.5;
+    times.attack = 0.5;
     let mut out = [0.0; 1];
-    fill.render(&mut out, None, &mut level);
+    let stage = play(stage, &mut out, None, &mut level, &times);
 
-    let Stage::Attack(position) = fill.stage else {
-        panic!("expected attack, got {:?}", fill.stage);
+    let Stage::Attack(position) = stage else {
+        panic!("expected attack, got {stage:?}");
     };
     assert!((position - 0.9).abs() < 1e-5);
 }
 
 #[test]
 fn release_completes_to_done() {
-    let mut fill = fill_from(Stage::Release {
-        position: 0.0,
-        level: 1.0,
-    });
-    fill.release_time = 0.05;
-
+    let mut times = Times {
+        release: 0.05,
+        ..Times::default()
+    };
     let mut level = 1.0;
     let mut out = [1.0; 20];
-    fill.render(&mut out, None, &mut level);
+    let stage = render_times(
+        Stage::Release {
+            position: 0.0,
+            level: 1.0,
+        },
+        &mut times,
+        &mut out,
+        None,
+        &mut level,
+    );
 
-    assert_eq!(fill.stage, Stage::Done);
+    assert_eq!(stage, Stage::Done);
     assert!((out[0] - 1.0).abs() < 1e-5);
     assert!(out[5..].iter().all(|sample| *sample == 0.0));
 }
