@@ -5,7 +5,7 @@ use crate::grid::WidgetCtx;
 use addi_dsp::power_scale;
 use addi_engine::{
     Input, ModuleId, Smp,
-    envelope::{EnvelopeConfig, EnvelopePhase, SLOPE_POWER_SCALE},
+    envelope::{EnvelopeConfig, EnvelopePhase, SLOPE_POWER_SCALE, Stage},
 };
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
@@ -172,50 +172,36 @@ impl EnvelopeWidget {
     }
 
     fn phase_pos(rect: Rect, shape: &EnvelopeShape, phase: EnvelopePhase) -> Option<Pos2> {
-        if phase.done {
-            return None;
-        }
-
         let total = shape.total_time();
-        let delay_end = shape.delay;
-        let attack_end = delay_end + shape.attack;
-        let hold_end = attack_end + shape.hold;
-        let decay_end = hold_end + shape.decay;
+        let attack_start = shape.delay;
+        let hold_start = attack_start + shape.attack;
+        let decay_start = hold_start + shape.hold;
+        let release_start = decay_start + shape.decay;
 
-        Some(if phase.released {
-            let local = if shape.release > 0.0 {
-                (phase.t / shape.release).clamp(0.0, 1.0)
-            } else {
-                1.0
-            };
+        let pos = match phase.stage {
+            Stage::Done => return None,
+            Stage::Delay(position) => {
+                Self::to_pos(rect, total, shape.delay * position, shape.start_level)
+            }
+            Stage::Attack(position) => {
+                let value = Self::curve_value(position, shape.attack_slope, shape.start_level, 1.0);
+                Self::to_pos(rect, total, attack_start + shape.attack * position, value)
+            }
+            Stage::Hold(position) => {
+                Self::to_pos(rect, total, hold_start + shape.hold * position, 1.0)
+            }
+            Stage::Decay(position) => {
+                let value = Self::curve_value(position, shape.decay_slope, 1.0, shape.sustain);
+                Self::to_pos(rect, total, decay_start + shape.decay * position, value)
+            }
+            Stage::Sustain => Self::to_pos(rect, total, release_start, shape.sustain),
+            Stage::Release { position, .. } => {
+                let value = Self::curve_value(position, shape.release_slope, shape.sustain, 0.0);
+                Self::to_pos(rect, total, release_start + shape.release * position, value)
+            }
+        };
 
-            let value = Self::curve_value(local, shape.release_slope, shape.sustain, 0.0);
-            Self::to_pos(rect, total, decay_end + shape.release * local, value)
-        } else if phase.t < delay_end {
-            Self::to_pos(rect, total, phase.t, shape.start_level)
-        } else if phase.t < attack_end {
-            let local = if shape.attack > 0.0 {
-                (phase.t - delay_end) / shape.attack
-            } else {
-                1.0
-            };
-
-            let value = Self::curve_value(local, shape.attack_slope, shape.start_level, 1.0);
-            Self::to_pos(rect, total, phase.t, value)
-        } else if phase.t < hold_end {
-            Self::to_pos(rect, total, phase.t, 1.0)
-        } else if phase.t < decay_end {
-            let local = if shape.decay > 0.0 {
-                (phase.t - hold_end) / shape.decay
-            } else {
-                1.0
-            };
-
-            let value = Self::curve_value(local, shape.decay_slope, 1.0, shape.sustain);
-            Self::to_pos(rect, total, phase.t, value)
-        } else {
-            Self::to_pos(rect, total, decay_end, shape.sustain)
-        })
+        Some(pos)
     }
 
     fn fill_color() -> Color32 {

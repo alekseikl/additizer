@@ -206,6 +206,126 @@ fn both_channels_steal_independently() {
     }
 }
 
+fn fill_from(stage: Stage) -> FillStage {
+    FillStage {
+        stage,
+        start_level: 0.0,
+        delay: 0.0,
+        attack: 0.0,
+        hold: 0.0,
+        decay: 0.0,
+        sustain: 1.0,
+        release_time: 0.0,
+        t_step: 0.01,
+        attack_power: 0.0,
+        decay_power: 0.0,
+        release_power: 0.0,
+    }
+}
+
+#[test]
+fn attack_stores_normalized_position() {
+    let mut fill = fill_from(Stage::Attack(0.0));
+    fill.attack = 0.5;
+
+    let mut level = 0.0;
+    let mut out = [0.0; 10];
+    fill.render(&mut out, None, &mut level);
+
+    let Stage::Attack(position) = fill.stage else {
+        panic!("expected attack, got {:?}", fill.stage);
+    };
+    assert!((position - 0.2).abs() < 1e-5);
+    assert!((out[0] - 0.0).abs() < 1e-6);
+    assert!((out[9] - 0.18).abs() < 1e-5);
+}
+
+#[test]
+fn zero_length_stages_fall_through_to_sustain() {
+    let mut fill = fill_from(Stage::Delay(0.0));
+    fill.sustain = 0.4;
+
+    let mut level = 0.0;
+    let mut out = [1.0; 8];
+    fill.render(&mut out, None, &mut level);
+
+    assert_eq!(fill.stage, Stage::Sustain);
+    assert!(out.iter().all(|sample| (*sample - 0.4).abs() < 1e-6));
+}
+
+#[test]
+fn sub_sample_stage_advances_without_a_sample() {
+    let mut fill = fill_from(Stage::Attack(0.0));
+    fill.attack = 0.001;
+    fill.hold = 1.0;
+
+    let mut level = 0.0;
+    let mut out = [0.0; 10];
+    fill.render(&mut out, None, &mut level);
+
+    let Stage::Hold(position) = fill.stage else {
+        panic!("expected hold, got {:?}", fill.stage);
+    };
+    assert!((position - 0.1).abs() < 1e-5);
+    assert!(out.iter().all(|sample| (*sample - 1.0).abs() < 1e-6));
+}
+
+#[test]
+fn release_stores_position_and_start_level() {
+    let mut fill = fill_from(Stage::Sustain);
+    fill.sustain = 0.7;
+    fill.release_time = 0.5;
+
+    let mut level = 0.25;
+    let mut out = [0.0; 20];
+    fill.render(&mut out, Some(4), &mut level);
+
+    let Stage::Release { position, level } = fill.stage else {
+        panic!("expected release, got {:?}", fill.stage);
+    };
+    assert!((position - 0.32).abs() < 1e-5);
+    assert!((level - 0.7).abs() < 1e-6);
+    assert!(out[..4].iter().all(|sample| (*sample - 0.7).abs() < 1e-6));
+    assert!((out[4] - 0.7).abs() < 1e-5);
+}
+
+#[test]
+fn normalized_position_stays_in_stage_when_its_time_shrinks() {
+    let mut fill = fill_from(Stage::Attack(0.5));
+    fill.attack = 1.0;
+    fill.t_step = 0.1;
+
+    let mut level = 0.0;
+    let mut out = [0.0; 2];
+    fill.render(&mut out, None, &mut level);
+
+    fill.attack = 0.5;
+    let mut out = [0.0; 1];
+    fill.render(&mut out, None, &mut level);
+
+    let Stage::Attack(position) = fill.stage else {
+        panic!("expected attack, got {:?}", fill.stage);
+    };
+    assert!((position - 0.9).abs() < 1e-5);
+}
+
+#[test]
+fn release_completes_to_done() {
+    let mut fill = fill_from(Stage::Release {
+        position: 0.0,
+        level: 1.0,
+    });
+    fill.release_time = 0.05;
+
+    let mut level = 1.0;
+    let mut out = [1.0; 20];
+    fill.render(&mut out, None, &mut level);
+
+    assert_eq!(fill.stage, Stage::Done);
+    assert!((out[0] - 1.0).abs() < 1e-5);
+    assert!(out[5..].iter().all(|sample| *sample == 0.0));
+}
+
 #[test]
 fn fill_curve_matches_power_scale() {
     let duration = 0.2;
