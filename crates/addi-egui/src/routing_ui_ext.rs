@@ -64,7 +64,6 @@ impl InputUi for Input {
             Self::Cutoff => "Cutoff".to_string(),
             Self::Resonance => "Resonance".to_string(),
             Self::Drive => "Drive".to_string(),
-            Self::Skew => "Skew".to_string(),
             Self::Delay => "Delay".to_string(),
             Self::Attack => "Attack".to_string(),
             Self::Hold => "Hold".to_string(),
@@ -105,7 +104,6 @@ impl InputUi for Input {
             Self::LowFrequency => 0.30,
             Self::Cutoff => 0.32,
             Self::Resonance => 0.34,
-            Self::Skew => 0.18,
             Self::Delay => 0.20,
             Self::Attack => 0.58,
             Self::Hold => 0.53,
@@ -169,7 +167,6 @@ impl InputUi for Input {
                 .default(0.0)
                 .skew(3.0)
                 .units(Units::Frequency),
-            Self::Skew => bipolar(amount),
             Self::Amount => bipolar(amount),
             Self::Sustain => Slider::stereo(amount, 0.0..=1.0, None).units(Units::Normalized),
             Self::Delay | Self::Attack | Self::Hold | Self::Decay | Self::Release => {
@@ -238,7 +235,6 @@ impl InputUi for Input {
                 .default(1.0)
                 .skew(3.0)
                 .units(Units::Frequency),
-            Self::Skew => Slider::stereo(value, 0.0..=1.0, None).default(0.5),
             Self::Amount => Slider::stereo(value, 0.0..=1.0, None).default(1.0),
             Self::Sustain => Slider::stereo(value, 0.0..=1.0, None)
                 .default(0.5)

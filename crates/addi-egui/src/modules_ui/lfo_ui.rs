@@ -1,9 +1,7 @@
 use addi_ui_backend::ui_bridge::modules::lfo::LfoUiBridge;
 use egui::{Checkbox, ComboBox, Grid, Ui};
 
-use crate::{
-    ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput, units::Units,
-};
+use crate::{ModuleUi, module_label::ModuleLabel, slider::Slider, stereo_input::StereoInput};
 use addi_engine::{Input, LfoShape, ModuleId, ModuleType};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
@@ -60,15 +58,10 @@ impl LfoUi {
 
                 ui.label("Skew");
                 if ui
-                    .add(StereoInput::new(
-                        Input::Skew,
-                        module_id,
-                        &mut config.skew,
-                        bridge,
-                    ))
+                    .add(Slider::mono(&mut config.skew, 0.0..=1.0, None).default(0.5))
                     .changed()
                 {
-                    lfo_bridge.set_param(Input::Skew, config.skew);
+                    lfo_bridge.set_skew(config.skew);
                 }
                 ui.end_row();
 
@@ -96,28 +89,6 @@ impl LfoUi {
                     .changed()
                 {
                     lfo_bridge.set_param(Input::PhaseShift, config.phase_shift);
-                }
-                ui.end_row();
-
-                ui.label("Smooth");
-                if ui
-                    .add(
-                        Slider::stereo(&mut config.smooth_time, 0.0..=0.1, None)
-                            .default(0.0)
-                            .skew(1.2)
-                            .units(Units::Time),
-                    )
-                    .changed()
-                {
-                    lfo_bridge.set_smooth_time(config.smooth_time);
-                }
-
-                ui.label("Bipolar");
-                if ui
-                    .add(Checkbox::without_text(&mut config.bipolar))
-                    .changed()
-                {
-                    lfo_bridge.set_bipolar(config.bipolar);
                 }
                 ui.end_row();
 

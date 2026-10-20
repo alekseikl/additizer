@@ -45,15 +45,11 @@ impl LfoUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_bipolar(&mut self, _value: bool) -> bool {
-        self.diverge()
-    }
-
     fn set_steal_phase(&mut self, _value: bool) -> bool {
         self.diverge()
     }
 
-    fn set_smooth_time(&mut self, _value: StereoSample) -> bool {
+    fn set_skew(&mut self, _value: Smp) -> bool {
         self.diverge()
     }
 }

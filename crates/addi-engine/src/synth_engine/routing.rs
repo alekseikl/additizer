@@ -66,7 +66,6 @@ pub enum Input {
     Cutoff, // Octaves. Spectral EQ adds this offset to each band.
     Resonance,
     Drive, // dB
-    Skew,
     Delay,
     Attack,
     Hold,

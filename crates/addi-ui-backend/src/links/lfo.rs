@@ -24,16 +24,12 @@ impl UiEnd {
         self.tx.push(UiEvent::Shape(shape)).is_ok()
     }
 
-    pub fn set_bipolar(&mut self, value: bool) -> bool {
-        self.tx.push(UiEvent::Bipolar(value)).is_ok()
-    }
-
     pub fn set_steal_phase(&mut self, value: bool) -> bool {
         self.tx.push(UiEvent::StealPhase(value)).is_ok()
     }
 
-    pub fn set_smooth_time(&mut self, value: StereoSample) -> bool {
-        self.tx.push(UiEvent::SmoothTime(value)).is_ok()
+    pub fn set_skew(&mut self, value: Smp) -> bool {
+        self.tx.push(UiEvent::Skew(value)).is_ok()
     }
 }
 
@@ -87,14 +83,11 @@ impl LfoUiEnd for UiEnd {
     fn set_shape(&mut self, shape: LfoShape) -> bool {
         UiEnd::set_shape(self, shape)
     }
-    fn set_bipolar(&mut self, value: bool) -> bool {
-        UiEnd::set_bipolar(self, value)
-    }
     fn set_steal_phase(&mut self, value: bool) -> bool {
         UiEnd::set_steal_phase(self, value)
     }
-    fn set_smooth_time(&mut self, value: StereoSample) -> bool {
-        UiEnd::set_smooth_time(self, value)
+    fn set_skew(&mut self, value: Smp) -> bool {
+        UiEnd::set_skew(self, value)
     }
 }
 

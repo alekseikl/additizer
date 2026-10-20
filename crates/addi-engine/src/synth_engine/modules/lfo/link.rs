@@ -5,9 +5,8 @@ use super::config::LfoShape;
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
     Shape(LfoShape),
-    Bipolar(bool),
     StealPhase(bool),
-    SmoothTime(StereoSample),
+    Skew(Smp),
 }
 
 pub trait LfoAudioEnd: Send {
@@ -19,9 +18,8 @@ pub trait LfoUiEnd: Send {
     fn get_phase(&mut self) -> Smp;
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
     fn set_shape(&mut self, shape: LfoShape) -> bool;
-    fn set_bipolar(&mut self, value: bool) -> bool;
     fn set_steal_phase(&mut self, value: bool) -> bool;
-    fn set_smooth_time(&mut self, value: StereoSample) -> bool;
+    fn set_skew(&mut self, value: Smp) -> bool;
 }
 
 pub trait LfoLinks: Send {

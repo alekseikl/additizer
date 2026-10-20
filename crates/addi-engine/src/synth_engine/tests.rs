@@ -1895,7 +1895,7 @@ fn set_link_modulation_rejects_unknown_link() {
 fn set_link_modulation_cycle_leaves_state_unchanged() {
     let mut engine = make_full_patch_engine(EngineParams::default());
     let filter_attack = InputId::new(Input::Attack, ENVELOPE_FILTER_ID);
-    let lfo_skew = InputId::new(Input::Skew, LFO_ID);
+    let lfo_frequency = InputId::new(Input::LowFrequency, LFO_ID);
 
     // filter_env <- amp_env, and lfo <- filter_env; modulating the first link with the
     // lfo would require filter_env <-> lfo and must be rejected without mutating state.
@@ -1903,8 +1903,8 @@ fn set_link_modulation_cycle_leaves_state_unchanged() {
         .add_mixed_link(ENVELOPE_AMP_ID, filter_attack, StereoSample::ONE)
         .expect("amp env -> filter env attack");
     engine
-        .add_mixed_link(ENVELOPE_FILTER_ID, lfo_skew, StereoSample::ONE)
-        .expect("filter env -> lfo skew");
+        .add_mixed_link(ENVELOPE_FILTER_ID, lfo_frequency, StereoSample::ONE)
+        .expect("filter env -> lfo frequency");
 
     let err = engine
         .set_link_modulation(ENVELOPE_AMP_ID, &filter_attack, LFO_ID)

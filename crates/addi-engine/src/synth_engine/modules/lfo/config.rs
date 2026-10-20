@@ -1,6 +1,24 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::synth_engine::{ModuleId, StereoSample};
+use crate::synth_engine::{ModuleId, Smp, StereoSample};
+
+/// Accepts a mono skew, or a legacy stereo value (left channel).
+fn deserialize_skew<'de, D>(deserializer: D) -> Result<Smp, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Skew {
+        Mono(Smp),
+        Stereo { channels: [Smp; 2] },
+    }
+
+    match Skew::deserialize(deserializer)? {
+        Skew::Mono(value) => Ok(value),
+        Skew::Stereo { channels } => Ok(channels[0]),
+    }
+}
 
 #[derive(Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum LfoShape {
@@ -14,12 +32,11 @@ pub enum LfoShape {
 pub struct LfoConfig {
     pub id: ModuleId,
     pub shape: LfoShape,
-    pub bipolar: bool,
     pub steal_phase: bool,
     pub frequency: StereoSample,
     pub phase_shift: StereoSample,
-    pub skew: StereoSample,
-    pub smooth_time: StereoSample,
+    #[serde(deserialize_with = "deserialize_skew")]
+    pub skew: Smp,
 }
 
 impl Default for LfoConfig {
@@ -27,12 +44,10 @@ impl Default for LfoConfig {
         Self {
             id: -1,
             shape: LfoShape::default(),
-            bipolar: false,
             steal_phase: false,
             frequency: 1.0.into(),
             phase_shift: 0.0.into(),
-            skew: 0.5.into(),
-            smooth_time: 0.0.into(),
+            skew: 0.5,
         }
     }
 }

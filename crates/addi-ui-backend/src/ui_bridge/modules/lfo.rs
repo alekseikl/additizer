@@ -31,8 +31,13 @@ impl<L: LfoLinks> LfoUiBridge<L> {
         match input {
             Input::LowFrequency => self.config.frequency = value,
             Input::PhaseShift => self.config.phase_shift = value,
-            Input::Skew => self.config.skew = value,
             _ => (),
+        }
+    }
+
+    pub fn set_skew(&mut self, value: Smp) {
+        if self.ui_end.set_skew(value) {
+            self.config.skew = value;
         }
     }
 
@@ -42,21 +47,9 @@ impl<L: LfoLinks> LfoUiBridge<L> {
         }
     }
 
-    pub fn set_bipolar(&mut self, value: bool) {
-        if self.ui_end.set_bipolar(value) {
-            self.config.bipolar = value;
-        }
-    }
-
     pub fn set_steal_phase(&mut self, value: bool) {
         if self.ui_end.set_steal_phase(value) {
             self.config.steal_phase = value;
-        }
-    }
-
-    pub fn set_smooth_time(&mut self, value: StereoSample) {
-        if self.ui_end.set_smooth_time(value) {
-            self.config.smooth_time = value;
         }
     }
 }

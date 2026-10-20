@@ -1,10 +1,14 @@
 use std::{array, f32};
 
 use itertools::izip;
+use wide::f32x4;
 
 mod config;
 mod link;
 pub mod stub;
+
+#[cfg(test)]
+mod tests;
 
 pub use config::{LfoConfig, LfoShape};
 pub use link::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
@@ -12,21 +16,30 @@ pub use link::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
 use crate::synth_engine::{
     Input, ModuleId, SmoothedSampleParams, Smp, StereoSample,
     buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
+    fast_math::{CATMULL_TAPS, catmull_rom},
     phase::Phase,
     routing::{
         ControlRouterType, DataType, InputMeta, InputSlots, MixedSlots, ProcessContext,
         RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget,
     },
-    smooth::{SmoothedSample, Smoother},
+    smooth::SmoothedSample,
     synth_module::SynthModule,
     voices::NUM_CHANNELS,
 };
 
+/// One cycle. Matches the oscillator table so [`Phase::wave_index`] lines up.
+const WAVEFORM_BITS: usize = 11;
+const WAVEFORM_SIZE: usize = 1 << WAVEFORM_BITS;
+const WAVEFORM_PAD_LEFT: usize = 1;
+const WAVEFORM_PAD_RIGHT: usize = 2;
+const WAVEFORM_BUFFER_SIZE: usize = WAVEFORM_SIZE + WAVEFORM_PAD_LEFT + WAVEFORM_PAD_RIGHT;
+
+const _: () = assert!(WAVEFORM_SIZE == 2048);
+const _: () = assert!(WAVEFORM_BUFFER_SIZE == WAVEFORM_SIZE - 1 + CATMULL_TAPS);
+
 struct ChannelParams {
     frequency: SmoothedSample,
     phase_shift: SmoothedSample,
-    skew: SmoothedSample,
-    smooth_time: Smp,
 }
 
 impl ChannelParams {
@@ -34,21 +47,18 @@ impl ChannelParams {
         Self {
             frequency: c.frequency[channel_idx].into(),
             phase_shift: c.phase_shift[channel_idx].into(),
-            skew: c.skew[channel_idx].into(),
-            smooth_time: c.smooth_time[channel_idx],
         }
     }
 
     pub fn advance_smoothers(&mut self, smooth_params: &SmoothedSampleParams, samples: usize) {
         self.frequency.advance(smooth_params, samples);
         self.phase_shift.advance(smooth_params, samples);
-        self.skew.advance(smooth_params, samples);
     }
 }
 
 struct Params {
     shape: LfoShape,
-    bipolar: bool,
+    skew: Smp,
     steal_phase: bool,
 }
 
@@ -56,30 +66,20 @@ impl Params {
     fn from_config(c: &config::LfoConfig) -> Self {
         Self {
             shape: c.shape,
-            bipolar: c.bipolar,
+            skew: c.skew.clamp(0.0, 1.0),
             steal_phase: c.steal_phase,
         }
     }
 }
 
+#[derive(Default)]
 struct VoiceState {
     phase: Phase,
-    smoother: Smoother,
-}
-
-impl Default for VoiceState {
-    fn default() -> Self {
-        Self {
-            phase: Phase::ZERO,
-            smoother: Smoother::default(),
-        }
-    }
 }
 
 pub struct Inputs {
     frequency: MixedSlots,
     phase_shift: MixedSlots,
-    skew: MixedSlots,
 }
 
 impl Default for Inputs {
@@ -87,7 +87,6 @@ impl Default for Inputs {
         Self {
             frequency: MixedSlots::new(Input::LowFrequency),
             phase_shift: MixedSlots::new(Input::PhaseShift),
-            skew: MixedSlots::new(Input::Skew),
         }
     }
 }
@@ -104,7 +103,6 @@ impl Inputs {
             match input.input_type {
                 Input::LowFrequency => result.frequency = input.clone(),
                 Input::PhaseShift => result.phase_shift = input.clone(),
-                Input::Skew => result.skew = input.clone(),
                 _ => (),
             }
         }
@@ -116,7 +114,6 @@ impl Inputs {
         match input_type {
             Input::LowFrequency => self.frequency.update_amount(src_slot, amount),
             Input::PhaseShift => self.phase_shift.update_amount(src_slot, amount),
-            Input::Skew => self.skew.update_amount(src_slot, amount),
             _ => (),
         }
     }
@@ -125,7 +122,6 @@ impl Inputs {
 struct Buffers {
     frequency: Buffer,
     phase_shift: Buffer,
-    skew: Buffer,
 }
 
 impl Buffers {
@@ -133,7 +129,6 @@ impl Buffers {
         Self {
             frequency: zero_buffer(buffer_size),
             phase_shift: zero_buffer(buffer_size),
-            skew: zero_buffer(buffer_size),
         }
     }
 }
@@ -142,6 +137,8 @@ pub struct Lfo<L: LfoLinks = stub::Links> {
     id: ModuleId,
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
+    /// `shape` and `skew`, padded the same way as the oscillator wavetable.
+    wave: [Smp; WAVEFORM_BUFFER_SIZE],
     buffers: Buffers,
     audio_end: L::AudioEnd,
     ui_end: Option<L::UiEnd>,
@@ -168,42 +165,78 @@ impl<L: LfoLinks> Lfo<L> {
     pub fn from_config(config: &config::LfoConfig, buffer_size: usize) -> Self {
         let (audio_end, ui_end) = L::create_link_pair();
 
-        Self {
+        let mut lfo = Self {
             id: config.id,
             params: Params::from_config(config),
             channel_params: array::from_fn(|channel_idx| {
                 ChannelParams::from_config(config, channel_idx)
             }),
+            wave: [0.0; WAVEFORM_BUFFER_SIZE],
             buffers: Buffers::new(buffer_size),
             audio_end,
             ui_end,
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             voices: new_voices_layout(),
-        }
+        };
+
+        lfo.bake_wave();
+        lfo
     }
 
     pub fn get_config(&self) -> LfoConfig {
         LfoConfig {
             id: self.id,
             shape: self.params.shape,
-            bipolar: self.params.bipolar,
             steal_phase: self.params.steal_phase,
             frequency: get_smoothed_param!(self, frequency),
             phase_shift: get_smoothed_param!(self, phase_shift),
-            skew: get_smoothed_param!(self, skew),
-            smooth_time: get_stereo_param!(self, smooth_time),
+            skew: self.params.skew,
         }
     }
 
-    set_mono_param!(set_shape, shape, LfoShape);
-    set_mono_param!(set_bipolar, bipolar, bool);
     set_mono_param!(set_steal_phase, steal_phase, bool);
 
     set_smoothed_param!(set_frequency, frequency);
     set_smoothed_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
-    set_smoothed_param!(set_skew, skew, skew.clamp(0.0, 1.0));
-    set_stereo_param!(set_smooth_time, smooth_time, smooth_time.max(0.0));
+
+    pub fn set_shape(&mut self, shape: LfoShape) {
+        self.params.shape = shape;
+        self.bake_wave();
+    }
+
+    pub fn set_skew(&mut self, skew: Smp) {
+        self.params.skew = skew.clamp(0.0, 1.0);
+        self.bake_wave();
+    }
+
+    fn bake_wave(&mut self) {
+        let shape = Self::shape_function(self.params.shape);
+        let skew = self.params.skew;
+        let n = WAVEFORM_SIZE as Smp;
+
+        for i in 0..WAVEFORM_SIZE {
+            let t = i as Smp / n;
+            self.wave[WAVEFORM_PAD_LEFT + i] = shape(Self::skew_arg(t, skew));
+        }
+
+        let last = WAVEFORM_PAD_LEFT + WAVEFORM_SIZE - 1;
+        self.wave[0] = self.wave[last];
+        self.wave[last + 1] = self.wave[WAVEFORM_PAD_LEFT];
+        self.wave[last + 2] = self.wave[WAVEFORM_PAD_LEFT + 1];
+    }
+
+    /// Catmull–Rom read, same pad and weights as the oscillator wavetable.
+    #[inline(always)]
+    fn read_wave(wave: &[Smp], phase: Phase) -> Smp {
+        let idx = phase.wave_index::<WAVEFORM_BITS>();
+        let t = phase.wave_index_fraction::<WAVEFORM_BITS>();
+        let s = &wave[idx..idx + CATMULL_TAPS];
+        let samples = f32x4::new([s[0], s[1], s[2], s[3]]);
+        let [a, b, c, d] = (catmull_rom(t) * samples).to_array();
+
+        (a + c) + (b + d)
+    }
 
     fn triangle(x: Smp) -> Smp {
         2.0 * x.min(1.0 - x)
@@ -235,21 +268,13 @@ impl<L: LfoLinks> Lfo<L> {
             + Smp::from(!arg_less) * (0.5 + (arg - skew) * 0.5 / (1.0 - skew).max(Smp::EPSILON))
     }
 
-    #[inline]
-    fn apply_bipolar(value: Smp, bipolar: bool) -> Smp {
-        Smp::from(bipolar) * value.mul_add(2.0, -1.0) + Smp::from(!bipolar) * value
-    }
-
     /// Evaluate the LFO curve at normalized phase `t` ∈ [0, 1].
-    pub fn evaluate(shape: LfoShape, t: Smp, phase_shift: Smp, skew: Smp, bipolar: bool) -> Smp {
+    pub fn evaluate(shape: LfoShape, t: Smp, phase_shift: Smp, skew: Smp) -> Smp {
         let arg = Phase::from_normalized(t.clamp(0.0, 1.0))
             .add_normalized(phase_shift.clamp(-1.0, 1.0))
             .normalized();
 
-        Self::apply_bipolar(
-            Self::shape_function(shape)(Self::skew_arg(arg, skew.clamp(0.0, 1.0))),
-            bipolar,
-        )
+        Self::shape_function(shape)(Self::skew_arg(arg, skew.clamp(0.0, 1.0)))
     }
 
     fn process_voice(
@@ -262,7 +287,6 @@ impl<L: LfoLinks> Lfo<L> {
         let voice_idx = target.voice_idx;
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let inputs = &self.inputs;
-        let params = &self.params;
         let channel = &mut self.channel_params[channel_idx];
         let voice = self.voices.at_mut(channel_idx, voice_idx);
         let sample_rate = router.sample_rate();
@@ -277,42 +301,27 @@ impl<L: LfoLinks> Lfo<L> {
             &channel.phase_shift,
             &mut self.buffers.phase_shift,
         );
-        router.param(&inputs.skew, &channel.skew, &mut self.buffers.skew);
 
-        let shape_func = Self::shape_function(params.shape);
         let freq_phase_mult = Phase::freq_phase_mult(sample_rate);
+        let wave = self.wave.as_slice();
 
-        for (out, frequency, phase_shift, skew) in izip!(
+        for (out, frequency, phase_shift) in izip!(
             voice_output.output().iter_mut(),
             &self.buffers.frequency,
             &self.buffers.phase_shift,
-            &self.buffers.skew,
         ) {
-            let arg = voice
-                .phase
-                .add_normalized(phase_shift.clamp(-1.0, 1.0))
-                .normalized();
+            let read = voice.phase.add_normalized(phase_shift.clamp(-1.0, 1.0));
 
-            *out = Self::apply_bipolar(
-                shape_func(Self::skew_arg(arg, skew.clamp(0.0, 1.0))),
-                params.bipolar,
-            );
+            *out = Self::read_wave(wave, read);
 
             voice.phase += *frequency * freq_phase_mult;
-        }
-
-        if router.triggered() {
-            voice.smoother.reset(0.0);
         }
 
         if router.need_update_ui_mono() {
             self.audio_end.update_phase(voice.phase.normalized());
         }
-
-        voice
-            .smoother
-            .apply_if_needed(sample_rate, channel.smooth_time, voice_output.output());
     }
+
     pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
         ctx.control(self.id, self.output_slot)
             .for_voices(|rf, target, outputs| {
@@ -334,7 +343,6 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
         static INPUTS: &[InputMeta] = &[
             InputMeta::control(Input::LowFrequency),
             InputMeta::control(Input::PhaseShift),
-            InputMeta::control(Input::Skew),
         ];
 
         INPUTS
@@ -389,13 +397,11 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
                 UiEvent::InputParam { input, value } => match input {
                     Input::LowFrequency => self.set_frequency(value),
                     Input::PhaseShift => self.set_phase_shift(value),
-                    Input::Skew => self.set_skew(value),
                     _ => (),
                 },
                 UiEvent::Shape(shape) => self.set_shape(shape),
-                UiEvent::Bipolar(value) => self.set_bipolar(value),
                 UiEvent::StealPhase(value) => self.set_steal_phase(value),
-                UiEvent::SmoothTime(value) => self.set_smooth_time(value),
+                UiEvent::Skew(value) => self.set_skew(value),
             }
         }
     }

@@ -31,29 +31,20 @@ impl Default for LfoWidget {
 }
 
 impl LfoWidget {
-    fn build_waveform(&mut self, shape: LfoShape, phase_shift: Smp, skew: Smp, bipolar: bool) {
+    fn build_waveform(&mut self, shape: LfoShape, phase_shift: Smp, skew: Smp) {
         let last = (DISPLAY_SAMPLES) as Smp;
 
         for (i, sample) in self.waveform.iter_mut().enumerate() {
             let t = i as Smp / last;
-            *sample = Lfo::<addi_ui_backend::links::lfo::Links>::evaluate(
-                shape,
-                t,
-                phase_shift,
-                skew,
-                bipolar,
-            );
+            *sample =
+                Lfo::<addi_ui_backend::links::lfo::Links>::evaluate(shape, t, phase_shift, skew);
         }
     }
 
-    fn phase_pos(rect: Rect, phase: Smp, value: Smp, bipolar: bool) -> Pos2 {
+    fn phase_pos(rect: Rect, phase: Smp, value: Smp) -> Pos2 {
         Pos2::new(
             rect.left() + phase.clamp(0.0, 1.0) * rect.width(),
-            if bipolar {
-                rect.center().y - value * rect.height() * 0.5
-            } else {
-                rect.bottom() - value.clamp(0.0, 1.0) * rect.height()
-            },
+            rect.bottom() - value.clamp(0.0, 1.0) * rect.height(),
         )
     }
 
@@ -76,14 +67,8 @@ impl LfoWidget {
         let mut config = lfo_bridge.config().clone();
 
         bridge.apply_modulation(module_id, Input::PhaseShift, &mut config.phase_shift);
-        bridge.apply_modulation(module_id, Input::Skew, &mut config.skew);
 
-        self.build_waveform(
-            config.shape,
-            config.phase_shift[0],
-            config.skew[0],
-            config.bipolar,
-        );
+        self.build_waveform(config.shape, config.phase_shift[0], config.skew);
 
         let painter = ui.painter();
 
@@ -96,7 +81,7 @@ impl LfoWidget {
                 normalize: false,
                 color: WAVE_COLOR,
                 fill: true,
-                bipolar: config.bipolar,
+                bipolar: false,
             },
         );
 
@@ -106,11 +91,10 @@ impl LfoWidget {
                 config.shape,
                 phase,
                 config.phase_shift[0],
-                config.skew[0],
-                config.bipolar,
+                config.skew,
             );
             painter.circle_filled(
-                Self::phase_pos(rect, phase, value, config.bipolar),
+                Self::phase_pos(rect, phase, value),
                 PHASE_RADIUS,
                 WAVE_COLOR,
             );
