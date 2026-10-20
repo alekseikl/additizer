@@ -1,12 +1,12 @@
+use addi_dsp::segments::Segments;
+
 use crate::synth_engine::{Input, Smp, StereoSample, engine_io};
 
-use super::line::LfoLine;
-
-/// Whole [`LfoLine`] is inlined so applying it on the audio thread does not allocate.
+/// Whole [`Segments`] value is inlined so applying it on the audio thread does not allocate.
 #[allow(clippy::large_enum_variant)]
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
-    Line(LfoLine),
+    Segments(Segments),
     StealPhase(bool),
 }
 
@@ -18,7 +18,7 @@ pub trait LfoAudioEnd: Send {
 pub trait LfoUiEnd: Send {
     fn get_phase(&mut self) -> Smp;
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
-    fn set_line(&mut self, line: LfoLine) -> bool;
+    fn set_segments(&mut self, segments: Segments) -> bool;
     fn set_steal_phase(&mut self, value: bool) -> bool;
 }
 

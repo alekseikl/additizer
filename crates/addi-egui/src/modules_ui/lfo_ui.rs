@@ -35,8 +35,8 @@ impl LfoUi {
             None
         };
 
-        if self.editor.ui(ui, &mut config.line, phase) {
-            lfo_bridge.set_line(config.line);
+        if self.editor.ui(ui, &mut config.segments, phase) {
+            lfo_bridge.set_segments(config.segments);
         }
 
         ui.add_space(12.0);

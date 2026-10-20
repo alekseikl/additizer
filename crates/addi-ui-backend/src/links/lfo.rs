@@ -2,7 +2,7 @@ use triple_buffer::triple_buffer;
 
 use addi_engine::{Input, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
-use addi_engine::lfo::LfoLine;
+use addi_dsp::segments::Segments;
 
 use addi_engine::lfo::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
 
@@ -20,8 +20,8 @@ impl UiEnd {
         self.tx.push(UiEvent::InputParam { input, value }).is_ok()
     }
 
-    pub fn set_line(&mut self, line: LfoLine) -> bool {
-        self.tx.push(UiEvent::Line(line)).is_ok()
+    pub fn set_segments(&mut self, segments: Segments) -> bool {
+        self.tx.push(UiEvent::Segments(segments)).is_ok()
     }
 
     pub fn set_steal_phase(&mut self, value: bool) -> bool {
@@ -76,8 +76,8 @@ impl LfoUiEnd for UiEnd {
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
         UiEnd::set_param(self, input, value)
     }
-    fn set_line(&mut self, line: LfoLine) -> bool {
-        UiEnd::set_line(self, line)
+    fn set_segments(&mut self, segments: Segments) -> bool {
+        UiEnd::set_segments(self, segments)
     }
     fn set_steal_phase(&mut self, value: bool) -> bool {
         UiEnd::set_steal_phase(self, value)

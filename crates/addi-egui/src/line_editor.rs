@@ -3,11 +3,11 @@ use egui::{
     Shape, Stroke, Ui, pos2, vec2,
 };
 
-use addi_engine::{
-    Smp,
-    lfo::{LfoLine, LfoPoint, MAX_POWER},
+use addi_dsp::{
     power_scale,
+    segments::{MAX_POWER, Point, Segments},
 };
+use addi_engine::Smp;
 
 const EDITOR_HEIGHT: f32 = 220.0;
 const PAD_Y: f32 = 6.0;
@@ -20,10 +20,13 @@ const SNAP_Y: Smp = 0.04;
 const POWER_MOUSE_MULTIPLIER: Smp = 9.0;
 
 const WAVE_COLOR: Color32 = Color32::from_rgb(0x4a, 0xb0, 0xff);
-const FILL_ALPHA: u8 = 0x30;
+const FILL_TOP_ALPHA: u8 = 0x47;
+const FILL_BOTTOM_ALPHA: u8 = 0x28;
+const GRID_COLOR: Color32 = Color32::from_rgba_unmultiplied_const(255, 255, 255, 28);
 const POINT_COLOR: Color32 = Color32::from_rgb(0xe8, 0xf4, 0xff);
 const POWER_COLOR: Color32 = Color32::from_rgb(0x9a, 0xd0, 0xff);
 
+#[derive(Clone, Copy)]
 enum Drag {
     Point(usize),
     Power(usize),
@@ -32,6 +35,7 @@ enum Drag {
 enum MenuAction {
     Remove(usize),
     ResetPower(usize),
+    SetSmooth(usize, bool),
     FlipHorizontal,
     FlipVertical,
 }
@@ -40,6 +44,7 @@ pub struct LineEditor {
     grid_x: i32,
     grid_y: i32,
     drag: Option<Drag>,
+    hover: Option<Drag>,
     last_pointer_y: f32,
     menu_point: Option<usize>,
     menu_power: Option<usize>,
@@ -51,6 +56,7 @@ impl Default for LineEditor {
             grid_x: 8,
             grid_y: 1,
             drag: None,
+            hover: None,
             last_pointer_y: 0.0,
             menu_point: None,
             menu_power: None,
@@ -59,7 +65,7 @@ impl Default for LineEditor {
 }
 
 impl LineEditor {
-    pub fn ui(&mut self, ui: &mut Ui, line: &mut LfoLine, phase: Option<Smp>) -> bool {
+    pub fn ui(&mut self, ui: &mut Ui, segments: &mut Segments, phase: Option<Smp>) -> bool {
         let mut changed = false;
         let width = ui.available_width();
         let (rect, mut response) =
@@ -67,13 +73,13 @@ impl LineEditor {
         let plot = rect.shrink2(vec2(0.0, PAD_Y));
 
         if plot.is_positive() {
-            changed |= self.interact(ui, &response, plot, line);
-            self.paint(ui, plot, rect, line, phase);
-            changed |= self.context_menu(&mut response, line);
+            changed |= self.interact(ui, &response, plot, segments);
+            self.paint(ui, plot, rect, segments, phase);
+            changed |= self.context_menu(&mut response, segments);
         }
 
         ui.add_space(8.0);
-        changed |= self.toolbar(ui, line);
+        changed |= self.toolbar(ui, segments);
         ui.add_space(4.0);
         ui.label(
             egui::RichText::new(
@@ -91,7 +97,7 @@ impl LineEditor {
         ui: &mut Ui,
         response: &Response,
         plot: Rect,
-        line: &mut LfoLine,
+        segments: &mut Segments,
     ) -> bool {
         let mut changed = false;
         let modifiers = ui.input(|input| input.modifiers);
@@ -100,20 +106,20 @@ impl LineEditor {
         if response.secondary_clicked()
             && let Some(pos) = pointer
         {
-            let hit = hit_test(plot, line, pos);
+            let hit = hit_test(plot, segments, pos);
             self.menu_point = hit.0;
             self.menu_power = hit.1;
         }
 
         if response.double_clicked_by(PointerButton::Primary) {
             if let Some(pos) = pointer {
-                changed |= double_click(plot, line, pos, modifiers.shift);
+                changed |= double_click(plot, segments, pos, modifiers.shift);
             }
             self.drag = None;
         } else if response.drag_started_by(PointerButton::Primary)
             && let Some(pos) = pointer
         {
-            let hit = hit_test(plot, line, pos);
+            let hit = hit_test(plot, segments, pos);
             self.drag = hit.0.map(Drag::Point).or_else(|| hit.1.map(Drag::Power));
             self.last_pointer_y = pos.y;
         }
@@ -124,12 +130,20 @@ impl LineEditor {
             match self.drag {
                 Some(Drag::Point(index)) => {
                     let (x, y) = from_pos(plot, pos);
-                    move_point(line, index, x, y, !modifiers.alt, self.grid_x, self.grid_y);
+                    move_point(
+                        segments,
+                        index,
+                        x,
+                        y,
+                        !modifiers.alt,
+                        self.grid_x,
+                        self.grid_y,
+                    );
                     changed = true;
                 }
                 Some(Drag::Power(index)) => {
                     let delta = (pos.y - self.last_pointer_y) / plot.height();
-                    move_powers(line, index, delta, modifiers.shift, modifiers.alt);
+                    move_powers(segments, index, delta, modifiers.shift, modifiers.alt);
                     self.last_pointer_y = pos.y;
                     changed = true;
                 }
@@ -141,31 +155,53 @@ impl LineEditor {
             self.drag = None;
         }
 
-        let hovering = pointer
-            .filter(|_| self.drag.is_none() && response.hovered())
-            .is_some_and(|pos| {
-                let hit = hit_test(plot, line, pos);
-                hit.0.is_some() || hit.1.is_some()
-            });
+        self.hover = if self.drag.is_none() && response.hovered() {
+            pointer.and_then(|pos| {
+                let hit = hit_test(plot, segments, pos);
+                hit.0.map(Drag::Point).or_else(|| hit.1.map(Drag::Power))
+            })
+        } else {
+            None
+        };
 
         if self.drag.is_some() {
             ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
-        } else if hovering {
+        } else if self.hover.is_some() {
             ui.ctx().set_cursor_icon(CursorIcon::Grab);
         }
 
         changed
     }
 
-    fn context_menu(&mut self, response: &mut Response, line: &mut LfoLine) -> bool {
+    fn context_menu(&mut self, response: &mut Response, segments: &mut Segments) -> bool {
         let menu_point = self.menu_point;
         let menu_power = self.menu_power;
         let mut action = None;
 
         response.context_menu(|ui| {
+            if let Some(index) = menu_point.or(menu_power)
+                && index < segments.num_points()
+            {
+                let smooth = segments.point(index).smooth;
+                let label = if smooth {
+                    "Sharpen segment"
+                } else {
+                    "Smooth segment"
+                };
+
+                if ui
+                    .button(label)
+                    .on_hover_text("Ease this segment with a sine curve.")
+                    .clicked()
+                {
+                    action = Some(MenuAction::SetSmooth(index, !smooth));
+                    ui.close();
+                }
+            }
+
             if let Some(index) = menu_point
                 && index > 0
-                && index + 1 < line.num_points()
+                && index + 1 < segments.num_points()
                 && ui.button("Remove point").clicked()
             {
                 action = Some(MenuAction::Remove(index));
@@ -179,51 +215,45 @@ impl LineEditor {
                 ui.close();
             }
 
-            if ui.button("Flip horizontal").clicked() {
-                action = Some(MenuAction::FlipHorizontal);
-                ui.close();
-            }
+            if menu_point.is_none() && menu_power.is_none() {
+                if ui.button("Flip horizontal").clicked() {
+                    action = Some(MenuAction::FlipHorizontal);
+                    ui.close();
+                }
 
-            if ui.button("Flip vertical").clicked() {
-                action = Some(MenuAction::FlipVertical);
-                ui.close();
+                if ui.button("Flip vertical").clicked() {
+                    action = Some(MenuAction::FlipVertical);
+                    ui.close();
+                }
             }
         });
 
         match action {
-            Some(MenuAction::Remove(index)) => line.remove_point(index),
+            Some(MenuAction::Remove(index)) => segments.remove_point(index),
             Some(MenuAction::ResetPower(index)) => {
-                line.set_power(index, 0.0);
+                segments.set_power(index, 0.0);
+                true
+            }
+            Some(MenuAction::SetSmooth(index, smooth)) => {
+                segments.set_smooth(index, smooth);
                 true
             }
             Some(MenuAction::FlipHorizontal) => {
-                line.flip_horizontal();
+                segments.flip_horizontal();
                 true
             }
             Some(MenuAction::FlipVertical) => {
-                line.flip_vertical();
+                segments.flip_vertical();
                 true
             }
             None => false,
         }
     }
 
-    fn toolbar(&mut self, ui: &mut Ui, line: &mut LfoLine) -> bool {
+    fn toolbar(&mut self, ui: &mut Ui, segments: &mut Segments) -> bool {
         let mut changed = false;
 
         ui.horizontal_wrapped(|ui| {
-            let mut smooth = line.smooth();
-
-            if ui
-                .checkbox(&mut smooth, "Smooth")
-                .on_hover_text("Ease every segment with a sine curve.")
-                .changed()
-            {
-                line.set_smooth(smooth);
-                changed = true;
-            }
-
-            ui.separator();
             ui.label("Grid")
                 .on_hover_text("Snap points while dragging. Hold Alt to place them freely.");
             ui.add(DragValue::new(&mut self.grid_x).range(1..=32));
@@ -233,11 +263,8 @@ impl LineEditor {
             ui.separator();
 
             for (label, preset) in PRESETS {
-                let shape = preset();
-                let selected = *line == shape;
-
-                if ui.selectable_label(selected, *label).clicked() && !selected {
-                    *line = shape;
+                if ui.button(*label).clicked() {
+                    *segments = preset();
                     changed = true;
                 }
             }
@@ -246,11 +273,12 @@ impl LineEditor {
         changed
     }
 
-    fn paint(&self, ui: &mut Ui, plot: Rect, frame: Rect, line: &LfoLine, phase: Option<Smp>) {
+    fn paint(&self, ui: &mut Ui, plot: Rect, frame: Rect, segments: &Segments, phase: Option<Smp>) {
         let pixels_per_point = ui.pixels_per_point();
         let painter = ui.painter();
+        let background = ui.visuals().extreme_bg_color;
 
-        painter.rect_filled(frame, 2.0, ui.visuals().extreme_bg_color);
+        painter.rect_filled(frame, 2.0, background);
         painter.rect_stroke(
             frame,
             2.0,
@@ -258,11 +286,10 @@ impl LineEditor {
             egui::StrokeKind::Inside,
         );
 
+        let curve = curve_points(plot, segments, pixels_per_point);
+
+        paint_fill(painter, plot, &curve, background);
         paint_grid(painter, plot, self.grid_x, self.grid_y);
-
-        let curve = curve_points(plot, line, pixels_per_point);
-
-        paint_fill(painter, plot, &curve);
 
         if curve.len() >= 2 {
             painter.line(curve, Stroke::new(1.5, WAVE_COLOR));
@@ -275,81 +302,92 @@ impl LineEditor {
                 [pos2(x, plot.top()), pos2(x, plot.bottom())],
                 Stroke::new(1.0, with_alpha(WAVE_COLOR, 0x88)),
             );
-            painter.circle_filled(to_pos(plot, phase, line.value_at(phase)), 3.5, WAVE_COLOR);
+            painter.circle_filled(
+                to_pos(plot, phase, segments.value_at(phase)),
+                3.5,
+                WAVE_COLOR,
+            );
         }
 
-        for index in 0..line.num_points() {
-            if !power_active(plot, line, index) {
+        for index in 0..segments.num_points() {
+            if !power_active(plot, segments, index) {
                 continue;
             }
 
-            let (x, y) = power_position(line, index);
+            let (x, y) = power_position(segments, index);
             painter.circle_filled(to_pos(plot, x, y), POWER_RADIUS, POWER_COLOR);
         }
 
-        for index in 0..line.num_points() {
-            let point = line.point(index);
+        for index in 0..segments.num_points() {
+            let point = segments.point(index);
             painter.circle_filled(to_pos(plot, point.x, point.y), POINT_RADIUS, POINT_COLOR);
         }
 
-        let drag_pos = match self.drag {
-            Some(Drag::Point(index)) => {
-                let point = line.point(index);
-                Some(to_pos(plot, point.x, point.y))
-            }
-            Some(Drag::Power(index)) => {
-                let (x, y) = power_position(line, index);
-                Some(to_pos(plot, x, y))
-            }
-            None => None,
-        };
+        let grab_stroke = Stroke::new(1.0, Color32::WHITE);
 
-        if let Some(pos) = drag_pos {
-            painter.circle_stroke(pos, GRAB_RADIUS, Stroke::new(1.0, WAVE_COLOR));
+        if let Some(drag) = self.drag {
+            let pos = target_pos(drag, plot, segments);
+            painter.circle_filled(pos, GRAB_RADIUS, Color32::from_white_alpha(0x40));
+            painter.circle_stroke(pos, GRAB_RADIUS, grab_stroke);
+        } else if let Some(hover) = self.hover {
+            painter.circle_stroke(target_pos(hover, plot, segments), GRAB_RADIUS, grab_stroke);
         }
     }
 }
 
-type Preset = (&'static str, fn() -> LfoLine);
+type Preset = (&'static str, fn() -> Segments);
 
 const PRESETS: &[Preset] = &[
-    ("Triangle", LfoLine::triangle),
-    ("Square", LfoLine::square),
-    ("Sine", LfoLine::sine),
-    ("Saw up", LfoLine::saw_up),
-    ("Saw down", LfoLine::saw_down),
-    ("Ramp", LfoLine::linear),
+    ("Triangle", Segments::triangle),
+    ("Square", Segments::square),
+    ("Sine", Segments::sine),
+    ("Saw up", Segments::saw_up),
+    ("Saw down", Segments::saw_down),
 ];
 
-fn double_click(plot: Rect, line: &mut LfoLine, pos: Pos2, shift: bool) -> bool {
-    let (point, power) = hit_test(plot, line, pos);
+fn double_click(plot: Rect, segments: &mut Segments, pos: Pos2, shift: bool) -> bool {
+    let (point, power) = hit_test(plot, segments, pos);
 
     if let Some(index) = point {
-        return line.remove_point(index);
+        return segments.remove_point(index);
     }
 
     if let Some(index) = power {
         if shift {
-            line.reset_powers();
+            segments.reset_powers();
         } else {
-            line.set_power(index, 0.0);
+            segments.set_power(index, 0.0);
         }
         return true;
     }
 
     let (x, y) = from_pos(plot, pos);
     let mut index = 0;
-    let n = line.num_points();
+    let n = segments.num_points();
 
-    while index < n && line.point(index).x <= x {
+    while index < n && segments.point(index).x <= x {
         index += 1;
     }
 
-    line.add_point(index, LfoPoint { x, y })
+    let smooth = if index == 0 {
+        segments.point(0).smooth
+    } else {
+        segments.point(index - 1).smooth
+    };
+
+    segments.add_point(
+        index,
+        Point {
+            x,
+            y,
+            smooth,
+            ..Point::default()
+        },
+    )
 }
 
 fn move_point(
-    line: &mut LfoLine,
+    segments: &mut Segments,
     index: usize,
     x: Smp,
     y: Smp,
@@ -357,7 +395,7 @@ fn move_point(
     grid_x: i32,
     grid_y: i32,
 ) {
-    let n = line.num_points();
+    let n = segments.num_points();
 
     if index >= n {
         return;
@@ -368,7 +406,7 @@ fn move_point(
     } else if index + 1 == n {
         (1.0, 1.0)
     } else {
-        (line.point(index - 1).x, line.point(index + 1).x)
+        (segments.point(index - 1).x, segments.point(index + 1).x)
     };
 
     let mut x = x.clamp(min_x, max_x);
@@ -390,33 +428,40 @@ fn move_point(
         }
     }
 
-    let linked = line.point(0).y == line.point(n - 1).y;
+    let linked = segments.point(0).y == segments.point(n - 1).y;
 
     if linked && index == 0 {
-        let end = line.point(n - 1);
-        line.set_point(n - 1, LfoPoint { x: end.x, y });
+        let end = segments.point(n - 1);
+        segments.set_point(n - 1, Point { y, ..end });
     } else if linked && index + 1 == n {
-        let start = line.point(0);
-        line.set_point(0, LfoPoint { x: start.x, y });
+        let start = segments.point(0);
+        segments.set_point(0, Point { y, ..start });
     }
 
-    line.set_point(index, LfoPoint { x, y });
+    let current = segments.point(index);
+    segments.set_point(index, Point { x, y, ..current });
 }
 
-fn move_powers(line: &mut LfoLine, index: usize, delta_change: Smp, all: bool, alternate: bool) {
-    let n = line.num_points();
+fn move_powers(
+    segments: &mut Segments,
+    index: usize,
+    delta_change: Smp,
+    all: bool,
+    alternate: bool,
+) {
+    let n = segments.num_points();
 
     if index >= n || n < 2 {
         return;
     }
 
     let (start, end) = if all { (0, n - 2) } else { (index, index) };
-    let descending = line.point(index).y > segment_end_y(line, index);
+    let descending = segments.point(index).y > segment_end_y(segments, index);
     let alternate_mult = if !alternate && descending { -1.0 } else { 1.0 };
 
     for i in start..=end {
-        let from_y = line.point(i).y;
-        let to_y = segment_end_y(line, i);
+        let from_y = segments.point(i).y;
+        let to_y = segment_end_y(segments, i);
 
         if from_y == to_y {
             continue;
@@ -428,30 +473,30 @@ fn move_powers(line: &mut LfoLine, index: usize, delta_change: Smp, all: bool, a
             delta = -delta;
         }
 
-        line.set_power(
+        segments.set_power(
             i,
-            (line.power(i) + delta * POWER_MOUSE_MULTIPLIER).clamp(-MAX_POWER, MAX_POWER),
+            (segments.power(i) + delta * POWER_MOUSE_MULTIPLIER).clamp(-MAX_POWER, MAX_POWER),
         );
     }
 }
 
-fn segment_end_y(line: &LfoLine, index: usize) -> Smp {
-    let n = line.num_points();
+fn segment_end_y(segments: &Segments, index: usize) -> Smp {
+    let n = segments.num_points();
 
     if index + 1 < n {
-        line.point(index + 1).y
+        segments.point(index + 1).y
     } else {
-        line.point(0).y
+        segments.point(0).y
     }
 }
 
-fn hit_test(plot: Rect, line: &LfoLine, pos: Pos2) -> (Option<usize>, Option<usize>) {
+fn hit_test(plot: Rect, segments: &Segments, pos: Pos2) -> (Option<usize>, Option<usize>) {
     let grab_sq = GRAB_RADIUS * GRAB_RADIUS;
     let mut best_point = None;
     let mut best_distance = grab_sq;
 
-    for index in 0..line.num_points() {
-        let point = line.point(index);
+    for index in 0..segments.num_points() {
+        let point = segments.point(index);
         let distance = pos.distance_sq(to_pos(plot, point.x, point.y));
 
         if distance < best_distance {
@@ -467,12 +512,12 @@ fn hit_test(plot: Rect, line: &LfoLine, pos: Pos2) -> (Option<usize>, Option<usi
     let mut best_power = None;
     best_distance = grab_sq;
 
-    for index in 0..line.num_points() {
-        if !power_active(plot, line, index) {
+    for index in 0..segments.num_points() {
+        if !power_active(plot, segments, index) {
             continue;
         }
 
-        let (x, y) = power_position(line, index);
+        let (x, y) = power_position(segments, index);
         let distance = pos.distance_sq(to_pos(plot, x, y));
 
         if distance < best_distance {
@@ -484,37 +529,37 @@ fn hit_test(plot: Rect, line: &LfoLine, pos: Pos2) -> (Option<usize>, Option<usi
     (None, best_power)
 }
 
-fn power_active(plot: Rect, line: &LfoLine, index: usize) -> bool {
-    let from = line.point(index);
-    let (to_x, to_y) = segment_end(line, index);
+fn power_active(plot: Rect, segments: &Segments, index: usize) -> bool {
+    let from = segments.point(index);
+    let (to_x, to_y) = segment_end(segments, index);
     let dx = to_x - from.x;
     let dy = to_y - from.y;
 
     plot.width() * dx >= MIN_POWER_WIDTH && dy != 0.0
 }
 
-fn segment_end(line: &LfoLine, index: usize) -> (Smp, Smp) {
-    let n = line.num_points();
+fn segment_end(segments: &Segments, index: usize) -> (Smp, Smp) {
+    let n = segments.num_points();
 
     if index + 1 < n {
-        let point = line.point(index + 1);
+        let point = segments.point(index + 1);
         (point.x, point.y)
     } else {
-        let point = line.point(0);
+        let point = segments.point(0);
         (point.x + 1.0, point.y)
     }
 }
 
-fn power_position(line: &LfoLine, index: usize) -> (Smp, Smp) {
-    let from = line.point(index);
-    let (to_x, to_y) = segment_end(line, index);
+fn power_position(segments: &Segments, index: usize) -> (Smp, Smp) {
+    let from = segments.point(index);
+    let (to_x, to_y) = segment_end(segments, index);
     let mut x = (from.x + to_x) * 0.5;
 
     if x >= 1.0 {
         x -= 1.0;
     }
 
-    let t = power_scale(0.5, line.power(index));
+    let t = power_scale(0.5, segments.power(index));
     let y = from.y + t * (to_y - from.y);
 
     (x, y)
@@ -523,15 +568,15 @@ fn power_position(line: &LfoLine, index: usize) -> (Smp, Smp) {
 /// Each segment is sampled once per horizontal pixel, and every sample is kept.
 /// A segment that lands on one pixel column keeps both endpoints, so a vertical
 /// jump stays a vertical line.
-fn curve_points(plot: Rect, line: &LfoLine, pixels_per_point: f32) -> Vec<Pos2> {
-    if plot.width() <= 0.0 || pixels_per_point <= 0.0 || line.num_points() < 2 {
+fn curve_points(plot: Rect, segments: &Segments, pixels_per_point: f32) -> Vec<Pos2> {
+    if plot.width() <= 0.0 || pixels_per_point <= 0.0 || segments.num_points() < 2 {
         return Vec::new();
     }
 
     let mut points = Vec::new();
 
-    for index in 0..line.num_points() - 1 {
-        append_segment_points(&mut points, plot, line, index, pixels_per_point);
+    for index in 0..segments.num_points() - 1 {
+        append_segment_points(&mut points, plot, segments, index, pixels_per_point);
     }
 
     points
@@ -540,12 +585,16 @@ fn curve_points(plot: Rect, line: &LfoLine, pixels_per_point: f32) -> Vec<Pos2> 
 fn append_segment_points(
     points: &mut Vec<Pos2>,
     plot: Rect,
-    line: &LfoLine,
+    segments: &Segments,
     index: usize,
     pixels_per_point: f32,
 ) {
-    let start = to_pos(plot, line.point(index).x, line.point(index).y);
-    let end = to_pos(plot, line.point(index + 1).x, line.point(index + 1).y);
+    let start = to_pos(plot, segments.point(index).x, segments.point(index).y);
+    let end = to_pos(
+        plot,
+        segments.point(index + 1).x,
+        segments.point(index + 1).y,
+    );
     let start_px = (start.x * pixels_per_point).round() as i32;
     let end_px = (end.x * pixels_per_point).round() as i32;
 
@@ -555,7 +604,7 @@ fn append_segment_points(
         for px in start_px + 1..end_px {
             let x = px as f32 / pixels_per_point;
             let phase = ((x - plot.left()) / plot.width()).clamp(0.0, 1.0);
-            let y = line.value_between(phase, index, index + 1);
+            let y = segments.value_between(phase, index, index + 1);
 
             push_point(points, pos2(x, to_pos(plot, phase, y).y));
         }
@@ -577,6 +626,19 @@ fn from_pos(plot: Rect, pos: Pos2) -> (Smp, Smp) {
     (x, y)
 }
 
+fn target_pos(target: Drag, plot: Rect, segments: &Segments) -> Pos2 {
+    match target {
+        Drag::Point(index) => {
+            let point = segments.point(index);
+            to_pos(plot, point.x, point.y)
+        }
+        Drag::Power(index) => {
+            let (x, y) = power_position(segments, index);
+            to_pos(plot, x, y)
+        }
+    }
+}
+
 fn to_pos(plot: Rect, x: Smp, y: Smp) -> Pos2 {
     pos2(
         plot.left() + x.clamp(0.0, 1.0) * plot.width(),
@@ -585,7 +647,7 @@ fn to_pos(plot: Rect, x: Smp, y: Smp) -> Pos2 {
 }
 
 fn paint_grid(painter: &Painter, plot: Rect, grid_x: i32, grid_y: i32) {
-    let stroke = Stroke::new(1.0, Color32::from_white_alpha(28));
+    let stroke = Stroke::new(1.0, GRID_COLOR);
 
     if grid_x > 1 {
         for i in 1..grid_x {
@@ -602,28 +664,54 @@ fn paint_grid(painter: &Painter, plot: Rect, grid_x: i32, grid_y: i32) {
     }
 }
 
-fn paint_fill(painter: &Painter, plot: Rect, points: &[Pos2]) {
+/// One gradient rectangle, then an opaque cover above the curve.
+/// A per-column mesh creases the gradient: vertical lines from premultiplied
+/// vertex colors, horizontal lines from sampling a gradient texture.
+fn paint_fill(painter: &Painter, plot: Rect, points: &[Pos2], background: Color32) {
+    if plot.height() <= 0.0 || plot.width() <= 0.0 {
+        return;
+    }
+
+    let mut gradient = Mesh::default();
+    let top = with_alpha(WAVE_COLOR, FILL_TOP_ALPHA);
+    let bottom = with_alpha(WAVE_COLOR, FILL_BOTTOM_ALPHA);
+
+    gradient.colored_vertex(plot.left_top(), top);
+    gradient.colored_vertex(plot.right_top(), top);
+    gradient.colored_vertex(plot.right_bottom(), bottom);
+    gradient.colored_vertex(plot.left_bottom(), bottom);
+    gradient.add_triangle(0, 1, 2);
+    gradient.add_triangle(0, 2, 3);
+    painter.add(Shape::mesh(gradient));
+
     if points.len() < 2 {
         return;
     }
 
-    let mut mesh = Mesh::default();
-    let color = with_alpha(WAVE_COLOR, FILL_ALPHA);
+    let cover = Color32::from_rgb(background.r(), background.g(), background.b());
+    let mut mask = Mesh::default();
 
     for window in points.windows(2) {
         let a = window[0];
         let b = window[1];
-        let index = mesh.vertices.len() as u32;
 
-        mesh.colored_vertex(a, color);
-        mesh.colored_vertex(b, color);
-        mesh.colored_vertex(pos2(b.x, plot.bottom()), color);
-        mesh.colored_vertex(pos2(a.x, plot.bottom()), color);
-        mesh.add_triangle(index, index + 1, index + 2);
-        mesh.add_triangle(index, index + 2, index + 3);
+        if b.x <= a.x {
+            continue;
+        }
+
+        let index = mask.vertices.len() as u32;
+
+        mask.colored_vertex(pos2(a.x, plot.top()), cover);
+        mask.colored_vertex(pos2(b.x, plot.top()), cover);
+        mask.colored_vertex(b, cover);
+        mask.colored_vertex(a, cover);
+        mask.add_triangle(index, index + 1, index + 2);
+        mask.add_triangle(index, index + 2, index + 3);
     }
 
-    painter.add(Shape::mesh(mesh));
+    if !mask.is_empty() {
+        painter.add(Shape::mesh(mask));
+    }
 }
 
 fn with_alpha(color: Color32, alpha: u8) -> Color32 {
@@ -634,7 +722,7 @@ fn with_alpha(color: Color32, alpha: u8) -> Color32 {
 mod tests {
     use egui::{Rect, pos2};
 
-    use addi_engine::lfo::LfoLine;
+    use addi_dsp::segments::Segments;
 
     use super::curve_points;
 
@@ -644,7 +732,7 @@ mod tests {
 
     #[test]
     fn linear_segment_keeps_a_point_per_pixel() {
-        let points = curve_points(plot(), &LfoLine::linear(), 1.0);
+        let points = curve_points(plot(), &Segments::linear(), 1.0);
 
         assert_eq!(points.len(), 101);
         assert_eq!(points[0], pos2(0.0, 100.0));
@@ -654,7 +742,7 @@ mod tests {
 
     #[test]
     fn square_keeps_vertical_edges() {
-        let points = curve_points(plot(), &LfoLine::square(), 1.0);
+        let points = curve_points(plot(), &Segments::square(), 1.0);
 
         assert_eq!(&points[..2], &[pos2(0.0, 100.0), pos2(0.0, 0.0)]);
         assert!(points.contains(&pos2(50.0, 0.0)));
@@ -664,7 +752,7 @@ mod tests {
 
     #[test]
     fn smooth_curve_keeps_intermediate_pixels() {
-        let points = curve_points(plot(), &LfoLine::sine(), 1.0);
+        let points = curve_points(plot(), &Segments::sine(), 1.0);
 
         assert!(points.len() > 3);
         assert_eq!(points[0], pos2(0.0, 100.0));

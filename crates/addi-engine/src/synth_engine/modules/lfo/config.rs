@@ -1,6 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
-use super::line::LfoLine;
+use addi_dsp::segments::Segments;
+
 use crate::synth_engine::{ModuleId, Smp, StereoSample};
 
 /// Accepts a mono skew, or a legacy stereo value (left channel).
@@ -38,7 +39,7 @@ pub struct LfoConfig {
     pub steal_phase: bool,
     pub frequency: StereoSample,
     pub phase_shift: StereoSample,
-    pub line: LfoLine,
+    pub segments: Segments,
 }
 
 impl Default for LfoConfig {
@@ -48,7 +49,7 @@ impl Default for LfoConfig {
             steal_phase: false,
             frequency: 1.0.into(),
             phase_shift: 0.0.into(),
-            line: LfoLine::triangle(),
+            segments: Segments::triangle(),
         }
     }
 }
@@ -63,7 +64,10 @@ struct LfoConfigDe {
     #[serde(default)]
     phase_shift: StereoSample,
     #[serde(default)]
-    line: Option<LfoLine>,
+    segments: Option<Segments>,
+    /// Presets saved when this field was named `line`.
+    #[serde(default)]
+    line: Option<Segments>,
     #[serde(default)]
     shape: Option<String>,
     #[serde(default, deserialize_with = "deserialize_optional_skew")]
@@ -72,16 +76,17 @@ struct LfoConfigDe {
 
 impl From<LfoConfigDe> for LfoConfig {
     fn from(raw: LfoConfigDe) -> Self {
-        let line = raw
-            .line
-            .unwrap_or_else(|| legacy_line(raw.shape.as_deref(), raw.skew));
+        let segments = raw
+            .segments
+            .or(raw.line)
+            .unwrap_or_else(|| legacy_segments(raw.shape.as_deref(), raw.skew));
 
         Self {
             id: raw.id,
             steal_phase: raw.steal_phase,
             frequency: raw.frequency,
             phase_shift: raw.phase_shift,
-            line,
+            segments,
         }
     }
 }
@@ -92,12 +97,12 @@ impl<'de> Deserialize<'de> for LfoConfig {
     }
 }
 
-fn legacy_line(shape: Option<&str>, skew: Option<Smp>) -> LfoLine {
+fn legacy_segments(shape: Option<&str>, skew: Option<Smp>) -> Segments {
     let skew = skew.unwrap_or(0.5);
 
     match shape.unwrap_or("Triangle") {
-        "Square" => LfoLine::square_at(skew),
-        "Sine" => LfoLine::sine_at(skew),
-        _ => LfoLine::triangle_at(skew),
+        "Square" => Segments::square_at(skew),
+        "Sine" => Segments::sine_at(skew),
+        _ => Segments::triangle_at(skew),
     }
 }

@@ -1,4 +1,6 @@
-use super::{LfoAudioEnd, LfoLine, LfoLinks, LfoUiEnd, UiEvent};
+use super::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
+
+use addi_dsp::segments::Segments;
 
 use crate::synth_engine::{Input, Smp, StereoSample};
 
@@ -41,7 +43,7 @@ impl LfoUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_line(&mut self, _line: LfoLine) -> bool {
+    fn set_segments(&mut self, _segments: Segments) -> bool {
         self.diverge()
     }
 

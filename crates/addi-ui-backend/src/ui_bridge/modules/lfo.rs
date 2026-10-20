@@ -1,5 +1,6 @@
 use crate::ui_bridge::ModuleUiBridge;
-use addi_engine::lfo::{Lfo, LfoConfig, LfoLine, LfoLinks, LfoUiEnd};
+use addi_dsp::segments::Segments;
+use addi_engine::lfo::{Lfo, LfoConfig, LfoLinks, LfoUiEnd};
 use addi_engine::{Input, Smp, StereoSample};
 
 pub struct LfoUiBridge<L: LfoLinks = crate::links::lfo::Links> {
@@ -35,13 +36,9 @@ impl<L: LfoLinks> LfoUiBridge<L> {
         }
     }
 
-    pub fn set_line(&mut self, line: LfoLine) {
-        if self.config.line == line {
-            return;
-        }
-
-        if self.ui_end.set_line(line) {
-            self.config.line = line;
+    pub fn set_segments(&mut self, segments: Segments) {
+        if self.ui_end.set_segments(segments) {
+            self.config.segments = segments;
         }
     }
 

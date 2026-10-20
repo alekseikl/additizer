@@ -4,7 +4,6 @@ use itertools::izip;
 use wide::f32x4;
 
 mod config;
-mod line;
 mod link;
 pub mod stub;
 
@@ -12,8 +11,9 @@ pub mod stub;
 mod tests;
 
 pub use config::LfoConfig;
-pub use line::{LfoLine, LfoPoint, MAX_POINTS, MAX_POWER};
 pub use link::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
+
+use addi_dsp::segments::Segments;
 
 use crate::synth_engine::{
     Input, ModuleId, SmoothedSampleParams, Smp, StereoSample,
@@ -59,14 +59,14 @@ impl ChannelParams {
 }
 
 struct Params {
-    line: LfoLine,
+    segments: Segments,
     steal_phase: bool,
 }
 
 impl Params {
     fn from_config(c: &config::LfoConfig) -> Self {
         Self {
-            line: c.line,
+            segments: c.segments,
             steal_phase: c.steal_phase,
         }
     }
@@ -137,7 +137,7 @@ pub struct Lfo<L: LfoLinks = stub::Links> {
     id: ModuleId,
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
-    /// One cycle of [`LfoLine`], padded the same way as the oscillator wavetable.
+    /// One cycle of [`Segments`], padded the same way as the oscillator wavetable.
     wave: [Smp; WAVEFORM_BUFFER_SIZE],
     buffers: Buffers,
     audio_end: L::AudioEnd,
@@ -190,7 +190,7 @@ impl<L: LfoLinks> Lfo<L> {
             steal_phase: self.params.steal_phase,
             frequency: get_smoothed_param!(self, frequency),
             phase_shift: get_smoothed_param!(self, phase_shift),
-            line: self.params.line,
+            segments: self.params.segments,
         }
     }
 
@@ -199,12 +199,8 @@ impl<L: LfoLinks> Lfo<L> {
     set_smoothed_param!(set_frequency, frequency);
     set_smoothed_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
 
-    pub fn set_line(&mut self, line: LfoLine) {
-        if self.params.line == line {
-            return;
-        }
-
-        self.params.line = line;
+    pub fn set_segments(&mut self, segments: Segments) {
+        self.params.segments = segments;
         self.bake_wave();
     }
 
@@ -213,7 +209,7 @@ impl<L: LfoLinks> Lfo<L> {
 
         for i in 0..WAVEFORM_SIZE {
             let t = i as Smp / n;
-            self.wave[WAVEFORM_PAD_LEFT + i] = self.params.line.value_at(t);
+            self.wave[WAVEFORM_PAD_LEFT + i] = self.params.segments.value_at(t);
         }
 
         let last = WAVEFORM_PAD_LEFT + WAVEFORM_SIZE - 1;
@@ -356,7 +352,7 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
                     Input::PhaseShift => self.set_phase_shift(value),
                     _ => (),
                 },
-                UiEvent::Line(line) => self.set_line(line),
+                UiEvent::Segments(segments) => self.set_segments(segments),
                 UiEvent::StealPhase(value) => self.set_steal_phase(value),
             }
         }
