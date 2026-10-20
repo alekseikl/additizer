@@ -18,9 +18,9 @@ const MIN_POWER_WIDTH: f32 = 3.0;
 const SNAP_X: Smp = 0.02;
 const SNAP_Y: Smp = 0.04;
 const POWER_MOUSE_MULTIPLIER: Smp = 9.0;
-const CURVE_STEPS: usize = 64;
 
 const WAVE_COLOR: Color32 = Color32::from_rgb(0x4a, 0xb0, 0xff);
+const FILL_ALPHA: u8 = 0x30;
 const POINT_COLOR: Color32 = Color32::from_rgb(0xe8, 0xf4, 0xff);
 const POWER_COLOR: Color32 = Color32::from_rgb(0x9a, 0xd0, 0xff);
 
@@ -247,6 +247,7 @@ impl LineEditor {
     }
 
     fn paint(&self, ui: &mut Ui, plot: Rect, frame: Rect, line: &LfoLine, phase: Option<Smp>) {
+        let pixels_per_point = ui.pixels_per_point();
         let painter = ui.painter();
 
         painter.rect_filled(frame, 2.0, ui.visuals().extreme_bg_color);
@@ -259,7 +260,7 @@ impl LineEditor {
 
         paint_grid(painter, plot, self.grid_x, self.grid_y);
 
-        let curve = curve_points(plot, line);
+        let curve = curve_points(plot, line, pixels_per_point);
 
         paint_fill(painter, plot, &curve);
 
@@ -519,34 +520,54 @@ fn power_position(line: &LfoLine, index: usize) -> (Smp, Smp) {
     (x, y)
 }
 
-fn curve_points(plot: Rect, line: &LfoLine) -> Vec<Pos2> {
-    let n = line.num_points();
+/// Each segment is sampled once per horizontal pixel, and every sample is kept.
+/// A segment that lands on one pixel column keeps both endpoints, so a vertical
+/// jump stays a vertical line.
+fn curve_points(plot: Rect, line: &LfoLine, pixels_per_point: f32) -> Vec<Pos2> {
+    if plot.width() <= 0.0 || pixels_per_point <= 0.0 || line.num_points() < 2 {
+        return Vec::new();
+    }
+
     let mut points = Vec::new();
 
-    for index in 0..n.saturating_sub(1) {
-        let from = line.point(index);
-        let to = line.point(index + 1);
-        let steps = if !line.smooth() && line.power(index).abs() < 0.01 {
-            1
-        } else {
-            CURVE_STEPS
-        };
-        let start = usize::from(index > 0);
-
-        for step in start..=steps {
-            let t = step as Smp / steps as Smp;
-            let x = from.x + (to.x - from.x) * t;
-            let y = if to.x <= from.x {
-                if step == 0 { from.y } else { to.y }
-            } else {
-                line.value_between(x, index, index + 1)
-            };
-
-            points.push(to_pos(plot, x, y));
-        }
+    for index in 0..line.num_points() - 1 {
+        append_segment_points(&mut points, plot, line, index, pixels_per_point);
     }
 
     points
+}
+
+fn append_segment_points(
+    points: &mut Vec<Pos2>,
+    plot: Rect,
+    line: &LfoLine,
+    index: usize,
+    pixels_per_point: f32,
+) {
+    let start = to_pos(plot, line.point(index).x, line.point(index).y);
+    let end = to_pos(plot, line.point(index + 1).x, line.point(index + 1).y);
+    let start_px = (start.x * pixels_per_point).round() as i32;
+    let end_px = (end.x * pixels_per_point).round() as i32;
+
+    push_point(points, start);
+
+    if end_px > start_px {
+        for px in start_px + 1..end_px {
+            let x = px as f32 / pixels_per_point;
+            let phase = ((x - plot.left()) / plot.width()).clamp(0.0, 1.0);
+            let y = line.value_between(phase, index, index + 1);
+
+            push_point(points, pos2(x, to_pos(plot, phase, y).y));
+        }
+    }
+
+    push_point(points, end);
+}
+
+fn push_point(points: &mut Vec<Pos2>, point: Pos2) {
+    if points.last() != Some(&point) {
+        points.push(point);
+    }
 }
 
 fn from_pos(plot: Rect, pos: Pos2) -> (Smp, Smp) {
@@ -587,25 +608,19 @@ fn paint_fill(painter: &Painter, plot: Rect, points: &[Pos2]) {
     }
 
     let mut mesh = Mesh::default();
-    let edge = with_alpha(WAVE_COLOR, 0x47);
-    let base = with_alpha(WAVE_COLOR, 0x18);
+    let color = with_alpha(WAVE_COLOR, FILL_ALPHA);
 
     for window in points.windows(2) {
         let a = window[0];
         let b = window[1];
-        let ca = pos2(a.x, plot.bottom());
-        let cb = pos2(b.x, plot.bottom());
-        let i_a = mesh.vertices.len() as u32;
+        let index = mesh.vertices.len() as u32;
 
-        mesh.colored_vertex(a, edge);
-        let i_b = mesh.vertices.len() as u32;
-        mesh.colored_vertex(b, edge);
-        let i_cb = mesh.vertices.len() as u32;
-        mesh.colored_vertex(cb, base);
-        let i_ca = mesh.vertices.len() as u32;
-        mesh.colored_vertex(ca, base);
-        mesh.add_triangle(i_a, i_b, i_cb);
-        mesh.add_triangle(i_a, i_cb, i_ca);
+        mesh.colored_vertex(a, color);
+        mesh.colored_vertex(b, color);
+        mesh.colored_vertex(pos2(b.x, plot.bottom()), color);
+        mesh.colored_vertex(pos2(a.x, plot.bottom()), color);
+        mesh.add_triangle(index, index + 1, index + 2);
+        mesh.add_triangle(index, index + 2, index + 3);
     }
 
     painter.add(Shape::mesh(mesh));
@@ -613,4 +628,47 @@ fn paint_fill(painter: &Painter, plot: Rect, points: &[Pos2]) {
 
 fn with_alpha(color: Color32, alpha: u8) -> Color32 {
     Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
+}
+
+#[cfg(test)]
+mod tests {
+    use egui::{Rect, pos2};
+
+    use addi_engine::lfo::LfoLine;
+
+    use super::curve_points;
+
+    fn plot() -> Rect {
+        Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 100.0))
+    }
+
+    #[test]
+    fn linear_segment_keeps_a_point_per_pixel() {
+        let points = curve_points(plot(), &LfoLine::linear(), 1.0);
+
+        assert_eq!(points.len(), 101);
+        assert_eq!(points[0], pos2(0.0, 100.0));
+        assert_eq!(points[40], pos2(40.0, 60.0));
+        assert_eq!(points[100], pos2(100.0, 0.0));
+    }
+
+    #[test]
+    fn square_keeps_vertical_edges() {
+        let points = curve_points(plot(), &LfoLine::square(), 1.0);
+
+        assert_eq!(&points[..2], &[pos2(0.0, 100.0), pos2(0.0, 0.0)]);
+        assert!(points.contains(&pos2(50.0, 0.0)));
+        assert!(points.contains(&pos2(50.0, 100.0)));
+        assert_eq!(points[points.len() - 1], pos2(100.0, 100.0));
+    }
+
+    #[test]
+    fn smooth_curve_keeps_intermediate_pixels() {
+        let points = curve_points(plot(), &LfoLine::sine(), 1.0);
+
+        assert!(points.len() > 3);
+        assert_eq!(points[0], pos2(0.0, 100.0));
+        assert!(points.contains(&pos2(50.0, 0.0)));
+        assert_eq!(points[points.len() - 1], pos2(100.0, 100.0));
+    }
 }
