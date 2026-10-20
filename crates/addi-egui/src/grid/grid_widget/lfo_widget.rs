@@ -5,10 +5,7 @@ use crate::{
     grid::WidgetCtx,
     waveform::{self, WaveformOptions},
 };
-use addi_engine::{
-    Input, ModuleId, Smp,
-    lfo::{Lfo, LfoShape},
-};
+use addi_engine::{Input, ModuleId, Smp, lfo::LfoLine};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
 use super::GridWidgetContent;
@@ -31,13 +28,12 @@ impl Default for LfoWidget {
 }
 
 impl LfoWidget {
-    fn build_waveform(&mut self, shape: LfoShape, phase_shift: Smp, skew: Smp) {
-        let last = (DISPLAY_SAMPLES) as Smp;
+    fn build_waveform(&mut self, line: &LfoLine, phase_shift: Smp) {
+        let last = DISPLAY_SAMPLES as Smp;
 
         for (i, sample) in self.waveform.iter_mut().enumerate() {
-            let t = i as Smp / last;
-            *sample =
-                Lfo::<addi_ui_backend::links::lfo::Links>::evaluate(shape, t, phase_shift, skew);
+            let t = (i as Smp / last + phase_shift).rem_euclid(1.0);
+            *sample = line.value_at(t);
         }
     }
 
@@ -68,7 +64,7 @@ impl LfoWidget {
 
         bridge.apply_modulation(module_id, Input::PhaseShift, &mut config.phase_shift);
 
-        self.build_waveform(config.shape, config.phase_shift[0], config.skew);
+        self.build_waveform(&config.line, config.phase_shift[0]);
 
         let painter = ui.painter();
 
@@ -87,12 +83,9 @@ impl LfoWidget {
 
         if has_active_voices {
             let phase = lfo_bridge.get_phase();
-            let value = Lfo::<addi_ui_backend::links::lfo::Links>::evaluate(
-                config.shape,
-                phase,
-                config.phase_shift[0],
-                config.skew,
-            );
+            let value = config
+                .line
+                .value_at((phase + config.phase_shift[0]).rem_euclid(1.0));
             painter.circle_filled(
                 Self::phase_pos(rect, phase, value),
                 PHASE_RADIUS,

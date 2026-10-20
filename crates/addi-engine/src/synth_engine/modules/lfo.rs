@@ -1,16 +1,18 @@
-use std::{array, f32};
+use std::array;
 
 use itertools::izip;
 use wide::f32x4;
 
 mod config;
+mod line;
 mod link;
 pub mod stub;
 
 #[cfg(test)]
 mod tests;
 
-pub use config::{LfoConfig, LfoShape};
+pub use config::LfoConfig;
+pub use line::{LfoLine, LfoPoint, MAX_POINTS, MAX_POWER};
 pub use link::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
 
 use crate::synth_engine::{
@@ -57,16 +59,14 @@ impl ChannelParams {
 }
 
 struct Params {
-    shape: LfoShape,
-    skew: Smp,
+    line: LfoLine,
     steal_phase: bool,
 }
 
 impl Params {
     fn from_config(c: &config::LfoConfig) -> Self {
         Self {
-            shape: c.shape,
-            skew: c.skew.clamp(0.0, 1.0),
+            line: c.line,
             steal_phase: c.steal_phase,
         }
     }
@@ -137,7 +137,7 @@ pub struct Lfo<L: LfoLinks = stub::Links> {
     id: ModuleId,
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
-    /// `shape` and `skew`, padded the same way as the oscillator wavetable.
+    /// One cycle of [`LfoLine`], padded the same way as the oscillator wavetable.
     wave: [Smp; WAVEFORM_BUFFER_SIZE],
     buffers: Buffers,
     audio_end: L::AudioEnd,
@@ -187,11 +187,10 @@ impl<L: LfoLinks> Lfo<L> {
     pub fn get_config(&self) -> LfoConfig {
         LfoConfig {
             id: self.id,
-            shape: self.params.shape,
             steal_phase: self.params.steal_phase,
             frequency: get_smoothed_param!(self, frequency),
             phase_shift: get_smoothed_param!(self, phase_shift),
-            skew: self.params.skew,
+            line: self.params.line,
         }
     }
 
@@ -200,24 +199,21 @@ impl<L: LfoLinks> Lfo<L> {
     set_smoothed_param!(set_frequency, frequency);
     set_smoothed_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
 
-    pub fn set_shape(&mut self, shape: LfoShape) {
-        self.params.shape = shape;
-        self.bake_wave();
-    }
+    pub fn set_line(&mut self, line: LfoLine) {
+        if self.params.line == line {
+            return;
+        }
 
-    pub fn set_skew(&mut self, skew: Smp) {
-        self.params.skew = skew.clamp(0.0, 1.0);
+        self.params.line = line;
         self.bake_wave();
     }
 
     fn bake_wave(&mut self) {
-        let shape = Self::shape_function(self.params.shape);
-        let skew = self.params.skew;
         let n = WAVEFORM_SIZE as Smp;
 
         for i in 0..WAVEFORM_SIZE {
             let t = i as Smp / n;
-            self.wave[WAVEFORM_PAD_LEFT + i] = shape(Self::skew_arg(t, skew));
+            self.wave[WAVEFORM_PAD_LEFT + i] = self.params.line.value_at(t);
         }
 
         let last = WAVEFORM_PAD_LEFT + WAVEFORM_SIZE - 1;
@@ -236,45 +232,6 @@ impl<L: LfoLinks> Lfo<L> {
         let [a, b, c, d] = (catmull_rom(t) * samples).to_array();
 
         (a + c) + (b + d)
-    }
-
-    fn triangle(x: Smp) -> Smp {
-        2.0 * x.min(1.0 - x)
-    }
-
-    fn square(x: Smp) -> Smp {
-        Smp::from(x < 0.5)
-    }
-
-    fn sine(x: Smp) -> Smp {
-        let sine = (f32::consts::PI * x).sin();
-
-        sine * sine
-    }
-
-    fn shape_function(shape: LfoShape) -> fn(Smp) -> Smp {
-        match shape {
-            LfoShape::Triangle => Self::triangle,
-            LfoShape::Square => Self::square,
-            LfoShape::Sine => Self::sine,
-        }
-    }
-
-    #[inline]
-    fn skew_arg(arg: Smp, skew: Smp) -> Smp {
-        let arg_less = arg < skew;
-
-        Smp::from(arg_less) * (0.5 * arg / skew.max(Smp::EPSILON))
-            + Smp::from(!arg_less) * (0.5 + (arg - skew) * 0.5 / (1.0 - skew).max(Smp::EPSILON))
-    }
-
-    /// Evaluate the LFO curve at normalized phase `t` ∈ [0, 1].
-    pub fn evaluate(shape: LfoShape, t: Smp, phase_shift: Smp, skew: Smp) -> Smp {
-        let arg = Phase::from_normalized(t.clamp(0.0, 1.0))
-            .add_normalized(phase_shift.clamp(-1.0, 1.0))
-            .normalized();
-
-        Self::shape_function(shape)(Self::skew_arg(arg, skew.clamp(0.0, 1.0)))
     }
 
     fn process_voice(
@@ -399,9 +356,8 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
                     Input::PhaseShift => self.set_phase_shift(value),
                     _ => (),
                 },
-                UiEvent::Shape(shape) => self.set_shape(shape),
+                UiEvent::Line(line) => self.set_line(line),
                 UiEvent::StealPhase(value) => self.set_steal_phase(value),
-                UiEvent::Skew(value) => self.set_skew(value),
             }
         }
     }

@@ -1,5 +1,5 @@
 use crate::ui_bridge::ModuleUiBridge;
-use addi_engine::lfo::{Lfo, LfoConfig, LfoLinks, LfoShape, LfoUiEnd};
+use addi_engine::lfo::{Lfo, LfoConfig, LfoLine, LfoLinks, LfoUiEnd};
 use addi_engine::{Input, Smp, StereoSample};
 
 pub struct LfoUiBridge<L: LfoLinks = crate::links::lfo::Links> {
@@ -35,15 +35,13 @@ impl<L: LfoLinks> LfoUiBridge<L> {
         }
     }
 
-    pub fn set_skew(&mut self, value: Smp) {
-        if self.ui_end.set_skew(value) {
-            self.config.skew = value;
+    pub fn set_line(&mut self, line: LfoLine) {
+        if self.config.line == line {
+            return;
         }
-    }
 
-    pub fn set_shape(&mut self, shape: LfoShape) {
-        if self.ui_end.set_shape(shape) {
-            self.config.shape = shape;
+        if self.ui_end.set_line(line) {
+            self.config.line = line;
         }
     }
 

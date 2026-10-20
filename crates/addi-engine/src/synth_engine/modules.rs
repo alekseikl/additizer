@@ -21,7 +21,7 @@ pub use amplifier::Amplifier;
 pub use envelope::Envelope;
 pub use expressions::Expressions;
 pub use external_param::ExternalParam;
-pub use lfo::{Lfo, LfoShape};
+pub use lfo::Lfo;
 pub use mixer::Mixer;
 pub use oscillator::Oscillator;
 pub use output::Output;

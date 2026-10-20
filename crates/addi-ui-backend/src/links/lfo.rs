@@ -2,7 +2,7 @@ use triple_buffer::triple_buffer;
 
 use addi_engine::{Input, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
-use addi_engine::lfo::LfoShape;
+use addi_engine::lfo::LfoLine;
 
 use addi_engine::lfo::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
 
@@ -20,16 +20,12 @@ impl UiEnd {
         self.tx.push(UiEvent::InputParam { input, value }).is_ok()
     }
 
-    pub fn set_shape(&mut self, shape: LfoShape) -> bool {
-        self.tx.push(UiEvent::Shape(shape)).is_ok()
+    pub fn set_line(&mut self, line: LfoLine) -> bool {
+        self.tx.push(UiEvent::Line(line)).is_ok()
     }
 
     pub fn set_steal_phase(&mut self, value: bool) -> bool {
         self.tx.push(UiEvent::StealPhase(value)).is_ok()
-    }
-
-    pub fn set_skew(&mut self, value: Smp) -> bool {
-        self.tx.push(UiEvent::Skew(value)).is_ok()
     }
 }
 
@@ -80,14 +76,11 @@ impl LfoUiEnd for UiEnd {
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
         UiEnd::set_param(self, input, value)
     }
-    fn set_shape(&mut self, shape: LfoShape) -> bool {
-        UiEnd::set_shape(self, shape)
+    fn set_line(&mut self, line: LfoLine) -> bool {
+        UiEnd::set_line(self, line)
     }
     fn set_steal_phase(&mut self, value: bool) -> bool {
         UiEnd::set_steal_phase(self, value)
-    }
-    fn set_skew(&mut self, value: Smp) -> bool {
-        UiEnd::set_skew(self, value)
     }
 }
 

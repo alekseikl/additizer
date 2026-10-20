@@ -19,9 +19,8 @@ pub use buffer::{
 pub use config::{EngineConfig, EngineParams, LinkConfig, MAX_BANDWIDTH, ModuleConfig};
 pub use module_handle::ModuleType;
 pub use modules::{
-    Amplifier, Envelope, Expressions, ExternalParam, Lfo, LfoShape, Mixer, Oscillator, Pitch,
-    ShaperType, SpectralBandSelect, SpectralBlend, SpectralEq, SpectralFilter, SpectralMixer, Svf,
-    WaveShaper,
+    Amplifier, Envelope, Expressions, ExternalParam, Lfo, Mixer, Oscillator, Pitch, ShaperType,
+    SpectralBandSelect, SpectralBlend, SpectralEq, SpectralFilter, SpectralMixer, Svf, WaveShaper,
     amplifier::{self},
     envelope::{self},
     expressions::{self},

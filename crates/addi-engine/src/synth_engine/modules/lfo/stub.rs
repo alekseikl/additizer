@@ -1,4 +1,4 @@
-use super::{LfoAudioEnd, LfoLinks, LfoShape, LfoUiEnd, UiEvent};
+use super::{LfoAudioEnd, LfoLine, LfoLinks, LfoUiEnd, UiEvent};
 
 use crate::synth_engine::{Input, Smp, StereoSample};
 
@@ -41,15 +41,11 @@ impl LfoUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_shape(&mut self, _shape: LfoShape) -> bool {
+    fn set_line(&mut self, _line: LfoLine) -> bool {
         self.diverge()
     }
 
     fn set_steal_phase(&mut self, _value: bool) -> bool {
-        self.diverge()
-    }
-
-    fn set_skew(&mut self, _value: Smp) -> bool {
         self.diverge()
     }
 }
