@@ -11,9 +11,10 @@ pub mod stub;
 mod tests;
 
 pub use config::LfoConfig;
+use config::{MAX_FREQUENCY, MAX_PHASE_SHIFT, MIN_FREQUENCY, MIN_PHASE_SHIFT};
 pub use link::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
 
-use addi_dsp::segments::Segments;
+use addi_dsp::{segments::Segments, utils::sanitize};
 
 use crate::synth_engine::{
     Input, ModuleId, SmoothedSampleParams, Smp, StereoSample,
@@ -66,7 +67,7 @@ struct Params {
 impl Params {
     fn from_config(c: &config::LfoConfig) -> Self {
         Self {
-            segments: c.segments,
+            segments: c.segments.clone(),
             steal_phase: c.steal_phase,
         }
     }
@@ -163,13 +164,16 @@ impl<L: LfoLinks> Lfo<L> {
     }
 
     pub fn from_config(config: &config::LfoConfig, buffer_size: usize) -> Self {
+        let mut config = config.clone();
+        config.sanitize();
+
         let (audio_end, ui_end) = L::create_link_pair();
 
         let mut lfo = Self {
             id: config.id,
-            params: Params::from_config(config),
+            params: Params::from_config(&config),
             channel_params: array::from_fn(|channel_idx| {
-                ChannelParams::from_config(config, channel_idx)
+                ChannelParams::from_config(&config, channel_idx)
             }),
             wave: [0.0; WAVEFORM_BUFFER_SIZE],
             buffers: Buffers::new(buffer_size),
@@ -190,27 +194,33 @@ impl<L: LfoLinks> Lfo<L> {
             steal_phase: self.params.steal_phase,
             frequency: get_smoothed_param!(self, frequency),
             phase_shift: get_smoothed_param!(self, phase_shift),
-            segments: self.params.segments,
+            segments: self.params.segments.clone(),
         }
     }
 
     set_mono_param!(set_steal_phase, steal_phase, bool);
 
-    set_smoothed_param!(set_frequency, frequency);
-    set_smoothed_param!(set_phase_shift, phase_shift, phase_shift.clamp(-1.0, 1.0));
+    set_smoothed_param!(
+        set_frequency,
+        frequency,
+        sanitize(*frequency, MIN_FREQUENCY, MAX_FREQUENCY)
+    );
+    set_smoothed_param!(
+        set_phase_shift,
+        phase_shift,
+        sanitize(*phase_shift, MIN_PHASE_SHIFT, MAX_PHASE_SHIFT)
+    );
 
-    pub fn set_segments(&mut self, segments: Segments) {
+    pub fn set_segments(&mut self, mut segments: Segments) {
+        segments.sanitize();
         self.params.segments = segments;
         self.bake_wave();
     }
 
     fn bake_wave(&mut self) {
-        let n = WAVEFORM_SIZE as Smp;
-
-        for i in 0..WAVEFORM_SIZE {
-            let t = i as Smp / n;
-            self.wave[WAVEFORM_PAD_LEFT + i] = self.params.segments.value_at(t);
-        }
+        self.params
+            .segments
+            .render(&mut self.wave[WAVEFORM_PAD_LEFT..WAVEFORM_PAD_LEFT + WAVEFORM_SIZE]);
 
         let last = WAVEFORM_PAD_LEFT + WAVEFORM_SIZE - 1;
         self.wave[0] = self.wave[last];
@@ -352,7 +362,10 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
                     Input::PhaseShift => self.set_phase_shift(value),
                     _ => (),
                 },
-                UiEvent::Segments(segments) => self.set_segments(segments),
+                UiEvent::SegmentsUpdated => {
+                    let segments = self.audio_end.read_segments().clone();
+                    self.set_segments(segments);
+                }
                 UiEvent::StealPhase(value) => self.set_steal_phase(value),
             }
         }

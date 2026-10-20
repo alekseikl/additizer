@@ -37,7 +37,7 @@ impl<L: LfoLinks> LfoUiBridge<L> {
     }
 
     pub fn set_segments(&mut self, segments: Segments) {
-        if self.ui_end.set_segments(segments) {
+        if self.ui_end.set_segments(segments.clone()) {
             self.config.segments = segments;
         }
     }

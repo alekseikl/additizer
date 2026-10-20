@@ -1,8 +1,12 @@
+use std::sync::LazyLock;
+
 use super::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
 
 use addi_dsp::segments::Segments;
 
 use crate::synth_engine::{Input, Smp, StereoSample};
+
+static SEGMENTS: LazyLock<Segments> = LazyLock::new(Segments::default);
 
 pub struct AudioEnd;
 
@@ -32,6 +36,10 @@ impl LfoAudioEnd for AudioEnd {
     }
 
     fn update_phase(&mut self, _phase: Smp) {}
+
+    fn read_segments(&mut self) -> &Segments {
+        &SEGMENTS
+    }
 }
 
 impl LfoUiEnd for NoUi {

@@ -9,6 +9,7 @@ use addi_engine::lfo::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
     phase: triple_buffer::Output<Smp>,
+    segments: triple_buffer::Input<Segments>,
 }
 
 impl UiEnd {
@@ -21,7 +22,8 @@ impl UiEnd {
     }
 
     pub fn set_segments(&mut self, segments: Segments) -> bool {
-        self.tx.push(UiEvent::Segments(segments)).is_ok()
+        self.segments.write(segments);
+        self.tx.push(UiEvent::SegmentsUpdated).is_ok()
     }
 
     pub fn set_steal_phase(&mut self, value: bool) -> bool {
@@ -32,6 +34,7 @@ impl UiEnd {
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
     phase: triple_buffer::Input<Smp>,
+    segments: triple_buffer::Output<Segments>,
 }
 
 impl AudioEnd {
@@ -42,20 +45,27 @@ impl AudioEnd {
     pub fn update_phase(&mut self, phase: Smp) {
         self.phase.write(phase);
     }
+
+    pub fn read_segments(&mut self) -> &Segments {
+        self.segments.read()
+    }
 }
 
 pub fn make_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
     let (phase_input, phase_output) = triple_buffer(&0.0);
+    let (segments_input, segments_output) = triple_buffer(&Segments::default());
 
     (
         AudioEnd {
             rx: from_ui_rx,
             phase: phase_input,
+            segments: segments_output,
         },
         UiEnd {
             tx: to_audio_tx,
             phase: phase_output,
+            segments: segments_input,
         },
     )
 }
@@ -66,6 +76,9 @@ impl LfoAudioEnd for AudioEnd {
     }
     fn update_phase(&mut self, phase: Smp) {
         AudioEnd::update_phase(self, phase)
+    }
+    fn read_segments(&mut self) -> &Segments {
+        AudioEnd::read_segments(self)
     }
 }
 

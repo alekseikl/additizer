@@ -5,9 +5,11 @@ use egui::{
 
 use addi_dsp::{
     power_scale,
-    segments::{MAX_POWER, Point, Segments},
+    segments::{MAX_POWER, Segment, Segments},
 };
 use addi_engine::Smp;
+
+use crate::segment_presets;
 
 const EDITOR_HEIGHT: f32 = 220.0;
 const PAD_Y: f32 = 6.0;
@@ -180,9 +182,9 @@ impl LineEditor {
 
         response.context_menu(|ui| {
             if let Some(index) = menu_point.or(menu_power)
-                && index < segments.num_points()
+                && index < segments.num_segments()
             {
-                let smooth = segments.point(index).smooth;
+                let smooth = segments.segment(index).smooth;
                 let label = if smooth {
                     "Sharpen segment"
                 } else {
@@ -201,7 +203,7 @@ impl LineEditor {
 
             if let Some(index) = menu_point
                 && index > 0
-                && index + 1 < segments.num_points()
+                && index + 1 < segments.num_segments()
                 && ui.button("Remove point").clicked()
             {
                 action = Some(MenuAction::Remove(index));
@@ -229,7 +231,7 @@ impl LineEditor {
         });
 
         match action {
-            Some(MenuAction::Remove(index)) => segments.remove_point(index),
+            Some(MenuAction::Remove(index)) => segments.remove_segment(index),
             Some(MenuAction::ResetPower(index)) => {
                 segments.set_power(index, 0.0);
                 true
@@ -309,7 +311,7 @@ impl LineEditor {
             );
         }
 
-        for index in 0..segments.num_points() {
+        for index in 0..segments.num_segments() {
             if !power_active(plot, segments, index) {
                 continue;
             }
@@ -318,8 +320,8 @@ impl LineEditor {
             painter.circle_filled(to_pos(plot, x, y), POWER_RADIUS, POWER_COLOR);
         }
 
-        for index in 0..segments.num_points() {
-            let point = segments.point(index);
+        for index in 0..segments.num_segments() {
+            let point = segments.segment(index);
             painter.circle_filled(to_pos(plot, point.x, point.y), POINT_RADIUS, POINT_COLOR);
         }
 
@@ -338,18 +340,18 @@ impl LineEditor {
 type Preset = (&'static str, fn() -> Segments);
 
 const PRESETS: &[Preset] = &[
-    ("Triangle", Segments::triangle),
-    ("Square", Segments::square),
-    ("Sine", Segments::sine),
-    ("Saw up", Segments::saw_up),
-    ("Saw down", Segments::saw_down),
+    ("Triangle", segment_presets::triangle),
+    ("Square", segment_presets::square),
+    ("Sine", segment_presets::sine),
+    ("Saw up", segment_presets::saw_up),
+    ("Saw down", segment_presets::saw_down),
 ];
 
 fn double_click(plot: Rect, segments: &mut Segments, pos: Pos2, shift: bool) -> bool {
     let (point, power) = hit_test(plot, segments, pos);
 
     if let Some(index) = point {
-        return segments.remove_point(index);
+        return segments.remove_segment(index);
     }
 
     if let Some(index) = power {
@@ -363,25 +365,25 @@ fn double_click(plot: Rect, segments: &mut Segments, pos: Pos2, shift: bool) -> 
 
     let (x, y) = from_pos(plot, pos);
     let mut index = 0;
-    let n = segments.num_points();
+    let n = segments.num_segments();
 
-    while index < n && segments.point(index).x <= x {
+    while index < n && segments.segment(index).x <= x {
         index += 1;
     }
 
     let smooth = if index == 0 {
-        segments.point(0).smooth
+        segments.segment(0).smooth
     } else {
-        segments.point(index - 1).smooth
+        segments.segment(index - 1).smooth
     };
 
-    segments.add_point(
+    segments.add_segment(
         index,
-        Point {
+        Segment {
             x,
             y,
             smooth,
-            ..Point::default()
+            ..Segment::default()
         },
     )
 }
@@ -395,7 +397,7 @@ fn move_point(
     grid_x: i32,
     grid_y: i32,
 ) {
-    let n = segments.num_points();
+    let n = segments.num_segments();
 
     if index >= n {
         return;
@@ -406,7 +408,7 @@ fn move_point(
     } else if index + 1 == n {
         (1.0, 1.0)
     } else {
-        (segments.point(index - 1).x, segments.point(index + 1).x)
+        (segments.segment(index - 1).x, segments.segment(index + 1).x)
     };
 
     let mut x = x.clamp(min_x, max_x);
@@ -428,18 +430,18 @@ fn move_point(
         }
     }
 
-    let linked = segments.point(0).y == segments.point(n - 1).y;
+    let linked = segments.segment(0).y == segments.segment(n - 1).y;
 
     if linked && index == 0 {
-        let end = segments.point(n - 1);
-        segments.set_point(n - 1, Point { y, ..end });
+        let end = segments.segment(n - 1);
+        segments.set_segment(n - 1, Segment { y, ..end });
     } else if linked && index + 1 == n {
-        let start = segments.point(0);
-        segments.set_point(0, Point { y, ..start });
+        let start = segments.segment(0);
+        segments.set_segment(0, Segment { y, ..start });
     }
 
-    let current = segments.point(index);
-    segments.set_point(index, Point { x, y, ..current });
+    let current = segments.segment(index);
+    segments.set_segment(index, Segment { x, y, ..current });
 }
 
 fn move_powers(
@@ -449,18 +451,18 @@ fn move_powers(
     all: bool,
     alternate: bool,
 ) {
-    let n = segments.num_points();
+    let n = segments.num_segments();
 
     if index >= n || n < 2 {
         return;
     }
 
     let (start, end) = if all { (0, n - 2) } else { (index, index) };
-    let descending = segments.point(index).y > segment_end_y(segments, index);
+    let descending = segments.segment(index).y > segment_end_y(segments, index);
     let alternate_mult = if !alternate && descending { -1.0 } else { 1.0 };
 
     for i in start..=end {
-        let from_y = segments.point(i).y;
+        let from_y = segments.segment(i).y;
         let to_y = segment_end_y(segments, i);
 
         if from_y == to_y {
@@ -481,12 +483,12 @@ fn move_powers(
 }
 
 fn segment_end_y(segments: &Segments, index: usize) -> Smp {
-    let n = segments.num_points();
+    let n = segments.num_segments();
 
     if index + 1 < n {
-        segments.point(index + 1).y
+        segments.segment(index + 1).y
     } else {
-        segments.point(0).y
+        segments.segment(0).y
     }
 }
 
@@ -495,8 +497,8 @@ fn hit_test(plot: Rect, segments: &Segments, pos: Pos2) -> (Option<usize>, Optio
     let mut best_point = None;
     let mut best_distance = grab_sq;
 
-    for index in 0..segments.num_points() {
-        let point = segments.point(index);
+    for index in 0..segments.num_segments() {
+        let point = segments.segment(index);
         let distance = pos.distance_sq(to_pos(plot, point.x, point.y));
 
         if distance < best_distance {
@@ -512,7 +514,7 @@ fn hit_test(plot: Rect, segments: &Segments, pos: Pos2) -> (Option<usize>, Optio
     let mut best_power = None;
     best_distance = grab_sq;
 
-    for index in 0..segments.num_points() {
+    for index in 0..segments.num_segments() {
         if !power_active(plot, segments, index) {
             continue;
         }
@@ -530,7 +532,7 @@ fn hit_test(plot: Rect, segments: &Segments, pos: Pos2) -> (Option<usize>, Optio
 }
 
 fn power_active(plot: Rect, segments: &Segments, index: usize) -> bool {
-    let from = segments.point(index);
+    let from = segments.segment(index);
     let (to_x, to_y) = segment_end(segments, index);
     let dx = to_x - from.x;
     let dy = to_y - from.y;
@@ -539,19 +541,19 @@ fn power_active(plot: Rect, segments: &Segments, index: usize) -> bool {
 }
 
 fn segment_end(segments: &Segments, index: usize) -> (Smp, Smp) {
-    let n = segments.num_points();
+    let n = segments.num_segments();
 
     if index + 1 < n {
-        let point = segments.point(index + 1);
+        let point = segments.segment(index + 1);
         (point.x, point.y)
     } else {
-        let point = segments.point(0);
+        let point = segments.segment(0);
         (point.x + 1.0, point.y)
     }
 }
 
 fn power_position(segments: &Segments, index: usize) -> (Smp, Smp) {
-    let from = segments.point(index);
+    let from = segments.segment(index);
     let (to_x, to_y) = segment_end(segments, index);
     let mut x = (from.x + to_x) * 0.5;
 
@@ -569,13 +571,13 @@ fn power_position(segments: &Segments, index: usize) -> (Smp, Smp) {
 /// A segment that lands on one pixel column keeps both endpoints, so a vertical
 /// jump stays a vertical line.
 fn curve_points(plot: Rect, segments: &Segments, pixels_per_point: f32) -> Vec<Pos2> {
-    if plot.width() <= 0.0 || pixels_per_point <= 0.0 || segments.num_points() < 2 {
+    if plot.width() <= 0.0 || pixels_per_point <= 0.0 || segments.num_segments() < 2 {
         return Vec::new();
     }
 
     let mut points = Vec::new();
 
-    for index in 0..segments.num_points() - 1 {
+    for index in 0..segments.num_segments() - 1 {
         append_segment_points(&mut points, plot, segments, index, pixels_per_point);
     }
 
@@ -589,11 +591,11 @@ fn append_segment_points(
     index: usize,
     pixels_per_point: f32,
 ) {
-    let start = to_pos(plot, segments.point(index).x, segments.point(index).y);
+    let start = to_pos(plot, segments.segment(index).x, segments.segment(index).y);
     let end = to_pos(
         plot,
-        segments.point(index + 1).x,
-        segments.point(index + 1).y,
+        segments.segment(index + 1).x,
+        segments.segment(index + 1).y,
     );
     let start_px = (start.x * pixels_per_point).round() as i32;
     let end_px = (end.x * pixels_per_point).round() as i32;
@@ -629,7 +631,7 @@ fn from_pos(plot: Rect, pos: Pos2) -> (Smp, Smp) {
 fn target_pos(target: Drag, plot: Rect, segments: &Segments) -> Pos2 {
     match target {
         Drag::Point(index) => {
-            let point = segments.point(index);
+            let point = segments.segment(index);
             to_pos(plot, point.x, point.y)
         }
         Drag::Power(index) => {
@@ -722,7 +724,9 @@ fn with_alpha(color: Color32, alpha: u8) -> Color32 {
 mod tests {
     use egui::{Rect, pos2};
 
-    use addi_dsp::segments::Segments;
+    use addi_dsp::Segments;
+
+    use crate::segment_presets;
 
     use super::curve_points;
 
@@ -732,7 +736,8 @@ mod tests {
 
     #[test]
     fn linear_segment_keeps_a_point_per_pixel() {
-        let points = curve_points(plot(), &Segments::linear(), 1.0);
+        let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+        let points = curve_points(plot(), &ramp, 1.0);
 
         assert_eq!(points.len(), 101);
         assert_eq!(points[0], pos2(0.0, 100.0));
@@ -742,7 +747,7 @@ mod tests {
 
     #[test]
     fn square_keeps_vertical_edges() {
-        let points = curve_points(plot(), &Segments::square(), 1.0);
+        let points = curve_points(plot(), &segment_presets::square(), 1.0);
 
         assert_eq!(&points[..2], &[pos2(0.0, 100.0), pos2(0.0, 0.0)]);
         assert!(points.contains(&pos2(50.0, 0.0)));
@@ -752,7 +757,7 @@ mod tests {
 
     #[test]
     fn smooth_curve_keeps_intermediate_pixels() {
-        let points = curve_points(plot(), &Segments::sine(), 1.0);
+        let points = curve_points(plot(), &segment_presets::sine(), 1.0);
 
         assert!(points.len() > 3);
         assert_eq!(points[0], pos2(0.0, 100.0));

@@ -2,17 +2,16 @@ use addi_dsp::segments::Segments;
 
 use crate::synth_engine::{Input, Smp, StereoSample, engine_io};
 
-/// Whole [`Segments`] value is inlined so applying it on the audio thread does not allocate.
-#[allow(clippy::large_enum_variant)]
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
-    Segments(Segments),
+    SegmentsUpdated,
     StealPhase(bool),
 }
 
 pub trait LfoAudioEnd: Send {
     fn pop_event(&mut self) -> Option<UiEvent>;
     fn update_phase(&mut self, phase: Smp);
+    fn read_segments(&mut self) -> &Segments;
 }
 
 pub trait LfoUiEnd: Send {

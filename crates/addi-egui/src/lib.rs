@@ -18,6 +18,7 @@ mod fit_label;
 mod frequency_bins;
 mod grid;
 mod line_editor;
+mod segment_presets;
 mod module_label;
 mod modules_ui;
 mod routing_ui_ext;

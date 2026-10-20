@@ -1,8 +1,35 @@
-use addi_dsp::segments::Segments;
+use addi_dsp::segments::{Segment, Segments};
 
 use super::*;
 
 type TestLfo = Lfo<stub::Links>;
+
+fn assert_points_eq(actual: &[Segment], expected: &[Segment]) {
+    assert_eq!(actual.len(), expected.len());
+    for (a, e) in actual.iter().zip(expected) {
+        assert_eq!(a.x, e.x);
+        assert_eq!(a.y, e.y);
+        assert_eq!(a.power, e.power);
+        assert_eq!(a.smooth, e.smooth);
+    }
+}
+
+fn test_square() -> Segments {
+    Segments::from_points(
+        &[(0.0, 0.0), (0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)],
+        false,
+    )
+}
+
+fn test_sine() -> Segments {
+    let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+
+    for index in 0..segments.num_segments() {
+        segments.set_smooth(index, true);
+    }
+
+    segments
+}
 
 fn make_lfo(segments: Segments) -> TestLfo {
     Lfo::from_config(
@@ -23,49 +50,8 @@ fn phase_at(index: usize, fraction: Smp) -> Phase {
 }
 
 #[test]
-fn legacy_shape_and_skew_deserialize_as_segments() {
-    let mut legacy = serde_json::to_value(LfoConfig::default()).unwrap();
-    legacy.as_object_mut().unwrap().remove("segments");
-    legacy["shape"] = serde_json::json!("Sine");
-    legacy["skew"] = serde_json::json!({ "channels": [0.2, 0.8] });
-    legacy["bipolar"] = serde_json::json!(true);
-    legacy["smooth_time"] = serde_json::json!({ "channels": [0.01, 0.02] });
-
-    let back: LfoConfig = serde_json::from_value(legacy).unwrap();
-
-    assert!(back.segments.points().iter().all(|point| point.smooth));
-    assert_eq!(back.segments.num_points(), 3);
-    assert_eq!(back.segments.point(1).x, 0.2);
-    assert_eq!(back.segments.point(1).y, 1.0);
-
-    let mut with_segments = serde_json::to_value(LfoConfig {
-        id: 4,
-        segments: Segments::square(),
-        ..LfoConfig::default()
-    })
-    .unwrap();
-    with_segments["shape"] = serde_json::json!("Triangle");
-    with_segments["skew"] = serde_json::json!(0.25);
-
-    let back: LfoConfig = serde_json::from_value(with_segments.clone()).unwrap();
-
-    assert_eq!(back.segments.points(), Segments::square().points());
-
-    let saved = with_segments
-        .as_object_mut()
-        .unwrap()
-        .remove("segments")
-        .unwrap();
-    with_segments["line"] = saved;
-
-    let back: LfoConfig = serde_json::from_value(with_segments).unwrap();
-
-    assert_eq!(back.segments.points(), Segments::square().points());
-}
-
-#[test]
 fn table_knots_match_the_segments() {
-    let lfo = make_lfo(Segments::sine());
+    let lfo = make_lfo(test_sine());
 
     for index in [0, 1, 100, 1024, 2047] {
         let t = index as Smp / WAVEFORM_SIZE as Smp;
@@ -82,7 +68,7 @@ fn table_knots_match_the_segments() {
 
 #[test]
 fn sine_midpoints_follow_catmull_rom() {
-    let lfo = make_lfo(Segments::sine());
+    let lfo = make_lfo(test_sine());
 
     for index in [0, 10, 500, 2046] {
         let t = (index as Smp + 0.5) / WAVEFORM_SIZE as Smp;
@@ -98,7 +84,7 @@ fn sine_midpoints_follow_catmull_rom() {
 
 #[test]
 fn playback_applies_phase_shift() {
-    let lfo = make_lfo(Segments::sine());
+    let lfo = make_lfo(test_sine());
     let index = 0;
     let shift = 0.125;
     let read = TestLfo::read_wave(&lfo.wave, phase_at(index, 0.0).add_normalized(shift));
@@ -109,30 +95,49 @@ fn playback_applies_phase_shift() {
 
 #[test]
 fn set_segments_rebakes_the_table() {
-    let mut lfo = make_lfo(Segments::triangle());
+    let mut lfo = make_lfo(Segments::default());
     let before = lfo.wave[WAVEFORM_PAD_LEFT + 100];
 
-    lfo.set_segments(Segments::square());
+    lfo.set_segments(test_square());
 
     assert_ne!(lfo.wave[WAVEFORM_PAD_LEFT + 100], before);
-    assert_eq!(
-        lfo.get_config().segments.points(),
-        Segments::square().points()
+    assert_points_eq(
+        lfo.get_config().segments.segments(),
+        test_square().segments(),
     );
     assert_eq!(lfo.wave[WAVEFORM_PAD_LEFT + 100], 1.0);
     assert_eq!(lfo.wave[WAVEFORM_PAD_LEFT + 1500], 0.0);
 
-    lfo.set_segments(Segments::square());
+    lfo.set_segments(test_square());
 
-    assert_eq!(
-        lfo.get_config().segments.points(),
-        Segments::square().points()
+    assert_points_eq(
+        lfo.get_config().segments.segments(),
+        test_square().segments(),
     );
 }
 
 #[test]
+fn from_config_sanitizes_params() {
+    let lfo = TestLfo::from_config(
+        &LfoConfig {
+            frequency: StereoSample::new(1_000.0, Smp::NAN),
+            phase_shift: StereoSample::new(-4.0, 0.25),
+            segments: Segments::from_points(&[(0.0, -2.0), (1.0, 3.0)], false),
+            ..LfoConfig::default()
+        },
+        16,
+    );
+    let config = lfo.get_config();
+
+    assert_eq!(config.frequency, StereoSample::new(100.0, 0.0));
+    assert_eq!(config.phase_shift, StereoSample::new(-1.0, 0.25));
+    assert_eq!(config.segments.segment(0).y, 0.0);
+    assert_eq!(config.segments.segment(1).y, 1.0);
+}
+
+#[test]
 fn wrapped_read_stays_finite() {
-    let lfo = make_lfo(Segments::square());
+    let lfo = make_lfo(test_square());
     let y = TestLfo::read_wave(&lfo.wave, Phase::from_bits(u32::MAX));
 
     assert!(y.is_finite());
