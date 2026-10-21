@@ -157,6 +157,8 @@ pub struct Slider<'a> {
     over_from: Option<Smp>,
     units: Units,
     skew: Smp,
+    /// Positive range is spaced by ratio. The inverse side, if any, mirrors it.
+    logarithmic: bool,
     default: Option<Smp>,
     length: f32,
     thickness: f32,
@@ -180,6 +182,7 @@ impl<'a> Slider<'a> {
             over_from: None,
             units: Units::Normalized,
             skew: 1.0,
+            logarithmic: false,
             default: None,
             length: 160.0,
             thickness: 14.0,
@@ -217,6 +220,20 @@ impl<'a> Slider<'a> {
 
     pub fn skew(mut self, skew: Smp) -> Self {
         self.skew = skew;
+        self
+    }
+
+    /// Space the range by ratio. `range.start()` must be positive, so the
+    /// midpoint is the geometric mean of the two ends.
+    pub fn logarithmic(mut self) -> Self {
+        assert!(
+            *self.range.start() > 0.0 && *self.range.end() > 0.0,
+            "logarithmic range must stay positive"
+        );
+        if let Some(inverse) = self.inverse_to {
+            assert!(inverse < 0.0 && inverse.abs() >= *self.range.start());
+        }
+        self.logarithmic = true;
         self
     }
 
@@ -269,7 +286,54 @@ impl<'a> Slider<'a> {
         self.skew_normalized(value / self.pre_normalize_scale())
     }
 
+    fn log_unit(value: Smp, min: Smp, max: Smp) -> Smp {
+        let value = value.clamp(min, max);
+        (value.ln() - min.ln()) / (max.ln() - min.ln())
+    }
+
+    fn unit_to_log(unit: Smp, min: Smp, max: Smp) -> Smp {
+        min * (max / min).powf(unit.clamp(0.0, 1.0))
+    }
+
+    fn log_value_to_normalized(&self, value: Smp) -> Smp {
+        let min = *self.range.start();
+        let max = *self.range.end();
+        if value >= min {
+            return Self::log_unit(value, min, max);
+        }
+        if value >= 0.0 {
+            return 0.0;
+        }
+
+        let Some(inverse_to) = self.inverse_to else {
+            return 0.0;
+        };
+        let magnitude = value.abs();
+        if magnitude < min {
+            return 0.0;
+        }
+        -Self::log_unit(magnitude, min, inverse_to.abs())
+    }
+
+    fn log_normalized_to_value(&self, normalized: Smp) -> Smp {
+        let min = *self.range.start();
+        let max = *self.range.end();
+        let floor = if self.inverse_to.is_some() { -1.0 } else { 0.0 };
+        let normalized = normalized.clamp(floor, 1.0);
+        if normalized >= 0.0 {
+            return Self::unit_to_log(normalized, min, max);
+        }
+        let Some(inverse_to) = self.inverse_to else {
+            return min;
+        };
+        -Self::unit_to_log(-normalized, min, inverse_to.abs())
+    }
+
     fn value_to_normalized(&self, value: Smp) -> Smp {
+        if self.logarithmic {
+            return self.log_value_to_normalized(value);
+        }
+
         // 1) normalize in value space (0 → 0, scale by max(|from|, |to|))
         // 2) skew around zero
         let skewed = self.to_skew_domain(value);
@@ -288,6 +352,10 @@ impl<'a> Slider<'a> {
     }
 
     fn normalized_to_value(&self, normalized: Smp) -> Smp {
+        if self.logarithmic {
+            return self.log_normalized_to_value(normalized);
+        }
+
         let min = if self.inverse_to.is_some() { -1.0 } else { 0.0 };
         let normalized = normalized.clamp(min, 1.0);
         let skewed_from = self.to_skew_domain(*self.range.start());
@@ -979,6 +1047,9 @@ impl<'a> Slider<'a> {
         response
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 impl Widget for Slider<'_> {
     fn ui(mut self, ui: &mut Ui) -> Response {

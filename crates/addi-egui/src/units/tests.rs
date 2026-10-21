@@ -79,6 +79,16 @@ fn parse_normalized_percent() {
 }
 
 #[test]
+fn format_rate_is_a_plain_float() {
+    assert_eq!(Units::Rate.format(0.02), "0.02");
+    assert_eq!(Units::Rate.format(1.5), "1.5");
+    assert_eq!(Units::Rate.format(50.0), "50");
+    assert_eq!(Units::Rate.format(-2.5), "-2.5");
+    assert_eq!(Units::Rate.format_input(1.0), "1");
+    assert!(Units::Rate.parse_one("1 Hz").is_none());
+}
+
+#[test]
 fn parse_frequency_khz() {
     let value = Units::Frequency.parse_one("1.5 kHz").unwrap();
     assert!(approx(value, 1_500.0));
@@ -124,6 +134,8 @@ fn format_input_trims_default_units_and_trailing_zeros() {
     );
     assert_eq!(Units::Frequency.format_input(440.0), "440");
     assert_eq!(Units::Frequency.format_input(2_500.0), "2.5 kHz");
+    assert_eq!(Units::Rate.format_input(0.02), "0.02");
+    assert_eq!(Units::Rate.format_input(50.0), "50");
     assert_eq!(Units::Time.format_input(0.004), "4 ms");
     assert_eq!(Units::Time.format_input(0.45), "450 ms");
     assert_eq!(Units::Time.format_input(1.4), "1.4");
@@ -145,6 +157,9 @@ fn format_input_parse_roundtrip() {
         ),
         (Units::Frequency, 440.0),
         (Units::Frequency, 2_500.0),
+        (Units::Rate, 0.02),
+        (Units::Rate, 1.5),
+        (Units::Rate, 50.0),
         (Units::Time, 0.004),
         (Units::Time, 0.45),
         (Units::Time, 1.4),
@@ -175,6 +190,9 @@ fn format_parse_roundtrip() {
         ),
         (Units::Frequency, 440.0),
         (Units::Frequency, 2_500.0),
+        (Units::Rate, 0.02),
+        (Units::Rate, 1.5),
+        (Units::Rate, 50.0),
         (Units::Time, 0.004),
         (Units::Time, 0.45),
         (Units::Time, 1.4),

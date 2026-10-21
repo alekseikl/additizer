@@ -12,7 +12,7 @@ use addi_dsp::filters::{
     svf::SvfType,
 };
 use addi_engine::{
-    NUM_CHANNELS, PlayingVoice, SmoothedSampleParams, Smp, StereoSample, Svf,
+    DEFAULT_TEMPO, NUM_CHANNELS, PlayingVoice, SmoothedSampleParams, Smp, StereoSample, Svf,
     routing::{Input, InputSlots, OutputsArena, ProcessContext, ProcessParams},
     stub::AudioEnd,
     svf::SvfConfig,
@@ -66,6 +66,7 @@ fn process_params<'a>(
         has_triggered_voices: false,
         samples: BLOCK,
         sample_rate: SAMPLE_RATE,
+        tempo: DEFAULT_TEMPO,
         needs_update_ui: false,
         smooth_params,
         active_voices: voices,

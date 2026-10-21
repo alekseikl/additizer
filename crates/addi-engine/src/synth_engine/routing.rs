@@ -14,7 +14,7 @@ mod voice_router;
 pub use super::engine_io::EngineAudioEnd;
 pub use outputs::{SamplesOutput, SpectralOutput};
 pub use outputs_arena::OutputsArena;
-pub use process_context::{ProcessContext, ProcessParams, VoiceTarget};
+pub use process_context::{DEFAULT_TEMPO, ProcessContext, ProcessParams, VoiceTarget};
 pub use voice_router::{
     AudioRouterType, ControlRouterType, OutputRouterType, RouterFactory, SpectralRouterType,
     VoiceRouter, VoicesBlock,
@@ -62,7 +62,8 @@ pub enum Input {
     Blend,
     PhasesBlend,
     LevelsBlend,
-    LowFrequency,
+    #[serde(alias = "LowFrequency")]
+    Rate,
     Cutoff, // Octaves. Spectral EQ adds this offset to each band.
     Resonance,
     Drive, // dB

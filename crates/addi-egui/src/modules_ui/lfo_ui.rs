@@ -1,9 +1,10 @@
 use addi_ui_backend::ui_bridge::modules::lfo::LfoUiBridge;
-use egui::{Checkbox, Grid, Ui};
+use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
     ModuleUi, module_label::ModuleLabel, segments_editor::SegmentsEditor, stereo_input::StereoInput,
 };
+use addi_engine::lfo::Timebase;
 use addi_engine::{Input, ModuleId, ModuleType};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
@@ -43,23 +44,39 @@ impl LfoUi {
         let mut frequency = lfo_bridge.config().frequency;
         let mut phase_shift = lfo_bridge.config().phase_shift;
         let mut steal_phase = lfo_bridge.config().steal_phase;
+        let mut timebase = lfo_bridge.config().timebase;
 
         Grid::new("lfo_grid")
             .num_columns(4)
             .spacing([8.0, 8.0])
             .show(ui, |ui| {
-                ui.label("Frequency");
+                ui.label("Rate");
                 if ui
                     .add(StereoInput::new(
-                        Input::LowFrequency,
+                        Input::Rate,
                         module_id,
                         &mut frequency,
                         bridge,
                     ))
                     .changed()
                 {
-                    lfo_bridge.set_param(Input::LowFrequency, frequency);
+                    lfo_bridge.set_param(Input::Rate, frequency);
                 }
+
+                ui.label("Timebase");
+                ComboBox::from_id_salt(("lfo-timebase", module_id))
+                    .selected_text(timebase.label())
+                    .show_ui(ui, |ui| {
+                        for option in Timebase::ALL {
+                            if ui
+                                .selectable_value(&mut timebase, option, option.label())
+                                .clicked()
+                            {
+                                lfo_bridge.set_timebase(option);
+                            }
+                        }
+                    });
+                ui.end_row();
 
                 ui.label("Phase shift");
                 if ui
@@ -73,7 +90,6 @@ impl LfoUi {
                 {
                     lfo_bridge.set_param(Input::PhaseShift, phase_shift);
                 }
-                ui.end_row();
 
                 ui.label("Steal phase");
                 if ui.add(Checkbox::without_text(&mut steal_phase)).changed() {

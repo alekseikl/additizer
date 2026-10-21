@@ -10,9 +10,9 @@ use super::{
     unison::Interpolated,
 };
 use crate::synth_engine::{
-    ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, MAX_VOICES, ModuleConfig,
-    ModuleHandle, ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, PITCH_MODULE_ID, Smp,
-    StereoSample, SynthEngine,
+    ComplexSample, DEFAULT_TEMPO, EngineConfig, EngineParams, Input, LinkConfig, MAX_VOICES,
+    ModuleConfig, ModuleHandle, ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, PITCH_MODULE_ID,
+    Smp, StereoSample, SynthEngine,
     fast_math::catmull_rom_from_powers,
     from_st,
     harmonic_editor::HarmonicEditorConfig,
@@ -74,6 +74,7 @@ fn process_block(engine: &mut SynthEngine, samples: usize) -> (Vec<Smp>, Vec<Smp
     engine.process(
         samples,
         false,
+        DEFAULT_TEMPO,
         &mut terminated,
         [&mut left[..], &mut right[..]],
     );

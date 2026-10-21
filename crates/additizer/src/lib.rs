@@ -13,7 +13,7 @@ pub(crate) use addi_ui_backend::preset;
 use crate::editor::{PluginEditor, create_editor};
 use crate::engine_factory::{EngineFactory, EngineHandle};
 use crate::params::AdditizerParams;
-use addi_engine::{MAX_VOICES, Note};
+use addi_engine::{DEFAULT_TEMPO, MAX_VOICES, Note};
 pub use egui;
 use nice_plug::midi::{Channel, Key, VoiceID};
 use nice_plug::prelude::*;
@@ -122,6 +122,7 @@ impl Plugin for Additizer {
 
         // Mutex is contended only when routing is changed from the UI.
         let mut synth = engine.lock();
+        let tempo = host_tempo(context.transport());
 
         assert_no_alloc::assert_no_alloc(|| {
             let block_size = synth.block_size();
@@ -149,6 +150,7 @@ impl Plugin for Additizer {
                 synth.process(
                     samples,
                     update_ui,
+                    tempo,
                     &mut self.terminated_notes,
                     [channels.next().unwrap(), channels.next().unwrap()],
                 );
@@ -165,6 +167,13 @@ impl Plugin for Additizer {
         });
 
         ProcessStatus::KeepAlive
+    }
+}
+
+fn host_tempo(transport: &Transport) -> f32 {
+    match transport.tempo {
+        Some(bpm) if bpm.is_finite() && bpm > 0.0 => bpm as f32,
+        _ => DEFAULT_TEMPO,
     }
 }
 

@@ -141,6 +141,14 @@ fn from_config_sanitizes_params() {
 }
 
 #[test]
+fn missing_timebase_defaults_to_hertz() {
+    let config: LfoConfig = serde_json::from_str(r#"{"id":1}"#).unwrap();
+
+    assert_eq!(config.timebase, Timebase::Hertz);
+    assert_eq!(config.frequency, StereoSample::splat(1.0));
+}
+
+#[test]
 fn wrapped_read_stays_finite() {
     let lfo = make_lfo(test_square());
     let y = TestLfo::read_wave(&lfo.wave, Phase::from_bits(u32::MAX));

@@ -1,8 +1,8 @@
 use std::hint::black_box;
 
 use addi_engine::{
-    EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId, NUM_CHANNELS, Note,
-    OUTPUT_MODULE_ID, Smp, StereoSample, SynthEngine,
+    DEFAULT_TEMPO, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId,
+    NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Smp, StereoSample, SynthEngine,
     harmonic_editor::HarmonicEditorConfig,
     oscillator::{MAX_UNISON_VOICES, OscillatorConfig},
 };
@@ -63,6 +63,7 @@ fn process_block(engine: &mut SynthEngine, samples: usize) -> [Smp; BLOCK] {
     engine.process(
         samples,
         false,
+        DEFAULT_TEMPO,
         &mut terminated,
         [&mut left[..samples], &mut right[..samples]],
     );

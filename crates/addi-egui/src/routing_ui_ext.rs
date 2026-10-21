@@ -60,7 +60,7 @@ impl InputUi for Input {
             Self::Blend => "Blend".to_string(),
             Self::PhasesBlend => "Phases Blend".to_string(),
             Self::LevelsBlend => "Levels Blend".to_string(),
-            Self::LowFrequency => "Frequency".to_string(),
+            Self::Rate => "Frequency".to_string(),
             Self::Cutoff => "Cutoff".to_string(),
             Self::Resonance => "Resonance".to_string(),
             Self::Drive => "Drive".to_string(),
@@ -101,7 +101,7 @@ impl InputUi for Input {
             Self::Blend => 0.42,
             Self::PhasesBlend => 0.39,
             Self::LevelsBlend => 0.45,
-            Self::LowFrequency => 0.30,
+            Self::Rate => 0.30,
             Self::Cutoff => 0.32,
             Self::Resonance => 0.34,
             Self::Delay => 0.20,
@@ -163,10 +163,10 @@ impl InputUi for Input {
                 .default(0.0)
                 .skew(2.0)
                 .units(Units::Frequency),
-            Self::LowFrequency => Slider::stereo(amount, 0.0..=100.0, Some(-100.0))
+            Self::Rate => Slider::stereo(amount, 0.0..=50.0, None)
                 .default(0.0)
                 .skew(3.0)
-                .units(Units::Frequency),
+                .units(Units::Rate),
             Self::Amount => bipolar(amount),
             Self::Sustain => Slider::stereo(amount, 0.0..=1.0, None).units(Units::Normalized),
             Self::Delay | Self::Attack | Self::Hold | Self::Decay | Self::Release => {
@@ -231,10 +231,11 @@ impl InputUi for Input {
                 .default(0.0)
                 .skew(2.0)
                 .units(Units::Frequency),
-            Self::LowFrequency => Slider::stereo(value, 0.0..=100.0, Some(-100.0))
+            // 0.02..=50 Hz, so 1 Hz is the log midpoint and 50 Hz is the right edge.
+            Self::Rate => Slider::stereo(value, (1.0 / 50.0)..=50.0, None)
                 .default(1.0)
-                .skew(3.0)
-                .units(Units::Frequency),
+                .logarithmic()
+                .units(Units::Rate),
             Self::Amount => Slider::stereo(value, 0.0..=1.0, None).default(1.0),
             Self::Sustain => Slider::stereo(value, 0.0..=1.0, None)
                 .default(0.5)

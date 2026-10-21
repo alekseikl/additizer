@@ -8,6 +8,7 @@ enum DisplayUnit {
     Semicents(Smp),
     Hz(Smp),
     Khz(Smp),
+    Rate(Smp),
     Ms(Smp),
     Secs(Smp),
     Rolloff(Smp),
@@ -37,6 +38,10 @@ impl DisplayUnit {
                 let precision = Self::hz_precision(*value);
                 format!("{0:.1$} Hz", value, precision)
             }
+            Self::Rate(value) => {
+                let precision = Self::hz_precision(*value);
+                format!("{0:.1$}", value, precision)
+            }
             Self::Ms(value) => {
                 if value.abs() < 10.0 {
                     format!("{:.1} ms", value)
@@ -56,7 +61,7 @@ impl DisplayUnit {
             Self::Semitones(value) => (format!("{:.2}", value), None),
             Self::Semicents(value) => (format!("{:.0}", value), Some("cents")),
             Self::Khz(value) => (format!("{:.2}", value), Some("kHz")),
-            Self::Hz(value) => {
+            Self::Hz(value) | Self::Rate(value) => {
                 let precision = Self::hz_precision(*value);
                 (format!("{0:.1$}", value, precision), None)
             }
@@ -112,6 +117,7 @@ pub enum Units {
     Rolloff,
     Octaves(OctavesDisplay),
     Frequency,
+    Rate,
     Time,
 }
 
@@ -144,6 +150,7 @@ impl Units {
                 }
             }
             Self::Frequency => Self::frequency_display_unit(value),
+            Self::Rate => DisplayUnit::Rate(value),
             Self::Time => {
                 let ms = value * 1_000.0;
 
@@ -205,6 +212,7 @@ impl Units {
             }
             Self::Frequency if unit.is_empty() || unit.eq_ignore_ascii_case("hz") => Some(number),
             Self::Frequency if unit.eq_ignore_ascii_case("khz") => Some(number * 1_000.0),
+            Self::Rate if unit.is_empty() => Some(number),
             Self::Time if unit.is_empty() || unit.eq_ignore_ascii_case("s") => Some(number),
             Self::Time if unit.eq_ignore_ascii_case("ms") => Some(number / 1_000.0),
             _ => None,

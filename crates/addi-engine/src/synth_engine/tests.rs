@@ -73,6 +73,7 @@ fn process_block_with_ui(
     engine.process(
         samples,
         update_ui,
+        DEFAULT_TEMPO,
         &mut terminated,
         [&mut left[..], &mut right[..]],
     );
@@ -1370,7 +1371,13 @@ fn process_reports_terminated_notes() {
     let mut left = vec![0.0; 64];
     let mut right = vec![0.0; 64];
     let mut terminated = Vec::new();
-    engine.process(64, false, &mut terminated, [&mut left[..], &mut right[..]]);
+    engine.process(
+        64,
+        false,
+        DEFAULT_TEMPO,
+        &mut terminated,
+        [&mut left[..], &mut right[..]],
+    );
 
     assert_eq!(terminated.len(), 1);
     assert_eq!(terminated[0].channel, 0);
@@ -1895,7 +1902,7 @@ fn set_link_modulation_rejects_unknown_link() {
 fn set_link_modulation_cycle_leaves_state_unchanged() {
     let mut engine = make_full_patch_engine(EngineParams::default());
     let filter_attack = InputId::new(Input::Attack, ENVELOPE_FILTER_ID);
-    let lfo_frequency = InputId::new(Input::LowFrequency, LFO_ID);
+    let lfo_frequency = InputId::new(Input::Rate, LFO_ID);
 
     // filter_env <- amp_env, and lfo <- filter_env; modulating the first link with the
     // lfo would require filter_env <-> lfo and must be rejected without mutating state.

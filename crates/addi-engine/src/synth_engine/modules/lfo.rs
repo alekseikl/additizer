@@ -6,6 +6,7 @@ use wide::f32x4;
 mod config;
 mod link;
 pub mod stub;
+mod timebase;
 
 #[cfg(test)]
 mod tests;
@@ -13,6 +14,7 @@ mod tests;
 pub use config::LfoConfig;
 use config::{MAX_FREQUENCY, MAX_PHASE_SHIFT, MIN_FREQUENCY, MIN_PHASE_SHIFT};
 pub use link::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
+pub use timebase::Timebase;
 
 use addi_dsp::{segments::Segments, utils::sanitize};
 
@@ -62,6 +64,7 @@ impl ChannelParams {
 struct Params {
     segments: Segments,
     steal_phase: bool,
+    timebase: Timebase,
 }
 
 impl Params {
@@ -69,6 +72,7 @@ impl Params {
         Self {
             segments: c.segments.clone(),
             steal_phase: c.steal_phase,
+            timebase: c.timebase,
         }
     }
 }
@@ -86,7 +90,7 @@ pub struct Inputs {
 impl Default for Inputs {
     fn default() -> Self {
         Self {
-            frequency: MixedSlots::new(Input::LowFrequency),
+            frequency: MixedSlots::new(Input::Rate),
             phase_shift: MixedSlots::new(Input::PhaseShift),
         }
     }
@@ -102,7 +106,7 @@ impl Inputs {
             };
 
             match input.input_type {
-                Input::LowFrequency => result.frequency = input.clone(),
+                Input::Rate => result.frequency = input.clone(),
                 Input::PhaseShift => result.phase_shift = input.clone(),
                 _ => (),
             }
@@ -113,7 +117,7 @@ impl Inputs {
 
     fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
         match input_type {
-            Input::LowFrequency => self.frequency.update_amount(src_slot, amount),
+            Input::Rate => self.frequency.update_amount(src_slot, amount),
             Input::PhaseShift => self.phase_shift.update_amount(src_slot, amount),
             _ => (),
         }
@@ -192,6 +196,7 @@ impl<L: LfoLinks> Lfo<L> {
         LfoConfig {
             id: self.id,
             steal_phase: self.params.steal_phase,
+            timebase: self.params.timebase,
             frequency: get_smoothed_param!(self, frequency),
             phase_shift: get_smoothed_param!(self, phase_shift),
             segments: self.params.segments.clone(),
@@ -199,6 +204,7 @@ impl<L: LfoLinks> Lfo<L> {
     }
 
     set_mono_param!(set_steal_phase, steal_phase, bool);
+    set_mono_param!(set_timebase, timebase, Timebase);
 
     set_smoothed_param!(
         set_frequency,
@@ -265,10 +271,16 @@ impl<L: LfoLinks> Lfo<L> {
             &mut self.buffers.phase_shift,
         );
 
-        let freq_phase_mult = Phase::freq_phase_mult(sample_rate);
+        let samples = voice_output.output().len();
+
+        self.params.timebase.map_phase_inc(
+            &mut self.buffers.frequency[..samples],
+            router.tempo(),
+            Phase::freq_phase_mult(sample_rate),
+        );
         let wave = self.wave.as_slice();
 
-        for (out, frequency, phase_shift) in izip!(
+        for (out, phase_inc, phase_shift) in izip!(
             voice_output.output().iter_mut(),
             &self.buffers.frequency,
             &self.buffers.phase_shift,
@@ -277,7 +289,7 @@ impl<L: LfoLinks> Lfo<L> {
 
             *out = Self::read_wave(wave, read);
 
-            voice.phase += *frequency * freq_phase_mult;
+            voice.phase += *phase_inc;
         }
 
         if router.need_update_ui_mono() {
@@ -304,7 +316,7 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
 
     fn inputs(&self) -> &'static [InputMeta] {
         static INPUTS: &[InputMeta] = &[
-            InputMeta::control(Input::LowFrequency),
+            InputMeta::control(Input::Rate),
             InputMeta::control(Input::PhaseShift),
         ];
 
@@ -358,7 +370,7 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
                 UiEvent::InputParam { input, value } => match input {
-                    Input::LowFrequency => self.set_frequency(value),
+                    Input::Rate => self.set_frequency(value),
                     Input::PhaseShift => self.set_phase_shift(value),
                     _ => (),
                 },
@@ -367,6 +379,7 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
                     self.set_segments(segments);
                 }
                 UiEvent::StealPhase(value) => self.set_steal_phase(value),
+                UiEvent::Timebase(timebase) => self.set_timebase(timebase),
             }
         }
     }

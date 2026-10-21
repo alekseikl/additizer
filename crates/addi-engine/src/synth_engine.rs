@@ -41,9 +41,9 @@ pub use modules::{
 };
 pub(crate) use nth_element::NthElement;
 pub use routing::{
-    AUDIO_TO_UI_RING_CAPACITY, DataType, Expression, ExpressionEvent, Input, InputId, InputSource,
-    LevelType, MixType, ModuleId, OUTPUT_MODULE_ID, PITCH_MODULE_ID, UI_TO_AUDIO_RING_CAPACITY,
-    VoiceEvent,
+    AUDIO_TO_UI_RING_CAPACITY, DEFAULT_TEMPO, DataType, Expression, ExpressionEvent, Input,
+    InputId, InputSource, LevelType, MixType, ModuleId, OUTPUT_MODULE_ID, PITCH_MODULE_ID,
+    UI_TO_AUDIO_RING_CAPACITY, VoiceEvent,
 };
 pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
@@ -716,10 +716,12 @@ impl<E: EngineLinks> SynthEngine<E> {
             .for_each(|m| m.process_ui_events());
     }
 
+    /// `tempo` is beats per minute. A beat is a quarter note.
     pub fn process(
         &mut self,
         samples: usize,
         update_ui: bool,
+        tempo: Smp,
         terminated_notes: &mut Vec<Note>,
         mut outputs: [&mut [f32]; NUM_CHANNELS],
     ) {
@@ -779,6 +781,7 @@ impl<E: EngineLinks> SynthEngine<E> {
                 has_triggered_voices: !triggered_voices.is_empty(),
                 samples,
                 sample_rate,
+                tempo,
                 smooth_params,
                 needs_update_ui: update_ui,
                 active_voices: &triggered_voices,

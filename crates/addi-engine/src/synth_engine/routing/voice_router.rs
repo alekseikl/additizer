@@ -490,6 +490,10 @@ impl<'v, 'f, 'c, A: EngineAudioEnd, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D
         self.factory.ctx.params.sample_rate
     }
 
+    pub fn tempo(&self) -> Smp {
+        self.factory.ctx.params.tempo
+    }
+
     pub fn need_update_ui(&self) -> bool {
         self.target.is_last && self.factory.params().needs_update_ui
     }

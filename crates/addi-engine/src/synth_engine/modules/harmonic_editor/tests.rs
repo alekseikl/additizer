@@ -1,8 +1,8 @@
 use super::*;
 use crate::synth_engine::{
-    ComplexSample, DataType, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId,
-    NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Smp, SynthEngine, oscillator::OscillatorConfig,
-    synth_module::SynthModule, voices::LEFT_CHANNEL,
+    ComplexSample, DEFAULT_TEMPO, DataType, EngineConfig, EngineParams, Input, LinkConfig,
+    ModuleConfig, ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Smp, SynthEngine,
+    oscillator::OscillatorConfig, synth_module::SynthModule, voices::LEFT_CHANNEL,
 };
 
 const SAMPLE_RATE: Smp = 48_000.0;
@@ -183,7 +183,13 @@ fn play(engine: &mut SynthEngine) -> (Vec<Smp>, Vec<Smp>) {
     let mut right = vec![0.0; 64];
     let mut terminated = Vec::new();
 
-    engine.process(64, false, &mut terminated, [&mut left[..], &mut right[..]]);
+    engine.process(
+        64,
+        false,
+        DEFAULT_TEMPO,
+        &mut terminated,
+        [&mut left[..], &mut right[..]],
+    );
     (left, right)
 }
 
@@ -253,7 +259,13 @@ fn capture_input_without_note_keeps_stored_harmonics() {
     let mut right = vec![0.0; 64];
     let mut terminated = Vec::new();
 
-    engine.process(64, false, &mut terminated, [&mut left[..], &mut right[..]]);
+    engine.process(
+        64,
+        false,
+        DEFAULT_TEMPO,
+        &mut terminated,
+        [&mut left[..], &mut right[..]],
+    );
 
     let stored = editor_config(&engine, DST_ID);
 

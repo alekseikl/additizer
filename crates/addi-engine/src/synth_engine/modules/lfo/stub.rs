@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use super::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
+use super::{LfoAudioEnd, LfoLinks, LfoUiEnd, Timebase, UiEvent};
 
 use addi_dsp::segments::Segments;
 
@@ -56,6 +56,10 @@ impl LfoUiEnd for NoUi {
     }
 
     fn set_steal_phase(&mut self, _value: bool) -> bool {
+        self.diverge()
+    }
+
+    fn set_timebase(&mut self, _timebase: Timebase) -> bool {
         self.diverge()
     }
 }

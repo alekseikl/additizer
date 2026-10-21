@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use addi_engine::{
-    Envelope, ModuleHandle, PlayingVoice, SmoothedSampleParams, Smp,
+    DEFAULT_TEMPO, Envelope, ModuleHandle, PlayingVoice, SmoothedSampleParams, Smp,
     envelope::{EnvelopeConfig, stub::Links},
     routing::{OutputsArena, ProcessContext, ProcessParams},
     stub::{AudioEnd, StubLinks},
@@ -64,6 +64,7 @@ fn bench_envelope(c: &mut Criterion) {
                             has_triggered_voices: false,
                             samples: len,
                             sample_rate: SAMPLE_RATE,
+                            tempo: DEFAULT_TEMPO,
                             needs_update_ui: false,
                             smooth_params: SmoothedSampleParams::new(SAMPLE_RATE),
                             active_voices: &voices,

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use addi_dsp::{segments::Segments, utils::sanitize};
 
+use super::Timebase;
 use crate::synth_engine::{ModuleId, Smp, StereoSample};
 
 pub(super) const MIN_FREQUENCY: Smp = -100.0;
@@ -18,8 +19,11 @@ pub struct LfoConfig {
     pub id: ModuleId,
     #[serde(default)]
     pub steal_phase: bool,
+    /// Rate in [`Timebase`] units. `1.0` is one cycle per unit.
     #[serde(default = "default_frequency")]
     pub frequency: StereoSample,
+    #[serde(default)]
+    pub timebase: Timebase,
     #[serde(default)]
     pub phase_shift: StereoSample,
     #[serde(default)]
@@ -32,6 +36,7 @@ impl Default for LfoConfig {
             id: -1,
             steal_phase: false,
             frequency: 1.0.into(),
+            timebase: Timebase::Hertz,
             phase_shift: 0.0.into(),
             segments: Segments::default(),
         }

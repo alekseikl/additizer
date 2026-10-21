@@ -14,8 +14,8 @@ use addi_dsp::filters::{
     spectral_filter::FilterType,
 };
 use addi_engine::{
-    ComplexSample, NUM_CHANNELS, PlayingVoice, SPECTRAL_BUFFER_SIZE, SmoothedSampleParams, Smp,
-    SpectralBuffer, SpectralFilter, StereoSample,
+    ComplexSample, DEFAULT_TEMPO, NUM_CHANNELS, PlayingVoice, SPECTRAL_BUFFER_SIZE,
+    SmoothedSampleParams, Smp, SpectralBuffer, SpectralFilter, StereoSample,
     routing::{Input, InputSlots, OutputsArena, ProcessContext, ProcessParams},
     spectral_filter::{MIN_Q_ROLLOFF, SpectralFilterConfig},
     stub::AudioEnd,
@@ -70,6 +70,7 @@ fn process_params<'a>(voices: &'a [PlayingVoice]) -> ProcessParams<'a> {
         has_triggered_voices: false,
         samples: 1,
         sample_rate: SAMPLE_RATE,
+        tempo: DEFAULT_TEMPO,
         needs_update_ui: false,
         smooth_params: SmoothedSampleParams::new(SAMPLE_RATE),
         active_voices: voices,

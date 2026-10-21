@@ -4,7 +4,7 @@ use addi_engine::{Input, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 use addi_dsp::segments::Segments;
 
-use addi_engine::lfo::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
+use addi_engine::lfo::{LfoAudioEnd, LfoLinks, LfoUiEnd, Timebase, UiEvent};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
@@ -28,6 +28,10 @@ impl UiEnd {
 
     pub fn set_steal_phase(&mut self, value: bool) -> bool {
         self.tx.push(UiEvent::StealPhase(value)).is_ok()
+    }
+
+    pub fn set_timebase(&mut self, timebase: Timebase) -> bool {
+        self.tx.push(UiEvent::Timebase(timebase)).is_ok()
     }
 }
 
@@ -94,6 +98,9 @@ impl LfoUiEnd for UiEnd {
     }
     fn set_steal_phase(&mut self, value: bool) -> bool {
         UiEnd::set_steal_phase(self, value)
+    }
+    fn set_timebase(&mut self, timebase: Timebase) -> bool {
+        UiEnd::set_timebase(self, timebase)
     }
 }
 

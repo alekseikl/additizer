@@ -8,7 +8,7 @@
 use std::hint::black_box;
 
 use addi_engine::{
-    ComplexSample, NUM_CHANNELS, Oscillator, PlayingVoice, SPECTRAL_BUFFER_SIZE,
+    ComplexSample, DEFAULT_TEMPO, NUM_CHANNELS, Oscillator, PlayingVoice, SPECTRAL_BUFFER_SIZE,
     SmoothedSampleParams, Smp, SpectralBuffer, StereoSample, note_to_pitch,
     oscillator::{MAX_UNISON_VOICES, OscillatorConfig},
     routing::{Input, InputSlots, OutputsArena, ProcessContext, ProcessParams},
@@ -101,6 +101,7 @@ fn ctx<'a>(
             has_triggered_voices: false,
             samples: BLOCK,
             sample_rate: SAMPLE_RATE,
+            tempo: DEFAULT_TEMPO,
             needs_update_ui: false,
             smooth_params: SmoothedSampleParams::new(SAMPLE_RATE),
             active_voices: voices,
