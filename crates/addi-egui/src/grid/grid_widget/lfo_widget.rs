@@ -12,30 +12,46 @@ use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 use super::GridWidgetContent;
 
 const PADDING: f32 = 4.0;
-const DISPLAY_SAMPLES: usize = 1024;
 const PHASE_RADIUS: f32 = 3.5;
 const WAVE_COLOR: Color32 = Color32::from_rgb(0x4a, 0xb0, 0xff);
 
+#[derive(Default)]
 pub struct LfoWidget {
-    waveform: [Smp; DISPLAY_SAMPLES],
-}
-
-impl Default for LfoWidget {
-    fn default() -> Self {
-        Self {
-            waveform: [0.0; DISPLAY_SAMPLES],
-        }
-    }
+    waveform: Vec<Smp>,
 }
 
 impl LfoWidget {
-    fn build_waveform(&mut self, segments: &Segments, phase_shift: Smp) {
-        let last = DISPLAY_SAMPLES as Smp;
+    /// One sample per point of `width`. `phase_shift` rotates that cycle.
+    fn build_waveform(&mut self, segments: &Segments, phase_shift: Smp, width: Smp) {
+        let len = (width.round() as usize).max(1);
 
-        for (i, sample) in self.waveform.iter_mut().enumerate() {
-            let t = (i as Smp / last + phase_shift).rem_euclid(1.0);
-            *sample = segments.value_at(t);
+        self.waveform.resize(len, 0.0);
+        segments.render(&mut self.waveform, false);
+
+        let offset = (phase_shift.rem_euclid(1.0) * len as Smp).round() as usize;
+
+        self.waveform.rotate_left(offset % len);
+    }
+
+    /// Level on the rendered cycle. Phases between samples are interpolated, and the last sample wraps to the first.
+    fn waveform_at(&self, phase: Smp) -> Smp {
+        let len = self.waveform.len();
+
+        if len == 0 || !phase.is_finite() {
+            return 0.0;
         }
+
+        let scaled = phase.rem_euclid(1.0) * len as Smp;
+
+        if scaled >= len as Smp {
+            return self.waveform[0];
+        }
+
+        let index = scaled as usize;
+        let next = (index + 1) % len;
+        let frac = scaled - index as Smp;
+
+        self.waveform[index] + (self.waveform[next] - self.waveform[index]) * frac
     }
 
     fn phase_pos(rect: Rect, phase: Smp, value: Smp) -> Pos2 {
@@ -65,7 +81,7 @@ impl LfoWidget {
 
         bridge.apply_modulation(module_id, Input::PhaseShift, &mut config.phase_shift);
 
-        self.build_waveform(&config.segments, config.phase_shift[0]);
+        self.build_waveform(&config.segments, config.phase_shift[0], rect.width());
 
         let painter = ui.painter();
 
@@ -84,11 +100,8 @@ impl LfoWidget {
 
         if has_active_voices {
             let phase = lfo_bridge.get_phase();
-            let value = config
-                .segments
-                .value_at((phase + config.phase_shift[0]).rem_euclid(1.0));
             painter.circle_filled(
-                Self::phase_pos(rect, phase, value),
+                Self::phase_pos(rect, phase, self.waveform_at(phase)),
                 PHASE_RADIUS,
                 WAVE_COLOR,
             );
@@ -108,3 +121,6 @@ impl GridWidgetContent for LfoWidget {
             });
     }
 }
+
+#[cfg(test)]
+mod tests;

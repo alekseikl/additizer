@@ -53,11 +53,13 @@ fn phase_at(index: usize, fraction: Smp) -> Phase {
 fn table_knots_match_the_segments() {
     let lfo = make_lfo(test_sine());
 
+    let mut rendered = vec![0.0; WAVEFORM_SIZE];
+    lfo.get_config().segments.render(&mut rendered, false);
+
     for index in [0, 1, 100, 1024, 2047] {
-        let t = index as Smp / WAVEFORM_SIZE as Smp;
         let baked = lfo.wave[WAVEFORM_PAD_LEFT + index];
 
-        assert!((baked - lfo.get_config().segments.value_at(t)).abs() < 1e-6);
+        assert_eq!(baked, rendered[index]);
         assert_eq!(
             TestLfo::read_wave(&lfo.wave, phase_at(index, 0.0)),
             baked,
@@ -70,10 +72,12 @@ fn table_knots_match_the_segments() {
 fn sine_midpoints_follow_catmull_rom() {
     let lfo = make_lfo(test_sine());
 
+    let mut fine = vec![0.0; WAVEFORM_SIZE * 2];
+    lfo.get_config().segments.render(&mut fine, false);
+
     for index in [0, 10, 500, 2046] {
-        let t = (index as Smp + 0.5) / WAVEFORM_SIZE as Smp;
         let got = TestLfo::read_wave(&lfo.wave, phase_at(index, 0.5));
-        let expected = lfo.get_config().segments.value_at(t);
+        let expected = fine[index * 2 + 1];
 
         assert!(
             (got - expected).abs() < 1e-4,
@@ -87,10 +91,11 @@ fn playback_applies_phase_shift() {
     let lfo = make_lfo(test_sine());
     let index = 0;
     let shift = 0.125;
+    let shift_index = (shift * WAVEFORM_SIZE as Smp) as usize;
     let read = TestLfo::read_wave(&lfo.wave, phase_at(index, 0.0).add_normalized(shift));
-    let expected = lfo.get_config().segments.value_at(shift);
+    let expected = lfo.wave[WAVEFORM_PAD_LEFT + shift_index];
 
-    assert!((read - expected).abs() < 1e-5, "{read} vs {expected}");
+    assert_eq!(read, expected);
 }
 
 #[test]

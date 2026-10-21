@@ -2,21 +2,21 @@ use addi_ui_backend::ui_bridge::modules::lfo::LfoUiBridge;
 use egui::{Checkbox, Grid, Ui};
 
 use crate::{
-    ModuleUi, line_editor::LineEditor, module_label::ModuleLabel, stereo_input::StereoInput,
+    ModuleUi, line_editor::SegmentsEditor, module_label::ModuleLabel, stereo_input::StereoInput,
 };
 use addi_engine::{Input, ModuleId, ModuleType};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
 pub struct LfoUi {
     module_id: ModuleId,
-    editor: LineEditor,
+    editor: SegmentsEditor,
 }
 
 impl LfoUi {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            editor: LineEditor::default(),
+            editor: SegmentsEditor::default(),
         }
     }
 

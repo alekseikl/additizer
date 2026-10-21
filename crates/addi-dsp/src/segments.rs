@@ -1,6 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{Smp, power_scale, utils::sanitize};
+use crate::{
+    SIMD_LANES, Smp, WideSmp,
+    fast_math::{fast_exp2_wide, fast_sin_pi_wide},
+    simd_utils::fill_wide,
+    utils::sanitize,
+};
 
 pub const MAX_POINTS: usize = 100;
 pub const MAX_POWER: Smp = 20.0;
@@ -203,37 +208,14 @@ impl Segments {
         }
     }
 
-    /// Level at `phase` along the segment that contains it.
-    pub fn value_at(&self, phase: Smp) -> Smp {
-        let n = self.num_segments();
-
-        if n == 0 {
-            return 0.0;
-        }
-
-        let phase = if phase.is_finite() {
-            phase.clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-
-        for i in 0..n - 1 {
-            let start = self.segments[i];
-            let end = self.segments[i + 1];
-
-            if start.x <= phase && end.x >= phase {
-                return self.value_between(phase, i, i + 1);
-            }
-        }
-
-        self.segments[n - 1].y
-    }
-
-    /// Write one cycle into `out` at phases `i / out.len()`, the range `[0, 1)`.
-    pub fn render(&self, out: &mut [Smp]) {
+    /// Write one cycle into `out`. Fewer than two samples are left unchanged.
+    ///
+    /// `closed` is false for phases `i / out.len()` on `[0, 1)`.
+    /// `closed` is true for phases `i / (out.len() - 1)` on `[0, 1]`.
+    pub fn render(&self, out: &mut [Smp], closed: bool) {
         let len = out.len();
 
-        if len == 0 {
+        if len < 2 {
             return;
         }
 
@@ -246,65 +228,106 @@ impl Segments {
         debug_assert_eq!(self.segments[0].x, 0.0);
         debug_assert_eq!(self.segments[n - 1].x, 1.0);
 
-        let len_f = len as Smp;
+        let denom = (len - usize::from(closed)) as Smp;
         let mut from = 0;
 
         for pair in self.segments.windows(2) {
-            let to = samples_until(pair[1].x, len, len_f);
+            // The sample on this breakpoint belongs to the segment that ends here.
+            let last = (pair[1].x * denom)
+                .floor()
+                .clamp(0.0, (len - 1) as Smp) as usize;
+            let to = last + 1;
 
             if from >= to {
                 continue;
             }
 
-            render_segment(&mut out[from..to], from, len, pair[0], pair[1]);
+            render_segment(&mut out[from..to], from, denom, pair[0], pair[1]);
             from = to;
         }
 
         debug_assert_eq!(from, len);
     }
-
-    pub fn value_between(&self, x: Smp, index_from: usize, index_to: usize) -> Smp {
-        segment_value(x, self.segments[index_from], self.segments[index_to])
-    }
 }
 
-/// First index `i` whose phase `i / len` is past `phase`.
-///
-/// A sample that lands on `phase` belongs to the segment that ends there.
-fn samples_until(phase: Smp, len: usize, len_f: Smp) -> usize {
-    let scaled = phase * len_f;
-
-    if scaled >= len_f {
-        len
-    } else {
-        (scaled.floor().max(0.0) as usize + 1).min(len)
-    }
-}
-
-fn render_segment(out: &mut [Smp], start_index: usize, len: usize, start: Segment, end: Segment) {
-    let len_f = len as Smp;
-
-    for (offset, sample) in out.iter_mut().enumerate() {
-        let phase = (start_index + offset) as Smp / len_f;
-        *sample = segment_value(phase, start, end);
-    }
-}
-
-fn segment_value(phase: Smp, start: Segment, end: Segment) -> Smp {
+fn render_segment(out: &mut [Smp], start_index: usize, denom: Smp, start: Segment, end: Segment) {
     let width = end.x - start.x;
 
     if width <= 0.0 {
-        return end.y;
+        out.fill(end.y);
+        return;
     }
 
-    let mut t = ((phase - start.x) / width).clamp(0.0, 1.0);
+    let start_x = WideSmp::splat(start.x);
+    let span_scale = WideSmp::splat(width.recip());
+    let origin = WideSmp::splat(start.y);
+    let delta = WideSmp::splat(end.y - start.y);
+    let smooth = start.smooth;
+    let power = PowerLanes::new(start.power);
+    let phase_scale = WideSmp::splat(denom.recip());
+    let step = phase_scale * WideSmp::splat(SIMD_LANES as Smp);
+    let mut phase =
+        (WideSmp::splat(start_index as Smp) + WideSmp::new([0.0, 1.0, 2.0, 3.0])) * phase_scale;
 
-    if start.smooth {
-        t = 0.5 * ((t - 0.5) * std::f32::consts::PI).sin() + 0.5;
+    fill_wide(out, || {
+        let t = ((phase - start_x) * span_scale)
+            .fast_max(WideSmp::ZERO)
+            .fast_min(WideSmp::ONE);
+
+        let t = if smooth {
+            fast_sin_pi_wide(t - WideSmp::HALF).mul_add(WideSmp::HALF, WideSmp::HALF)
+        } else {
+            t
+        };
+
+        phase += step;
+
+        power.scale(t).mul_add(delta, origin)
+    });
+}
+
+/// [`power_scale`](crate::power_scale) for each lane.
+///
+/// `scale` is `1 / (exp(power) - 1)`, computed once and applied with a multiply.
+struct PowerLanes {
+    curved: bool,
+    power_log2e: WideSmp,
+    scale: WideSmp,
+}
+
+impl PowerLanes {
+    fn new(power: Smp) -> Self {
+        // Same cutoff as `power_scale`: a flat slope stays linear.
+        if power.abs() < 0.005 {
+            return Self {
+                curved: false,
+                power_log2e: WideSmp::ZERO,
+                scale: WideSmp::ONE,
+            };
+        }
+
+        let power_log2e = WideSmp::splat(power * std::f32::consts::LOG2_E);
+        let denom = (fast_exp2_wide(power_log2e) - WideSmp::ONE).to_array()[0];
+        let scale = WideSmp::splat(denom.recip());
+
+        Self {
+            curved: true,
+            power_log2e,
+            scale,
+        }
     }
 
-    t = power_scale(t, start.power).clamp(0.0, 1.0);
-    t.mul_add(end.y - start.y, start.y)
+    fn scale(&self, t: WideSmp) -> WideSmp {
+        if !self.curved {
+            return t.fast_max(WideSmp::ZERO).fast_min(WideSmp::ONE);
+        }
+
+        let exp = fast_exp2_wide(t * self.power_log2e);
+
+        ((exp - WideSmp::ONE) * self.scale)
+            .fast_max(WideSmp::ZERO)
+            .fast_min(WideSmp::ONE)
+    }
 }
 
 #[cfg(test)]

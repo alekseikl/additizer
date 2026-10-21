@@ -218,9 +218,10 @@ impl<L: LfoLinks> Lfo<L> {
     }
 
     fn bake_wave(&mut self) {
-        self.params
-            .segments
-            .render(&mut self.wave[WAVEFORM_PAD_LEFT..WAVEFORM_PAD_LEFT + WAVEFORM_SIZE]);
+        self.params.segments.render(
+            &mut self.wave[WAVEFORM_PAD_LEFT..WAVEFORM_PAD_LEFT + WAVEFORM_SIZE],
+            false,
+        );
 
         let last = WAVEFORM_PAD_LEFT + WAVEFORM_SIZE - 1;
         self.wave[0] = self.wave[last];

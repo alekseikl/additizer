@@ -65,9 +65,9 @@ pub fn db_to_gain_fast_wide(dbs: WideSmp) -> WideSmp {
 /// [`pitch_to_freq`](crate::math::pitch_to_freq) for each lane, built on [`fast_exp2_wide`].
 #[inline(always)]
 pub fn pitch_to_freq_wide(pitch: WideSmp) -> WideSmp {
-    const A4_FREQ_X4: WideSmp = WideSmp::splat(A4_FREQ);
+    const A4_FREQ_WIDE: WideSmp = WideSmp::splat(A4_FREQ);
 
-    fast_exp2_wide(pitch) * A4_FREQ_X4
+    fast_exp2_wide(pitch) * A4_FREQ_WIDE
 }
 
 /// `tan(π x)` for each lane, with `x` in `[0, 0.499]`.
@@ -93,11 +93,11 @@ pub(crate) fn fast_tan_pi_wide(ratio: WideSmp) -> WideSmp {
     ];
     const QUARTER: WideSmp = WideSmp::splat(0.25);
     const HALF: WideSmp = WideSmp::splat(0.5);
-    const PI_X4: WideSmp = WideSmp::splat(std::f32::consts::PI);
+    const PI_WIDE: WideSmp = WideSmp::splat(std::f32::consts::PI);
 
     let over = ratio.simd_gt(QUARTER);
     let reduced = over.select(HALF - ratio, ratio);
-    let x = reduced * PI_X4;
+    let x = reduced * PI_WIDE;
     let t = x * x;
     let p = C[6]
         .mul_add(t, C[5])
@@ -113,6 +113,41 @@ pub(crate) fn fast_tan_pi_wide(ratio: WideSmp) -> WideSmp {
     } else {
         tan_x
     }
+}
+
+/// `sin(π x)` for each lane, with `x` in `[-0.5, 0.5]`.
+///
+/// This is the raised-cosine ease `0.5 + 0.5 * sin(π (t - 0.5))`. The argument
+/// stays inside one half-turn, so one odd polynomial covers both signs.
+///
+/// Absolute error against `(x * π).sin()` is below 2e-7. The ends are exact:
+/// `0` maps to `0` and `±0.5` maps to `±1`.
+#[inline(always)]
+pub(crate) fn fast_sin_pi_wide(ratio: WideSmp) -> WideSmp {
+    // Fit of sin(x) / x on [0, π/2], evaluated with f32 `mul_add`.
+    // The constant term is 1, so the approximation is exact at zero.
+    const C: [WideSmp; 7] = [
+        WideSmp::splat(1.0),
+        WideSmp::splat(-0.166_666_67),
+        WideSmp::splat(0.008_333_333),
+        WideSmp::splat(-0.000_198_412_41),
+        WideSmp::splat(2.755_490_6e-6),
+        WideSmp::splat(-2.495_599e-8),
+        WideSmp::splat(1.440_325_8e-10),
+    ];
+    const PI_WIDE: WideSmp = WideSmp::splat(std::f32::consts::PI);
+
+    let x = ratio * PI_WIDE;
+    let z = x * x;
+    let p = C[6]
+        .mul_add(z, C[5])
+        .mul_add(z, C[4])
+        .mul_add(z, C[3])
+        .mul_add(z, C[2])
+        .mul_add(z, C[1])
+        .mul_add(z, C[0]);
+
+    x * p
 }
 
 /// Catmull–Rom reads four neighbors, so the kernel stays [`f32x4`].

@@ -10,7 +10,9 @@ fn wide(values: &[f32]) -> WideSmp {
     WideSmp::new(lanes)
 }
 
-use super::{db_to_gain_fast_wide, fast_exp2_wide, fast_tan_pi_wide, pitch_to_freq_wide};
+use super::{
+    db_to_gain_fast_wide, fast_exp2_wide, fast_sin_pi_wide, fast_tan_pi_wide, pitch_to_freq_wide,
+};
 
 fn fast_exp2(x: f32) -> f32 {
     fast_exp2_wide(WideSmp::splat(x)).to_array()[0]
@@ -88,6 +90,37 @@ fn fast_tan_pi_matches_libm_tan() {
         worst_high < 5e-5,
         "max relative error above 0.25: {worst_high}"
     );
+}
+
+fn fast_sin_pi(x: f32) -> f32 {
+    fast_sin_pi_wide(WideSmp::splat(x)).to_array()[0]
+}
+
+#[test]
+fn fast_sin_pi_matches_libm_sin() {
+    let mut worst = 0.0f32;
+
+    for i in -20_000..=20_000 {
+        let ratio = 0.5 * i as f32 / 20_000.0;
+        let x = ratio * std::f32::consts::PI;
+        let err = (fast_sin_pi(ratio) - x.sin()).abs();
+        worst = worst.max(err);
+    }
+
+    assert!(worst < 2e-7, "max absolute error {worst}");
+    assert_eq!(fast_sin_pi(0.0), 0.0);
+    assert_eq!(fast_sin_pi(0.5), 1.0);
+    assert_eq!(fast_sin_pi(-0.5), -1.0);
+}
+
+#[test]
+fn fast_sin_pi_lanes_are_independent() {
+    let ratios = [-0.5f32, -0.2, 0.1, 0.5];
+    let out = fast_sin_pi_wide(wide(&ratios)).to_array();
+
+    for (ratio, y) in ratios.into_iter().zip(out) {
+        assert_eq!(y, fast_sin_pi(ratio), "sin(π * {ratio})");
+    }
 }
 
 #[test]

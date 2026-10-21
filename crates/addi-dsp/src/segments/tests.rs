@@ -60,6 +60,12 @@ fn sine_at(skew: Smp) -> Segments {
     segments
 }
 
+fn render_open(segments: &Segments, len: usize) -> Vec<Smp> {
+    let mut samples = vec![0.0; len];
+    segments.render(&mut samples, false);
+    samples
+}
+
 fn assert_points_eq(actual: &[Segment], expected: &[Segment]) {
     assert_eq!(actual.len(), expected.len());
     for (a, e) in actual.iter().zip(expected) {
@@ -90,30 +96,33 @@ fn smooth_applies_only_to_the_segment_that_starts_at_that_point() {
 
     segments.set_smooth(0, true);
 
-    assert!((segments.value_at(0.125) - plain.value_at(0.125)).abs() > 1e-3);
-    assert!((segments.value_at(0.75) - plain.value_at(0.75)).abs() < 1e-5);
+    let smooth = render_open(&segments, 8);
+    let plain = render_open(&plain, 8);
+
+    assert!((smooth[1] - plain[1]).abs() > 1e-3);
+    assert!((smooth[6] - plain[6]).abs() < 1e-5);
 }
 
 #[test]
 fn legacy_shapes_match_the_old_curves() {
     let skew = 0.3;
-    let triangle = triangle_at(skew);
-    let sine = sine_at(skew);
-    let square = square_at(0.15);
+    let triangle = render_open(&triangle_at(skew), 2048);
+    let sine = render_open(&sine_at(skew), 2048);
+    let square = render_open(&square_at(0.15), 2048);
 
     for index in 0..2048 {
         let t = index as Smp / 2048.0;
 
         assert!(
-            (triangle.value_at(t) - legacy_triangle(t, skew)).abs() < 1e-5,
+            (triangle[index] - legacy_triangle(t, skew)).abs() < 1e-5,
             "triangle {t}"
         );
         assert!(
-            (sine.value_at(t) - legacy_sine(t, skew)).abs() < 1e-5,
+            (sine[index] - legacy_sine(t, skew)).abs() < 1e-5,
             "sine {t}"
         );
         assert!(
-            (square.value_at(t) - legacy_square(t, 0.15)).abs() < 1e-5,
+            (square[index] - legacy_square(t, 0.15)).abs() < 1e-5,
             "square {t}"
         );
     }
@@ -124,22 +133,71 @@ fn render_covers_the_half_open_period() {
     let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     let mut samples = [0.0; 4];
 
-    ramp.render(&mut samples);
+    ramp.render(&mut samples, false);
 
     assert_eq!(samples, [0.0, 0.25, 0.5, 0.75]);
 
     let square = Segments::from_points(&[(0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)], false);
     let mut square_samples = [0.0; 8];
 
-    square.render(&mut square_samples);
+    square.render(&mut square_samples, false);
 
-    for (i, sample) in square_samples.iter().enumerate() {
-        let phase = i as Smp / square_samples.len() as Smp;
+    assert_eq!(square_samples, [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0]);
+}
 
-        assert!((*sample - square.value_at(phase)).abs() < 1e-6, "{phase}");
+#[test]
+fn render_tails_match_an_aligned_render() {
+    let mut segments = Segments::from_points(&[(0.0, 0.15), (0.37, 0.9), (1.0, 0.2)], true);
+    segments.set_power(0, 4.0);
+    segments.set_power(1, -2.5);
+
+    let mut worst = 0.0f32;
+
+    for &(len, closed) in &[
+        (2, false),
+        (3, false),
+        (4, true),
+        (5, true),
+        (7, false),
+        (8, false),
+    ] {
+        let mut short = vec![0.0; len];
+        segments.render(&mut short, closed);
+
+        let short_denom = if closed { len - 1 } else { len };
+        let long_denom = short_denom * 4;
+        let long_len = if closed { long_denom + 1 } else { long_denom };
+        let mut long = vec![0.0; long_len];
+        segments.render(&mut long, closed);
+
+        for (i, sample) in short.iter().enumerate() {
+            let phase = i as Smp / short_denom as Smp;
+            let pos = phase * long_denom as Smp;
+            let index = pos.round() as usize;
+
+            assert!((pos - index as Smp).abs() < 1e-3, "{phase}");
+            worst = worst.max((sample - long[index]).abs());
+        }
     }
 
-    assert_eq!(square_samples[4], 1.0);
+    assert!(worst < 1e-5, "worst {worst}");
+}
+
+#[test]
+fn render_closed_includes_phase_one() {
+    let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let mut samples = [0.0; 5];
+
+    ramp.render(&mut samples, true);
+
+    assert_eq!(samples, [0.0, 0.25, 0.5, 0.75, 1.0]);
+
+    let square = Segments::from_points(&[(0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)], false);
+    let mut square_samples = [0.0; 5];
+
+    square.render(&mut square_samples, true);
+
+    assert_eq!(square_samples, [1.0, 1.0, 1.0, 0.0, 0.0]);
 }
 
 #[test]
@@ -167,11 +225,15 @@ fn sanitize_clamps_curve_floats() {
 fn positive_power_holds_the_segment_near_its_start() {
     let mut segments = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
-    assert!((segments.value_at(0.5) - 0.5).abs() < 1e-6);
+    let mut samples = [0.0; 2];
+
+    segments.render(&mut samples, false);
+    assert!((samples[1] - 0.5).abs() < 1e-6);
 
     segments.set_power(0, 8.0);
+    segments.render(&mut samples, false);
 
-    assert!(segments.value_at(0.5) < 0.5);
+    assert!(samples[1] < 0.5);
 }
 
 #[test]
