@@ -27,7 +27,7 @@ pub use math::{
     gain_to_db_fast, note_to_pitch, pan_gain, pitch_to_freq, power_scale,
 };
 pub use phase::{Phase, PhaseX4};
-pub use segments::{Segment, Segments};
+pub use segments::{CurvePoint, Segment, Segments};
 pub use simd_utils::{fill_wide, map_wide, map_wide_in_place, zip_map_wide};
 pub use smooth::{SmoothedSample, SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;

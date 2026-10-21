@@ -1,4 +1,4 @@
-use super::{MAX_POINTS, Segment, Segments};
+use super::{CurvePoint, MAX_POINTS, Segment, Segments};
 use crate::Smp;
 
 fn skew_arg(arg: Smp, skew: Smp) -> Smp {
@@ -62,7 +62,7 @@ fn sine_at(skew: Smp) -> Segments {
 
 fn render_open(segments: &Segments, len: usize) -> Vec<Smp> {
     let mut samples = vec![0.0; len];
-    segments.render(&mut samples, false);
+    segments.render(&mut samples);
     samples
 }
 
@@ -133,14 +133,14 @@ fn render_covers_the_half_open_period() {
     let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     let mut samples = [0.0; 4];
 
-    ramp.render(&mut samples, false);
+    ramp.render(&mut samples);
 
     assert_eq!(samples, [0.0, 0.25, 0.5, 0.75]);
 
     let square = Segments::from_points(&[(0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)], false);
     let mut square_samples = [0.0; 8];
 
-    square.render(&mut square_samples, false);
+    square.render(&mut square_samples);
 
     assert_eq!(square_samples, [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0]);
 }
@@ -153,26 +153,17 @@ fn render_tails_match_an_aligned_render() {
 
     let mut worst = 0.0f32;
 
-    for &(len, closed) in &[
-        (2, false),
-        (3, false),
-        (4, true),
-        (5, true),
-        (7, false),
-        (8, false),
-    ] {
+    for &len in &[2, 3, 7, 8] {
         let mut short = vec![0.0; len];
-        segments.render(&mut short, closed);
+        segments.render(&mut short);
 
-        let short_denom = if closed { len - 1 } else { len };
-        let long_denom = short_denom * 4;
-        let long_len = if closed { long_denom + 1 } else { long_denom };
+        let long_len = len * 4;
         let mut long = vec![0.0; long_len];
-        segments.render(&mut long, closed);
+        segments.render(&mut long);
 
         for (i, sample) in short.iter().enumerate() {
-            let phase = i as Smp / short_denom as Smp;
-            let pos = phase * long_denom as Smp;
+            let phase = i as Smp / len as Smp;
+            let pos = phase * long_len as Smp;
             let index = pos.round() as usize;
 
             assert!((pos - index as Smp).abs() < 1e-3, "{phase}");
@@ -184,20 +175,76 @@ fn render_tails_match_an_aligned_render() {
 }
 
 #[test]
-fn render_closed_includes_phase_one() {
+fn value_at_reads_the_segment_that_contains_the_phase() {
     let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
-    let mut samples = [0.0; 5];
 
-    ramp.render(&mut samples, true);
+    assert!((ramp.value_at(0.0) - 0.0).abs() < 1e-6);
+    assert!((ramp.value_at(0.25) - 0.25).abs() < 1e-6);
+    assert!((ramp.value_at(1.0) - 1.0).abs() < 1e-6);
+    assert!((ramp.value_at(Smp::NAN) - ramp.value_at(0.0)).abs() < 1e-6);
 
-    assert_eq!(samples, [0.0, 0.25, 0.5, 0.75, 1.0]);
+    let square = Segments::from_points(
+        &[(0.0, 0.0), (0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)],
+        false,
+    );
+
+    assert!((square.value_at(0.0) - 1.0).abs() < 1e-6);
+    assert!((square.value_at(0.25) - 1.0).abs() < 1e-6);
+    assert!((square.value_at(0.5) - 1.0).abs() < 1e-6);
+    assert!((square.value_at(0.75) - 0.0).abs() < 1e-6);
+
+    let mut curved = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], true);
+    curved.set_power(0, 8.0);
+
+    assert!(curved.value_at(0.5) < ramp.value_at(0.5));
+
+    let mut samples = [0.0; 8];
+    curved.render(&mut samples);
+    assert!((curved.value_at(3.0 / 8.0) - samples[3]).abs() < 1e-5);
+}
+
+#[test]
+fn render_points_closes_the_cycle_and_keeps_corners() {
+    let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let mut points = Vec::new();
+    let mut scratch = Vec::new();
+
+    ramp.render_points(4, &mut points, &mut scratch);
+
+    assert_eq!(scratch, vec![0.0, 0.25, 0.5, 0.75, 1.0]);
+    assert!(points.windows(2).all(|pair| pair[1].x + 1e-5 >= pair[0].x));
+
+    let triangle = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+
+    triangle.render_points(3, &mut points, &mut scratch);
+
+    assert_eq!(
+        points.iter().find(|point| (point.x - 0.5).abs() < 1e-6),
+        Some(&CurvePoint { x: 0.5, y: 1.0 })
+    );
+    assert!(
+        points
+            .iter()
+            .find(|point| (point.x - 1.0 / 3.0).abs() < 1e-5)
+            .unwrap()
+            .y
+            < 1.0
+    );
 
     let square = Segments::from_points(&[(0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)], false);
-    let mut square_samples = [0.0; 5];
 
-    square.render(&mut square_samples, true);
+    square.render_points(4, &mut points, &mut scratch);
 
-    assert_eq!(square_samples, [1.0, 1.0, 1.0, 0.0, 0.0]);
+    assert_eq!(scratch, vec![1.0, 1.0, 1.0, 0.0, 0.0]);
+
+    let at_half: Vec<Smp> = points
+        .iter()
+        .filter(|point| (point.x - 0.5).abs() < 1e-5)
+        .map(|point| point.y)
+        .collect();
+
+    assert!(at_half.contains(&1.0));
+    assert_eq!(at_half.last().copied(), Some(0.0));
 }
 
 #[test]
@@ -227,11 +274,11 @@ fn positive_power_holds_the_segment_near_its_start() {
 
     let mut samples = [0.0; 2];
 
-    segments.render(&mut samples, false);
+    segments.render(&mut samples);
     assert!((samples[1] - 0.5).abs() < 1e-6);
 
     segments.set_power(0, 8.0);
-    segments.render(&mut samples, false);
+    segments.render(&mut samples);
 
     assert!(samples[1] < 0.5);
 }

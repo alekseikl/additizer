@@ -92,12 +92,10 @@ pub(crate) fn fast_tan_pi_wide(ratio: WideSmp) -> WideSmp {
         WideSmp::splat(9.508_654_5e-3),
     ];
     const QUARTER: WideSmp = WideSmp::splat(0.25);
-    const HALF: WideSmp = WideSmp::splat(0.5);
-    const PI_WIDE: WideSmp = WideSmp::splat(std::f32::consts::PI);
 
     let over = ratio.simd_gt(QUARTER);
-    let reduced = over.select(HALF - ratio, ratio);
-    let x = reduced * PI_WIDE;
+    let reduced = over.select(WideSmp::HALF - ratio, ratio);
+    let x = reduced * WideSmp::PI;
     let t = x * x;
     let p = C[6]
         .mul_add(t, C[5])
@@ -135,9 +133,8 @@ pub(crate) fn fast_sin_pi_wide(ratio: WideSmp) -> WideSmp {
         WideSmp::splat(-2.495_599e-8),
         WideSmp::splat(1.440_325_8e-10),
     ];
-    const PI_WIDE: WideSmp = WideSmp::splat(std::f32::consts::PI);
 
-    let x = ratio * PI_WIDE;
+    let x = ratio * WideSmp::PI;
     let z = x * x;
     let p = C[6]
         .mul_add(z, C[5])

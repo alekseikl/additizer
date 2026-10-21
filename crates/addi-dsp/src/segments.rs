@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     SIMD_LANES, Smp, WideSmp,
     fast_math::{fast_exp2_wide, fast_sin_pi_wide},
+    power_scale,
     simd_utils::fill_wide,
     utils::sanitize,
 };
@@ -29,6 +30,13 @@ impl Default for Segment {
             smooth: false,
         }
     }
+}
+
+/// Phase and level on a curve drawn for the UI.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CurvePoint {
+    pub x: Smp,
+    pub y: Smp,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -208,35 +216,47 @@ impl Segments {
         }
     }
 
-    /// Write one cycle into `out`. Fewer than two samples are left unchanged.
-    ///
-    /// `closed` is false for phases `i / out.len()` on `[0, 1)`.
-    /// `closed` is true for phases `i / (out.len() - 1)` on `[0, 1]`.
-    pub fn render(&self, out: &mut [Smp], closed: bool) {
-        let len = out.len();
-
-        if len < 2 {
-            return;
-        }
-
+    /// Level at `phase`. A non-finite phase reads the start of the curve.
+    pub fn value_at(&self, phase: Smp) -> Smp {
         let n = self.num_segments();
 
-        if n < MIN_POINTS {
+        if n == 0 {
+            return 0.0;
+        }
+
+        let phase = if phase.is_finite() {
+            phase.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+
+        for pair in self.segments.windows(2) {
+            if pair[0].x <= phase && pair[1].x >= phase {
+                return segment_level(phase, pair[0], pair[1]);
+            }
+        }
+
+        self.segments[n - 1].y
+    }
+
+    /// Write one DSP cycle into `out` at phases `i / out.len()` on `[0, 1)`.
+    pub fn render(&self, out: &mut [Smp]) {
+        let len = out.len();
+        let n = self.num_segments();
+
+        if len < 2 || n < MIN_POINTS {
             return;
         }
 
         debug_assert_eq!(self.segments[0].x, 0.0);
         debug_assert_eq!(self.segments[n - 1].x, 1.0);
 
-        let denom = (len - usize::from(closed)) as Smp;
+        let denom = len as Smp;
         let mut from = 0;
 
         for pair in self.segments.windows(2) {
             // The sample on this breakpoint belongs to the segment that ends here.
-            let last = (pair[1].x * denom)
-                .floor()
-                .clamp(0.0, (len - 1) as Smp) as usize;
-            let to = last + 1;
+            let to = sample_index(pair[1].x, denom, len) + 1;
 
             if from >= to {
                 continue;
@@ -248,6 +268,88 @@ impl Segments {
 
         debug_assert_eq!(from, len);
     }
+
+    /// Polyline for `pixels` columns. `scratch` is resized to `pixels + 1` and holds
+    /// the closed samples at phases `i / pixels`.
+    pub fn render_points(
+        &self,
+        pixels: usize,
+        points: &mut Vec<CurvePoint>,
+        scratch: &mut Vec<Smp>,
+    ) {
+        points.clear();
+
+        let n = self.num_segments();
+
+        if pixels < 1 || n < MIN_POINTS {
+            return;
+        }
+
+        debug_assert_eq!(self.segments[0].x, 0.0);
+        debug_assert_eq!(self.segments[n - 1].x, 1.0);
+
+        let len = pixels + 1;
+
+        scratch.resize(len, 0.0);
+
+        let denom = pixels as Smp;
+        let mut from = 0;
+
+        for pair in self.segments.windows(2) {
+            points.push(CurvePoint {
+                x: pair[0].x,
+                y: pair[0].y,
+            });
+
+            let to = sample_index(pair[1].x, denom, len) + 1;
+
+            if from >= to {
+                continue;
+            }
+
+            render_segment(&mut scratch[from..to], from, denom, pair[0], pair[1]);
+
+            points.extend(
+                scratch[from..to]
+                    .iter()
+                    .enumerate()
+                    .map(|(offset, &y)| CurvePoint {
+                        x: (from + offset) as Smp / denom,
+                        y,
+                    }),
+            );
+
+            from = to;
+        }
+
+        let end = self.segments[n - 1];
+
+        points.push(CurvePoint { x: end.x, y: end.y });
+
+        debug_assert_eq!(from, len);
+    }
+}
+
+fn sample_index(x: Smp, denom: Smp, len: usize) -> usize {
+    (x * denom).floor().clamp(0.0, (len - 1) as Smp) as usize
+}
+
+fn segment_level(phase: Smp, start: Segment, end: Segment) -> Smp {
+    let width = end.x - start.x;
+
+    if width <= 0.0 {
+        return end.y;
+    }
+
+    let mut t = ((phase - start.x) / width).clamp(0.0, 1.0);
+
+    if start.smooth {
+        t = ((t - 0.5) * std::f32::consts::PI).sin().mul_add(0.5, 0.5);
+    }
+
+    power_scale(t, start.power)
+        .clamp(0.0, 1.0)
+        .mul_add(end.y - start.y, start.y)
 }
 
 fn render_segment(out: &mut [Smp], start_index: usize, denom: Smp, start: Segment, end: Segment) {

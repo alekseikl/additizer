@@ -54,7 +54,7 @@ fn table_knots_match_the_segments() {
     let lfo = make_lfo(test_sine());
 
     let mut rendered = vec![0.0; WAVEFORM_SIZE];
-    lfo.get_config().segments.render(&mut rendered, false);
+    lfo.get_config().segments.render(&mut rendered);
 
     for index in [0, 1, 100, 1024, 2047] {
         let baked = lfo.wave[WAVEFORM_PAD_LEFT + index];
@@ -73,7 +73,7 @@ fn sine_midpoints_follow_catmull_rom() {
     let lfo = make_lfo(test_sine());
 
     let mut fine = vec![0.0; WAVEFORM_SIZE * 2];
-    lfo.get_config().segments.render(&mut fine, false);
+    lfo.get_config().segments.render(&mut fine);
 
     for index in [0, 10, 500, 2046] {
         let got = TestLfo::read_wave(&lfo.wave, phase_at(index, 0.5));

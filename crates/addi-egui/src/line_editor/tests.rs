@@ -1,4 +1,4 @@
-use egui::{Pos2, Rect, pos2};
+use egui::{Rect, pos2};
 
 use addi_dsp::Segments;
 
@@ -22,11 +22,16 @@ fn linear_segment_keeps_a_point_per_pixel() {
     let editor = curve(&ramp);
     let points = &editor.points;
 
-    assert_eq!(points.len(), 101);
+    assert!(points.len() >= 101);
     assert_eq!(points[0], pos2(0.0, 100.0));
-    assert_eq!(points[40].x, 40.0);
-    assert!((points[40].y - 60.0).abs() < 1e-4);
-    assert_eq!(points[100], pos2(100.0, 0.0));
+    assert_eq!(*points.last().unwrap(), pos2(100.0, 0.0));
+
+    let at_40 = points
+        .iter()
+        .find(|point| (point.x - 40.0).abs() < 1e-3)
+        .unwrap();
+
+    assert!((at_40.y - 60.0).abs() < 1e-4);
 }
 
 #[test]
@@ -34,28 +39,37 @@ fn playhead_follows_the_rendered_polyline() {
     let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     let editor = curve(&ramp);
     let phase = 0.405;
-    let pos = editor.curve_pos(phase);
-    let from = editor.points[40];
-    let to = editor.points[41];
-    let frac = (pos.x - from.x) / (to.x - from.x);
+    let pos = SegmentsEditor::curve_pos(plot(), &ramp, phase);
 
-    assert_eq!(editor.curve_pos(0.0), editor.points[0]);
-    assert_eq!(editor.curve_pos(1.0), *editor.points.last().unwrap());
+    assert_eq!(
+        SegmentsEditor::curve_pos(plot(), &ramp, 0.0),
+        editor.points[0]
+    );
+    assert_eq!(
+        SegmentsEditor::curve_pos(plot(), &ramp, 1.0),
+        *editor.points.last().unwrap()
+    );
     assert!((pos.x - phase * 100.0).abs() < 1e-3);
-    assert!(pos.x > from.x && pos.x < to.x);
-    assert!((pos.y - (from.y + (to.y - from.y) * frac)).abs() < 1e-4);
-    assert_eq!(SegmentsEditor::default().curve_pos(0.5), Pos2::ZERO);
+    assert!((pos.y - (100.0 - ramp.value_at(phase) * 100.0)).abs() < 1e-4);
 }
 
 #[test]
-fn square_steps_between_adjacent_pixels() {
+fn square_corners_are_vertical() {
     let editor = curve(&segment_presets::square());
     let points = &editor.points;
+    let at = |x: f32| -> Vec<f32> {
+        points
+            .iter()
+            .filter(|point| (point.x - x).abs() < 1e-3)
+            .map(|point| point.y)
+            .collect()
+    };
 
-    assert_eq!(points[0], pos2(0.0, 0.0));
-    assert_eq!(points[50], pos2(50.0, 0.0));
-    assert_eq!(points[51], pos2(51.0, 100.0));
-    assert_eq!(points[points.len() - 1], pos2(100.0, 100.0));
+    assert_eq!(at(0.0).first().copied(), Some(100.0));
+    assert_eq!(at(0.0).last().copied(), Some(0.0));
+    assert_eq!(at(50.0).first().copied(), Some(0.0));
+    assert_eq!(at(50.0).last().copied(), Some(100.0));
+    assert_eq!(*points.last().unwrap(), pos2(100.0, 100.0));
 }
 
 #[test]

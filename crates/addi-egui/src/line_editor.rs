@@ -5,7 +5,8 @@ use egui::{
 
 use addi_dsp::{
     power_scale,
-    segments::{MAX_POWER, Segment, Segments},
+    segments::{CurvePoint, MAX_POWER, Segment, Segments},
+    utils::sanitize,
 };
 use addi_engine::Smp;
 
@@ -59,7 +60,8 @@ pub struct SegmentsEditor {
     last_pointer_y: f32,
     menu_point: Option<usize>,
     menu_power: Option<usize>,
-    levels: Vec<Smp>,
+    curve: Vec<CurvePoint>,
+    scratch: Vec<Smp>,
     points: Vec<Pos2>,
 }
 
@@ -73,7 +75,8 @@ impl Default for SegmentsEditor {
             last_pointer_y: 0.0,
             menu_point: None,
             menu_power: None,
-            levels: Vec::new(),
+            curve: Vec::new(),
+            scratch: Vec::new(),
             points: Vec::new(),
         }
     }
@@ -328,7 +331,11 @@ impl SegmentsEditor {
         }
 
         if let Some(phase) = phase {
-            painter.circle_filled(self.curve_pos(phase), POINT_RADIUS, WAVE_COLOR);
+            painter.circle_filled(
+                Self::curve_pos(plot, segments, phase),
+                POINT_RADIUS,
+                WAVE_COLOR,
+            );
         }
 
         let grab_stroke = Stroke::new(1.0, Color32::WHITE);
@@ -566,7 +573,7 @@ impl SegmentsEditor {
         (x, y)
     }
 
-    /// One sample per horizontal pixel across the closed phase range `[0, 1]`.
+    /// Closed polyline for one sample per horizontal pixel, with each breakpoint kept.
     fn curve_points(&mut self, plot: Rect, segments: &Segments, pixels_per_point: f32) {
         if plot.width() <= 0.0 || pixels_per_point <= 0.0 || segments.num_segments() < 2 {
             self.points.clear();
@@ -575,32 +582,20 @@ impl SegmentsEditor {
 
         let steps = (plot.width() * pixels_per_point).round().max(1.0) as usize;
 
-        self.levels.resize(steps + 1, 0.0);
-        segments.render(&mut self.levels, true);
-        self.points.resize(self.levels.len(), Pos2::ZERO);
+        segments.render_points(steps, &mut self.curve, &mut self.scratch);
+        self.points.clear();
+        self.points.reserve(self.curve.len());
 
-        for (index, level) in self.levels.iter().enumerate() {
-            let phase = index as Smp / steps as Smp;
-            self.points[index] = Self::to_pos(plot, phase, *level);
+        for point in &self.curve {
+            self.points.push(Self::to_pos(plot, point.x, point.y));
         }
     }
 
-    /// Point on the polyline in `self.points`. Phases between samples are interpolated.
-    fn curve_pos(&self, phase: Smp) -> Pos2 {
-        let steps = self.points.len().saturating_sub(1);
+    /// Screen position of `phase` on `segments`.
+    fn curve_pos(plot: Rect, segments: &Segments, phase: Smp) -> Pos2 {
+        let phase = sanitize(phase, 0.0, 1.0);
 
-        if steps == 0 {
-            return Pos2::ZERO;
-        }
-
-        let scaled = phase.clamp(0.0, 1.0) * steps as Smp;
-        let index = (scaled as usize).min(steps);
-
-        if index == steps {
-            return self.points[steps];
-        }
-
-        self.points[index].lerp(self.points[index + 1], scaled - index as Smp)
+        Self::to_pos(plot, phase, segments.value_at(phase))
     }
 
     fn from_pos(plot: Rect, pos: Pos2) -> (Smp, Smp) {
