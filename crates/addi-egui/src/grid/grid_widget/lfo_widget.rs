@@ -1,5 +1,5 @@
 use addi_ui_backend::ui_bridge::modules::lfo::LfoUiBridge;
-use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke};
+use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, Vec2};
 
 use crate::grid::WidgetCtx;
 use addi_dsp::{CurvePoint, Segments, Smp};
@@ -15,15 +15,41 @@ const FILL_EDGE_ALPHA: u8 = 0x47;
 const FILL_BASE_ALPHA: u8 = 0x66;
 const WAVE_COLOR: Color32 = Color32::from_rgb(0x4a, 0xb0, 0xff);
 
+struct RenderedCurve {
+    revision: u64,
+    size: Vec2,
+}
+
 #[derive(Default)]
 pub struct LfoWidget {
     points: Vec<CurvePoint>,
     scratch: Vec<Smp>,
+    rendered: Option<RenderedCurve>,
 }
 
 impl LfoWidget {
-    fn build_curve(&mut self, segments: &Segments, pixels: usize) {
+    /// Phase/level polyline. Rebuilt when [`Segments::revision`] or `size` changes.
+    fn build_curve(&mut self, segments: &Segments, size: Vec2) {
+        if size.x <= 0.0 || segments.num_segments() < 2 {
+            self.points.clear();
+            self.rendered = None;
+            return;
+        }
+
+        let revision = segments.revision();
+
+        if self
+            .rendered
+            .as_ref()
+            .is_some_and(|rendered| rendered.revision == revision && rendered.size == size)
+        {
+            return;
+        }
+
+        let pixels = size.x.round().max(1.0) as usize;
+
         segments.render_points(pixels, &mut self.points, &mut self.scratch);
+        self.rendered = Some(RenderedCurve { revision, size });
     }
 
     fn phase_pos(rect: Rect, phase: Smp, value: Smp) -> Pos2 {
@@ -42,9 +68,7 @@ impl LfoWidget {
             return;
         }
 
-        let pixels = rect.width().round().max(1.0) as usize;
-
-        self.build_curve(&lfo_bridge.config().segments, pixels);
+        self.build_curve(&lfo_bridge.config().segments, rect.size());
 
         let painter = ui.painter();
         let screen = self

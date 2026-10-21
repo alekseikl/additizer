@@ -20,6 +20,10 @@ impl<L: LfoLinks> LfoUiBridge<L> {
         &self.config
     }
 
+    pub fn segments_mut(&mut self) -> &mut Segments {
+        &mut self.config.segments
+    }
+
     pub fn get_phase(&mut self) -> Smp {
         self.ui_end.get_phase()
     }
@@ -36,10 +40,9 @@ impl<L: LfoLinks> LfoUiBridge<L> {
         }
     }
 
-    pub fn set_segments(&mut self, segments: Segments) {
-        if self.ui_end.set_segments(segments.clone()) {
-            self.config.segments = segments;
-        }
+    /// Publish the curve from [`segments_mut`](Self::segments_mut) to the audio thread.
+    pub fn sync_segments(&mut self) {
+        let _ = self.ui_end.set_segments(self.config.segments.clone());
     }
 
     pub fn set_steal_phase(&mut self, value: bool) {

@@ -2,7 +2,7 @@ use addi_ui_backend::ui_bridge::modules::lfo::LfoUiBridge;
 use egui::{Checkbox, Grid, Ui};
 
 use crate::{
-    ModuleUi, line_editor::SegmentsEditor, module_label::ModuleLabel, stereo_input::StereoInput,
+    ModuleUi, module_label::ModuleLabel, segments_editor::SegmentsEditor, stereo_input::StereoInput,
 };
 use addi_engine::{Input, ModuleId, ModuleType};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
@@ -22,24 +22,27 @@ impl LfoUi {
 
     fn paint_ui(&mut self, bridge: &mut UiBridge, lfo_bridge: &mut LfoUiBridge, ui: &mut Ui) {
         let module_id = self.module_id;
-        let mut config = lfo_bridge.config().clone();
 
         ui.add(ModuleLabel::new(module_id, ModuleType::Lfo, bridge));
         ui.add_space(12.0);
 
         let phase = if bridge.has_active_voices() {
-            let mut phase_shift = config.phase_shift;
+            let mut phase_shift = lfo_bridge.config().phase_shift;
             bridge.apply_modulation(module_id, Input::PhaseShift, &mut phase_shift);
             Some((lfo_bridge.get_phase() + phase_shift[0]).rem_euclid(1.0))
         } else {
             None
         };
 
-        if self.editor.ui(ui, &mut config.segments, phase) {
-            lfo_bridge.set_segments(config.segments);
+        if self.editor.ui(ui, lfo_bridge.segments_mut(), phase) {
+            lfo_bridge.sync_segments();
         }
 
         ui.add_space(12.0);
+
+        let mut frequency = lfo_bridge.config().frequency;
+        let mut phase_shift = lfo_bridge.config().phase_shift;
+        let mut steal_phase = lfo_bridge.config().steal_phase;
 
         Grid::new("lfo_grid")
             .num_columns(4)
@@ -50,12 +53,12 @@ impl LfoUi {
                     .add(StereoInput::new(
                         Input::LowFrequency,
                         module_id,
-                        &mut config.frequency,
+                        &mut frequency,
                         bridge,
                     ))
                     .changed()
                 {
-                    lfo_bridge.set_param(Input::LowFrequency, config.frequency);
+                    lfo_bridge.set_param(Input::LowFrequency, frequency);
                 }
 
                 ui.label("Phase shift");
@@ -63,21 +66,18 @@ impl LfoUi {
                     .add(StereoInput::new(
                         Input::PhaseShift,
                         module_id,
-                        &mut config.phase_shift,
+                        &mut phase_shift,
                         bridge,
                     ))
                     .changed()
                 {
-                    lfo_bridge.set_param(Input::PhaseShift, config.phase_shift);
+                    lfo_bridge.set_param(Input::PhaseShift, phase_shift);
                 }
                 ui.end_row();
 
                 ui.label("Steal phase");
-                if ui
-                    .add(Checkbox::without_text(&mut config.steal_phase))
-                    .changed()
-                {
-                    lfo_bridge.set_steal_phase(config.steal_phase);
+                if ui.add(Checkbox::without_text(&mut steal_phase)).changed() {
+                    lfo_bridge.set_steal_phase(steal_phase);
                 }
                 ui.end_row();
             });

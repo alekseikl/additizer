@@ -1,6 +1,6 @@
 use egui::{
     Color32, CursorIcon, DragValue, Mesh, Painter, PointerButton, Pos2, Rect, Response, Sense,
-    Shape, Stroke, Ui, pos2, vec2,
+    Shape, Stroke, Ui, Vec2, pos2, vec2,
 };
 
 use addi_dsp::{
@@ -52,6 +52,11 @@ enum MenuAction {
     FlipVertical,
 }
 
+struct RenderedCurve {
+    revision: u64,
+    size: Vec2,
+}
+
 pub struct SegmentsEditor {
     grid_x: i32,
     grid_y: i32,
@@ -63,6 +68,7 @@ pub struct SegmentsEditor {
     curve: Vec<CurvePoint>,
     scratch: Vec<Smp>,
     points: Vec<Pos2>,
+    rendered: Option<RenderedCurve>,
 }
 
 impl Default for SegmentsEditor {
@@ -78,6 +84,7 @@ impl Default for SegmentsEditor {
             curve: Vec::new(),
             scratch: Vec::new(),
             points: Vec::new(),
+            rendered: None,
         }
     }
 }
@@ -200,11 +207,7 @@ impl SegmentsEditor {
                 && index < segments.num_segments()
             {
                 let smooth = segments.segment(index).smooth;
-                let label = if smooth {
-                    "Sharpen segment"
-                } else {
-                    "Smooth segment"
-                };
+                let label = if smooth { "Flat" } else { "Smooth" };
 
                 if ui
                     .button(label)
@@ -291,7 +294,6 @@ impl SegmentsEditor {
     }
 
     fn paint(&mut self, ui: &mut Ui, plot: Rect, segments: &Segments, phase: Option<Smp>) {
-        let pixels_per_point = ui.pixels_per_point();
         let painter = ui.painter();
         let background = ui.visuals().extreme_bg_color;
 
@@ -303,7 +305,7 @@ impl SegmentsEditor {
             egui::StrokeKind::Inside,
         );
 
-        self.curve_points(plot, segments, pixels_per_point);
+        self.curve_points(plot, segments);
 
         Self::paint_fill(painter, plot, &self.points, background);
         Self::paint_grid(painter, plot, self.grid_x, self.grid_y);
@@ -573,16 +575,31 @@ impl SegmentsEditor {
         (x, y)
     }
 
-    /// Closed polyline for one sample per horizontal pixel, with each breakpoint kept.
-    fn curve_points(&mut self, plot: Rect, segments: &Segments, pixels_per_point: f32) {
-        if plot.width() <= 0.0 || pixels_per_point <= 0.0 || segments.num_segments() < 2 {
+    /// Closed polyline for one sample per horizontal point, with each breakpoint kept.
+    ///
+    /// `render_points` runs again when [`Segments::revision`] or the plot size changes.
+    /// The polyline is projected into `plot` on every call.
+    fn curve_points(&mut self, plot: Rect, segments: &Segments) {
+        if plot.width() <= 0.0 || segments.num_segments() < 2 {
             self.points.clear();
+            self.rendered = None;
             return;
         }
 
-        let steps = (plot.width() * pixels_per_point).round().max(1.0) as usize;
+        let size = plot.size();
+        let revision = segments.revision();
 
-        segments.render_points(steps, &mut self.curve, &mut self.scratch);
+        if !self
+            .rendered
+            .as_ref()
+            .is_some_and(|rendered| rendered.revision == revision && rendered.size == size)
+        {
+            let steps = size.x.round().max(1.0) as usize;
+
+            segments.render_points(steps, &mut self.curve, &mut self.scratch);
+            self.rendered = Some(RenderedCurve { revision, size });
+        }
+
         self.points.clear();
         self.points.reserve(self.curve.len());
 

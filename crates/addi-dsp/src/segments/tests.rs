@@ -84,9 +84,37 @@ fn serde_roundtrip() {
 
     let expected = segments.segments().to_vec();
     let json = serde_json::to_value(&segments).unwrap();
-    let back: Segments = serde_json::from_value(json).unwrap();
+
+    assert!(json.get("revision").is_none());
+
+    let back: Segments = serde_json::from_value(json.clone()).unwrap();
 
     assert_points_eq(back.segments(), &expected);
+
+    let again: Segments = serde_json::from_value(json).unwrap();
+
+    assert_ne!(back.revision(), segments.revision());
+    assert_ne!(back.revision(), again.revision());
+}
+
+#[test]
+fn edits_advance_the_revision() {
+    let mut segments = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let other = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+
+    assert_ne!(segments.revision(), other.revision());
+    assert_eq!(segments, other);
+
+    let revision = segments.revision();
+    let cloned = segments.clone();
+
+    assert_eq!(cloned.revision(), revision);
+    assert!(!segments.remove_segment(0));
+    assert_eq!(segments.revision(), revision);
+
+    segments.set_power(0, 0.0);
+    assert_ne!(segments.revision(), revision);
+    assert_eq!(cloned.revision(), revision);
 }
 
 #[test]

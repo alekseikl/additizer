@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -13,7 +15,7 @@ pub const MAX_POWER: Smp = 20.0;
 
 const MIN_POINTS: usize = 2;
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Segment {
     pub x: Smp,
     pub y: Smp,
@@ -42,6 +44,15 @@ pub struct CurvePoint {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Segments {
     segments: Vec<Segment>,
+    /// Identity of this edit. Replaced on every change; clones keep it until edited.
+    #[serde(skip, default = "Segments::next_revision")]
+    revision: u64,
+}
+
+impl PartialEq for Segments {
+    fn eq(&self, other: &Self) -> bool {
+        self.segments == other.segments
+    }
 }
 
 impl Default for Segments {
@@ -66,11 +77,28 @@ impl Segments {
             });
         }
 
-        Self { segments: curve }
+        Self {
+            segments: curve,
+            revision: Self::next_revision(),
+        }
     }
 
     pub fn num_segments(&self) -> usize {
         self.segments.len()
+    }
+
+    /// Changes whenever the curve is edited. Reads leave it alone.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    fn next_revision() -> u64 {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    }
+
+    fn bump(&mut self) {
+        self.revision = Self::next_revision();
     }
 
     pub fn segment(&self, index: usize) -> Segment {
@@ -103,6 +131,7 @@ impl Segments {
         }
 
         self.segments[index] = segment;
+        self.bump();
     }
 
     pub fn set_power(&mut self, index: usize, power: Smp) {
@@ -111,6 +140,7 @@ impl Segments {
         }
 
         self.segments[index].power = sanitize(power, -MAX_POWER, MAX_POWER);
+        self.bump();
     }
 
     pub fn set_smooth(&mut self, index: usize, smooth: bool) {
@@ -119,12 +149,15 @@ impl Segments {
         }
 
         self.segments[index].smooth = smooth;
+        self.bump();
     }
 
     pub fn reset_powers(&mut self) {
         for point in &mut self.segments {
             point.power = 0.0;
         }
+
+        self.bump();
     }
 
     /// Clamp every breakpoint into range. Fewer than two points becomes the default curve.
@@ -145,6 +178,7 @@ impl Segments {
         let n = self.segments.len();
         self.segments[0].x = 0.0;
         self.segments[n - 1].x = 1.0;
+        self.bump();
     }
 
     /// Insert `segment` so it stays in phase order. Fails when the curve is full.
@@ -169,6 +203,7 @@ impl Segments {
         }
 
         self.segments.insert(index, segment);
+        self.bump();
         true
     }
 
@@ -181,6 +216,7 @@ impl Segments {
         }
 
         self.segments.remove(index);
+        self.bump();
         true
     }
 
@@ -208,12 +244,16 @@ impl Segments {
             self.segments[j].power = -power;
             self.segments[j].smooth = smooth;
         }
+
+        self.bump();
     }
 
     pub fn flip_vertical(&mut self) {
         for point in &mut self.segments {
             point.y = 1.0 - point.y;
         }
+
+        self.bump();
     }
 
     /// Level at `phase`. A non-finite phase reads the start of the curve.
