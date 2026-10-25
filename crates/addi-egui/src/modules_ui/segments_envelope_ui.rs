@@ -53,6 +53,7 @@ impl SegmentsEnvelopeUi {
         ui.add_space(12.0);
 
         let mut rate = envelope_bridge.config().rate;
+        let mut phase_shift = envelope_bridge.config().phase_shift;
         let mut steal_level = envelope_bridge.config().steal_level;
         let mut keep_voice_alive = envelope_bridge.config().keep_voice_alive;
         let mut timebase = envelope_bridge.config().timebase;
@@ -83,6 +84,20 @@ impl SegmentsEnvelopeUi {
                             }
                         }
                     });
+                ui.end_row();
+
+                ui.label("Phase shift").on_hover_text(
+                    "Starting point on the curve, from 0 to 1. Applied when the voice is triggered.",
+                );
+                if ui
+                    .add(
+                        StereoInput::new(Input::PhaseShift, module_id, &mut phase_shift, bridge)
+                            .slider(|slider| slider.without_inverse()),
+                    )
+                    .changed()
+                {
+                    envelope_bridge.set_param(Input::PhaseShift, phase_shift);
+                }
                 ui.end_row();
 
                 ui.label("Steal level")

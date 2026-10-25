@@ -42,8 +42,10 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelopeUiBridge<L> {
             return;
         }
 
-        if input == Input::Rate {
-            self.config.rate = value;
+        match input {
+            Input::Rate => self.config.rate = value,
+            Input::PhaseShift => self.config.phase_shift = value,
+            _ => (),
         }
     }
 

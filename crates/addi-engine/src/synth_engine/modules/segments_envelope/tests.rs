@@ -93,6 +93,22 @@ fn play_at_start() -> Stage {
     }
 }
 
+fn assert_stage(stage: Stage, index: usize, position: Smp) {
+    let Stage::Segment {
+        index: got_index,
+        position: got_position,
+    } = stage
+    else {
+        panic!("expected a playing segment, got {stage:?}");
+    };
+
+    assert_eq!(got_index, index);
+    assert!(
+        (got_position - position).abs() < 1e-5,
+        "position {got_position} vs {position}"
+    );
+}
+
 #[test]
 fn reset_starts_at_the_drawn_start() {
     let mut env = envelope(false, false);
@@ -130,6 +146,46 @@ fn reset_steals_the_replaced_level() {
     assert_eq!(right.stage, play_at_start());
     assert!((left.start_level - 0.6).abs() < 1e-6);
     assert!((right.start_level - 0.25).abs() < 1e-6);
+}
+
+#[test]
+fn reset_returns_to_the_start_of_the_curve() {
+    let mut env = envelope(false, false);
+    env.set_segments(Segments::from_points(
+        &[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)],
+        false,
+    ));
+    env.set_phase_shift(StereoSample::new(0.25, 0.75));
+    *env.voices.at_mut(0, 0) = playing(1, 0.4, 0.0, 0.6);
+
+    env.process_events(&[reset_event(0, None)]);
+
+    assert_eq!(env.voices.at(0, 0).stage, play_at_start());
+    assert_eq!(env.voices.at(1, 0).stage, play_at_start());
+}
+
+#[test]
+fn phase_shift_selects_the_trigger_stage() {
+    let mut env = envelope(false, false);
+    env.set_segments(Segments::from_points(
+        &[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)],
+        false,
+    ));
+    let segments = &env.params.segments;
+    let stage_at = |phase| SegmentsEnvelope::<stub::Links>::stage_at(segments, phase);
+
+    assert_stage(stage_at(0.25), 0, 0.5);
+    assert_stage(stage_at(-0.25), 1, 0.5);
+    assert_eq!(stage_at(1.0), play_at_start());
+    assert_eq!(stage_at(-1.0), play_at_start());
+
+    let voice = playing(0, 0.5, 0.0, 0.0);
+    let mut out = [0.0; 2];
+    let next = render_stage(&env, &voice, &mut out, 2, 0.1);
+
+    assert!((out[0] - 0.5).abs() < 1e-5);
+    assert!((out[1] - 0.7).abs() < 1e-5);
+    assert_stage(next.stage, 0, 0.9);
 }
 
 #[test]
@@ -313,12 +369,14 @@ fn keep_alive_holds_only_a_playing_stage() {
 fn from_config_sanitizes_params() {
     let env: SegmentsEnvelope = SegmentsEnvelope::from_config(&SegmentsEnvelopeConfig {
         rate: StereoSample::new(1_000.0, Smp::NAN),
+        phase_shift: StereoSample::new(-4.0, 2.0),
         segments: Segments::from_points(&[(0.0, -2.0), (1.0, 3.0)], false),
         ..SegmentsEnvelopeConfig::default()
     });
     let config = env.get_config();
 
-    assert_eq!(config.rate, StereoSample::new(100.0, 0.0));
+    assert_eq!(config.rate, StereoSample::new(50.0, 0.0));
+    assert_eq!(config.phase_shift, StereoSample::new(0.0, 1.0));
     assert_eq!(config.timebase, Timebase::Seconds);
     assert_eq!(config.segments.point(0).y, 0.0);
     assert_eq!(config.segments.point(1).y, 1.0);
@@ -330,6 +388,7 @@ fn missing_timebase_defaults_to_seconds() {
 
     assert_eq!(config.timebase, Timebase::Seconds);
     assert_eq!(config.rate, StereoSample::splat(1.0));
+    assert_eq!(config.phase_shift, StereoSample::splat(0.0));
     assert!(!config.keep_voice_alive);
     assert!(!config.steal_level);
 

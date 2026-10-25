@@ -9,7 +9,7 @@ mod timebase;
 mod tests;
 
 pub use config::SegmentsEnvelopeConfig;
-use config::{MAX_RATE, MIN_RATE};
+use config::{MAX_PHASE_SHIFT, MAX_RATE, MIN_PHASE_SHIFT, MIN_RATE};
 pub use link::{SegmentsEnvelopeAudioEnd, SegmentsEnvelopeLinks, SegmentsEnvelopeUiEnd, UiEvent};
 pub use timebase::Timebase;
 
@@ -32,12 +32,14 @@ use crate::synth_engine::{
 
 struct ChannelParams {
     rate: Smp,
+    phase_shift: Smp,
 }
 
 impl ChannelParams {
     fn from_config(c: &config::SegmentsEnvelopeConfig, channel_idx: usize) -> Self {
         Self {
             rate: c.rate[channel_idx],
+            phase_shift: c.phase_shift[channel_idx],
         }
     }
 }
@@ -89,12 +91,14 @@ struct Voice {
 
 pub struct Inputs {
     rate: MixedSlots,
+    phase_shift: MixedSlots,
 }
 
 impl Default for Inputs {
     fn default() -> Self {
         Self {
             rate: MixedSlots::new(Input::Rate),
+            phase_shift: MixedSlots::new(Input::PhaseShift),
         }
     }
 }
@@ -108,8 +112,10 @@ impl Inputs {
                 continue;
             };
 
-            if input.input_type == Input::Rate {
-                result.rate = input.clone();
+            match input.input_type {
+                Input::Rate => result.rate = input.clone(),
+                Input::PhaseShift => result.phase_shift = input.clone(),
+                _ => (),
             }
         }
 
@@ -117,8 +123,10 @@ impl Inputs {
     }
 
     fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
-        if input_type == Input::Rate {
-            self.rate.update_amount(src_slot, amount);
+        match input_type {
+            Input::Rate => self.rate.update_amount(src_slot, amount),
+            Input::PhaseShift => self.phase_shift.update_amount(src_slot, amount),
+            _ => (),
         }
     }
 }
@@ -173,6 +181,7 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
             keep_voice_alive: self.params.keep_voice_alive,
             timebase: self.params.timebase,
             rate: get_stereo_param!(self, rate),
+            phase_shift: get_stereo_param!(self, phase_shift),
             segments: self.params.segments.clone(),
         }
     }
@@ -182,6 +191,11 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
     set_mono_param!(set_timebase, timebase, Timebase);
 
     set_stereo_param!(set_rate, rate, sanitize(*rate, MIN_RATE, MAX_RATE));
+    set_stereo_param!(
+        set_phase_shift,
+        phase_shift,
+        sanitize(*phase_shift, MIN_PHASE_SHIFT, MAX_PHASE_SHIFT)
+    );
 
     pub fn set_segments(&mut self, mut segments: Segments) {
         segments.sanitize();
@@ -216,6 +230,38 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         (start + position.clamp(0.0, 1.0) * width).clamp(0.0, 1.0)
     }
 
+    /// Stage where a triggered voice starts. `phase` is in cycles and wraps.
+    fn stage_at(segments: &Segments, phase: Smp) -> Stage {
+        let spans = segments.num_points().saturating_sub(1);
+        let mut phase = sanitize(phase.rem_euclid(1.0), 0.0, 1.0);
+
+        if phase >= 1.0 {
+            phase = 0.0;
+        }
+
+        for index in 0..spans {
+            let start = segments.point(index).x;
+            let end = segments.point(index + 1).x;
+
+            if phase < start || phase > end {
+                continue;
+            }
+
+            let width = end - start;
+
+            if width <= 0.0 || phase >= end {
+                continue;
+            }
+
+            return Stage::Segment {
+                index,
+                position: (phase - start) / width,
+            };
+        }
+
+        Stage::Done
+    }
+
     fn process_voice(
         &mut self,
         target: &VoiceTarget,
@@ -232,6 +278,16 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
             .params
             .timebase
             .phase_inc(rate, tempo, sample_rate.recip());
+
+        if router.triggered() {
+            let phase_shift = router.scalar(
+                &self.inputs.phase_shift,
+                self.channel_params[channel_idx].phase_shift,
+            );
+            let stage = Self::stage_at(&self.params.segments, phase_shift);
+
+            self.voices.at_mut(channel_idx, voice_idx).stage = stage;
+        }
 
         let voice = self.voices.at_mut(channel_idx, voice_idx);
         let segments = &self.params.segments;
@@ -299,7 +355,10 @@ impl<L: SegmentsEnvelopeLinks> SynthModule for SegmentsEnvelope<L> {
     }
 
     fn inputs(&self) -> &'static [InputMeta] {
-        static INPUTS: &[InputMeta] = &[InputMeta::control(Input::Rate)];
+        static INPUTS: &[InputMeta] = &[
+            InputMeta::control(Input::Rate),
+            InputMeta::control(Input::PhaseShift),
+        ];
 
         INPUTS
     }
@@ -376,11 +435,11 @@ impl<L: SegmentsEnvelopeLinks> SynthModule for SegmentsEnvelope<L> {
     fn process_ui_events(&mut self) {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
-                UiEvent::InputParam { input, value } => {
-                    if input == Input::Rate {
-                        self.set_rate(value);
-                    }
-                }
+                UiEvent::InputParam { input, value } => match input {
+                    Input::Rate => self.set_rate(value),
+                    Input::PhaseShift => self.set_phase_shift(value),
+                    _ => (),
+                },
                 UiEvent::SegmentsUpdated => {
                     let segments = self.audio_end.read_segments().clone();
                     self.set_segments(segments);
