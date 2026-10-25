@@ -1,4 +1,4 @@
-use addi_dsp::segments::Segments;
+use addi_dsp::segments::{Segment, Segments};
 
 use super::*;
 use crate::synth_engine::{routing::VoiceEvent, voices_handler::DecayingVoice};
@@ -40,24 +40,14 @@ fn render_stage(
 ) -> Voice {
     let segments = &env.params.segments;
     let len = samples.min(out.len());
+    let spans = segments.num_segments().saturating_sub(1);
     let mut stage = voice.stage;
     let mut pos = 0;
 
-    while pos < len {
-        let Stage::Segment { index, position } = stage else {
-            out[pos..len].fill(segments.value_at(1.0));
-            stage = Stage::Done;
-            break;
-        };
-
-        let spans = segments.num_segments().saturating_sub(1);
-
-        if index >= spans {
-            out[pos..len].fill(segments.value_at(1.0));
-            stage = Stage::Done;
-            break;
-        }
-
+    while let Stage::Segment { index, position } = stage
+        && index < spans
+        && pos < len
+    {
         let mut start = segments.segment(index);
         let end = segments.segment(index + 1);
 
@@ -65,23 +55,28 @@ fn render_stage(
             start.y = voice.start_level;
         }
 
-        match render_segment(&mut out[pos..len], position, phase_step, start, end) {
+        match Segment::render_segment(&mut out[pos..len], position, phase_step, start, end) {
             Ok(position) => {
                 stage = Stage::Segment { index, position };
-                break;
+                pos = len;
             }
             Err(written) => {
-                stage = if index + 1 >= spans {
-                    Stage::Done
-                } else {
+                pos += written;
+                stage = if index + 1 < spans {
                     Stage::Segment {
                         index: index + 1,
                         position: 0.0,
                     }
+                } else {
+                    Stage::Done
                 };
-                pos += written;
             }
         }
+    }
+
+    if pos < len {
+        out[pos..len].fill(segments.value_at(1.0));
+        stage = Stage::Done;
     }
 
     Voice {
@@ -162,7 +157,15 @@ fn stolen_level_is_the_first_sample() {
 
     env.process_events(&[reset_event(1, Some(0))]);
 
-    let voice = *env.voices.at(0, 1);
+    let voice = {
+        let stored = env.voices.at(0, 1);
+
+        Voice {
+            stage: stored.stage,
+            start_level: stored.start_level,
+            level: stored.level,
+        }
+    };
     let mut out = [0.0; 4];
     let next = render_stage(&env, &voice, &mut out, 4, 0.25);
 

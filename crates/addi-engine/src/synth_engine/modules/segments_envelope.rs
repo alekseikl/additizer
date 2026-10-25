@@ -2,7 +2,6 @@ use std::array;
 
 mod config;
 mod link;
-mod segment_render;
 pub mod stub;
 mod timebase;
 
@@ -14,9 +13,10 @@ use config::{MAX_RATE, MIN_RATE};
 pub use link::{SegmentsEnvelopeAudioEnd, SegmentsEnvelopeLinks, SegmentsEnvelopeUiEnd, UiEvent};
 pub use timebase::Timebase;
 
-use addi_dsp::{segments::Segments, utils::sanitize};
-
-use segment_render::render_segment;
+use addi_dsp::{
+    segments::{Segment, Segments},
+    utils::sanitize,
+};
 
 use crate::synth_engine::{
     Input, ModuleId, Smp, StereoSample,
@@ -62,7 +62,7 @@ impl Params {
 
 /// Playhead published for the editor. `start_level` is the level the first
 /// segment leaves; it differs from the drawn start only after a stolen note.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct SegmentsEnvelopePhase {
     pub phase: Smp,
     pub start_level: Smp,
@@ -78,7 +78,7 @@ enum Stage {
     Done,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Debug, Default)]
 struct Voice {
     stage: Stage,
     /// Level the first segment leaves. The drawn start, unless this note stole one.
@@ -199,11 +199,10 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
     }
 
     /// Global phase of `stage`, for the editor playhead.
-    fn playhead_phase(&self, stage: Stage) -> Smp {
+    fn playhead_phase(segments: &Segments, stage: Stage) -> Smp {
         let Stage::Segment { index, position } = stage else {
             return 1.0;
         };
-        let segments = &self.params.segments;
         let spans = segments.num_segments().saturating_sub(1);
 
         if index >= spans {
@@ -234,28 +233,17 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
             .timebase
             .phase_inc(rate, tempo, sample_rate.recip());
 
-        let voice = *self.voices.at(channel_idx, voice_idx);
+        let voice = self.voices.at_mut(channel_idx, voice_idx);
         let segments = &self.params.segments;
         let out = voice_output.output();
         let len = out.len();
-        let mut stage = voice.stage;
+        let spans = segments.num_segments().saturating_sub(1);
         let mut pos = 0;
 
-        while pos < len {
-            let Stage::Segment { index, position } = stage else {
-                out[pos..len].fill(segments.value_at(1.0));
-                stage = Stage::Done;
-                break;
-            };
-
-            let spans = segments.num_segments().saturating_sub(1);
-
-            if index >= spans {
-                out[pos..len].fill(segments.value_at(1.0));
-                stage = Stage::Done;
-                break;
-            }
-
+        while let Stage::Segment { index, position } = voice.stage
+            && index < spans
+            && pos < len
+        {
             let mut start = segments.segment(index);
             let end = segments.segment(index + 1);
 
@@ -263,39 +251,38 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
                 start.y = voice.start_level;
             }
 
-            match render_segment(&mut out[pos..len], position, phase_step, start, end) {
+            match Segment::render_segment(&mut out[pos..len], position, phase_step, start, end) {
                 Ok(position) => {
-                    stage = Stage::Segment { index, position };
-                    break;
+                    voice.stage = Stage::Segment { index, position };
+                    pos = len;
                 }
                 Err(written) => {
-                    stage = if index + 1 >= spans {
-                        Stage::Done
-                    } else {
+                    pos += written;
+                    voice.stage = if index + 1 < spans {
                         Stage::Segment {
                             index: index + 1,
                             position: 0.0,
                         }
+                    } else {
+                        Stage::Done
                     };
-                    pos += written;
                 }
             }
         }
 
-        let voice = Voice {
-            stage,
-            start_level: voice.start_level,
-            level: out[..len].last().copied().unwrap_or_default(),
-        };
+        if pos < len {
+            out[pos..len].fill(segments.value_at(1.0));
+            voice.stage = Stage::Done;
+        }
+
+        voice.level = out[..len].last().copied().unwrap_or_default();
 
         if router.need_update_ui_mono() {
             self.audio_end.update_phase(SegmentsEnvelopePhase {
-                phase: self.playhead_phase(voice.stage),
+                phase: Self::playhead_phase(segments, voice.stage),
                 start_level: voice.start_level,
             });
         }
-
-        *self.voices.at_mut(channel_idx, voice_idx) = voice;
     }
 
     pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {

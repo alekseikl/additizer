@@ -39,14 +39,14 @@ fn playhead_follows_the_rendered_polyline() {
     let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     let editor = curve(&ramp);
     let phase = 0.405;
-    let pos = SegmentsEditor::curve_pos(plot(), &ramp, phase);
+    let pos = SegmentsEditor::playhead_pos(plot(), &ramp, phase, None);
 
     assert_eq!(
-        SegmentsEditor::curve_pos(plot(), &ramp, 0.0),
+        SegmentsEditor::playhead_pos(plot(), &ramp, 0.0, None),
         editor.points[0]
     );
     assert_eq!(
-        SegmentsEditor::curve_pos(plot(), &ramp, 1.0),
+        SegmentsEditor::playhead_pos(plot(), &ramp, 1.0, None),
         *editor.points.last().unwrap()
     );
     assert!((pos.x - phase * 100.0).abs() < 1e-3);
@@ -160,24 +160,25 @@ fn changed_segments_render_again() {
 fn open_curve_moves_the_ends_independently() {
     let mut open = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
 
-    SegmentsEditor::move_point(&mut open, 0, 0.0, 0.35, false, 1, 1, false);
+    SegmentsEditor::open().move_point(&mut open, 0, 0.0, 0.35, false);
 
     assert!((open.segment(0).y - 0.35).abs() < 1e-6);
     assert_eq!(open.segment(2).y, 0.0);
 
-    SegmentsEditor::move_point(&mut open, 2, 1.0, 0.1, false, 1, 1, false);
+    SegmentsEditor::open().move_point(&mut open, 2, 1.0, 0.1, false);
 
     assert!((open.segment(0).y - 0.35).abs() < 1e-6);
     assert!((open.segment(2).y - 0.1).abs() < 1e-6);
 
     let mut closed = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let editor = SegmentsEditor::default();
 
-    SegmentsEditor::move_point(&mut closed, 0, 0.0, 0.35, false, 1, 1, true);
+    editor.move_point(&mut closed, 0, 0.0, 0.35, false);
 
     assert!((closed.segment(0).y - 0.35).abs() < 1e-6);
     assert!((closed.segment(2).y - 0.35).abs() < 1e-6);
 
-    SegmentsEditor::move_point(&mut closed, 2, 1.0, 0.1, false, 1, 1, true);
+    editor.move_point(&mut closed, 2, 1.0, 0.1, false);
 
     assert!((closed.segment(0).y - 0.1).abs() < 1e-6);
     assert!((closed.segment(2).y - 0.1).abs() < 1e-6);

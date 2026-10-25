@@ -298,7 +298,7 @@ impl Segments {
                     start.y = start_level;
                 }
 
-                return segment_level(phase, start, pair[1]);
+                return Segment::segment_level(phase, start, pair[1]);
             }
         }
 
@@ -323,13 +323,13 @@ impl Segments {
 
         for pair in self.segments.windows(2) {
             // The sample on this breakpoint belongs to the segment that ends here.
-            let to = sample_index(pair[1].x, denom, len) + 1;
+            let to = Self::sample_index(pair[1].x, denom, len) + 1;
 
             if from >= to {
                 continue;
             }
 
-            render_segment(
+            Curve::render(
                 &mut out[from..to],
                 from as Smp * phase_step,
                 phase_step,
@@ -375,13 +375,13 @@ impl Segments {
                 y: pair[0].y,
             });
 
-            let to = sample_index(pair[1].x, denom, len) + 1;
+            let to = Self::sample_index(pair[1].x, denom, len) + 1;
 
             if from >= to {
                 continue;
             }
 
-            render_segment(
+            Curve::render(
                 &mut scratch[from..to],
                 from as Smp * phase_step,
                 phase_step,
@@ -409,161 +409,144 @@ impl Segments {
         debug_assert_eq!(from, len);
     }
 
-    /// Levels along a phase span. Nothing is baked ahead of the call.
+    fn sample_index(x: Smp, denom: Smp, len: usize) -> usize {
+        (x * denom).floor().clamp(0.0, (len - 1) as Smp) as usize
+    }
+}
+
+impl Segment {
+    fn segment_level(phase: Smp, start: Segment, end: Segment) -> Smp {
+        let width = end.x - start.x;
+
+        if width <= 0.0 {
+            return end.y;
+        }
+
+        let mut t = (phase - start.x) / width;
+
+        if start.smooth {
+            t = ((t - 0.5) * std::f32::consts::PI).sin().mul_add(0.5, 0.5);
+        }
+
+        power_scale(t, start.power).mul_add(end.y - start.y, start.y)
+    }
+
+    /// `Ok(position)` — this segment filled `out` and is still running.
+    /// `Err(written)` — this segment ended after `written` samples (`0` if it had none left).
     ///
-    /// `phase` is the position of `out[0]`. Each sample is written, then the phase
-    /// advances by `steps[i]` (`0` when `steps` runs out). Positions outside `[0, 1]`
-    /// hold the nearest endpoint. Returns the phase after the last sample, clamped
-    /// to `[0, 1]`.
-    pub fn render_span(&self, out: &mut [Smp], phase: Smp, steps: &[Smp]) -> Smp {
-        let start_level = self
-            .segments
-            .first()
-            .map(|segment| segment.y)
-            .unwrap_or(0.0);
-
-        self.render_span_from(out, phase, steps, start_level)
-    }
-
-    /// Like [`render_span`](Self::render_span), but the first segment leaves
-    /// `start_level` instead of its drawn start. A non-finite `start_level` uses
-    /// the drawn start. Later segments are unchanged.
-    pub fn render_span_from(
-        &self,
+    /// `position` is normalized progress through the segment. `phase_step` is the curve
+    /// advanced per sample. A non-positive step holds the current level. The step stays
+    /// constant for the fill.
+    pub fn render_segment(
         out: &mut [Smp],
-        mut phase: Smp,
-        steps: &[Smp],
-        start_level: Smp,
-    ) -> Smp {
-        let n = self.num_segments();
+        position: Smp,
+        phase_step: Smp,
+        start: Segment,
+        end: Segment,
+    ) -> Result<Smp, usize> {
+        let width = end.x - start.x;
 
-        if n < MIN_POINTS {
-            out.fill(0.0);
-            return 0.0;
+        if width <= 0.0 || position >= 1.0 {
+            return Err(0);
         }
 
-        let start_level = if start_level.is_finite() {
-            start_level
+        let phase = start.x + position * width;
+
+        if phase_step <= 0.0 {
+            Curve::render(out, phase, 0.0, start, end);
+            return Ok(position);
+        }
+
+        let remaining = (1.0 - position).max(0.0) * width;
+        let n = ((remaining / phase_step) as usize).min(out.len());
+
+        if n == 0 {
+            return Err(0);
+        }
+
+        Curve::render(&mut out[..n], phase, phase_step, start, end);
+
+        let position = (position + n as Smp * phase_step / width).min(1.0);
+
+        if n < out.len() || position >= 1.0 {
+            Err(n)
         } else {
-            self.segments[0].y
-        };
-        let mut cursor = 0usize;
-
-        for (index, sample) in out.iter_mut().enumerate() {
-            if !phase.is_finite() {
-                phase = 0.0;
-            }
-
-            phase = phase.clamp(0.0, 1.0);
-            cursor = self.seek(cursor, phase);
-            *sample = self.span_level(cursor, phase, start_level);
-
-            phase += steps.get(index).copied().unwrap_or(0.0);
+            Ok(position)
         }
-
-        if phase.is_finite() {
-            phase.clamp(0.0, 1.0)
-        } else {
-            0.0
-        }
-    }
-
-    fn span_level(&self, cursor: usize, phase: Smp, start_level: Smp) -> Smp {
-        let mut start = self.segments[cursor];
-
-        if cursor == 0 {
-            start.y = start_level;
-        }
-
-        segment_level(phase, start, self.segments[cursor + 1])
-    }
-
-    /// Index of the segment that contains `phase`. The earlier segment wins on a shared breakpoint.
-    fn seek(&self, mut cursor: usize, phase: Smp) -> usize {
-        let last = self.segments.len() - 1;
-
-        if cursor >= last {
-            cursor = last - 1;
-        }
-
-        while cursor + 1 < last && self.segments[cursor + 1].x < phase {
-            cursor += 1;
-        }
-
-        while cursor > 0 && phase < self.segments[cursor].x {
-            cursor -= 1;
-        }
-
-        cursor
     }
 }
 
-fn sample_index(x: Smp, denom: Smp, len: usize) -> usize {
-    (x * denom).floor().clamp(0.0, (len - 1) as Smp) as usize
+struct Curve<'a> {
+    out: &'a mut [Smp],
+    t: WideSmp,
+    step: WideSmp,
+    origin: WideSmp,
+    delta: WideSmp,
+    power: PowerScale,
 }
 
-fn segment_level(phase: Smp, start: Segment, end: Segment) -> Smp {
-    let width = end.x - start.x;
+impl Curve<'_> {
+    /// Fill `out` along the segment from `start` to `end`.
+    ///
+    /// Sample `i` is read at phase `phase + i * phase_step`. That phase is scaled into
+    /// the segment's progress once; each sample then advances the progress. A
+    /// non-positive width fills `end.y`.
+    fn render(out: &mut [Smp], phase: Smp, phase_step: Smp, start: Segment, end: Segment) {
+        let width = end.x - start.x;
 
-    if width <= 0.0 {
-        return end.y;
-    }
+        if width <= 0.0 {
+            out.fill(end.y);
+            return;
+        }
 
-    let mut t = (phase - start.x) / width;
-
-    if start.smooth {
-        t = ((t - 0.5) * std::f32::consts::PI).sin().mul_add(0.5, 0.5);
-    }
-
-    power_scale(t, start.power).mul_add(end.y - start.y, start.y)
-}
-
-/// Fill `out` along the segment from `start` to `end`.
-///
-/// Sample `i` is read at phase `phase + i * phase_step`. That phase is scaled into
-/// the segment's progress once; each sample then advances the progress. A
-/// non-positive width fills `end.y`.
-pub fn render_segment(out: &mut [Smp], phase: Smp, phase_step: Smp, start: Segment, end: Segment) {
-    let width = end.x - start.x;
-
-    if width <= 0.0 {
-        out.fill(end.y);
-        return;
-    }
-
-    let span_scale = width.recip();
-    let origin = WideSmp::splat(start.y);
-    let delta = WideSmp::splat(end.y - start.y);
-    let smooth = start.smooth;
-    let power = PowerLanes::new(start.power);
-    let t_step = WideSmp::splat(phase_step * span_scale);
-    let step = t_step * WideSmp::splat(SIMD_LANES as Smp);
-    let mut t = WideSmp::splat((phase - start.x) * span_scale)
-        + WideSmp::new([0.0, 1.0, 2.0, 3.0]) * t_step;
-
-    fill_wide(out, || {
-        let progress = if smooth {
-            fast_sin_pi_wide(t - WideSmp::HALF).mul_add(WideSmp::HALF, WideSmp::HALF)
-        } else {
-            t
+        let span_scale = width.recip();
+        let t_step = WideSmp::splat(phase_step * span_scale);
+        let mut curve = Curve {
+            out,
+            t: WideSmp::splat((phase - start.x) * span_scale)
+                + WideSmp::new([0.0, 1.0, 2.0, 3.0]) * t_step,
+            step: t_step * WideSmp::splat(SIMD_LANES as Smp),
+            origin: WideSmp::splat(start.y),
+            delta: WideSmp::splat(end.y - start.y),
+            power: PowerScale::new(start.power),
         };
 
-        t += step;
+        match (start.smooth, curve.power.curved) {
+            (false, false) => curve.fill::<false, false>(),
+            (false, true) => curve.fill::<false, true>(),
+            (true, false) => curve.fill::<true, false>(),
+            (true, true) => curve.fill::<true, true>(),
+        }
+    }
 
-        power.scale(progress).mul_add(delta, origin)
-    });
+    #[inline(always)]
+    fn fill<const SMOOTH: bool, const CURVED: bool>(&mut self) {
+        fill_wide(self.out, || {
+            let progress = if SMOOTH {
+                fast_sin_pi_wide(self.t - WideSmp::HALF).mul_add(WideSmp::HALF, WideSmp::HALF)
+            } else {
+                self.t
+            };
+
+            self.t += self.step;
+
+            self.power
+                .scale::<CURVED>(progress)
+                .mul_add(self.delta, self.origin)
+        });
+    }
 }
 
 /// [`power_scale`](crate::power_scale) for each lane.
 ///
 /// `scale` is `1 / (exp(power) - 1)`, computed once and applied with a multiply.
-struct PowerLanes {
+struct PowerScale {
     curved: bool,
     power_log2e: WideSmp,
     scale: WideSmp,
 }
 
-impl PowerLanes {
+impl PowerScale {
     fn new(power: Smp) -> Self {
         // Same cutoff as `power_scale`: a flat slope stays linear.
         if power.abs() < 0.005 {
@@ -585,8 +568,9 @@ impl PowerLanes {
         }
     }
 
-    fn scale(&self, t: WideSmp) -> WideSmp {
-        if !self.curved {
+    #[inline(always)]
+    fn scale<const CURVED: bool>(&self, t: WideSmp) -> WideSmp {
+        if !CURVED {
             return t;
         }
 

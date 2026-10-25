@@ -186,16 +186,7 @@ impl SegmentsEditor {
             match self.drag {
                 Some(Drag::Point(index)) => {
                     let (x, y) = Self::from_pos(plot, pos);
-                    Self::move_point(
-                        segments,
-                        index,
-                        x,
-                        y,
-                        !modifiers.alt,
-                        self.grid_x,
-                        self.grid_y,
-                        self.closed,
-                    );
+                    self.move_point(segments, index, x, y, !modifiers.alt);
                     changed = true;
                 }
                 Some(Drag::Power(index)) => {
@@ -449,17 +440,11 @@ impl SegmentsEditor {
         )
     }
 
-    fn move_point(
-        segments: &mut Segments,
-        index: usize,
-        x: Smp,
-        y: Smp,
-        snap: bool,
-        grid_x: i32,
-        grid_y: i32,
-        closed: bool,
-    ) {
+    fn move_point(&self, segments: &mut Segments, index: usize, x: Smp, y: Smp, snap: bool) {
         let n = segments.num_segments();
+        let grid_x = self.grid_x;
+        let grid_y = self.grid_y;
+        let closed = self.closed;
 
         if index >= n {
             return;
@@ -674,11 +659,6 @@ impl SegmentsEditor {
         for point in &self.curve {
             self.points.push(Self::to_pos(plot, point.x, point.y));
         }
-    }
-
-    /// Screen position of `phase` on `segments`.
-    fn curve_pos(plot: Rect, segments: &Segments, phase: Smp) -> Pos2 {
-        Self::playhead_pos(plot, segments, phase, None)
     }
 
     /// Screen position of `phase`. `start_level` replaces the first segment's start.
