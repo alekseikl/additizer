@@ -139,7 +139,7 @@ impl<E: EngineLinks> ModuleHandle<E> {
             ModuleType::Envelope => Self::Envelope(Box::new(Envelope::new(id))),
             ModuleType::Lfo => Self::Lfo(Box::new(Lfo::new(id, buffer_size))),
             ModuleType::SegmentsEnvelope => {
-                Self::SegmentsEnvelope(Box::new(SegmentsEnvelope::new(id, buffer_size)))
+                Self::SegmentsEnvelope(Box::new(SegmentsEnvelope::new(id)))
             }
             ModuleType::Pitch => Self::Pitch(Box::new(Pitch::new(id, buffer_size))),
             ModuleType::Amplifier => Self::Amplifier(Box::new(Amplifier::new(id, buffer_size))),
@@ -172,7 +172,7 @@ impl<E: EngineLinks> ModuleHandle<E> {
             ModuleConfig::Envelope(cfg) => Self::Envelope(Box::new(Envelope::from_config(cfg))),
             ModuleConfig::Lfo(cfg) => Self::Lfo(Box::new(Lfo::from_config(cfg, buffer_size))),
             ModuleConfig::SegmentsEnvelope(cfg) => {
-                Self::SegmentsEnvelope(Box::new(SegmentsEnvelope::from_config(cfg, buffer_size)))
+                Self::SegmentsEnvelope(Box::new(SegmentsEnvelope::from_config(cfg)))
             }
             ModuleConfig::Pitch(cfg) => Self::Pitch(Box::new(Pitch::from_config(cfg, buffer_size))),
             ModuleConfig::Amplifier(cfg) => {

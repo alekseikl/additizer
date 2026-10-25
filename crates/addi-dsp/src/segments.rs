@@ -318,6 +318,7 @@ impl Segments {
         debug_assert_eq!(self.segments[n - 1].x, 1.0);
 
         let denom = len as Smp;
+        let phase_step = denom.recip();
         let mut from = 0;
 
         for pair in self.segments.windows(2) {
@@ -328,7 +329,13 @@ impl Segments {
                 continue;
             }
 
-            render_segment(&mut out[from..to], from, denom, pair[0], pair[1]);
+            render_segment(
+                &mut out[from..to],
+                from as Smp * phase_step,
+                phase_step,
+                pair[0],
+                pair[1],
+            );
             from = to;
         }
 
@@ -359,6 +366,7 @@ impl Segments {
         scratch.resize(len, 0.0);
 
         let denom = pixels as Smp;
+        let phase_step = denom.recip();
         let mut from = 0;
 
         for pair in self.segments.windows(2) {
@@ -373,14 +381,20 @@ impl Segments {
                 continue;
             }
 
-            render_segment(&mut scratch[from..to], from, denom, pair[0], pair[1]);
+            render_segment(
+                &mut scratch[from..to],
+                from as Smp * phase_step,
+                phase_step,
+                pair[0],
+                pair[1],
+            );
 
             points.extend(
                 scratch[from..to]
                     .iter()
                     .enumerate()
                     .map(|(offset, &y)| CurvePoint {
-                        x: (from + offset) as Smp / denom,
+                        x: (from + offset) as Smp * phase_step,
                         y,
                     }),
             );
@@ -495,18 +509,21 @@ fn segment_level(phase: Smp, start: Segment, end: Segment) -> Smp {
         return end.y;
     }
 
-    let mut t = ((phase - start.x) / width).clamp(0.0, 1.0);
+    let mut t = (phase - start.x) / width;
 
     if start.smooth {
         t = ((t - 0.5) * std::f32::consts::PI).sin().mul_add(0.5, 0.5);
     }
 
-    power_scale(t, start.power)
-        .clamp(0.0, 1.0)
-        .mul_add(end.y - start.y, start.y)
+    power_scale(t, start.power).mul_add(end.y - start.y, start.y)
 }
 
-fn render_segment(out: &mut [Smp], start_index: usize, denom: Smp, start: Segment, end: Segment) {
+/// Fill `out` along the segment from `start` to `end`.
+///
+/// Sample `i` is read at phase `phase + i * phase_step`. That phase is scaled into
+/// the segment's progress once; each sample then advances the progress. A
+/// non-positive width fills `end.y`.
+pub fn render_segment(out: &mut [Smp], phase: Smp, phase_step: Smp, start: Segment, end: Segment) {
     let width = end.x - start.x;
 
     if width <= 0.0 {
@@ -514,31 +531,26 @@ fn render_segment(out: &mut [Smp], start_index: usize, denom: Smp, start: Segmen
         return;
     }
 
-    let start_x = WideSmp::splat(start.x);
-    let span_scale = WideSmp::splat(width.recip());
+    let span_scale = width.recip();
     let origin = WideSmp::splat(start.y);
     let delta = WideSmp::splat(end.y - start.y);
     let smooth = start.smooth;
     let power = PowerLanes::new(start.power);
-    let phase_scale = WideSmp::splat(denom.recip());
-    let step = phase_scale * WideSmp::splat(SIMD_LANES as Smp);
-    let mut phase =
-        (WideSmp::splat(start_index as Smp) + WideSmp::new([0.0, 1.0, 2.0, 3.0])) * phase_scale;
+    let t_step = WideSmp::splat(phase_step * span_scale);
+    let step = t_step * WideSmp::splat(SIMD_LANES as Smp);
+    let mut t = WideSmp::splat((phase - start.x) * span_scale)
+        + WideSmp::new([0.0, 1.0, 2.0, 3.0]) * t_step;
 
     fill_wide(out, || {
-        let t = ((phase - start_x) * span_scale)
-            .fast_max(WideSmp::ZERO)
-            .fast_min(WideSmp::ONE);
-
-        let t = if smooth {
+        let progress = if smooth {
             fast_sin_pi_wide(t - WideSmp::HALF).mul_add(WideSmp::HALF, WideSmp::HALF)
         } else {
             t
         };
 
-        phase += step;
+        t += step;
 
-        power.scale(t).mul_add(delta, origin)
+        power.scale(progress).mul_add(delta, origin)
     });
 }
 
@@ -575,14 +587,12 @@ impl PowerLanes {
 
     fn scale(&self, t: WideSmp) -> WideSmp {
         if !self.curved {
-            return t.fast_max(WideSmp::ZERO).fast_min(WideSmp::ONE);
+            return t;
         }
 
         let exp = fast_exp2_wide(t * self.power_log2e);
 
-        ((exp - WideSmp::ONE) * self.scale)
-            .fast_max(WideSmp::ZERO)
-            .fast_min(WideSmp::ONE)
+        (exp - WideSmp::ONE) * self.scale
     }
 }
 

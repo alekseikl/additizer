@@ -1,10 +1,7 @@
 use super::*;
 
 fn phase_inc(timebase: Timebase, rate: Smp, tempo: Smp, phase_scale: Smp) -> Smp {
-    let mut rates = [rate];
-
-    timebase.map_phase_inc(&mut rates, tempo, phase_scale);
-    rates[0]
+    timebase.phase_inc(rate, tempo, phase_scale)
 }
 
 fn assert_hz(timebase: Timebase, rate: Smp, tempo: Smp, expected: Smp) {
@@ -93,12 +90,9 @@ fn seconds_is_a_period_and_ignores_tempo() {
 #[test]
 fn one_second_advances_once_per_sample_rate() {
     let sample_rate: Smp = 48_000.0;
-    let mut once = [1.0];
-    let mut twice = [2.0];
+    let once = Timebase::Seconds.phase_inc(1.0, 140.0, sample_rate.recip());
+    let twice = Timebase::Seconds.phase_inc(2.0, 140.0, sample_rate.recip());
 
-    Timebase::Seconds.map_phase_inc(&mut once, 140.0, sample_rate.recip());
-    Timebase::Seconds.map_phase_inc(&mut twice, 140.0, sample_rate.recip());
-
-    assert!((once[0] * sample_rate - 1.0).abs() < 1e-3);
-    assert!((twice[0] * sample_rate - 0.5).abs() < 1e-3);
+    assert!((once * sample_rate - 1.0).abs() < 1e-3);
+    assert!((twice * sample_rate - 0.5).abs() < 1e-3);
 }

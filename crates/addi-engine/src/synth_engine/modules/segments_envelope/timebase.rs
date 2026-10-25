@@ -103,13 +103,9 @@ impl Timebase {
         tempo_bpm * (den as Smp) / (60.0 * (num as Smp))
     }
 
-    /// Replaces each length with its phase increment. The timebase is resolved once.
-    pub(super) fn map_phase_inc(self, rates: &mut [Smp], tempo_bpm: Smp, phase_scale: Smp) {
-        let step = self.hz_per_unit(tempo_bpm) * phase_scale;
-
-        for rate in rates {
-            *rate = step / (*rate).max(MIN_PERIOD);
-        }
+    /// Phase advanced per sample for one block. `rate` is the envelope length.
+    pub(super) fn phase_inc(self, rate: Smp, tempo_bpm: Smp, phase_scale: Smp) -> Smp {
+        self.hz_per_unit(tempo_bpm) * phase_scale / rate.max(MIN_PERIOD)
     }
 }
 

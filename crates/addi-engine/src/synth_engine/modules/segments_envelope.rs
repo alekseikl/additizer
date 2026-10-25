@@ -2,6 +2,7 @@ use std::array;
 
 mod config;
 mod link;
+mod segment_render;
 pub mod stub;
 mod timebase;
 
@@ -15,32 +16,29 @@ pub use timebase::Timebase;
 
 use addi_dsp::{segments::Segments, utils::sanitize};
 
+use segment_render::render_segment;
+
 use crate::synth_engine::{
-    Input, ModuleId, SmoothedSampleParams, Smp, StereoSample,
-    buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
+    Input, ModuleId, Smp, StereoSample,
+    buffer::{VoicesLayout, new_voices_layout},
     routing::{
         ControlRouterType, DataType, InputMeta, InputSlots, MixedSlots, ProcessContext,
         RouterFactory, SamplesOutput, VoiceEvent, VoiceTarget,
     },
-    smooth::SmoothedSample,
     synth_module::SynthModule,
     voices::NUM_CHANNELS,
     voices_handler::DecayingVoice,
 };
 
 struct ChannelParams {
-    rate: SmoothedSample,
+    rate: Smp,
 }
 
 impl ChannelParams {
     fn from_config(c: &config::SegmentsEnvelopeConfig, channel_idx: usize) -> Self {
         Self {
-            rate: c.rate[channel_idx].into(),
+            rate: c.rate[channel_idx],
         }
-    }
-
-    pub fn advance_smoothers(&mut self, smooth_params: &SmoothedSampleParams, samples: usize) {
-        self.rate.advance(smooth_params, samples);
     }
 }
 
@@ -70,27 +68,19 @@ pub struct SegmentsEnvelopePhase {
     pub start_level: Smp,
 }
 
-/// One pass of the curve. A voice starts done and returns there when the pass finishes.
+/// One pass of the curve. A voice starts done and returns there when the last segment finishes.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-enum Shot {
-    Play(Smp),
+enum Stage {
+    /// `index` selects the segment. `position` is progress through it, in `0.0..1.0`.
+    Segment { index: usize, position: Smp },
     /// The pass finished and the last level is held.
     #[default]
     Done,
 }
 
-impl Shot {
-    fn phase(self) -> Smp {
-        match self {
-            Self::Play(phase) => phase,
-            Self::Done => 1.0,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct Voice {
-    shot: Shot,
+    stage: Stage,
     /// Level the first segment leaves. The drawn start, unless this note stole one.
     start_level: Smp,
     /// Last sample this voice wrote. A stolen note copies it.
@@ -133,23 +123,10 @@ impl Inputs {
     }
 }
 
-struct Buffers {
-    rate: Buffer,
-}
-
-impl Buffers {
-    fn new(buffer_size: usize) -> Self {
-        Self {
-            rate: zero_buffer(buffer_size),
-        }
-    }
-}
-
 pub struct SegmentsEnvelope<L: SegmentsEnvelopeLinks = stub::Links> {
     id: ModuleId,
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
-    buffers: Buffers,
     audio_end: L::AudioEnd,
     ui_end: Option<L::UiEnd>,
     inputs: Inputs,
@@ -162,17 +139,14 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         self.ui_end.take()
     }
 
-    pub fn new(id: ModuleId, buffer_size: usize) -> Self {
-        Self::from_config(
-            &SegmentsEnvelopeConfig {
-                id,
-                ..SegmentsEnvelopeConfig::default()
-            },
-            buffer_size,
-        )
+    pub fn new(id: ModuleId) -> Self {
+        Self::from_config(&SegmentsEnvelopeConfig {
+            id,
+            ..SegmentsEnvelopeConfig::default()
+        })
     }
 
-    pub fn from_config(config: &config::SegmentsEnvelopeConfig, buffer_size: usize) -> Self {
+    pub fn from_config(config: &config::SegmentsEnvelopeConfig) -> Self {
         let mut config = config.clone();
         config.sanitize();
 
@@ -184,7 +158,6 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
             channel_params: array::from_fn(|channel_idx| {
                 ChannelParams::from_config(&config, channel_idx)
             }),
-            buffers: Buffers::new(buffer_size),
             audio_end,
             ui_end,
             inputs: Inputs::default(),
@@ -199,7 +172,7 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
             steal_level: self.params.steal_level,
             keep_voice_alive: self.params.keep_voice_alive,
             timebase: self.params.timebase,
-            rate: get_smoothed_param!(self, rate),
+            rate: get_stereo_param!(self, rate),
             segments: self.params.segments.clone(),
         }
     }
@@ -208,15 +181,11 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
     set_mono_param!(set_keep_voice_alive, keep_voice_alive, bool);
     set_mono_param!(set_timebase, timebase, Timebase);
 
-    set_smoothed_param!(set_rate, rate, sanitize(*rate, MIN_RATE, MAX_RATE));
+    set_stereo_param!(set_rate, rate, sanitize(*rate, MIN_RATE, MAX_RATE));
 
     pub fn set_segments(&mut self, mut segments: Segments) {
         segments.sanitize();
         self.params.segments = segments;
-    }
-
-    fn end_level(&self) -> Smp {
-        self.params.segments.value_at(1.0)
     }
 
     fn curve_start(&self) -> Smp {
@@ -229,38 +198,23 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         }
     }
 
-    /// Renders `voice` into `out`. Phase increments are already in `buffers.rate`.
-    fn render_shot(&self, voice: &Voice, out: &mut [Smp], samples: usize) -> Voice {
-        match voice.shot {
-            Shot::Done => {
-                let level = self.end_level();
-                out.fill(level);
+    /// Global phase of `stage`, for the editor playhead.
+    fn playhead_phase(&self, stage: Stage) -> Smp {
+        let Stage::Segment { index, position } = stage else {
+            return 1.0;
+        };
+        let segments = &self.params.segments;
+        let spans = segments.num_segments().saturating_sub(1);
 
-                Voice {
-                    shot: Shot::Done,
-                    start_level: voice.start_level,
-                    level,
-                }
-            }
-            Shot::Play(phase) => {
-                let segments = &self.params.segments;
-                let steps = &self.buffers.rate[..samples];
-                let phase = segments.render_span_from(out, phase, steps, voice.start_level);
-                let written = samples.min(out.len());
-                let level = out[..written].last().copied().unwrap_or(voice.level);
-                let shot = if phase >= 1.0 {
-                    Shot::Done
-                } else {
-                    Shot::Play(phase)
-                };
-
-                Voice {
-                    shot,
-                    start_level: voice.start_level,
-                    level,
-                }
-            }
+        if index >= spans {
+            return 1.0;
         }
+
+        let start = segments.segment(index).x;
+        let end = segments.segment(index + 1).x;
+        let width = (end - start).max(0.0);
+
+        (start + position.clamp(0.0, 1.0) * width).clamp(0.0, 1.0)
     }
 
     fn process_voice(
@@ -274,27 +228,69 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let sample_rate = router.sample_rate();
         let tempo = router.tempo();
-
-        router.param(
-            &self.inputs.rate,
-            &self.channel_params[channel_idx].rate,
-            &mut self.buffers.rate,
-        );
-
-        let samples = voice_output.output().len();
-
-        self.params.timebase.map_phase_inc(
-            &mut self.buffers.rate[..samples],
-            tempo,
-            sample_rate.recip(),
-        );
+        let rate = router.scalar(&self.inputs.rate, self.channel_params[channel_idx].rate);
+        let phase_step = self
+            .params
+            .timebase
+            .phase_inc(rate, tempo, sample_rate.recip());
 
         let voice = *self.voices.at(channel_idx, voice_idx);
-        let voice = self.render_shot(&voice, voice_output.output(), samples);
+        let segments = &self.params.segments;
+        let out = voice_output.output();
+        let len = out.len();
+        let mut stage = voice.stage;
+        let mut pos = 0;
+
+        while pos < len {
+            let Stage::Segment { index, position } = stage else {
+                out[pos..len].fill(segments.value_at(1.0));
+                stage = Stage::Done;
+                break;
+            };
+
+            let spans = segments.num_segments().saturating_sub(1);
+
+            if index >= spans {
+                out[pos..len].fill(segments.value_at(1.0));
+                stage = Stage::Done;
+                break;
+            }
+
+            let mut start = segments.segment(index);
+            let end = segments.segment(index + 1);
+
+            if index == 0 {
+                start.y = voice.start_level;
+            }
+
+            match render_segment(&mut out[pos..len], position, phase_step, start, end) {
+                Ok(position) => {
+                    stage = Stage::Segment { index, position };
+                    break;
+                }
+                Err(written) => {
+                    stage = if index + 1 >= spans {
+                        Stage::Done
+                    } else {
+                        Stage::Segment {
+                            index: index + 1,
+                            position: 0.0,
+                        }
+                    };
+                    pos += written;
+                }
+            }
+        }
+
+        let voice = Voice {
+            stage,
+            start_level: voice.start_level,
+            level: out[..len].last().copied().unwrap_or_default(),
+        };
 
         if router.need_update_ui_mono() {
             self.audio_end.update_phase(SegmentsEnvelopePhase {
-                phase: voice.shot.phase(),
+                phase: self.playhead_phase(voice.stage),
                 start_level: voice.start_level,
             });
         }
@@ -306,10 +302,6 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         ctx.control(self.id, self.output_slot)
             .for_voices(|rf, target, outputs| {
                 self.process_voice(target, outputs, rf);
-            })
-            .for_channels(|rf, channel_idx| {
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
             });
     }
 }
@@ -371,7 +363,10 @@ impl<L: SegmentsEnvelopeLinks> SynthModule for SegmentsEnvelope<L> {
                 };
                 let voice = self.voices.at_mut(channel_idx, *voice_idx);
 
-                voice.shot = Shot::Play(0.0);
+                voice.stage = Stage::Segment {
+                    index: 0,
+                    position: 0.0,
+                };
                 voice.start_level = start_level;
             }
         }
@@ -384,7 +379,7 @@ impl<L: SegmentsEnvelopeLinks> SynthModule for SegmentsEnvelope<L> {
 
         for decaying in decaying_voices.iter_mut().filter(|d| d.is_done()) {
             for voice in self.voices.channels_at(decaying.index()) {
-                if matches!(voice.shot, Shot::Play(_)) {
+                if matches!(voice.stage, Stage::Segment { .. }) {
                     decaying.mark_active();
                 }
             }
