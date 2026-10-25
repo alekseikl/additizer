@@ -24,10 +24,10 @@ use modules::{
     amplifier::AmplifierUiBridge, envelope::EnvelopeUiBridge, expressions::ExpressionsUiBridge,
     external_param::ExternalParamUiBridge, harmonic_editor::HarmonicEditorUiBridge,
     lfo::LfoUiBridge, mixer::MixerUiBridge, oscillator::OscillatorUiBridge, pitch::PitchUiBridge,
-    spectral_band_select::SpectralBandSelectUiBridge, spectral_blend::SpectralBlendUiBridge,
-    spectral_eq::SpectralEqUiBridge, spectral_filter::SpectralFilterUiBridge,
-    spectral_mixer::SpectralMixerUiBridge, spectral_noise::SpectralNoiseUiBridge, svf::SvfUiBridge,
-    wave_shaper::WaveShaperUiBridge,
+    segments_envelope::SegmentsEnvelopeUiBridge, spectral_band_select::SpectralBandSelectUiBridge,
+    spectral_blend::SpectralBlendUiBridge, spectral_eq::SpectralEqUiBridge,
+    spectral_filter::SpectralFilterUiBridge, spectral_mixer::SpectralMixerUiBridge,
+    spectral_noise::SpectralNoiseUiBridge, svf::SvfUiBridge, wave_shaper::WaveShaperUiBridge,
 };
 use ui_config::{UiConfig, UiModuleConfig};
 
@@ -47,6 +47,7 @@ pub fn module_default_label(module_type: ModuleType) -> &'static str {
         ModuleType::SpectralNoise => "Spectral Noise",
         ModuleType::ExternalParam => "Ext Param",
         ModuleType::Lfo => "LFO",
+        ModuleType::SegmentsEnvelope => "Segments Envelope",
         ModuleType::Pitch => "Pitch",
         ModuleType::WaveShaper => "Waveshaper",
         ModuleType::Svf => "SVF",
@@ -60,6 +61,7 @@ pub enum ModuleBridge<E: EngineLinks = crate::links::PluginLinks> {
     Envelope(Box<EnvelopeUiBridge<E::Envelope>>),
     Amplifier(Box<AmplifierUiBridge<E::Amplifier>>),
     Lfo(Box<LfoUiBridge<E::Lfo>>),
+    SegmentsEnvelope(Box<SegmentsEnvelopeUiBridge<E::SegmentsEnvelope>>),
     Pitch(Box<PitchUiBridge<E::Pitch>>),
     Mixer(Box<MixerUiBridge<E::Mixer>>),
     WaveShaper(Box<WaveShaperUiBridge<E::WaveShaper>>),
@@ -190,6 +192,9 @@ impl<E: EngineLinks> UiBridge<E> {
                 ModuleBridge::Envelope(Box::new(EnvelopeUiBridge::try_new(m)?))
             }
             ModuleHandle::Lfo(m) => ModuleBridge::Lfo(Box::new(LfoUiBridge::try_new(m)?)),
+            ModuleHandle::SegmentsEnvelope(m) => {
+                ModuleBridge::SegmentsEnvelope(Box::new(SegmentsEnvelopeUiBridge::try_new(m)?))
+            }
             ModuleHandle::Pitch(m) => ModuleBridge::Pitch(Box::new(PitchUiBridge::try_new(m)?)),
             ModuleHandle::Amplifier(m) => {
                 ModuleBridge::Amplifier(Box::new(AmplifierUiBridge::try_new(m)?))

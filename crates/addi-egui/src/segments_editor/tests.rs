@@ -157,6 +157,33 @@ fn changed_segments_render_again() {
 }
 
 #[test]
+fn open_curve_moves_the_ends_independently() {
+    let mut open = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+
+    SegmentsEditor::move_point(&mut open, 0, 0.0, 0.35, false, 1, 1, false);
+
+    assert!((open.segment(0).y - 0.35).abs() < 1e-6);
+    assert_eq!(open.segment(2).y, 0.0);
+
+    SegmentsEditor::move_point(&mut open, 2, 1.0, 0.1, false, 1, 1, false);
+
+    assert!((open.segment(0).y - 0.35).abs() < 1e-6);
+    assert!((open.segment(2).y - 0.1).abs() < 1e-6);
+
+    let mut closed = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+
+    SegmentsEditor::move_point(&mut closed, 0, 0.0, 0.35, false, 1, 1, true);
+
+    assert!((closed.segment(0).y - 0.35).abs() < 1e-6);
+    assert!((closed.segment(2).y - 0.35).abs() < 1e-6);
+
+    SegmentsEditor::move_point(&mut closed, 2, 1.0, 0.1, false, 1, 1, true);
+
+    assert!((closed.segment(0).y - 0.1).abs() < 1e-6);
+    assert!((closed.segment(2).y - 0.1).abs() < 1e-6);
+}
+
+#[test]
 fn smooth_curve_keeps_intermediate_pixels() {
     let editor = curve(&segment_presets::sine());
     let points = &editor.points;

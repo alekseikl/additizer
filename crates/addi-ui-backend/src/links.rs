@@ -8,6 +8,7 @@ pub mod lfo;
 pub mod mixer;
 pub mod oscillator;
 pub mod pitch;
+pub mod segments_envelope;
 pub mod spectral_band_select;
 pub mod spectral_blend;
 pub mod spectral_eq;
@@ -30,6 +31,7 @@ impl EngineLinks for PluginLinks {
     type ExternalParam = external_param::Links;
     type HarmonicEditor = harmonic_editor::Links;
     type Lfo = lfo::Links;
+    type SegmentsEnvelope = segments_envelope::Links;
     type Mixer = mixer::Links;
     type Oscillator = oscillator::Links;
     type Pitch = pitch::Links;

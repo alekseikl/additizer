@@ -3,7 +3,7 @@
 
 use crate::synth_engine::{
     Input, InputId, ModuleId, NUM_CHANNELS, Smp, StereoSample, amplifier, engine_io, envelope,
-    expressions, external_param, harmonic_editor, lfo, mixer, oscillator, pitch,
+    expressions, external_param, harmonic_editor, lfo, mixer, oscillator, pitch, segments_envelope,
     spectral_band_select, spectral_blend, spectral_eq, spectral_filter, spectral_mixer,
     spectral_noise, svf, wave_shaper,
 };
@@ -32,6 +32,7 @@ impl engine_io::EngineLinks for StubLinks {
     type ExternalParam = external_param::stub::Links;
     type HarmonicEditor = harmonic_editor::stub::Links;
     type Lfo = lfo::stub::Links;
+    type SegmentsEnvelope = segments_envelope::stub::Links;
     type Mixer = mixer::stub::Links;
     type Oscillator = oscillator::stub::Links;
     type Pitch = pitch::stub::Links;

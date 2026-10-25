@@ -69,6 +69,8 @@ pub struct SegmentsEditor {
     scratch: Vec<Smp>,
     points: Vec<Pos2>,
     rendered: Option<RenderedCurve>,
+    /// Equal endpoint levels stay locked, and the last bend wraps back to the start.
+    closed: bool,
 }
 
 impl Default for SegmentsEditor {
@@ -85,12 +87,42 @@ impl Default for SegmentsEditor {
             scratch: Vec::new(),
             points: Vec::new(),
             rendered: None,
+            closed: true,
         }
     }
 }
 
 impl SegmentsEditor {
+    /// Endpoints keep their own levels.
+    pub fn open() -> Self {
+        Self {
+            closed: false,
+            ..Self::default()
+        }
+    }
+
     pub fn ui(&mut self, ui: &mut Ui, segments: &mut Segments, phase: Option<Smp>) -> bool {
+        self.ui_with(ui, segments, phase, None)
+    }
+
+    /// Like [`ui`](Self::ui). The playhead reads the first segment from `start_level`.
+    pub fn ui_with_start(
+        &mut self,
+        ui: &mut Ui,
+        segments: &mut Segments,
+        phase: Option<Smp>,
+        start_level: Smp,
+    ) -> bool {
+        self.ui_with(ui, segments, phase, Some(start_level))
+    }
+
+    fn ui_with(
+        &mut self,
+        ui: &mut Ui,
+        segments: &mut Segments,
+        phase: Option<Smp>,
+        start_level: Option<Smp>,
+    ) -> bool {
         let mut changed = false;
         let width = ui.available_width();
         let (rect, mut response) =
@@ -98,7 +130,7 @@ impl SegmentsEditor {
 
         if rect.is_positive() {
             changed |= self.interact(ui, &response, rect, segments);
-            self.paint(ui, rect, segments, phase);
+            self.paint(ui, rect, segments, phase, start_level);
             changed |= self.context_menu(&mut response, segments);
         }
 
@@ -130,20 +162,20 @@ impl SegmentsEditor {
         if response.secondary_clicked()
             && let Some(pos) = pointer
         {
-            let hit = Self::hit_test(plot, segments, pos);
+            let hit = Self::hit_test(plot, segments, pos, self.closed);
             self.menu_point = hit.0;
             self.menu_power = hit.1;
         }
 
         if response.double_clicked_by(PointerButton::Primary) {
             if let Some(pos) = pointer {
-                changed |= Self::double_click(plot, segments, pos, modifiers.shift);
+                changed |= Self::double_click(plot, segments, pos, modifiers.shift, self.closed);
             }
             self.drag = None;
         } else if response.drag_started_by(PointerButton::Primary)
             && let Some(pos) = pointer
         {
-            let hit = Self::hit_test(plot, segments, pos);
+            let hit = Self::hit_test(plot, segments, pos, self.closed);
             self.drag = hit.0.map(Drag::Point).or_else(|| hit.1.map(Drag::Power));
             self.last_pointer_y = pos.y;
         }
@@ -162,12 +194,20 @@ impl SegmentsEditor {
                         !modifiers.alt,
                         self.grid_x,
                         self.grid_y,
+                        self.closed,
                     );
                     changed = true;
                 }
                 Some(Drag::Power(index)) => {
                     let delta = (pos.y - self.last_pointer_y) / plot.height();
-                    Self::move_powers(segments, index, delta, modifiers.shift, modifiers.alt);
+                    Self::move_powers(
+                        segments,
+                        index,
+                        delta,
+                        modifiers.shift,
+                        modifiers.alt,
+                        self.closed,
+                    );
                     self.last_pointer_y = pos.y;
                     changed = true;
                 }
@@ -181,7 +221,7 @@ impl SegmentsEditor {
 
         self.hover = if self.drag.is_none() && response.hovered() {
             pointer.and_then(|pos| {
-                let hit = Self::hit_test(plot, segments, pos);
+                let hit = Self::hit_test(plot, segments, pos, self.closed);
                 hit.0.map(Drag::Point).or_else(|| hit.1.map(Drag::Power))
             })
         } else {
@@ -293,7 +333,14 @@ impl SegmentsEditor {
         changed
     }
 
-    fn paint(&mut self, ui: &mut Ui, plot: Rect, segments: &Segments, phase: Option<Smp>) {
+    fn paint(
+        &mut self,
+        ui: &mut Ui,
+        plot: Rect,
+        segments: &Segments,
+        phase: Option<Smp>,
+        start_level: Option<Smp>,
+    ) {
         let painter = ui.painter();
         let background = ui.visuals().extreme_bg_color;
 
@@ -315,11 +362,11 @@ impl SegmentsEditor {
         }
 
         for index in 0..segments.num_segments() {
-            if !Self::power_active(plot, segments, index) {
+            if !Self::power_active(plot, segments, index, self.closed) {
                 continue;
             }
 
-            let (x, y) = Self::power_position(segments, index);
+            let (x, y) = Self::power_position(segments, index, self.closed);
             painter.circle_filled(Self::to_pos(plot, x, y), POWER_RADIUS, POWER_COLOR);
         }
 
@@ -334,7 +381,7 @@ impl SegmentsEditor {
 
         if let Some(phase) = phase {
             painter.circle_filled(
-                Self::curve_pos(plot, segments, phase),
+                Self::playhead_pos(plot, segments, phase, start_level),
                 POINT_RADIUS,
                 WAVE_COLOR,
             );
@@ -343,20 +390,26 @@ impl SegmentsEditor {
         let grab_stroke = Stroke::new(1.0, Color32::WHITE);
 
         if let Some(drag) = self.drag {
-            let pos = Self::target_pos(drag, plot, segments);
+            let pos = Self::target_pos(drag, plot, segments, self.closed);
             painter.circle_filled(pos, GRAB_RADIUS, Color32::from_white_alpha(0x40));
             painter.circle_stroke(pos, GRAB_RADIUS, grab_stroke);
         } else if let Some(hover) = self.hover {
             painter.circle_stroke(
-                Self::target_pos(hover, plot, segments),
+                Self::target_pos(hover, plot, segments, self.closed),
                 GRAB_RADIUS,
                 grab_stroke,
             );
         }
     }
 
-    fn double_click(plot: Rect, segments: &mut Segments, pos: Pos2, shift: bool) -> bool {
-        let (point, power) = Self::hit_test(plot, segments, pos);
+    fn double_click(
+        plot: Rect,
+        segments: &mut Segments,
+        pos: Pos2,
+        shift: bool,
+        closed: bool,
+    ) -> bool {
+        let (point, power) = Self::hit_test(plot, segments, pos, closed);
 
         if let Some(index) = point {
             return segments.remove_segment(index);
@@ -404,6 +457,7 @@ impl SegmentsEditor {
         snap: bool,
         grid_x: i32,
         grid_y: i32,
+        closed: bool,
     ) {
         let n = segments.num_segments();
 
@@ -438,14 +492,16 @@ impl SegmentsEditor {
             }
         }
 
-        let linked = segments.segment(0).y == segments.segment(n - 1).y;
+        if closed {
+            let linked = segments.segment(0).y == segments.segment(n - 1).y;
 
-        if linked && index == 0 {
-            let end = segments.segment(n - 1);
-            segments.set_segment(n - 1, Segment { y, ..end });
-        } else if linked && index + 1 == n {
-            let start = segments.segment(0);
-            segments.set_segment(0, Segment { y, ..start });
+            if linked && index == 0 {
+                let end = segments.segment(n - 1);
+                segments.set_segment(n - 1, Segment { y, ..end });
+            } else if linked && index + 1 == n {
+                let start = segments.segment(0);
+                segments.set_segment(0, Segment { y, ..start });
+            }
         }
 
         let current = segments.segment(index);
@@ -458,6 +514,7 @@ impl SegmentsEditor {
         delta_change: Smp,
         all: bool,
         alternate: bool,
+        closed: bool,
     ) {
         let n = segments.num_segments();
 
@@ -466,12 +523,12 @@ impl SegmentsEditor {
         }
 
         let (start, end) = if all { (0, n - 2) } else { (index, index) };
-        let descending = segments.segment(index).y > Self::segment_end_y(segments, index);
+        let descending = segments.segment(index).y > Self::segment_end_y(segments, index, closed);
         let alternate_mult = if !alternate && descending { -1.0 } else { 1.0 };
 
         for i in start..=end {
             let from_y = segments.segment(i).y;
-            let to_y = Self::segment_end_y(segments, i);
+            let to_y = Self::segment_end_y(segments, i, closed);
 
             if from_y == to_y {
                 continue;
@@ -490,17 +547,18 @@ impl SegmentsEditor {
         }
     }
 
-    fn segment_end_y(segments: &Segments, index: usize) -> Smp {
-        let n = segments.num_segments();
-
-        if index + 1 < n {
-            segments.segment(index + 1).y
-        } else {
-            segments.segment(0).y
-        }
+    fn segment_end_y(segments: &Segments, index: usize, closed: bool) -> Smp {
+        Self::segment_end(segments, index, closed)
+            .map(|(_, y)| y)
+            .unwrap_or_else(|| segments.segment(index).y)
     }
 
-    fn hit_test(plot: Rect, segments: &Segments, pos: Pos2) -> (Option<usize>, Option<usize>) {
+    fn hit_test(
+        plot: Rect,
+        segments: &Segments,
+        pos: Pos2,
+        closed: bool,
+    ) -> (Option<usize>, Option<usize>) {
         let grab_sq = GRAB_RADIUS * GRAB_RADIUS;
         let mut best_point = None;
         let mut best_distance = grab_sq;
@@ -523,11 +581,11 @@ impl SegmentsEditor {
         best_distance = grab_sq;
 
         for index in 0..segments.num_segments() {
-            if !Self::power_active(plot, segments, index) {
+            if !Self::power_active(plot, segments, index, closed) {
                 continue;
             }
 
-            let (x, y) = Self::power_position(segments, index);
+            let (x, y) = Self::power_position(segments, index, closed);
             let distance = pos.distance_sq(Self::to_pos(plot, x, y));
 
             if distance < best_distance {
@@ -539,30 +597,40 @@ impl SegmentsEditor {
         (None, best_power)
     }
 
-    fn power_active(plot: Rect, segments: &Segments, index: usize) -> bool {
+    fn power_active(plot: Rect, segments: &Segments, index: usize, closed: bool) -> bool {
+        let Some((to_x, to_y)) = Self::segment_end(segments, index, closed) else {
+            return false;
+        };
         let from = segments.segment(index);
-        let (to_x, to_y) = Self::segment_end(segments, index);
         let dx = to_x - from.x;
         let dy = to_y - from.y;
 
         plot.width() * dx >= MIN_POWER_WIDTH && dy != 0.0
     }
 
-    fn segment_end(segments: &Segments, index: usize) -> (Smp, Smp) {
+    fn segment_end(segments: &Segments, index: usize, closed: bool) -> Option<(Smp, Smp)> {
         let n = segments.num_segments();
+
+        if index >= n {
+            return None;
+        }
 
         if index + 1 < n {
             let point = segments.segment(index + 1);
-            (point.x, point.y)
-        } else {
+            Some((point.x, point.y))
+        } else if closed {
             let point = segments.segment(0);
-            (point.x + 1.0, point.y)
+            Some((point.x + 1.0, point.y))
+        } else {
+            None
         }
     }
 
-    fn power_position(segments: &Segments, index: usize) -> (Smp, Smp) {
+    fn power_position(segments: &Segments, index: usize, closed: bool) -> (Smp, Smp) {
         let from = segments.segment(index);
-        let (to_x, to_y) = Self::segment_end(segments, index);
+        let Some((to_x, to_y)) = Self::segment_end(segments, index, closed) else {
+            return (from.x, from.y);
+        };
         let mut x = (from.x + to_x) * 0.5;
 
         if x >= 1.0 {
@@ -610,9 +678,18 @@ impl SegmentsEditor {
 
     /// Screen position of `phase` on `segments`.
     fn curve_pos(plot: Rect, segments: &Segments, phase: Smp) -> Pos2 {
-        let phase = sanitize(phase, 0.0, 1.0);
+        Self::playhead_pos(plot, segments, phase, None)
+    }
 
-        Self::to_pos(plot, phase, segments.value_at(phase))
+    /// Screen position of `phase`. `start_level` replaces the first segment's start.
+    fn playhead_pos(plot: Rect, segments: &Segments, phase: Smp, start_level: Option<Smp>) -> Pos2 {
+        let phase = sanitize(phase, 0.0, 1.0);
+        let level = match start_level {
+            Some(start_level) => segments.value_from(phase, start_level),
+            None => segments.value_at(phase),
+        };
+
+        Self::to_pos(plot, phase, level)
     }
 
     fn from_pos(plot: Rect, pos: Pos2) -> (Smp, Smp) {
@@ -622,14 +699,14 @@ impl SegmentsEditor {
         (x, y)
     }
 
-    fn target_pos(target: Drag, plot: Rect, segments: &Segments) -> Pos2 {
+    fn target_pos(target: Drag, plot: Rect, segments: &Segments, closed: bool) -> Pos2 {
         match target {
             Drag::Point(index) => {
                 let point = segments.segment(index);
                 Self::to_pos(plot, point.x, point.y)
             }
             Drag::Power(index) => {
-                let (x, y) = Self::power_position(segments, index);
+                let (x, y) = Self::power_position(segments, index, closed);
                 Self::to_pos(plot, x, y)
             }
         }

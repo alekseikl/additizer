@@ -258,6 +258,21 @@ impl Segments {
 
     /// Level at `phase`. A non-finite phase reads the start of the curve.
     pub fn value_at(&self, phase: Smp) -> Smp {
+        let start_level = self
+            .segments
+            .first()
+            .map(|segment| segment.y)
+            .unwrap_or(0.0);
+
+        self.value_from(phase, start_level)
+    }
+
+    /// Level at `phase`, with the first segment leaving `start_level`.
+    ///
+    /// A non-finite phase reads that start. A non-finite `start_level` uses the
+    /// drawn start. Later segments are unchanged, and the first segment still
+    /// arrives at its drawn end.
+    pub fn value_from(&self, phase: Smp, start_level: Smp) -> Smp {
         let n = self.num_segments();
 
         if n == 0 {
@@ -269,10 +284,21 @@ impl Segments {
         } else {
             0.0
         };
+        let start_level = if start_level.is_finite() {
+            start_level
+        } else {
+            self.segments[0].y
+        };
 
-        for pair in self.segments.windows(2) {
+        for (index, pair) in self.segments.windows(2).enumerate() {
             if pair[0].x <= phase && pair[1].x >= phase {
-                return segment_level(phase, pair[0], pair[1]);
+                let mut start = pair[0];
+
+                if index == 0 {
+                    start.y = start_level;
+                }
+
+                return segment_level(phase, start, pair[1]);
             }
         }
 
@@ -367,6 +393,94 @@ impl Segments {
         points.push(CurvePoint { x: end.x, y: end.y });
 
         debug_assert_eq!(from, len);
+    }
+
+    /// Levels along a phase span. Nothing is baked ahead of the call.
+    ///
+    /// `phase` is the position of `out[0]`. Each sample is written, then the phase
+    /// advances by `steps[i]` (`0` when `steps` runs out). Positions outside `[0, 1]`
+    /// hold the nearest endpoint. Returns the phase after the last sample, clamped
+    /// to `[0, 1]`.
+    pub fn render_span(&self, out: &mut [Smp], phase: Smp, steps: &[Smp]) -> Smp {
+        let start_level = self
+            .segments
+            .first()
+            .map(|segment| segment.y)
+            .unwrap_or(0.0);
+
+        self.render_span_from(out, phase, steps, start_level)
+    }
+
+    /// Like [`render_span`](Self::render_span), but the first segment leaves
+    /// `start_level` instead of its drawn start. A non-finite `start_level` uses
+    /// the drawn start. Later segments are unchanged.
+    pub fn render_span_from(
+        &self,
+        out: &mut [Smp],
+        mut phase: Smp,
+        steps: &[Smp],
+        start_level: Smp,
+    ) -> Smp {
+        let n = self.num_segments();
+
+        if n < MIN_POINTS {
+            out.fill(0.0);
+            return 0.0;
+        }
+
+        let start_level = if start_level.is_finite() {
+            start_level
+        } else {
+            self.segments[0].y
+        };
+        let mut cursor = 0usize;
+
+        for (index, sample) in out.iter_mut().enumerate() {
+            if !phase.is_finite() {
+                phase = 0.0;
+            }
+
+            phase = phase.clamp(0.0, 1.0);
+            cursor = self.seek(cursor, phase);
+            *sample = self.span_level(cursor, phase, start_level);
+
+            phase += steps.get(index).copied().unwrap_or(0.0);
+        }
+
+        if phase.is_finite() {
+            phase.clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
+    }
+
+    fn span_level(&self, cursor: usize, phase: Smp, start_level: Smp) -> Smp {
+        let mut start = self.segments[cursor];
+
+        if cursor == 0 {
+            start.y = start_level;
+        }
+
+        segment_level(phase, start, self.segments[cursor + 1])
+    }
+
+    /// Index of the segment that contains `phase`. The earlier segment wins on a shared breakpoint.
+    fn seek(&self, mut cursor: usize, phase: Smp) -> usize {
+        let last = self.segments.len() - 1;
+
+        if cursor >= last {
+            cursor = last - 1;
+        }
+
+        while cursor + 1 < last && self.segments[cursor + 1].x < phase {
+            cursor += 1;
+        }
+
+        while cursor > 0 && phase < self.segments[cursor].x {
+            cursor -= 1;
+        }
+
+        cursor
     }
 }
 

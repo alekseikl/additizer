@@ -7,6 +7,7 @@ pub mod lfo;
 pub mod mixer;
 pub mod oscillator;
 pub mod pitch;
+pub mod segments_envelope;
 pub mod spectral_band_select;
 pub mod spectral_blend;
 pub mod spectral_eq;

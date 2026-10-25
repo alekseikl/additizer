@@ -1,7 +1,8 @@
 use crate::synth_engine::{
     Amplifier, Envelope, Expressions, ExternalParam, HarmonicEditor, Input, Lfo, Mixer,
-    ModuleConfig, ModuleId, Oscillator, Pitch, SpectralBandSelect, SpectralBlend, SpectralEq,
-    SpectralFilter, SpectralMixer, SpectralNoise, StereoSample, Svf, VoiceEvent, WaveShaper,
+    ModuleConfig, ModuleId, Oscillator, Pitch, SegmentsEnvelope, SpectralBandSelect, SpectralBlend,
+    SpectralEq, SpectralFilter, SpectralMixer, SpectralNoise, StereoSample, Svf, VoiceEvent,
+    WaveShaper,
     engine_io::EngineLinks,
     modules::Output,
     routing::{DataType, InputMeta, InputSlots, ProcessContext},
@@ -26,6 +27,7 @@ pub enum ModuleType {
     SpectralNoise,
     ExternalParam,
     Lfo,
+    SegmentsEnvelope,
     Pitch,
     WaveShaper,
     Svf,
@@ -49,6 +51,7 @@ impl ModuleType {
             Self::SpectralNoise => "Spectral Noise",
             Self::ExternalParam => "Ext Parameter",
             Self::Lfo => "LFO",
+            Self::SegmentsEnvelope => "Segments Envelope",
             Self::Pitch => "Pitch",
             Self::WaveShaper => "Waveshaper",
             Self::Svf => "SVF",
@@ -62,6 +65,7 @@ pub enum ModuleHandle<E: EngineLinks = crate::synth_engine::stub::StubLinks> {
     Oscillator(Box<Oscillator<E::Oscillator>>),
     Envelope(Box<Envelope<E::Envelope>>),
     Lfo(Box<Lfo<E::Lfo>>),
+    SegmentsEnvelope(Box<SegmentsEnvelope<E::SegmentsEnvelope>>),
     Pitch(Box<Pitch<E::Pitch>>),
     Amplifier(Box<Amplifier<E::Amplifier>>),
     WaveShaper(Box<WaveShaper<E::WaveShaper>>),
@@ -85,6 +89,7 @@ impl<E: EngineLinks> ModuleHandle<E> {
             Self::Oscillator(m) => m.process(ctx),
             Self::Envelope(m) => m.process(ctx),
             Self::Lfo(m) => m.process(ctx),
+            Self::SegmentsEnvelope(m) => m.process(ctx),
             Self::Pitch(m) => m.process(ctx),
             Self::Amplifier(m) => m.process(ctx),
             Self::WaveShaper(m) => m.process(ctx),
@@ -109,6 +114,7 @@ impl<E: EngineLinks> ModuleHandle<E> {
             Self::Oscillator(_) => ModuleType::Oscillator,
             Self::Envelope(_) => ModuleType::Envelope,
             Self::Lfo(_) => ModuleType::Lfo,
+            Self::SegmentsEnvelope(_) => ModuleType::SegmentsEnvelope,
             Self::Pitch(_) => ModuleType::Pitch,
             Self::Amplifier(_) => ModuleType::Amplifier,
             Self::Mixer(_) => ModuleType::Mixer,
@@ -132,6 +138,9 @@ impl<E: EngineLinks> ModuleHandle<E> {
             ModuleType::Oscillator => Self::Oscillator(Box::new(Oscillator::new(id, buffer_size))),
             ModuleType::Envelope => Self::Envelope(Box::new(Envelope::new(id))),
             ModuleType::Lfo => Self::Lfo(Box::new(Lfo::new(id, buffer_size))),
+            ModuleType::SegmentsEnvelope => {
+                Self::SegmentsEnvelope(Box::new(SegmentsEnvelope::new(id, buffer_size)))
+            }
             ModuleType::Pitch => Self::Pitch(Box::new(Pitch::new(id, buffer_size))),
             ModuleType::Amplifier => Self::Amplifier(Box::new(Amplifier::new(id, buffer_size))),
             ModuleType::Mixer => Self::Mixer(Box::new(Mixer::new(id, buffer_size))),
@@ -162,6 +171,9 @@ impl<E: EngineLinks> ModuleHandle<E> {
             }
             ModuleConfig::Envelope(cfg) => Self::Envelope(Box::new(Envelope::from_config(cfg))),
             ModuleConfig::Lfo(cfg) => Self::Lfo(Box::new(Lfo::from_config(cfg, buffer_size))),
+            ModuleConfig::SegmentsEnvelope(cfg) => {
+                Self::SegmentsEnvelope(Box::new(SegmentsEnvelope::from_config(cfg, buffer_size)))
+            }
             ModuleConfig::Pitch(cfg) => Self::Pitch(Box::new(Pitch::from_config(cfg, buffer_size))),
             ModuleConfig::Amplifier(cfg) => {
                 Self::Amplifier(Box::new(Amplifier::from_config(cfg, buffer_size)))
@@ -207,6 +219,9 @@ impl<E: EngineLinks> ModuleHandle<E> {
             Self::Oscillator(m) => Some(ModuleConfig::Oscillator(Box::new(m.get_config()))),
             Self::Envelope(m) => Some(ModuleConfig::Envelope(Box::new(m.get_config()))),
             Self::Lfo(m) => Some(ModuleConfig::Lfo(Box::new(m.get_config()))),
+            Self::SegmentsEnvelope(m) => {
+                Some(ModuleConfig::SegmentsEnvelope(Box::new(m.get_config())))
+            }
             Self::Pitch(m) => Some(ModuleConfig::Pitch(Box::new(m.get_config()))),
             Self::Amplifier(m) => Some(ModuleConfig::Amplifier(Box::new(m.get_config()))),
             Self::Mixer(m) => Some(ModuleConfig::Mixer(Box::new(m.get_config()))),

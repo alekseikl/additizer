@@ -297,6 +297,69 @@ fn sanitize_clamps_curve_floats() {
 }
 
 #[test]
+fn span_matches_value_at_and_holds_the_end() {
+    let mut segments =
+        Segments::from_points(&[(0.0, 0.2), (0.3, 1.0), (0.3, 0.0), (1.0, 0.4)], false);
+
+    segments.set_power(0, 3.0);
+    segments.set_smooth(1, true);
+
+    let steps = [0.0, 0.05, 0.17, 0.01, 0.4, 0.4, 0.0];
+    let mut out = [0.0; 7];
+    let mut phase = Smp::NAN;
+    let end = segments.render_span(&mut out, phase, &steps);
+
+    for (sample, step) in out.iter().zip(steps) {
+        if !phase.is_finite() {
+            phase = 0.0;
+        }
+
+        phase = phase.clamp(0.0, 1.0);
+
+        assert!(
+            (sample - segments.value_at(phase)).abs() < 1e-5,
+            "phase {phase}: {sample} vs {}",
+            segments.value_at(phase)
+        );
+        phase += step;
+    }
+
+    assert_eq!(end, phase.clamp(0.0, 1.0));
+    assert_eq!(end, 1.0);
+
+    let mut empty = [];
+    assert_eq!(segments.render_span(&mut empty, 0.25, &[]), 0.25);
+    assert_eq!(segments.render_span(&mut empty, 4.0, &[]), 1.0);
+}
+
+#[test]
+fn span_can_leave_a_different_start_level() {
+    let segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.25)], false);
+    let steps = [0.25; 4];
+    let mut out = [0.0; 4];
+    let end = segments.render_span_from(&mut out, 0.0, &steps, 0.5);
+
+    assert!((out[0] - 0.5).abs() < 1e-5);
+    assert!((out[1] - 0.75).abs() < 1e-5);
+    assert!((out[2] - 1.0).abs() < 1e-5);
+    assert!((out[3] - 0.625).abs() < 1e-5);
+    assert_eq!(end, 1.0);
+
+    let mut phase = 0.0;
+
+    for (sample, step) in out.iter().zip(steps) {
+        assert!((sample - segments.value_from(phase, 0.5)).abs() < 1e-5);
+        phase += step;
+    }
+
+    let mut drawn = [0.0; 4];
+    segments.render_span(&mut drawn, 0.0, &steps);
+    segments.render_span_from(&mut out, 0.0, &steps, 0.0);
+    assert_eq!(out, drawn);
+    assert!((segments.value_from(0.0, Smp::NAN) - segments.value_at(0.0)).abs() < 1e-6);
+}
+
+#[test]
 fn positive_power_holds_the_segment_near_its_start() {
     let mut segments = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
