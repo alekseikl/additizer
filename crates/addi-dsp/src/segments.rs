@@ -16,14 +16,14 @@ pub const MAX_POWER: Smp = 20.0;
 const MIN_POINTS: usize = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Segment {
+pub struct SegPoint {
     pub x: Smp,
     pub y: Smp,
     pub power: Smp,
     pub smooth: bool,
 }
 
-impl Default for Segment {
+impl Default for SegPoint {
     fn default() -> Self {
         Self {
             x: 0.0,
@@ -34,16 +34,10 @@ impl Default for Segment {
     }
 }
 
-/// Phase and level on a curve drawn for the UI.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CurvePoint {
-    pub x: Smp,
-    pub y: Smp,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Segments {
-    segments: Vec<Segment>,
+    #[serde(rename = "segments")]
+    points: Vec<SegPoint>,
     /// Identity of this edit. Replaced on every change; clones keep it until edited.
     #[serde(skip, default = "Segments::next_revision")]
     revision: u64,
@@ -51,7 +45,7 @@ pub struct Segments {
 
 impl PartialEq for Segments {
     fn eq(&self, other: &Self) -> bool {
-        self.segments == other.segments
+        self.points == other.points
     }
 }
 
@@ -62,29 +56,29 @@ impl Default for Segments {
 }
 
 impl Segments {
-    /// Build a curve from phase/level pairs. Every segment shares the same `smooth` flag.
+    /// Build a curve from phase/level pairs. Every point shares the same `smooth` flag.
     pub fn from_points(points: &[(Smp, Smp)], smooth: bool) -> Self {
         debug_assert!(points.len() >= MIN_POINTS && points.len() <= MAX_POINTS);
 
         let mut curve = Vec::with_capacity(MAX_POINTS);
 
         for &(x, y) in points {
-            curve.push(Segment {
+            curve.push(SegPoint {
                 x,
                 y,
                 smooth,
-                ..Segment::default()
+                ..SegPoint::default()
             });
         }
 
         Self {
-            segments: curve,
+            points: curve,
             revision: Self::next_revision(),
         }
     }
 
-    pub fn num_segments(&self) -> usize {
-        self.segments.len()
+    pub fn num_points(&self) -> usize {
+        self.points.len()
     }
 
     /// Changes whenever the curve is edited. Reads leave it alone.
@@ -101,59 +95,59 @@ impl Segments {
         self.revision = Self::next_revision();
     }
 
-    pub fn segment(&self, index: usize) -> Segment {
-        self.segments[index]
+    pub fn point(&self, index: usize) -> SegPoint {
+        self.points[index]
     }
 
-    pub fn segments(&self) -> &[Segment] {
-        &self.segments
+    pub fn points(&self) -> &[SegPoint] {
+        &self.points
     }
 
     pub fn power(&self, index: usize) -> Smp {
-        self.segments[index].power
+        self.points[index].power
     }
 
-    pub fn set_segment(&mut self, index: usize, mut segment: Segment) {
-        let n = self.num_segments();
+    pub fn set_point(&mut self, index: usize, mut point: SegPoint) {
+        let n = self.num_points();
 
         if index >= n {
             return;
         }
 
-        segment.x = sanitize(segment.x, 0.0, 1.0);
-        segment.y = sanitize(segment.y, 0.0, 1.0);
-        segment.power = sanitize(segment.power, -MAX_POWER, MAX_POWER);
+        point.x = sanitize(point.x, 0.0, 1.0);
+        point.y = sanitize(point.y, 0.0, 1.0);
+        point.power = sanitize(point.power, -MAX_POWER, MAX_POWER);
 
         if index == 0 {
-            segment.x = 0.0;
+            point.x = 0.0;
         } else if index + 1 == n {
-            segment.x = 1.0;
+            point.x = 1.0;
         }
 
-        self.segments[index] = segment;
+        self.points[index] = point;
         self.bump();
     }
 
     pub fn set_power(&mut self, index: usize, power: Smp) {
-        if index >= self.num_segments() {
+        if index >= self.num_points() {
             return;
         }
 
-        self.segments[index].power = sanitize(power, -MAX_POWER, MAX_POWER);
+        self.points[index].power = sanitize(power, -MAX_POWER, MAX_POWER);
         self.bump();
     }
 
     pub fn set_smooth(&mut self, index: usize, smooth: bool) {
-        if index >= self.num_segments() {
+        if index >= self.num_points() {
             return;
         }
 
-        self.segments[index].smooth = smooth;
+        self.points[index].smooth = smooth;
         self.bump();
     }
 
     pub fn reset_powers(&mut self) {
-        for point in &mut self.segments {
+        for point in &mut self.points {
             point.power = 0.0;
         }
 
@@ -162,135 +156,120 @@ impl Segments {
 
     /// Clamp every breakpoint into range. Fewer than two points becomes the default curve.
     pub fn sanitize(&mut self) {
-        self.segments.truncate(MAX_POINTS);
+        self.points.truncate(MAX_POINTS);
 
-        if self.segments.len() < MIN_POINTS {
+        if self.points.len() < MIN_POINTS {
             *self = Self::default();
             return;
         }
 
-        for segment in &mut self.segments {
-            segment.x = sanitize(segment.x, 0.0, 1.0);
-            segment.y = sanitize(segment.y, 0.0, 1.0);
-            segment.power = sanitize(segment.power, -MAX_POWER, MAX_POWER);
+        for point in &mut self.points {
+            point.x = sanitize(point.x, 0.0, 1.0);
+            point.y = sanitize(point.y, 0.0, 1.0);
+            point.power = sanitize(point.power, -MAX_POWER, MAX_POWER);
         }
 
-        let n = self.segments.len();
-        self.segments[0].x = 0.0;
-        self.segments[n - 1].x = 1.0;
+        let n = self.points.len();
+        self.points[0].x = 0.0;
+        self.points[n - 1].x = 1.0;
         self.bump();
     }
 
-    /// Insert `segment` so it stays in phase order. Fails when the curve is full.
-    pub fn add_segment(&mut self, index: usize, mut segment: Segment) -> bool {
-        let n = self.num_segments();
+    /// Insert `point` so it stays in phase order. Fails when the curve is full.
+    pub fn add_point(&mut self, index: usize, mut point: SegPoint) -> bool {
+        let n = self.num_points();
 
         if n >= MAX_POINTS || index > n {
             return false;
         }
 
-        segment.x = sanitize(segment.x, 0.0, 1.0);
-        segment.y = sanitize(segment.y, 0.0, 1.0);
+        point.x = sanitize(point.x, 0.0, 1.0);
+        point.y = sanitize(point.y, 0.0, 1.0);
 
-        segment.power = sanitize(segment.power, -MAX_POWER, MAX_POWER);
+        point.power = sanitize(point.power, -MAX_POWER, MAX_POWER);
 
         if index == 0 {
-            segment.x = 0.0;
+            point.x = 0.0;
         }
 
         if index == n {
-            segment.x = 1.0;
+            point.x = 1.0;
         }
 
-        self.segments.insert(index, segment);
+        self.points.insert(index, point);
         self.bump();
         true
     }
 
     /// Drop an interior breakpoint. The phase `0` and phase `1` endpoints stay.
-    pub fn remove_segment(&mut self, index: usize) -> bool {
-        let n = self.num_segments();
+    pub fn remove_point(&mut self, index: usize) -> bool {
+        let n = self.num_points();
 
         if n <= MIN_POINTS || index == 0 || index + 1 == n {
             return false;
         }
 
-        self.segments.remove(index);
+        self.points.remove(index);
         self.bump();
         true
     }
 
     pub fn flip_horizontal(&mut self) {
-        let n = self.num_segments();
+        let n = self.num_points();
 
         for i in 0..n.div_ceil(2) {
-            let tmp_x = 1.0 - self.segments[i].x;
-            let tmp_y = self.segments[i].y;
+            let tmp_x = 1.0 - self.points[i].x;
+            let tmp_y = self.points[i].y;
             let j = n - i - 1;
 
-            self.segments[i].x = 1.0 - self.segments[j].x;
-            self.segments[i].y = self.segments[j].y;
-            self.segments[j].x = tmp_x;
-            self.segments[j].y = tmp_y;
+            self.points[i].x = 1.0 - self.points[j].x;
+            self.points[i].y = self.points[j].y;
+            self.points[j].x = tmp_x;
+            self.points[j].y = tmp_y;
         }
 
         for i in 0..n / 2 {
             let j = n - i - 2;
-            let power = self.segments[i].power;
-            let smooth = self.segments[i].smooth;
+            let power = self.points[i].power;
+            let smooth = self.points[i].smooth;
 
-            self.segments[i].power = -self.segments[j].power;
-            self.segments[i].smooth = self.segments[j].smooth;
-            self.segments[j].power = -power;
-            self.segments[j].smooth = smooth;
+            self.points[i].power = -self.points[j].power;
+            self.points[i].smooth = self.points[j].smooth;
+            self.points[j].power = -power;
+            self.points[j].smooth = smooth;
         }
 
         self.bump();
     }
 
     pub fn flip_vertical(&mut self) {
-        for point in &mut self.segments {
+        for point in &mut self.points {
             point.y = 1.0 - point.y;
         }
 
         self.bump();
     }
 
-    /// Level at `phase`. A non-finite phase reads the start of the curve.
-    pub fn value_at(&self, phase: Smp) -> Smp {
-        let start_level = self
-            .segments
-            .first()
-            .map(|segment| segment.y)
-            .unwrap_or(0.0);
-
-        self.value_from(phase, start_level)
-    }
-
-    /// Level at `phase`, with the first segment leaving `start_level`.
-    ///
-    /// A non-finite phase reads that start. A non-finite `start_level` uses the
-    /// drawn start. Later segments are unchanged, and the first segment still
-    /// arrives at its drawn end.
-    pub fn value_from(&self, phase: Smp, start_level: Smp) -> Smp {
-        let n = self.num_segments();
+    /// Level at `phase` on `[0, 1]`.
+    pub fn value_at(&self, phase: Smp, start_level: Option<Smp>) -> Smp {
+        let n = self.num_points();
 
         if n == 0 {
             return 0.0;
         }
 
-        let phase = if phase.is_finite() {
-            phase.clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        let start_level = if start_level.is_finite() {
-            start_level
-        } else {
-            self.segments[0].y
+        debug_assert!(phase.is_finite());
+
+        let phase = phase.clamp(0.0, 1.0);
+        let start_level = match start_level {
+            Some(start_level) => {
+                debug_assert!(start_level.is_finite());
+                start_level
+            }
+            None => self.points[0].y,
         };
 
-        for (index, pair) in self.segments.windows(2).enumerate() {
+        for (index, pair) in self.points.windows(2).enumerate() {
             if pair[0].x <= phase && pair[1].x >= phase {
                 let mut start = pair[0];
 
@@ -298,38 +277,36 @@ impl Segments {
                     start.y = start_level;
                 }
 
-                return Segment::segment_level(phase, start, pair[1]);
+                return SegPoint::segment_level(phase, start, pair[1]);
             }
         }
 
-        self.segments[n - 1].y
+        self.points[n - 1].y
     }
 
     /// Write one DSP cycle into `out` at phases `i / out.len()` on `[0, 1)`.
-    pub fn render(&self, out: &mut [Smp]) {
+    pub fn render_waveform(&self, out: &mut [Smp]) {
         let len = out.len();
-        let n = self.num_segments();
+        let n = self.num_points();
 
         if len < 2 || n < MIN_POINTS {
             return;
         }
 
-        debug_assert_eq!(self.segments[0].x, 0.0);
-        debug_assert_eq!(self.segments[n - 1].x, 1.0);
+        debug_assert_eq!(self.points[0].x, 0.0);
+        debug_assert_eq!(self.points[n - 1].x, 1.0);
 
-        let denom = len as Smp;
-        let phase_step = denom.recip();
+        let phase_step = (len as Smp).recip();
         let mut from = 0;
 
-        for pair in self.segments.windows(2) {
-            // The sample on this breakpoint belongs to the segment that ends here.
-            let to = Self::sample_index(pair[1].x, denom, len) + 1;
+        for pair in self.points.windows(2) {
+            let to = Self::sample_end(pair[1].x, len).min(len);
 
             if from >= to {
                 continue;
             }
 
-            Curve::render(
+            Curve::render_phase(
                 &mut out[from..to],
                 from as Smp * phase_step,
                 phase_step,
@@ -342,46 +319,36 @@ impl Segments {
         debug_assert_eq!(from, len);
     }
 
-    /// Polyline for `pixels` columns. `scratch` is resized to `pixels + 1` and holds
-    /// the closed samples at phases `i / pixels`.
-    pub fn render_points(
-        &self,
-        pixels: usize,
-        points: &mut Vec<CurvePoint>,
-        scratch: &mut Vec<Smp>,
-    ) {
+    /// Polyline for `pixels` columns. Each point is `[phase, level]`.
+    pub fn render_points(&self, pixels: usize, points: &mut Vec<[Smp; 2]>, scratch: &mut Vec<Smp>) {
         points.clear();
 
-        let n = self.num_segments();
+        let n = self.num_points();
 
         if pixels < 1 || n < MIN_POINTS {
             return;
         }
 
-        debug_assert_eq!(self.segments[0].x, 0.0);
-        debug_assert_eq!(self.segments[n - 1].x, 1.0);
+        debug_assert_eq!(self.points[0].x, 0.0);
+        debug_assert_eq!(self.points[n - 1].x, 1.0);
 
         let len = pixels + 1;
 
         scratch.resize(len, 0.0);
 
-        let denom = pixels as Smp;
-        let phase_step = denom.recip();
+        let phase_step = (pixels as Smp).recip();
         let mut from = 0;
 
-        for pair in self.segments.windows(2) {
-            points.push(CurvePoint {
-                x: pair[0].x,
-                y: pair[0].y,
-            });
+        for pair in self.points.windows(2) {
+            points.push([pair[0].x, pair[0].y]);
 
-            let to = Self::sample_index(pair[1].x, denom, len) + 1;
+            let to = Self::sample_end(pair[1].x, pixels);
 
             if from >= to {
                 continue;
             }
 
-            Curve::render(
+            Curve::render_phase(
                 &mut scratch[from..to],
                 from as Smp * phase_step,
                 phase_step,
@@ -393,29 +360,31 @@ impl Segments {
                 scratch[from..to]
                     .iter()
                     .enumerate()
-                    .map(|(offset, &y)| CurvePoint {
-                        x: (from + offset) as Smp * phase_step,
-                        y,
-                    }),
+                    .map(|(offset, &y)| [(from + offset) as Smp * phase_step, y]),
             );
 
             from = to;
         }
 
-        let end = self.segments[n - 1];
+        let end = self.points[n - 1];
 
-        points.push(CurvePoint { x: end.x, y: end.y });
+        points.push([end.x, end.y]);
 
         debug_assert_eq!(from, len);
     }
 
-    fn sample_index(x: Smp, denom: Smp, len: usize) -> usize {
-        (x * denom).floor().clamp(0.0, (len - 1) as Smp) as usize
+    /// Exclusive end index of the span that finishes at `x` on a grid of `steps` intervals.
+    fn sample_end(x: Smp, steps: usize) -> usize {
+        if x <= 0.0 {
+            return 0;
+        }
+
+        ((x * steps as Smp).floor() + 1.0).min(steps as Smp + 1.0) as usize
     }
 }
 
-impl Segment {
-    fn segment_level(phase: Smp, start: Segment, end: Segment) -> Smp {
+impl SegPoint {
+    fn segment_level(phase: Smp, start: SegPoint, end: SegPoint) -> Smp {
         let width = end.x - start.x;
 
         if width <= 0.0 {
@@ -433,16 +402,12 @@ impl Segment {
 
     /// `Ok(position)` — this segment filled `out` and is still running.
     /// `Err(written)` — this segment ended after `written` samples (`0` if it had none left).
-    ///
-    /// `position` is normalized progress through the segment. `phase_step` is the curve
-    /// advanced per sample. A non-positive step holds the current level. The step stays
-    /// constant for the fill.
     pub fn render_segment(
         out: &mut [Smp],
         position: Smp,
         phase_step: Smp,
-        start: Segment,
-        end: Segment,
+        start: SegPoint,
+        end: SegPoint,
     ) -> Result<Smp, usize> {
         let width = end.x - start.x;
 
@@ -450,13 +415,12 @@ impl Segment {
             return Err(0);
         }
 
-        let phase = start.x + position * width;
-
         if phase_step <= 0.0 {
-            Curve::render(out, phase, 0.0, start, end);
+            Curve::render(out, position, 0.0, start, end);
             return Ok(position);
         }
 
+        let t_step = phase_step * width.recip();
         let remaining = (1.0 - position).max(0.0) * width;
         let n = ((remaining / phase_step) as usize).min(out.len());
 
@@ -464,7 +428,7 @@ impl Segment {
             return Err(0);
         }
 
-        Curve::render(&mut out[..n], phase, phase_step, start, end);
+        Curve::render(&mut out[..n], position, t_step, start, end);
 
         let position = (position + n as Smp * phase_step / width).min(1.0);
 
@@ -486,25 +450,32 @@ struct Curve<'a> {
 }
 
 impl Curve<'_> {
-    /// Fill `out` along the segment from `start` to `end`.
-    ///
-    /// Sample `i` is read at phase `phase + i * phase_step`. That phase is scaled into
-    /// the segment's progress once; each sample then advances the progress. A
-    /// non-positive width fills `end.y`.
-    fn render(out: &mut [Smp], phase: Smp, phase_step: Smp, start: Segment, end: Segment) {
+    /// Fill `out` along the segment from `start` to `end`, starting at curve phase `phase`.
+    fn render_phase(out: &mut [Smp], phase: Smp, phase_step: Smp, start: SegPoint, end: SegPoint) {
         let width = end.x - start.x;
 
-        if width <= 0.0 {
-            out.fill(end.y);
-            return;
-        }
+        assert!(width > 0.0);
 
         let span_scale = width.recip();
-        let t_step = WideSmp::splat(phase_step * span_scale);
+
+        Self::render(
+            out,
+            (phase - start.x) * span_scale,
+            phase_step * span_scale,
+            start,
+            end,
+        );
+    }
+
+    /// Fill `out` along the segment from `start` to `end`.
+    ///
+    /// Sample `i` is read at progress `t + i * t_step`. `t` is 0 at `start` and 1 at
+    /// `end`, so the fill does not depend on where the segment sits on the curve.
+    fn render(out: &mut [Smp], t: Smp, t_step: Smp, start: SegPoint, end: SegPoint) {
+        let t_step = WideSmp::splat(t_step);
         let mut curve = Curve {
             out,
-            t: WideSmp::splat((phase - start.x) * span_scale)
-                + WideSmp::new([0.0, 1.0, 2.0, 3.0]) * t_step,
+            t: WideSmp::splat(t) + WideSmp::new([0.0, 1.0, 2.0, 3.0]) * t_step,
             step: t_step * WideSmp::splat(SIMD_LANES as Smp),
             origin: WideSmp::splat(start.y),
             delta: WideSmp::splat(end.y - start.y),
@@ -537,9 +508,6 @@ impl Curve<'_> {
     }
 }
 
-/// [`power_scale`](crate::power_scale) for each lane.
-///
-/// `scale` is `1 / (exp(power) - 1)`, computed once and applied with a multiply.
 struct PowerScale {
     curved: bool,
     power_log2e: WideSmp,
@@ -548,7 +516,6 @@ struct PowerScale {
 
 impl PowerScale {
     fn new(power: Smp) -> Self {
-        // Same cutoff as `power_scale`: a flat slope stays linear.
         if power.abs() < 0.005 {
             return Self {
                 curved: false,

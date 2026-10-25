@@ -1,10 +1,10 @@
-use addi_dsp::segments::{Segment, Segments};
+use addi_dsp::segments::{SegPoint, Segments};
 
 use super::*;
 
 type TestLfo = Lfo<stub::Links>;
 
-fn assert_points_eq(actual: &[Segment], expected: &[Segment]) {
+fn assert_points_eq(actual: &[SegPoint], expected: &[SegPoint]) {
     assert_eq!(actual.len(), expected.len());
     for (a, e) in actual.iter().zip(expected) {
         assert_eq!(a.x, e.x);
@@ -24,7 +24,7 @@ fn test_square() -> Segments {
 fn test_sine() -> Segments {
     let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
 
-    for index in 0..segments.num_segments() {
+    for index in 0..segments.num_points() {
         segments.set_smooth(index, true);
     }
 
@@ -54,7 +54,7 @@ fn table_knots_match_the_segments() {
     let lfo = make_lfo(test_sine());
 
     let mut rendered = vec![0.0; WAVEFORM_SIZE];
-    lfo.get_config().segments.render(&mut rendered);
+    lfo.get_config().segments.render_waveform(&mut rendered);
 
     for index in [0, 1, 100, 1024, 2047] {
         let baked = lfo.wave[WAVEFORM_PAD_LEFT + index];
@@ -73,7 +73,7 @@ fn sine_midpoints_follow_catmull_rom() {
     let lfo = make_lfo(test_sine());
 
     let mut fine = vec![0.0; WAVEFORM_SIZE * 2];
-    lfo.get_config().segments.render(&mut fine);
+    lfo.get_config().segments.render_waveform(&mut fine);
 
     for index in [0, 10, 500, 2046] {
         let got = TestLfo::read_wave(&lfo.wave, phase_at(index, 0.5));
@@ -107,8 +107,8 @@ fn set_segments_rebakes_the_table() {
 
     assert_ne!(lfo.wave[WAVEFORM_PAD_LEFT + 100], before);
     assert_points_eq(
-        lfo.get_config().segments.segments(),
-        test_square().segments(),
+        lfo.get_config().segments.points(),
+        test_square().points(),
     );
     assert_eq!(lfo.wave[WAVEFORM_PAD_LEFT + 100], 1.0);
     assert_eq!(lfo.wave[WAVEFORM_PAD_LEFT + 1500], 0.0);
@@ -116,8 +116,8 @@ fn set_segments_rebakes_the_table() {
     lfo.set_segments(test_square());
 
     assert_points_eq(
-        lfo.get_config().segments.segments(),
-        test_square().segments(),
+        lfo.get_config().segments.points(),
+        test_square().points(),
     );
 }
 
@@ -136,8 +136,8 @@ fn from_config_sanitizes_params() {
 
     assert_eq!(config.frequency, StereoSample::new(100.0, 0.0));
     assert_eq!(config.phase_shift, StereoSample::new(-1.0, 0.25));
-    assert_eq!(config.segments.segment(0).y, 0.0);
-    assert_eq!(config.segments.segment(1).y, 1.0);
+    assert_eq!(config.segments.point(0).y, 0.0);
+    assert_eq!(config.segments.point(1).y, 1.0);
 }
 
 #[test]

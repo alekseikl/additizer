@@ -2,7 +2,7 @@ use addi_ui_backend::ui_bridge::modules::lfo::LfoUiBridge;
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, Vec2};
 
 use crate::grid::WidgetCtx;
-use addi_dsp::{CurvePoint, Segments, Smp};
+use addi_dsp::{Segments, Smp};
 use addi_engine::ModuleId;
 use addi_ui_backend::ui_bridge::ModuleBridge;
 
@@ -22,7 +22,7 @@ struct RenderedCurve {
 
 #[derive(Default)]
 pub struct LfoWidget {
-    points: Vec<CurvePoint>,
+    points: Vec<[Smp; 2]>,
     scratch: Vec<Smp>,
     rendered: Option<RenderedCurve>,
 }
@@ -30,7 +30,7 @@ pub struct LfoWidget {
 impl LfoWidget {
     /// Phase/level polyline. Rebuilt when [`Segments::revision`] or `size` changes.
     fn build_curve(&mut self, segments: &Segments, size: Vec2) {
-        if size.x <= 0.0 || segments.num_segments() < 2 {
+        if size.x <= 0.0 || segments.num_points() < 2 {
             self.points.clear();
             self.rendered = None;
             return;
@@ -74,7 +74,7 @@ impl LfoWidget {
         let screen = self
             .points
             .iter()
-            .map(|point| Self::phase_pos(rect, point.x, point.y))
+            .map(|point| Self::phase_pos(rect, point[0], point[1]))
             .collect::<Vec<_>>();
 
         Self::paint_fill(painter, rect, &screen);
@@ -82,7 +82,7 @@ impl LfoWidget {
 
         if has_active_voices {
             let phase = lfo_bridge.get_phase();
-            let level = lfo_bridge.config().segments.value_at(phase);
+            let level = lfo_bridge.config().segments.value_at(phase, None);
 
             painter.circle_filled(
                 Self::phase_pos(rect, phase, level),

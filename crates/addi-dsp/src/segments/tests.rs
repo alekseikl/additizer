@@ -1,4 +1,4 @@
-use super::{CurvePoint, MAX_POINTS, Segment, Segments};
+use super::{MAX_POINTS, SegPoint, Segments};
 use crate::Smp;
 
 fn skew_arg(arg: Smp, skew: Smp) -> Smp {
@@ -53,7 +53,7 @@ fn square_at(skew: Smp) -> Segments {
 fn sine_at(skew: Smp) -> Segments {
     let mut segments = triangle_at(skew);
 
-    for index in 0..segments.num_segments() {
+    for index in 0..segments.num_points() {
         segments.set_smooth(index, true);
     }
 
@@ -62,11 +62,11 @@ fn sine_at(skew: Smp) -> Segments {
 
 fn render_open(segments: &Segments, len: usize) -> Vec<Smp> {
     let mut samples = vec![0.0; len];
-    segments.render(&mut samples);
+    segments.render_waveform(&mut samples);
     samples
 }
 
-fn assert_points_eq(actual: &[Segment], expected: &[Segment]) {
+fn assert_points_eq(actual: &[SegPoint], expected: &[SegPoint]) {
     assert_eq!(actual.len(), expected.len());
     for (a, e) in actual.iter().zip(expected) {
         assert_eq!(a.x, e.x);
@@ -82,14 +82,14 @@ fn serde_roundtrip() {
     segments.set_power(0, 4.0);
     segments.set_smooth(0, true);
 
-    let expected = segments.segments().to_vec();
+    let expected = segments.points().to_vec();
     let json = serde_json::to_value(&segments).unwrap();
 
     assert!(json.get("revision").is_none());
 
     let back: Segments = serde_json::from_value(json.clone()).unwrap();
 
-    assert_points_eq(back.segments(), &expected);
+    assert_points_eq(back.points(), &expected);
 
     let again: Segments = serde_json::from_value(json).unwrap();
 
@@ -109,7 +109,7 @@ fn edits_advance_the_revision() {
     let cloned = segments.clone();
 
     assert_eq!(cloned.revision(), revision);
-    assert!(!segments.remove_segment(0));
+    assert!(!segments.remove_point(0));
     assert_eq!(segments.revision(), revision);
 
     segments.set_power(0, 0.0);
@@ -161,16 +161,26 @@ fn render_covers_the_half_open_period() {
     let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     let mut samples = [0.0; 4];
 
-    ramp.render(&mut samples);
+    ramp.render_waveform(&mut samples);
 
     assert_eq!(samples, [0.0, 0.25, 0.5, 0.75]);
 
     let square = Segments::from_points(&[(0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)], false);
     let mut square_samples = [0.0; 8];
 
-    square.render(&mut square_samples);
+    square.render_waveform(&mut square_samples);
 
     assert_eq!(square_samples, [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0]);
+
+    let leading = Segments::from_points(
+        &[(0.0, 0.0), (0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)],
+        false,
+    );
+    let mut leading_samples = [0.0; 8];
+
+    leading.render_waveform(&mut leading_samples);
+
+    assert_eq!(leading_samples, [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0]);
 }
 
 #[test]
@@ -183,11 +193,11 @@ fn render_tails_match_an_aligned_render() {
 
     for &len in &[2, 3, 7, 8] {
         let mut short = vec![0.0; len];
-        segments.render(&mut short);
+        segments.render_waveform(&mut short);
 
         let long_len = len * 4;
         let mut long = vec![0.0; long_len];
-        segments.render(&mut long);
+        segments.render_waveform(&mut long);
 
         for (i, sample) in short.iter().enumerate() {
             let phase = i as Smp / len as Smp;
@@ -206,30 +216,29 @@ fn render_tails_match_an_aligned_render() {
 fn value_at_reads_the_segment_that_contains_the_phase() {
     let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
-    assert!((ramp.value_at(0.0) - 0.0).abs() < 1e-6);
-    assert!((ramp.value_at(0.25) - 0.25).abs() < 1e-6);
-    assert!((ramp.value_at(1.0) - 1.0).abs() < 1e-6);
-    assert!((ramp.value_at(Smp::NAN) - ramp.value_at(0.0)).abs() < 1e-6);
-    assert!((ramp.value_from(0.0, Smp::NAN) - ramp.value_at(0.0)).abs() < 1e-6);
+    assert!((ramp.value_at(0.0, None) - 0.0).abs() < 1e-6);
+    assert!((ramp.value_at(0.25, None) - 0.25).abs() < 1e-6);
+    assert!((ramp.value_at(1.0, None) - 1.0).abs() < 1e-6);
+    assert!((ramp.value_at(0.0, Some(0.4)) - 0.4).abs() < 1e-6);
 
     let square = Segments::from_points(
         &[(0.0, 0.0), (0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)],
         false,
     );
 
-    assert!((square.value_at(0.0) - 1.0).abs() < 1e-6);
-    assert!((square.value_at(0.25) - 1.0).abs() < 1e-6);
-    assert!((square.value_at(0.5) - 1.0).abs() < 1e-6);
-    assert!((square.value_at(0.75) - 0.0).abs() < 1e-6);
+    assert!((square.value_at(0.0, None) - 1.0).abs() < 1e-6);
+    assert!((square.value_at(0.25, None) - 1.0).abs() < 1e-6);
+    assert!((square.value_at(0.5, None) - 1.0).abs() < 1e-6);
+    assert!((square.value_at(0.75, None) - 0.0).abs() < 1e-6);
 
     let mut curved = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], true);
     curved.set_power(0, 8.0);
 
-    assert!(curved.value_at(0.5) < ramp.value_at(0.5));
+    assert!(curved.value_at(0.5, None) < ramp.value_at(0.5, None));
 
     let mut samples = [0.0; 8];
-    curved.render(&mut samples);
-    assert!((curved.value_at(3.0 / 8.0) - samples[3]).abs() < 1e-5);
+    curved.render_waveform(&mut samples);
+    assert!((curved.value_at(3.0 / 8.0, None) - samples[3]).abs() < 1e-5);
 }
 
 #[test]
@@ -241,22 +250,21 @@ fn render_points_closes_the_cycle_and_keeps_corners() {
     ramp.render_points(4, &mut points, &mut scratch);
 
     assert_eq!(scratch, vec![0.0, 0.25, 0.5, 0.75, 1.0]);
-    assert!(points.windows(2).all(|pair| pair[1].x + 1e-5 >= pair[0].x));
+    assert!(points.windows(2).all(|pair| pair[1][0] + 1e-5 >= pair[0][0]));
 
     let triangle = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
 
     triangle.render_points(3, &mut points, &mut scratch);
 
     assert_eq!(
-        points.iter().find(|point| (point.x - 0.5).abs() < 1e-6),
-        Some(&CurvePoint { x: 0.5, y: 1.0 })
+        points.iter().find(|point| (point[0] - 0.5).abs() < 1e-6),
+        Some(&[0.5, 1.0])
     );
     assert!(
         points
             .iter()
-            .find(|point| (point.x - 1.0 / 3.0).abs() < 1e-5)
-            .unwrap()
-            .y
+            .find(|point| (point[0] - 1.0 / 3.0).abs() < 1e-5)
+            .unwrap()[1]
             < 1.0
     );
 
@@ -268,8 +276,8 @@ fn render_points_closes_the_cycle_and_keeps_corners() {
 
     let at_half: Vec<Smp> = points
         .iter()
-        .filter(|point| (point.x - 0.5).abs() < 1e-5)
-        .map(|point| point.y)
+        .filter(|point| (point[0] - 0.5).abs() < 1e-5)
+        .map(|point| point[1])
         .collect();
 
     assert!(at_half.contains(&1.0));
@@ -283,18 +291,18 @@ fn sanitize_clamps_curve_floats() {
 
     segments.sanitize();
 
-    assert_eq!(segments.num_segments(), 3);
-    assert_eq!(segments.segment(0).x, 0.0);
-    assert_eq!(segments.segment(0).y, 0.0);
-    assert_eq!(segments.segment(1).x, 0.5);
-    assert_eq!(segments.segment(1).y, 0.0);
-    assert_eq!(segments.segment(2).x, 1.0);
-    assert_eq!(segments.segment(2).y, 0.25);
+    assert_eq!(segments.num_points(), 3);
+    assert_eq!(segments.point(0).x, 0.0);
+    assert_eq!(segments.point(0).y, 0.0);
+    assert_eq!(segments.point(1).x, 0.5);
+    assert_eq!(segments.point(1).y, 0.0);
+    assert_eq!(segments.point(2).x, 1.0);
+    assert_eq!(segments.point(2).y, 0.25);
 
     let mut short: Segments = serde_json::from_str(r#"{"segments":[]}"#).unwrap();
     short.sanitize();
 
-    assert_eq!(short.num_segments(), Segments::default().num_segments());
+    assert_eq!(short.num_points(), Segments::default().num_points());
 }
 
 #[test]
@@ -303,11 +311,11 @@ fn positive_power_holds_the_segment_near_its_start() {
 
     let mut samples = [0.0; 2];
 
-    segments.render(&mut samples);
+    segments.render_waveform(&mut samples);
     assert!((samples[1] - 0.5).abs() < 1e-6);
 
     segments.set_power(0, 8.0);
-    segments.render(&mut samples);
+    segments.render_waveform(&mut samples);
 
     assert!(samples[1] < 0.5);
 }
@@ -316,46 +324,46 @@ fn positive_power_holds_the_segment_near_its_start() {
 fn edits_keep_endpoints_and_reject_a_full_curve() {
     let mut segments = Segments::default();
 
-    assert!(segments.add_segment(
+    assert!(segments.add_point(
         2,
-        Segment {
+        SegPoint {
             x: 0.75,
             y: 0.25,
-            ..Segment::default()
+            ..SegPoint::default()
         }
     ));
-    assert_eq!(segments.num_segments(), 4);
-    assert_eq!(segments.segment(2).x, 0.75);
-    assert!(!segments.remove_segment(0));
-    assert!(segments.remove_segment(2));
-    assert_eq!(segments.num_segments(), 3);
+    assert_eq!(segments.num_points(), 4);
+    assert_eq!(segments.point(2).x, 0.75);
+    assert!(!segments.remove_point(0));
+    assert!(segments.remove_point(2));
+    assert_eq!(segments.num_points(), 3);
 
     segments.flip_vertical();
 
-    assert_eq!(segments.segment(0).y, 1.0);
-    assert_eq!(segments.segment(1).y, 0.0);
-    assert_eq!(segments.segment(2).y, 1.0);
+    assert_eq!(segments.point(0).y, 1.0);
+    assert_eq!(segments.point(1).y, 0.0);
+    assert_eq!(segments.point(2).y, 1.0);
 
     let mut full = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
     for i in 0..MAX_POINTS - 2 {
-        assert!(full.add_segment(
+        assert!(full.add_point(
             1,
-            Segment {
+            SegPoint {
                 x: (i + 1) as Smp / MAX_POINTS as Smp,
                 y: 0.5,
-                ..Segment::default()
+                ..SegPoint::default()
             }
         ));
     }
 
-    assert!(!full.add_segment(
+    assert!(!full.add_point(
         1,
-        Segment {
+        SegPoint {
             x: 0.5,
             y: 0.5,
-            ..Segment::default()
+            ..SegPoint::default()
         }
     ));
-    assert_eq!(full.num_segments(), MAX_POINTS);
+    assert_eq!(full.num_points(), MAX_POINTS);
 }

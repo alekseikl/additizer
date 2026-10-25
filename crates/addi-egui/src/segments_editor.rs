@@ -5,7 +5,7 @@ use egui::{
 
 use addi_dsp::{
     power_scale,
-    segments::{CurvePoint, MAX_POWER, Segment, Segments},
+    segments::{MAX_POWER, SegPoint, Segments},
     utils::sanitize,
 };
 use addi_engine::Smp;
@@ -65,7 +65,7 @@ pub struct SegmentsEditor {
     last_pointer_y: f32,
     menu_point: Option<usize>,
     menu_power: Option<usize>,
-    curve: Vec<CurvePoint>,
+    curve: Vec<[Smp; 2]>,
     scratch: Vec<Smp>,
     points: Vec<Pos2>,
     rendered: Option<RenderedCurve>,
@@ -185,8 +185,8 @@ impl SegmentsEditor {
         {
             match self.drag {
                 Some(Drag::Point(index)) => {
-                    let (x, y) = Self::from_pos(plot, pos);
-                    self.move_point(segments, index, x, y, !modifiers.alt);
+                    let point = Self::curve_pos(plot, pos);
+                    self.move_point(segments, index, point.x, point.y, !modifiers.alt);
                     changed = true;
                 }
                 Some(Drag::Power(index)) => {
@@ -235,9 +235,9 @@ impl SegmentsEditor {
 
         response.context_menu(|ui| {
             if let Some(index) = menu_point.or(menu_power)
-                && index < segments.num_segments()
+                && index < segments.num_points()
             {
-                let smooth = segments.segment(index).smooth;
+                let smooth = segments.point(index).smooth;
                 let label = if smooth { "Flat" } else { "Smooth" };
 
                 if ui
@@ -252,7 +252,7 @@ impl SegmentsEditor {
 
             if let Some(index) = menu_point
                 && index > 0
-                && index + 1 < segments.num_segments()
+                && index + 1 < segments.num_points()
                 && ui.button("Remove point").clicked()
             {
                 action = Some(MenuAction::Remove(index));
@@ -280,7 +280,7 @@ impl SegmentsEditor {
         });
 
         match action {
-            Some(MenuAction::Remove(index)) => segments.remove_segment(index),
+            Some(MenuAction::Remove(index)) => segments.remove_point(index),
             Some(MenuAction::ResetPower(index)) => {
                 segments.set_power(index, 0.0);
                 true
@@ -352,19 +352,19 @@ impl SegmentsEditor {
             painter.line(self.points.clone(), Stroke::new(1.5, WAVE_COLOR));
         }
 
-        for index in 0..segments.num_segments() {
+        for index in 0..segments.num_points() {
             if !Self::power_active(plot, segments, index, self.closed) {
                 continue;
             }
 
-            let (x, y) = Self::power_position(segments, index, self.closed);
-            painter.circle_filled(Self::to_pos(plot, x, y), POWER_RADIUS, POWER_COLOR);
+            let point = Self::power_position(segments, index, self.closed);
+            painter.circle_filled(Self::screen_pos(plot, point), POWER_RADIUS, POWER_COLOR);
         }
 
-        for index in 0..segments.num_segments() {
-            let point = segments.segment(index);
+        for index in 0..segments.num_points() {
+            let point = segments.point(index);
             painter.circle_filled(
-                Self::to_pos(plot, point.x, point.y),
+                Self::screen_pos(plot, pos2(point.x, point.y)),
                 POINT_RADIUS,
                 POINT_COLOR,
             );
@@ -403,7 +403,7 @@ impl SegmentsEditor {
         let (point, power) = Self::hit_test(plot, segments, pos, closed);
 
         if let Some(index) = point {
-            return segments.remove_segment(index);
+            return segments.remove_point(index);
         }
 
         if let Some(index) = power {
@@ -415,33 +415,33 @@ impl SegmentsEditor {
             return true;
         }
 
-        let (x, y) = Self::from_pos(plot, pos);
+        let point = Self::curve_pos(plot, pos);
         let mut index = 0;
-        let n = segments.num_segments();
+        let n = segments.num_points();
 
-        while index < n && segments.segment(index).x <= x {
+        while index < n && segments.point(index).x <= point.x {
             index += 1;
         }
 
         let smooth = if index == 0 {
-            segments.segment(0).smooth
+            segments.point(0).smooth
         } else {
-            segments.segment(index - 1).smooth
+            segments.point(index - 1).smooth
         };
 
-        segments.add_segment(
+        segments.add_point(
             index,
-            Segment {
-                x,
-                y,
+            SegPoint {
+                x: point.x,
+                y: point.y,
                 smooth,
-                ..Segment::default()
+                ..SegPoint::default()
             },
         )
     }
 
     fn move_point(&self, segments: &mut Segments, index: usize, x: Smp, y: Smp, snap: bool) {
-        let n = segments.num_segments();
+        let n = segments.num_points();
         let grid_x = self.grid_x;
         let grid_y = self.grid_y;
         let closed = self.closed;
@@ -455,7 +455,7 @@ impl SegmentsEditor {
         } else if index + 1 == n {
             (1.0, 1.0)
         } else {
-            (segments.segment(index - 1).x, segments.segment(index + 1).x)
+            (segments.point(index - 1).x, segments.point(index + 1).x)
         };
 
         let mut x = x.clamp(min_x, max_x);
@@ -478,19 +478,19 @@ impl SegmentsEditor {
         }
 
         if closed {
-            let linked = segments.segment(0).y == segments.segment(n - 1).y;
+            let linked = segments.point(0).y == segments.point(n - 1).y;
 
             if linked && index == 0 {
-                let end = segments.segment(n - 1);
-                segments.set_segment(n - 1, Segment { y, ..end });
+                let end = segments.point(n - 1);
+                segments.set_point(n - 1, SegPoint { y, ..end });
             } else if linked && index + 1 == n {
-                let start = segments.segment(0);
-                segments.set_segment(0, Segment { y, ..start });
+                let start = segments.point(0);
+                segments.set_point(0, SegPoint { y, ..start });
             }
         }
 
-        let current = segments.segment(index);
-        segments.set_segment(index, Segment { x, y, ..current });
+        let current = segments.point(index);
+        segments.set_point(index, SegPoint { x, y, ..current });
     }
 
     fn move_powers(
@@ -501,18 +501,18 @@ impl SegmentsEditor {
         alternate: bool,
         closed: bool,
     ) {
-        let n = segments.num_segments();
+        let n = segments.num_points();
 
         if index >= n || n < 2 {
             return;
         }
 
         let (start, end) = if all { (0, n - 2) } else { (index, index) };
-        let descending = segments.segment(index).y > Self::segment_end_y(segments, index, closed);
+        let descending = segments.point(index).y > Self::segment_end_y(segments, index, closed);
         let alternate_mult = if !alternate && descending { -1.0 } else { 1.0 };
 
         for i in start..=end {
-            let from_y = segments.segment(i).y;
+            let from_y = segments.point(i).y;
             let to_y = Self::segment_end_y(segments, i, closed);
 
             if from_y == to_y {
@@ -534,8 +534,8 @@ impl SegmentsEditor {
 
     fn segment_end_y(segments: &Segments, index: usize, closed: bool) -> Smp {
         Self::segment_end(segments, index, closed)
-            .map(|(_, y)| y)
-            .unwrap_or_else(|| segments.segment(index).y)
+            .map(|point| point.y)
+            .unwrap_or_else(|| segments.point(index).y)
     }
 
     fn hit_test(
@@ -548,9 +548,9 @@ impl SegmentsEditor {
         let mut best_point = None;
         let mut best_distance = grab_sq;
 
-        for index in 0..segments.num_segments() {
-            let point = segments.segment(index);
-            let distance = pos.distance_sq(Self::to_pos(plot, point.x, point.y));
+        for index in 0..segments.num_points() {
+            let point = segments.point(index);
+            let distance = pos.distance_sq(Self::screen_pos(plot, pos2(point.x, point.y)));
 
             if distance < best_distance {
                 best_distance = distance;
@@ -565,13 +565,13 @@ impl SegmentsEditor {
         let mut best_power = None;
         best_distance = grab_sq;
 
-        for index in 0..segments.num_segments() {
+        for index in 0..segments.num_points() {
             if !Self::power_active(plot, segments, index, closed) {
                 continue;
             }
 
-            let (x, y) = Self::power_position(segments, index, closed);
-            let distance = pos.distance_sq(Self::to_pos(plot, x, y));
+            let point = Self::power_position(segments, index, closed);
+            let distance = pos.distance_sq(Self::screen_pos(plot, point));
 
             if distance < best_distance {
                 best_distance = distance;
@@ -583,49 +583,49 @@ impl SegmentsEditor {
     }
 
     fn power_active(plot: Rect, segments: &Segments, index: usize, closed: bool) -> bool {
-        let Some((to_x, to_y)) = Self::segment_end(segments, index, closed) else {
+        let Some(end) = Self::segment_end(segments, index, closed) else {
             return false;
         };
-        let from = segments.segment(index);
-        let dx = to_x - from.x;
-        let dy = to_y - from.y;
+        let from = segments.point(index);
+        let dx = end.x - from.x;
+        let dy = end.y - from.y;
 
         plot.width() * dx >= MIN_POWER_WIDTH && dy != 0.0
     }
 
-    fn segment_end(segments: &Segments, index: usize, closed: bool) -> Option<(Smp, Smp)> {
-        let n = segments.num_segments();
+    fn segment_end(segments: &Segments, index: usize, closed: bool) -> Option<Pos2> {
+        let n = segments.num_points();
 
         if index >= n {
             return None;
         }
 
         if index + 1 < n {
-            let point = segments.segment(index + 1);
-            Some((point.x, point.y))
+            let point = segments.point(index + 1);
+            Some(pos2(point.x, point.y))
         } else if closed {
-            let point = segments.segment(0);
-            Some((point.x + 1.0, point.y))
+            let point = segments.point(0);
+            Some(pos2(point.x + 1.0, point.y))
         } else {
             None
         }
     }
 
-    fn power_position(segments: &Segments, index: usize, closed: bool) -> (Smp, Smp) {
-        let from = segments.segment(index);
-        let Some((to_x, to_y)) = Self::segment_end(segments, index, closed) else {
-            return (from.x, from.y);
+    fn power_position(segments: &Segments, index: usize, closed: bool) -> Pos2 {
+        let from = segments.point(index);
+        let Some(end) = Self::segment_end(segments, index, closed) else {
+            return pos2(from.x, from.y);
         };
-        let mut x = (from.x + to_x) * 0.5;
+        let mut x = (from.x + end.x) * 0.5;
 
         if x >= 1.0 {
             x -= 1.0;
         }
 
         let t = power_scale(0.5, segments.power(index));
-        let y = from.y + t * (to_y - from.y);
+        let y = from.y + t * (end.y - from.y);
 
-        (x, y)
+        pos2(x, y)
     }
 
     /// Closed polyline for one sample per horizontal point, with each breakpoint kept.
@@ -633,7 +633,7 @@ impl SegmentsEditor {
     /// `render_points` runs again when [`Segments::revision`] or the plot size changes.
     /// The polyline is projected into `plot` on every call.
     fn curve_points(&mut self, plot: Rect, segments: &Segments) {
-        if plot.width() <= 0.0 || segments.num_segments() < 2 {
+        if plot.width() <= 0.0 || segments.num_points() < 2 {
             self.points.clear();
             self.rendered = None;
             return;
@@ -657,45 +657,41 @@ impl SegmentsEditor {
         self.points.reserve(self.curve.len());
 
         for point in &self.curve {
-            self.points.push(Self::to_pos(plot, point.x, point.y));
+            self.points.push(Self::screen_pos(plot, (*point).into()));
         }
     }
 
     /// Screen position of `phase`. `start_level` replaces the first segment's start.
     fn playhead_pos(plot: Rect, segments: &Segments, phase: Smp, start_level: Option<Smp>) -> Pos2 {
         let phase = sanitize(phase, 0.0, 1.0);
-        let level = match start_level {
-            Some(start_level) => segments.value_from(phase, start_level),
-            None => segments.value_at(phase),
-        };
+        let level = segments.value_at(phase, start_level);
 
-        Self::to_pos(plot, phase, level)
+        Self::screen_pos(plot, pos2(phase, level))
     }
 
-    fn from_pos(plot: Rect, pos: Pos2) -> (Smp, Smp) {
-        let x = ((pos.x - plot.left()) / plot.width()).clamp(0.0, 1.0);
-        let y = ((plot.bottom() - pos.y) / plot.height()).clamp(0.0, 1.0);
-
-        (x, y)
+    fn curve_pos(plot: Rect, pos: Pos2) -> Pos2 {
+        pos2(
+            ((pos.x - plot.left()) / plot.width()).clamp(0.0, 1.0),
+            ((plot.bottom() - pos.y) / plot.height()).clamp(0.0, 1.0),
+        )
     }
 
     fn target_pos(target: Drag, plot: Rect, segments: &Segments, closed: bool) -> Pos2 {
         match target {
             Drag::Point(index) => {
-                let point = segments.segment(index);
-                Self::to_pos(plot, point.x, point.y)
+                let point = segments.point(index);
+                Self::screen_pos(plot, pos2(point.x, point.y))
             }
             Drag::Power(index) => {
-                let (x, y) = Self::power_position(segments, index, closed);
-                Self::to_pos(plot, x, y)
+                Self::screen_pos(plot, Self::power_position(segments, index, closed))
             }
         }
     }
 
-    fn to_pos(plot: Rect, x: Smp, y: Smp) -> Pos2 {
+    fn screen_pos(plot: Rect, point: Pos2) -> Pos2 {
         pos2(
-            plot.left() + x.clamp(0.0, 1.0) * plot.width(),
-            plot.bottom() - y.clamp(0.0, 1.0) * plot.height(),
+            plot.left() + point.x.clamp(0.0, 1.0) * plot.width(),
+            plot.bottom() - point.y.clamp(0.0, 1.0) * plot.height(),
         )
     }
 

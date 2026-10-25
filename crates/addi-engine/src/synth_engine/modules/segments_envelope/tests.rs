@@ -1,4 +1,4 @@
-use addi_dsp::segments::{Segment, Segments};
+use addi_dsp::segments::{SegPoint, Segments};
 
 use super::*;
 use crate::synth_engine::{routing::VoiceEvent, voices_handler::DecayingVoice};
@@ -40,7 +40,7 @@ fn render_stage(
 ) -> Voice {
     let segments = &env.params.segments;
     let len = samples.min(out.len());
-    let spans = segments.num_segments().saturating_sub(1);
+    let spans = segments.num_points().saturating_sub(1);
     let mut stage = voice.stage;
     let mut pos = 0;
 
@@ -48,14 +48,14 @@ fn render_stage(
         && index < spans
         && pos < len
     {
-        let mut start = segments.segment(index);
-        let end = segments.segment(index + 1);
+        let mut start = segments.point(index);
+        let end = segments.point(index + 1);
 
         if index == 0 {
             start.y = voice.start_level;
         }
 
-        match Segment::render_segment(&mut out[pos..len], position, phase_step, start, end) {
+        match SegPoint::render_segment(&mut out[pos..len], position, phase_step, start, end) {
             Ok(position) => {
                 stage = Stage::Segment { index, position };
                 pos = len;
@@ -75,7 +75,7 @@ fn render_stage(
     }
 
     if pos < len {
-        out[pos..len].fill(segments.value_at(1.0));
+        out[pos..len].fill(segments.value_at(1.0, None));
         stage = Stage::Done;
     }
 
@@ -265,7 +265,7 @@ fn curved_segment_matches_the_drawn_curve() {
     let segments = &env.params.segments;
 
     for (i, sample) in out.iter().enumerate() {
-        let expected = segments.value_from(i as Smp * step, 0.2);
+        let expected = segments.value_at(i as Smp * step, Some(0.2));
 
         assert!(
             (sample - expected).abs() < 2e-5,
@@ -320,8 +320,8 @@ fn from_config_sanitizes_params() {
 
     assert_eq!(config.rate, StereoSample::new(100.0, 0.0));
     assert_eq!(config.timebase, Timebase::Seconds);
-    assert_eq!(config.segments.segment(0).y, 0.0);
-    assert_eq!(config.segments.segment(1).y, 1.0);
+    assert_eq!(config.segments.point(0).y, 0.0);
+    assert_eq!(config.segments.point(1).y, 1.0);
 }
 
 #[test]

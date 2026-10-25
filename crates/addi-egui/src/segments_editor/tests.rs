@@ -50,7 +50,7 @@ fn playhead_follows_the_rendered_polyline() {
         *editor.points.last().unwrap()
     );
     assert!((pos.x - phase * 100.0).abs() < 1e-3);
-    assert!((pos.y - (100.0 - ramp.value_at(phase) * 100.0)).abs() < 1e-4);
+    assert!((pos.y - (100.0 - ramp.value_at(phase, None) * 100.0)).abs() < 1e-4);
 }
 
 #[test]
@@ -162,26 +162,26 @@ fn open_curve_moves_the_ends_independently() {
 
     SegmentsEditor::open().move_point(&mut open, 0, 0.0, 0.35, false);
 
-    assert!((open.segment(0).y - 0.35).abs() < 1e-6);
-    assert_eq!(open.segment(2).y, 0.0);
+    assert!((open.point(0).y - 0.35).abs() < 1e-6);
+    assert_eq!(open.point(2).y, 0.0);
 
     SegmentsEditor::open().move_point(&mut open, 2, 1.0, 0.1, false);
 
-    assert!((open.segment(0).y - 0.35).abs() < 1e-6);
-    assert!((open.segment(2).y - 0.1).abs() < 1e-6);
+    assert!((open.point(0).y - 0.35).abs() < 1e-6);
+    assert!((open.point(2).y - 0.1).abs() < 1e-6);
 
     let mut closed = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     let editor = SegmentsEditor::default();
 
     editor.move_point(&mut closed, 0, 0.0, 0.35, false);
 
-    assert!((closed.segment(0).y - 0.35).abs() < 1e-6);
-    assert!((closed.segment(2).y - 0.35).abs() < 1e-6);
+    assert!((closed.point(0).y - 0.35).abs() < 1e-6);
+    assert!((closed.point(2).y - 0.35).abs() < 1e-6);
 
     editor.move_point(&mut closed, 2, 1.0, 0.1, false);
 
-    assert!((closed.segment(0).y - 0.1).abs() < 1e-6);
-    assert!((closed.segment(2).y - 0.1).abs() < 1e-6);
+    assert!((closed.point(0).y - 0.1).abs() < 1e-6);
+    assert!((closed.point(2).y - 0.1).abs() < 1e-6);
 }
 
 #[test]

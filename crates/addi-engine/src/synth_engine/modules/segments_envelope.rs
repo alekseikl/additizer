@@ -14,7 +14,7 @@ pub use link::{SegmentsEnvelopeAudioEnd, SegmentsEnvelopeLinks, SegmentsEnvelope
 pub use timebase::Timebase;
 
 use addi_dsp::{
-    segments::{Segment, Segments},
+    segments::{SegPoint, Segments},
     utils::sanitize,
 };
 
@@ -191,10 +191,10 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
     fn curve_start(&self) -> Smp {
         let segments = &self.params.segments;
 
-        if segments.num_segments() == 0 {
+        if segments.num_points() == 0 {
             0.0
         } else {
-            segments.segment(0).y
+            segments.point(0).y
         }
     }
 
@@ -203,14 +203,14 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         let Stage::Segment { index, position } = stage else {
             return 1.0;
         };
-        let spans = segments.num_segments().saturating_sub(1);
+        let spans = segments.num_points().saturating_sub(1);
 
         if index >= spans {
             return 1.0;
         }
 
-        let start = segments.segment(index).x;
-        let end = segments.segment(index + 1).x;
+        let start = segments.point(index).x;
+        let end = segments.point(index + 1).x;
         let width = (end - start).max(0.0);
 
         (start + position.clamp(0.0, 1.0) * width).clamp(0.0, 1.0)
@@ -237,21 +237,21 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         let segments = &self.params.segments;
         let out = voice_output.output();
         let len = out.len();
-        let spans = segments.num_segments().saturating_sub(1);
+        let spans = segments.num_points().saturating_sub(1);
         let mut pos = 0;
 
         while let Stage::Segment { index, position } = voice.stage
             && index < spans
             && pos < len
         {
-            let mut start = segments.segment(index);
-            let end = segments.segment(index + 1);
+            let mut start = segments.point(index);
+            let end = segments.point(index + 1);
 
             if index == 0 {
                 start.y = voice.start_level;
             }
 
-            match Segment::render_segment(&mut out[pos..len], position, phase_step, start, end) {
+            match SegPoint::render_segment(&mut out[pos..len], position, phase_step, start, end) {
                 Ok(position) => {
                     voice.stage = Stage::Segment { index, position };
                     pos = len;
@@ -271,7 +271,7 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         }
 
         if pos < len {
-            out[pos..len].fill(segments.value_at(1.0));
+            out[pos..len].fill(segments.value_at(1.0, None));
             voice.stage = Stage::Done;
         }
 

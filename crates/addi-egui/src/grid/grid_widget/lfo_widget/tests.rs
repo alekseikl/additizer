@@ -18,13 +18,13 @@ fn curve_keeps_an_off_grid_peak() {
         widget
             .points
             .iter()
-            .any(|point| { (point.x - 0.5).abs() < 1e-6 && (point.y - 1.0).abs() < 1e-6 })
+            .any(|point| { (point[0] - 0.5).abs() < 1e-6 && (point[1] - 1.0).abs() < 1e-6 })
     );
     assert!(
         widget
             .points
             .windows(2)
-            .all(|pair| pair[1].x + 1e-5 >= pair[0].x)
+            .all(|pair| pair[1][0] + 1e-5 >= pair[0][0])
     );
 }
 

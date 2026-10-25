@@ -44,7 +44,7 @@ pub fn triangle_at(skew: Smp) -> Segments {
 pub fn sine_at(skew: Smp) -> Segments {
     let mut segments = triangle_at(skew);
 
-    for index in 0..segments.num_segments() {
+    for index in 0..segments.num_points() {
         segments.set_smooth(index, true);
     }
 
