@@ -1,6 +1,7 @@
 use egui::{
-    Color32, CursorIcon, DragValue, Mesh, Painter, PointerButton, Pos2, Rect, Response, Sense,
-    Shape, Stroke, Ui, Vec2, pos2, vec2,
+    Color32, CursorIcon, DragValue, FontFamily, FontId, Id, LayerId, Mesh, Order, Painter,
+    PointerButton, Pos2, Rect, Response, Sense, Shape, Stroke, StrokeKind, Ui, Vec2, ecolor::Hsva,
+    pos2, vec2,
 };
 
 use addi_dsp::{
@@ -10,10 +11,11 @@ use addi_dsp::{
 };
 use addi_engine::Smp;
 
-use crate::segment_presets;
+use crate::{segment_presets, units::Units, utils::hsva};
 
 const EDITOR_HEIGHT: f32 = 220.0;
 const GRAB_RADIUS: f32 = 12.0;
+const POWER_GRAB_RADIUS: f32 = 8.0;
 const POINT_RADIUS: f32 = 4.5;
 const POWER_RADIUS: f32 = 3.5;
 const MIN_POWER_WIDTH: f32 = 3.0;
@@ -27,6 +29,12 @@ const FILL_BOTTOM_ALPHA: u8 = 0x28;
 const GRID_COLOR: Color32 = Color32::from_rgba_unmultiplied_const(255, 255, 255, 28);
 const POINT_COLOR: Color32 = Color32::from_rgb(0xe8, 0xf4, 0xff);
 const POWER_COLOR: Color32 = Color32::from_rgb(0x9a, 0xd0, 0xff);
+const LABEL_BG_COLOR: Hsva = hsva(0.115, 0.05, 0.01, 1.0);
+const LABEL_BORDER_COLOR: Hsva = hsva(0.115, 0.05, 0.2, 1.0);
+const LABEL_TEXT_COLOR: Hsva = hsva(0.115, 0.05, 0.5, 1.0);
+const LABEL_PADDING: f32 = 6.0;
+const LABEL_POINTER_GAP: f32 = 4.0;
+const LABEL_CORNER_RADIUS: f32 = 2.0;
 
 type Preset = (&'static str, fn() -> Segments);
 
@@ -69,7 +77,7 @@ pub struct SegmentsEditor {
     scratch: Vec<Smp>,
     points: Vec<Pos2>,
     rendered: Option<RenderedCurve>,
-    /// Equal endpoint levels stay locked, and the last bend wraps back to the start.
+    /// Endpoints share one level, and the last bend wraps back to the start.
     closed: bool,
 }
 
@@ -139,7 +147,7 @@ impl SegmentsEditor {
         ui.add_space(4.0);
         ui.label(
             egui::RichText::new(
-                "Double-click to add or remove a point. Drag a midpoint to bend the segment. Right-click to flip.",
+                "Double-click to add or remove a point. Drag a midpoint to bend the segment. Hold Shift to mirror that bend onto the next segment. Right-click to flip.",
             )
             .small()
             .weak(),
@@ -162,20 +170,20 @@ impl SegmentsEditor {
         if response.secondary_clicked()
             && let Some(pos) = pointer
         {
-            let hit = Self::hit_test(plot, segments, pos, self.closed);
+            let hit = self.hit_test(plot, segments, pos);
             self.menu_point = hit.0;
             self.menu_power = hit.1;
         }
 
         if response.double_clicked_by(PointerButton::Primary) {
             if let Some(pos) = pointer {
-                changed |= Self::double_click(plot, segments, pos, modifiers.shift, self.closed);
+                changed |= self.double_click(plot, segments, pos, modifiers.shift);
             }
             self.drag = None;
         } else if response.drag_started_by(PointerButton::Primary)
             && let Some(pos) = pointer
         {
-            let hit = Self::hit_test(plot, segments, pos, self.closed);
+            let hit = self.hit_test(plot, segments, pos);
             self.drag = hit.0.map(Drag::Point).or_else(|| hit.1.map(Drag::Power));
             self.last_pointer_y = pos.y;
         }
@@ -186,19 +194,12 @@ impl SegmentsEditor {
             match self.drag {
                 Some(Drag::Point(index)) => {
                     let point = Self::curve_pos(plot, pos);
-                    self.move_point(segments, index, point.x, point.y, !modifiers.alt);
+                    self.move_point(segments, index, point.x, point.y, !modifiers.shift);
                     changed = true;
                 }
                 Some(Drag::Power(index)) => {
                     let delta = (pos.y - self.last_pointer_y) / plot.height();
-                    Self::move_powers(
-                        segments,
-                        index,
-                        delta,
-                        modifiers.shift,
-                        modifiers.alt,
-                        self.closed,
-                    );
+                    self.move_powers(segments, index, delta, modifiers.shift);
                     self.last_pointer_y = pos.y;
                     changed = true;
                 }
@@ -212,7 +213,7 @@ impl SegmentsEditor {
 
         self.hover = if self.drag.is_none() && response.hovered() {
             pointer.and_then(|pos| {
-                let hit = Self::hit_test(plot, segments, pos, self.closed);
+                let hit = self.hit_test(plot, segments, pos);
                 hit.0.map(Drag::Point).or_else(|| hit.1.map(Drag::Power))
             })
         } else {
@@ -306,7 +307,7 @@ impl SegmentsEditor {
 
         ui.horizontal_wrapped(|ui| {
             ui.label("Grid")
-                .on_hover_text("Snap points while dragging. Hold Alt to place them freely.");
+                .on_hover_text("Snap points while dragging. Hold Shift to place them freely.");
             ui.add(DragValue::new(&mut self.grid_x).range(1..=32));
             ui.label("×");
             ui.add(DragValue::new(&mut self.grid_y).range(1..=24));
@@ -353,11 +354,11 @@ impl SegmentsEditor {
         }
 
         for index in 0..segments.num_points() {
-            if !Self::power_active(plot, segments, index, self.closed) {
+            if !self.power_active(plot, segments, index) {
                 continue;
             }
 
-            let point = Self::power_position(segments, index, self.closed);
+            let point = self.power_position(segments, index);
             painter.circle_filled(Self::screen_pos(plot, point), POWER_RADIUS, POWER_COLOR);
         }
 
@@ -381,26 +382,28 @@ impl SegmentsEditor {
         let grab_stroke = Stroke::new(1.0, Color32::WHITE);
 
         if let Some(drag) = self.drag {
-            let pos = Self::target_pos(drag, plot, segments, self.closed);
-            painter.circle_filled(pos, GRAB_RADIUS, Color32::from_white_alpha(0x40));
-            painter.circle_stroke(pos, GRAB_RADIUS, grab_stroke);
+            let pos = self.target_pos(drag, plot, segments);
+            let radius = Self::grab_radius(drag);
+            painter.circle_filled(pos, radius, Color32::from_white_alpha(0x40));
+            painter.circle_stroke(pos, radius, grab_stroke);
+
+            if let Drag::Point(index) = drag
+                && index < segments.num_points()
+            {
+                let level = segments.point(index).y.clamp(0.0, 1.0);
+                Self::paint_level(ui, pos, Units::Normalized.format(level));
+            }
         } else if let Some(hover) = self.hover {
             painter.circle_stroke(
-                Self::target_pos(hover, plot, segments, self.closed),
-                GRAB_RADIUS,
+                self.target_pos(hover, plot, segments),
+                Self::grab_radius(hover),
                 grab_stroke,
             );
         }
     }
 
-    fn double_click(
-        plot: Rect,
-        segments: &mut Segments,
-        pos: Pos2,
-        shift: bool,
-        closed: bool,
-    ) -> bool {
-        let (point, power) = Self::hit_test(plot, segments, pos, closed);
+    fn double_click(&self, plot: Rect, segments: &mut Segments, pos: Pos2, shift: bool) -> bool {
+        let (point, power) = self.hit_test(plot, segments, pos);
 
         if let Some(index) = point {
             return segments.remove_point(index);
@@ -444,7 +447,6 @@ impl SegmentsEditor {
         let n = segments.num_points();
         let grid_x = self.grid_x;
         let grid_y = self.grid_y;
-        let closed = self.closed;
 
         if index >= n {
             return;
@@ -477,13 +479,11 @@ impl SegmentsEditor {
             }
         }
 
-        if closed {
-            let linked = segments.point(0).y == segments.point(n - 1).y;
-
-            if linked && index == 0 {
+        if self.closed {
+            if index == 0 {
                 let end = segments.point(n - 1);
                 segments.set_point(n - 1, SegPoint { y, ..end });
-            } else if linked && index + 1 == n {
+            } else if index + 1 == n {
                 let start = segments.point(0);
                 segments.set_point(0, SegPoint { y, ..start });
             }
@@ -494,12 +494,11 @@ impl SegmentsEditor {
     }
 
     fn move_powers(
+        &self,
         segments: &mut Segments,
         index: usize,
         delta_change: Smp,
-        all: bool,
-        alternate: bool,
-        closed: bool,
+        sync_next: bool,
     ) {
         let n = segments.num_points();
 
@@ -507,42 +506,51 @@ impl SegmentsEditor {
             return;
         }
 
-        let (start, end) = if all { (0, n - 2) } else { (index, index) };
-        let descending = segments.point(index).y > Self::segment_end_y(segments, index, closed);
-        let alternate_mult = if !alternate && descending { -1.0 } else { 1.0 };
+        let from_y = segments.point(index).y;
+        let to_y = self.segment_end_y(segments, index);
 
-        for i in start..=end {
-            let from_y = segments.point(i).y;
-            let to_y = Self::segment_end_y(segments, i, closed);
+        if from_y == to_y {
+            return;
+        }
 
-            if from_y == to_y {
-                continue;
-            }
+        let delta = if from_y > to_y {
+            -delta_change
+        } else {
+            delta_change
+        };
+        let power =
+            (segments.power(index) + delta * POWER_MOUSE_MULTIPLIER).clamp(-MAX_POWER, MAX_POWER);
 
-            let mut delta = delta_change * alternate_mult;
+        segments.set_power(index, power);
 
-            if from_y > to_y && alternate {
-                delta = -delta;
-            }
+        if !sync_next {
+            return;
+        }
 
-            segments.set_power(
-                i,
-                (segments.power(i) + delta * POWER_MOUSE_MULTIPLIER).clamp(-MAX_POWER, MAX_POWER),
-            );
+        let next = if index + 1 < n {
+            index + 1
+        } else if self.closed {
+            0
+        } else {
+            return;
+        };
+
+        if self.segment_end(segments, next).is_some() {
+            segments.set_power(next, -power);
         }
     }
 
-    fn segment_end_y(segments: &Segments, index: usize, closed: bool) -> Smp {
-        Self::segment_end(segments, index, closed)
+    fn segment_end_y(&self, segments: &Segments, index: usize) -> Smp {
+        self.segment_end(segments, index)
             .map(|point| point.y)
             .unwrap_or_else(|| segments.point(index).y)
     }
 
     fn hit_test(
+        &self,
         plot: Rect,
         segments: &Segments,
         pos: Pos2,
-        closed: bool,
     ) -> (Option<usize>, Option<usize>) {
         let grab_sq = GRAB_RADIUS * GRAB_RADIUS;
         let mut best_point = None;
@@ -563,14 +571,14 @@ impl SegmentsEditor {
         }
 
         let mut best_power = None;
-        best_distance = grab_sq;
+        best_distance = POWER_GRAB_RADIUS * POWER_GRAB_RADIUS;
 
         for index in 0..segments.num_points() {
-            if !Self::power_active(plot, segments, index, closed) {
+            if !self.power_active(plot, segments, index) {
                 continue;
             }
 
-            let point = Self::power_position(segments, index, closed);
+            let point = self.power_position(segments, index);
             let distance = pos.distance_sq(Self::screen_pos(plot, point));
 
             if distance < best_distance {
@@ -582,8 +590,8 @@ impl SegmentsEditor {
         (None, best_power)
     }
 
-    fn power_active(plot: Rect, segments: &Segments, index: usize, closed: bool) -> bool {
-        let Some(end) = Self::segment_end(segments, index, closed) else {
+    fn power_active(&self, plot: Rect, segments: &Segments, index: usize) -> bool {
+        let Some(end) = self.segment_end(segments, index) else {
             return false;
         };
         let from = segments.point(index);
@@ -593,7 +601,7 @@ impl SegmentsEditor {
         plot.width() * dx >= MIN_POWER_WIDTH && dy != 0.0
     }
 
-    fn segment_end(segments: &Segments, index: usize, closed: bool) -> Option<Pos2> {
+    fn segment_end(&self, segments: &Segments, index: usize) -> Option<Pos2> {
         let n = segments.num_points();
 
         if index >= n {
@@ -603,7 +611,7 @@ impl SegmentsEditor {
         if index + 1 < n {
             let point = segments.point(index + 1);
             Some(pos2(point.x, point.y))
-        } else if closed {
+        } else if self.closed {
             let point = segments.point(0);
             Some(pos2(point.x + 1.0, point.y))
         } else {
@@ -611,9 +619,9 @@ impl SegmentsEditor {
         }
     }
 
-    fn power_position(segments: &Segments, index: usize, closed: bool) -> Pos2 {
+    fn power_position(&self, segments: &Segments, index: usize) -> Pos2 {
         let from = segments.point(index);
-        let Some(end) = Self::segment_end(segments, index, closed) else {
+        let Some(end) = self.segment_end(segments, index) else {
             return pos2(from.x, from.y);
         };
         let mut x = (from.x + end.x) * 0.5;
@@ -676,15 +684,63 @@ impl SegmentsEditor {
         )
     }
 
-    fn target_pos(target: Drag, plot: Rect, segments: &Segments, closed: bool) -> Pos2 {
+    fn target_pos(&self, target: Drag, plot: Rect, segments: &Segments) -> Pos2 {
         match target {
             Drag::Point(index) => {
                 let point = segments.point(index);
                 Self::screen_pos(plot, pos2(point.x, point.y))
             }
-            Drag::Power(index) => {
-                Self::screen_pos(plot, Self::power_position(segments, index, closed))
-            }
+            Drag::Power(index) => Self::screen_pos(plot, self.power_position(segments, index)),
+        }
+    }
+
+    fn paint_level(ui: &Ui, anchor: Pos2, text: String) {
+        let text_color = Color32::from(LABEL_TEXT_COLOR);
+        let bg_color = Color32::from(LABEL_BG_COLOR);
+        let border_color = Color32::from(LABEL_BORDER_COLOR);
+        let painter = ui.painter();
+        let galley = painter.layout_no_wrap(
+            text,
+            FontId::new(11.0, FontFamily::Name("Bold".into())),
+            text_color,
+        );
+        let padding = vec2(LABEL_PADDING, LABEL_PADDING * 0.5);
+        let box_size = galley.size() + padding * 2.0;
+        let bounds = ui.clip_rect();
+        let above = anchor.y - GRAB_RADIUS - box_size.y - LABEL_POINTER_GAP;
+        let top = if above >= bounds.top() {
+            above
+        } else {
+            anchor.y + GRAB_RADIUS + LABEL_POINTER_GAP
+        };
+        let top = top.clamp(
+            bounds.top(),
+            (bounds.bottom() - box_size.y).max(bounds.top()),
+        );
+        let left = (anchor.x - box_size.x * 0.5).clamp(
+            bounds.left(),
+            (bounds.right() - box_size.x).max(bounds.left()),
+        );
+        let box_rect = Rect::from_min_size(pos2(left, top), box_size);
+        let fg_painter = painter.clone().with_layer_id(LayerId::new(
+            Order::Foreground,
+            Id::new("segments-point-label"),
+        ));
+
+        fg_painter.rect(
+            box_rect,
+            LABEL_CORNER_RADIUS,
+            bg_color,
+            Stroke::new(1.0, border_color),
+            StrokeKind::Inside,
+        );
+        fg_painter.galley(box_rect.min + padding, galley, text_color);
+    }
+
+    fn grab_radius(target: Drag) -> f32 {
+        match target {
+            Drag::Point(_) => GRAB_RADIUS,
+            Drag::Power(_) => POWER_GRAB_RADIUS,
         }
     }
 

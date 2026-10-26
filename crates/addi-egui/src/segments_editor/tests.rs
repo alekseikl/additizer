@@ -182,6 +182,45 @@ fn open_curve_moves_the_ends_independently() {
 
     assert!((closed.point(0).y - 0.1).abs() < 1e-6);
     assert!((closed.point(2).y - 0.1).abs() < 1e-6);
+
+    let mut mismatched = Segments::from_points(&[(0.0, 0.2), (0.5, 1.0), (1.0, 0.8)], false);
+
+    editor.move_point(&mut mismatched, 2, 1.0, 0.4, false);
+
+    assert!((mismatched.point(0).y - 0.4).abs() < 1e-6);
+    assert!((mismatched.point(2).y - 0.4).abs() < 1e-6);
+}
+
+#[test]
+fn synced_bend_mirrors_onto_the_next_segment() {
+    let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.2)], false);
+    let editor = SegmentsEditor::default();
+
+    editor.move_powers(&mut segments, 0, 0.1, false);
+
+    assert!(segments.power(0) > 0.0);
+    assert_eq!(segments.power(1), 0.0);
+    assert_eq!(segments.power(2), 0.0);
+
+    editor.move_powers(&mut segments, 0, 0.1, true);
+
+    let power = segments.power(0);
+
+    assert!(power > 0.0);
+    assert!((segments.power(1) + power).abs() < 1e-5);
+    assert_eq!(segments.power(2), 0.0);
+
+    let before = segments.power(1);
+
+    editor.move_powers(&mut segments, 1, 0.1, true);
+
+    assert!(segments.power(1) < before);
+    assert!((segments.power(2) + segments.power(1)).abs() < 1e-5);
+    assert!((segments.power(0) - power).abs() < 1e-5);
+
+    editor.move_powers(&mut segments, 2, 0.1, true);
+
+    assert!((segments.power(0) + segments.power(2)).abs() < 1e-5);
 }
 
 #[test]
