@@ -17,7 +17,7 @@ impl SegmentsEnvelopeUi {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            editor: SegmentsEditor::open().with_markers(),
+            editor: SegmentsEditor::open().with_markers().envelope(),
         }
     }
 
@@ -38,7 +38,10 @@ impl SegmentsEnvelopeUi {
 
         let playhead = if bridge.has_active_voices() {
             let playhead = envelope_bridge.playhead();
-            Some((playhead.phase, playhead.level))
+            Some([
+                (playhead.phase[0], playhead.level[0]),
+                (playhead.phase[1], playhead.level[1]),
+            ])
         } else {
             None
         };

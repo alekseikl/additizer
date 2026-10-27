@@ -13,6 +13,7 @@ use addi_engine::{ModuleId, ModuleType};
 use addi_ui_backend::{engine_factory::EngineFactory, ui_bridge::UiBridge};
 
 mod bin_slider;
+mod circle_grab;
 mod control_meter;
 mod fit_label;
 mod frequency_bins;

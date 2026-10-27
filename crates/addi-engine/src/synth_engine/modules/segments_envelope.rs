@@ -64,16 +64,16 @@ impl Params {
     }
 }
 
-/// Playhead published for the editor, as a point on the curve.
+/// Playhead published for the editor. Each channel is a point on the curve.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SegmentsEnvelopePhase {
-    pub phase: Smp,
-    pub level: Smp,
+    pub phase: StereoSample,
+    pub level: StereoSample,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Stage {
-    /// Note-on waiting for its phase. `Some` is the stolen opening level.
+    /// `Some` is the stolen opening level.
     Trigger(Option<Smp>),
     /// `start` replaces the first point during the first pass of segment 0.
     Segment {
@@ -184,6 +184,7 @@ pub struct SegmentsEnvelope<L: SegmentsEnvelopeLinks = stub::Links> {
     inputs: Inputs,
     output_slot: usize,
     voices: VoicesLayout<Voice>,
+    playhead: SegmentsEnvelopePhase,
 }
 
 impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
@@ -215,6 +216,7 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             voices: new_voices_layout(),
+            playhead: SegmentsEnvelopePhase::default(),
         }
     }
 
@@ -509,11 +511,13 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
 
         voice.last_level = out.last().copied().unwrap_or_default();
 
-        if router.need_update_ui_mono() {
-            self.audio_end.update_phase(SegmentsEnvelopePhase {
-                phase: Self::playhead_phase(segments, voice.stage),
-                level: Self::playhead_level(segments, voice),
-            });
+        if router.need_update_ui() {
+            self.playhead.phase[channel_idx] = Self::playhead_phase(segments, voice.stage);
+            self.playhead.level[channel_idx] = Self::playhead_level(segments, voice);
+
+            if channel_idx + 1 == NUM_CHANNELS {
+                self.audio_end.update_phase(self.playhead);
+            }
         }
     }
 

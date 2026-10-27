@@ -81,7 +81,7 @@ impl LfoWidget {
         Self::paint_stroke(painter, &screen);
 
         if has_active_voices {
-            let phase = lfo_bridge.get_phase();
+            let phase = lfo_bridge.get_phase().left();
             let level = lfo_bridge.config().segments.value_at(phase, None, None);
 
             painter.circle_filled(

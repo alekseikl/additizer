@@ -2,7 +2,7 @@ use addi_ui_backend::ui_bridge::modules::segments_envelope::SegmentsEnvelopeUiBr
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, Vec2};
 
 use crate::grid::WidgetCtx;
-use addi_dsp::{SegPoint, Segments, Smp};
+use addi_dsp::{Segments, Smp};
 use addi_engine::ModuleId;
 use addi_ui_backend::ui_bridge::ModuleBridge;
 
@@ -11,11 +11,9 @@ use super::GridWidgetContent;
 const PADDING: f32 = 4.0;
 const PHASE_RADIUS: f32 = 3.5;
 const LINE_WIDTH: f32 = 1.0;
-const FILL_EDGE_ALPHA: u8 = 0x47;
-const FILL_BASE_ALPHA: u8 = 0x66;
-const WAVE_COLOR: Color32 = Color32::from_rgb(0x4a, 0xb0, 0xff);
-const LOOP_COLOR: Color32 = Color32::from_rgb(0xf0, 0xc0, 0x4a);
-const RELEASE_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x59);
+const STROKE_COLOR: Color32 = Color32::from_rgb(0x06, 0xaa, 0x1c);
+const FILL_ALPHA: u8 = 0x66;
+const LOOP_FILL_COLOR: Color32 = Color32::from_rgb(0xff, 0x55, 0x55);
 
 struct RenderedCurve {
     revision: u64,
@@ -84,38 +82,23 @@ impl SegmentsEnvelopeWidget {
             .map(|point| Self::phase_pos(rect, point[0], point[1]))
             .collect::<Vec<_>>();
 
-        Self::paint_fill(painter, rect, &screen);
+        Self::paint_fill(
+            painter,
+            rect,
+            &screen,
+            Self::loop_span(rect, &envelope_bridge.config().segments),
+        );
         Self::paint_stroke(painter, &screen);
-        Self::paint_markers(painter, rect, &envelope_bridge.config().segments);
 
         if has_active_voices {
             let playhead = envelope_bridge.playhead();
 
             painter.circle_filled(
-                Self::phase_pos(rect, playhead.phase, playhead.level),
+                Self::phase_pos(rect, playhead.phase.left(), playhead.level.left()),
                 PHASE_RADIUS,
-                WAVE_COLOR,
+                STROKE_COLOR,
             );
         }
-    }
-
-    fn paint_markers(painter: &Painter, rect: Rect, segments: &Segments) {
-        if let Some(point) = segments.loop_point() {
-            Self::paint_tick(painter, rect, point, LOOP_COLOR);
-        }
-
-        if let Some(point) = segments.release_point() {
-            Self::paint_tick(painter, rect, point, RELEASE_COLOR);
-        }
-    }
-
-    fn paint_tick(painter: &Painter, rect: Rect, point: SegPoint, color: Color32) {
-        let x = rect.left() + point.x.clamp(0.0, 1.0) * rect.width();
-
-        painter.line_segment(
-            [Pos2::new(x, rect.top()), Pos2::new(x, rect.top() + 6.0)],
-            Stroke::new(1.5, color),
-        );
     }
 
     fn paint_stroke(painter: &Painter, points: &[Pos2]) {
@@ -123,17 +106,25 @@ impl SegmentsEnvelopeWidget {
             return;
         }
 
-        painter.line(points.to_vec(), Stroke::new(LINE_WIDTH, WAVE_COLOR));
+        painter.line(points.to_vec(), Stroke::new(LINE_WIDTH, STROKE_COLOR));
     }
 
-    fn paint_fill(painter: &Painter, rect: Rect, points: &[Pos2]) {
+    /// Screen span of the loop, from the loop point to the release point or the end.
+    fn loop_span(rect: Rect, segments: &Segments) -> Option<(f32, f32)> {
+        let start = segments.loop_point()?;
+        let end_x = segments.release_point().map(|point| point.x).unwrap_or(1.0);
+        let left = rect.left() + start.x.clamp(0.0, 1.0) * rect.width();
+        let right = rect.left() + end_x.clamp(0.0, 1.0) * rect.width();
+
+        (right > left).then_some((left, right))
+    }
+
+    fn paint_fill(painter: &Painter, rect: Rect, points: &[Pos2], loop_span: Option<(f32, f32)>) {
         if points.len() < 2 {
             return;
         }
 
         let mut mesh = Mesh::default();
-        let edge = Self::with_alpha(WAVE_COLOR, FILL_EDGE_ALPHA);
-        let base = Self::with_alpha(WAVE_COLOR, FILL_BASE_ALPHA);
         let bottom = rect.bottom();
 
         for window in points.windows(2) {
@@ -143,19 +134,72 @@ impl SegmentsEnvelopeWidget {
                 continue;
             }
 
-            let index = mesh.vertices.len() as u32;
-
-            mesh.colored_vertex(start, edge);
-            mesh.colored_vertex(end, edge);
-            mesh.colored_vertex(Pos2::new(end.x, bottom), base);
-            mesh.colored_vertex(Pos2::new(start.x, bottom), base);
-            mesh.add_triangle(index, index + 1, index + 2);
-            mesh.add_triangle(index, index + 2, index + 3);
+            Self::fill_column(&mut mesh, bottom, start, end, loop_span);
         }
 
         if !mesh.is_empty() {
             painter.add(Shape::mesh(mesh));
         }
+    }
+
+    /// One under-curve column, split where it crosses the loop span.
+    fn fill_column(
+        mesh: &mut Mesh,
+        bottom: f32,
+        start: Pos2,
+        end: Pos2,
+        loop_span: Option<(f32, f32)>,
+    ) {
+        let Some((left, right)) = loop_span else {
+            Self::add_quad(mesh, bottom, start, end, STROKE_COLOR);
+            return;
+        };
+
+        let mut cursor = start;
+
+        if cursor.x < left {
+            let next = Self::lerp_point(start, end, left.min(end.x));
+            Self::add_quad(mesh, bottom, cursor, next, STROKE_COLOR);
+            cursor = next;
+        }
+
+        if cursor.x < right && cursor.x < end.x {
+            let next = Self::lerp_point(start, end, right.min(end.x));
+            Self::add_quad(mesh, bottom, cursor, next, LOOP_FILL_COLOR);
+            cursor = next;
+        }
+
+        if cursor.x < end.x {
+            Self::add_quad(mesh, bottom, cursor, end, STROKE_COLOR);
+        }
+    }
+
+    fn lerp_point(start: Pos2, end: Pos2, x: f32) -> Pos2 {
+        let width = end.x - start.x;
+
+        if width <= 0.0 {
+            return end;
+        }
+
+        let t = ((x - start.x) / width).clamp(0.0, 1.0);
+
+        Pos2::new(x, start.y + t * (end.y - start.y))
+    }
+
+    fn add_quad(mesh: &mut Mesh, bottom: f32, start: Pos2, end: Pos2, color: Color32) {
+        if end.x <= start.x {
+            return;
+        }
+
+        let fill = Self::with_alpha(color, FILL_ALPHA);
+        let index = mesh.vertices.len() as u32;
+
+        mesh.colored_vertex(start, fill);
+        mesh.colored_vertex(end, fill);
+        mesh.colored_vertex(Pos2::new(end.x, bottom), fill);
+        mesh.colored_vertex(Pos2::new(start.x, bottom), fill);
+        mesh.add_triangle(index, index + 1, index + 2);
+        mesh.add_triangle(index, index + 2, index + 3);
     }
 
     fn with_alpha(color: Color32, alpha: u8) -> Color32 {

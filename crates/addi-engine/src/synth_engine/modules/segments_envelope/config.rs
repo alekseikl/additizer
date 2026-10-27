@@ -14,6 +14,11 @@ fn default_rate() -> StereoSample {
     1.0.into()
 }
 
+/// Falling ramp. A looping saw repeats the end phase so it can jump back up.
+fn default_segments() -> Segments {
+    Segments::from_points(&[(0.0, 1.0), (1.0, 0.0)], false)
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SegmentsEnvelopeConfig {
     pub id: ModuleId,
@@ -30,7 +35,7 @@ pub struct SegmentsEnvelopeConfig {
     pub phase_shift: StereoSample,
     #[serde(default)]
     pub timebase: Timebase,
-    #[serde(default)]
+    #[serde(default = "default_segments")]
     pub segments: Segments,
 }
 
@@ -43,7 +48,7 @@ impl Default for SegmentsEnvelopeConfig {
             rate: 1.0.into(),
             phase_shift: 0.0.into(),
             timebase: Timebase::Seconds,
-            segments: Segments::default(),
+            segments: default_segments(),
         }
     }
 }

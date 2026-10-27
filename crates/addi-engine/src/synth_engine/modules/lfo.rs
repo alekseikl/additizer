@@ -150,6 +150,7 @@ pub struct Lfo<L: LfoLinks = stub::Links> {
     inputs: Inputs,
     output_slot: usize,
     voices: VoicesLayout<VoiceState>,
+    ui_phase: StereoSample,
 }
 
 impl<L: LfoLinks> Lfo<L> {
@@ -186,6 +187,7 @@ impl<L: LfoLinks> Lfo<L> {
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             voices: new_voices_layout(),
+            ui_phase: StereoSample::ZERO,
         };
 
         lfo.bake_wave();
@@ -292,8 +294,12 @@ impl<L: LfoLinks> Lfo<L> {
             voice.phase += *phase_inc;
         }
 
-        if router.need_update_ui_mono() {
-            self.audio_end.update_phase(voice.phase.normalized());
+        if router.need_update_ui() {
+            self.ui_phase[channel_idx] = voice.phase.normalized();
+
+            if channel_idx + 1 == NUM_CHANNELS {
+                self.audio_end.update_phase(self.ui_phase);
+            }
         }
     }
 

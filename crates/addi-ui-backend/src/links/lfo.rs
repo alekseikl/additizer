@@ -1,6 +1,6 @@
 use triple_buffer::triple_buffer;
 
-use addi_engine::{Input, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
+use addi_engine::{Input, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 use addi_dsp::segments::Segments;
 
@@ -8,12 +8,12 @@ use addi_engine::lfo::{LfoAudioEnd, LfoLinks, LfoUiEnd, Timebase, UiEvent};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
-    phase: triple_buffer::Output<Smp>,
+    phase: triple_buffer::Output<StereoSample>,
     segments: triple_buffer::Input<Segments>,
 }
 
 impl UiEnd {
-    pub fn get_phase(&mut self) -> Smp {
+    pub fn get_phase(&mut self) -> StereoSample {
         *self.phase.read()
     }
 
@@ -37,7 +37,7 @@ impl UiEnd {
 
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
-    phase: triple_buffer::Input<Smp>,
+    phase: triple_buffer::Input<StereoSample>,
     segments: triple_buffer::Output<Segments>,
 }
 
@@ -46,7 +46,7 @@ impl AudioEnd {
         self.rx.pop().ok()
     }
 
-    pub fn update_phase(&mut self, phase: Smp) {
+    pub fn update_phase(&mut self, phase: StereoSample) {
         self.phase.write(phase);
     }
 
@@ -57,7 +57,7 @@ impl AudioEnd {
 
 pub fn make_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
-    let (phase_input, phase_output) = triple_buffer(&0.0);
+    let (phase_input, phase_output) = triple_buffer(&StereoSample::ZERO);
     let (segments_input, segments_output) = triple_buffer(&Segments::default());
 
     (
@@ -78,7 +78,7 @@ impl LfoAudioEnd for AudioEnd {
     fn pop_event(&mut self) -> Option<UiEvent> {
         AudioEnd::pop_event(self)
     }
-    fn update_phase(&mut self, phase: Smp) {
+    fn update_phase(&mut self, phase: StereoSample) {
         AudioEnd::update_phase(self, phase)
     }
     fn read_segments(&mut self) -> &Segments {
@@ -87,7 +87,7 @@ impl LfoAudioEnd for AudioEnd {
 }
 
 impl LfoUiEnd for UiEnd {
-    fn get_phase(&mut self) -> Smp {
+    fn get_phase(&mut self) -> StereoSample {
         UiEnd::get_phase(self)
     }
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool {

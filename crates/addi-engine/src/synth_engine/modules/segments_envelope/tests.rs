@@ -422,6 +422,11 @@ fn missing_timebase_defaults_to_seconds() {
     assert_eq!(config.phase_shift, StereoSample::splat(0.0));
     assert!(!config.keep_voice_alive);
     assert!(!config.steal_level);
+    assert_eq!(config.segments.num_points(), 2);
+    assert_eq!(config.segments.point(0).x, 0.0);
+    assert_eq!(config.segments.point(0).y, 1.0);
+    assert_eq!(config.segments.point(1).x, 1.0);
+    assert_eq!(config.segments.point(1).y, 0.0);
 
     let stolen: SegmentsEnvelopeConfig =
         serde_json::from_str(r#"{"id":1,"steal_phase":true}"#).unwrap();

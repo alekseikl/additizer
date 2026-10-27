@@ -193,33 +193,71 @@ fn open_curve_moves_the_ends_independently() {
 }
 
 #[test]
+fn curve_pos_continues_outside_the_plot() {
+    let plot = plot();
+    let above = SegmentsEditor::curve_pos(plot, pos2(50.0, -20.0));
+    let outside = SegmentsEditor::curve_pos(plot, pos2(150.0, 120.0));
+
+    assert!((above.x - 0.5).abs() < 1e-4);
+    assert!((above.y - 1.2).abs() < 1e-4);
+    assert!((outside.x - 1.5).abs() < 1e-4);
+    assert!((outside.y + 0.2).abs() < 1e-4);
+}
+
+#[test]
+fn bend_follows_the_pointer() {
+    let editor = SegmentsEditor::default();
+    let mut rising = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+
+    editor.move_power(&mut rising, 0, 0.1, false);
+
+    assert!((rising.power(0) + 0.9).abs() < 1e-5);
+
+    let mut falling = Segments::from_points(&[(0.0, 1.0), (1.0, 0.0)], false);
+
+    editor.move_power(&mut falling, 0, 0.1, false);
+
+    assert!((falling.power(0) - 0.9).abs() < 1e-5);
+
+    let mut flat = Segments::from_points(&[(0.0, 0.5), (1.0, 0.5)], false);
+
+    editor.move_power(&mut flat, 0, 0.1, false);
+
+    assert_eq!(flat.power(0), 0.0);
+
+    editor.move_power(&mut rising, 0, -3.0, false);
+
+    assert_eq!(rising.power(0), addi_dsp::segments::MAX_POWER);
+}
+
+#[test]
 fn synced_bend_mirrors_onto_the_next_segment() {
     let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.2)], false);
     let editor = SegmentsEditor::default();
 
-    editor.move_powers(&mut segments, 0, 0.1, false);
+    editor.move_power(&mut segments, 0, -0.1, false);
 
-    assert!(segments.power(0) > 0.0);
+    assert!((segments.power(0) - 0.9).abs() < 1e-5);
     assert_eq!(segments.power(1), 0.0);
     assert_eq!(segments.power(2), 0.0);
 
-    editor.move_powers(&mut segments, 0, 0.1, true);
+    editor.move_power(&mut segments, 0, -0.1, true);
 
     let power = segments.power(0);
 
-    assert!(power > 0.0);
+    assert!((power - 1.8).abs() < 1e-5);
     assert!((segments.power(1) + power).abs() < 1e-5);
     assert_eq!(segments.power(2), 0.0);
 
     let before = segments.power(1);
 
-    editor.move_powers(&mut segments, 1, 0.1, true);
+    editor.move_power(&mut segments, 1, -0.05, true);
 
     assert!(segments.power(1) < before);
     assert!((segments.power(2) + segments.power(1)).abs() < 1e-5);
     assert!((segments.power(0) - power).abs() < 1e-5);
 
-    editor.move_powers(&mut segments, 2, 0.1, true);
+    editor.move_power(&mut segments, 2, 0.02, true);
 
     assert!((segments.power(0) + segments.power(2)).abs() < 1e-5);
 }

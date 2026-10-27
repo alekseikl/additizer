@@ -9,22 +9,27 @@ use addi_dsp::{
     segments::{MAX_POWER, SegPoint, Segments},
     utils::sanitize,
 };
-use addi_engine::Smp;
+use addi_engine::{Smp, StereoSample};
 
-use crate::{segment_presets, units::Units, utils::hsva};
+use crate::{circle_grab::CircleGrab, segment_presets, units::Units, utils::hsva};
 
 const EDITOR_HEIGHT: f32 = 220.0;
-const GRAB_RADIUS: f32 = 12.0;
-const POWER_GRAB_RADIUS: f32 = 8.0;
-const POINT_RADIUS: f32 = 4.5;
-const POWER_RADIUS: f32 = 3.5;
+const GRAB_RADIUS: f32 = 8.0;
+const POWER_GRAB_RADIUS: f32 = 6.0;
+const POINT_RADIUS: f32 = 4.0;
+const PLAYHEAD_RADIUS: f32 = 6.0;
+/// Yellow. Saturation and value are taken from the left playhead.
+const RIGHT_PLAYHEAD_HUE: f32 = 1.0 / 6.0;
+const POWER_RADIUS: f32 = 3.0;
 const MIN_POWER_WIDTH: f32 = 3.0;
 const SNAP_X: Smp = 0.02;
 const SNAP_Y: Smp = 0.04;
+/// One editor-height of vertical travel. Same scale as Vital's line editor.
 const POWER_MOUSE_MULTIPLIER: Smp = 9.0;
 
 const WAVE_COLOR: Color32 = Color32::from_rgb(0x4a, 0xb0, 0xff);
 const LOOP_COLOR: Color32 = Color32::from_rgb(0xf0, 0xc0, 0x4a);
+const LOOP_FILL_COLOR: Color32 = Color32::from_rgb(0xff, 0x55, 0x55);
 const RELEASE_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x59);
 const FILL_TOP_ALPHA: u8 = 0x47;
 const FILL_BOTTOM_ALPHA: u8 = 0x28;
@@ -75,8 +80,10 @@ pub struct SegmentsEditor {
     grid_x: i32,
     grid_y: i32,
     drag: Option<Drag>,
+    grab: Option<CircleGrab>,
+    /// Curve-space pointer y at the previous bend sample.
+    power_y: Option<Smp>,
     hover: Option<Drag>,
-    last_pointer_y: f32,
     menu_point: Option<usize>,
     menu_power: Option<usize>,
     curve: Vec<[Smp; 2]>,
@@ -87,6 +94,10 @@ pub struct SegmentsEditor {
     closed: bool,
     /// Loop and release markers. The segments envelope turns this on.
     markers: bool,
+    wave_color: Color32,
+    power_color: Color32,
+    fill_top_alpha: u8,
+    fill_bottom_alpha: u8,
 }
 
 impl Default for SegmentsEditor {
@@ -95,8 +106,9 @@ impl Default for SegmentsEditor {
             grid_x: 8,
             grid_y: 1,
             drag: None,
+            grab: None,
+            power_y: None,
             hover: None,
-            last_pointer_y: 0.0,
             menu_point: None,
             menu_power: None,
             curve: Vec::new(),
@@ -105,6 +117,10 @@ impl Default for SegmentsEditor {
             rendered: None,
             closed: true,
             markers: false,
+            wave_color: WAVE_COLOR,
+            power_color: POWER_COLOR,
+            fill_top_alpha: FILL_TOP_ALPHA,
+            fill_bottom_alpha: FILL_BOTTOM_ALPHA,
         }
     }
 }
@@ -124,22 +140,42 @@ impl SegmentsEditor {
         self
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, segments: &mut Segments, phase: Option<Smp>) -> bool {
-        let playhead = phase.map(|phase| (phase, segments.value_at(phase, None, None)));
+    /// Curve, fill, and playhead match the envelope module.
+    pub fn envelope(mut self) -> Self {
+        self.wave_color = Color32::from(hsva(0.3374, 0.9, 0.2, 1.0));
+        self.power_color = Color32::from(hsva(0.348, 0.7, 0.4, 1.0));
+        self.fill_top_alpha = 0x66;
+        self.fill_bottom_alpha = 0x66;
+        self
+    }
+
+    /// `phase` is the left and right playhead. Levels are read from the curve.
+    pub fn ui(
+        &mut self,
+        ui: &mut Ui,
+        segments: &mut Segments,
+        phase: Option<StereoSample>,
+    ) -> bool {
+        let playhead = phase.map(|phase| {
+            [
+                (phase[0], segments.value_at(phase[0], None, None)),
+                (phase[1], segments.value_at(phase[1], None, None)),
+            ]
+        });
         self.ui_at(ui, segments, playhead)
     }
 
-    /// Like [`ui`](Self::ui). The marker is drawn at `playhead`.
+    /// Like [`ui`](Self::ui). `playhead` is the left and right point, each `(phase, level)`.
     pub fn ui_at(
         &mut self,
         ui: &mut Ui,
         segments: &mut Segments,
-        playhead: Option<(Smp, Smp)>,
+        playhead: Option<[(Smp, Smp); 2]>,
     ) -> bool {
         let mut changed = false;
         let width = ui.available_width();
         let (rect, mut response) =
-            ui.allocate_exact_size(vec2(width, EDITOR_HEIGHT), Sense::click_and_drag());
+            ui.allocate_exact_size(vec2(width, EDITOR_HEIGHT), Sense::click());
 
         if rect.is_positive() {
             changed |= self.interact(ui, &response, rect, segments);
@@ -169,7 +205,15 @@ impl SegmentsEditor {
         segments: &mut Segments,
     ) -> bool {
         let mut changed = false;
-        let modifiers = ui.input(|input| input.modifiers);
+        let (modifiers, now, primary_down, press_origin, press_start) = ui.input(|input| {
+            (
+                input.modifiers,
+                input.time,
+                input.pointer.button_down(PointerButton::Primary),
+                input.pointer.press_origin(),
+                input.pointer.press_start_time(),
+            )
+        });
         let pointer = response.interact_pointer_pos().or(response.hover_pos());
 
         if response.secondary_clicked()
@@ -184,36 +228,57 @@ impl SegmentsEditor {
             if let Some(pos) = pointer {
                 changed |= self.double_click(plot, segments, pos, modifiers.shift);
             }
-            self.drag = None;
-        } else if response.drag_started_by(PointerButton::Primary)
-            && let Some(pos) = pointer
+            self.end_drag();
+        } else if self.drag.is_none()
+            && response.is_pointer_button_down_on()
+            && let Some(origin) = press_origin
         {
-            let hit = self.hit_test(plot, segments, pos);
-            self.drag = hit.0.map(Drag::Point).or_else(|| hit.1.map(Drag::Power));
-            self.last_pointer_y = pos.y;
+            let (point, power) = self.hit_test(plot, segments, origin);
+            let circle = point.is_some() || power.is_some();
+
+            if circle && let Some(pos) = CircleGrab::press(ui, pointer, origin, press_start, now) {
+                if let Some(index) = point {
+                    self.begin_point_drag(plot, segments, index, pos);
+                } else if let Some(index) = power {
+                    self.begin_power_drag(plot, index, pos);
+                }
+            }
         }
 
-        if response.dragged_by(PointerButton::Primary)
-            && let Some(pos) = pointer
-        {
+        let tracking = self.drag.is_some() && primary_down;
+
+        if tracking && let Some(pos) = Self::drag_pointer(ui) {
             match self.drag {
                 Some(Drag::Point(index)) => {
-                    let point = Self::curve_pos(plot, pos);
-                    self.move_point(segments, index, point.x, point.y, !modifiers.shift);
-                    changed = true;
+                    if let Some(grab) = self.grab {
+                        let placed = grab.place(Self::curve_pos(plot, pos));
+
+                        if placed != grab.center() {
+                            self.move_point(segments, index, placed.x, placed.y, !modifiers.shift);
+                            changed = true;
+                        }
+                    }
                 }
                 Some(Drag::Power(index)) => {
-                    let delta = (pos.y - self.last_pointer_y) / plot.height();
-                    self.move_powers(segments, index, delta, modifiers.shift);
-                    self.last_pointer_y = pos.y;
-                    changed = true;
+                    let y = Self::curve_pos(plot, pos).y;
+
+                    if let Some(last) = self.power_y {
+                        let delta = y - last;
+
+                        if delta != 0.0 {
+                            self.move_power(segments, index, delta, modifiers.shift);
+                            changed = true;
+                        }
+                    }
+
+                    self.power_y = Some(y);
                 }
                 None => {}
             }
         }
 
-        if response.drag_stopped() {
-            self.drag = None;
+        if !primary_down {
+            self.end_drag();
         }
 
         self.hover = if self.drag.is_none() && response.hovered() {
@@ -385,7 +450,7 @@ impl SegmentsEditor {
         ui: &mut Ui,
         plot: Rect,
         segments: &Segments,
-        playhead: Option<(Smp, Smp)>,
+        playhead: Option<[(Smp, Smp); 2]>,
     ) {
         let painter = ui.painter();
         let background = ui.visuals().extreme_bg_color;
@@ -400,11 +465,12 @@ impl SegmentsEditor {
 
         self.curve_points(plot, segments);
 
-        Self::paint_fill(painter, plot, &self.points, background);
+        let loop_region = self.loop_region(plot, segments);
+        self.paint_fill(painter, plot, &self.points, background, loop_region);
         Self::paint_grid(painter, plot, self.grid_x, self.grid_y);
 
         if self.points.len() >= 2 {
-            painter.line(self.points.clone(), Stroke::new(1.5, WAVE_COLOR));
+            painter.line(self.points.clone(), Stroke::new(1.5, self.wave_color));
         }
 
         for index in 0..segments.num_points() {
@@ -413,15 +479,38 @@ impl SegmentsEditor {
             }
 
             let point = self.power_position(segments, index);
-            painter.circle_filled(Self::screen_pos(plot, point), POWER_RADIUS, POWER_COLOR);
+            painter.circle_filled(
+                Self::screen_pos(plot, point),
+                POWER_RADIUS,
+                self.power_color,
+            );
         }
+
+        let loop_point = if self.markers {
+            segments.loop_point_idx()
+        } else {
+            None
+        };
+        let release_point = if self.markers {
+            segments.release_point_idx()
+        } else {
+            None
+        };
 
         for index in 0..segments.num_points() {
             let point = segments.point(index);
+            let color = if Some(index) == loop_point {
+                LOOP_COLOR
+            } else if Some(index) == release_point {
+                RELEASE_COLOR
+            } else {
+                POINT_COLOR
+            };
+
             painter.circle_filled(
                 Self::screen_pos(plot, pos2(point.x, point.y)),
                 POINT_RADIUS,
-                POINT_COLOR,
+                color,
             );
         }
 
@@ -435,12 +524,8 @@ impl SegmentsEditor {
             }
         }
 
-        if let Some((phase, level)) = playhead {
-            painter.circle_filled(
-                Self::playhead_pos(plot, phase, level),
-                POINT_RADIUS,
-                WAVE_COLOR,
-            );
+        if let Some(playhead) = playhead {
+            self.paint_playheads(painter, plot, playhead);
         }
 
         let grab_stroke = Stroke::new(1.0, Color32::WHITE);
@@ -557,35 +642,29 @@ impl SegmentsEditor {
         segments.set_point(index, SegPoint { x, y, ..current });
     }
 
-    fn move_powers(
-        &self,
-        segments: &mut Segments,
-        index: usize,
-        delta_change: Smp,
-        sync_next: bool,
-    ) {
+    /// Bend segment `index` by a vertical pointer move.
+    fn move_power(&self, segments: &mut Segments, index: usize, delta_y: Smp, sync_next: bool) {
         let n = segments.num_points();
 
         if index >= n {
             return;
         }
 
-        let from_y = segments.point(index).y;
-        let to_y = self.segment_end_y(segments, index);
+        let Some(end) = self.segment_end(segments, index) else {
+            return;
+        };
+        let from = segments.point(index);
 
-        if from_y == to_y {
+        if from.y == end.y {
             return;
         }
 
-        let delta = if from_y > to_y {
-            -delta_change
-        } else {
-            delta_change
-        };
-        let power =
-            (segments.power(index) + delta * POWER_MOUSE_MULTIPLIER).clamp(-MAX_POWER, MAX_POWER);
+        let amount = POWER_MOUSE_MULTIPLIER * if from.y < end.y { -delta_y } else { delta_y };
+        let power = sanitize(segments.power(index) + amount, -MAX_POWER, MAX_POWER);
 
-        segments.set_power(index, power);
+        if segments.power(index) != power {
+            segments.set_power(index, power);
+        }
 
         if !sync_next {
             return;
@@ -599,15 +678,29 @@ impl SegmentsEditor {
             return;
         };
 
-        if self.segment_end(segments, next).is_some() {
+        if self.segment_end(segments, next).is_some() && segments.power(next) != -power {
             segments.set_power(next, -power);
         }
     }
 
-    fn segment_end_y(&self, segments: &Segments, index: usize) -> Smp {
-        self.segment_end(segments, index)
-            .map(|point| point.y)
-            .unwrap_or_else(|| segments.point(index).y)
+    fn begin_point_drag(&mut self, plot: Rect, segments: &Segments, index: usize, pointer: Pos2) {
+        let point = segments.point(index);
+        self.grab = Some(CircleGrab::new(
+            Self::curve_pos(plot, pointer),
+            pos2(point.x, point.y),
+        ));
+        self.drag = Some(Drag::Point(index));
+    }
+
+    fn begin_power_drag(&mut self, plot: Rect, index: usize, pointer: Pos2) {
+        self.power_y = Some(Self::curve_pos(plot, pointer).y);
+        self.drag = Some(Drag::Power(index));
+    }
+
+    fn end_drag(&mut self) {
+        self.drag = None;
+        self.grab = None;
+        self.power_y = None;
     }
 
     fn hit_test(
@@ -733,6 +826,28 @@ impl SegmentsEditor {
         }
     }
 
+    /// Left stays the curve color. The right channel keeps that saturation and value.
+    fn paint_playheads(&self, painter: &Painter, plot: Rect, playhead: [(Smp, Smp); 2]) {
+        let left = Self::playhead_pos(plot, playhead[0].0, playhead[0].1);
+        let right = Self::playhead_pos(plot, playhead[1].0, playhead[1].1);
+
+        if left.distance_sq(right) > 0.25 {
+            painter.circle_filled(
+                right,
+                PLAYHEAD_RADIUS,
+                Self::right_playhead_color(self.wave_color),
+            );
+        }
+
+        painter.circle_filled(left, PLAYHEAD_RADIUS, self.wave_color);
+    }
+
+    fn right_playhead_color(left: Color32) -> Color32 {
+        let mut color = Hsva::from(left);
+        color.h = RIGHT_PLAYHEAD_HUE;
+        Color32::from(color)
+    }
+
     /// Screen position of the playhead at `(phase, level)`.
     fn playhead_pos(plot: Rect, phase: Smp, level: Smp) -> Pos2 {
         let phase = sanitize(phase, 0.0, 1.0);
@@ -743,9 +858,6 @@ impl SegmentsEditor {
 
     fn paint_marker(painter: &Painter, plot: Rect, point: SegPoint, label: &str, color: Color32) {
         let pos = Self::screen_pos(plot, pos2(point.x, point.y));
-
-        painter.circle_stroke(pos, POINT_RADIUS + 2.0, Stroke::new(1.5, color));
-
         let galley = painter.layout_no_wrap(
             label.to_owned(),
             FontId::new(10.0, FontFamily::Name("Bold".into())),
@@ -762,10 +874,22 @@ impl SegmentsEditor {
         painter.galley(pos2(x, y), galley, color);
     }
 
+    /// Pointer position while a drag is held, including outside the plot and the window.
+    fn drag_pointer(ui: &Ui) -> Option<Pos2> {
+        let mut pos = ui.input(|input| input.pointer.latest_pos())?;
+
+        if let Some(from_global) = ui.ctx().layer_transform_from_global(ui.layer_id()) {
+            pos = from_global * pos;
+        }
+
+        Some(pos)
+    }
+
+    /// Plot position of a screen point. Values outside 0–1 are past the canvas.
     fn curve_pos(plot: Rect, pos: Pos2) -> Pos2 {
         pos2(
-            ((pos.x - plot.left()) / plot.width()).clamp(0.0, 1.0),
-            ((plot.bottom() - pos.y) / plot.height()).clamp(0.0, 1.0),
+            (pos.x - plot.left()) / plot.width(),
+            (plot.bottom() - pos.y) / plot.height(),
         )
     }
 
@@ -854,54 +978,141 @@ impl SegmentsEditor {
         }
     }
 
+    /// Screen span of the loop, from the loop point to the release point or the end.
+    fn loop_region(&self, plot: Rect, segments: &Segments) -> Option<Rect> {
+        if !self.markers {
+            return None;
+        }
+
+        let start = segments.loop_point()?;
+        let end_x = segments.release_point().map(|point| point.x).unwrap_or(1.0);
+        let left = plot.left() + start.x.clamp(0.0, 1.0) * plot.width();
+        let right = plot.left() + end_x.clamp(0.0, 1.0) * plot.width();
+
+        if right <= left {
+            None
+        } else {
+            Some(Rect::from_min_max(
+                pos2(left, plot.top()),
+                pos2(right, plot.bottom()),
+            ))
+        }
+    }
+
     /// One gradient rectangle, then an opaque cover above the curve.
     /// A per-column mesh creases the gradient: vertical lines from premultiplied
     /// vertex colors, horizontal lines from sampling a gradient texture.
-    fn paint_fill(painter: &Painter, plot: Rect, points: &[Pos2], background: Color32) {
+    fn paint_fill(
+        &self,
+        painter: &Painter,
+        plot: Rect,
+        points: &[Pos2],
+        background: Color32,
+        loop_region: Option<Rect>,
+    ) {
         if plot.height() <= 0.0 || plot.width() <= 0.0 {
             return;
         }
 
         let mut gradient = Mesh::default();
-        let top = Self::with_alpha(WAVE_COLOR, FILL_TOP_ALPHA);
-        let bottom = Self::with_alpha(WAVE_COLOR, FILL_BOTTOM_ALPHA);
+        let top = self.fill_top_alpha;
+        let bottom = self.fill_bottom_alpha;
 
-        gradient.colored_vertex(plot.left_top(), top);
-        gradient.colored_vertex(plot.right_top(), top);
-        gradient.colored_vertex(plot.right_bottom(), bottom);
-        gradient.colored_vertex(plot.left_bottom(), bottom);
-        gradient.add_triangle(0, 1, 2);
-        gradient.add_triangle(0, 2, 3);
-        painter.add(Shape::mesh(gradient));
+        if let Some(region) = loop_region {
+            Self::paint_wave_span(
+                &mut gradient,
+                plot,
+                plot.left(),
+                region.left(),
+                self.wave_color,
+                top,
+                bottom,
+            );
+            Self::paint_wave_span(
+                &mut gradient,
+                plot,
+                region.left(),
+                region.right(),
+                LOOP_FILL_COLOR,
+                top,
+                bottom,
+            );
+            Self::paint_wave_span(
+                &mut gradient,
+                plot,
+                region.right(),
+                plot.right(),
+                self.wave_color,
+                top,
+                bottom,
+            );
+        } else {
+            Self::paint_wave_span(
+                &mut gradient,
+                plot,
+                plot.left(),
+                plot.right(),
+                self.wave_color,
+                top,
+                bottom,
+            );
+        }
 
-        if points.len() < 2 {
+        if !gradient.is_empty() {
+            painter.add(Shape::mesh(gradient));
+        }
+
+        if points.len() >= 2 {
+            let cover = Color32::from_rgb(background.r(), background.g(), background.b());
+            let mut mask = Mesh::default();
+
+            for window in points.windows(2) {
+                let a = window[0];
+                let b = window[1];
+
+                if b.x <= a.x {
+                    continue;
+                }
+
+                let index = mask.vertices.len() as u32;
+
+                mask.colored_vertex(pos2(a.x, plot.top()), cover);
+                mask.colored_vertex(pos2(b.x, plot.top()), cover);
+                mask.colored_vertex(b, cover);
+                mask.colored_vertex(a, cover);
+                mask.add_triangle(index, index + 1, index + 2);
+                mask.add_triangle(index, index + 2, index + 3);
+            }
+
+            if !mask.is_empty() {
+                painter.add(Shape::mesh(mask));
+            }
+        }
+    }
+
+    fn paint_wave_span(
+        mesh: &mut Mesh,
+        plot: Rect,
+        left: f32,
+        right: f32,
+        color: Color32,
+        top_alpha: u8,
+        bottom_alpha: u8,
+    ) {
+        if right <= left {
             return;
         }
 
-        let cover = Color32::from_rgb(background.r(), background.g(), background.b());
-        let mut mask = Mesh::default();
+        let top = Self::with_alpha(color, top_alpha);
+        let bottom = Self::with_alpha(color, bottom_alpha);
+        let index = mesh.vertices.len() as u32;
 
-        for window in points.windows(2) {
-            let a = window[0];
-            let b = window[1];
-
-            if b.x <= a.x {
-                continue;
-            }
-
-            let index = mask.vertices.len() as u32;
-
-            mask.colored_vertex(pos2(a.x, plot.top()), cover);
-            mask.colored_vertex(pos2(b.x, plot.top()), cover);
-            mask.colored_vertex(b, cover);
-            mask.colored_vertex(a, cover);
-            mask.add_triangle(index, index + 1, index + 2);
-            mask.add_triangle(index, index + 2, index + 3);
-        }
-
-        if !mask.is_empty() {
-            painter.add(Shape::mesh(mask));
-        }
+        mesh.colored_vertex(pos2(left, plot.top()), top);
+        mesh.colored_vertex(pos2(right, plot.top()), top);
+        mesh.colored_vertex(pos2(right, plot.bottom()), bottom);
+        mesh.colored_vertex(pos2(left, plot.bottom()), bottom);
+        mesh.add_triangle(index, index + 1, index + 2);
+        mesh.add_triangle(index, index + 2, index + 3);
     }
 
     fn with_alpha(color: Color32, alpha: u8) -> Color32 {
