@@ -29,7 +29,7 @@ const POWER_MOUSE_MULTIPLIER: Smp = 9.0;
 
 const WAVE_COLOR: Color32 = Color32::from_rgb(0x4a, 0xb0, 0xff);
 const LOOP_COLOR: Color32 = Color32::from_rgb(0xf0, 0xc0, 0x4a);
-const LOOP_FILL_COLOR: Color32 = Color32::from_rgb(0xff, 0x55, 0x55);
+const LOOP_FILL_COLOR: Hsva = hsva(0.0, 0.9092, 1.0, 0.25);
 const RELEASE_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x59);
 const FILL_TOP_ALPHA: u8 = 0x47;
 const FILL_BOTTOM_ALPHA: u8 = 0x28;
@@ -470,7 +470,7 @@ impl SegmentsEditor {
         Self::paint_grid(painter, plot, self.grid_x, self.grid_y);
 
         if self.points.len() >= 2 {
-            painter.line(self.points.clone(), Stroke::new(1.5, self.wave_color));
+            painter.line(self.points.clone(), Stroke::new(2.0, self.wave_color));
         }
 
         for index in 0..segments.num_points() {
@@ -999,6 +999,9 @@ impl SegmentsEditor {
         }
     }
 
+    /// Curve gradient first, masked above the curve. The loop band is painted
+    /// after that, for the full plot height.
+    ///
     /// One gradient rectangle, then an opaque cover above the curve.
     /// A per-column mesh creases the gradient: vertical lines from premultiplied
     /// vertex colors, horizontal lines from sampling a gradient texture.
@@ -1014,80 +1017,78 @@ impl SegmentsEditor {
             return;
         }
 
-        let mut gradient = Mesh::default();
         let top = self.fill_top_alpha;
         let bottom = self.fill_bottom_alpha;
+        let background = Color32::from_rgb(background.r(), background.g(), background.b());
+        let mut gradient = Mesh::default();
 
-        if let Some(region) = loop_region {
-            Self::paint_wave_span(
-                &mut gradient,
-                plot,
-                plot.left(),
-                region.left(),
-                self.wave_color,
-                top,
-                bottom,
-            );
-            Self::paint_wave_span(
-                &mut gradient,
-                plot,
-                region.left(),
-                region.right(),
-                LOOP_FILL_COLOR,
-                top,
-                bottom,
-            );
-            Self::paint_wave_span(
-                &mut gradient,
-                plot,
-                region.right(),
-                plot.right(),
-                self.wave_color,
-                top,
-                bottom,
-            );
-        } else {
-            Self::paint_wave_span(
-                &mut gradient,
-                plot,
-                plot.left(),
-                plot.right(),
-                self.wave_color,
-                top,
-                bottom,
-            );
-        }
+        Self::paint_wave_span(
+            &mut gradient,
+            plot,
+            plot.left(),
+            plot.right(),
+            self.wave_color,
+            top,
+            bottom,
+        );
 
         if !gradient.is_empty() {
             painter.add(Shape::mesh(gradient));
         }
 
         if points.len() >= 2 {
-            let cover = Color32::from_rgb(background.r(), background.g(), background.b());
             let mut mask = Mesh::default();
 
             for window in points.windows(2) {
-                let a = window[0];
-                let b = window[1];
+                let start = window[0];
+                let end = window[1];
 
-                if b.x <= a.x {
+                if end.x <= start.x {
                     continue;
                 }
 
-                let index = mask.vertices.len() as u32;
-
-                mask.colored_vertex(pos2(a.x, plot.top()), cover);
-                mask.colored_vertex(pos2(b.x, plot.top()), cover);
-                mask.colored_vertex(b, cover);
-                mask.colored_vertex(a, cover);
-                mask.add_triangle(index, index + 1, index + 2);
-                mask.add_triangle(index, index + 2, index + 3);
+                Self::add_cover(&mut mask, plot.top(), start, end, background);
             }
 
             if !mask.is_empty() {
                 painter.add(Shape::mesh(mask));
             }
         }
+
+        if let Some(region) = loop_region {
+            let mut loop_fill = Mesh::default();
+
+            let loop_fill_color = Color32::from(LOOP_FILL_COLOR);
+
+            Self::paint_wave_span(
+                &mut loop_fill,
+                plot,
+                region.left(),
+                region.right(),
+                loop_fill_color,
+                loop_fill_color.a(),
+                loop_fill_color.a(),
+            );
+
+            if !loop_fill.is_empty() {
+                painter.add(Shape::mesh(loop_fill));
+            }
+        }
+    }
+
+    fn add_cover(mesh: &mut Mesh, top: f32, start: Pos2, end: Pos2, cover: Color32) {
+        if end.x <= start.x {
+            return;
+        }
+
+        let index = mesh.vertices.len() as u32;
+
+        mesh.colored_vertex(pos2(start.x, top), cover);
+        mesh.colored_vertex(pos2(end.x, top), cover);
+        mesh.colored_vertex(end, cover);
+        mesh.colored_vertex(start, cover);
+        mesh.add_triangle(index, index + 1, index + 2);
+        mesh.add_triangle(index, index + 2, index + 3);
     }
 
     fn paint_wave_span(

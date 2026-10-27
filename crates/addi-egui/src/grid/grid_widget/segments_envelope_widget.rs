@@ -1,15 +1,18 @@
 use addi_ui_backend::ui_bridge::modules::segments_envelope::SegmentsEnvelopeUiBridge;
-use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, Vec2};
+use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, Vec2, ecolor::Hsva};
 
 use crate::grid::WidgetCtx;
 use addi_dsp::{Segments, Smp};
 use addi_engine::ModuleId;
+use addi_engine::segments_envelope::SegmentsEnvelopePhase;
 use addi_ui_backend::ui_bridge::ModuleBridge;
 
 use super::GridWidgetContent;
 
 const PADDING: f32 = 4.0;
 const PHASE_RADIUS: f32 = 3.5;
+/// Yellow. Saturation and value are taken from the left playhead.
+const RIGHT_PLAYHEAD_HUE: f32 = 1.0 / 6.0;
 const LINE_WIDTH: f32 = 1.0;
 const STROKE_COLOR: Color32 = Color32::from_rgb(0x06, 0xaa, 0x1c);
 const FILL_ALPHA: u8 = 0x66;
@@ -93,12 +96,26 @@ impl SegmentsEnvelopeWidget {
         if has_active_voices {
             let playhead = envelope_bridge.playhead();
 
-            painter.circle_filled(
-                Self::phase_pos(rect, playhead.phase.left(), playhead.level.left()),
-                PHASE_RADIUS,
-                STROKE_COLOR,
-            );
+            Self::paint_playheads(painter, rect, &playhead);
         }
+    }
+
+    /// Left stays the curve color. The right channel keeps that saturation and value.
+    fn paint_playheads(painter: &Painter, rect: Rect, playhead: &SegmentsEnvelopePhase) {
+        let left = Self::phase_pos(rect, playhead.phase.left(), playhead.level.left());
+        let right = Self::phase_pos(rect, playhead.phase.right(), playhead.level.right());
+
+        if left.distance_sq(right) > 0.25 {
+            painter.circle_filled(right, PHASE_RADIUS, Self::right_playhead_color());
+        }
+
+        painter.circle_filled(left, PHASE_RADIUS, STROKE_COLOR);
+    }
+
+    fn right_playhead_color() -> Color32 {
+        let mut color = Hsva::from(STROKE_COLOR);
+        color.h = RIGHT_PLAYHEAD_HUE;
+        Color32::from(color)
     }
 
     fn paint_stroke(painter: &Painter, points: &[Pos2]) {
