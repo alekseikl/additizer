@@ -2,6 +2,7 @@ use addi_ui_backend::ui_bridge::modules::segments_envelope::SegmentsEnvelopeUiBr
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, Vec2, ecolor::Hsva};
 
 use crate::grid::WidgetCtx;
+use crate::utils::hsva;
 use addi_dsp::{Segments, Smp};
 use addi_engine::ModuleId;
 use addi_engine::segments_envelope::SegmentsEnvelopePhase;
@@ -16,7 +17,7 @@ const RIGHT_PLAYHEAD_HUE: f32 = 1.0 / 6.0;
 const LINE_WIDTH: f32 = 1.0;
 const STROKE_COLOR: Color32 = Color32::from_rgb(0x06, 0xaa, 0x1c);
 const FILL_ALPHA: u8 = 0x66;
-const LOOP_FILL_COLOR: Color32 = Color32::from_rgb(0xff, 0x55, 0x55);
+const LOOP_FILL_COLOR: Hsva = hsva(0.0, 0.9092, 1.0, 0.25);
 
 struct RenderedCurve {
     revision: u64,
@@ -136,71 +137,46 @@ impl SegmentsEnvelopeWidget {
         (right > left).then_some((left, right))
     }
 
+    /// Curve fill first. The loop band is painted after that, for the full tile height.
     fn paint_fill(painter: &Painter, rect: Rect, points: &[Pos2], loop_span: Option<(f32, f32)>) {
-        if points.len() < 2 {
-            return;
-        }
+        if points.len() >= 2 {
+            let mut mesh = Mesh::default();
+            let bottom = rect.bottom();
 
-        let mut mesh = Mesh::default();
-        let bottom = rect.bottom();
+            for window in points.windows(2) {
+                let (start, end) = (window[0], window[1]);
 
-        for window in points.windows(2) {
-            let (start, end) = (window[0], window[1]);
+                if end.x <= start.x {
+                    continue;
+                }
 
-            if end.x <= start.x {
-                continue;
+                Self::add_quad(&mut mesh, bottom, start, end, STROKE_COLOR);
             }
 
-            Self::fill_column(&mut mesh, bottom, start, end, loop_span);
+            if !mesh.is_empty() {
+                painter.add(Shape::mesh(mesh));
+            }
         }
 
-        if !mesh.is_empty() {
-            painter.add(Shape::mesh(mesh));
-        }
-    }
-
-    /// One under-curve column, split where it crosses the loop span.
-    fn fill_column(
-        mesh: &mut Mesh,
-        bottom: f32,
-        start: Pos2,
-        end: Pos2,
-        loop_span: Option<(f32, f32)>,
-    ) {
         let Some((left, right)) = loop_span else {
-            Self::add_quad(mesh, bottom, start, end, STROKE_COLOR);
             return;
         };
 
-        let mut cursor = start;
-
-        if cursor.x < left {
-            let next = Self::lerp_point(start, end, left.min(end.x));
-            Self::add_quad(mesh, bottom, cursor, next, STROKE_COLOR);
-            cursor = next;
+        if right <= left || rect.height() <= 0.0 {
+            return;
         }
 
-        if cursor.x < right && cursor.x < end.x {
-            let next = Self::lerp_point(start, end, right.min(end.x));
-            Self::add_quad(mesh, bottom, cursor, next, LOOP_FILL_COLOR);
-            cursor = next;
-        }
+        let mut loop_fill = Mesh::default();
+        let color = Color32::from(LOOP_FILL_COLOR);
+        let index = loop_fill.vertices.len() as u32;
 
-        if cursor.x < end.x {
-            Self::add_quad(mesh, bottom, cursor, end, STROKE_COLOR);
-        }
-    }
-
-    fn lerp_point(start: Pos2, end: Pos2, x: f32) -> Pos2 {
-        let width = end.x - start.x;
-
-        if width <= 0.0 {
-            return end;
-        }
-
-        let t = ((x - start.x) / width).clamp(0.0, 1.0);
-
-        Pos2::new(x, start.y + t * (end.y - start.y))
+        loop_fill.colored_vertex(Pos2::new(left, rect.top()), color);
+        loop_fill.colored_vertex(Pos2::new(right, rect.top()), color);
+        loop_fill.colored_vertex(Pos2::new(right, rect.bottom()), color);
+        loop_fill.colored_vertex(Pos2::new(left, rect.bottom()), color);
+        loop_fill.add_triangle(index, index + 1, index + 2);
+        loop_fill.add_triangle(index, index + 2, index + 3);
+        painter.add(Shape::mesh(loop_fill));
     }
 
     fn add_quad(mesh: &mut Mesh, bottom: f32, start: Pos2, end: Pos2, color: Color32) {
