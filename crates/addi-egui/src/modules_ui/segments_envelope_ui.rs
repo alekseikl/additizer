@@ -17,7 +17,7 @@ impl SegmentsEnvelopeUi {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            editor: SegmentsEditor::open(),
+            editor: SegmentsEditor::open().with_markers(),
         }
     }
 
@@ -36,16 +36,16 @@ impl SegmentsEnvelopeUi {
         ));
         ui.add_space(12.0);
 
-        let phase = if bridge.has_active_voices() {
-            Some(envelope_bridge.get_phase())
+        let playhead = if bridge.has_active_voices() {
+            let playhead = envelope_bridge.playhead();
+            Some((playhead.phase, playhead.level))
         } else {
             None
         };
-        let start_level = envelope_bridge.get_start_level();
 
         if self
             .editor
-            .ui_with_start(ui, envelope_bridge.segments_mut(), phase, start_level)
+            .ui_at(ui, envelope_bridge.segments_mut(), playhead)
         {
             envelope_bridge.sync_segments();
         }

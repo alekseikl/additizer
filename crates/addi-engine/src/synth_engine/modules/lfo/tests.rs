@@ -106,19 +106,13 @@ fn set_segments_rebakes_the_table() {
     lfo.set_segments(test_square());
 
     assert_ne!(lfo.wave[WAVEFORM_PAD_LEFT + 100], before);
-    assert_points_eq(
-        lfo.get_config().segments.points(),
-        test_square().points(),
-    );
+    assert_points_eq(lfo.get_config().segments.points(), test_square().points());
     assert_eq!(lfo.wave[WAVEFORM_PAD_LEFT + 100], 1.0);
     assert_eq!(lfo.wave[WAVEFORM_PAD_LEFT + 1500], 0.0);
 
     lfo.set_segments(test_square());
 
-    assert_points_eq(
-        lfo.get_config().segments.points(),
-        test_square().points(),
-    );
+    assert_points_eq(lfo.get_config().segments.points(), test_square().points());
 }
 
 #[test]

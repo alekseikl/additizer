@@ -20,7 +20,7 @@ Every slider in the UI is stereo, and each channel can be adjusted by dragging w
   Controls that can be modulated: gain, pitch, frequency (through-zero FM), phase, detune, detune focus (pitch distribution),
   unison phases and unison levels blend.
 - `Envelope`: AHDSR envelope generator to control both spectral and audio modules.
-- `Segments Envelope`: One-shot breakpoint envelope. A note plays the drawn curve once, then holds the last level. The length is a number of seconds or note values.
+- `Segments Envelope`: Breakpoint envelope. A release point sustains while the key is held, then continues from the current level. A loop point repeats to the end, or up to the release point while the key is held. The length is a number of seconds or note values.
 - `LFO`: Low-frequency oscillator with a drawable breakpoint waveform.
 - `Mixer`: Mixes multiple audio inputs with per-input level/gain and output volume control.
 - `Waveshaper`: Wave shaping distortion (hard clip or sigmoid) with drive and clipping level.

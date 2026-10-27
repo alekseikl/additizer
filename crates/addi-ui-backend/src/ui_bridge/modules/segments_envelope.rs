@@ -1,10 +1,10 @@
 use crate::ui_bridge::ModuleUiBridge;
 use addi_dsp::segments::Segments;
 use addi_engine::segments_envelope::{
-    SegmentsEnvelope, SegmentsEnvelopeConfig, SegmentsEnvelopeLinks, SegmentsEnvelopeUiEnd,
-    Timebase,
+    SegmentsEnvelope, SegmentsEnvelopeConfig, SegmentsEnvelopeLinks, SegmentsEnvelopePhase,
+    SegmentsEnvelopeUiEnd, Timebase,
 };
-use addi_engine::{Input, Smp, StereoSample};
+use addi_engine::{Input, StereoSample};
 
 pub struct SegmentsEnvelopeUiBridge<
     L: SegmentsEnvelopeLinks = crate::links::segments_envelope::Links,
@@ -29,12 +29,8 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelopeUiBridge<L> {
         &mut self.config.segments
     }
 
-    pub fn get_phase(&mut self) -> Smp {
-        self.ui_end.get_phase().phase
-    }
-
-    pub fn get_start_level(&mut self) -> Smp {
-        self.ui_end.get_phase().start_level
+    pub fn playhead(&mut self) -> SegmentsEnvelopePhase {
+        self.ui_end.get_phase()
     }
 
     pub fn set_param(&mut self, input: Input, value: StereoSample) {

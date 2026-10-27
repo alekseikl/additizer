@@ -24,6 +24,8 @@ const SNAP_Y: Smp = 0.04;
 const POWER_MOUSE_MULTIPLIER: Smp = 9.0;
 
 const WAVE_COLOR: Color32 = Color32::from_rgb(0x4a, 0xb0, 0xff);
+const LOOP_COLOR: Color32 = Color32::from_rgb(0xf0, 0xc0, 0x4a);
+const RELEASE_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x59);
 const FILL_TOP_ALPHA: u8 = 0x47;
 const FILL_BOTTOM_ALPHA: u8 = 0x28;
 const GRID_COLOR: Color32 = Color32::from_rgba_unmultiplied_const(255, 255, 255, 28);
@@ -58,6 +60,10 @@ enum MenuAction {
     SetSmooth(usize, bool),
     FlipHorizontal,
     FlipVertical,
+    SetLoop(usize),
+    ClearLoop,
+    SetRelease(usize),
+    ClearRelease,
 }
 
 struct RenderedCurve {
@@ -79,6 +85,8 @@ pub struct SegmentsEditor {
     rendered: Option<RenderedCurve>,
     /// Endpoints share one level, and the last bend wraps back to the start.
     closed: bool,
+    /// Loop and release markers. The segments envelope turns this on.
+    markers: bool,
 }
 
 impl Default for SegmentsEditor {
@@ -96,6 +104,7 @@ impl Default for SegmentsEditor {
             points: Vec::new(),
             rendered: None,
             closed: true,
+            markers: false,
         }
     }
 }
@@ -109,27 +118,23 @@ impl SegmentsEditor {
         }
     }
 
+    /// Show loop and release markers on an open curve.
+    pub fn with_markers(mut self) -> Self {
+        self.markers = true;
+        self
+    }
+
     pub fn ui(&mut self, ui: &mut Ui, segments: &mut Segments, phase: Option<Smp>) -> bool {
-        self.ui_with(ui, segments, phase, None)
+        let playhead = phase.map(|phase| (phase, segments.value_at(phase, None, None)));
+        self.ui_at(ui, segments, playhead)
     }
 
-    /// Like [`ui`](Self::ui). The playhead reads the first segment from `start_level`.
-    pub fn ui_with_start(
+    /// Like [`ui`](Self::ui). The marker is drawn at `playhead`.
+    pub fn ui_at(
         &mut self,
         ui: &mut Ui,
         segments: &mut Segments,
-        phase: Option<Smp>,
-        start_level: Smp,
-    ) -> bool {
-        self.ui_with(ui, segments, phase, Some(start_level))
-    }
-
-    fn ui_with(
-        &mut self,
-        ui: &mut Ui,
-        segments: &mut Segments,
-        phase: Option<Smp>,
-        start_level: Option<Smp>,
+        playhead: Option<(Smp, Smp)>,
     ) -> bool {
         let mut changed = false;
         let width = ui.available_width();
@@ -138,20 +143,20 @@ impl SegmentsEditor {
 
         if rect.is_positive() {
             changed |= self.interact(ui, &response, rect, segments);
-            self.paint(ui, rect, segments, phase, start_level);
+            self.paint(ui, rect, segments, playhead);
             changed |= self.context_menu(&mut response, segments);
         }
 
         ui.add_space(8.0);
         changed |= self.toolbar(ui, segments);
         ui.add_space(4.0);
-        ui.label(
-            egui::RichText::new(
-                "Double-click to add or remove a point. Drag a midpoint to bend the segment. Hold Shift to mirror that bend onto the next segment. Right-click to flip.",
-            )
-            .small()
-            .weak(),
-        );
+        let help = if self.markers {
+            "Double-click to add or remove a point. Drag a midpoint to bend the segment. Hold Shift to mirror that bend onto the next segment. Right-click a point to set the loop or release."
+        } else {
+            "Double-click to add or remove a point. Drag a midpoint to bend the segment. Hold Shift to mirror that bend onto the next segment. Right-click to flip."
+        };
+
+        ui.label(egui::RichText::new(help).small().weak());
 
         changed
     }
@@ -251,6 +256,52 @@ impl SegmentsEditor {
                 }
             }
 
+            if self.markers
+                && let Some(index) = menu_point
+                && index < segments.num_points()
+            {
+                let n = segments.num_points();
+
+                if segments.loop_point_idx() == Some(index) {
+                    if ui.button("Clear loop").clicked() {
+                        action = Some(MenuAction::ClearLoop);
+                        ui.close();
+                    }
+                } else if index + 1 < n
+                    && segments
+                        .release_point_idx()
+                        .is_none_or(|release| index < release)
+                    && ui
+                        .button("Loop point")
+                        .on_hover_text(
+                            "Repeat from here. With no release point the loop runs to the end. With one, it runs until release while the key is held.",
+                        )
+                        .clicked()
+                {
+                    action = Some(MenuAction::SetLoop(index));
+                    ui.close();
+                }
+
+                if segments.release_point_idx() == Some(index) {
+                    if ui.button("Clear release").clicked() {
+                        action = Some(MenuAction::ClearRelease);
+                        ui.close();
+                    }
+                } else if segments
+                    .loop_point_idx()
+                    .is_none_or(|loop_point| index > loop_point)
+                    && ui
+                        .button("Release point")
+                        .on_hover_text(
+                            "Sustain this level while the key is held. On release, continue from here starting at the current level.",
+                        )
+                        .clicked()
+                {
+                    action = Some(MenuAction::SetRelease(index));
+                    ui.close();
+                }
+            }
+
             if let Some(index) = menu_point
                 && index > 0
                 && index + 1 < segments.num_points()
@@ -298,6 +349,10 @@ impl SegmentsEditor {
                 segments.flip_vertical();
                 true
             }
+            Some(MenuAction::SetLoop(index)) => segments.set_loop_point(Some(index)),
+            Some(MenuAction::ClearLoop) => segments.set_loop_point(None),
+            Some(MenuAction::SetRelease(index)) => segments.set_release_point(Some(index)),
+            Some(MenuAction::ClearRelease) => segments.set_release_point(None),
             None => false,
         }
     }
@@ -330,8 +385,7 @@ impl SegmentsEditor {
         ui: &mut Ui,
         plot: Rect,
         segments: &Segments,
-        phase: Option<Smp>,
-        start_level: Option<Smp>,
+        playhead: Option<(Smp, Smp)>,
     ) {
         let painter = ui.painter();
         let background = ui.visuals().extreme_bg_color;
@@ -371,9 +425,19 @@ impl SegmentsEditor {
             );
         }
 
-        if let Some(phase) = phase {
+        if self.markers {
+            if let Some(point) = segments.loop_point() {
+                Self::paint_marker(painter, plot, point, "L", LOOP_COLOR);
+            }
+
+            if let Some(point) = segments.release_point() {
+                Self::paint_marker(painter, plot, point, "R", RELEASE_COLOR);
+            }
+        }
+
+        if let Some((phase, level)) = playhead {
             painter.circle_filled(
-                Self::playhead_pos(plot, segments, phase, start_level),
+                Self::playhead_pos(plot, phase, level),
                 POINT_RADIUS,
                 WAVE_COLOR,
             );
@@ -502,7 +566,7 @@ impl SegmentsEditor {
     ) {
         let n = segments.num_points();
 
-        if index >= n || n < 2 {
+        if index >= n {
             return;
         }
 
@@ -641,7 +705,7 @@ impl SegmentsEditor {
     /// `render_points` runs again when [`Segments::revision`] or the plot size changes.
     /// The polyline is projected into `plot` on every call.
     fn curve_points(&mut self, plot: Rect, segments: &Segments) {
-        if plot.width() <= 0.0 || segments.num_points() < 2 {
+        if plot.width() <= 0.0 {
             self.points.clear();
             self.rendered = None;
             return;
@@ -669,12 +733,33 @@ impl SegmentsEditor {
         }
     }
 
-    /// Screen position of `phase`. `start_level` replaces the first segment's start.
-    fn playhead_pos(plot: Rect, segments: &Segments, phase: Smp, start_level: Option<Smp>) -> Pos2 {
+    /// Screen position of the playhead at `(phase, level)`.
+    fn playhead_pos(plot: Rect, phase: Smp, level: Smp) -> Pos2 {
         let phase = sanitize(phase, 0.0, 1.0);
-        let level = segments.value_at(phase, start_level);
+        let level = sanitize(level, 0.0, 1.0);
 
         Self::screen_pos(plot, pos2(phase, level))
+    }
+
+    fn paint_marker(painter: &Painter, plot: Rect, point: SegPoint, label: &str, color: Color32) {
+        let pos = Self::screen_pos(plot, pos2(point.x, point.y));
+
+        painter.circle_stroke(pos, POINT_RADIUS + 2.0, Stroke::new(1.5, color));
+
+        let galley = painter.layout_no_wrap(
+            label.to_owned(),
+            FontId::new(10.0, FontFamily::Name("Bold".into())),
+            color,
+        );
+        let x = pos.x - galley.size().x * 0.5;
+        let above = pos.y - POINT_RADIUS - galley.size().y - 3.0;
+        let y = if above >= plot.top() {
+            above
+        } else {
+            pos.y + POINT_RADIUS + 3.0
+        };
+
+        painter.galley(pos2(x, y), galley, color);
     }
 
     fn curve_pos(plot: Rect, pos: Pos2) -> Pos2 {

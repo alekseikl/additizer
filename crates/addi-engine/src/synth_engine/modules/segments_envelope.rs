@@ -30,6 +30,8 @@ use crate::synth_engine::{
     voices_handler::DecayingVoice,
 };
 
+const MIN_LOOP_SAMPLES: usize = 8;
+
 struct ChannelParams {
     rate: Smp,
     phase_shift: Smp,
@@ -62,31 +64,73 @@ impl Params {
     }
 }
 
-/// Playhead published for the editor. `start_level` is the level the first
-/// segment leaves; it differs from the drawn start only after a stolen note.
+/// Playhead published for the editor, as a point on the curve.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SegmentsEnvelopePhase {
     pub phase: Smp,
-    pub start_level: Smp,
+    pub level: Smp,
 }
 
-/// One pass of the curve. A voice starts done and returns there when the last segment finishes.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Stage {
-    /// `index` selects the segment. `position` is progress through it, in `0.0..1.0`.
-    Segment { index: usize, position: Smp },
-    /// The pass finished and the last level is held.
-    #[default]
+    /// Note-on waiting for its phase. `Some` is the stolen opening level.
+    Trigger(Option<Smp>),
+    /// `start` replaces the first point during the first pass of segment 0.
+    Segment {
+        index: usize,
+        position: Smp,
+        start: Option<Smp>,
+    },
+    Sustain,
     Done,
 }
 
-#[derive(Debug, Default)]
+impl Stage {
+    fn segment(index: usize, position: Smp) -> Self {
+        Self::Segment {
+            index,
+            position,
+            start: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Release {
+    None,
+    Pending(usize),
+    Releasing(Smp),
+}
+
+impl Release {
+    fn level(self) -> Option<Smp> {
+        match self {
+            Self::Releasing(level) => Some(level),
+            Self::None | Self::Pending(_) => None,
+        }
+    }
+
+    fn note_on(self) -> bool {
+        !matches!(self, Self::Releasing(_))
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 struct Voice {
     stage: Stage,
-    /// Level the first segment leaves. The drawn start, unless this note stole one.
-    start_level: Smp,
     /// Last sample this voice wrote. A stolen note copies it.
-    level: Smp,
+    last_level: Smp,
+    release: Release,
+}
+
+impl Default for Voice {
+    fn default() -> Self {
+        Self {
+            stage: Stage::Done,
+            last_level: 0.0,
+            release: Release::None,
+        }
+    }
 }
 
 pub struct Inputs {
@@ -202,64 +246,208 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         self.params.segments = segments;
     }
 
-    fn curve_start(&self) -> Smp {
-        let segments = &self.params.segments;
-
-        if segments.num_points() == 0 {
-            0.0
-        } else {
-            segments.point(0).y
-        }
-    }
-
-    /// Global phase of `stage`, for the editor playhead.
     fn playhead_phase(segments: &Segments, stage: Stage) -> Smp {
-        let Stage::Segment { index, position } = stage else {
-            return 1.0;
-        };
-        let spans = segments.num_points().saturating_sub(1);
-
-        if index >= spans {
-            return 1.0;
+        match stage {
+            Stage::Sustain => segments.release_point().map(|point| point.x).unwrap_or(1.0),
+            Stage::Trigger(_) | Stage::Done => 1.0,
+            Stage::Segment {
+                index, position, ..
+            } => segments.phase_at(index, position),
         }
-
-        let start = segments.point(index).x;
-        let end = segments.point(index + 1).x;
-        let width = (end - start).max(0.0);
-
-        (start + position.clamp(0.0, 1.0) * width).clamp(0.0, 1.0)
     }
 
-    /// Stage where a triggered voice starts. `phase` is in cycles and wraps.
-    fn stage_at(segments: &Segments, phase: Smp) -> Stage {
-        let spans = segments.num_points().saturating_sub(1);
-        let mut phase = sanitize(phase.rem_euclid(1.0), 0.0, 1.0);
+    fn playhead_level(segments: &Segments, voice: &Voice) -> Smp {
+        let start_level = match voice.stage {
+            Stage::Segment {
+                index: 0, start, ..
+            } => start,
+            _ => None,
+        };
 
-        if phase >= 1.0 {
-            phase = 0.0;
+        segments.value_at(
+            Self::playhead_phase(segments, voice.stage),
+            start_level,
+            voice.release.level(),
+        )
+    }
+
+    fn segment_start(segments: &Segments, voice: &Voice, index: usize) -> SegPoint {
+        let mut start = segments.point(index);
+
+        if segments.release_point_idx() == Some(index)
+            && let Some(level) = voice.release.level()
+        {
+            start.y = level;
+            return start;
         }
 
-        for index in 0..spans {
-            let start = segments.point(index).x;
-            let end = segments.point(index + 1).x;
+        if index == 0
+            && let Stage::Segment {
+                start: Some(level), ..
+            } = voice.stage
+        {
+            start.y = level;
+        }
 
-            if phase < start || phase > end {
-                continue;
+        start
+    }
+
+    /// Stage after segment `index` finishes.
+    fn next_stage(segments: &Segments, index: usize, note_on: bool, phase_step: Smp) -> Stage {
+        let next = index + 1;
+        let spans = segments.num_points() - 1;
+        let looping = segments.loop_samples(phase_step) >= MIN_LOOP_SAMPLES;
+
+        if note_on
+            && let Some(release) = segments.release_point_idx()
+            && next >= release
+        {
+            if looping && let Some(index) = segments.loop_point_idx() {
+                return Stage::segment(index, 0.0);
             }
 
-            let width = end - start;
+            return Stage::Sustain;
+        }
 
-            if width <= 0.0 || phase >= end {
-                continue;
-            }
+        if next < spans {
+            return Stage::segment(next, 0.0);
+        }
 
-            return Stage::Segment {
-                index,
-                position: (phase - start) / width,
-            };
+        if segments.release_point_idx().is_none()
+            && looping
+            && let Some(index) = segments.loop_point_idx()
+        {
+            return Stage::segment(index, 0.0);
         }
 
         Stage::Done
+    }
+
+    fn sustain_level(segments: &Segments, fallback: Smp) -> Smp {
+        segments
+            .release_point()
+            .map(|point| point.y)
+            .unwrap_or(fallback)
+    }
+
+    fn rest_level(segments: &Segments, voice: &Voice) -> Smp {
+        let last = segments.num_points() - 1;
+
+        if segments.release_point_idx() == Some(last)
+            && let Some(level) = voice.release.level()
+        {
+            return level;
+        }
+
+        segments.point(last).y
+    }
+
+    fn begin_release(segments: &Segments, voice: &mut Voice, level: Smp) {
+        let Some(index) = segments.release_point_idx() else {
+            voice.release = Release::None;
+
+            if matches!(voice.stage, Stage::Sustain) {
+                voice.stage = Stage::Done;
+            }
+
+            return;
+        };
+
+        voice.release = Release::Releasing(level);
+
+        let spans = segments.num_points() - 1;
+
+        if index >= spans {
+            voice.stage = Stage::Done;
+            voice.last_level = level;
+        } else {
+            voice.stage = Stage::segment(index, 0.0);
+        }
+    }
+
+    fn render_region(segments: &Segments, voice: &mut Voice, out: &mut [Smp], phase_step: Smp) {
+        let len = out.len();
+        let mut pos = 0;
+
+        while pos < len {
+            match voice.stage {
+                Stage::Sustain => {
+                    out[pos..].fill(Self::sustain_level(segments, voice.last_level));
+                }
+                Stage::Done => {
+                    out[pos..].fill(Self::rest_level(segments, voice));
+                }
+                Stage::Trigger(_) => unreachable!("trigger is applied before render"),
+                Stage::Segment {
+                    index, position, ..
+                } => {
+                    let start = Self::segment_start(segments, voice, index);
+                    let end = segments.point(index + 1);
+
+                    match SegPoint::render_segment(
+                        &mut out[pos..],
+                        position,
+                        phase_step,
+                        start,
+                        end,
+                    ) {
+                        Ok(position) => {
+                            if let Stage::Segment { position: at, .. } = &mut voice.stage {
+                                *at = position;
+                            }
+                        }
+                        Err(written) => {
+                            pos += written;
+                            voice.stage = Self::next_stage(
+                                segments,
+                                index,
+                                voice.release.note_on(),
+                                phase_step,
+                            );
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            break;
+        }
+    }
+
+    fn apply_trigger(segments: &Segments, voice: &mut Voice, phase: Smp, level: Option<Smp>) {
+        let segment = |index, position| Stage::Segment {
+            index,
+            position,
+            start: if index == 0 { level } else { None },
+        };
+
+        voice.stage = if let Some(release) = segments.release_point()
+            && phase >= release.x
+        {
+            match segments.loop_point_idx() {
+                Some(index) => segment(index, 0.0),
+                None => Stage::Sustain,
+            }
+        } else {
+            let spans = segments.num_points() - 1;
+            let mut index = 0;
+            let mut position = 0.0;
+
+            for i in 0..spans {
+                let start = segments.point(i).x;
+                let end = segments.point(i + 1).x;
+                let width = end - start;
+
+                if width > 0.0 && phase >= start && phase < end {
+                    index = i;
+                    position = (phase - start) / width;
+                    break;
+                }
+            }
+
+            segment(index, position)
+        };
+        voice.last_level = Self::playhead_level(segments, voice);
     }
 
     fn process_voice(
@@ -279,64 +467,52 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
             .timebase
             .phase_inc(rate, tempo, sample_rate.recip());
 
-        if router.triggered() {
-            let phase_shift = router.scalar(
-                &self.inputs.phase_shift,
-                self.channel_params[channel_idx].phase_shift,
-            );
-            let stage = Self::stage_at(&self.params.segments, phase_shift);
+        let voice = self.voices.at_mut(channel_idx, voice_idx);
+        let trigger = match voice.stage {
+            Stage::Trigger(level) => Some(level),
+            _ => None,
+        };
 
-            self.voices.at_mut(channel_idx, voice_idx).stage = stage;
+        if let Some(level) = trigger {
+            let phase_shift = router
+                .scalar(
+                    &self.inputs.phase_shift,
+                    self.channel_params[channel_idx].phase_shift,
+                )
+                .rem_euclid(1.0);
+
+            Self::apply_trigger(&self.params.segments, voice, phase_shift, level);
         }
 
-        let voice = self.voices.at_mut(channel_idx, voice_idx);
+        let release_at = match voice.release {
+            Release::Pending(offset) => Some(router.block_to_voice_offset(offset)),
+            Release::None | Release::Releasing(_) => None,
+        };
         let segments = &self.params.segments;
         let out = voice_output.output();
         let len = out.len();
-        let spans = segments.num_points().saturating_sub(1);
         let mut pos = 0;
+        let mut release_at = release_at.map(|at| at.min(len));
 
-        while let Stage::Segment { index, position } = voice.stage
-            && index < spans
-            && pos < len
-        {
-            let mut start = segments.point(index);
-            let end = segments.point(index + 1);
+        while pos < len {
+            let end = release_at.unwrap_or(len).max(pos);
 
-            if index == 0 {
-                start.y = voice.start_level;
-            }
+            Self::render_region(segments, voice, &mut out[pos..end], phase_step);
 
-            match SegPoint::render_segment(&mut out[pos..len], position, phase_step, start, end) {
-                Ok(position) => {
-                    voice.stage = Stage::Segment { index, position };
-                    pos = len;
-                }
-                Err(written) => {
-                    pos += written;
-                    voice.stage = if index + 1 < spans {
-                        Stage::Segment {
-                            index: index + 1,
-                            position: 0.0,
-                        }
-                    } else {
-                        Stage::Done
-                    };
-                }
+            pos = end;
+
+            if release_at.take().is_some() {
+                let level = out[..pos].last().copied().unwrap_or(voice.last_level);
+                Self::begin_release(segments, voice, level);
             }
         }
 
-        if pos < len {
-            out[pos..len].fill(segments.value_at(1.0, None));
-            voice.stage = Stage::Done;
-        }
-
-        voice.level = out[..len].last().copied().unwrap_or_default();
+        voice.last_level = out.last().copied().unwrap_or_default();
 
         if router.need_update_ui_mono() {
             self.audio_end.update_phase(SegmentsEnvelopePhase {
                 phase: Self::playhead_phase(segments, voice.stage),
-                start_level: voice.start_level,
+                level: Self::playhead_level(segments, voice),
             });
         }
     }
@@ -385,35 +561,32 @@ impl<L: SegmentsEnvelopeLinks> SynthModule for SegmentsEnvelope<L> {
 
     fn process_events(&mut self, events: &[VoiceEvent]) {
         for event in events {
-            let VoiceEvent::Reset {
-                voice_idx,
-                replaced_voice_idx,
-                ..
-            } = event
-            else {
-                continue;
-            };
+            match event {
+                VoiceEvent::Release {
+                    voice_idx, offset, ..
+                } => {
+                    for voice in self.voices.channels_at_mut(*voice_idx) {
+                        voice.release = Release::Pending(*offset);
+                    }
+                }
+                VoiceEvent::Reset {
+                    voice_idx,
+                    replaced_voice_idx,
+                    ..
+                } => {
+                    for channel_idx in 0..NUM_CHANNELS {
+                        let start_level = replaced_voice_idx
+                            .filter(|_| self.params.steal_level)
+                            .map(|replaced_voice_idx| {
+                                self.voices.at(channel_idx, replaced_voice_idx).last_level
+                            });
+                        let voice = self.voices.at_mut(channel_idx, *voice_idx);
 
-            for channel_idx in 0..NUM_CHANNELS {
-                let curve_start = self.curve_start();
-                let start_level = if let Some(replaced_voice_idx) = replaced_voice_idx
-                    && self.params.steal_level
-                {
-                    sanitize(
-                        self.voices.at(channel_idx, *replaced_voice_idx).level,
-                        0.0,
-                        1.0,
-                    )
-                } else {
-                    curve_start
-                };
-                let voice = self.voices.at_mut(channel_idx, *voice_idx);
-
-                voice.stage = Stage::Segment {
-                    index: 0,
-                    position: 0.0,
-                };
-                voice.start_level = start_level;
+                        voice.release = Release::None;
+                        voice.stage = Stage::Trigger(start_level);
+                    }
+                }
+                VoiceEvent::Update { .. } | VoiceEvent::Kill { .. } => {}
             }
         }
     }
@@ -425,7 +598,7 @@ impl<L: SegmentsEnvelopeLinks> SynthModule for SegmentsEnvelope<L> {
 
         for decaying in decaying_voices.iter_mut().filter(|d| d.is_done()) {
             for voice in self.voices.channels_at(decaying.index()) {
-                if matches!(voice.stage, Stage::Segment { .. }) {
+                if !matches!(voice.stage, Stage::Done) {
                     decaying.mark_active();
                 }
             }

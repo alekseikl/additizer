@@ -2,7 +2,7 @@ use addi_ui_backend::ui_bridge::modules::segments_envelope::SegmentsEnvelopeUiBr
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, Vec2};
 
 use crate::grid::WidgetCtx;
-use addi_dsp::{Segments, Smp};
+use addi_dsp::{SegPoint, Segments, Smp};
 use addi_engine::ModuleId;
 use addi_ui_backend::ui_bridge::ModuleBridge;
 
@@ -14,6 +14,8 @@ const LINE_WIDTH: f32 = 1.0;
 const FILL_EDGE_ALPHA: u8 = 0x47;
 const FILL_BASE_ALPHA: u8 = 0x66;
 const WAVE_COLOR: Color32 = Color32::from_rgb(0x4a, 0xb0, 0xff);
+const LOOP_COLOR: Color32 = Color32::from_rgb(0xf0, 0xc0, 0x4a);
+const RELEASE_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x59);
 
 struct RenderedCurve {
     revision: u64,
@@ -30,7 +32,7 @@ pub struct SegmentsEnvelopeWidget {
 impl SegmentsEnvelopeWidget {
     /// Phase/level polyline. Rebuilt when [`Segments::revision`] or `size` changes.
     fn build_curve(&mut self, segments: &Segments, size: Vec2) {
-        if size.x <= 0.0 || segments.num_points() < 2 {
+        if size.x <= 0.0 {
             self.points.clear();
             self.rendered = None;
             return;
@@ -84,21 +86,36 @@ impl SegmentsEnvelopeWidget {
 
         Self::paint_fill(painter, rect, &screen);
         Self::paint_stroke(painter, &screen);
+        Self::paint_markers(painter, rect, &envelope_bridge.config().segments);
 
         if has_active_voices {
-            let phase = envelope_bridge.get_phase();
-            let start_level = envelope_bridge.get_start_level();
-            let level = envelope_bridge
-                .config()
-                .segments
-                .value_at(phase, Some(start_level));
+            let playhead = envelope_bridge.playhead();
 
             painter.circle_filled(
-                Self::phase_pos(rect, phase, level),
+                Self::phase_pos(rect, playhead.phase, playhead.level),
                 PHASE_RADIUS,
                 WAVE_COLOR,
             );
         }
+    }
+
+    fn paint_markers(painter: &Painter, rect: Rect, segments: &Segments) {
+        if let Some(point) = segments.loop_point() {
+            Self::paint_tick(painter, rect, point, LOOP_COLOR);
+        }
+
+        if let Some(point) = segments.release_point() {
+            Self::paint_tick(painter, rect, point, RELEASE_COLOR);
+        }
+    }
+
+    fn paint_tick(painter: &Painter, rect: Rect, point: SegPoint, color: Color32) {
+        let x = rect.left() + point.x.clamp(0.0, 1.0) * rect.width();
+
+        painter.line_segment(
+            [Pos2::new(x, rect.top()), Pos2::new(x, rect.top() + 6.0)],
+            Stroke::new(1.5, color),
+        );
     }
 
     fn paint_stroke(painter: &Painter, points: &[Pos2]) {

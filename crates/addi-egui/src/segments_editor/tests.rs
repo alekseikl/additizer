@@ -39,18 +39,19 @@ fn playhead_follows_the_rendered_polyline() {
     let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     let editor = curve(&ramp);
     let phase = 0.405;
-    let pos = SegmentsEditor::playhead_pos(plot(), &ramp, phase, None);
+    let level = ramp.value_at(phase, None, None);
+    let pos = SegmentsEditor::playhead_pos(plot(), phase, level);
 
     assert_eq!(
-        SegmentsEditor::playhead_pos(plot(), &ramp, 0.0, None),
+        SegmentsEditor::playhead_pos(plot(), 0.0, ramp.value_at(0.0, None, None)),
         editor.points[0]
     );
     assert_eq!(
-        SegmentsEditor::playhead_pos(plot(), &ramp, 1.0, None),
+        SegmentsEditor::playhead_pos(plot(), 1.0, ramp.value_at(1.0, None, None)),
         *editor.points.last().unwrap()
     );
     assert!((pos.x - phase * 100.0).abs() < 1e-3);
-    assert!((pos.y - (100.0 - ramp.value_at(phase, None) * 100.0)).abs() < 1e-4);
+    assert!((pos.y - (100.0 - level * 100.0)).abs() < 1e-4);
 }
 
 #[test]

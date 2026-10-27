@@ -30,7 +30,7 @@ pub struct LfoWidget {
 impl LfoWidget {
     /// Phase/level polyline. Rebuilt when [`Segments::revision`] or `size` changes.
     fn build_curve(&mut self, segments: &Segments, size: Vec2) {
-        if size.x <= 0.0 || segments.num_points() < 2 {
+        if size.x <= 0.0 {
             self.points.clear();
             self.rendered = None;
             return;
@@ -82,7 +82,7 @@ impl LfoWidget {
 
         if has_active_voices {
             let phase = lfo_bridge.get_phase();
-            let level = lfo_bridge.config().segments.value_at(phase, None);
+            let level = lfo_bridge.config().segments.value_at(phase, None, None);
 
             painter.circle_filled(
                 Self::phase_pos(rect, phase, level),
