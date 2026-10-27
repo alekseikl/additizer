@@ -39,6 +39,8 @@ pub enum DataType {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Serialize, Deserialize)]
 pub enum Input {
     Audio,
+    /// Direct control signal. Mod Map reads it on `[0, 1]`.
+    Control,
     AudioMix(u8),
     LinLevel, // 0.0 - 1.0
     LinLevelMix(u8),

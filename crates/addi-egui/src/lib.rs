@@ -33,7 +33,7 @@ mod waveform;
 use grid::GridEvent;
 use modules_ui::{
     AmplifierUI, EnvelopeUI, ExpressionsUi, ExternalParamUI, HarmonicEditorUI, LfoUi, MixerUi,
-    OscillatorUI, OutputUi, ParamsUi, PitchUi, SegmentsEnvelopeUi, SpectralBandSelectUi,
+    ModMapUi, OscillatorUI, OutputUi, ParamsUi, PitchUi, SegmentsEnvelopeUi, SpectralBandSelectUi,
     SpectralBlendUi, SpectralEqUi, SpectralFilterUI, SpectralMixerUi, SpectralNoiseUi, SvfUi,
     WaveShaperUI,
 };
@@ -192,6 +192,7 @@ impl ModuleTypeEditor for ModuleType {
             Self::Envelope => Box::new(EnvelopeUI::new(id)),
             Self::ExternalParam => Box::new(ExternalParamUI::new(id)),
             Self::Lfo => Box::new(LfoUi::new(id)),
+            Self::ModMap => Box::new(ModMapUi::new(id)),
             Self::SegmentsEnvelope => Box::new(SegmentsEnvelopeUi::new(id)),
             Self::Pitch => Box::new(PitchUi::new(id)),
             Self::SpectralBandSelect => Box::new(SpectralBandSelectUi::new(id)),

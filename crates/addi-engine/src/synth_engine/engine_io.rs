@@ -1,7 +1,7 @@
 use crate::synth_engine::{
     Input, InputId, ModuleId, NUM_CHANNELS, Smp, StereoSample, amplifier::AmplifierLinks,
     envelope::EnvelopeLinks, expressions::ExpressionsLinks, external_param::ExternalParamLinks,
-    harmonic_editor::HarmonicEditorLinks, lfo::LfoLinks, mixer::MixerLinks,
+    harmonic_editor::HarmonicEditorLinks, lfo::LfoLinks, mixer::MixerLinks, mod_map::ModMapLinks,
     oscillator::OscillatorLinks, pitch::PitchLinks, segments_envelope::SegmentsEnvelopeLinks,
     spectral_band_select::SpectralBandSelectLinks, spectral_blend::SpectralBlendLinks,
     spectral_eq::SpectralEqLinks, spectral_filter::SpectralFilterLinks,
@@ -102,6 +102,7 @@ pub trait EngineLinks: Send {
     type ExternalParam: ExternalParamLinks<EngineEnd = Self::AudioEnd>;
     type HarmonicEditor: HarmonicEditorLinks<EngineEnd = Self::AudioEnd>;
     type Lfo: LfoLinks<EngineEnd = Self::AudioEnd>;
+    type ModMap: ModMapLinks<EngineEnd = Self::AudioEnd>;
     type SegmentsEnvelope: SegmentsEnvelopeLinks<EngineEnd = Self::AudioEnd>;
     type Mixer: MixerLinks<EngineEnd = Self::AudioEnd>;
     type Oscillator: OscillatorLinks<EngineEnd = Self::AudioEnd>;

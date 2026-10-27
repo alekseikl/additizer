@@ -459,6 +459,16 @@ impl Segments {
 
     /// Write one DSP cycle into `out` at phases `i / out.len()` on `[0, 1)`.
     pub fn render_waveform(&self, out: &mut [Smp]) {
+        self.render_range(out, false);
+    }
+
+    /// Write `out.len()` samples on the closed interval `[0, 1]`.
+    /// Sample `i` is at phase `i / (out.len() - 1)`, so the last sample is phase 1.
+    pub fn render_closed(&self, out: &mut [Smp]) {
+        self.render_range(out, true);
+    }
+
+    fn render_range(&self, out: &mut [Smp], closed: bool) {
         let len = out.len();
 
         if len < 2 {
@@ -468,11 +478,16 @@ impl Segments {
         debug_assert_eq!(self.points[0].x, 0.0);
         debug_assert_eq!(self.points[self.num_points() - 1].x, 1.0);
 
-        let phase_step = (len as Smp).recip();
+        let steps = if closed { len - 1 } else { len };
+        let phase_step = (steps as Smp).recip();
         let mut from = 0;
 
         for pair in self.points.windows(2) {
-            let to = Self::sample_end(pair[1].x, len).min(len);
+            let mut to = Self::sample_end(pair[1].x, steps);
+
+            if !closed {
+                to = to.min(len);
+            }
 
             if from >= to {
                 continue;

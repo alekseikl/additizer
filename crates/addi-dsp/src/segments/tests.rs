@@ -157,6 +157,23 @@ fn legacy_shapes_match_the_old_curves() {
 }
 
 #[test]
+fn render_closed_includes_both_endpoints() {
+    let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let mut samples = [0.0; 5];
+
+    ramp.render_closed(&mut samples);
+
+    assert_eq!(samples, [0.0, 0.25, 0.5, 0.75, 1.0]);
+
+    let end = Segments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false);
+    let mut pair = [0.0; 2];
+
+    end.render_closed(&mut pair);
+
+    assert_eq!(pair, [0.2, 0.8]);
+}
+
+#[test]
 fn render_covers_the_half_open_period() {
     let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     let mut samples = [0.0; 4];

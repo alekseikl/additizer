@@ -681,6 +681,16 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, ControlRouterType, A
     pub fn scalar(&mut self, input: &MixedSlots, param: Smp) -> Smp {
         self.scalar_param_impl(input, param, Some(self.state.offset))
     }
+
+    /// Direct control source, including the one-sample lookahead.
+    pub fn direct(&self, slot: Option<usize>) -> &[Smp] {
+        let ctx = &self.factory.ctx;
+        let end = ctx.params.samples + CONTROL_EXT;
+
+        &ctx.outputs_arena
+            .get_buff(slot, self.target.channel_idx, self.target.voice_idx)
+            .unwrap_or(ctx.outputs_arena.zeroes())[self.state.offset..end]
+    }
 }
 
 impl<'v> VoiceOutput<'v, ControlRouterType> {

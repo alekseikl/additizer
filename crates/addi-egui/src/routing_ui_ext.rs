@@ -37,6 +37,7 @@ impl InputUi for Input {
     fn label(&self) -> String {
         match self {
             Self::Audio => "Audio".to_string(),
+            Self::Control => "Control".to_string(),
             Self::AudioMix(idx) => format!("Audio #{}", idx + 1),
             Self::LinLevel => "Level".to_string(),
             Self::LinLevelMix(idx) => format!("Level #{}", idx + 1),
@@ -77,6 +78,7 @@ impl InputUi for Input {
     fn hue(&self) -> f32 {
         match self {
             Self::Audio => 0.0,
+            Self::Control => 0.25,
             Self::AudioMix(idx) => 0.0 + *idx as f32 * 0.012,
             Self::LinLevel => 0.10,
             Self::LinLevelMix(idx) => 0.10 + *idx as f32 * 0.012,
@@ -176,6 +178,7 @@ impl InputUi for Input {
                     .units(Units::Time)
             }
             Self::Audio
+            | Self::Control
             | Self::AudioMix(_)
             | Self::Spectrum
             | Self::SpectrumTo
@@ -247,6 +250,7 @@ impl InputUi for Input {
                     .units(Units::Time)
             }
             Self::Audio
+            | Self::Control
             | Self::AudioMix(_)
             | Self::Spectrum
             | Self::SpectrumTo

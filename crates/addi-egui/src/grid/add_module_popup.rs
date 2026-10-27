@@ -6,13 +6,14 @@ use egui::{
 
 use addi_engine::ModuleType;
 
-const ADDABLE_MODULES: [ModuleType; 18] = [
+const ADDABLE_MODULES: [ModuleType; 19] = [
     ModuleType::HarmonicEditor,
     ModuleType::SpectralNoise,
     ModuleType::Oscillator,
     ModuleType::Envelope,
     ModuleType::SegmentsEnvelope,
     ModuleType::Lfo,
+    ModuleType::ModMap,
     ModuleType::Pitch,
     ModuleType::SpectralFilter,
     ModuleType::SpectralEq,

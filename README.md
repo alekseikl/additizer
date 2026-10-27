@@ -22,6 +22,7 @@ Every slider in the UI is stereo, and each channel can be adjusted by dragging w
 - `Envelope`: AHDSR envelope generator to control both spectral and audio modules.
 - `Segments Envelope`: Breakpoint envelope. A release point sustains while the key is held, then continues from the current level. A loop point repeats to the end, or up to the release point while the key is held. The length is a number of seconds or note values.
 - `LFO`: Low-frequency oscillator with a drawable breakpoint waveform.
+- `Mod Map`: Maps a direct control signal through a breakpoint curve, scales it by Amount, and can fold the result into `[-1, 1]`. An optional smooth time runs it through a one-stage lowpass.
 - `Mixer`: Mixes multiple audio inputs with per-input level/gain and output volume control.
 - `Waveshaper`: Wave shaping distortion (hard clip or sigmoid) with drive and clipping level.
 - `SVF`: Time-domain state-variable filter (Cytomic / Andrew Simper form): lowpass and highpass at 12/18/24 dB,

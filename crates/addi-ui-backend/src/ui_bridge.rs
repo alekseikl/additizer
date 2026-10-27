@@ -23,7 +23,8 @@ pub use addi_engine::engine_io::{EngineUiEnd, OutputMeter, UiEvent, UiUpdate, Vo
 use modules::{
     amplifier::AmplifierUiBridge, envelope::EnvelopeUiBridge, expressions::ExpressionsUiBridge,
     external_param::ExternalParamUiBridge, harmonic_editor::HarmonicEditorUiBridge,
-    lfo::LfoUiBridge, mixer::MixerUiBridge, oscillator::OscillatorUiBridge, pitch::PitchUiBridge,
+    lfo::LfoUiBridge, mixer::MixerUiBridge, mod_map::ModMapUiBridge,
+    oscillator::OscillatorUiBridge, pitch::PitchUiBridge,
     segments_envelope::SegmentsEnvelopeUiBridge, spectral_band_select::SpectralBandSelectUiBridge,
     spectral_blend::SpectralBlendUiBridge, spectral_eq::SpectralEqUiBridge,
     spectral_filter::SpectralFilterUiBridge, spectral_mixer::SpectralMixerUiBridge,
@@ -47,6 +48,7 @@ pub fn module_default_label(module_type: ModuleType) -> &'static str {
         ModuleType::SpectralNoise => "Spectral Noise",
         ModuleType::ExternalParam => "Ext Param",
         ModuleType::Lfo => "LFO",
+        ModuleType::ModMap => "Mod Map",
         ModuleType::SegmentsEnvelope => "Segments Envelope",
         ModuleType::Pitch => "Pitch",
         ModuleType::WaveShaper => "Waveshaper",
@@ -61,6 +63,7 @@ pub enum ModuleBridge<E: EngineLinks = crate::links::PluginLinks> {
     Envelope(Box<EnvelopeUiBridge<E::Envelope>>),
     Amplifier(Box<AmplifierUiBridge<E::Amplifier>>),
     Lfo(Box<LfoUiBridge<E::Lfo>>),
+    ModMap(Box<ModMapUiBridge<E::ModMap>>),
     SegmentsEnvelope(Box<SegmentsEnvelopeUiBridge<E::SegmentsEnvelope>>),
     Pitch(Box<PitchUiBridge<E::Pitch>>),
     Mixer(Box<MixerUiBridge<E::Mixer>>),
@@ -192,6 +195,7 @@ impl<E: EngineLinks> UiBridge<E> {
                 ModuleBridge::Envelope(Box::new(EnvelopeUiBridge::try_new(m)?))
             }
             ModuleHandle::Lfo(m) => ModuleBridge::Lfo(Box::new(LfoUiBridge::try_new(m)?)),
+            ModuleHandle::ModMap(m) => ModuleBridge::ModMap(Box::new(ModMapUiBridge::try_new(m)?)),
             ModuleHandle::SegmentsEnvelope(m) => {
                 ModuleBridge::SegmentsEnvelope(Box::new(SegmentsEnvelopeUiBridge::try_new(m)?))
             }
