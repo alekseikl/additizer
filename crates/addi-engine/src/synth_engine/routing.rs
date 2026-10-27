@@ -53,7 +53,8 @@ pub enum Input {
     DetuneFocus,
     Glide,
     GlideSlope,
-    PhaseShift,
+    #[serde(alias = "PhaseShift")]
+    Phase,
     PhaseSteal, // [0.0, 1.0]
     FrequencyShift,
     Spectrum,

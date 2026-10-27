@@ -890,7 +890,7 @@ impl<L: OscillatorLinks> SynthModule for Oscillator<L> {
         static INPUTS: &[InputMeta] = &[
             InputMeta::spectral(Input::Spectrum),
             InputMeta::direct_control(Input::Pitch),
-            InputMeta::audio(Input::PhaseShift),
+            InputMeta::audio(Input::Phase),
             InputMeta::audio(Input::FrequencyShift),
             InputMeta::control(Input::Detune),
             InputMeta::control(Input::DetuneFocus),
@@ -944,7 +944,7 @@ impl<L: OscillatorLinks> SynthModule for Oscillator<L> {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
                 UiEvent::InputParam { input, value } => match input {
-                    Input::PhaseShift => self.set_phase_shift(value),
+                    Input::Phase => self.set_phase_shift(value),
                     Input::FrequencyShift => self.set_frequency_shift(value),
                     Input::Detune => self.set_detune(value),
                     Input::DetuneFocus => self.set_detune_focus(value),

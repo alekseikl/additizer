@@ -91,7 +91,7 @@ impl Default for Inputs {
     fn default() -> Self {
         Self {
             frequency: MixedSlots::new(Input::Rate),
-            phase_shift: MixedSlots::new(Input::PhaseShift),
+            phase_shift: MixedSlots::new(Input::Phase),
         }
     }
 }
@@ -107,7 +107,7 @@ impl Inputs {
 
             match input.input_type {
                 Input::Rate => result.frequency = input.clone(),
-                Input::PhaseShift => result.phase_shift = input.clone(),
+                Input::Phase => result.phase_shift = input.clone(),
                 _ => (),
             }
         }
@@ -118,7 +118,7 @@ impl Inputs {
     fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
         match input_type {
             Input::Rate => self.frequency.update_amount(src_slot, amount),
-            Input::PhaseShift => self.phase_shift.update_amount(src_slot, amount),
+            Input::Phase => self.phase_shift.update_amount(src_slot, amount),
             _ => (),
         }
     }
@@ -323,7 +323,7 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
     fn inputs(&self) -> &'static [InputMeta] {
         static INPUTS: &[InputMeta] = &[
             InputMeta::control(Input::Rate),
-            InputMeta::control(Input::PhaseShift),
+            InputMeta::control(Input::Phase),
         ];
 
         INPUTS
@@ -377,7 +377,7 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
             match event {
                 UiEvent::InputParam { input, value } => match input {
                     Input::Rate => self.set_frequency(value),
-                    Input::PhaseShift => self.set_phase_shift(value),
+                    Input::Phase => self.set_phase_shift(value),
                     _ => (),
                 },
                 UiEvent::SegmentsUpdated => {

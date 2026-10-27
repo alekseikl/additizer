@@ -534,14 +534,14 @@ impl OscillatorUI {
                 ui.label("Phase");
                 if ui
                     .add(StereoInput::new(
-                        Input::PhaseShift,
+                        Input::Phase,
                         module_id,
                         &mut config.phase_shift,
                         bridge,
                     ))
                     .changed()
                 {
-                    osc_bridge.set_param(Input::PhaseShift, config.phase_shift);
+                    osc_bridge.set_param(Input::Phase, config.phase_shift);
                 }
 
                 ui.label("Frequency");

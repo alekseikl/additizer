@@ -1064,10 +1064,10 @@ fn add_mixed_link_allows_control_into_audio_input() {
     engine
         .add_mixed_link(
             lfo_id,
-            InputId::new(Input::PhaseShift, OSCILLATOR_ID),
+            InputId::new(Input::Phase, OSCILLATOR_ID),
             StereoSample::ONE,
         )
-        .expect("control may drive mixed audio PhaseShift");
+        .expect("control may drive mixed audio Phase");
 }
 
 #[test]

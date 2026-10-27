@@ -35,7 +35,7 @@ impl<L: LfoLinks> LfoUiBridge<L> {
 
         match input {
             Input::Rate => self.config.frequency = value,
-            Input::PhaseShift => self.config.phase_shift = value,
+            Input::Phase => self.config.phase_shift = value,
             _ => (),
         }
     }

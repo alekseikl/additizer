@@ -29,7 +29,7 @@ impl LfoUi {
 
         let phase = if bridge.has_active_voices() {
             let mut phase_shift = lfo_bridge.config().phase_shift;
-            bridge.apply_modulation(module_id, Input::PhaseShift, &mut phase_shift);
+            bridge.apply_modulation(module_id, Input::Phase, &mut phase_shift);
             let phase = lfo_bridge.get_phase();
             Some(StereoSample::new(
                 (phase[0] + phase_shift[0]).rem_euclid(1.0),
@@ -82,17 +82,17 @@ impl LfoUi {
                     });
                 ui.end_row();
 
-                ui.label("Phase shift");
+                ui.label("Phase");
                 if ui
                     .add(StereoInput::new(
-                        Input::PhaseShift,
+                        Input::Phase,
                         module_id,
                         &mut phase_shift,
                         bridge,
                     ))
                     .changed()
                 {
-                    lfo_bridge.set_param(Input::PhaseShift, phase_shift);
+                    lfo_bridge.set_param(Input::Phase, phase_shift);
                 }
 
                 ui.label("Steal phase");

@@ -51,7 +51,7 @@ impl InputUi for Input {
             Self::DetuneFocus => "Detune Focus".to_string(),
             Self::Glide => "Glide".to_string(),
             Self::GlideSlope => "Glide Slope".to_string(),
-            Self::PhaseShift => "Phase Shift".to_string(),
+            Self::Phase => "Phase".to_string(),
             Self::PhaseSteal => "Phase Steal".to_string(),
             Self::FrequencyShift => "Frequency Shift".to_string(),
             Self::Spectrum => "Spectrum".to_string(),
@@ -92,7 +92,7 @@ impl InputUi for Input {
             Self::DetuneFocus => 0.76,
             Self::Glide => 0.67,
             Self::GlideSlope => 0.64,
-            Self::PhaseShift => 0.79,
+            Self::Phase => 0.79,
             Self::PhaseSteal => 0.81,
             Self::FrequencyShift => 0.68,
             Self::Spectrum => 0.86,
@@ -157,7 +157,7 @@ impl InputUi for Input {
                 .skew(2.4)
                 .units(Units::Time),
             Self::GlideSlope => bipolar(amount),
-            Self::PhaseShift => bipolar(amount),
+            Self::Phase => bipolar(amount),
             Self::PhaseSteal => bipolar(amount),
             Self::FrequencyShift => Slider::stereo(amount, 0.0..=880.0, Some(-880.0))
                 .default(0.0)
@@ -225,7 +225,7 @@ impl InputUi for Input {
                 .skew(2.4)
                 .units(Units::Time),
             Self::GlideSlope => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
-            Self::PhaseShift => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
+            Self::Phase => Slider::stereo(value, 0.0..=1.0, Some(-1.0)).default(0.0),
             Self::PhaseSteal => Slider::stereo(value, 0.0..=1.0, None).default(0.0),
             Self::FrequencyShift => Slider::stereo(value, 0.0..=1_000.0, Some(-1_000.0))
                 .default(0.0)

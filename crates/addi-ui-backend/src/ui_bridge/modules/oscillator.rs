@@ -32,7 +32,7 @@ impl<L: OscillatorLinks> OscillatorUiBridge<L> {
     pub fn set_param(&mut self, input: Input, value: StereoSample) {
         if self.ui_end.set_param(input, value) {
             match input {
-                Input::PhaseShift => self.config.phase_shift = value,
+                Input::Phase => self.config.phase_shift = value,
                 Input::FrequencyShift => self.config.frequency_shift = value,
                 Input::Detune => self.config.detune = value,
                 Input::DetuneFocus => self.config.detune_focus = value,

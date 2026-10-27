@@ -20,7 +20,7 @@ impl Default for Inputs {
         Self {
             spectrum: None,
             pitch: None,
-            phase_shift: MixedSlots::new(Input::PhaseShift),
+            phase_shift: MixedSlots::new(Input::Phase),
             freq_shift: MixedSlots::new(Input::FrequencyShift),
             detune: MixedSlots::new(Input::Detune),
             detune_focus: MixedSlots::new(Input::DetuneFocus),
@@ -48,7 +48,7 @@ impl Inputs {
                     }
                 }
                 InputSlots::Mixed(input) => match input.input_type {
-                    Input::PhaseShift => result.phase_shift = input.clone(),
+                    Input::Phase => result.phase_shift = input.clone(),
                     Input::FrequencyShift => result.freq_shift = input.clone(),
                     Input::Detune => result.detune = input.clone(),
                     Input::DetuneFocus => result.detune_focus = input.clone(),
@@ -65,7 +65,7 @@ impl Inputs {
 
     pub fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
         match input_type {
-            Input::PhaseShift => self.phase_shift.update_amount(src_slot, amount),
+            Input::Phase => self.phase_shift.update_amount(src_slot, amount),
             Input::FrequencyShift => self.freq_shift.update_amount(src_slot, amount),
             Input::Detune => self.detune.update_amount(src_slot, amount),
             Input::DetuneFocus => self.detune_focus.update_amount(src_slot, amount),
