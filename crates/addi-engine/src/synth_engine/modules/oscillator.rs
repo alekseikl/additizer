@@ -22,7 +22,7 @@ use crate::{
         synth_module::SynthModule,
         types::{ComplexSample, Smp, WideSmp},
         voices::{LEFT_CHANNEL, MAX_VOICES, NUM_CHANNELS, RIGHT_CHANNEL},
-        zip_map_wide,
+        zip_map,
     },
 };
 
@@ -794,7 +794,7 @@ impl<L: OscillatorLinks> Oscillator<L> {
         let freq_phase_mult = Phase::freq_phase_mult(router.sample_rate());
         let mult = WideSmp::splat(freq_phase_mult);
 
-        zip_map_wide(
+        zip_map(
             router.direct(inputs.pitch),
             &self.buffers.frequency_shift[..samples],
             &mut self.buffers.phase_inc[..samples],
@@ -874,9 +874,10 @@ impl<L: OscillatorLinks> Oscillator<L> {
             .for_voices(|rf, target, outputs| {
                 self.process_voice(target, outputs, rf);
             })
-            .for_channels(|rf, channel_idx| {
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
+            .advance(|rf| {
+                for channel in &mut self.channel_params {
+                    channel.advance_smoothers(&rf.params().smooth, rf.params().samples);
+                }
             });
     }
 }

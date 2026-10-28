@@ -18,7 +18,7 @@ use addi_dsp::filters::{
 use crate::{
     synth_engine::{
         C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, SIMD_LANES, db_to_gain_fast, db_to_gain_fast_wide,
-        map_wide_in_place,
+        map_in_place,
     },
     synth_engine::{
         SmoothedSampleParams, Smp, StereoSample, WideSmp,
@@ -270,7 +270,7 @@ impl<L: SvfLinks> Svf<L> {
             const MIN_DRIVE_X4: WideSmp = WideSmp::splat(MIN_DRIVE);
             const MAX_DRIVE_X4: WideSmp = WideSmp::splat(MAX_DRIVE);
 
-            map_wide_in_place(drive, |drive| {
+            map_in_place(drive, |drive| {
                 db_to_gain_fast_wide(drive.fast_max(MIN_DRIVE_X4).fast_min(MAX_DRIVE_X4))
             });
         }
@@ -321,9 +321,10 @@ impl<L: SvfLinks> Svf<L> {
     pub fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
         ctx.audio(self.id, self.output_slot)
             .for_lanes(self, Self::prepare_voice, Self::process_block)
-            .for_channels(|rf, channel_idx| {
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
+            .advance(|rf| {
+                for channel in &mut self.channel_params {
+                    channel.advance_smoothers(&rf.params().smooth, rf.params().samples);
+                }
             });
     }
 }

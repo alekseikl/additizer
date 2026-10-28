@@ -6,7 +6,7 @@ use crate::{
     SIMD_LANES, Smp, WideSmp,
     fast_math::{fast_exp2_wide, fast_sin_pi_wide},
     power_scale,
-    simd_utils::fill_wide,
+    simd_utils::fill,
     utils::sanitize,
 };
 
@@ -119,6 +119,20 @@ impl Segments {
 
     pub fn points(&self) -> &[SegPoint] {
         &self.points
+    }
+
+    /// `(0, 0)` to `(1, 1)`, two points, unsmoothed, with power `0`.
+    pub fn is_unity(&self) -> bool {
+        let [start, end] = self.points.as_slice() else {
+            return false;
+        };
+
+        start.x == 0.0
+            && start.y == 0.0
+            && end.x == 1.0
+            && end.y == 1.0
+            && start.power == 0.0
+            && !start.smooth
     }
 
     pub fn power(&self, index: usize) -> Smp {
@@ -679,7 +693,7 @@ impl Curve<'_> {
 
     #[inline(always)]
     fn fill<const SMOOTH: bool, const CURVED: bool>(&mut self) {
-        fill_wide(self.out, || {
+        fill(self.out, || {
             let progress = if SMOOTH {
                 fast_sin_pi_wide(self.t - WideSmp::HALF).mul_add(WideSmp::HALF, WideSmp::HALF)
             } else {

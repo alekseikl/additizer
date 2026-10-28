@@ -68,7 +68,7 @@ fn process_params<'a>(
         sample_rate: SAMPLE_RATE,
         tempo: DEFAULT_TEMPO,
         needs_update_ui: false,
-        smooth_params,
+        smooth: smooth_params,
         active_voices: voices,
         last_voice_idx: Some(0),
     }

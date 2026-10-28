@@ -1,6 +1,5 @@
 use std::array;
 
-use itertools::izip;
 use wide::f32x4;
 
 mod config;
@@ -13,19 +12,25 @@ mod tests;
 pub use config::{MAX_SMOOTH, ModMapConfig};
 pub use link::{ModMapAudioEnd, ModMapLinks, ModMapUiEnd, UiEvent};
 
-use addi_dsp::{segments::Segments, utils::sanitize};
+use addi_dsp::{
+    filters::ctrl_filter::{CtrlFilter, CtrlFilterCoeffs},
+    segments::Segments,
+    utils::sanitize,
+};
 
 use crate::synth_engine::{
-    Input, ModuleId, SmoothedSampleParams, Smp, StereoSample,
+    Input, ModuleId, SmoothedSampleParams, Smp, StereoSample, WideSmp,
     buffer::{Buffer, VoicesLayout, new_voices_layout, zero_buffer},
     fast_math::{CATMULL_TAPS, catmull_rom},
+    map_in_place,
     routing::{
         ControlRouterType, DataType, InputMeta, InputSlots, MixedSlots, ProcessContext,
         RouterFactory, SamplesOutput, VoiceTarget,
     },
     smooth::SmoothedSample,
     synth_module::SynthModule,
-    voices::NUM_CHANNELS,
+    voices::{NUM_CHANNELS, RIGHT_CHANNEL},
+    zip_map_in_place,
 };
 
 /// Closed-range transfer table. Sample `i` is the curve at `i / (TABLE_SIZE - 1)`.
@@ -36,12 +41,6 @@ const TABLE_BUFFER_SIZE: usize = TABLE_SIZE + TABLE_PAD_LEFT + TABLE_PAD_RIGHT;
 
 const _: () = assert!(TABLE_PAD_LEFT + TABLE_PAD_RIGHT == CATMULL_TAPS - 1);
 const _: () = assert!(TABLE_BUFFER_SIZE == TABLE_SIZE - 1 + CATMULL_TAPS);
-
-/// Q of the smoothing stage. `k = 1/Q` is 2, which is the SVF's no-resonance setting.
-const SMOOTH_Q: Smp = 0.5;
-const SMOOTH_K: Smp = 1.0 / SMOOTH_Q;
-/// Largest `f / sample_rate` fed to `tan`, matching the time-domain SVF.
-const MAX_FREQ_RATIO: Smp = 0.499;
 
 struct Params {
     bipolar: bool,
@@ -131,57 +130,6 @@ impl Buffers {
     }
 }
 
-/// One Cytomic lowpass stage. Steady state for a constant `value` is `ic2eq = value`.
-#[derive(Clone, Copy)]
-struct SvfStage {
-    ic1eq: Smp,
-    ic2eq: Smp,
-}
-
-impl Default for SvfStage {
-    fn default() -> Self {
-        Self {
-            ic1eq: 0.0,
-            ic2eq: 0.0,
-        }
-    }
-}
-
-impl SvfStage {
-    fn reset(&mut self, value: Smp) {
-        self.ic1eq = 0.0;
-        self.ic2eq = value;
-    }
-
-    #[inline(always)]
-    fn tick(&mut self, g: Smp, input: Smp) -> Smp {
-        let a1 = 1.0 / g.mul_add(g + SMOOTH_K, 1.0);
-        let v3 = input - self.ic2eq;
-        let v1 = a1 * g.mul_add(v3, self.ic1eq);
-        let v2 = g.mul_add(v1, self.ic2eq);
-
-        self.ic1eq = v1.mul_add(2.0, -self.ic1eq);
-        self.ic2eq = v2.mul_add(2.0, -self.ic2eq);
-        v2
-    }
-}
-
-/// `g = tan(π f / sample_rate)` for a cutoff whose time constant is `time` seconds.
-fn smoothing_g(time: Smp, sample_rate: Smp) -> Smp {
-    let fc = 1.0 / (std::f32::consts::TAU * time);
-    let ratio = (fc / sample_rate).min(MAX_FREQ_RATIO);
-
-    (std::f32::consts::PI * ratio).tan()
-}
-
-/// Curve lookup, then amount, then the optional fold into `[-1, 1]`.
-#[inline(always)]
-pub fn map_control(mapped: Smp, amount: Smp, bipolar: bool) -> Smp {
-    let y = mapped * amount.clamp(0.0, 1.0);
-
-    if bipolar { y.mul_add(2.0, -1.0) } else { y }
-}
-
 /// Catmull–Rom read of a closed table. End pads repeat the endpoint samples.
 #[inline(always)]
 fn read_table(table: &[Smp], x: Smp) -> Smp {
@@ -199,10 +147,13 @@ fn read_table(table: &[Smp], x: Smp) -> Smp {
 pub struct ModMap<L: ModMapLinks = stub::Links> {
     id: ModuleId,
     params: Params,
+    remap: bool,
     channel_params: [ChannelParams; NUM_CHANNELS],
     table: [Smp; TABLE_BUFFER_SIZE],
     buffers: Buffers,
-    stages: VoicesLayout<SvfStage>,
+    smoothers: VoicesLayout<CtrlFilter>,
+    coeffs: CtrlFilterCoeffs,
+    probe: StereoSample,
     audio_end: L::AudioEnd,
     ui_end: Option<L::UiEnd>,
     inputs: Inputs,
@@ -233,12 +184,18 @@ impl<L: ModMapLinks> ModMap<L> {
         let mut module = Self {
             id: config.id,
             params: Params::from_config(&config),
+            remap: false,
             channel_params: array::from_fn(|channel_idx| {
                 ChannelParams::from_config(&config, channel_idx)
             }),
             table: [0.0; TABLE_BUFFER_SIZE],
             buffers: Buffers::new(buffer_size),
-            stages: new_voices_layout(),
+            smoothers: new_voices_layout(),
+            coeffs: CtrlFilterCoeffs {
+                g: 0.0,
+                min_time: 0.0,
+            },
+            probe: StereoSample::ZERO,
             audio_end,
             ui_end,
             inputs: Inputs::default(),
@@ -270,6 +227,13 @@ impl<L: ModMapLinks> ModMap<L> {
     }
 
     fn bake_table(&mut self) {
+        if self.params.segments.is_unity() {
+            self.remap = false;
+            return;
+        }
+
+        self.remap = true;
+
         let start = TABLE_PAD_LEFT;
         let end = TABLE_PAD_LEFT + TABLE_SIZE;
 
@@ -292,55 +256,77 @@ impl<L: ModMapLinks> ModMap<L> {
         rf: &mut RouterFactory<ControlRouterType, L::EngineEnd>,
     ) {
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
-        let channel = &mut self.channel_params[target.channel_idx];
+        let output = voice_output.output();
 
-        router.param(
-            &self.inputs.amount,
-            &channel.amount,
-            &mut self.buffers.amount,
-        );
+        output.copy_from_slice(router.direct(self.inputs.control));
 
-        let smooth = self.params.smooth;
-        let g = if smooth > 0.0 {
-            smoothing_g(smooth, router.sample_rate())
+        if router.need_update_ui() {
+            self.probe[target.channel_idx] = output.last().copied().unwrap_or_default();
+
+            if target.channel_idx == RIGHT_CHANNEL {
+                self.audio_end.update_probe(self.probe);
+            }
+        }
+
+        if self.remap {
+            for sample in output.iter_mut() {
+                *sample = read_table(&self.table, *sample);
+            }
+        }
+
+        let amount = &self.channel_params[target.channel_idx].amount;
+
+        if let Some(amount) = router.param_stationary(&self.inputs.amount, amount) {
+            let amount = amount.clamp(0.0, 1.0);
+
+            if amount < 1.0 {
+                let amount = WideSmp::splat(amount);
+
+                map_in_place(output, |sample| sample * amount);
+            }
         } else {
-            0.0
-        };
-        let bipolar = self.params.bipolar;
-        let triggered = target.triggered.is_some();
-        let stage = self.stages.at_mut(target.channel_idx, target.voice_idx);
-        let table = self.table.as_slice();
-        let mut snap = triggered;
+            router.param(&self.inputs.amount, amount, &mut self.buffers.amount);
 
-        for (out, input, amount) in izip!(
-            voice_output.output().iter_mut(),
-            router.direct(self.inputs.control),
-            &self.buffers.amount,
-        ) {
-            let y = map_control(read_table(table, *input), *amount, bipolar);
+            let n = output.len();
 
-            if smooth > 0.0 {
-                if snap {
-                    stage.reset(y);
-                    snap = false;
-                }
+            zip_map_in_place(output, &self.buffers.amount[..n], |sample, amount| {
+                sample * amount.clamp(WideSmp::ZERO, WideSmp::ONE)
+            });
+        }
 
-                *out = stage.tick(g, y);
-            } else {
-                stage.reset(y);
-                *out = y;
+        if self.params.bipolar {
+            let two = WideSmp::splat(2.0);
+            let bias = WideSmp::splat(-1.0);
+
+            map_in_place(output, |sample| sample.mul_add(two, bias));
+        }
+
+        if self.params.smooth >= self.coeffs.min_time {
+            let g = self.coeffs.g;
+            let smoother = self.smoothers.at_mut(target.channel_idx, target.voice_idx);
+
+            if router.triggered() {
+                smoother.reset(output.first().copied().unwrap_or_default());
+            }
+
+            for sample in output.iter_mut() {
+                *sample = smoother.tick(g, *sample);
             }
         }
     }
 
     pub(crate) fn process(&mut self, ctx: &mut ProcessContext<L::EngineEnd>) {
         ctx.control(self.id, self.output_slot)
+            .for_module(|rf| {
+                self.coeffs = CtrlFilter::coeffs(self.params.smooth, rf.params().sample_rate);
+            })
             .for_voices(|rf, target, outputs| {
                 self.process_voice(target, outputs, rf);
             })
-            .for_channels(|rf, channel_idx| {
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
+            .advance(|rf| {
+                for channel in &mut self.channel_params {
+                    channel.advance_smoothers(&rf.params().smooth, rf.params().samples);
+                }
             });
     }
 }

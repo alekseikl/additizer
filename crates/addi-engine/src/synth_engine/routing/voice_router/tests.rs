@@ -163,7 +163,7 @@ impl Rig {
                 sample_rate: SAMPLE_RATE,
                 tempo: DEFAULT_TEMPO,
                 needs_update_ui: self.needs_update_ui,
-                smooth_params: SmoothedSampleParams::new(SAMPLE_RATE),
+                smooth: SmoothedSampleParams::new(SAMPLE_RATE),
                 active_voices: &self.voices,
                 last_voice_idx: self.last_voice_idx,
             },
@@ -355,18 +355,65 @@ fn params_expose_the_process_context() {
 }
 
 #[test]
-fn for_channels_runs_both_channels_outside_the_trigger_stage() {
-    let mut rig = Rig::new(vec![]);
-    let slot = rig.alloc_audio();
-    let mut seen = Vec::new();
+fn for_module_runs_once_before_voices() {
+    let mut rig = Rig::new(steady_voices());
+    let slot = rig.alloc_control();
+    let mut order = Vec::new();
     let mut ctx = rig.context();
 
-    ctx.audio(MODULE_ID, slot).for_channels(|factory, channel| {
+    ctx.control(MODULE_ID, slot)
+        .for_module(|factory| {
+            assert_eq!(factory.params().sample_rate, SAMPLE_RATE);
+            order.push("module");
+        })
+        .for_voices(|_, _, _| order.push("voice"));
+
+    assert_eq!(order.iter().filter(|step| **step == "module").count(), 1);
+    assert_eq!(order.first().copied(), Some("module"));
+    assert!(order.len() > 1);
+}
+
+#[test]
+fn for_module_runs_on_the_trigger_pass_and_skips_the_following_one() {
+    let mut rig = Rig::new(mixed_voices());
+    let slot = rig.alloc_control();
+
+    rig.trigger_stage = true;
+    let mut trigger_calls = 0;
+    {
+        let mut ctx = rig.context();
+        ctx.control(MODULE_ID, slot)
+            .for_module(|_| trigger_calls += 1);
+    }
+
+    rig.trigger_stage = false;
+    let mut main_calls = 0;
+    let mut voices = 0;
+    {
+        let mut ctx = rig.context();
+        ctx.control(MODULE_ID, slot)
+            .for_module(|_| main_calls += 1)
+            .for_voices(|_, _, _| voices += 1);
+    }
+
+    assert_eq!(trigger_calls, 1);
+    assert_eq!(main_calls, 0);
+    assert!(voices > 0);
+}
+
+#[test]
+fn advance_runs_once_outside_the_trigger_stage() {
+    let mut rig = Rig::new(vec![]);
+    let slot = rig.alloc_audio();
+    let mut calls = 0;
+    let mut ctx = rig.context();
+
+    ctx.audio(MODULE_ID, slot).advance(|factory| {
         assert_eq!(factory.params().samples, SAMPLES);
-        seen.push(channel);
+        calls += 1;
     });
 
-    assert_eq!(seen, [0, 1]);
+    assert_eq!(calls, 1);
 }
 
 #[test]
@@ -378,7 +425,7 @@ fn iteration_skips_audio_work_during_the_trigger_stage() {
 
     let mut voices = 0;
     let mut lanes = 0;
-    let mut channels = 0;
+    let mut advances = 0;
     let mut ctx = rig.context();
     let mut factory = ctx.audio(MODULE_ID, slot);
 
@@ -388,9 +435,9 @@ fn iteration_skips_audio_work_during_the_trigger_stage() {
         |lanes, _, _, _| *lanes += 1,
         |lanes, _, _, _| *lanes += 1,
     );
-    factory.for_channels(|_, _| channels += 1);
+    factory.advance(|_| advances += 1);
 
-    assert_eq!((voices, lanes, channels), (0, 0, 0));
+    assert_eq!((voices, lanes, advances), (0, 0, 0));
 }
 
 #[test]
@@ -444,7 +491,7 @@ fn audio_for_voices_with_no_voices_restores_the_slot() {
     let mut ctx = rig.context();
     ctx.audio(MODULE_ID, slot)
         .for_voices(|_, _, _| visits += 1)
-        .for_channels(|_, _| {});
+        .advance(|_| {});
 
     assert_eq!(visits, 0);
     assert_eq!(rig.arena.samples[slot].at(0, 0).buffer()[0], 2.0);

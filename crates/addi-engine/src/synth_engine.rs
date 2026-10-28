@@ -56,9 +56,9 @@ pub use voices_handler::{Note, PlayingVoice};
 
 pub use addi_dsp::{
     C4_PITCH, MAX_CUTOFF, MIN_CUTOFF, SIMD_LANES, db_to_gain, db_to_gain_fast,
-    db_to_gain_fast_wide, fill_wide, freq_to_c4_pitch, from_ms, from_st, gain_to_db,
-    gain_to_db_fast, map_wide, map_wide_in_place, note_to_pitch, pan_gain, pitch_to_freq,
-    pitch_to_freq_wide, power_scale, zip_map_wide,
+    db_to_gain_fast_wide, fill, freq_to_c4_pitch, from_ms, from_st, gain_to_db, gain_to_db_fast,
+    map, map_in_place, note_to_pitch, pan_gain, pitch_to_freq, pitch_to_freq_wide, power_scale,
+    zip_map, zip_map_in_place,
 };
 
 pub use addi_dsp::types;
@@ -719,7 +719,6 @@ impl<E: EngineLinks> SynthEngine<E> {
             .for_each(|m| m.process_ui_events());
     }
 
-    /// `tempo` is beats per minute. A beat is a quarter note.
     pub fn process(
         &mut self,
         samples: usize,
@@ -774,7 +773,7 @@ impl<E: EngineLinks> SynthEngine<E> {
 
         let samples = samples * self.oversampling;
         let sample_rate = self.sample_rate();
-        let smooth_params = SmoothedSampleParams::new(sample_rate);
+        let smooth = SmoothedSampleParams::new(sample_rate);
 
         let mut ctx = ProcessContext {
             outputs_arena: &mut self.outputs_arena,
@@ -785,7 +784,7 @@ impl<E: EngineLinks> SynthEngine<E> {
                 samples,
                 sample_rate,
                 tempo,
-                smooth_params,
+                smooth,
                 needs_update_ui: update_ui,
                 active_voices: &triggered_voices,
                 last_voice_idx,

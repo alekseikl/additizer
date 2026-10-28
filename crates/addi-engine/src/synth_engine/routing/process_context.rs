@@ -20,7 +20,7 @@ pub struct ProcessParams<'a> {
     /// Beats per minute. A beat is a quarter note.
     pub tempo: Smp,
     pub needs_update_ui: bool,
-    pub smooth_params: SmoothedSampleParams,
+    pub smooth: SmoothedSampleParams,
     pub active_voices: &'a [PlayingVoice],
     pub last_voice_idx: Option<usize>,
 }

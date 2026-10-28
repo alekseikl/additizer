@@ -20,6 +20,10 @@ impl<L: ModMapLinks> ModMapUiBridge<L> {
         &self.config
     }
 
+    pub fn probe(&mut self) -> StereoSample {
+        self.ui_end.probe()
+    }
+
     pub fn segments_mut(&mut self) -> &mut Segments {
         &mut self.config.segments
     }

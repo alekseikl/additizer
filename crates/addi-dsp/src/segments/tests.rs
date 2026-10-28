@@ -77,6 +77,25 @@ fn assert_points_eq(actual: &[SegPoint], expected: &[SegPoint]) {
 }
 
 #[test]
+fn unity_is_two_unsmoothed_endpoints() {
+    let unity = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    assert!(unity.is_unity());
+
+    assert!(!Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], true).is_unity());
+    assert!(!Segments::from_points(&[(0.0, 0.0), (0.4, 0.4), (1.0, 1.0)], false).is_unity());
+    assert!(!Segments::from_points(&[(0.0, 0.0), (1.0, 0.5)], false).is_unity());
+
+    let mut bent = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    bent.set_power(0, 2.0);
+    assert!(!bent.is_unity());
+
+    let mut end = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    end.set_power(1, 1.0);
+    end.set_smooth(1, true);
+    assert!(end.is_unity());
+}
+
+#[test]
 fn serde_roundtrip() {
     let mut segments = Segments::default();
     segments.set_power(0, 4.0);

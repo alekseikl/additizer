@@ -211,10 +211,10 @@ impl Output {
                     );
                 }
 
-                clipped[channel_idx] = if gain.check_needs_smoothing(&rf.params().smooth_params) {
+                clipped[channel_idx] = if gain.check_needs_smoothing(&rf.params().smooth) {
                     Self::apply_volume(
                         output.iter_mut(),
-                        gain.smoothed_iter(&rf.params().smooth_params),
+                        gain.smoothed_iter(&rf.params().smooth),
                         samples,
                     )
                 } else {
@@ -226,7 +226,7 @@ impl Output {
         // Advance gain parameter smoother
         self.gain
             .iter_mut()
-            .for_each(|gain| gain.advance(&rf.params().smooth_params, samples));
+            .for_each(|gain| gain.advance(&rf.params().smooth, samples));
 
         if ctx.params.needs_update_ui {
             let levels = self.out_volume_ballistics.process(

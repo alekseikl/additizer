@@ -1,25 +1,68 @@
 use addi_dsp::segments::Segments;
 
 use super::stub::Links;
-use super::{ModMap, ModMapConfig, SMOOTH_K, SvfStage, map_control, read_table, smoothing_g};
+use super::{ModMap, ModMapConfig, read_table};
 
 type TestMap = ModMap<Links>;
 
 #[test]
-fn identity_table_matches_the_input() {
+fn straight_ramp_skips_the_map_table() {
     let map = TestMap::new(1, 16);
 
-    for x in [0.0, 0.25, 0.5, 0.75, 1.0] {
-        let y = read_table(&map.table, x);
+    assert!(!map.remap);
+    assert!(map.table.iter().all(|sample| *sample == 0.0));
+}
 
-        assert!((y - x).abs() < 1e-5, "{x} -> {y}");
-    }
+#[test]
+fn extra_diagonal_points_render_a_table() {
+    let mut map = TestMap::new(1, 16);
+
+    map.set_segments(Segments::from_points(
+        &[(0.0, 0.0), (0.4, 0.4), (1.0, 1.0)],
+        false,
+    ));
+
+    assert!(map.remap);
+    assert!(map.table.iter().any(|sample| *sample != 0.0));
+}
+
+#[test]
+fn eased_or_bent_ramps_render_a_table() {
+    let mut eased = TestMap::new(1, 16);
+    eased.set_segments(Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], true));
+
+    assert!(eased.remap);
+    assert!(eased.table.iter().any(|sample| *sample != 0.0));
+
+    let mut bent = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    bent.set_power(0, 2.0);
+
+    let mut map = TestMap::new(1, 16);
+    map.set_segments(bent);
+
+    assert!(map.remap);
+}
+
+#[test]
+fn returning_to_a_straight_ramp_stops_mapping() {
+    let config = ModMapConfig {
+        segments: Segments::from_points(&[(0.0, 0.0), (1.0, 0.25)], false),
+        ..ModMapConfig::default()
+    };
+
+    let mut map = TestMap::from_config(&config, 16);
+    assert!(map.remap);
+
+    map.set_segments(Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
+    assert!(!map.remap);
 }
 
 #[test]
 fn curved_table_follows_the_segments() {
-    let mut config = ModMapConfig::default();
-    config.segments = Segments::from_points(&[(0.0, 0.0), (0.3, 0.8), (1.0, 0.2)], true);
+    let mut config = ModMapConfig {
+        segments: Segments::from_points(&[(0.0, 0.0), (0.3, 0.8), (1.0, 0.2)], true),
+        ..ModMapConfig::default()
+    };
     config.segments.set_power(0, 2.0);
 
     let map = TestMap::from_config(&config, 32);
@@ -38,23 +81,20 @@ fn curved_table_follows_the_segments() {
 
 #[test]
 fn values_outside_the_unit_interval_clamp_to_the_ends() {
-    let map = TestMap::new(1, 16);
+    let config = ModMapConfig {
+        segments: Segments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false),
+        ..ModMapConfig::default()
+    };
+
+    let map = TestMap::from_config(&config, 16);
     let at_start = read_table(&map.table, 0.0);
     let at_end = read_table(&map.table, 1.0);
 
+    assert!((at_start - 0.2).abs() < 1e-4);
+    assert!((at_end - 0.8).abs() < 1e-4);
+
     assert!((read_table(&map.table, -2.0) - at_start).abs() < 1e-6);
     assert!((read_table(&map.table, 3.0) - at_end).abs() < 1e-6);
-}
-
-#[test]
-fn amount_scales_before_the_bipolar_fold() {
-    assert!((map_control(0.5, 1.0, false) - 0.5).abs() < 1e-6);
-    assert!((map_control(0.5, 0.5, false) - 0.25).abs() < 1e-6);
-    assert!((map_control(0.0, 1.0, true) - -1.0).abs() < 1e-6);
-    assert!((map_control(1.0, 1.0, true) - 1.0).abs() < 1e-6);
-    assert!(map_control(0.5, 1.0, true).abs() < 1e-6);
-    assert!((map_control(1.0, 0.0, true) - -1.0).abs() < 1e-6);
-    assert!((map_control(1.0, 1.5, false) - 1.0).abs() < 1e-6);
 }
 
 #[test]
@@ -67,34 +107,4 @@ fn missing_config_fields_default_to_a_pass_through() {
     assert_eq!(config.smooth, 0.0);
     assert!((config.segments.value_at(0.0, None, None)).abs() < 1e-6);
     assert!((config.segments.value_at(1.0, None, None) - 1.0).abs() < 1e-6);
-}
-
-#[test]
-fn smooth_stage_approaches_a_step_without_overshoot() {
-    let mut stage = SvfStage::default();
-    let g = smoothing_g(0.01, 48_000.0);
-
-    assert!((SMOOTH_K - 2.0).abs() < 1e-6);
-
-    stage.reset(0.0);
-
-    let mut prev = 0.0;
-
-    for _ in 0..4_000 {
-        let y = stage.tick(g, 1.0);
-
-        assert!(y + 1e-4 >= prev, "{y} after {prev}");
-        assert!(y <= 1.0 + 1e-4, "{y}");
-        prev = y;
-    }
-
-    assert!(prev > 0.5, "{prev}");
-}
-
-#[test]
-fn shorter_smooth_time_raises_the_cutoff() {
-    let slow = smoothing_g(0.05, 48_000.0);
-    let fast = smoothing_g(0.001, 48_000.0);
-
-    assert!(fast > slow);
 }

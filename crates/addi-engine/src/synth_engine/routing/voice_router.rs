@@ -126,11 +126,23 @@ impl<'f, 'c, A: EngineAudioEnd, D: RouterDataType> RouterFactory<'f, 'c, D, A> {
         &self.ctx.params
     }
 
-    pub fn for_channels(&mut self, mut f: impl FnMut(&mut Self, usize)) -> &mut Self {
+    /// Runs once before voice processing. With triggered voices that is the
+    /// trigger pass; otherwise it is the only pass.
+    pub fn for_module(&mut self, mut f: impl FnMut(&mut Self)) -> &mut Self {
+        let params = &self.ctx.params;
+
+        if params.trigger_stage || !params.has_triggered_voices {
+            f(self);
+        }
+
+        self
+    }
+
+    /// Runs once after voice processing, outside the trigger stage.
+    /// The module walks its own channels.
+    pub fn advance(&mut self, mut f: impl FnMut(&mut Self)) -> &mut Self {
         if !self.ctx.params.trigger_stage {
-            for channel_idx in 0..NUM_CHANNELS {
-                f(self, channel_idx);
-            }
+            f(self);
         }
 
         self
@@ -502,6 +514,12 @@ impl<'v, 'f, 'c, A: EngineAudioEnd, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D
         self.target.is_last && self.target.channel_idx == 0 && self.factory.params().needs_update_ui
     }
 
+    /// Settled, unmodulated parameter value. `None` when it still has to be rendered per sample.
+    pub fn param_stationary(&self, input: &MixedSlots, param: &SmoothedSample) -> Option<Smp> {
+        (!param.check_needs_smoothing(&self.factory.ctx.params.smooth) && input.is_empty())
+            .then(|| param.get())
+    }
+
     fn scalar_param_impl(
         &mut self,
         input: &MixedSlots,
@@ -585,7 +603,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, AudioRouterType, A> 
 
     pub fn param(&mut self, input: &MixedSlots, param: &SmoothedSample, buff: &mut [Smp]) {
         let buff = &mut buff[..self.samples()];
-        let smooth_params = &self.factory.ctx.params.smooth_params;
+        let smooth_params = &self.factory.ctx.params.smooth;
 
         if param.check_needs_smoothing(smooth_params) {
             param.smoothed_buff(buff, smooth_params);
@@ -617,11 +635,6 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, AudioRouterType, A> 
     pub fn scalar(&mut self, input: &MixedSlots, param: Smp, this_frame: bool) -> Smp {
         self.scalar_param_impl(input, param, this_frame.then_some(self.state.offset))
     }
-
-    pub fn param_stationary(&self, input: &MixedSlots, param: &SmoothedSample) -> Option<Smp> {
-        (!param.check_needs_smoothing(&self.factory.ctx.params.smooth_params) && input.is_empty())
-            .then(|| param.get())
-    }
 }
 
 impl<'v> VoiceOutput<'v, AudioRouterType> {
@@ -649,7 +662,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, ControlRouterType, A
 
     pub fn param(&mut self, input: &MixedSlots, param: &SmoothedSample, buff: &mut Buffer) {
         let buff = &mut buff[..self.samples()];
-        let smooth_params = &self.factory.ctx.params.smooth_params;
+        let smooth_params = &self.factory.ctx.params.smooth;
 
         if param.check_needs_smoothing(smooth_params) {
             param.smoothed_buff(buff, smooth_params);

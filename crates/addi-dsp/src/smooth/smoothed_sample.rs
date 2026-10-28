@@ -19,7 +19,7 @@ impl SmoothedSampleParams {
     }
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone)]
 pub struct SmoothedSample {
     value: Smp,
     prev_value: Smp,

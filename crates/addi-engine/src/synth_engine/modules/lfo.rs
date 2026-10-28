@@ -308,9 +308,10 @@ impl<L: LfoLinks> Lfo<L> {
             .for_voices(|rf, target, outputs| {
                 self.process_voice(target, outputs, rf);
             })
-            .for_channels(|rf, channel_idx| {
-                self.channel_params[channel_idx]
-                    .advance_smoothers(&rf.params().smooth_params, rf.params().samples);
+            .advance(|rf| {
+                for channel in &mut self.channel_params {
+                    channel.advance_smoothers(&rf.params().smooth, rf.params().samples);
+                }
             });
     }
 }

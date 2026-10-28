@@ -6,10 +6,15 @@ use addi_engine::{Input, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
+    probe: triple_buffer::Output<StereoSample>,
     segments: triple_buffer::Input<Segments>,
 }
 
 impl UiEnd {
+    pub fn probe(&mut self) -> StereoSample {
+        *self.probe.read()
+    }
+
     pub fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
         self.tx.push(UiEvent::InputParam { input, value }).is_ok()
     }
@@ -30,12 +35,17 @@ impl UiEnd {
 
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
+    probe: triple_buffer::Input<StereoSample>,
     segments: triple_buffer::Output<Segments>,
 }
 
 impl AudioEnd {
     pub fn pop_event(&mut self) -> Option<UiEvent> {
         self.rx.pop().ok()
+    }
+
+    pub fn update_probe(&mut self, probe: StereoSample) {
+        self.probe.write(probe);
     }
 
     pub fn read_segments(&mut self) -> &Segments {
@@ -45,16 +55,19 @@ impl AudioEnd {
 
 pub fn make_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
+    let (probe_input, probe_output) = triple_buffer(&StereoSample::ZERO);
     let (segments_input, segments_output) =
         triple_buffer(&Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
 
     (
         AudioEnd {
             rx: from_ui_rx,
+            probe: probe_input,
             segments: segments_output,
         },
         UiEnd {
             tx: to_audio_tx,
+            probe: probe_output,
             segments: segments_input,
         },
     )
@@ -65,12 +78,20 @@ impl ModMapAudioEnd for AudioEnd {
         AudioEnd::pop_event(self)
     }
 
+    fn update_probe(&mut self, probe: StereoSample) {
+        AudioEnd::update_probe(self, probe)
+    }
+
     fn read_segments(&mut self) -> &Segments {
         AudioEnd::read_segments(self)
     }
 }
 
 impl ModMapUiEnd for UiEnd {
+    fn probe(&mut self) -> StereoSample {
+        UiEnd::probe(self)
+    }
+
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
         UiEnd::set_param(self, input, value)
     }

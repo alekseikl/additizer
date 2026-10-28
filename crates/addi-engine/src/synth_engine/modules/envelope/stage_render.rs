@@ -3,7 +3,7 @@ use std::array;
 use addi_dsp::fast_exp2_wide;
 
 use crate::synth_engine::{
-    fill_wide,
+    fill,
     types::{SIMD_LANES, Smp, WideSmp},
 };
 
@@ -72,7 +72,7 @@ fn fill_linear_ramp(out: &mut [Smp], position: Smp, dx: Smp, interval: Smp, from
     let lanes: [Smp; SIMD_LANES] = array::from_fn(|lane| position + lane as Smp * dx);
     let mut x = WideSmp::new(lanes);
 
-    fill_wide(out, || {
+    fill(out, || {
         let y = interval_x4.mul_add(x, from_x4);
         x += step;
         y
@@ -96,7 +96,7 @@ fn fill_curved(out: &mut [Smp], position: Smp, dx: Smp, interval: Smp, from: Smp
     let lanes: [Smp; SIMD_LANES] = array::from_fn(|lane| position + lane as Smp * dx);
     let mut x = WideSmp::new(lanes);
 
-    fill_wide(out, || {
+    fill(out, || {
         let exp = fast_exp2_wide(x * power_log2e);
         let y = scale_x4.mul_add(exp, offset_x4);
         x += step;

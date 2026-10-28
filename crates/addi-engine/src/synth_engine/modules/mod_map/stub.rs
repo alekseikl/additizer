@@ -36,12 +36,18 @@ impl ModMapAudioEnd for AudioEnd {
         None
     }
 
+    fn update_probe(&mut self, _probe: StereoSample) {}
+
     fn read_segments(&mut self) -> &Segments {
         &SEGMENTS
     }
 }
 
 impl ModMapUiEnd for NoUi {
+    fn probe(&mut self) -> StereoSample {
+        self.diverge()
+    }
+
     fn set_param(&mut self, _input: Input, _value: StereoSample) -> bool {
         self.diverge()
     }

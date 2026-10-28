@@ -100,7 +100,7 @@ fn run_process(
                 sample_rate: SAMPLE_RATE,
                 tempo: DEFAULT_TEMPO,
                 needs_update_ui: update_ui,
-                smooth_params: SmoothedSampleParams::new(SAMPLE_RATE),
+                smooth: SmoothedSampleParams::new(SAMPLE_RATE),
                 active_voices: active,
                 last_voice_idx: None,
             },

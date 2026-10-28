@@ -1,17 +1,23 @@
 use addi_ui_backend::ui_bridge::modules::mod_map::ModMapUiBridge;
-use egui::{Color32, Pos2, Rect, Stroke, StrokeKind, Vec2, emath::GuiRounding, epaint::PathStroke};
+use egui::{
+    Color32, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2, ecolor::Hsva, emath::GuiRounding,
+    epaint::PathStroke,
+};
 
+use crate::fit_label::FitLabel;
 use crate::grid::WidgetCtx;
+use crate::routing_ui_ext::ModuleTypeUi;
 use addi_dsp::segments::Segments;
-use addi_engine::mod_map::map_control;
-use addi_engine::{Input, ModuleId, Smp};
+use addi_engine::{Input, ModuleId, ModuleType, Smp, StereoSample};
 use addi_ui_backend::ui_bridge::{GridVec, ModuleBridge, UiBridge};
 
 use super::GridWidgetContent;
 
-const PADDING: f32 = 4.0;
-const BOTTOM_PADDING: f32 = 2.0;
-const LINE_WIDTH: f32 = 2.0;
+const VERT_PADDING: f32 = 2.0;
+const PROBE_RADIUS: f32 = 3.5;
+/// Yellow. Saturation and value are taken from the left probe.
+const RIGHT_PROBE_HUE: f32 = 1.0 / 6.0;
+const LINE_WIDTH: f32 = 1.0;
 const GRID_LINE_WIDTH: f32 = 1.0;
 const SAMPLES: usize = 256;
 const STROKE_COLOR: Color32 = Color32::from_rgb(0x6a, 0xc8, 0x8a);
@@ -26,34 +32,82 @@ impl ModMapWidget {
         bridge: &mut UiBridge,
         map_bridge: &mut ModMapUiBridge,
         module_id: ModuleId,
+        has_active_voices: bool,
     ) {
+        ui.add_space(2.0);
+        ui.add(FitLabel::new(ModuleType::ModMap.default_label(), "Map"));
+
         let size = ui.available_size();
         let response = ui.allocate_response(size, egui::Sense::hover());
-        let padded = Rect::from_min_max(
-            response.rect.min + Vec2::splat(PADDING),
-            response.rect.max - Vec2::new(PADDING, PADDING + BOTTOM_PADDING),
+        let inner = Rect::from_min_max(
+            response.rect.min + Vec2::new(0.0, VERT_PADDING),
+            response.rect.max - Vec2::new(0.0, VERT_PADDING),
         );
-        let square = Self::square_in(padded, ui.pixels_per_point());
+        let plot = Self::square_in(inner, ui.pixels_per_point());
 
-        if !square.is_positive() || !ui.is_rect_visible(square) {
+        if !plot.is_positive() || !ui.is_rect_visible(plot) {
             return;
         }
 
+        let probe = map_bridge.probe();
         let config = map_bridge.config();
         let mut amount = config.amount;
 
         bridge.apply_modulation(module_id, Input::Amount, &mut amount);
 
-        let points = Self::curve_points(
-            square,
-            &config.segments,
-            amount[0].clamp(0.0, 1.0),
-            config.bipolar,
-        );
+        let points = Self::curve_points(plot, &config.segments, amount[0].clamp(0.0, 1.0));
         let painter = ui.painter();
 
-        Self::paint_grid(painter, square);
-        Self::paint_stroke(&painter.with_clip_rect(square.expand(1.0)), &points);
+        Self::paint_grid(painter, plot, config.bipolar);
+        Self::paint_stroke(&painter.with_clip_rect(plot), &points);
+
+        if has_active_voices {
+            Self::paint_probe(
+                painter,
+                plot,
+                &config.segments,
+                amount[0].clamp(0.0, 1.0),
+                probe,
+            );
+        }
+    }
+
+    fn value_pos(rect: Rect, x: Smp, y: Smp) -> Pos2 {
+        Pos2::new(
+            rect.left() + x.clamp(0.0, 1.0) * rect.width(),
+            rect.bottom() - y.clamp(0.0, 1.0) * rect.height(),
+        )
+    }
+
+    /// Left stays the curve color. The right channel keeps that saturation and value.
+    fn paint_probe(
+        painter: &Painter,
+        rect: Rect,
+        segments: &Segments,
+        amount: Smp,
+        probe: StereoSample,
+    ) {
+        let at = |x: Smp| {
+            Self::value_pos(
+                rect,
+                x,
+                Self::map_control(segments.value_at(x, None, None), amount),
+            )
+        };
+        let left = at(probe.left());
+        let right = at(probe.right());
+
+        if left.distance_sq(right) > 0.25 {
+            painter.circle_filled(right, PROBE_RADIUS, Self::right_probe_color());
+        }
+
+        painter.circle_filled(left, PROBE_RADIUS, STROKE_COLOR);
+    }
+
+    fn right_probe_color() -> Color32 {
+        let mut color = Hsva::from(STROKE_COLOR);
+        color.h = RIGHT_PROBE_HUE;
+        Color32::from(color)
     }
 
     fn square_in(rect: Rect, ppt: f32) -> Rect {
@@ -61,28 +115,31 @@ impl ModMapWidget {
         Rect::from_center_size(rect.center(), Vec2::splat(side)).round_to_pixels(ppt)
     }
 
-    fn paint_grid(painter: &egui::Painter, rect: Rect) {
+    fn paint_grid(painter: &egui::Painter, rect: Rect, bipolar: bool) {
         let stroke = Stroke::new(GRID_LINE_WIDTH, GRID_COLOR);
 
-        painter.rect_stroke(rect, 0.0, stroke, StrokeKind::Outside);
-        painter.line_segment([rect.left_center(), rect.right_center()], stroke);
-        painter.line_segment([rect.center_top(), rect.center_bottom()], stroke);
+        painter.rect_stroke(rect, 0.0, stroke, StrokeKind::Inside);
+
+        if bipolar {
+            painter.line_segment([rect.left_center(), rect.right_center()], stroke);
+        }
     }
 
-    /// `[0, 1]` ramp after the curve, amount, and bipolar fold. `0` is the bottom when unipolar.
-    fn curve_points(rect: Rect, segments: &Segments, amount: Smp, bipolar: bool) -> Vec<Pos2> {
+    /// Amount scale. The result stays in the curve's `[0, 1]` range.
+    fn map_control(mapped: Smp, amount: Smp) -> Smp {
+        mapped * amount.clamp(0.0, 1.0)
+    }
+
+    /// `[0, 1]` ramp after the curve and amount. `0` is the bottom.
+    fn curve_points(rect: Rect, segments: &Segments, amount: Smp) -> Vec<Pos2> {
         let t_mult = (SAMPLES - 1) as Smp;
 
         (0..SAMPLES)
             .map(|i| {
                 let x = i as Smp / t_mult;
-                let y = map_control(segments.value_at(x, None, None), amount, bipolar);
+                let y = Self::map_control(segments.value_at(x, None, None), amount);
                 let px = rect.left() + x * rect.width();
-                let py = if bipolar {
-                    rect.center().y - y * rect.height() * 0.5
-                } else {
-                    rect.bottom() - y * rect.height()
-                };
+                let py = rect.bottom() - y * rect.height();
 
                 Pos2::new(px, py)
             })
@@ -101,15 +158,24 @@ impl ModMapWidget {
 
 impl GridWidgetContent for ModMapWidget {
     fn grid_size(&self) -> GridVec {
-        GridVec::new(3, 2)
+        GridVec::new(2, 2)
+    }
+
+    fn show_label(&self) -> bool {
+        false
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut WidgetCtx, module_id: ModuleId) {
+        let has_active_voices = ctx.bridge.has_active_voices();
+
         ctx.bridge
             .with_module_bridge(module_id, |bridge, module_bridge| {
                 if let ModuleBridge::ModMap(map_bridge) = module_bridge {
-                    self.map_ui(ui, bridge, map_bridge, module_id);
+                    self.map_ui(ui, bridge, map_bridge, module_id, has_active_voices);
                 }
             });
     }
 }
+
+#[cfg(test)]
+mod tests;

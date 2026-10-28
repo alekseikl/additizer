@@ -28,7 +28,7 @@ pub use math::{
 };
 pub use phase::{Phase, PhaseX4};
 pub use segments::{SegPoint, Segments};
-pub use simd_utils::{fill_wide, map_wide, map_wide_in_place, zip_map_wide};
+pub use simd_utils::{fill, map, map_in_place, zip_map, zip_map_in_place};
 pub use smooth::{SmoothedSample, SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
 pub use types::{ComplexSample, SIMD_LANES, Smp, WideI32, WideSmp, WideU32};
