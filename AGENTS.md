@@ -14,7 +14,7 @@ noise, spectral filter/EQ/mixer/blend), and others are control sources (envelope
 with keytrack/glide, expressions/MPE, external params). Modules are connected by **links**
 into a routing graph that is topologically sorted and processed per voice/channel. See
 `README.md` for the user-facing module list and `docs/module-routing-rules.md` for
-link/modulation rules.
+link rules.
 
 ## Commands
 
@@ -88,12 +88,12 @@ Noise), capped by `MAX_BANDWIDTH` in `config.rs`; `0` means note-based bandwidth
 ## Routing
 
 A patch is a directed graph. Edges target `InputId = (module_id, Input)`. Process order is a
-topo sort of source → destination (including modulators).
+topo sort of source → destination.
 
 |                 |                                                                                  |
 | --------------- | -------------------------------------------------------------------------------- |
 | Data types      | Audio, Control, Spectral                                                         |
-| Link kinds      | **Direct** (exactly one source) or **Mixed** (many sources + optional modulator) |
+| Link kinds      | **Direct** (exactly one source) or **Mixed** (many sources)                      |
 | Amount          | Implicit `1.0` for Direct; `StereoSample` per Mixed source                       |
 | Spectral inputs | Direct only (`InputMeta.is_direct`)                                              |
 

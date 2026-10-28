@@ -25,17 +25,10 @@ impl Module {
     }
 }
 
-pub struct InputModulation {
-    #[allow(unused)]
-    pub src: ModuleId,
-    pub label: String,
-}
-
 pub struct ConnectedInputSource {
     pub src: ModuleId,
     pub amount: StereoSample,
     pub label: String,
-    pub modulation: Option<InputModulation>,
 }
 
 pub struct ModuleInput {

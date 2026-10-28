@@ -1,6 +1,6 @@
 # Module routing rules
 
-A patch is a directed graph. Edges target `InputId = (module_id, Input)`. Process order is a topo sort of source → destination (including modulators).
+A patch is a directed graph. Edges target `InputId = (module_id, Input)`. Process order is a topo sort of source → destination.
 
 |                  |                          |
 | ---------------- | ------------------------ |
@@ -12,27 +12,14 @@ A patch is a directed graph. Edges target `InputId = (module_id, Input)`. Proces
 
 ## Link kinds
 
-| Kind   | Cardinality on dst                  | Amount                    | Modulation         |
-| ------ | ----------------------------------- | ------------------------- | ------------------ |
-| Direct | Exactly one source (replaces prior) | Implicit `1.0`            | Forbidden          |
-| Mixed  | Many sources; each `src` once       | `StereoSample` per source | Optional modulator |
+| Kind   | Cardinality on dst                  | Amount                    |
+| ------ | ----------------------------------- | ------------------------- |
+| Direct | Exactly one source (replaces prior) | Implicit `1.0`            |
+| Mixed  | Many sources; each `src` once       | `StereoSample` per source |
 
 Input kind is fixed by `InputMeta.is_direct`, declared by the module in `inputs()` via the `InputMeta` constructors (`routing.rs`): `direct_audio` / `audio`, `direct_control` / `control`, `spectral`. Direct and Mixed cannot share an `InputId`. Spectral inputs are Direct only (`InputMeta::spectral` always sets `is_direct`).
 
-## Modulators
-
-A modulator is an optional third module on a **Mixed** edge `src → dst`. It does not replace `src`; it scales that source’s contribution into `dst`:
-
-`contribution = src × amount × modulator`
-
-Rules:
-
-- Direct links cannot be modulated.
-- The edge `src → dst` must already exist; otherwise `set_link_modulation` fails with `"Invalid node."`.
-- The modulator must pass `can_be_linked(modulator, dst, mixed)` (same type/kind rules as a Mixed source to that input).
-- Modulation is per edge: each Mixed `src → dst` may have its own modulator.
-- The destination depends on the modulator in the topo sort (modulator runs before `dst`).
-- A module cannot be both a Mixed source and a modulator on the same `dst` at once — adding it as a source clears its modulator role on that input.
+A mixed contribution is `src × amount`.
 
 ## Validation (`can_be_linked`)
 
@@ -53,9 +40,9 @@ Per-link checks only — does **not** check acyclicity. Checks run in this order
 
 ## Acyclicity (`setup_routing`)
 
-`setup_routing` builds the topo sort (`process_order`) over all links: each destination depends on each of its sources and modulators; unlinked modules are included too. Cycles → `"Cycles detected!"` and the routing update is rejected (the previous routing stays in place). In the resulting order `Output` (`OUTPUT_MODULE_ID`) is always moved to the end. `setup_routing` also reassigns input/output slots (`setup_slots`).
+`setup_routing` builds the topo sort (`process_order`) over all links: each destination depends on each of its sources; unlinked modules are included too. Cycles → `"Cycles detected!"` and the routing update is rejected (the previous routing stays in place). In the resulting order `Output` (`OUTPUT_MODULE_ID`) is always moved to the end. `setup_routing` also reassigns input/output slots (`setup_slots`).
 
-Before sorting, `setup_routing` calls `prepare_links`. That drops hidden links, drops links that fail `can_be_linked`, clears invalid modulators, and pre-wires the fixed pitch module (`PITCH_MODULE_ID`, `-1`) to every direct `Input::Pitch` that has no source. Each pre-wire is a direct link with `hidden: true`. Mixed links cannot be hidden. A pre-wire that would cycle is skipped. Adding a module, removing a pitch source, or changing `inputs()` rebuilds routing through `setup_routing`, so the pre-wire stays in place. An explicit pitch link replaces the hidden one; removing that link restores it.
+Before sorting, `setup_routing` calls `prepare_links`. That drops hidden links, drops links that fail `can_be_linked`, and pre-wires the fixed pitch module (`PITCH_MODULE_ID`, `-1`) to every direct `Input::Pitch` that has no source. Each pre-wire is a direct link with `hidden: true`. Mixed links cannot be hidden. A pre-wire that would cycle is skipped. Adding a module, removing a pitch source, or changing `inputs()` rebuilds routing through `setup_routing`, so the pre-wire stays in place. An explicit pitch link replaces the hidden one; removing that link restores it.
 
 Hidden links are omitted from presets (`get_config`) and from the UI routing snapshot (`RoutingState`), so automatic pitch cables are not drawn. The fixed pitch module is shown on the grid. A pitch cable drawn from it is an ordinary direct link (`hidden: false`) and is displayed. Pitch inputs with only a pre-wire still look unconnected.
 
@@ -66,13 +53,11 @@ All mutations except `update_link_amount` rebuild the full link list from `get_l
 | Operation                                            | Effect                                                                                                                 |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `set_direct_link`                                    | `can_be_linked(src, dst, true)`; replace all sources on `dst` with one Direct                                          |
-| `add_mixed_link`                                     | `can_be_linked(src, dst, false)`; append/replace Mixed `src→dst`; clear `src` if it was a modulator on `dst`           |
-| `set_link_modulation`                                | Edge must exist and be Mixed; modulator must pass `can_be_linked(modulator, dst, false)`                               |
-| `remove_link_modulation`                             | Clear the modulator on Mixed `src→dst`; no-op if none                                                                  |
+| `add_mixed_link`                                     | `can_be_linked(src, dst, false)`; append/replace Mixed `src→dst`                                                       |
 | `update_link_amount`                                 | Mixed amounts only; does **not** rebuild routing. Sent lock-free from the UI via the engine `UiEnd` (`UiBridge::set_link_amount` → `UiEvent::LinkAmount`) and applied on the audio thread |
-| `remove_link` / `remove_input_links` / `remove_output_links` | Drop matching edges; `remove_output_links` also clears modulators pointing at `src`                            |
-| `remove_module`                                      | Free the output slot; drop all edges touching the module; clear modulators pointing at it                             |
-| `set_config_links` (preset load)                     | Per link: skip if `src`/modulator fails `can_be_linked` or `src+dst` already present; Direct replaces existing sources on `dst`; Mixed clears `src`'s modulator role on `dst` |
+| `remove_link` / `remove_input_links` / `remove_output_links` | Drop matching edges                                                                                            |
+| `remove_module`                                      | Free the output slot; drop all edges touching the module                                                               |
+| `set_config_links` (preset load)                     | Per link: skip if `src` fails `can_be_linked` or `src+dst` already present; Direct replaces existing sources on `dst` |
 | `refresh_routing`                                    | Rebuild from `get_links()` via `setup_routing` (`prepare_links` drops invalid links and restores pitch pre-wires) |
 
 `refresh_routing` is triggered by `UiBridge::update_routing` whenever a `ModuleUiBridge::update()` returns `true` — i.e. when a module's `inputs()` may have changed at runtime (Mixer / Spectral Mixer changing input count or volume type). Links to inputs that no longer exist are dropped.

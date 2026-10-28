@@ -10,7 +10,7 @@ use super::{
     routing::{InputSlot, InputSlots, InputSource, MixedSlots},
 };
 
-/// Whether `target` is reachable from `from` through link sources and modulators.
+/// Whether `target` is reachable from `from` through link sources.
 /// `from` reaches itself. Each module is expanded once, so a cycle ends the walk.
 pub(super) fn link_reaches(links: &[ModuleLink], from: ModuleId, target: ModuleId) -> bool {
     let mut stack = vec![from];
@@ -26,7 +26,7 @@ pub(super) fn link_reaches(links: &[ModuleLink], from: ModuleId, target: ModuleI
         }
 
         for link in links {
-            if link.src() == id || link.modulation() == Some(id) {
+            if link.src() == id {
                 stack.push(link.dst().module_id);
             }
         }
@@ -56,15 +56,6 @@ pub(super) fn process_order(
 
         dependents.entry(dst_node).or_default().insert(src_node);
         dependents.entry(src_node).or_default();
-
-        if let Some(modulation) = link.modulation() {
-            if modulation == dst_node {
-                return Err("Cycles detected!".to_string());
-            }
-
-            dependents.entry(dst_node).or_default().insert(modulation);
-            dependents.entry(modulation).or_default();
-        }
     }
 
     let topo_sort = TopoSort::from_map(dependents);
@@ -121,20 +112,8 @@ pub(super) fn assign_slots(
 
                     assert_matches!(src_data_type, DataType::Audio | DataType::Control);
 
-                    let modulation_slot = src.modulation.map(|modulation_src| {
-                        let (modulation_data_type, modulation_output_slot) = modules
-                            .get(&modulation_src)
-                            .copied()
-                            .expect("should be in place");
-
-                        assert_matches!(modulation_data_type, DataType::Audio | DataType::Control);
-
-                        modulation_output_slot
-                    });
-
                     slots.push(InputSlot {
                         src_slot: src_output_slot,
-                        modulation_slot,
                         amount: src.amount,
                     });
                 }

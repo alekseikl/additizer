@@ -371,12 +371,6 @@ impl<E: EngineLinks> SynthEngine<E> {
             .get_links()
             .into_iter()
             .filter(|link| link.src() != id && link.dst().module_id != id)
-            .map(|mut link| {
-                if link.modulation() == Some(id) {
-                    link.clear_modulation();
-                }
-                link
-            })
             .collect();
 
         self.setup_routing(&new_links)
@@ -392,9 +386,6 @@ impl<E: EngineLinks> SynthEngine<E> {
             let directly = link.is_direct();
 
             if self.can_be_linked(src, dst, directly).is_err()
-                || link
-                    .modulator_id()
-                    .is_some_and(|id| self.can_be_linked(id, dst, false).is_err())
                 || new_links
                     .iter()
                     .any(|existing| existing.src() == src && existing.dst() == dst)
@@ -404,12 +395,6 @@ impl<E: EngineLinks> SynthEngine<E> {
 
             if directly {
                 new_links.retain(|existing| existing.dst() != dst);
-            } else {
-                for existing in &mut new_links {
-                    if existing.dst() == dst && existing.modulation() == Some(src) {
-                        existing.clear_modulation();
-                    }
-                }
             }
 
             new_links.push(ModuleLink::from_config(link));
@@ -448,13 +433,6 @@ impl<E: EngineLinks> SynthEngine<E> {
 
         let mut new_links = self.get_links();
 
-        // Disconnect src from modulations on this destination
-        for link in &mut new_links {
-            if link.dst() == dst && link.modulation() == Some(src) {
-                link.clear_modulation();
-            }
-        }
-
         new_links.retain(|link| !(link.src() == src && link.dst() == dst));
         new_links.push(ModuleLink::mixed(src, dst, amount));
 
@@ -469,41 +447,6 @@ impl<E: EngineLinks> SynthEngine<E> {
             && let Some(dst_module) = self.modules.get_mut(&dst.module_id)
         {
             dst_module.update_input_amount(dst.input_type, src_slot, amount);
-        }
-    }
-
-    pub fn set_link_modulation(
-        &mut self,
-        src_id: ModuleId,
-        dst_input: &InputId,
-        modulator_id: ModuleId,
-    ) -> Result<(), String> {
-        self.can_be_linked(modulator_id, *dst_input, false)?;
-
-        if !self.already_linked(&src_id, dst_input) {
-            return Err("Invalid node.".to_string());
-        }
-
-        let mut new_links = self.get_links();
-        let link = new_links
-            .iter_mut()
-            .find(|link| link.src() == src_id && link.dst() == *dst_input)
-            .expect("link checked above");
-
-        if !link.set_modulation(modulator_id) {
-            return Err("Direct links cannot be modulated.".to_string());
-        }
-
-        self.setup_routing(&new_links)?;
-        Ok(())
-    }
-
-    pub fn remove_link_modulation(&mut self, src_id: ModuleId, dst_input: &InputId) {
-        if let Some(sources) = self.input_sources.get_mut(dst_input)
-            && sources.clear_modulation(src_id)
-        {
-            self.setup_routing(&self.get_links())
-                .expect("routing should be consistent after a modulation is removed");
         }
     }
 
@@ -534,12 +477,6 @@ impl<E: EngineLinks> SynthEngine<E> {
             .get_links()
             .into_iter()
             .filter(|link| link.src() != src)
-            .map(|mut link| {
-                if link.modulation() == Some(src) {
-                    link.clear_modulation();
-                }
-                link
-            })
             .collect();
 
         self.setup_routing(&new_links)
@@ -853,12 +790,6 @@ impl<E: EngineLinks> SynthEngine<E> {
         Ok(())
     }
 
-    fn already_linked(&self, src: &ModuleId, dst: &InputId) -> bool {
-        self.input_sources
-            .get(dst)
-            .is_some_and(|inputs| inputs.contains_module(*src))
-    }
-
     fn get_links(&self) -> Vec<ModuleLink> {
         self.input_sources
             .iter()
@@ -892,32 +823,17 @@ impl<E: EngineLinks> SynthEngine<E> {
         }
     }
 
-    /// Drop hidden links, drop links that fail `can_be_linked`, clear invalid modulators,
-    /// then pre-wire direct `Input::Pitch` ports that have no source.
+    /// Drop hidden links, drop links that fail `can_be_linked`, then pre-wire direct
+    /// `Input::Pitch` ports that have no source.
     fn prepare_links(&self, links: &[ModuleLink]) -> Vec<ModuleLink> {
         let mut links: Vec<_> = links
             .iter()
-            .filter_map(|link| {
-                if link.is_hidden() {
-                    return None;
-                }
-
-                let mut link = *link;
-
-                if self
-                    .can_be_linked(link.src(), link.dst(), link.is_direct())
-                    .is_err()
-                {
-                    return None;
-                }
-
-                if let Some(modulator_id) = link.modulation()
-                    && self.can_be_linked(modulator_id, link.dst(), false).is_err()
-                {
-                    link.clear_modulation();
-                }
-
-                Some(link)
+            .copied()
+            .filter(|link| {
+                !link.is_hidden()
+                    && self
+                        .can_be_linked(link.src(), link.dst(), link.is_direct())
+                        .is_ok()
             })
             .collect();
 
@@ -965,12 +881,7 @@ impl<E: EngineLinks> SynthEngine<E> {
                         },
                     );
                 }
-                ModuleLink::Mixed {
-                    src,
-                    dst,
-                    amount,
-                    modulation,
-                } => {
+                ModuleLink::Mixed { src, dst, amount } => {
                     let InputSource::Mixed(sources) = routing_map
                         .entry(*dst)
                         .or_insert(InputSource::Mixed(Vec::new()))
@@ -981,7 +892,6 @@ impl<E: EngineLinks> SynthEngine<E> {
                     sources.push(MixedSource {
                         module_id: *src,
                         amount: *amount,
-                        modulation: *modulation,
                     });
                 }
             }

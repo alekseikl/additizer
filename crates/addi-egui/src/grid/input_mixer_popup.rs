@@ -15,7 +15,6 @@ const MAX_LABEL_WIDTH: f32 = 200.0;
 const IO_DOT_SIZE: f32 = 8.0;
 const REMOVE_ICON: &str = "❌";
 const REMOVE_TINT: Color32 = Color32::from_rgb(0xe0, 0x6a, 0x6a);
-const MULTIPLY_TINT: Color32 = Color32::from_rgb(0xff, 0xb0, 0x00);
 
 pub struct InputMixerPopup {
     pub module_id: ModuleId,
@@ -120,31 +119,6 @@ impl InputMixerPopup {
             ui.set_max_width(MAX_LABEL_WIDTH);
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
             ui.add(Label::new(&src.label).truncate());
-
-            if let Some(modulation) = src.modulation.as_ref() {
-                ui.add_space(0.5);
-                ui.horizontal_centered(|ui| {
-                    ui.spacing_mut().item_spacing = vec2(2.0, 0.0);
-
-                    ui.add(Label::new(&modulation.label).truncate());
-
-                    Frame::NONE
-                        .inner_margin(Margin {
-                            top: -1,
-                            bottom: 1,
-                            ..Default::default()
-                        })
-                        .show(ui, |ui| {
-                            if ui
-                                .button(RichText::new("×").color(MULTIPLY_TINT))
-                                .on_hover_text("Remove Modulation")
-                                .clicked()
-                            {
-                                bridge.remove_link_modulation(src.src, &input_id);
-                            }
-                        });
-                });
-            }
         });
 
         let mut amount = src.amount;

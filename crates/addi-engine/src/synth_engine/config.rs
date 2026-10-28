@@ -56,7 +56,6 @@ pub enum LinkConfig {
         dst_id: ModuleId,
         dst_input: Input,
         amount: StereoSample,
-        modulator_id: Option<ModuleId>,
     },
 }
 
@@ -80,23 +79,6 @@ impl LinkConfig {
             dst_id,
             dst_input,
             amount: amount.into(),
-            modulator_id: None,
-        }
-    }
-
-    pub fn mixed_modulated(
-        src_id: ModuleId,
-        dst_id: ModuleId,
-        dst_input: Input,
-        amount: impl Into<StereoSample>,
-        modulator_id: Option<ModuleId>,
-    ) -> Self {
-        Self::Mixed {
-            src_id,
-            dst_id,
-            dst_input,
-            amount: amount.into(),
-            modulator_id,
         }
     }
 
@@ -119,13 +101,6 @@ impl LinkConfig {
     pub fn dst_input(&self) -> Input {
         match self {
             Self::Direct { dst_input, .. } | Self::Mixed { dst_input, .. } => *dst_input,
-        }
-    }
-
-    pub fn modulator_id(&self) -> Option<ModuleId> {
-        match self {
-            Self::Direct { .. } => None,
-            Self::Mixed { modulator_id, .. } => *modulator_id,
         }
     }
 }

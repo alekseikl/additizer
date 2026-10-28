@@ -151,7 +151,6 @@ fn create_link_routes_direct_spectrum() {
     let connected = bridge.get_connected_input_sources(spectrum);
     assert_eq!(connected.len(), 1);
     assert_eq!(connected[0].src, he2);
-    assert!(connected[0].modulation.is_none());
 }
 
 #[test]

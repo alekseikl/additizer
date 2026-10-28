@@ -4,7 +4,6 @@ use crate::synth_engine::StereoSample;
 fn slot(src_slot: usize) -> InputSlot {
     InputSlot {
         src_slot,
-        modulation_slot: None,
         amount: StereoSample::ONE,
     }
 }
@@ -27,19 +26,6 @@ fn get_scalar_panics_for_audio_output() {
     let src_slot = arena.allocate_samples_slot(false);
 
     let _ = arena.get_scalar(&[slot(src_slot)], 0, 0, Some(0));
-}
-
-#[test]
-#[should_panic(expected = "audio-rate")]
-fn get_scalar_panics_for_audio_rate_modulator() {
-    let mut arena = OutputsArena::new(8);
-    let slots = [InputSlot {
-        src_slot: arena.allocate_samples_slot(true),
-        modulation_slot: Some(arena.allocate_samples_slot(false)),
-        amount: StereoSample::ONE,
-    }];
-
-    let _ = arena.get_scalar(&slots, 0, 0, Some(0));
 }
 
 #[test]
@@ -85,17 +71,4 @@ fn add_buff_to_panics_for_audio_as_control() {
     let src_slot = arena.allocate_samples_slot(false);
 
     let _ = add_buff(&arena, &[slot(src_slot)], true);
-}
-
-#[test]
-#[should_panic(expected = "audio-rate")]
-fn add_buff_to_panics_for_audio_rate_modulator_as_control() {
-    let mut arena = OutputsArena::new(8);
-    let slots = [InputSlot {
-        src_slot: arena.allocate_samples_slot(true),
-        modulation_slot: Some(arena.allocate_samples_slot(false)),
-        amount: StereoSample::ONE,
-    }];
-
-    let _ = add_buff(&arena, &slots, true);
 }

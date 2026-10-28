@@ -10,15 +10,8 @@ use addi_engine::{Input, InputId, ModuleId, ModuleType};
 use addi_ui_backend::ui_bridge::LinkableInput;
 
 const IO_DOT_SIZE: f32 = 8.0;
-const MENU_INDENT: i8 = 8;
 const MENU_CONTENT_PAD: i8 = 6;
 const MAX_ROW_WIDTH: f32 = 250.0;
-const MULTIPLY_TINT: Color32 = Color32::from_rgb(0xff, 0xb0, 0x00);
-
-enum MenuItemIcon {
-    InputDot(Color32),
-    Link,
-}
 
 pub enum ShowResult {
     MixedSelected(Input),
@@ -81,24 +74,20 @@ impl SelectInputPopup {
         inputs: &[LinkableInput],
         row_width: Option<f32>,
     ) -> Option<Input> {
-        let row_count: usize = inputs.iter().map(|input| 1 + input.modulations.len()).sum();
-        let mut row = 0;
+        let row_count = inputs.len();
 
-        for input in inputs {
+        for (row, input) in inputs.iter().enumerate() {
             let input_id = InputId::new(input.input_type, self.dst);
             let color = input.input_type.color();
             let label = self.module_type.input_label(input.input_type);
-            let is_first = row == 0;
-            let is_last = row + 1 == row_count;
 
             if Self::menu_item(
                 ui,
                 &label,
-                MenuItemIcon::InputDot(color),
-                0,
+                color,
                 row_width,
-                is_first,
-                is_last,
+                row == 0,
+                row + 1 == row_count,
             )
             .clicked()
             {
@@ -109,29 +98,6 @@ impl SelectInputPopup {
                 if !input.is_direct {
                     return Some(input.input_type);
                 }
-            }
-            row += 1;
-
-            for modulation in &input.modulations {
-                let is_first = row == 0;
-                let is_last = row + 1 == row_count;
-
-                if Self::menu_item(
-                    ui,
-                    &modulation.label,
-                    MenuItemIcon::Link,
-                    MENU_INDENT,
-                    row_width,
-                    is_first,
-                    is_last,
-                )
-                .clicked()
-                {
-                    ctx.bridge
-                        .set_link_modulation(modulation.module_id, &input_id, self.src);
-                    ui.close();
-                }
-                row += 1;
             }
         }
 
@@ -163,8 +129,7 @@ impl SelectInputPopup {
     fn menu_item(
         ui: &mut Ui,
         label: &str,
-        icon: MenuItemIcon,
-        indent: i8,
+        color: Color32,
         row_width: Option<f32>,
         is_first: bool,
         is_last: bool,
@@ -198,31 +163,16 @@ impl SelectInputPopup {
             |ui| {
                 Frame::NONE
                     .inner_margin(Margin {
-                        left: MENU_CONTENT_PAD + indent,
+                        left: MENU_CONTENT_PAD,
                         right: MENU_CONTENT_PAD,
                         top: 0,
                         bottom: 0,
                     })
                     .show(ui, |ui| {
-                        match icon {
-                            MenuItemIcon::InputDot(color) => {
-                                let (dot_rect, _) = ui.allocate_exact_size(
-                                    vec2(IO_DOT_SIZE, row_height),
-                                    Sense::empty(),
-                                );
-                                ui.painter().circle_filled(
-                                    dot_rect.center(),
-                                    IO_DOT_SIZE * 0.5,
-                                    color,
-                                );
-                            }
-                            MenuItemIcon::Link => {
-                                ui.add(
-                                    Label::new(RichText::new("×").color(MULTIPLY_TINT))
-                                        .selectable(false),
-                                );
-                            }
-                        }
+                        let (dot_rect, _) =
+                            ui.allocate_exact_size(vec2(IO_DOT_SIZE, row_height), Sense::empty());
+                        ui.painter()
+                            .circle_filled(dot_rect.center(), IO_DOT_SIZE * 0.5, color);
 
                         ui.add(
                             Label::new(RichText::new(label).color(text_color))

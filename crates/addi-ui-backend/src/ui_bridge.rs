@@ -9,7 +9,7 @@ use addi_engine::{
     config::EngineParams,
     engine_io::EngineLinks,
     routing::{DataType, Input, InputMeta, InputSource, data_types_compatible},
-    routing_state::{self, ConnectedInputSource, ModuleIo, RoutingState},
+    routing_state::{ConnectedInputSource, ModuleIo, RoutingState},
 };
 
 use crate::engine_factory::{EngineHandle, UiConfigHandle};
@@ -99,15 +99,9 @@ pub struct ModulatedValue {
     pub is_stereo: bool,
 }
 
-pub struct LinkableModulation {
-    pub module_id: ModuleId,
-    pub label: String,
-}
-
 pub struct LinkableInput {
     pub input_type: Input,
     pub is_direct: bool,
-    pub modulations: Vec<LinkableModulation>,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -375,47 +369,12 @@ impl<E: EngineLinks> UiBridge<E> {
             return Vec::new();
         };
 
-        let mut linkable = Vec::with_capacity(inputs.len());
-
-        for meta in inputs {
-            if !self.is_linkable_input(src, dst, src_output_type, &meta) {
-                continue;
-            }
-
-            let modulations = if meta.is_direct {
-                Vec::new()
-            } else {
-                let input_id = InputId::new(meta.input_type, dst);
-
-                self.routing
-                    .routing
-                    .get(&input_id)
-                    .map(|sources| match sources {
-                        InputSource::Mixed(mixed) => mixed
-                            .iter()
-                            .filter(|source| source.modulation != Some(src))
-                            .map(|source| source.module_id)
-                            .collect(),
-                        InputSource::Direct { .. } => Vec::new(),
-                    })
-                    .unwrap_or_default()
-            };
-
-            linkable.push((meta.input_type, meta.is_direct, modulations));
-        }
-
-        linkable
+        inputs
             .into_iter()
-            .map(|(input_type, is_direct, mod_source_ids)| LinkableInput {
-                input_type,
-                is_direct,
-                modulations: mod_source_ids
-                    .into_iter()
-                    .map(|module_id| LinkableModulation {
-                        module_id,
-                        label: self.display_module_label(module_id),
-                    })
-                    .collect(),
+            .filter(|meta| self.is_linkable_input(src, dst, src_output_type, meta))
+            .map(|meta| LinkableInput {
+                input_type: meta.input_type,
+                is_direct: meta.is_direct,
             })
             .collect()
     }
@@ -487,7 +446,6 @@ impl<E: EngineLinks> UiBridge<E> {
                     src: *module_id,
                     amount: StereoSample::ONE,
                     label: self.display_module_label(*module_id),
-                    modulation: None,
                 }]
             }
             InputSource::Mixed(mixed) => mixed
@@ -497,12 +455,6 @@ impl<E: EngineLinks> UiBridge<E> {
                     src: source.module_id,
                     amount: source.amount,
                     label: self.display_module_label(source.module_id),
-                    modulation: source.modulation.map(|modulation| {
-                        routing_state::InputModulation {
-                            src: modulation,
-                            label: self.display_module_label(modulation),
-                        }
-                    }),
                 })
                 .collect(),
         }
@@ -533,7 +485,7 @@ impl<E: EngineLinks> UiBridge<E> {
         }
     }
 
-    /// Whether `target` is reachable from `from` through routed sources and modulators.
+    /// Whether `target` is reachable from `from` through routed sources.
     /// Reuses `reach_stack` and `reach_seen` across calls.
     fn routing_reaches(&mut self, from: ModuleId, target: ModuleId) -> bool {
         self.reach_stack.clear();
@@ -717,27 +669,6 @@ impl<E: EngineLinks> UiBridge<E> {
         let mut synth = self.engine.lock();
 
         synth.remove_output_links(src);
-        self.routing = synth.get_routing_state();
-    }
-
-    pub fn set_link_modulation(
-        &mut self,
-        src_id: ModuleId,
-        dst_input: &InputId,
-        modulator_id: ModuleId,
-    ) {
-        let mut synth = self.engine.lock();
-
-        if let Err(err) = synth.set_link_modulation(src_id, dst_input, modulator_id) {
-            tracing::error!("Failed to set link modulation: {err}");
-        }
-        self.routing = synth.get_routing_state();
-    }
-
-    pub fn remove_link_modulation(&mut self, src_id: ModuleId, dst_input: &InputId) {
-        let mut synth = self.engine.lock();
-
-        synth.remove_link_modulation(src_id, dst_input);
         self.routing = synth.get_routing_state();
     }
 

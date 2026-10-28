@@ -84,7 +84,6 @@ pub struct InputPoint {
     pub module_id: ModuleId,
     pub point: Pos2,
     pub color: Color32,
-    pub is_modulation: bool,
 }
 
 struct LinkAmount {
@@ -166,7 +165,6 @@ impl GridWidget {
                             module_id: *module_id,
                             point,
                             color,
-                            is_modulation: false,
                         });
                     }
                     InputSource::Mixed(sources) => {
@@ -175,17 +173,7 @@ impl GridWidget {
                                 module_id: source.module_id,
                                 point,
                                 color,
-                                is_modulation: false,
                             });
-
-                            if let Some(module_id) = source.modulation {
-                                points.push(InputPoint {
-                                    module_id,
-                                    point,
-                                    color,
-                                    is_modulation: true,
-                                });
-                            }
                         }
                     }
                 }

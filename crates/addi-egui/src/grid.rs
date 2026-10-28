@@ -25,7 +25,6 @@ const GRID_CELL_SIZE: f32 = 40.0;
 const C_GRID: Color32 = Color32::from_rgb(25, 25, 25);
 const GRID_T: f32 = 1.0;
 const WIRE_T: f32 = 2.0;
-const WIRE_MOD_T: f32 = 1.0;
 /// Minimum horizontal offset of a backward wire's Bézier control points.
 const WIRE_CTRL_MIN: f32 = 8.0;
 const WIRE_END_DOT: f32 = 8.0;
@@ -385,12 +384,7 @@ impl Grid {
                 if let Some(&(src_pos, output_color)) = outputs.get(&input.module_id) {
                     let dst_pos = input.point;
                     let input_color = input.color;
-                    let thickness = if input.is_modulation {
-                        WIRE_MOD_T
-                    } else {
-                        WIRE_T
-                    };
-                    let stroke = PathStroke::new_uv(thickness, move |_, pos| {
+                    let stroke = PathStroke::new_uv(WIRE_T, move |_, pos| {
                         Self::wire_color_at(pos, src_pos, dst_pos, output_color, input_color)
                     })
                     .middle();

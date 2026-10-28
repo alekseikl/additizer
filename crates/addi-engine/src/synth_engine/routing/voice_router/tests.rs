@@ -290,10 +290,9 @@ fn visit(target: &VoiceTarget) -> Visit {
     }
 }
 
-fn source(slot: usize, amount: StereoSample, modulation: Option<usize>) -> InputSlot {
+fn source(slot: usize, amount: StereoSample) -> InputSlot {
     InputSlot {
         src_slot: slot,
-        modulation_slot: modulation,
         amount,
     }
 }
@@ -840,7 +839,7 @@ fn smoothing_audio_param_ramps_and_then_adds_modulation() {
         let mut ctx = rig.context();
         let mut factory = ctx.audio(MODULE_ID, slot);
         factory.router(&voice).param(
-            &mixed([source(input, StereoSample::ONE, None)]),
+            &mixed([source(input, StereoSample::ONE)]),
             &param,
             &mut buff,
         );
@@ -866,7 +865,7 @@ fn audio_param_reports_modulation_for_the_last_voice() {
     let input = rig.alloc_audio();
     rig.fill_samples(input, 0, 0, 0.5);
     let amount = StereoSample::new(4.0, 1.0);
-    let sources = mixed([source(input, amount, None)]);
+    let sources = mixed([source(input, amount)]);
     let param = SmoothedSample::new(10.0);
 
     let ignored_voice = target(0, 0, None, false);
@@ -902,7 +901,7 @@ fn audio_scalar_reads_this_frame_or_the_held_sample() {
     rig.fill_samples(input, 0, 0, 100.0);
     rig.sample_buf(input, 0, 0)[2] = 3.0;
     rig.set_next(input, 0, 0, 8.0);
-    let sources = mixed([source(input, StereoSample::ONE, None)]);
+    let sources = mixed([source(input, StereoSample::ONE)]);
     let voice = target(0, 0, Some(2), false);
 
     let mut ctx = rig.context();
@@ -915,21 +914,18 @@ fn audio_scalar_reads_this_frame_or_the_held_sample() {
 }
 
 #[test]
-fn audio_scalar_sums_sources_and_modulators() {
+fn audio_scalar_sums_sources() {
     let mut rig = Rig::new(vec![]);
     let slot = rig.alloc_audio();
     let left = rig.alloc_control();
     let right = rig.alloc_control();
-    let modulator = rig.alloc_control();
     rig.fill_samples(left, 0, 0, 3.0);
     rig.fill_samples(left, 1, 0, 3.0);
     rig.fill_samples(right, 0, 0, 5.0);
     rig.fill_samples(right, 1, 0, 5.0);
-    rig.fill_samples(modulator, 0, 0, 4.0);
-    rig.fill_samples(modulator, 1, 0, 4.0);
     let sources = mixed([
-        source(left, StereoSample::new(2.0, 5.0), Some(modulator)),
-        source(right, StereoSample::ONE, None),
+        source(left, StereoSample::new(2.0, 5.0)),
+        source(right, StereoSample::ONE),
     ]);
 
     let left_voice = target(0, 0, None, false);
@@ -939,11 +935,11 @@ fn audio_scalar_sums_sources_and_modulators() {
 
     assert_eq!(
         factory.router(&left_voice).scalar(&sources, 1.0, true),
-        30.0
+        12.0
     );
     assert_eq!(
         factory.router(&right_voice).scalar(&sources, 1.0, true),
-        66.0
+        21.0
     );
 }
 
@@ -955,7 +951,7 @@ fn audio_scalar_reports_modulation_only_for_the_selected_voice() {
     let input = rig.alloc_control();
     rig.fill_samples(input, 0, 0, 0.5);
     rig.fill_samples(input, 1, 0, 0.5);
-    let sources = mixed([source(input, StereoSample::new(4.0, 1.0), None)]);
+    let sources = mixed([source(input, StereoSample::new(4.0, 1.0))]);
     let selected = target(0, 0, None, true);
     let other = target(0, 0, None, false);
     let right = target(1, 0, None, true);
@@ -1020,7 +1016,7 @@ fn param_stationary_requires_a_settled_unmodulated_value() {
     assert_eq!(router.param_stationary(&mixed([]), &settled), Some(0.3));
     assert_eq!(router.param_stationary(&mixed([]), &moving), None);
     assert_eq!(
-        router.param_stationary(&mixed([source(input, StereoSample::ONE, None)]), &settled),
+        router.param_stationary(&mixed([source(input, StereoSample::ONE)]), &settled),
         None
     );
 }
@@ -1166,7 +1162,7 @@ fn control_param_applies_from_the_trigger_offset() {
     for (index, sample) in rig.sample_buf(input, 0, 0).iter_mut().enumerate() {
         *sample = index as Smp;
     }
-    let sources = mixed([source(input, StereoSample::ONE, None)]);
+    let sources = mixed([source(input, StereoSample::ONE)]);
     let param = SmoothedSample::new(10.0);
 
     let mut untriggered = zero_buffer(BUFFER_SIZE);
@@ -1208,7 +1204,7 @@ fn control_param_reports_modulation_for_the_last_voice() {
     let slot = rig.alloc_control();
     let input = rig.alloc_control();
     rig.fill_samples(input, 0, 0, 0.5);
-    let sources = mixed([source(input, StereoSample::new(4.0, 0.0), None)]);
+    let sources = mixed([source(input, StereoSample::new(4.0, 0.0))]);
     let param = SmoothedSample::new(10.0);
     let voice = target(0, 0, Some(0), true);
 
@@ -1243,7 +1239,7 @@ fn control_scalar_reads_the_sample_at_its_offset() {
     buffer[1] = 3.0;
     buffer[4] = 6.0;
     rig.set_next(input, 0, 0, 8.0);
-    let sources = mixed([source(input, StereoSample::ONE, None)]);
+    let sources = mixed([source(input, StereoSample::ONE)]);
 
     let read = |rig: &mut Rig, triggered: Option<usize>| -> Smp {
         let voice = target(0, 0, triggered, false);
@@ -1418,7 +1414,7 @@ fn spectral_scalar_follows_the_trigger_stage() {
     buffer.fill(0.0);
     buffer[2] = 3.0;
     rig.set_next(input, 0, 0, 8.0);
-    let sources = mixed([source(input, StereoSample::ONE, None)]);
+    let sources = mixed([source(input, StereoSample::ONE)]);
 
     let read = |rig: &mut Rig, stage: bool, triggered: Option<usize>| -> (Option<Smp>, Smp) {
         rig.trigger_stage = stage;

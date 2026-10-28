@@ -149,9 +149,6 @@ impl OutputsArena {
         for slot in slots {
             if is_control {
                 self.assert_control_rate(slot.src_slot);
-                if let Some(modulation_slot) = slot.modulation_slot {
-                    self.assert_control_rate(modulation_slot);
-                }
             }
 
             let amount = slot.amount[channel_idx];
@@ -162,22 +159,7 @@ impl OutputsArena {
                 .skip(offset)
                 .map(|sample| sample * amount);
 
-            if let Some(modulation_slot) = slot.modulation_slot {
-                let input_mod = self.samples[modulation_slot]
-                    .at(channel_idx, voice_idx)
-                    .buffer()
-                    .iter()
-                    .skip(offset);
-
-                add_to_buffer(
-                    result,
-                    input
-                        .zip(input_mod)
-                        .map(|(input, input_mod)| input * input_mod),
-                );
-            } else {
-                add_to_buffer(result, input);
-            }
+            add_to_buffer(result, input);
         }
 
         true
@@ -210,14 +192,8 @@ impl OutputsArena {
         let mut result: Smp = 0.0;
 
         for slot in slots {
-            let mut value = self.control_scalar(slot.src_slot, channel_idx, voice_idx, this_frame)
+            result += self.control_scalar(slot.src_slot, channel_idx, voice_idx, this_frame)
                 * slot.amount[channel_idx];
-
-            if let Some(modulated_slot) = slot.modulation_slot {
-                value *= self.control_scalar(modulated_slot, channel_idx, voice_idx, this_frame);
-            }
-
-            result += value;
         }
 
         Some(result)
