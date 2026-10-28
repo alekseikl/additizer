@@ -274,6 +274,13 @@ impl<L: ModMapLinks> ModMap<L> {
             }
         }
 
+        if self.params.bipolar {
+            let two = WideSmp::splat(2.0);
+            let bias = WideSmp::splat(-1.0);
+
+            map_in_place(output, |sample| sample.mul_add(two, bias));
+        }
+
         let amount = &self.channel_params[target.channel_idx].amount;
 
         if let Some(amount) = router.param_stationary(&self.inputs.amount, amount) {
@@ -292,13 +299,6 @@ impl<L: ModMapLinks> ModMap<L> {
             zip_map_in_place(output, &self.buffers.amount[..n], |sample, amount| {
                 sample * amount.clamp(WideSmp::ZERO, WideSmp::ONE)
             });
-        }
-
-        if self.params.bipolar {
-            let two = WideSmp::splat(2.0);
-            let bias = WideSmp::splat(-1.0);
-
-            map_in_place(output, |sample| sample.mul_add(two, bias));
         }
 
         if self.params.smooth >= self.coeffs.min_time {

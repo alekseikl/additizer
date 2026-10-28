@@ -55,27 +55,28 @@ impl ModMapWidget {
 
         bridge.apply_modulation(module_id, Input::Amount, &mut amount);
 
-        let points = Self::curve_points(plot, &config.segments, amount[0].clamp(0.0, 1.0));
+        let amount = amount[0].clamp(0.0, 1.0);
+        let points = Self::curve_points(plot, &config.segments, amount, config.bipolar);
         let painter = ui.painter();
 
         Self::paint_grid(painter, plot, config.bipolar);
         Self::paint_stroke(&painter.with_clip_rect(plot), &points);
 
         if has_active_voices {
-            Self::paint_probe(
-                painter,
-                plot,
-                &config.segments,
-                amount[0].clamp(0.0, 1.0),
-                probe,
-            );
+            Self::paint_probe(painter, plot, &config.segments, amount, config.bipolar, probe);
         }
     }
 
-    fn value_pos(rect: Rect, x: Smp, y: Smp) -> Pos2 {
+    fn value_pos(rect: Rect, x: Smp, y: Smp, bipolar: bool) -> Pos2 {
+        let y = if bipolar {
+            (y.clamp(-1.0, 1.0) + 1.0) * 0.5
+        } else {
+            y.clamp(0.0, 1.0)
+        };
+
         Pos2::new(
             rect.left() + x.clamp(0.0, 1.0) * rect.width(),
-            rect.bottom() - y.clamp(0.0, 1.0) * rect.height(),
+            rect.bottom() - y * rect.height(),
         )
     }
 
@@ -85,13 +86,15 @@ impl ModMapWidget {
         rect: Rect,
         segments: &Segments,
         amount: Smp,
+        bipolar: bool,
         probe: StereoSample,
     ) {
         let at = |x: Smp| {
             Self::value_pos(
                 rect,
                 x,
-                Self::map_control(segments.value_at(x, None, None), amount),
+                Self::map_control(segments.value_at(x, None, None), amount, bipolar),
+                bipolar,
             )
         };
         let left = at(probe.left());
@@ -125,23 +128,27 @@ impl ModMapWidget {
         }
     }
 
-    /// Amount scale. The result stays in the curve's `[0, 1]` range.
-    fn map_control(mapped: Smp, amount: Smp) -> Smp {
+    /// Fold into `[-1, 1]` when bipolar, then scale by amount.
+    fn map_control(mapped: Smp, amount: Smp, bipolar: bool) -> Smp {
+        let mapped = if bipolar {
+            mapped.mul_add(2.0, -1.0)
+        } else {
+            mapped
+        };
+
         mapped * amount.clamp(0.0, 1.0)
     }
 
-    /// `[0, 1]` ramp after the curve and amount. `0` is the bottom.
-    fn curve_points(rect: Rect, segments: &Segments, amount: Smp) -> Vec<Pos2> {
+    /// Curve after the bipolar fold and the amount scale. Unipolar `0` is the bottom; bipolar `0` is the midline.
+    fn curve_points(rect: Rect, segments: &Segments, amount: Smp, bipolar: bool) -> Vec<Pos2> {
         let t_mult = (SAMPLES - 1) as Smp;
 
         (0..SAMPLES)
             .map(|i| {
                 let x = i as Smp / t_mult;
-                let y = Self::map_control(segments.value_at(x, None, None), amount);
-                let px = rect.left() + x * rect.width();
-                let py = rect.bottom() - y * rect.height();
+                let y = Self::map_control(segments.value_at(x, None, None), amount, bipolar);
 
-                Pos2::new(px, py)
+                Self::value_pos(rect, x, y, bipolar)
             })
             .collect()
     }
