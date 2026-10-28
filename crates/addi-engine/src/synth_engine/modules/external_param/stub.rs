@@ -41,15 +41,7 @@ impl ExternalParamUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_smooth(&mut self, _value: Smp) -> bool {
-        self.diverge()
-    }
-
     fn set_sample_on_trigger(&mut self, _value: bool) -> bool {
-        self.diverge()
-    }
-
-    fn set_make_bipolar(&mut self, _value: bool) -> bool {
         self.diverge()
     }
 

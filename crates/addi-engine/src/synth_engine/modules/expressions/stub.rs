@@ -44,8 +44,4 @@ impl ExpressionsUiEnd for NoUi {
     fn set_use_release_velocity(&mut self, _value: bool) -> bool {
         self.diverge()
     }
-
-    fn set_smooth(&mut self, _value: Smp) -> bool {
-        self.diverge()
-    }
 }

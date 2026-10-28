@@ -1,8 +1,7 @@
 use addi_ui_backend::ui_bridge::modules::external_param::ExternalParamUiBridge;
-use egui::{Checkbox, ComboBox, Grid, Ui};
+use egui::{Checkbox, ComboBox, Ui};
 
-use crate::{ModuleUi, module_label::ModuleLabel, slider::Slider, units::Units};
-use addi_dsp::from_ms;
+use crate::{ModuleUi, module_label::ModuleLabel};
 use addi_engine::{ModuleId, ModuleType, external_param::NUM_EXT_PARAMS};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
@@ -32,75 +31,43 @@ impl ExternalParamUI {
 
         ui.add_space(16.0);
 
-        Grid::new("ext-param-grid")
-            .num_columns(4)
-            .spacing([8.0, 8.0])
-            .show(ui, |ui| {
-                ui.label("Input");
-                ui.horizontal(|ui| {
-                    ComboBox::from_id_salt("ext-param-select")
-                        .selected_text(format!("Param #{}", config.selected_param_index + 1))
-                        .show_ui(ui, |ui| {
-                            for i in 0..NUM_EXT_PARAMS {
-                                if ui
-                                    .selectable_value(
-                                        &mut config.selected_param_index,
-                                        i,
-                                        format!("Param #{}", i + 1),
-                                    )
-                                    .clicked()
-                                {
-                                    param_bridge.select_param(i);
-                                }
-                            }
-                        });
-
-                    ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            ui.label("Input");
+            ComboBox::from_id_salt("ext-param-select")
+                .selected_text(format!("Param #{}", config.selected_param_index + 1))
+                .show_ui(ui, |ui| {
+                    for i in 0..NUM_EXT_PARAMS {
+                        if ui
+                            .selectable_value(
+                                &mut config.selected_param_index,
+                                i,
+                                format!("Param #{}", i + 1),
+                            )
+                            .clicked()
+                        {
+                            param_bridge.select_param(i);
+                        }
+                    }
                 });
 
-                ui.label("Smooth");
-                if ui
-                    .add(
-                        Slider::mono(&mut config.smooth, 0.0..=0.05, None)
-                            .default(from_ms(4.0))
-                            .skew(1.2)
-                            .units(Units::Time),
-                    )
-                    .changed()
-                {
-                    param_bridge.set_smooth(config.smooth);
-                }
-                ui.end_row();
+            ui.add_space(8.0);
+            if ui
+                .add(Checkbox::new(&mut config.sample_on_trigger, "Hold"))
+                .on_hover_text("Hold a value copied on trigger")
+                .changed()
+            {
+                param_bridge.set_sample_on_trigger(config.sample_on_trigger);
+            }
 
-                ui.label("Hold")
-                    .on_hover_text("Hold a value copied on trigger");
-                if ui
-                    .add(Checkbox::without_text(&mut config.sample_on_trigger))
-                    .changed()
-                {
-                    param_bridge.set_sample_on_trigger(config.sample_on_trigger);
-                }
-
-                ui.label("Make Bipolar")
-                    .on_hover_text("Remaps [0, 1] into [-1, 1]");
-                if ui
-                    .add(Checkbox::without_text(&mut config.make_bipolar))
-                    .changed()
-                {
-                    param_bridge.set_make_bipolar(config.make_bipolar);
-                }
-                ui.end_row();
-
-                ui.label("Polyphonic")
-                    .on_hover_text("Apply per-voice poly modulation from the host");
-                if ui
-                    .add(Checkbox::without_text(&mut config.polyphonic))
-                    .changed()
-                {
-                    param_bridge.set_polyphonic(config.polyphonic);
-                }
-                ui.end_row();
-            });
+            ui.add_space(8.0);
+            if ui
+                .add(Checkbox::new(&mut config.polyphonic, "Polyphonic"))
+                .on_hover_text("Apply per-voice poly modulation from the host")
+                .changed()
+            {
+                param_bridge.set_polyphonic(config.polyphonic);
+            }
+        });
     }
 }
 

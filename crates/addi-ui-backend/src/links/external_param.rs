@@ -24,16 +24,8 @@ impl UiEnd {
         self.tx.push(UiEvent::SelectedParamIndex(index)).is_ok()
     }
 
-    pub fn set_smooth(&mut self, value: Smp) -> bool {
-        self.tx.push(UiEvent::Smooth(value)).is_ok()
-    }
-
     pub fn set_sample_on_trigger(&mut self, value: bool) -> bool {
         self.tx.push(UiEvent::SampleOnTrigger(value)).is_ok()
-    }
-
-    pub fn set_make_bipolar(&mut self, value: bool) -> bool {
-        self.tx.push(UiEvent::MakeBipolar(value)).is_ok()
     }
 
     pub fn set_polyphonic(&mut self, value: bool) -> bool {
@@ -86,14 +78,8 @@ impl ExternalParamUiEnd for UiEnd {
     fn select_param(&mut self, index: usize) -> bool {
         UiEnd::select_param(self, index)
     }
-    fn set_smooth(&mut self, value: Smp) -> bool {
-        UiEnd::set_smooth(self, value)
-    }
     fn set_sample_on_trigger(&mut self, value: bool) -> bool {
         UiEnd::set_sample_on_trigger(self, value)
-    }
-    fn set_make_bipolar(&mut self, value: bool) -> bool {
-        UiEnd::set_make_bipolar(self, value)
     }
     fn set_polyphonic(&mut self, value: bool) -> bool {
         UiEnd::set_polyphonic(self, value)

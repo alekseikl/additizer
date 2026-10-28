@@ -31,21 +31,9 @@ impl<L: ExternalParamLinks> ExternalParamUiBridge<L> {
         }
     }
 
-    pub fn set_smooth(&mut self, value: Smp) {
-        if self.ui_end.set_smooth(value) {
-            self.config.smooth = value;
-        }
-    }
-
     pub fn set_sample_on_trigger(&mut self, value: bool) {
         if self.ui_end.set_sample_on_trigger(value) {
             self.config.sample_on_trigger = value;
-        }
-    }
-
-    pub fn set_make_bipolar(&mut self, value: bool) {
-        if self.ui_end.set_make_bipolar(value) {
-            self.config.make_bipolar = value;
         }
     }
 

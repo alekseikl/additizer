@@ -3,7 +3,6 @@ use crate::synth_engine::{Expression, Smp, engine_io};
 pub enum UiEvent {
     Expression(Expression),
     UseReleaseVelocity(bool),
-    Smooth(Smp),
 }
 
 pub trait ExpressionsAudioEnd: Send {
@@ -15,7 +14,6 @@ pub trait ExpressionsUiEnd: Send {
     fn get_value(&mut self) -> Smp;
     fn set_expression(&mut self, expression: Expression) -> bool;
     fn set_use_release_velocity(&mut self, value: bool) -> bool;
-    fn set_smooth(&mut self, value: Smp) -> bool;
 }
 
 pub trait ExpressionsLinks: Send {

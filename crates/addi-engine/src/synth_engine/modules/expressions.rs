@@ -16,7 +16,6 @@ use crate::{
             ControlRouterType, DataType, ExpressionEvent, InputMeta, ProcessContext, RouterFactory,
             SamplesOutput, VoiceEvent, VoiceTarget,
         },
-        smooth::Smoother,
         synth_module::SynthModule,
     },
 };
@@ -24,7 +23,6 @@ use crate::{
 struct Params {
     expression: Expression,
     use_release_velocity: bool,
-    smooth: Smp,
 }
 
 impl Params {
@@ -32,7 +30,6 @@ impl Params {
         Self {
             expression: c.expression,
             use_release_velocity: c.use_release_velocity,
-            smooth: c.smooth,
         }
     }
 }
@@ -40,7 +37,6 @@ impl Params {
 struct Voice {
     values: ValueBuffer,
     buffer: Buffer,
-    smoother: Smoother,
 }
 
 impl Voice {
@@ -48,7 +44,6 @@ impl Voice {
         Self {
             values: ValueBuffer::new(buffer_size),
             buffer: zero_buffer(buffer_size),
-            smoother: Smoother::default(),
         }
     }
 }
@@ -95,13 +90,11 @@ impl<L: ExpressionsLinks> Expressions<L> {
             id: self.id,
             expression: self.params.expression,
             use_release_velocity: self.params.use_release_velocity,
-            smooth: self.params.smooth,
         }
     }
 
     set_mono_param!(set_expression, expression, Expression);
     set_mono_param!(set_use_release_velocity, use_release_velocity, bool);
-    set_mono_param!(set_smooth, smooth, Smp);
 
     fn transform_value(expression: Expression, value: Smp) -> Smp {
         match expression {
@@ -169,7 +162,6 @@ impl<L: ExpressionsLinks> Expressions<L> {
         rf: &mut RouterFactory<ControlRouterType, L::EngineEnd>,
     ) {
         let block_samples = rf.params().samples;
-        let sample_rate = rf.params().sample_rate;
         let voice = &mut self.mono_voices[target.voice_idx];
         let (router, mut voice_output) = rf.for_voice(target, outputs);
 
@@ -179,21 +171,15 @@ impl<L: ExpressionsLinks> Expressions<L> {
 
             voice.values.read_and_reset(buff);
 
-            let offset = if let Some(offset) = target.triggered {
-                voice.smoother.reset(buff[offset]);
-                offset
-            } else {
-                0
-            };
-
-            voice
-                .smoother
-                .apply_if_needed(sample_rate, self.params.smooth, &mut buff[offset..]);
-
             if router.need_update_ui() {
+                let shown = target
+                    .triggered
+                    .map(|offset| buff[offset])
+                    .unwrap_or(buff[0]);
+
                 self.audio_end.update_value(Self::normalize_display_value(
                     self.params.expression,
-                    buff[offset],
+                    shown,
                 ));
             }
         }
@@ -279,7 +265,6 @@ impl<L: ExpressionsLinks> SynthModule for Expressions<L> {
             match event {
                 UiEvent::Expression(expression) => self.set_expression(expression),
                 UiEvent::UseReleaseVelocity(value) => self.set_use_release_velocity(value),
-                UiEvent::Smooth(value) => self.set_smooth(value),
             }
         }
     }

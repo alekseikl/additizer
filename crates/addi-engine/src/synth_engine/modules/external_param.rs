@@ -14,7 +14,6 @@ use crate::synth_engine::{
         ControlRouterType, DataType, InputMeta, ProcessContext, RouterFactory, SamplesOutput,
         VoiceEvent, VoiceTarget,
     },
-    smooth::Smoother,
     synth_module::SynthModule,
 };
 
@@ -27,9 +26,7 @@ pub trait ExtParamValue {
 
 struct Params {
     selected_param_index: usize,
-    smooth: Smp,
     sample_on_trigger: bool,
-    make_bipolar: bool,
     polyphonic: bool,
 }
 
@@ -37,9 +34,7 @@ impl Params {
     fn from_config(c: &config::ExternalParamConfig) -> Self {
         Self {
             selected_param_index: c.selected_param_index.min(NUM_EXT_PARAMS - 1),
-            smooth: c.smooth,
             sample_on_trigger: c.sample_on_trigger,
-            make_bipolar: c.make_bipolar,
             polyphonic: c.polyphonic,
         }
     }
@@ -49,7 +44,6 @@ struct Voice {
     values: ValueBuffer,
     value_at_trigger: Smp,
     buffer: Buffer,
-    smoother: Smoother,
 }
 
 impl Voice {
@@ -58,7 +52,6 @@ impl Voice {
             values: ValueBuffer::new(buffer_size),
             value_at_trigger: 0.0,
             buffer: zero_buffer(buffer_size),
-            smoother: Smoother::default(),
         }
     }
 }
@@ -108,9 +101,7 @@ impl<L: ExternalParamLinks> ExternalParam<L> {
         ExternalParamConfig {
             id: self.id,
             selected_param_index: self.params.selected_param_index,
-            smooth: self.params.smooth,
             sample_on_trigger: self.params.sample_on_trigger,
-            make_bipolar: self.params.make_bipolar,
             polyphonic: self.params.polyphonic,
         }
     }
@@ -121,9 +112,7 @@ impl<L: ExternalParamLinks> ExternalParam<L> {
         usize,
         selected_param_index.min(NUM_EXT_PARAMS - 1)
     );
-    set_mono_param!(set_smooth, smooth, Smp);
     set_mono_param!(set_sample_on_trigger, sample_on_trigger, bool);
-    set_mono_param!(set_make_bipolar, make_bipolar, bool);
     set_mono_param!(set_polyphonic, polyphonic, bool);
 
     // Set parameters values at the beginning of a block
@@ -176,7 +165,6 @@ impl<L: ExternalParamLinks> ExternalParam<L> {
         rf: &mut RouterFactory<ControlRouterType, L::EngineEnd>,
     ) {
         let block_samples = rf.params().samples;
-        let sample_rate = rf.params().sample_rate;
         let voice = &mut self.voices[target.voice_idx];
         let (router, mut voice_output) = rf.for_voice(target, outputs);
 
@@ -199,25 +187,13 @@ impl<L: ExternalParamLinks> ExternalParam<L> {
                 buff.fill(voice.value_at_trigger);
             }
 
-            let offset = if let Some(offset) = target.triggered {
-                voice.smoother.reset(buff[offset]);
-                offset
-            } else {
-                0
-            };
-
-            voice
-                .smoother
-                .apply_if_needed(sample_rate, self.params.smooth, &mut buff[offset..]);
-
             if router.need_update_ui() {
-                self.audio_end.update_value(buff[offset]);
-            }
+                let shown = target
+                    .triggered
+                    .map(|offset| buff[offset])
+                    .unwrap_or(buff[0]);
 
-            if self.params.make_bipolar {
-                for sample in &mut buff[offset..] {
-                    *sample = *sample * 2.0 - 1.0;
-                }
+                self.audio_end.update_value(shown);
             }
         }
 
@@ -275,9 +251,7 @@ impl<L: ExternalParamLinks> SynthModule for ExternalParam<L> {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
                 UiEvent::SelectedParamIndex(index) => self.select_param(index),
-                UiEvent::Smooth(value) => self.set_smooth(value),
                 UiEvent::SampleOnTrigger(value) => self.set_sample_on_trigger(value),
-                UiEvent::MakeBipolar(value) => self.set_make_bipolar(value),
                 UiEvent::Polyphonic(value) => self.set_polyphonic(value),
             }
         }

@@ -36,12 +36,6 @@ impl<L: ExpressionsLinks> ExpressionsUiBridge<L> {
             self.config.use_release_velocity = value;
         }
     }
-
-    pub fn set_smooth(&mut self, value: Smp) {
-        if self.ui_end.set_smooth(value) {
-            self.config.smooth = value;
-        }
-    }
 }
 
 impl<L: ExpressionsLinks> ModuleUiBridge for ExpressionsUiBridge<L> {

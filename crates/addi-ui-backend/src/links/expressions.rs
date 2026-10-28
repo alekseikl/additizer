@@ -25,10 +25,6 @@ impl UiEnd {
     pub fn set_use_release_velocity(&mut self, value: bool) -> bool {
         self.tx.push(UiEvent::UseReleaseVelocity(value)).is_ok()
     }
-
-    pub fn set_smooth(&mut self, value: Smp) -> bool {
-        self.tx.push(UiEvent::Smooth(value)).is_ok()
-    }
 }
 
 pub struct AudioEnd {
@@ -78,9 +74,6 @@ impl ExpressionsUiEnd for UiEnd {
     }
     fn set_use_release_velocity(&mut self, value: bool) -> bool {
         UiEnd::set_use_release_velocity(self, value)
-    }
-    fn set_smooth(&mut self, value: Smp) -> bool {
-        UiEnd::set_smooth(self, value)
     }
 }
 

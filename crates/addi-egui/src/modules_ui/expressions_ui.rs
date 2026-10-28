@@ -1,8 +1,7 @@
 use addi_ui_backend::ui_bridge::modules::expressions::ExpressionsUiBridge;
-use egui::{Checkbox, ComboBox, Grid, Ui};
+use egui::{Checkbox, ComboBox, Ui};
 
-use crate::{ModuleUi, module_label::ModuleLabel, slider::Slider, units::Units};
-use addi_dsp::from_ms;
+use crate::{ModuleUi, module_label::ModuleLabel};
 use addi_engine::{Expression, ModuleId, ModuleType};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
@@ -45,66 +44,47 @@ impl ExpressionsUi {
 
         ui.add_space(16.0);
 
-        Grid::new("expressions-grid")
-            .num_columns(4)
-            .spacing([8.0, 8.0])
-            .show(ui, |ui| {
-                ui.label("Expression");
-                ui.horizontal(|ui| {
-                    ComboBox::from_id_salt("expressions-combo")
-                        .selected_text(config.expression.label())
-                        .show_ui(ui, |ui| {
-                            const TYPE_OPTIONS: &[Expression] = &[
-                                Expression::Velocity,
-                                Expression::Gain,
-                                Expression::Pan,
-                                Expression::Pitch,
-                                Expression::Timbre,
-                                Expression::Pressure,
-                            ];
+        ui.horizontal(|ui| {
+            ui.label("Expression");
+            ComboBox::from_id_salt("expressions-combo")
+                .selected_text(config.expression.label())
+                .show_ui(ui, |ui| {
+                    const TYPE_OPTIONS: &[Expression] = &[
+                        Expression::Velocity,
+                        Expression::Gain,
+                        Expression::Pan,
+                        Expression::Pitch,
+                        Expression::Timbre,
+                        Expression::Pressure,
+                    ];
 
-                            for expression in TYPE_OPTIONS {
-                                if ui
-                                    .selectable_value(
-                                        &mut config.expression,
-                                        *expression,
-                                        expression.label(),
-                                    )
-                                    .clicked()
-                                {
-                                    expr_bridge.set_expression(*expression);
-                                }
-                            }
-                        });
-
-                    ui.add_space(8.0);
+                    for expression in TYPE_OPTIONS {
+                        if ui
+                            .selectable_value(
+                                &mut config.expression,
+                                *expression,
+                                expression.label(),
+                            )
+                            .clicked()
+                        {
+                            expr_bridge.set_expression(*expression);
+                        }
+                    }
                 });
 
-                ui.label("Smooth");
+            if matches!(config.expression, Expression::Velocity) {
+                ui.add_space(8.0);
                 if ui
-                    .add(
-                        Slider::mono(&mut config.smooth, 0.0..=0.05, None)
-                            .default(from_ms(4.0))
-                            .skew(1.2)
-                            .units(Units::Time),
-                    )
+                    .add(Checkbox::new(
+                        &mut config.use_release_velocity,
+                        "Use Release velocity",
+                    ))
                     .changed()
                 {
-                    expr_bridge.set_smooth(config.smooth);
+                    expr_bridge.set_use_release_velocity(config.use_release_velocity);
                 }
-                ui.end_row();
-
-                if matches!(config.expression, Expression::Velocity) {
-                    ui.label("Use Release velocity");
-                    if ui
-                        .add(Checkbox::without_text(&mut config.use_release_velocity))
-                        .changed()
-                    {
-                        expr_bridge.set_use_release_velocity(config.use_release_velocity);
-                    }
-                    ui.end_row();
-                }
-            });
+            }
+        });
     }
 }
 
