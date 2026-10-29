@@ -369,9 +369,16 @@ fn curved_segment_matches_the_drawn_curve() {
     assert_eq!(next.stage, Stage::Done);
 }
 
+fn with_release(env: &mut SegmentsEnvelope) {
+    let mut segments = Segments::from_points(&[(0.0, 1.0), (0.5, 1.0), (1.0, 0.0)], false);
+    assert!(segments.set_release_point(Some(1)));
+    env.set_segments(segments);
+}
+
 #[test]
-fn keep_alive_holds_only_a_playing_stage() {
+fn keep_alive_holds_only_a_playing_stage_with_a_release_point() {
     let mut env = envelope(false, true);
+    with_release(&mut env);
     env.voices.at_mut(0, 2).stage = Stage::segment(0, 0.2);
     env.voices.at_mut(1, 2).stage = Stage::Done;
 
@@ -384,16 +391,28 @@ fn keep_alive_holds_only_a_playing_stage() {
     env.poll_decaying_voices(&mut finished);
     assert!(finished[0].is_done());
 
-    let done = envelope(false, true);
+    let mut done = envelope(false, true);
+    with_release(&mut done);
     let mut decaying = [DecayingVoice::new(2)];
     done.poll_decaying_voices(&mut decaying);
     assert!(decaying[0].is_done());
 
     let mut off = envelope(false, false);
+    with_release(&mut off);
     off.voices.at_mut(0, 2).stage = Stage::segment(0, 0.2);
     let mut released = [DecayingVoice::new(2)];
     off.poll_decaying_voices(&mut released);
     assert!(released[0].is_done());
+}
+
+#[test]
+fn keep_alive_is_ignored_without_a_release_point() {
+    let mut env = envelope(false, true);
+    env.voices.at_mut(0, 2).stage = Stage::segment(0, 0.2);
+
+    let mut decaying = [DecayingVoice::new(2)];
+    env.poll_decaying_voices(&mut decaying);
+    assert!(decaying[0].is_done());
 }
 
 #[test]

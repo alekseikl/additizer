@@ -59,10 +59,15 @@ impl SegmentsEnvelopeUi {
         let mut phase_shift = envelope_bridge.config().phase_shift;
         let mut steal_level = envelope_bridge.config().steal_level;
         let mut keep_voice_alive = envelope_bridge.config().keep_voice_alive;
+        let has_release = envelope_bridge
+            .config()
+            .segments
+            .release_point_idx()
+            .is_some();
         let mut timebase = envelope_bridge.config().timebase;
 
         Grid::new("segments_envelope_grid")
-            .num_columns(4)
+            .num_columns(3)
             .spacing([8.0, 8.0])
             .show(ui, |ui| {
                 ui.label("Rate")
@@ -74,19 +79,21 @@ impl SegmentsEnvelopeUi {
                     envelope_bridge.set_param(Input::Rate, rate);
                 }
 
-                ui.label("Timebase");
-                ComboBox::from_id_salt(("segments-envelope-timebase", module_id))
-                    .selected_text(timebase.label())
-                    .show_ui(ui, |ui| {
-                        for option in Timebase::ALL {
-                            if ui
-                                .selectable_value(&mut timebase, option, option.label())
-                                .clicked()
-                            {
-                                envelope_bridge.set_timebase(option);
+                ui.horizontal(|ui| {
+                    ui.label("Timebase");
+                    ComboBox::from_id_salt(("segments-envelope-timebase", module_id))
+                        .selected_text(timebase.label())
+                        .show_ui(ui, |ui| {
+                            for option in Timebase::ALL {
+                                if ui
+                                    .selectable_value(&mut timebase, option, option.label())
+                                    .clicked()
+                                {
+                                    envelope_bridge.set_timebase(option);
+                                }
                             }
-                        }
-                    });
+                        });
+                });
                 ui.end_row();
 
                 ui.label("Phase").on_hover_text(
@@ -101,22 +108,32 @@ impl SegmentsEnvelopeUi {
                 {
                     envelope_bridge.set_param(Input::Phase, phase_shift);
                 }
-                ui.end_row();
 
-                ui.label("Steal level")
-                    .on_hover_text("New voice starts from the previous envelope level");
-                if ui.add(Checkbox::without_text(&mut steal_level)).changed() {
-                    envelope_bridge.set_steal_level(steal_level);
-                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(Checkbox::new(&mut steal_level, "Steal level"))
+                        .on_hover_text("New voice starts from the previous envelope level")
+                        .changed()
+                    {
+                        envelope_bridge.set_steal_level(steal_level);
+                    }
 
-                ui.label("Keep alive")
-                    .on_hover_text("Keeps the voice alive until the envelope finishes");
-                if ui
-                    .add(Checkbox::without_text(&mut keep_voice_alive))
-                    .changed()
-                {
-                    envelope_bridge.set_keep_voice_alive(keep_voice_alive);
-                }
+                    ui.add_space(8.0);
+
+                    if ui
+                        .add_enabled(
+                            has_release,
+                            Checkbox::new(&mut keep_voice_alive, "Keep alive"),
+                        )
+                        .on_hover_text("Keeps the voice alive until the release finishes")
+                        .on_disabled_hover_text(
+                            "Set a release point to hold the voice through the release",
+                        )
+                        .changed()
+                    {
+                        envelope_bridge.set_keep_voice_alive(keep_voice_alive);
+                    }
+                });
                 ui.end_row();
             });
     }

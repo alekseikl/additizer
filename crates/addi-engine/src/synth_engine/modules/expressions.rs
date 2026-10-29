@@ -177,10 +177,8 @@ impl<L: ExpressionsLinks> Expressions<L> {
                     .map(|offset| buff[offset])
                     .unwrap_or(buff[0]);
 
-                self.audio_end.update_value(Self::normalize_display_value(
-                    self.params.expression,
-                    shown,
-                ));
+                self.audio_end
+                    .update_value(Self::normalize_display_value(self.params.expression, shown));
             }
         }
 

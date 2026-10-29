@@ -49,7 +49,7 @@ pub fn module_default_label(module_type: ModuleType) -> &'static str {
         ModuleType::ExternalParam => "Ext Param",
         ModuleType::Lfo => "LFO",
         ModuleType::ModMap => "Mod Map",
-        ModuleType::SegmentsEnvelope => "Segments Envelope",
+        ModuleType::SegmentsEnvelope => "Seg Envelope",
         ModuleType::Pitch => "Pitch",
         ModuleType::WaveShaper => "Waveshaper",
         ModuleType::Svf => "SVF",

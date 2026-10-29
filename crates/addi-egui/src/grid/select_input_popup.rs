@@ -81,15 +81,8 @@ impl SelectInputPopup {
             let color = input.input_type.color();
             let label = self.module_type.input_label(input.input_type);
 
-            if Self::menu_item(
-                ui,
-                &label,
-                color,
-                row_width,
-                row == 0,
-                row + 1 == row_count,
-            )
-            .clicked()
+            if Self::menu_item(ui, &label, color, row_width, row == 0, row + 1 == row_count)
+                .clicked()
             {
                 ctx.bridge.create_link(self.src, input_id);
                 ctx.events.push(GridEvent::Moved(self.dst));

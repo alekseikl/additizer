@@ -53,7 +53,7 @@ impl ModuleType {
             Self::ExternalParam => "Ext Parameter",
             Self::Lfo => "LFO",
             Self::ModMap => "Mod Map",
-            Self::SegmentsEnvelope => "Segments Envelope",
+            Self::SegmentsEnvelope => "Seg Envelope",
             Self::Pitch => "Pitch",
             Self::WaveShaper => "Waveshaper",
             Self::Svf => "SVF",

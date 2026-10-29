@@ -596,7 +596,8 @@ impl<L: SegmentsEnvelopeLinks> SynthModule for SegmentsEnvelope<L> {
     }
 
     fn poll_decaying_voices(&self, decaying_voices: &mut [DecayingVoice]) {
-        if !self.params.keep_voice_alive {
+        // The release tail exists only when a release point is set.
+        if !self.params.keep_voice_alive || self.params.segments.release_point_idx().is_none() {
             return;
         }
 

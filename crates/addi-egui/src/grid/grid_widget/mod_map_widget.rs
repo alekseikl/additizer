@@ -63,7 +63,14 @@ impl ModMapWidget {
         Self::paint_stroke(&painter.with_clip_rect(plot), &points);
 
         if has_active_voices {
-            Self::paint_probe(painter, plot, &config.segments, amount, config.bipolar, probe);
+            Self::paint_probe(
+                painter,
+                plot,
+                &config.segments,
+                amount,
+                config.bipolar,
+                probe,
+            );
         }
     }
 

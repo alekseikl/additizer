@@ -25,6 +25,8 @@ pub struct SegmentsEnvelopeConfig {
     /// A stolen note leaves the first segment from the replaced voice's level.
     #[serde(default, alias = "steal_phase")]
     pub steal_level: bool,
+    /// Holds a released voice until the curve after the release point finishes.
+    /// Ignored when no release point is set.
     #[serde(default)]
     pub keep_voice_alive: bool,
     /// Length of one pass, in [`Timebase`] units. `1.0` lasts one unit.

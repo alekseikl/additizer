@@ -815,9 +815,13 @@ fn duplicate_module_copies_settings_without_links() {
         assert_eq!(left.gain_to, right.gain_to);
     }
 
-    assert!(engine.get_config().links.iter().all(|link| {
-        link.src_id() != copy_id && link.dst_id() != copy_id
-    }));
+    assert!(
+        engine
+            .get_config()
+            .links
+            .iter()
+            .all(|link| { link.src_id() != copy_id && link.dst_id() != copy_id })
+    );
 }
 
 #[test]
