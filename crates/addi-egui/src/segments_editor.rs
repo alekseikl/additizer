@@ -1,8 +1,7 @@
 use egui::{
     Color32, ColorImage, Context, CursorIcon, DragValue, FontFamily, FontId, LayerId, Mesh, Order,
     Painter, PointerButton, Pos2, Rect, Response, RichText, Sense, Shape, Stroke, StrokeKind,
-    TextureHandle, TextureId, TextureOptions, Ui, Vec2, ecolor::Hsva, epaint::Vertex,
-    layers::ShapeIdx, pos2, vec2,
+    TextureHandle, TextureId, TextureOptions, Ui, Vec2, ecolor::Hsva, epaint::Vertex, pos2, vec2,
 };
 
 use addi_dsp::{
@@ -12,7 +11,11 @@ use addi_dsp::{
 };
 use addi_engine::{Smp, StereoSample};
 
-use crate::{circle_grab::CircleGrab, segment_presets, units::Units, utils::hsva};
+use crate::{segment_presets, units::Units, utils::hsva};
+
+use utils::{Drag, Handle};
+
+mod utils;
 
 const EDITOR_HEIGHT: f32 = 220.0;
 const GRAB_RADIUS: f32 = 8.0;
@@ -70,35 +73,21 @@ const PRESETS: &[Preset] = &[
     ("Saw down", segment_presets::saw_down),
 ];
 
-/// Handle held by the pointer.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Drag {
-    Point(usize),
-    Power(usize),
-}
-
-/// Revision and plot size the cached curve samples were built from.
-#[derive(Clone, Copy, PartialEq)]
-struct CurveCache {
-    revision: u64,
-    size: Vec2,
-}
-
 pub struct SegmentsEditor {
     grid_x: i32,
     grid_y: i32,
+    /// Handle being dragged. The center keeps its offset from the pointer.
     drag: Option<Drag>,
-    /// Offset that keeps the dragged point under the pointer.
-    grab: Option<CircleGrab>,
-    /// Curve-space pointer y at the previous bend update.
-    power_y: Option<Smp>,
+    /// Power of the bent segment when its drag started.
+    drag_power: Smp,
     /// Curve samples in 0–1 space.
     curve: Vec<[Smp; 2]>,
     /// Workspace for [`Segments::render_points`].
     scratch: Vec<Smp>,
     /// Cached curve samples projected into the current plot.
     points: Vec<Pos2>,
-    curve_cache: Option<CurveCache>,
+    /// Revision and plot size the cached curve samples were built from.
+    curve_cache: Option<(u64, Vec2)>,
     /// Endpoints share one level, and the last bend wraps back to the start.
     wrapped: bool,
     /// Loop and release markers. The segments envelope turns this on.
@@ -115,8 +104,7 @@ impl Default for SegmentsEditor {
             grid_x: 8,
             grid_y: 1,
             drag: None,
-            grab: None,
-            power_y: None,
+            drag_power: 0.0,
             curve: Vec::new(),
             scratch: Vec::new(),
             points: Vec::new(),
@@ -202,35 +190,34 @@ impl SegmentsEditor {
         segments: &mut Segments,
         playhead: Option<[(Smp, Smp); 2]>,
     ) {
-        let curve_slot = ui.painter().with_clip_rect(plot).add(Shape::Noop);
-
-        Self::canvas(response, plot, segments);
-
-        let count = segments.num_points();
         let mut remove = None;
 
-        for index in 0..count {
-            if self.point(ui, plot, segments, index) {
-                remove = Some(index);
-            }
+        if !ui.input(|input| input.pointer.primary_down()) {
+            self.drag = None;
         }
 
-        for index in 0..count {
-            self.bend_point(ui, plot, segments, index);
+        Self::interact_canvas(response, plot, segments);
+
+        for index in 0..segments.num_points() {
+            if self.interact_point(ui, plot, segments, index) {
+                remove = Some(index);
+            }
+
+            self.interact_power_point(ui, plot, segments, index);
         }
+
+        self.paint_scene(ui, plot, segments);
 
         if let Some(playhead) = playhead {
             self.paint_playheads(ui.painter(), plot, playhead);
         }
-
-        self.paint_curve_behind(ui, plot, segments, curve_slot);
 
         if let Some(index) = remove {
             segments.remove_point(index);
         }
     }
 
-    fn canvas(response: &Response, plot: Rect, segments: &mut Segments) {
+    fn interact_canvas(response: &Response, plot: Rect, segments: &mut Segments) {
         Self::canvas_menu(response, segments);
 
         if response.double_clicked_by(PointerButton::Primary)
@@ -240,12 +227,9 @@ impl SegmentsEditor {
         }
     }
 
-    fn bend_point(&mut self, ui: &Ui, plot: Rect, segments: &mut Segments, index: usize) {
-        if !self.power_active(plot, segments, index) {
-            if self.drag == Some(Drag::Power(index)) {
-                self.end_drag();
-            }
-
+    /// One power point: drag, double-click, and menu.
+    fn interact_power_point(&mut self, ui: &Ui, plot: Rect, segments: &mut Segments, index: usize) {
+        if !self.power_point_active(plot, segments, index) {
             return;
         }
 
@@ -255,34 +239,36 @@ impl SegmentsEditor {
             plot,
             center,
             POWER_GRAB_RADIUS,
-            ("segments-bend", index),
+            ("segments-power", index),
         );
 
         Self::power_menu(&response, segments, index);
 
         if response.double_clicked_by(PointerButton::Primary) {
-            if Self::shift_down(ui) {
-                segments.reset_powers();
-            } else {
-                segments.set_power(index, 0.0);
-            }
-
-            self.end_drag();
-        } else {
-            self.bend_drag(ui, plot, segments, index, &response);
+            segments.set_power(index, 0.0);
+            self.drag = None;
+        } else if let Some(pos) = self.drag_begin(ui, &response) {
+            self.drag = Some(Drag::new(
+                Self::curve_pos(plot, pos),
+                self.power_position(segments, index),
+                Handle::Power(index),
+            ));
+            self.drag_power = segments.power(index);
         }
 
-        // The edit above may have moved the handle.
-        let center = Self::screen_pos(plot, self.power_position(segments, index));
-        let dragging = self.drag == Some(Drag::Power(index));
-
-        ui.painter()
-            .circle_filled(center, POWER_RADIUS, self.power_color);
-        Self::paint_grab(ui, &response, center, POWER_GRAB_RADIUS, dragging);
+        if let Some((_, delta)) = self.drag_move(ui, plot, Handle::Power(index)) {
+            self.move_power(ui, segments, index, delta.y);
+        }
     }
 
-    /// One breakpoint: drag, double-click, menu, and paint.
-    fn point(&mut self, ui: &Ui, plot: Rect, segments: &mut Segments, index: usize) -> bool {
+    /// One breakpoint: drag, double-click, and menu.
+    fn interact_point(
+        &mut self,
+        ui: &Ui,
+        plot: Rect,
+        segments: &mut Segments,
+        index: usize,
+    ) -> bool {
         let center = Self::screen_pos(plot, Self::curve_point(segments.point(index)));
         let response =
             Self::handle_response(ui, plot, center, GRAB_RADIUS, ("segments-point", index));
@@ -290,77 +276,23 @@ impl SegmentsEditor {
 
         if response.double_clicked_by(PointerButton::Primary) {
             remove |= Self::is_inner(segments, index);
-            self.end_drag();
-        } else {
-            self.point_drag(ui, plot, segments, index, &response);
+        } else if let Some(pos) = self.drag_begin(ui, &response) {
+            self.drag = Some(Drag::new(
+                Self::curve_pos(plot, pos),
+                Self::curve_point(segments.point(index)),
+                Handle::Point(index),
+            ));
+        }
+
+        if let Some((placed, _)) = self.drag_move(ui, plot, Handle::Point(index)) {
+            self.move_point(ui, segments, index, placed.x, placed.y);
         }
 
         if remove {
-            self.end_drag();
+            self.drag = None;
         }
 
-        self.paint_point(ui, plot, segments, index, &response);
         remove
-    }
-
-    /// Shift places the point freely.
-    fn point_drag(
-        &mut self,
-        ui: &Ui,
-        plot: Rect,
-        segments: &mut Segments,
-        index: usize,
-        response: &Response,
-    ) {
-        if let Some(pos) = self.drag_begin(ui, response) {
-            let pointer = Self::curve_pos(plot, pos);
-
-            self.grab = Some(CircleGrab::new(
-                pointer,
-                Self::curve_point(segments.point(index)),
-            ));
-            self.drag = Some(Drag::Point(index));
-        }
-
-        let Some(pos) = self.drag_pos(ui, Drag::Point(index)) else {
-            return;
-        };
-        let Some(grab) = self.grab else {
-            return;
-        };
-        let placed = grab.place(Self::curve_pos(plot, pos));
-
-        if placed != grab.center() {
-            self.move_point(segments, index, placed.x, placed.y, !Self::shift_down(ui));
-        }
-    }
-
-    /// Bend follows vertical pointer travel. Shift mirrors the bend onto the next segment.
-    fn bend_drag(
-        &mut self,
-        ui: &Ui,
-        plot: Rect,
-        segments: &mut Segments,
-        index: usize,
-        response: &Response,
-    ) {
-        if let Some(pos) = self.drag_begin(ui, response) {
-            self.power_y = Some(Self::curve_pos(plot, pos).y);
-            self.drag = Some(Drag::Power(index));
-        }
-
-        let Some(pos) = self.drag_pos(ui, Drag::Power(index)) else {
-            return;
-        };
-        let y = Self::curve_pos(plot, pos).y;
-
-        if let Some(last) = self.power_y
-            && y != last
-        {
-            self.move_power(segments, index, y - last, Self::shift_down(ui));
-        }
-
-        self.power_y = Some(y);
     }
 
     /// Pointer once this press is a drag and no other handle is held.
@@ -393,24 +325,20 @@ impl SegmentsEditor {
         None
     }
 
-    /// Pointer while `drag` is held. Releasing the button ends it.
-    fn drag_pos(&mut self, ui: &Ui, drag: Drag) -> Option<Pos2> {
-        if self.drag != Some(drag) {
+    /// Advances `handle` while the primary button is held.
+    fn drag_move(&mut self, ui: &Ui, plot: Rect, handle: Handle) -> Option<(Pos2, Vec2)> {
+        if self.dragged() != Some(handle) {
             return None;
         }
 
-        if !ui.input(|input| input.pointer.primary_down()) {
-            self.end_drag();
-            return None;
-        }
+        let pos = ui.input(|input| input.pointer.latest_pos())?;
+        let drag = self.drag.as_mut()?;
 
-        Self::drag_pointer(ui)
+        Some(drag.move_pos(Self::curve_pos(plot, pos)))
     }
 
-    fn end_drag(&mut self) {
-        self.drag = None;
-        self.grab = None;
-        self.power_y = None;
+    fn dragged(&self) -> Option<Handle> {
+        self.drag.map(Drag::handle)
     }
 
     /// Clickable square around `center`, kept inside the plot.
@@ -447,7 +375,8 @@ impl SegmentsEditor {
         );
     }
 
-    fn move_point(&self, segments: &mut Segments, index: usize, x: Smp, y: Smp, snap: bool) {
+    /// Shift places the point freely.
+    fn move_point(&self, ui: &Ui, segments: &mut Segments, index: usize, x: Smp, y: Smp) {
         if index >= segments.num_points() {
             return;
         }
@@ -456,7 +385,7 @@ impl SegmentsEditor {
         let mut x = x.clamp(min_x, max_x);
         let mut y = y.clamp(0.0, 1.0);
 
-        if snap {
+        if !Self::shift_down(ui) {
             x = Self::snap_near(x, self.grid_x, SNAP_X, min_x, max_x);
             y = Self::snap_near(y, self.grid_y, SNAP_Y, 0.0, 1.0);
         }
@@ -486,9 +415,9 @@ impl SegmentsEditor {
         segments.set_point(other, SegPoint { y, ..point });
     }
 
-    /// Bend segment `index` by a vertical pointer move. `sync_next` mirrors the bend
-    /// onto the next segment.
-    fn move_power(&self, segments: &mut Segments, index: usize, delta_y: Smp, sync_next: bool) {
+    /// Bend segment `index` from [`Self::drag_power`] by the vertical offset `delta_y`.
+    /// Shift mirrors the bend onto the next segment.
+    fn move_power(&self, ui: &Ui, segments: &mut Segments, index: usize, delta_y: Smp) {
         let Some(end) = self.segment_end(segments, index) else {
             return;
         };
@@ -499,13 +428,13 @@ impl SegmentsEditor {
         }
 
         let amount = POWER_MOUSE_MULTIPLIER * if from.y < end.y { -delta_y } else { delta_y };
-        let power = sanitize(segments.power(index) + amount, -MAX_POWER, MAX_POWER);
+        let power = sanitize(self.drag_power + amount, -MAX_POWER, MAX_POWER);
 
         if segments.power(index) != power {
             segments.set_power(index, power);
         }
 
-        if !sync_next {
+        if !Self::shift_down(ui) {
             return;
         }
 
@@ -564,6 +493,11 @@ impl SegmentsEditor {
 
             if ui.button("Flip vertical").clicked() {
                 segments.flip_vertical();
+                ui.close();
+            }
+
+            if ui.button("Reset bends").clicked() {
+                segments.reset_powers();
                 ui.close();
             }
         });
@@ -639,8 +573,8 @@ impl SegmentsEditor {
         });
     }
 
-    /// A bend handle needs a sloped segment that is wide enough to show it.
-    fn power_active(&self, plot: Rect, segments: &Segments, index: usize) -> bool {
+    /// A power point needs a sloped segment that is wide enough to show it.
+    fn power_point_active(&self, plot: Rect, segments: &Segments, index: usize) -> bool {
         let Some(end) = self.segment_end(segments, index) else {
             return false;
         };
@@ -686,26 +620,17 @@ impl SegmentsEditor {
     }
 
     /// Polyline with one sample per horizontal pixel and every breakpoint kept.
-    ///
-    /// `render_points` runs again when [`Segments::revision`] or the plot size changes.
-    /// The polyline is projected into `plot` on every call.
-    fn curve_points(&mut self, plot: Rect, segments: &Segments) {
-        if plot.width() <= 0.0 {
-            self.points.clear();
-            self.curve_cache = None;
-            return;
-        }
+    fn build_curve_points(&mut self, plot: Rect, segments: &Segments) {
+        assert!(plot.width() > 0.0);
 
-        let cache = CurveCache {
-            revision: segments.revision(),
-            size: plot.size(),
-        };
+        let revision = segments.revision();
+        let size = plot.size();
 
-        if self.curve_cache != Some(cache) {
-            let steps = cache.size.x.round().max(1.0) as usize;
+        if self.curve_cache != Some((revision, size)) {
+            let steps = size.x.round().max(1.0) as usize;
 
             segments.render_points(steps, &mut self.curve, &mut self.scratch);
-            self.curve_cache = Some(cache);
+            self.curve_cache = Some((revision, size));
         }
 
         self.points.clear();
@@ -714,60 +639,35 @@ impl SegmentsEditor {
                 .iter()
                 .map(|&[x, y]| Self::screen_pos(plot, pos2(x, y))),
         );
-    }
 
-    /// Move the curve shapes into `slot`, which was reserved before the handles.
-    fn paint_curve_behind(&mut self, ui: &Ui, plot: Rect, segments: &Segments, slot: ShapeIdx) {
-        let layer_id = ui.layer_id();
-        let clip = ui.painter().with_clip_rect(plot).clip_rect();
-        let first = ui
-            .ctx()
-            .graphics(|gfx| gfx.get(layer_id).map_or(0, |list| list.all_entries().len()));
-
-        self.paint_scene(ui, plot, segments);
-
-        ui.ctx().graphics_mut(|gfx| {
-            let Some(list) = gfx.get_mut(layer_id) else {
-                return;
-            };
-            let end = list.all_entries().len();
-            let mut shapes = Vec::with_capacity(end.saturating_sub(first));
-
-            for index in first..end {
-                list.mutate_shape(ShapeIdx(index), |clipped| {
-                    shapes.push(std::mem::replace(&mut clipped.shape, Shape::Noop));
-                });
-            }
-
-            list.set(slot, clip, Shape::Vec(shapes));
-        });
+        assert!(self.points.len() >= 2);
     }
 
     fn paint_scene(&mut self, ui: &Ui, plot: Rect, segments: &Segments) {
         let painter = ui.painter().with_clip_rect(plot);
-        let background = ui.visuals().extreme_bg_color;
 
-        Self::paint_plot(&painter, plot, background);
+        self.build_curve_points(plot, segments);
 
-        if let Some(region) = self.loop_region(plot, segments) {
-            Self::paint_loop_band(&painter, region);
-        }
-
-        self.paint_grid(&painter, plot);
-
-        self.curve_points(plot, segments);
-        self.paint_fill(ui.ctx(), &painter, plot);
-        self.paint_curve(&painter);
-    }
-
-    fn paint_plot(painter: &Painter, plot: Rect, background: Color32) {
-        painter.rect_filled(plot, 2.0, background);
+        painter.rect_filled(plot, 2.0, ui.visuals().extreme_bg_color);
         painter.rect_stroke(
             plot,
             2.0,
             Stroke::new(1.0, Color32::from_white_alpha(32)),
             StrokeKind::Inside,
         );
+
+        if let Some(region) = self.loop_region(plot, segments) {
+            painter.rect_filled(region, 0.0, LOOP_FILL_COLOR);
+        }
+
+        self.paint_grid(&painter, plot);
+        self.paint_fill(ui.ctx(), &painter, plot);
+        painter.line(self.points.clone(), Stroke::new(2.0, self.wave_color));
+
+        for index in 0..segments.num_points() {
+            self.paint_point(ui, plot, segments, index);
+            self.paint_power_point(ui, plot, segments, index);
+        }
     }
 
     fn paint_grid(&self, painter: &Painter, plot: Rect) {
@@ -784,19 +684,9 @@ impl SegmentsEditor {
         }
     }
 
-    fn paint_curve(&self, painter: &Painter) {
-        if self.points.len() < 2 {
-            return;
-        }
-
-        painter.line(self.points.clone(), Stroke::new(2.0, self.wave_color));
-    }
-
     /// Area under the polyline, shaded by a 1×2 gradient of the full plot.
     fn paint_fill(&mut self, ctx: &Context, painter: &Painter, plot: Rect) {
-        if self.points.len() < 2 || plot.height() <= 0.0 {
-            return;
-        }
+        assert!(self.points.len() >= 2 && plot.height() > 0.0);
 
         let mut mesh = Mesh::with_texture(self.fill_texture(ctx));
         let bottom = plot.bottom();
@@ -814,20 +704,15 @@ impl SegmentsEditor {
         }
     }
 
-    /// V of a screen y in the 1×2 gradient. Texel centers sit at 1/4 and 3/4.
-    fn gradient_v(plot: Rect, y: f32) -> f32 {
-        let t = ((y - plot.top()) / plot.height()).clamp(0.0, 1.0);
-
-        0.25 + 0.5 * t
-    }
-
+    /// Quad down to `bottom`. V runs from the top texel center to the bottom one.
     fn add_fill_quad(mesh: &mut Mesh, plot: Rect, bottom: f32, start: Pos2, end: Pos2) {
         let index = mesh.vertices.len() as u32;
+        let v = |y: f32| 0.25 + 0.5 * (y - plot.top()) / plot.height();
 
         for pos in [start, end, pos2(end.x, bottom), pos2(start.x, bottom)] {
             mesh.vertices.push(Vertex {
                 pos,
-                uv: pos2(0.5, Self::gradient_v(plot, pos.y)),
+                uv: pos2(0.5, v(pos.y)),
                 color: Color32::WHITE,
             });
         }
@@ -859,13 +744,6 @@ impl SegmentsEditor {
         id
     }
 
-    /// Loop span filled with [`LOOP_FILL_COLOR`].
-    fn paint_loop_band(painter: &Painter, rect: Rect) {
-        if rect.is_positive() {
-            painter.rect_filled(rect, 0.0, LOOP_FILL_COLOR);
-        }
-    }
-
     /// Screen span of the loop, from the loop point to the release point or the end.
     fn loop_region(&self, plot: Rect, segments: &Segments) -> Option<Rect> {
         if !self.markers {
@@ -880,14 +758,7 @@ impl SegmentsEditor {
         (right > left).then(|| Rect::from_x_y_ranges(left..=right, plot.y_range()))
     }
 
-    fn paint_point(
-        &self,
-        ui: &Ui,
-        plot: Rect,
-        segments: &Segments,
-        index: usize,
-        response: &Response,
-    ) {
+    fn paint_point(&self, ui: &Ui, plot: Rect, segments: &Segments, index: usize) {
         let point = segments.point(index);
         let center = Self::screen_pos(plot, Self::curve_point(point));
         let marker = self.marker(segments, index);
@@ -897,16 +768,37 @@ impl SegmentsEditor {
         painter.circle_filled(center, POINT_RADIUS, color);
 
         if let Some((label, color)) = marker {
-            Self::paint_marker(painter, plot, center, label, color);
+            let galley = painter.layout_no_wrap(label.to_owned(), Self::bold(10.0), color);
+            let x = center.x - galley.size().x * 0.5;
+            let y = Self::stack_y(
+                center.y,
+                POINT_RADIUS + MARKER_GAP,
+                galley.size().y,
+                plot.top(),
+            );
+
+            painter.galley(pos2(x, y), galley, color);
         }
 
-        let dragging = self.drag == Some(Drag::Point(index));
-        Self::paint_grab(ui, response, center, GRAB_RADIUS, dragging);
+        self.paint_handle(ui, segments, center, GRAB_RADIUS, Handle::Point(index));
+    }
 
-        if dragging {
-            let level = Units::Normalized.format(point.y.clamp(0.0, 1.0));
-            Self::paint_level(ui, center, level);
+    fn paint_power_point(&self, ui: &Ui, plot: Rect, segments: &Segments, index: usize) {
+        if !self.power_point_active(plot, segments, index) {
+            return;
         }
+
+        let center = Self::screen_pos(plot, self.power_position(segments, index));
+
+        ui.painter()
+            .circle_filled(center, POWER_RADIUS, self.power_color);
+        self.paint_handle(
+            ui,
+            segments,
+            center,
+            POWER_GRAB_RADIUS,
+            Handle::Power(index),
+        );
     }
 
     /// Letter and color of the loop or release point. Never both: the loop sits before the release.
@@ -922,35 +814,40 @@ impl SegmentsEditor {
         }
     }
 
-    fn paint_marker(painter: &Painter, plot: Rect, center: Pos2, label: &str, color: Color32) {
-        let galley = painter.layout_no_wrap(label.to_owned(), Self::bold(10.0), color);
-        let x = center.x - galley.size().x * 0.5;
-        let y = Self::stack_y(
-            center.y,
-            POINT_RADIUS + MARKER_GAP,
-            galley.size().y,
-            plot.top(),
-        );
-
-        painter.galley(pos2(x, y), galley, color);
-    }
-
     /// Hover ring, and a filled disc while dragging. Drawn on the handle layer.
-    fn paint_grab(ui: &Ui, response: &Response, center: Pos2, radius: f32, dragging: bool) {
-        if dragging {
-            ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
-        } else {
-            response.clone().on_hover_cursor(CursorIcon::Grab);
-        }
+    /// A dragged breakpoint also shows its level.
+    fn paint_handle(
+        &self,
+        ui: &Ui,
+        segments: &Segments,
+        center: Pos2,
+        radius: f32,
+        handle: Handle,
+    ) {
+        let dragging = self.dragged() == Some(handle);
+        let pointer = ui.input(|input| input.pointer.hover_pos());
+        let hovered =
+            self.drag.is_none() && pointer.is_some_and(|pos| pos.distance(center) <= radius);
 
-        if !dragging && !response.hovered() {
+        if !dragging && !hovered {
             return;
         }
 
         let painter = ui.painter().clone().with_layer_id(Self::handle_layer(ui));
 
         if dragging {
+            ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
             painter.circle_filled(center, radius, Color32::from_white_alpha(0x40));
+
+            if let Handle::Point(index) = handle {
+                let level = Units::Normalized.format(segments.point(index).y.clamp(0.0, 1.0));
+
+                Self::paint_level(ui, center, level);
+            }
+        }
+
+        if hovered {
+            ui.ctx().set_cursor_icon(CursorIcon::Grab);
         }
 
         painter.circle_stroke(center, radius, Stroke::new(1.0, Color32::WHITE));
@@ -1010,14 +907,6 @@ impl SegmentsEditor {
         let level = sanitize(level, 0.0, 1.0);
 
         Self::screen_pos(plot, pos2(phase, level))
-    }
-
-    /// Pointer position while a drag is held, including outside the plot and the window.
-    fn drag_pointer(ui: &Ui) -> Option<Pos2> {
-        let pos = ui.input(|input| input.pointer.latest_pos())?;
-        let from_global = ui.ctx().layer_transform_from_global(ui.layer_id());
-
-        Some(from_global.map_or(pos, |transform| transform * pos))
     }
 
     /// Plot position of a screen point. Values outside 0–1 are past the canvas.

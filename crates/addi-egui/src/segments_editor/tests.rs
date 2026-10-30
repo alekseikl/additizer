@@ -1,4 +1,4 @@
-use egui::{Rect, pos2};
+use egui::{Context, Id, Rect, Ui, UiBuilder, pos2};
 
 use addi_dsp::Segments;
 
@@ -10,9 +10,16 @@ fn plot() -> Rect {
     Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 100.0))
 }
 
+fn press(shift: bool) -> Ui {
+    let ctx = Context::default();
+
+    ctx.input_mut(|input| input.modifiers.shift = shift);
+    Ui::new(ctx, Id::new("segments-test"), UiBuilder::new())
+}
+
 fn curve(segments: &Segments) -> SegmentsEditor {
     let mut editor = SegmentsEditor::default();
-    editor.curve_points(plot(), segments);
+    editor.build_curve_points(plot(), segments);
     editor
 }
 
@@ -80,7 +87,7 @@ fn intact_segments_are_not_rendered_again() {
     let points = editor.points.clone();
 
     editor.scratch.resize(9999, 1.0);
-    editor.curve_points(plot(), &ramp);
+    editor.build_curve_points(plot(), &ramp);
 
     assert_eq!(editor.scratch.len(), 9999);
     assert_eq!(editor.points, points);
@@ -93,7 +100,7 @@ fn a_moved_plot_reuses_the_curve() {
     let moved = Rect::from_min_max(pos2(10.0, 20.0), pos2(110.0, 120.0));
 
     editor.scratch.resize(9999, 1.0);
-    editor.curve_points(moved, &ramp);
+    editor.build_curve_points(moved, &ramp);
 
     assert_eq!(editor.scratch.len(), 9999);
     assert_eq!(editor.points[0], pos2(10.0, 120.0));
@@ -107,7 +114,7 @@ fn an_edit_renders_again() {
 
     editor.scratch.resize(9999, 1.0);
     ramp.set_power(0, 2.0);
-    editor.curve_points(plot(), &ramp);
+    editor.build_curve_points(plot(), &ramp);
 
     assert_eq!(editor.scratch.len(), 101);
 }
@@ -119,7 +126,7 @@ fn a_repeated_write_renders_again() {
 
     ramp.set_power(0, 0.0);
     editor.scratch.resize(9999, 1.0);
-    editor.curve_points(plot(), &ramp);
+    editor.build_curve_points(plot(), &ramp);
 
     assert_eq!(editor.scratch.len(), 101);
     assert_eq!(editor.points[0], pos2(0.0, 100.0));
@@ -133,7 +140,7 @@ fn a_wider_plot_renders_again() {
     let wider = Rect::from_min_max(pos2(0.0, 0.0), pos2(180.0, 100.0));
 
     editor.scratch.resize(9999, 1.0);
-    editor.curve_points(wider, &ramp);
+    editor.build_curve_points(wider, &ramp);
 
     assert_eq!(editor.scratch.len(), 181);
     assert_eq!(*editor.points.last().unwrap(), pos2(180.0, 0.0));
@@ -146,7 +153,7 @@ fn changed_segments_render_again() {
     let flat = Segments::from_points(&[(0.0, 0.5), (1.0, 0.5)], false);
 
     editor.scratch.resize(9999, 1.0);
-    editor.curve_points(plot(), &flat);
+    editor.build_curve_points(plot(), &flat);
 
     assert_eq!(editor.scratch.len(), 101);
     assert!(
@@ -160,13 +167,14 @@ fn changed_segments_render_again() {
 #[test]
 fn open_curve_moves_the_ends_independently() {
     let mut open = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let ui = press(true);
 
-    SegmentsEditor::lookup().move_point(&mut open, 0, 0.0, 0.35, false);
+    SegmentsEditor::lookup().move_point(&ui, &mut open, 0, 0.0, 0.35);
 
     assert!((open.point(0).y - 0.35).abs() < 1e-6);
     assert_eq!(open.point(2).y, 0.0);
 
-    SegmentsEditor::lookup().move_point(&mut open, 2, 1.0, 0.1, false);
+    SegmentsEditor::lookup().move_point(&ui, &mut open, 2, 1.0, 0.1);
 
     assert!((open.point(0).y - 0.35).abs() < 1e-6);
     assert!((open.point(2).y - 0.1).abs() < 1e-6);
@@ -174,19 +182,19 @@ fn open_curve_moves_the_ends_independently() {
     let mut closed = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     let editor = SegmentsEditor::default();
 
-    editor.move_point(&mut closed, 0, 0.0, 0.35, false);
+    editor.move_point(&ui, &mut closed, 0, 0.0, 0.35);
 
     assert!((closed.point(0).y - 0.35).abs() < 1e-6);
     assert!((closed.point(2).y - 0.35).abs() < 1e-6);
 
-    editor.move_point(&mut closed, 2, 1.0, 0.1, false);
+    editor.move_point(&ui, &mut closed, 2, 1.0, 0.1);
 
     assert!((closed.point(0).y - 0.1).abs() < 1e-6);
     assert!((closed.point(2).y - 0.1).abs() < 1e-6);
 
     let mut mismatched = Segments::from_points(&[(0.0, 0.2), (0.5, 1.0), (1.0, 0.8)], false);
 
-    editor.move_point(&mut mismatched, 2, 1.0, 0.4, false);
+    editor.move_point(&ui, &mut mismatched, 2, 1.0, 0.4);
 
     assert!((mismatched.point(0).y - 0.4).abs() < 1e-6);
     assert!((mismatched.point(2).y - 0.4).abs() < 1e-6);
@@ -206,26 +214,32 @@ fn curve_pos_continues_outside_the_plot() {
 
 #[test]
 fn bend_follows_the_pointer() {
-    let editor = SegmentsEditor::default();
+    let mut editor = SegmentsEditor::default();
     let mut rising = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let ui = press(false);
 
-    editor.move_power(&mut rising, 0, 0.1, false);
+    editor.move_power(&ui, &mut rising, 0, 0.1);
 
     assert!((rising.power(0) + 0.9).abs() < 1e-5);
 
+    editor.move_power(&ui, &mut rising, 0, 0.0);
+
+    assert_eq!(rising.power(0), 0.0);
+
     let mut falling = Segments::from_points(&[(0.0, 1.0), (1.0, 0.0)], false);
 
-    editor.move_power(&mut falling, 0, 0.1, false);
+    editor.move_power(&ui, &mut falling, 0, 0.1);
 
     assert!((falling.power(0) - 0.9).abs() < 1e-5);
 
     let mut flat = Segments::from_points(&[(0.0, 0.5), (1.0, 0.5)], false);
 
-    editor.move_power(&mut flat, 0, 0.1, false);
+    editor.move_power(&ui, &mut flat, 0, 0.1);
 
     assert_eq!(flat.power(0), 0.0);
 
-    editor.move_power(&mut rising, 0, -3.0, false);
+    editor.drag_power = rising.power(0);
+    editor.move_power(&ui, &mut rising, 0, -3.0);
 
     assert_eq!(rising.power(0), addi_dsp::segments::MAX_POWER);
 }
@@ -233,15 +247,20 @@ fn bend_follows_the_pointer() {
 #[test]
 fn synced_bend_mirrors_onto_the_next_segment() {
     let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.2)], false);
-    let editor = SegmentsEditor::default();
+    let mut editor = SegmentsEditor::default();
+    let ui = press(false);
 
-    editor.move_power(&mut segments, 0, -0.1, false);
+    editor.move_power(&ui, &mut segments, 0, -0.1);
 
     assert!((segments.power(0) - 0.9).abs() < 1e-5);
     assert_eq!(segments.power(1), 0.0);
     assert_eq!(segments.power(2), 0.0);
 
-    editor.move_power(&mut segments, 0, -0.1, true);
+    editor.drag_power = segments.power(0);
+
+    let shift = press(true);
+
+    editor.move_power(&shift, &mut segments, 0, -0.1);
 
     let power = segments.power(0);
 
@@ -251,24 +270,17 @@ fn synced_bend_mirrors_onto_the_next_segment() {
 
     let before = segments.power(1);
 
-    editor.move_power(&mut segments, 1, -0.05, true);
+    editor.drag_power = before;
+    editor.move_power(&shift, &mut segments, 1, -0.05);
 
     assert!(segments.power(1) < before);
     assert!((segments.power(2) + segments.power(1)).abs() < 1e-5);
     assert!((segments.power(0) - power).abs() < 1e-5);
 
-    editor.move_power(&mut segments, 2, 0.02, true);
+    editor.drag_power = segments.power(2);
+    editor.move_power(&shift, &mut segments, 2, 0.02);
 
     assert!((segments.power(0) + segments.power(2)).abs() < 1e-5);
-}
-
-#[test]
-fn gradient_v_hits_texel_centers() {
-    let plot = plot();
-
-    assert_eq!(SegmentsEditor::gradient_v(plot, plot.top()), 0.25);
-    assert_eq!(SegmentsEditor::gradient_v(plot, plot.center().y), 0.5);
-    assert_eq!(SegmentsEditor::gradient_v(plot, plot.bottom()), 0.75);
 }
 
 #[test]
