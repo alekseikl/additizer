@@ -18,7 +18,7 @@ fn move_pos_advances_the_center() {
         drag.move_pos(pos2(12.0, 15.0)),
         (pos2(16.0, 11.0), vec2(2.0, 5.0))
     );
-    assert_eq!(drag.center(), pos2(16.0, 11.0));
+    assert_eq!(drag.center, pos2(16.0, 11.0));
     assert_eq!(
         drag.move_pos(pos2(13.0, 15.0)),
         (pos2(17.0, 11.0), vec2(3.0, 5.0))
