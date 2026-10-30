@@ -1,7 +1,7 @@
 use egui::{
     Color32, CursorIcon, DragValue, FontFamily, FontId, LayerId, Mesh, Order, Painter,
-    PointerButton, Pos2, Rect, Response, Sense, Shape, Stroke, StrokeKind, Ui, Vec2, ecolor::Hsva,
-    layers::ShapeIdx, pos2, vec2,
+    PointerButton, Pos2, Rect, Response, RichText, Sense, Shape, Stroke, StrokeKind, Ui, Vec2,
+    ecolor::Hsva, layers::ShapeIdx, pos2, vec2,
 };
 
 use addi_dsp::{
@@ -51,9 +51,12 @@ const LABEL_TEXT_COLOR: Hsva = hsva(0.115, 0.05, 0.5, 1.0);
 const LABEL_PADDING: f32 = 6.0;
 const LABEL_POINTER_GAP: f32 = 4.0;
 const LABEL_CORNER_RADIUS: f32 = 2.0;
+/// Space between a point and its loop or release letter.
+const MARKER_GAP: f32 = 3.0;
 
 const HELP: &str = "Double-click to add or remove a point. Drag a midpoint to bend the segment. Hold Shift to mirror that bend onto the next segment. Right-click to flip.";
 const HELP_MARKERS: &str = "Double-click to add or remove a point. Drag a midpoint to bend the segment. Hold Shift to mirror that bend onto the next segment. Right-click a point to set the loop or release.";
+const SMOOTH_TIP: &str = "Ease this segment with a sine curve.";
 const LOOP_TIP: &str = "Repeat from here. With no release point the loop runs to the end. With one, it runs until release while the key is held.";
 const RELEASE_TIP: &str = "Sustain this level while the key is held. On release, continue from here starting at the current level.";
 
@@ -67,23 +70,15 @@ const PRESETS: &[Preset] = &[
     ("Saw down", segment_presets::saw_down),
 ];
 
-/// Point or bend handle under the pointer.
+/// Handle held by the pointer.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Drag {
     Point(usize),
     Power(usize),
 }
 
-impl Drag {
-    fn radius(self) -> f32 {
-        match self {
-            Self::Point(_) => GRAB_RADIUS,
-            Self::Power(_) => POWER_GRAB_RADIUS,
-        }
-    }
-}
-
 /// Revision and plot size the cached curve samples were built from.
+#[derive(Clone, Copy, PartialEq)]
 struct CurveCache {
     revision: u64,
     size: Vec2,
@@ -168,11 +163,12 @@ impl SegmentsEditor {
         phase: Option<StereoSample>,
     ) -> bool {
         let playhead = phase.map(|phase| {
-            [
-                (phase[0], segments.value_at(phase[0], None, None)),
-                (phase[1], segments.value_at(phase[1], None, None)),
-            ]
+            [0, 1].map(|channel| {
+                let phase = phase[channel];
+                (phase, segments.value_at(phase, None, None))
+            })
         });
+
         self.ui_at(ui, segments, playhead)
     }
 
@@ -186,45 +182,17 @@ impl SegmentsEditor {
         playhead: Option<[(Smp, Smp); 2]>,
     ) -> bool {
         let revision = segments.revision();
-        let width = ui.available_width();
-        let (plot, response) = ui.allocate_exact_size(vec2(width, EDITOR_HEIGHT), Sense::click());
+        let size = vec2(ui.available_width(), EDITOR_HEIGHT);
+        let (plot, response) = ui.allocate_exact_size(size, Sense::click());
 
         if plot.is_positive() {
-            // Reserved before the handles. Filled in after they edit the curve,
-            // so the line stays behind them and still matches this frame.
-            let curve_slot = ui.painter().with_clip_rect(plot).add(Shape::Noop);
-
-            self.canvas(&response, plot, segments);
-
-            let count = segments.num_points();
-
-            for index in 0..count {
-                self.bend(ui, plot, segments, index);
-            }
-
-            let mut remove = None;
-
-            for index in 0..count {
-                if self.point(ui, plot, segments, index) {
-                    remove = Some(index);
-                }
-            }
-
-            if let Some(index) = remove {
-                segments.remove_point(index);
-            }
-
-            if let Some(playhead) = playhead {
-                self.paint_playheads(ui.painter(), plot, playhead);
-            }
-
-            self.paint_curve_behind(ui, plot, segments, curve_slot);
+            self.plot(ui, plot, &response, segments, playhead);
         }
 
         ui.add_space(8.0);
         self.toolbar(ui, segments);
         ui.add_space(4.0);
-        ui.label(egui::RichText::new(self.help()).small().weak());
+        ui.label(RichText::new(self.help()).small().weak());
 
         segments.revision() != revision
     }
@@ -233,22 +201,59 @@ impl SegmentsEditor {
         if self.markers { HELP_MARKERS } else { HELP }
     }
 
+    /// Handles edit the curve first. The curve is then painted into a slot reserved
+    /// before them, so it stays behind the handles and still matches this frame.
+    fn plot(
+        &mut self,
+        ui: &Ui,
+        plot: Rect,
+        response: &Response,
+        segments: &mut Segments,
+        playhead: Option<[(Smp, Smp); 2]>,
+    ) {
+        let curve_slot = ui.painter().with_clip_rect(plot).add(Shape::Noop);
+
+        Self::canvas(response, plot, segments);
+
+        let count = segments.num_points();
+
+        for index in 0..count {
+            self.bend(ui, plot, segments, index);
+        }
+
+        let mut remove = None;
+
+        for index in 0..count {
+            if self.point(ui, plot, segments, index) {
+                remove = Some(index);
+            }
+        }
+
+        if let Some(playhead) = playhead {
+            self.paint_playheads(ui.painter(), plot, playhead);
+        }
+
+        self.paint_curve_behind(ui, plot, segments, curve_slot);
+
+        if let Some(index) = remove {
+            segments.remove_point(index);
+        }
+    }
+
     /// Empty plot: double-click inserts a point, right-click flips the curve.
-    fn canvas(&mut self, response: &Response, plot: Rect, segments: &mut Segments) {
-        self.canvas_menu(response, segments);
+    fn canvas(response: &Response, plot: Rect, segments: &mut Segments) {
+        Self::canvas_menu(response, segments);
 
         if response.double_clicked_by(PointerButton::Primary)
             && let Some(pos) = response.interact_pointer_pos().or(response.hover_pos())
         {
-            self.add_point(plot, segments, pos);
+            Self::add_point(segments, Self::curve_pos(plot, pos));
         }
     }
 
     /// One bend handle: drag, double-click, menu, and paint.
     fn bend(&mut self, ui: &Ui, plot: Rect, segments: &mut Segments, index: usize) {
-        let active = self.power_active(plot, segments, index);
-
-        if !active {
+        if !self.power_active(plot, segments, index) {
             if self.drag == Some(Drag::Power(index)) {
                 self.end_drag();
             }
@@ -256,19 +261,19 @@ impl SegmentsEditor {
             return;
         }
 
+        let center = Self::screen_pos(plot, self.power_position(segments, index));
         let response = Self::handle_response(
             ui,
             plot,
-            Self::screen_pos(plot, self.power_position(segments, index)),
+            center,
             POWER_GRAB_RADIUS,
             ("segments-bend", index),
         );
-        self.power_menu(&response, segments, index);
+
+        Self::power_menu(&response, segments, index);
 
         if response.double_clicked_by(PointerButton::Primary) {
-            let shift = ui.input(|input| input.modifiers.shift);
-
-            if shift {
+            if Self::shift_down(ui) {
                 segments.reset_powers();
             } else {
                 segments.set_power(index, 0.0);
@@ -279,6 +284,7 @@ impl SegmentsEditor {
             self.bend_drag(ui, plot, segments, index, &response);
         }
 
+        // The edit above may have moved the handle.
         let center = Self::screen_pos(plot, self.power_position(segments, index));
         let dragging = self.drag == Some(Drag::Power(index));
 
@@ -289,33 +295,25 @@ impl SegmentsEditor {
 
     /// One breakpoint: drag, double-click, menu, and paint.
     ///
-    /// `true` asks the caller to remove this point after the rest of the points are drawn.
+    /// `true` asks the caller to remove this point after the frame is painted.
     fn point(&mut self, ui: &Ui, plot: Rect, segments: &mut Segments, index: usize) -> bool {
-        let response = Self::handle_response(
-            ui,
-            plot,
-            Self::point_screen(plot, segments.point(index)),
-            GRAB_RADIUS,
-            ("segments-point", index),
-        );
+        let center = Self::screen_pos(plot, Self::curve_point(segments.point(index)));
+        let response =
+            Self::handle_response(ui, plot, center, GRAB_RADIUS, ("segments-point", index));
         let mut remove = self.point_menu(&response, segments, index);
 
         if response.double_clicked_by(PointerButton::Primary) {
+            remove |= Self::is_inner(segments, index);
             self.end_drag();
-
-            if index > 0 && index + 1 < segments.num_points() {
-                remove = true;
-            }
-        } else if !remove {
+        } else {
             self.point_drag(ui, plot, segments, index, &response);
         }
 
         if remove {
             self.end_drag();
-        } else {
-            self.paint_point(ui, plot, segments, index, &response);
         }
 
+        self.paint_point(ui, plot, segments, index, &response);
         remove
     }
 
@@ -329,11 +327,11 @@ impl SegmentsEditor {
         response: &Response,
     ) {
         if let Some(pos) = self.drag_begin(ui, response) {
-            let point = segments.point(index);
+            let pointer = Self::curve_pos(plot, pos);
 
             self.grab = Some(CircleGrab::new(
-                Self::curve_pos(plot, pos),
-                pos2(point.x, point.y),
+                pointer,
+                Self::curve_point(segments.point(index)),
             ));
             self.drag = Some(Drag::Point(index));
         }
@@ -341,12 +339,17 @@ impl SegmentsEditor {
         let Some(pos) = self.drag_pos(ui, Drag::Point(index)) else {
             return;
         };
-        let snap = !ui.input(|input| input.modifiers.shift);
+        let Some(grab) = self.grab else {
+            return;
+        };
+        let placed = grab.place(Self::curve_pos(plot, pos));
 
-        self.move_grabbed_point(segments, index, plot, pos, snap);
+        if placed != grab.center() {
+            self.move_point(segments, index, placed.x, placed.y, !Self::shift_down(ui));
+        }
     }
 
-    /// Shift mirrors the bend onto the next segment.
+    /// Bend follows vertical pointer travel. Shift mirrors the bend onto the next segment.
     fn bend_drag(
         &mut self,
         ui: &Ui,
@@ -363,9 +366,15 @@ impl SegmentsEditor {
         let Some(pos) = self.drag_pos(ui, Drag::Power(index)) else {
             return;
         };
-        let sync_next = ui.input(|input| input.modifiers.shift);
+        let y = Self::curve_pos(plot, pos).y;
 
-        self.drag_power(segments, index, plot, pos, sync_next);
+        if let Some(last) = self.power_y
+            && y != last
+        {
+            self.move_power(segments, index, y - last, Self::shift_down(ui));
+        }
+
+        self.power_y = Some(y);
     }
 
     /// Pointer once this press is a drag and no other handle is held.
@@ -376,29 +385,27 @@ impl SegmentsEditor {
             return None;
         }
 
-        let (now, origin, press_start) = ui.input(|input| {
-            (
-                input.time,
-                input.pointer.press_origin(),
-                input.pointer.press_start_time(),
-            )
+        let (origin, elapsed) = ui.input(|input| {
+            let elapsed = input
+                .pointer
+                .press_start_time()
+                .map_or(0.0, |start| input.time - start);
+
+            (input.pointer.press_origin(), elapsed)
         });
         let origin = origin?;
         let pointer = response.interact_pointer_pos().or(response.hover_pos());
         let moved = pointer.is_some_and(|pos| pos.distance(origin) > MAX_CLICK_DIST);
-        let held = press_start.is_some_and(|start| now - start > MAX_CLICK_DURATION);
 
-        if (moved || held)
+        if (moved || elapsed > MAX_CLICK_DURATION)
             && let Some(pos) = pointer
         {
             return Some(pos);
         }
 
-        let remaining = press_start
-            .map(|start| (MAX_CLICK_DURATION - (now - start)) as f32)
-            .unwrap_or(MAX_CLICK_DURATION as f32);
+        let remaining = (MAX_CLICK_DURATION - elapsed).max(0.0) as f32;
 
-        ui.ctx().request_repaint_after_secs(remaining.max(0.0));
+        ui.ctx().request_repaint_after_secs(remaining);
         None
     }
 
@@ -416,6 +423,13 @@ impl SegmentsEditor {
         Self::drag_pointer(ui)
     }
 
+    fn end_drag(&mut self) {
+        self.drag = None;
+        self.grab = None;
+        self.power_y = None;
+    }
+
+    /// Clickable square around `center`, kept inside the plot.
     fn handle_response(
         ui: &Ui,
         plot: Rect,
@@ -423,72 +437,20 @@ impl SegmentsEditor {
         radius: f32,
         id: impl std::hash::Hash + std::fmt::Debug,
     ) -> Response {
-        let rect = Rect::from_center_size(center, vec2(radius * 2.0, radius * 2.0)).intersect(plot);
+        let rect = Rect::from_center_size(center, Vec2::splat(radius * 2.0)).intersect(plot);
         let rect = if rect.is_positive() {
             rect
         } else {
-            Rect::from_center_size(center, vec2(1.0, 1.0))
+            Rect::from_center_size(center, Vec2::splat(1.0))
         };
 
         ui.interact(rect, ui.make_persistent_id(id), Sense::click_and_drag())
     }
 
-    fn move_grabbed_point(
-        &mut self,
-        segments: &mut Segments,
-        index: usize,
-        plot: Rect,
-        pos: Pos2,
-        snap: bool,
-    ) {
-        let Some(grab) = self.grab else {
-            return;
-        };
-        let placed = grab.place(Self::curve_pos(plot, pos));
-
-        if placed == grab.center() {
-            return;
-        }
-
-        self.move_point(segments, index, placed.x, placed.y, snap);
-    }
-
-    /// Bend follows vertical pointer travel. `sync_next` mirrors the bend onto the next segment.
-    fn drag_power(
-        &mut self,
-        segments: &mut Segments,
-        index: usize,
-        plot: Rect,
-        pos: Pos2,
-        sync_next: bool,
-    ) {
-        let y = Self::curve_pos(plot, pos).y;
-
-        if let Some(last) = self.power_y {
-            let delta = y - last;
-
-            if delta != 0.0 {
-                self.move_power(segments, index, delta, sync_next);
-            }
-        }
-
-        self.power_y = Some(y);
-    }
-
-    fn end_drag(&mut self) {
-        self.drag = None;
-        self.grab = None;
-        self.power_y = None;
-    }
-
-    fn add_point(&self, plot: Rect, segments: &mut Segments, pos: Pos2) {
-        let point = Self::curve_pos(plot, pos);
-        let index = insertion_index(segments, point.x);
-        let smooth = if index == 0 {
-            segments.point(0).smooth
-        } else {
-            segments.point(index - 1).smooth
-        };
+    /// Insert a point at `point`, with the easing of the segment it splits.
+    fn add_point(segments: &mut Segments, point: Pos2) {
+        let index = Self::insertion_index(segments, point.x);
+        let smooth = segments.point(index.saturating_sub(1)).smooth;
 
         segments.add_point(
             index,
@@ -506,13 +468,13 @@ impl SegmentsEditor {
             return;
         }
 
-        let (min_x, max_x) = x_limits(segments, index);
+        let (min_x, max_x) = Self::x_limits(segments, index);
         let mut x = x.clamp(min_x, max_x);
         let mut y = y.clamp(0.0, 1.0);
 
         if snap {
-            x = snap_near(x, self.grid_x, SNAP_X, min_x, max_x);
-            y = snap_near(y, self.grid_y, SNAP_Y, 0.0, 1.0);
+            x = Self::snap_near(x, self.grid_x, SNAP_X, min_x, max_x);
+            y = Self::snap_near(y, self.grid_y, SNAP_Y, 0.0, 1.0);
         }
 
         self.match_closed_ends(segments, index, y);
@@ -540,14 +502,9 @@ impl SegmentsEditor {
         segments.set_point(other, SegPoint { y, ..point });
     }
 
-    /// Bend segment `index` by a vertical pointer move.
+    /// Bend segment `index` by a vertical pointer move. `sync_next` mirrors the bend
+    /// onto the next segment.
     fn move_power(&self, segments: &mut Segments, index: usize, delta_y: Smp, sync_next: bool) {
-        let n = segments.num_points();
-
-        if index >= n {
-            return;
-        }
-
         let Some(end) = self.segment_end(segments, index) else {
             return;
         };
@@ -568,7 +525,7 @@ impl SegmentsEditor {
             return;
         }
 
-        let Some(next) = self.mirrored_bend(index, n) else {
+        let Some(next) = self.segment_end_idx(segments, index) else {
             return;
         };
 
@@ -577,75 +534,22 @@ impl SegmentsEditor {
         }
     }
 
-    /// Next segment that receives the mirrored bend. The last segment of a closed curve wraps.
-    fn mirrored_bend(&self, index: usize, n: usize) -> Option<usize> {
-        if index + 1 < n {
-            Some(index + 1)
-        } else if self.closed {
-            Some(0)
-        } else {
-            None
-        }
-    }
-
     /// `true` when the menu asked to remove this point. Other choices edit `segments` directly.
     fn point_menu(&self, response: &Response, segments: &mut Segments, index: usize) -> bool {
-        let markers = self.markers;
         let mut remove = false;
 
         response.context_menu(|ui| {
-            if index < segments.num_points() {
-                let smooth = segments.point(index).smooth;
-                let label = if smooth { "Flat" } else { "Smooth" };
-
-                if ui
-                    .button(label)
-                    .on_hover_text("Ease this segment with a sine curve.")
-                    .clicked()
-                {
-                    segments.set_smooth(index, !smooth);
-                    ui.close();
-                }
+            if index >= segments.num_points() {
+                return;
             }
 
-            if markers && index < segments.num_points() {
-                let n = segments.num_points();
-                let can_loop = index + 1 < n
-                    && segments
-                        .release_point_idx()
-                        .is_none_or(|release| index < release);
-                let can_release = segments
-                    .loop_point_idx()
-                    .is_none_or(|loop_point| index > loop_point);
+            Self::smooth_item(ui, segments, index);
 
-                if segments.loop_point_idx() == Some(index) {
-                    if ui.button("Clear loop").clicked() {
-                        segments.set_loop_point(None);
-                        ui.close();
-                    }
-                } else if can_loop && ui.button("Loop point").on_hover_text(LOOP_TIP).clicked() {
-                    segments.set_loop_point(Some(index));
-                    ui.close();
-                }
-
-                if segments.release_point_idx() == Some(index) {
-                    if ui.button("Clear release").clicked() {
-                        segments.set_release_point(None);
-                        ui.close();
-                    }
-                } else if can_release
-                    && ui
-                        .button("Release point")
-                        .on_hover_text(RELEASE_TIP)
-                        .clicked()
-                {
-                    segments.set_release_point(Some(index));
-                    ui.close();
-                }
+            if self.markers {
+                Self::marker_items(ui, segments, index);
             }
 
-            if index > 0 && index + 1 < segments.num_points() && ui.button("Remove point").clicked()
-            {
+            if Self::is_inner(segments, index) && ui.button("Remove point").clicked() {
                 remove = true;
                 ui.close();
             }
@@ -654,20 +558,10 @@ impl SegmentsEditor {
         remove
     }
 
-    fn power_menu(&self, response: &Response, segments: &mut Segments, index: usize) {
+    fn power_menu(response: &Response, segments: &mut Segments, index: usize) {
         response.context_menu(|ui| {
             if index < segments.num_points() {
-                let smooth = segments.point(index).smooth;
-                let label = if smooth { "Flat" } else { "Smooth" };
-
-                if ui
-                    .button(label)
-                    .on_hover_text("Ease this segment with a sine curve.")
-                    .clicked()
-                {
-                    segments.set_smooth(index, !smooth);
-                    ui.close();
-                }
+                Self::smooth_item(ui, segments, index);
             }
 
             if ui.button("Reset bend").clicked() {
@@ -677,7 +571,7 @@ impl SegmentsEditor {
         });
     }
 
-    fn canvas_menu(&self, response: &Response, segments: &mut Segments) {
+    fn canvas_menu(response: &Response, segments: &mut Segments) {
         response.context_menu(|ui| {
             if ui.button("Flip horizontal").clicked() {
                 segments.flip_horizontal();
@@ -689,6 +583,58 @@ impl SegmentsEditor {
                 ui.close();
             }
         });
+    }
+
+    /// Toggles the sine easing of segment `index`.
+    fn smooth_item(ui: &mut Ui, segments: &mut Segments, index: usize) {
+        let smooth = segments.point(index).smooth;
+        let label = if smooth { "Flat" } else { "Smooth" };
+
+        if ui.button(label).on_hover_text(SMOOTH_TIP).clicked() {
+            segments.set_smooth(index, !smooth);
+            ui.close();
+        }
+    }
+
+    /// Loop and release choices for point `index`.
+    fn marker_items(ui: &mut Ui, segments: &mut Segments, index: usize) {
+        if segments.loop_point_idx() == Some(index) {
+            if ui.button("Clear loop").clicked() {
+                segments.set_loop_point(None);
+                ui.close();
+            }
+        } else {
+            let can_loop = index + 1 < segments.num_points()
+                && segments
+                    .release_point_idx()
+                    .is_none_or(|release| index < release);
+
+            if can_loop && ui.button("Loop point").on_hover_text(LOOP_TIP).clicked() {
+                segments.set_loop_point(Some(index));
+                ui.close();
+            }
+        }
+
+        if segments.release_point_idx() == Some(index) {
+            if ui.button("Clear release").clicked() {
+                segments.set_release_point(None);
+                ui.close();
+            }
+        } else {
+            let can_release = segments
+                .loop_point_idx()
+                .is_none_or(|loop_point| index > loop_point);
+
+            if can_release
+                && ui
+                    .button("Release point")
+                    .on_hover_text(RELEASE_TIP)
+                    .clicked()
+            {
+                segments.set_release_point(Some(index));
+                ui.close();
+            }
+        }
     }
 
     fn toolbar(&mut self, ui: &mut Ui, segments: &mut Segments) {
@@ -709,55 +655,53 @@ impl SegmentsEditor {
         });
     }
 
+    /// A bend handle needs a sloped segment that is wide enough to show it.
     fn power_active(&self, plot: Rect, segments: &Segments, index: usize) -> bool {
         let Some(end) = self.segment_end(segments, index) else {
             return false;
         };
         let from = segments.point(index);
-        let dx = end.x - from.x;
-        let dy = end.y - from.y;
 
-        plot.width() * dx >= MIN_POWER_WIDTH && dy != 0.0
+        plot.width() * (end.x - from.x) >= MIN_POWER_WIDTH && end.y != from.y
     }
 
-    /// Next breakpoint in curve space. The closing segment ends one cycle past the start.
-    fn segment_end(&self, segments: &Segments, index: usize) -> Option<Pos2> {
+    /// Breakpoint that ends segment `index`. The last segment of a closed curve wraps
+    /// to the start, so this is also the next segment to bend.
+    fn segment_end_idx(&self, segments: &Segments, index: usize) -> Option<usize> {
         let n = segments.num_points();
 
-        if index >= n {
-            return None;
-        }
-
         if index + 1 < n {
-            let point = segments.point(index + 1);
-            Some(pos2(point.x, point.y))
-        } else if self.closed {
-            let point = segments.point(0);
-            Some(pos2(point.x + 1.0, point.y))
+            Some(index + 1)
+        } else if self.closed && index < n {
+            Some(0)
         } else {
             None
         }
     }
 
-    /// Midpoint in phase, power-scaled in level. A wrap past 1 folds back into the plot.
-    fn power_position(&self, segments: &Segments, index: usize) -> Pos2 {
-        let from = segments.point(index);
-        let Some(end) = self.segment_end(segments, index) else {
-            return pos2(from.x, from.y);
-        };
-        let mut x = (from.x + end.x) * 0.5;
+    /// End of segment `index` in curve space. The closing segment ends one cycle past the start.
+    fn segment_end(&self, segments: &Segments, index: usize) -> Option<Pos2> {
+        let end = self.segment_end_idx(segments, index)?;
+        let point = segments.point(end);
+        let wrap = if end == 0 { 1.0 } else { 0.0 };
 
-        if x >= 1.0 {
-            x -= 1.0;
-        }
-
-        let t = power_scale(0.5, segments.power(index));
-        let y = from.y + t * (end.y - from.y);
-
-        pos2(x, y)
+        Some(pos2(point.x + wrap, point.y))
     }
 
-    /// Closed polyline for one sample per horizontal point, with each breakpoint kept.
+    /// Midpoint in phase, power-scaled in level. A wrap past 1 folds back into the plot.
+    fn power_position(&self, segments: &Segments, index: usize) -> Pos2 {
+        let from = Self::curve_point(segments.point(index));
+        let Some(end) = self.segment_end(segments, index) else {
+            return from;
+        };
+        let x = (from.x + end.x) * 0.5;
+        let x = if x >= 1.0 { x - 1.0 } else { x };
+        let t = power_scale(0.5, segments.power(index));
+
+        pos2(x, from.y + t * (end.y - from.y))
+    }
+
+    /// Polyline with one sample per horizontal pixel and every breakpoint kept.
     ///
     /// `render_points` runs again when [`Segments::revision`] or the plot size changes.
     /// The polyline is projected into `plot` on every call.
@@ -768,37 +712,33 @@ impl SegmentsEditor {
             return;
         }
 
-        let size = plot.size();
-        let revision = segments.revision();
-        let fresh = self
-            .curve_cache
-            .as_ref()
-            .is_some_and(|cache| cache.revision == revision && cache.size == size);
+        let cache = CurveCache {
+            revision: segments.revision(),
+            size: plot.size(),
+        };
 
-        if !fresh {
-            let steps = size.x.round().max(1.0) as usize;
+        if self.curve_cache != Some(cache) {
+            let steps = cache.size.x.round().max(1.0) as usize;
 
             segments.render_points(steps, &mut self.curve, &mut self.scratch);
-            self.curve_cache = Some(CurveCache { revision, size });
+            self.curve_cache = Some(cache);
         }
 
         self.points.clear();
-        self.points.reserve(self.curve.len());
-
-        for point in &self.curve {
-            self.points.push(Self::screen_pos(plot, (*point).into()));
-        }
+        self.points.extend(
+            self.curve
+                .iter()
+                .map(|&[x, y]| Self::screen_pos(plot, pos2(x, y))),
+        );
     }
 
     /// Move the curve shapes into `slot`, which was reserved before the handles.
     fn paint_curve_behind(&mut self, ui: &Ui, plot: Rect, segments: &Segments, slot: ShapeIdx) {
         let layer_id = ui.layer_id();
         let clip = ui.painter().with_clip_rect(plot).clip_rect();
-        let first = ui.ctx().graphics(|gfx| {
-            gfx.get(layer_id)
-                .map(|list| list.all_entries().len())
-                .unwrap_or(0)
-        });
+        let first = ui
+            .ctx()
+            .graphics(|gfx| gfx.get(layer_id).map_or(0, |list| list.all_entries().len()));
 
         self.paint_scene(ui, plot, segments);
 
@@ -823,16 +763,20 @@ impl SegmentsEditor {
         let painter = ui.painter().with_clip_rect(plot);
         let background = ui.visuals().extreme_bg_color;
 
-        self.paint_plot(&painter, plot, background);
+        Self::paint_plot(&painter, plot, background);
         self.curve_points(plot, segments);
+        self.paint_fill(&painter, plot, background);
 
-        let loop_region = self.loop_region(plot, segments);
-        self.paint_fill(&painter, plot, &self.points, background, loop_region);
-        Self::paint_grid(&painter, plot, self.grid_x, self.grid_y);
+        if let Some(region) = self.loop_region(plot, segments) {
+            let color = Color32::from(LOOP_FILL_COLOR);
+            Self::paint_gradient(&painter, region, color, color.a(), color.a());
+        }
+
+        self.paint_grid(&painter, plot);
         self.paint_curve(&painter);
     }
 
-    fn paint_plot(&self, painter: &Painter, plot: Rect, background: Color32) {
+    fn paint_plot(painter: &Painter, plot: Rect, background: Color32) {
         painter.rect_filled(plot, 2.0, background);
         painter.rect_stroke(
             plot,
@@ -842,10 +786,107 @@ impl SegmentsEditor {
         );
     }
 
+    fn paint_grid(&self, painter: &Painter, plot: Rect) {
+        let stroke = Stroke::new(1.0, GRID_COLOR);
+
+        for i in 1..self.grid_x {
+            let x = plot.left() + plot.width() * (i as f32 / self.grid_x as f32);
+            painter.line_segment([pos2(x, plot.top()), pos2(x, plot.bottom())], stroke);
+        }
+
+        for i in 1..self.grid_y {
+            let y = plot.bottom() - plot.height() * (i as f32 / self.grid_y as f32);
+            painter.line_segment([pos2(plot.left(), y), pos2(plot.right(), y)], stroke);
+        }
+    }
+
     fn paint_curve(&self, painter: &Painter) {
         if self.points.len() >= 2 {
             painter.line(self.points.clone(), Stroke::new(2.0, self.wave_color));
         }
+    }
+
+    /// Gradient under the curve.
+    ///
+    /// The whole plot gets one vertical gradient, and an opaque cover hides it above
+    /// the polyline. One quad keeps the gradient smooth.
+    fn paint_fill(&self, painter: &Painter, plot: Rect, background: Color32) {
+        Self::paint_gradient(
+            painter,
+            plot,
+            self.wave_color,
+            self.fill_top_alpha,
+            self.fill_bottom_alpha,
+        );
+        Self::paint_cover(painter, plot.top(), &self.points, background);
+    }
+
+    /// `color` fading from `top_alpha` to `bottom_alpha` across `rect`.
+    fn paint_gradient(
+        painter: &Painter,
+        rect: Rect,
+        color: Color32,
+        top_alpha: u8,
+        bottom_alpha: u8,
+    ) {
+        if !rect.is_positive() {
+            return;
+        }
+
+        let top = Self::with_alpha(color, top_alpha);
+        let bottom = Self::with_alpha(color, bottom_alpha);
+        let mut mesh = Mesh::default();
+
+        Self::add_quad(
+            &mut mesh,
+            [
+                (rect.left_top(), top),
+                (rect.right_top(), top),
+                (rect.right_bottom(), bottom),
+                (rect.left_bottom(), bottom),
+            ],
+        );
+        painter.add(Shape::mesh(mesh));
+    }
+
+    /// Opaque background between `top` and the polyline.
+    fn paint_cover(painter: &Painter, top: f32, points: &[Pos2], background: Color32) {
+        let cover = Color32::from_rgb(background.r(), background.g(), background.b());
+        let mut mesh = Mesh::default();
+
+        for window in points.windows(2) {
+            let (start, end) = (window[0], window[1]);
+
+            if end.x > start.x {
+                Self::add_quad(
+                    &mut mesh,
+                    [
+                        (pos2(start.x, top), cover),
+                        (pos2(end.x, top), cover),
+                        (end, cover),
+                        (start, cover),
+                    ],
+                );
+            }
+        }
+
+        if !mesh.is_empty() {
+            painter.add(Shape::mesh(mesh));
+        }
+    }
+
+    /// Screen span of the loop, from the loop point to the release point or the end.
+    fn loop_region(&self, plot: Rect, segments: &Segments) -> Option<Rect> {
+        if !self.markers {
+            return None;
+        }
+
+        let start = segments.loop_point()?;
+        let end_x = segments.release_point().map_or(1.0, |point| point.x);
+        let left = Self::screen_x(plot, start.x);
+        let right = Self::screen_x(plot, end_x);
+
+        (right > left).then(|| Rect::from_x_y_ranges(left..=right, plot.y_range()))
     }
 
     fn paint_point(
@@ -857,42 +898,53 @@ impl SegmentsEditor {
         response: &Response,
     ) {
         let point = segments.point(index);
-        let center = Self::point_screen(plot, point);
+        let center = Self::screen_pos(plot, Self::curve_point(point));
+        let marker = self.marker(segments, index);
+        let color = marker.map_or(POINT_COLOR, |(_, color)| color);
         let painter = ui.painter();
 
-        painter.circle_filled(center, POINT_RADIUS, self.point_color(segments, index));
+        painter.circle_filled(center, POINT_RADIUS, color);
 
-        if self.markers && segments.loop_point_idx() == Some(index) {
-            Self::paint_marker(painter, plot, point, "L", LOOP_COLOR);
-        }
-
-        if self.markers && segments.release_point_idx() == Some(index) {
-            Self::paint_marker(painter, plot, point, "R", RELEASE_COLOR);
+        if let Some((label, color)) = marker {
+            Self::paint_marker(painter, plot, center, label, color);
         }
 
         let dragging = self.drag == Some(Drag::Point(index));
-        Self::paint_grab(ui, response, center, Drag::Point(index).radius(), dragging);
+        Self::paint_grab(ui, response, center, GRAB_RADIUS, dragging);
 
         if dragging {
-            let level = point.y.clamp(0.0, 1.0);
-            Self::paint_level(ui, center, Units::Normalized.format(level));
+            let level = Units::Normalized.format(point.y.clamp(0.0, 1.0));
+            Self::paint_level(ui, center, level);
         }
     }
 
-    fn point_color(&self, segments: &Segments, index: usize) -> Color32 {
+    /// Letter and color of the loop or release point. Never both: the loop sits before the release.
+    fn marker(&self, segments: &Segments, index: usize) -> Option<(&'static str, Color32)> {
         if !self.markers {
-            return POINT_COLOR;
-        }
-
-        if segments.loop_point_idx() == Some(index) {
-            LOOP_COLOR
+            None
+        } else if segments.loop_point_idx() == Some(index) {
+            Some(("L", LOOP_COLOR))
         } else if segments.release_point_idx() == Some(index) {
-            RELEASE_COLOR
+            Some(("R", RELEASE_COLOR))
         } else {
-            POINT_COLOR
+            None
         }
     }
 
+    fn paint_marker(painter: &Painter, plot: Rect, center: Pos2, label: &str, color: Color32) {
+        let galley = painter.layout_no_wrap(label.to_owned(), Self::bold(10.0), color);
+        let x = center.x - galley.size().x * 0.5;
+        let y = Self::stack_y(
+            center.y,
+            POINT_RADIUS + MARKER_GAP,
+            galley.size().y,
+            plot.top(),
+        );
+
+        painter.galley(pos2(x, y), galley, color);
+    }
+
+    /// Hover ring, and a filled disc while dragging. Drawn on the handle layer.
     fn paint_grab(ui: &Ui, response: &Response, center: Pos2, radius: f32, dragging: bool) {
         if dragging {
             ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
@@ -905,13 +957,42 @@ impl SegmentsEditor {
         }
 
         let painter = ui.painter().clone().with_layer_id(Self::handle_layer(ui));
-        let stroke = Stroke::new(1.0, Color32::WHITE);
 
         if dragging {
             painter.circle_filled(center, radius, Color32::from_white_alpha(0x40));
         }
 
-        painter.circle_stroke(center, radius, stroke);
+        painter.circle_stroke(center, radius, Stroke::new(1.0, Color32::WHITE));
+    }
+
+    /// Level readout next to the dragged point, kept inside the clip rect.
+    fn paint_level(ui: &Ui, anchor: Pos2, text: String) {
+        let painter = ui.painter().clone().with_layer_id(Self::handle_layer(ui));
+        let galley = painter.layout_no_wrap(text, Self::bold(11.0), LABEL_TEXT_COLOR.into());
+        let padding = vec2(LABEL_PADDING, LABEL_PADDING * 0.5);
+        let size = galley.size() + padding * 2.0;
+        let bounds = ui.clip_rect();
+        let top = Self::stack_y(
+            anchor.y,
+            GRAB_RADIUS + LABEL_POINTER_GAP,
+            size.y,
+            bounds.top(),
+        );
+        let min = pos2(
+            (anchor.x - size.x * 0.5)
+                .clamp(bounds.left(), (bounds.right() - size.x).max(bounds.left())),
+            top.clamp(bounds.top(), (bounds.bottom() - size.y).max(bounds.top())),
+        );
+        let rect = Rect::from_min_size(min, size);
+
+        painter.rect(
+            rect,
+            LABEL_CORNER_RADIUS,
+            LABEL_BG_COLOR,
+            Stroke::new(1.0, LABEL_BORDER_COLOR),
+            StrokeKind::Inside,
+        );
+        painter.galley(rect.min + padding, galley, LABEL_TEXT_COLOR.into());
     }
 
     fn handle_layer(ui: &Ui) -> LayerId {
@@ -920,24 +1001,16 @@ impl SegmentsEditor {
 
     /// Left stays the curve color. The right channel keeps that saturation and value.
     fn paint_playheads(&self, painter: &Painter, plot: Rect, playhead: [(Smp, Smp); 2]) {
-        let left = Self::playhead_pos(plot, playhead[0].0, playhead[0].1);
-        let right = Self::playhead_pos(plot, playhead[1].0, playhead[1].1);
+        let [left, right] = playhead.map(|(phase, level)| Self::playhead_pos(plot, phase, level));
 
         if left.distance_sq(right) > PLAYHEAD_OVERLAP_SQ {
-            painter.circle_filled(
-                right,
-                PLAYHEAD_RADIUS,
-                Self::right_playhead_color(self.wave_color),
-            );
+            let mut color = Hsva::from(self.wave_color);
+            color.h = RIGHT_PLAYHEAD_HUE;
+
+            painter.circle_filled(right, PLAYHEAD_RADIUS, color);
         }
 
         painter.circle_filled(left, PLAYHEAD_RADIUS, self.wave_color);
-    }
-
-    fn right_playhead_color(left: Color32) -> Color32 {
-        let mut color = Hsva::from(left);
-        color.h = RIGHT_PLAYHEAD_HUE;
-        Color32::from(color)
     }
 
     /// Screen position of the playhead at `(phase, level)`.
@@ -948,33 +1021,12 @@ impl SegmentsEditor {
         Self::screen_pos(plot, pos2(phase, level))
     }
 
-    fn paint_marker(painter: &Painter, plot: Rect, point: SegPoint, label: &str, color: Color32) {
-        let pos = Self::point_screen(plot, point);
-        let galley = painter.layout_no_wrap(
-            label.to_owned(),
-            FontId::new(10.0, FontFamily::Name("Bold".into())),
-            color,
-        );
-        let x = pos.x - galley.size().x * 0.5;
-        let above = pos.y - POINT_RADIUS - galley.size().y - 3.0;
-        let y = if above >= plot.top() {
-            above
-        } else {
-            pos.y + POINT_RADIUS + 3.0
-        };
-
-        painter.galley(pos2(x, y), galley, color);
-    }
-
     /// Pointer position while a drag is held, including outside the plot and the window.
     fn drag_pointer(ui: &Ui) -> Option<Pos2> {
-        let mut pos = ui.input(|input| input.pointer.latest_pos())?;
+        let pos = ui.input(|input| input.pointer.latest_pos())?;
+        let from_global = ui.ctx().layer_transform_from_global(ui.layer_id());
 
-        if let Some(from_global) = ui.ctx().layer_transform_from_global(ui.layer_id()) {
-            pos = from_global * pos;
-        }
-
-        Some(pos)
+        Some(from_global.map_or(pos, |transform| transform * pos))
     }
 
     /// Plot position of a screen point. Values outside 0–1 are past the canvas.
@@ -985,257 +1037,97 @@ impl SegmentsEditor {
         )
     }
 
-    fn paint_level(ui: &Ui, anchor: Pos2, text: String) {
-        let text_color = Color32::from(LABEL_TEXT_COLOR);
-        let bg_color = Color32::from(LABEL_BG_COLOR);
-        let border_color = Color32::from(LABEL_BORDER_COLOR);
-        let painter = ui.painter().clone().with_layer_id(Self::handle_layer(ui));
-        let galley = painter.layout_no_wrap(
-            text,
-            FontId::new(11.0, FontFamily::Name("Bold".into())),
-            text_color,
-        );
-        let padding = vec2(LABEL_PADDING, LABEL_PADDING * 0.5);
-        let box_size = galley.size() + padding * 2.0;
-        let bounds = ui.clip_rect();
-        let above = anchor.y - GRAB_RADIUS - box_size.y - LABEL_POINTER_GAP;
-        let top = if above >= bounds.top() {
-            above
-        } else {
-            anchor.y + GRAB_RADIUS + LABEL_POINTER_GAP
-        };
-        let top = top.clamp(
-            bounds.top(),
-            (bounds.bottom() - box_size.y).max(bounds.top()),
-        );
-        let left = (anchor.x - box_size.x * 0.5).clamp(
-            bounds.left(),
-            (bounds.right() - box_size.x).max(bounds.left()),
-        );
-        let box_rect = Rect::from_min_size(pos2(left, top), box_size);
-
-        painter.rect(
-            box_rect,
-            LABEL_CORNER_RADIUS,
-            bg_color,
-            Stroke::new(1.0, border_color),
-            StrokeKind::Inside,
-        );
-        painter.galley(box_rect.min + padding, galley, text_color);
-    }
-
-    fn point_screen(plot: Rect, point: SegPoint) -> Pos2 {
-        Self::screen_pos(plot, pos2(point.x, point.y))
-    }
-
+    /// Screen position of a plot point. Values outside 0–1 land on the plot edge.
     fn screen_pos(plot: Rect, point: Pos2) -> Pos2 {
         pos2(
-            plot.left() + point.x.clamp(0.0, 1.0) * plot.width(),
+            Self::screen_x(plot, point.x),
             plot.bottom() - point.y.clamp(0.0, 1.0) * plot.height(),
         )
     }
 
-    fn paint_grid(painter: &Painter, plot: Rect, grid_x: i32, grid_y: i32) {
-        let stroke = Stroke::new(1.0, GRID_COLOR);
-
-        if grid_x > 1 {
-            for i in 1..grid_x {
-                let x = plot.left() + plot.width() * (i as f32 / grid_x as f32);
-                painter.line_segment([pos2(x, plot.top()), pos2(x, plot.bottom())], stroke);
-            }
-        }
-
-        if grid_y > 1 {
-            for i in 1..grid_y {
-                let y = plot.bottom() - plot.height() * (i as f32 / grid_y as f32);
-                painter.line_segment([pos2(plot.left(), y), pos2(plot.right(), y)], stroke);
-            }
-        }
+    fn screen_x(plot: Rect, x: Smp) -> f32 {
+        plot.left() + x.clamp(0.0, 1.0) * plot.width()
     }
 
-    /// Screen span of the loop, from the loop point to the release point or the end.
-    fn loop_region(&self, plot: Rect, segments: &Segments) -> Option<Rect> {
-        if !self.markers {
-            return None;
-        }
+    /// Curve-space position of a breakpoint.
+    fn curve_point(point: SegPoint) -> Pos2 {
+        pos2(point.x, point.y)
+    }
 
-        let start = segments.loop_point()?;
-        let end_x = segments.release_point().map(|point| point.x).unwrap_or(1.0);
-        let left = plot.left() + start.x.clamp(0.0, 1.0) * plot.width();
-        let right = plot.left() + end_x.clamp(0.0, 1.0) * plot.width();
+    /// Interior points can be removed. The ends stay.
+    fn is_inner(segments: &Segments, index: usize) -> bool {
+        index > 0 && index + 1 < segments.num_points()
+    }
 
-        if right <= left {
-            None
+    fn shift_down(ui: &Ui) -> bool {
+        ui.input(|input| input.modifiers.shift)
+    }
+
+    /// First point whose phase is past `x`, or the end of the curve.
+    fn insertion_index(segments: &Segments, x: Smp) -> usize {
+        (0..segments.num_points())
+            .find(|&index| segments.point(index).x > x)
+            .unwrap_or(segments.num_points())
+    }
+
+    /// Phase range a point may occupy. Endpoints stay pinned to 0 and 1.
+    fn x_limits(segments: &Segments, index: usize) -> (Smp, Smp) {
+        let n = segments.num_points();
+
+        if index == 0 {
+            (0.0, 0.0)
+        } else if index + 1 == n {
+            (1.0, 1.0)
         } else {
-            Some(Rect::from_min_max(
-                pos2(left, plot.top()),
-                pos2(right, plot.bottom()),
-            ))
+            (segments.point(index - 1).x, segments.point(index + 1).x)
         }
     }
 
-    /// Gradient under the curve, then the loop band on top.
-    ///
-    /// The wave is one vertical gradient. An opaque cover hides everything above
-    /// the polyline. One quad keeps that gradient smooth.
-    fn paint_fill(
-        &self,
-        painter: &Painter,
-        plot: Rect,
-        points: &[Pos2],
-        background: Color32,
-        loop_region: Option<Rect>,
-    ) {
-        if plot.height() <= 0.0 || plot.width() <= 0.0 {
-            return;
+    /// Snap when `value` is already within `threshold` of a grid line.
+    fn snap_near(value: Smp, divisions: i32, threshold: Smp, min: Smp, max: Smp) -> Smp {
+        if divisions <= 1 {
+            return value;
         }
 
-        self.paint_gradient(painter, plot);
-        Self::paint_cover(painter, plot, points, background);
+        let snapped = (value * divisions as Smp).round() / divisions as Smp;
 
-        if let Some(region) = loop_region {
-            Self::paint_loop_band(painter, plot, region);
+        if (snapped - value).abs() < threshold {
+            snapped.clamp(min, max)
+        } else {
+            value
         }
     }
 
-    fn paint_gradient(&self, painter: &Painter, plot: Rect) {
-        let mut mesh = Mesh::default();
+    /// Top of a box `height` tall placed `offset` above `anchor_y`, or `offset` below it
+    /// when the box would pass `top`.
+    fn stack_y(anchor_y: f32, offset: f32, height: f32, top: f32) -> f32 {
+        let above = anchor_y - offset - height;
 
-        Self::add_gradient(
-            &mut mesh,
-            plot,
-            plot.left(),
-            plot.right(),
-            self.wave_color,
-            self.fill_top_alpha,
-            self.fill_bottom_alpha,
-        );
-
-        if !mesh.is_empty() {
-            painter.add(Shape::mesh(mesh));
+        if above >= top {
+            above
+        } else {
+            anchor_y + offset
         }
     }
 
-    fn paint_cover(painter: &Painter, plot: Rect, points: &[Pos2], background: Color32) {
-        if points.len() < 2 {
-            return;
-        }
-
-        let cover = Color32::from_rgb(background.r(), background.g(), background.b());
-        let mut mesh = Mesh::default();
-
-        for window in points.windows(2) {
-            let start = window[0];
-            let end = window[1];
-
-            if end.x <= start.x {
-                continue;
-            }
-
-            Self::add_cover(&mut mesh, plot.top(), start, end, cover);
-        }
-
-        if !mesh.is_empty() {
-            painter.add(Shape::mesh(mesh));
-        }
-    }
-
-    fn paint_loop_band(painter: &Painter, plot: Rect, region: Rect) {
-        let mut mesh = Mesh::default();
-        let color = Color32::from(LOOP_FILL_COLOR);
-
-        Self::add_gradient(
-            &mut mesh,
-            plot,
-            region.left(),
-            region.right(),
-            color,
-            color.a(),
-            color.a(),
-        );
-
-        if !mesh.is_empty() {
-            painter.add(Shape::mesh(mesh));
-        }
-    }
-
-    fn add_cover(mesh: &mut Mesh, top: f32, start: Pos2, end: Pos2, cover: Color32) {
-        if end.x <= start.x {
-            return;
-        }
-
-        let index = mesh.vertices.len() as u32;
-
-        mesh.colored_vertex(pos2(start.x, top), cover);
-        mesh.colored_vertex(pos2(end.x, top), cover);
-        mesh.colored_vertex(end, cover);
-        mesh.colored_vertex(start, cover);
-        mesh.add_triangle(index, index + 1, index + 2);
-        mesh.add_triangle(index, index + 2, index + 3);
-    }
-
-    fn add_gradient(
-        mesh: &mut Mesh,
-        plot: Rect,
-        left: f32,
-        right: f32,
-        color: Color32,
-        top_alpha: u8,
-        bottom_alpha: u8,
-    ) {
-        if right <= left {
-            return;
-        }
-
-        let top = Self::with_alpha(color, top_alpha);
-        let bottom = Self::with_alpha(color, bottom_alpha);
-        let index = mesh.vertices.len() as u32;
-
-        mesh.colored_vertex(pos2(left, plot.top()), top);
-        mesh.colored_vertex(pos2(right, plot.top()), top);
-        mesh.colored_vertex(pos2(right, plot.bottom()), bottom);
-        mesh.colored_vertex(pos2(left, plot.bottom()), bottom);
-        mesh.add_triangle(index, index + 1, index + 2);
-        mesh.add_triangle(index, index + 2, index + 3);
+    fn bold(size: f32) -> FontId {
+        FontId::new(size, FontFamily::Name("Bold".into()))
     }
 
     fn with_alpha(color: Color32, alpha: u8) -> Color32 {
         Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
     }
-}
 
-/// First point whose phase is past `x`, or the end of the curve.
-fn insertion_index(segments: &Segments, x: Smp) -> usize {
-    (0..segments.num_points())
-        .find(|&index| segments.point(index).x > x)
-        .unwrap_or(segments.num_points())
-}
+    /// Two triangles over `corners`, given in winding order.
+    fn add_quad(mesh: &mut Mesh, corners: [(Pos2, Color32); 4]) {
+        let index = mesh.vertices.len() as u32;
 
-/// Phase range a point may occupy. Endpoints stay pinned to 0 and 1.
-fn x_limits(segments: &Segments, index: usize) -> (Smp, Smp) {
-    let n = segments.num_points();
+        for (pos, color) in corners {
+            mesh.colored_vertex(pos, color);
+        }
 
-    if index == 0 {
-        (0.0, 0.0)
-    } else if index + 1 == n {
-        (1.0, 1.0)
-    } else {
-        (segments.point(index - 1).x, segments.point(index + 1).x)
-    }
-}
-
-/// Snap when `value` is already within `threshold` of a grid line.
-fn snap_near(value: Smp, divisions: i32, threshold: Smp, min: Smp, max: Smp) -> Smp {
-    if divisions <= 1 {
-        return value;
-    }
-
-    let snapped = (value * divisions as Smp).round() / divisions as Smp;
-
-    if (snapped - value).abs() < threshold {
-        snapped.clamp(min, max)
-    } else {
-        value
+        mesh.add_triangle(index, index + 1, index + 2);
+        mesh.add_triangle(index, index + 2, index + 3);
     }
 }
 
