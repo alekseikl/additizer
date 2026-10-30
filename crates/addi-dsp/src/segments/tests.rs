@@ -337,6 +337,42 @@ fn render_points_closes_the_cycle_and_keeps_corners() {
 }
 
 #[test]
+fn render_points_keeps_a_vertical_step() {
+    let saw = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0), (1.0, 0.0)], false);
+    let mut points = Vec::new();
+    let mut scratch = Vec::new();
+
+    saw.render_points(4, &mut points, &mut scratch);
+
+    let steps: Vec<_> = points
+        .windows(2)
+        .filter(|pair| pair[0][0] == pair[1][0])
+        .collect();
+
+    assert_eq!(steps, vec![&[[1.0, 1.0], [1.0, 0.0]]]);
+    assert!(points.windows(2).all(|pair| pair[0] != pair[1]));
+
+    let square = Segments::from_points(
+        &[(0.0, 0.0), (0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)],
+        false,
+    );
+
+    square.render_points(4, &mut points, &mut scratch);
+
+    let at = |x: Smp| -> Vec<Smp> {
+        points
+            .iter()
+            .filter(|point| point[0] == x)
+            .map(|point| point[1])
+            .collect()
+    };
+
+    assert_eq!(at(0.0), vec![0.0, 1.0]);
+    assert_eq!(at(0.5), vec![1.0, 0.0]);
+    assert!(points.windows(2).all(|pair| pair[0] != pair[1]));
+}
+
+#[test]
 fn sanitize_clamps_curve_floats() {
     let mut segments =
         Segments::from_points(&[(0.2, -1.0), (0.5, Smp::INFINITY), (1.4, 0.25)], false);

@@ -1,7 +1,8 @@
 use egui::{
-    Color32, CursorIcon, DragValue, FontFamily, FontId, LayerId, Mesh, Order, Painter,
-    PointerButton, Pos2, Rect, Response, RichText, Sense, Shape, Stroke, StrokeKind, Ui, Vec2,
-    ecolor::Hsva, layers::ShapeIdx, pos2, vec2,
+    Color32, ColorImage, Context, CursorIcon, DragValue, FontFamily, FontId, LayerId, Mesh, Order,
+    Painter, PointerButton, Pos2, Rect, Response, RichText, Sense, Shape, Stroke, StrokeKind,
+    TextureHandle, TextureId, TextureOptions, Ui, Vec2, ecolor::Hsva, epaint::Vertex,
+    layers::ShapeIdx, pos2, vec2,
 };
 
 use addi_dsp::{
@@ -35,13 +36,12 @@ const MAX_CLICK_DURATION: f64 = 0.2;
 
 const WAVE_COLOR: Color32 = Color32::from_rgb(0x4a, 0xb0, 0xff);
 const LOOP_COLOR: Color32 = Color32::from_rgb(0xf0, 0xc0, 0x4a);
-const LOOP_FILL_COLOR: Hsva = hsva(0.0, 0.9092, 1.0, 0.25);
+const LOOP_FILL_COLOR: Hsva = hsva(0.0, 0.9092, 1.0, 0.05);
 const RELEASE_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x59);
 const FILL_TOP_ALPHA: u8 = 0x47;
 const FILL_BOTTOM_ALPHA: u8 = 0x28;
 const ENVELOPE_WAVE: Hsva = hsva(0.3374, 0.9, 0.2, 1.0);
 const ENVELOPE_POWER: Hsva = hsva(0.348, 0.7, 0.4, 1.0);
-const ENVELOPE_FILL_ALPHA: u8 = 0x66;
 const GRID_COLOR: Color32 = Color32::from_rgba_unmultiplied_const(255, 255, 255, 28);
 const POINT_COLOR: Color32 = Color32::from_rgb(0xe8, 0xf4, 0xff);
 const POWER_COLOR: Color32 = Color32::from_rgb(0x9a, 0xd0, 0xff);
@@ -100,13 +100,13 @@ pub struct SegmentsEditor {
     points: Vec<Pos2>,
     curve_cache: Option<CurveCache>,
     /// Endpoints share one level, and the last bend wraps back to the start.
-    closed: bool,
+    wrapped: bool,
     /// Loop and release markers. The segments envelope turns this on.
     markers: bool,
     wave_color: Color32,
     power_color: Color32,
-    fill_top_alpha: u8,
-    fill_bottom_alpha: u8,
+    /// Plot gradient, uploaded on first paint.
+    fill: Option<TextureHandle>,
 }
 
 impl Default for SegmentsEditor {
@@ -121,38 +121,33 @@ impl Default for SegmentsEditor {
             scratch: Vec::new(),
             points: Vec::new(),
             curve_cache: None,
-            closed: true,
+            wrapped: true,
             markers: false,
             wave_color: WAVE_COLOR,
             power_color: POWER_COLOR,
-            fill_top_alpha: FILL_TOP_ALPHA,
-            fill_bottom_alpha: FILL_BOTTOM_ALPHA,
+            fill: None,
         }
     }
 }
 
 impl SegmentsEditor {
     /// Endpoints keep their own levels.
-    pub fn open() -> Self {
+    pub fn lookup() -> Self {
         Self {
-            closed: false,
+            wrapped: false,
             ..Self::default()
         }
     }
 
-    /// Show loop and release markers on an open curve.
-    pub fn with_markers(mut self) -> Self {
-        self.markers = true;
-        self
-    }
-
     /// Curve, fill, and playhead match the envelope module.
-    pub fn envelope(mut self) -> Self {
-        self.wave_color = Color32::from(ENVELOPE_WAVE);
-        self.power_color = Color32::from(ENVELOPE_POWER);
-        self.fill_top_alpha = ENVELOPE_FILL_ALPHA;
-        self.fill_bottom_alpha = ENVELOPE_FILL_ALPHA;
-        self
+    pub fn envelope() -> Self {
+        Self {
+            wrapped: false,
+            markers: true,
+            wave_color: Color32::from(ENVELOPE_WAVE),
+            power_color: Color32::from(ENVELOPE_POWER),
+            ..Self::default()
+        }
     }
 
     /// `phase` is the left and right playhead. Levels are read from the curve.
@@ -173,8 +168,6 @@ impl SegmentsEditor {
     }
 
     /// Like [`ui`](Self::ui). `playhead` is the left and right point, each `(phase, level)`.
-    ///
-    /// Returns whether the curve revision changed while the editor was shown.
     pub fn ui_at(
         &mut self,
         ui: &mut Ui,
@@ -201,8 +194,6 @@ impl SegmentsEditor {
         if self.markers { HELP_MARKERS } else { HELP }
     }
 
-    /// Handles edit the curve first. The curve is then painted into a slot reserved
-    /// before them, so it stays behind the handles and still matches this frame.
     fn plot(
         &mut self,
         ui: &Ui,
@@ -216,17 +207,16 @@ impl SegmentsEditor {
         Self::canvas(response, plot, segments);
 
         let count = segments.num_points();
-
-        for index in 0..count {
-            self.bend(ui, plot, segments, index);
-        }
-
         let mut remove = None;
 
         for index in 0..count {
             if self.point(ui, plot, segments, index) {
                 remove = Some(index);
             }
+        }
+
+        for index in 0..count {
+            self.bend_point(ui, plot, segments, index);
         }
 
         if let Some(playhead) = playhead {
@@ -240,7 +230,6 @@ impl SegmentsEditor {
         }
     }
 
-    /// Empty plot: double-click inserts a point, right-click flips the curve.
     fn canvas(response: &Response, plot: Rect, segments: &mut Segments) {
         Self::canvas_menu(response, segments);
 
@@ -251,8 +240,7 @@ impl SegmentsEditor {
         }
     }
 
-    /// One bend handle: drag, double-click, menu, and paint.
-    fn bend(&mut self, ui: &Ui, plot: Rect, segments: &mut Segments, index: usize) {
+    fn bend_point(&mut self, ui: &Ui, plot: Rect, segments: &mut Segments, index: usize) {
         if !self.power_active(plot, segments, index) {
             if self.drag == Some(Drag::Power(index)) {
                 self.end_drag();
@@ -294,8 +282,6 @@ impl SegmentsEditor {
     }
 
     /// One breakpoint: drag, double-click, menu, and paint.
-    ///
-    /// `true` asks the caller to remove this point after the frame is painted.
     fn point(&mut self, ui: &Ui, plot: Rect, segments: &mut Segments, index: usize) -> bool {
         let center = Self::screen_pos(plot, Self::curve_point(segments.point(index)));
         let response =
@@ -378,8 +364,6 @@ impl SegmentsEditor {
     }
 
     /// Pointer once this press is a drag and no other handle is held.
-    ///
-    /// While it can still be a click, a repaint is requested so the hold can elapse.
     fn drag_begin(&self, ui: &Ui, response: &Response) -> Option<Pos2> {
         if self.drag.is_some() || !response.is_pointer_button_down_on() {
             return None;
@@ -477,15 +461,15 @@ impl SegmentsEditor {
             y = Self::snap_near(y, self.grid_y, SNAP_Y, 0.0, 1.0);
         }
 
-        self.match_closed_ends(segments, index, y);
+        self.match_wrapped_ends(segments, index, y);
 
         let current = segments.point(index);
         segments.set_point(index, SegPoint { x, y, ..current });
     }
 
-    /// Closed curves keep the first and last levels equal.
-    fn match_closed_ends(&self, segments: &mut Segments, index: usize, y: Smp) {
-        if !self.closed {
+    /// Wrapped curves keep the first and last levels equal.
+    fn match_wrapped_ends(&self, segments: &mut Segments, index: usize, y: Smp) {
+        if !self.wrapped {
             return;
         }
 
@@ -665,14 +649,14 @@ impl SegmentsEditor {
         plot.width() * (end.x - from.x) >= MIN_POWER_WIDTH && end.y != from.y
     }
 
-    /// Breakpoint that ends segment `index`. The last segment of a closed curve wraps
+    /// Breakpoint that ends segment `index`. The last segment of a wrapped curve wraps
     /// to the start, so this is also the next segment to bend.
     fn segment_end_idx(&self, segments: &Segments, index: usize) -> Option<usize> {
         let n = segments.num_points();
 
         if index + 1 < n {
             Some(index + 1)
-        } else if self.closed && index < n {
+        } else if self.wrapped && index < n {
             Some(0)
         } else {
             None
@@ -764,15 +748,15 @@ impl SegmentsEditor {
         let background = ui.visuals().extreme_bg_color;
 
         Self::paint_plot(&painter, plot, background);
-        self.curve_points(plot, segments);
-        self.paint_fill(&painter, plot, background);
 
         if let Some(region) = self.loop_region(plot, segments) {
-            let color = Color32::from(LOOP_FILL_COLOR);
-            Self::paint_gradient(&painter, region, color, color.a(), color.a());
+            Self::paint_loop_band(&painter, region);
         }
 
         self.paint_grid(&painter, plot);
+
+        self.curve_points(plot, segments);
+        self.paint_fill(ui.ctx(), &painter, plot);
         self.paint_curve(&painter);
     }
 
@@ -801,77 +785,84 @@ impl SegmentsEditor {
     }
 
     fn paint_curve(&self, painter: &Painter) {
-        if self.points.len() >= 2 {
-            painter.line(self.points.clone(), Stroke::new(2.0, self.wave_color));
-        }
-    }
-
-    /// Gradient under the curve.
-    ///
-    /// The whole plot gets one vertical gradient, and an opaque cover hides it above
-    /// the polyline. One quad keeps the gradient smooth.
-    fn paint_fill(&self, painter: &Painter, plot: Rect, background: Color32) {
-        Self::paint_gradient(
-            painter,
-            plot,
-            self.wave_color,
-            self.fill_top_alpha,
-            self.fill_bottom_alpha,
-        );
-        Self::paint_cover(painter, plot.top(), &self.points, background);
-    }
-
-    /// `color` fading from `top_alpha` to `bottom_alpha` across `rect`.
-    fn paint_gradient(
-        painter: &Painter,
-        rect: Rect,
-        color: Color32,
-        top_alpha: u8,
-        bottom_alpha: u8,
-    ) {
-        if !rect.is_positive() {
+        if self.points.len() < 2 {
             return;
         }
 
-        let top = Self::with_alpha(color, top_alpha);
-        let bottom = Self::with_alpha(color, bottom_alpha);
-        let mut mesh = Mesh::default();
-
-        Self::add_quad(
-            &mut mesh,
-            [
-                (rect.left_top(), top),
-                (rect.right_top(), top),
-                (rect.right_bottom(), bottom),
-                (rect.left_bottom(), bottom),
-            ],
-        );
-        painter.add(Shape::mesh(mesh));
+        painter.line(self.points.clone(), Stroke::new(2.0, self.wave_color));
     }
 
-    /// Opaque background between `top` and the polyline.
-    fn paint_cover(painter: &Painter, top: f32, points: &[Pos2], background: Color32) {
-        let cover = Color32::from_rgb(background.r(), background.g(), background.b());
-        let mut mesh = Mesh::default();
+    /// Area under the polyline, shaded by a 1×2 gradient of the full plot.
+    fn paint_fill(&mut self, ctx: &Context, painter: &Painter, plot: Rect) {
+        if self.points.len() < 2 || plot.height() <= 0.0 {
+            return;
+        }
 
-        for window in points.windows(2) {
+        let mut mesh = Mesh::with_texture(self.fill_texture(ctx));
+        let bottom = plot.bottom();
+
+        for window in self.points.windows(2) {
             let (start, end) = (window[0], window[1]);
 
             if end.x > start.x {
-                Self::add_quad(
-                    &mut mesh,
-                    [
-                        (pos2(start.x, top), cover),
-                        (pos2(end.x, top), cover),
-                        (end, cover),
-                        (start, cover),
-                    ],
-                );
+                Self::add_fill_quad(&mut mesh, plot, bottom, start, end);
             }
         }
 
         if !mesh.is_empty() {
             painter.add(Shape::mesh(mesh));
+        }
+    }
+
+    /// V of a screen y in the 1×2 gradient. Texel centers sit at 1/4 and 3/4.
+    fn gradient_v(plot: Rect, y: f32) -> f32 {
+        let t = ((y - plot.top()) / plot.height()).clamp(0.0, 1.0);
+
+        0.25 + 0.5 * t
+    }
+
+    fn add_fill_quad(mesh: &mut Mesh, plot: Rect, bottom: f32, start: Pos2, end: Pos2) {
+        let index = mesh.vertices.len() as u32;
+
+        for pos in [start, end, pos2(end.x, bottom), pos2(start.x, bottom)] {
+            mesh.vertices.push(Vertex {
+                pos,
+                uv: pos2(0.5, Self::gradient_v(plot, pos.y)),
+                color: Color32::WHITE,
+            });
+        }
+
+        mesh.add_triangle(index, index + 1, index + 2);
+        mesh.add_triangle(index, index + 2, index + 3);
+    }
+
+    /// Texture id of the plot gradient. The fill colors are fixed for this editor.
+    fn fill_texture(&mut self, ctx: &Context) -> TextureId {
+        if let Some(fill) = &self.fill {
+            return fill.id();
+        }
+
+        let handle = ctx.load_texture(
+            "segments-fill",
+            ColorImage::new(
+                [1, 2],
+                vec![
+                    Self::with_alpha(self.wave_color, FILL_TOP_ALPHA),
+                    Self::with_alpha(self.wave_color, FILL_BOTTOM_ALPHA),
+                ],
+            ),
+            TextureOptions::LINEAR,
+        );
+        let id = handle.id();
+
+        self.fill = Some(handle);
+        id
+    }
+
+    /// Loop span filled with [`LOOP_FILL_COLOR`].
+    fn paint_loop_band(painter: &Painter, rect: Rect) {
+        if rect.is_positive() {
+            painter.rect_filled(rect, 0.0, LOOP_FILL_COLOR);
         }
     }
 
@@ -1116,18 +1107,6 @@ impl SegmentsEditor {
 
     fn with_alpha(color: Color32, alpha: u8) -> Color32 {
         Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
-    }
-
-    /// Two triangles over `corners`, given in winding order.
-    fn add_quad(mesh: &mut Mesh, corners: [(Pos2, Color32); 4]) {
-        let index = mesh.vertices.len() as u32;
-
-        for (pos, color) in corners {
-            mesh.colored_vertex(pos, color);
-        }
-
-        mesh.add_triangle(index, index + 1, index + 2);
-        mesh.add_triangle(index, index + 2, index + 3);
     }
 }
 

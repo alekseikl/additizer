@@ -161,12 +161,12 @@ fn changed_segments_render_again() {
 fn open_curve_moves_the_ends_independently() {
     let mut open = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
 
-    SegmentsEditor::open().move_point(&mut open, 0, 0.0, 0.35, false);
+    SegmentsEditor::lookup().move_point(&mut open, 0, 0.0, 0.35, false);
 
     assert!((open.point(0).y - 0.35).abs() < 1e-6);
     assert_eq!(open.point(2).y, 0.0);
 
-    SegmentsEditor::open().move_point(&mut open, 2, 1.0, 0.1, false);
+    SegmentsEditor::lookup().move_point(&mut open, 2, 1.0, 0.1, false);
 
     assert!((open.point(0).y - 0.35).abs() < 1e-6);
     assert!((open.point(2).y - 0.1).abs() < 1e-6);
@@ -260,6 +260,15 @@ fn synced_bend_mirrors_onto_the_next_segment() {
     editor.move_power(&mut segments, 2, 0.02, true);
 
     assert!((segments.power(0) + segments.power(2)).abs() < 1e-5);
+}
+
+#[test]
+fn gradient_v_hits_texel_centers() {
+    let plot = plot();
+
+    assert_eq!(SegmentsEditor::gradient_v(plot, plot.top()), 0.25);
+    assert_eq!(SegmentsEditor::gradient_v(plot, plot.center().y), 0.5);
+    assert_eq!(SegmentsEditor::gradient_v(plot, plot.bottom()), 0.75);
 }
 
 #[test]

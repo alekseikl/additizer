@@ -18,7 +18,7 @@ impl ModMapUi {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            editor: SegmentsEditor::open(),
+            editor: SegmentsEditor::lookup(),
         }
     }
 

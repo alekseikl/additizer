@@ -17,7 +17,7 @@ impl SegmentsEnvelopeUi {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            editor: SegmentsEditor::open().with_markers().envelope(),
+            editor: SegmentsEditor::envelope(),
         }
     }
 

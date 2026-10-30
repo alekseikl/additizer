@@ -521,6 +521,9 @@ impl Segments {
     }
 
     /// Polyline for `pixels` columns. Each point is `[phase, level]`.
+    ///
+    /// Columns sample each segment. A vertical step is the two breakpoints that
+    /// share a phase, so the drop is a span of the polyline.
     pub fn render_points(&self, pixels: usize, points: &mut Vec<[Smp; 2]>, scratch: &mut Vec<Smp>) {
         points.clear();
 
@@ -541,7 +544,23 @@ impl Segments {
         let mut from = 0;
 
         for pair in self.points.windows(2) {
-            points.push([pair[0].x, pair[0].y]);
+            if pair[1].x == pair[0].x {
+                let top = [pair[0].x, pair[0].y];
+
+                // The column sampled up to this phase has the level before the step.
+                if let Some(last) = points.last_mut()
+                    && last[0] == top[0]
+                {
+                    *last = top;
+                } else {
+                    points.push(top);
+                }
+
+                points.push([pair[1].x, pair[1].y]);
+                continue;
+            }
+
+            Self::push_point(points, [pair[0].x, pair[0].y]);
 
             let to = Self::sample_end(pair[1].x, pixels);
 
@@ -557,21 +576,22 @@ impl Segments {
                 pair[1],
             );
 
-            points.extend(
-                scratch[from..to]
-                    .iter()
-                    .enumerate()
-                    .map(|(offset, &y)| [(from + offset) as Smp * phase_step, y]),
-            );
+            for (offset, &y) in scratch[from..to].iter().enumerate() {
+                Self::push_point(points, [(from + offset) as Smp * phase_step, y]);
+            }
 
             from = to;
         }
 
-        let end = self.points[n - 1];
-
-        points.push([end.x, end.y]);
+        Self::push_point(points, [self.points[n - 1].x, self.points[n - 1].y]);
 
         debug_assert_eq!(from, len);
+    }
+
+    fn push_point(points: &mut Vec<[Smp; 2]>, point: [Smp; 2]) {
+        if points.last() != Some(&point) {
+            points.push(point);
+        }
     }
 
     /// Exclusive end index of the span that finishes at `x` on a grid of `steps` intervals.
