@@ -433,7 +433,7 @@ impl<L: SpectralNoiseLinks> SpectralNoise<L> {
 
         self.write_harmonics(voice_idx, phase_channel, gain, out);
 
-        if channel == LEFT_CHANNEL {
+        if router.need_update_ui_mono() {
             self.audio_end.update_display_spectrum(out);
         }
     }

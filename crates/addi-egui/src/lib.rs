@@ -20,6 +20,7 @@ mod grid;
 mod module_label;
 mod modules_ui;
 mod routing_ui_ext;
+#[cfg(test)]
 mod segment_presets;
 mod segments_editor;
 mod slider;

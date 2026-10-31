@@ -1,10 +1,10 @@
 use egui::{Context, Id, Rect, Ui, UiBuilder, pos2};
 
-use addi_dsp::Segments;
+use addi_dsp::{Segments, segments::MAX_POINTS};
 
 use crate::segment_presets;
 
-use super::SegmentsEditor;
+use super::{Pattern, SegmentsEditor, Tool};
 
 fn plot() -> Rect {
     Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 100.0))
@@ -281,6 +281,169 @@ fn synced_bend_mirrors_onto_the_next_segment() {
     editor.move_power(&shift, &mut segments, 2, 0.02);
 
     assert!((segments.power(0) + segments.power(2)).abs() < 1e-5);
+}
+
+fn levels(segments: &Segments) -> Vec<(f32, f32)> {
+    segments
+        .points()
+        .iter()
+        .map(|point| (point.x, point.y))
+        .collect()
+}
+
+#[test]
+fn paint_stamps_the_shape_into_one_column() {
+    let mut ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+
+    SegmentsEditor::paint_cell(&mut ramp, 0.25, 0.5, 1.0, Pattern::Down);
+
+    assert_eq!(
+        levels(&ramp),
+        vec![
+            (0.0, 0.0),
+            (0.25, 0.25),
+            (0.25, 1.0),
+            (0.5, 0.0),
+            (0.5, 0.5),
+            (1.0, 1.0),
+        ]
+    );
+    assert!(!ramp.point(2).smooth);
+
+    let mut bent = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+
+    bent.set_power(0, 1.5);
+    bent.set_smooth(0, true);
+
+    let from_y = bent.value_at(0.25, None, None);
+    let to_y = bent.value_at(0.5, None, None);
+
+    SegmentsEditor::paint_cell(&mut bent, 0.25, 0.5, 1.0, Pattern::Down);
+
+    assert_eq!(bent.point(0).power, 1.5);
+    assert!(bent.point(0).smooth);
+    assert_eq!(bent.point(1).power, 0.0);
+    assert!((bent.point(1).y - from_y).abs() < 1e-5);
+    assert!((bent.point(4).y - to_y).abs() < 1e-5);
+
+    let outside = Segments::from_points(&[(0.0, 0.0), (0.75, 0.3), (1.0, 1.0)], false);
+    let mut outside = outside;
+
+    outside.set_power(1, 4.0);
+    SegmentsEditor::paint_cell(&mut outside, 0.25, 0.5, 1.0, Pattern::Up);
+
+    let kept = outside
+        .points()
+        .iter()
+        .find(|point| point.x == 0.75)
+        .copied()
+        .unwrap();
+
+    assert_eq!(kept.y, 0.3);
+    assert_eq!(kept.power, 4.0);
+
+    let mut pulse = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+
+    SegmentsEditor::paint_cell(&mut pulse, 0.0, 0.5, 0.5, Pattern::Half);
+
+    assert_eq!(
+        levels(&pulse),
+        vec![
+            (0.0, 0.0),
+            (0.0, 0.5),
+            (0.25, 0.5),
+            (0.25, 0.0),
+            (0.5, 0.0),
+            (0.5, 0.5),
+            (1.0, 1.0),
+        ]
+    );
+}
+
+#[test]
+fn painting_the_same_column_again_leaves_it() {
+    let mut ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+
+    SegmentsEditor::paint_cell(&mut ramp, 0.25, 0.5, 1.0, Pattern::Tri);
+
+    let revision = ramp.revision();
+    let points = ramp.points().to_vec();
+
+    SegmentsEditor::paint_cell(&mut ramp, 0.25, 0.5, 1.0, Pattern::Tri);
+
+    assert_eq!(ramp.revision(), revision);
+    assert_eq!(ramp.points(), points.as_slice());
+}
+
+#[test]
+fn paint_keeps_markers_outside_the_column() {
+    let mut segments =
+        Segments::from_points(&[(0.0, 0.0), (0.3, 0.4), (0.8, 0.6), (1.0, 1.0)], false);
+
+    assert!(segments.set_loop_point(Some(1)));
+    assert!(segments.set_release_point(Some(3)));
+    SegmentsEditor::paint_cell(&mut segments, 0.25, 0.5, 1.0, Pattern::Down);
+
+    assert!(segments.loop_point_idx().is_none());
+    assert_eq!(segments.release_point().map(|point| point.x), Some(1.0));
+
+    let mut kept = Segments::from_points(&[(0.0, 0.0), (0.25, 0.4), (0.8, 0.6), (1.0, 1.0)], false);
+
+    assert!(kept.set_loop_point(Some(1)));
+    assert!(kept.set_release_point(Some(2)));
+    SegmentsEditor::paint_cell(&mut kept, 0.25, 0.5, 1.0, Pattern::Step);
+
+    assert_eq!(
+        kept.loop_point().map(|point| (point.x, point.y)),
+        Some((0.25, 0.4))
+    );
+    assert_eq!(kept.release_point().map(|point| point.x), Some(0.8));
+}
+
+#[test]
+fn paint_stops_at_the_point_limit() {
+    let mut points = Vec::with_capacity(MAX_POINTS);
+
+    points.push((0.0, 0.0));
+
+    for _ in 1..MAX_POINTS - 1 {
+        points.push((0.5, 0.25));
+    }
+
+    points.push((1.0, 1.0));
+
+    let mut full = Segments::from_points(&points, false);
+    let before = full.points().to_vec();
+
+    SegmentsEditor::paint_cell(&mut full, 0.0, 0.25, 1.0, Pattern::Half);
+
+    assert_eq!(full.points(), before.as_slice());
+}
+
+#[test]
+fn paint_snaps_the_level_to_the_vertical_grid() {
+    let mut editor = SegmentsEditor::default();
+    let plot = plot();
+    let mut flat = Segments::from_points(&[(0.0, 0.0), (1.0, 0.0)], false);
+
+    editor.grid_x = 1;
+    editor.grid_y = 4;
+    editor.tool = Tool::Paint(Pattern::Step);
+    editor.paint_at(&press(false), plot, &mut flat, pos2(10.0, 48.0));
+
+    assert_eq!(
+        levels(&flat),
+        vec![(0.0, 0.0), (0.0, 0.5), (1.0, 0.5), (1.0, 0.0)]
+    );
+
+    let mut free = Segments::from_points(&[(0.0, 0.0), (1.0, 0.0)], false);
+
+    editor.paint_at(&press(true), plot, &mut free, pos2(10.0, 48.0));
+
+    let high = free.point(1).y;
+
+    assert!((high - 0.52).abs() < 1e-5);
+    assert!((free.point(2).y - high).abs() < 1e-5);
 }
 
 #[test]

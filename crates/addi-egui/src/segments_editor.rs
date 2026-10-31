@@ -6,12 +6,12 @@ use egui::{
 
 use addi_dsp::{
     power_scale,
-    segments::{MAX_POWER, SegPoint, Segments},
+    segments::{MAX_POINTS, MAX_POWER, SegPoint, Segments},
     utils::sanitize,
 };
 use addi_engine::{Smp, StereoSample};
 
-use crate::{segment_presets, units::Units, utils::hsva};
+use crate::{units::Units, utils::hsva};
 
 use utils::{Drag, Handle};
 
@@ -59,19 +59,83 @@ const MARKER_GAP: f32 = 3.0;
 
 const HELP: &str = "Double-click to add or remove a point. Drag a midpoint to bend the segment. Hold Shift to mirror that bend onto the next segment. Right-click to flip.";
 const HELP_MARKERS: &str = "Double-click to add or remove a point. Drag a midpoint to bend the segment. Hold Shift to mirror that bend onto the next segment. Right-click a point to set the loop or release.";
+const HELP_PAINT: &str = "Drag to paint this shape into each grid column, up to the pointer. Hold Shift to ignore the vertical grid. Hold Cmd or Ctrl to edit points.";
 const SMOOTH_TIP: &str = "Ease this segment with a sine curve.";
 const LOOP_TIP: &str = "Repeat from here. With no release point the loop runs to the end. With one, it runs until release while the key is held.";
 const RELEASE_TIP: &str = "Sustain this level while the key is held. On release, continue from here starting at the current level.";
 
-type Preset = (&'static str, fn() -> Segments);
+const TOOL_BUTTON: Vec2 = Vec2::new(30.0, 22.0);
+const PAINT_COLUMN_ALPHA: u8 = 36;
+const EDIT_ICON: [(f32, f32); 3] = [(0.08, 0.28), (0.42, 0.82), (0.92, 0.38)];
 
-const PRESETS: &[Preset] = &[
-    ("Triangle", segment_presets::triangle),
-    ("Square", segment_presets::square),
-    ("Sine", segment_presets::sine),
-    ("Saw up", segment_presets::saw_up),
-    ("Saw down", segment_presets::saw_down),
+/// Point editing, or one paint shape. Clicking the active shape returns to points.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Tool {
+    Edit,
+    Paint(Pattern),
+}
+
+const TOOLS: [Tool; 6] = [
+    Tool::Edit,
+    Tool::Paint(Pattern::Step),
+    Tool::Paint(Pattern::Half),
+    Tool::Paint(Pattern::Down),
+    Tool::Paint(Pattern::Up),
+    Tool::Paint(Pattern::Tri),
 ];
+
+/// Shape stamped into one grid column. High samples sit at the pointer; low samples sit on the bottom.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pattern {
+    Step,
+    Half,
+    Down,
+    Up,
+    Tri,
+}
+
+impl Tool {
+    fn tip(self) -> &'static str {
+        match self {
+            Self::Edit => "Edit points",
+            Self::Paint(pattern) => pattern.tip(),
+        }
+    }
+}
+
+impl Pattern {
+    /// `(along the column, height)`. Height `1` follows the pointer.
+    fn shape(self) -> &'static [(Smp, Smp)] {
+        match self {
+            Self::Step => &[(0.0, 1.0), (1.0, 1.0)],
+            Self::Half => &[(0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)],
+            Self::Down => &[(0.0, 1.0), (1.0, 0.0)],
+            Self::Up => &[(0.0, 0.0), (1.0, 1.0)],
+            Self::Tri => &[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)],
+        }
+    }
+
+    fn scaled(self, from_x: Smp, to_x: Smp, level: Smp) -> Vec<SegPoint> {
+        self.shape()
+            .iter()
+            .map(|&(t, height)| SegPoint {
+                x: from_x + t * (to_x - from_x),
+                y: height * level,
+                ..SegPoint::default()
+            })
+            .collect()
+    }
+
+    fn tip(self) -> &'static str {
+        match self {
+            Self::Step => "Paint a step",
+            Self::Half => "Paint a half step",
+            Self::Down => "Paint a falling ramp",
+            Self::Up => "Paint a rising ramp",
+            Self::Tri => "Paint a triangle",
+        }
+    }
+}
 
 pub struct SegmentsEditor {
     grid_x: i32,
@@ -92,6 +156,12 @@ pub struct SegmentsEditor {
     wrapped: bool,
     /// Loop and release markers. The segments envelope turns this on.
     markers: bool,
+    /// Selected edit tool.
+    tool: Tool,
+    /// Shape used when the command key temporarily turns paint on.
+    pattern: Pattern,
+    /// Grid column under the pointer while painting.
+    paint_column: Option<i32>,
     wave_color: Color32,
     power_color: Color32,
     /// Plot gradient, uploaded on first paint.
@@ -111,6 +181,9 @@ impl Default for SegmentsEditor {
             curve_cache: None,
             wrapped: true,
             markers: false,
+            tool: Tool::Edit,
+            pattern: Pattern::Down,
+            paint_column: None,
             wave_color: WAVE_COLOR,
             power_color: POWER_COLOR,
             fill: None,
@@ -164,14 +237,14 @@ impl SegmentsEditor {
     ) -> bool {
         let revision = segments.revision();
         let size = vec2(ui.available_width(), EDITOR_HEIGHT);
-        let (plot, response) = ui.allocate_exact_size(size, Sense::click());
+        let (plot, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
 
         if plot.is_positive() {
             self.plot(ui, plot, &response, segments, playhead);
         }
 
         ui.add_space(8.0);
-        self.toolbar(ui, segments);
+        self.toolbar(ui);
         ui.add_space(4.0);
         ui.label(RichText::new(self.help()).small().weak());
 
@@ -179,7 +252,21 @@ impl SegmentsEditor {
     }
 
     fn help(&self) -> &'static str {
-        if self.markers { HELP_MARKERS } else { HELP }
+        if matches!(self.tool, Tool::Paint(_)) {
+            HELP_PAINT
+        } else if self.markers {
+            HELP_MARKERS
+        } else {
+            HELP
+        }
+    }
+
+    /// Paint is selected, or point editing is selected and the command key is held.
+    /// The command key swaps the two.
+    fn painting(&self, ui: &Ui) -> bool {
+        let command = ui.input(|input| input.modifiers.command);
+
+        matches!(self.tool, Tool::Paint(_)) != command
     }
 
     fn plot(
@@ -191,22 +278,34 @@ impl SegmentsEditor {
         playhead: Option<[(Smp, Smp); 2]>,
     ) {
         let mut remove = None;
+        let painting = self.painting(ui);
 
         if !ui.input(|input| input.pointer.primary_down()) {
             self.drag = None;
         }
 
-        Self::interact_canvas(response, plot, segments);
+        if painting {
+            self.drag = None;
+            self.paint_pointer(ui, plot, response, segments);
+            Self::canvas_menu(response, segments);
+        } else {
+            self.paint_column = None;
+            Self::interact_canvas(response, plot, segments);
 
-        for index in 0..segments.num_points() {
-            if self.interact_point(ui, plot, segments, index) {
-                remove = Some(index);
+            for index in 0..segments.num_points() {
+                if self.interact_point(ui, plot, segments, index) {
+                    remove = Some(index);
+                }
+
+                self.interact_power_point(ui, plot, segments, index);
             }
-
-            self.interact_power_point(ui, plot, segments, index);
         }
 
         self.paint_scene(ui, plot, segments);
+
+        if painting && (response.hovered() || response.is_pointer_button_down_on()) {
+            ui.ctx().set_cursor_icon(CursorIcon::Crosshair);
+        }
 
         if let Some(playhead) = playhead {
             self.paint_playheads(ui.painter(), plot, playhead);
@@ -555,7 +654,7 @@ impl SegmentsEditor {
         }
     }
 
-    fn toolbar(&mut self, ui: &mut Ui, segments: &mut Segments) {
+    fn toolbar(&mut self, ui: &mut Ui) {
         ui.horizontal_wrapped(|ui| {
             ui.label("Grid")
                 .on_hover_text("Snap points while dragging. Hold Shift to place them freely.");
@@ -564,13 +663,283 @@ impl SegmentsEditor {
             ui.add(DragValue::new(&mut self.grid_y).range(1..=24));
 
             ui.separator();
+            ui.spacing_mut().item_spacing.x = 2.0;
+            ui.add_space(6.0);
 
-            for (label, preset) in PRESETS {
-                if ui.button(*label).clicked() {
-                    *segments = preset();
+            for tool in TOOLS {
+                if self.tool_button(ui, tool).clicked() {
+                    self.choose(tool);
                 }
             }
         });
+    }
+
+    fn choose(&mut self, tool: Tool) {
+        if let Tool::Paint(pattern) = tool {
+            self.pattern = pattern;
+        }
+
+        self.tool = if self.tool == tool { Tool::Edit } else { tool };
+    }
+
+    fn tool_button(&self, ui: &mut Ui, tool: Tool) -> Response {
+        let (rect, response) = ui.allocate_exact_size(TOOL_BUTTON, Sense::click());
+        let selected = self.tool == tool;
+        let visuals = ui.style().interact_selectable(&response, selected);
+
+        ui.painter().rect(
+            rect.expand(visuals.expansion),
+            visuals.corner_radius,
+            visuals.weak_bg_fill,
+            visuals.bg_stroke,
+            StrokeKind::Inside,
+        );
+        Self::paint_tool_icon(
+            ui.painter(),
+            rect.shrink(4.0),
+            tool,
+            visuals.fg_stroke.color,
+        );
+
+        response
+            .on_hover_cursor(CursorIcon::PointingHand)
+            .on_hover_text(tool.tip())
+    }
+
+    fn paint_tool_icon(painter: &Painter, icon: Rect, tool: Tool, color: Color32) {
+        if !icon.is_positive() {
+            return;
+        }
+
+        match tool {
+            Tool::Edit => Self::paint_edit_icon(painter, icon, color),
+            Tool::Paint(pattern) => Self::paint_pattern_icon(painter, icon, pattern, color),
+        }
+    }
+
+    fn paint_edit_icon(painter: &Painter, icon: Rect, color: Color32) {
+        let points = EDIT_ICON.map(|(x, y)| {
+            pos2(
+                icon.left() + x * icon.width(),
+                icon.bottom() - y * icon.height(),
+            )
+        });
+
+        painter.line(points.to_vec(), Stroke::new(1.0, color));
+
+        for center in points {
+            painter.circle_filled(center, 1.7, color);
+        }
+    }
+
+    fn paint_pattern_icon(painter: &Painter, icon: Rect, pattern: Pattern, color: Color32) {
+        let mut points = Vec::with_capacity(pattern.shape().len() + 2);
+        let mut push = |pos: Pos2| {
+            if points.last() != Some(&pos) {
+                points.push(pos);
+            }
+        };
+
+        push(pos2(icon.left(), icon.bottom()));
+
+        for &(t, height) in pattern.shape() {
+            push(pos2(
+                icon.left() + t * icon.width(),
+                icon.bottom() - height * icon.height(),
+            ));
+        }
+
+        push(pos2(icon.right(), icon.bottom()));
+
+        if points.len() >= 3 {
+            painter.add(Shape::convex_polygon(
+                points,
+                Self::with_alpha(color, 0x55),
+                Stroke::new(1.0, color),
+            ));
+        }
+    }
+
+    /// Highlights the column under the pointer and stamps into it while the button is held.
+    fn paint_pointer(&mut self, ui: &Ui, plot: Rect, response: &Response, segments: &mut Segments) {
+        let pos = response.interact_pointer_pos().or(response.hover_pos());
+
+        self.paint_column = pos.map(|pos| self.column_at(plot, pos));
+
+        let primary = ui.input(|input| input.pointer.button_down(PointerButton::Primary));
+
+        if primary
+            && response.is_pointer_button_down_on()
+            && let Some(pos) = response.interact_pointer_pos()
+        {
+            self.paint_at(ui, plot, segments, pos);
+        }
+    }
+
+    /// Shift places the level freely. Otherwise it snaps to the vertical grid.
+    fn paint_at(&self, ui: &Ui, plot: Rect, segments: &mut Segments, pos: Pos2) {
+        let mut level = Self::curve_pos(plot, pos).y.clamp(0.0, 1.0);
+
+        if !Self::shift_down(ui) {
+            level = Self::snap_near(level, self.grid_y, SNAP_Y, 0.0, 1.0);
+        }
+
+        let (from_x, to_x) = self.column_bounds(self.column_at(plot, pos));
+
+        Self::paint_cell(segments, from_x, to_x, level, self.active_pattern());
+    }
+
+    fn active_pattern(&self) -> Pattern {
+        match self.tool {
+            Tool::Paint(pattern) => pattern,
+            Tool::Edit => self.pattern,
+        }
+    }
+
+    fn column_at(&self, plot: Rect, pos: Pos2) -> i32 {
+        let columns = self.grid_x.max(1);
+        let x = Self::curve_pos(plot, pos).x.clamp(0.0, 1.0);
+        let column = (x * columns as Smp).floor() as i32;
+
+        column.clamp(0, columns - 1)
+    }
+
+    fn column_bounds(&self, column: i32) -> (Smp, Smp) {
+        let columns = self.grid_x.max(1) as Smp;
+        let column = column.clamp(0, self.grid_x.max(1) - 1) as Smp;
+
+        (column / columns, (column + 1.0) / columns)
+    }
+
+    /// Stamps `pattern` into `[from_x, to_x]`.
+    ///
+    /// The curve outside the column stays put. Each edge keeps the level the curve
+    /// already had there, then steps vertically onto the shape. A stamp that would
+    /// pass [`MAX_POINTS`] is left alone.
+    fn paint_cell(segments: &mut Segments, from_x: Smp, to_x: Smp, level: Smp, pattern: Pattern) {
+        if !(from_x >= 0.0 && from_x < to_x && to_x <= 1.0) {
+            return;
+        }
+
+        let level = level.clamp(0.0, 1.0);
+        let n = segments.num_points();
+        let from_y = segments.value_at(from_x, None, None);
+        let to_y = segments.value_at(to_x, None, None);
+        let left = (0..n).find(|&index| segments.point(index).x == from_x);
+        let right = (0..n).rev().find(|&index| segments.point(index).x == to_x);
+        let pattern_points = pattern.scaled(from_x, to_x, level);
+        let left_anchor = SegPoint {
+            x: from_x,
+            y: from_y,
+            ..SegPoint::default()
+        };
+        let right_anchor = SegPoint {
+            x: to_x,
+            y: to_y,
+            ..SegPoint::default()
+        };
+        let mut kept = Vec::with_capacity(n);
+
+        for index in 0..n {
+            if Self::keeps_point(segments, index, from_x, to_x, left, right) {
+                kept.push(index);
+            }
+        }
+
+        let split = kept
+            .iter()
+            .position(|&index| segments.point(index).x >= to_x)
+            .unwrap_or(kept.len());
+        let (before, after) = kept.split_at(split);
+        let mut stamped = Vec::with_capacity(n + pattern_points.len() + 2);
+        let mut map = vec![None; n];
+
+        for (new_index, &old) in before.iter().enumerate() {
+            map[old] = Some(new_index);
+            stamped.push(segments.point(old));
+        }
+
+        if left.is_none() {
+            stamped.push(left_anchor);
+        }
+
+        stamped.extend(pattern_points.iter().copied());
+
+        if right.is_none() {
+            stamped.push(right_anchor);
+        }
+
+        let after_at = stamped.len();
+
+        for (offset, &old) in after.iter().enumerate() {
+            map[old] = Some(after_at + offset);
+            stamped.push(segments.point(old));
+        }
+
+        if stamped.len() > MAX_POINTS || segments.points() == stamped.as_slice() {
+            return;
+        }
+
+        let loop_at = segments.loop_point_idx().and_then(|index| map[index]);
+        let release_at = segments.release_point_idx().and_then(|index| map[index]);
+
+        for index in (0..n).rev() {
+            if map[index].is_none() {
+                assert!(segments.remove_point(index));
+            }
+        }
+
+        let mut at = before.len();
+
+        if left.is_none() {
+            assert!(segments.add_point(at, left_anchor));
+            at += 1;
+        }
+
+        for point in pattern_points {
+            assert!(segments.add_point(at, point));
+            at += 1;
+        }
+
+        if right.is_none() {
+            assert!(segments.add_point(at, right_anchor));
+        }
+
+        debug_assert_eq!(segments.points(), stamped.as_slice());
+
+        segments.set_loop_point(None);
+        segments.set_release_point(None);
+
+        if let Some(index) = release_at {
+            segments.set_release_point(Some(index));
+        }
+
+        if let Some(index) = loop_at {
+            segments.set_loop_point(Some(index));
+        }
+    }
+
+    /// Points outside the column stay. The first point on the left edge and the last
+    /// point on the right edge stay too, so the stamp meets the old curve.
+    fn keeps_point(
+        segments: &Segments,
+        index: usize,
+        from_x: Smp,
+        to_x: Smp,
+        left: Option<usize>,
+        right: Option<usize>,
+    ) -> bool {
+        let x = segments.point(index).x;
+
+        if x < from_x || x > to_x {
+            true
+        } else if x == from_x {
+            left == Some(index)
+        } else if x == to_x {
+            right == Some(index)
+        } else {
+            false
+        }
     }
 
     /// A power point needs a sloped segment that is wide enough to show it.
@@ -662,6 +1031,7 @@ impl SegmentsEditor {
 
         self.paint_grid(&painter, plot);
         self.paint_fill(ui.ctx(), &painter, plot);
+        self.paint_column_highlight(&painter, plot);
         painter.line(self.points.clone(), Stroke::new(2.0, self.wave_color));
 
         for index in 0..segments.num_points() {
@@ -682,6 +1052,21 @@ impl SegmentsEditor {
             let y = plot.bottom() - plot.height() * (i as f32 / self.grid_y as f32);
             painter.line_segment([pos2(plot.left(), y), pos2(plot.right(), y)], stroke);
         }
+    }
+
+    fn paint_column_highlight(&self, painter: &Painter, plot: Rect) {
+        let Some(column) = self.paint_column else {
+            return;
+        };
+        let (from_x, to_x) = self.column_bounds(column);
+        let left = Self::screen_x(plot, from_x);
+        let right = Self::screen_x(plot, to_x);
+
+        painter.rect_filled(
+            Rect::from_x_y_ranges(left..=right, plot.y_range()),
+            0.0,
+            Self::with_alpha(self.wave_color, PAINT_COLUMN_ALPHA),
+        );
     }
 
     /// Area under the polyline, shaded by a 1×2 gradient of the full plot.
@@ -824,6 +1209,10 @@ impl SegmentsEditor {
         radius: f32,
         handle: Handle,
     ) {
+        if self.painting(ui) {
+            return;
+        }
+
         let dragging = self.dragged() == Some(handle);
         let pointer = ui.input(|input| input.pointer.hover_pos());
         let hovered =
