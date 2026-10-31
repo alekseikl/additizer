@@ -4,7 +4,8 @@ use addi_dsp::{Segments, segments::MAX_POINTS};
 
 use crate::segment_presets;
 
-use super::{Ctx, Pattern, SegmentsEditor, Tool};
+use super::SegmentsEditor;
+use super::utils::{Ctx, Pattern, Tool};
 
 fn plot() -> Rect {
     Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 100.0))
@@ -22,7 +23,7 @@ fn paint_ctx<'a>(ui: &'a Ui, response: &'a Response, segments: &'a mut Segments)
         ui,
         plot: plot(),
         res: response,
-        painting: true,
+        stamping: true,
         segs: segments,
     }
 }
@@ -42,22 +43,47 @@ fn render(editor: &mut SegmentsEditor, area: Rect, segments: &mut Segments) {
         ui: &ui,
         plot: area,
         res: &response,
-        painting: false,
+        stamping: false,
         segs: segments,
     });
 }
 
 fn stamp(segments: &mut Segments, from_x: f32, to_x: f32, level: f32, pattern: Pattern) {
-    let mut ui = press(false);
-    let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
-
-    SegmentsEditor::paint_cell(
-        &mut paint_ctx(&ui, &response, segments),
+    stamp_with(
+        &SegmentsEditor::default(),
+        segments,
         from_x,
         to_x,
         level,
         pattern,
     );
+}
+
+fn stamp_with(
+    editor: &SegmentsEditor,
+    segments: &mut Segments,
+    from_x: f32,
+    to_x: f32,
+    level: f32,
+    pattern: Pattern,
+) {
+    let columns = (1.0 / (to_x - from_x)).round() as i32;
+    let editor = SegmentsEditor {
+        wrapped: editor.wrapped,
+        grid_x: columns,
+        grid_y: 1,
+        tool: Tool::Paint(pattern),
+        ..SegmentsEditor::default()
+    };
+    let mut ui = press(false);
+    let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
+    let area = plot();
+    let pos = pos2(
+        (from_x + to_x) * 0.5 * area.width(),
+        (1.0 - level) * area.height(),
+    );
+
+    editor.stamp_column(&mut paint_ctx(&ui, &response, segments), pos);
 }
 
 #[test]
@@ -417,7 +443,69 @@ fn paint_stamps_the_shape_into_one_column() {
 }
 
 #[test]
-fn painting_the_same_column_again_leaves_it() {
+fn unwrapped_stamp_rewrites_the_endpoint_it_covers() {
+    let editor = SegmentsEditor::lookup();
+    let mut first = Segments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false);
+
+    first.set_power(0, 1.5);
+    first.set_smooth(0, true);
+
+    let at_half = first.value_at(0.5, None, None);
+
+    stamp_with(&editor, &mut first, 0.0, 0.5, 1.0, Pattern::Half);
+
+    assert_eq!(first.point(0).power, 0.0);
+    assert!(!first.point(0).smooth);
+    assert_eq!(
+        levels(&first),
+        vec![
+            (0.0, 1.0),
+            (0.25, 1.0),
+            (0.25, 0.0),
+            (0.5, 0.0),
+            (0.5, at_half),
+            (1.0, 0.8),
+        ]
+    );
+
+    let mut last = Segments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false);
+    let at_half = last.value_at(0.5, None, None);
+
+    last.set_power(1, 3.0);
+    assert!(last.set_release_point(Some(1)));
+    stamp_with(&editor, &mut last, 0.5, 1.0, 1.0, Pattern::Down);
+
+    assert_eq!(last.point(last.num_points() - 1).power, 0.0);
+    assert_eq!(
+        levels(&last),
+        vec![(0.0, 0.2), (0.5, at_half), (0.5, 1.0), (1.0, 0.0)]
+    );
+    assert_eq!(last.release_point().map(|point| point.y), Some(0.0));
+
+    let mut middle = Segments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false);
+
+    stamp_with(&editor, &mut middle, 0.25, 0.5, 1.0, Pattern::Step);
+
+    assert_eq!(middle.point(0).y, 0.2);
+    assert_eq!(middle.point(middle.num_points() - 1).y, 0.8);
+
+    let mut whole = Segments::from_points(&[(0.0, 0.2), (0.4, 0.9), (1.0, 0.8)], false);
+
+    assert!(whole.set_release_point(Some(2)));
+    stamp_with(&editor, &mut whole, 0.0, 1.0, 0.5, Pattern::Step);
+
+    assert_eq!(levels(&whole), vec![(0.0, 0.5), (1.0, 0.5)]);
+    assert_eq!(whole.release_point().map(|point| point.y), Some(0.5));
+
+    let revision = whole.revision();
+
+    stamp_with(&editor, &mut whole, 0.0, 1.0, 0.5, Pattern::Step);
+
+    assert_eq!(whole.revision(), revision);
+}
+
+#[test]
+fn stamping_the_same_column_again_leaves_it() {
     let mut ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
     stamp(&mut ramp, 0.25, 0.5, 1.0, Pattern::Tri);
@@ -486,7 +574,7 @@ fn paint_snaps_the_level_to_the_vertical_grid() {
     editor.grid_x = 1;
     editor.grid_y = 4;
     editor.tool = Tool::Paint(Pattern::Step);
-    editor.paint_at(&mut paint_ctx(&ui, &response, &mut flat), pos2(10.0, 48.0));
+    editor.stamp_column(&mut paint_ctx(&ui, &response, &mut flat), pos2(10.0, 48.0));
 
     assert_eq!(
         levels(&flat),
@@ -497,7 +585,7 @@ fn paint_snaps_the_level_to_the_vertical_grid() {
     let mut ui = press(true);
     let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
 
-    editor.paint_at(&mut paint_ctx(&ui, &response, &mut free), pos2(10.0, 48.0));
+    editor.stamp_column(&mut paint_ctx(&ui, &response, &mut free), pos2(10.0, 48.0));
 
     let high = free.point(1).y;
 

@@ -1,4 +1,4 @@
-use egui::{Color32, Vec2, ecolor::Hsva};
+use egui::{Color32, ecolor::Hsva};
 
 use addi_engine::Smp;
 
@@ -15,8 +15,8 @@ pub(super) const PLAYHEAD_OVERLAP_SQ: f32 = 0.25;
 pub(super) const RIGHT_PLAYHEAD_HUE: f32 = 1.0 / 6.0;
 pub(super) const POWER_RADIUS: f32 = 3.0;
 pub(super) const MIN_POWER_WIDTH: f32 = 3.0;
-pub(super) const SNAP_X: Smp = 0.02;
-pub(super) const SNAP_Y: Smp = 0.04;
+/// Snap when the pointer is within this many pixels of a grid line.
+pub(super) const SNAP: f32 = 8.0;
 /// Power change for a pointer move of one editor height. Matches Vital's line editor.
 pub(super) const POWER_MOUSE_MULTIPLIER: Smp = 9.0;
 /// A press stays a click until the pointer moves this far.
@@ -51,6 +51,28 @@ pub(super) const SMOOTH_TIP: &str = "Ease this segment with a sine curve.";
 pub(super) const LOOP_TIP: &str = "Repeat from here. With no release point the loop runs to the end. With one, it runs until release while the key is held.";
 pub(super) const RELEASE_TIP: &str = "Sustain this level while the key is held. On release, continue from here starting at the current level.";
 
-pub(super) const TOOL_BUTTON: Vec2 = Vec2::new(30.0, 22.0);
+/// Stroke of the outlined tool icons.
+pub(super) const TOOL_ICON_STROKE: f32 = 1.5;
+/// Icon inset inside a tool button.
+pub(super) const TOOL_ICON_INSET: f32 = 3.0;
+/// Mouse-cursor arrow of the edit tool, `(x, y)` within its own bounds, `y` up.
+pub(super) const CURSOR_ICON: [(f32, f32); 7] = [
+    (0.0, 1.0),   // tip
+    (0.0, 0.19),  // left edge bottom
+    (0.32, 0.41), // tail clicks in here
+    (0.54, 0.0),  // tail tip
+    (0.79, 0.08),
+    (0.57, 0.46),
+    (1.0, 0.46), // right edge bottom
+];
+/// Triangulation of [`CURSOR_ICON`]; the arrow is concave at the notch and the tail joint.
+pub(super) const CURSOR_TRIANGLES: [(usize, usize, usize); 5] = [
+    (0, 1, 2), // head left
+    (0, 2, 5), // head middle
+    (0, 5, 6), // head right
+    (2, 3, 4), // tail
+    (2, 4, 5),
+];
+/// Width of the cursor arrow relative to its height.
+pub(super) const CURSOR_ICON_ASPECT: f32 = 14.0 / 18.5;
 pub(super) const PAINT_COLUMN_ALPHA: u8 = 36;
-pub(super) const EDIT_ICON: [(f32, f32); 3] = [(0.08, 0.28), (0.42, 0.82), (0.92, 0.38)];

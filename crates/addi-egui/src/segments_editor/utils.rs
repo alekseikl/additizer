@@ -4,8 +4,11 @@ use addi_dsp::{
 };
 use addi_engine::Smp;
 use egui::{
-    Color32, FontFamily, FontId, LayerId, Order, Pos2, Rect, Response, Sense, Ui, Vec2, pos2,
+    Color32, FontFamily, FontId, LayerId, Mesh, Order, Painter, Pos2, Rect, Response, Sense, Shape,
+    Stroke, Ui, Vec2, epaint::Vertex, pos2,
 };
+
+use super::consts as C;
 
 /// Handle held by the pointer.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -68,8 +71,8 @@ pub(super) const TOOLS: [Tool; 6] = [
     Tool::Edit,
     Tool::Paint(Pattern::Step),
     Tool::Paint(Pattern::Half),
-    Tool::Paint(Pattern::Down),
     Tool::Paint(Pattern::Up),
+    Tool::Paint(Pattern::Down),
     Tool::Paint(Pattern::Tri),
 ];
 
@@ -126,12 +129,57 @@ impl Pattern {
     }
 }
 
+/// Filled mouse-cursor arrow, centered in the icon and leaning left.
+/// The outline is concave at the tail, so it is filled from explicit triangles.
+pub(super) fn paint_edit_icon(painter: &Painter, icon: Rect, color: Color32) {
+    let width = icon.height() * C::CURSOR_ICON_ASPECT;
+    let left = icon.center().x - width * 0.5;
+    let vertices = C::CURSOR_ICON.map(|(x, y)| Vertex {
+        pos: pos2(left + x * width, icon.bottom() - y * icon.height()),
+        color,
+        uv: pos2(0.0, 0.0),
+    });
+    let mut mesh = Mesh::default();
+
+    for &(a, b, c) in &C::CURSOR_TRIANGLES {
+        let base = mesh.vertices.len() as u32;
+
+        mesh.vertices.extend([a, b, c].map(|index| vertices[index]));
+        mesh.add_triangle(base, base + 1, base + 2);
+    }
+
+    painter.add(Shape::mesh(mesh));
+}
+
+/// Thin outlined waveform of one pattern, without fill. Each path stays open
+/// along the bottom, like the triangle.
+pub(super) fn paint_pattern_icon(painter: &Painter, icon: Rect, pattern: Pattern, color: Color32) {
+    let path: &[(Smp, Smp)] = match pattern {
+        Pattern::Step => &[(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)],
+        Pattern::Half => &[(0.0, 0.0), (0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)],
+        Pattern::Up => &[(0.0, 0.0), (1.0, 1.0), (1.0, 0.0)],
+        Pattern::Down => &[(0.0, 0.0), (0.0, 1.0), (1.0, 0.0)],
+        Pattern::Tri => &[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)],
+    };
+    let point = |(x, y): (Smp, Smp)| {
+        pos2(
+            icon.left() + x * icon.width(),
+            icon.bottom() - y * icon.height(),
+        )
+    };
+
+    painter.line(
+        path.iter().map(|&p| point(p)).collect(),
+        Stroke::new(C::TOOL_ICON_STROKE, color),
+    );
+}
+
 /// Ui, plot, pointer, and curve for one paint of the editor.
 pub(super) struct Ctx<'a> {
     pub(super) ui: &'a Ui,
     pub(super) plot: Rect,
     pub(super) res: &'a Response,
-    pub(super) painting: bool,
+    pub(super) stamping: bool,
     pub(super) segs: &'a mut Segments,
 }
 
@@ -238,21 +286,6 @@ impl Ctx<'_> {
 /// Curve-space position of a breakpoint.
 pub(super) fn curve_point(point: SegPoint) -> Pos2 {
     pos2(point.x, point.y)
-}
-
-/// Snap when `value` is already within `threshold` of a grid line.
-pub(super) fn snap_near(value: Smp, divisions: i32, threshold: Smp, min: Smp, max: Smp) -> Smp {
-    if divisions <= 1 {
-        return value;
-    }
-
-    let snapped = (value * divisions as Smp).round() / divisions as Smp;
-
-    if (snapped - value).abs() < threshold {
-        snapped.clamp(min, max)
-    } else {
-        value
-    }
 }
 
 /// Top of a box `height` tall placed `offset` above `anchor_y`, or `offset` below it
