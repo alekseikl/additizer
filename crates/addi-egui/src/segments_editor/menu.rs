@@ -1,8 +1,28 @@
 use addi_dsp::segments::Segments;
-use egui::{Response, Ui};
+use egui::{Popup, Response, Ui};
 
 use super::consts as C;
-use super::utils::Ctx;
+use super::utils::{Ctx, Handle};
+
+/// Handle whose context menu is open.
+/// The menu closes unless that handle is interacted again this frame.
+pub(super) fn open_menu(ctx: &Ctx<'_>) -> Option<Handle> {
+    (0..ctx.segs.num_points()).find_map(|index| {
+        if menu_open(ctx, (C::POINT_ID, index)) {
+            Some(Handle::Point(index))
+        } else if menu_open(ctx, (C::POWER_ID, index)) {
+            Some(Handle::Power(index))
+        } else {
+            None
+        }
+    })
+}
+
+fn menu_open(ctx: &Ctx<'_>, salt: impl std::hash::Hash + std::fmt::Debug) -> bool {
+    let id = ctx.ui.make_persistent_id(salt).with("popup");
+
+    Popup::is_id_open(ctx.ui.ctx(), id)
+}
 
 /// `true` when the menu asked to remove this point. Other choices edit the curve directly.
 pub(super) fn point_menu(

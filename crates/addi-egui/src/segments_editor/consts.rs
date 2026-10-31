@@ -4,6 +4,9 @@ use addi_engine::Smp;
 
 use crate::utils::hsva;
 
+pub(super) const POINT_ID: &str = "segments-point";
+pub(super) const POWER_ID: &str = "segments-power";
+
 pub(super) const EDITOR_HEIGHT: f32 = 220.0;
 pub(super) const GRAB_RADIUS: f32 = 8.0;
 pub(super) const POWER_GRAB_RADIUS: f32 = 6.0;

@@ -14,7 +14,7 @@ use addi_engine::{Smp, StereoSample};
 use crate::units::Units;
 
 use consts as C;
-use menu::{canvas_menu, point_menu, power_menu};
+use menu::{canvas_menu, open_menu, point_menu, power_menu};
 use utils::{
     Ctx, Drag, Handle, TOOLS, Tool, bold, curve_point, paint_edit_icon, paint_pattern_icon,
     stack_y, with_alpha,
@@ -169,7 +169,10 @@ impl SegmentsEditor {
             Self::interact_canvas(ctx);
 
             let points = ctx.segs.num_points();
-            let active = self.dragged().or_else(|| self.hovered_handle(ctx));
+            let active = self
+                .dragged()
+                .or_else(|| open_menu(ctx))
+                .or_else(|| self.hovered_handle(ctx));
 
             for index in 0..points {
                 if active == Some(Handle::Point(index)) && self.interact_point(ctx, index) {
@@ -214,7 +217,7 @@ impl SegmentsEditor {
         };
 
         let center = ctx.screen_pos(curve);
-        let response = ctx.handle_response(center, C::POWER_GRAB_RADIUS, ("segments-power", index));
+        let response = ctx.handle_response(center, C::POWER_GRAB_RADIUS, (C::POWER_ID, index));
 
         power_menu(ctx, &response, index);
 
@@ -234,7 +237,7 @@ impl SegmentsEditor {
     /// One breakpoint: drag, double-click, and menu.
     fn interact_point(&mut self, ctx: &mut Ctx<'_>, index: usize) -> bool {
         let center = ctx.screen_pos(curve_point(ctx.segs.point(index)));
-        let response = ctx.handle_response(center, C::GRAB_RADIUS, ("segments-point", index));
+        let response = ctx.handle_response(center, C::GRAB_RADIUS, (C::POINT_ID, index));
         let mut remove = point_menu(self.markers, ctx, &response, index);
 
         if response.double_clicked_by(PointerButton::Primary) {
