@@ -1,10 +1,10 @@
-use egui::{Context, Id, Rect, Ui, UiBuilder, pos2};
+use egui::{Context, Id, Rect, Response, Sense, Ui, UiBuilder, pos2, vec2};
 
 use addi_dsp::{Segments, segments::MAX_POINTS};
 
 use crate::segment_presets;
 
-use super::{Pattern, SegmentsEditor, Tool};
+use super::{Ctx, Pattern, SegmentsEditor, Tool};
 
 fn plot() -> Rect {
     Rect::from_min_max(pos2(0.0, 0.0), pos2(100.0, 100.0))
@@ -17,16 +17,53 @@ fn press(shift: bool) -> Ui {
     Ui::new(ctx, Id::new("segments-test"), UiBuilder::new())
 }
 
-fn curve(segments: &Segments) -> SegmentsEditor {
+fn paint_ctx<'a>(ui: &'a Ui, response: &'a Response, segments: &'a mut Segments) -> Ctx<'a> {
+    Ctx {
+        ui,
+        plot: plot(),
+        res: response,
+        painting: true,
+        segs: segments,
+    }
+}
+
+fn curve(segments: &mut Segments) -> SegmentsEditor {
     let mut editor = SegmentsEditor::default();
-    editor.build_curve_points(plot(), segments);
+
+    render(&mut editor, plot(), segments);
     editor
+}
+
+fn render(editor: &mut SegmentsEditor, area: Rect, segments: &mut Segments) {
+    let mut ui = press(false);
+    let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
+
+    editor.build_curve_points(&Ctx {
+        ui: &ui,
+        plot: area,
+        res: &response,
+        painting: false,
+        segs: segments,
+    });
+}
+
+fn stamp(segments: &mut Segments, from_x: f32, to_x: f32, level: f32, pattern: Pattern) {
+    let mut ui = press(false);
+    let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
+
+    SegmentsEditor::paint_cell(
+        &mut paint_ctx(&ui, &response, segments),
+        from_x,
+        to_x,
+        level,
+        pattern,
+    );
 }
 
 #[test]
 fn linear_segment_keeps_a_point_per_pixel() {
-    let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
-    let editor = curve(&ramp);
+    let mut ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let editor = curve(&mut ramp);
     let points = &editor.points;
 
     assert!(points.len() >= 101);
@@ -43,27 +80,27 @@ fn linear_segment_keeps_a_point_per_pixel() {
 
 #[test]
 fn playhead_follows_the_rendered_polyline() {
-    let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
-    let editor = curve(&ramp);
+    let mut ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let editor = curve(&mut ramp);
     let phase = 0.405;
     let level = ramp.value_at(phase, None, None);
-    let pos = SegmentsEditor::playhead_pos(plot(), phase, level);
+    let start = ramp.value_at(0.0, None, None);
+    let end = ramp.value_at(1.0, None, None);
+    let mut ui = press(false);
+    let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
+    let ctx = paint_ctx(&ui, &response, &mut ramp);
+    let pos = ctx.playhead_pos(phase, level);
 
-    assert_eq!(
-        SegmentsEditor::playhead_pos(plot(), 0.0, ramp.value_at(0.0, None, None)),
-        editor.points[0]
-    );
-    assert_eq!(
-        SegmentsEditor::playhead_pos(plot(), 1.0, ramp.value_at(1.0, None, None)),
-        *editor.points.last().unwrap()
-    );
+    assert_eq!(ctx.playhead_pos(0.0, start), editor.points[0]);
+    assert_eq!(ctx.playhead_pos(1.0, end), *editor.points.last().unwrap());
     assert!((pos.x - phase * 100.0).abs() < 1e-3);
     assert!((pos.y - (100.0 - level * 100.0)).abs() < 1e-4);
 }
 
 #[test]
 fn square_corners_are_vertical() {
-    let editor = curve(&segment_presets::square());
+    let mut square = segment_presets::square();
+    let editor = curve(&mut square);
     let points = &editor.points;
     let at = |x: f32| -> Vec<f32> {
         points
@@ -82,12 +119,12 @@ fn square_corners_are_vertical() {
 
 #[test]
 fn intact_segments_are_not_rendered_again() {
-    let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
-    let mut editor = curve(&ramp);
+    let mut ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let mut editor = curve(&mut ramp);
     let points = editor.points.clone();
 
     editor.scratch.resize(9999, 1.0);
-    editor.build_curve_points(plot(), &ramp);
+    render(&mut editor, plot(), &mut ramp);
 
     assert_eq!(editor.scratch.len(), 9999);
     assert_eq!(editor.points, points);
@@ -95,12 +132,12 @@ fn intact_segments_are_not_rendered_again() {
 
 #[test]
 fn a_moved_plot_reuses_the_curve() {
-    let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
-    let mut editor = curve(&ramp);
+    let mut ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let mut editor = curve(&mut ramp);
     let moved = Rect::from_min_max(pos2(10.0, 20.0), pos2(110.0, 120.0));
 
     editor.scratch.resize(9999, 1.0);
-    editor.build_curve_points(moved, &ramp);
+    render(&mut editor, moved, &mut ramp);
 
     assert_eq!(editor.scratch.len(), 9999);
     assert_eq!(editor.points[0], pos2(10.0, 120.0));
@@ -110,11 +147,11 @@ fn a_moved_plot_reuses_the_curve() {
 #[test]
 fn an_edit_renders_again() {
     let mut ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
-    let mut editor = curve(&ramp);
+    let mut editor = curve(&mut ramp);
 
     editor.scratch.resize(9999, 1.0);
     ramp.set_power(0, 2.0);
-    editor.build_curve_points(plot(), &ramp);
+    render(&mut editor, plot(), &mut ramp);
 
     assert_eq!(editor.scratch.len(), 101);
 }
@@ -122,11 +159,11 @@ fn an_edit_renders_again() {
 #[test]
 fn a_repeated_write_renders_again() {
     let mut ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
-    let mut editor = curve(&ramp);
+    let mut editor = curve(&mut ramp);
 
     ramp.set_power(0, 0.0);
     editor.scratch.resize(9999, 1.0);
-    editor.build_curve_points(plot(), &ramp);
+    render(&mut editor, plot(), &mut ramp);
 
     assert_eq!(editor.scratch.len(), 101);
     assert_eq!(editor.points[0], pos2(0.0, 100.0));
@@ -135,12 +172,12 @@ fn a_repeated_write_renders_again() {
 
 #[test]
 fn a_wider_plot_renders_again() {
-    let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
-    let mut editor = curve(&ramp);
+    let mut ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let mut editor = curve(&mut ramp);
     let wider = Rect::from_min_max(pos2(0.0, 0.0), pos2(180.0, 100.0));
 
     editor.scratch.resize(9999, 1.0);
-    editor.build_curve_points(wider, &ramp);
+    render(&mut editor, wider, &mut ramp);
 
     assert_eq!(editor.scratch.len(), 181);
     assert_eq!(*editor.points.last().unwrap(), pos2(180.0, 0.0));
@@ -148,12 +185,12 @@ fn a_wider_plot_renders_again() {
 
 #[test]
 fn changed_segments_render_again() {
-    let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
-    let mut editor = curve(&ramp);
-    let flat = Segments::from_points(&[(0.0, 0.5), (1.0, 0.5)], false);
+    let mut ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let mut editor = curve(&mut ramp);
+    let mut flat = Segments::from_points(&[(0.0, 0.5), (1.0, 0.5)], false);
 
     editor.scratch.resize(9999, 1.0);
-    editor.build_curve_points(plot(), &flat);
+    render(&mut editor, plot(), &mut flat);
 
     assert_eq!(editor.scratch.len(), 101);
     assert!(
@@ -167,14 +204,15 @@ fn changed_segments_render_again() {
 #[test]
 fn open_curve_moves_the_ends_independently() {
     let mut open = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
-    let ui = press(true);
+    let mut ui = press(true);
+    let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
 
-    SegmentsEditor::lookup().move_point(&ui, &mut open, 0, 0.0, 0.35);
+    SegmentsEditor::lookup().move_point(&mut paint_ctx(&ui, &response, &mut open), 0, 0.0, 0.35);
 
     assert!((open.point(0).y - 0.35).abs() < 1e-6);
     assert_eq!(open.point(2).y, 0.0);
 
-    SegmentsEditor::lookup().move_point(&ui, &mut open, 2, 1.0, 0.1);
+    SegmentsEditor::lookup().move_point(&mut paint_ctx(&ui, &response, &mut open), 2, 1.0, 0.1);
 
     assert!((open.point(0).y - 0.35).abs() < 1e-6);
     assert!((open.point(2).y - 0.1).abs() < 1e-6);
@@ -182,19 +220,19 @@ fn open_curve_moves_the_ends_independently() {
     let mut closed = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     let editor = SegmentsEditor::default();
 
-    editor.move_point(&ui, &mut closed, 0, 0.0, 0.35);
+    editor.move_point(&mut paint_ctx(&ui, &response, &mut closed), 0, 0.0, 0.35);
 
     assert!((closed.point(0).y - 0.35).abs() < 1e-6);
     assert!((closed.point(2).y - 0.35).abs() < 1e-6);
 
-    editor.move_point(&ui, &mut closed, 2, 1.0, 0.1);
+    editor.move_point(&mut paint_ctx(&ui, &response, &mut closed), 2, 1.0, 0.1);
 
     assert!((closed.point(0).y - 0.1).abs() < 1e-6);
     assert!((closed.point(2).y - 0.1).abs() < 1e-6);
 
     let mut mismatched = Segments::from_points(&[(0.0, 0.2), (0.5, 1.0), (1.0, 0.8)], false);
 
-    editor.move_point(&ui, &mut mismatched, 2, 1.0, 0.4);
+    editor.move_point(&mut paint_ctx(&ui, &response, &mut mismatched), 2, 1.0, 0.4);
 
     assert!((mismatched.point(0).y - 0.4).abs() < 1e-6);
     assert!((mismatched.point(2).y - 0.4).abs() < 1e-6);
@@ -202,9 +240,12 @@ fn open_curve_moves_the_ends_independently() {
 
 #[test]
 fn curve_pos_continues_outside_the_plot() {
-    let plot = plot();
-    let above = SegmentsEditor::curve_pos(plot, pos2(50.0, -20.0));
-    let outside = SegmentsEditor::curve_pos(plot, pos2(150.0, 120.0));
+    let mut ui = press(false);
+    let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
+    let mut segments = Segments::default();
+    let ctx = paint_ctx(&ui, &response, &mut segments);
+    let above = ctx.curve_pos(pos2(50.0, -20.0));
+    let outside = ctx.curve_pos(pos2(150.0, 120.0));
 
     assert!((above.x - 0.5).abs() < 1e-4);
     assert!((above.y - 1.2).abs() < 1e-4);
@@ -216,30 +257,31 @@ fn curve_pos_continues_outside_the_plot() {
 fn bend_follows_the_pointer() {
     let mut editor = SegmentsEditor::default();
     let mut rising = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
-    let ui = press(false);
+    let mut ui = press(false);
+    let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
 
-    editor.move_power(&ui, &mut rising, 0, 0.1);
+    editor.move_power(&mut paint_ctx(&ui, &response, &mut rising), 0, 0.1);
 
     assert!((rising.power(0) + 0.9).abs() < 1e-5);
 
-    editor.move_power(&ui, &mut rising, 0, 0.0);
+    editor.move_power(&mut paint_ctx(&ui, &response, &mut rising), 0, 0.0);
 
     assert_eq!(rising.power(0), 0.0);
 
     let mut falling = Segments::from_points(&[(0.0, 1.0), (1.0, 0.0)], false);
 
-    editor.move_power(&ui, &mut falling, 0, 0.1);
+    editor.move_power(&mut paint_ctx(&ui, &response, &mut falling), 0, 0.1);
 
     assert!((falling.power(0) - 0.9).abs() < 1e-5);
 
     let mut flat = Segments::from_points(&[(0.0, 0.5), (1.0, 0.5)], false);
 
-    editor.move_power(&ui, &mut flat, 0, 0.1);
+    editor.move_power(&mut paint_ctx(&ui, &response, &mut flat), 0, 0.1);
 
     assert_eq!(flat.power(0), 0.0);
 
     editor.drag_power = rising.power(0);
-    editor.move_power(&ui, &mut rising, 0, -3.0);
+    editor.move_power(&mut paint_ctx(&ui, &response, &mut rising), 0, -3.0);
 
     assert_eq!(rising.power(0), addi_dsp::segments::MAX_POWER);
 }
@@ -248,9 +290,10 @@ fn bend_follows_the_pointer() {
 fn synced_bend_mirrors_onto_the_next_segment() {
     let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.2)], false);
     let mut editor = SegmentsEditor::default();
-    let ui = press(false);
+    let mut ui = press(false);
+    let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
 
-    editor.move_power(&ui, &mut segments, 0, -0.1);
+    editor.move_power(&mut paint_ctx(&ui, &response, &mut segments), 0, -0.1);
 
     assert!((segments.power(0) - 0.9).abs() < 1e-5);
     assert_eq!(segments.power(1), 0.0);
@@ -258,9 +301,14 @@ fn synced_bend_mirrors_onto_the_next_segment() {
 
     editor.drag_power = segments.power(0);
 
-    let shift = press(true);
+    let mut shift = press(true);
+    let (_, shift_response) = shift.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
 
-    editor.move_power(&shift, &mut segments, 0, -0.1);
+    editor.move_power(
+        &mut paint_ctx(&shift, &shift_response, &mut segments),
+        0,
+        -0.1,
+    );
 
     let power = segments.power(0);
 
@@ -271,14 +319,22 @@ fn synced_bend_mirrors_onto_the_next_segment() {
     let before = segments.power(1);
 
     editor.drag_power = before;
-    editor.move_power(&shift, &mut segments, 1, -0.05);
+    editor.move_power(
+        &mut paint_ctx(&shift, &shift_response, &mut segments),
+        1,
+        -0.05,
+    );
 
     assert!(segments.power(1) < before);
     assert!((segments.power(2) + segments.power(1)).abs() < 1e-5);
     assert!((segments.power(0) - power).abs() < 1e-5);
 
     editor.drag_power = segments.power(2);
-    editor.move_power(&shift, &mut segments, 2, 0.02);
+    editor.move_power(
+        &mut paint_ctx(&shift, &shift_response, &mut segments),
+        2,
+        0.02,
+    );
 
     assert!((segments.power(0) + segments.power(2)).abs() < 1e-5);
 }
@@ -295,7 +351,7 @@ fn levels(segments: &Segments) -> Vec<(f32, f32)> {
 fn paint_stamps_the_shape_into_one_column() {
     let mut ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
-    SegmentsEditor::paint_cell(&mut ramp, 0.25, 0.5, 1.0, Pattern::Down);
+    stamp(&mut ramp, 0.25, 0.5, 1.0, Pattern::Down);
 
     assert_eq!(
         levels(&ramp),
@@ -318,7 +374,7 @@ fn paint_stamps_the_shape_into_one_column() {
     let from_y = bent.value_at(0.25, None, None);
     let to_y = bent.value_at(0.5, None, None);
 
-    SegmentsEditor::paint_cell(&mut bent, 0.25, 0.5, 1.0, Pattern::Down);
+    stamp(&mut bent, 0.25, 0.5, 1.0, Pattern::Down);
 
     assert_eq!(bent.point(0).power, 1.5);
     assert!(bent.point(0).smooth);
@@ -330,7 +386,7 @@ fn paint_stamps_the_shape_into_one_column() {
     let mut outside = outside;
 
     outside.set_power(1, 4.0);
-    SegmentsEditor::paint_cell(&mut outside, 0.25, 0.5, 1.0, Pattern::Up);
+    stamp(&mut outside, 0.25, 0.5, 1.0, Pattern::Up);
 
     let kept = outside
         .points()
@@ -344,7 +400,7 @@ fn paint_stamps_the_shape_into_one_column() {
 
     let mut pulse = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
-    SegmentsEditor::paint_cell(&mut pulse, 0.0, 0.5, 0.5, Pattern::Half);
+    stamp(&mut pulse, 0.0, 0.5, 0.5, Pattern::Half);
 
     assert_eq!(
         levels(&pulse),
@@ -364,12 +420,12 @@ fn paint_stamps_the_shape_into_one_column() {
 fn painting_the_same_column_again_leaves_it() {
     let mut ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
-    SegmentsEditor::paint_cell(&mut ramp, 0.25, 0.5, 1.0, Pattern::Tri);
+    stamp(&mut ramp, 0.25, 0.5, 1.0, Pattern::Tri);
 
     let revision = ramp.revision();
     let points = ramp.points().to_vec();
 
-    SegmentsEditor::paint_cell(&mut ramp, 0.25, 0.5, 1.0, Pattern::Tri);
+    stamp(&mut ramp, 0.25, 0.5, 1.0, Pattern::Tri);
 
     assert_eq!(ramp.revision(), revision);
     assert_eq!(ramp.points(), points.as_slice());
@@ -382,7 +438,7 @@ fn paint_keeps_markers_outside_the_column() {
 
     assert!(segments.set_loop_point(Some(1)));
     assert!(segments.set_release_point(Some(3)));
-    SegmentsEditor::paint_cell(&mut segments, 0.25, 0.5, 1.0, Pattern::Down);
+    stamp(&mut segments, 0.25, 0.5, 1.0, Pattern::Down);
 
     assert!(segments.loop_point_idx().is_none());
     assert_eq!(segments.release_point().map(|point| point.x), Some(1.0));
@@ -391,7 +447,7 @@ fn paint_keeps_markers_outside_the_column() {
 
     assert!(kept.set_loop_point(Some(1)));
     assert!(kept.set_release_point(Some(2)));
-    SegmentsEditor::paint_cell(&mut kept, 0.25, 0.5, 1.0, Pattern::Step);
+    stamp(&mut kept, 0.25, 0.5, 1.0, Pattern::Step);
 
     assert_eq!(
         kept.loop_point().map(|point| (point.x, point.y)),
@@ -415,7 +471,7 @@ fn paint_stops_at_the_point_limit() {
     let mut full = Segments::from_points(&points, false);
     let before = full.points().to_vec();
 
-    SegmentsEditor::paint_cell(&mut full, 0.0, 0.25, 1.0, Pattern::Half);
+    stamp(&mut full, 0.0, 0.25, 1.0, Pattern::Half);
 
     assert_eq!(full.points(), before.as_slice());
 }
@@ -423,13 +479,14 @@ fn paint_stops_at_the_point_limit() {
 #[test]
 fn paint_snaps_the_level_to_the_vertical_grid() {
     let mut editor = SegmentsEditor::default();
-    let plot = plot();
     let mut flat = Segments::from_points(&[(0.0, 0.0), (1.0, 0.0)], false);
+    let mut ui = press(false);
+    let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
 
     editor.grid_x = 1;
     editor.grid_y = 4;
     editor.tool = Tool::Paint(Pattern::Step);
-    editor.paint_at(&press(false), plot, &mut flat, pos2(10.0, 48.0));
+    editor.paint_at(&mut paint_ctx(&ui, &response, &mut flat), pos2(10.0, 48.0));
 
     assert_eq!(
         levels(&flat),
@@ -437,8 +494,10 @@ fn paint_snaps_the_level_to_the_vertical_grid() {
     );
 
     let mut free = Segments::from_points(&[(0.0, 0.0), (1.0, 0.0)], false);
+    let mut ui = press(true);
+    let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
 
-    editor.paint_at(&press(true), plot, &mut free, pos2(10.0, 48.0));
+    editor.paint_at(&mut paint_ctx(&ui, &response, &mut free), pos2(10.0, 48.0));
 
     let high = free.point(1).y;
 
@@ -448,7 +507,8 @@ fn paint_snaps_the_level_to_the_vertical_grid() {
 
 #[test]
 fn smooth_curve_keeps_intermediate_pixels() {
-    let editor = curve(&segment_presets::sine());
+    let mut sine = segment_presets::sine();
+    let editor = curve(&mut sine);
     let points = &editor.points;
 
     assert!(points.len() > 3);
