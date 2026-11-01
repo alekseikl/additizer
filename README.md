@@ -6,32 +6,26 @@ Every slider in the UI is stereo, and each channel can be adjusted by dragging w
 
 ## Modules
 
-- `Harmonic Editor`: Allows you to set each of the 1024 harmonics manually, apply a biquad filter statically, or set the gain for a group of harmonics
-  selected by range and an n-th-element formula.
-- `Spectral Noise`: Generates white, pink, or brown noise harmonics.
-- `Spectral Filter`: Applies a biquad filter to the frequency bins (lowpass, highpass, bandpass, bandstop, and peaking).
-  Has a 4th-order option (multiply by the filter frequency response twice) and a linear-phase mode (multiply by the magnitude response).
-- `Spectral EQ`: Chains up to 16 spectral filters.
-- `Spectral Mixer`: Mixes multiple spectral inputs with per-input level/gain and output volume control.
-- `Spectral Blend`: Crossfades between two spectrums with a blend control.
-- `Band Select`: Passes a half-open range of harmonics.
-- `Oscillator`: Takes a spectral input, performs an inverse FFT, and then behaves like a wavetable oscillator.
-  Supports up to 16 unison voices, each of which is stereo. Manual unison sets each voice's phase and gain with a stereo slider. Flat and Convex unison shape gains as a center voice against the detuned voices and spread them across the channels.
-  Controls that can be modulated: gain, pitch, frequency (through-zero FM), phase, detune, detune focus (pitch distribution),
-  unison phases and unison levels blend.
-- `Envelope`: AHDSR envelope generator to control both spectral and audio modules.
-- `Segments Envelope`: Breakpoint envelope. A release point sustains while the key is held, then continues from the current level. A loop point repeats to the end, or up to the release point while the key is held. The length is a number of seconds or note values.
-- `LFO`: Low-frequency oscillator with a drawable breakpoint waveform.
-- `Mod Map`: Maps a direct control signal through a breakpoint curve, can fold the result into `[-1, 1]`, then scales it by Amount. An optional smooth time runs it through a one-stage lowpass.
-- `Mixer`: Mixes multiple audio inputs with per-input level/gain and output volume control.
-- `Waveshaper`: Wave shaping distortion (hard clip or sigmoid) with drive and clipping level.
-- `SVF`: Time-domain state-variable filter (Cytomic / Andrew Simper form): lowpass and highpass at 12/18/24 dB,
-  bandpass at 6/12/18/24 dB per octave (18 dB lowpass and highpass cascade a one-pole section after the SVF;
-  steeper bandpass cascades extra SVF stages).
-  Modulatable cutoff (with keytrack), resonance, and drive (soft saturation ahead of the filter).
-- `Amplifier`: Simple gain modulation for input signal.
-- `External Parameter`: Exposes host/plugin parameters as modulation sources with smoothing.
-- `Expressions`: Uses MPE as modulation sources.
+- `Harmonic Editor`: Draws amplitude and phase for each harmonic, and can capture a spectral input on note-on.
+- `Spectral Noise`: White, pink, or brown noise in the spectrum, with cutoff and rolloff.
+- `Oscillator`: Inverse-FFT wavetable oscillator with up to 16 unison voices.
+- `Envelope`: AHDSR envelope.
+- `Segments Envelope`: Breakpoint envelope. Length is seconds or a note value; a release point holds, then continues.
+- `LFO`: Looping breakpoint oscillator. Rate is hertz or a note value.
+- `Mod Map`: Shapes a control signal with a breakpoint curve, amount, and optional smoothing.
+- `Pitch`: Note pitch with keytrack, shift, and glide.
+- `Spectral Filter`: Filters a spectrum (lowpass, highpass, bandpass, notch, peak, and shelves), with keytrack and linear phase.
+- `Spectral EQ`: Up to 16 spectral filter bands.
+- `Band Select`: Passes a harmonic or frequency range.
+- `Spectral Blend`: Crossfades two spectra.
+- `Spectral Mixer`: Mixes up to six spectral inputs.
+- `External Parameter`: Host parameter as a modulation source.
+- `Expressions`: Velocity, gain, pan, pitch, timbre, or pressure as a modulation source.
+- `Waveshaper`: Hard-clip or sigmoid distortion.
+- `SVF`: Time-domain state-variable filter with cutoff, resonance, drive, and keytrack.
+- `Amplifier`: Gain, level, and pan.
+- `Mixer`: Mixes up to six audio inputs.
+- `Output`: Master volume for the summed voices.
 
 ## Build
 
