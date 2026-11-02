@@ -72,6 +72,7 @@ impl InputUi for Input {
             Self::Sustain => "Sustain".to_string(),
             Self::Release => "Release".to_string(),
             Self::Amount => "Amount".to_string(),
+            Self::TimeMix(idx) => format!("Time #{}", idx + 1),
         }
     }
 
@@ -113,6 +114,7 @@ impl InputUi for Input {
             Self::Sustain => 0.43,
             Self::Release => 0.38,
             Self::Amount => 0.50,
+            Self::TimeMix(idx) => 0.56 + *idx as f32 * 0.0015,
         }
     }
 
@@ -171,12 +173,15 @@ impl InputUi for Input {
                 .units(Units::Rate),
             Self::Amount => bipolar(amount),
             Self::Sustain => Slider::stereo(amount, 0.0..=1.0, None).units(Units::Normalized),
-            Self::Delay | Self::Attack | Self::Hold | Self::Decay | Self::Release => {
-                Slider::stereo(amount, 0.0..=8.0, Some(-8.0))
-                    .default(0.0)
-                    .skew(2.0)
-                    .units(Units::Time)
-            }
+            Self::Delay
+            | Self::Attack
+            | Self::Hold
+            | Self::Decay
+            | Self::Release
+            | Self::TimeMix(_) => Slider::stereo(amount, 0.0..=8.0, Some(-8.0))
+                .default(0.0)
+                .skew(2.0)
+                .units(Units::Time),
             Self::Audio
             | Self::Control
             | Self::AudioMix(_)
@@ -243,12 +248,15 @@ impl InputUi for Input {
             Self::Sustain => Slider::stereo(value, 0.0..=1.0, None)
                 .default(0.5)
                 .units(Units::Normalized),
-            Self::Delay | Self::Attack | Self::Hold | Self::Decay | Self::Release => {
-                Slider::stereo(value, 0.0..=8.0, None)
-                    .default(0.0)
-                    .skew(2.0)
-                    .units(Units::Time)
-            }
+            Self::Delay
+            | Self::Attack
+            | Self::Hold
+            | Self::Decay
+            | Self::Release
+            | Self::TimeMix(_) => Slider::stereo(value, 0.0..=8.0, None)
+                .default(0.0)
+                .skew(2.0)
+                .units(Units::Time),
             Self::Audio
             | Self::Control
             | Self::AudioMix(_)
@@ -308,6 +316,10 @@ impl ModuleTypeUi for ModuleType {
             },
             Self::SpectralEq => match input {
                 Input::Level => "Output".into(),
+                _ => input.label(),
+            },
+            Self::MultiEnvelope => match input {
+                Input::TimeMix(i) => format!("Segment {} time", i + 1),
                 _ => input.label(),
             },
             _ => input.label(),

@@ -2,11 +2,11 @@ use crate::synth_engine::{
     Input, InputId, ModuleId, NUM_CHANNELS, Smp, StereoSample, amplifier::AmplifierLinks,
     envelope::EnvelopeLinks, expressions::ExpressionsLinks, external_param::ExternalParamLinks,
     harmonic_editor::HarmonicEditorLinks, lfo::LfoLinks, mixer::MixerLinks, mod_map::ModMapLinks,
-    oscillator::OscillatorLinks, pitch::PitchLinks, segments_envelope::SegmentsEnvelopeLinks,
-    spectral_band_select::SpectralBandSelectLinks, spectral_blend::SpectralBlendLinks,
-    spectral_eq::SpectralEqLinks, spectral_filter::SpectralFilterLinks,
-    spectral_mixer::SpectralMixerLinks, spectral_noise::SpectralNoiseLinks, svf::SvfLinks,
-    wave_shaper::WaveShaperLinks,
+    multi_envelope::MultiEnvelopeLinks, oscillator::OscillatorLinks, pitch::PitchLinks,
+    segments_envelope::SegmentsEnvelopeLinks, spectral_band_select::SpectralBandSelectLinks,
+    spectral_blend::SpectralBlendLinks, spectral_eq::SpectralEqLinks,
+    spectral_filter::SpectralFilterLinks, spectral_mixer::SpectralMixerLinks,
+    spectral_noise::SpectralNoiseLinks, svf::SvfLinks, wave_shaper::WaveShaperLinks,
 };
 
 pub use crate::synth_engine::voices_handler::VoicesTelemetry;
@@ -103,6 +103,7 @@ pub trait EngineLinks: Send {
     type HarmonicEditor: HarmonicEditorLinks<EngineEnd = Self::AudioEnd>;
     type Lfo: LfoLinks<EngineEnd = Self::AudioEnd>;
     type ModMap: ModMapLinks<EngineEnd = Self::AudioEnd>;
+    type MultiEnvelope: MultiEnvelopeLinks<EngineEnd = Self::AudioEnd>;
     type SegmentsEnvelope: SegmentsEnvelopeLinks<EngineEnd = Self::AudioEnd>;
     type Mixer: MixerLinks<EngineEnd = Self::AudioEnd>;
     type Oscillator: OscillatorLinks<EngineEnd = Self::AudioEnd>;

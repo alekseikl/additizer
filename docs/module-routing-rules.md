@@ -60,4 +60,4 @@ All mutations except `update_link_amount` rebuild the full link list from `get_l
 | `set_config_links` (preset load)                     | Per link: skip if `src` fails `can_be_linked` or `src+dst` already present; Direct replaces existing sources on `dst` |
 | `refresh_routing`                                    | Rebuild from `get_links()` via `setup_routing` (`prepare_links` drops invalid links and restores pitch pre-wires) |
 
-`refresh_routing` is triggered by `UiBridge::update_routing` whenever a `ModuleUiBridge::update()` returns `true` — i.e. when a module's `inputs()` may have changed at runtime (Mixer / Spectral Mixer changing input count or volume type). Links to inputs that no longer exist are dropped.
+`refresh_routing` is triggered by `UiBridge::update_routing` whenever a `ModuleUiBridge::update()` returns `true` — i.e. when a module's `inputs()` may have changed at runtime (Mixer / Spectral Mixer changing input count or volume type, Multi Envelope changing how many segments it has). Links to inputs that no longer exist are dropped.

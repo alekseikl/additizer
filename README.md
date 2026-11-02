@@ -11,6 +11,7 @@ Every slider in the UI is stereo, and each channel can be adjusted by dragging w
 - `Oscillator`: Inverse-FFT wavetable oscillator with up to 16 unison voices.
 - `Envelope`: AHDSR envelope.
 - `Segments Envelope`: Breakpoint envelope. Length is seconds or a note value; a release point holds, then continues.
+- `Multi Envelope`: Breakpoint envelope. Each segment lasts a number of seconds, and a Time input can lengthen or shorten that segment.
 - `LFO`: Looping breakpoint oscillator. Rate is hertz or a note value.
 - `Mod Map`: Shapes a control signal with a breakpoint curve, amount, and optional smoothing.
 - `Pitch`: Note pitch with keytrack, shift, and glide.

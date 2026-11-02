@@ -1784,9 +1784,10 @@ fn runtime_add_all_module_types() {
         engine.add_module(ModuleType::ExternalParam),
         engine.add_module(ModuleType::Svf),
         engine.add_module(ModuleType::SegmentsEnvelope),
+        engine.add_module(ModuleType::MultiEnvelope),
     ];
 
-    assert_eq!(ids.len(), 15);
+    assert_eq!(ids.len(), 16);
     assert!(matches!(
         engine.get_module(ids[0]),
         Some(ModuleHandle::HarmonicEditor(_))
@@ -1846,6 +1847,10 @@ fn runtime_add_all_module_types() {
     assert!(matches!(
         engine.get_module(ids[14]),
         Some(ModuleHandle::SegmentsEnvelope(_))
+    ));
+    assert!(matches!(
+        engine.get_module(ids[15]),
+        Some(ModuleHandle::MultiEnvelope(_))
     ));
 }
 

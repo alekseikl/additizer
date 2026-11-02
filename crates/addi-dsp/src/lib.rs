@@ -13,6 +13,7 @@ pub mod segments;
 pub mod simd_utils;
 pub mod smooth;
 pub mod stereo_sample;
+pub mod time_segments;
 pub mod types;
 pub mod utils;
 
@@ -31,4 +32,5 @@ pub use segments::{SegPoint, Segments};
 pub use simd_utils::{fill, map, map_in_place, zip_map, zip_map_in_place};
 pub use smooth::{SmoothedSample, SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
+pub use time_segments::{TimePoint, TimeSegments};
 pub use types::{ComplexSample, SIMD_LANES, Smp, WideI32, WideSmp, WideU32};

@@ -25,6 +25,7 @@ mod segment_presets;
 mod segments_editor;
 mod slider;
 mod stereo_input;
+mod time_segments_editor;
 mod units;
 mod utils;
 mod volume_meter;
@@ -33,9 +34,9 @@ mod waveform;
 use grid::GridEvent;
 use modules_ui::{
     AmplifierUI, EnvelopeUI, ExpressionsUi, ExternalParamUI, HarmonicEditorUI, LfoUi, MixerUi,
-    ModMapUi, OscillatorUI, OutputUi, ParamsUi, PitchUi, SegmentsEnvelopeUi, SpectralBandSelectUi,
-    SpectralBlendUi, SpectralEqUi, SpectralFilterUI, SpectralMixerUi, SpectralNoiseUi, SvfUi,
-    WaveShaperUI,
+    ModMapUi, MultiEnvelopeUi, OscillatorUI, OutputUi, ParamsUi, PitchUi, SegmentsEnvelopeUi,
+    SpectralBandSelectUi, SpectralBlendUi, SpectralEqUi, SpectralFilterUI, SpectralMixerUi,
+    SpectralNoiseUi, SvfUi, WaveShaperUI,
 };
 
 pub(crate) trait ModuleUi {
@@ -193,6 +194,7 @@ impl ModuleTypeEditor for ModuleType {
             Self::ExternalParam => Box::new(ExternalParamUI::new(id)),
             Self::Lfo => Box::new(LfoUi::new(id)),
             Self::ModMap => Box::new(ModMapUi::new(id)),
+            Self::MultiEnvelope => Box::new(MultiEnvelopeUi::new(id)),
             Self::SegmentsEnvelope => Box::new(SegmentsEnvelopeUi::new(id)),
             Self::Pitch => Box::new(PitchUi::new(id)),
             Self::SpectralBandSelect => Box::new(SpectralBandSelectUi::new(id)),

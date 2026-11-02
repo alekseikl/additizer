@@ -1,8 +1,8 @@
 use crate::synth_engine::{
     Amplifier, Envelope, Expressions, ExternalParam, HarmonicEditor, Input, Lfo, Mixer, ModMap,
-    ModuleConfig, ModuleId, Oscillator, Pitch, SegmentsEnvelope, SpectralBandSelect, SpectralBlend,
-    SpectralEq, SpectralFilter, SpectralMixer, SpectralNoise, StereoSample, Svf, VoiceEvent,
-    WaveShaper,
+    ModuleConfig, ModuleId, MultiEnvelope, Oscillator, Pitch, SegmentsEnvelope, SpectralBandSelect,
+    SpectralBlend, SpectralEq, SpectralFilter, SpectralMixer, SpectralNoise, StereoSample, Svf,
+    VoiceEvent, WaveShaper,
     engine_io::EngineLinks,
     modules::Output,
     routing::{DataType, InputMeta, InputSlots, ProcessContext},
@@ -28,6 +28,7 @@ pub enum ModuleType {
     ExternalParam,
     Lfo,
     ModMap,
+    MultiEnvelope,
     SegmentsEnvelope,
     Pitch,
     WaveShaper,
@@ -53,6 +54,7 @@ impl ModuleType {
             Self::ExternalParam => "Ext Parameter",
             Self::Lfo => "LFO",
             Self::ModMap => "Mod Map",
+            Self::MultiEnvelope => "Multi Envelope",
             Self::SegmentsEnvelope => "Seg Envelope",
             Self::Pitch => "Pitch",
             Self::WaveShaper => "Waveshaper",
@@ -68,6 +70,7 @@ pub enum ModuleHandle<E: EngineLinks = crate::synth_engine::stub::StubLinks> {
     Envelope(Box<Envelope<E::Envelope>>),
     Lfo(Box<Lfo<E::Lfo>>),
     ModMap(Box<ModMap<E::ModMap>>),
+    MultiEnvelope(Box<MultiEnvelope<E::MultiEnvelope>>),
     SegmentsEnvelope(Box<SegmentsEnvelope<E::SegmentsEnvelope>>),
     Pitch(Box<Pitch<E::Pitch>>),
     Amplifier(Box<Amplifier<E::Amplifier>>),
@@ -93,6 +96,7 @@ impl<E: EngineLinks> ModuleHandle<E> {
             Self::Envelope(m) => m.process(ctx),
             Self::Lfo(m) => m.process(ctx),
             Self::ModMap(m) => m.process(ctx),
+            Self::MultiEnvelope(m) => m.process(ctx),
             Self::SegmentsEnvelope(m) => m.process(ctx),
             Self::Pitch(m) => m.process(ctx),
             Self::Amplifier(m) => m.process(ctx),
@@ -119,6 +123,7 @@ impl<E: EngineLinks> ModuleHandle<E> {
             Self::Envelope(_) => ModuleType::Envelope,
             Self::Lfo(_) => ModuleType::Lfo,
             Self::ModMap(_) => ModuleType::ModMap,
+            Self::MultiEnvelope(_) => ModuleType::MultiEnvelope,
             Self::SegmentsEnvelope(_) => ModuleType::SegmentsEnvelope,
             Self::Pitch(_) => ModuleType::Pitch,
             Self::Amplifier(_) => ModuleType::Amplifier,
@@ -144,6 +149,7 @@ impl<E: EngineLinks> ModuleHandle<E> {
             ModuleType::Envelope => Self::Envelope(Box::new(Envelope::new(id))),
             ModuleType::Lfo => Self::Lfo(Box::new(Lfo::new(id, buffer_size))),
             ModuleType::ModMap => Self::ModMap(Box::new(ModMap::new(id, buffer_size))),
+            ModuleType::MultiEnvelope => Self::MultiEnvelope(Box::new(MultiEnvelope::new(id))),
             ModuleType::SegmentsEnvelope => {
                 Self::SegmentsEnvelope(Box::new(SegmentsEnvelope::new(id)))
             }
@@ -179,6 +185,9 @@ impl<E: EngineLinks> ModuleHandle<E> {
             ModuleConfig::Lfo(cfg) => Self::Lfo(Box::new(Lfo::from_config(cfg, buffer_size))),
             ModuleConfig::ModMap(cfg) => {
                 Self::ModMap(Box::new(ModMap::from_config(cfg, buffer_size)))
+            }
+            ModuleConfig::MultiEnvelope(cfg) => {
+                Self::MultiEnvelope(Box::new(MultiEnvelope::from_config(cfg)))
             }
             ModuleConfig::SegmentsEnvelope(cfg) => {
                 Self::SegmentsEnvelope(Box::new(SegmentsEnvelope::from_config(cfg)))
@@ -229,6 +238,7 @@ impl<E: EngineLinks> ModuleHandle<E> {
             Self::Envelope(m) => Some(ModuleConfig::Envelope(Box::new(m.get_config()))),
             Self::Lfo(m) => Some(ModuleConfig::Lfo(Box::new(m.get_config()))),
             Self::ModMap(m) => Some(ModuleConfig::ModMap(Box::new(m.get_config()))),
+            Self::MultiEnvelope(m) => Some(ModuleConfig::MultiEnvelope(Box::new(m.get_config()))),
             Self::SegmentsEnvelope(m) => {
                 Some(ModuleConfig::SegmentsEnvelope(Box::new(m.get_config())))
             }

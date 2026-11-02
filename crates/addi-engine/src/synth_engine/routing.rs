@@ -76,6 +76,8 @@ pub enum Input {
     Sustain,
     Release,
     Amount, // [0.0, 1.0]
+    /// Seconds added to one Multi Envelope segment. The index is the segment.
+    TimeMix(u8),
 }
 
 #[derive(Clone, Copy)]

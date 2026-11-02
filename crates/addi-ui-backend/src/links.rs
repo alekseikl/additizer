@@ -7,6 +7,7 @@ pub mod harmonic_editor;
 pub mod lfo;
 pub mod mixer;
 pub mod mod_map;
+pub mod multi_envelope;
 pub mod oscillator;
 pub mod pitch;
 pub mod segments_envelope;
@@ -33,6 +34,7 @@ impl EngineLinks for PluginLinks {
     type HarmonicEditor = harmonic_editor::Links;
     type Lfo = lfo::Links;
     type ModMap = mod_map::Links;
+    type MultiEnvelope = multi_envelope::Links;
     type SegmentsEnvelope = segments_envelope::Links;
     type Mixer = mixer::Links;
     type Oscillator = oscillator::Links;

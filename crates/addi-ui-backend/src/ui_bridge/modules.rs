@@ -6,6 +6,7 @@ pub mod harmonic_editor;
 pub mod lfo;
 pub mod mixer;
 pub mod mod_map;
+pub mod multi_envelope;
 pub mod oscillator;
 pub mod pitch;
 pub mod segments_envelope;
