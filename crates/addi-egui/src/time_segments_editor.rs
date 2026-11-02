@@ -1,7 +1,7 @@
 use egui::{
-    Color32, ColorImage, CursorIcon, DragValue, Mesh, Painter, PointerButton, Pos2, Rect, Response,
-    RichText, Sense, Shape, Stroke, StrokeKind, TextureHandle, TextureId, TextureOptions, Ui, Vec2,
-    ecolor::Hsva, epaint::Vertex, pos2, vec2,
+    Color32, ColorImage, CursorIcon, DragValue, FontId, Mesh, Painter, PointerButton, Pos2, Rect,
+    Response, RichText, Sense, Shape, Stroke, StrokeKind, TextureHandle, TextureId, TextureOptions,
+    Ui, Vec2, ecolor::Hsva, epaint::Vertex, pos2, vec2,
 };
 
 use addi_dsp::{
@@ -16,19 +16,22 @@ use crate::units::Units;
 
 use consts as C;
 use menu::{canvas_menu, open_menu, point_menu, power_menu};
-use utils::{Ctx, Drag, Handle, bold, stack_y, with_alpha};
+use utils::{
+    Ctx, Drag, Handle, TimeDivisions, bold, stack_y, time_divisions, with_alpha, zoom_span,
+};
 
 mod consts;
 mod menu;
 mod utils;
 
 pub struct TimeSegmentsEditor {
-    grid_x: i32,
     grid_y: i32,
     drag: Option<Drag>,
     drag_power: Smp,
-    /// Seconds across the plot. Frozen while a point is dragged.
+    /// Seconds across the plot. Scroll changes it. Until then the curve fills the view.
+    /// Frozen while a point is dragged.
     span: Smp,
+    zoomed: bool,
     curve: Vec<[Smp; 2]>,
     scratch: Vec<Smp>,
     points: Vec<Pos2>,
@@ -41,11 +44,11 @@ pub struct TimeSegmentsEditor {
 impl Default for TimeSegmentsEditor {
     fn default() -> Self {
         Self {
-            grid_x: 8,
             grid_y: 4,
             drag: None,
             drag_power: 0.0,
             span: view_span(1.0),
+            zoomed: false,
             curve: Vec::new(),
             scratch: Vec::new(),
             points: Vec::new(),
@@ -95,9 +98,11 @@ impl TimeSegmentsEditor {
             self.drag = None;
         }
 
-        if self.drag.is_none() {
+        if !self.zoomed && self.drag.is_none() {
             self.span = view_span(segments.total_time());
         }
+
+        self.apply_zoom(ui, plot);
 
         let mut ctx = Ctx {
             ui,
@@ -135,7 +140,7 @@ impl TimeSegmentsEditor {
             self.drag = None;
         }
 
-        if self.drag.is_none() {
+        if !self.zoomed && self.drag.is_none() {
             self.span = view_span(ctx.segs.total_time());
             ctx.span = self.span;
         }
@@ -180,7 +185,8 @@ impl TimeSegmentsEditor {
 
     fn interact_point(&mut self, ctx: &mut Ctx<'_>, index: usize) -> bool {
         let point = ctx.segs.point(index);
-        let center = ctx.screen_pos(point.time, point.y);
+        let time = ctx.segs.time(index);
+        let center = ctx.screen_pos(time, point.y);
         let response = ctx.handle_response(center, C::GRAB_RADIUS, (C::POINT_ID, index));
         let mut remove = point_menu(ctx, &response, index);
 
@@ -189,7 +195,7 @@ impl TimeSegmentsEditor {
         } else if let Some(pos) = self.drag_begin(ctx, &response) {
             self.drag = Some(Drag::new(
                 ctx.curve_pos(pos),
-                pos2(point.time, point.y),
+                pos2(time, point.y),
                 Handle::Point(index),
             ));
         }
@@ -203,6 +209,38 @@ impl TimeSegmentsEditor {
         }
 
         remove
+    }
+
+    /// Scroll and pinch change how many seconds the plot shows. Time 0 stays on the left.
+    fn apply_zoom(&mut self, ui: &Ui, plot: Rect) {
+        if self.drag.is_some() {
+            return;
+        }
+
+        let over_plot = ui.input(|input| {
+            input
+                .pointer
+                .hover_pos()
+                .is_some_and(|pos| plot.contains(pos))
+        });
+
+        if !over_plot {
+            return;
+        }
+
+        let (scroll_y, pinch) =
+            ui.input(|input| (input.smooth_scroll_delta().y, input.zoom_delta()));
+
+        if scroll_y == 0.0 && pinch == 1.0 {
+            return;
+        }
+
+        self.span = zoom_span(self.span, scroll_y, pinch);
+        self.zoomed = true;
+
+        if scroll_y != 0.0 {
+            ui.input_mut(|input| input.smooth_scroll_delta.y = 0.0);
+        }
     }
 
     fn drag_begin(&self, ctx: &Ctx<'_>, response: &Response) -> Option<Pos2> {
@@ -270,7 +308,7 @@ impl TimeSegmentsEditor {
 
             consider(
                 Handle::Point(index),
-                ctx.screen_pos(point.time, point.y),
+                ctx.screen_pos(ctx.segs.time(index), point.y),
                 C::GRAB_RADIUS,
             );
 
@@ -302,10 +340,10 @@ impl TimeSegmentsEditor {
 
         let current = ctx.segs.point(index);
 
+        ctx.segs.set_time(index, time);
         ctx.segs.set_point(
             index,
             TimePoint {
-                time,
                 y: level,
                 ..current
             },
@@ -314,13 +352,20 @@ impl TimeSegmentsEditor {
 
     fn snap_time(&self, ctx: &Ctx<'_>, time: Smp, min: Smp, max: Smp) -> Smp {
         let width = ctx.plot.width();
+        let Some(divisions) = time_divisions(ctx.span) else {
+            return time;
+        };
 
-        if self.grid_x <= 1 || width <= 0.0 || ctx.span <= 0.0 {
+        if width <= 0.0 {
             return time;
         }
 
-        let snapped =
-            (time / ctx.span * self.grid_x as Smp).round() / self.grid_x as Smp * ctx.span;
+        let step = if divisions.minor < 0.25 {
+            divisions.big
+        } else {
+            divisions.little
+        };
+        let snapped = (time / step).round() * step;
 
         if (snapped - time).abs() / ctx.span * width < C::SNAP {
             snapped.clamp(min, max)
@@ -377,11 +422,9 @@ impl TimeSegmentsEditor {
 
     fn toolbar(&mut self, ui: &mut Ui) {
         ui.horizontal_wrapped(|ui| {
-            ui.label("Grid").on_hover_text(
-                "Snap points while dragging. Hold Shift to place them freely. Columns divide the view.",
+            ui.label("Rows").on_hover_text(
+                "Snap levels while dragging. Hold Shift to place them freely. Scroll the plot to zoom time.",
             );
-            ui.add(DragValue::new(&mut self.grid_x).range(1..=32));
-            ui.label("×");
             ui.add(DragValue::new(&mut self.grid_y).range(1..=24));
         });
     }
@@ -395,13 +438,15 @@ impl TimeSegmentsEditor {
 
         let from = ctx.segs.point(index);
         let to = ctx.segs.point(end);
-        let width = ctx.plot.width() * (to.time - from.time) / ctx.span.max(Smp::EPSILON);
+        let from_time = ctx.segs.time(index);
+        let to_time = ctx.segs.time(end);
+        let width = ctx.plot.width() * (to_time - from_time) / ctx.span.max(Smp::EPSILON);
         let bends = to.y != from.y && width >= C::MIN_POWER_WIDTH;
 
         bends.then(|| {
             let t = power_scale(0.5, ctx.segs.power(index));
 
-            pos2((from.time + to.time) * 0.5, from.y + t * (to.y - from.y))
+            pos2((from_time + to_time) * 0.5, from.y + t * (to.y - from.y))
         })
     }
 
@@ -466,10 +511,8 @@ impl TimeSegmentsEditor {
         let plot = ctx.plot;
         let stroke = Stroke::new(1.0, C::GRID_COLOR);
 
-        for i in 1..self.grid_x {
-            let x = plot.left() + plot.width() * (i as f32 / self.grid_x as f32);
-
-            painter.line_segment([pos2(x, plot.top()), pos2(x, plot.bottom())], stroke);
+        if let Some(divisions) = time_divisions(ctx.span) {
+            self.paint_time_grid(painter, ctx, divisions);
         }
 
         for i in 1..self.grid_y {
@@ -477,6 +520,62 @@ impl TimeSegmentsEditor {
 
             painter.line_segment([pos2(plot.left(), y), pos2(plot.right(), y)], stroke);
         }
+    }
+
+    fn paint_time_grid(&self, painter: &Painter, ctx: &Ctx<'_>, divisions: TimeDivisions) {
+        let mut index = 1;
+        let mut next_label = ctx.plot.left();
+
+        while index as Smp * divisions.little < ctx.span {
+            let major = index % C::RULER_DIVISION as i32 == 0;
+            let fade = if major { 1.0 } else { divisions.minor };
+
+            if fade >= 0.02 {
+                let time = index as Smp * divisions.little;
+                let alpha = (C::GRID_COLOR.a() as f32 * fade).round() as u8;
+                let x = ctx.screen_x(time);
+
+                painter.line_segment(
+                    [pos2(x, ctx.plot.top()), pos2(x, ctx.plot.bottom())],
+                    Stroke::new(1.0, with_alpha(C::GRID_COLOR, alpha)),
+                );
+
+                if fade > 0.35 {
+                    let label = with_alpha(Color32::WHITE, (0x8c as f32 * fade).round() as u8);
+
+                    next_label = self.paint_time_label(painter, ctx, time, label, next_label);
+                }
+            }
+
+            index += 1;
+
+            if index > 48 {
+                break;
+            }
+        }
+    }
+
+    fn paint_time_label(
+        &self,
+        painter: &Painter,
+        ctx: &Ctx<'_>,
+        time: Smp,
+        color: Color32,
+        next_label: f32,
+    ) -> f32 {
+        let text = Units::Time.format(time);
+        let galley = painter.layout_no_wrap(text, FontId::proportional(C::TIME_LABEL_SIZE), color);
+        let x = ctx.screen_x(time) + C::TIME_LABEL_GAP;
+        let right = x + galley.size().x;
+
+        if x < next_label || right > ctx.plot.right() - 2.0 {
+            return next_label;
+        }
+
+        let y = ctx.plot.bottom() - galley.size().y - 2.0;
+
+        painter.galley(pos2(x, y), galley, color);
+        right + C::TIME_LABEL_GAP
     }
 
     fn paint_fill(&mut self, painter: &Painter, ctx: &Ctx<'_>) {
@@ -535,13 +634,13 @@ impl TimeSegmentsEditor {
     }
 
     fn loop_region(&self, ctx: &Ctx<'_>) -> Option<Rect> {
-        let start = ctx.segs.loop_point()?;
+        let start = ctx.segs.loop_point_idx()?;
         let end_time = ctx
             .segs
-            .release_point()
-            .map(|point| point.time)
+            .release_point_idx()
+            .map(|index| ctx.segs.time(index))
             .unwrap_or_else(|| ctx.segs.total_time());
-        let left = ctx.screen_x(start.time);
+        let left = ctx.screen_x(ctx.segs.time(start));
         let right = ctx.screen_x(end_time);
 
         (right > left).then(|| Rect::from_x_y_ranges(left..=right, ctx.plot.y_range()))
@@ -549,10 +648,10 @@ impl TimeSegmentsEditor {
 
     fn paint_point(&self, ctx: &Ctx<'_>, index: usize, hover: Option<Handle>) {
         let point = ctx.segs.point(index);
-        let center = ctx.screen_pos(point.time, point.y);
+        let center = ctx.screen_pos(ctx.segs.time(index), point.y);
         let marker = self.marker(ctx, index);
         let color = marker.map_or(C::POINT_COLOR, |(_, color)| color);
-        let painter = ctx.ui.painter();
+        let painter = ctx.ui.painter().with_clip_rect(ctx.plot);
 
         painter.circle_filled(center, C::POINT_RADIUS, color);
 
@@ -580,6 +679,7 @@ impl TimeSegmentsEditor {
 
         ctx.ui
             .painter()
+            .with_clip_rect(ctx.plot)
             .circle_filled(center, C::POWER_RADIUS, self.power_color);
         self.paint_handle(
             ctx,
@@ -615,7 +715,12 @@ impl TimeSegmentsEditor {
             return;
         }
 
-        let painter = ctx.ui.painter().clone().with_layer_id(ctx.handle_layer());
+        let painter = ctx
+            .ui
+            .painter()
+            .clone()
+            .with_layer_id(ctx.handle_layer())
+            .with_clip_rect(ctx.plot);
 
         if dragging {
             ctx.ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
@@ -628,7 +733,7 @@ impl TimeSegmentsEditor {
 
         if let Handle::Point(index) = handle {
             let point = ctx.segs.point(index);
-            let time = Units::Time.format(point.time);
+            let time = Units::Time.format(ctx.segs.time(index));
             let level = Units::Normalized.format(point.y);
 
             Self::paint_label(ctx, center, format!("{time}  {level}"));
@@ -667,7 +772,7 @@ impl TimeSegmentsEditor {
     }
 
     fn paint_playheads(&self, ctx: &Ctx<'_>, playhead: [(Smp, Smp); 2]) {
-        let painter = ctx.ui.painter();
+        let painter = ctx.ui.painter().with_clip_rect(ctx.plot);
         let [left, right] = playhead.map(|(time, level)| ctx.playhead_pos(time, level));
 
         if left.distance_sq(right) > C::PLAYHEAD_OVERLAP_SQ {

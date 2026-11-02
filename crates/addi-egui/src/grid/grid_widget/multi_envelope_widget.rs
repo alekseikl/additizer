@@ -137,12 +137,12 @@ impl MultiEnvelopeWidget {
     }
 
     fn loop_span(rect: Rect, segments: &TimeSegments, span: Smp) -> Option<(f32, f32)> {
-        let start = segments.loop_point()?;
+        let start = segments.loop_point_idx()?;
         let end_time = segments
-            .release_point()
-            .map(|point| point.time)
+            .release_point_idx()
+            .map(|index| segments.time(index))
             .unwrap_or_else(|| segments.total_time());
-        let left = Self::time_pos(rect, start.time, 0.0, span).x;
+        let left = Self::time_pos(rect, segments.time(start), 0.0, span).x;
         let right = Self::time_pos(rect, end_time, 0.0, span).x;
 
         (right > left).then_some((left, right))

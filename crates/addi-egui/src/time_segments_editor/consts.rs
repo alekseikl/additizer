@@ -18,6 +18,14 @@ pub(super) const RIGHT_PLAYHEAD_HUE: f32 = 1.0 / 6.0;
 pub(super) const POWER_RADIUS: f32 = 3.0;
 pub(super) const MIN_POWER_WIDTH: f32 = 3.0;
 pub(super) const SNAP: f32 = 8.0;
+/// Shortest time window, in seconds. Matches a zoomed-in envelope ruler.
+pub(super) const MIN_WINDOW: Smp = 0.125;
+/// Ruler steps grow by this factor. Major lines sit on every fourth minor line.
+pub(super) const RULER_DIVISION: Smp = 4.0;
+/// Scroll distance, in points, that doubles or halves the time window.
+pub(super) const ZOOM_POINTS: f32 = 80.0;
+pub(super) const TIME_LABEL_SIZE: f32 = 9.0;
+pub(super) const TIME_LABEL_GAP: f32 = 4.0;
 pub(super) const POWER_MOUSE_MULTIPLIER: Smp = 9.0;
 pub(super) const MAX_CLICK_DIST: f32 = 2.0;
 pub(super) const MAX_CLICK_DURATION: f64 = 0.2;
@@ -39,7 +47,7 @@ pub(super) const LABEL_POINTER_GAP: f32 = 4.0;
 pub(super) const LABEL_CORNER_RADIUS: f32 = 2.0;
 pub(super) const MARKER_GAP: f32 = 3.0;
 
-pub(super) const HELP: &str = "Double-click to add or remove a point. Drag a point to set its time and level. Drag a midpoint to bend the segment. Hold Shift to place a point freely, or to mirror a bend onto the next segment. Right-click a point to set the loop or release.";
+pub(super) const HELP: &str = "Double-click to add or remove a point. Drag a point to set its time and level. Later segments keep their length, so the curve grows or shrinks. Scroll the plot to zoom time. Drag a midpoint to bend the segment. Hold Shift to place a point freely, or to mirror a bend onto the next segment. Right-click a point to set the loop or release.";
 pub(super) const SMOOTH_TIP: &str = "Ease this segment with a sine curve.";
 pub(super) const LOOP_TIP: &str = "Repeat from here. With no release point the loop runs to the end. With one, it runs until release while the key is held.";
 pub(super) const RELEASE_TIP: &str = "Sustain this level while the key is held. On release, continue from here starting at the current level.";

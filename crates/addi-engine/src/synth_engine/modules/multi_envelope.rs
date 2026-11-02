@@ -234,8 +234,8 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
     fn playhead_time(segments: &TimeSegments, stage: Stage) -> Smp {
         match stage {
             Stage::Sustain => segments
-                .release_point()
-                .map(|point| point.time)
+                .release_point_idx()
+                .map(|index| segments.time(index))
                 .unwrap_or_else(|| segments.total_time()),
             Stage::Trigger(_) | Stage::Done => segments.total_time(),
             Stage::Segment {
