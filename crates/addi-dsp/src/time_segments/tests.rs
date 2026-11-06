@@ -184,22 +184,6 @@ fn serde_roundtrip_keeps_markers() {
 }
 
 #[test]
-fn legacy_absolute_times_become_durations() {
-    let segments: TimeSegments = serde_json::from_str(
-        r#"{"points":[{"time":0.0,"y":1.0,"power":0.0,"smooth":false},{"time":0.4,"y":0.2,"power":1.5,"smooth":true},{"time":1.0,"y":0.0,"power":0.0,"smooth":false}]}"#,
-    )
-    .unwrap();
-
-    assert!((segments.duration(0) - 0.4).abs() < 1e-6);
-    assert!((segments.duration(1) - 0.6).abs() < 1e-6);
-    assert!((segments.point(2).duration).abs() < 1e-6);
-    assert!((segments.point(1).y - 0.2).abs() < 1e-6);
-    assert!((segments.power(1) - 1.5).abs() < 1e-6);
-    assert!(segments.point(1).smooth);
-    assert!((segments.total_time() - 1.0).abs() < 1e-6);
-}
-
-#[test]
 fn flip_horizontal_reverses_durations() {
     let mut segments = TimeSegments::from_points(&[(0.0, 1.0), (0.25, 0.5), (1.0, 0.0)], false);
 
@@ -219,7 +203,9 @@ fn flip_horizontal_reverses_durations() {
 
 #[test]
 fn short_json_becomes_the_default() {
-    let segments: TimeSegments = serde_json::from_str(r#"{"points":[]}"#).unwrap();
+    let mut segments: TimeSegments = serde_json::from_str(r#"{"points":[]}"#).unwrap();
+
+    segments.sanitize();
 
     assert_eq!(segments.num_points(), TimeSegments::default().num_points());
     assert!((segments.total_time() - 1.0).abs() < 1e-6);

@@ -76,6 +76,11 @@ impl TimePoint {
 
         SegPoint::render_segment(out, position, seconds_per_sample, start, end)
     }
+
+    fn clamp_shape(&mut self) {
+        self.y = sanitize(self.y, 0.0, 1.0);
+        self.power = sanitize(self.power, -MAX_POWER, MAX_POWER);
+    }
 }
 
 fn local_segment(start: TimePoint, end: TimePoint, duration: Smp) -> (SegPoint, SegPoint) {
@@ -94,20 +99,20 @@ fn local_segment(start: TimePoint, end: TimePoint, duration: Smp) -> (SegPoint, 
     )
 }
 
-/// Breakpoint curve in seconds. Always holds two to [`MAX_POINTS`] points.
+/// Breakpoint curve in seconds. Holds two to [`MAX_POINTS`] points after [`sanitize`](Self::sanitize).
 /// The first point is at time 0. Each point's duration is the seconds until the next
 /// point, and the last duration is 0. Those durations sum to the curve's length.
-/// Deserialization and [`sanitize`](Self::sanitize) replace a shorter curve with [`Default`].
-#[derive(Clone, Debug, Serialize)]
+/// A shorter curve becomes [`Default`].
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TimeSegments {
     points: Vec<TimePoint>,
     /// Loop start. Any point except the last, and before [`release_point`](Self::release_point)
     /// when that is set. The envelope repeats from here.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     loop_point: Option<usize>,
     /// Sustain while a key is held, and the point note-off jumps to.
     /// The release segment then leaves from the level playing at that moment.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     release_point: Option<usize>,
     #[serde(skip)]
     revision: u64,
@@ -148,7 +153,7 @@ impl TimeSegments {
             points: curve,
             loop_point: None,
             release_point: None,
-            revision: Self::next_revision(),
+            revision: 0,
         };
 
         segments.sanitize();
@@ -191,10 +196,8 @@ impl TimeSegments {
 
     /// Seconds from the start of the curve to point `index`.
     pub fn time(&self, index: usize) -> Smp {
-        self.points
-            .iter()
-            .take(index)
-            .map(|point| point.duration.max(0.0))
+        (0..index.min(self.points.len()))
+            .map(|index| self.duration(index))
             .sum()
     }
 
@@ -224,8 +227,7 @@ impl TimeSegments {
             return;
         }
 
-        point.y = sanitize(point.y, 0.0, 1.0);
-        point.power = sanitize(point.power, -MAX_POWER, MAX_POWER);
+        point.clamp_shape();
         point.duration = if index + 1 == n {
             0.0
         } else {
@@ -310,8 +312,7 @@ impl TimeSegments {
         let mut used = 0.0;
 
         for (index, point) in self.points.iter_mut().enumerate() {
-            point.y = sanitize(point.y, 0.0, 1.0);
-            point.power = sanitize(point.power, -MAX_POWER, MAX_POWER);
+            point.clamp_shape();
 
             if index + 1 == n {
                 point.duration = 0.0;
@@ -386,16 +387,12 @@ impl TimeSegments {
     }
 
     fn shift_inserted(&mut self, index: usize) {
-        if let Some(point) = &mut self.loop_point
-            && *point >= index
-        {
-            *point += 1;
-        }
-
-        if let Some(point) = &mut self.release_point
-            && *point >= index
-        {
-            *point += 1;
+        for marker in [&mut self.loop_point, &mut self.release_point] {
+            if let Some(point) = marker
+                && *point >= index
+            {
+                *point += 1;
+            }
         }
     }
 
@@ -426,24 +423,26 @@ impl TimeSegments {
             return false;
         }
 
-        point.y = sanitize(point.y, 0.0, 1.0);
-        point.power = sanitize(point.power, -MAX_POWER, MAX_POWER);
+        point.clamp_shape();
 
         let previous = self.time(index - 1);
+        let next = if index == n {
+            MAX_TIME
+        } else {
+            self.time(index)
+        };
+        let time = sanitize(time, 0.0, MAX_TIME).clamp(previous, next.max(previous));
+
+        self.points[index - 1].duration = time - previous;
+        point.duration = if index == n {
+            0.0
+        } else {
+            (next - time).max(0.0)
+        };
 
         if index == n {
-            let end = MAX_TIME.max(previous);
-            let time = sanitize(time, 0.0, MAX_TIME).clamp(previous, end);
-
-            self.points[index - 1].duration = time - previous;
-            point.duration = 0.0;
             self.points.push(point);
         } else {
-            let next = self.time(index);
-            let time = sanitize(time, 0.0, MAX_TIME).clamp(previous, next);
-
-            self.points[index - 1].duration = time - previous;
-            point.duration = (next - time).max(0.0);
             self.points.insert(index, point);
         }
 
@@ -592,28 +591,23 @@ impl TimeSegments {
             let end = start + duration;
             let left = self.point(index);
             let right = self.point(index + 1);
-            let x0 = start / span;
-            let x1 = end / span;
 
-            if duration <= 0.0 || x1 <= x0 {
-                Self::push_point(points, [start, left.y]);
+            Self::push_point(points, [start, left.y]);
+
+            if duration <= 0.0 {
                 Self::push_point(points, [end, right.y]);
                 start = end;
                 continue;
             }
 
-            Self::push_point(points, [start, left.y]);
-
-            let to = sample_end(x1.min(1.0), pixels);
+            let to = sample_end(end / span, pixels);
 
             if from >= to {
                 start = end;
                 continue;
             }
 
-            // Columns are real seconds. A segment that runs past the window keeps its
-            // length; only the visible part is drawn. Scaling by the visible column
-            // count would play the rest of the curve early and leave it flat.
+            // One column is `span / pixels` seconds, including past the window.
             let seconds_per_sample = span / pixels as Smp;
             let position =
                 ((from as Smp * seconds_per_sample - start) / duration).clamp(0.0, 1.0);
@@ -640,7 +634,7 @@ impl TimeSegments {
             start = end;
         }
 
-        Self::push_point(points, [self.total_time(), self.points[n - 1].y]);
+        Self::push_point(points, [start, self.points[n - 1].y]);
     }
 
     fn push_point(points: &mut Vec<[Smp; 2]>, point: [Smp; 2]) {
@@ -663,44 +657,6 @@ fn sample_end(x: Smp, steps: usize) -> usize {
     }
 
     ((x * steps as Smp).floor() + 1.0).min(steps as Smp + 1.0) as usize
-}
-
-#[derive(Deserialize)]
-struct RawTimePoint {
-    #[serde(default)]
-    time: Option<Smp>,
-    #[serde(default)]
-    duration: Option<Smp>,
-    #[serde(default)]
-    y: Smp,
-    #[serde(default)]
-    power: Smp,
-    #[serde(default)]
-    smooth: bool,
-}
-
-#[derive(Deserialize)]
-struct RawTimeSegments {
-    points: Vec<RawTimePoint>,
-    #[serde(default)]
-    loop_point: Option<usize>,
-    #[serde(default)]
-    release_point: Option<usize>,
-}
-
-impl<'de> Deserialize<'de> for TimeSegments {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let raw = RawTimeSegments::deserialize(deserializer)?;
-        let mut segments = Self {
-            points: points_from_raw(raw.points),
-            loop_point: raw.loop_point,
-            release_point: raw.release_point,
-            revision: 0,
-        };
-
-        segments.sanitize();
-        Ok(segments)
-    }
 }
 
 /// Absolute times, pinned at 0, clamped, and kept in order.
@@ -728,34 +684,6 @@ fn duration_at(times: &[Smp], index: usize) -> Smp {
     } else {
         times[index + 1] - times[index]
     }
-}
-
-fn points_from_raw(raw: Vec<RawTimePoint>) -> Vec<TimePoint> {
-    let legacy = raw.iter().all(|point| point.duration.is_none());
-
-    if !legacy {
-        return raw
-            .into_iter()
-            .map(|point| TimePoint {
-                duration: point.duration.unwrap_or(0.0),
-                y: point.y,
-                power: point.power,
-                smooth: point.smooth,
-            })
-            .collect();
-    }
-
-    let times = absolute_times(raw.iter().map(|point| point.time.unwrap_or(0.0)));
-
-    raw.into_iter()
-        .enumerate()
-        .map(|(index, point)| TimePoint {
-            duration: duration_at(&times, index),
-            y: point.y,
-            power: point.power,
-            smooth: point.smooth,
-        })
-        .collect()
 }
 
 #[cfg(test)]

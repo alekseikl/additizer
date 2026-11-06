@@ -109,11 +109,11 @@ fn serde_roundtrip() {
     let back: Segments = serde_json::from_value(json.clone()).unwrap();
 
     assert_points_eq(back.points(), &expected);
+    assert_eq!(back.revision(), 0);
 
     let again: Segments = serde_json::from_value(json).unwrap();
 
-    assert_ne!(back.revision(), segments.revision());
-    assert_ne!(back.revision(), again.revision());
+    assert_eq!(again.revision(), 0);
 }
 
 #[test]
@@ -387,10 +387,13 @@ fn sanitize_clamps_curve_floats() {
     assert_eq!(segments.point(2).x, 1.0);
     assert_eq!(segments.point(2).y, 0.25);
 
-    let short: Segments = serde_json::from_str(r#"{"segments":[]}"#).unwrap();
-    let one: Segments =
+    let mut short: Segments = serde_json::from_str(r#"{"segments":[]}"#).unwrap();
+    let mut one: Segments =
         serde_json::from_str(r#"{"segments":[{"x":0.2,"y":0.3,"power":0.0,"smooth":false}]}"#)
             .unwrap();
+
+    short.sanitize();
+    one.sanitize();
 
     assert_eq!(short.num_points(), Segments::default().num_points());
     assert_eq!(one.num_points(), Segments::default().num_points());
@@ -549,10 +552,12 @@ fn markers_round_trip_and_missing_ones_stay_clear() {
     assert_eq!(bare.loop_point_idx(), None);
     assert_eq!(bare.release_point_idx(), None);
 
-    let illegal: Segments = serde_json::from_str(
+    let mut illegal: Segments = serde_json::from_str(
         r#"{"segments":[{"x":0.0,"y":0.0,"power":0.0,"smooth":false},{"x":1.0,"y":1.0,"power":0.0,"smooth":false}],"loop_point":1}"#,
     )
     .unwrap();
+    assert_eq!(illegal.loop_point_idx(), Some(1));
+    illegal.sanitize();
     assert_eq!(illegal.loop_point_idx(), None);
 }
 

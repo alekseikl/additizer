@@ -100,9 +100,7 @@ impl TimeSegmentsEditor {
             self.drag = None;
         }
 
-        if !self.zoomed && self.drag.is_none() {
-            self.span = view_span(segments.total_time());
-        }
+        self.follow_curve(segments.total_time());
 
         self.apply_zoom(ui, plot);
 
@@ -142,10 +140,8 @@ impl TimeSegmentsEditor {
             self.drag = None;
         }
 
-        if !self.zoomed && self.drag.is_none() {
-            self.span = view_span(ctx.segs.total_time());
-            ctx.span = self.span;
-        }
+        self.follow_curve(ctx.segs.total_time());
+        ctx.span = self.span;
 
         self.paint_scene(&ctx, playhead);
     }
@@ -288,7 +284,7 @@ impl TimeSegmentsEditor {
         }
 
         let pos = ctx.ui.input(|input| input.pointer.latest_pos())?;
-        let drag = self.drag.as_mut()?;
+        let drag = self.drag.as_ref()?;
         let span = drag.span();
         let pointer = match handle {
             Handle::Point(_) => ctx.curve_pos_at(pos, span),
@@ -308,6 +304,13 @@ impl TimeSegmentsEditor {
 
         self.span = span;
         ctx.span = span;
+    }
+
+    /// Fit the window to the curve until the user scrolls or drags a point.
+    fn follow_curve(&mut self, total: Smp) {
+        if !self.zoomed && self.drag.is_none() {
+            self.span = view_span(total);
+        }
     }
 
     fn dragged(&self) -> Option<Handle> {
@@ -441,7 +444,7 @@ impl TimeSegmentsEditor {
         let from = ctx.segs.point(index);
         let to = ctx.segs.point(end);
         let from_time = ctx.segs.time(index);
-        let to_time = ctx.segs.time(end);
+        let to_time = from_time + ctx.segs.duration(index);
         let width = ctx.plot.width() * (to_time - from_time) / ctx.span.max(Smp::EPSILON);
         let bends = to.y != from.y && width >= C::MIN_POWER_WIDTH;
 
@@ -649,10 +652,14 @@ impl TimeSegmentsEditor {
         (right > left).then(|| Rect::from_x_y_ranges(left..=right, ctx.plot.y_range()))
     }
 
+    fn in_span(ctx: &Ctx<'_>, time: Smp) -> bool {
+        time <= ctx.span
+    }
+
     fn paint_point(&self, painter: &Painter, ctx: &Ctx<'_>, index: usize, hover: Option<Handle>) {
         let time = ctx.segs.time(index);
 
-        if time > ctx.span {
+        if !Self::in_span(ctx, time) {
             return;
         }
 
@@ -690,7 +697,7 @@ impl TimeSegmentsEditor {
             return;
         };
 
-        if curve.x > ctx.span {
+        if !Self::in_span(ctx, curve.x) {
             return;
         }
 

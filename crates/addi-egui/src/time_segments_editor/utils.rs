@@ -17,7 +17,6 @@ pub(super) enum Handle {
 pub(super) struct Drag {
     pointer: Pos2,
     origin: Pos2,
-    center: Pos2,
     handle: Handle,
     /// Seconds across the plot when the drag started. Time stays on this scale
     /// so growing the window does not run away under a held pointer.
@@ -25,11 +24,10 @@ pub(super) struct Drag {
 }
 
 impl Drag {
-    pub(super) fn new(pointer: Pos2, center: Pos2, handle: Handle, span: Smp) -> Self {
+    pub(super) fn new(pointer: Pos2, origin: Pos2, handle: Handle, span: Smp) -> Self {
         Self {
             pointer,
-            origin: center,
-            center,
+            origin,
             handle,
             span,
         }
@@ -50,12 +48,10 @@ impl Drag {
         )
     }
 
-    pub(super) fn move_pos(&mut self, pointer: Pos2) -> (Pos2, Vec2) {
+    pub(super) fn move_pos(&self, pointer: Pos2) -> (Pos2, Vec2) {
         let center = self.place(pointer);
-        let delta = center - self.origin;
 
-        self.center = center;
-        (center, delta)
+        (center, center - self.origin)
     }
 }
 
@@ -82,12 +78,9 @@ impl Ctx<'_> {
         radius: f32,
         id: impl std::hash::Hash + std::fmt::Debug,
     ) -> Response {
-        let grab = Rect::from_center_size(center, Vec2::splat(radius * 2.0));
-        let rect = grab.intersect(self.plot);
+        let rect = Rect::from_center_size(center, Vec2::splat(radius * 2.0)).intersect(self.plot);
         let rect = if rect.is_positive() {
             rect
-        } else if self.plot.contains(center) {
-            Rect::from_center_size(center, Vec2::splat(1.0))
         } else {
             Rect::NOTHING
         };
@@ -115,9 +108,17 @@ impl Ctx<'_> {
     }
 
     fn insertion_index(&self, time: Smp) -> usize {
-        (0..self.segs.num_points())
-            .find(|&index| self.segs.time(index) > time)
-            .unwrap_or(self.segs.num_points())
+        let mut at = 0.0;
+
+        for index in 0..self.segs.num_points() {
+            if at > time {
+                return index;
+            }
+
+            at += self.segs.duration(index);
+        }
+
+        self.segs.num_points()
     }
 
     /// Absolute time a point may occupy. The start stays at 0. Moving any later point
@@ -130,7 +131,8 @@ impl Ctx<'_> {
         }
 
         let previous = self.segs.time(index - 1);
-        let tail = (self.segs.total_time() - self.segs.time(index)).max(0.0);
+        let at = previous + self.segs.duration(index - 1);
+        let tail = (self.segs.total_time() - at).max(0.0);
         let max = (MAX_TIME - tail).max(previous);
 
         (previous, max)

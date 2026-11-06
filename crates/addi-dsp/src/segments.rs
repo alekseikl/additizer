@@ -34,19 +34,19 @@ impl Default for SegPoint {
     }
 }
 
-/// Breakpoint curve. Always holds two to [`MAX_POINTS`] points.
-/// Deserialization and [`sanitize`](Self::sanitize) replace a shorter curve with [`Default`].
-#[derive(Clone, Debug, Serialize)]
+/// Breakpoint curve. Holds two to [`MAX_POINTS`] points after [`sanitize`](Self::sanitize).
+/// A shorter curve becomes [`Default`].
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Segments {
     #[serde(rename = "segments")]
     points: Vec<SegPoint>,
     /// Loop start. Any point except the last, and before [`release_point`](Self::release_point)
     /// when that is set. The envelope repeats from here.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     loop_point: Option<usize>,
     /// Sustain while a key is held, and the point note-off jumps to.
     /// The release segment then leaves from the level playing at that moment.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     release_point: Option<usize>,
     /// Identity of this edit. Replaced on every change; clones keep it until edited.
     #[serde(skip)]
@@ -765,31 +765,6 @@ impl PowerScale {
         let exp = fast_exp2_wide(t * self.power_log2e);
 
         (exp - WideSmp::ONE) * self.scale
-    }
-}
-
-#[derive(Deserialize)]
-struct RawSegments {
-    #[serde(rename = "segments")]
-    points: Vec<SegPoint>,
-    #[serde(default)]
-    loop_point: Option<usize>,
-    #[serde(default)]
-    release_point: Option<usize>,
-}
-
-impl<'de> Deserialize<'de> for Segments {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let raw = RawSegments::deserialize(deserializer)?;
-        let mut segments = Self {
-            points: raw.points,
-            loop_point: raw.loop_point,
-            release_point: raw.release_point,
-            revision: 0,
-        };
-
-        segments.sanitize();
-        Ok(segments)
     }
 }
 
