@@ -47,7 +47,7 @@ pub(super) const LABEL_POINTER_GAP: f32 = 4.0;
 pub(super) const LABEL_CORNER_RADIUS: f32 = 2.0;
 pub(super) const MARKER_GAP: f32 = 3.0;
 
-pub(super) const HELP: &str = "Double-click to add or remove a point. Drag a point to set its time and level. Later segments keep their length, so the curve grows or shrinks. Scroll the plot to zoom time. Drag a midpoint to bend the segment. Hold Shift to place a point freely, or to mirror a bend onto the next segment. Right-click a point to set the loop or release.";
+pub(super) const HELP: &str = "Double-click to add or remove a point. Drag a point to set its time and level. Later segments keep their length, so the curve grows or shrinks. Scroll the plot to zoom time. Drag a midpoint to bend the segment. Hold Shift to place a level freely, or to mirror a bend onto the next segment. Right-click a point to set the loop or release.";
 pub(super) const SMOOTH_TIP: &str = "Ease this segment with a sine curve.";
 pub(super) const LOOP_TIP: &str = "Repeat from here. With no release point the loop runs to the end. With one, it runs until release while the key is held.";
 pub(super) const RELEASE_TIP: &str = "Sustain this level while the key is held. On release, continue from here starting at the current level.";

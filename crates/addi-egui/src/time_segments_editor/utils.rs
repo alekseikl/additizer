@@ -19,20 +19,28 @@ pub(super) struct Drag {
     origin: Pos2,
     center: Pos2,
     handle: Handle,
+    /// Seconds across the plot when the drag started. Time stays on this scale
+    /// so growing the window does not run away under a held pointer.
+    span: Smp,
 }
 
 impl Drag {
-    pub(super) fn new(pointer: Pos2, center: Pos2, handle: Handle) -> Self {
+    pub(super) fn new(pointer: Pos2, center: Pos2, handle: Handle, span: Smp) -> Self {
         Self {
             pointer,
             origin: center,
             center,
             handle,
+            span,
         }
     }
 
     pub(super) fn handle(self) -> Handle {
         self.handle
+    }
+
+    pub(super) fn span(self) -> Smp {
+        self.span
     }
 
     pub(super) fn place(self, pointer: Pos2) -> Pos2 {
@@ -148,16 +156,19 @@ impl Ctx<'_> {
         self.plot.bottom() - level.clamp(0.0, 1.0) * self.plot.height()
     }
 
-    /// `(seconds, level)` under `pos`. Time may run past the view when the pointer does.
+    /// `(seconds, level)` under `pos`. Time and level both continue past the plot, so a
+    /// bend keeps following the pointer after it leaves the viewport.
     pub(super) fn curve_pos(&self, pos: Pos2) -> Pos2 {
+        self.curve_pos_at(pos, self.span)
+    }
+
+    /// Like [`curve_pos`](Self::curve_pos), mapping time through `span` seconds.
+    pub(super) fn curve_pos_at(&self, pos: Pos2, span: Smp) -> Pos2 {
         let width = self.plot.width().max(1.0);
         let height = self.plot.height().max(1.0);
-        let time = sanitize(
-            (pos.x - self.plot.left()) / width * self.span,
-            0.0,
-            MAX_TIME,
-        );
-        let level = sanitize((self.plot.bottom() - pos.y) / height, 0.0, 1.0);
+        let time = sanitize((pos.x - self.plot.left()) / width * span, 0.0, MAX_TIME);
+        let level = (self.plot.bottom() - pos.y) / height;
+        let level = if level.is_finite() { level } else { 0.0 };
 
         pos2(time, level)
     }
@@ -227,6 +238,12 @@ pub(super) fn time_divisions(span: Smp) -> Option<TimeDivisions> {
     })
 }
 
+/// Window while a point is dragged. It stays on `base` until the point's time passes the
+/// right edge, then the edge follows that time. Releasing the point does not refit.
+pub(super) fn drag_span(base: Smp, time: Smp) -> Smp {
+    base.max(time).clamp(C::MIN_WINDOW, MAX_TIME)
+}
+
 /// Scroll up and pinch-out show fewer seconds. The window stays inside the ruler limits.
 pub(super) fn zoom_span(span: Smp, scroll_y: f32, pinch: f32) -> Smp {
     let mut span = span * 2f32.powf(scroll_y / C::ZOOM_POINTS);
@@ -240,7 +257,13 @@ pub(super) fn zoom_span(span: Smp, scroll_y: f32, pinch: f32) -> Smp {
 
 #[cfg(test)]
 mod tests {
-    use super::{time_divisions, zoom_span};
+    use super::{drag_span, time_divisions, zoom_span};
+
+    #[test]
+    fn dragging_past_the_edge_grows_the_window() {
+        assert!((drag_span(1.0, 0.4) - 1.0).abs() < 1e-6);
+        assert!((drag_span(1.0, 1.6) - 1.6).abs() < 1e-6);
+    }
 
     #[test]
     fn ruler_steps_follow_the_window() {

@@ -17,7 +17,8 @@ use crate::units::Units;
 use consts as C;
 use menu::{canvas_menu, open_menu, point_menu, power_menu};
 use utils::{
-    Ctx, Drag, Handle, TimeDivisions, bold, stack_y, time_divisions, with_alpha, zoom_span,
+    Ctx, Drag, Handle, TimeDivisions, bold, drag_span, stack_y, time_divisions, with_alpha,
+    zoom_span,
 };
 
 mod consts;
@@ -28,9 +29,10 @@ pub struct TimeSegmentsEditor {
     grid_y: i32,
     drag: Option<Drag>,
     drag_power: Smp,
-    /// Seconds across the plot. Scroll changes it. Until then the curve fills the view.
-    /// Frozen while a point is dragged.
+    /// Seconds across the plot. Scroll changes it, and dragging a point past the right
+    /// edge grows it. Until then the curve fills the view. Dropping a point leaves it.
     span: Smp,
+    /// The user scrolled or dragged a point, so the view no longer tracks the curve.
     zoomed: bool,
     curve: Vec<[Smp; 2]>,
     scratch: Vec<Smp>,
@@ -174,7 +176,12 @@ impl TimeSegmentsEditor {
             ctx.segs.set_power(index, 0.0);
             self.drag = None;
         } else if let Some(pos) = self.drag_begin(ctx, &response) {
-            self.drag = Some(Drag::new(ctx.curve_pos(pos), curve, Handle::Power(index)));
+            self.drag = Some(Drag::new(
+                ctx.curve_pos(pos),
+                curve,
+                Handle::Power(index),
+                ctx.span,
+            ));
             self.drag_power = ctx.segs.power(index);
         }
 
@@ -197,11 +204,14 @@ impl TimeSegmentsEditor {
                 ctx.curve_pos(pos),
                 pos2(time, point.y),
                 Handle::Point(index),
+                self.span,
             ));
+            self.zoomed = true;
         }
 
         if let Some((placed, _)) = self.drag_move(ctx, Handle::Point(index)) {
             self.move_point(ctx, index, placed.x, placed.y);
+            self.scale_past_edge(ctx, index);
         }
 
         if remove {
@@ -279,8 +289,25 @@ impl TimeSegmentsEditor {
 
         let pos = ctx.ui.input(|input| input.pointer.latest_pos())?;
         let drag = self.drag.as_mut()?;
+        let span = drag.span();
+        let pointer = match handle {
+            Handle::Point(_) => ctx.curve_pos_at(pos, span),
+            Handle::Power(_) => ctx.curve_pos(pos),
+        };
 
-        Some(drag.move_pos(ctx.curve_pos(pos)))
+        Some(drag.move_pos(pointer))
+    }
+
+    /// Keep the window still while the point is inside it. Once the point crosses the
+    /// right edge, that edge follows the point. Dropping it does not fit the curve again.
+    fn scale_past_edge(&mut self, ctx: &mut Ctx<'_>, index: usize) {
+        let Some(drag) = self.drag else {
+            return;
+        };
+        let span = drag_span(drag.span(), ctx.segs.time(index));
+
+        self.span = span;
+        ctx.span = span;
     }
 
     fn dragged(&self) -> Option<Handle> {
@@ -330,11 +357,10 @@ impl TimeSegmentsEditor {
         }
 
         let (min_time, max_time) = ctx.time_limits(index);
-        let mut time = time.clamp(min_time, max_time);
+        let time = time.clamp(min_time, max_time);
         let mut level = level.clamp(0.0, 1.0);
 
         if !ctx.shift_down() {
-            time = self.snap_time(ctx, time, min_time, max_time);
             level = self.snap_level(ctx, level);
         }
 
@@ -348,30 +374,6 @@ impl TimeSegmentsEditor {
                 ..current
             },
         );
-    }
-
-    fn snap_time(&self, ctx: &Ctx<'_>, time: Smp, min: Smp, max: Smp) -> Smp {
-        let width = ctx.plot.width();
-        let Some(divisions) = time_divisions(ctx.span) else {
-            return time;
-        };
-
-        if width <= 0.0 {
-            return time;
-        }
-
-        let step = if divisions.minor < 0.25 {
-            divisions.big
-        } else {
-            divisions.little
-        };
-        let snapped = (time / step).round() * step;
-
-        if (snapped - time).abs() / ctx.span * width < C::SNAP {
-            snapped.clamp(min, max)
-        } else {
-            time
-        }
     }
 
     fn snap_level(&self, ctx: &Ctx<'_>, level: Smp) -> Smp {
@@ -496,10 +498,11 @@ impl TimeSegmentsEditor {
         }
 
         let hover = self.hovered_handle(ctx);
+        let handles = ctx.ui.painter();
 
         for index in 0..ctx.segs.num_points() {
-            self.paint_point(ctx, index, hover);
-            self.paint_power_point(ctx, index, hover);
+            self.paint_point(&handles, ctx, index, hover);
+            self.paint_power_point(&handles, ctx, index, hover);
         }
 
         if let Some(playhead) = playhead {
@@ -646,12 +649,17 @@ impl TimeSegmentsEditor {
         (right > left).then(|| Rect::from_x_y_ranges(left..=right, ctx.plot.y_range()))
     }
 
-    fn paint_point(&self, ctx: &Ctx<'_>, index: usize, hover: Option<Handle>) {
+    fn paint_point(&self, painter: &Painter, ctx: &Ctx<'_>, index: usize, hover: Option<Handle>) {
+        let time = ctx.segs.time(index);
+
+        if time > ctx.span {
+            return;
+        }
+
         let point = ctx.segs.point(index);
-        let center = ctx.screen_pos(ctx.segs.time(index), point.y);
+        let center = ctx.screen_pos(time, point.y);
         let marker = self.marker(ctx, index);
         let color = marker.map_or(C::POINT_COLOR, |(_, color)| color);
-        let painter = ctx.ui.painter().with_clip_rect(ctx.plot);
 
         painter.circle_filled(center, C::POINT_RADIUS, color);
 
@@ -671,16 +679,24 @@ impl TimeSegmentsEditor {
         self.paint_handle(ctx, center, C::GRAB_RADIUS, Handle::Point(index), hover);
     }
 
-    fn paint_power_point(&self, ctx: &Ctx<'_>, index: usize, hover: Option<Handle>) {
+    fn paint_power_point(
+        &self,
+        painter: &Painter,
+        ctx: &Ctx<'_>,
+        index: usize,
+        hover: Option<Handle>,
+    ) {
         let Some(curve) = self.power_position(ctx, index) else {
             return;
         };
+
+        if curve.x > ctx.span {
+            return;
+        }
+
         let center = ctx.screen_pos(curve.x, curve.y);
 
-        ctx.ui
-            .painter()
-            .with_clip_rect(ctx.plot)
-            .circle_filled(center, C::POWER_RADIUS, self.power_color);
+        painter.circle_filled(center, C::POWER_RADIUS, self.power_color);
         self.paint_handle(
             ctx,
             center,
@@ -715,12 +731,7 @@ impl TimeSegmentsEditor {
             return;
         }
 
-        let painter = ctx
-            .ui
-            .painter()
-            .clone()
-            .with_layer_id(ctx.handle_layer())
-            .with_clip_rect(ctx.plot);
+        let painter = ctx.ui.painter().clone().with_layer_id(ctx.handle_layer());
 
         if dragging {
             ctx.ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
