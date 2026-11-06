@@ -594,8 +594,7 @@ impl SegmentsEditor {
 
         let adopt = |point: SegPoint, edge: SegPoint| SegPoint {
             y: edge.y,
-            power: edge.power,
-            smooth: edge.smooth,
+            curve: edge.curve,
             ..point
         };
         let mut stamped = Vec::with_capacity(points.len() + pattern_points.len() + 2);

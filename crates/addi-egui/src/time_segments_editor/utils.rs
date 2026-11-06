@@ -1,4 +1,7 @@
-use addi_dsp::segments::time_segments::{MAX_TIME, TimePoint, TimeSegments};
+use addi_dsp::segments::{
+    CurveParam,
+    time_segments::{MAX_TIME, TimePoint, TimeSegments},
+};
 use addi_dsp::utils::sanitize;
 use addi_engine::Smp;
 use egui::{
@@ -94,14 +97,17 @@ impl Ctx<'_> {
 
     pub(super) fn add_point(&mut self, point: Pos2) {
         let index = self.insertion_index(point.x);
-        let smooth = self.segs.point(index.saturating_sub(1)).smooth;
+        let smooth = self.segs.point(index.saturating_sub(1)).curve.smooth;
 
         self.segs.add_point(
             index,
             point.x,
             TimePoint {
                 y: point.y,
-                smooth,
+                curve: CurveParam {
+                    smooth,
+                    ..CurveParam::default()
+                },
                 ..TimePoint::default()
             },
         );

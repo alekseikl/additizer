@@ -9,3 +9,15 @@ pub fn sanitize(value: Smp, min: Smp, max: Smp) -> Smp {
         0.0
     }
 }
+
+/// `self` when it is finite, otherwise `0`.
+pub(crate) trait SmpUtils {
+    fn finite_or_zero(self) -> Self;
+}
+
+impl SmpUtils for Smp {
+    #[inline]
+    fn finite_or_zero(self) -> Self {
+        if self.is_finite() { self } else { 0.0 }
+    }
+}

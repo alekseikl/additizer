@@ -2,19 +2,18 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Smp, utils::sanitize};
+use crate::{
+    Smp,
+    utils::{SmpUtils, sanitize},
+};
 
-use super::curve;
+use super::curve::{self, Curve, CurveParam};
 use super::rel_segments::MAX_POWER;
 
 pub const MAX_POINTS: usize = 100;
 pub const MAX_SEGMENTS: usize = MAX_POINTS - 1;
 /// Longest curve, in seconds from the first point.
 pub const MAX_TIME: Smp = 60.0;
-/// Shortest view, so a short curve still has room to drag.
-pub const MIN_VIEW: Smp = 1.0;
-/// The curve fills this fraction of the view. The rest is room to lengthen it.
-const VIEW_FILL: Smp = 0.8;
 
 const MIN_POINTS: usize = 2;
 
@@ -24,8 +23,8 @@ const MIN_POINTS: usize = 2;
 pub struct TimePoint {
     pub duration: Smp,
     pub y: Smp,
-    pub power: Smp,
-    pub smooth: bool,
+    #[serde(flatten)]
+    pub curve: CurveParam,
 }
 
 impl Default for TimePoint {
@@ -33,8 +32,7 @@ impl Default for TimePoint {
         Self {
             duration: 0.0,
             y: 0.0,
-            power: 0.0,
-            smooth: false,
+            curve: CurveParam::default(),
         }
     }
 }
@@ -49,61 +47,28 @@ impl TimePoint {
 
         let mut sample = [0.0];
 
-        let _ = Self::render_segment(
+        let _ = curve::render_segment(
             &mut sample,
             position.clamp(0.0, 1.0),
             0.0,
-            start,
-            end,
-            start.duration,
+            start.y..end.y,
+            start.curve,
         );
         sample[0]
     }
 
-    /// `Ok(position)` — this segment filled `out` and is still running.
-    /// `Err(written)` — this segment ended after `written` samples (`0` if it had none left).
-    ///
-    /// `duration` is the seconds this segment lasts. `seconds_per_sample` is `1 / sample_rate`.
-    /// Playback can stretch `duration` past the stored `start.duration`.
-    pub fn render_segment(
-        out: &mut [Smp],
-        position: Smp,
-        seconds_per_sample: Smp,
-        start: Self,
-        end: Self,
-        duration: Smp,
-    ) -> Result<Smp, usize> {
-        curve::render_segment(
-            out,
-            position,
-            seconds_per_sample,
-            duration,
-            start.y,
-            end.y,
-            start.power,
-            start.smooth,
-        )
-    }
-
     fn clamp_shape(&mut self) {
         self.y = sanitize(self.y, 0.0, 1.0);
-        self.power = sanitize(self.power, -MAX_POWER, MAX_POWER);
+        self.curve.power = sanitize(self.curve.power, -MAX_POWER, MAX_POWER);
     }
 }
 
-/// Breakpoint curve in seconds. Holds two to [`MAX_POINTS`] points after [`sanitize`](Self::sanitize).
-/// The first point is at time 0. Each point's duration is the seconds until the next
-/// point, and the last duration is 0. Those durations sum to the curve's length.
-/// A shorter curve becomes [`Default`].
+/// Breakpoint curve in seconds.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TimeSegments {
     points: Vec<TimePoint>,
-    /// Loop start. Any point except the last, and before [`release_point`](Self::release_point)
-    /// when that is set. The envelope repeats from here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     loop_point: Option<usize>,
-    /// Sustain while a key is held, and the point note-off jumps to.
-    /// The release segment then leaves from the level playing at that moment.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     release_point: Option<usize>,
     #[serde(skip)]
@@ -112,46 +77,23 @@ pub struct TimeSegments {
 
 impl Default for TimeSegments {
     fn default() -> Self {
-        Self::from_points(&[(0.0, 1.0), (1.0, 0.0)], false)
+        Self {
+            points: vec![
+                TimePoint {
+                    duration: 1.0,
+                    y: 1.0,
+                    ..TimePoint::default()
+                },
+                TimePoint::default(),
+            ],
+            loop_point: None,
+            release_point: None,
+            revision: Self::next_revision(),
+        }
     }
 }
 
 impl TimeSegments {
-    /// Build a curve from absolute `(seconds, level)` pairs. Every point shares `smooth`.
-    /// Each time is seconds from the start. The gaps are stored as durations.
-    ///
-    /// # Panics
-    ///
-    /// Panics when `points` has fewer than two or more than [`MAX_POINTS`] entries.
-    pub fn from_points(points: &[(Smp, Smp)], smooth: bool) -> Self {
-        assert!(
-            (MIN_POINTS..=MAX_POINTS).contains(&points.len()),
-            "time segments must have {MIN_POINTS} to {MAX_POINTS} points"
-        );
-
-        let times = absolute_times(points.iter().map(|&(time, _)| time));
-        let mut curve = Vec::with_capacity(MAX_POINTS);
-
-        for (index, &(_, y)) in points.iter().enumerate() {
-            curve.push(TimePoint {
-                duration: duration_at(&times, index),
-                y,
-                smooth,
-                ..TimePoint::default()
-            });
-        }
-
-        let mut segments = Self {
-            points: curve,
-            loop_point: None,
-            release_point: None,
-            revision: 0,
-        };
-
-        segments.sanitize();
-        segments
-    }
-
     pub fn num_points(&self) -> usize {
         debug_assert!(
             (MIN_POINTS..=MAX_POINTS).contains(&self.points.len()),
@@ -188,8 +130,10 @@ impl TimeSegments {
 
     /// Seconds from the start of the curve to point `index`.
     pub fn time(&self, index: usize) -> Smp {
-        (0..index.min(self.points.len()))
-            .map(|index| self.duration(index))
+        self.points
+            .windows(2)
+            .take(index)
+            .map(|pair| pair[0].duration)
             .sum()
     }
 
@@ -199,7 +143,7 @@ impl TimeSegments {
             return 0.0;
         }
 
-        self.points[index].duration.max(0.0)
+        self.points[index].duration
     }
 
     pub fn total_time(&self) -> Smp {
@@ -207,7 +151,7 @@ impl TimeSegments {
     }
 
     pub fn power(&self, index: usize) -> Smp {
-        self.points[index].power
+        self.points[index].curve.power
     }
 
     /// Replace breakpoint `index`. `point.duration` is the seconds until the next
@@ -259,7 +203,7 @@ impl TimeSegments {
             return;
         }
 
-        self.points[index].power = sanitize(power, -MAX_POWER, MAX_POWER);
+        self.points[index].curve.power = sanitize(power, -MAX_POWER, MAX_POWER);
         self.bump();
     }
 
@@ -268,13 +212,13 @@ impl TimeSegments {
             return;
         }
 
-        self.points[index].smooth = smooth;
+        self.points[index].curve.smooth = smooth;
         self.bump();
     }
 
     pub fn reset_powers(&mut self) {
         for point in &mut self.points {
-            point.power = 0.0;
+            point.curve.power = 0.0;
         }
 
         self.bump();
@@ -402,12 +346,7 @@ impl TimeSegments {
         }
     }
 
-    /// Insert a breakpoint at absolute `time` seconds. The start point stays put.
-    /// Fails when the curve is full or `index` is the start. `point.duration` is ignored.
-    ///
-    /// A point inserted between two breakpoints splits that segment, so later durations
-    /// and the total length stay put. A point appended after the end lengthens the
-    /// previous point's duration.
+    /// Insert a breakpoint at absolute `time` seconds.
     pub fn add_point(&mut self, index: usize, time: Smp, mut point: TimePoint) -> bool {
         let n = self.num_points();
 
@@ -443,8 +382,7 @@ impl TimeSegments {
         true
     }
 
-    /// Drop an interior breakpoint. The first and last points stay.
-    /// The previous segment takes the removed duration, so later points keep their time.
+    /// Drop an interior breakpoint.
     pub fn remove_point(&mut self, index: usize) -> bool {
         let n = self.num_points();
 
@@ -469,13 +407,13 @@ impl TimeSegments {
             return self.total_time();
         }
 
-        self.time(index) + position.clamp(0.0, 1.0) * self.duration(index)
+        self.time(index) + position * self.duration(index)
     }
 
     /// Level at `time` seconds. Times past the end hold the last level.
     pub fn value_at(&self, time: Smp) -> Smp {
-        let n = self.num_points();
-        let time = if time.is_finite() { time } else { 0.0 };
+        let n = self.points.len();
+        let time = time.finite_or_zero();
 
         if time <= 0.0 {
             return self.points[0].y;
@@ -483,8 +421,10 @@ impl TimeSegments {
 
         let mut start = 0.0;
 
-        for index in 0..n - 1 {
-            let duration = self.duration(index);
+        for pair in self.points.windows(2) {
+            let left = pair[0];
+            let right = pair[1];
+            let duration = left.duration;
             let end = start + duration;
 
             if duration <= 0.0 {
@@ -494,11 +434,7 @@ impl TimeSegments {
             if time <= end {
                 let position = (time - start) / duration;
 
-                return TimePoint::level_between(
-                    self.point(index),
-                    self.point(index + 1),
-                    position,
-                );
+                return TimePoint::level_between(left, right, position);
             }
 
             start = end;
@@ -507,13 +443,11 @@ impl TimeSegments {
         self.points[n - 1].y
     }
 
-    /// Polyline for `pixels` columns across `span` seconds. Each point is `[seconds, level]`.
-    ///
-    /// A vertical step is the two breakpoints that share a time.
+    /// Polyline for `pixels` columns across `time_span` seconds. Each point is `[seconds, level]`.
     pub fn render_points(
         &self,
         pixels: usize,
-        span: Smp,
+        time_span: Smp,
         points: &mut Vec<[Smp; 2]>,
         scratch: &mut Vec<Smp>,
     ) {
@@ -521,111 +455,67 @@ impl TimeSegments {
 
         let n = self.num_points();
 
-        if pixels < 1 || span <= 0.0 {
+        if pixels < 1 || time_span <= 0.0 {
             return;
         }
+
+        debug_assert_eq!(self.points[n - 1].duration, 0.0);
 
         scratch.resize(pixels + 1, 0.0);
 
         let mut from = 0;
         let mut start = 0.0;
 
-        for index in 0..n - 1 {
-            let duration = self.duration(index);
+        for pair in self.points.windows(2) {
+            let left = pair[0];
+            let right = pair[1];
+            let duration = left.duration;
             let end = start + duration;
-            let left = self.point(index);
-            let right = self.point(index + 1);
 
-            Self::push_point(points, [start, left.y]);
+            points.push([start, left.y]);
 
             if duration <= 0.0 {
-                Self::push_point(points, [end, right.y]);
+                points.push([end, right.y]);
                 start = end;
                 continue;
             }
 
-            let to = sample_end(end / span, pixels);
+            let to = curve::sample_end(end / time_span, pixels);
 
             if from >= to {
                 start = end;
                 continue;
             }
 
-            // One column is `span / pixels` seconds, including past the window.
-            let seconds_per_sample = span / pixels as Smp;
-            let position = ((from as Smp * seconds_per_sample - start) / duration).clamp(0.0, 1.0);
-            let count = to - from;
-            let written = match TimePoint::render_segment(
-                &mut scratch[from..to],
-                position,
-                seconds_per_sample,
-                left,
-                right,
-                duration,
-            ) {
-                Ok(_) => count,
-                Err(written) => written,
-            };
+            // One column is `time_span / pixels` seconds, including past the window.
+            let seconds_per_sample = time_span / pixels as Smp;
+            let scale = duration.recip();
 
-            for (offset, &y) in scratch[from..from + written].iter().enumerate() {
+            Curve::render(
+                &mut scratch[from..to],
+                (from as Smp * seconds_per_sample - start) * scale,
+                seconds_per_sample * scale,
+                left.y..right.y,
+                left.curve,
+            );
+
+            for (offset, &y) in scratch[from..to].iter().enumerate() {
                 let time = (from + offset) as Smp * seconds_per_sample;
 
-                Self::push_point(points, [time, y]);
+                points.push([time, y]);
             }
 
             from = to;
             start = end;
         }
 
-        Self::push_point(points, [start, self.points[n - 1].y]);
-    }
+        points.push([start, self.points[n - 1].y]);
 
-    fn push_point(points: &mut Vec<[Smp; 2]>, point: [Smp; 2]) {
-        if points.last() != Some(&point) {
-            points.push(point);
-        }
-    }
-}
-
-/// Seconds shown across an editor. The curve fills 80% of the view, at least [`MIN_VIEW`],
-/// and never more than [`MAX_TIME`].
-pub fn view_span(total: Smp) -> Smp {
-    (total / VIEW_FILL).clamp(MIN_VIEW, MAX_TIME)
-}
-
-/// Exclusive end index of the span that finishes at normalized `x` on `steps` intervals.
-fn sample_end(x: Smp, steps: usize) -> usize {
-    if x <= 0.0 {
-        return 0;
-    }
-
-    ((x * steps as Smp).floor() + 1.0).min(steps as Smp + 1.0) as usize
-}
-
-/// Absolute times, pinned at 0, clamped, and kept in order.
-fn absolute_times(times: impl IntoIterator<Item = Smp>) -> Vec<Smp> {
-    let mut ordered = Vec::new();
-    let mut previous = 0.0;
-
-    for (index, time) in times.into_iter().enumerate() {
-        let time = if index == 0 {
-            0.0
-        } else {
-            sanitize(time, 0.0, MAX_TIME).max(previous)
-        };
-
-        previous = time;
-        ordered.push(time);
-    }
-
-    ordered
-}
-
-fn duration_at(times: &[Smp], index: usize) -> Smp {
-    if index + 1 >= times.len() {
-        0.0
-    } else {
-        times[index + 1] - times[index]
+        debug_assert_eq!(
+            from,
+            curve::sample_end(self.total_time() / time_span, pixels)
+        );
+        debug_assert_eq!(start, self.total_time());
     }
 }
 

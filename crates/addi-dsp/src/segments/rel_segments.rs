@@ -2,9 +2,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Smp, power_scale, utils::sanitize};
+use crate::{Smp, utils::sanitize};
 
-use super::curve::{self, Curve};
+use super::curve::{self, Curve, CurveParam};
 
 pub const MAX_POINTS: usize = 100;
 pub const MAX_POWER: Smp = 20.0;
@@ -15,8 +15,8 @@ const MIN_POINTS: usize = 2;
 pub struct SegPoint {
     pub x: Smp,
     pub y: Smp,
-    pub power: Smp,
-    pub smooth: bool,
+    #[serde(flatten)]
+    pub curve: CurveParam,
 }
 
 impl Default for SegPoint {
@@ -24,27 +24,19 @@ impl Default for SegPoint {
         Self {
             x: 0.0,
             y: 0.0,
-            power: 0.0,
-            smooth: false,
+            curve: CurveParam::default(),
         }
     }
 }
 
-/// Breakpoint curve on a phase from 0 to 1. Holds two to [`MAX_POINTS`] points after
-/// [`sanitize`](Self::sanitize). A shorter curve becomes [`Default`].
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RelSegments {
     #[serde(rename = "segments")]
     points: Vec<SegPoint>,
-    /// Loop start. Any point except the last, and before [`release_point`](Self::release_point)
-    /// when that is set. The envelope repeats from here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     loop_point: Option<usize>,
-    /// Sustain while a key is held, and the point note-off jumps to.
-    /// The release segment then leaves from the level playing at that moment.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     release_point: Option<usize>,
-    /// Identity of this edit. Replaced on every change; clones keep it until edited.
     #[serde(skip)]
     revision: u64,
 }
@@ -57,10 +49,6 @@ impl Default for RelSegments {
 
 impl RelSegments {
     /// Build a curve from phase/level pairs. Every point shares the same `smooth` flag.
-    ///
-    /// # Panics
-    ///
-    /// Panics when `points` has fewer than two or more than [`MAX_POINTS`] entries.
     pub fn from_points(points: &[(Smp, Smp)], smooth: bool) -> Self {
         assert!(
             (MIN_POINTS..=MAX_POINTS).contains(&points.len()),
@@ -73,8 +61,10 @@ impl RelSegments {
             curve.push(SegPoint {
                 x,
                 y,
-                smooth,
-                ..SegPoint::default()
+                curve: CurveParam {
+                    smooth,
+                    ..CurveParam::default()
+                },
             });
         }
 
@@ -127,12 +117,11 @@ impl RelSegments {
             && start.y == 0.0
             && end.x == 1.0
             && end.y == 1.0
-            && start.power == 0.0
-            && !start.smooth
+            && start.curve == CurveParam::default()
     }
 
     pub fn power(&self, index: usize) -> Smp {
-        self.points[index].power
+        self.points[index].curve.power
     }
 
     pub fn set_point(&mut self, index: usize, mut point: SegPoint) {
@@ -144,7 +133,7 @@ impl RelSegments {
 
         point.x = sanitize(point.x, 0.0, 1.0);
         point.y = sanitize(point.y, 0.0, 1.0);
-        point.power = sanitize(point.power, -MAX_POWER, MAX_POWER);
+        point.curve.power = sanitize(point.curve.power, -MAX_POWER, MAX_POWER);
 
         if index == 0 {
             point.x = 0.0;
@@ -161,7 +150,7 @@ impl RelSegments {
             return;
         }
 
-        self.points[index].power = sanitize(power, -MAX_POWER, MAX_POWER);
+        self.points[index].curve.power = sanitize(power, -MAX_POWER, MAX_POWER);
         self.bump();
     }
 
@@ -170,13 +159,13 @@ impl RelSegments {
             return;
         }
 
-        self.points[index].smooth = smooth;
+        self.points[index].curve.smooth = smooth;
         self.bump();
     }
 
     pub fn reset_powers(&mut self) {
         for point in &mut self.points {
-            point.power = 0.0;
+            point.curve.power = 0.0;
         }
 
         self.bump();
@@ -194,7 +183,7 @@ impl RelSegments {
         for point in &mut self.points {
             point.x = sanitize(point.x, 0.0, 1.0);
             point.y = sanitize(point.y, 0.0, 1.0);
-            point.power = sanitize(point.power, -MAX_POWER, MAX_POWER);
+            point.curve.power = sanitize(point.curve.power, -MAX_POWER, MAX_POWER);
         }
 
         let n = self.points.len();
@@ -317,7 +306,7 @@ impl RelSegments {
         point.x = sanitize(point.x, 0.0, 1.0);
         point.y = sanitize(point.y, 0.0, 1.0);
 
-        point.power = sanitize(point.power, -MAX_POWER, MAX_POWER);
+        point.curve.power = sanitize(point.curve.power, -MAX_POWER, MAX_POWER);
 
         if index == 0 {
             point.x = 0.0;
@@ -363,13 +352,13 @@ impl RelSegments {
 
         for i in 0..n / 2 {
             let j = n - i - 2;
-            let power = self.points[i].power;
-            let smooth = self.points[i].smooth;
+            let mut incoming = self.points[j].curve;
+            let mut outgoing = self.points[i].curve;
 
-            self.points[i].power = -self.points[j].power;
-            self.points[i].smooth = self.points[j].smooth;
-            self.points[j].power = -power;
-            self.points[j].smooth = smooth;
+            incoming.power = -incoming.power;
+            outgoing.power = -outgoing.power;
+            self.points[i].curve = incoming;
+            self.points[j].curve = outgoing;
         }
 
         self.loop_point = self.loop_point.map(|index| n - 1 - index);
@@ -493,7 +482,7 @@ impl RelSegments {
         let mut from = 0;
 
         for pair in self.points.windows(2) {
-            let mut to = Self::sample_end(pair[1].x, steps);
+            let mut to = curve::sample_end(pair[1].x, steps);
 
             if !closed {
                 to = to.min(len);
@@ -514,10 +503,8 @@ impl RelSegments {
                 &mut out[from..to],
                 (phase - pair[0].x) * scale,
                 phase_step * scale,
-                pair[0].y,
-                pair[1].y,
-                pair[0].power,
-                pair[0].smooth,
+                pair[0].y..pair[1].y,
+                pair[0].curve,
             );
             from = to;
         }
@@ -526,9 +513,6 @@ impl RelSegments {
     }
 
     /// Polyline for `pixels` columns. Each point is `[phase, level]`.
-    ///
-    /// Columns sample each segment. A vertical step is the two breakpoints that
-    /// share a phase, so the drop is a span of the polyline.
     pub fn render_points(&self, pixels: usize, points: &mut Vec<[Smp; 2]>, scratch: &mut Vec<Smp>) {
         points.clear();
 
@@ -549,72 +533,35 @@ impl RelSegments {
         let mut from = 0;
 
         for pair in self.points.windows(2) {
-            if pair[1].x == pair[0].x {
-                let top = [pair[0].x, pair[0].y];
+            points.push([pair[0].x, pair[0].y]);
 
-                // The column sampled up to this phase has the level before the step.
-                if let Some(last) = points.last_mut()
-                    && last[0] == top[0]
-                {
-                    *last = top;
-                } else {
-                    points.push(top);
-                }
-
-                points.push([pair[1].x, pair[1].y]);
-                continue;
-            }
-
-            Self::push_point(points, [pair[0].x, pair[0].y]);
-
-            let to = Self::sample_end(pair[1].x, pixels);
+            let to = curve::sample_end(pair[1].x, pixels);
 
             if from >= to {
                 continue;
             }
 
-            let width = pair[1].x - pair[0].x;
-
-            assert!(width > 0.0);
-
-            let scale = width.recip();
+            let scale = (pair[1].x - pair[0].x).recip();
             let phase = from as Smp * phase_step;
 
             Curve::render(
                 &mut scratch[from..to],
                 (phase - pair[0].x) * scale,
                 phase_step * scale,
-                pair[0].y,
-                pair[1].y,
-                pair[0].power,
-                pair[0].smooth,
+                pair[0].y..pair[1].y,
+                pair[0].curve,
             );
 
             for (offset, &y) in scratch[from..to].iter().enumerate() {
-                Self::push_point(points, [(from + offset) as Smp * phase_step, y]);
+                points.push([(from + offset) as Smp * phase_step, y]);
             }
 
             from = to;
         }
 
-        Self::push_point(points, [self.points[n - 1].x, self.points[n - 1].y]);
+        points.push([self.points[n - 1].x, self.points[n - 1].y]);
 
         debug_assert_eq!(from, len);
-    }
-
-    fn push_point(points: &mut Vec<[Smp; 2]>, point: [Smp; 2]) {
-        if points.last() != Some(&point) {
-            points.push(point);
-        }
-    }
-
-    /// Exclusive end index of the span that finishes at `x` on a grid of `steps` intervals.
-    fn sample_end(x: Smp, steps: usize) -> usize {
-        if x <= 0.0 {
-            return 0;
-        }
-
-        ((x * steps as Smp).floor() + 1.0).min(steps as Smp + 1.0) as usize
     }
 }
 
@@ -626,34 +573,16 @@ impl SegPoint {
             return end.y;
         }
 
-        let mut t = (phase - start.x) / width;
+        let mut sample = [0.0];
 
-        if start.smooth {
-            t = ((t - 0.5) * std::f32::consts::PI).sin().mul_add(0.5, 0.5);
-        }
-
-        power_scale(t, start.power).mul_add(end.y - start.y, start.y)
-    }
-
-    /// `Ok(position)` — this segment filled `out` and is still running.
-    /// `Err(written)` — this segment ended after `written` samples (`0` if it had none left).
-    pub fn render_segment(
-        out: &mut [Smp],
-        position: Smp,
-        phase_step: Smp,
-        start: SegPoint,
-        end: SegPoint,
-    ) -> Result<Smp, usize> {
-        curve::render_segment(
-            out,
-            position,
-            phase_step,
-            end.x - start.x,
-            start.y,
-            end.y,
-            start.power,
-            start.smooth,
-        )
+        let _ = curve::render_segment(
+            &mut sample,
+            ((phase - start.x) / width).clamp(0.0, 1.0),
+            0.0,
+            start.y..end.y,
+            start.curve,
+        );
+        sample[0]
     }
 }
 

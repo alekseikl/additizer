@@ -1,7 +1,7 @@
 use addi_dsp::segments::time_segments::TimeSegments;
 
 use super::MultiEnvelopePhase;
-use crate::synth_engine::engine_io;
+use crate::synth_engine::{Smp, engine_io};
 
 pub enum UiEvent {
     SegmentsUpdated,
@@ -15,7 +15,7 @@ pub enum UiUpdate {
 
 pub trait MultiEnvelopeAudioEnd: Send {
     fn pop_event(&mut self) -> Option<UiEvent>;
-    fn update_phase(&mut self, phase: MultiEnvelopePhase);
+    fn update_phase(&mut self, channel: usize, time: Smp, level: Smp);
     fn read_segments(&mut self) -> &TimeSegments;
     fn refresh_routing(&mut self) -> bool;
 }

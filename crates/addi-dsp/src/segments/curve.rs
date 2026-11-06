@@ -1,50 +1,66 @@
+use std::ops::Range;
+
+use serde::{Deserialize, Serialize};
+
 use crate::{
     SIMD_LANES, Smp, WideSmp,
     fast_math::{fast_exp2_wide, fast_sin_pi_wide},
     simd_utils::fill,
 };
 
+/// Bend of one segment. `power` pulls the curve toward its start or its end.
+/// `smooth` eases the progress through a sine.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct CurveParam {
+    pub power: Smp,
+    pub smooth: bool,
+}
+
 /// Walk one segment from `position` 0 at the start to 1 at the end.
 ///
-/// `step` is how far `width` advances each sample. `Ok(position)` means `out` was filled
-/// and the segment is still running. `Err(written)` means it ended after `written` samples,
-/// or `0` when it had none left. A non-positive `step` holds `position`.
-pub(super) fn render_segment(
+/// `step` is added to `position` each sample. `Ok(position)` means `out` was filled and the
+/// segment is still running. `Err(written)` means it ended after `written` samples, or `0`
+/// when it had none left. A non-positive `step` holds `position`.
+pub fn render_segment(
     out: &mut [Smp],
     position: Smp,
     step: Smp,
-    width: Smp,
-    origin: Smp,
-    end: Smp,
-    power: Smp,
-    smooth: bool,
+    level: Range<Smp>,
+    curve: CurveParam,
 ) -> Result<Smp, usize> {
-    if width <= 0.0 || position >= 1.0 {
-        return Err(0);
-    }
-
     if step <= 0.0 {
-        Curve::render(out, position, 0.0, origin, end, power, smooth);
+        Curve::render(out, position.clamp(0.0, 1.0), 0.0, level, curve);
         return Ok(position);
     }
 
-    let t_step = step * width.recip();
-    let remaining = (1.0 - position).max(0.0) * width;
-    let n = ((remaining / step) as usize).min(out.len());
+    if position >= 1.0 {
+        return Err(0);
+    }
+
+    let n = (((1.0 - position) / step) as usize).min(out.len());
 
     if n == 0 {
         return Err(0);
     }
 
-    Curve::render(&mut out[..n], position, t_step, origin, end, power, smooth);
+    Curve::render(&mut out[..n], position, step, level, curve);
 
-    let position = (position + n as Smp * step / width).min(1.0);
+    let position = position + n as Smp * step;
 
     if n < out.len() || position >= 1.0 {
         Err(n)
     } else {
         Ok(position)
     }
+}
+
+/// Exclusive end index of the span that finishes at `x` on a grid of `steps` intervals.
+pub(super) fn sample_end(x: Smp, steps: usize) -> usize {
+    if x <= 0.0 {
+        return 0;
+    }
+
+    ((x * steps as Smp).floor() + 1.0).min(steps as Smp + 1.0) as usize
 }
 
 pub(super) struct Curve<'a> {
@@ -58,27 +74,25 @@ pub(super) struct Curve<'a> {
 
 impl Curve<'_> {
     /// Fill `out` along a segment. Sample `i` is read at progress `t + i * t_step`.
-    /// `t` is 0 at `origin` and 1 at `end`.
+    /// `t` is 0 at `level.start` and 1 at `level.end`.
     pub(super) fn render(
         out: &mut [Smp],
         t: Smp,
         t_step: Smp,
-        origin: Smp,
-        end: Smp,
-        power: Smp,
-        smooth: bool,
+        level: Range<Smp>,
+        param: CurveParam,
     ) {
         let t_step = WideSmp::splat(t_step);
         let mut curve = Curve {
             out,
             t: WideSmp::splat(t) + WideSmp::new([0.0, 1.0, 2.0, 3.0]) * t_step,
             step: t_step * WideSmp::splat(SIMD_LANES as Smp),
-            origin: WideSmp::splat(origin),
-            delta: WideSmp::splat(end - origin),
-            power: PowerScale::new(power),
+            origin: WideSmp::splat(level.start),
+            delta: WideSmp::splat(level.end - level.start),
+            power: PowerScale::new(param.power),
         };
 
-        match (smooth, curve.power.curved) {
+        match (param.smooth, curve.power.curved) {
             (false, false) => curve.fill::<false, false>(),
             (false, true) => curve.fill::<false, true>(),
             (true, false) => curve.fill::<true, false>(),

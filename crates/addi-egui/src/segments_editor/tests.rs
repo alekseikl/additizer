@@ -390,7 +390,7 @@ fn paint_stamps_the_shape_into_one_column() {
             (1.0, 1.0),
         ]
     );
-    assert!(!ramp.point(2).smooth);
+    assert!(!ramp.point(2).curve.smooth);
 
     let mut bent = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
@@ -402,9 +402,9 @@ fn paint_stamps_the_shape_into_one_column() {
 
     stamp(&mut bent, 0.25, 0.5, 1.0, Pattern::Down);
 
-    assert_eq!(bent.point(0).power, 1.5);
-    assert!(bent.point(0).smooth);
-    assert_eq!(bent.point(1).power, 0.0);
+    assert_eq!(bent.point(0).curve.power, 1.5);
+    assert!(bent.point(0).curve.smooth);
+    assert_eq!(bent.point(1).curve.power, 0.0);
     assert!((bent.point(1).y - from_y).abs() < 1e-5);
     assert!((bent.point(4).y - to_y).abs() < 1e-5);
 
@@ -422,7 +422,7 @@ fn paint_stamps_the_shape_into_one_column() {
         .unwrap();
 
     assert_eq!(kept.y, 0.3);
-    assert_eq!(kept.power, 4.0);
+    assert_eq!(kept.curve.power, 4.0);
 
     let mut pulse = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
@@ -454,8 +454,8 @@ fn unwrapped_stamp_rewrites_the_endpoint_it_covers() {
 
     stamp_with(&editor, &mut first, 0.0, 0.5, 1.0, Pattern::Half);
 
-    assert_eq!(first.point(0).power, 0.0);
-    assert!(!first.point(0).smooth);
+    assert_eq!(first.point(0).curve.power, 0.0);
+    assert!(!first.point(0).curve.smooth);
     assert_eq!(
         levels(&first),
         vec![
@@ -475,7 +475,7 @@ fn unwrapped_stamp_rewrites_the_endpoint_it_covers() {
     assert!(last.set_release_point(Some(1)));
     stamp_with(&editor, &mut last, 0.5, 1.0, 1.0, Pattern::Down);
 
-    assert_eq!(last.point(last.num_points() - 1).power, 0.0);
+    assert_eq!(last.point(last.num_points() - 1).curve.power, 0.0);
     assert_eq!(
         levels(&last),
         vec![(0.0, 0.2), (0.5, at_half), (0.5, 1.0), (1.0, 0.0)]

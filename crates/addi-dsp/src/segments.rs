@@ -3,3 +3,5 @@
 mod curve;
 pub mod rel_segments;
 pub mod time_segments;
+
+pub use curve::{CurveParam, render_segment};

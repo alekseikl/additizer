@@ -14,7 +14,10 @@ pub use link::{SegmentsEnvelopeAudioEnd, SegmentsEnvelopeLinks, SegmentsEnvelope
 pub use timebase::Timebase;
 
 use addi_dsp::{
-    segments::rel_segments::{RelSegments, SegPoint},
+    segments::{
+        rel_segments::{RelSegments, SegPoint},
+        render_segment,
+    },
     utils::sanitize,
 };
 
@@ -184,7 +187,6 @@ pub struct SegmentsEnvelope<L: SegmentsEnvelopeLinks = stub::Links> {
     inputs: Inputs,
     output_slot: usize,
     voices: VoicesLayout<Voice>,
-    playhead: SegmentsEnvelopePhase,
 }
 
 impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
@@ -216,7 +218,6 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             voices: new_voices_layout(),
-            playhead: SegmentsEnvelopePhase::default(),
         }
     }
 
@@ -385,14 +386,20 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
                 } => {
                     let start = Self::segment_start(segments, voice, index);
                     let end = segments.point(index + 1);
+                    let width = end.x - start.x;
+                    let mut result = Err(0);
 
-                    match SegPoint::render_segment(
-                        &mut out[pos..],
-                        position,
-                        phase_step,
-                        start,
-                        end,
-                    ) {
+                    if width > 0.0 {
+                        result = render_segment(
+                            &mut out[pos..],
+                            position,
+                            phase_step / width,
+                            start.y..end.y,
+                            start.curve,
+                        );
+                    }
+
+                    match result {
                         Ok(position) => {
                             if let Stage::Segment { position: at, .. } = &mut voice.stage {
                                 *at = position;
@@ -512,12 +519,11 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         voice.last_level = out.last().copied().unwrap_or_default();
 
         if router.need_update_ui() {
-            self.playhead.phase[channel_idx] = Self::playhead_phase(segments, voice.stage);
-            self.playhead.level[channel_idx] = Self::playhead_level(segments, voice);
-
-            if channel_idx + 1 == NUM_CHANNELS {
-                self.audio_end.update_phase(self.playhead);
-            }
+            self.audio_end.update_phase(
+                channel_idx,
+                Self::playhead_phase(segments, voice.stage),
+                Self::playhead_level(segments, voice),
+            );
         }
     }
 

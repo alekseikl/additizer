@@ -4,13 +4,15 @@ use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, Vec2, ecolor::Hsva
 use crate::grid::WidgetCtx;
 use crate::utils::hsva;
 use addi_dsp::Smp;
-use addi_dsp::segments::time_segments::{TimeSegments, view_span};
+use addi_dsp::segments::time_segments::TimeSegments;
 use addi_engine::ModuleId;
 use addi_engine::multi_envelope::MultiEnvelopePhase;
 use addi_ui_backend::ui_bridge::ModuleBridge;
 
 use super::GridWidgetContent;
 
+/// Seconds across the tile. The detail editor starts here, then follows scroll and drag.
+const SPAN: Smp = 4.0;
 const PADDING: f32 = 4.0;
 const PHASE_RADIUS: f32 = 3.5;
 const RIGHT_PLAYHEAD_HUE: f32 = 1.0 / 6.0;
@@ -85,7 +87,7 @@ impl MultiEnvelopeWidget {
         }
 
         let segments = &envelope_bridge.config().segments;
-        let span = view_span(segments.total_time());
+        let span = SPAN;
 
         self.build_curve(segments, rect.size(), span);
 

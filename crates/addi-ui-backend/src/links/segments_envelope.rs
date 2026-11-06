@@ -5,7 +5,7 @@ use addi_engine::segments_envelope::{
     SegmentsEnvelopeAudioEnd, SegmentsEnvelopeLinks, SegmentsEnvelopePhase, SegmentsEnvelopeUiEnd,
     Timebase, UiEvent,
 };
-use addi_engine::{Input, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
+use addi_engine::{Input, NUM_CHANNELS, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
@@ -51,8 +51,15 @@ impl AudioEnd {
         self.rx.pop().ok()
     }
 
-    pub fn update_phase(&mut self, phase: SegmentsEnvelopePhase) {
-        self.phase.write(phase);
+    pub fn update_phase(&mut self, channel: usize, phase: Smp, level: Smp) {
+        let playhead = self.phase.input_buffer_mut();
+
+        playhead.phase[channel] = phase;
+        playhead.level[channel] = level;
+
+        if channel == NUM_CHANNELS - 1 {
+            self.phase.publish();
+        }
     }
 
     pub fn read_segments(&mut self) -> &RelSegments {
@@ -83,8 +90,8 @@ impl SegmentsEnvelopeAudioEnd for AudioEnd {
     fn pop_event(&mut self) -> Option<UiEvent> {
         AudioEnd::pop_event(self)
     }
-    fn update_phase(&mut self, phase: SegmentsEnvelopePhase) {
-        AudioEnd::update_phase(self, phase)
+    fn update_phase(&mut self, channel: usize, phase: Smp, level: Smp) {
+        AudioEnd::update_phase(self, channel, phase, level)
     }
     fn read_segments(&mut self) -> &RelSegments {
         AudioEnd::read_segments(self)

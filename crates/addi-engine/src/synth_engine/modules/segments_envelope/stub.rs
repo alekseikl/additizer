@@ -7,7 +7,7 @@ use super::{
 
 use addi_dsp::segments::rel_segments::RelSegments;
 
-use crate::synth_engine::{Input, StereoSample};
+use crate::synth_engine::{Input, Smp, StereoSample};
 
 static SEGMENTS: LazyLock<RelSegments> = LazyLock::new(RelSegments::default);
 
@@ -38,7 +38,7 @@ impl SegmentsEnvelopeAudioEnd for AudioEnd {
         None
     }
 
-    fn update_phase(&mut self, _phase: SegmentsEnvelopePhase) {}
+    fn update_phase(&mut self, _channel: usize, _phase: Smp, _level: Smp) {}
 
     fn read_segments(&mut self) -> &RelSegments {
         &SEGMENTS

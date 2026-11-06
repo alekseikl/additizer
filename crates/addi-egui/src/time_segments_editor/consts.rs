@@ -18,6 +18,8 @@ pub(super) const RIGHT_PLAYHEAD_HUE: f32 = 1.0 / 6.0;
 pub(super) const POWER_RADIUS: f32 = 3.0;
 pub(super) const MIN_POWER_WIDTH: f32 = 3.0;
 pub(super) const SNAP: f32 = 8.0;
+/// Seconds across the plot until scroll, pinch, or a drag past the right edge changes it.
+pub(super) const DEFAULT_SPAN: Smp = 4.0;
 /// Shortest time window, in seconds. Matches a zoomed-in envelope ruler.
 pub(super) const MIN_WINDOW: Smp = 0.125;
 /// Ruler steps grow by this factor. Major lines sit on every fourth minor line.

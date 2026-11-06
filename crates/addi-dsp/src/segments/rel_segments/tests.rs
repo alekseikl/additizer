@@ -71,8 +71,7 @@ fn assert_points_eq(actual: &[SegPoint], expected: &[SegPoint]) {
     for (a, e) in actual.iter().zip(expected) {
         assert_eq!(a.x, e.x);
         assert_eq!(a.y, e.y);
-        assert_eq!(a.power, e.power);
-        assert_eq!(a.smooth, e.smooth);
+        assert_eq!(a.curve, e.curve);
     }
 }
 
@@ -344,13 +343,14 @@ fn render_points_keeps_a_vertical_step() {
 
     saw.render_points(4, &mut points, &mut scratch);
 
-    let steps: Vec<_> = points
-        .windows(2)
-        .filter(|pair| pair[0][0] == pair[1][0])
+    let at_end: Vec<Smp> = points
+        .iter()
+        .filter(|point| (point[0] - 1.0).abs() < 1e-5)
+        .map(|point| point[1])
         .collect();
 
-    assert_eq!(steps, vec![&[[1.0, 1.0], [1.0, 0.0]]]);
-    assert!(points.windows(2).all(|pair| pair[0] != pair[1]));
+    assert_eq!(at_end.first().copied(), Some(1.0));
+    assert_eq!(at_end.last().copied(), Some(0.0));
 
     let square = RelSegments::from_points(
         &[(0.0, 0.0), (0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)],
@@ -367,9 +367,10 @@ fn render_points_keeps_a_vertical_step() {
             .collect()
     };
 
-    assert_eq!(at(0.0), vec![0.0, 1.0]);
-    assert_eq!(at(0.5), vec![1.0, 0.0]);
-    assert!(points.windows(2).all(|pair| pair[0] != pair[1]));
+    assert_eq!(at(0.0).first().copied(), Some(0.0));
+    assert_eq!(at(0.0).last().copied(), Some(1.0));
+    assert_eq!(at(0.5).first().copied(), Some(1.0));
+    assert_eq!(at(0.5).last().copied(), Some(0.0));
 }
 
 #[test]

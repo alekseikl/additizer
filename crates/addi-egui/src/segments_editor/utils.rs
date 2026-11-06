@@ -1,5 +1,8 @@
 use addi_dsp::{
-    segments::rel_segments::{RelSegments, SegPoint},
+    segments::{
+        CurveParam,
+        rel_segments::{RelSegments, SegPoint},
+    },
     utils::sanitize,
 };
 use addi_engine::Smp;
@@ -216,15 +219,17 @@ impl Ctx<'_> {
     /// Insert a point at `point`, with the easing of the segment it splits.
     pub(super) fn add_point(&mut self, point: Pos2) {
         let index = self.insertion_index(point.x);
-        let smooth = self.segs.point(index.saturating_sub(1)).smooth;
+        let smooth = self.segs.point(index.saturating_sub(1)).curve.smooth;
 
         self.segs.add_point(
             index,
             SegPoint {
                 x: point.x,
                 y: point.y,
-                smooth,
-                ..SegPoint::default()
+                curve: CurveParam {
+                    smooth,
+                    ..CurveParam::default()
+                },
             },
         );
     }

@@ -1,4 +1,51 @@
-use super::{MAX_TIME, TimePoint, TimeSegments, view_span};
+use super::{MAX_TIME, TimePoint, TimeSegments};
+use crate::Smp;
+use crate::segments::render_segment;
+
+/// Curve from `(seconds, level)` pairs. The first time is 0. `smooth` applies to every point.
+fn curve(points: &[(Smp, Smp)], smooth: bool) -> TimeSegments {
+    let mut segments = TimeSegments::default();
+    let end = points.len() - 1;
+
+    segments.set_time(1, points[end].0);
+
+    let start = segments.point(0);
+    segments.set_point(
+        0,
+        TimePoint {
+            y: points[0].1,
+            ..start
+        },
+    );
+
+    let last = segments.point(1);
+    segments.set_point(
+        1,
+        TimePoint {
+            y: points[end].1,
+            ..last
+        },
+    );
+
+    for (offset, &(time, y)) in points[1..end].iter().enumerate() {
+        assert!(segments.add_point(
+            offset + 1,
+            time,
+            TimePoint {
+                y,
+                ..TimePoint::default()
+            },
+        ));
+    }
+
+    if smooth {
+        for index in 0..segments.num_points() {
+            segments.set_smooth(index, true);
+        }
+    }
+
+    segments
+}
 
 #[test]
 fn default_is_a_one_second_fall() {
@@ -14,22 +61,31 @@ fn default_is_a_one_second_fall() {
 }
 
 #[test]
-fn sanitize_orders_times_and_pins_the_start() {
-    let segments = TimeSegments::from_points(&[(2.0, -1.0), (0.25, 2.0), (0.5, 0.4)], false);
+fn sanitize_clamps_levels_and_durations() {
+    let mut segments: TimeSegments = serde_json::from_str(
+        r#"{"points":[
+            {"duration":2.0,"y":-1.0,"power":0.0,"smooth":false},
+            {"duration":0.25,"y":2.0,"power":0.0,"smooth":false},
+            {"duration":5.0,"y":0.4,"power":0.0,"smooth":false}
+        ]}"#,
+    )
+    .unwrap();
+
+    segments.sanitize();
 
     assert_eq!(segments.time(0), 0.0);
     assert_eq!(segments.point(0).y, 0.0);
-    assert!(segments.time(1) >= segments.time(0));
-    assert!(segments.time(2) >= segments.time(1));
     assert_eq!(segments.point(1).y, 1.0);
-    assert!((segments.time(2) - 0.5).abs() < 1e-6);
-    assert!((segments.duration(0) - 0.25).abs() < 1e-6);
-    assert!((segments.point(2).duration).abs() < 1e-6);
+    assert!((segments.point(2).y - 0.4).abs() < 1e-6);
+    assert!((segments.duration(0) - 2.0).abs() < 1e-6);
+    assert!((segments.duration(1) - 0.25).abs() < 1e-6);
+    assert!(segments.point(2).duration.abs() < 1e-6);
+    assert!((segments.time(2) - 2.25).abs() < 1e-6);
 }
 
 #[test]
 fn moving_a_point_changes_only_the_previous_duration() {
-    let mut segments = TimeSegments::from_points(&[(0.0, 0.0), (0.4, 1.0), (1.0, 0.0)], false);
+    let mut segments = curve(&[(0.0, 0.0), (0.4, 1.0), (1.0, 0.0)], false);
     let middle = segments.point(1);
 
     segments.set_time(1, 5.0);
@@ -59,7 +115,7 @@ fn moving_a_point_changes_only_the_previous_duration() {
 
 #[test]
 fn add_and_remove_keep_the_ends() {
-    let mut segments = TimeSegments::from_points(&[(0.0, 1.0), (1.0, 0.0)], false);
+    let mut segments = TimeSegments::default();
 
     assert!(!segments.add_point(0, 0.0, TimePoint::default()));
     assert!(segments.add_point(
@@ -93,20 +149,12 @@ fn zero_length_segment_renders_nothing() {
         y: 0.0,
         ..TimePoint::default()
     };
-    let mut out = [0.25; 4];
-
-    assert_eq!(
-        TimePoint::render_segment(&mut out, 0.0, 0.01, start, end, 0.0),
-        Err(0)
-    );
-    assert_eq!(out, [0.25; 4]);
     assert!((TimePoint::level_between(start, end, 0.3) - 0.0).abs() < 1e-6);
 }
 
 #[test]
-fn render_segment_uses_the_given_duration() {
+fn render_segment_advances_by_its_step() {
     let start = TimePoint {
-        duration: 1.0,
         y: 1.0,
         ..TimePoint::default()
     };
@@ -117,7 +165,7 @@ fn render_segment_uses_the_given_duration() {
     let mut out = [0.0; 4];
 
     assert_eq!(
-        TimePoint::render_segment(&mut out, 0.0, 0.25, start, end, 1.0),
+        render_segment(&mut out, 0.0, 0.25, start.y..end.y, start.curve),
         Err(4)
     );
 
@@ -130,16 +178,11 @@ fn render_segment_uses_the_given_duration() {
 
 #[test]
 fn render_points_keeps_the_peak() {
-    let segments = TimeSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let segments = curve(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     let mut points = Vec::new();
     let mut scratch = Vec::new();
 
-    segments.render_points(
-        8,
-        view_span(segments.total_time()),
-        &mut points,
-        &mut scratch,
-    );
+    segments.render_points(8, 4.0, &mut points, &mut scratch);
 
     assert!(
         points
@@ -150,7 +193,7 @@ fn render_points_keeps_the_peak() {
 
 #[test]
 fn render_points_keeps_time_past_the_view() {
-    let segments = TimeSegments::from_points(&[(0.0, 1.0), (2.0, 0.0)], false);
+    let segments = curve(&[(0.0, 1.0), (2.0, 0.0)], false);
     let mut points = Vec::new();
     let mut scratch = Vec::new();
 
@@ -169,7 +212,7 @@ fn render_points_keeps_time_past_the_view() {
 
 #[test]
 fn serde_roundtrip_keeps_markers() {
-    let mut segments = TimeSegments::from_points(&[(0.0, 1.0), (0.3, 0.4), (0.8, 0.0)], true);
+    let mut segments = curve(&[(0.0, 1.0), (0.3, 0.4), (0.8, 0.0)], true);
     assert!(segments.set_loop_point(Some(0)));
     assert!(segments.set_release_point(Some(1)));
 
@@ -191,11 +234,4 @@ fn short_json_becomes_the_default() {
 
     assert_eq!(segments.num_points(), TimeSegments::default().num_points());
     assert!((segments.total_time() - 1.0).abs() < 1e-6);
-}
-
-#[test]
-fn view_leaves_room_past_the_curve() {
-    assert!((view_span(0.0) - 1.0).abs() < 1e-6);
-    assert!((view_span(1.0) - 1.25).abs() < 1e-5);
-    assert!((view_span(MAX_TIME) - MAX_TIME).abs() < 1e-4);
 }

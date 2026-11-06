@@ -10,7 +10,10 @@ mod tests;
 pub use config::MultiEnvelopeConfig;
 pub use link::{MultiEnvelopeAudioEnd, MultiEnvelopeLinks, MultiEnvelopeUiEnd, UiEvent, UiUpdate};
 
-use addi_dsp::segments::time_segments::{MAX_SEGMENTS, TimePoint, TimeSegments};
+use addi_dsp::segments::{
+    render_segment,
+    time_segments::{MAX_SEGMENTS, TimePoint, TimeSegments},
+};
 
 use crate::synth_engine::{
     Input, ModuleId, Smp, StereoSample,
@@ -159,7 +162,7 @@ pub struct MultiEnvelope<L: MultiEnvelopeLinks = stub::Links> {
     inputs: Inputs,
     output_slot: usize,
     voices: VoicesLayout<Voice>,
-    playhead: MultiEnvelopePhase,
+    durations: [Smp; MAX_SEGMENTS],
     inputs_meta: Vec<InputMeta>,
 }
 
@@ -189,7 +192,7 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             voices: new_voices_layout(),
-            playhead: MultiEnvelopePhase::default(),
+            durations: [0.0; MAX_SEGMENTS],
             inputs_meta: Vec::with_capacity(MAX_SEGMENTS),
         };
 
@@ -381,17 +384,8 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
     ) {
         let len = out.len();
         let mut pos = 0;
-        let mut hops = 0;
 
         while pos < len {
-            hops += 1;
-
-            if hops > MAX_SEGMENTS + 2 {
-                out[pos..].fill(Self::rest_level(segments, voice));
-                voice.stage = Stage::Done;
-                break;
-            }
-
             match voice.stage {
                 Stage::Sustain => {
                     out[pos..].fill(Self::sustain_level(segments, voice.last_level));
@@ -406,15 +400,19 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
                     let start = Self::segment_start(segments, voice, index);
                     let end = segments.point(index + 1);
                     let duration = durations[index];
+                    let mut result = Err(0);
 
-                    match TimePoint::render_segment(
-                        &mut out[pos..],
-                        position,
-                        seconds_per_sample,
-                        start,
-                        end,
-                        duration,
-                    ) {
+                    if duration > 0.0 {
+                        result = render_segment(
+                            &mut out[pos..],
+                            position,
+                            seconds_per_sample / duration,
+                            start.y..end.y,
+                            start.curve,
+                        );
+                    }
+
+                    match result {
                         Ok(position) => {
                             if let Stage::Segment { position: at, .. } = &mut voice.stage {
                                 *at = position;
@@ -460,9 +458,9 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
         let sample_rate = router.sample_rate();
         let seconds_per_sample = sample_rate.recip();
         let segments = &self.params.segments;
-        let mut durations = [0.0; MAX_SEGMENTS];
 
-        for (index, duration) in durations
+        for (index, duration) in self
+            .durations
             .iter_mut()
             .enumerate()
             .take(segments.num_segments())
@@ -496,7 +494,7 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
 
             Self::render_region(
                 segments,
-                &durations,
+                &self.durations,
                 voice,
                 &mut out[pos..end],
                 seconds_per_sample,
@@ -514,12 +512,11 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
         voice.last_level = out.last().copied().unwrap_or_default();
 
         if router.need_update_ui() {
-            self.playhead.time[channel_idx] = Self::playhead_time(segments, voice.stage);
-            self.playhead.level[channel_idx] = Self::playhead_level(segments, voice);
-
-            if channel_idx + 1 == NUM_CHANNELS {
-                self.audio_end.update_phase(self.playhead);
-            }
+            self.audio_end.update_phase(
+                channel_idx,
+                Self::playhead_time(segments, voice.stage),
+                Self::playhead_level(segments, voice),
+            );
         }
     }
 

@@ -7,7 +7,7 @@ use egui::{
 use addi_dsp::{
     power_scale,
     segments::rel_segments::MAX_POWER,
-    segments::time_segments::{TimePoint, TimeSegments, view_span},
+    segments::time_segments::{TimePoint, TimeSegments},
     utils::sanitize,
 };
 use addi_engine::Smp;
@@ -29,11 +29,9 @@ pub struct TimeSegmentsEditor {
     grid_y: i32,
     drag: Option<Drag>,
     drag_power: Smp,
-    /// Seconds across the plot. Scroll changes it, and dragging a point past the right
-    /// edge grows it. Until then the curve fills the view. Dropping a point leaves it.
+    /// Seconds across the plot. Starts at 4. Scroll and pinch change it, and dragging a
+    /// point past the right edge grows it.
     span: Smp,
-    /// The user scrolled or dragged a point, so the view no longer tracks the curve.
-    zoomed: bool,
     curve: Vec<[Smp; 2]>,
     scratch: Vec<Smp>,
     points: Vec<Pos2>,
@@ -49,8 +47,7 @@ impl Default for TimeSegmentsEditor {
             grid_y: 4,
             drag: None,
             drag_power: 0.0,
-            span: view_span(1.0),
-            zoomed: false,
+            span: C::DEFAULT_SPAN,
             curve: Vec::new(),
             scratch: Vec::new(),
             points: Vec::new(),
@@ -100,8 +97,6 @@ impl TimeSegmentsEditor {
             self.drag = None;
         }
 
-        self.follow_curve(segments.total_time());
-
         self.apply_zoom(ui, plot);
 
         let mut ctx = Ctx {
@@ -140,7 +135,6 @@ impl TimeSegmentsEditor {
             self.drag = None;
         }
 
-        self.follow_curve(ctx.segs.total_time());
         ctx.span = self.span;
 
         self.paint_scene(&ctx, playhead);
@@ -202,7 +196,6 @@ impl TimeSegmentsEditor {
                 Handle::Point(index),
                 self.span,
             ));
-            self.zoomed = true;
         }
 
         if let Some((placed, _)) = self.drag_move(ctx, Handle::Point(index)) {
@@ -242,7 +235,6 @@ impl TimeSegmentsEditor {
         }
 
         self.span = zoom_span(self.span, scroll_y, pinch);
-        self.zoomed = true;
 
         if scroll_y != 0.0 {
             ui.input_mut(|input| input.smooth_scroll_delta.y = 0.0);
@@ -295,7 +287,7 @@ impl TimeSegmentsEditor {
     }
 
     /// Keep the window still while the point is inside it. Once the point crosses the
-    /// right edge, that edge follows the point. Dropping it does not fit the curve again.
+    /// right edge, that edge follows the point.
     fn scale_past_edge(&mut self, ctx: &mut Ctx<'_>, index: usize) {
         let Some(drag) = self.drag else {
             return;
@@ -304,13 +296,6 @@ impl TimeSegmentsEditor {
 
         self.span = span;
         ctx.span = span;
-    }
-
-    /// Fit the window to the curve until the user scrolls or drags a point.
-    fn follow_curve(&mut self, total: Smp) {
-        if !self.zoomed && self.drag.is_none() {
-            self.span = view_span(total);
-        }
     }
 
     fn dragged(&self) -> Option<Handle> {

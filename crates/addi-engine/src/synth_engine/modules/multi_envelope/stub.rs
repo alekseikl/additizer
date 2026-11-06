@@ -2,6 +2,8 @@ use std::sync::LazyLock;
 
 use addi_dsp::segments::time_segments::TimeSegments;
 
+use crate::synth_engine::Smp;
+
 use super::{
     MultiEnvelopeAudioEnd, MultiEnvelopeLinks, MultiEnvelopePhase, MultiEnvelopeUiEnd, UiEvent,
     UiUpdate,
@@ -36,7 +38,7 @@ impl MultiEnvelopeAudioEnd for AudioEnd {
         None
     }
 
-    fn update_phase(&mut self, _phase: MultiEnvelopePhase) {}
+    fn update_phase(&mut self, _channel: usize, _time: Smp, _level: Smp) {}
 
     fn read_segments(&mut self) -> &TimeSegments {
         &SEGMENTS

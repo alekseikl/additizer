@@ -9,8 +9,7 @@ fn assert_points_eq(actual: &[SegPoint], expected: &[SegPoint]) {
     for (a, e) in actual.iter().zip(expected) {
         assert_eq!(a.x, e.x);
         assert_eq!(a.y, e.y);
-        assert_eq!(a.power, e.power);
-        assert_eq!(a.smooth, e.smooth);
+        assert_eq!(a.curve, e.curve);
     }
 }
 

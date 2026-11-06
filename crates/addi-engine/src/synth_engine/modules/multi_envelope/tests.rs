@@ -1,7 +1,46 @@
-use addi_dsp::segments::time_segments::TimeSegments;
+use addi_dsp::segments::time_segments::{TimePoint, TimeSegments};
 
 use super::*;
 use crate::synth_engine::{synth_module::SynthModule, voices_handler::DecayingVoice};
+
+/// Curve from `(seconds, level)` pairs. The first time is 0.
+fn curve(points: &[(Smp, Smp)]) -> TimeSegments {
+    let mut segments = TimeSegments::default();
+    let end = points.len() - 1;
+
+    segments.set_time(1, points[end].0);
+
+    let start = segments.point(0);
+    segments.set_point(
+        0,
+        TimePoint {
+            y: points[0].1,
+            ..start
+        },
+    );
+
+    let last = segments.point(1);
+    segments.set_point(
+        1,
+        TimePoint {
+            y: points[end].1,
+            ..last
+        },
+    );
+
+    for (offset, &(time, y)) in points[1..end].iter().enumerate() {
+        assert!(segments.add_point(
+            offset + 1,
+            time,
+            TimePoint {
+                y,
+                ..TimePoint::default()
+            },
+        ));
+    }
+
+    segments
+}
 
 fn envelope(steal_level: bool, keep_voice_alive: bool) -> MultiEnvelope {
     MultiEnvelope::from_config(&MultiEnvelopeConfig {
@@ -86,10 +125,7 @@ fn default_exposes_one_time_input() {
 #[test]
 fn time_inputs_follow_the_segment_count() {
     let mut env = envelope(false, false);
-    env.set_segments(TimeSegments::from_points(
-        &[(0.0, 1.0), (0.25, 0.5), (0.8, 0.0)],
-        false,
-    ));
+    env.set_segments(curve(&[(0.0, 1.0), (0.25, 0.5), (0.8, 0.0)]));
 
     assert_eq!(
         env.inputs()
@@ -135,7 +171,7 @@ fn a_longer_duration_stretches_the_same_shape() {
 #[test]
 fn release_holds_then_falls_from_the_current_level() {
     let mut env = envelope(false, true);
-    let mut segments = TimeSegments::from_points(&[(0.0, 1.0), (0.5, 0.4), (1.0, 0.0)], false);
+    let mut segments = curve(&[(0.0, 1.0), (0.5, 0.4), (1.0, 0.0)]);
     assert!(segments.set_release_point(Some(1)));
     env.set_segments(segments);
 
@@ -162,7 +198,7 @@ fn release_holds_then_falls_from_the_current_level() {
 #[test]
 fn loop_returns_to_the_loop_point() {
     let mut env = envelope(false, false);
-    let mut segments = TimeSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let mut segments = curve(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)]);
     assert!(segments.set_loop_point(Some(0)));
     env.set_segments(segments);
 
@@ -183,7 +219,7 @@ fn loop_returns_to_the_loop_point() {
 #[test]
 fn keep_alive_holds_a_playing_release() {
     let mut env = envelope(false, true);
-    let mut segments = TimeSegments::from_points(&[(0.0, 1.0), (1.0, 0.0)], false);
+    let mut segments = TimeSegments::default();
     assert!(segments.set_release_point(Some(1)));
     env.set_segments(segments);
     env.voices.at_mut(0, 2).stage = Stage::segment(0, 0.2);
@@ -200,7 +236,7 @@ fn keep_alive_holds_a_playing_release() {
 
 #[test]
 fn config_roundtrip() {
-    let mut segments = TimeSegments::from_points(&[(0.0, 0.2), (0.4, 1.0)], false);
+    let mut segments = curve(&[(0.0, 0.2), (0.4, 1.0)]);
     assert!(segments.set_release_point(Some(1)));
 
     let env: MultiEnvelope = MultiEnvelope::from_config(&MultiEnvelopeConfig {

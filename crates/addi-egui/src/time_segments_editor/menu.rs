@@ -66,7 +66,7 @@ pub(super) fn canvas_menu(ctx: &mut Ctx<'_>) {
 }
 
 fn smooth_item(ui: &mut Ui, segments: &mut TimeSegments, index: usize) {
-    let smooth = segments.point(index).smooth;
+    let smooth = segments.point(index).curve.smooth;
     let label = if smooth { "Flat" } else { "Smooth" };
 
     if ui.button(label).on_hover_text(C::SMOOTH_TIP).clicked() {

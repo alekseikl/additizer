@@ -6,6 +6,7 @@ use addi_engine::multi_envelope::{
     UiUpdate,
 };
 use addi_engine::{AUDIO_TO_UI_RING_CAPACITY, UI_TO_AUDIO_RING_CAPACITY};
+use addi_engine::{NUM_CHANNELS, Smp};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
@@ -49,8 +50,15 @@ impl AudioEnd {
         self.rx.pop().ok()
     }
 
-    pub fn update_phase(&mut self, phase: MultiEnvelopePhase) {
-        self.phase.write(phase);
+    pub fn update_phase(&mut self, channel: usize, time: Smp, level: Smp) {
+        let phase = self.phase.input_buffer_mut();
+
+        phase.time[channel] = time;
+        phase.level[channel] = level;
+
+        if channel == NUM_CHANNELS - 1 {
+            self.phase.publish();
+        }
     }
 
     pub fn read_segments(&mut self) -> &TimeSegments {
@@ -88,8 +96,8 @@ impl MultiEnvelopeAudioEnd for AudioEnd {
     fn pop_event(&mut self) -> Option<UiEvent> {
         AudioEnd::pop_event(self)
     }
-    fn update_phase(&mut self, phase: MultiEnvelopePhase) {
-        AudioEnd::update_phase(self, phase)
+    fn update_phase(&mut self, channel: usize, time: Smp, level: Smp) {
+        AudioEnd::update_phase(self, channel, time, level)
     }
     fn read_segments(&mut self) -> &TimeSegments {
         AudioEnd::read_segments(self)
