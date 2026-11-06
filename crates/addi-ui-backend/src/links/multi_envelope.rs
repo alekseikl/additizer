@@ -1,6 +1,6 @@
 use triple_buffer::triple_buffer;
 
-use addi_dsp::time_segments::TimeSegments;
+use addi_dsp::segments::time_segments::TimeSegments;
 use addi_engine::multi_envelope::{
     MultiEnvelopeAudioEnd, MultiEnvelopeLinks, MultiEnvelopePhase, MultiEnvelopeUiEnd, UiEvent,
     UiUpdate,

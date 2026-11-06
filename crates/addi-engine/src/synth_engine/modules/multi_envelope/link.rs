@@ -1,4 +1,4 @@
-use addi_dsp::time_segments::TimeSegments;
+use addi_dsp::segments::time_segments::TimeSegments;
 
 use super::MultiEnvelopePhase;
 use crate::synth_engine::engine_io;

@@ -1,4 +1,4 @@
-use addi_dsp::time_segments::TimeSegments;
+use addi_dsp::segments::time_segments::TimeSegments;
 use egui::{Popup, Response, Ui};
 
 use super::consts as C;
@@ -58,16 +58,6 @@ pub(super) fn power_menu(ctx: &mut Ctx<'_>, response: &Response, index: usize) {
 
 pub(super) fn canvas_menu(ctx: &mut Ctx<'_>) {
     ctx.res.context_menu(|ui| {
-        if ui.button("Flip horizontal").clicked() {
-            ctx.segs.flip_horizontal();
-            ui.close();
-        }
-
-        if ui.button("Flip vertical").clicked() {
-            ctx.segs.flip_vertical();
-            ui.close();
-        }
-
         if ui.button("Reset bends").clicked() {
             ctx.segs.reset_powers();
             ui.close();

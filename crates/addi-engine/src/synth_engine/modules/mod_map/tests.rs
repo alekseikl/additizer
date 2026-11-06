@@ -1,4 +1,4 @@
-use addi_dsp::segments::Segments;
+use addi_dsp::segments::rel_segments::RelSegments;
 
 use super::stub::Links;
 use super::{ModMap, ModMapConfig, read_table};
@@ -17,7 +17,7 @@ fn straight_ramp_skips_the_map_table() {
 fn extra_diagonal_points_render_a_table() {
     let mut map = TestMap::new(1, 16);
 
-    map.set_segments(Segments::from_points(
+    map.set_segments(RelSegments::from_points(
         &[(0.0, 0.0), (0.4, 0.4), (1.0, 1.0)],
         false,
     ));
@@ -29,12 +29,12 @@ fn extra_diagonal_points_render_a_table() {
 #[test]
 fn eased_or_bent_ramps_render_a_table() {
     let mut eased = TestMap::new(1, 16);
-    eased.set_segments(Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], true));
+    eased.set_segments(RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], true));
 
     assert!(eased.remap);
     assert!(eased.table.iter().any(|sample| *sample != 0.0));
 
-    let mut bent = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let mut bent = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     bent.set_power(0, 2.0);
 
     let mut map = TestMap::new(1, 16);
@@ -46,21 +46,21 @@ fn eased_or_bent_ramps_render_a_table() {
 #[test]
 fn returning_to_a_straight_ramp_stops_mapping() {
     let config = ModMapConfig {
-        segments: Segments::from_points(&[(0.0, 0.0), (1.0, 0.25)], false),
+        segments: RelSegments::from_points(&[(0.0, 0.0), (1.0, 0.25)], false),
         ..ModMapConfig::default()
     };
 
     let mut map = TestMap::from_config(&config, 16);
     assert!(map.remap);
 
-    map.set_segments(Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
+    map.set_segments(RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
     assert!(!map.remap);
 }
 
 #[test]
 fn curved_table_follows_the_segments() {
     let mut config = ModMapConfig {
-        segments: Segments::from_points(&[(0.0, 0.0), (0.3, 0.8), (1.0, 0.2)], true),
+        segments: RelSegments::from_points(&[(0.0, 0.0), (0.3, 0.8), (1.0, 0.2)], true),
         ..ModMapConfig::default()
     };
     config.segments.set_power(0, 2.0);
@@ -82,7 +82,7 @@ fn curved_table_follows_the_segments() {
 #[test]
 fn values_outside_the_unit_interval_clamp_to_the_ends() {
     let config = ModMapConfig {
-        segments: Segments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false),
+        segments: RelSegments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false),
         ..ModMapConfig::default()
     };
 

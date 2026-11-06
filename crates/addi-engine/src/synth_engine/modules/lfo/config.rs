@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use addi_dsp::{segments::Segments, utils::sanitize};
+use addi_dsp::{segments::rel_segments::RelSegments, utils::sanitize};
 
 use super::Timebase;
 use crate::synth_engine::{ModuleId, Smp, StereoSample};
@@ -27,7 +27,7 @@ pub struct LfoConfig {
     #[serde(default)]
     pub phase_shift: StereoSample,
     #[serde(default)]
-    pub segments: Segments,
+    pub segments: RelSegments,
 }
 
 impl Default for LfoConfig {
@@ -38,7 +38,7 @@ impl Default for LfoConfig {
             frequency: 1.0.into(),
             timebase: Timebase::Hertz,
             phase_shift: 0.0.into(),
-            segments: Segments::default(),
+            segments: RelSegments::default(),
         }
     }
 }

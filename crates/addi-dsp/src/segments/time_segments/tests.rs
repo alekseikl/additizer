@@ -184,24 +184,6 @@ fn serde_roundtrip_keeps_markers() {
 }
 
 #[test]
-fn flip_horizontal_reverses_durations() {
-    let mut segments = TimeSegments::from_points(&[(0.0, 1.0), (0.25, 0.5), (1.0, 0.0)], false);
-
-    segments.set_power(0, 2.0);
-    segments.flip_horizontal();
-
-    assert!(segments.time(0).abs() < 1e-6);
-    assert!((segments.time(1) - 0.75).abs() < 1e-5);
-    assert!((segments.time(2) - 1.0).abs() < 1e-5);
-    assert!(segments.point(0).y.abs() < 1e-6);
-    assert!((segments.point(1).y - 0.5).abs() < 1e-6);
-    assert!((segments.point(2).y - 1.0).abs() < 1e-6);
-    assert!((segments.duration(0) - 0.75).abs() < 1e-5);
-    assert!((segments.duration(1) - 0.25).abs() < 1e-5);
-    assert!((segments.power(1) + 2.0).abs() < 1e-6);
-}
-
-#[test]
 fn short_json_becomes_the_default() {
     let mut segments: TimeSegments = serde_json::from_str(r#"{"points":[]}"#).unwrap();
 

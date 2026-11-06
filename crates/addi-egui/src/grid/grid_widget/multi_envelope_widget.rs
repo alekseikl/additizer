@@ -4,7 +4,7 @@ use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, Vec2, ecolor::Hsva
 use crate::grid::WidgetCtx;
 use crate::utils::hsva;
 use addi_dsp::Smp;
-use addi_dsp::time_segments::{TimeSegments, view_span};
+use addi_dsp::segments::time_segments::{TimeSegments, view_span};
 use addi_engine::ModuleId;
 use addi_engine::multi_envelope::MultiEnvelopePhase;
 use addi_ui_backend::ui_bridge::ModuleBridge;

@@ -1,5 +1,5 @@
 use crate::ui_bridge::ModuleUiBridge;
-use addi_dsp::time_segments::TimeSegments;
+use addi_dsp::segments::time_segments::TimeSegments;
 use addi_engine::multi_envelope::{
     MultiEnvelope, MultiEnvelopeConfig, MultiEnvelopeLinks, MultiEnvelopePhase, MultiEnvelopeUiEnd,
     UiUpdate,

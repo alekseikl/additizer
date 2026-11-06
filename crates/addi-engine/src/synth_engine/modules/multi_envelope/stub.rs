@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use addi_dsp::time_segments::TimeSegments;
+use addi_dsp::segments::time_segments::TimeSegments;
 
 use super::{
     MultiEnvelopeAudioEnd, MultiEnvelopeLinks, MultiEnvelopePhase, MultiEnvelopeUiEnd, UiEvent,

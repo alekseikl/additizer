@@ -2,7 +2,7 @@ use addi_ui_backend::ui_bridge::modules::lfo::LfoUiBridge;
 use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, Vec2};
 
 use crate::grid::WidgetCtx;
-use addi_dsp::{Segments, Smp};
+use addi_dsp::{RelSegments, Smp};
 use addi_engine::ModuleId;
 use addi_ui_backend::ui_bridge::ModuleBridge;
 
@@ -28,8 +28,8 @@ pub struct LfoWidget {
 }
 
 impl LfoWidget {
-    /// Phase/level polyline. Rebuilt when [`Segments::revision`] or `size` changes.
-    fn build_curve(&mut self, segments: &Segments, size: Vec2) {
+    /// Phase/level polyline. Rebuilt when [`RelSegments::revision`] or `size` changes.
+    fn build_curve(&mut self, segments: &RelSegments, size: Vec2) {
         if size.x <= 0.0 {
             self.points.clear();
             self.rendered = None;

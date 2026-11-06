@@ -1,4 +1,4 @@
-use addi_dsp::segments::Segments;
+use addi_dsp::segments::rel_segments::RelSegments;
 
 use super::*;
 use crate::synth_engine::{routing::VoiceEvent, voices_handler::DecayingVoice};
@@ -129,7 +129,7 @@ fn assert_stage(stage: Stage, index: usize, position: Smp) {
 #[test]
 fn reset_starts_at_the_drawn_start() {
     let mut env = envelope(false, false);
-    env.set_segments(Segments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false));
+    env.set_segments(RelSegments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false));
     *env.voices.at_mut(0, 0) = playing(0, 0.4, 0.2, 0.9);
 
     env.process_events(&[reset_event(1, Some(0))]);
@@ -147,7 +147,7 @@ fn reset_starts_at_the_drawn_start() {
 #[test]
 fn reset_steals_the_replaced_level() {
     let mut env = envelope(true, false);
-    env.set_segments(Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
+    env.set_segments(RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
     *env.voices.at_mut(0, 0) = playing(0, 0.4, 0.0, 0.6);
     *env.voices.at_mut(1, 0) = Voice {
         stage: Stage::Done,
@@ -184,7 +184,7 @@ fn reset_steals_the_replaced_level() {
 #[test]
 fn a_stored_trigger_starts_at_the_phase_shift() {
     let mut env = envelope(false, false);
-    env.set_segments(Segments::from_points(
+    env.set_segments(RelSegments::from_points(
         &[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)],
         false,
     ));
@@ -210,7 +210,7 @@ fn a_stored_trigger_starts_at_the_phase_shift() {
 #[test]
 fn phase_shift_selects_the_trigger_stage() {
     let mut env = envelope(false, false);
-    env.set_segments(Segments::from_points(
+    env.set_segments(RelSegments::from_points(
         &[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)],
         false,
     ));
@@ -243,7 +243,7 @@ fn phase_shift_selects_the_trigger_stage() {
 #[test]
 fn reset_does_not_steal_without_a_replaced_voice() {
     let mut env = envelope(true, false);
-    env.set_segments(Segments::from_points(&[(0.0, 0.2), (1.0, 1.0)], false));
+    env.set_segments(RelSegments::from_points(&[(0.0, 0.2), (1.0, 1.0)], false));
     *env.voices.at_mut(0, 0) = playing(0, 0.4, 0.2, 0.9);
 
     env.process_events(&[reset_event(1, None)]);
@@ -258,7 +258,7 @@ fn reset_does_not_steal_without_a_replaced_voice() {
 #[test]
 fn stolen_level_is_the_first_sample() {
     let mut env = envelope(true, false);
-    env.set_segments(Segments::from_points(
+    env.set_segments(RelSegments::from_points(
         &[(0.0, 0.0), (0.5, 1.0), (1.0, 0.25)],
         false,
     ));
@@ -282,7 +282,7 @@ fn stolen_level_is_the_first_sample() {
 #[test]
 fn playback_holds_the_last_level() {
     let mut env = envelope(false, false);
-    env.set_segments(Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
+    env.set_segments(RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
     let mut out = [0.0; 4];
     let next = render_stage(&env, &playing(0, 0.0, 0.0, 0.0), &mut out, 4, 0.5);
 
@@ -303,7 +303,7 @@ fn playback_holds_the_last_level() {
 #[test]
 fn play_advances_inside_the_segment() {
     let mut env = envelope(false, false);
-    env.set_segments(Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
+    env.set_segments(RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
     let next = render_stage(&env, &playing(0, 0.0, 0.0, 0.0), &mut [0.0; 4], 4, 0.1);
 
     assert_stage(next.stage, 0, 0.4);
@@ -313,7 +313,7 @@ fn play_advances_inside_the_segment() {
 #[test]
 fn play_enters_the_next_segment() {
     let mut env = envelope(false, false);
-    env.set_segments(Segments::from_points(
+    env.set_segments(RelSegments::from_points(
         &[(0.0, 0.0), (0.25, 1.0), (1.0, 0.0)],
         false,
     ));
@@ -337,7 +337,7 @@ fn play_enters_the_next_segment() {
 #[test]
 fn a_zero_step_holds_the_current_level() {
     let mut env = envelope(false, false);
-    env.set_segments(Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
+    env.set_segments(RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
     let mut out = [0.0; 3];
     let next = render_stage(&env, &playing(0, 0.25, 0.0, 0.0), &mut out, 3, 0.0);
 
@@ -348,7 +348,7 @@ fn a_zero_step_holds_the_current_level() {
 #[test]
 fn curved_segment_matches_the_drawn_curve() {
     let mut env = envelope(false, false);
-    let mut segments = Segments::from_points(&[(0.0, 0.2), (1.0, 0.85)], true);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.2), (1.0, 0.85)], true);
     segments.set_power(0, 5.0);
     env.set_segments(segments);
 
@@ -370,7 +370,7 @@ fn curved_segment_matches_the_drawn_curve() {
 }
 
 fn with_release(env: &mut SegmentsEnvelope) {
-    let mut segments = Segments::from_points(&[(0.0, 1.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 1.0), (0.5, 1.0), (1.0, 0.0)], false);
     assert!(segments.set_release_point(Some(1)));
     env.set_segments(segments);
 }
@@ -420,7 +420,7 @@ fn from_config_sanitizes_params() {
     let env: SegmentsEnvelope = SegmentsEnvelope::from_config(&SegmentsEnvelopeConfig {
         rate: StereoSample::new(1_000.0, Smp::NAN),
         phase_shift: StereoSample::new(-4.0, 2.0),
-        segments: Segments::from_points(&[(0.0, -2.0), (1.0, 3.0)], false),
+        segments: RelSegments::from_points(&[(0.0, -2.0), (1.0, 3.0)], false),
         ..SegmentsEnvelopeConfig::default()
     });
     let config = env.get_config();
@@ -455,7 +455,7 @@ fn missing_timebase_defaults_to_seconds() {
 #[test]
 fn release_point_sustains_while_the_key_is_held() {
     let mut env = envelope(false, false);
-    let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.25)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.25)], false);
     assert!(segments.set_release_point(Some(1)));
     env.set_segments(segments);
 
@@ -472,7 +472,7 @@ fn release_point_sustains_while_the_key_is_held() {
 #[test]
 fn note_off_jumps_to_the_release_point_at_the_current_level() {
     let mut env = envelope(false, false);
-    let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.25)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.25)], false);
     assert!(segments.set_release_point(Some(1)));
     env.set_segments(segments);
 
@@ -490,7 +490,7 @@ fn note_off_jumps_to_the_release_point_at_the_current_level() {
 #[test]
 fn release_from_sustain_leaves_at_the_sustain_level() {
     let mut env = envelope(false, false);
-    let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.25)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.25)], false);
     assert!(segments.set_release_point(Some(1)));
     env.set_segments(segments);
 
@@ -510,7 +510,7 @@ fn release_from_sustain_leaves_at_the_sustain_level() {
 #[test]
 fn a_release_on_the_last_point_holds_the_level_at_note_off() {
     let mut env = envelope(false, false);
-    let mut segments = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     assert!(segments.set_release_point(Some(1)));
     env.set_segments(segments);
 
@@ -526,7 +526,7 @@ fn a_release_on_the_last_point_holds_the_level_at_note_off() {
 #[test]
 fn loop_point_repeats_to_the_end() {
     let mut env = envelope(false, false);
-    let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     assert!(segments.set_loop_point(Some(1)));
     env.set_segments(segments);
 
@@ -543,7 +543,7 @@ fn loop_point_repeats_to_the_end() {
 fn loop_runs_until_the_release_point_while_the_key_is_held() {
     let mut env = envelope(false, false);
     let mut segments =
-        Segments::from_points(&[(0.0, 0.0), (0.25, 1.0), (0.75, 0.5), (1.0, 0.0)], false);
+        RelSegments::from_points(&[(0.0, 0.0), (0.25, 1.0), (0.75, 0.5), (1.0, 0.0)], false);
     assert!(segments.set_loop_point(Some(1)));
     assert!(segments.set_release_point(Some(2)));
     env.set_segments(segments);
@@ -561,7 +561,7 @@ fn loop_runs_until_the_release_point_while_the_key_is_held() {
 fn note_off_leaves_the_loop_through_the_release_point() {
     let mut env = envelope(false, false);
     let mut segments =
-        Segments::from_points(&[(0.0, 0.0), (0.25, 1.0), (0.75, 0.5), (1.0, 0.0)], false);
+        RelSegments::from_points(&[(0.0, 0.0), (0.25, 1.0), (0.75, 0.5), (1.0, 0.0)], false);
     assert!(segments.set_loop_point(Some(1)));
     assert!(segments.set_release_point(Some(2)));
     env.set_segments(segments);
@@ -581,7 +581,7 @@ fn note_off_leaves_the_loop_through_the_release_point() {
 #[test]
 fn a_phase_past_the_release_point_sustains_or_loops() {
     let mut env = envelope(false, false);
-    let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     assert!(segments.set_release_point(Some(1)));
     env.set_segments(segments.clone());
 
@@ -599,7 +599,7 @@ fn a_phase_past_the_release_point_sustains_or_loops() {
 #[test]
 fn a_repeated_opening_uses_the_drawn_level() {
     let mut env = envelope(false, false);
-    let mut segments = Segments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false);
     assert!(segments.set_loop_point(Some(0)));
     env.set_segments(segments);
 
@@ -613,7 +613,7 @@ fn a_repeated_opening_uses_the_drawn_level() {
 #[test]
 fn a_zero_width_loop_does_not_spin() {
     let mut env = envelope(false, false);
-    let mut segments = Segments::from_points(&[(0.0, 0.2), (1.0, 0.5), (1.0, 0.8)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.2), (1.0, 0.5), (1.0, 0.8)], false);
     assert!(segments.set_loop_point(Some(1)));
     env.set_segments(segments);
 
@@ -628,7 +628,7 @@ fn a_zero_width_loop_does_not_spin() {
 #[test]
 fn a_loop_shorter_than_eight_samples_plays_once() {
     let mut env = envelope(false, false);
-    let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     assert!(segments.set_loop_point(Some(1)));
     env.set_segments(segments);
 

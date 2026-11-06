@@ -2,11 +2,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    Smp,
-    segments::{MAX_POWER, SegPoint},
-    utils::sanitize,
-};
+use crate::{Smp, utils::sanitize};
+
+use super::curve;
+use super::rel_segments::MAX_POWER;
 
 pub const MAX_POINTS: usize = 100;
 pub const MAX_SEGMENTS: usize = MAX_POINTS - 1;
@@ -48,10 +47,16 @@ impl TimePoint {
             return end.y;
         }
 
-        let (start, end) = local_segment(start, end, start.duration);
         let mut sample = [0.0];
 
-        let _ = SegPoint::render_segment(&mut sample, position.clamp(0.0, 1.0), 0.0, start, end);
+        let _ = Self::render_segment(
+            &mut sample,
+            position.clamp(0.0, 1.0),
+            0.0,
+            start,
+            end,
+            start.duration,
+        );
         sample[0]
     }
 
@@ -68,35 +73,22 @@ impl TimePoint {
         end: Self,
         duration: Smp,
     ) -> Result<Smp, usize> {
-        if duration <= 0.0 {
-            return Err(0);
-        }
-
-        let (start, end) = local_segment(start, end, duration);
-
-        SegPoint::render_segment(out, position, seconds_per_sample, start, end)
+        curve::render_segment(
+            out,
+            position,
+            seconds_per_sample,
+            duration,
+            start.y,
+            end.y,
+            start.power,
+            start.smooth,
+        )
     }
 
     fn clamp_shape(&mut self) {
         self.y = sanitize(self.y, 0.0, 1.0);
         self.power = sanitize(self.power, -MAX_POWER, MAX_POWER);
     }
-}
-
-fn local_segment(start: TimePoint, end: TimePoint, duration: Smp) -> (SegPoint, SegPoint) {
-    (
-        SegPoint {
-            x: 0.0,
-            y: start.y,
-            power: start.power,
-            smooth: start.smooth,
-        },
-        SegPoint {
-            x: duration,
-            y: end.y,
-            ..SegPoint::default()
-        },
-    )
 }
 
 /// Breakpoint curve in seconds. Holds two to [`MAX_POINTS`] points after [`sanitize`](Self::sanitize).
@@ -470,54 +462,6 @@ impl TimeSegments {
         true
     }
 
-    pub fn flip_horizontal(&mut self) {
-        let n = self.num_points();
-
-        for i in 0..n / 2 {
-            let j = n - 1 - i;
-            let y = self.points[i].y;
-
-            self.points[i].y = self.points[j].y;
-            self.points[j].y = y;
-        }
-
-        let segments = self.num_segments();
-
-        for i in 0..segments / 2 {
-            let j = segments - 1 - i;
-            let duration = self.points[i].duration;
-
-            self.points[i].duration = self.points[j].duration;
-            self.points[j].duration = duration;
-        }
-
-        self.points[n - 1].duration = 0.0;
-
-        for i in 0..n / 2 {
-            let j = n - i - 2;
-            let power = self.points[i].power;
-            let smooth = self.points[i].smooth;
-
-            self.points[i].power = -self.points[j].power;
-            self.points[i].smooth = self.points[j].smooth;
-            self.points[j].power = -power;
-            self.points[j].smooth = smooth;
-        }
-
-        self.loop_point = self.loop_point.map(|index| n - 1 - index);
-        self.release_point = self.release_point.map(|index| n - 1 - index);
-        self.retain_markers();
-        self.bump();
-    }
-
-    pub fn flip_vertical(&mut self) {
-        for point in &mut self.points {
-            point.y = 1.0 - point.y;
-        }
-
-        self.bump();
-    }
-
     /// Seconds on the stored curve at `position` through the segment that starts at `index`.
     /// An index on or past the last segment is the end of the curve.
     pub fn time_at(&self, index: usize, position: Smp) -> Smp {
@@ -609,8 +553,7 @@ impl TimeSegments {
 
             // One column is `span / pixels` seconds, including past the window.
             let seconds_per_sample = span / pixels as Smp;
-            let position =
-                ((from as Smp * seconds_per_sample - start) / duration).clamp(0.0, 1.0);
+            let position = ((from as Smp * seconds_per_sample - start) / duration).clamp(0.0, 1.0);
             let count = to - from;
             let written = match TimePoint::render_segment(
                 &mut scratch[from..to],

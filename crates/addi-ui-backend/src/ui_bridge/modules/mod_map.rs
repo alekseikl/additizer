@@ -1,5 +1,5 @@
 use crate::ui_bridge::ModuleUiBridge;
-use addi_dsp::segments::Segments;
+use addi_dsp::segments::rel_segments::RelSegments;
 use addi_engine::mod_map::{ModMap, ModMapConfig, ModMapLinks, ModMapUiEnd};
 use addi_engine::{Input, Smp, StereoSample};
 
@@ -24,7 +24,7 @@ impl<L: ModMapLinks> ModMapUiBridge<L> {
         self.ui_end.probe()
     }
 
-    pub fn segments_mut(&mut self) -> &mut Segments {
+    pub fn segments_mut(&mut self) -> &mut RelSegments {
         &mut self.config.segments
     }
 

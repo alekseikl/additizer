@@ -1,4 +1,4 @@
-use addi_dsp::segments::{SegPoint, Segments};
+use addi_dsp::segments::rel_segments::{RelSegments, SegPoint};
 
 use super::*;
 
@@ -14,15 +14,15 @@ fn assert_points_eq(actual: &[SegPoint], expected: &[SegPoint]) {
     }
 }
 
-fn test_square() -> Segments {
-    Segments::from_points(
+fn test_square() -> RelSegments {
+    RelSegments::from_points(
         &[(0.0, 0.0), (0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)],
         false,
     )
 }
 
-fn test_sine() -> Segments {
-    let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+fn test_sine() -> RelSegments {
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
 
     for index in 0..segments.num_points() {
         segments.set_smooth(index, true);
@@ -31,7 +31,7 @@ fn test_sine() -> Segments {
     segments
 }
 
-fn make_lfo(segments: Segments) -> TestLfo {
+fn make_lfo(segments: RelSegments) -> TestLfo {
     Lfo::from_config(
         &LfoConfig {
             id: 1,
@@ -100,7 +100,7 @@ fn playback_applies_phase_shift() {
 
 #[test]
 fn set_segments_rebakes_the_table() {
-    let mut lfo = make_lfo(Segments::default());
+    let mut lfo = make_lfo(RelSegments::default());
     let before = lfo.wave[WAVEFORM_PAD_LEFT + 100];
 
     lfo.set_segments(test_square());
@@ -121,7 +121,7 @@ fn from_config_sanitizes_params() {
         &LfoConfig {
             frequency: StereoSample::new(1_000.0, Smp::NAN),
             phase_shift: StereoSample::new(-4.0, 0.25),
-            segments: Segments::from_points(&[(0.0, -2.0), (1.0, 3.0)], false),
+            segments: RelSegments::from_points(&[(0.0, -2.0), (1.0, 3.0)], false),
             ..LfoConfig::default()
         },
         16,

@@ -1,4 +1,4 @@
-use addi_dsp::segments::Segments;
+use addi_dsp::segments::rel_segments::RelSegments;
 
 use crate::synth_engine::{Input, Smp, StereoSample, engine_io};
 
@@ -12,13 +12,13 @@ pub enum UiEvent {
 pub trait ModMapAudioEnd: Send {
     fn pop_event(&mut self) -> Option<UiEvent>;
     fn update_probe(&mut self, probe: StereoSample);
-    fn read_segments(&mut self) -> &Segments;
+    fn read_segments(&mut self) -> &RelSegments;
 }
 
 pub trait ModMapUiEnd: Send {
     fn probe(&mut self) -> StereoSample;
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
-    fn set_segments(&mut self, segments: Segments) -> bool;
+    fn set_segments(&mut self, segments: RelSegments) -> bool;
     fn set_bipolar(&mut self, value: bool) -> bool;
     fn set_smooth(&mut self, value: Smp) -> bool;
 }

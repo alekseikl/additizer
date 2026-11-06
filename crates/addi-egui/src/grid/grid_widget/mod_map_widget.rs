@@ -7,7 +7,7 @@ use egui::{
 use crate::fit_label::FitLabel;
 use crate::grid::WidgetCtx;
 use crate::routing_ui_ext::ModuleTypeUi;
-use addi_dsp::segments::Segments;
+use addi_dsp::segments::rel_segments::RelSegments;
 use addi_engine::{Input, ModuleId, ModuleType, Smp, StereoSample};
 use addi_ui_backend::ui_bridge::{GridVec, ModuleBridge, UiBridge};
 
@@ -91,7 +91,7 @@ impl ModMapWidget {
     fn paint_probe(
         painter: &Painter,
         rect: Rect,
-        segments: &Segments,
+        segments: &RelSegments,
         amount: Smp,
         bipolar: bool,
         probe: StereoSample,
@@ -147,7 +147,7 @@ impl ModMapWidget {
     }
 
     /// Curve after the bipolar fold and the amount scale. Unipolar `0` is the bottom; bipolar `0` is the midline.
-    fn curve_points(rect: Rect, segments: &Segments, amount: Smp, bipolar: bool) -> Vec<Pos2> {
+    fn curve_points(rect: Rect, segments: &RelSegments, amount: Smp, bipolar: bool) -> Vec<Pos2> {
         let t_mult = (SAMPLES - 1) as Smp;
 
         (0..SAMPLES)

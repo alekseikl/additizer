@@ -6,7 +6,7 @@ use egui::{
 
 use addi_dsp::{
     power_scale,
-    segments::{MAX_POINTS, MAX_POWER, SegPoint, Segments},
+    segments::rel_segments::{MAX_POINTS, MAX_POWER, RelSegments, SegPoint},
     utils::sanitize,
 };
 use addi_engine::{Smp, StereoSample};
@@ -33,7 +33,7 @@ pub struct SegmentsEditor {
     drag_power: Smp,
     /// Curve samples in 0–1 space.
     curve: Vec<[Smp; 2]>,
-    /// Workspace for [`Segments::render_points`].
+    /// Workspace for [`RelSegments::render_points`].
     scratch: Vec<Smp>,
     /// Cached curve samples projected into the current plot.
     points: Vec<Pos2>,
@@ -99,7 +99,7 @@ impl SegmentsEditor {
     pub fn ui(
         &mut self,
         ui: &mut Ui,
-        segments: &mut Segments,
+        segments: &mut RelSegments,
         phase: Option<StereoSample>,
     ) -> bool {
         let playhead = phase.map(|phase| {
@@ -116,7 +116,7 @@ impl SegmentsEditor {
     pub fn ui_at(
         &mut self,
         ui: &mut Ui,
-        segments: &mut Segments,
+        segments: &mut RelSegments,
         playhead: Option<[(Smp, Smp); 2]>,
     ) -> bool {
         let revision = segments.revision();

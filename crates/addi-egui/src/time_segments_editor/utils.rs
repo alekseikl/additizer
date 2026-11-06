@@ -1,4 +1,4 @@
-use addi_dsp::time_segments::{MAX_TIME, TimePoint, TimeSegments};
+use addi_dsp::segments::time_segments::{MAX_TIME, TimePoint, TimeSegments};
 use addi_dsp::utils::sanitize;
 use addi_engine::Smp;
 use egui::{

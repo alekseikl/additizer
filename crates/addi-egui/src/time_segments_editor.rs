@@ -6,8 +6,8 @@ use egui::{
 
 use addi_dsp::{
     power_scale,
-    segments::MAX_POWER,
-    time_segments::{TimePoint, TimeSegments, view_span},
+    segments::rel_segments::MAX_POWER,
+    segments::time_segments::{TimePoint, TimeSegments, view_span},
     utils::sanitize,
 };
 use addi_engine::Smp;

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use addi_dsp::{from_ms, segments::Segments, utils::sanitize};
+use addi_dsp::{from_ms, segments::rel_segments::RelSegments, utils::sanitize};
 
 use crate::synth_engine::{ModuleId, Smp, StereoSample};
 
@@ -11,8 +11,8 @@ fn default_amount() -> StereoSample {
     1.0.into()
 }
 
-fn identity_segments() -> Segments {
-    Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false)
+fn identity_segments() -> RelSegments {
+    RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false)
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -25,7 +25,7 @@ pub struct ModMapConfig {
     #[serde(default)]
     pub smooth: Smp,
     #[serde(default = "identity_segments")]
-    pub segments: Segments,
+    pub segments: RelSegments,
 }
 
 impl Default for ModMapConfig {

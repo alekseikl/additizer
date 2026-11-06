@@ -1,4 +1,4 @@
-use super::{MAX_POINTS, SegPoint, Segments};
+use super::{MAX_POINTS, RelSegments, SegPoint};
 use crate::Smp;
 
 fn skew_arg(arg: Smp, skew: Smp) -> Smp {
@@ -22,35 +22,35 @@ fn legacy_sine(t: Smp, skew: Smp) -> Smp {
     sine * sine
 }
 
-fn triangle_at(skew: Smp) -> Segments {
+fn triangle_at(skew: Smp) -> RelSegments {
     let skew = skew.clamp(0.0, 1.0);
 
     if skew <= 0.0 {
-        return Segments::from_points(&[(0.0, 1.0), (1.0, 0.0)], false);
+        return RelSegments::from_points(&[(0.0, 1.0), (1.0, 0.0)], false);
     }
 
     if skew >= 1.0 {
-        return Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+        return RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     }
 
-    Segments::from_points(&[(0.0, 0.0), (skew, 1.0), (1.0, 0.0)], false)
+    RelSegments::from_points(&[(0.0, 0.0), (skew, 1.0), (1.0, 0.0)], false)
 }
 
-fn square_at(skew: Smp) -> Segments {
+fn square_at(skew: Smp) -> RelSegments {
     let skew = skew.clamp(0.0, 1.0);
 
     if skew <= 0.0 {
-        return Segments::from_points(&[(0.0, 0.0), (1.0, 0.0)], false);
+        return RelSegments::from_points(&[(0.0, 0.0), (1.0, 0.0)], false);
     }
 
     if skew >= 1.0 {
-        return Segments::from_points(&[(0.0, 1.0), (1.0, 1.0)], false);
+        return RelSegments::from_points(&[(0.0, 1.0), (1.0, 1.0)], false);
     }
 
-    Segments::from_points(&[(0.0, 1.0), (skew, 1.0), (skew, 0.0), (1.0, 0.0)], false)
+    RelSegments::from_points(&[(0.0, 1.0), (skew, 1.0), (skew, 0.0), (1.0, 0.0)], false)
 }
 
-fn sine_at(skew: Smp) -> Segments {
+fn sine_at(skew: Smp) -> RelSegments {
     let mut segments = triangle_at(skew);
 
     for index in 0..segments.num_points() {
@@ -60,7 +60,7 @@ fn sine_at(skew: Smp) -> Segments {
     segments
 }
 
-fn render_open(segments: &Segments, len: usize) -> Vec<Smp> {
+fn render_open(segments: &RelSegments, len: usize) -> Vec<Smp> {
     let mut samples = vec![0.0; len];
     segments.render_waveform(&mut samples);
     samples
@@ -78,18 +78,18 @@ fn assert_points_eq(actual: &[SegPoint], expected: &[SegPoint]) {
 
 #[test]
 fn unity_is_two_unsmoothed_endpoints() {
-    let unity = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let unity = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     assert!(unity.is_unity());
 
-    assert!(!Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], true).is_unity());
-    assert!(!Segments::from_points(&[(0.0, 0.0), (0.4, 0.4), (1.0, 1.0)], false).is_unity());
-    assert!(!Segments::from_points(&[(0.0, 0.0), (1.0, 0.5)], false).is_unity());
+    assert!(!RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], true).is_unity());
+    assert!(!RelSegments::from_points(&[(0.0, 0.0), (0.4, 0.4), (1.0, 1.0)], false).is_unity());
+    assert!(!RelSegments::from_points(&[(0.0, 0.0), (1.0, 0.5)], false).is_unity());
 
-    let mut bent = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let mut bent = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     bent.set_power(0, 2.0);
     assert!(!bent.is_unity());
 
-    let mut end = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let mut end = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     end.set_power(1, 1.0);
     end.set_smooth(1, true);
     assert!(end.is_unity());
@@ -97,7 +97,7 @@ fn unity_is_two_unsmoothed_endpoints() {
 
 #[test]
 fn serde_roundtrip() {
-    let mut segments = Segments::default();
+    let mut segments = RelSegments::default();
     segments.set_power(0, 4.0);
     segments.set_smooth(0, true);
 
@@ -106,20 +106,20 @@ fn serde_roundtrip() {
 
     assert!(json.get("revision").is_none());
 
-    let back: Segments = serde_json::from_value(json.clone()).unwrap();
+    let back: RelSegments = serde_json::from_value(json.clone()).unwrap();
 
     assert_points_eq(back.points(), &expected);
     assert_eq!(back.revision(), 0);
 
-    let again: Segments = serde_json::from_value(json).unwrap();
+    let again: RelSegments = serde_json::from_value(json).unwrap();
 
     assert_eq!(again.revision(), 0);
 }
 
 #[test]
 fn edits_advance_the_revision() {
-    let mut segments = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
-    let other = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let other = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
     assert_ne!(segments.revision(), other.revision());
     assert_points_eq(segments.points(), other.points());
@@ -138,8 +138,8 @@ fn edits_advance_the_revision() {
 
 #[test]
 fn smooth_applies_only_to_the_segment_that_starts_at_that_point() {
-    let mut segments = Segments::default();
-    let plain = Segments::default();
+    let mut segments = RelSegments::default();
+    let plain = RelSegments::default();
 
     segments.set_smooth(0, true);
 
@@ -177,14 +177,14 @@ fn legacy_shapes_match_the_old_curves() {
 
 #[test]
 fn render_closed_includes_both_endpoints() {
-    let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let ramp = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     let mut samples = [0.0; 5];
 
     ramp.render_closed(&mut samples);
 
     assert_eq!(samples, [0.0, 0.25, 0.5, 0.75, 1.0]);
 
-    let end = Segments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false);
+    let end = RelSegments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false);
     let mut pair = [0.0; 2];
 
     end.render_closed(&mut pair);
@@ -194,21 +194,21 @@ fn render_closed_includes_both_endpoints() {
 
 #[test]
 fn render_covers_the_half_open_period() {
-    let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let ramp = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     let mut samples = [0.0; 4];
 
     ramp.render_waveform(&mut samples);
 
     assert_eq!(samples, [0.0, 0.25, 0.5, 0.75]);
 
-    let square = Segments::from_points(&[(0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)], false);
+    let square = RelSegments::from_points(&[(0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)], false);
     let mut square_samples = [0.0; 8];
 
     square.render_waveform(&mut square_samples);
 
     assert_eq!(square_samples, [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0]);
 
-    let leading = Segments::from_points(
+    let leading = RelSegments::from_points(
         &[(0.0, 0.0), (0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)],
         false,
     );
@@ -221,7 +221,7 @@ fn render_covers_the_half_open_period() {
 
 #[test]
 fn render_tails_match_an_aligned_render() {
-    let mut segments = Segments::from_points(&[(0.0, 0.15), (0.37, 0.9), (1.0, 0.2)], true);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.15), (0.37, 0.9), (1.0, 0.2)], true);
     segments.set_power(0, 4.0);
     segments.set_power(1, -2.5);
 
@@ -250,7 +250,7 @@ fn render_tails_match_an_aligned_render() {
 
 #[test]
 fn phase_at_walks_the_segment_that_starts_at_that_point() {
-    let segments = Segments::from_points(&[(0.0, 0.0), (0.25, 1.0), (1.0, 0.0)], false);
+    let segments = RelSegments::from_points(&[(0.0, 0.0), (0.25, 1.0), (1.0, 0.0)], false);
 
     assert!((segments.phase_at(0, 0.0) - 0.0).abs() < 1e-6);
     assert!((segments.phase_at(0, 0.5) - 0.125).abs() < 1e-6);
@@ -262,14 +262,14 @@ fn phase_at_walks_the_segment_that_starts_at_that_point() {
 
 #[test]
 fn value_at_reads_the_segment_that_contains_the_phase() {
-    let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let ramp = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
     assert!((ramp.value_at(0.0, None, None) - 0.0).abs() < 1e-6);
     assert!((ramp.value_at(0.25, None, None) - 0.25).abs() < 1e-6);
     assert!((ramp.value_at(1.0, None, None) - 1.0).abs() < 1e-6);
     assert!((ramp.value_at(0.0, Some(0.4), None) - 0.4).abs() < 1e-6);
 
-    let square = Segments::from_points(
+    let square = RelSegments::from_points(
         &[(0.0, 0.0), (0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)],
         false,
     );
@@ -279,7 +279,7 @@ fn value_at_reads_the_segment_that_contains_the_phase() {
     assert!((square.value_at(0.5, None, None) - 1.0).abs() < 1e-6);
     assert!((square.value_at(0.75, None, None) - 0.0).abs() < 1e-6);
 
-    let mut curved = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], true);
+    let mut curved = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], true);
     curved.set_power(0, 8.0);
 
     assert!(curved.value_at(0.5, None, None) < ramp.value_at(0.5, None, None));
@@ -291,7 +291,7 @@ fn value_at_reads_the_segment_that_contains_the_phase() {
 
 #[test]
 fn render_points_closes_the_cycle_and_keeps_corners() {
-    let ramp = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let ramp = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     let mut points = Vec::new();
     let mut scratch = Vec::new();
 
@@ -304,7 +304,7 @@ fn render_points_closes_the_cycle_and_keeps_corners() {
             .all(|pair| pair[1][0] + 1e-5 >= pair[0][0])
     );
 
-    let triangle = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let triangle = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
 
     triangle.render_points(3, &mut points, &mut scratch);
 
@@ -320,7 +320,7 @@ fn render_points_closes_the_cycle_and_keeps_corners() {
             < 1.0
     );
 
-    let square = Segments::from_points(&[(0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)], false);
+    let square = RelSegments::from_points(&[(0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)], false);
 
     square.render_points(4, &mut points, &mut scratch);
 
@@ -338,7 +338,7 @@ fn render_points_closes_the_cycle_and_keeps_corners() {
 
 #[test]
 fn render_points_keeps_a_vertical_step() {
-    let saw = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0), (1.0, 0.0)], false);
+    let saw = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0), (1.0, 0.0)], false);
     let mut points = Vec::new();
     let mut scratch = Vec::new();
 
@@ -352,7 +352,7 @@ fn render_points_keeps_a_vertical_step() {
     assert_eq!(steps, vec![&[[1.0, 1.0], [1.0, 0.0]]]);
     assert!(points.windows(2).all(|pair| pair[0] != pair[1]));
 
-    let square = Segments::from_points(
+    let square = RelSegments::from_points(
         &[(0.0, 0.0), (0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)],
         false,
     );
@@ -375,7 +375,7 @@ fn render_points_keeps_a_vertical_step() {
 #[test]
 fn sanitize_clamps_curve_floats() {
     let mut segments =
-        Segments::from_points(&[(0.2, -1.0), (0.5, Smp::INFINITY), (1.4, 0.25)], false);
+        RelSegments::from_points(&[(0.2, -1.0), (0.5, Smp::INFINITY), (1.4, 0.25)], false);
 
     segments.sanitize();
 
@@ -387,27 +387,27 @@ fn sanitize_clamps_curve_floats() {
     assert_eq!(segments.point(2).x, 1.0);
     assert_eq!(segments.point(2).y, 0.25);
 
-    let mut short: Segments = serde_json::from_str(r#"{"segments":[]}"#).unwrap();
-    let mut one: Segments =
+    let mut short: RelSegments = serde_json::from_str(r#"{"segments":[]}"#).unwrap();
+    let mut one: RelSegments =
         serde_json::from_str(r#"{"segments":[{"x":0.2,"y":0.3,"power":0.0,"smooth":false}]}"#)
             .unwrap();
 
     short.sanitize();
     one.sanitize();
 
-    assert_eq!(short.num_points(), Segments::default().num_points());
-    assert_eq!(one.num_points(), Segments::default().num_points());
+    assert_eq!(short.num_points(), RelSegments::default().num_points());
+    assert_eq!(one.num_points(), RelSegments::default().num_points());
 }
 
 #[test]
 #[should_panic(expected = "segments must have 2 to 100 points")]
 fn from_points_rejects_a_single_point() {
-    let _ = Segments::from_points(&[(0.0, 0.0)], false);
+    let _ = RelSegments::from_points(&[(0.0, 0.0)], false);
 }
 
 #[test]
 fn positive_power_holds_the_segment_near_its_start() {
-    let mut segments = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
     let mut samples = [0.0; 2];
 
@@ -422,7 +422,7 @@ fn positive_power_holds_the_segment_near_its_start() {
 
 #[test]
 fn edits_keep_endpoints_and_reject_a_full_curve() {
-    let mut segments = Segments::default();
+    let mut segments = RelSegments::default();
 
     assert!(segments.add_point(
         2,
@@ -444,7 +444,7 @@ fn edits_keep_endpoints_and_reject_a_full_curve() {
     assert_eq!(segments.point(1).y, 0.0);
     assert_eq!(segments.point(2).y, 1.0);
 
-    let mut full = Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
+    let mut full = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
     for i in 0..MAX_POINTS - 2 {
         assert!(full.add_point(
@@ -470,7 +470,7 @@ fn edits_keep_endpoints_and_reject_a_full_curve() {
 
 #[test]
 fn loop_and_release_follow_the_point_rules() {
-    let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
 
     assert!(!segments.set_loop_point(Some(2)));
     assert!(segments.set_loop_point(Some(0)));
@@ -496,7 +496,7 @@ fn loop_and_release_follow_the_point_rules() {
 #[test]
 fn markers_follow_inserted_and_removed_points() {
     let mut segments =
-        Segments::from_points(&[(0.0, 0.0), (0.3, 0.5), (0.7, 1.0), (1.0, 0.0)], false);
+        RelSegments::from_points(&[(0.0, 0.0), (0.3, 0.5), (0.7, 1.0), (1.0, 0.0)], false);
     assert!(segments.set_loop_point(Some(1)));
     assert!(segments.set_release_point(Some(2)));
 
@@ -519,7 +519,7 @@ fn markers_follow_inserted_and_removed_points() {
 #[test]
 fn horizontal_flip_mirrors_markers_and_drops_an_illegal_loop() {
     let mut segments =
-        Segments::from_points(&[(0.0, 0.0), (0.25, 0.5), (0.75, 1.0), (1.0, 0.0)], false);
+        RelSegments::from_points(&[(0.0, 0.0), (0.25, 0.5), (0.75, 1.0), (1.0, 0.0)], false);
     assert!(segments.set_loop_point(Some(1)));
     assert!(segments.set_release_point(Some(2)));
 
@@ -531,7 +531,7 @@ fn horizontal_flip_mirrors_markers_and_drops_an_illegal_loop() {
 
 #[test]
 fn markers_round_trip_and_missing_ones_stay_clear() {
-    let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     assert!(segments.set_loop_point(Some(0)));
     assert!(segments.set_release_point(Some(1)));
 
@@ -540,19 +540,19 @@ fn markers_round_trip_and_missing_ones_stay_clear() {
     assert_eq!(json["release_point"], 1);
     assert!(json.get("revision").is_none());
 
-    let back: Segments = serde_json::from_value(json).unwrap();
+    let back: RelSegments = serde_json::from_value(json).unwrap();
     assert_eq!(back.loop_point_idx(), Some(0));
     assert_eq!(back.release_point_idx(), Some(1));
     assert_points_eq(back.points(), segments.points());
 
-    let bare: Segments = serde_json::from_str(
+    let bare: RelSegments = serde_json::from_str(
         r#"{"segments":[{"x":0.0,"y":0.0,"power":0.0,"smooth":false},{"x":1.0,"y":1.0,"power":0.0,"smooth":false}]}"#,
     )
     .unwrap();
     assert_eq!(bare.loop_point_idx(), None);
     assert_eq!(bare.release_point_idx(), None);
 
-    let mut illegal: Segments = serde_json::from_str(
+    let mut illegal: RelSegments = serde_json::from_str(
         r#"{"segments":[{"x":0.0,"y":0.0,"power":0.0,"smooth":false},{"x":1.0,"y":1.0,"power":0.0,"smooth":false}],"loop_point":1}"#,
     )
     .unwrap();
@@ -564,7 +564,7 @@ fn markers_round_trip_and_missing_ones_stay_clear() {
 #[test]
 fn loop_samples_span_the_loop_at_the_phase_step() {
     let mut segments =
-        Segments::from_points(&[(0.0, 0.0), (0.25, 1.0), (0.75, 0.5), (1.0, 0.0)], false);
+        RelSegments::from_points(&[(0.0, 0.0), (0.25, 1.0), (0.75, 0.5), (1.0, 0.0)], false);
 
     assert_eq!(segments.loop_samples(0.25), 0);
 
@@ -576,7 +576,7 @@ fn loop_samples_span_the_loop_at_the_phase_step() {
     assert!(segments.set_release_point(Some(2)));
     assert_eq!(segments.loop_samples(0.25), 2);
 
-    let mut flat = Segments::from_points(&[(0.0, 0.2), (1.0, 0.5), (1.0, 0.8)], false);
+    let mut flat = RelSegments::from_points(&[(0.0, 0.2), (1.0, 0.5), (1.0, 0.8)], false);
     assert!(flat.set_loop_point(Some(1)));
     assert_eq!(flat.loop_samples(0.25), 0);
     assert_eq!(flat.loop_samples(0.0), 0);
@@ -584,7 +584,7 @@ fn loop_samples_span_the_loop_at_the_phase_step() {
 
 #[test]
 fn release_level_replaces_the_segment_that_leaves_that_point() {
-    let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     assert!(segments.set_release_point(Some(1)));
 
     assert!((segments.value_at(0.5, None, Some(0.25)) - 0.25).abs() < 1e-6);

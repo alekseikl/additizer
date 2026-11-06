@@ -14,7 +14,7 @@ pub use link::{ModMapAudioEnd, ModMapLinks, ModMapUiEnd, UiEvent};
 
 use addi_dsp::{
     filters::ctrl_filter::{CtrlFilter, CtrlFilterCoeffs},
-    segments::Segments,
+    segments::rel_segments::RelSegments,
     utils::sanitize,
 };
 
@@ -45,7 +45,7 @@ const _: () = assert!(TABLE_BUFFER_SIZE == TABLE_SIZE - 1 + CATMULL_TAPS);
 struct Params {
     bipolar: bool,
     smooth: Smp,
-    segments: Segments,
+    segments: RelSegments,
 }
 
 impl Params {
@@ -220,7 +220,7 @@ impl<L: ModMapLinks> ModMap<L> {
     set_mono_param!(set_smooth, smooth, Smp, sanitize(smooth, 0.0, MAX_SMOOTH));
     set_smoothed_param!(set_amount, amount, sanitize(*amount, 0.0, 1.0));
 
-    pub fn set_segments(&mut self, mut segments: Segments) {
+    pub fn set_segments(&mut self, mut segments: RelSegments) {
         segments.sanitize();
         self.params.segments = segments;
         self.bake_table();

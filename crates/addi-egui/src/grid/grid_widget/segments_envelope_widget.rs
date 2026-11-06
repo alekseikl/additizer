@@ -3,7 +3,7 @@ use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, Vec2, ecolor::Hsva
 
 use crate::grid::WidgetCtx;
 use crate::utils::hsva;
-use addi_dsp::{Segments, Smp};
+use addi_dsp::{RelSegments, Smp};
 use addi_engine::ModuleId;
 use addi_engine::segments_envelope::SegmentsEnvelopePhase;
 use addi_ui_backend::ui_bridge::ModuleBridge;
@@ -32,8 +32,8 @@ pub struct SegmentsEnvelopeWidget {
 }
 
 impl SegmentsEnvelopeWidget {
-    /// Phase/level polyline. Rebuilt when [`Segments::revision`] or `size` changes.
-    fn build_curve(&mut self, segments: &Segments, size: Vec2) {
+    /// Phase/level polyline. Rebuilt when [`RelSegments::revision`] or `size` changes.
+    fn build_curve(&mut self, segments: &RelSegments, size: Vec2) {
         if size.x <= 0.0 {
             self.points.clear();
             self.rendered = None;
@@ -128,7 +128,7 @@ impl SegmentsEnvelopeWidget {
     }
 
     /// Screen span of the loop, from the loop point to the release point or the end.
-    fn loop_span(rect: Rect, segments: &Segments) -> Option<(f32, f32)> {
+    fn loop_span(rect: Rect, segments: &RelSegments) -> Option<(f32, f32)> {
         let start = segments.loop_point()?;
         let end_x = segments.release_point().map(|point| point.x).unwrap_or(1.0);
         let left = rect.left() + start.x.clamp(0.0, 1.0) * rect.width();

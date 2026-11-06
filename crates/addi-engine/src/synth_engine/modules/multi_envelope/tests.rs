@@ -1,4 +1,4 @@
-use addi_dsp::time_segments::TimeSegments;
+use addi_dsp::segments::time_segments::TimeSegments;
 
 use super::*;
 use crate::synth_engine::{synth_module::SynthModule, voices_handler::DecayingVoice};

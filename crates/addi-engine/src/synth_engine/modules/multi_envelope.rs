@@ -10,7 +10,7 @@ mod tests;
 pub use config::MultiEnvelopeConfig;
 pub use link::{MultiEnvelopeAudioEnd, MultiEnvelopeLinks, MultiEnvelopeUiEnd, UiEvent, UiUpdate};
 
-use addi_dsp::time_segments::{MAX_SEGMENTS, TimePoint, TimeSegments};
+use addi_dsp::segments::time_segments::{MAX_SEGMENTS, TimePoint, TimeSegments};
 
 use crate::synth_engine::{
     Input, ModuleId, Smp, StereoSample,

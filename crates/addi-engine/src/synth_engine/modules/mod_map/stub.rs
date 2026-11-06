@@ -2,12 +2,12 @@ use std::sync::LazyLock;
 
 use super::{ModMapAudioEnd, ModMapLinks, ModMapUiEnd, UiEvent};
 
-use addi_dsp::segments::Segments;
+use addi_dsp::segments::rel_segments::RelSegments;
 
 use crate::synth_engine::{Input, Smp, StereoSample};
 
-static SEGMENTS: LazyLock<Segments> =
-    LazyLock::new(|| Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
+static SEGMENTS: LazyLock<RelSegments> =
+    LazyLock::new(|| RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
 
 pub struct AudioEnd;
 
@@ -38,7 +38,7 @@ impl ModMapAudioEnd for AudioEnd {
 
     fn update_probe(&mut self, _probe: StereoSample) {}
 
-    fn read_segments(&mut self) -> &Segments {
+    fn read_segments(&mut self) -> &RelSegments {
         &SEGMENTS
     }
 }
@@ -52,7 +52,7 @@ impl ModMapUiEnd for NoUi {
         self.diverge()
     }
 
-    fn set_segments(&mut self, _segments: Segments) -> bool {
+    fn set_segments(&mut self, _segments: RelSegments) -> bool {
         self.diverge()
     }
 

@@ -16,7 +16,7 @@ use config::{MAX_FREQUENCY, MAX_PHASE_SHIFT, MIN_FREQUENCY, MIN_PHASE_SHIFT};
 pub use link::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
 pub use timebase::Timebase;
 
-use addi_dsp::{segments::Segments, utils::sanitize};
+use addi_dsp::{segments::rel_segments::RelSegments, utils::sanitize};
 
 use crate::synth_engine::{
     Input, ModuleId, SmoothedSampleParams, Smp, StereoSample,
@@ -62,7 +62,7 @@ impl ChannelParams {
 }
 
 struct Params {
-    segments: Segments,
+    segments: RelSegments,
     steal_phase: bool,
     timebase: Timebase,
 }
@@ -142,7 +142,7 @@ pub struct Lfo<L: LfoLinks = stub::Links> {
     id: ModuleId,
     params: Params,
     channel_params: [ChannelParams; NUM_CHANNELS],
-    /// One cycle of [`Segments`], padded the same way as the oscillator wavetable.
+    /// One cycle of [`RelSegments`], padded the same way as the oscillator wavetable.
     wave: [Smp; WAVEFORM_BUFFER_SIZE],
     buffers: Buffers,
     audio_end: L::AudioEnd,
@@ -219,7 +219,7 @@ impl<L: LfoLinks> Lfo<L> {
         sanitize(*phase_shift, MIN_PHASE_SHIFT, MAX_PHASE_SHIFT)
     );
 
-    pub fn set_segments(&mut self, mut segments: Segments) {
+    pub fn set_segments(&mut self, mut segments: RelSegments) {
         segments.sanitize();
         self.params.segments = segments;
         self.bake_wave();

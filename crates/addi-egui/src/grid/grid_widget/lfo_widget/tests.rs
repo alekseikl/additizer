@@ -1,4 +1,4 @@
-use addi_dsp::Segments;
+use addi_dsp::RelSegments;
 use egui::vec2;
 
 use super::LfoWidget;
@@ -9,7 +9,7 @@ fn size() -> egui::Vec2 {
 
 #[test]
 fn curve_keeps_an_off_grid_peak() {
-    let segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     let mut widget = LfoWidget::default();
 
     widget.build_curve(&segments, size());
@@ -30,7 +30,7 @@ fn curve_keeps_an_off_grid_peak() {
 
 #[test]
 fn intact_segments_are_not_rendered_again() {
-    let segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     let mut widget = LfoWidget::default();
 
     widget.build_curve(&segments, size());
@@ -42,7 +42,7 @@ fn intact_segments_are_not_rendered_again() {
 
 #[test]
 fn an_edit_renders_again() {
-    let mut segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     let mut widget = LfoWidget::default();
 
     widget.build_curve(&segments, size());
@@ -55,7 +55,7 @@ fn an_edit_renders_again() {
 
 #[test]
 fn a_wider_tile_renders_again() {
-    let segments = Segments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
+    let segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     let mut widget = LfoWidget::default();
 
     widget.build_curve(&segments, size());

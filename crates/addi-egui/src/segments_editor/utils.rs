@@ -1,5 +1,5 @@
 use addi_dsp::{
-    segments::{SegPoint, Segments},
+    segments::rel_segments::{RelSegments, SegPoint},
     utils::sanitize,
 };
 use addi_engine::Smp;
@@ -180,7 +180,7 @@ pub(super) struct Ctx<'a> {
     pub(super) plot: Rect,
     pub(super) res: &'a Response,
     pub(super) stamping: bool,
-    pub(super) segs: &'a mut Segments,
+    pub(super) segs: &'a mut RelSegments,
 }
 
 impl Ctx<'_> {

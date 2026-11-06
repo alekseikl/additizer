@@ -13,7 +13,6 @@ pub mod segments;
 pub mod simd_utils;
 pub mod smooth;
 pub mod stereo_sample;
-pub mod time_segments;
 pub mod types;
 pub mod utils;
 
@@ -28,9 +27,9 @@ pub use math::{
     gain_to_db_fast, note_to_pitch, pan_gain, pitch_to_freq, power_scale,
 };
 pub use phase::{Phase, PhaseX4};
-pub use segments::{SegPoint, Segments};
+pub use segments::rel_segments::{RelSegments, SegPoint};
+pub use segments::time_segments::{TimePoint, TimeSegments};
 pub use simd_utils::{fill, map, map_in_place, zip_map, zip_map_in_place};
 pub use smooth::{SmoothedSample, SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
-pub use time_segments::{TimePoint, TimeSegments};
 pub use types::{ComplexSample, SIMD_LANES, Smp, WideI32, WideSmp, WideU32};

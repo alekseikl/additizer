@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use addi_dsp::{segments::Segments, utils::sanitize};
+use addi_dsp::{segments::rel_segments::RelSegments, utils::sanitize};
 
 use super::Timebase;
 use crate::synth_engine::{ModuleId, Smp, StereoSample};
@@ -15,8 +15,8 @@ fn default_rate() -> StereoSample {
 }
 
 /// Falling ramp. A looping saw repeats the end phase so it can jump back up.
-fn default_segments() -> Segments {
-    Segments::from_points(&[(0.0, 1.0), (1.0, 0.0)], false)
+fn default_segments() -> RelSegments {
+    RelSegments::from_points(&[(0.0, 1.0), (1.0, 0.0)], false)
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -38,7 +38,7 @@ pub struct SegmentsEnvelopeConfig {
     #[serde(default)]
     pub timebase: Timebase,
     #[serde(default = "default_segments")]
-    pub segments: Segments,
+    pub segments: RelSegments,
 }
 
 impl Default for SegmentsEnvelopeConfig {

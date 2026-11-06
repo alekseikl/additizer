@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use addi_dsp::time_segments::TimeSegments;
+use addi_dsp::segments::time_segments::TimeSegments;
 
 use crate::synth_engine::ModuleId;
 

@@ -14,7 +14,7 @@ pub use link::{SegmentsEnvelopeAudioEnd, SegmentsEnvelopeLinks, SegmentsEnvelope
 pub use timebase::Timebase;
 
 use addi_dsp::{
-    segments::{SegPoint, Segments},
+    segments::rel_segments::{RelSegments, SegPoint},
     utils::sanitize,
 };
 
@@ -47,7 +47,7 @@ impl ChannelParams {
 }
 
 struct Params {
-    segments: Segments,
+    segments: RelSegments,
     steal_level: bool,
     keep_voice_alive: bool,
     timebase: Timebase,
@@ -243,12 +243,12 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         sanitize(*phase_shift, MIN_PHASE_SHIFT, MAX_PHASE_SHIFT)
     );
 
-    pub fn set_segments(&mut self, mut segments: Segments) {
+    pub fn set_segments(&mut self, mut segments: RelSegments) {
         segments.sanitize();
         self.params.segments = segments;
     }
 
-    fn playhead_phase(segments: &Segments, stage: Stage) -> Smp {
+    fn playhead_phase(segments: &RelSegments, stage: Stage) -> Smp {
         match stage {
             Stage::Sustain => segments.release_point().map(|point| point.x).unwrap_or(1.0),
             Stage::Trigger(_) | Stage::Done => 1.0,
@@ -258,7 +258,7 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         }
     }
 
-    fn playhead_level(segments: &Segments, voice: &Voice) -> Smp {
+    fn playhead_level(segments: &RelSegments, voice: &Voice) -> Smp {
         let start_level = match voice.stage {
             Stage::Segment {
                 index: 0, start, ..
@@ -273,7 +273,7 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         )
     }
 
-    fn segment_start(segments: &Segments, voice: &Voice, index: usize) -> SegPoint {
+    fn segment_start(segments: &RelSegments, voice: &Voice, index: usize) -> SegPoint {
         let mut start = segments.point(index);
 
         if segments.release_point_idx() == Some(index)
@@ -295,7 +295,7 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
     }
 
     /// Stage after segment `index` finishes.
-    fn next_stage(segments: &Segments, index: usize, note_on: bool, phase_step: Smp) -> Stage {
+    fn next_stage(segments: &RelSegments, index: usize, note_on: bool, phase_step: Smp) -> Stage {
         let next = index + 1;
         let spans = segments.num_points() - 1;
         let looping = segments.loop_samples(phase_step) >= MIN_LOOP_SAMPLES;
@@ -325,14 +325,14 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         Stage::Done
     }
 
-    fn sustain_level(segments: &Segments, fallback: Smp) -> Smp {
+    fn sustain_level(segments: &RelSegments, fallback: Smp) -> Smp {
         segments
             .release_point()
             .map(|point| point.y)
             .unwrap_or(fallback)
     }
 
-    fn rest_level(segments: &Segments, voice: &Voice) -> Smp {
+    fn rest_level(segments: &RelSegments, voice: &Voice) -> Smp {
         let last = segments.num_points() - 1;
 
         if segments.release_point_idx() == Some(last)
@@ -344,7 +344,7 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         segments.point(last).y
     }
 
-    fn begin_release(segments: &Segments, voice: &mut Voice, level: Smp) {
+    fn begin_release(segments: &RelSegments, voice: &mut Voice, level: Smp) {
         let Some(index) = segments.release_point_idx() else {
             voice.release = Release::None;
 
@@ -367,7 +367,7 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         }
     }
 
-    fn render_region(segments: &Segments, voice: &mut Voice, out: &mut [Smp], phase_step: Smp) {
+    fn render_region(segments: &RelSegments, voice: &mut Voice, out: &mut [Smp], phase_step: Smp) {
         let len = out.len();
         let mut pos = 0;
 
@@ -416,7 +416,7 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         }
     }
 
-    fn apply_trigger(segments: &Segments, voice: &mut Voice, phase: Smp, level: Option<Smp>) {
+    fn apply_trigger(segments: &RelSegments, voice: &mut Voice, phase: Smp, level: Option<Smp>) {
         let segment = |index, position| Stage::Segment {
             index,
             position,

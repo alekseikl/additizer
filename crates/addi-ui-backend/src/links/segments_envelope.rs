@@ -1,6 +1,6 @@
 use triple_buffer::triple_buffer;
 
-use addi_dsp::segments::Segments;
+use addi_dsp::segments::rel_segments::RelSegments;
 use addi_engine::segments_envelope::{
     SegmentsEnvelopeAudioEnd, SegmentsEnvelopeLinks, SegmentsEnvelopePhase, SegmentsEnvelopeUiEnd,
     Timebase, UiEvent,
@@ -10,7 +10,7 @@ use addi_engine::{Input, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
     phase: triple_buffer::Output<SegmentsEnvelopePhase>,
-    segments: triple_buffer::Input<Segments>,
+    segments: triple_buffer::Input<RelSegments>,
 }
 
 impl UiEnd {
@@ -22,7 +22,7 @@ impl UiEnd {
         self.tx.push(UiEvent::InputParam { input, value }).is_ok()
     }
 
-    pub fn set_segments(&mut self, segments: Segments) -> bool {
+    pub fn set_segments(&mut self, segments: RelSegments) -> bool {
         self.segments.write(segments);
         self.tx.push(UiEvent::SegmentsUpdated).is_ok()
     }
@@ -43,7 +43,7 @@ impl UiEnd {
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
     phase: triple_buffer::Input<SegmentsEnvelopePhase>,
-    segments: triple_buffer::Output<Segments>,
+    segments: triple_buffer::Output<RelSegments>,
 }
 
 impl AudioEnd {
@@ -55,7 +55,7 @@ impl AudioEnd {
         self.phase.write(phase);
     }
 
-    pub fn read_segments(&mut self) -> &Segments {
+    pub fn read_segments(&mut self) -> &RelSegments {
         self.segments.read()
     }
 }
@@ -63,7 +63,7 @@ impl AudioEnd {
 pub fn make_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
     let (phase_input, phase_output) = triple_buffer(&SegmentsEnvelopePhase::default());
-    let (segments_input, segments_output) = triple_buffer(&Segments::default());
+    let (segments_input, segments_output) = triple_buffer(&RelSegments::default());
 
     (
         AudioEnd {
@@ -86,7 +86,7 @@ impl SegmentsEnvelopeAudioEnd for AudioEnd {
     fn update_phase(&mut self, phase: SegmentsEnvelopePhase) {
         AudioEnd::update_phase(self, phase)
     }
-    fn read_segments(&mut self) -> &Segments {
+    fn read_segments(&mut self) -> &RelSegments {
         AudioEnd::read_segments(self)
     }
 }
@@ -98,7 +98,7 @@ impl SegmentsEnvelopeUiEnd for UiEnd {
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
         UiEnd::set_param(self, input, value)
     }
-    fn set_segments(&mut self, segments: Segments) -> bool {
+    fn set_segments(&mut self, segments: RelSegments) -> bool {
         UiEnd::set_segments(self, segments)
     }
     fn set_steal_level(&mut self, value: bool) -> bool {

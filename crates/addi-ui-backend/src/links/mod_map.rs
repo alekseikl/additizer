@@ -1,13 +1,13 @@
 use triple_buffer::triple_buffer;
 
-use addi_dsp::segments::Segments;
+use addi_dsp::segments::rel_segments::RelSegments;
 use addi_engine::mod_map::{ModMapAudioEnd, ModMapLinks, ModMapUiEnd, UiEvent};
 use addi_engine::{Input, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
     probe: triple_buffer::Output<StereoSample>,
-    segments: triple_buffer::Input<Segments>,
+    segments: triple_buffer::Input<RelSegments>,
 }
 
 impl UiEnd {
@@ -19,7 +19,7 @@ impl UiEnd {
         self.tx.push(UiEvent::InputParam { input, value }).is_ok()
     }
 
-    pub fn set_segments(&mut self, segments: Segments) -> bool {
+    pub fn set_segments(&mut self, segments: RelSegments) -> bool {
         self.segments.write(segments);
         self.tx.push(UiEvent::SegmentsUpdated).is_ok()
     }
@@ -36,7 +36,7 @@ impl UiEnd {
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
     probe: triple_buffer::Input<StereoSample>,
-    segments: triple_buffer::Output<Segments>,
+    segments: triple_buffer::Output<RelSegments>,
 }
 
 impl AudioEnd {
@@ -48,7 +48,7 @@ impl AudioEnd {
         self.probe.write(probe);
     }
 
-    pub fn read_segments(&mut self) -> &Segments {
+    pub fn read_segments(&mut self) -> &RelSegments {
         self.segments.read()
     }
 }
@@ -57,7 +57,7 @@ pub fn make_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
     let (probe_input, probe_output) = triple_buffer(&StereoSample::ZERO);
     let (segments_input, segments_output) =
-        triple_buffer(&Segments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
+        triple_buffer(&RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false));
 
     (
         AudioEnd {
@@ -82,7 +82,7 @@ impl ModMapAudioEnd for AudioEnd {
         AudioEnd::update_probe(self, probe)
     }
 
-    fn read_segments(&mut self) -> &Segments {
+    fn read_segments(&mut self) -> &RelSegments {
         AudioEnd::read_segments(self)
     }
 }
@@ -96,7 +96,7 @@ impl ModMapUiEnd for UiEnd {
         UiEnd::set_param(self, input, value)
     }
 
-    fn set_segments(&mut self, segments: Segments) -> bool {
+    fn set_segments(&mut self, segments: RelSegments) -> bool {
         UiEnd::set_segments(self, segments)
     }
 

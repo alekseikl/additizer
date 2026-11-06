@@ -1,4 +1,4 @@
-use addi_dsp::segments::Segments;
+use addi_dsp::segments::rel_segments::RelSegments;
 use egui::{Popup, Response, Ui};
 
 use super::consts as C;
@@ -86,7 +86,7 @@ pub(super) fn canvas_menu(ctx: &mut Ctx<'_>) {
 }
 
 /// Toggles the sine easing of segment `index`.
-fn smooth_item(ui: &mut Ui, segments: &mut Segments, index: usize) {
+fn smooth_item(ui: &mut Ui, segments: &mut RelSegments, index: usize) {
     let smooth = segments.point(index).smooth;
     let label = if smooth { "Flat" } else { "Smooth" };
 
@@ -97,7 +97,7 @@ fn smooth_item(ui: &mut Ui, segments: &mut Segments, index: usize) {
 }
 
 /// Loop and release choices for point `index`.
-fn marker_items(ui: &mut Ui, segments: &mut Segments, index: usize) {
+fn marker_items(ui: &mut Ui, segments: &mut RelSegments, index: usize) {
     if segments.loop_point_idx() == Some(index) {
         if ui.button("Clear loop").clicked() {
             segments.set_loop_point(None);

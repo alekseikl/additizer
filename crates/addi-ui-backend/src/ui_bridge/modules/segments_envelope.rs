@@ -1,5 +1,5 @@
 use crate::ui_bridge::ModuleUiBridge;
-use addi_dsp::segments::Segments;
+use addi_dsp::segments::rel_segments::RelSegments;
 use addi_engine::segments_envelope::{
     SegmentsEnvelope, SegmentsEnvelopeConfig, SegmentsEnvelopeLinks, SegmentsEnvelopePhase,
     SegmentsEnvelopeUiEnd, Timebase,
@@ -25,7 +25,7 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelopeUiBridge<L> {
         &self.config
     }
 
-    pub fn segments_mut(&mut self) -> &mut Segments {
+    pub fn segments_mut(&mut self) -> &mut RelSegments {
         &mut self.config.segments
     }
 
