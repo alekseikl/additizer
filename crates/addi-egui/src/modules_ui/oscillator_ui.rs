@@ -69,7 +69,7 @@ impl OscillatorUI {
         ui: &mut Ui,
         state: &mut GainShapeState,
     ) -> bool {
-        let modal = Modal::new(Id::new("show_gain_shape_modal-modal")).show(ui.ctx(), |ui| {
+        let modal = Modal::new(Id::unique("show_gain_shape_modal-modal")).show(ui.ctx(), |ui| {
             ui.heading("Levels shape");
             ui.add_space(20.0);
             ui.set_width(440.0);
@@ -128,7 +128,7 @@ impl OscillatorUI {
         ui: &mut Ui,
         state: &mut RandomizePhaseState,
     ) -> bool {
-        let modal = Modal::new(Id::new("show_randomize_phases_modal")).show(ui.ctx(), |ui| {
+        let modal = Modal::new(Id::unique("show_randomize_phases_modal")).show(ui.ctx(), |ui| {
             ui.heading("Randomize phases");
             ui.add_space(20.0);
             ui.set_width(440.0);

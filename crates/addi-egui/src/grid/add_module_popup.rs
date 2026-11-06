@@ -45,7 +45,7 @@ impl AddModulePopup {
         let screen = ctx.content_rect();
         let mut selected = None;
 
-        let backdrop = Area::new(Id::new("add-module-backdrop"))
+        let backdrop = Area::new(Id::unique("add-module-backdrop"))
             .order(Order::Foreground)
             .fixed_pos(screen.min)
             .sense(Sense::click_and_drag())

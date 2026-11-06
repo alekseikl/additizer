@@ -283,7 +283,7 @@ impl<'a> BinSlider<'a> {
 
         let fg_painter = painter
             .clone()
-            .with_layer_id(LayerId::new(Order::Foreground, Id::new("bin-slider-label")));
+            .with_layer_id(LayerId::new(Order::Foreground, Id::unique("bin-slider-label")));
         fg_painter.rect(
             box_rect,
             LABEL_CORNER_RADIUS,

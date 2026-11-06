@@ -9,7 +9,7 @@ addi-dsp = { workspace = true }
 addi-engine = { workspace = true }
 addi-ui-backend = { workspace = true }
 egui = { workspace = true }
-egui_extras = { version = "0.36.1", default-features = false }
+egui_extras = { version = "0.37.0", default-features = false }
 realfft = { workspace = true }
 rustc-hash = { workspace = true }
 smallvec = { workspace = true }

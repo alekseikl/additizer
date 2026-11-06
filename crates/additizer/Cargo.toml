@@ -14,7 +14,7 @@ addi-engine = { workspace = true }
 addi-ui-backend = { workspace = true }
 egui = { workspace = true }
 nice-plug = { version = "0.4.2", features = ["standalone", "tracing-subscriber"] }
-nice-plug-egui = { version = "0.5.1", default-features = false, features = [
+nice-plug-egui = { version = "0.6.0", default-features = false, features = [
     "opengl",
 ] }
 parking_lot = { workspace = true, features = ["serde"] }

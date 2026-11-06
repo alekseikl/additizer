@@ -1,5 +1,6 @@
 use egui::{
-    Color32, FontFamily, FontId, Id, Response, RichText, Stroke, TextEdit, Ui, Widget, ecolor::Hsva,
+    Align2, Color32, FontFamily, FontId, Id, Response, RichText, Stroke, TextEdit, Ui, Widget,
+    ecolor::Hsva,
 };
 
 use crate::routing_ui_ext::ModuleTypeUi;
@@ -41,7 +42,7 @@ impl Widget for ModuleLabel<'_> {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
 
-            let state_id = Id::new(("module-label-edit", module_id));
+            let state_id = Id::unique(("module-label-edit", module_id));
             let input_id = state_id.with("text");
             let focused = ui.memory(|m| m.has_focus(input_id));
 
@@ -62,6 +63,7 @@ impl Widget for ModuleLabel<'_> {
                         TextEdit::singleline(&mut buffer)
                             .id(input_id)
                             .desired_width(200.0)
+                            .align(Align2::LEFT_CENTER)
                             .hint_text(
                                 RichText::new(module_type.default_label()).font(font.clone()),
                             )

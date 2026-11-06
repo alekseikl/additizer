@@ -122,7 +122,7 @@ impl EguiEditor {
         if let Some(panel) = self.grid_module_ui.as_ref() {
             let detail_key = DetailViewKey::from_view(panel);
 
-            Panel::bottom(Id::new(("grid-module-detail", detail_key)))
+            Panel::bottom(Id::unique(("grid-module-detail", detail_key)))
                 .resizable(true)
                 .default_size(300.0)
                 .min_size(80.0)

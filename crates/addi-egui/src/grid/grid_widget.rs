@@ -225,14 +225,14 @@ impl GridWidget {
             Rect::from_min_size(origin + pos + self.drag_offset, size).shrink(BLOCK_MARGIN);
 
         let mut ui_builder = UiBuilder::new()
-            .id(Id::new(("module-widget", self.io.id)))
+            .scope_id(Id::unique(("module-widget", self.io.id)))
             .max_rect(max_rect)
             .layout(Layout::left_to_right(Align::Min));
 
         if self.is_dragging() {
             ui_builder = ui_builder.layer_id(LayerId::new(
                 Order::Foreground,
-                Id::new(("dragged-module", self.io.id)),
+                Id::unique(("dragged-module", self.io.id)),
             ));
         }
 
@@ -539,7 +539,7 @@ impl GridWidget {
     fn inputs_ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
         let viewport = ui.ctx().viewport_rect();
         let stripe_response =
-            ui.interact(ui.max_rect(), ui.id().with("inputs-stripe"), Sense::hover());
+            ui.interact(ui.max_rect(), ui.scope_id().with("inputs-stripe"), Sense::hover());
 
         self.handle_inputs_dnd(ui, ctx);
 
@@ -641,7 +641,7 @@ impl GridWidget {
         } else {
             Sense::click_and_drag()
         };
-        let response = ui.interact(rect, ui.id().with(("drag-handle", self.io.id)), sense);
+        let response = ui.interact(rect, ui.scope_id().with(("drag-handle", self.io.id)), sense);
 
         if response.dragged() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);

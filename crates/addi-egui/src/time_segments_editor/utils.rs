@@ -72,7 +72,7 @@ impl Ctx<'_> {
     }
 
     pub(super) fn handle_layer(&self) -> LayerId {
-        LayerId::new(Order::Foreground, self.ui.id().with("time-segments-handle"))
+        LayerId::new(Order::Foreground, self.ui.scope_id().with("time-segments-handle"))
     }
 
     pub(super) fn handle_response(

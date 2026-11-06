@@ -67,7 +67,7 @@ impl NiceEguiApp for PluginEditor {
         Ok(())
     }
 
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut nice_plug_egui::Frame) {
+    fn ui(&mut self, ui: &mut Ui, frame: &mut nice_plug_egui::Frame) {
         if self.refresh_bridge() {
             self.state.reset();
         }
@@ -90,7 +90,11 @@ impl NiceEguiApp for PluginEditor {
 
                 state.show(ui, engine_factory, ui_bridge);
             });
+        // `request_repaint` wakes the display link without setting
+        // `redraw_requested`, so baseview pauses it again when this frame
+        // returns. Ask the window directly to keep drawing every vsync.
         ui.ctx().request_repaint();
+        frame.baseview_window().request_redraw();
     }
 }
 

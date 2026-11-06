@@ -934,7 +934,7 @@ impl<'a> Slider<'a> {
 
         let fg_painter = painter.clone().with_layer_id(LayerId::new(
             Order::Foreground,
-            Id::new("slider-drag-label"),
+            Id::unique("slider-drag-label"),
         ));
         fg_painter.rect(
             box_rect,

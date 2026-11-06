@@ -148,7 +148,7 @@ impl SpectralEqUi {
 
                 for (index, band) in config.filters.iter_mut().enumerate() {
                     let mut changed = false;
-                    let drag_id = Id::new(("eq-band-drag", module_id, index));
+                    let drag_id = Id::unique(("eq-band-drag", module_id, index));
 
                     let handle = ui
                         .dnd_drag_source(drag_id, BandDrag { module_id, index }, |ui| {

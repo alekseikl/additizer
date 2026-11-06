@@ -15,7 +15,7 @@ fn press(shift: bool) -> Ui {
     let ctx = Context::default();
 
     ctx.input_mut(|input| input.modifiers.shift = shift);
-    Ui::new(ctx, Id::new("segments-test"), UiBuilder::new())
+    Ui::new(ctx, Id::unique("segments-test"), UiBuilder::new())
 }
 
 fn paint_ctx<'a>(ui: &'a Ui, response: &'a Response, segments: &'a mut RelSegments) -> Ctx<'a> {

@@ -306,7 +306,7 @@ impl HarmonicEditorUI {
         let mut discarded = false;
 
         let modal =
-            Modal::new(Id::new(("harmonic-editor-edit-modal", module_id))).show(ui.ctx(), |ui| {
+            Modal::new(Id::unique(("harmonic-editor-edit-modal", module_id))).show(ui.ctx(), |ui| {
                 ui.heading("Edit Harmonics");
                 ui.add_space(20.0);
 

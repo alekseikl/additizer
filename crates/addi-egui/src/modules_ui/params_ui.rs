@@ -43,7 +43,7 @@ impl ParamsUi {
     }
 
     fn show_save_preset_modal(&mut self, ui: &mut Ui, state: &mut SavePresetState) -> bool {
-        let modal = Modal::new(Id::new("save_preset_modal")).show(ui.ctx(), |ui| {
+        let modal = Modal::new(Id::unique("save_preset_modal")).show(ui.ctx(), |ui| {
             ui.set_width(220.0);
             ui.heading("Save Preset");
             ui.add_space(16.0);
@@ -92,7 +92,7 @@ impl ParamsUi {
     }
 
     fn show_load_preset_modal(&mut self, ui: &mut Ui, state: &mut LoadPresetState) -> bool {
-        let modal = Modal::new(Id::new("load_preset_modal")).show(ui.ctx(), |ui| {
+        let modal = Modal::new(Id::unique("load_preset_modal")).show(ui.ctx(), |ui| {
             ui.set_width(440.0);
 
             ui.heading("Load Preset");
