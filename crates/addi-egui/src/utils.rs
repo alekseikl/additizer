@@ -1,4 +1,7 @@
-use egui::{Order, Response, ecolor::Hsva};
+use egui::{
+    Color32, ColorImage, Context, Order, Response, TextureHandle, TextureId, TextureOptions,
+    ecolor::Hsva,
+};
 
 pub const fn hsva(h: f32, s: f32, v: f32, a: f32) -> Hsva {
     Hsva { h, s, v, a }
@@ -20,6 +23,52 @@ fn clicked_nested_popup(response: &Response) -> bool {
 
 pub fn popup_should_close(response: &Response) -> bool {
     response.should_close() && !clicked_nested_popup(response)
+}
+
+const FILL_TOP_ALPHA: u8 = 0x47;
+const FILL_BOTTOM_ALPHA: u8 = 0x28;
+
+/// Cached 1×2 plot gradient. V 0.25 and 0.75 sit on the texel centers.
+pub(crate) struct FillTexture {
+    name: &'static str,
+    color: Color32,
+    texture: Option<TextureHandle>,
+}
+
+impl FillTexture {
+    pub(crate) fn new(name: &'static str, color: Color32) -> Self {
+        Self {
+            name,
+            color,
+            texture: None,
+        }
+    }
+
+    pub(crate) fn id(&mut self, ctx: &Context) -> TextureId {
+        if let Some(texture) = &self.texture {
+            return texture.id();
+        }
+
+        let texture = ctx.load_texture(
+            self.name,
+            ColorImage::new(
+                [1, 2],
+                vec![
+                    with_alpha(self.color, FILL_TOP_ALPHA),
+                    with_alpha(self.color, FILL_BOTTOM_ALPHA),
+                ],
+            ),
+            TextureOptions::LINEAR,
+        );
+        let id = texture.id();
+
+        self.texture = Some(texture);
+        id
+    }
+}
+
+fn with_alpha(color: Color32, alpha: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
 }
 
 #[macro_export]

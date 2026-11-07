@@ -143,8 +143,7 @@ impl SegmentsEnvelopeWidget {
             let mut mesh = Mesh::default();
             let bottom = rect.bottom();
 
-            for window in points.windows(2) {
-                let (start, end) = (window[0], window[1]);
+            for &[start, end] in points.array_windows() {
 
                 if end.x <= start.x {
                     continue;

@@ -426,19 +426,19 @@ impl RelSegments {
             return level;
         }
 
-        for (index, pair) in self.points.windows(2).enumerate() {
+        for (index, &[left, right]) in self.points.array_windows().enumerate() {
             // The release point belongs to the segment that leaves it, so a playhead
             // sitting on that point reads the overridden level rather than the one drawn.
             if let Some((rel, _)) = release
                 && rel == index + 1
-                && phase == pair[1].x
+                && phase == right.x
                 && rel + 1 < n
             {
                 continue;
             }
 
-            if pair[0].x <= phase && pair[1].x >= phase {
-                let mut start = pair[0];
+            if left.x <= phase && right.x >= phase {
+                let mut start = left;
 
                 if let Some((rel, level)) = release
                     && rel == index
@@ -449,7 +449,7 @@ impl RelSegments {
                     start.y = start_level;
                 }
 
-                return SegPoint::segment_level(phase, start, pair[1]);
+                return SegPoint::segment_level(phase, start, right);
             }
         }
 
@@ -481,8 +481,8 @@ impl RelSegments {
         let phase_step = (steps as Smp).recip();
         let mut from = 0;
 
-        for pair in self.points.windows(2) {
-            let mut to = curve::sample_end(pair[1].x, steps);
+        for &[left, right] in self.points.array_windows() {
+            let mut to = curve::sample_end(right.x, steps);
 
             if !closed {
                 to = to.min(len);
@@ -492,7 +492,7 @@ impl RelSegments {
                 continue;
             }
 
-            let width = pair[1].x - pair[0].x;
+            let width = right.x - left.x;
 
             assert!(width > 0.0);
 
@@ -501,10 +501,10 @@ impl RelSegments {
 
             Curve::render(
                 &mut out[from..to],
-                (phase - pair[0].x) * scale,
+                (phase - left.x) * scale,
                 phase_step * scale,
-                pair[0].y..pair[1].y,
-                pair[0].curve,
+                left.y..right.y,
+                left.curve,
             );
             from = to;
         }
@@ -532,24 +532,24 @@ impl RelSegments {
         let phase_step = (pixels as Smp).recip();
         let mut from = 0;
 
-        for pair in self.points.windows(2) {
-            points.push([pair[0].x, pair[0].y]);
+        for &[left, right] in self.points.array_windows() {
+            points.push([left.x, left.y]);
 
-            let to = curve::sample_end(pair[1].x, pixels);
+            let to = curve::sample_end(right.x, pixels);
 
             if from >= to {
                 continue;
             }
 
-            let scale = (pair[1].x - pair[0].x).recip();
+            let scale = (right.x - left.x).recip();
             let phase = from as Smp * phase_step;
 
             Curve::render(
                 &mut scratch[from..to],
-                (phase - pair[0].x) * scale,
+                (phase - left.x) * scale,
                 phase_step * scale,
-                pair[0].y..pair[1].y,
-                pair[0].curve,
+                left.y..right.y,
+                left.curve,
             );
 
             for (offset, &y) in scratch[from..to].iter().enumerate() {

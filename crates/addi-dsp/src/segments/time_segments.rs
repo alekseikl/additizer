@@ -131,9 +131,9 @@ impl TimeSegments {
     /// Seconds from the start of the curve to point `index`.
     pub fn time(&self, index: usize) -> Smp {
         self.points
-            .windows(2)
+            .array_windows()
             .take(index)
-            .map(|pair| pair[0].duration)
+            .map(|&[point, _]| point.duration)
             .sum()
     }
 
@@ -421,9 +421,7 @@ impl TimeSegments {
 
         let mut start = 0.0;
 
-        for pair in self.points.windows(2) {
-            let left = pair[0];
-            let right = pair[1];
+        for &[left, right] in self.points.array_windows() {
             let duration = left.duration;
             let end = start + duration;
 
@@ -466,9 +464,7 @@ impl TimeSegments {
         let mut from = 0;
         let mut start = 0.0;
 
-        for pair in self.points.windows(2) {
-            let left = pair[0];
-            let right = pair[1];
+        for &[left, right] in self.points.array_windows() {
             let duration = left.duration;
             let end = start + duration;
 

@@ -1,7 +1,6 @@
 use egui::{
-    Color32, ColorImage, CursorIcon, DragValue, Mesh, Painter, PointerButton, Pos2, Rect, Response,
-    RichText, Sense, Shape, Stroke, StrokeKind, TextureHandle, TextureId, TextureOptions, Ui, Vec2,
-    ecolor::Hsva, epaint::Vertex, pos2, vec2,
+    Color32, CursorIcon, DragValue, Mesh, Painter, PointerButton, Pos2, Rect, Response, Sense,
+    Shape, Stroke, StrokeKind, Ui, Vec2, ecolor::Hsva, epaint::Vertex, pos2, vec2,
 };
 
 use addi_dsp::{
@@ -12,6 +11,7 @@ use addi_dsp::{
 use addi_engine::{Smp, StereoSample};
 
 use crate::units::Units;
+use crate::utils::FillTexture;
 
 use consts as C;
 use menu::{canvas_menu, open_menu, point_menu, power_menu};
@@ -49,8 +49,7 @@ pub struct SegmentsEditor {
     paint_column: Option<i32>,
     wave_color: Color32,
     power_color: Color32,
-    /// Plot gradient, uploaded on first paint.
-    fill: Option<TextureHandle>,
+    fill: FillTexture,
 }
 
 impl Default for SegmentsEditor {
@@ -70,7 +69,7 @@ impl Default for SegmentsEditor {
             paint_column: None,
             wave_color: C::WAVE_COLOR,
             power_color: C::POWER_COLOR,
-            fill: None,
+            fill: FillTexture::new("segments-fill", C::WAVE_COLOR),
         }
     }
 }
@@ -91,6 +90,7 @@ impl SegmentsEditor {
             markers: true,
             wave_color: Color32::from(C::ENVELOPE_WAVE),
             power_color: Color32::from(C::ENVELOPE_POWER),
+            fill: FillTexture::new("segments-fill", Color32::from(C::ENVELOPE_WAVE)),
             ..Self::default()
         }
     }
@@ -138,20 +138,8 @@ impl SegmentsEditor {
 
         ui.add_space(8.0);
         self.toolbar(ui);
-        ui.add_space(4.0);
-        ui.label(RichText::new(self.help()).small().weak());
 
         segments.revision() != revision
-    }
-
-    fn help(&self) -> &'static str {
-        if matches!(self.tool, Tool::Paint(_)) {
-            C::HELP_PAINT
-        } else if self.markers {
-            C::HELP_MARKERS
-        } else {
-            C::HELP
-        }
     }
 
     fn plot(&mut self, ctx: &mut Ctx<'_>, playhead: Option<[(Smp, Smp); 2]>) {
@@ -791,12 +779,10 @@ impl SegmentsEditor {
     fn paint_fill(&mut self, painter: &Painter, ctx: &Ctx<'_>) {
         assert!(self.points.len() >= 2 && ctx.plot.height() > 0.0);
 
-        let mut mesh = Mesh::with_texture(self.fill_texture(ctx));
+        let mut mesh = Mesh::with_texture(self.fill.id(ctx.ui.ctx()));
         let bottom = ctx.plot.bottom();
 
-        for window in self.points.windows(2) {
-            let (start, end) = (window[0], window[1]);
-
+        for &[start, end] in self.points.array_windows() {
             if end.x > start.x {
                 Self::add_fill_quad(&mut mesh, ctx.plot, bottom, start, end);
             }
@@ -822,29 +808,6 @@ impl SegmentsEditor {
 
         mesh.add_triangle(index, index + 1, index + 2);
         mesh.add_triangle(index, index + 2, index + 3);
-    }
-
-    /// Texture id of the plot gradient. The fill colors are fixed for this editor.
-    fn fill_texture(&mut self, ctx: &Ctx<'_>) -> TextureId {
-        if let Some(fill) = &self.fill {
-            return fill.id();
-        }
-
-        let handle = ctx.ui.ctx().load_texture(
-            "segments-fill",
-            ColorImage::new(
-                [1, 2],
-                vec![
-                    with_alpha(self.wave_color, C::FILL_TOP_ALPHA),
-                    with_alpha(self.wave_color, C::FILL_BOTTOM_ALPHA),
-                ],
-            ),
-            TextureOptions::LINEAR,
-        );
-        let id = handle.id();
-
-        self.fill = Some(handle);
-        id
     }
 
     /// Screen span of the loop, from the loop point to the release point or the end.

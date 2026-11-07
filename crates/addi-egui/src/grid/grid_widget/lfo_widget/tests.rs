@@ -23,8 +23,8 @@ fn curve_keeps_an_off_grid_peak() {
     assert!(
         widget
             .points
-            .windows(2)
-            .all(|pair| pair[1][0] + 1e-5 >= pair[0][0])
+            .array_windows()
+            .all(|&[prev, next]| next[0] + 1e-5 >= prev[0])
     );
 }
 

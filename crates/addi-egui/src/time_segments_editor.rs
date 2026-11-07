@@ -1,7 +1,6 @@
 use egui::{
-    Color32, ColorImage, CursorIcon, DragValue, FontId, Mesh, Painter, PointerButton, Pos2, Rect,
-    Response, RichText, Sense, Shape, Stroke, StrokeKind, TextureHandle, TextureId, TextureOptions,
-    Ui, Vec2, ecolor::Hsva, epaint::Vertex, pos2, vec2,
+    Color32, CursorIcon, DragValue, FontId, Mesh, Painter, PointerButton, Pos2, Rect, Response,
+    Sense, Shape, Stroke, StrokeKind, Ui, Vec2, ecolor::Hsva, epaint::Vertex, pos2, vec2,
 };
 
 use addi_dsp::{
@@ -13,13 +12,11 @@ use addi_dsp::{
 use addi_engine::Smp;
 
 use crate::units::Units;
+use crate::utils::FillTexture;
 
 use consts as C;
 use menu::{canvas_menu, open_menu, point_menu, power_menu};
-use utils::{
-    Ctx, Drag, Handle, TimeDivisions, bold, drag_span, stack_y, time_divisions, with_alpha,
-    zoom_span,
-};
+use utils::{Ctx, Drag, Handle, bold, drag_span, stack_y, with_alpha, zoom_span};
 
 mod consts;
 mod menu;
@@ -29,16 +26,14 @@ pub struct TimeSegmentsEditor {
     grid_y: i32,
     drag: Option<Drag>,
     drag_power: Smp,
-    /// Seconds across the plot. Starts at 4. Scroll and pinch change it, and dragging a
-    /// point past the right edge grows it.
-    span: Smp,
+    time_span: Smp,
     curve: Vec<[Smp; 2]>,
     scratch: Vec<Smp>,
     points: Vec<Pos2>,
     curve_cache: Option<(u64, Vec2, u32)>,
     wave_color: Color32,
     power_color: Color32,
-    fill: Option<TextureHandle>,
+    fill: FillTexture,
 }
 
 impl Default for TimeSegmentsEditor {
@@ -47,14 +42,14 @@ impl Default for TimeSegmentsEditor {
             grid_y: 4,
             drag: None,
             drag_power: 0.0,
-            span: C::DEFAULT_SPAN,
+            time_span: C::DEFAULT_SPAN,
             curve: Vec::new(),
             scratch: Vec::new(),
             points: Vec::new(),
             curve_cache: None,
             wave_color: Color32::from(C::ENVELOPE_WAVE),
             power_color: Color32::from(C::ENVELOPE_POWER),
-            fill: None,
+            fill: FillTexture::new("time-segments-fill", Color32::from(C::ENVELOPE_WAVE)),
         }
     }
 }
@@ -77,8 +72,6 @@ impl TimeSegmentsEditor {
 
         ui.add_space(8.0);
         self.toolbar(ui);
-        ui.add_space(4.0);
-        ui.label(RichText::new(C::HELP).small().weak());
 
         segments.revision() != revision
     }
@@ -104,7 +97,7 @@ impl TimeSegmentsEditor {
             plot,
             res: response,
             segs: segments,
-            span: self.span,
+            span: self.time_span,
         };
         let mut remove = None;
 
@@ -135,7 +128,7 @@ impl TimeSegmentsEditor {
             self.drag = None;
         }
 
-        ctx.span = self.span;
+        ctx.span = self.time_span;
 
         self.paint_scene(&ctx, playhead);
     }
@@ -194,7 +187,7 @@ impl TimeSegmentsEditor {
                 ctx.curve_pos(pos),
                 pos2(time, point.y),
                 Handle::Point(index),
-                self.span,
+                self.time_span,
             ));
         }
 
@@ -210,7 +203,7 @@ impl TimeSegmentsEditor {
         remove
     }
 
-    /// Scroll and pinch change how many seconds the plot shows. Time 0 stays on the left.
+    /// Scroll changes how many seconds the plot shows. Time 0 stays on the left.
     fn apply_zoom(&mut self, ui: &Ui, plot: Rect) {
         if self.drag.is_some() {
             return;
@@ -227,18 +220,14 @@ impl TimeSegmentsEditor {
             return;
         }
 
-        let (scroll_y, pinch) =
-            ui.input(|input| (input.smooth_scroll_delta().y, input.zoom_delta()));
+        let scroll_y = ui.input(|input| input.smooth_scroll_delta().y);
 
-        if scroll_y == 0.0 && pinch == 1.0 {
+        if scroll_y == 0.0 {
             return;
         }
 
-        self.span = zoom_span(self.span, scroll_y, pinch);
-
-        if scroll_y != 0.0 {
-            ui.input_mut(|input| input.smooth_scroll_delta.y = 0.0);
-        }
+        self.time_span = zoom_span(self.time_span, scroll_y);
+        ui.input_mut(|input| input.smooth_scroll_delta.y = 0.0);
     }
 
     fn drag_begin(&self, ctx: &Ctx<'_>, response: &Response) -> Option<Pos2> {
@@ -294,7 +283,7 @@ impl TimeSegmentsEditor {
         };
         let span = drag_span(drag.span(), ctx.segs.time(index));
 
-        self.span = span;
+        self.time_span = span;
         ctx.span = span;
     }
 
@@ -489,8 +478,8 @@ impl TimeSegmentsEditor {
         let handles = ctx.ui.painter();
 
         for index in 0..ctx.segs.num_points() {
-            self.paint_point(&handles, ctx, index, hover);
-            self.paint_power_point(&handles, ctx, index, hover);
+            self.paint_point(handles, ctx, index, hover);
+            self.paint_power_point(handles, ctx, index, hover);
         }
 
         if let Some(playhead) = playhead {
@@ -502,9 +491,7 @@ impl TimeSegmentsEditor {
         let plot = ctx.plot;
         let stroke = Stroke::new(1.0, C::GRID_COLOR);
 
-        if let Some(divisions) = time_divisions(ctx.span) {
-            self.paint_time_grid(painter, ctx, divisions);
-        }
+        self.paint_time_grid(painter, ctx);
 
         for i in 1..self.grid_y {
             let y = plot.bottom() - plot.height() * (i as f32 / self.grid_y as f32);
@@ -513,115 +500,85 @@ impl TimeSegmentsEditor {
         }
     }
 
-    fn paint_time_grid(&self, painter: &Painter, ctx: &Ctx<'_>, divisions: TimeDivisions) {
-        let mut index = 1;
+    fn paint_time_grid(&self, painter: &Painter, ctx: &Ctx<'_>) {
+        assert!(ctx.span > 0.0);
+
+        let powers = ctx.span.log(C::RULER_DIVISION);
+        let division = powers.floor();
+        let transition = powers - division;
+        let minor_step = C::RULER_DIVISION.powf(division - 1.0) / 2.0;
+        let minor_fade = (1.0 - transition).powi(2);
+
+        assert!(powers.is_finite() && minor_step > 0.0 && minor_step.is_finite());
+
+        let major_every = C::RULER_DIVISION as i32;
         let mut next_label = ctx.plot.left();
+        let steps = (ctx.span / minor_step).ceil() as i32;
 
-        while index as Smp * divisions.little < ctx.span {
-            let major = index % C::RULER_DIVISION as i32 == 0;
-            let fade = if major { 1.0 } else { divisions.minor };
+        for idx in 1..steps {
+            let fade = if idx % major_every == 0 {
+                1.0
+            } else {
+                minor_fade
+            };
 
-            if fade >= 0.02 {
-                let time = index as Smp * divisions.little;
-                let alpha = (C::GRID_COLOR.a() as f32 * fade).round() as u8;
-                let x = ctx.screen_x(time);
+            if fade < 0.02 {
+                continue;
+            }
 
-                painter.line_segment(
-                    [pos2(x, ctx.plot.top()), pos2(x, ctx.plot.bottom())],
-                    Stroke::new(1.0, with_alpha(C::GRID_COLOR, alpha)),
-                );
+            let time = idx as Smp * minor_step;
+            let x = ctx.screen_x(time);
 
-                if fade > 0.35 {
-                    let label = with_alpha(Color32::WHITE, (0x8c as f32 * fade).round() as u8);
+            if fade > 0.35 {
+                let text = Units::Time.format(time);
+                let color = with_alpha(Color32::WHITE, (0x8c as f32 * fade).round() as u8);
+                let galley =
+                    painter.layout_no_wrap(text, FontId::proportional(C::TIME_LABEL_SIZE), color);
+                let label_x = x + C::TIME_LABEL_GAP;
+                let right = label_x + galley.size().x;
 
-                    next_label = self.paint_time_label(painter, ctx, time, label, next_label);
+                if label_x >= next_label && right <= ctx.plot.right() - 2.0 {
+                    let pos = pos2(label_x, ctx.plot.bottom() - galley.size().y - 2.0);
+                    painter.galley(pos, galley, color);
+                    next_label = right + C::TIME_LABEL_GAP;
                 }
             }
 
-            index += 1;
+            let color = C::GRID_COLOR.gamma_multiply(fade);
 
-            if index > 48 {
-                break;
-            }
+            painter.line_segment(
+                [pos2(x, ctx.plot.top()), pos2(x, ctx.plot.bottom())],
+                Stroke::new(1.0, color),
+            );
         }
-    }
-
-    fn paint_time_label(
-        &self,
-        painter: &Painter,
-        ctx: &Ctx<'_>,
-        time: Smp,
-        color: Color32,
-        next_label: f32,
-    ) -> f32 {
-        let text = Units::Time.format(time);
-        let galley = painter.layout_no_wrap(text, FontId::proportional(C::TIME_LABEL_SIZE), color);
-        let x = ctx.screen_x(time) + C::TIME_LABEL_GAP;
-        let right = x + galley.size().x;
-
-        if x < next_label || right > ctx.plot.right() - 2.0 {
-            return next_label;
-        }
-
-        let y = ctx.plot.bottom() - galley.size().y - 2.0;
-
-        painter.galley(pos2(x, y), galley, color);
-        right + C::TIME_LABEL_GAP
     }
 
     fn paint_fill(&mut self, painter: &Painter, ctx: &Ctx<'_>) {
-        let mut mesh = Mesh::with_texture(self.fill_texture(ctx));
+        let mut mesh = Mesh::with_texture(self.fill.id(ctx.ui.ctx()));
         let bottom = ctx.plot.bottom();
 
-        for window in self.points.windows(2) {
-            let (start, end) = (window[0], window[1]);
-
-            if end.x > start.x {
-                Self::add_fill_quad(&mut mesh, ctx.plot, bottom, start, end);
+        for &[start, end] in self.points.array_windows() {
+            if end.x <= start.x {
+                continue;
             }
+
+            let index = mesh.vertices.len() as u32;
+
+            for pos in [start, end, pos2(end.x, bottom), pos2(start.x, bottom)] {
+                let v = 0.25 + 0.5 * (pos.y - ctx.plot.top()) / ctx.plot.height();
+
+                mesh.vertices.push(Vertex {
+                    pos,
+                    uv: pos2(0.5, v),
+                    color: Color32::WHITE,
+                });
+            }
+
+            mesh.add_triangle(index, index + 1, index + 2);
+            mesh.add_triangle(index, index + 2, index + 3);
         }
 
-        if !mesh.is_empty() {
-            painter.add(Shape::mesh(mesh));
-        }
-    }
-
-    fn add_fill_quad(mesh: &mut Mesh, plot: Rect, bottom: f32, start: Pos2, end: Pos2) {
-        let index = mesh.vertices.len() as u32;
-        let v = |y: f32| 0.25 + 0.5 * (y - plot.top()) / plot.height();
-
-        for pos in [start, end, pos2(end.x, bottom), pos2(start.x, bottom)] {
-            mesh.vertices.push(Vertex {
-                pos,
-                uv: pos2(0.5, v(pos.y)),
-                color: Color32::WHITE,
-            });
-        }
-
-        mesh.add_triangle(index, index + 1, index + 2);
-        mesh.add_triangle(index, index + 2, index + 3);
-    }
-
-    fn fill_texture(&mut self, ctx: &Ctx<'_>) -> TextureId {
-        if let Some(fill) = &self.fill {
-            return fill.id();
-        }
-
-        let handle = ctx.ui.ctx().load_texture(
-            "time-segments-fill",
-            ColorImage::new(
-                [1, 2],
-                vec![
-                    with_alpha(self.wave_color, C::FILL_TOP_ALPHA),
-                    with_alpha(self.wave_color, C::FILL_BOTTOM_ALPHA),
-                ],
-            ),
-            TextureOptions::LINEAR,
-        );
-        let id = handle.id();
-
-        self.fill = Some(handle);
-        id
+        painter.add(Shape::mesh(mesh));
     }
 
     fn loop_region(&self, ctx: &Ctx<'_>) -> Option<Rect> {

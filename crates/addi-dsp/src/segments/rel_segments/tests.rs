@@ -299,8 +299,8 @@ fn render_points_closes_the_cycle_and_keeps_corners() {
     assert_eq!(scratch, vec![0.0, 0.25, 0.5, 0.75, 1.0]);
     assert!(
         points
-            .windows(2)
-            .all(|pair| pair[1][0] + 1e-5 >= pair[0][0])
+            .array_windows()
+            .all(|&[prev, next]| next[0] + 1e-5 >= prev[0])
     );
 
     let triangle = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);

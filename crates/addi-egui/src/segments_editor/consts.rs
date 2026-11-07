@@ -31,8 +31,6 @@ pub(super) const WAVE_COLOR: Color32 = Color32::from_rgb(0x4a, 0xb0, 0xff);
 pub(super) const LOOP_COLOR: Color32 = Color32::from_rgb(0xf0, 0xc0, 0x4a);
 pub(super) const LOOP_FILL_COLOR: Hsva = hsva(0.0, 0.9092, 1.0, 0.05);
 pub(super) const RELEASE_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x59);
-pub(super) const FILL_TOP_ALPHA: u8 = 0x47;
-pub(super) const FILL_BOTTOM_ALPHA: u8 = 0x28;
 pub(super) const ENVELOPE_WAVE: Hsva = hsva(0.3374, 0.9, 0.2, 1.0);
 pub(super) const ENVELOPE_POWER: Hsva = hsva(0.348, 0.7, 0.4, 1.0);
 pub(super) const GRID_COLOR: Color32 = Color32::from_rgba_unmultiplied_const(255, 255, 255, 28);
@@ -47,9 +45,6 @@ pub(super) const LABEL_CORNER_RADIUS: f32 = 2.0;
 /// Space between a point and its loop or release letter.
 pub(super) const MARKER_GAP: f32 = 3.0;
 
-pub(super) const HELP: &str = "Double-click to add or remove a point. Drag a midpoint to bend the segment. Hold Shift to mirror that bend onto the next segment. Right-click to flip.";
-pub(super) const HELP_MARKERS: &str = "Double-click to add or remove a point. Drag a midpoint to bend the segment. Hold Shift to mirror that bend onto the next segment. Right-click a point to set the loop or release.";
-pub(super) const HELP_PAINT: &str = "Drag to paint this shape into each grid column, up to the pointer. Hold Shift to ignore the vertical grid.";
 pub(super) const SMOOTH_TIP: &str = "Ease this segment with a sine curve.";
 pub(super) const LOOP_TIP: &str = "Repeat from here. With no release point the loop runs to the end. With one, it runs until release while the key is held.";
 pub(super) const RELEASE_TIP: &str = "Sustain this level while the key is held. On release, continue from here starting at the current level.";

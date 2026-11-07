@@ -72,7 +72,10 @@ impl Ctx<'_> {
     }
 
     pub(super) fn handle_layer(&self) -> LayerId {
-        LayerId::new(Order::Foreground, self.ui.scope_id().with("time-segments-handle"))
+        LayerId::new(
+            Order::Foreground,
+            self.ui.scope_id().with("time-segments-handle"),
+        )
     }
 
     pub(super) fn handle_response(
@@ -208,64 +211,20 @@ pub(super) fn with_alpha(color: Color32, alpha: u8) -> Color32 {
     Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
 }
 
-/// Seconds between ruler lines for a window of `span` seconds.
-///
-/// Major lines are `big` apart and minor lines are `little` apart. `minor` is how
-/// strongly to draw the minor lines: 1 on a clean zoom step, fading to 0 before the
-/// next step. The same spacing Vital uses for its envelope ruler.
-pub(super) struct TimeDivisions {
-    pub big: Smp,
-    pub little: Smp,
-    pub minor: f32,
-}
-
-pub(super) fn time_divisions(span: Smp) -> Option<TimeDivisions> {
-    if span <= 0.0 {
-        return None;
-    }
-
-    let powers = span.log(C::RULER_DIVISION);
-
-    if !powers.is_finite() {
-        return None;
-    }
-
-    let division = powers.floor();
-    let transition = powers - division;
-    let big = C::RULER_DIVISION.powf(division) / 2.0;
-    let little = big / C::RULER_DIVISION;
-
-    if little <= 0.0 || !little.is_finite() {
-        return None;
-    }
-
-    Some(TimeDivisions {
-        big,
-        little,
-        minor: (1.0 - transition).powi(2),
-    })
-}
-
 /// Window while a point is dragged. It stays on `base` until the point's time passes the
 /// right edge, then the edge follows that time. Releasing the point does not refit.
 pub(super) fn drag_span(base: Smp, time: Smp) -> Smp {
     base.max(time).clamp(C::MIN_WINDOW, MAX_TIME)
 }
 
-/// Scroll up and pinch-out show fewer seconds. The window stays inside the ruler limits.
-pub(super) fn zoom_span(span: Smp, scroll_y: f32, pinch: f32) -> Smp {
-    let mut span = span * 2f32.powf(scroll_y / C::ZOOM_POINTS);
-
-    if pinch > 0.0 {
-        span /= pinch;
-    }
-
-    span.clamp(C::MIN_WINDOW, MAX_TIME)
+/// Scroll up shows more seconds. The window stays inside the ruler limits.
+pub(super) fn zoom_span(span: Smp, scroll_y: f32) -> Smp {
+    (span * 2f32.powf(-scroll_y / C::ZOOM_POINTS)).clamp(C::MIN_WINDOW, MAX_TIME)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{drag_span, time_divisions, zoom_span};
+    use super::{drag_span, zoom_span};
 
     #[test]
     fn dragging_past_the_edge_grows_the_window() {
@@ -274,33 +233,11 @@ mod tests {
     }
 
     #[test]
-    fn ruler_steps_follow_the_window() {
-        let one = time_divisions(1.0).unwrap();
+    fn scroll_up_zooms_out() {
+        let wider = zoom_span(4.0, -super::C::ZOOM_POINTS);
 
-        assert!((one.big - 0.5).abs() < 1e-4);
-        assert!((one.little - 0.125).abs() < 1e-4);
-        assert!((one.minor - 1.0).abs() < 1e-4);
-
-        let four = time_divisions(4.0).unwrap();
-
-        assert!((four.big - 2.0).abs() < 1e-4);
-        assert!((four.little - 0.5).abs() < 1e-4);
-        assert!((four.minor - 1.0).abs() < 1e-4);
-
-        let mid = time_divisions(2.0).unwrap();
-
-        assert!((mid.big - 0.5).abs() < 1e-4);
-        assert!((mid.little - 0.125).abs() < 1e-4);
-        assert!((mid.minor - 0.25).abs() < 1e-4);
-    }
-
-    #[test]
-    fn scroll_up_zooms_in() {
-        let closer = zoom_span(4.0, -80.0, 1.0);
-
-        assert!((closer - 2.0).abs() < 1e-4);
-        assert!((zoom_span(4.0, 0.0, 2.0) - 2.0).abs() < 1e-4);
-        assert!((zoom_span(0.2, -800.0, 1.0) - 0.125).abs() < 1e-4);
-        assert!(zoom_span(50.0, 800.0, 1.0) <= 60.0);
+        assert!((wider - 8.0).abs() < 1e-4);
+        assert!((zoom_span(0.2, 800.0) - 0.125).abs() < 1e-4);
+        assert!(zoom_span(50.0, -800.0) <= 60.0);
     }
 }
