@@ -538,8 +538,11 @@ impl GridWidget {
 
     fn inputs_ui(&mut self, ui: &mut Ui, ctx: &mut WidgetCtx) {
         let viewport = ui.ctx().viewport_rect();
-        let stripe_response =
-            ui.interact(ui.max_rect(), ui.scope_id().with("inputs-stripe"), Sense::hover());
+        let stripe_response = ui.interact(
+            ui.max_rect(),
+            ui.scope_id().with("inputs-stripe"),
+            Sense::hover(),
+        );
 
         self.handle_inputs_dnd(ui, ctx);
 

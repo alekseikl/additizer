@@ -111,7 +111,6 @@ impl LfoWidget {
         let bottom = rect.bottom();
 
         for &[start, end] in points.array_windows() {
-
             if end.x <= start.x {
                 continue;
             }

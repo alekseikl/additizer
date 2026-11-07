@@ -1,5 +1,5 @@
 use egui::{
-    Color32, CursorIcon, DragValue, Mesh, Painter, PointerButton, Pos2, Rect, Response, Sense,
+    Color32, CursorIcon, DragValue, Id, Mesh, Painter, PointerButton, Pos2, Rect, Response, Sense,
     Shape, Stroke, StrokeKind, Ui, Vec2, ecolor::Hsva, epaint::Vertex, pos2, vec2,
 };
 
@@ -12,9 +12,10 @@ use addi_engine::{Smp, StereoSample};
 
 use crate::units::Units;
 use crate::utils::FillTexture;
+use crate::value_entry::{self, ValueEntry, ValueEntryEvent};
 
 use consts as C;
-use menu::{canvas_menu, open_menu, point_menu, power_menu};
+use menu::{Axis, PointAction, canvas_menu, open_menu, point_menu, power_menu};
 use utils::{
     Ctx, Drag, Handle, TOOLS, Tool, bold, curve_point, paint_edit_icon, paint_pattern_icon,
     stack_y, with_alpha,
@@ -23,6 +24,14 @@ use utils::{
 mod consts;
 mod menu;
 mod utils;
+
+/// Breakpoint coordinate being typed. The field itself only holds the text.
+#[derive(Clone, Default)]
+struct PointEdit {
+    index: usize,
+    axis: Axis,
+    value: ValueEntry,
+}
 
 pub struct SegmentsEditor {
     grid_x: i32,
@@ -154,7 +163,7 @@ impl SegmentsEditor {
             canvas_menu(ctx);
         } else {
             self.paint_column = None;
-            Self::interact_canvas(ctx);
+            self.interact_canvas(ctx);
 
             let points = ctx.segs.num_points();
             let active = self
@@ -173,6 +182,7 @@ impl SegmentsEditor {
             }
         }
 
+        self.show_point_entry(ctx);
         self.paint_scene(ctx);
 
         if ctx.stamping && (ctx.res.hovered() || ctx.res.is_pointer_button_down_on()) {
@@ -188,8 +198,12 @@ impl SegmentsEditor {
         }
     }
 
-    fn interact_canvas(ctx: &mut Ctx<'_>) {
+    fn interact_canvas(&self, ctx: &mut Ctx<'_>) {
         canvas_menu(ctx);
+
+        if Self::editing_point(ctx).is_some() {
+            return;
+        }
 
         if ctx.res.double_clicked_by(PointerButton::Primary)
             && let Some(pos) = ctx.res.interact_pointer_pos().or(ctx.res.hover_pos())
@@ -226,7 +240,22 @@ impl SegmentsEditor {
     fn interact_point(&mut self, ctx: &mut Ctx<'_>, index: usize) -> bool {
         let center = ctx.screen_pos(curve_point(ctx.segs.point(index)));
         let response = ctx.handle_response(center, C::GRAB_RADIUS, (C::POINT_ID, index));
-        let mut remove = point_menu(self.markers, ctx, &response, index);
+        let action = point_menu(self.markers, ctx, &response, index);
+
+        if let Some(axis) = action.and_then(PointAction::axis) {
+            self.open_entry(ctx, index, axis);
+        }
+
+        let mut remove = action == Some(PointAction::Remove);
+
+        if Self::editing_point(ctx) == Some(index) {
+            if remove {
+                self.drag = None;
+                Self::close_entry(ctx);
+            }
+
+            return remove;
+        }
 
         if response.double_clicked_by(PointerButton::Primary) {
             remove |= ctx.is_inner(index);
@@ -244,6 +273,7 @@ impl SegmentsEditor {
 
         if remove {
             self.drag = None;
+            Self::close_entry(ctx);
         }
 
         remove
@@ -347,10 +377,100 @@ impl SegmentsEditor {
             y = self.snap_y(ctx, y);
         }
 
+        self.place_point(ctx, index, x, y);
+    }
+
+    /// Place point `index` at phase `x` and level `y`, clamped to the point's range.
+    fn place_point(&self, ctx: &mut Ctx<'_>, index: usize, x: Smp, y: Smp) {
+        if index >= ctx.segs.num_points() {
+            return;
+        }
+
+        let (min_x, max_x) = ctx.x_limits(index);
+        let x = x.clamp(min_x, max_x);
+        let y = y.clamp(0.0, 1.0);
+
         self.match_wrapped_ends(ctx, index, y);
 
         let current = ctx.segs.point(index);
         ctx.segs.set_point(index, SegPoint { x, y, ..current });
+    }
+
+    fn open_entry(&mut self, ctx: &Ctx<'_>, index: usize, axis: Axis) {
+        self.drag = None;
+
+        let point = ctx.segs.point(index);
+        let value = match axis {
+            Axis::X => point.x,
+            Axis::Y => point.y,
+        };
+
+        ctx.ui.data_mut(|data| {
+            data.insert_temp(
+                Self::entry_id(ctx),
+                PointEdit {
+                    index,
+                    axis,
+                    value: ValueEntry::new(Units::Normalized, value),
+                },
+            );
+        });
+    }
+
+    fn close_entry(ctx: &Ctx<'_>) {
+        ctx.ui.data_mut(|data| {
+            data.remove_temp::<PointEdit>(Self::entry_id(ctx));
+        });
+    }
+
+    fn entry(ctx: &Ctx<'_>) -> Option<PointEdit> {
+        ctx.ui
+            .data(|data| data.get_temp::<PointEdit>(Self::entry_id(ctx)))
+    }
+
+    fn editing_point(ctx: &Ctx<'_>) -> Option<usize> {
+        Self::entry(ctx).map(|entry| entry.index)
+    }
+
+    fn entry_id(ctx: &Ctx<'_>) -> Id {
+        ctx.ui.make_persistent_id("point-entry")
+    }
+
+    fn show_point_entry(&mut self, ctx: &mut Ctx<'_>) {
+        let id = Self::entry_id(ctx);
+        let Some(mut edit) = ctx.ui.data_mut(|data| data.remove_temp::<PointEdit>(id)) else {
+            return;
+        };
+        let index = edit.index;
+        let axis = edit.axis;
+
+        if index >= ctx.segs.num_points() {
+            return;
+        }
+
+        let center = ctx.screen_pos(curve_point(ctx.segs.point(index)));
+        let (pivot, pos) = value_entry::anchor(
+            ctx.ui.ctx().content_rect(),
+            center,
+            C::GRAB_RADIUS + C::LABEL_POINTER_GAP,
+        );
+
+        match edit.value.show(ctx.ui, id, pivot, pos) {
+            ValueEntryEvent::Committed(value) => {
+                let point = ctx.segs.point(index);
+                let (phase, level) = match axis {
+                    Axis::X => (value, point.y),
+                    Axis::Y => (point.x, value),
+                };
+
+                self.place_point(ctx, index, phase, level);
+                self.drag = None;
+            }
+            ValueEntryEvent::Canceled => {}
+            ValueEntryEvent::Editing => {
+                ctx.ui.data_mut(|data| data.insert_temp(id, edit));
+            }
+        }
     }
 
     /// Snap `x` to the vertical grid when it is within [`C::SNAP`] pixels.
@@ -912,7 +1032,9 @@ impl SegmentsEditor {
             ctx.ui.ctx().set_cursor_icon(CursorIcon::Grab);
         }
 
-        if let Handle::Point(index) = handle {
+        if let Handle::Point(index) = handle
+            && Self::editing_point(ctx) != Some(index)
+        {
             let point = ctx.segs.point(index);
             let phase = Units::Normalized.format(point.x.clamp(0.0, 1.0));
             let level = Units::Normalized.format(point.y.clamp(0.0, 1.0));

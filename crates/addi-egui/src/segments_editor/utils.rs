@@ -192,7 +192,10 @@ impl Ctx<'_> {
     }
 
     pub(super) fn handle_layer(&self) -> LayerId {
-        LayerId::new(Order::Foreground, self.ui.scope_id().with("segments-handle"))
+        LayerId::new(
+            Order::Foreground,
+            self.ui.scope_id().with("segments-handle"),
+        )
     }
 
     /// Clickable square around `center`, kept inside the plot.

@@ -228,6 +228,35 @@ fn changed_segments_render_again() {
 }
 
 #[test]
+fn typed_point_keeps_the_entered_value() {
+    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 0.5), (1.0, 1.0)], false);
+    let mut ui = press(false);
+    let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
+    let open = SegmentsEditor::lookup();
+
+    open.place_point(&mut paint_ctx(&ui, &response, &mut segments), 1, 0.3, 0.3);
+
+    assert!((segments.point(1).x - 0.3).abs() < 1e-6);
+    assert!((segments.point(1).y - 0.3).abs() < 1e-6);
+
+    open.place_point(&mut paint_ctx(&ui, &response, &mut segments), 1, 4.0, -1.0);
+
+    assert!((segments.point(1).x - 1.0).abs() < 1e-6);
+    assert_eq!(segments.point(1).y, 0.0);
+
+    SegmentsEditor::default().place_point(
+        &mut paint_ctx(&ui, &response, &mut segments),
+        0,
+        0.4,
+        0.2,
+    );
+
+    assert_eq!(segments.point(0).x, 0.0);
+    assert!((segments.point(0).y - 0.2).abs() < 1e-6);
+    assert!((segments.point(2).y - 0.2).abs() < 1e-6);
+}
+
+#[test]
 fn open_curve_moves_the_ends_independently() {
     let mut open = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     let mut ui = press(true);

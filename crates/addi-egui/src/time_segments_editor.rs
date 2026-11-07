@@ -1,5 +1,5 @@
 use egui::{
-    Color32, CursorIcon, DragValue, FontId, Mesh, Painter, PointerButton, Pos2, Rect, Response,
+    Color32, CursorIcon, DragValue, FontId, Id, Mesh, Painter, PointerButton, Pos2, Rect, Response,
     Sense, Shape, Stroke, StrokeKind, Ui, Vec2, ecolor::Hsva, epaint::Vertex, pos2, vec2,
 };
 
@@ -13,14 +13,23 @@ use addi_engine::Smp;
 
 use crate::units::Units;
 use crate::utils::FillTexture;
+use crate::value_entry::{self, ValueEntry, ValueEntryEvent};
 
 use consts as C;
-use menu::{canvas_menu, open_menu, point_menu, power_menu};
+use menu::{Axis, PointAction, canvas_menu, open_menu, point_menu, power_menu};
 use utils::{Ctx, Drag, Handle, bold, drag_span, stack_y, with_alpha, zoom_span};
 
 mod consts;
 mod menu;
 mod utils;
+
+/// Breakpoint coordinate being typed. The field itself only holds the text.
+#[derive(Clone, Default)]
+struct PointEdit {
+    index: usize,
+    axis: Axis,
+    value: ValueEntry,
+}
 
 pub struct TimeSegmentsEditor {
     grid_y: i32,
@@ -126,15 +135,18 @@ impl TimeSegmentsEditor {
         if let Some(index) = remove {
             ctx.segs.remove_point(index);
             self.drag = None;
+            Self::close_entry(&ctx);
         }
 
         ctx.span = self.time_span;
 
+        self.show_point_entry(&mut ctx);
         self.paint_scene(&ctx, playhead);
     }
 
     fn add_at_double_click(&mut self, ctx: &mut Ctx<'_>) {
-        if !ctx.res.double_clicked_by(PointerButton::Primary) {
+        if Self::editing_point(ctx).is_some() || !ctx.res.double_clicked_by(PointerButton::Primary)
+        {
             return;
         }
 
@@ -178,7 +190,22 @@ impl TimeSegmentsEditor {
         let time = ctx.segs.time(index);
         let center = ctx.screen_pos(time, point.y);
         let response = ctx.handle_response(center, C::GRAB_RADIUS, (C::POINT_ID, index));
-        let mut remove = point_menu(ctx, &response, index);
+        let action = point_menu(ctx, &response, index);
+
+        if let Some(axis) = action.and_then(PointAction::axis) {
+            self.open_entry(ctx, index, axis);
+        }
+
+        let mut remove = action == Some(PointAction::Remove);
+
+        if Self::editing_point(ctx) == Some(index) {
+            if remove {
+                self.drag = None;
+                Self::close_entry(ctx);
+            }
+
+            return remove;
+        }
 
         if response.double_clicked_by(PointerButton::Primary) {
             remove |= ctx.is_inner(index);
@@ -198,6 +225,7 @@ impl TimeSegmentsEditor {
 
         if remove {
             self.drag = None;
+            Self::close_entry(ctx);
         }
 
         remove
@@ -341,6 +369,18 @@ impl TimeSegmentsEditor {
             level = self.snap_level(ctx, level);
         }
 
+        self.place_point(ctx, index, time, level);
+    }
+
+    /// Place point `index` at `time` seconds and `level`, clamped to the point's range.
+    fn place_point(&self, ctx: &mut Ctx<'_>, index: usize, time: Smp, level: Smp) {
+        if index >= ctx.segs.num_points() {
+            return;
+        }
+
+        let (min_time, max_time) = ctx.time_limits(index);
+        let time = time.clamp(min_time, max_time);
+        let level = level.clamp(0.0, 1.0);
         let current = ctx.segs.point(index);
 
         ctx.segs.set_time(index, time);
@@ -351,6 +391,91 @@ impl TimeSegmentsEditor {
                 ..current
             },
         );
+    }
+
+    fn open_entry(&mut self, ctx: &Ctx<'_>, index: usize, axis: Axis) {
+        self.drag = None;
+
+        let point = ctx.segs.point(index);
+        let (units, value) = match axis {
+            Axis::X => (Units::Time, ctx.segs.time(index)),
+            Axis::Y => (Units::Normalized, point.y),
+        };
+
+        ctx.ui.data_mut(|data| {
+            data.insert_temp(
+                Self::entry_id(ctx),
+                PointEdit {
+                    index,
+                    axis,
+                    value: ValueEntry::new(units, value),
+                },
+            );
+        });
+    }
+
+    fn close_entry(ctx: &Ctx<'_>) {
+        ctx.ui.data_mut(|data| {
+            data.remove_temp::<PointEdit>(Self::entry_id(ctx));
+        });
+    }
+
+    fn entry(ctx: &Ctx<'_>) -> Option<PointEdit> {
+        ctx.ui
+            .data(|data| data.get_temp::<PointEdit>(Self::entry_id(ctx)))
+    }
+
+    fn editing_point(ctx: &Ctx<'_>) -> Option<usize> {
+        Self::entry(ctx).map(|entry| entry.index)
+    }
+
+    fn entry_id(ctx: &Ctx<'_>) -> Id {
+        ctx.ui.make_persistent_id("point-entry")
+    }
+
+    fn show_point_entry(&mut self, ctx: &mut Ctx<'_>) {
+        let id = Self::entry_id(ctx);
+        let Some(mut edit) = ctx.ui.data_mut(|data| data.remove_temp::<PointEdit>(id)) else {
+            return;
+        };
+        let index = edit.index;
+        let axis = edit.axis;
+
+        if index >= ctx.segs.num_points() {
+            return;
+        }
+
+        let point = ctx.segs.point(index);
+        let center = ctx.screen_pos(ctx.segs.time(index), point.y);
+        let (pivot, pos) = value_entry::anchor(
+            ctx.ui.ctx().content_rect(),
+            center,
+            C::GRAB_RADIUS + C::LABEL_POINTER_GAP,
+        );
+        match edit.value.show(ctx.ui, id, pivot, pos) {
+            ValueEntryEvent::Committed(value) => {
+                let point = ctx.segs.point(index);
+                let (time, level) = match axis {
+                    Axis::X => (value, point.y),
+                    Axis::Y => (ctx.segs.time(index), value),
+                };
+
+                self.place_point(ctx, index, time, level);
+
+                if axis == Axis::X {
+                    let span = drag_span(self.time_span, ctx.segs.time(index));
+
+                    self.time_span = span;
+                    ctx.span = span;
+                }
+
+                self.drag = None;
+            }
+            ValueEntryEvent::Canceled => {}
+            ValueEntryEvent::Editing => {
+                ctx.ui.data_mut(|data| data.insert_temp(id, edit));
+            }
+        }
     }
 
     fn snap_level(&self, ctx: &Ctx<'_>, level: Smp) -> Smp {
@@ -691,7 +816,9 @@ impl TimeSegmentsEditor {
             ctx.ui.ctx().set_cursor_icon(CursorIcon::Grab);
         }
 
-        if let Handle::Point(index) = handle {
+        if let Handle::Point(index) = handle
+            && Self::editing_point(ctx) != Some(index)
+        {
             let point = ctx.segs.point(index);
             let time = Units::Time.format(ctx.segs.time(index));
             let level = Units::Normalized.format(point.y);
@@ -745,3 +872,6 @@ impl TimeSegmentsEditor {
         painter.circle_filled(left, C::PLAYHEAD_RADIUS, self.wave_color);
     }
 }
+
+#[cfg(test)]
+mod tests;

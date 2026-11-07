@@ -305,8 +305,9 @@ impl HarmonicEditorUI {
         let mut saved = false;
         let mut discarded = false;
 
-        let modal =
-            Modal::new(Id::unique(("harmonic-editor-edit-modal", module_id))).show(ui.ctx(), |ui| {
+        let modal = Modal::new(Id::unique(("harmonic-editor-edit-modal", module_id))).show(
+            ui.ctx(),
+            |ui| {
                 ui.heading("Edit Harmonics");
                 ui.add_space(20.0);
 
@@ -483,7 +484,8 @@ impl HarmonicEditorUI {
                         }
                     },
                 );
-            });
+            },
+        );
 
         if modal.should_close() {
             if !saved && !discarded {

@@ -24,18 +24,53 @@ fn menu_open(ctx: &Ctx<'_>, salt: impl std::hash::Hash + std::fmt::Debug) -> boo
     Popup::is_id_open(ctx.ui.ctx(), id)
 }
 
-/// `true` when the menu asked to remove this point. Other choices edit the curve directly.
+/// Coordinate of a breakpoint the menu asked to edit.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum Axis {
+    #[default]
+    X,
+    Y,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum PointAction {
+    Remove,
+    Phase,
+    Level,
+}
+
+impl PointAction {
+    pub(super) fn axis(self) -> Option<Axis> {
+        match self {
+            Self::Phase => Some(Axis::X),
+            Self::Level => Some(Axis::Y),
+            Self::Remove => None,
+        }
+    }
+}
+
+/// What the menu asked to do with this point.
 pub(super) fn point_menu(
     markers: bool,
     ctx: &mut Ctx<'_>,
     response: &Response,
     index: usize,
-) -> bool {
-    let mut remove = false;
+) -> Option<PointAction> {
+    let mut action = None;
 
     response.context_menu(|ui| {
         if index >= ctx.segs.num_points() {
             return;
+        }
+
+        if ui.button("Set phase").clicked() {
+            action = Some(PointAction::Phase);
+            ui.close();
+        }
+
+        if ui.button("Set level").clicked() {
+            action = Some(PointAction::Level);
+            ui.close();
         }
 
         smooth_item(ui, ctx.segs, index);
@@ -45,12 +80,12 @@ pub(super) fn point_menu(
         }
 
         if ctx.is_inner(index) && ui.button("Remove point").clicked() {
-            remove = true;
+            action = Some(PointAction::Remove);
             ui.close();
         }
     });
 
-    remove
+    action
 }
 
 pub(super) fn power_menu(ctx: &mut Ctx<'_>, response: &Response, index: usize) {

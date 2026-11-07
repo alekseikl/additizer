@@ -178,6 +178,10 @@ impl Units {
         self.display_unit(value).format_input()
     }
 
+    pub(crate) fn parse_mono(&self, text: &str) -> Option<Smp> {
+        Some(self.parse(text, false)?.left())
+    }
+
     pub(crate) fn parse(&self, text: &str, stereo: bool) -> Option<StereoSample> {
         let parts: Vec<&str> = text
             .split(',')
