@@ -508,22 +508,6 @@ fn release_from_sustain_leaves_at_the_sustain_level() {
 }
 
 #[test]
-fn a_release_on_the_last_point_holds_the_level_at_note_off() {
-    let mut env = envelope(false, false);
-    let mut segments = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
-    assert!(segments.set_release_point(Some(1)));
-    env.set_segments(segments);
-
-    let mut out = [0.0; 4];
-    let next = render_playback(&env, &held(0, 0.0, 0.0, 0.0), &mut out, 4, 0.5, Some(1));
-
-    assert!((out[0] - 0.0).abs() < 1e-5);
-    assert_eq!(out[1..], [0.0, 0.0, 0.0]);
-    assert_eq!(next.stage, Stage::Done);
-    assert!(matches!(next.release, Release::Releasing(level) if level == 0.0));
-}
-
-#[test]
 fn loop_point_repeats_to_the_end() {
     let mut env = envelope(false, false);
     let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);

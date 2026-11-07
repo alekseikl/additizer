@@ -219,7 +219,7 @@ fn loop_returns_to_the_loop_point() {
 #[test]
 fn keep_alive_holds_a_playing_release() {
     let mut env = envelope(false, true);
-    let mut segments = TimeSegments::default();
+    let mut segments = curve(&[(0.0, 1.0), (0.5, 1.0), (1.0, 0.0)]);
     assert!(segments.set_release_point(Some(1)));
     env.set_segments(segments);
     env.voices.at_mut(0, 2).stage = Stage::segment(0, 0.2);
@@ -236,7 +236,7 @@ fn keep_alive_holds_a_playing_release() {
 
 #[test]
 fn config_roundtrip() {
-    let mut segments = curve(&[(0.0, 0.2), (0.4, 1.0)]);
+    let mut segments = curve(&[(0.0, 0.2), (0.2, 0.6), (0.4, 1.0)]);
     assert!(segments.set_release_point(Some(1)));
 
     let env: MultiEnvelope = MultiEnvelope::from_config(&MultiEnvelopeConfig {

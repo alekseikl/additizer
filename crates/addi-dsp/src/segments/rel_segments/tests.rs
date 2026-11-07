@@ -475,23 +475,22 @@ fn loop_and_release_follow_the_point_rules() {
 
     assert!(!segments.set_loop_point(Some(2)));
     assert!(segments.set_loop_point(Some(0)));
+    assert!(!segments.set_release_point(Some(0)));
+    assert!(!segments.set_release_point(Some(2)));
+    assert_eq!(segments.loop_point_idx(), Some(0));
+    assert_eq!(segments.release_point_idx(), None);
+
     assert!(segments.set_release_point(Some(1)));
     assert_eq!(segments.loop_point_idx(), Some(0));
     assert!(!segments.set_loop_point(Some(1)));
     assert!(!segments.set_loop_point(Some(2)));
     assert!(!segments.set_loop_point(Some(0)));
 
-    assert!(segments.set_release_point(Some(0)));
+    assert!(segments.set_release_point(None));
+    assert!(segments.set_loop_point(Some(1)));
+    assert!(segments.set_release_point(Some(1)));
     assert_eq!(segments.loop_point_idx(), None);
-    assert_eq!(segments.release_point_idx(), Some(0));
-    assert!(!segments.set_loop_point(Some(0)));
-
-    assert!(segments.set_release_point(None));
-    assert!(segments.set_loop_point(Some(0)));
-    assert!(segments.set_release_point(Some(2)));
-    assert!(segments.set_release_point(None));
-    assert_eq!(segments.loop_point_idx(), Some(0));
-    assert_eq!(segments.release_point_idx(), None);
+    assert_eq!(segments.release_point_idx(), Some(1));
 }
 
 #[test]
@@ -560,6 +559,14 @@ fn markers_round_trip_and_missing_ones_stay_clear() {
     assert_eq!(illegal.loop_point_idx(), Some(1));
     illegal.sanitize();
     assert_eq!(illegal.loop_point_idx(), None);
+
+    let mut endpoint: RelSegments = serde_json::from_str(
+        r#"{"segments":[{"x":0.0,"y":0.0,"power":0.0,"smooth":false},{"x":0.5,"y":1.0,"power":0.0,"smooth":false},{"x":1.0,"y":0.0,"power":0.0,"smooth":false}],"release_point":2}"#,
+    )
+    .unwrap();
+    assert_eq!(endpoint.release_point_idx(), Some(2));
+    endpoint.sanitize();
+    assert_eq!(endpoint.release_point_idx(), None);
 }
 
 #[test]
@@ -592,8 +599,4 @@ fn release_level_replaces_the_segment_that_leaves_that_point() {
     assert!((segments.value_at(0.75, None, Some(0.25)) - 0.125).abs() < 1e-5);
     assert!((segments.value_at(0.25, None, Some(0.25)) - 0.5).abs() < 1e-5);
     assert!((segments.value_at(0.5, None, None) - 1.0).abs() < 1e-6);
-
-    assert!(segments.set_release_point(Some(2)));
-    assert!((segments.value_at(1.0, None, Some(0.4)) - 0.4).abs() < 1e-6);
-    assert!((segments.value_at(0.75, None, Some(0.4)) - 0.5).abs() < 1e-5);
 }

@@ -43,13 +43,15 @@ impl DisplayUnit {
                 format!("{0:.1$}", value, precision)
             }
             Self::Ms(value) => {
+                let value = Self::without_signed_zero(*value);
+
                 if value.abs() < 10.0 {
                     format!("{:.1} ms", value)
                 } else {
                     format!("{:.0} ms", value)
                 }
             }
-            Self::Secs(value) => format!("{:.2} s", value),
+            Self::Secs(value) => format!("{:.2} s", Self::without_signed_zero(*value)),
             Self::Rolloff(value) => format!("{:.1} dB/oct", value),
         }
     }
@@ -66,10 +68,11 @@ impl DisplayUnit {
                 (format!("{0:.1$}", value, precision), None)
             }
             Self::Ms(value) => {
+                let value = Self::without_signed_zero(*value);
                 let precision = if value.abs() < 10.0 { 1 } else { 0 };
                 (format!("{value:.precision$}"), Some("ms"))
             }
-            Self::Secs(value) => (format!("{:.2}", value), None),
+            Self::Secs(value) => (format!("{:.2}", Self::without_signed_zero(*value)), None),
             Self::Rolloff(value) => (format!("{:.1}", value), None),
         };
 
@@ -79,6 +82,10 @@ impl DisplayUnit {
             Some(unit) => format!("{number} {unit}"),
             None => number,
         }
+    }
+
+    fn without_signed_zero(value: Smp) -> Smp {
+        if value == 0.0 { 0.0 } else { value }
     }
 
     fn hz_precision(value: Smp) -> usize {

@@ -214,6 +214,8 @@ fn render_points_keeps_time_past_the_view() {
 fn serde_roundtrip_keeps_markers() {
     let mut segments = curve(&[(0.0, 1.0), (0.3, 0.4), (0.8, 0.0)], true);
     assert!(segments.set_loop_point(Some(0)));
+    assert!(!segments.set_release_point(Some(0)));
+    assert!(!segments.set_release_point(Some(2)));
     assert!(segments.set_release_point(Some(1)));
 
     let json = serde_json::to_string(&segments).unwrap();

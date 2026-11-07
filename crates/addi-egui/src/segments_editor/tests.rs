@@ -472,7 +472,6 @@ fn unwrapped_stamp_rewrites_the_endpoint_it_covers() {
     let at_half = last.value_at(0.5, None, None);
 
     last.set_power(1, 3.0);
-    assert!(last.set_release_point(Some(1)));
     stamp_with(&editor, &mut last, 0.5, 1.0, 1.0, Pattern::Down);
 
     assert_eq!(last.point(last.num_points() - 1).curve.power, 0.0);
@@ -480,7 +479,6 @@ fn unwrapped_stamp_rewrites_the_endpoint_it_covers() {
         levels(&last),
         vec![(0.0, 0.2), (0.5, at_half), (0.5, 1.0), (1.0, 0.0)]
     );
-    assert_eq!(last.release_point().map(|point| point.y), Some(0.0));
 
     let mut middle = RelSegments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false);
 
@@ -491,11 +489,9 @@ fn unwrapped_stamp_rewrites_the_endpoint_it_covers() {
 
     let mut whole = RelSegments::from_points(&[(0.0, 0.2), (0.4, 0.9), (1.0, 0.8)], false);
 
-    assert!(whole.set_release_point(Some(2)));
     stamp_with(&editor, &mut whole, 0.0, 1.0, 0.5, Pattern::Step);
 
     assert_eq!(levels(&whole), vec![(0.0, 0.5), (1.0, 0.5)]);
-    assert_eq!(whole.release_point().map(|point| point.y), Some(0.5));
 
     let revision = whole.revision();
 
@@ -525,11 +521,11 @@ fn paint_keeps_markers_outside_the_column() {
         RelSegments::from_points(&[(0.0, 0.0), (0.3, 0.4), (0.8, 0.6), (1.0, 1.0)], false);
 
     assert!(segments.set_loop_point(Some(1)));
-    assert!(segments.set_release_point(Some(3)));
+    assert!(segments.set_release_point(Some(2)));
     stamp(&mut segments, 0.25, 0.5, 1.0, Pattern::Down);
 
     assert!(segments.loop_point_idx().is_none());
-    assert_eq!(segments.release_point().map(|point| point.x), Some(1.0));
+    assert_eq!(segments.release_point().map(|point| point.x), Some(0.8));
 
     let mut kept =
         RelSegments::from_points(&[(0.0, 0.0), (0.25, 0.4), (0.8, 0.6), (1.0, 1.0)], false);

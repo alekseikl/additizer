@@ -99,9 +99,11 @@ fn marker_items(ui: &mut Ui, segments: &mut TimeSegments, index: usize) {
             ui.close();
         }
     } else {
-        let can_release = segments
-            .loop_point_idx()
-            .is_none_or(|loop_point| index > loop_point);
+        let can_release = index > 0
+            && index + 1 < segments.num_points()
+            && segments
+                .loop_point_idx()
+                .is_none_or(|loop_point| index > loop_point);
 
         if can_release
             && ui

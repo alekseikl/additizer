@@ -292,9 +292,10 @@ impl TimeSegments {
         true
     }
 
-    /// `None` clears the release. Setting one at or before the loop drops the loop.
+    /// `None` clears the release. A release sits on an inner point. Setting one at or
+    /// before the loop drops the loop.
     pub fn set_release_point(&mut self, index: Option<usize>) -> bool {
-        if !index.is_none_or(|index| index < self.num_points()) || self.release_point == index {
+        if !index.is_none_or(|index| self.release_index_ok(index)) || self.release_point == index {
             return false;
         }
 
@@ -315,10 +316,14 @@ impl TimeSegments {
         index + 1 < self.num_points() && self.release_point.is_none_or(|release| index < release)
     }
 
-    fn retain_markers(&mut self) {
-        let n = self.num_points();
+    fn release_index_ok(&self, index: usize) -> bool {
+        index > 0 && index + 1 < self.num_points()
+    }
 
-        self.release_point = self.release_point.filter(|&index| index < n);
+    fn retain_markers(&mut self) {
+        self.release_point = self
+            .release_point
+            .filter(|&index| self.release_index_ok(index));
         self.loop_point = self.loop_point.filter(|&index| self.loop_index_ok(index));
     }
 
