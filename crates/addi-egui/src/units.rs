@@ -24,7 +24,7 @@ impl DisplayUnit {
                     format!("{:+.1} dB", value)
                 }
             }
-            Self::Percents(value) => format!("{:.0}%", value),
+            Self::Percents(value) => format!("{:.1}%", value),
             Self::Semitones(value) => {
                 if *value == 0.0 {
                     "0 st".to_string()
@@ -59,7 +59,7 @@ impl DisplayUnit {
     fn format_input(&self) -> String {
         let (number, unit) = match self {
             Self::Db(value) => (format!("{:.1}", value), None),
-            Self::Percents(value) => (format!("{:.0}", value), None),
+            Self::Percents(value) => (format!("{:.1}", value), None),
             Self::Semitones(value) => (format!("{:.2}", value), None),
             Self::Semicents(value) => (format!("{:.0}", value), Some("cents")),
             Self::Khz(value) => (format!("{:.2}", value), Some("kHz")),

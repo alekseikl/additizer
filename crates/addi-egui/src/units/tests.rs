@@ -87,6 +87,14 @@ fn parse_normalized_percent() {
 }
 
 #[test]
+fn format_normalized_keeps_one_decimal() {
+    assert_eq!(Units::Normalized.format(0.5), "50.0%");
+    assert_eq!(Units::Normalized.format(1.0 / 3.0), "33.3%");
+    assert_eq!(Units::Normalized.format_input(0.5), "50");
+    assert_eq!(Units::Normalized.format_input(1.0 / 3.0), "33.3");
+}
+
+#[test]
 fn format_rate_is_a_plain_float() {
     assert_eq!(Units::Rate.format(0.02), "0.02");
     assert_eq!(Units::Rate.format(1.5), "1.5");

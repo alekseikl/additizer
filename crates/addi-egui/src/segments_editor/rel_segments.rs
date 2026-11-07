@@ -574,100 +574,90 @@ impl RelSegmentsEditor {
         let Tool::Paint(pattern) = self.tool else {
             return;
         };
-        let (from_x, to_x) = self.column_bounds(self.column_at(ctx, pos));
-        let level = self.pointer_level(ctx, pos);
-        let segments = &mut *ctx.segs;
 
-        if !(from_x >= 0.0 && from_x < to_x && to_x <= 1.0) {
-            return;
+        let (from_x, to_x) = self.column_bounds(self.column_at(ctx, pos));
+        let mut shape = pattern.scaled(from_x, to_x, self.pointer_level(ctx, pos));
+        let first = shape[0];
+        let last = shape[shape.len() - 1];
+        let segments = &mut *ctx.segs;
+        let points = segments.points();
+        // Endpoints cannot be removed, so a covered end adopts the pattern edge.
+        let cover_start = !self.wrapped && from_x == 0.0;
+        let cover_end = !self.wrapped && to_x == 1.0;
+
+        if cover_start {
+            shape.remove(0);
         }
 
-        let level = level.clamp(0.0, 1.0);
-        let pattern_points = pattern.scaled(from_x, to_x, level);
-        let Some((&first_edge, &last_edge)) = pattern_points.first().zip(pattern_points.last())
-        else {
-            return;
+        if cover_end {
+            shape.pop();
+        }
+
+        // One point stays on each column edge. The run between them is replaced.
+        let before = points.partition_point(|point| point.x < from_x);
+        let after = points.partition_point(|point| point.x <= to_x);
+        let keep_from = points[before].x == from_x;
+        let keep_to = points[after - 1].x == to_x;
+        let head_end = before + usize::from(keep_from);
+        let tail_start = after - usize::from(keep_to);
+        let hold = |x: Smp| SegPoint {
+            x,
+            y: segments.value_at(x, None, None),
+            ..SegPoint::default()
         };
-        let rewrite_first = !self.wrapped && from_x == 0.0;
-        let rewrite_last = !self.wrapped && to_x == 1.0;
-
-        let points = segments.points();
-        let head_len = points.partition_point(|&point| point.x < from_x);
-        let tail_at = points.partition_point(|&point| point.x <= to_x);
-        let left = points[head_len].x == from_x;
-        let right = points[tail_at - 1].x == to_x;
-        let head_end = head_len + usize::from(left);
-        let tail_start = tail_at - usize::from(right);
-
         let adopt = |point: SegPoint, edge: SegPoint| SegPoint {
             y: edge.y,
             curve: edge.curve,
             ..point
         };
-        let mut stamped = Vec::with_capacity(points.len() + pattern_points.len() + 2);
+        let mut stamped = Vec::with_capacity(points.len() + shape.len() + 2);
 
         stamped.extend_from_slice(&points[..head_end]);
 
-        if rewrite_first {
-            stamped[0] = adopt(stamped[0], first_edge);
+        if cover_start {
+            stamped[0] = adopt(stamped[0], first);
         }
 
-        let middle_at = stamped.len();
-
-        if !left {
-            stamped.push(SegPoint {
-                x: from_x,
-                y: segments.value_at(from_x, None, None),
-                ..SegPoint::default()
-            });
+        if !keep_from {
+            stamped.push(hold(from_x));
         }
 
-        // The pattern's own edges step aside for the endpoints that adopt them.
-        let pattern_from = usize::from(rewrite_first);
-        let pattern_to = pattern_points.len() - usize::from(rewrite_last);
+        stamped.extend_from_slice(&shape);
 
-        stamped.extend_from_slice(&pattern_points[pattern_from..pattern_to]);
-
-        if !right {
-            stamped.push(SegPoint {
-                x: to_x,
-                y: segments.value_at(to_x, None, None),
-                ..SegPoint::default()
-            });
+        if !keep_to {
+            stamped.push(hold(to_x));
         }
 
         let middle_end = stamped.len();
 
         stamped.extend_from_slice(&points[tail_start..]);
 
-        if rewrite_last {
-            let last = stamped.len() - 1;
+        if cover_end {
+            let end = stamped.len() - 1;
 
-            stamped[last] = adopt(stamped[last], last_edge);
+            stamped[end] = adopt(stamped[end], last);
         }
 
         if stamped.len() > MAX_POINTS || segments.points() == stamped.as_slice() {
             return;
         }
 
-        // Splice it in: the replaced run makes room for the stamped middle. Endpoints
-        // cannot be removed, so a rewritten edge is patched in place instead.
         for index in (head_end..tail_start).rev() {
             assert!(segments.remove_point(index));
         }
 
-        for (offset, point) in stamped[middle_at..middle_end].iter().enumerate() {
-            assert!(segments.add_point(middle_at + offset, *point));
+        for (offset, point) in stamped[head_end..middle_end].iter().enumerate() {
+            assert!(segments.add_point(head_end + offset, *point));
         }
 
-        if rewrite_first {
+        if cover_start {
             segments.set_point(0, stamped[0]);
         }
 
-        if rewrite_last {
-            let last = segments.num_points() - 1;
+        if cover_end {
+            let end = segments.num_points() - 1;
 
-            segments.set_point(last, stamped[last]);
+            segments.set_point(end, stamped[stamped.len() - 1]);
         }
 
         debug_assert_eq!(segments.points(), stamped.as_slice());
@@ -816,7 +806,31 @@ impl RelSegmentsEditor {
             common::paint_marker(painter, center, label, color, ctx.plot.top());
         }
 
-        self.paint_handle(ctx, center, C::GRAB_RADIUS, Handle::Point(index), hover);
+        if ctx.stamping {
+            return;
+        }
+
+        let handle = Handle::Point(index);
+        let dragging = self.dragged() == Some(handle);
+        let hovered = hover == Some(handle);
+        let label = if (dragging || hovered) && common::editing_index(ctx.ui) != Some(index) {
+            let phase = Units::Normalized.format(point.x.clamp(0.0, 1.0));
+            let level = Units::Normalized.format(point.y.clamp(0.0, 1.0));
+
+            Some(format!("{phase}  {level}"))
+        } else {
+            None
+        };
+
+        common::paint_handle(
+            ctx.ui,
+            ctx.handle_layer(),
+            center,
+            C::GRAB_RADIUS,
+            dragging,
+            hovered,
+            label,
+        );
     }
 
     fn paint_power_point(&self, ctx: &Ctx<'_>, index: usize, hover: Option<Handle>) {
@@ -828,12 +842,23 @@ impl RelSegmentsEditor {
         ctx.ui
             .painter()
             .circle_filled(center, C::POWER_RADIUS, self.power_color);
-        self.paint_handle(
-            ctx,
+
+        if ctx.stamping {
+            return;
+        }
+
+        let handle = Handle::Power(index);
+        let dragging = self.dragged() == Some(handle);
+        let hovered = hover == Some(handle);
+
+        common::paint_handle(
+            ctx.ui,
+            ctx.handle_layer(),
             center,
             C::POWER_GRAB_RADIUS,
-            Handle::Power(index),
-            hover,
+            dragging,
+            hovered,
+            None,
         );
     }
 
@@ -848,46 +873,6 @@ impl RelSegmentsEditor {
         } else {
             None
         }
-    }
-
-    /// Hover ring, and a filled disc while dragging. Drawn on the handle layer.
-    /// A hovered or dragged breakpoint shows its phase and level.
-    fn paint_handle(
-        &self,
-        ctx: &Ctx<'_>,
-        center: Pos2,
-        radius: f32,
-        handle: Handle,
-        hover: Option<Handle>,
-    ) {
-        if ctx.stamping {
-            return;
-        }
-
-        let dragging = self.dragged() == Some(handle);
-        let hovered = hover == Some(handle);
-        let label = (dragging || hovered)
-            .then(|| match handle {
-                Handle::Point(index) if common::editing_index(ctx.ui) != Some(index) => {
-                    let point = ctx.segs.point(index);
-                    let phase = Units::Normalized.format(point.x.clamp(0.0, 1.0));
-                    let level = Units::Normalized.format(point.y.clamp(0.0, 1.0));
-
-                    Some(format!("{phase}  {level}"))
-                }
-                _ => None,
-            })
-            .flatten();
-
-        common::paint_handle(
-            ctx.ui,
-            ctx.handle_layer(),
-            center,
-            radius,
-            dragging,
-            hovered,
-            label,
-        );
     }
 
     /// Left stays the curve color. The right channel keeps that saturation and value.
