@@ -1,6 +1,9 @@
+use std::sync::{Arc, Weak};
+
 use egui::{
     Color32, ColorImage, Context, Order, Response, TextureHandle, TextureId, TextureOptions,
     ecolor::Hsva,
+    epaint::{TextureManager, mutex::RwLock},
 };
 
 pub const fn hsva(h: f32, s: f32, v: f32, a: f32) -> Hsva {
@@ -29,10 +32,19 @@ const FILL_TOP_ALPHA: u8 = 0x47;
 const FILL_BOTTOM_ALPHA: u8 = 0x28;
 
 /// Cached 1×2 plot gradient. V 0.25 and 0.75 sit on the texel centers.
+///
+/// The plugin editor keeps this across window close/open, but each open builds
+/// a new egui context. A handle from the previous context stays alive and would
+/// otherwise keep handing out a texture id the new renderer never uploaded.
 pub(crate) struct FillTexture {
     name: &'static str,
     color: Color32,
-    texture: Option<TextureHandle>,
+    texture: Option<CachedTexture>,
+}
+
+struct CachedTexture {
+    manager: Weak<RwLock<TextureManager>>,
+    handle: TextureHandle,
 }
 
 impl FillTexture {
@@ -45,11 +57,18 @@ impl FillTexture {
     }
 
     pub(crate) fn id(&mut self, ctx: &Context) -> TextureId {
-        if let Some(texture) = &self.texture {
-            return texture.id();
+        let manager = ctx.tex_manager();
+
+        if let Some(texture) = &self.texture
+            && texture
+                .manager
+                .upgrade()
+                .is_some_and(|cached| Arc::ptr_eq(&cached, &manager))
+        {
+            return texture.handle.id();
         }
 
-        let texture = ctx.load_texture(
+        let handle = ctx.load_texture(
             self.name,
             ColorImage::new(
                 [1, 2],
@@ -60,9 +79,12 @@ impl FillTexture {
             ),
             TextureOptions::LINEAR,
         );
-        let id = texture.id();
+        let id = handle.id();
 
-        self.texture = Some(texture);
+        self.texture = Some(CachedTexture {
+            manager: Arc::downgrade(&manager),
+            handle,
+        });
         id
     }
 }
@@ -81,3 +103,6 @@ macro_rules! show_modal {
         }
     };
 }
+
+#[cfg(test)]
+mod tests;
