@@ -56,11 +56,13 @@ impl Default for TimeSegmentsEditor {
 
 impl TimeSegmentsEditor {
     /// `playhead` is the left and right point, each `(seconds, level)` on the drawn curve.
+    /// `toolbar_extra` adds widgets to the row that holds the Rows field.
     pub fn ui(
         &mut self,
         ui: &mut Ui,
         segments: &mut TimeSegments,
         playhead: Option<[(Smp, Smp); 2]>,
+        toolbar_extra: impl FnOnce(&mut Ui),
     ) -> bool {
         let revision = segments.revision();
         let size = vec2(ui.available_width(), C::EDITOR_HEIGHT);
@@ -71,7 +73,7 @@ impl TimeSegmentsEditor {
         }
 
         ui.add_space(8.0);
-        self.toolbar(ui);
+        self.toolbar(ui, toolbar_extra);
 
         segments.revision() != revision
     }
@@ -434,12 +436,14 @@ impl TimeSegmentsEditor {
         }
     }
 
-    fn toolbar(&mut self, ui: &mut Ui) {
+    fn toolbar(&mut self, ui: &mut Ui, extra: impl FnOnce(&mut Ui)) {
         ui.horizontal_wrapped(|ui| {
             ui.label("Rows").on_hover_text(
                 "Snap levels while dragging. Hold Shift to place them freely. Scroll the plot to zoom time.",
             );
             ui.add(DragValue::new(&mut self.grid_y).range(1..=24));
+            ui.add_space(8.0);
+            extra(ui);
         });
     }
 

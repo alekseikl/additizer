@@ -6,7 +6,7 @@ use addi_engine::multi_envelope::{
     UiUpdate,
 };
 use addi_engine::{AUDIO_TO_UI_RING_CAPACITY, UI_TO_AUDIO_RING_CAPACITY};
-use addi_engine::{NUM_CHANNELS, Smp};
+use addi_engine::{Input, NUM_CHANNELS, Smp, StereoSample};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
@@ -18,6 +18,10 @@ pub struct UiEnd {
 impl UiEnd {
     pub fn get_phase(&mut self) -> MultiEnvelopePhase {
         *self.phase.read()
+    }
+
+    pub fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
+        self.tx.push(UiEvent::InputParam { input, value }).is_ok()
     }
 
     pub fn set_segments(&mut self, segments: TimeSegments) -> bool {
@@ -110,6 +114,9 @@ impl MultiEnvelopeAudioEnd for AudioEnd {
 impl MultiEnvelopeUiEnd for UiEnd {
     fn get_phase(&mut self) -> MultiEnvelopePhase {
         UiEnd::get_phase(self)
+    }
+    fn set_param(&mut self, input: Input, value: StereoSample) -> bool {
+        UiEnd::set_param(self, input, value)
     }
     fn set_segments(&mut self, segments: TimeSegments) -> bool {
         UiEnd::set_segments(self, segments)

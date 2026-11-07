@@ -1,8 +1,11 @@
 use addi_ui_backend::ui_bridge::modules::multi_envelope::MultiEnvelopeUiBridge;
-use egui::{Checkbox, Grid, Ui};
+use egui::{Align, Checkbox, FontFamily, Grid, Layout, RichText, Ui};
 
-use crate::{ModuleUi, module_label::ModuleLabel, segments_editor::TimeSegmentsEditor};
-use addi_engine::{ModuleId, ModuleType};
+use crate::{
+    ModuleUi, module_label::ModuleLabel, segments_editor::TimeSegmentsEditor,
+    stereo_input::StereoInput,
+};
+use addi_engine::{Input, ModuleId, ModuleType};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
 pub struct MultiEnvelopeUi {
@@ -43,12 +46,6 @@ impl MultiEnvelopeUi {
             None
         };
 
-        if self.editor.ui(ui, envelope_bridge.segments_mut(), playhead) {
-            envelope_bridge.sync_segments();
-        }
-
-        ui.add_space(12.0);
-
         let mut steal_level = envelope_bridge.config().steal_level;
         let mut keep_voice_alive = envelope_bridge.config().keep_voice_alive;
         let has_release = envelope_bridge
@@ -56,20 +53,20 @@ impl MultiEnvelopeUi {
             .segments
             .release_point_idx()
             .is_some();
+        let mut steal_level_changed = false;
+        let mut keep_voice_alive_changed = false;
 
-        Grid::new("multi_envelope_grid")
-            .num_columns(2)
-            .spacing([8.0, 8.0])
-            .show(ui, |ui| {
-                if ui
+        if self
+            .editor
+            .ui(ui, envelope_bridge.segments_mut(), playhead, |ui| {
+                steal_level_changed = ui
                     .add(Checkbox::new(&mut steal_level, "Steal level"))
                     .on_hover_text("New voice starts from the previous envelope level")
-                    .changed()
-                {
-                    envelope_bridge.set_steal_level(steal_level);
-                }
+                    .changed();
 
-                if ui
+                ui.add_space(8.0);
+
+                keep_voice_alive_changed = ui
                     .add_enabled(
                         has_release,
                         Checkbox::new(&mut keep_voice_alive, "Keep alive"),
@@ -78,11 +75,73 @@ impl MultiEnvelopeUi {
                     .on_disabled_hover_text(
                         "Set a release point to hold the voice through the release",
                     )
-                    .changed()
-                {
-                    envelope_bridge.set_keep_voice_alive(keep_voice_alive);
-                }
+                    .changed();
+            })
+        {
+            envelope_bridge.sync_segments();
+        }
+
+        if steal_level_changed {
+            envelope_bridge.set_steal_level(steal_level);
+        }
+
+        if keep_voice_alive_changed {
+            envelope_bridge.set_keep_voice_alive(keep_voice_alive);
+        }
+
+        ui.add_space(12.0);
+
+        let num_segments = envelope_bridge.config().segments.num_segments();
+
+        Grid::new(("multi_envelope_offsets", module_id))
+            .num_columns(3)
+            .spacing([12.0, 8.0])
+            .show(ui, |ui| {
+                ui.label(RichText::new("Segment").family(FontFamily::Name("Bold".into())));
+                ui.label(RichText::new("Duration offset").family(FontFamily::Name("Bold".into())));
+                ui.label(RichText::new("Level offset").family(FontFamily::Name("Bold".into())));
                 ui.end_row();
+
+                for index in 0..num_segments {
+                    let mut duration = envelope_bridge.config().duration_offset(index);
+                    let mut level = envelope_bridge.config().level_offset(index);
+                    let index = index as u8;
+
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.label(
+                            RichText::new(format!("#{}", index + 1))
+                                .family(FontFamily::Name("Bold".into())),
+                        );
+                    });
+
+                    if ui
+                        .add(StereoInput::new(
+                            Input::DurationMix(index),
+                            module_id,
+                            &mut duration,
+                            bridge,
+                        ))
+                        .changed()
+                    {
+                        envelope_bridge.set_param(Input::DurationMix(index), duration);
+                    }
+
+                    if ui
+                        .add(
+                            StereoInput::new(
+                                Input::LinLevelMix(index),
+                                module_id,
+                                &mut level,
+                                bridge,
+                            )
+                            .default(0.0),
+                        )
+                        .changed()
+                    {
+                        envelope_bridge.set_param(Input::LinLevelMix(index), level);
+                    }
+                    ui.end_row();
+                }
             });
     }
 }

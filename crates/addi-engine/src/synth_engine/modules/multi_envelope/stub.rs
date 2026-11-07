@@ -2,7 +2,7 @@ use std::sync::LazyLock;
 
 use addi_dsp::segments::time_segments::TimeSegments;
 
-use crate::synth_engine::Smp;
+use crate::synth_engine::{Input, Smp, StereoSample};
 
 use super::{
     MultiEnvelopeAudioEnd, MultiEnvelopeLinks, MultiEnvelopePhase, MultiEnvelopeUiEnd, UiEvent,
@@ -51,6 +51,10 @@ impl MultiEnvelopeAudioEnd for AudioEnd {
 
 impl MultiEnvelopeUiEnd for NoUi {
     fn get_phase(&mut self) -> MultiEnvelopePhase {
+        self.diverge()
+    }
+
+    fn set_param(&mut self, _input: Input, _value: StereoSample) -> bool {
         self.diverge()
     }
 

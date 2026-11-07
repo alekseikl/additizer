@@ -4,6 +4,7 @@ use addi_engine::multi_envelope::{
     MultiEnvelope, MultiEnvelopeConfig, MultiEnvelopeLinks, MultiEnvelopePhase, MultiEnvelopeUiEnd,
     UiUpdate,
 };
+use addi_engine::{Input, StereoSample};
 
 pub struct MultiEnvelopeUiBridge<L: MultiEnvelopeLinks = crate::links::multi_envelope::Links> {
     ui_end: L::UiEnd,
@@ -28,6 +29,18 @@ impl<L: MultiEnvelopeLinks> MultiEnvelopeUiBridge<L> {
 
     pub fn playhead(&mut self) -> MultiEnvelopePhase {
         self.ui_end.get_phase()
+    }
+
+    pub fn set_param(&mut self, input: Input, value: StereoSample) {
+        if !self.ui_end.set_param(input, value) {
+            return;
+        }
+
+        match input {
+            Input::DurationMix(index) => self.config.set_duration_offset(index as usize, value),
+            Input::LinLevelMix(index) => self.config.set_level_offset(index as usize, value),
+            _ => {}
+        }
     }
 
     /// Publish the curve from [`segments_mut`](Self::segments_mut) to the audio thread.

@@ -1,7 +1,7 @@
 use addi_dsp::segments::time_segments::{TimePoint, TimeSegments};
 
 use super::*;
-use crate::synth_engine::{synth_module::SynthModule, voices_handler::DecayingVoice};
+use crate::synth_engine::{StereoSample, synth_module::SynthModule, voices_handler::DecayingVoice};
 
 /// Curve from `(seconds, level)` pairs. The first time is 0.
 fn curve(points: &[(Smp, Smp)]) -> TimeSegments {
@@ -64,27 +64,40 @@ fn playing(index: usize, position: Smp, start: Smp, last_level: Smp) -> Voice {
 }
 
 fn render(
-    env: &MultiEnvelope,
-    voice: &Voice,
+    env: &mut MultiEnvelope,
     out: &mut [Smp],
     durations: &[Smp],
+    level_offsets: &[Smp],
     sample_rate: Smp,
     release_at: Option<usize>,
-) -> Voice {
-    let mut voice = *voice;
+) {
     let len = out.len();
     let mut pos = 0;
     let mut release_at = release_at.map(|at| at.min(len));
-    let segments = &env.params.segments;
     let seconds_per_sample = sample_rate.recip();
+    let len_state = durations.len().max(level_offsets.len());
+
+    env.modulated.fill(SegmentParams::default());
+
+    for index in 0..len_state {
+        env.modulated[index] = SegmentParams {
+            duration: durations.get(index).copied().unwrap_or(0.0),
+            level: level_offsets.get(index).copied().unwrap_or(0.0),
+        };
+    }
+
+    let ctx = Ctx {
+        segments: &env.params.segments,
+        modulated: &env.modulated,
+    };
+    let voice = env.voices.at_mut(0, 0);
 
     while pos < len {
         let end = release_at.unwrap_or(len).max(pos);
 
         MultiEnvelope::<stub::Links>::render_region(
-            segments,
-            durations,
-            &mut voice,
+            &ctx,
+            voice,
             &mut out[pos..end],
             seconds_per_sample,
             sample_rate,
@@ -101,15 +114,14 @@ fn render(
         } else {
             out[pos - 1]
         };
-        MultiEnvelope::<stub::Links>::begin_release(segments, &mut voice, level);
+        MultiEnvelope::<stub::Links>::begin_release(&ctx, voice, level);
     }
 
     voice.last_level = out.last().copied().unwrap_or_default();
-    voice
 }
 
 #[test]
-fn default_exposes_one_time_input() {
+fn default_exposes_one_segment_of_offsets() {
     let env = envelope(false, false);
 
     assert_eq!(
@@ -117,13 +129,13 @@ fn default_exposes_one_time_input() {
             .iter()
             .map(|input| input.input_type)
             .collect::<Vec<_>>(),
-        vec![Input::TimeMix(0)]
+        vec![Input::DurationMix(0), Input::LinLevelMix(0)]
     );
     assert!(env.inputs().iter().all(|input| !input.is_direct));
 }
 
 #[test]
-fn time_inputs_follow_the_segment_count() {
+fn offset_inputs_follow_the_segment_count() {
     let mut env = envelope(false, false);
     env.set_segments(curve(&[(0.0, 1.0), (0.25, 0.5), (0.8, 0.0)]));
 
@@ -132,16 +144,22 @@ fn time_inputs_follow_the_segment_count() {
             .iter()
             .map(|input| input.input_type)
             .collect::<Vec<_>>(),
-        vec![Input::TimeMix(0), Input::TimeMix(1)]
+        vec![
+            Input::DurationMix(0),
+            Input::LinLevelMix(0),
+            Input::DurationMix(1),
+            Input::LinLevelMix(1)
+        ]
     );
 }
 
 #[test]
 fn a_one_second_fall_lasts_one_second() {
-    let env = envelope(false, false);
+    let mut env = envelope(false, false);
     let mut out = [0.0; 12];
-    let voice = playing(0, 0.0, 1.0, 0.0);
-    let next = render(&env, &voice, &mut out, &[1.0], 10.0, None);
+
+    *env.voices.at_mut(0, 0) = playing(0, 0.0, 1.0, 0.0);
+    render(&mut env, &mut out, &[1.0], &[], 10.0, None);
 
     for (index, sample) in out[..10].iter().enumerate() {
         let expected = 1.0 - index as Smp * 0.1;
@@ -150,16 +168,16 @@ fn a_one_second_fall_lasts_one_second() {
     }
 
     assert_eq!(&out[10..], &[0.0, 0.0]);
-    assert_eq!(next.stage, Stage::Done);
+    assert_eq!(env.voices.at(0, 0).stage, Stage::Done);
 }
 
 #[test]
 fn a_longer_duration_stretches_the_same_shape() {
-    let env = envelope(false, false);
+    let mut env = envelope(false, false);
     let mut out = [0.0; 4];
-    let voice = playing(0, 0.0, 1.0, 0.0);
 
-    render(&env, &voice, &mut out, &[2.0], 2.0, None);
+    *env.voices.at_mut(0, 0) = playing(0, 0.0, 1.0, 0.0);
+    render(&mut env, &mut out, &[2.0], &[], 2.0, None);
 
     for (index, sample) in out.iter().enumerate() {
         let expected = 1.0 - index as Smp * 0.25;
@@ -176,23 +194,24 @@ fn release_holds_then_falls_from_the_current_level() {
     env.set_segments(segments);
 
     let mut out = [0.0; 8];
-    let voice = playing(0, 0.0, 1.0, 1.0);
-    let held = render(&env, &voice, &mut out, &[0.5, 0.5], 4.0, None);
 
-    assert_eq!(held.stage, Stage::Sustain);
+    *env.voices.at_mut(0, 0) = playing(0, 0.0, 1.0, 1.0);
+    render(&mut env, &mut out, &[0.5, 0.5], &[], 4.0, None);
+
+    assert_eq!(env.voices.at(0, 0).stage, Stage::Sustain);
     assert!(
         out[2..].iter().all(|sample| (*sample - 0.4).abs() < 1e-4),
         "{out:?}"
     );
 
     let mut released = [0.0; 4];
-    let mut voice = held;
-    voice.release = Release::Pending(0);
-    let done = render(&env, &voice, &mut released, &[0.5, 0.5], 4.0, Some(0));
+
+    env.voices.at_mut(0, 0).release = Release::Pending(0);
+    render(&mut env, &mut released, &[0.5, 0.5], &[], 4.0, Some(0));
 
     assert!(released[0] <= 0.4 + 1e-4);
     assert!(released[3] < released[0]);
-    assert_eq!(done.stage, Stage::Done);
+    assert_eq!(env.voices.at(0, 0).stage, Stage::Done);
 }
 
 #[test]
@@ -203,11 +222,12 @@ fn loop_returns_to_the_loop_point() {
     env.set_segments(segments);
 
     let mut out = [0.0; 4];
-    let voice = playing(1, 0.0, 1.0, 1.0);
-    let next = render(&env, &voice, &mut out, &[0.5, 0.5], 8.0, None);
+
+    *env.voices.at_mut(0, 0) = playing(1, 0.0, 1.0, 1.0);
+    render(&mut env, &mut out, &[0.5, 0.5], &[], 8.0, None);
 
     assert_eq!(
-        next.stage,
+        env.voices.at(0, 0).stage,
         Stage::Segment {
             index: 0,
             position: 0.0,
@@ -239,12 +259,17 @@ fn config_roundtrip() {
     let mut segments = curve(&[(0.0, 0.2), (0.2, 0.6), (0.4, 1.0)]);
     assert!(segments.set_release_point(Some(1)));
 
-    let env: MultiEnvelope = MultiEnvelope::from_config(&MultiEnvelopeConfig {
+    let mut source = MultiEnvelopeConfig {
         id: 7,
         steal_level: true,
         keep_voice_alive: true,
         segments,
-    });
+        ..MultiEnvelopeConfig::default()
+    };
+    source.set_duration_offset(0, StereoSample::new(0.25, -0.5));
+    source.set_level_offset(1, StereoSample::splat(0.1));
+
+    let env: MultiEnvelope = MultiEnvelope::from_config(&source);
     let config = env.get_config();
 
     assert_eq!(config.id, 7);
@@ -252,8 +277,53 @@ fn config_roundtrip() {
     assert!(config.keep_voice_alive);
     assert_eq!(config.segments.release_point_idx(), Some(1));
     assert!((config.segments.point(0).y - 0.2).abs() < 1e-6);
+    assert_eq!(config.offsets[0].duration, StereoSample::new(0.25, -0.5));
+    assert_eq!(config.offsets[1].level, StereoSample::splat(0.1));
 
     let json = serde_json::to_string(&MultiEnvelopeConfig::default()).unwrap();
     let restored: MultiEnvelopeConfig = serde_json::from_str(&json).unwrap();
     assert!((restored.segments.total_time() - 1.0).abs() < 1e-6);
+
+    let legacy: MultiEnvelopeConfig = serde_json::from_str(r#"{"id":1}"#).unwrap();
+    assert!(legacy.offsets.is_empty());
+    assert_eq!(legacy.duration_offset(0), StereoSample::ZERO);
+    assert_eq!(legacy.level_offset(0), StereoSample::ZERO);
+}
+
+#[test]
+fn level_offset_lifts_the_segment() {
+    let mut env = envelope(false, false);
+    let mut out = [0.0; 2];
+
+    *env.voices.at_mut(0, 0) = Voice {
+        stage: Stage::segment(0, 0.0),
+        ..Voice::default()
+    };
+    render(&mut env, &mut out, &[1.0], &[0.25], 2.0, None);
+
+    assert!((out[0] - 1.25).abs() < 1e-5, "{out:?}");
+    assert!((out[1] - 0.75).abs() < 1e-5, "{out:?}");
+}
+
+#[test]
+fn level_offset_keeps_a_stolen_start() {
+    let mut env = envelope(false, false);
+    let mut out = [0.0; 1];
+
+    *env.voices.at_mut(0, 0) = playing(0, 0.0, 0.4, 0.4);
+    render(&mut env, &mut out, &[1.0], &[0.2], 10.0, None);
+
+    assert!((out[0] - 0.4).abs() < 1e-5, "{out:?}");
+}
+
+#[test]
+fn duration_offset_is_clamped_to_the_slider_range() {
+    let mut env = envelope(false, false);
+
+    env.set_duration_offset(0, StereoSample::splat(-100.0));
+
+    assert_eq!(
+        env.get_config().offsets[0].duration,
+        StereoSample::splat(-MAX_DURATION_OFFSET)
+    );
 }

@@ -1,9 +1,10 @@
 use addi_dsp::segments::time_segments::TimeSegments;
 
 use super::MultiEnvelopePhase;
-use crate::synth_engine::{Smp, engine_io};
+use crate::synth_engine::{Input, Smp, StereoSample, engine_io};
 
 pub enum UiEvent {
+    InputParam { input: Input, value: StereoSample },
     SegmentsUpdated,
     StealLevel(bool),
     KeepVoiceAlive(bool),
@@ -22,6 +23,7 @@ pub trait MultiEnvelopeAudioEnd: Send {
 
 pub trait MultiEnvelopeUiEnd: Send {
     fn get_phase(&mut self) -> MultiEnvelopePhase;
+    fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
     fn set_segments(&mut self, segments: TimeSegments) -> bool;
     fn set_steal_level(&mut self, value: bool) -> bool;
     fn set_keep_voice_alive(&mut self, value: bool) -> bool;
