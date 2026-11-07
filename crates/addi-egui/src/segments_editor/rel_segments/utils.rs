@@ -7,61 +7,13 @@ use addi_dsp::{
 };
 use addi_engine::Smp;
 use egui::{
-    Color32, FontFamily, FontId, LayerId, Mesh, Order, Painter, Pos2, Rect, Response, Sense, Shape,
-    Stroke, Ui, Vec2, epaint::Vertex, pos2,
+    Color32, LayerId, Mesh, Painter, Pos2, Rect, Response, Shape, Stroke, Ui, epaint::Vertex, pos2,
 };
 
+use super::super::common::{self, MissedHandle};
 use super::consts as C;
 
-/// Handle held by the pointer.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Handle {
-    Point(usize),
-    Power(usize),
-}
-
-/// Pointer grab of a circle. `pointer` and `origin` are where the drag started.
-/// Later centers keep that grab offset.
-#[derive(Clone, Copy, PartialEq)]
-pub(super) struct Drag {
-    pointer: Pos2,
-    origin: Pos2,
-    center: Pos2,
-    handle: Handle,
-}
-
-impl Drag {
-    pub(super) fn new(pointer: Pos2, center: Pos2, handle: Handle) -> Self {
-        Self {
-            pointer,
-            origin: center,
-            center,
-            handle,
-        }
-    }
-
-    pub(super) fn handle(self) -> Handle {
-        self.handle
-    }
-
-    /// Circle center after the pointer moves to `pointer`, keeping the grab offset from `origin`.
-    pub(super) fn place(self, pointer: Pos2) -> Pos2 {
-        pos2(
-            self.origin.x + pointer.x - self.pointer.x,
-            self.origin.y + pointer.y - self.pointer.y,
-        )
-    }
-
-    /// Moves the center to follow `pointer`.
-    /// Returns the new center and its offset from `origin`.
-    pub(super) fn move_pos(&mut self, pointer: Pos2) -> (Pos2, Vec2) {
-        let center = self.place(pointer);
-        let delta = center - self.origin;
-
-        self.center = center;
-        (center, delta)
-    }
-}
+pub(super) use super::super::common::{Drag, Handle, with_alpha};
 
 /// Point editing, or one paint shape. Clicking the active shape returns to points.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -188,14 +140,11 @@ pub(super) struct Ctx<'a> {
 
 impl Ctx<'_> {
     pub(super) fn shift_down(&self) -> bool {
-        self.ui.input(|input| input.modifiers.shift)
+        common::shift_down(self.ui)
     }
 
     pub(super) fn handle_layer(&self) -> LayerId {
-        LayerId::new(
-            Order::Foreground,
-            self.ui.scope_id().with("segments-handle"),
-        )
+        common::handle_layer(self.ui, "segments-handle")
     }
 
     /// Clickable square around `center`, kept inside the plot.
@@ -205,18 +154,7 @@ impl Ctx<'_> {
         radius: f32,
         id: impl std::hash::Hash + std::fmt::Debug,
     ) -> Response {
-        let rect = Rect::from_center_size(center, Vec2::splat(radius * 2.0)).intersect(self.plot);
-        let rect = if rect.is_positive() {
-            rect
-        } else {
-            Rect::from_center_size(center, Vec2::splat(1.0))
-        };
-
-        self.ui.interact(
-            rect,
-            self.ui.make_persistent_id(id),
-            Sense::click_and_drag(),
-        )
+        common::handle_response(self.ui, self.plot, center, radius, id, MissedHandle::Pixel)
     }
 
     /// Insert a point at `point`, with the easing of the segment it splits.
@@ -287,7 +225,7 @@ impl Ctx<'_> {
 
     /// Interior points can be removed. The ends stay.
     pub(super) fn is_inner(&self, index: usize) -> bool {
-        index > 0 && index + 1 < self.segs.num_points()
+        common::is_inner(self.segs.num_points(), index)
     }
 }
 
@@ -295,26 +233,3 @@ impl Ctx<'_> {
 pub(super) fn curve_point(point: SegPoint) -> Pos2 {
     pos2(point.x, point.y)
 }
-
-/// Top of a box `height` tall placed `offset` above `anchor_y`, or `offset` below it
-/// when the box would pass `top`.
-pub(super) fn stack_y(anchor_y: f32, offset: f32, height: f32, top: f32) -> f32 {
-    let above = anchor_y - offset - height;
-
-    if above >= top {
-        above
-    } else {
-        anchor_y + offset
-    }
-}
-
-pub(super) fn bold(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Name("Bold".into()))
-}
-
-pub(super) fn with_alpha(color: Color32, alpha: u8) -> Color32 {
-    Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
-}
-
-#[cfg(test)]
-mod tests;

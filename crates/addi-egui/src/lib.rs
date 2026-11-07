@@ -25,7 +25,6 @@ mod segment_presets;
 mod segments_editor;
 mod slider;
 mod stereo_input;
-mod time_segments_editor;
 mod units;
 mod utils;
 mod value_entry;

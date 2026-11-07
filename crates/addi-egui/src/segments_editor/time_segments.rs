@@ -1,35 +1,26 @@
 use egui::{
-    Color32, CursorIcon, DragValue, FontId, Id, Mesh, Painter, PointerButton, Pos2, Rect, Response,
-    Sense, Shape, Stroke, StrokeKind, Ui, Vec2, ecolor::Hsva, epaint::Vertex, pos2, vec2,
+    Color32, DragValue, FontId, Painter, PointerButton, Pos2, Rect, Response, Sense, Stroke, Ui,
+    Vec2, pos2, vec2,
 };
 
 use addi_dsp::{
     power_scale,
-    segments::rel_segments::MAX_POWER,
     segments::time_segments::{TimePoint, TimeSegments},
-    utils::sanitize,
 };
 use addi_engine::Smp;
 
 use crate::units::Units;
 use crate::utils::FillTexture;
-use crate::value_entry::{self, ValueEntry, ValueEntryEvent};
+use crate::value_entry::ValueEntryEvent;
 
+use super::common;
 use consts as C;
 use menu::{Axis, PointAction, canvas_menu, open_menu, point_menu, power_menu};
-use utils::{Ctx, Drag, Handle, bold, drag_span, stack_y, with_alpha, zoom_span};
+use utils::{Ctx, Drag, Handle, drag_span, with_alpha, zoom_span};
 
 mod consts;
 mod menu;
 mod utils;
-
-/// Breakpoint coordinate being typed. The field itself only holds the text.
-#[derive(Clone, Default)]
-struct PointEdit {
-    index: usize,
-    axis: Axis,
-    value: ValueEntry,
-}
 
 pub struct TimeSegmentsEditor {
     grid_y: i32,
@@ -135,7 +126,7 @@ impl TimeSegmentsEditor {
         if let Some(index) = remove {
             ctx.segs.remove_point(index);
             self.drag = None;
-            Self::close_entry(&ctx);
+            common::close_entry(ctx.ui);
         }
 
         ctx.span = self.time_span;
@@ -145,7 +136,8 @@ impl TimeSegmentsEditor {
     }
 
     fn add_at_double_click(&mut self, ctx: &mut Ctx<'_>) {
-        if Self::editing_point(ctx).is_some() || !ctx.res.double_clicked_by(PointerButton::Primary)
+        if common::editing_index(ctx.ui).is_some()
+            || !ctx.res.double_clicked_by(PointerButton::Primary)
         {
             return;
         }
@@ -171,12 +163,9 @@ impl TimeSegmentsEditor {
             ctx.segs.set_power(index, 0.0);
             self.drag = None;
         } else if let Some(pos) = self.drag_begin(ctx, &response) {
-            self.drag = Some(Drag::new(
-                ctx.curve_pos(pos),
-                curve,
-                Handle::Power(index),
-                ctx.span,
-            ));
+            self.drag = Some(
+                Drag::new(ctx.curve_pos(pos), curve, Handle::Power(index)).with_span(ctx.span),
+            );
             self.drag_power = ctx.segs.power(index);
         }
 
@@ -198,10 +187,10 @@ impl TimeSegmentsEditor {
 
         let mut remove = action == Some(PointAction::Remove);
 
-        if Self::editing_point(ctx) == Some(index) {
+        if common::editing_index(ctx.ui) == Some(index) {
             if remove {
                 self.drag = None;
-                Self::close_entry(ctx);
+                common::close_entry(ctx.ui);
             }
 
             return remove;
@@ -210,12 +199,14 @@ impl TimeSegmentsEditor {
         if response.double_clicked_by(PointerButton::Primary) {
             remove |= ctx.is_inner(index);
         } else if let Some(pos) = self.drag_begin(ctx, &response) {
-            self.drag = Some(Drag::new(
-                ctx.curve_pos(pos),
-                pos2(time, point.y),
-                Handle::Point(index),
-                self.time_span,
-            ));
+            self.drag = Some(
+                Drag::new(
+                    ctx.curve_pos(pos),
+                    pos2(time, point.y),
+                    Handle::Point(index),
+                )
+                .with_span(self.time_span),
+            );
         }
 
         if let Some((placed, _)) = self.drag_move(ctx, Handle::Point(index)) {
@@ -225,7 +216,7 @@ impl TimeSegmentsEditor {
 
         if remove {
             self.drag = None;
-            Self::close_entry(ctx);
+            common::close_entry(ctx.ui);
         }
 
         remove
@@ -259,32 +250,7 @@ impl TimeSegmentsEditor {
     }
 
     fn drag_begin(&self, ctx: &Ctx<'_>, response: &Response) -> Option<Pos2> {
-        if self.drag.is_some() || !response.is_pointer_button_down_on() {
-            return None;
-        }
-
-        let (origin, elapsed) = ctx.ui.input(|input| {
-            let elapsed = input
-                .pointer
-                .press_start_time()
-                .map_or(0.0, |start| input.time - start);
-
-            (input.pointer.press_origin(), elapsed)
-        });
-        let origin = origin?;
-        let pointer = response.interact_pointer_pos().or(response.hover_pos());
-        let moved = pointer.is_some_and(|pos| pos.distance(origin) > C::MAX_CLICK_DIST);
-
-        if (moved || elapsed > C::MAX_CLICK_DURATION)
-            && let Some(pos) = pointer
-        {
-            return Some(pos);
-        }
-
-        let remaining = (C::MAX_CLICK_DURATION - elapsed).max(0.0) as f32;
-
-        ctx.ui.ctx().request_repaint_after_secs(remaining);
-        None
+        common::drag_begin(self.drag.is_some(), ctx.ui, response)
     }
 
     fn drag_move(&mut self, ctx: &Ctx<'_>, handle: Handle) -> Option<(Pos2, Vec2)> {
@@ -293,14 +259,13 @@ impl TimeSegmentsEditor {
         }
 
         let pos = ctx.ui.input(|input| input.pointer.latest_pos())?;
-        let drag = self.drag.as_ref()?;
-        let span = drag.span();
+        let span = self.drag.as_ref()?.span();
         let pointer = match handle {
             Handle::Point(_) => ctx.curve_pos_at(pos, span),
             Handle::Power(_) => ctx.curve_pos(pos),
         };
 
-        Some(drag.move_pos(pointer))
+        Some(self.drag.as_mut()?.move_pos(pointer))
     }
 
     /// Keep the window still while the point is inside it. Once the point crosses the
@@ -328,11 +293,7 @@ impl TimeSegmentsEditor {
         let mut nearest: Option<(Handle, f32)> = None;
 
         let mut consider = |handle, center: Pos2, radius: f32| {
-            let distance = pointer.distance(center);
-
-            if distance <= radius && nearest.is_none_or(|(_, best)| distance < best) {
-                nearest = Some((handle, distance));
-            }
+            common::consider(&mut nearest, handle, center, pointer, radius);
         };
 
         for index in 0..ctx.segs.num_points() {
@@ -402,40 +363,11 @@ impl TimeSegmentsEditor {
             Axis::Y => (Units::Normalized, point.y),
         };
 
-        ctx.ui.data_mut(|data| {
-            data.insert_temp(
-                Self::entry_id(ctx),
-                PointEdit {
-                    index,
-                    axis,
-                    value: ValueEntry::new(units, value),
-                },
-            );
-        });
-    }
-
-    fn close_entry(ctx: &Ctx<'_>) {
-        ctx.ui.data_mut(|data| {
-            data.remove_temp::<PointEdit>(Self::entry_id(ctx));
-        });
-    }
-
-    fn entry(ctx: &Ctx<'_>) -> Option<PointEdit> {
-        ctx.ui
-            .data(|data| data.get_temp::<PointEdit>(Self::entry_id(ctx)))
-    }
-
-    fn editing_point(ctx: &Ctx<'_>) -> Option<usize> {
-        Self::entry(ctx).map(|entry| entry.index)
-    }
-
-    fn entry_id(ctx: &Ctx<'_>) -> Id {
-        ctx.ui.make_persistent_id("point-entry")
+        common::open_entry(ctx.ui, index, axis, units, value);
     }
 
     fn show_point_entry(&mut self, ctx: &mut Ctx<'_>) {
-        let id = Self::entry_id(ctx);
-        let Some(mut edit) = ctx.ui.data_mut(|data| data.remove_temp::<PointEdit>(id)) else {
+        let Some(mut edit) = common::take_entry(ctx.ui) else {
             return;
         };
         let index = edit.index;
@@ -447,12 +379,8 @@ impl TimeSegmentsEditor {
 
         let point = ctx.segs.point(index);
         let center = ctx.screen_pos(ctx.segs.time(index), point.y);
-        let (pivot, pos) = value_entry::anchor(
-            ctx.ui.ctx().content_rect(),
-            center,
-            C::GRAB_RADIUS + C::LABEL_POINTER_GAP,
-        );
-        match edit.value.show(ctx.ui, id, pivot, pos) {
+
+        match common::show_entry(ctx.ui, &mut edit, center) {
             ValueEntryEvent::Committed(value) => {
                 let point = ctx.segs.point(index);
                 let (time, level) = match axis {
@@ -472,26 +400,12 @@ impl TimeSegmentsEditor {
                 self.drag = None;
             }
             ValueEntryEvent::Canceled => {}
-            ValueEntryEvent::Editing => {
-                ctx.ui.data_mut(|data| data.insert_temp(id, edit));
-            }
+            ValueEntryEvent::Editing => common::keep_entry(ctx.ui, edit),
         }
     }
 
     fn snap_level(&self, ctx: &Ctx<'_>, level: Smp) -> Smp {
-        let height = ctx.plot.height();
-
-        if self.grid_y <= 1 || height <= 0.0 {
-            return level;
-        }
-
-        let snapped = (level * self.grid_y as Smp).round() / self.grid_y as Smp;
-
-        if (snapped - level).abs() * height < C::SNAP {
-            snapped.clamp(0.0, 1.0)
-        } else {
-            level
-        }
+        common::snap_division(level, self.grid_y, ctx.plot.height(), 0.0, 1.0)
     }
 
     fn move_power(&self, ctx: &mut Ctx<'_>, index: usize, delta_y: Smp) {
@@ -503,13 +417,9 @@ impl TimeSegmentsEditor {
 
         let from = ctx.segs.point(index);
         let to = ctx.segs.point(end);
-
-        if from.y == to.y {
+        let Some(power) = common::bend_power(from.y, to.y, self.drag_power, delta_y) else {
             return;
-        }
-
-        let amount = C::POWER_MOUSE_MULTIPLIER * if from.y < to.y { -delta_y } else { delta_y };
-        let power = sanitize(self.drag_power + amount, -MAX_POWER, MAX_POWER);
+        };
 
         if ctx.segs.power(index) != power {
             ctx.segs.set_power(index, power);
@@ -580,13 +490,7 @@ impl TimeSegmentsEditor {
 
         self.build_curve_points(ctx);
 
-        painter.rect_filled(ctx.plot, 2.0, ctx.ui.visuals().extreme_bg_color);
-        painter.rect_stroke(
-            ctx.plot,
-            2.0,
-            Stroke::new(1.0, Color32::from_white_alpha(32)),
-            StrokeKind::Inside,
-        );
+        common::paint_frame(&painter, ctx.plot, ctx.ui.visuals().extreme_bg_color);
 
         if let Some(region) = self.loop_region(ctx) {
             painter.rect_filled(region, 0.0, C::LOOP_FILL_COLOR);
@@ -613,16 +517,8 @@ impl TimeSegmentsEditor {
     }
 
     fn paint_grid(&self, painter: &Painter, ctx: &Ctx<'_>) {
-        let plot = ctx.plot;
-        let stroke = Stroke::new(1.0, C::GRID_COLOR);
-
         self.paint_time_grid(painter, ctx);
-
-        for i in 1..self.grid_y {
-            let y = plot.bottom() - plot.height() * (i as f32 / self.grid_y as f32);
-
-            painter.line_segment([pos2(plot.left(), y), pos2(plot.right(), y)], stroke);
-        }
+        common::paint_rows(painter, ctx.plot, self.grid_y);
     }
 
     fn paint_time_grid(&self, painter: &Painter, ctx: &Ctx<'_>) {
@@ -679,31 +575,7 @@ impl TimeSegmentsEditor {
     }
 
     fn paint_fill(&mut self, painter: &Painter, ctx: &Ctx<'_>) {
-        let mut mesh = Mesh::with_texture(self.fill.id(ctx.ui.ctx()));
-        let bottom = ctx.plot.bottom();
-
-        for &[start, end] in self.points.array_windows() {
-            if end.x <= start.x {
-                continue;
-            }
-
-            let index = mesh.vertices.len() as u32;
-
-            for pos in [start, end, pos2(end.x, bottom), pos2(start.x, bottom)] {
-                let v = 0.25 + 0.5 * (pos.y - ctx.plot.top()) / ctx.plot.height();
-
-                mesh.vertices.push(Vertex {
-                    pos,
-                    uv: pos2(0.5, v),
-                    color: Color32::WHITE,
-                });
-            }
-
-            mesh.add_triangle(index, index + 1, index + 2);
-            mesh.add_triangle(index, index + 2, index + 3);
-        }
-
-        painter.add(Shape::mesh(mesh));
+        common::paint_fill(painter, ctx.plot, self.fill.id(ctx.ui.ctx()), &self.points);
     }
 
     fn loop_region(&self, ctx: &Ctx<'_>) -> Option<Rect> {
@@ -713,10 +585,11 @@ impl TimeSegmentsEditor {
             .release_point_idx()
             .map(|index| ctx.segs.time(index))
             .unwrap_or_else(|| ctx.segs.total_time());
-        let left = ctx.screen_x(ctx.segs.time(start));
-        let right = ctx.screen_x(end_time);
-
-        (right > left).then(|| Rect::from_x_y_ranges(left..=right, ctx.plot.y_range()))
+        common::horizontal_span(
+            ctx.plot,
+            ctx.screen_x(ctx.segs.time(start)),
+            ctx.screen_x(end_time),
+        )
     }
 
     fn in_span(ctx: &Ctx<'_>, time: Smp) -> bool {
@@ -738,16 +611,7 @@ impl TimeSegmentsEditor {
         painter.circle_filled(center, C::POINT_RADIUS, color);
 
         if let Some((label, color)) = marker {
-            let galley = painter.layout_no_wrap(label.to_owned(), bold(10.0), color);
-            let x = center.x - galley.size().x * 0.5;
-            let y = stack_y(
-                center.y,
-                C::POINT_RADIUS + C::MARKER_GAP,
-                galley.size().y,
-                ctx.plot.top(),
-            );
-
-            painter.galley(pos2(x, y), galley, color);
+            common::paint_marker(painter, center, label, color, ctx.plot.top());
         }
 
         self.paint_handle(ctx, center, C::GRAB_RADIUS, Handle::Point(index), hover);
@@ -800,76 +664,35 @@ impl TimeSegmentsEditor {
     ) {
         let dragging = self.dragged() == Some(handle);
         let hovered = hover == Some(handle);
+        let label = (dragging || hovered)
+            .then(|| match handle {
+                Handle::Point(index) if common::editing_index(ctx.ui) != Some(index) => {
+                    let point = ctx.segs.point(index);
+                    let time = Units::Time.format(ctx.segs.time(index));
+                    let level = Units::Normalized.format(point.y);
 
-        if !dragging && !hovered {
-            return;
-        }
+                    Some(format!("{time}  {level}"))
+                }
+                _ => None,
+            })
+            .flatten();
 
-        let painter = ctx.ui.painter().clone().with_layer_id(ctx.handle_layer());
-
-        if dragging {
-            ctx.ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
-            painter.circle_filled(center, radius, Color32::from_white_alpha(0x40));
-        }
-
-        if hovered {
-            ctx.ui.ctx().set_cursor_icon(CursorIcon::Grab);
-        }
-
-        if let Handle::Point(index) = handle
-            && Self::editing_point(ctx) != Some(index)
-        {
-            let point = ctx.segs.point(index);
-            let time = Units::Time.format(ctx.segs.time(index));
-            let level = Units::Normalized.format(point.y);
-
-            Self::paint_label(ctx, center, format!("{time}  {level}"));
-        }
-
-        painter.circle_stroke(center, radius, Stroke::new(1.0, Color32::WHITE));
-    }
-
-    fn paint_label(ctx: &Ctx<'_>, anchor: Pos2, text: String) {
-        let painter = ctx.ui.painter().clone().with_layer_id(ctx.handle_layer());
-        let galley = painter.layout_no_wrap(text, bold(11.0), C::LABEL_TEXT_COLOR.into());
-        let padding = vec2(C::LABEL_PADDING, C::LABEL_PADDING * 0.5);
-        let size = galley.size() + padding * 2.0;
-        let bounds = ctx.ui.clip_rect();
-        let top = stack_y(
-            anchor.y,
-            C::GRAB_RADIUS + C::LABEL_POINTER_GAP,
-            size.y,
-            bounds.top(),
+        common::paint_handle(
+            ctx.ui,
+            ctx.handle_layer(),
+            center,
+            radius,
+            dragging,
+            hovered,
+            label,
         );
-        let min = pos2(
-            (anchor.x - size.x * 0.5)
-                .clamp(bounds.left(), (bounds.right() - size.x).max(bounds.left())),
-            top.clamp(bounds.top(), (bounds.bottom() - size.y).max(bounds.top())),
-        );
-        let rect = Rect::from_min_size(min, size);
-
-        painter.rect(
-            rect,
-            C::LABEL_CORNER_RADIUS,
-            C::LABEL_BG_COLOR,
-            Stroke::new(1.0, C::LABEL_BORDER_COLOR),
-            StrokeKind::Inside,
-        );
-        painter.galley(rect.min + padding, galley, C::LABEL_TEXT_COLOR.into());
     }
 
     fn paint_playheads(&self, ctx: &Ctx<'_>, playhead: [(Smp, Smp); 2]) {
         let painter = ctx.ui.painter().with_clip_rect(ctx.plot);
         let [left, right] = playhead.map(|(time, level)| ctx.playhead_pos(time, level));
 
-        if left.distance_sq(right) > C::PLAYHEAD_OVERLAP_SQ {
-            let mut color = Hsva::from(self.wave_color);
-
-            color.h = C::RIGHT_PLAYHEAD_HUE;
-            painter.circle_filled(right, C::PLAYHEAD_RADIUS, color);
-        }
-
-        painter.circle_filled(left, C::PLAYHEAD_RADIUS, self.wave_color);
+        common::paint_playheads(&painter, left, right, self.wave_color);
     }
 }
 

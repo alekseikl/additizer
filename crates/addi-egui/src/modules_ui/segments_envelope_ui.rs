@@ -2,7 +2,8 @@ use addi_ui_backend::ui_bridge::modules::segments_envelope::SegmentsEnvelopeUiBr
 use egui::{Checkbox, ComboBox, Grid, Ui};
 
 use crate::{
-    ModuleUi, module_label::ModuleLabel, segments_editor::SegmentsEditor, stereo_input::StereoInput,
+    ModuleUi, module_label::ModuleLabel, segments_editor::RelSegmentsEditor,
+    stereo_input::StereoInput,
 };
 use addi_engine::segments_envelope::Timebase;
 use addi_engine::{Input, ModuleId, ModuleType};
@@ -10,14 +11,14 @@ use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
 pub struct SegmentsEnvelopeUi {
     module_id: ModuleId,
-    editor: SegmentsEditor,
+    editor: RelSegmentsEditor,
 }
 
 impl SegmentsEnvelopeUi {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            editor: SegmentsEditor::envelope(),
+            editor: RelSegmentsEditor::envelope(),
         }
     }
 

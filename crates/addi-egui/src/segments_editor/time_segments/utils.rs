@@ -4,59 +4,12 @@ use addi_dsp::segments::{
 };
 use addi_dsp::utils::sanitize;
 use addi_engine::Smp;
-use egui::{
-    Color32, FontFamily, FontId, LayerId, Order, Pos2, Rect, Response, Sense, Ui, Vec2, pos2,
-};
+use egui::{LayerId, Pos2, Rect, Response, Ui, pos2};
 
+use super::super::common::{self, MissedHandle};
 use super::consts as C;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Handle {
-    Point(usize),
-    Power(usize),
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub(super) struct Drag {
-    pointer: Pos2,
-    origin: Pos2,
-    handle: Handle,
-    /// Seconds across the plot when the drag started. Time stays on this scale
-    /// so growing the window does not run away under a held pointer.
-    span: Smp,
-}
-
-impl Drag {
-    pub(super) fn new(pointer: Pos2, origin: Pos2, handle: Handle, span: Smp) -> Self {
-        Self {
-            pointer,
-            origin,
-            handle,
-            span,
-        }
-    }
-
-    pub(super) fn handle(self) -> Handle {
-        self.handle
-    }
-
-    pub(super) fn span(self) -> Smp {
-        self.span
-    }
-
-    pub(super) fn place(self, pointer: Pos2) -> Pos2 {
-        pos2(
-            self.origin.x + pointer.x - self.pointer.x,
-            self.origin.y + pointer.y - self.pointer.y,
-        )
-    }
-
-    pub(super) fn move_pos(&self, pointer: Pos2) -> (Pos2, Vec2) {
-        let center = self.place(pointer);
-
-        (center, center - self.origin)
-    }
-}
+pub(super) use super::super::common::{Drag, Handle, with_alpha};
 
 pub(super) struct Ctx<'a> {
     pub(super) ui: &'a Ui,
@@ -68,14 +21,11 @@ pub(super) struct Ctx<'a> {
 
 impl Ctx<'_> {
     pub(super) fn shift_down(&self) -> bool {
-        self.ui.input(|input| input.modifiers.shift)
+        common::shift_down(self.ui)
     }
 
     pub(super) fn handle_layer(&self) -> LayerId {
-        LayerId::new(
-            Order::Foreground,
-            self.ui.scope_id().with("time-segments-handle"),
-        )
+        common::handle_layer(self.ui, "time-segments-handle")
     }
 
     pub(super) fn handle_response(
@@ -84,18 +34,7 @@ impl Ctx<'_> {
         radius: f32,
         id: impl std::hash::Hash + std::fmt::Debug,
     ) -> Response {
-        let rect = Rect::from_center_size(center, Vec2::splat(radius * 2.0)).intersect(self.plot);
-        let rect = if rect.is_positive() {
-            rect
-        } else {
-            Rect::NOTHING
-        };
-
-        self.ui.interact(
-            rect,
-            self.ui.make_persistent_id(id),
-            Sense::click_and_drag(),
-        )
+        common::handle_response(self.ui, self.plot, center, radius, id, MissedHandle::Ignore)
     }
 
     pub(super) fn add_point(&mut self, point: Pos2) {
@@ -189,26 +128,8 @@ impl Ctx<'_> {
     }
 
     pub(super) fn is_inner(&self, index: usize) -> bool {
-        index > 0 && index + 1 < self.segs.num_points()
+        common::is_inner(self.segs.num_points(), index)
     }
-}
-
-pub(super) fn stack_y(anchor_y: f32, offset: f32, height: f32, top: f32) -> f32 {
-    let above = anchor_y - offset - height;
-
-    if above >= top {
-        above
-    } else {
-        anchor_y + offset
-    }
-}
-
-pub(super) fn bold(size: f32) -> FontId {
-    FontId::new(size, FontFamily::Name("Bold".into()))
-}
-
-pub(super) fn with_alpha(color: Color32, alpha: u8) -> Color32 {
-    Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
 }
 
 /// Window while a point is dragged. It stays on `base` until the point's time passes the

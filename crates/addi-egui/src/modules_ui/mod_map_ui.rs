@@ -2,7 +2,7 @@ use addi_ui_backend::ui_bridge::modules::mod_map::ModMapUiBridge;
 use egui::{Checkbox, Grid, Ui};
 
 use crate::{
-    ModuleUi, module_label::ModuleLabel, segments_editor::SegmentsEditor, slider::Slider,
+    ModuleUi, module_label::ModuleLabel, segments_editor::RelSegmentsEditor, slider::Slider,
     stereo_input::StereoInput, units::Units,
 };
 use addi_engine::mod_map::MAX_SMOOTH;
@@ -11,14 +11,14 @@ use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
 pub struct ModMapUi {
     module_id: ModuleId,
-    editor: SegmentsEditor,
+    editor: RelSegmentsEditor,
 }
 
 impl ModMapUi {
     pub fn new(module_id: ModuleId) -> Self {
         Self {
             module_id,
-            editor: SegmentsEditor::lookup(),
+            editor: RelSegmentsEditor::lookup(),
         }
     }
 

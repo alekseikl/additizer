@@ -4,7 +4,7 @@ use addi_dsp::{RelSegments, segments::rel_segments::MAX_POINTS};
 
 use crate::segment_presets;
 
-use super::SegmentsEditor;
+use super::RelSegmentsEditor;
 use super::utils::{Ctx, Pattern, Tool};
 
 fn plot() -> Rect {
@@ -28,14 +28,14 @@ fn paint_ctx<'a>(ui: &'a Ui, response: &'a Response, segments: &'a mut RelSegmen
     }
 }
 
-fn curve(segments: &mut RelSegments) -> SegmentsEditor {
-    let mut editor = SegmentsEditor::default();
+fn curve(segments: &mut RelSegments) -> RelSegmentsEditor {
+    let mut editor = RelSegmentsEditor::default();
 
     render(&mut editor, plot(), segments);
     editor
 }
 
-fn render(editor: &mut SegmentsEditor, area: Rect, segments: &mut RelSegments) {
+fn render(editor: &mut RelSegmentsEditor, area: Rect, segments: &mut RelSegments) {
     let mut ui = press(false);
     let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
 
@@ -50,7 +50,7 @@ fn render(editor: &mut SegmentsEditor, area: Rect, segments: &mut RelSegments) {
 
 fn stamp(segments: &mut RelSegments, from_x: f32, to_x: f32, level: f32, pattern: Pattern) {
     stamp_with(
-        &SegmentsEditor::default(),
+        &RelSegmentsEditor::default(),
         segments,
         from_x,
         to_x,
@@ -60,7 +60,7 @@ fn stamp(segments: &mut RelSegments, from_x: f32, to_x: f32, level: f32, pattern
 }
 
 fn stamp_with(
-    editor: &SegmentsEditor,
+    editor: &RelSegmentsEditor,
     segments: &mut RelSegments,
     from_x: f32,
     to_x: f32,
@@ -68,12 +68,12 @@ fn stamp_with(
     pattern: Pattern,
 ) {
     let columns = (1.0 / (to_x - from_x)).round() as i32;
-    let editor = SegmentsEditor {
+    let editor = RelSegmentsEditor {
         wrapped: editor.wrapped,
         grid_x: columns,
         grid_y: 1,
         tool: Tool::Paint(pattern),
-        ..SegmentsEditor::default()
+        ..RelSegmentsEditor::default()
     };
     let mut ui = press(false);
     let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
@@ -232,7 +232,7 @@ fn typed_point_keeps_the_entered_value() {
     let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 0.5), (1.0, 1.0)], false);
     let mut ui = press(false);
     let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
-    let open = SegmentsEditor::lookup();
+    let open = RelSegmentsEditor::lookup();
 
     open.place_point(&mut paint_ctx(&ui, &response, &mut segments), 1, 0.3, 0.3);
 
@@ -244,7 +244,7 @@ fn typed_point_keeps_the_entered_value() {
     assert!((segments.point(1).x - 1.0).abs() < 1e-6);
     assert_eq!(segments.point(1).y, 0.0);
 
-    SegmentsEditor::default().place_point(
+    RelSegmentsEditor::default().place_point(
         &mut paint_ctx(&ui, &response, &mut segments),
         0,
         0.4,
@@ -262,18 +262,18 @@ fn open_curve_moves_the_ends_independently() {
     let mut ui = press(true);
     let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
 
-    SegmentsEditor::lookup().move_point(&mut paint_ctx(&ui, &response, &mut open), 0, 0.0, 0.35);
+    RelSegmentsEditor::lookup().move_point(&mut paint_ctx(&ui, &response, &mut open), 0, 0.0, 0.35);
 
     assert!((open.point(0).y - 0.35).abs() < 1e-6);
     assert_eq!(open.point(2).y, 0.0);
 
-    SegmentsEditor::lookup().move_point(&mut paint_ctx(&ui, &response, &mut open), 2, 1.0, 0.1);
+    RelSegmentsEditor::lookup().move_point(&mut paint_ctx(&ui, &response, &mut open), 2, 1.0, 0.1);
 
     assert!((open.point(0).y - 0.35).abs() < 1e-6);
     assert!((open.point(2).y - 0.1).abs() < 1e-6);
 
     let mut closed = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
-    let editor = SegmentsEditor::default();
+    let editor = RelSegmentsEditor::default();
 
     editor.move_point(&mut paint_ctx(&ui, &response, &mut closed), 0, 0.0, 0.35);
 
@@ -310,7 +310,7 @@ fn curve_pos_continues_outside_the_plot() {
 
 #[test]
 fn bend_follows_the_pointer() {
-    let mut editor = SegmentsEditor::default();
+    let mut editor = RelSegmentsEditor::default();
     let mut rising = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     let mut ui = press(false);
     let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
@@ -344,7 +344,7 @@ fn bend_follows_the_pointer() {
 #[test]
 fn synced_bend_mirrors_onto_the_next_segment() {
     let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.2)], false);
-    let mut editor = SegmentsEditor::default();
+    let mut editor = RelSegmentsEditor::default();
     let mut ui = press(false);
     let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
 
@@ -473,7 +473,7 @@ fn paint_stamps_the_shape_into_one_column() {
 
 #[test]
 fn unwrapped_stamp_rewrites_the_endpoint_it_covers() {
-    let editor = SegmentsEditor::lookup();
+    let editor = RelSegmentsEditor::lookup();
     let mut first = RelSegments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false);
 
     first.set_power(0, 1.5);
@@ -592,7 +592,7 @@ fn paint_stops_at_the_point_limit() {
 
 #[test]
 fn paint_snaps_the_level_to_the_vertical_grid() {
-    let mut editor = SegmentsEditor::default();
+    let mut editor = RelSegmentsEditor::default();
     let mut flat = RelSegments::from_points(&[(0.0, 0.0), (1.0, 0.0)], false);
     let mut ui = press(false);
     let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());

@@ -1,7 +1,7 @@
 use addi_ui_backend::ui_bridge::modules::multi_envelope::MultiEnvelopeUiBridge;
 use egui::{Checkbox, Grid, Ui};
 
-use crate::{ModuleUi, module_label::ModuleLabel, time_segments_editor::TimeSegmentsEditor};
+use crate::{ModuleUi, module_label::ModuleLabel, segments_editor::TimeSegmentsEditor};
 use addi_engine::{ModuleId, ModuleType};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
