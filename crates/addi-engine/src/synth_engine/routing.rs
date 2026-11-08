@@ -76,7 +76,8 @@ pub enum Input {
     Sustain,
     Release,
     Amount, // [0.0, 1.0]
-    /// Seconds added to one Multi Envelope segment duration. The index is the segment.
+    /// Seconds added to one Multi Envelope point. The index is the point.
+    /// A duration on the last point is ignored.
     #[serde(alias = "TimeMix")]
     DurationMix(u8),
 }

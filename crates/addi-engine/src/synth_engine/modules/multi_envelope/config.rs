@@ -1,28 +1,29 @@
 use serde::{Deserialize, Serialize};
 
-use addi_dsp::segments::time_segments::{MAX_SEGMENTS, TimeSegments};
+use addi_dsp::segments::time_segments::{MAX_POINTS, TimeSegments};
 
 use crate::synth_engine::{ModuleId, Smp, StereoSample};
 
 /// Largest duration offset, in seconds. The slider and the stored value share this range.
 pub const MAX_DURATION_OFFSET: Smp = 8.0;
-/// Largest level offset. The curve itself stays in `0..=1`.
+/// Largest level offset. Breakpoints stay in `0..=1`; the offset is added, then the level is clamped back.
 pub const MAX_LEVEL_OFFSET: Smp = 1.0;
 
 fn default_segments() -> TimeSegments {
     TimeSegments::default()
 }
 
-/// Added to one segment. `duration` is seconds; `level` is added to that segment's curve.
+/// Added to one breakpoint. `duration` is seconds until the next point.
+/// A duration on the last point is ignored. `level` is added to this point.
 #[derive(Clone, Copy, Serialize, Deserialize)]
-pub struct SegmentOffset {
+pub struct PointOffset {
     #[serde(default)]
     pub duration: StereoSample,
     #[serde(default)]
     pub level: StereoSample,
 }
 
-impl Default for SegmentOffset {
+impl Default for PointOffset {
     fn default() -> Self {
         Self {
             duration: StereoSample::ZERO,
@@ -41,13 +42,14 @@ pub struct MultiEnvelopeConfig {
     /// Ignored when no release point is set.
     #[serde(default)]
     pub keep_voice_alive: bool,
-    /// Breakpoints in seconds. Segment `i` lasts `duration(i)` plus `offsets[i].duration`.
+    /// Breakpoints in seconds. Point `i` reaches the next point after `duration(i)` plus `offsets[i].duration`.
     #[serde(default = "default_segments")]
     pub segments: TimeSegments,
-    /// Per-segment duration and level offsets. A missing entry is zero.
-    /// Trailing zeros are omitted; earlier offsets stay when later segments go away.
+    /// Per-point duration and level offsets. A missing entry is zero.
+    /// A duration on the last point is ignored. Trailing zeros are omitted;
+    /// earlier offsets stay when later points go away.
     #[serde(default)]
-    pub offsets: Vec<SegmentOffset>,
+    pub offsets: Vec<PointOffset>,
 }
 
 impl Default for MultiEnvelopeConfig {
@@ -93,13 +95,13 @@ impl MultiEnvelopeConfig {
         offset.level = value.clamp(-MAX_LEVEL_OFFSET, MAX_LEVEL_OFFSET);
     }
 
-    fn offset_mut(&mut self, index: usize) -> Option<&mut SegmentOffset> {
-        if index >= MAX_SEGMENTS {
+    fn offset_mut(&mut self, index: usize) -> Option<&mut PointOffset> {
+        if index >= MAX_POINTS {
             return None;
         }
 
         if self.offsets.len() <= index {
-            self.offsets.resize(index + 1, SegmentOffset::default());
+            self.offsets.resize(index + 1, PointOffset::default());
         }
 
         Some(&mut self.offsets[index])
@@ -107,7 +109,7 @@ impl MultiEnvelopeConfig {
 
     pub fn sanitize(&mut self) {
         self.segments.sanitize();
-        self.offsets.truncate(MAX_SEGMENTS);
+        self.offsets.truncate(MAX_POINTS);
 
         for offset in &mut self.offsets {
             offset.duration = offset

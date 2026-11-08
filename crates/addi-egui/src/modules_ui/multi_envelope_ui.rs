@@ -91,18 +91,19 @@ impl MultiEnvelopeUi {
 
         ui.add_space(12.0);
 
-        let num_segments = envelope_bridge.config().segments.num_segments();
+        let num_points = envelope_bridge.config().segments.num_points();
 
         Grid::new(("multi_envelope_offsets", module_id))
             .num_columns(3)
             .spacing([12.0, 8.0])
             .show(ui, |ui| {
-                ui.label(RichText::new("Segment").family(FontFamily::Name("Bold".into())));
+                ui.label(RichText::new("Point").family(FontFamily::Name("Bold".into())));
                 ui.label(RichText::new("Duration offset").family(FontFamily::Name("Bold".into())));
                 ui.label(RichText::new("Level offset").family(FontFamily::Name("Bold".into())));
                 ui.end_row();
 
-                for index in 0..num_segments {
+                for index in 0..num_points {
+                    let last = index + 1 == num_points;
                     let mut duration = envelope_bridge.config().duration_offset(index);
                     let mut level = envelope_bridge.config().level_offset(index);
                     let index = index as u8;
@@ -114,7 +115,9 @@ impl MultiEnvelopeUi {
                         );
                     });
 
-                    if ui
+                    if last {
+                        ui.label("");
+                    } else if ui
                         .add(StereoInput::new(
                             Input::DurationMix(index),
                             module_id,

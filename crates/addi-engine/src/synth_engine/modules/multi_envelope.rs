@@ -12,7 +12,7 @@ pub use link::{MultiEnvelopeAudioEnd, MultiEnvelopeLinks, MultiEnvelopeUiEnd, Ui
 
 use addi_dsp::segments::{
     render_segment,
-    time_segments::{MAX_SEGMENTS, TimePoint, TimeSegments},
+    time_segments::{MAX_POINTS, MAX_SEGMENTS, TimePoint, TimeSegments},
 };
 
 use crate::synth_engine::{
@@ -46,19 +46,19 @@ impl Params {
 }
 
 #[derive(Clone, Copy, Default)]
-struct SegmentParams {
+struct PointParams {
     duration: Smp,
     level: Smp,
 }
 
 struct ChannelParams {
-    segments: [SegmentParams; MAX_SEGMENTS],
+    points: [PointParams; MAX_POINTS],
 }
 
 impl ChannelParams {
     fn from_config(c: &config::MultiEnvelopeConfig, channel_idx: usize) -> Self {
         Self {
-            segments: array::from_fn(|index| SegmentParams {
+            points: array::from_fn(|index| PointParams {
                 duration: c.duration_offset(index)[channel_idx],
                 level: c.level_offset(index)[channel_idx],
             }),
@@ -135,19 +135,19 @@ impl Default for Voice {
     }
 }
 
-struct SegmentInput {
+struct PointInput {
     duration: MixedSlots,
     level: MixedSlots,
 }
 
 pub struct Inputs {
-    segments: [SegmentInput; MAX_SEGMENTS],
+    points: [PointInput; MAX_POINTS],
 }
 
 impl Default for Inputs {
     fn default() -> Self {
         Self {
-            segments: array::from_fn(|index| SegmentInput {
+            points: array::from_fn(|index| PointInput {
                 duration: MixedSlots::new(Input::DurationMix(index as u8)),
                 level: MixedSlots::new(Input::LinLevelMix(index as u8)),
             }),
@@ -166,10 +166,10 @@ impl Inputs {
 
             match input.input_type {
                 Input::DurationMix(index) if (index as usize) < MAX_SEGMENTS => {
-                    result.segments[index as usize].duration = input.clone();
+                    result.points[index as usize].duration = input.clone();
                 }
-                Input::LinLevelMix(index) if (index as usize) < MAX_SEGMENTS => {
-                    result.segments[index as usize].level = input.clone();
+                Input::LinLevelMix(index) if (index as usize) < MAX_POINTS => {
+                    result.points[index as usize].level = input.clone();
                 }
                 _ => {}
             }
@@ -181,12 +181,12 @@ impl Inputs {
     fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
         match input_type {
             Input::DurationMix(index) if (index as usize) < MAX_SEGMENTS => {
-                self.segments[index as usize]
+                self.points[index as usize]
                     .duration
                     .update_amount(src_slot, amount);
             }
-            Input::LinLevelMix(index) if (index as usize) < MAX_SEGMENTS => {
-                self.segments[index as usize]
+            Input::LinLevelMix(index) if (index as usize) < MAX_POINTS => {
+                self.points[index as usize]
                     .level
                     .update_amount(src_slot, amount);
             }
@@ -204,13 +204,13 @@ pub struct MultiEnvelope<L: MultiEnvelopeLinks = stub::Links> {
     inputs: Inputs,
     output_slot: usize,
     voices: VoicesLayout<Voice>,
-    modulated: [SegmentParams; MAX_SEGMENTS],
+    modulated: [PointParams; MAX_POINTS],
     inputs_meta: Vec<InputMeta>,
 }
 
 struct Ctx<'a> {
     segments: &'a TimeSegments,
-    modulated: &'a [SegmentParams; MAX_SEGMENTS],
+    modulated: &'a [PointParams; MAX_POINTS],
 }
 
 impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
@@ -242,8 +242,8 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             voices: new_voices_layout(),
-            modulated: [SegmentParams::default(); MAX_SEGMENTS],
-            inputs_meta: Vec::with_capacity(MAX_SEGMENTS * 2),
+            modulated: [PointParams::default(); MAX_POINTS],
+            inputs_meta: Vec::with_capacity(MAX_POINTS * 2),
         };
 
         envelope.build_inputs_meta();
@@ -260,18 +260,18 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
         }
     }
 
-    fn offset_config(&self) -> Vec<config::SegmentOffset> {
-        let mut offsets: Vec<_> = (0..MAX_SEGMENTS)
-            .map(|index| config::SegmentOffset {
+    fn offset_config(&self) -> Vec<config::PointOffset> {
+        let mut offsets: Vec<_> = (0..MAX_POINTS)
+            .map(|index| config::PointOffset {
                 duration: StereoSample::from_iter(
                     self.channel_params
                         .iter()
-                        .map(|channel| channel.segments[index].duration),
+                        .map(|channel| channel.points[index].duration),
                 ),
                 level: StereoSample::from_iter(
                     self.channel_params
                         .iter()
-                        .map(|channel| channel.segments[index].level),
+                        .map(|channel| channel.points[index].level),
                 ),
             })
             .collect();
@@ -291,35 +291,35 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
     pub fn set_duration_offset(&mut self, index: u8, value: StereoSample) {
         let index = index as usize;
 
-        if index >= MAX_SEGMENTS {
+        if index >= MAX_POINTS {
             return;
         }
 
         let value = value.clamp(-MAX_DURATION_OFFSET, MAX_DURATION_OFFSET);
 
         for (channel, value) in self.channel_params.iter_mut().zip(value.iter()) {
-            channel.segments[index].duration = *value;
+            channel.points[index].duration = *value;
         }
     }
 
     pub fn set_level_offset(&mut self, index: u8, value: StereoSample) {
         let index = index as usize;
 
-        if index >= MAX_SEGMENTS {
+        if index >= MAX_POINTS {
             return;
         }
 
         let value = value.clamp(-MAX_LEVEL_OFFSET, MAX_LEVEL_OFFSET);
 
         for (channel, value) in self.channel_params.iter_mut().zip(value.iter()) {
-            channel.segments[index].level = *value;
+            channel.points[index].level = *value;
         }
     }
 
     pub fn set_segments(&mut self, mut segments: TimeSegments) {
         segments.sanitize();
 
-        let changed = segments.num_segments() != self.params.segments.num_segments();
+        let changed = segments.num_points() != self.params.segments.num_points();
 
         self.params.segments = segments;
 
@@ -332,13 +332,18 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
     fn build_inputs_meta(&mut self) {
         self.inputs_meta.clear();
 
-        for index in 0..self.params.segments.num_segments() {
-            let index = index as u8;
+        let num_points = self.params.segments.num_points();
+
+        for index in 0..num_points {
+            let input = index as u8;
+
+            if index + 1 < num_points {
+                self.inputs_meta
+                    .push(InputMeta::control(Input::DurationMix(input)));
+            }
 
             self.inputs_meta
-                .push(InputMeta::control(Input::DurationMix(index)));
-            self.inputs_meta
-                .push(InputMeta::control(Input::LinLevelMix(index)));
+                .push(InputMeta::control(Input::LinLevelMix(input)));
         }
     }
 
@@ -356,13 +361,6 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
         }
     }
 
-    fn level_at(ctx: &Ctx, index: usize) -> Smp {
-        ctx.modulated
-            .get(index)
-            .map(|segment| segment.level)
-            .unwrap_or(0.0)
-    }
-
     fn playhead_level(ctx: &Ctx, voice: &Voice) -> Smp {
         match voice.stage {
             Stage::Sustain => Self::sustain_level(ctx, voice.last_level),
@@ -378,22 +376,32 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
         }
     }
 
-    /// End point of segment `index`, shifted by that segment's level offset.
-    fn segment_end(ctx: &Ctx, index: usize) -> TimePoint {
-        let mut end = ctx.segments.point(index + 1);
+    /// Breakpoint `index` shifted by that point's level offset. The level is clamped once it is read.
+    fn shifted_point(ctx: &Ctx, index: usize) -> TimePoint {
+        let mut point = ctx.segments.point(index);
+        let offset = ctx
+            .modulated
+            .get(index)
+            .map(|params| params.level)
+            .unwrap_or(0.0);
 
-        end.y += Self::level_at(ctx, index);
-        end
+        point.y = (point.y + offset).clamp(0.0, 1.0);
+        point
+    }
+
+    /// End point of segment `index`, shifted by that point's level offset.
+    fn segment_end(ctx: &Ctx, index: usize) -> TimePoint {
+        Self::shifted_point(ctx, index + 1)
     }
 
     /// Start of segment `index`. A stolen or release level is already an output value,
     /// so the offset is added only to a point taken from the curve.
     fn segment_start(ctx: &Ctx, voice: &Voice, index: usize) -> TimePoint {
-        let mut start = ctx.segments.point(index);
-
         if ctx.segments.release_point_idx() == Some(index)
             && let Some(level) = voice.release.level()
         {
+            let mut start = ctx.segments.point(index);
+
             start.y = level;
             return start;
         }
@@ -403,12 +411,13 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
                 start: Some(level), ..
             } = voice.stage
         {
+            let mut start = ctx.segments.point(index);
+
             start.y = level;
             return start;
         }
 
-        start.y += Self::level_at(ctx, index);
-        start
+        Self::shifted_point(ctx, index)
     }
 
     /// Samples in one pass of the loop at the current segment durations.
@@ -464,12 +473,7 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
             return fallback;
         };
 
-        let offset = index
-            .checked_sub(1)
-            .map(|index| Self::level_at(ctx, index))
-            .unwrap_or(0.0);
-
-        ctx.segments.point(index).y + offset
+        Self::shifted_point(ctx, index).y
     }
 
     fn rest_level(ctx: &Ctx, voice: &Voice) -> Smp {
@@ -481,7 +485,7 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
             return level;
         }
 
-        ctx.segments.point(last).y + Self::level_at(ctx, last - 1)
+        Self::shifted_point(ctx, last).y
     }
 
     fn begin_release(ctx: &Ctx, voice: &mut Voice, level: Smp) {
@@ -590,15 +594,16 @@ impl<L: MultiEnvelopeLinks> MultiEnvelope<L> {
 
         let segments = &self.params.segments;
         let channel = &self.channel_params[channel_idx];
+        let num_points = segments.num_points();
 
-        for index in 0..segments.num_segments() {
-            let input = &self.inputs.segments[index];
-            let offset = &channel.segments[index];
+        for index in 0..num_points {
+            let input = &self.inputs.points[index];
+            let offset = &channel.points[index];
             let duration_offset = router.scalar(&input.duration, offset.duration);
 
-            self.modulated[index] = SegmentParams {
+            self.modulated[index] = PointParams {
                 duration: (segments.duration(index) + duration_offset).max(0.0),
-                level: router.scalar(&input.level, offset.level).clamp(0.0, 1.0),
+                level: router.scalar(&input.level, offset.level),
             };
         }
 

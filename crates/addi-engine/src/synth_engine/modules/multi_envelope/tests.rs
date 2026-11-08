@@ -77,10 +77,10 @@ fn render(
     let seconds_per_sample = sample_rate.recip();
     let len_state = durations.len().max(level_offsets.len());
 
-    env.modulated.fill(SegmentParams::default());
+    env.modulated.fill(PointParams::default());
 
     for index in 0..len_state {
-        env.modulated[index] = SegmentParams {
+        env.modulated[index] = PointParams {
             duration: durations.get(index).copied().unwrap_or(0.0),
             level: level_offsets.get(index).copied().unwrap_or(0.0),
         };
@@ -121,7 +121,7 @@ fn render(
 }
 
 #[test]
-fn default_exposes_one_segment_of_offsets() {
+fn default_exposes_point_offsets() {
     let env = envelope(false, false);
 
     assert_eq!(
@@ -129,13 +129,17 @@ fn default_exposes_one_segment_of_offsets() {
             .iter()
             .map(|input| input.input_type)
             .collect::<Vec<_>>(),
-        vec![Input::DurationMix(0), Input::LinLevelMix(0)]
+        vec![
+            Input::DurationMix(0),
+            Input::LinLevelMix(0),
+            Input::LinLevelMix(1)
+        ]
     );
     assert!(env.inputs().iter().all(|input| !input.is_direct));
 }
 
 #[test]
-fn offset_inputs_follow_the_segment_count() {
+fn offset_inputs_follow_the_point_count() {
     let mut env = envelope(false, false);
     env.set_segments(curve(&[(0.0, 1.0), (0.25, 0.5), (0.8, 0.0)]));
 
@@ -148,7 +152,8 @@ fn offset_inputs_follow_the_segment_count() {
             Input::DurationMix(0),
             Input::LinLevelMix(0),
             Input::DurationMix(1),
-            Input::LinLevelMix(1)
+            Input::LinLevelMix(1),
+            Input::LinLevelMix(2)
         ]
     );
 }
@@ -299,10 +304,47 @@ fn level_offset_lifts_the_segment() {
         stage: Stage::segment(0, 0.0),
         ..Voice::default()
     };
-    render(&mut env, &mut out, &[1.0], &[0.25], 2.0, None);
+    render(&mut env, &mut out, &[1.0], &[0.25, 0.25], 2.0, None);
 
-    assert!((out[0] - 1.25).abs() < 1e-5, "{out:?}");
-    assert!((out[1] - 0.75).abs() < 1e-5, "{out:?}");
+    assert!((out[0] - 1.0).abs() < 1e-5, "{out:?}");
+    assert!((out[1] - 0.625).abs() < 1e-5, "{out:?}");
+}
+
+#[test]
+fn level_offset_lowers_the_segment() {
+    let mut env = envelope(false, false);
+    let mut out = [0.0; 2];
+
+    *env.voices.at_mut(0, 0) = Voice {
+        stage: Stage::segment(0, 0.0),
+        ..Voice::default()
+    };
+    render(&mut env, &mut out, &[1.0], &[-0.25], 2.0, None);
+
+    assert!((out[0] - 0.75).abs() < 1e-5, "{out:?}");
+    assert!((out[1] - 0.375).abs() < 1e-5, "{out:?}");
+}
+
+#[test]
+fn level_offset_stays_inside_zero_and_one() {
+    let mut env = envelope(false, false);
+    let mut above = [0.0; 2];
+    let mut below = [0.0; 2];
+
+    *env.voices.at_mut(0, 0) = Voice {
+        stage: Stage::segment(0, 0.0),
+        ..Voice::default()
+    };
+    render(&mut env, &mut above, &[1.0], &[1.0, 1.0], 2.0, None);
+
+    *env.voices.at_mut(0, 0) = Voice {
+        stage: Stage::segment(0, 0.0),
+        ..Voice::default()
+    };
+    render(&mut env, &mut below, &[1.0], &[-1.0, -1.0], 2.0, None);
+
+    assert!(above.iter().all(|sample| *sample == 1.0), "{above:?}");
+    assert!(below.iter().all(|sample| *sample == 0.0), "{below:?}");
 }
 
 #[test]
@@ -314,6 +356,25 @@ fn level_offset_keeps_a_stolen_start() {
     render(&mut env, &mut out, &[1.0], &[0.2], 10.0, None);
 
     assert!((out[0] - 0.4).abs() < 1e-5, "{out:?}");
+}
+
+#[test]
+fn last_point_duration_is_not_an_input() {
+    let mut env = envelope(false, false);
+
+    env.set_segments(curve(&[(0.0, 1.0), (0.25, 0.5), (0.8, 0.0)]));
+    env.set_duration_offset(1, StereoSample::splat(0.5));
+    env.set_segments(curve(&[(0.0, 1.0), (1.0, 0.0)]));
+
+    assert_eq!(
+        env.get_config().duration_offset(1),
+        StereoSample::splat(0.5)
+    );
+    assert!(
+        env.inputs()
+            .iter()
+            .all(|input| input.input_type != Input::DurationMix(1))
+    );
 }
 
 #[test]

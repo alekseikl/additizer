@@ -90,12 +90,12 @@ Noise), capped by `MAX_BANDWIDTH` in `config.rs`; `0` means note-based bandwidth
 A patch is a directed graph. Edges target `InputId = (module_id, Input)`. Process order is a
 topo sort of source → destination.
 
-|                 |                                                                                  |
-| --------------- | -------------------------------------------------------------------------------- |
-| Data types      | Audio, Control, Spectral                                                         |
-| Link kinds      | **Direct** (exactly one source) or **Mixed** (many sources)                      |
-| Amount          | Implicit `1.0` for Direct; `StereoSample` per Mixed source                       |
-| Spectral inputs | Direct only (`InputMeta.is_direct`)                                              |
+|                 |                                                             |
+| --------------- | ----------------------------------------------------------- |
+| Data types      | Audio, Control, Spectral                                    |
+| Link kinds      | **Direct** (exactly one source) or **Mixed** (many sources) |
+| Amount          | Implicit `1.0` for Direct; `StereoSample` per Mixed source  |
+| Spectral inputs | Direct only (`InputMeta.is_direct`)                         |
 
 Full rules (validation, acyclicity, mutation APIs): `docs/module-routing-rules.md`.
 
@@ -199,7 +199,7 @@ stereo/smoothed parameter plumbing.
   `crates/addi-dsp/src/filters/svf/tests.rs`, `crates/addi-egui/src/units/tests.rs`). Run them
   with `cargo test`. When changing a module that has a `tests.rs`, update or extend it.
 - Performance benchmarks use [Criterion](https://github.com/bheisler/criterion.rs) in
- `crates/addi-engine/benches/synth_engine.rs`, `crates/addi-dsp/benches/svf.rs`, and `crates/addi-dsp/benches/spectral_filter.rs`. Coverage reports use
+  `crates/addi-engine/benches/synth_engine.rs`, `crates/addi-dsp/benches/svf.rs`, and `crates/addi-dsp/benches/spectral_filter.rs`. Coverage reports use
   [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov). See `TOOLS.md` for
   commands and workflows.
 
