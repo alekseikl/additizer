@@ -31,6 +31,10 @@ fn ui() -> Ui {
 fn typed_point_keeps_the_entered_value() {
     let mut segments = TimeSegments::default();
 
+    while segments.num_points() > 2 {
+        assert!(segments.remove_point(1));
+    }
+
     assert!(segments.add_point(
         1,
         0.5,

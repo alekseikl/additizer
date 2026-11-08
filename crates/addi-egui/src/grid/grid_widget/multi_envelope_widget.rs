@@ -11,8 +11,6 @@ use addi_ui_backend::ui_bridge::ModuleBridge;
 
 use super::GridWidgetContent;
 
-/// Seconds across the tile. The detail editor starts here, then follows scroll and drag.
-const SPAN: Smp = 4.0;
 const PADDING: f32 = 4.0;
 const PHASE_RADIUS: f32 = 3.5;
 const RIGHT_PLAYHEAD_HUE: f32 = 1.0 / 6.0;
@@ -87,7 +85,7 @@ impl MultiEnvelopeWidget {
         }
 
         let segments = &envelope_bridge.config().segments;
-        let span = SPAN;
+        let span = segments.total_time().max(Smp::EPSILON);
 
         self.build_curve(segments, rect.size(), span);
 

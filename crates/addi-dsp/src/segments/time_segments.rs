@@ -77,17 +77,33 @@ pub struct TimeSegments {
 
 impl Default for TimeSegments {
     fn default() -> Self {
+        let attack = 0.004;
+        let hold = 1.0 - attack;
+        let release = 0.2;
+
         Self {
             points: vec![
                 TimePoint {
-                    duration: 1.0,
+                    duration: attack,
+                    ..TimePoint::default()
+                },
+                TimePoint {
+                    duration: hold,
                     y: 1.0,
                     ..TimePoint::default()
+                },
+                TimePoint {
+                    duration: release,
+                    y: 1.0,
+                    curve: CurveParam {
+                        power: -5.0,
+                        ..CurveParam::default()
+                    },
                 },
                 TimePoint::default(),
             ],
             loop_point: None,
-            release_point: None,
+            release_point: Some(2),
             revision: Self::next_revision(),
         }
     }

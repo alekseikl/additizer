@@ -5,6 +5,11 @@ use crate::segments::render_segment;
 /// Curve from `(seconds, level)` pairs. The first time is 0. `smooth` applies to every point.
 fn curve(points: &[(Smp, Smp)], smooth: bool) -> TimeSegments {
     let mut segments = TimeSegments::default();
+
+    while segments.num_points() > 2 {
+        assert!(segments.remove_point(1));
+    }
+
     let end = points.len() - 1;
 
     segments.set_time(1, points[end].0);
@@ -48,15 +53,23 @@ fn curve(points: &[(Smp, Smp)], smooth: bool) -> TimeSegments {
 }
 
 #[test]
-fn default_is_a_one_second_fall() {
+fn default_is_an_attack_hold_and_release() {
     let segments = TimeSegments::default();
 
-    assert_eq!(segments.num_points(), 2);
-    assert_eq!(segments.duration(0), 1.0);
-    assert_eq!(segments.total_time(), 1.0);
-    assert!((segments.value_at(0.0) - 1.0).abs() < 1e-5);
-    assert!((segments.value_at(0.5) - 0.5).abs() < 1e-5);
-    assert!((segments.value_at(1.0) - 0.0).abs() < 1e-5);
+    assert_eq!(segments.num_points(), 4);
+    assert_eq!(segments.release_point_idx(), Some(2));
+    assert!((segments.time(1) - 0.004).abs() < 1e-6);
+    assert!((segments.time(2) - 1.0).abs() < 1e-6);
+    assert!((segments.time(3) - 1.2).abs() < 1e-6);
+    assert_eq!(segments.point(0).y, 0.0);
+    assert_eq!(segments.point(1).y, 1.0);
+    assert_eq!(segments.point(2).y, 1.0);
+    assert_eq!(segments.point(3).y, 0.0);
+    assert_eq!(segments.power(2), -5.0);
+    assert!((segments.value_at(0.0) - 0.0).abs() < 1e-5);
+    assert!((segments.value_at(0.004) - 1.0).abs() < 1e-4);
+    assert!((segments.value_at(1.0) - 1.0).abs() < 1e-5);
+    assert!((segments.value_at(1.2) - 0.0).abs() < 1e-4);
     assert!((segments.value_at(4.0) - 0.0).abs() < 1e-5);
 }
 
@@ -115,7 +128,7 @@ fn moving_a_point_changes_only_the_previous_duration() {
 
 #[test]
 fn add_and_remove_keep_the_ends() {
-    let mut segments = TimeSegments::default();
+    let mut segments = curve(&[(0.0, 1.0), (1.0, 0.0)], false);
 
     assert!(!segments.add_point(0, 0.0, TimePoint::default()));
     assert!(segments.add_point(
@@ -235,5 +248,6 @@ fn short_json_becomes_the_default() {
     segments.sanitize();
 
     assert_eq!(segments.num_points(), TimeSegments::default().num_points());
-    assert!((segments.total_time() - 1.0).abs() < 1e-6);
+    assert_eq!(segments.release_point_idx(), Some(2));
+    assert!((segments.total_time() - 1.2).abs() < 1e-6);
 }

@@ -6,6 +6,11 @@ use crate::synth_engine::{StereoSample, synth_module::SynthModule, voices_handle
 /// Curve from `(seconds, level)` pairs. The first time is 0.
 fn curve(points: &[(Smp, Smp)]) -> TimeSegments {
     let mut segments = TimeSegments::default();
+
+    while segments.num_points() > 2 {
+        assert!(segments.remove_point(1));
+    }
+
     let end = points.len() - 1;
 
     segments.set_time(1, points[end].0);
@@ -132,7 +137,11 @@ fn default_exposes_point_offsets() {
         vec![
             Input::DurationMix(0),
             Input::LinLevelMix(0),
-            Input::LinLevelMix(1)
+            Input::DurationMix(1),
+            Input::LinLevelMix(1),
+            Input::DurationMix(2),
+            Input::LinLevelMix(2),
+            Input::LinLevelMix(3),
         ]
     );
     assert!(env.inputs().iter().all(|input| !input.is_direct));
@@ -161,6 +170,7 @@ fn offset_inputs_follow_the_point_count() {
 #[test]
 fn a_one_second_fall_lasts_one_second() {
     let mut env = envelope(false, false);
+    env.set_segments(curve(&[(0.0, 1.0), (1.0, 0.0)]));
     let mut out = [0.0; 12];
 
     *env.voices.at_mut(0, 0) = playing(0, 0.0, 1.0, 0.0);
@@ -179,6 +189,7 @@ fn a_one_second_fall_lasts_one_second() {
 #[test]
 fn a_longer_duration_stretches_the_same_shape() {
     let mut env = envelope(false, false);
+    env.set_segments(curve(&[(0.0, 1.0), (1.0, 0.0)]));
     let mut out = [0.0; 4];
 
     *env.voices.at_mut(0, 0) = playing(0, 0.0, 1.0, 0.0);
@@ -287,7 +298,7 @@ fn config_roundtrip() {
 
     let json = serde_json::to_string(&MultiEnvelopeConfig::default()).unwrap();
     let restored: MultiEnvelopeConfig = serde_json::from_str(&json).unwrap();
-    assert!((restored.segments.total_time() - 1.0).abs() < 1e-6);
+    assert!((restored.segments.total_time() - 1.2).abs() < 1e-6);
 
     let legacy: MultiEnvelopeConfig = serde_json::from_str(r#"{"id":1}"#).unwrap();
     assert!(legacy.offsets.is_empty());
@@ -298,6 +309,7 @@ fn config_roundtrip() {
 #[test]
 fn level_offset_lifts_the_segment() {
     let mut env = envelope(false, false);
+    env.set_segments(curve(&[(0.0, 1.0), (1.0, 0.0)]));
     let mut out = [0.0; 2];
 
     *env.voices.at_mut(0, 0) = Voice {
@@ -313,6 +325,7 @@ fn level_offset_lifts_the_segment() {
 #[test]
 fn level_offset_lowers_the_segment() {
     let mut env = envelope(false, false);
+    env.set_segments(curve(&[(0.0, 1.0), (1.0, 0.0)]));
     let mut out = [0.0; 2];
 
     *env.voices.at_mut(0, 0) = Voice {
@@ -328,6 +341,7 @@ fn level_offset_lowers_the_segment() {
 #[test]
 fn level_offset_stays_inside_zero_and_one() {
     let mut env = envelope(false, false);
+    env.set_segments(curve(&[(0.0, 1.0), (1.0, 0.0)]));
     let mut above = [0.0; 2];
     let mut below = [0.0; 2];
 
