@@ -8,7 +8,7 @@ use addi_dsp::{
 use addi_engine::Smp;
 use egui::{
     Color32, CursorIcon, FontFamily, FontId, Id, LayerId, Mesh, Order, Painter, Popup, Pos2, Rect,
-    Response, Sense, Shape, Stroke, StrokeKind, TextureId, Ui, Vec2, ecolor::Hsva, epaint::Vertex,
+    Response, Shape, Stroke, StrokeKind, TextureId, Ui, Vec2, ecolor::Hsva, epaint::Vertex,
     pos2,
 };
 
@@ -16,49 +16,49 @@ use crate::units::Units;
 use crate::utils::hsva;
 use crate::value_entry::{self, ValueEntry, ValueEntryEvent};
 
-pub(super) const EDITOR_HEIGHT: f32 = 220.0;
-pub(super) const GRAB_RADIUS: f32 = 8.0;
-pub(super) const POWER_GRAB_RADIUS: f32 = 6.0;
-pub(super) const POINT_RADIUS: f32 = 4.0;
-pub(super) const PLAYHEAD_RADIUS: f32 = 6.0;
+pub const EDITOR_HEIGHT: f32 = 220.0;
+pub const GRAB_RADIUS: f32 = 8.0;
+pub const POWER_GRAB_RADIUS: f32 = 6.0;
+pub const POINT_RADIUS: f32 = 4.0;
+pub const PLAYHEAD_RADIUS: f32 = 6.0;
 /// Right playhead draws once it is more than half a pixel from the left.
-pub(super) const PLAYHEAD_OVERLAP_SQ: f32 = 0.25;
+pub const PLAYHEAD_OVERLAP_SQ: f32 = 0.25;
 /// Yellow. Saturation and value are taken from the left playhead.
-pub(super) const RIGHT_PLAYHEAD_HUE: f32 = 1.0 / 6.0;
-pub(super) const POWER_RADIUS: f32 = 3.0;
-pub(super) const MIN_POWER_WIDTH: f32 = 3.0;
+pub const RIGHT_PLAYHEAD_HUE: f32 = 1.0 / 6.0;
+pub const POWER_RADIUS: f32 = 3.0;
+pub const MIN_POWER_WIDTH: f32 = 3.0;
 /// Snap when the pointer is within this many pixels of a grid line.
-pub(super) const SNAP: f32 = 8.0;
+pub const SNAP: f32 = 8.0;
 /// Power change for a pointer move of one editor height. Matches Vital's line editor.
-pub(super) const POWER_MOUSE_MULTIPLIER: Smp = 9.0;
+pub const POWER_MOUSE_MULTIPLIER: Smp = 9.0;
 /// A press stays a click until the pointer moves this far.
-pub(super) const MAX_CLICK_DIST: f32 = 2.0;
+pub const MAX_CLICK_DIST: f32 = 2.0;
 /// A press stays a click until it has been held this long.
-pub(super) const MAX_CLICK_DURATION: f64 = 0.2;
+pub const MAX_CLICK_DURATION: f64 = 0.2;
 
-pub(super) const LOOP_COLOR: Color32 = Color32::from_rgb(0xf0, 0xc0, 0x4a);
-pub(super) const LOOP_FILL_COLOR: Hsva = hsva(0.0, 0.9092, 1.0, 0.05);
-pub(super) const RELEASE_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x59);
-pub(super) const ENVELOPE_WAVE: Hsva = hsva(0.3374, 0.9, 0.2, 1.0);
-pub(super) const ENVELOPE_POWER: Hsva = hsva(0.348, 0.7, 0.4, 1.0);
-pub(super) const GRID_COLOR: Color32 = Color32::from_rgba_unmultiplied_const(255, 255, 255, 28);
-pub(super) const POINT_COLOR: Color32 = Color32::from_rgb(0xe8, 0xf4, 0xff);
-pub(super) const LABEL_BG_COLOR: Hsva = hsva(0.115, 0.05, 0.01, 1.0);
-pub(super) const LABEL_BORDER_COLOR: Hsva = hsva(0.115, 0.05, 0.2, 1.0);
-pub(super) const LABEL_TEXT_COLOR: Hsva = hsva(0.115, 0.05, 0.5, 1.0);
-pub(super) const LABEL_PADDING: f32 = 6.0;
-pub(super) const LABEL_POINTER_GAP: f32 = 4.0;
-pub(super) const LABEL_CORNER_RADIUS: f32 = 2.0;
+pub const LOOP_COLOR: Color32 = Color32::from_rgb(0xf0, 0xc0, 0x4a);
+pub const LOOP_FILL_COLOR: Hsva = hsva(0.0, 0.9092, 1.0, 0.05);
+pub const RELEASE_COLOR: Color32 = Color32::from_rgb(0xff, 0x7a, 0x59);
+pub const ENVELOPE_WAVE: Hsva = hsva(0.3374, 0.9, 0.2, 1.0);
+pub const ENVELOPE_POWER: Hsva = hsva(0.348, 0.7, 0.4, 1.0);
+pub const GRID_COLOR: Color32 = Color32::from_rgba_unmultiplied_const(255, 255, 255, 28);
+pub const POINT_COLOR: Color32 = Color32::from_rgb(0xe8, 0xf4, 0xff);
+pub const LABEL_BG_COLOR: Hsva = hsva(0.115, 0.05, 0.01, 1.0);
+pub const LABEL_BORDER_COLOR: Hsva = hsva(0.115, 0.05, 0.2, 1.0);
+pub const LABEL_TEXT_COLOR: Hsva = hsva(0.115, 0.05, 0.5, 1.0);
+pub const LABEL_PADDING: f32 = 6.0;
+pub const LABEL_POINTER_GAP: f32 = 4.0;
+pub const LABEL_CORNER_RADIUS: f32 = 2.0;
 /// Space between a point and its loop or release letter.
-pub(super) const MARKER_GAP: f32 = 3.0;
+pub const MARKER_GAP: f32 = 3.0;
 
-pub(super) const SMOOTH_TIP: &str = "Ease this segment with a sine curve.";
-pub(super) const LOOP_TIP: &str = "Repeat from here. With no release point the loop runs to the end. With one, it runs until release while the key is held.";
-pub(super) const RELEASE_TIP: &str = "Sustain this level while the key is held. On release, continue from here starting at the current level.";
+pub const SMOOTH_TIP: &str = "Ease this segment with a sine curve.";
+pub const LOOP_TIP: &str = "Repeat from here. With no release point the loop runs to the end. With one, it runs until release while the key is held.";
+pub const RELEASE_TIP: &str = "Sustain this level while the key is held. On release, continue from here starting at the current level.";
 
 /// Handle held by the pointer.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Handle {
+pub enum Handle {
     Point(usize),
     Power(usize),
 }
@@ -67,7 +67,7 @@ pub(super) enum Handle {
 /// Later centers keep that grab offset. `span` is the time window at the grab,
 /// so a time editor can grow the window without the point running away.
 #[derive(Clone, Copy, PartialEq)]
-pub(super) struct Drag {
+pub struct Drag {
     pointer: Pos2,
     origin: Pos2,
     center: Pos2,
@@ -76,7 +76,7 @@ pub(super) struct Drag {
 }
 
 impl Drag {
-    pub(super) fn new(pointer: Pos2, center: Pos2, handle: Handle) -> Self {
+    pub fn new(pointer: Pos2, center: Pos2, handle: Handle) -> Self {
         Self {
             pointer,
             origin: center,
@@ -86,21 +86,21 @@ impl Drag {
         }
     }
 
-    pub(super) fn with_span(mut self, span: Smp) -> Self {
+    pub fn with_span(mut self, span: Smp) -> Self {
         self.span = span;
         self
     }
 
-    pub(super) fn handle(self) -> Handle {
+    pub fn handle(self) -> Handle {
         self.handle
     }
 
-    pub(super) fn span(self) -> Smp {
+    pub fn span(self) -> Smp {
         self.span
     }
 
     /// Circle center after the pointer moves to `pointer`, keeping the grab offset from `origin`.
-    pub(super) fn place(self, pointer: Pos2) -> Pos2 {
+    pub fn place(self, pointer: Pos2) -> Pos2 {
         pos2(
             self.origin.x + pointer.x - self.pointer.x,
             self.origin.y + pointer.y - self.pointer.y,
@@ -109,7 +109,7 @@ impl Drag {
 
     /// Moves the center to follow `pointer`.
     /// Returns the new center and its offset from `origin`.
-    pub(super) fn move_pos(&mut self, pointer: Pos2) -> (Pos2, Vec2) {
+    pub fn move_pos(&mut self, pointer: Pos2) -> (Pos2, Vec2) {
         let center = self.place(pointer);
         let delta = center - self.origin;
 
@@ -120,21 +120,21 @@ impl Drag {
 
 /// Coordinate of a breakpoint the menu asked to edit.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
-pub(super) enum Axis {
+pub enum Axis {
     #[default]
     X,
     Y,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum PointAction {
+pub enum PointAction {
     Remove,
     X,
     Y,
 }
 
 impl PointAction {
-    pub(super) fn axis(self) -> Option<Axis> {
+    pub fn axis(self) -> Option<Axis> {
         match self {
             Self::X => Some(Axis::X),
             Self::Y => Some(Axis::Y),
@@ -145,14 +145,14 @@ impl PointAction {
 
 /// Breakpoint coordinate being typed.
 #[derive(Clone, Default)]
-pub(super) struct PointEdit {
-    pub(super) index: usize,
-    pub(super) axis: Axis,
-    pub(super) value: ValueEntry,
+pub struct PointEdit {
+    pub index: usize,
+    pub axis: Axis,
+    pub value: ValueEntry,
 }
 
 /// Curve operations shared by the point and bend menus.
-pub(super) trait CurveMarks {
+pub trait CurveMarks {
     fn point_count(&self) -> usize;
     fn smooth_at(&self, index: usize) -> bool;
     fn assign_smooth(&mut self, index: usize, smooth: bool);
@@ -241,7 +241,7 @@ impl CurveMarks for TimeSegments {
 }
 
 /// Handle whose context menu is open.
-pub(super) fn open_handle(
+pub fn open_handle(
     ui: &Ui,
     points: usize,
     point_id: &str,
@@ -265,7 +265,7 @@ fn popup_open(ui: &Ui, salt: impl std::hash::Hash + std::fmt::Debug) -> bool {
 }
 
 /// What the menu asked to do with this point. `x_label` is "Set phase" or "Set time".
-pub(super) fn point_menu(
+pub fn point_menu(
     response: &Response,
     segments: &mut impl CurveMarks,
     index: usize,
@@ -304,7 +304,7 @@ pub(super) fn point_menu(
     action
 }
 
-pub(super) fn power_menu(response: &Response, segments: &mut impl CurveMarks, index: usize) {
+pub fn power_menu(response: &Response, segments: &mut impl CurveMarks, index: usize) {
     response.context_menu(|ui| {
         if index < segments.point_count() {
             smooth_item(ui, segments, index);
@@ -317,7 +317,7 @@ pub(super) fn power_menu(response: &Response, segments: &mut impl CurveMarks, in
     });
 }
 
-pub(super) fn reset_bends_item(ui: &mut Ui, segments: &mut impl CurveMarks) {
+pub fn reset_bends_item(ui: &mut Ui, segments: &mut impl CurveMarks) {
     if ui.button("Reset bends").clicked() {
         segments.clear_powers();
         ui.close();
@@ -376,11 +376,11 @@ fn marker_items(ui: &mut Ui, segments: &mut impl CurveMarks, index: usize) {
     }
 }
 
-pub(super) fn entry_id(ui: &Ui) -> Id {
+pub fn entry_id(ui: &Ui) -> Id {
     ui.make_persistent_id("point-entry")
 }
 
-pub(super) fn open_entry(ui: &Ui, index: usize, axis: Axis, units: Units, value: Smp) {
+pub fn open_entry(ui: &Ui, index: usize, axis: Axis, units: Units, value: Smp) {
     let id = entry_id(ui);
 
     ui.data_mut(|data| {
@@ -395,7 +395,7 @@ pub(super) fn open_entry(ui: &Ui, index: usize, axis: Axis, units: Units, value:
     });
 }
 
-pub(super) fn close_entry(ui: &Ui) {
+pub fn close_entry(ui: &Ui) {
     let id = entry_id(ui);
 
     ui.data_mut(|data| {
@@ -403,27 +403,27 @@ pub(super) fn close_entry(ui: &Ui) {
     });
 }
 
-pub(super) fn editing_index(ui: &Ui) -> Option<usize> {
+pub fn editing_index(ui: &Ui) -> Option<usize> {
     let id = entry_id(ui);
 
     ui.data(|data| data.get_temp::<PointEdit>(id))
         .map(|entry| entry.index)
 }
 
-pub(super) fn take_entry(ui: &Ui) -> Option<PointEdit> {
+pub fn take_entry(ui: &Ui) -> Option<PointEdit> {
     let id = entry_id(ui);
 
     ui.data_mut(|data| data.remove_temp::<PointEdit>(id))
 }
 
-pub(super) fn keep_entry(ui: &Ui, edit: PointEdit) {
+pub fn keep_entry(ui: &Ui, edit: PointEdit) {
     let id = entry_id(ui);
 
     ui.data_mut(|data| data.insert_temp(id, edit));
 }
 
 /// Foreground field anchored above `center`.
-pub(super) fn show_entry(ui: &Ui, edit: &mut PointEdit, center: Pos2) -> ValueEntryEvent {
+pub fn show_entry(ui: &Ui, edit: &mut PointEdit, center: Pos2) -> ValueEntryEvent {
     let id = entry_id(ui);
     let (pivot, pos) = value_entry::anchor(
         ui.ctx().content_rect(),
@@ -434,46 +434,16 @@ pub(super) fn show_entry(ui: &Ui, edit: &mut PointEdit, center: Pos2) -> ValueEn
     edit.value.show(ui, id, pivot, pos)
 }
 
-pub(super) fn shift_down(ui: &Ui) -> bool {
+pub fn shift_down(ui: &Ui) -> bool {
     ui.input(|input| input.modifiers.shift)
 }
 
-pub(super) fn handle_layer(ui: &Ui, salt: &str) -> LayerId {
+pub fn handle_layer(ui: &Ui, salt: &str) -> LayerId {
     LayerId::new(Order::Foreground, ui.scope_id().with(salt))
 }
 
-/// What to do when the grab square misses the plot.
-pub(super) enum MissedHandle {
-    /// A 1px square, so a handle on the plot edge stays clickable.
-    Pixel,
-    /// Nothing, so a handle past the plot cannot be grabbed.
-    Ignore,
-}
-
-/// Clickable square around `center`, kept inside the plot.
-pub(super) fn handle_response(
-    ui: &Ui,
-    plot: Rect,
-    center: Pos2,
-    radius: f32,
-    id: impl std::hash::Hash + std::fmt::Debug,
-    missed: MissedHandle,
-) -> Response {
-    let rect = Rect::from_center_size(center, Vec2::splat(radius * 2.0)).intersect(plot);
-    let rect = if rect.is_positive() {
-        rect
-    } else {
-        match missed {
-            MissedHandle::Pixel => Rect::from_center_size(center, Vec2::splat(1.0)),
-            MissedHandle::Ignore => Rect::NOTHING,
-        }
-    };
-
-    ui.interact(rect, ui.make_persistent_id(id), Sense::click_and_drag())
-}
-
 /// Pointer once this press is a drag and no other handle is held.
-pub(super) fn drag_begin(held: bool, ui: &Ui, response: &Response) -> Option<Pos2> {
+pub fn drag_begin(held: bool, ui: &Ui, response: &Response) -> Option<Pos2> {
     if held || !response.is_pointer_button_down_on() {
         return None;
     }
@@ -503,7 +473,7 @@ pub(super) fn drag_begin(held: bool, ui: &Ui, response: &Response) -> Option<Pos
 }
 
 /// Keeps the closer handle. A tie keeps the one already stored.
-pub(super) fn consider(
+pub fn consider(
     nearest: &mut Option<(Handle, f32)>,
     handle: Handle,
     center: Pos2,
@@ -518,7 +488,7 @@ pub(super) fn consider(
 }
 
 /// Snap `value` to `divisions` when it is within [`SNAP`] pixels across `pixels`.
-pub(super) fn snap_division(value: Smp, divisions: i32, pixels: f32, min: Smp, max: Smp) -> Smp {
+pub fn snap_division(value: Smp, divisions: i32, pixels: f32, min: Smp, max: Smp) -> Smp {
     if divisions <= 1 || pixels <= 0.0 {
         return value;
     }
@@ -533,7 +503,7 @@ pub(super) fn snap_division(value: Smp, divisions: i32, pixels: f32, min: Smp, m
 }
 
 /// New bend after a vertical drag of `delta_y`. `None` when the segment is flat.
-pub(super) fn bend_power(from_y: Smp, to_y: Smp, drag_power: Smp, delta_y: Smp) -> Option<Smp> {
+pub fn bend_power(from_y: Smp, to_y: Smp, drag_power: Smp, delta_y: Smp) -> Option<Smp> {
     if from_y == to_y {
         return None;
     }
@@ -544,11 +514,11 @@ pub(super) fn bend_power(from_y: Smp, to_y: Smp, drag_power: Smp, delta_y: Smp) 
 }
 
 /// Interior points can be removed. The ends stay.
-pub(super) fn is_inner(count: usize, index: usize) -> bool {
+pub fn is_inner(count: usize, index: usize) -> bool {
     index > 0 && index + 1 < count
 }
 
-pub(super) fn paint_frame(painter: &Painter, plot: Rect, background: Color32) {
+pub fn paint_frame(painter: &Painter, plot: Rect, background: Color32) {
     painter.rect_filled(plot, 2.0, background);
     painter.rect_stroke(
         plot,
@@ -558,7 +528,7 @@ pub(super) fn paint_frame(painter: &Painter, plot: Rect, background: Color32) {
     );
 }
 
-pub(super) fn paint_rows(painter: &Painter, plot: Rect, rows: i32) {
+pub fn paint_rows(painter: &Painter, plot: Rect, rows: i32) {
     let stroke = Stroke::new(1.0, GRID_COLOR);
 
     for i in 1..rows {
@@ -569,7 +539,7 @@ pub(super) fn paint_rows(painter: &Painter, plot: Rect, rows: i32) {
 }
 
 /// Area under the polyline, shaded by a 1×2 gradient of the full plot.
-pub(super) fn paint_fill(painter: &Painter, plot: Rect, texture: TextureId, points: &[Pos2]) {
+pub fn paint_fill(painter: &Painter, plot: Rect, texture: TextureId, points: &[Pos2]) {
     if plot.height() <= 0.0 {
         return;
     }
@@ -605,7 +575,7 @@ fn add_fill_quad(mesh: &mut Mesh, plot: Rect, bottom: f32, start: Pos2, end: Pos
     mesh.add_triangle(index, index + 2, index + 3);
 }
 
-pub(super) fn paint_marker(
+pub fn paint_marker(
     painter: &Painter,
     center: Pos2,
     label: &str,
@@ -625,7 +595,7 @@ pub(super) fn paint_marker(
 }
 
 /// Hover ring, and a filled disc while dragging. `label` is the readout for a breakpoint.
-pub(super) fn paint_handle(
+pub fn paint_handle(
     ui: &Ui,
     layer: LayerId,
     center: Pos2,
@@ -657,7 +627,7 @@ pub(super) fn paint_handle(
 }
 
 /// Readout next to `anchor`, kept inside the clip rect.
-pub(super) fn paint_label(ui: &Ui, layer: LayerId, anchor: Pos2, text: String) {
+pub fn paint_label(ui: &Ui, layer: LayerId, anchor: Pos2, text: String) {
     let painter = ui.painter().clone().with_layer_id(layer);
     let galley = painter.layout_no_wrap(text, bold(11.0), LABEL_TEXT_COLOR.into());
     let padding = vec2_padding();
@@ -691,7 +661,7 @@ fn vec2_padding() -> Vec2 {
 }
 
 /// Left stays `wave`. The right channel keeps that saturation and value.
-pub(super) fn paint_playheads(painter: &Painter, left: Pos2, right: Pos2, wave: Color32) {
+pub fn paint_playheads(painter: &Painter, left: Pos2, right: Pos2, wave: Color32) {
     if left.distance_sq(right) > PLAYHEAD_OVERLAP_SQ {
         let mut color = Hsva::from(wave);
 
@@ -703,13 +673,13 @@ pub(super) fn paint_playheads(painter: &Painter, left: Pos2, right: Pos2, wave: 
 }
 
 /// Screen span from `left` to `right` when the loop has width.
-pub(super) fn horizontal_span(plot: Rect, left: f32, right: f32) -> Option<Rect> {
+pub fn horizontal_span(plot: Rect, left: f32, right: f32) -> Option<Rect> {
     (right > left).then(|| Rect::from_x_y_ranges(left..=right, plot.y_range()))
 }
 
 /// Top of a box `height` tall placed `offset` above `anchor_y`, or `offset` below it
 /// when the box would pass `top`.
-pub(super) fn stack_y(anchor_y: f32, offset: f32, height: f32, top: f32) -> f32 {
+pub fn stack_y(anchor_y: f32, offset: f32, height: f32, top: f32) -> f32 {
     let above = anchor_y - offset - height;
 
     if above >= top {
@@ -719,11 +689,11 @@ pub(super) fn stack_y(anchor_y: f32, offset: f32, height: f32, top: f32) -> f32 
     }
 }
 
-pub(super) fn bold(size: f32) -> FontId {
+pub fn bold(size: f32) -> FontId {
     FontId::new(size, FontFamily::Name("Bold".into()))
 }
 
-pub(super) fn with_alpha(color: Color32, alpha: u8) -> Color32 {
+pub fn with_alpha(color: Color32, alpha: u8) -> Color32 {
     Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
 }
 

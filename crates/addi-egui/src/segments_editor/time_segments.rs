@@ -1,6 +1,6 @@
 use egui::{
-    Color32, DragValue, FontId, Painter, PointerButton, Pos2, Rect, Response, Sense, Stroke, Ui,
-    Vec2, pos2, vec2,
+    Color32, CursorIcon, DragValue, FontId, Painter, PointerButton, Pos2, Rect, Response, Sense,
+    Stroke, Ui, Vec2, pos2, vec2,
 };
 
 use addi_dsp::{
@@ -16,15 +16,22 @@ use crate::value_entry::ValueEntryEvent;
 use super::common;
 use consts as C;
 use menu::{Axis, PointAction, canvas_menu, open_menu, point_menu, power_menu};
-use utils::{Ctx, Drag, Handle, drag_span, with_alpha, zoom_span};
+use utils::{
+    Ctx, Drag, Handle, drag_span, paint_zoom_icon, pointer_over_zoom, with_alpha, zoom_drag,
+    zoom_grab, zoom_layout,
+};
 
 mod consts;
 mod menu;
 mod utils;
 
+/// Room around the curve so a 2 pt stroke centered on the plot edge is not clipped.
+const PLOT_PAD: f32 = 1.0;
+
 pub struct TimeSegmentsEditor {
     grid_y: i32,
     drag: Option<Drag>,
+    zooming: bool,
     drag_power: Smp,
     time_span: Smp,
     curve: Vec<[Smp; 2]>,
@@ -41,6 +48,7 @@ impl Default for TimeSegmentsEditor {
         Self {
             grid_y: 4,
             drag: None,
+            zooming: false,
             drag_power: 0.0,
             time_span: C::DEFAULT_SPAN,
             curve: Vec::new(),
@@ -67,6 +75,7 @@ impl TimeSegmentsEditor {
         let revision = segments.revision();
         let size = vec2(ui.available_width(), C::EDITOR_HEIGHT);
         let (plot, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+        let plot = plot.shrink(PLOT_PAD);
 
         if plot.is_positive() {
             self.plot(ui, plot, &response, segments, playhead);
@@ -90,9 +99,8 @@ impl TimeSegmentsEditor {
 
         if !primary {
             self.drag = None;
+            self.zooming = false;
         }
-
-        self.apply_zoom(ui, plot);
 
         let mut ctx = Ctx {
             ui,
@@ -121,9 +129,16 @@ impl TimeSegmentsEditor {
             }
         }
 
-        if remove.is_none() && self.drag.is_none() && active.is_none() {
+        if remove.is_none()
+            && self.drag.is_none()
+            && !self.zooming
+            && active.is_none()
+            && !pointer_over_zoom(ctx.ui, ctx.plot)
+        {
             self.add_at_double_click(&mut ctx);
         }
+
+        self.interact_zoom(&ctx);
 
         if let Some(index) = remove {
             ctx.segs.remove_point(index);
@@ -224,31 +239,21 @@ impl TimeSegmentsEditor {
         remove
     }
 
-    /// Scroll changes how many seconds the plot shows. Time 0 stays on the left.
-    fn apply_zoom(&mut self, ui: &Ui, plot: Rect) {
-        if self.drag.is_some() {
+    /// Vertical drag of the magnifying glass changes how many seconds the plot shows.
+    fn interact_zoom(&mut self, ctx: &Ctx<'_>) {
+        let (_, bounds) = zoom_layout(ctx.plot);
+        let response = ctx.ui.interact(
+            bounds.intersect(ctx.plot),
+            ctx.ui.make_persistent_id(C::ZOOM_ID),
+            Sense::click_and_drag(),
+        );
+
+        if self.drag.is_some() || !response.dragged() {
             return;
         }
 
-        let over_plot = ui.input(|input| {
-            input
-                .pointer
-                .hover_pos()
-                .is_some_and(|pos| plot.contains(pos))
-        });
-
-        if !over_plot {
-            return;
-        }
-
-        let scroll_y = ui.input(|input| input.smooth_scroll_delta().y);
-
-        if scroll_y == 0.0 {
-            return;
-        }
-
-        self.time_span = zoom_span(self.time_span, scroll_y);
-        ui.input_mut(|input| input.smooth_scroll_delta.y = 0.0);
+        self.zooming = true;
+        self.time_span = zoom_drag(self.time_span, response.drag_delta().y);
     }
 
     fn drag_begin(&self, ctx: &Ctx<'_>, response: &Response) -> Option<Pos2> {
@@ -287,11 +292,15 @@ impl TimeSegmentsEditor {
     }
 
     fn hovered_handle(&self, ctx: &Ctx<'_>) -> Option<Handle> {
-        if self.drag.is_some() {
+        if self.drag.is_some() || self.zooming {
             return None;
         }
 
         let pointer = ctx.ui.input(|input| input.pointer.hover_pos())?;
+
+        if zoom_grab(ctx.plot).contains(pointer) {
+            return None;
+        }
         let mut nearest: Option<(Handle, f32)> = None;
 
         let mut consider = |handle, center: Pos2, radius: f32| {
@@ -439,7 +448,7 @@ impl TimeSegmentsEditor {
     fn toolbar(&mut self, ui: &mut Ui, extra: impl FnOnce(&mut Ui)) {
         ui.horizontal_wrapped(|ui| {
             ui.label("Rows").on_hover_text(
-                "Snap levels while dragging. Hold Shift to place them freely. Scroll the plot to zoom time.",
+                "Snap levels while dragging. Hold Shift to place them freely. Drag the magnifying glass to zoom time.",
             );
             ui.add(DragValue::new(&mut self.grid_y).range(1..=24));
             ui.add_space(8.0);
@@ -490,11 +499,12 @@ impl TimeSegmentsEditor {
     }
 
     fn paint_scene(&mut self, ctx: &Ctx<'_>, playhead: Option<[(Smp, Smp); 2]>) {
-        let painter = ctx.ui.painter().with_clip_rect(ctx.plot);
+        let frame = plot_frame(ctx.plot);
+        let painter = ctx.ui.painter().with_clip_rect(frame);
 
         self.build_curve_points(ctx);
 
-        common::paint_frame(&painter, ctx.plot, ctx.ui.visuals().extreme_bg_color);
+        common::paint_frame(&painter, frame, ctx.ui.visuals().extreme_bg_color);
 
         if let Some(region) = self.loop_region(ctx) {
             painter.rect_filled(region, 0.0, C::LOOP_FILL_COLOR);
@@ -517,6 +527,20 @@ impl TimeSegmentsEditor {
 
         if let Some(playhead) = playhead {
             self.paint_playheads(ctx, playhead);
+        }
+
+        self.paint_zoom(ctx);
+    }
+
+    fn paint_zoom(&self, ctx: &Ctx<'_>) {
+        let (center, _) = zoom_layout(ctx.plot);
+        let painter = ctx.ui.painter().with_clip_rect(plot_frame(ctx.plot));
+        let hot = self.zooming || pointer_over_zoom(ctx.ui, ctx.plot);
+
+        paint_zoom_icon(&painter, center, Color32::from_gray(128));
+
+        if hot {
+            ctx.ui.ctx().set_cursor_icon(CursorIcon::ResizeVertical);
         }
     }
 
@@ -693,11 +717,15 @@ impl TimeSegmentsEditor {
     }
 
     fn paint_playheads(&self, ctx: &Ctx<'_>, playhead: [(Smp, Smp); 2]) {
-        let painter = ctx.ui.painter().with_clip_rect(ctx.plot);
+        let painter = ctx.ui.painter().with_clip_rect(plot_frame(ctx.plot));
         let [left, right] = playhead.map(|(time, level)| ctx.playhead_pos(time, level));
 
         common::paint_playheads(&painter, left, right, self.wave_color);
     }
+}
+
+fn plot_frame(plot: Rect) -> Rect {
+    plot.expand(PLOT_PAD)
 }
 
 #[cfg(test)]

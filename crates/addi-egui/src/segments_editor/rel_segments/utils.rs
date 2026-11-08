@@ -7,10 +7,11 @@ use addi_dsp::{
 };
 use addi_engine::Smp;
 use egui::{
-    Color32, LayerId, Mesh, Painter, Pos2, Rect, Response, Shape, Stroke, Ui, epaint::Vertex, pos2,
+    Color32, LayerId, Mesh, Painter, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Vec2,
+    epaint::Vertex, pos2,
 };
 
-use super::super::common::{self, MissedHandle};
+use super::super::common;
 use super::consts as C;
 
 pub(super) use super::super::common::{Drag, Handle, with_alpha};
@@ -147,14 +148,23 @@ impl Ctx<'_> {
         common::handle_layer(self.ui, "segments-handle")
     }
 
-    /// Clickable square around `center`, kept inside the plot.
+    /// Clickable square around `center`, including the part outside the plot.
+    /// A square that misses the plot keeps a 1 px target.
     pub(super) fn handle_response(
         &self,
         center: Pos2,
         radius: f32,
         id: impl std::hash::Hash + std::fmt::Debug,
     ) -> Response {
-        common::handle_response(self.ui, self.plot, center, radius, id, MissedHandle::Pixel)
+        let grab = Rect::from_center_size(center, Vec2::splat(radius * 2.0));
+        let rect = if grab.intersects(self.plot) {
+            grab
+        } else {
+            Rect::from_center_size(center, Vec2::splat(1.0))
+        };
+
+        self.ui
+            .interact(rect, self.ui.make_persistent_id(id), Sense::click_and_drag())
     }
 
     /// Insert a point at `point`, with the easing of the segment it splits.

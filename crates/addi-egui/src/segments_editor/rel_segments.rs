@@ -24,6 +24,9 @@ mod consts;
 mod menu;
 mod utils;
 
+/// Room around the curve so a 2 pt stroke centered on the plot edge is not clipped.
+const PLOT_PAD: f32 = 1.0;
+
 pub struct RelSegmentsEditor {
     grid_x: i32,
     grid_y: i32,
@@ -122,6 +125,7 @@ impl RelSegmentsEditor {
         let revision = segments.revision();
         let size = vec2(ui.available_width(), C::EDITOR_HEIGHT);
         let (plot, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+        let plot = plot.shrink(PLOT_PAD);
 
         if plot.is_positive() {
             self.plot(
@@ -725,11 +729,12 @@ impl RelSegmentsEditor {
     }
 
     fn paint_scene(&mut self, ctx: &Ctx<'_>) {
-        let painter = ctx.ui.painter().with_clip_rect(ctx.plot);
+        let frame = plot_frame(ctx.plot);
+        let painter = ctx.ui.painter().with_clip_rect(frame);
 
         self.build_curve_points(ctx);
 
-        common::paint_frame(&painter, ctx.plot, ctx.ui.visuals().extreme_bg_color);
+        common::paint_frame(&painter, frame, ctx.ui.visuals().extreme_bg_color);
 
         if let Some(region) = self.loop_region(ctx) {
             painter.rect_filled(region, 0.0, C::LOOP_FILL_COLOR);
@@ -882,6 +887,10 @@ impl RelSegmentsEditor {
 
         common::paint_playheads(painter, left, right, self.wave_color);
     }
+}
+
+fn plot_frame(plot: Rect) -> Rect {
+    plot.expand(PLOT_PAD)
 }
 
 #[cfg(test)]
