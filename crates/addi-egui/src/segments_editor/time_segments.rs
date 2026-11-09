@@ -57,7 +57,7 @@ impl Default for TimeSegmentsEditor {
             curve_cache: None,
             wave_color: Color32::from(C::ENVELOPE_WAVE),
             power_color: Color32::from(C::ENVELOPE_POWER),
-            fill: FillTexture::new("time-segments-fill", Color32::from(C::ENVELOPE_WAVE)),
+            fill: FillTexture::new(Color32::from(C::ENVELOPE_WAVE)),
         }
     }
 }
@@ -603,7 +603,13 @@ impl TimeSegmentsEditor {
     }
 
     fn paint_fill(&mut self, painter: &Painter, ctx: &Ctx<'_>) {
-        common::paint_fill(painter, ctx.plot, self.fill.id(ctx.ui.ctx()), &self.points);
+        common::paint_fill(
+            painter,
+            ctx.plot,
+            self.fill.id(ctx.ui.ctx()),
+            &self.points,
+            ctx.plot.bottom(),
+        );
     }
 
     fn loop_region(&self, ctx: &Ctx<'_>) -> Option<Rect> {
@@ -717,10 +723,9 @@ impl TimeSegmentsEditor {
     }
 
     fn paint_playheads(&self, ctx: &Ctx<'_>, playhead: [(Smp, Smp); 2]) {
-        let painter = ctx.ui.painter().with_clip_rect(plot_frame(ctx.plot));
         let [left, right] = playhead.map(|(time, level)| ctx.playhead_pos(time, level));
 
-        common::paint_playheads(&painter, left, right, self.wave_color);
+        common::paint_playheads(ctx.ui.painter(), left, right, self.wave_color);
     }
 }
 

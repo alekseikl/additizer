@@ -36,7 +36,7 @@ impl ModMapAudioEnd for AudioEnd {
         None
     }
 
-    fn update_probe(&mut self, _probe: StereoSample) {}
+    fn update_probe(&mut self, _channel: usize, _sample: Smp) {}
 
     fn read_segments(&mut self) -> &RelSegments {
         &SEGMENTS

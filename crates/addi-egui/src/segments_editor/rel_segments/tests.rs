@@ -109,9 +109,9 @@ fn playhead_follows_the_rendered_polyline() {
     let mut ramp = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
     let editor = curve(&mut ramp);
     let phase = 0.405;
-    let level = ramp.value_at(phase, None, None);
-    let start = ramp.value_at(0.0, None, None);
-    let end = ramp.value_at(1.0, None, None);
+    let level = ramp.value_at(phase);
+    let start = ramp.value_at(0.0);
+    let end = ramp.value_at(1.0);
     let mut ui = press(false);
     let (_, response) = ui.allocate_exact_size(vec2(100.0, 100.0), Sense::hover());
     let ctx = paint_ctx(&ui, &response, &mut ramp);
@@ -426,8 +426,8 @@ fn paint_stamps_the_shape_into_one_column() {
     bent.set_power(0, 1.5);
     bent.set_smooth(0, true);
 
-    let from_y = bent.value_at(0.25, None, None);
-    let to_y = bent.value_at(0.5, None, None);
+    let from_y = bent.value_at(0.25);
+    let to_y = bent.value_at(0.5);
 
     stamp(&mut bent, 0.25, 0.5, 1.0, Pattern::Down);
 
@@ -479,7 +479,7 @@ fn unwrapped_stamp_rewrites_the_endpoint_it_covers() {
     first.set_power(0, 1.5);
     first.set_smooth(0, true);
 
-    let at_half = first.value_at(0.5, None, None);
+    let at_half = first.value_at(0.5);
 
     stamp_with(&editor, &mut first, 0.0, 0.5, 1.0, Pattern::Half);
 
@@ -498,7 +498,7 @@ fn unwrapped_stamp_rewrites_the_endpoint_it_covers() {
     );
 
     let mut last = RelSegments::from_points(&[(0.0, 0.2), (1.0, 0.8)], false);
-    let at_half = last.value_at(0.5, None, None);
+    let at_half = last.value_at(0.5);
 
     last.set_power(1, 3.0);
     stamp_with(&editor, &mut last, 0.5, 1.0, 1.0, Pattern::Down);

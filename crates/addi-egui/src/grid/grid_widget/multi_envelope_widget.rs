@@ -1,8 +1,9 @@
 use addi_ui_backend::ui_bridge::modules::multi_envelope::MultiEnvelopeUiBridge;
-use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, Vec2, ecolor::Hsva};
+use egui::{Color32, Painter, Pos2, Rect, Stroke, Vec2, ecolor::Hsva};
 
 use crate::grid::WidgetCtx;
-use crate::utils::hsva;
+use crate::segments_editor::{PLAYHEAD_OVERLAP_SQ, RIGHT_PLAYHEAD_HUE, horizontal_span, paint_fill};
+use crate::utils::{FillTexture, hsva};
 use addi_dsp::Smp;
 use addi_dsp::segments::time_segments::TimeSegments;
 use addi_engine::ModuleId;
@@ -12,12 +13,12 @@ use addi_ui_backend::ui_bridge::ModuleBridge;
 use super::GridWidgetContent;
 
 const PADDING: f32 = 4.0;
-const PHASE_RADIUS: f32 = 3.5;
-const RIGHT_PLAYHEAD_HUE: f32 = 1.0 / 6.0;
 const LINE_WIDTH: f32 = 1.0;
-const STROKE_COLOR: Color32 = Color32::from_rgb(0x06, 0xaa, 0x1c);
-const FILL_ALPHA: u8 = 0x66;
-const LOOP_FILL_COLOR: Hsva = hsva(0.0, 0.9092, 1.0, 0.25);
+const PLAYHEAD_RADIUS: f32 = 3.5;
+const FILL_TOP_ALPHA: u8 = 0x80;
+const FILL_BOTTOM_ALPHA: u8 = 0x60;
+const ENVELOPE_WAVE: Color32 = Color32::from_rgb(0x06, 0xaa, 0x1c);
+const LOOP_FILL: Hsva = hsva(0.0, 0.9092, 1.0, 0.25);
 
 struct RenderedCurve {
     revision: u64,
@@ -25,11 +26,22 @@ struct RenderedCurve {
     span_bits: u32,
 }
 
-#[derive(Default)]
 pub struct MultiEnvelopeWidget {
     points: Vec<[Smp; 2]>,
     scratch: Vec<Smp>,
     rendered: Option<RenderedCurve>,
+    fill: FillTexture,
+}
+
+impl Default for MultiEnvelopeWidget {
+    fn default() -> Self {
+        Self {
+            points: Vec::new(),
+            scratch: Vec::new(),
+            rendered: None,
+            fill: FillTexture::with_alpha_range(ENVELOPE_WAVE, FILL_TOP_ALPHA, FILL_BOTTOM_ALPHA),
+        }
+    }
 }
 
 impl MultiEnvelopeWidget {
@@ -96,13 +108,13 @@ impl MultiEnvelopeWidget {
             .map(|point| Self::time_pos(rect, point[0], point[1], span))
             .collect::<Vec<_>>();
 
-        Self::paint_fill(
-            painter,
-            rect,
-            &screen,
-            Self::loop_span(rect, segments, span),
-        );
-        Self::paint_stroke(painter, &screen);
+        paint_fill(painter, rect, self.fill.id(ui.ctx()), &screen, rect.bottom());
+
+        if let Some(band) = Self::loop_band(rect, segments, span) {
+            painter.rect_filled(band, 0.0, LOOP_FILL);
+        }
+
+        painter.line(screen, Stroke::new(LINE_WIDTH, ENVELOPE_WAVE));
 
         if has_active_voices {
             let playhead = envelope_bridge.playhead();
@@ -115,83 +127,28 @@ impl MultiEnvelopeWidget {
         let left = Self::time_pos(rect, playhead.time.left(), playhead.level.left(), span);
         let right = Self::time_pos(rect, playhead.time.right(), playhead.level.right(), span);
 
-        if left.distance_sq(right) > 0.25 {
-            painter.circle_filled(right, PHASE_RADIUS, Self::right_playhead_color());
+        if left.distance_sq(right) > PLAYHEAD_OVERLAP_SQ {
+            let mut color = Hsva::from(ENVELOPE_WAVE);
+
+            color.h = RIGHT_PLAYHEAD_HUE;
+            painter.circle_filled(right, PLAYHEAD_RADIUS, color);
         }
 
-        painter.circle_filled(left, PHASE_RADIUS, STROKE_COLOR);
+        painter.circle_filled(left, PLAYHEAD_RADIUS, ENVELOPE_WAVE);
     }
 
-    fn right_playhead_color() -> Color32 {
-        let mut color = Hsva::from(STROKE_COLOR);
-        color.h = RIGHT_PLAYHEAD_HUE;
-        Color32::from(color)
-    }
-
-    fn paint_stroke(painter: &Painter, points: &[Pos2]) {
-        if points.len() < 2 {
-            return;
-        }
-
-        painter.line(points.to_vec(), Stroke::new(LINE_WIDTH, STROKE_COLOR));
-    }
-
-    fn loop_span(rect: Rect, segments: &TimeSegments, span: Smp) -> Option<(f32, f32)> {
+    fn loop_band(rect: Rect, segments: &TimeSegments, span: Smp) -> Option<Rect> {
         let start = segments.loop_point_idx()?;
         let end_time = segments
             .release_point_idx()
             .map(|index| segments.time(index))
             .unwrap_or_else(|| segments.total_time());
-        let left = Self::time_pos(rect, segments.time(start), 0.0, span).x;
-        let right = Self::time_pos(rect, end_time, 0.0, span).x;
 
-        (right > left).then_some((left, right))
-    }
-
-    fn paint_fill(painter: &Painter, rect: Rect, points: &[Pos2], loop_span: Option<(f32, f32)>) {
-        if points.len() >= 2 {
-            let mut mesh = Mesh::default();
-            let bottom = rect.bottom();
-
-            for &[start, end] in points.array_windows() {
-                if end.x <= start.x {
-                    continue;
-                }
-
-                Self::add_quad(&mut mesh, bottom, start, end, STROKE_COLOR);
-            }
-
-            if !mesh.is_empty() {
-                painter.add(Shape::mesh(mesh));
-            }
-        }
-
-        let Some((left, right)) = loop_span else {
-            return;
-        };
-        let band = Rect::from_x_y_ranges(left..=right, rect.y_range());
-
-        painter.rect_filled(band, 0.0, LOOP_FILL_COLOR);
-    }
-
-    fn add_quad(mesh: &mut Mesh, bottom: f32, start: Pos2, end: Pos2, color: Color32) {
-        if end.x <= start.x {
-            return;
-        }
-
-        let fill = Self::with_alpha(color, FILL_ALPHA);
-        let index = mesh.vertices.len() as u32;
-
-        mesh.colored_vertex(start, fill);
-        mesh.colored_vertex(end, fill);
-        mesh.colored_vertex(Pos2::new(end.x, bottom), fill);
-        mesh.colored_vertex(Pos2::new(start.x, bottom), fill);
-        mesh.add_triangle(index, index + 1, index + 2);
-        mesh.add_triangle(index, index + 2, index + 3);
-    }
-
-    fn with_alpha(color: Color32, alpha: u8) -> Color32 {
-        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
+        horizontal_span(
+            rect,
+            Self::time_pos(rect, segments.time(start), 0.0, span).x,
+            Self::time_pos(rect, end_time, 0.0, span).x,
+        )
     }
 }
 

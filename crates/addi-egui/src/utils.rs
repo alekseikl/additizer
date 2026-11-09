@@ -30,15 +30,12 @@ pub fn popup_should_close(response: &Response) -> bool {
 
 const FILL_TOP_ALPHA: u8 = 0x47;
 const FILL_BOTTOM_ALPHA: u8 = 0x28;
+const FILL_TEXTURE_NAME: &str = "plot-fill";
 
 /// Cached 1×2 plot gradient. V 0.25 and 0.75 sit on the texel centers.
-///
-/// The plugin editor keeps this across window close/open, but each open builds
-/// a new egui context. A handle from the previous context stays alive and would
-/// otherwise keep handing out a texture id the new renderer never uploaded.
 pub(crate) struct FillTexture {
-    name: &'static str,
     color: Color32,
+    alpha: [u8; 2],
     texture: Option<CachedTexture>,
 }
 
@@ -48,10 +45,15 @@ struct CachedTexture {
 }
 
 impl FillTexture {
-    pub(crate) fn new(name: &'static str, color: Color32) -> Self {
+    pub(crate) fn new(color: Color32) -> Self {
+        Self::with_alpha_range(color, FILL_TOP_ALPHA, FILL_BOTTOM_ALPHA)
+    }
+
+    /// `top` is the curve edge; `bottom` is the baseline.
+    pub(crate) fn with_alpha_range(color: Color32, top: u8, bottom: u8) -> Self {
         Self {
-            name,
             color,
+            alpha: [top, bottom],
             texture: None,
         }
     }
@@ -69,12 +71,12 @@ impl FillTexture {
         }
 
         let handle = ctx.load_texture(
-            self.name,
+            FILL_TEXTURE_NAME,
             ColorImage::new(
                 [1, 2],
                 vec![
-                    with_alpha(self.color, FILL_TOP_ALPHA),
-                    with_alpha(self.color, FILL_BOTTOM_ALPHA),
+                    with_alpha(self.color, self.alpha[0]),
+                    with_alpha(self.color, self.alpha[1]),
                 ],
             ),
             TextureOptions::LINEAR,

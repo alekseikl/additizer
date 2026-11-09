@@ -4,7 +4,7 @@ use super::{LfoAudioEnd, LfoLinks, LfoUiEnd, Timebase, UiEvent};
 
 use addi_dsp::segments::rel_segments::RelSegments;
 
-use crate::synth_engine::{Input, StereoSample};
+use crate::synth_engine::{Input, Smp, StereoSample};
 
 static SEGMENTS: LazyLock<RelSegments> = LazyLock::new(RelSegments::default);
 
@@ -35,7 +35,7 @@ impl LfoAudioEnd for AudioEnd {
         None
     }
 
-    fn update_phase(&mut self, _phase: StereoSample) {}
+    fn update_phase(&mut self, _channel: usize, _phase: Smp) {}
 
     fn read_segments(&mut self) -> &RelSegments {
         &SEGMENTS

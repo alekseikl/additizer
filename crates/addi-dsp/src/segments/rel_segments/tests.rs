@@ -263,29 +263,29 @@ fn phase_at_walks_the_segment_that_starts_at_that_point() {
 fn value_at_reads_the_segment_that_contains_the_phase() {
     let ramp = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], false);
 
-    assert!((ramp.value_at(0.0, None, None) - 0.0).abs() < 1e-6);
-    assert!((ramp.value_at(0.25, None, None) - 0.25).abs() < 1e-6);
-    assert!((ramp.value_at(1.0, None, None) - 1.0).abs() < 1e-6);
-    assert!((ramp.value_at(0.0, Some(0.4), None) - 0.4).abs() < 1e-6);
+    assert!((ramp.value_at(0.0) - 0.0).abs() < 1e-6);
+    assert!((ramp.value_at(0.25) - 0.25).abs() < 1e-6);
+    assert!((ramp.value_at(1.0) - 1.0).abs() < 1e-6);
+    assert!((ramp.value_at_with(0.0, Some(0.4), None) - 0.4).abs() < 1e-6);
 
     let square = RelSegments::from_points(
         &[(0.0, 0.0), (0.0, 1.0), (0.5, 1.0), (0.5, 0.0), (1.0, 0.0)],
         false,
     );
 
-    assert!((square.value_at(0.0, None, None) - 1.0).abs() < 1e-6);
-    assert!((square.value_at(0.25, None, None) - 1.0).abs() < 1e-6);
-    assert!((square.value_at(0.5, None, None) - 1.0).abs() < 1e-6);
-    assert!((square.value_at(0.75, None, None) - 0.0).abs() < 1e-6);
+    assert!((square.value_at(0.0) - 1.0).abs() < 1e-6);
+    assert!((square.value_at(0.25) - 1.0).abs() < 1e-6);
+    assert!((square.value_at(0.5) - 1.0).abs() < 1e-6);
+    assert!((square.value_at(0.75) - 0.0).abs() < 1e-6);
 
     let mut curved = RelSegments::from_points(&[(0.0, 0.0), (1.0, 1.0)], true);
     curved.set_power(0, 8.0);
 
-    assert!(curved.value_at(0.5, None, None) < ramp.value_at(0.5, None, None));
+    assert!(curved.value_at(0.5) < ramp.value_at(0.5));
 
     let mut samples = [0.0; 8];
     curved.render_waveform(&mut samples);
-    assert!((curved.value_at(3.0 / 8.0, None, None) - samples[3]).abs() < 1e-5);
+    assert!((curved.value_at(3.0 / 8.0) - samples[3]).abs() < 1e-5);
 }
 
 #[test]
@@ -595,8 +595,8 @@ fn release_level_replaces_the_segment_that_leaves_that_point() {
     let mut segments = RelSegments::from_points(&[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], false);
     assert!(segments.set_release_point(Some(1)));
 
-    assert!((segments.value_at(0.5, None, Some(0.25)) - 0.25).abs() < 1e-6);
-    assert!((segments.value_at(0.75, None, Some(0.25)) - 0.125).abs() < 1e-5);
-    assert!((segments.value_at(0.25, None, Some(0.25)) - 0.5).abs() < 1e-5);
-    assert!((segments.value_at(0.5, None, None) - 1.0).abs() < 1e-6);
+    assert!((segments.value_at_with(0.5, None, Some(0.25)) - 0.25).abs() < 1e-6);
+    assert!((segments.value_at_with(0.75, None, Some(0.25)) - 0.125).abs() < 1e-5);
+    assert!((segments.value_at_with(0.25, None, Some(0.25)) - 0.5).abs() < 1e-5);
+    assert!((segments.value_at(0.5) - 1.0).abs() < 1e-6);
 }

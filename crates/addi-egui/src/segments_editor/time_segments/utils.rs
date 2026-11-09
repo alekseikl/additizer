@@ -4,9 +4,7 @@ use addi_dsp::segments::{
 };
 use addi_dsp::utils::sanitize;
 use addi_engine::Smp;
-use egui::{
-    Color32, LayerId, Painter, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2,
-};
+use egui::{Color32, LayerId, Painter, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
 use super::super::common;
 use super::consts as C;
@@ -45,8 +43,11 @@ impl Ctx<'_> {
             Rect::NOTHING
         };
 
-        self.ui
-            .interact(rect, self.ui.make_persistent_id(id), Sense::click_and_drag())
+        self.ui.interact(
+            rect,
+            self.ui.make_persistent_id(id),
+            Sense::click_and_drag(),
+        )
     }
 
     pub fn add_point(&mut self, point: Pos2) {

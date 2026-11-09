@@ -8,8 +8,7 @@ use addi_dsp::{
 use addi_engine::Smp;
 use egui::{
     Color32, CursorIcon, FontFamily, FontId, Id, LayerId, Mesh, Order, Painter, Popup, Pos2, Rect,
-    Response, Shape, Stroke, StrokeKind, TextureId, Ui, Vec2, ecolor::Hsva, epaint::Vertex,
-    pos2,
+    Response, Shape, Stroke, StrokeKind, TextureId, Ui, Vec2, ecolor::Hsva, epaint::Vertex, pos2,
 };
 
 use crate::units::Units;
@@ -241,12 +240,7 @@ impl CurveMarks for TimeSegments {
 }
 
 /// Handle whose context menu is open.
-pub fn open_handle(
-    ui: &Ui,
-    points: usize,
-    point_id: &str,
-    power_id: &str,
-) -> Option<Handle> {
+pub fn open_handle(ui: &Ui, points: usize, point_id: &str, power_id: &str) -> Option<Handle> {
     (0..points).find_map(|index| {
         if popup_open(ui, (point_id, index)) {
             Some(Handle::Point(index))
@@ -538,18 +532,23 @@ pub fn paint_rows(painter: &Painter, plot: Rect, rows: i32) {
     }
 }
 
-/// Area under the polyline, shaded by a 1×2 gradient of the full plot.
-pub fn paint_fill(painter: &Painter, plot: Rect, texture: TextureId, points: &[Pos2]) {
+/// Area between the polyline and `baseline`, shaded by a 1×2 gradient of the full plot.
+pub fn paint_fill(
+    painter: &Painter,
+    plot: Rect,
+    texture: TextureId,
+    points: &[Pos2],
+    baseline: f32,
+) {
     if plot.height() <= 0.0 {
         return;
     }
 
     let mut mesh = Mesh::with_texture(texture);
-    let bottom = plot.bottom();
 
     for &[start, end] in points.array_windows() {
         if end.x > start.x {
-            add_fill_quad(&mut mesh, plot, bottom, start, end);
+            add_fill_quad(&mut mesh, plot, baseline, start, end);
         }
     }
 
@@ -558,12 +557,12 @@ pub fn paint_fill(painter: &Painter, plot: Rect, texture: TextureId, points: &[P
     }
 }
 
-/// Quad down to `bottom`. V runs from the top texel center to the bottom one.
-fn add_fill_quad(mesh: &mut Mesh, plot: Rect, bottom: f32, start: Pos2, end: Pos2) {
+/// Quad from the segment to `baseline`. V runs from the top texel center to the bottom one.
+fn add_fill_quad(mesh: &mut Mesh, plot: Rect, baseline: f32, start: Pos2, end: Pos2) {
     let index = mesh.vertices.len() as u32;
     let v = |y: f32| 0.25 + 0.5 * (y - plot.top()) / plot.height();
 
-    for pos in [start, end, pos2(end.x, bottom), pos2(start.x, bottom)] {
+    for pos in [start, end, pos2(end.x, baseline), pos2(start.x, baseline)] {
         mesh.vertices.push(Vertex {
             pos,
             uv: pos2(0.5, v(pos.y)),
@@ -575,13 +574,7 @@ fn add_fill_quad(mesh: &mut Mesh, plot: Rect, bottom: f32, start: Pos2, end: Pos
     mesh.add_triangle(index, index + 2, index + 3);
 }
 
-pub fn paint_marker(
-    painter: &Painter,
-    center: Pos2,
-    label: &str,
-    color: Color32,
-    plot_top: f32,
-) {
+pub fn paint_marker(painter: &Painter, center: Pos2, label: &str, color: Color32, plot_top: f32) {
     let galley = painter.layout_no_wrap(label.to_owned(), bold(10.0), color);
     let x = center.x - galley.size().x * 0.5;
     let y = stack_y(

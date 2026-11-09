@@ -150,7 +150,6 @@ pub struct Lfo<L: LfoLinks = stub::Links> {
     inputs: Inputs,
     output_slot: usize,
     voices: VoicesLayout<VoiceState>,
-    ui_phase: StereoSample,
 }
 
 impl<L: LfoLinks> Lfo<L> {
@@ -187,7 +186,6 @@ impl<L: LfoLinks> Lfo<L> {
             inputs: Inputs::default(),
             output_slot: usize::MAX,
             voices: new_voices_layout(),
-            ui_phase: StereoSample::ZERO,
         };
 
         lfo.bake_wave();
@@ -281,13 +279,14 @@ impl<L: LfoLinks> Lfo<L> {
             Phase::freq_phase_mult(sample_rate),
         );
         let wave = self.wave.as_slice();
+        let mut read = voice.phase;
 
         for (out, phase_inc, phase_shift) in izip!(
             voice_output.output().iter_mut(),
             &self.buffers.frequency,
             &self.buffers.phase_shift,
         ) {
-            let read = voice.phase.add_normalized(phase_shift.clamp(-1.0, 1.0));
+            read = voice.phase.add_normalized(phase_shift.clamp(-1.0, 1.0));
 
             *out = Self::read_wave(wave, read);
 
@@ -295,11 +294,7 @@ impl<L: LfoLinks> Lfo<L> {
         }
 
         if router.need_update_ui() {
-            self.ui_phase[channel_idx] = voice.phase.normalized();
-
-            if channel_idx + 1 == NUM_CHANNELS {
-                self.audio_end.update_phase(self.ui_phase);
-            }
+            self.audio_end.update_phase(channel_idx, read.normalized());
         }
     }
 

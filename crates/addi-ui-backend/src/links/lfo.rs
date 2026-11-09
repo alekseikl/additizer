@@ -1,6 +1,6 @@
 use triple_buffer::triple_buffer;
 
-use addi_engine::{Input, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
+use addi_engine::{Input, NUM_CHANNELS, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 use addi_dsp::segments::rel_segments::RelSegments;
 
@@ -46,8 +46,14 @@ impl AudioEnd {
         self.rx.pop().ok()
     }
 
-    pub fn update_phase(&mut self, phase: StereoSample) {
-        self.phase.write(phase);
+    pub fn update_phase(&mut self, channel: usize, phase: Smp) {
+        let published = self.phase.input_buffer_mut();
+
+        published[channel] = phase;
+
+        if channel == NUM_CHANNELS - 1 {
+            self.phase.publish();
+        }
     }
 
     pub fn read_segments(&mut self) -> &RelSegments {
@@ -78,8 +84,8 @@ impl LfoAudioEnd for AudioEnd {
     fn pop_event(&mut self) -> Option<UiEvent> {
         AudioEnd::pop_event(self)
     }
-    fn update_phase(&mut self, phase: StereoSample) {
-        AudioEnd::update_phase(self, phase)
+    fn update_phase(&mut self, channel: usize, phase: Smp) {
+        AudioEnd::update_phase(self, channel, phase)
     }
     fn read_segments(&mut self) -> &RelSegments {
         AudioEnd::read_segments(self)

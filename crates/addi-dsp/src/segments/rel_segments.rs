@@ -397,10 +397,15 @@ impl RelSegments {
         (start + position.clamp(0.0, 1.0) * width).clamp(0.0, 1.0)
     }
 
+    /// Level at `phase` on `[0, 1]`, read from the stored points.
+    pub fn value_at(&self, phase: Smp) -> Smp {
+        self.value_at_with(phase, None, None)
+    }
+
     /// Level at `phase` on `[0, 1]`. `start_level` replaces the first point.
     /// `release_level` replaces [`release_point`](Self::release_point) where the
     /// segment leaving it begins, including a release on the last point.
-    pub fn value_at(
+    pub fn value_at_with(
         &self,
         phase: Smp,
         start_level: Option<Smp>,

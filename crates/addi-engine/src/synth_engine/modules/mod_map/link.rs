@@ -11,7 +11,7 @@ pub enum UiEvent {
 
 pub trait ModMapAudioEnd: Send {
     fn pop_event(&mut self) -> Option<UiEvent>;
-    fn update_probe(&mut self, probe: StereoSample);
+    fn update_probe(&mut self, channel: usize, sample: Smp);
     fn read_segments(&mut self) -> &RelSegments;
 }
 

@@ -163,8 +163,11 @@ impl Ctx<'_> {
             Rect::from_center_size(center, Vec2::splat(1.0))
         };
 
-        self.ui
-            .interact(rect, self.ui.make_persistent_id(id), Sense::click_and_drag())
+        self.ui.interact(
+            rect,
+            self.ui.make_persistent_id(id),
+            Sense::click_and_drag(),
+        )
     }
 
     /// Insert a point at `point`, with the easing of the segment it splits.

@@ -123,7 +123,7 @@ impl GridWidget {
                 ModuleType::SpectralEq => Box::new(SpectralEqWidget::default()),
                 ModuleType::Envelope => Box::new(EnvelopeWidget {}),
                 ModuleType::Lfo => Box::new(LfoWidget::default()),
-                ModuleType::ModMap => Box::new(ModMapWidget {}),
+                ModuleType::ModMap => Box::new(ModMapWidget::default()),
                 ModuleType::MultiEnvelope => Box::new(MultiEnvelopeWidget::default()),
                 ModuleType::SegmentsEnvelope => Box::new(SegmentsEnvelopeWidget::default()),
                 ModuleType::Pitch => Box::new(PitchWidget::default()),

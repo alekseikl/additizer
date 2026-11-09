@@ -267,7 +267,7 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
             _ => None,
         };
 
-        segments.value_at(
+        segments.value_at_with(
             Self::playhead_phase(segments, voice.stage),
             start_level,
             voice.release.level(),

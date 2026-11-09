@@ -70,7 +70,7 @@ fn curved_table_follows_the_segments() {
 
     for i in 0..=32 {
         let x = i as f32 / 32.0;
-        let expected = config.segments.value_at(x, None, None);
+        let expected = config.segments.value_at(x);
         let y = read_table(&map.table, x);
 
         worst = worst.max((y - expected).abs());
@@ -105,6 +105,6 @@ fn missing_config_fields_default_to_a_pass_through() {
     assert_eq!(config.amount, 1.0.into());
     assert!(!config.bipolar);
     assert_eq!(config.smooth, 0.0);
-    assert!((config.segments.value_at(0.0, None, None)).abs() < 1e-6);
-    assert!((config.segments.value_at(1.0, None, None) - 1.0).abs() < 1e-6);
+    assert!((config.segments.value_at(0.0)).abs() < 1e-6);
+    assert!((config.segments.value_at(1.0) - 1.0).abs() < 1e-6);
 }

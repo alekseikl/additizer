@@ -1,7 +1,7 @@
 use addi_dsp::segments::rel_segments::RelSegments;
 
 use super::Timebase;
-use crate::synth_engine::{Input, StereoSample, engine_io};
+use crate::synth_engine::{Input, Smp, StereoSample, engine_io};
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
@@ -12,7 +12,7 @@ pub enum UiEvent {
 
 pub trait LfoAudioEnd: Send {
     fn pop_event(&mut self) -> Option<UiEvent>;
-    fn update_phase(&mut self, phase: StereoSample);
+    fn update_phase(&mut self, channel: usize, phase: Smp);
     fn read_segments(&mut self) -> &RelSegments;
 }
 

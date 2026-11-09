@@ -6,7 +6,7 @@ use crate::{
     stereo_input::StereoInput,
 };
 use addi_engine::lfo::Timebase;
-use addi_engine::{Input, ModuleId, ModuleType, StereoSample};
+use addi_engine::{Input, ModuleId, ModuleType};
 use addi_ui_backend::ui_bridge::{ModuleBridge, UiBridge};
 
 pub struct LfoUi {
@@ -28,17 +28,7 @@ impl LfoUi {
         ui.add(ModuleLabel::new(module_id, ModuleType::Lfo, bridge));
         ui.add_space(12.0);
 
-        let phase = if bridge.has_active_voices() {
-            let mut phase_shift = lfo_bridge.config().phase_shift;
-            bridge.apply_modulation(module_id, Input::Phase, &mut phase_shift);
-            let phase = lfo_bridge.get_phase();
-            Some(StereoSample::new(
-                (phase[0] + phase_shift[0]).rem_euclid(1.0),
-                (phase[1] + phase_shift[1]).rem_euclid(1.0),
-            ))
-        } else {
-            None
-        };
+        let phase = bridge.has_active_voices().then(|| lfo_bridge.get_phase());
 
         if self.editor.ui(ui, lfo_bridge.segments_mut(), phase) {
             lfo_bridge.sync_segments();

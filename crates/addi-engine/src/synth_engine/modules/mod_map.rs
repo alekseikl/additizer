@@ -29,7 +29,7 @@ use crate::synth_engine::{
     },
     smooth::SmoothedSample,
     synth_module::SynthModule,
-    voices::{NUM_CHANNELS, RIGHT_CHANNEL},
+    voices::NUM_CHANNELS,
     zip_map_in_place,
 };
 
@@ -153,7 +153,6 @@ pub struct ModMap<L: ModMapLinks = stub::Links> {
     buffers: Buffers,
     smoothers: VoicesLayout<CtrlFilter>,
     coeffs: CtrlFilterCoeffs,
-    probe: StereoSample,
     audio_end: L::AudioEnd,
     ui_end: Option<L::UiEnd>,
     inputs: Inputs,
@@ -195,7 +194,6 @@ impl<L: ModMapLinks> ModMap<L> {
                 g: 0.0,
                 min_time: 0.0,
             },
-            probe: StereoSample::ZERO,
             audio_end,
             ui_end,
             inputs: Inputs::default(),
@@ -261,11 +259,10 @@ impl<L: ModMapLinks> ModMap<L> {
         output.copy_from_slice(router.direct(self.inputs.control));
 
         if router.need_update_ui() {
-            self.probe[target.channel_idx] = output.last().copied().unwrap_or_default();
-
-            if target.channel_idx == RIGHT_CHANNEL {
-                self.audio_end.update_probe(self.probe);
-            }
+            self.audio_end.update_probe(
+                target.channel_idx,
+                output.last().copied().unwrap_or_default(),
+            );
         }
 
         if self.remap {

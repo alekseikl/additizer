@@ -358,7 +358,7 @@ fn curved_segment_matches_the_drawn_curve() {
     let segments = &env.params.segments;
 
     for (i, sample) in out.iter().enumerate() {
-        let expected = segments.value_at(i as Smp * step, Some(0.2), None);
+        let expected = segments.value_at_with(i as Smp * step, Some(0.2), None);
 
         assert!(
             (sample - expected).abs() < 2e-5,

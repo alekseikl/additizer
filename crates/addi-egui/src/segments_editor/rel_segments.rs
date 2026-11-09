@@ -72,7 +72,7 @@ impl Default for RelSegmentsEditor {
             paint_column: None,
             wave_color: C::WAVE_COLOR,
             power_color: C::POWER_COLOR,
-            fill: FillTexture::new("segments-fill", C::WAVE_COLOR),
+            fill: FillTexture::new(C::WAVE_COLOR),
         }
     }
 }
@@ -93,7 +93,7 @@ impl RelSegmentsEditor {
             markers: true,
             wave_color: Color32::from(C::ENVELOPE_WAVE),
             power_color: Color32::from(C::ENVELOPE_POWER),
-            fill: FillTexture::new("segments-fill", Color32::from(C::ENVELOPE_WAVE)),
+            fill: FillTexture::new(Color32::from(C::ENVELOPE_WAVE)),
             ..Self::default()
         }
     }
@@ -108,7 +108,7 @@ impl RelSegmentsEditor {
         let playhead = phase.map(|phase| {
             [0, 1].map(|channel| {
                 let phase = phase[channel];
-                (phase, segments.value_at(phase, None, None))
+                (phase, segments.value_at(phase))
             })
         });
 
@@ -606,7 +606,7 @@ impl RelSegmentsEditor {
         let tail_start = after - usize::from(keep_to);
         let hold = |x: Smp| SegPoint {
             x,
-            y: segments.value_at(x, None, None),
+            y: segments.value_at(x),
             ..SegPoint::default()
         };
         let adopt = |point: SegPoint, edge: SegPoint| SegPoint {
@@ -784,7 +784,13 @@ impl RelSegmentsEditor {
     fn paint_fill(&mut self, painter: &Painter, ctx: &Ctx<'_>) {
         assert!(self.points.len() >= 2 && ctx.plot.height() > 0.0);
 
-        common::paint_fill(painter, ctx.plot, self.fill.id(ctx.ui.ctx()), &self.points);
+        common::paint_fill(
+            painter,
+            ctx.plot,
+            self.fill.id(ctx.ui.ctx()),
+            &self.points,
+            ctx.plot.bottom(),
+        );
     }
 
     /// Screen span of the loop, from the loop point to the release point or the end.

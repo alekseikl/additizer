@@ -1,64 +1,27 @@
 use addi_ui_backend::ui_bridge::modules::lfo::LfoUiBridge;
-use egui::{Color32, Mesh, Painter, Pos2, Rect, Shape, Stroke, Vec2};
 
 use crate::grid::WidgetCtx;
-use addi_dsp::{RelSegments, Smp};
+use crate::segments_editor::RelWidgetPlot;
 use addi_engine::ModuleId;
 use addi_ui_backend::ui_bridge::ModuleBridge;
 
 use super::GridWidgetContent;
 
 const PADDING: f32 = 4.0;
-const PHASE_RADIUS: f32 = 3.5;
-const LINE_WIDTH: f32 = 1.0;
-const FILL_EDGE_ALPHA: u8 = 0x47;
-const FILL_BASE_ALPHA: u8 = 0x66;
-const WAVE_COLOR: Color32 = Color32::from_rgb(0x4a, 0xb0, 0xff);
 
-struct RenderedCurve {
-    revision: u64,
-    size: Vec2,
+pub struct LfoWidget {
+    plot: RelWidgetPlot,
 }
 
-#[derive(Default)]
-pub struct LfoWidget {
-    points: Vec<[Smp; 2]>,
-    scratch: Vec<Smp>,
-    rendered: Option<RenderedCurve>,
+impl Default for LfoWidget {
+    fn default() -> Self {
+        Self {
+            plot: RelWidgetPlot::lfo(),
+        }
+    }
 }
 
 impl LfoWidget {
-    /// Phase/level polyline. Rebuilt when [`RelSegments::revision`] or `size` changes.
-    fn build_curve(&mut self, segments: &RelSegments, size: Vec2) {
-        if size.x <= 0.0 {
-            self.points.clear();
-            self.rendered = None;
-            return;
-        }
-
-        let revision = segments.revision();
-
-        if self
-            .rendered
-            .as_ref()
-            .is_some_and(|rendered| rendered.revision == revision && rendered.size == size)
-        {
-            return;
-        }
-
-        let pixels = size.x.round().max(1.0) as usize;
-
-        segments.render_points(pixels, &mut self.points, &mut self.scratch);
-        self.rendered = Some(RenderedCurve { revision, size });
-    }
-
-    fn phase_pos(rect: Rect, phase: Smp, value: Smp) -> Pos2 {
-        Pos2::new(
-            rect.left() + phase.clamp(0.0, 1.0) * rect.width(),
-            rect.bottom() - value.clamp(0.0, 1.0) * rect.height(),
-        )
-    }
-
     fn lfo_ui(&mut self, ui: &mut egui::Ui, lfo_bridge: &mut LfoUiBridge, has_active_voices: bool) {
         let size = ui.available_size();
         let response = ui.allocate_response(size, egui::Sense::hover());
@@ -68,70 +31,15 @@ impl LfoWidget {
             return;
         }
 
-        self.build_curve(&lfo_bridge.config().segments, rect.size());
+        let playhead = has_active_voices.then(|| {
+            let phase = lfo_bridge.get_phase();
+            let segments = &lfo_bridge.config().segments;
 
-        let painter = ui.painter();
-        let screen = self
-            .points
-            .iter()
-            .map(|point| Self::phase_pos(rect, point[0], point[1]))
-            .collect::<Vec<_>>();
+            [phase.left(), phase.right()].map(|phase| (phase, segments.value_at(phase)))
+        });
 
-        Self::paint_fill(painter, rect, &screen);
-        Self::paint_stroke(painter, &screen);
-
-        if has_active_voices {
-            let phase = lfo_bridge.get_phase().left();
-            let level = lfo_bridge.config().segments.value_at(phase, None, None);
-
-            painter.circle_filled(
-                Self::phase_pos(rect, phase, level),
-                PHASE_RADIUS,
-                WAVE_COLOR,
-            );
-        }
-    }
-
-    fn paint_stroke(painter: &Painter, points: &[Pos2]) {
-        if points.len() < 2 {
-            return;
-        }
-
-        painter.line(points.to_vec(), Stroke::new(LINE_WIDTH, WAVE_COLOR));
-    }
-
-    fn paint_fill(painter: &Painter, rect: Rect, points: &[Pos2]) {
-        if points.len() < 2 {
-            return;
-        }
-
-        let mut mesh = Mesh::default();
-        let edge = Self::with_alpha(WAVE_COLOR, FILL_EDGE_ALPHA);
-        let base = Self::with_alpha(WAVE_COLOR, FILL_BASE_ALPHA);
-        let bottom = rect.bottom();
-
-        for &[start, end] in points.array_windows() {
-            if end.x <= start.x {
-                continue;
-            }
-
-            let index = mesh.vertices.len() as u32;
-
-            mesh.colored_vertex(start, edge);
-            mesh.colored_vertex(end, edge);
-            mesh.colored_vertex(Pos2::new(end.x, bottom), base);
-            mesh.colored_vertex(Pos2::new(start.x, bottom), base);
-            mesh.add_triangle(index, index + 1, index + 2);
-            mesh.add_triangle(index, index + 2, index + 3);
-        }
-
-        if !mesh.is_empty() {
-            painter.add(Shape::mesh(mesh));
-        }
-    }
-
-    fn with_alpha(color: Color32, alpha: u8) -> Color32 {
-        Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
+        self.plot
+            .paint(ui, rect, &lfo_bridge.config().segments, None, playhead);
     }
 }
 
@@ -147,6 +55,3 @@ impl GridWidgetContent for LfoWidget {
             });
     }
 }
-
-#[cfg(test)]
-mod tests;

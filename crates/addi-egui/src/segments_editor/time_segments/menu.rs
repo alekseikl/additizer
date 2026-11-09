@@ -11,11 +11,7 @@ pub fn open_menu(ctx: &Ctx<'_>) -> Option<Handle> {
 }
 
 /// What the menu asked to do with this point.
-pub fn point_menu(
-    ctx: &mut Ctx<'_>,
-    response: &Response,
-    index: usize,
-) -> Option<PointAction> {
+pub fn point_menu(ctx: &mut Ctx<'_>, response: &Response, index: usize) -> Option<PointAction> {
     common::point_menu(response, ctx.segs, index, "Set time", true)
 }
 

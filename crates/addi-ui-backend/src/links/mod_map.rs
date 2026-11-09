@@ -2,7 +2,7 @@ use triple_buffer::triple_buffer;
 
 use addi_dsp::segments::rel_segments::RelSegments;
 use addi_engine::mod_map::{ModMapAudioEnd, ModMapLinks, ModMapUiEnd, UiEvent};
-use addi_engine::{Input, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
+use addi_engine::{Input, NUM_CHANNELS, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY};
 
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
@@ -44,8 +44,14 @@ impl AudioEnd {
         self.rx.pop().ok()
     }
 
-    pub fn update_probe(&mut self, probe: StereoSample) {
-        self.probe.write(probe);
+    pub fn update_probe(&mut self, channel: usize, sample: Smp) {
+        let published = self.probe.input_buffer_mut();
+
+        published[channel] = sample;
+
+        if channel == NUM_CHANNELS - 1 {
+            self.probe.publish();
+        }
     }
 
     pub fn read_segments(&mut self) -> &RelSegments {
@@ -78,8 +84,8 @@ impl ModMapAudioEnd for AudioEnd {
         AudioEnd::pop_event(self)
     }
 
-    fn update_probe(&mut self, probe: StereoSample) {
-        AudioEnd::update_probe(self, probe)
+    fn update_probe(&mut self, channel: usize, sample: Smp) {
+        AudioEnd::update_probe(self, channel, sample)
     }
 
     fn read_segments(&mut self) -> &RelSegments {
