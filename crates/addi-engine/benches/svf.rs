@@ -12,7 +12,7 @@ use addi_dsp::filters::{
     svf::SvfType,
 };
 use addi_engine::{
-    DEFAULT_TEMPO, NUM_CHANNELS, PlayingVoice, SmoothedSampleParams, Smp, StereoSample, Svf,
+    HostTimeline, NUM_CHANNELS, PlayingVoice, SmoothedSampleParams, Smp, StereoSample, Svf,
     routing::{Input, InputSlots, OutputsArena, ProcessContext, ProcessParams},
     stub::AudioEnd,
     svf::SvfConfig,
@@ -59,6 +59,7 @@ fn voices() -> [PlayingVoice; VOICES] {
 
 fn process_params<'a>(
     voices: &'a [PlayingVoice],
+    timeline: HostTimeline,
     smooth_params: SmoothedSampleParams,
 ) -> ProcessParams<'a> {
     ProcessParams {
@@ -66,7 +67,7 @@ fn process_params<'a>(
         has_triggered_voices: false,
         samples: BLOCK,
         sample_rate: SAMPLE_RATE,
-        tempo: DEFAULT_TEMPO,
+        timeline,
         needs_update_ui: false,
         smooth: smooth_params,
         active_voices: voices,
@@ -78,12 +79,13 @@ fn ctx<'a>(
     arena: &'a mut OutputsArena,
     audio_end: &'a mut AudioEnd,
     voices: &'a [PlayingVoice],
+    timeline: HostTimeline,
     smooth_params: SmoothedSampleParams,
 ) -> ProcessContext<'a, AudioEnd> {
     ProcessContext {
         outputs_arena: arena,
         audio_end,
-        params: process_params(voices, smooth_params),
+        params: process_params(voices, timeline, smooth_params),
     }
 }
 
@@ -115,6 +117,7 @@ fn bench_svf(c: &mut Criterion) {
     group.throughput(Throughput::Elements((BLOCK * NUM_CHANNELS * VOICES) as u64));
 
     let voices = voices();
+    let timeline = HostTimeline::default();
     let smooth_params = SmoothedSampleParams::new(SAMPLE_RATE);
     let mut arena = OutputsArena::new(BUFFER_SIZE);
     let mut audio = Audio::constant(1, 0.0);
@@ -122,7 +125,13 @@ fn bench_svf(c: &mut Criterion) {
 
     audio.set_samples(&rising_ramp());
     arena.allocate_slot(&mut audio);
-    audio.process(&mut ctx(&mut arena, &mut audio_end, &voices, smooth_params));
+    audio.process(&mut ctx(
+        &mut arena,
+        &mut audio_end,
+        &voices,
+        timeline,
+        smooth_params,
+    ));
 
     let audio_slot = audio.output_slot();
 
@@ -133,7 +142,7 @@ fn bench_svf(c: &mut Criterion) {
             BenchmarkId::from_parameter(format!("{filter_type:?}")),
             |b| {
                 b.iter(|| {
-                    let mut ctx = ctx(&mut arena, &mut audio_end, &voices, smooth_params);
+                    let mut ctx = ctx(&mut arena, &mut audio_end, &voices, timeline, smooth_params);
 
                     svf.process(black_box(&mut ctx));
                     black_box(&ctx);

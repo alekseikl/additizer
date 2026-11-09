@@ -8,8 +8,8 @@
 use std::hint::black_box;
 
 use addi_engine::{
-    ComplexSample, DEFAULT_TEMPO, NUM_CHANNELS, Oscillator, PlayingVoice, SPECTRAL_BUFFER_SIZE,
-    SmoothedSampleParams, Smp, SpectralBuffer, StereoSample, note_to_pitch,
+    ComplexSample, NUM_CHANNELS, Oscillator, PlayingVoice, SPECTRAL_BUFFER_SIZE,
+    HostTimeline, SmoothedSampleParams, Smp, SpectralBuffer, StereoSample, note_to_pitch,
     oscillator::{MAX_UNISON_VOICES, OscillatorConfig},
     routing::{Input, InputSlots, OutputsArena, ProcessContext, ProcessParams},
     stub::AudioEnd,
@@ -89,6 +89,7 @@ fn ctx<'a>(
     arena: &'a mut OutputsArena,
     audio_end: &'a mut AudioEnd,
     voices: &'a [PlayingVoice],
+    timeline: HostTimeline,
     trigger_stage: bool,
 ) -> ProcessContext<'a, AudioEnd> {
     let last_voice_idx = voices.last().map(|voice| voice.voice_idx());
@@ -101,7 +102,7 @@ fn ctx<'a>(
             has_triggered_voices: false,
             samples: BLOCK,
             sample_rate: SAMPLE_RATE,
-            tempo: DEFAULT_TEMPO,
+            timeline,
             needs_update_ui: false,
             smooth: SmoothedSampleParams::new(SAMPLE_RATE),
             active_voices: voices,
@@ -123,7 +124,15 @@ impl Rig {
         arena.allocate_slot(&mut spectrum);
         arena.allocate_slot(&mut pitch);
 
-        spectrum.process(&mut ctx(&mut arena, &mut audio_end, &voices, false));
+        let timeline = HostTimeline::default();
+
+        spectrum.process(&mut ctx(
+            &mut arena,
+            &mut audio_end,
+            &voices,
+            timeline,
+            false,
+        ));
 
         let mut osc = Oscillator::from_config(&osc_config(unison), BUFFER_SIZE);
         osc.set_input_slots(&[
@@ -148,10 +157,13 @@ impl Rig {
     }
 
     fn render_pitch(&mut self) {
+        let timeline = HostTimeline::default();
+
         self.pitch.process(&mut ctx(
             &mut self.arena,
             &mut self.audio_end,
             &self.voices,
+            timeline,
             false,
         ));
     }
@@ -182,14 +194,28 @@ impl Rig {
     }
 
     fn process_trigger(&mut self) {
-        let mut ctx = ctx(&mut self.arena, &mut self.audio_end, &self.voices, true);
+        let timeline = HostTimeline::default();
+        let mut ctx = ctx(
+            &mut self.arena,
+            &mut self.audio_end,
+            &self.voices,
+            timeline,
+            true,
+        );
 
         self.osc.process(black_box(&mut ctx));
         black_box(ctx);
     }
 
     fn process(&mut self) {
-        let mut ctx = ctx(&mut self.arena, &mut self.audio_end, &self.voices, false);
+        let timeline = HostTimeline::default();
+        let mut ctx = ctx(
+            &mut self.arena,
+            &mut self.audio_end,
+            &self.voices,
+            timeline,
+            false,
+        );
 
         self.osc.process(black_box(&mut ctx));
         black_box(ctx);

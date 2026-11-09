@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::synth_engine::Smp;
+use crate::synth_engine::{HostTimeline, Smp, phase::Phase};
 
 /// Shortest musical cycle, as a fraction of the selected unit.
 const MIN_MUSICAL_RATE: Smp = 0.01;
@@ -79,10 +79,23 @@ impl Timebase {
 
     /// Hertz for a rate of `1` at `tempo_bpm`.
     pub fn hz_per_unit(self, tempo_bpm: Smp) -> Smp {
-        let (num, den) = match self {
-            Self::Hertz => return 1.0,
-            Self::Kilohertz => return 1_000.0,
-            Self::Hold => return 0.0,
+        match self {
+            Self::Hertz => 1.0,
+            Self::Kilohertz => 1_000.0,
+            Self::Hold => 0.0,
+            _ => {
+                let Some((num, den)) = self.cycle_quarters() else {
+                    return 0.0;
+                };
+
+                tempo_bpm * (den as Smp) / (60.0 * (num as Smp))
+            }
+        }
+    }
+
+    /// Quarter-note length of one cycle at rate 1, as `(numerator, denominator)`.
+    fn cycle_quarters(self) -> Option<(u32, u32)> {
+        Some(match self {
             Self::Bar => (4, 1),
             Self::Half => (2, 1),
             Self::Quarter => (1, 1),
@@ -99,21 +112,51 @@ impl Timebase {
             Self::TripletEighth => (1, 3),
             Self::TripletSixteenth => (1, 6),
             Self::TripletThirtySecond => (1, 12),
-        };
-
-        tempo_bpm * (den as Smp) / (60.0 * (num as Smp))
+            Self::Hertz | Self::Kilohertz | Self::Hold => return None,
+        })
     }
 
-    /// Musical units measure a cycle in note lengths. Hertz, kilohertz, and hold do not.
-    pub fn is_musical(self) -> bool {
-        !matches!(self, Self::Hertz | Self::Kilohertz | Self::Hold)
+    /// Phase a steady `rate` would have reached at `timeline`.
+    ///
+    /// Musical units follow beats. Hertz and kilohertz follow seconds. The rate is resolved the
+    /// same way as [`Self::map_phase_inc`], so a constant rate stays on this phase.
+    pub(super) fn transport_phase(
+        self,
+        rate: Smp,
+        timeline: &HostTimeline,
+        sample_offset: usize,
+    ) -> Phase {
+        let cycles = if let Some((num, den)) = self.cycle_quarters() {
+            let beats = timeline.beats_at(sample_offset);
+            let rate = (rate as f64).max(MIN_MUSICAL_RATE as f64);
+
+            beats * (den as f64) / ((num as f64) * rate)
+        } else {
+            let seconds = timeline.seconds_at(sample_offset);
+            let hz = match self {
+                Self::Kilohertz => 1_000.0,
+                Self::Hold => 0.0,
+                _ => 1.0,
+            };
+
+            seconds * (rate as f64) * hz
+        };
+
+        if !cycles.is_finite() {
+            return Phase::ZERO;
+        }
+
+        // `floor` keeps the fraction in `[0, 1)`, including for a negative position.
+        let fraction = cycles - cycles.floor();
+
+        Phase::from_normalized(fraction as Smp)
     }
 
     /// Replaces each rate with its phase increment. The timebase is resolved once.
     pub(super) fn map_phase_inc(self, rates: &mut [Smp], tempo_bpm: Smp, phase_scale: Smp) {
         let step = self.hz_per_unit(tempo_bpm) * phase_scale;
 
-        if self.is_musical() {
+        if self.cycle_quarters().is_some() {
             for rate in rates {
                 *rate = step / (*rate).max(MIN_MUSICAL_RATE);
             }

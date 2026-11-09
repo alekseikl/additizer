@@ -1,7 +1,7 @@
 use super::*;
 use crate::synth_engine::{
-    ComplexSample, DEFAULT_TEMPO, DataType, EngineConfig, EngineParams, Input, LinkConfig,
-    ModuleConfig, ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Smp, SynthEngine,
+    ComplexSample, DataType, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId,
+    NUM_CHANNELS, Note, OUTPUT_MODULE_ID, Smp, SynthEngine,
     oscillator::OscillatorConfig, synth_module::SynthModule, voices::LEFT_CHANNEL,
 };
 
@@ -186,7 +186,7 @@ fn play(engine: &mut SynthEngine) -> (Vec<Smp>, Vec<Smp>) {
     engine.process(
         64,
         false,
-        DEFAULT_TEMPO,
+        0,
         &mut terminated,
         [&mut left[..], &mut right[..]],
     );
@@ -262,7 +262,7 @@ fn capture_input_without_note_keeps_stored_harmonics() {
     engine.process(
         64,
         false,
-        DEFAULT_TEMPO,
+        0,
         &mut terminated,
         [&mut left[..], &mut right[..]],
     );

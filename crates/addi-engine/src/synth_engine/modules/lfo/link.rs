@@ -7,6 +7,7 @@ pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
     SegmentsUpdated,
     StealPhase(bool),
+    Sync(bool),
     Timebase(Timebase),
 }
 
@@ -21,6 +22,7 @@ pub trait LfoUiEnd: Send {
     fn set_param(&mut self, input: Input, value: StereoSample) -> bool;
     fn set_segments(&mut self, segments: RelSegments) -> bool;
     fn set_steal_phase(&mut self, value: bool) -> bool;
+    fn set_sync(&mut self, value: bool) -> bool;
     fn set_timebase(&mut self, timebase: Timebase) -> bool;
 }
 

@@ -14,8 +14,8 @@ use addi_dsp::filters::{
     spectral_filter::FilterType,
 };
 use addi_engine::{
-    ComplexSample, DEFAULT_TEMPO, NUM_CHANNELS, PlayingVoice, SPECTRAL_BUFFER_SIZE,
-    SmoothedSampleParams, Smp, SpectralBuffer, SpectralFilter, StereoSample,
+    ComplexSample, NUM_CHANNELS, PlayingVoice, SPECTRAL_BUFFER_SIZE, SmoothedSampleParams, Smp,
+    HostTimeline, SpectralBuffer, SpectralFilter, StereoSample,
     routing::{Input, InputSlots, OutputsArena, ProcessContext, ProcessParams},
     spectral_filter::{MIN_Q_ROLLOFF, SpectralFilterConfig},
     stub::AudioEnd,
@@ -64,13 +64,13 @@ fn voices() -> [PlayingVoice; VOICES] {
     std::array::from_fn(|i| PlayingVoice::new(i as u8, 60))
 }
 
-fn process_params<'a>(voices: &'a [PlayingVoice]) -> ProcessParams<'a> {
+fn process_params<'a>(voices: &'a [PlayingVoice], timeline: HostTimeline) -> ProcessParams<'a> {
     ProcessParams {
         trigger_stage: false,
         has_triggered_voices: false,
         samples: 1,
         sample_rate: SAMPLE_RATE,
-        tempo: DEFAULT_TEMPO,
+        timeline,
         needs_update_ui: false,
         smooth: SmoothedSampleParams::new(SAMPLE_RATE),
         active_voices: voices,
@@ -82,11 +82,12 @@ fn ctx<'a>(
     arena: &'a mut OutputsArena,
     audio_end: &'a mut AudioEnd,
     voices: &'a [PlayingVoice],
+    timeline: HostTimeline,
 ) -> ProcessContext<'a, AudioEnd> {
     ProcessContext {
         outputs_arena: arena,
         audio_end,
-        params: process_params(voices),
+        params: process_params(voices, timeline),
     }
 }
 
@@ -125,12 +126,13 @@ fn bench_spectral_filter(c: &mut Criterion) {
     ));
 
     let voices = voices();
+    let timeline = HostTimeline::default();
     let mut arena = OutputsArena::new(BUFFER_SIZE);
     let mut spectrum = Spectral::new(1, &sawtooth());
     let mut audio_end = AudioEnd;
 
     arena.allocate_slot(&mut spectrum);
-    spectrum.process(&mut ctx(&mut arena, &mut audio_end, &voices));
+    spectrum.process(&mut ctx(&mut arena, &mut audio_end, &voices, timeline));
 
     let spectrum_slot = spectrum.output_slot();
 
@@ -141,7 +143,7 @@ fn bench_spectral_filter(c: &mut Criterion) {
             BenchmarkId::from_parameter(format!("{filter_type:?}")),
             |b| {
                 b.iter(|| {
-                    let mut ctx = ctx(&mut arena, &mut audio_end, &voices);
+                    let mut ctx = ctx(&mut arena, &mut audio_end, &voices, timeline);
 
                     filter.process(black_box(&mut ctx));
                     black_box(&ctx);

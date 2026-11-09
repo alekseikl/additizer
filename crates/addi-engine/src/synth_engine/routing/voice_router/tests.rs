@@ -4,8 +4,8 @@ use addi_dsp::SmoothedSample;
 
 use super::{OutputRouterType, OutputVoiceState, VoiceLane, VoiceOutput, VoicesBlock};
 use crate::synth_engine::{
-    CONTROL_EXT, ComplexSample, DEFAULT_TEMPO, DataType, EngineAudioEnd, Input, ModuleId,
-    NUM_CHANNELS, SPECTRAL_BUFFER_SIZE, SmoothedSampleParams, Smp, StereoSample,
+    CONTROL_EXT, ComplexSample, DataType, EngineAudioEnd, Input, ModuleId, NUM_CHANNELS,
+    SPECTRAL_BUFFER_SIZE, HostTimeline, SmoothedSampleParams, Smp, StereoSample,
     buffer::{VoicesLayout, zero_buffer},
     engine_io::{UiEvent, VoicesTelemetry},
     routing::{
@@ -111,6 +111,7 @@ struct Rig {
     arena: OutputsArena,
     end: RecordingEnd,
     voices: Vec<PlayingVoice>,
+    timeline: HostTimeline,
     trigger_stage: bool,
     needs_update_ui: bool,
     last_voice_idx: Option<usize>,
@@ -124,6 +125,7 @@ impl Rig {
             arena: OutputsArena::new(BUFFER_SIZE),
             end: RecordingEnd::default(),
             voices,
+            timeline: HostTimeline::default(),
             trigger_stage: false,
             needs_update_ui: false,
             last_voice_idx,
@@ -161,7 +163,7 @@ impl Rig {
                 has_triggered_voices: self.voices.iter().any(|voice| voice.triggered().is_some()),
                 samples: SAMPLES,
                 sample_rate: SAMPLE_RATE,
-                tempo: DEFAULT_TEMPO,
+                timeline: self.timeline,
                 needs_update_ui: self.needs_update_ui,
                 smooth: SmoothedSampleParams::new(SAMPLE_RATE),
                 active_voices: &self.voices,

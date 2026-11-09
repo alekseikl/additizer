@@ -30,6 +30,10 @@ impl UiEnd {
         self.tx.push(UiEvent::StealPhase(value)).is_ok()
     }
 
+    pub fn set_sync(&mut self, value: bool) -> bool {
+        self.tx.push(UiEvent::Sync(value)).is_ok()
+    }
+
     pub fn set_timebase(&mut self, timebase: Timebase) -> bool {
         self.tx.push(UiEvent::Timebase(timebase)).is_ok()
     }
@@ -104,6 +108,9 @@ impl LfoUiEnd for UiEnd {
     }
     fn set_steal_phase(&mut self, value: bool) -> bool {
         UiEnd::set_steal_phase(self, value)
+    }
+    fn set_sync(&mut self, value: bool) -> bool {
+        UiEnd::set_sync(self, value)
     }
     fn set_timebase(&mut self, timebase: Timebase) -> bool {
         UiEnd::set_timebase(self, timebase)

@@ -13,12 +13,16 @@ pub(crate) use addi_ui_backend::preset;
 use crate::editor::{PluginEditor, create_editor};
 use crate::engine_factory::{EngineFactory, EngineHandle};
 use crate::params::AdditizerParams;
-use addi_engine::{DEFAULT_TEMPO, MAX_VOICES, Note};
+use addi_engine::{MAX_VOICES, Note, TransportState};
 pub use egui;
 use nice_plug::midi::{Channel, Key, VoiceID};
 use nice_plug::prelude::*;
 use nice_plug_egui::{EguiEditor, EguiEditorState, RepaintNotifier};
 use std::sync::Arc;
+
+/// Beats per minute used when the host does not report a tempo.
+/// A beat is a quarter note.
+const DEFAULT_TEMPO: f64 = 120.0;
 
 pub struct Additizer {
     params: Arc<AdditizerParams>,
@@ -122,14 +126,20 @@ impl Plugin for Additizer {
 
         // Mutex is contended only when routing is changed from the UI.
         let mut synth = engine.lock();
-        let tempo = host_tempo(context.transport());
 
         assert_no_alloc::assert_no_alloc(|| {
             let block_size = synth.block_size();
             let update_ui = self.editor_state.is_open();
-            let mut next_event = context.next_event();
+            let transport = context.transport();
 
+            synth.update_transport_state(TransportState {
+                tempo: transport.tempo.unwrap_or(DEFAULT_TEMPO),
+                pos_seconds: transport.pos_seconds().unwrap_or_default(),
+                pos_beats: transport.pos_beats().unwrap_or_default(),
+            });
             synth.set_automation_values(&self.params.ext_params);
+
+            let mut next_event = context.next_event();
 
             for (block_start, block) in buffer.iter_blocks(block_size) {
                 let samples = block.samples();
@@ -150,7 +160,7 @@ impl Plugin for Additizer {
                 synth.process(
                     samples,
                     update_ui,
-                    tempo,
+                    block_start,
                     &mut self.terminated_notes,
                     [channels.next().unwrap(), channels.next().unwrap()],
                 );
@@ -167,13 +177,6 @@ impl Plugin for Additizer {
         });
 
         ProcessStatus::KeepAlive
-    }
-}
-
-fn host_tempo(transport: &Transport) -> f32 {
-    match transport.tempo {
-        Some(bpm) if bpm.is_finite() && bpm > 0.0 => bpm as f32,
-        _ => DEFAULT_TEMPO,
     }
 }
 

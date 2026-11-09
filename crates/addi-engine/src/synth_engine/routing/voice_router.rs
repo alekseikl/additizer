@@ -1,5 +1,5 @@
 use crate::synth_engine::{
-    Buffer, CONTROL_EXT, ComplexSample, ModuleId, NUM_CHANNELS, ProcessParams, Smp,
+    Buffer, CONTROL_EXT, ComplexSample, HostTimeline, ModuleId, NUM_CHANNELS, ProcessParams, Smp,
     buffer::VoicesLayout,
     engine_io::EngineAudioEnd,
     routing::{
@@ -502,8 +502,9 @@ impl<'v, 'f, 'c, A: EngineAudioEnd, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D
         self.factory.ctx.params.sample_rate
     }
 
-    pub fn tempo(&self) -> Smp {
-        self.factory.ctx.params.tempo
+    /// Host timeline for this buffer. `block_start` selects the current block.
+    pub fn timeline(&self) -> &HostTimeline {
+        &self.factory.ctx.params.timeline
     }
 
     pub fn need_update_ui(&self) -> bool {

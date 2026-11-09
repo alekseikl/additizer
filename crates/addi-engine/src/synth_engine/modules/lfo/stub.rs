@@ -59,6 +59,10 @@ impl LfoUiEnd for NoUi {
         self.diverge()
     }
 
+    fn set_sync(&mut self, _value: bool) -> bool {
+        self.diverge()
+    }
+
     fn set_timebase(&mut self, _timebase: Timebase) -> bool {
         self.diverge()
     }

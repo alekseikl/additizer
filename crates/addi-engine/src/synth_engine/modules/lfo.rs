@@ -12,7 +12,7 @@ mod timebase;
 mod tests;
 
 pub use config::LfoConfig;
-use config::{MAX_FREQUENCY, MAX_PHASE_SHIFT, MIN_FREQUENCY, MIN_PHASE_SHIFT};
+use config::{MAX_PHASE_SHIFT, MAX_RATE, MIN_PHASE_SHIFT, MIN_RATE};
 pub use link::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
 pub use timebase::Timebase;
 
@@ -43,20 +43,20 @@ const _: () = assert!(WAVEFORM_SIZE == 2048);
 const _: () = assert!(WAVEFORM_BUFFER_SIZE == WAVEFORM_SIZE - 1 + CATMULL_TAPS);
 
 struct ChannelParams {
-    frequency: SmoothedSample,
+    rate: SmoothedSample,
     phase_shift: SmoothedSample,
 }
 
 impl ChannelParams {
     fn from_config(c: &config::LfoConfig, channel_idx: usize) -> Self {
         Self {
-            frequency: c.frequency[channel_idx].into(),
+            rate: c.rate[channel_idx].into(),
             phase_shift: c.phase_shift[channel_idx].into(),
         }
     }
 
     pub fn advance_smoothers(&mut self, smooth_params: &SmoothedSampleParams, samples: usize) {
-        self.frequency.advance(smooth_params, samples);
+        self.rate.advance(smooth_params, samples);
         self.phase_shift.advance(smooth_params, samples);
     }
 }
@@ -64,6 +64,7 @@ impl ChannelParams {
 struct Params {
     segments: RelSegments,
     steal_phase: bool,
+    sync: bool,
     timebase: Timebase,
 }
 
@@ -72,6 +73,7 @@ impl Params {
         Self {
             segments: c.segments.clone(),
             steal_phase: c.steal_phase,
+            sync: c.sync,
             timebase: c.timebase,
         }
     }
@@ -80,17 +82,18 @@ impl Params {
 #[derive(Default)]
 struct VoiceState {
     phase: Phase,
+    phase_stolen: bool,
 }
 
 pub struct Inputs {
-    frequency: MixedSlots,
+    rate: MixedSlots,
     phase_shift: MixedSlots,
 }
 
 impl Default for Inputs {
     fn default() -> Self {
         Self {
-            frequency: MixedSlots::new(Input::Rate),
+            rate: MixedSlots::new(Input::Rate),
             phase_shift: MixedSlots::new(Input::Phase),
         }
     }
@@ -106,7 +109,7 @@ impl Inputs {
             };
 
             match input.input_type {
-                Input::Rate => result.frequency = input.clone(),
+                Input::Rate => result.rate = input.clone(),
                 Input::Phase => result.phase_shift = input.clone(),
                 _ => (),
             }
@@ -117,7 +120,7 @@ impl Inputs {
 
     fn update_amount(&mut self, input_type: Input, src_slot: usize, amount: StereoSample) {
         match input_type {
-            Input::Rate => self.frequency.update_amount(src_slot, amount),
+            Input::Rate => self.rate.update_amount(src_slot, amount),
             Input::Phase => self.phase_shift.update_amount(src_slot, amount),
             _ => (),
         }
@@ -125,14 +128,14 @@ impl Inputs {
 }
 
 struct Buffers {
-    frequency: Buffer,
+    rate: Buffer,
     phase_shift: Buffer,
 }
 
 impl Buffers {
     fn new(buffer_size: usize) -> Self {
         Self {
-            frequency: zero_buffer(buffer_size),
+            rate: zero_buffer(buffer_size),
             phase_shift: zero_buffer(buffer_size),
         }
     }
@@ -196,21 +199,19 @@ impl<L: LfoLinks> Lfo<L> {
         LfoConfig {
             id: self.id,
             steal_phase: self.params.steal_phase,
+            sync: self.params.sync,
             timebase: self.params.timebase,
-            frequency: get_smoothed_param!(self, frequency),
+            rate: get_smoothed_param!(self, rate),
             phase_shift: get_smoothed_param!(self, phase_shift),
             segments: self.params.segments.clone(),
         }
     }
 
     set_mono_param!(set_steal_phase, steal_phase, bool);
+    set_mono_param!(set_sync, sync, bool);
     set_mono_param!(set_timebase, timebase, Timebase);
 
-    set_smoothed_param!(
-        set_frequency,
-        frequency,
-        sanitize(*frequency, MIN_FREQUENCY, MAX_FREQUENCY)
-    );
+    set_smoothed_param!(set_rate, rate, sanitize(*rate, MIN_RATE, MAX_RATE));
     set_smoothed_param!(
         set_phase_shift,
         phase_shift,
@@ -260,11 +261,7 @@ impl<L: LfoLinks> Lfo<L> {
         let voice = self.voices.at_mut(channel_idx, voice_idx);
         let sample_rate = router.sample_rate();
 
-        router.param(
-            &inputs.frequency,
-            &channel.frequency,
-            &mut self.buffers.frequency,
-        );
+        router.param(&inputs.rate, &channel.rate, &mut self.buffers.rate);
         router.param(
             &inputs.phase_shift,
             &channel.phase_shift,
@@ -273,9 +270,24 @@ impl<L: LfoLinks> Lfo<L> {
 
         let samples = voice_output.output().len();
 
+        // Sync is the phase at note-on. A stolen voice keeps the phase it already has.
+        if self.params.sync
+            && !voice.phase_stolen
+            && let Some(offset) = target.triggered
+        {
+            let rate = self.buffers.rate[0];
+
+            voice.phase = self
+                .params
+                .timebase
+                .transport_phase(rate, router.timeline(), offset);
+        }
+
+        voice.phase_stolen = false;
+
         self.params.timebase.map_phase_inc(
-            &mut self.buffers.frequency[..samples],
-            router.tempo(),
+            &mut self.buffers.rate[..samples],
+            router.timeline().tempo(),
             Phase::freq_phase_mult(sample_rate),
         );
         let wave = self.wave.as_slice();
@@ -283,7 +295,7 @@ impl<L: LfoLinks> Lfo<L> {
 
         for (out, phase_inc, phase_shift) in izip!(
             voice_output.output().iter_mut(),
-            &self.buffers.frequency,
+            &self.buffers.rate,
             &self.buffers.phase_shift,
         ) {
             read = voice.phase.add_normalized(phase_shift.clamp(-1.0, 1.0));
@@ -354,15 +366,17 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
                     ..
                 } = event
                 {
-                    let phase = if let Some(replaced_voice_idx) = replaced_voice_idx
+                    let (phase, phase_stolen) = if let Some(replaced_voice_idx) = replaced_voice_idx
                         && self.params.steal_phase
                     {
-                        self.voices.at(channel_idx, *replaced_voice_idx).phase
+                        (self.voices.at(channel_idx, *replaced_voice_idx).phase, true)
                     } else {
-                        Phase::ZERO
+                        (Phase::ZERO, false)
                     };
 
-                    self.voices.at_mut(channel_idx, *voice_idx).phase = phase;
+                    let voice = self.voices.at_mut(channel_idx, *voice_idx);
+                    voice.phase = phase;
+                    voice.phase_stolen = phase_stolen;
                 }
             }
         }
@@ -372,7 +386,7 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
         while let Some(event) = self.audio_end.pop_event() {
             match event {
                 UiEvent::InputParam { input, value } => match input {
-                    Input::Rate => self.set_frequency(value),
+                    Input::Rate => self.set_rate(value),
                     Input::Phase => self.set_phase_shift(value),
                     _ => (),
                 },
@@ -381,6 +395,7 @@ impl<L: LfoLinks> SynthModule for Lfo<L> {
                     self.set_segments(segments);
                 }
                 UiEvent::StealPhase(value) => self.set_steal_phase(value),
+                UiEvent::Sync(value) => self.set_sync(value),
                 UiEvent::Timebase(timebase) => self.set_timebase(timebase),
             }
         }

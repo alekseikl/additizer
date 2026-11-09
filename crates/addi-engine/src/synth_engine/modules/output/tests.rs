@@ -1,8 +1,8 @@
 use super::{Output, SynthModule, Voice};
 use crate::synth_engine::{
-    DEFAULT_TEMPO, DataType, EngineAudioEnd, EngineConfig, EngineParams, Input, LinkConfig,
-    ModuleConfig, ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, OutputMeter, ProcessContext,
-    ProcessParams, Smp, StereoSample, SynthEngine, VoiceEvent,
+    DataType, EngineAudioEnd, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig,
+    ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, OutputMeter, ProcessContext, ProcessParams,
+    HostTimeline, Smp, StereoSample, SynthEngine, VoiceEvent,
     engine_io::UiEvent,
     from_ms,
     harmonic_editor::HarmonicEditorConfig,
@@ -88,6 +88,7 @@ fn run_process(
         meter: OutputMeter::default(),
     };
     let active: &[PlayingVoice] = &[];
+    let timeline = HostTimeline::default();
 
     {
         let mut ctx = ProcessContext {
@@ -98,7 +99,7 @@ fn run_process(
                 has_triggered_voices: false,
                 samples,
                 sample_rate: SAMPLE_RATE,
-                tempo: DEFAULT_TEMPO,
+                timeline,
                 needs_update_ui: update_ui,
                 smooth: SmoothedSampleParams::new(SAMPLE_RATE),
                 active_voices: active,
@@ -162,7 +163,7 @@ fn process_block(engine: &mut SynthEngine, samples: usize) -> (Vec<Smp>, Vec<Smp
     engine.process(
         samples,
         false,
-        DEFAULT_TEMPO,
+        0,
         &mut terminated,
         [&mut left[..], &mut right[..]],
     );

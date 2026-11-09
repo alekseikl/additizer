@@ -45,12 +45,13 @@ pub use modules::{
 };
 pub(crate) use nth_element::NthElement;
 pub use routing::{
-    AUDIO_TO_UI_RING_CAPACITY, DEFAULT_TEMPO, DataType, Expression, ExpressionEvent, Input,
-    InputId, InputSource, LevelType, MixType, ModuleId, OUTPUT_MODULE_ID, PITCH_MODULE_ID,
-    UI_TO_AUDIO_RING_CAPACITY, VoiceEvent,
+    AUDIO_TO_UI_RING_CAPACITY, DataType, Expression, ExpressionEvent, Input, InputId, InputSource,
+    LevelType, MixType, ModuleId, OUTPUT_MODULE_ID, PITCH_MODULE_ID, UI_TO_AUDIO_RING_CAPACITY,
+    VoiceEvent,
 };
 pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
+pub use transport::{HostTimeline, TransportState};
 pub use types::{ComplexSample, Smp, WideSmp};
 pub use voices::{AVAILABLE_VOICES, MAX_VOICES, NUM_CHANNELS};
 pub use voices_handler::{Note, PlayingVoice};
@@ -78,6 +79,7 @@ mod modules;
 mod nth_element;
 pub mod routing;
 mod routing_helpers;
+mod transport;
 
 pub mod routing_state;
 pub mod stub;
@@ -121,6 +123,7 @@ pub struct SynthEngine<E: EngineLinks = stub::StubLinks> {
     ui_end: Option<E::UiEnd>,
     outputs_arena: OutputsArena,
     pending_poly_modulations: Vec<PendingPolyModulation>,
+    transport_state: TransportState,
 }
 
 impl<E: EngineLinks> SynthEngine<E> {
@@ -157,6 +160,11 @@ impl<E: EngineLinks> SynthEngine<E> {
             ui_end,
             outputs_arena: OutputsArena::new(buffer_size),
             pending_poly_modulations: Vec::with_capacity(64),
+            transport_state: TransportState {
+                tempo: 120.0,
+                pos_seconds: 0.0,
+                pos_beats: 0.0,
+            },
         };
 
         engine.modules.insert(
@@ -237,6 +245,11 @@ impl<E: EngineLinks> SynthEngine<E> {
 
     fn sample_rate(&self) -> Smp {
         self.host_sample_rate * self.oversampling as Smp
+    }
+
+    /// Song position for the buffer about to be processed.
+    pub fn update_transport_state(&mut self, transport_state: TransportState) {
+        self.transport_state = transport_state;
     }
 
     pub fn get_engine_params(&self) -> EngineParams {
@@ -661,7 +674,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         &mut self,
         samples: usize,
         update_ui: bool,
-        tempo: Smp,
+        host_offset: usize,
         terminated_notes: &mut Vec<Note>,
         mut outputs: [&mut [f32]; NUM_CHANNELS],
     ) {
@@ -712,6 +725,11 @@ impl<E: EngineLinks> SynthEngine<E> {
         let samples = samples * self.oversampling;
         let sample_rate = self.sample_rate();
         let smooth = SmoothedSampleParams::new(sample_rate);
+        let timeline = HostTimeline::from_transport(
+            f64::from(sample_rate),
+            self.transport_state,
+            self.to_internal_offset(host_offset),
+        );
 
         let mut ctx = ProcessContext {
             outputs_arena: &mut self.outputs_arena,
@@ -721,7 +739,7 @@ impl<E: EngineLinks> SynthEngine<E> {
                 has_triggered_voices: !triggered_voices.is_empty(),
                 samples,
                 sample_rate,
-                tempo,
+                timeline,
                 smooth,
                 needs_update_ui: update_ui,
                 active_voices: &triggered_voices,

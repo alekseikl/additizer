@@ -469,7 +469,7 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelope<L> {
         let voice_idx = target.voice_idx;
         let (mut router, mut voice_output) = rf.for_voice(target, outputs);
         let sample_rate = router.sample_rate();
-        let tempo = router.tempo();
+        let tempo = router.timeline().tempo();
         let rate = router.scalar(&self.inputs.rate, self.channel_params[channel_idx].rate);
         let phase_step = self
             .params

@@ -36,41 +36,39 @@ impl LfoUi {
 
         ui.add_space(12.0);
 
-        let mut frequency = lfo_bridge.config().frequency;
+        let mut rate = lfo_bridge.config().rate;
         let mut phase_shift = lfo_bridge.config().phase_shift;
         let mut steal_phase = lfo_bridge.config().steal_phase;
+        let mut sync = lfo_bridge.config().sync;
         let mut timebase = lfo_bridge.config().timebase;
 
         Grid::new("lfo_grid")
-            .num_columns(4)
+            .num_columns(3)
             .spacing([8.0, 8.0])
             .show(ui, |ui| {
                 ui.label("Rate");
                 if ui
-                    .add(StereoInput::new(
-                        Input::Rate,
-                        module_id,
-                        &mut frequency,
-                        bridge,
-                    ))
+                    .add(StereoInput::new(Input::Rate, module_id, &mut rate, bridge))
                     .changed()
                 {
-                    lfo_bridge.set_param(Input::Rate, frequency);
+                    lfo_bridge.set_param(Input::Rate, rate);
                 }
 
-                ui.label("Timebase");
-                ComboBox::from_id_salt(("lfo-timebase", module_id))
-                    .selected_text(timebase.label())
-                    .show_ui(ui, |ui| {
-                        for option in Timebase::ALL {
-                            if ui
-                                .selectable_value(&mut timebase, option, option.label())
-                                .clicked()
-                            {
-                                lfo_bridge.set_timebase(option);
+                ui.horizontal(|ui| {
+                    ui.label("Timebase");
+                    ComboBox::from_id_salt(("lfo-timebase", module_id))
+                        .selected_text(timebase.label())
+                        .show_ui(ui, |ui| {
+                            for option in Timebase::ALL {
+                                if ui
+                                    .selectable_value(&mut timebase, option, option.label())
+                                    .clicked()
+                                {
+                                    lfo_bridge.set_timebase(option);
+                                }
                             }
-                        }
-                    });
+                        });
+                });
                 ui.end_row();
 
                 ui.label("Phase");
@@ -86,10 +84,24 @@ impl LfoUi {
                     lfo_bridge.set_param(Input::Phase, phase_shift);
                 }
 
-                ui.label("Steal phase");
-                if ui.add(Checkbox::without_text(&mut steal_phase)).changed() {
-                    lfo_bridge.set_steal_phase(steal_phase);
-                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(Checkbox::new(&mut steal_phase, "Steal phase"))
+                        .changed()
+                    {
+                        lfo_bridge.set_steal_phase(steal_phase);
+                    }
+
+                    ui.add_space(8.0);
+
+                    if ui
+                        .add(Checkbox::new(&mut sync, "Sync"))
+                        .on_hover_text("Sync to the host timeline")
+                        .changed()
+                    {
+                        lfo_bridge.set_sync(sync);
+                    }
+                });
                 ui.end_row();
             });
     }

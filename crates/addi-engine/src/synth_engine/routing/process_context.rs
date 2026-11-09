@@ -5,20 +5,16 @@ use crate::synth_engine::{
         AudioRouterType, ControlRouterType, OutputRouterType, OutputsArena, RouterFactory,
         SpectralRouterType,
     },
+    transport::HostTimeline,
     voices_handler::PlayingVoice,
 };
-
-/// Beats per minute used when the host does not report a tempo.
-/// A beat is a quarter note.
-pub const DEFAULT_TEMPO: Smp = 120.0;
 
 pub struct ProcessParams<'a> {
     pub trigger_stage: bool,
     pub has_triggered_voices: bool,
     pub samples: usize,
     pub sample_rate: Smp,
-    /// Beats per minute. A beat is a quarter note.
-    pub tempo: Smp,
+    pub timeline: HostTimeline,
     pub needs_update_ui: bool,
     pub smooth: SmoothedSampleParams,
     pub active_voices: &'a [PlayingVoice],

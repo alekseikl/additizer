@@ -34,7 +34,7 @@ impl<L: LfoLinks> LfoUiBridge<L> {
         }
 
         match input {
-            Input::Rate => self.config.frequency = value,
+            Input::Rate => self.config.rate = value,
             Input::Phase => self.config.phase_shift = value,
             _ => (),
         }
@@ -48,6 +48,12 @@ impl<L: LfoLinks> LfoUiBridge<L> {
     pub fn set_steal_phase(&mut self, value: bool) {
         if self.ui_end.set_steal_phase(value) {
             self.config.steal_phase = value;
+        }
+    }
+
+    pub fn set_sync(&mut self, value: bool) {
+        if self.ui_end.set_sync(value) {
+            self.config.sync = value;
         }
     }
 

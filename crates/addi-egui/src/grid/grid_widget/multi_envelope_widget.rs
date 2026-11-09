@@ -2,7 +2,9 @@ use addi_ui_backend::ui_bridge::modules::multi_envelope::MultiEnvelopeUiBridge;
 use egui::{Color32, Painter, Pos2, Rect, Stroke, Vec2, ecolor::Hsva};
 
 use crate::grid::WidgetCtx;
-use crate::segments_editor::{PLAYHEAD_OVERLAP_SQ, RIGHT_PLAYHEAD_HUE, horizontal_span, paint_fill};
+use crate::segments_editor::{
+    PLAYHEAD_OVERLAP_SQ, RIGHT_PLAYHEAD_HUE, horizontal_span, paint_fill,
+};
 use crate::utils::{FillTexture, hsva};
 use addi_dsp::Smp;
 use addi_dsp::segments::time_segments::TimeSegments;
@@ -108,7 +110,13 @@ impl MultiEnvelopeWidget {
             .map(|point| Self::time_pos(rect, point[0], point[1], span))
             .collect::<Vec<_>>();
 
-        paint_fill(painter, rect, self.fill.id(ui.ctx()), &screen, rect.bottom());
+        paint_fill(
+            painter,
+            rect,
+            self.fill.id(ui.ctx()),
+            &screen,
+            rect.bottom(),
+        );
 
         if let Some(band) = Self::loop_band(rect, segments, span) {
             painter.rect_filled(band, 0.0, LOOP_FILL);

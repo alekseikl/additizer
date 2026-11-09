@@ -73,7 +73,7 @@ fn process_block_with_ui(
     engine.process(
         samples,
         update_ui,
-        DEFAULT_TEMPO,
+        0,
         &mut terminated,
         [&mut left[..], &mut right[..]],
     );
@@ -1250,7 +1250,7 @@ fn process_reports_terminated_notes() {
     engine.process(
         64,
         false,
-        DEFAULT_TEMPO,
+        0,
         &mut terminated,
         [&mut left[..], &mut right[..]],
     );

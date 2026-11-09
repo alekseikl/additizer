@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::synth_engine::{HostTimeline, phase::Phase};
+
 fn phase_inc(timebase: Timebase, rate: Smp, tempo: Smp, phase_scale: Smp) -> Smp {
     let mut rates = [rate];
 
@@ -160,5 +162,91 @@ fn dotted_is_slower_and_triplets_are_faster() {
 
         assert_hz(dotted, 1.0, tempo, plain_hz * 2.0 / 3.0);
         assert_hz(triplet, 1.0, tempo, plain_hz * 1.5);
+    }
+}
+
+fn assert_phase(
+    timebase: Timebase,
+    rate: Smp,
+    timeline: &HostTimeline,
+    offset: usize,
+    expected: Smp,
+) {
+    let got = timebase
+        .transport_phase(rate, timeline, offset)
+        .normalized();
+    let delta = (got - expected).abs();
+    let error = delta.min(1.0 - delta);
+
+    assert!(
+        error < 1e-5,
+        "{timebase:?} rate {rate} offset {offset}: {got} != {expected}"
+    );
+}
+
+#[test]
+fn transport_phase_follows_beats_and_seconds() {
+    // 120 bpm at 48 kHz, so one beat is half a second and 24_000 samples.
+    let beats = |beats: f64| HostTimeline::new(48_000.0, 120.0, beats * 0.5, beats);
+    let seconds = |seconds: f64| HostTimeline::new(48_000.0, 120.0, seconds, seconds * 2.0);
+
+    assert_phase(Timebase::Quarter, 1.0, &beats(0.0), 0, 0.0);
+    assert_phase(Timebase::Quarter, 1.0, &beats(0.25), 0, 0.25);
+    assert_phase(Timebase::Quarter, 1.0, &beats(1.0), 0, 0.0);
+    assert_phase(Timebase::Quarter, 2.0, &beats(0.25), 0, 0.125);
+    assert_phase(Timebase::Quarter, 1.0, &beats(-0.25), 0, 0.75);
+    assert_phase(Timebase::Eighth, 1.0, &beats(0.25), 0, 0.5);
+    assert_phase(Timebase::Bar, 1.0, &beats(1.0), 0, 0.25);
+
+    assert_phase(Timebase::Hertz, 2.0, &seconds(0.25), 0, 0.5);
+    assert_phase(Timebase::Hertz, -1.0, &seconds(0.25), 0, 0.75);
+    assert_phase(Timebase::Kilohertz, 1.0, &seconds(0.0005), 0, 0.5);
+    assert_phase(Timebase::Hold, 4.0, &seconds(3.0), 0, 0.0);
+    assert_phase(Timebase::Quarter, 1.0, &HostTimeline::default(), 0, 0.0);
+
+    // One beat at 120 bpm is 24_000 samples. A quarter cycle is one beat.
+    assert_phase(Timebase::Quarter, 1.0, &beats(0.0), 24_000, 0.0);
+    assert_phase(Timebase::Quarter, 1.0, &beats(0.0), 12_000, 0.5);
+
+    // The helpers keep seconds and beats matched at 120 bpm.
+    assert_phase(Timebase::Quarter, 1.0, &seconds(0.25), 0, 0.5);
+    assert_phase(Timebase::Hertz, 1.0, &beats(1.0), 0, 0.5);
+}
+
+#[test]
+fn steady_rate_matches_integrated_increments() {
+    let sample_rate = 48_000.0;
+    let tempo = 120.0;
+    let steps = 4_800;
+    let timeline = HostTimeline::new(f64::from(sample_rate), f64::from(tempo), 0.0, 0.0);
+
+    for timebase in [
+        Timebase::Hertz,
+        Timebase::Kilohertz,
+        Timebase::Quarter,
+        Timebase::Eighth,
+        Timebase::Hold,
+    ] {
+        for rate in [1.0, 2.5, 0.05] {
+            let mut rates = [rate];
+
+            timebase.map_phase_inc(&mut rates, tempo, Phase::freq_phase_mult(sample_rate));
+
+            let mut phase = Phase::ZERO;
+
+            for _ in 0..steps {
+                phase += rates[0];
+            }
+
+            let synced = timebase.transport_phase(rate, &timeline, steps);
+            let delta = (phase.normalized() - synced.normalized()).abs();
+            let error = delta.min(1.0 - delta);
+
+            assert!(
+                error < 1e-4,
+                "{timebase:?} rate {rate}: integrated {} vs {synced:?}, error {error}",
+                phase.normalized()
+            );
+        }
     }
 }
