@@ -98,6 +98,10 @@ mod tests;
 /// first sample of the next frame there.
 pub const CONTROL_EXT: usize = 1;
 
+/// Host rate at which the internal block is `BASE_BLOCK_SIZE` samples.
+const BASE_SAMPLE_RATE: Smp = 48_000.0;
+const BASE_BLOCK_SIZE: usize = 128;
+
 type ModulesMap<E> = FxHashMap<ModuleId, ModuleHandle<E>>;
 pub type RoutingMap = FxHashMap<InputId, InputSource>;
 
@@ -128,16 +132,17 @@ pub struct SynthEngine<E: EngineLinks = stub::StubLinks> {
 
 impl<E: EngineLinks> SynthEngine<E> {
     pub fn try_new(cfg: &EngineConfig, host_sample_rate: Smp, oversampling: bool) -> Option<Self> {
+        assert!(
+            host_sample_rate.is_finite() && host_sample_rate > 0.0,
+            "host sample rate must be positive and finite, got {host_sample_rate}"
+        );
+
         let (audio_end, ui_end) = E::create_link_pair();
 
-        const BASE_SAMPLE_RATE: Smp = 48_000.0;
-        const BASE_BLOCK_SIZE: usize = 128;
-        let power = (host_sample_rate / BASE_SAMPLE_RATE).log2();
-        let power = if power.is_finite() {
-            power.round().clamp(0.0, 2.0) as u32
-        } else {
-            0
-        };
+        let power = (host_sample_rate / BASE_SAMPLE_RATE)
+            .log2()
+            .round()
+            .clamp(0.0, 2.0) as u32;
         let oversampling = if power == 0 && oversampling { 2 } else { 1 };
         let block_size = BASE_BLOCK_SIZE << power;
         let buffer_size = block_size * oversampling + CONTROL_EXT;
