@@ -14,7 +14,7 @@ fn get_scalar_reads_control_output() {
     let src_slot = arena.allocate_samples_slot(true);
 
     assert_eq!(
-        arena.get_scalar(&[slot(src_slot)], 0, 0, Some(0)),
+        arena.get_scalar(&[slot(src_slot)], 0, 0, Some(0), 8),
         Some(0.0)
     );
 }
@@ -25,7 +25,7 @@ fn get_scalar_panics_for_audio_output() {
     let mut arena = OutputsArena::new(8);
     let src_slot = arena.allocate_samples_slot(false);
 
-    let _ = arena.get_scalar(&[slot(src_slot)], 0, 0, Some(0));
+    let _ = arena.get_scalar(&[slot(src_slot)], 0, 0, Some(0), 8);
 }
 
 #[test]
@@ -36,7 +36,7 @@ fn reused_slot_updates_rate() {
 
     let src_slot = arena.allocate_samples_slot(true);
     assert_eq!(
-        arena.get_scalar(&[slot(src_slot)], 0, 0, Some(0)),
+        arena.get_scalar(&[slot(src_slot)], 0, 0, Some(0), 8),
         Some(0.0)
     );
 }

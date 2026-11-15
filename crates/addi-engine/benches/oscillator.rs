@@ -8,8 +8,8 @@
 use std::hint::black_box;
 
 use addi_engine::{
-    ComplexSample, NUM_CHANNELS, Oscillator, PlayingVoice, SPECTRAL_BUFFER_SIZE,
-    HostTimeline, SmoothedSampleParams, Smp, SpectralBuffer, StereoSample, note_to_pitch,
+    ComplexSample, HostTimeline, NUM_CHANNELS, Oscillator, PlayingVoice, SPECTRAL_BUFFER_SIZE,
+    SmoothedSampleParams, Smp, SpectralBuffer, StereoSample, note_to_pitch,
     oscillator::{MAX_UNISON_VOICES, OscillatorConfig},
     routing::{Input, InputSlots, OutputsArena, ProcessContext, ProcessParams},
     stub::AudioEnd,
@@ -27,7 +27,7 @@ use aux::{Control, Spectral};
 
 /// 256-sample block at 48 kHz.
 const BLOCK: usize = 256;
-const BUFFER_SIZE: usize = BLOCK + 1;
+const BUFFER_SIZE: usize = BLOCK;
 const SAMPLE_RATE: Smp = 48_000.0;
 
 /// C4. A one-semitone ramp from here stays on the half table at 48 kHz.
@@ -169,9 +169,6 @@ impl Rig {
     }
 
     /// Writes a one-semitone ramp starting at `note` into every active voice.
-    ///
-    /// Control output is one sample ahead, so sample 0 stays at the previous
-    /// ramp's end until the next pass.
     fn set_pitch_ramp(&mut self, note: u8) {
         for voice in &mut self.voices {
             *voice = PlayingVoice::new(voice.voice_idx() as u8, note);
@@ -184,10 +181,9 @@ impl Rig {
         self.render_pitch();
     }
 
-    /// Two control passes fill the whole block with the ramp. The trigger pass
-    /// latches that ramp's table size, and the oscillator pass installs the wave.
+    /// The control pass fills the block. The trigger pass latches that ramp's
+    /// table size, and the oscillator pass installs the wave.
     fn settle(&mut self, note: u8) {
-        self.set_pitch_ramp(note);
         self.set_pitch_ramp(note);
         self.process_trigger();
         self.process();

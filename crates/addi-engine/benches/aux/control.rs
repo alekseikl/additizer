@@ -8,7 +8,7 @@ use super::fill::Fill;
 
 /// Writes a fixed control buffer for every active voice.
 ///
-/// The router stores this one sample ahead, the same way a control module does.
+/// The router stores this in line with the audio block, the same way a control module does.
 pub struct Control {
     id: ModuleId,
     output_slot: usize,

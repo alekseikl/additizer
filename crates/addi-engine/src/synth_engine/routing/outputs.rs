@@ -5,14 +5,12 @@ use crate::synth_engine::{
 
 pub struct SamplesOutput {
     pub(super) buffer: Buffer,
-    pub(super) next_frame_sample: Smp,
 }
 
 impl SamplesOutput {
     pub(crate) fn new(len: usize) -> Self {
         Self {
             buffer: zero_buffer(len),
-            next_frame_sample: 0.0,
         }
     }
 
@@ -26,12 +24,12 @@ impl SamplesOutput {
         &mut self.buffer
     }
 
-    pub(super) fn scalar(&self, this_frame: Option<usize>) -> Smp {
-        if let Some(offset) = this_frame {
-            self.buffer[offset]
-        } else {
-            self.next_frame_sample
-        }
+    /// `Some(offset)` is that sample. `None` is the last sample of the block,
+    /// which spectral modules use as the next frame.
+    pub(super) fn scalar(&self, this_frame: Option<usize>, block_samples: usize) -> Smp {
+        let index = this_frame.unwrap_or(block_samples - 1);
+
+        self.buffer[index]
     }
 }
 

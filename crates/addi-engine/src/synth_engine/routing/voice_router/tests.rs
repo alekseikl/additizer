@@ -4,8 +4,8 @@ use addi_dsp::SmoothedSample;
 
 use super::{OutputRouterType, OutputVoiceState, VoiceLane, VoiceOutput, VoicesBlock};
 use crate::synth_engine::{
-    CONTROL_EXT, ComplexSample, DataType, EngineAudioEnd, Input, ModuleId, NUM_CHANNELS,
-    SPECTRAL_BUFFER_SIZE, HostTimeline, SmoothedSampleParams, Smp, StereoSample,
+    ComplexSample, DataType, EngineAudioEnd, HostTimeline, Input, ModuleId, NUM_CHANNELS,
+    SPECTRAL_BUFFER_SIZE, SmoothedSampleParams, Smp, StereoSample,
     buffer::{VoicesLayout, zero_buffer},
     engine_io::{UiEvent, VoicesTelemetry},
     routing::{
@@ -219,18 +219,6 @@ impl Rig {
 
     fn sample_buf(&mut self, slot: usize, channel: usize, voice: usize) -> &mut [Smp] {
         self.arena.samples[slot].at_mut(channel, voice).buffer_mut()
-    }
-
-    fn set_next(&mut self, slot: usize, channel: usize, voice: usize, value: Smp) {
-        self.arena.samples[slot]
-            .at_mut(channel, voice)
-            .next_frame_sample = value;
-    }
-
-    fn next(&self, slot: usize, channel: usize, voice: usize) -> Smp {
-        self.arena.samples[slot]
-            .at(channel, voice)
-            .next_frame_sample
     }
 
     fn fill_samples(&mut self, slot: usize, channel: usize, voice: usize, value: Smp) {
@@ -710,7 +698,6 @@ fn for_voice_clears_audio_before_the_trigger() {
     let mut rig = Rig::new(vec![]);
     let slot = rig.alloc_audio();
     rig.fill_samples(slot, 0, 0, 4.0);
-    rig.set_next(slot, 0, 0, 5.0);
     let voice = target(0, 0, Some(3), true);
 
     rig.with_audio_slot(slot, |ctx, outputs| {
@@ -732,7 +719,6 @@ fn for_voice_clears_audio_before_the_trigger() {
     assert_eq!(&buffer[..3], &[0.0; 3]);
     assert_eq!(&buffer[3..SAMPLES], &[0.25; SAMPLES - 3]);
     assert_eq!(buffer[SAMPLES], 4.0);
-    assert_eq!(rig.next(slot, 0, 0), 5.0);
 }
 
 #[test]
@@ -896,13 +882,14 @@ fn audio_param_reports_modulation_for_the_last_voice() {
 }
 
 #[test]
-fn audio_scalar_reads_this_frame_or_the_held_sample() {
+fn audio_scalar_reads_this_frame_or_the_last_sample() {
     let mut rig = Rig::new(vec![]);
     let slot = rig.alloc_audio();
     let input = rig.alloc_control();
     rig.fill_samples(input, 0, 0, 100.0);
-    rig.sample_buf(input, 0, 0)[2] = 3.0;
-    rig.set_next(input, 0, 0, 8.0);
+    let input_buf = rig.sample_buf(input, 0, 0);
+    input_buf[2] = 3.0;
+    input_buf[SAMPLES - 1] = 8.0;
     let sources = mixed([source(input, StereoSample::ONE)]);
     let voice = target(0, 0, Some(2), false);
 
@@ -1100,12 +1087,11 @@ fn control_for_voices_panics_when_the_slot_is_freed() {
 }
 
 #[test]
-fn control_for_voice_seeds_an_untriggered_block_and_clears_a_trigger_prefix() {
+fn control_for_voice_keeps_an_untriggered_block_and_clears_a_trigger_prefix() {
     let mut rig = Rig::new(vec![]);
     let slot = rig.alloc_control();
 
     rig.fill_samples(slot, 0, 0, 4.0);
-    rig.set_next(slot, 0, 0, 9.0);
     let steady = target(0, 0, None, false);
     rig.with_control_slot(slot, |ctx, outputs| {
         let mut factory = ctx.control(MODULE_ID, slot);
@@ -1113,16 +1099,14 @@ fn control_for_voice_seeds_an_untriggered_block_and_clears_a_trigger_prefix() {
 
         assert!(!router.triggered());
         assert_eq!(router.block_to_voice_offset(0), 0);
-        assert_eq!(router.block_to_voice_offset(1), 0);
-        assert_eq!(router.block_to_voice_offset(4), 3);
+        assert_eq!(router.block_to_voice_offset(1), 1);
+        assert_eq!(router.block_to_voice_offset(4), 4);
         assert_eq!(rendered.output().len(), SAMPLES);
-        assert_eq!(rendered.output()[0], 4.0);
+        assert_eq!(rendered.output(), &[4.0; SAMPLES]);
     });
-    assert_eq!(rig.arena.samples[slot].at(0, 0).buffer()[0], 9.0);
-    assert_eq!(rig.arena.samples[slot].at(0, 0).buffer()[1], 4.0);
+    assert_eq!(rig.arena.samples[slot].at(0, 0).buffer()[0], 4.0);
 
     rig.fill_samples(slot, 0, 0, 4.0);
-    rig.set_next(slot, 0, 0, 9.0);
     let at_start = target(0, 0, Some(0), false);
     rig.with_control_slot(slot, |ctx, outputs| {
         let mut factory = ctx.control(MODULE_ID, slot);
@@ -1130,8 +1114,8 @@ fn control_for_voice_seeds_an_untriggered_block_and_clears_a_trigger_prefix() {
 
         assert!(router.triggered());
         assert_eq!(router.block_to_voice_offset(0), 0);
-        assert_eq!(rendered.output().len(), SAMPLES + CONTROL_EXT);
-        assert_eq!(rendered.output()[0], 4.0);
+        assert_eq!(rendered.output().len(), SAMPLES);
+        assert_eq!(rendered.output(), &[4.0; SAMPLES]);
     });
     assert_eq!(rig.arena.samples[slot].at(0, 0).buffer()[0], 4.0);
 
@@ -1143,17 +1127,14 @@ fn control_for_voice_seeds_an_untriggered_block_and_clears_a_trigger_prefix() {
 
         assert_eq!(router.block_to_voice_offset(5), 2);
         assert_eq!(router.block_to_voice_offset(1), 0);
-        assert_eq!(rendered.output().len(), SAMPLES - 3 + CONTROL_EXT);
+        assert_eq!(rendered.output().len(), SAMPLES - 3);
         rendered.output().fill(0.25);
     });
 
     let buffer = rig.arena.samples[slot].at(0, 0).buffer();
     assert_eq!(&buffer[..3], &[0.0; 3]);
-    assert_eq!(
-        &buffer[3..SAMPLES + CONTROL_EXT],
-        &[0.25; SAMPLES - 3 + CONTROL_EXT]
-    );
-    assert_eq!(rig.next(slot, 0, 0), 0.25);
+    assert_eq!(&buffer[3..SAMPLES], &[0.25; SAMPLES - 3]);
+    assert_eq!(buffer[SAMPLES], 4.0);
 }
 
 #[test]
@@ -1177,7 +1158,7 @@ fn control_param_applies_from_the_trigger_offset() {
     });
     assert_eq!(
         &untriggered[..SAMPLES],
-        &(1..SAMPLES + 1)
+        &(0..SAMPLES)
             .map(|index| 10.0 + index as Smp)
             .collect::<Vec<_>>()
     );
@@ -1192,7 +1173,7 @@ fn control_param_applies_from_the_trigger_offset() {
         let (mut router, _) = factory.for_voice(&at_start, outputs);
         router.param(&mixed([]), &moving, &mut smoothed);
     });
-    let active = SAMPLES + CONTROL_EXT;
+    let active = SAMPLES;
     let mut expected = vec![0.0; active];
     moving.smoothed_buff(&mut expected, &SmoothedSampleParams::new(SAMPLE_RATE));
     assert_eq!(&smoothed[..active], expected.as_slice());
@@ -1217,10 +1198,7 @@ fn control_param_reports_modulation_for_the_last_voice() {
         router.param(&sources, &param, &mut buff);
     });
 
-    assert_eq!(
-        &buff[..SAMPLES + CONTROL_EXT],
-        &[12.0; SAMPLES + CONTROL_EXT]
-    );
+    assert_eq!(&buff[..SAMPLES], &[12.0; SAMPLES]);
     assert_eq!(rig.end.updates.len(), 1);
     assert_update(
         &rig.end.updates[0],
@@ -1240,7 +1218,6 @@ fn control_scalar_reads_the_sample_at_its_offset() {
     buffer[0] = 2.0;
     buffer[1] = 3.0;
     buffer[4] = 6.0;
-    rig.set_next(input, 0, 0, 8.0);
     let sources = mixed([source(input, StereoSample::ONE)]);
 
     let read = |rig: &mut Rig, triggered: Option<usize>| -> Smp {
@@ -1252,18 +1229,17 @@ fn control_scalar_reads_the_sample_at_its_offset() {
         })
     };
 
-    assert_eq!(read(&mut rig, None), 3.0);
+    assert_eq!(read(&mut rig, None), 2.0);
     assert_eq!(read(&mut rig, Some(0)), 2.0);
     assert_eq!(read(&mut rig, Some(4)), 6.0);
 }
 
 #[test]
-fn external_control_is_block_aligned_and_holds_its_last_sample() {
+fn external_control_copies_the_block_and_stops_at_its_end() {
     let mut rig = Rig::new(vec![]);
     let slot = rig.alloc_control();
     rig.fill_samples(slot, 0, 0, 0.5);
-    rig.set_next(slot, 0, 0, 0.5);
-    let input = [1.0, 2.0, 3.0, 4.0];
+    let input = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
 
     let steady = target(0, 0, None, false);
     rig.with_control_slot(slot, |ctx, outputs| {
@@ -1273,10 +1249,8 @@ fn external_control_is_block_aligned_and_holds_its_last_sample() {
     });
 
     let buffer = rig.arena.samples[slot].at(0, 0).buffer();
-    assert_eq!(&buffer[..4], &input);
-    assert_eq!(buffer[4], 4.0);
-    assert_eq!(buffer[5], 0.5);
-    assert_eq!(rig.next(slot, 0, 0), 0.5);
+    assert_eq!(&buffer[..SAMPLES], &input);
+    assert_eq!(buffer[SAMPLES], 0.5);
 }
 
 #[test]
@@ -1296,8 +1270,7 @@ fn triggered_external_control_starts_at_the_trigger() {
     let buffer = rig.arena.samples[slot].at(0, 0).buffer();
     assert_eq!(&buffer[..2], &[0.0; 2]);
     assert_eq!(&buffer[2..8], &[7.0, 6.0, 5.0, 4.0, 3.0, 2.0]);
-    assert_eq!(buffer[8], 2.0);
-    assert_eq!(rig.next(slot, 0, 0), 2.0);
+    assert_eq!(buffer[8], 0.5);
 }
 
 #[test]
@@ -1415,7 +1388,7 @@ fn spectral_scalar_follows_the_trigger_stage() {
     let buffer = rig.sample_buf(input, 0, 0);
     buffer.fill(0.0);
     buffer[2] = 3.0;
-    rig.set_next(input, 0, 0, 8.0);
+    buffer[SAMPLES - 1] = 8.0;
     let sources = mixed([source(input, StereoSample::ONE)]);
 
     let read = |rig: &mut Rig, stage: bool, triggered: Option<usize>| -> (Option<Smp>, Smp) {
@@ -1482,7 +1455,6 @@ fn dropping_an_output_voice_leaves_samples_in_place() {
     let mut rig = Rig::new(vec![]);
     let slot = rig.alloc_audio();
     rig.fill_samples(slot, 0, 0, 3.0);
-    rig.set_next(slot, 0, 0, 6.0);
 
     rig.with_audio_slot(slot, |_ctx, outputs| {
         let voice = target(0, 0, Some(2), true);
@@ -1495,5 +1467,4 @@ fn dropping_an_output_voice_leaves_samples_in_place() {
     });
 
     assert_eq!(rig.arena.samples[slot].at(0, 0).buffer()[0], 3.0);
-    assert_eq!(rig.next(slot, 0, 0), 6.0);
 }

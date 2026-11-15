@@ -2,7 +2,7 @@ use addi_dsp::segments::rel_segments::{RelSegments, SegPoint};
 
 use super::*;
 use crate::synth_engine::{
-    CONTROL_EXT, HostTimeline, Note, SmoothedSampleParams, VoiceEvent,
+    HostTimeline, Note, SmoothedSampleParams, VoiceEvent,
     routing::{OutputsArena, ProcessContext, ProcessParams},
     stub::AudioEnd,
     synth_module::SynthModule,
@@ -216,7 +216,7 @@ fn triggered_at(index: usize, offset: usize) -> PlayingVoice {
 }
 
 fn steps(block: usize, triggered: Option<usize>) -> usize {
-    block - triggered.unwrap_or(1) + CONTROL_EXT
+    block - triggered.unwrap_or(0)
 }
 
 fn advance(mut phase: Phase, count: usize) -> Phase {

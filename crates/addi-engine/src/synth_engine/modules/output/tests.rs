@@ -1,8 +1,8 @@
 use super::{Output, SynthModule, Voice};
 use crate::synth_engine::{
-    DataType, EngineAudioEnd, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig,
-    ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, OutputMeter, ProcessContext, ProcessParams,
-    HostTimeline, Smp, StereoSample, SynthEngine, VoiceEvent,
+    DataType, EngineAudioEnd, EngineConfig, EngineParams, HostTimeline, Input, LinkConfig,
+    ModuleConfig, ModuleId, NUM_CHANNELS, Note, OUTPUT_MODULE_ID, OutputMeter, ProcessContext,
+    ProcessParams, Smp, StereoSample, SynthEngine, VoiceEvent,
     engine_io::UiEvent,
     from_ms,
     harmonic_editor::HarmonicEditorConfig,

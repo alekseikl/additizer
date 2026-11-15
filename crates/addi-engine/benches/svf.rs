@@ -27,7 +27,7 @@ use aux::Audio;
 
 /// 48 kHz host block.
 const BLOCK: usize = 128;
-const BUFFER_SIZE: usize = BLOCK + 1;
+const BUFFER_SIZE: usize = BLOCK;
 
 const SAMPLE_RATE: Smp = 48_000.0;
 

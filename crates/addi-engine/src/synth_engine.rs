@@ -94,10 +94,6 @@ pub use utils::{MAX_LEVEL_DB, MIN_LEVEL_DB};
 #[cfg(test)]
 mod tests;
 
-/// One sample past the internal block. Control-rate signals store the
-/// first sample of the next frame there.
-pub const CONTROL_EXT: usize = 1;
-
 /// Host rate at which the internal block is `BASE_BLOCK_SIZE` samples.
 const BASE_SAMPLE_RATE: Smp = 48_000.0;
 const BASE_BLOCK_SIZE: usize = 128;
@@ -145,7 +141,7 @@ impl<E: EngineLinks> SynthEngine<E> {
             .clamp(0.0, 2.0) as u32;
         let oversampling = if power == 0 && oversampling { 2 } else { 1 };
         let block_size = BASE_BLOCK_SIZE << power;
-        let buffer_size = block_size * oversampling + CONTROL_EXT;
+        let buffer_size = block_size * oversampling;
 
         let mut engine = Self {
             next_id: 1,

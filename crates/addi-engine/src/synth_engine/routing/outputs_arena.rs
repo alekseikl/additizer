@@ -171,11 +171,12 @@ impl OutputsArena {
         channel_idx: usize,
         voice_idx: usize,
         this_frame: Option<usize>,
+        block_samples: usize,
     ) -> Smp {
         self.assert_control_rate(slot);
         self.samples[slot]
             .at(channel_idx, voice_idx)
-            .scalar(this_frame)
+            .scalar(this_frame, block_samples)
     }
 
     pub(super) fn get_scalar(
@@ -184,6 +185,7 @@ impl OutputsArena {
         channel_idx: usize,
         voice_idx: usize,
         this_frame: Option<usize>,
+        block_samples: usize,
     ) -> Option<Smp> {
         if slots.is_empty() {
             return None;
@@ -192,8 +194,13 @@ impl OutputsArena {
         let mut result: Smp = 0.0;
 
         for slot in slots {
-            result += self.control_scalar(slot.src_slot, channel_idx, voice_idx, this_frame)
-                * slot.amount[channel_idx];
+            result += self.control_scalar(
+                slot.src_slot,
+                channel_idx,
+                voice_idx,
+                this_frame,
+                block_samples,
+            ) * slot.amount[channel_idx];
         }
 
         Some(result)

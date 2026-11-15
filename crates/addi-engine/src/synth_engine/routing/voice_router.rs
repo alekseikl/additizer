@@ -1,5 +1,5 @@
 use crate::synth_engine::{
-    Buffer, CONTROL_EXT, ComplexSample, HostTimeline, ModuleId, NUM_CHANNELS, ProcessParams, Smp,
+    Buffer, ComplexSample, HostTimeline, ModuleId, NUM_CHANNELS, ProcessParams, Smp,
     buffer::VoicesLayout,
     engine_io::EngineAudioEnd,
     routing::{
@@ -66,14 +66,11 @@ impl RouterDataType for ControlRouterType {
     type VoiceState = ControlVoiceState;
 
     fn advance(
-        outputs: &mut VoicesLayout<Self::OutputType>,
-        target: &VoiceTarget,
+        _outputs: &mut VoicesLayout<Self::OutputType>,
+        _target: &VoiceTarget,
         _state: Self::VoiceState,
-        samples: usize,
+        _samples: usize,
     ) {
-        let output = outputs.at_mut(target.channel_idx, target.voice_idx);
-
-        output.next_frame_sample = output.buffer[samples];
     }
 }
 
@@ -378,19 +375,16 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, ControlRouterType, A> {
     where
         'f: 'voice,
     {
-        let triggered = target.triggered;
         let samples = self.params().samples;
-        let output = outputs.at_mut(target.channel_idx, target.voice_idx);
-        // Control runs 1 sample ahead: no trigger → offset 1 (seed buffer[0]);
-        // Some(0) is a real note-on at sample 0, distinct from the non-trigger case.
+        // Control is sample-aligned with audio. A spectral reader treats the
+        // last sample of this block as the next frame.
         let state = ControlVoiceState {
-            offset: triggered.unwrap_or(1),
+            offset: target.triggered.unwrap_or(0),
         };
 
-        if let Some(offset) = triggered {
-            output.buffer[..offset.min(samples)].fill(0.0);
-        } else {
-            output.buffer[0] = output.next_frame_sample;
+        if let Some(offset) = target.triggered {
+            outputs.at_mut(target.channel_idx, target.voice_idx).buffer[..offset.min(samples)]
+                .fill(0.0);
         }
 
         (
@@ -448,8 +442,8 @@ impl<'f, 'c, A: EngineAudioEnd> RouterFactory<'f, 'c, SpectralRouterType, A> {
         'f: 'voice,
     {
         let samples = self.params().samples;
-        // Spectral is block-rate: trigger_stage selects this-frame vs next-frame
-        // control scalars; sample offset does not slice the spectrum.
+        // Spectral is block-rate. The trigger stage reads the note-on sample;
+        // otherwise the last sample of the block is the next frame.
         let state = SpectralVoiceState;
 
         (
@@ -532,6 +526,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D
             self.target.channel_idx,
             self.target.voice_idx,
             this_frame,
+            self.factory.ctx.params.samples,
         ) {
             let value = param + modulated_amount;
 
@@ -649,7 +644,7 @@ impl<'v> VoiceOutput<'v, AudioRouterType> {
 
 impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, ControlRouterType, A> {
     fn samples(&self) -> usize {
-        self.factory.ctx.params.samples - self.state.offset + CONTROL_EXT
+        self.factory.ctx.params.samples - self.state.offset
     }
 
     pub fn triggered(&self) -> bool {
@@ -696,14 +691,13 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, ControlRouterType, A
         self.scalar_param_impl(input, param, Some(self.state.offset))
     }
 
-    /// Direct control source, including the one-sample lookahead.
+    /// Direct control source, aligned with the audio block.
     pub fn direct(&self, slot: Option<usize>) -> &[Smp] {
         let ctx = &self.factory.ctx;
-        let end = ctx.params.samples + CONTROL_EXT;
 
         &ctx.outputs_arena
             .get_buff(slot, self.target.channel_idx, self.target.voice_idx)
-            .unwrap_or(ctx.outputs_arena.zeroes())[self.state.offset..end]
+            .unwrap_or(ctx.outputs_arena.zeroes())[self.state.offset..ctx.params.samples]
     }
 }
 
@@ -712,27 +706,18 @@ impl<'v> VoiceOutput<'v, ControlRouterType> {
         &mut self
             .outputs
             .at_mut(self.target.channel_idx, self.target.voice_idx)
-            .buffer[self.state.offset..self.samples + CONTROL_EXT]
+            .buffer[self.state.offset..self.samples]
     }
 
-    /// External control sources are not written 1 sample ahead.
-    /// in_buff is aligned with processing block.
+    /// Copies a block-aligned external buffer. Samples before the trigger stay
+    /// at the silence `for_voice` already wrote.
     pub fn fill_with_ext_control(&mut self, in_buff: &[Smp]) {
-        let offset = if self.target.triggered.is_some() {
-            self.state.offset
-        } else {
-            0
-        };
+        let offset = self.state.offset;
         let in_buff = &in_buff[offset.min(in_buff.len())..];
-        let len = in_buff.len();
-        let last = in_buff[len - 1];
-        let output = self
-            .outputs
-            .at_mut(self.target.channel_idx, self.target.voice_idx);
+        let output = self.output();
+        let len = in_buff.len().min(output.len());
 
-        output.buffer[offset..offset + len].copy_from_slice(in_buff);
-        output.buffer[offset + len] = last;
-        output.next_frame_sample = last;
+        output[..len].copy_from_slice(&in_buff[..len]);
     }
 }
 
@@ -751,6 +736,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd> VoiceRouter<'v, 'f, 'c, SpectralRouterType, 
                 self.target.channel_idx,
                 self.target.voice_idx,
                 this_frame,
+                self.factory.params().samples,
             )
         })
     }
