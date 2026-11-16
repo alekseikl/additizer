@@ -13,8 +13,11 @@ addi-egui = { path = "../addi-egui" }
 addi-engine = { workspace = true }
 addi-ui-backend = { workspace = true }
 egui = { workspace = true }
-nice-plug = { version = "0.4.2", features = ["standalone", "tracing-subscriber"] }
-nice-plug-egui = { version = "0.6.0", default-features = false, features = [
+nice-plug = { path = "../../third_party/nice-plug/crates/nice-plug", features = [
+    "standalone",
+    "tracing-subscriber",
+] }
+nice-plug-egui = { path = "../../third_party/nice-plug/crates/nice-plug-egui", default-features = false, features = [
     "opengl",
 ] }
 parking_lot = { workspace = true, features = ["serde"] }

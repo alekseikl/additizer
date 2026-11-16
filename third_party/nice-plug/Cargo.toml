@@ -1,0 +1,45 @@
+# Vendored from https://codeberg.org/RustAudio/nice-plug.git
+# commit 93940e8d43c13c909510db089235f3045b02b6a4
+# (nice-plug 0.4.2, nice-plug-egui 0.6.0).
+#
+# Nested workspace so these crates keep their upstream manifests, including the
+# ISC license. Only the crates required to build nice-plug and nice-plug-egui
+# are included. The additizer workspace depends on them by path.
+
+[workspace]
+resolver = "3"
+members = [
+  "crates/nice-plug",
+  "crates/nice-plug-core",
+  "crates/nice-plug-derive",
+  "crates/nice-log",
+  "crates/nice-plug-egui",
+]
+default-members = ["crates/nice-plug"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.88"
+authors = [
+  "Robbert van der Helm <mail@robbertvanderhelm.nl>",
+  "Billy Messenger <billydm@noreply.codeberg.org>",
+]
+license = "ISC"
+repository = "https://codeberg.org/RustAudio/nice-plug"
+
+[workspace.dependencies]
+anyhow = "1.0.104"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+atomic_float = "1.1"
+atomic_refcell = "0.1"
+bitflags = "2"
+raw-window-handle = "0.6"
+approx = "0.5.1"
+crossbeam = "0.8"
+rtrb = "0.4.0"
+parking_lot = "0.12"
+thiserror = "2"
+windows = ">=0.59, <=0.62"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["smallvec", "fmt", "tracing-log", "std"] }

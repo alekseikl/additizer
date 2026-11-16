@@ -7,6 +7,8 @@ members = [
     "crates/addi-ui-backend",
     "crates/addi-egui",
 ]
+# Vendored nice-plug is its own workspace (ISC license, upstream manifests).
+exclude = ["third_party/nice-plug"]
 default-members = ["crates/additizer"]
 
 [workspace.package]
