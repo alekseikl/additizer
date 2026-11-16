@@ -100,8 +100,8 @@ impl NoteExpressionController {
     }
 
     /// Translate the note expression value event into an internal nice-plug event, if we handle the
-    /// expression type from the note expression value event. The timing is provided here because we
-    /// may be splitting buffers on inter-buffer parameter changes.
+    /// expression type from the note expression value event. `timing` is the event's sample offset
+    /// within the host buffer.
     pub fn translate_event<S: SysExMessage>(
         &self,
         timing: u32,

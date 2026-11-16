@@ -1054,8 +1054,6 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
         kResultOk
     }
 
-    // Clippy doesn't understand our `event_start_idx`
-    #[allow(clippy::mut_range_bound)]
     unsafe fn process(&self, data: *mut ProcessData) -> tresult {
         check_null_ptr!(data);
 
@@ -1095,12 +1093,10 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                 is_param_flush = true;
             }
 
-            // If `P::SAMPLE_ACCURATE_AUTOMATION` is set, then we'll split up the audio buffer into
-            // chunks whenever a parameter change occurs. To do that, we'll store all of those
-            // parameter changes in a vector. Otherwise all parameter changes are handled right here
-            // and now. We'll also need to store the note events in the same vector because MIDI CC
-            // messages are sent through parameter changes. This vector gets sorted at the end so we
-            // can treat it as a sort of queue.
+            // Parameter values are applied immediately, so the last value in this buffer is what
+            // the plugin processes. MIDI CC, channel pressure, and pitch bend arrive as parameter
+            // changes and are queued with note events, sorted by sample offset. The host buffer is
+            // processed in one call and is never split.
             let mut process_events = self.inner.process_events.borrow_mut();
             process_events.clear();
 
@@ -1115,14 +1111,9 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                         );
                     }
 
-                    // Make sure events are (stable) sorted by timing. The majority of the time hosts
-                    // will send events in order, so sorting like this shouldn't be too much of a
-                    // performance hit.
-                    //
-                    // NOTE: It's important that this sort is stable, because parameter changes need to be
-                    //       processed before note events. Otherwise you'll get out of bounds note events
-                    //       with block splitting when the note event occurs at one index after the end (or
-                    //       on the exclusive end index) of the block.
+                    // Keep events ordered by sample offset. Hosts usually send them in order, so this
+                    // stays cheap. Insertion is stable: MIDI CCs are queued before the note-event
+                    // list, and events that share a timestamp keep that order.
                     if let Some(last_event) = process_events.last() {
                         if event.timing() >= last_event.timing() {
                             process_events.push(event);
@@ -1161,9 +1152,7 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                                     &mut value,
                                 ) == kResultOk
                             } {
-                                // Later this timing will be compensated for block splits by calling
-                                // `event.subtract_timing(block_start)` before it is passed to the
-                                // plugin. Out of bounds events are clamped to the buffer>
+                                // Out of bounds events are clamped to the end of the buffer.
                                 let timing = clamp_input_event_timing(
                                     sample_offset as u32,
                                     total_buffer_len as u32,
@@ -1205,15 +1194,6 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                                                 value,
                                             },
                                         }),
-                                    );
-                                } else if P::SAMPLE_ACCURATE_AUTOMATION {
-                                    push_process_event(
-                                        &mut process_events,
-                                        ProcessEvent::ParameterChange {
-                                            timing,
-                                            hash: param_hash,
-                                            normalized_value: value,
-                                        },
                                     );
                                 } else {
                                     self.inner.set_normalized_value_by_hash(
@@ -1348,285 +1328,209 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                 }
             }
 
-            let mut block_start = 0usize;
-            let mut block_end;
-            let mut event_start_idx = 0;
-            let result = loop {
-                // In sample-accurate automation mode we'll handle all parameter changes from the
-                // sorted process event array until we run into for the current sample, and then
-                // process the block between the current sample and the sample containing the next
-                // parameter change, if any. All timings also need to be compensated for this. As
-                // mentioned above, for this to work correctly parameter changes need to be ordered
-                // before note events at the same index.
-                // The extra scope is here to make sure we release the borrow on input_events
-                {
-                    let mut input_note_events = self.inner.input_note_events.borrow_mut();
-                    input_note_events.clear();
+            // Release the input-event borrow before `make_process_context` takes it again.
+            {
+                let mut input_note_events = self.inner.input_note_events.borrow_mut();
+                input_note_events.clear();
 
-                    block_end = total_buffer_len;
-                    for event_idx in event_start_idx..process_events.len() {
-                        match &process_events[event_idx] {
-                            ProcessEvent::ParameterChange {
-                                timing,
-                                hash,
-                                normalized_value,
-                            } => {
-                                // If this parameter change happens after the start of this block, then
-                                // we'll split the block here and handle this parameter change after
-                                // we've processed this block
-                                if *timing != block_start as u32 {
-                                    event_start_idx = event_idx;
-                                    block_end = *timing as usize;
+                for event in process_events.drain(..) {
+                    let ProcessEvent::NoteEvent(event) = event;
+
+                    permit_alloc(|| {
+                        // In the rare case the host sends a very large amount of events at once, there
+                        // is not much we can do except to just accept the allocation.
+                        if input_note_events.len() == input_note_events.capacity() {
+                            crate::nice_warn!(
+                                "Input note event buffer filled up! This will cause an allocation."
+                            );
+                        }
+                        input_note_events.push_back(event);
+                    });
+                }
+            }
+
+            let result = if is_param_flush {
+                kResultOk
+            } else {
+                let block_start = 0usize;
+                let block_len = total_buffer_len;
+
+                // The buffer manager preallocated buffer slices for all the IO and storage for
+                // any axuiliary inputs.
+                let mut buffer_manager = self.inner.buffer_manager.borrow_mut();
+                let buffers = unsafe {
+                    buffer_manager.create_buffers(block_start, block_len, |buffer_source| {
+                        if data.numOutputs > 0
+                            && !data.outputs.is_null()
+                            && !(*data.outputs).__field0.channelBuffers32.is_null()
+                            && has_main_output
+                        {
+                            let audio_output = &*data.outputs;
+                            let ptrs =
+                                NonNull::new(audio_output.__field0.channelBuffers32).unwrap();
+                            let num_channels = audio_output.numChannels as usize;
+
+                            *buffer_source.main_output_channel_pointers =
+                                Some(ChannelPointers { ptrs, num_channels });
+                        }
+
+                        if data.numInputs > 0
+                            && !data.inputs.is_null()
+                            && !(*data.inputs).__field0.channelBuffers32.is_null()
+                            && has_main_input
+                        {
+                            let audio_input = &*data.inputs;
+                            let ptrs = NonNull::new(audio_input.__field0.channelBuffers32).unwrap();
+                            let num_channels = audio_input.numChannels as usize;
+
+                            *buffer_source.main_input_channel_pointers =
+                                Some(ChannelPointers { ptrs, num_channels });
+                        }
+
+                        if !data.inputs.is_null() {
+                            for (aux_input_no, aux_input_channel_pointers) in buffer_source
+                                .aux_input_channel_pointers
+                                .iter_mut()
+                                .enumerate()
+                            {
+                                let aux_input_idx = aux_input_no + aux_input_start_idx;
+                                if aux_input_idx > data.numOutputs as usize {
                                     break;
                                 }
 
-                                self.inner.set_normalized_value_by_hash(
-                                    *hash,
-                                    *normalized_value,
-                                    Some(sample_rate),
-                                );
-                            }
-                            ProcessEvent::NoteEvent(event) => {
-                                // We need to make sure to compensate the event for any block splitting,
-                                // since we had to create the event object beforehand
-                                let mut event = event.clone();
-                                event.subtract_timing(block_start as u32);
+                                let audio_input = &*data.inputs.add(aux_input_idx);
+                                match NonNull::new(audio_input.__field0.channelBuffers32) {
+                                    Some(ptrs) => {
+                                        let num_channels = audio_input.numChannels as usize;
 
-                                permit_alloc(|| {
-                                    // In the rare case the host sends a very large amount of events at once, there
-                                    // is not much we can do except to just accept the allocation.
-                                    if input_note_events.len() == input_note_events.capacity() {
-                                        crate::nice_warn!(
-                                            "Input note event buffer filled up! This will cause \
-                                             an allocation."
-                                        );
+                                        *aux_input_channel_pointers =
+                                            Some(ChannelPointers { ptrs, num_channels });
                                     }
-                                    input_note_events.push_back(event);
-                                });
+                                    None => continue,
+                                }
                             }
                         }
+
+                        if !data.outputs.is_null() {
+                            for (aux_output_no, aux_output_channel_pointers) in buffer_source
+                                .aux_output_channel_pointers
+                                .iter_mut()
+                                .enumerate()
+                            {
+                                let aux_output_idx = aux_output_no + aux_output_start_idx;
+                                if aux_output_idx > data.numOutputs as usize {
+                                    break;
+                                }
+
+                                let audio_output = &*data.outputs.add(aux_output_idx);
+                                match NonNull::new(audio_output.__field0.channelBuffers32) {
+                                    Some(ptrs) => {
+                                        let num_channels = audio_output.numChannels as usize;
+
+                                        *aux_output_channel_pointers =
+                                            Some(ChannelPointers { ptrs, num_channels });
+                                    }
+                                    None => continue,
+                                }
+                            }
+                        }
+                    })
+                };
+
+                // We already checked whether the host has initiated a parameter flush, but in
+                // case it still did something unexpected that we did not catch we'll still try
+                // to prevent processing audio when the slices don't contain the values we
+                // expect.
+                let mut buffer_is_valid = true;
+                for output_buffer_slice in buffers.main_buffer.as_slice_immutable().iter().chain(
+                    buffers
+                        .aux_outputs
+                        .iter()
+                        .flat_map(|buffer| buffer.as_slice_immutable().iter()),
+                ) {
+                    if output_buffer_slice.is_empty() {
+                        buffer_is_valid = false;
+                        break;
+                    }
+                }
+                crate::nice_debug_assert!(buffer_is_valid);
+
+                // Some of the fields are left empty because VST3 does not provide this
+                // information, but the methods on [`Transport`] can reconstruct these values
+                // from the other fields
+                let mut transport = Transport::new(sample_rate);
+                if !data.processContext.is_null() {
+                    let context = unsafe { &*data.processContext };
+
+                    #[allow(clippy::unnecessary_cast)]
+                    {
+                        transport.playing = context.state & kPlaying as u32 != 0;
+                        transport.recording = context.state & kRecording as u32 != 0;
+
+                        if context.state & kTempoValid as u32 != 0 {
+                            transport.tempo = Some(context.tempo);
+                        }
+
+                        if context.state & kTimeSigValid as u32 != 0 {
+                            transport.time_sig_numerator = Some(context.timeSigNumerator);
+                            transport.time_sig_denominator = Some(context.timeSigDenominator);
+                        }
+                    }
+
+                    transport.pos_samples = Some(context.projectTimeSamples);
+                    #[allow(clippy::unnecessary_cast)]
+                    if context.state & kProjectTimeMusicValid as u32 != 0 {
+                        transport.pos_beats = Some(context.projectTimeMusic);
+                    }
+
+                    #[allow(clippy::unnecessary_cast)]
+                    if context.state & kBarPositionValid as u32 != 0 {
+                        transport.bar_start_pos_beats = Some(context.barPositionMusic);
+                    }
+                    #[allow(clippy::unnecessary_cast)]
+                    if context.state & kCycleActive as u32 != 0
+                        && context.state & kCycleValid as u32 != 0
+                    {
+                        transport.loop_range_beats =
+                            Some((context.cycleStartMusic, context.cycleEndMusic));
                     }
                 }
 
-                let result = if is_param_flush {
-                    kResultOk
-                } else {
-                    // After processing the events we now know where/if the block should be split,
-                    // and we can start preparing audio processing
-                    let block_len = block_end - block_start;
+                let result = if buffer_is_valid {
+                    // In the case the host misbehaves and tries to activate/deactive the plugin while the
+                    // process loop is still running, just return an error.
+                    if let Some(mut plugin) = self.inner.plugin.try_lock() {
+                        let mut aux = AuxiliaryBuffers {
+                            inputs: buffers.aux_inputs,
+                            outputs: buffers.aux_outputs,
+                        };
 
-                    // The buffer manager preallocated buffer slices for all the IO and storage for
-                    // any axuiliary inputs.
-                    let mut buffer_manager = self.inner.buffer_manager.borrow_mut();
-                    let buffers = unsafe {
-                        buffer_manager.create_buffers(block_start, block_len, |buffer_source| {
-                            if data.numOutputs > 0
-                                && !data.outputs.is_null()
-                                && !(*data.outputs).__field0.channelBuffers32.is_null()
-                                && has_main_output
-                            {
-                                let audio_output = &*data.outputs;
-                                let ptrs =
-                                    NonNull::new(audio_output.__field0.channelBuffers32).unwrap();
-                                let num_channels = audio_output.numChannels as usize;
+                        let host_out_events = unsafe { ComRef::from_raw(data.outputEvents) };
 
-                                *buffer_source.main_output_channel_pointers =
-                                    Some(ChannelPointers { ptrs, num_channels });
-                            }
+                        let mut context = self.inner.make_process_context(
+                            transport,
+                            host_out_events,
+                            total_buffer_len,
+                            block_start,
+                        );
 
-                            if data.numInputs > 0
-                                && !data.inputs.is_null()
-                                && !(*data.inputs).__field0.channelBuffers32.is_null()
-                                && has_main_input
-                            {
-                                let audio_input = &*data.inputs;
-                                let ptrs =
-                                    NonNull::new(audio_input.__field0.channelBuffers32).unwrap();
-                                let num_channels = audio_input.numChannels as usize;
-
-                                *buffer_source.main_input_channel_pointers =
-                                    Some(ChannelPointers { ptrs, num_channels });
-                            }
-
-                            if !data.inputs.is_null() {
-                                for (aux_input_no, aux_input_channel_pointers) in buffer_source
-                                    .aux_input_channel_pointers
-                                    .iter_mut()
-                                    .enumerate()
-                                {
-                                    let aux_input_idx = aux_input_no + aux_input_start_idx;
-                                    if aux_input_idx > data.numOutputs as usize {
-                                        break;
-                                    }
-
-                                    let audio_input = &*data.inputs.add(aux_input_idx);
-                                    match NonNull::new(audio_input.__field0.channelBuffers32) {
-                                        Some(ptrs) => {
-                                            let num_channels = audio_input.numChannels as usize;
-
-                                            *aux_input_channel_pointers =
-                                                Some(ChannelPointers { ptrs, num_channels });
-                                        }
-                                        None => continue,
-                                    }
-                                }
-                            }
-
-                            if !data.outputs.is_null() {
-                                for (aux_output_no, aux_output_channel_pointers) in buffer_source
-                                    .aux_output_channel_pointers
-                                    .iter_mut()
-                                    .enumerate()
-                                {
-                                    let aux_output_idx = aux_output_no + aux_output_start_idx;
-                                    if aux_output_idx > data.numOutputs as usize {
-                                        break;
-                                    }
-
-                                    let audio_output = &*data.outputs.add(aux_output_idx);
-                                    match NonNull::new(audio_output.__field0.channelBuffers32) {
-                                        Some(ptrs) => {
-                                            let num_channels = audio_output.numChannels as usize;
-
-                                            *aux_output_channel_pointers =
-                                                Some(ChannelPointers { ptrs, num_channels });
-                                        }
-                                        None => continue,
-                                    }
-                                }
-                            }
-                        })
-                    };
-
-                    // We already checked whether the host has initiated a parameter flush, but in
-                    // case it still did something unexpected that we did not catch we'll still try
-                    // to prevent processing audio when the slices don't contain the values we
-                    // expect.
-                    let mut buffer_is_valid = true;
-                    for output_buffer_slice in
-                        buffers.main_buffer.as_slice_immutable().iter().chain(
-                            buffers
-                                .aux_outputs
-                                .iter()
-                                .flat_map(|buffer| buffer.as_slice_immutable().iter()),
-                        )
-                    {
-                        if output_buffer_slice.is_empty() {
-                            buffer_is_valid = false;
-                            break;
-                        }
-                    }
-                    crate::nice_debug_assert!(buffer_is_valid);
-
-                    // Some of the fields are left empty because VST3 does not provide this
-                    // information, but the methods on [`Transport`] can reconstruct these values
-                    // from the other fields
-                    let mut transport = Transport::new(sample_rate);
-                    if !data.processContext.is_null() {
-                        let context = unsafe { &*data.processContext };
-
-                        #[allow(clippy::unnecessary_cast)]
-                        {
-                            transport.playing = context.state & kPlaying as u32 != 0;
-                            transport.recording = context.state & kRecording as u32 != 0;
-
-                            if context.state & kTempoValid as u32 != 0 {
-                                transport.tempo = Some(context.tempo);
-                            }
-
-                            if context.state & kTimeSigValid as u32 != 0 {
-                                transport.time_sig_numerator = Some(context.timeSigNumerator);
-                                transport.time_sig_denominator = Some(context.timeSigDenominator);
-                            }
-                        }
-
-                        // We need to compensate for the block splitting here
-                        transport.pos_samples =
-                            Some(context.projectTimeSamples + block_start as i64);
-                        #[allow(clippy::unnecessary_cast)]
-                        if context.state & kProjectTimeMusicValid as u32 != 0 {
-                            if P::SAMPLE_ACCURATE_AUTOMATION
-                                && block_start > 0
-                                && (context.state & kTempoValid as u32 != 0)
-                            {
-                                transport.pos_beats = Some(
-                                    context.projectTimeMusic
-                                        + (block_start as f64 / sample_rate as f64 / 60.0
-                                            * context.tempo),
-                                );
-                            } else {
-                                transport.pos_beats = Some(context.projectTimeMusic);
-                            }
-                        }
-
-                        #[allow(clippy::unnecessary_cast)]
-                        if context.state & kBarPositionValid as u32 != 0 {
-                            if P::SAMPLE_ACCURATE_AUTOMATION && block_start > 0 {
-                                // The transport object knows how to recompute this from the other information
-                                transport.bar_start_pos_beats =
-                                    match transport.bar_start_pos_beats() {
-                                        Some(updated) => Some(updated),
-                                        None => Some(context.barPositionMusic),
-                                    };
-                            } else {
-                                transport.bar_start_pos_beats = Some(context.barPositionMusic);
-                            }
-                        }
-                        #[allow(clippy::unnecessary_cast)]
-                        if context.state & kCycleActive as u32 != 0
-                            && context.state & kCycleValid as u32 != 0
-                        {
-                            transport.loop_range_beats =
-                                Some((context.cycleStartMusic, context.cycleEndMusic));
-                        }
-                    }
-
-                    let result = if buffer_is_valid {
-                        // In the case the host misbehaves and tries to activate/deactive the plugin while the
-                        // process loop is still running, just return an error.
-                        if let Some(mut plugin) = self.inner.plugin.try_lock() {
-                            let mut aux = AuxiliaryBuffers {
-                                inputs: buffers.aux_inputs,
-                                outputs: buffers.aux_outputs,
-                            };
-
-                            let host_out_events = unsafe { ComRef::from_raw(data.outputEvents) };
-
-                            let mut context = self.inner.make_process_context(
-                                transport,
-                                host_out_events,
-                                total_buffer_len,
-                                block_start,
-                            );
-
-                            let result =
-                                plugin.process(buffers.main_buffer, &mut aux, &mut context);
-                            self.inner.last_process_status.store(result);
-                            result
-                        } else {
-                            ProcessStatus::Error("Failed to acquire plugin lock")
-                        }
+                        let result = plugin.process(buffers.main_buffer, &mut aux, &mut context);
+                        self.inner.last_process_status.store(result);
+                        result
                     } else {
-                        ProcessStatus::Normal
-                    };
-
-                    match result {
-                        ProcessStatus::Error(err) => {
-                            crate::nice_debug_assert_failure!("Process error: {}", err);
-
-                            return kResultFalse;
-                        }
-                        _ => kResultOk,
+                        ProcessStatus::Error("Failed to acquire plugin lock")
                     }
+                } else {
+                    ProcessStatus::Normal
                 };
 
-                // If our block ends at the end of the buffer then that means there are no more
-                // unprocessed (parameter) events. If there are more events, we'll just keep going
-                // through this process until we've processed the entire buffer.
-                if block_end == total_buffer_len {
-                    break result;
-                } else {
-                    block_start = block_end;
+                match result {
+                    ProcessStatus::Error(err) => {
+                        crate::nice_debug_assert_failure!("Process error: {}", err);
+
+                        return kResultFalse;
+                    }
+                    _ => kResultOk,
                 }
             };
 

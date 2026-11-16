@@ -94,9 +94,6 @@ A [cookiecutter template](https://codeberg.org/RustAudio/nice-plug-template) is 
     block iterators.
   - Comes with bring-your-own-FFT adapters for common (inverse) short-time
     Fourier Transform operations. More to come.
-- Optional sample accurate automation support for VST3 and CLAP that can be
-  enabled by setting the `Plugin::SAMPLE_ACCURATE_AUTOMATION` constant to
-  `true`.
 - Optional support for compressing the human readable JSON state files using
   [Zstandard](https://en.wikipedia.org/wiki/Zstd).
 - Modular GUI/Editor API that lets you use any GUI library that can run on

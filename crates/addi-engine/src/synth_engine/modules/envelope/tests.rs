@@ -1,8 +1,9 @@
 use super::*;
 use crate::synth_engine::{
-    EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId, Note, OUTPUT_MODULE_ID,
-    SynthEngine, amplifier::AmplifierConfig, harmonic_editor::HarmonicEditorConfig,
-    oscillator::OscillatorConfig, power_scale, routing::VoiceEvent,
+    DefaultTransport, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId, Note,
+    OUTPUT_MODULE_ID, SynthEngine, amplifier::AmplifierConfig,
+    harmonic_editor::HarmonicEditorConfig, oscillator::OscillatorConfig, power_scale,
+    routing::VoiceEvent,
 };
 
 fn reset_event(voice_idx: usize, replaced_voice_idx: Option<usize>) -> VoiceEvent {
@@ -122,7 +123,7 @@ fn process(engine: &mut SynthEngine, samples: usize) -> Vec<Smp> {
         engine.process(
             n,
             false,
-            0,
+            &DefaultTransport,
             &mut terminated,
             [&mut left[..n], &mut right[..n]],
         );

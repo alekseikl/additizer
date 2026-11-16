@@ -496,7 +496,7 @@ impl<'v, 'f, 'c, A: EngineAudioEnd, D: RouterDataType> VoiceRouter<'v, 'f, 'c, D
         self.factory.ctx.params.sample_rate
     }
 
-    /// Host timeline for this buffer. `block_start` selects the current block.
+    /// Host timeline for this buffer.
     pub fn timeline(&self) -> &HostTimeline {
         &self.factory.ctx.params.timeline
     }

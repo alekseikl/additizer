@@ -420,6 +420,17 @@ pub enum NoteEvent<S> {
     /// plugin doesn't support this kind of message), then this will be logged during debug builds
     /// of the plugin, and no event is emitted.
     MidiSysEx { timing: u32, message: S },
+
+    /// Host transport at `timing` samples into the current buffer. `tempo` is beats per minute.
+    /// `pos_seconds` and `pos_beats` are the song position at `timing`. When the host omits a
+    /// field, tempo is 120 BPM and the position is `0.0`.
+    Transport {
+        timing: u32,
+        /// Beats per minute.
+        tempo: f64,
+        pos_seconds: f64,
+        pos_beats: f64,
+    },
 }
 
 /// The result of converting a `NoteEvent<S>` to MIDI. This is a bit weirder than it would have to
@@ -456,6 +467,7 @@ impl<S> NoteEvent<S> {
             NoteEvent::MidiCC { timing, .. } => *timing,
             NoteEvent::MidiProgramChange { timing, .. } => *timing,
             NoteEvent::MidiSysEx { timing, .. } => *timing,
+            NoteEvent::Transport { timing, .. } => *timing,
         }
     }
 
@@ -480,6 +492,7 @@ impl<S> NoteEvent<S> {
             NoteEvent::MidiCC { .. } => None,
             NoteEvent::MidiProgramChange { .. } => None,
             NoteEvent::MidiSysEx { .. } => None,
+            NoteEvent::Transport { .. } => None,
         }
     }
 
@@ -504,6 +517,7 @@ impl<S> NoteEvent<S> {
             NoteEvent::MidiCC { channel, .. } => Some(Channel::Number(*channel)),
             NoteEvent::MidiProgramChange { channel, .. } => Some(Channel::Number(*channel)),
             NoteEvent::MidiSysEx { .. } => None,
+            NoteEvent::Transport { .. } => None,
         }
     }
 }
@@ -717,7 +731,8 @@ impl<S: SysExMessage> NoteEvent<S> {
             | NoteEvent::PolyTuning { .. }
             | NoteEvent::PolyVibrato { .. }
             | NoteEvent::PolyExpression { .. }
-            | NoteEvent::PolyBrightness { .. } => None,
+            | NoteEvent::PolyBrightness { .. }
+            | NoteEvent::Transport { .. } => None,
         }
     }
 
@@ -743,6 +758,7 @@ impl<S: SysExMessage> NoteEvent<S> {
             NoteEvent::MidiCC { timing, .. } => *timing -= samples,
             NoteEvent::MidiProgramChange { timing, .. } => *timing -= samples,
             NoteEvent::MidiSysEx { timing, .. } => *timing -= samples,
+            NoteEvent::Transport { timing, .. } => *timing -= samples,
         }
     }
 }

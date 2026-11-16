@@ -113,9 +113,33 @@ const OUTPUT_EVENT_QUEUE_CAPACITY: usize = 2048;
 
 /// Protect against OOM issues when loading malformed state.
 ///
-/// If your plugin needs more storgage space than this, please post an issue in the nice-plug
+/// If your plugin needs more storage space than this, please post an issue in the nice-plug
 /// repository.
 const MAX_STATE_BYTES: u64 = 268_435_456;
+
+/// Beats per minute used when a transport event does not include a tempo.
+const DEFAULT_TEMPO: f64 = 120.0;
+
+/// Tempo and song position at the transport event sample.
+fn transport_note_event(event: &clap_event_transport) -> (f64, f64, f64) {
+    let tempo = if event.flags & CLAP_TRANSPORT_HAS_TEMPO != 0 {
+        event.tempo
+    } else {
+        DEFAULT_TEMPO
+    };
+    let pos_seconds = if event.flags & CLAP_TRANSPORT_HAS_SECONDS_TIMELINE != 0 {
+        event.song_pos_seconds as f64 / CLAP_SECTIME_FACTOR as f64
+    } else {
+        0.0
+    };
+    let pos_beats = if event.flags & CLAP_TRANSPORT_HAS_BEATS_TIMELINE != 0 {
+        event.song_pos_beats as f64 / CLAP_BEATTIME_FACTOR as f64
+    } else {
+        0.0
+    };
+
+    (tempo, pos_seconds, pos_beats)
+}
 
 pub struct Wrapper<P: ClapPlugin> {
     /// A reference to this object, upgraded to an `Arc<Self>` for the GUI context.
@@ -971,6 +995,9 @@ impl<P: ClapPlugin> Wrapper<P> {
 
     /// Handle all incoming events from an event queue. This will clear `self.input_events` first.
     ///
+    /// Transport events are queued as [`NoteEvent::Transport`](nice_plug_core::midi::NoteEvent::Transport)
+    /// at their sample offset. The host buffer is never split.
+    ///
     /// # Safety
     ///
     /// `in_` must contain only pointers to valid data (Clippy insists on there being a safety
@@ -991,7 +1018,6 @@ impl<P: ClapPlugin> Wrapper<P> {
                 self.handle_input_event(
                     event,
                     &mut input_events,
-                    None,
                     current_sample_idx,
                     total_buffer_len,
                 );
@@ -999,70 +1025,9 @@ impl<P: ClapPlugin> Wrapper<P> {
         }
     }
 
-    /// Similar to [`handle_in_events()`][Self::handle_in_events()], but will stop just before an
-    /// event if the predicate returns true for that events. This predicate is only called for
-    /// events that occur after `current_sample_idx`. This is used to stop before a tempo or time
-    /// signature change, or before next parameter change event with `raw_event.time >
-    /// current_sample_idx` and return the **absolute** (relative to the entire buffer that's being
-    /// split) sample index of that event along with the its index in the event queue as a
-    /// `(sample_idx, event_idx)` tuple. This allows for splitting the audio buffer into segments
-    /// with distinct sample values to enable sample accurate automation without modifications to the
-    /// wrapped plugin.
-    ///
-    /// # Safety
-    ///
-    /// `in_` must contain only pointers to valid data (Clippy insists on there being a safety
-    /// section here).
-    pub unsafe fn handle_in_events_until(
-        &self,
-        in_: &clap_input_events,
-        transport_info: &mut *const clap_event_transport,
-        current_sample_idx: usize,
-        total_buffer_len: usize,
-        resume_from_event_idx: usize,
-        stop_predicate: impl Fn(*const clap_event_header) -> bool,
-    ) -> Option<(usize, usize)> {
-        let mut input_events = self.input_events.borrow_mut();
-        input_events.clear();
-
-        let num_events = unsafe {
-            clap_call! { in_=>size(in_) }
-        };
-
-        if resume_from_event_idx as u32 >= num_events {
-            return None;
-        }
-
-        for event_idx in (resume_from_event_idx as u32)..num_events {
-            unsafe {
-                let event: *const clap_event_header = clap_call! { in_=>get(in_, event_idx) };
-                if event.is_null() {
-                    continue;
-                }
-
-                // Check the current event before applying it, including the first event in the
-                // buffer. A later event belongs to the next process slice.
-                if (*event).time > current_sample_idx as u32 && stop_predicate(event) {
-                    return Some(((*event).time as usize, event_idx as usize));
-                }
-
-                self.handle_input_event(
-                    event,
-                    &mut input_events,
-                    Some(transport_info),
-                    current_sample_idx,
-                    total_buffer_len,
-                );
-            }
-        }
-
-        None
-    }
-
-    /// Write the unflushed parameter changes to the host's output event queue. The sample index is
-    /// used as part of splitting up the input buffer for sample accurate automation changes. This
-    /// will also modify the actual parameter values, since we should only do that while the wrapped
-    /// plugin is not actually processing audio.
+    /// Write the unflushed parameter changes to the host's output event queue. `current_sample_idx`
+    /// is the timestamp written on those events. This will also modify the actual parameter values,
+    /// since we should only do that while the wrapped plugin is not actually processing audio.
     ///
     /// The `total_buffer_len` argument is used to clamp out of bounds events to the buffer's length.
     ///
@@ -1144,14 +1109,14 @@ impl<P: ClapPlugin> Wrapper<P> {
         }
     }
 
-    /// Handle an incoming CLAP event. The sample index is provided to support block splitting for
-    /// sample accurate automation. `input_events` must be cleared at the start of each process block.
+    /// Handle an incoming CLAP event. Event timings are stored relative to `current_sample_idx`.
+    /// `input_events` must be cleared at the start of the process call.
     ///
     /// To save on mutex operations when handing MIDI events, the lock guard for the input events
     /// need to be passed into this function.
     ///
-    /// If the event was a transport event and the `transport_info` argument is not `None`, then the
-    /// pointer will be changed to point to the transport information from this event.
+    /// A transport event is queued as [`NoteEvent::Transport`](nice_plug_core::midi::NoteEvent::Transport).
+    /// The host buffer is never split.
     ///
     /// # Safety
     ///
@@ -1161,7 +1126,6 @@ impl<P: ClapPlugin> Wrapper<P> {
         &self,
         event: *const clap_event_header,
         input_events: &mut AtomicRefMut<VecDeque<PluginNoteEvent<P>>>,
-        transport_info: Option<&mut *const clap_event_transport>,
         current_sample_idx: usize,
         total_buffer_len: usize,
     ) {
@@ -1281,9 +1245,16 @@ impl<P: ClapPlugin> Wrapper<P> {
             }
             (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT) => {
                 let event = unsafe { &*(event as *const clap_event_transport) };
-                if let Some(transport_info) = transport_info {
-                    *transport_info = event;
-                }
+                let (tempo, pos_seconds, pos_beats) = transport_note_event(event);
+                push_event(
+                    input_events,
+                    NoteEvent::Transport {
+                        timing,
+                        tempo,
+                        pos_seconds,
+                        pos_beats,
+                    },
+                );
             }
             (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_ON) => {
                 if P::MIDI_INPUT >= MidiConfig::Basic {
@@ -1292,8 +1263,6 @@ impl<P: ClapPlugin> Wrapper<P> {
                     push_event(
                         input_events,
                         NoteEvent::NoteOn {
-                            // When splitting up the buffer for sample accurate automation all events
-                            // should be relative to the block
                             timing,
                             voice_id: voice_from_i32(event.note_id),
                             channel: channel_from_i16(event.channel),
@@ -1928,9 +1897,8 @@ impl<P: ClapPlugin> Wrapper<P> {
         // Panic on allocations if the `assert_process_allocs` feature has been enabled, and make
         // sure that FTZ is set up correctly
         process_wrapper(|| {
-            // We need to handle incoming automation and MIDI events. Since we don't support sample
-            // accuration automation yet and there's no way to get the last event for a parameter,
-            // we'll process every incoming event.
+            // Parameter and note events are applied before the plugin sees the buffer. The host
+            // buffer is processed in one call and is never split.
             let process = unsafe { &*process };
             let total_buffer_len = process.frames_count as usize;
 
@@ -1940,74 +1908,16 @@ impl<P: ClapPlugin> Wrapper<P> {
             let aux_input_start_idx = if has_main_input { 1 } else { 0 };
             let aux_output_start_idx = if has_main_output { 1 } else { 0 };
 
-            // If `P::SAMPLE_ACCURATE_AUTOMATION` is set, then we'll split up the audio buffer into
-            // chunks whenever a parameter change occurs
-            let mut block_start = 0;
-            let mut block_end = total_buffer_len;
-            let mut event_start_idx = 0;
+            let block_start = 0;
+            let block_len = total_buffer_len;
 
-            // The host may send new transport information as an event. In that case we'll also
-            // split the buffer.
-            let mut transport_info = process.transport;
-
-            let result = loop {
-                if !process.in_events.is_null() {
-                    let split_result = unsafe {
-                        wrapper.handle_in_events_until(
-                            &*process.in_events,
-                            &mut transport_info,
-                            block_start,
-                            total_buffer_len,
-                            event_start_idx,
-                            |next_event| {
-                                // Always split the buffer on transport information changes (tempo, time
-                                // signature, or position changes), and also split on parameter value
-                                // changes after the current sample if sample accurate automation is
-                                // enabled
-                                if P::SAMPLE_ACCURATE_AUTOMATION {
-                                    match ((*next_event).space_id, (*next_event).type_) {
-                                        (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE)
-                                        | (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT) => true,
-                                        (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_MOD) => {
-                                            let next_event =
-                                                &*(next_event as *const clap_event_param_mod);
-
-                                            // The buffer should not be split on polyphonic modulation
-                                            // as those events will be converted to note events
-                                            !(next_event.note_id >= 0
-                                                && wrapper
-                                                    .poly_mod_ids_by_hash
-                                                    .contains_key(&next_event.param_id))
-                                        }
-                                        _ => false,
-                                    }
-                                } else {
-                                    matches!(
-                                        ((*next_event).space_id, (*next_event).type_,),
-                                        (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT)
-                                    )
-                                }
-                            },
-                        )
-                    };
-
-                    // If there are any parameter changes after `block_start` and sample
-                    // accurate automation is enabled or the host sends new transport
-                    // information, then we'll process a new block just after that. Otherwise we can
-                    // process all audio until the end of the buffer.
-                    match split_result {
-                        Some((next_param_change_sample_idx, next_param_change_event_idx)) => {
-                            block_end = next_param_change_sample_idx;
-                            event_start_idx = next_param_change_event_idx;
-                        }
-                        None => block_end = total_buffer_len,
-                    }
+            if !process.in_events.is_null() {
+                unsafe {
+                    wrapper.handle_in_events(&*process.in_events, block_start, total_buffer_len);
                 }
+            }
 
-                // After processing the events we now know where/if the block should be split, and
-                // we can start preparing audio processing
-                let block_len = block_end - block_start;
-
+            let result = {
                 let Ok(mut buffer_manager) = wrapper.buffer_manager.try_borrow_mut() else {
                     // On the occasion a host misbehaves and tries to activate/deactivate a plugin
                     // concurrently with the process method, return an error.
@@ -2135,8 +2045,8 @@ impl<P: ClapPlugin> Wrapper<P> {
                     .expect("Process call without prior initialization call")
                     .sample_rate;
                 let mut transport = Transport::new(sample_rate);
-                if !transport_info.is_null() {
-                    let context = unsafe { &*transport_info };
+                if !process.transport.is_null() {
+                    let context = unsafe { &*process.transport };
 
                     transport.playing = context.flags & CLAP_TRANSPORT_IS_PLAYING != 0;
                     transport.recording = context.flags & CLAP_TRANSPORT_IS_RECORDING != 0;
@@ -2150,53 +2060,17 @@ impl<P: ClapPlugin> Wrapper<P> {
                         transport.time_sig_denominator = Some(context.tsig_denom as i32);
                     }
                     if context.flags & CLAP_TRANSPORT_HAS_BEATS_TIMELINE != 0 {
-                        let beats = context.song_pos_beats as f64 / CLAP_BEATTIME_FACTOR as f64;
-
-                        // This is a bit messy, but we'll try to compensate for the block splitting.
-                        // We can't use the functions on the transport information object for this
-                        // because we don't have any sample information.
-                        if P::SAMPLE_ACCURATE_AUTOMATION
-                            && block_start > 0
-                            && (context.flags & CLAP_TRANSPORT_HAS_TEMPO != 0)
-                        {
-                            transport.pos_beats = Some(
-                                beats
-                                    + (block_start as f64 / sample_rate as f64 / 60.0
-                                        * context.tempo),
-                            );
-                        } else {
-                            transport.pos_beats = Some(beats);
-                        }
+                        transport.pos_beats =
+                            Some(context.song_pos_beats as f64 / CLAP_BEATTIME_FACTOR as f64);
                     }
                     if context.flags & CLAP_TRANSPORT_HAS_SECONDS_TIMELINE != 0 {
-                        let seconds = context.song_pos_seconds as f64 / CLAP_SECTIME_FACTOR as f64;
-
-                        // Same here
-                        if P::SAMPLE_ACCURATE_AUTOMATION
-                            && block_start > 0
-                            && (context.flags & CLAP_TRANSPORT_HAS_TEMPO != 0)
-                        {
-                            transport.pos_seconds =
-                                Some(seconds + (block_start as f64 / sample_rate as f64));
-                        } else {
-                            transport.pos_seconds = Some(seconds);
-                        }
+                        transport.pos_seconds =
+                            Some(context.song_pos_seconds as f64 / CLAP_SECTIME_FACTOR as f64);
                     }
                     // TODO: CLAP does not mention whether this is behind a flag or not
-                    if P::SAMPLE_ACCURATE_AUTOMATION && block_start > 0 {
-                        transport.bar_start_pos_beats = match transport.bar_start_pos_beats() {
-                            Some(updated) => Some(updated),
-                            None => Some(context.bar_start as f64 / CLAP_BEATTIME_FACTOR as f64),
-                        };
-                        transport.bar_number = match transport.bar_number() {
-                            Some(updated) => Some(updated),
-                            None => Some(context.bar_number),
-                        };
-                    } else {
-                        transport.bar_start_pos_beats =
-                            Some(context.bar_start as f64 / CLAP_BEATTIME_FACTOR as f64);
-                        transport.bar_number = Some(context.bar_number);
-                    }
+                    transport.bar_start_pos_beats =
+                        Some(context.bar_start as f64 / CLAP_BEATTIME_FACTOR as f64);
+                    transport.bar_number = Some(context.bar_number);
                     // TODO: They also aren't very clear about this, but presumably if the loop is
                     //       active and the corresponding song transport information is available then
                     //       this is also available
@@ -2232,7 +2106,7 @@ impl<P: ClapPlugin> Wrapper<P> {
 
                     // SAFETY: Shortening these borrows is safe as even if the plugin overwrites the
                     //         slices (which it cannot do without using unsafe code), then they
-                    //         would still be reset on the next iteration
+                    //         would still be reset on the next process call
                     let mut aux = AuxiliaryBuffers {
                         inputs: buffers.aux_inputs,
                         outputs: buffers.aux_outputs,
@@ -2268,14 +2142,7 @@ impl<P: ClapPlugin> Wrapper<P> {
                     unsafe { wrapper.handle_out_events(&*process.out_events, block_start) };
                 }
 
-                // If our block ends at the end of the buffer then that means there are no more
-                // unprocessed (parameter) events. If there are more events, we'll just keep going
-                // through this process until we've processed the entire buffer.
-                if block_end == total_buffer_len {
-                    break clap_result;
-                } else {
-                    block_start = block_end;
-                }
+                clap_result
             };
 
             // After processing audio, we'll check if the editor has sent us updated plugin state.

@@ -51,7 +51,9 @@ pub use routing::{
 };
 pub use smooth::{SmoothedSampleParams, Smoother};
 pub use stereo_sample::StereoSample;
-pub use transport::{HostTimeline, TransportState};
+#[cfg(test)]
+pub(crate) use transport::tests::DefaultTransport;
+pub use transport::{HostTimeline, HostTransport};
 pub use types::{ComplexSample, Smp, WideSmp};
 pub use voices::{AVAILABLE_VOICES, MAX_VOICES, NUM_CHANNELS};
 pub use voices_handler::{Note, PlayingVoice};
@@ -123,7 +125,6 @@ pub struct SynthEngine<E: EngineLinks = stub::StubLinks> {
     ui_end: Option<E::UiEnd>,
     outputs_arena: OutputsArena,
     pending_poly_modulations: Vec<PendingPolyModulation>,
-    transport_state: TransportState,
 }
 
 impl<E: EngineLinks> SynthEngine<E> {
@@ -161,11 +162,6 @@ impl<E: EngineLinks> SynthEngine<E> {
             ui_end,
             outputs_arena: OutputsArena::new(buffer_size),
             pending_poly_modulations: Vec::with_capacity(64),
-            transport_state: TransportState {
-                tempo: 120.0,
-                pos_seconds: 0.0,
-                pos_beats: 0.0,
-            },
         };
 
         engine.modules.insert(
@@ -246,11 +242,6 @@ impl<E: EngineLinks> SynthEngine<E> {
 
     fn sample_rate(&self) -> Smp {
         self.host_sample_rate * self.oversampling as Smp
-    }
-
-    /// Song position for the buffer about to be processed.
-    pub fn update_transport_state(&mut self, transport_state: TransportState) {
-        self.transport_state = transport_state;
     }
 
     pub fn get_engine_params(&self) -> EngineParams {
@@ -675,7 +666,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         &mut self,
         samples: usize,
         update_ui: bool,
-        host_offset: usize,
+        host_transport: &impl HostTransport,
         terminated_notes: &mut Vec<Note>,
         mut outputs: [&mut [f32]; NUM_CHANNELS],
     ) {
@@ -726,11 +717,8 @@ impl<E: EngineLinks> SynthEngine<E> {
         let samples = samples * self.oversampling;
         let sample_rate = self.sample_rate();
         let smooth = SmoothedSampleParams::new(sample_rate);
-        let timeline = HostTimeline::from_transport(
-            f64::from(sample_rate),
-            self.transport_state,
-            self.to_internal_offset(host_offset),
-        );
+        let timeline =
+            HostTimeline::from_transport(f64::from(sample_rate), host_transport, self.oversampling);
 
         let mut ctx = ProcessContext {
             outputs_arena: &mut self.outputs_arena,

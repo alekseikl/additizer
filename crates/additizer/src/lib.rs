@@ -13,7 +13,7 @@ pub(crate) use addi_ui_backend::preset;
 use crate::editor::{PluginEditor, create_editor};
 use crate::engine_factory::{EngineFactory, EngineHandle};
 use crate::params::AdditizerParams;
-use addi_engine::{MAX_VOICES, Note, TransportState};
+use addi_engine::{MAX_VOICES, Note};
 pub use egui;
 use nice_plug::midi::{Channel, Key, VoiceID};
 use nice_plug::prelude::*;
@@ -64,9 +64,6 @@ impl Plugin for Additizer {
     }];
 
     const MIDI_INPUT: MidiConfig = MidiConfig::MidiCCs;
-
-    // Don't split a buffer
-    const SAMPLE_ACCURATE_AUTOMATION: bool = false;
 
     type Editor = EguiEditor<PluginEditor>;
     type SysExMessage = ();
@@ -130,13 +127,13 @@ impl Plugin for Additizer {
         assert_no_alloc::assert_no_alloc(|| {
             let block_size = synth.block_size();
             let update_ui = self.editor_state.is_open();
-            let transport = context.transport();
+            let reported = context.transport();
+            let mut host_transport = host_events::HostTransport::new(
+                reported.tempo.unwrap_or(DEFAULT_TEMPO),
+                reported.pos_seconds().unwrap_or_default(),
+                reported.pos_beats().unwrap_or_default(),
+            );
 
-            synth.update_transport_state(TransportState {
-                tempo: transport.tempo.unwrap_or(DEFAULT_TEMPO),
-                pos_seconds: transport.pos_seconds().unwrap_or_default(),
-                pos_beats: transport.pos_beats().unwrap_or_default(),
-            });
             synth.set_automation_values(&self.params.ext_params);
 
             let mut next_event = context.next_event();
@@ -151,16 +148,19 @@ impl Plugin for Additizer {
                         event,
                         block_start,
                         &self.params.ext_params,
+                        &mut host_transport,
                     );
                     next_event = context.next_event();
                 }
+
+                host_transport.set_block(block_start);
 
                 let mut channels = block.into_iter();
 
                 synth.process(
                     samples,
                     update_ui,
-                    block_start,
+                    &host_transport,
                     &mut self.terminated_notes,
                     [channels.next().unwrap(), channels.next().unwrap()],
                 );

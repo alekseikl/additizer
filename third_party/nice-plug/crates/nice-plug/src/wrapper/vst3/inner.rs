@@ -117,9 +117,7 @@ pub(crate) struct WrapperInner<P: Vst3Plugin> {
     /// A data structure that helps manage and create buffers for all of the plugin's inputs and
     /// outputs based on channel pointers provided by the host.
     pub buffer_manager: AtomicRefCell<BufferManager>,
-    /// The incoming events for the plugin, if `P::ACCEPTS_MIDI` is set. If
-    /// `P::SAMPLE_ACCURATE_AUTOMATION`, this is also read in lockstep with the parameter change
-    /// block splitting.
+    /// The incoming note events for the plugin, if `P::MIDI_INPUT` is set.
     ///
     /// NOTE: Because with VST3 MIDI CC messages are sent as parameter changes and VST3 does not
     ///       interleave parameter changes and note events, this queue has to be sorted when
@@ -130,15 +128,10 @@ pub(crate) struct WrapperInner<P: Vst3Plugin> {
     /// the most recent VST3 note IDs we've seen, and then map those back to MIDI note IDs and
     /// channels as needed.
     pub note_expression_controller: AtomicRefCell<NoteExpressionController>,
-    /// Unprocessed parameter changes and note events sent by the host during a process call.
-    /// Parameter changes are sent as separate queues for each parameter, and note events are in
-    /// another queue on top of that. And if `P::MIDI_INPUT >= MidiConfig::MidiCCs`, then we can
-    /// also receive MIDI CC messages through special parameter changes. On top of that, we also
-    /// support sample accurate automation through block splitting if
-    /// `P::SAMPLE_ACCURATE_AUTOMATION` is set. To account for all of this, we'll read all of the
-    /// parameter changes and events into a vector at the start of the process call, sort it, and
-    /// then do the block splitting based on that. Note events need to have their timing adjusted to
-    /// match the block start, since they're all read upfront.
+    /// Note events for this process call, including MIDI CC messages that VST3 delivers as
+    /// parameter changes. Parameter values themselves are applied immediately. The queues arrive
+    /// separately, so they are merged here and sorted by sample offset before the plugin processes
+    /// the whole host buffer in one call.
     pub process_events: AtomicRefCell<Vec<ProcessEvent<P>>>,
     /// The plugin is able to restore state through a method on the `GuiContext`. To avoid changing
     /// parameters mid-processing and running into garbled data if the host also tries to load state
@@ -197,39 +190,20 @@ pub enum Task<P: Plugin> {
     CallMainThread,
 }
 
-/// VST3 makes audio processing pretty complicated. In order to support both block splitting for
-/// sample accurate automation and MIDI CC handling through parameters we need to put all parameter
-/// changes and (translated) note events into a sorted array first.
+/// VST3 delivers MIDI CC messages as parameter changes, separate from the note-event list. Both are
+/// collected here and sorted by sample offset before the plugin processes the host buffer.
 #[derive(Debug, PartialEq)]
 pub enum ProcessEvent<P: Plugin> {
-    /// An incoming parameter change sent by the host. This will only be used when sample accurate
-    /// automation has been enabled, and the parameters are only updated when we process this
-    /// spooled event at the start of a block.
-    ParameterChange {
-        /// The event's sample offset within the buffer. Used for sorting.
-        timing: u32,
-        /// The parameter's hash, as used everywhere else.
-        hash: u32,
-        /// The normalized values, as provided by the host.
-        normalized_value: f32,
-    },
-    /// An incoming parameter change sent by the host. This will only be used when sample accurate
-    /// automation has been enabled, and the parameters are only updated when we process this
-    /// spooled event at the start of a block.
-    ///
-    /// The timing stored within the note event needs to have the block start index subtraced from
-    /// it. make sure to subtract the block start index with [`NoteEvent::subtract_timing()`] before
-    /// putting this into the input event queue.
+    /// A note event, or a MIDI CC / channel pressure / pitch bend message translated from a
+    /// parameter change. Timings are sample offsets within the host buffer.
     NoteEvent(PluginNoteEvent<P>),
 }
 
 impl<P: Plugin> ProcessEvent<P> {
     #[inline]
     pub(crate) fn timing(&self) -> u32 {
-        match self {
-            ProcessEvent::ParameterChange { timing, .. } => *timing,
-            ProcessEvent::NoteEvent(event) => event.timing(),
-        }
+        let ProcessEvent::NoteEvent(event) = self;
+        event.timing()
     }
 }
 

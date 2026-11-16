@@ -121,13 +121,6 @@ pub trait Plugin: Default + Send + 'static {
     ///
     /// Defaults to [`MidiConfig::None`]
     const MIDI_OUTPUT: MidiConfig = MidiConfig::None;
-    /// If enabled, the audio processing cycle may be split up into multiple smaller chunks if
-    /// parameter values change occur in the middle of the buffer. Depending on the host these
-    /// blocks may be as small as a single sample. Bitwig Studio sends at most one parameter change
-    /// every 64 samples.
-    ///
-    /// Defaults to `false`
-    const SAMPLE_ACCURATE_AUTOMATION: bool = false;
 
     /// If this is set to true, then the plugin will report itself as having a hard realtime
     /// processing requirement when the host asks for it. Supported hosts will never ask the plugin

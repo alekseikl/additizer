@@ -4,6 +4,59 @@ use addi_engine::{
 };
 use nice_plug::midi::{Channel, Key, NoteEvent, VoiceID};
 
+/// Song position for the current host buffer.
+/// `anchor` is the host-buffer sample where the position applies.
+/// `block_offset` is the host-buffer sample where the block being processed starts.
+pub(crate) struct HostTransport {
+    tempo: f64,
+    pos_seconds: f64,
+    pos_beats: f64,
+    anchor: isize,
+    block_offset: usize,
+}
+
+impl HostTransport {
+    pub(crate) fn new(tempo: f64, pos_seconds: f64, pos_beats: f64) -> Self {
+        Self {
+            tempo,
+            pos_seconds,
+            pos_beats,
+            anchor: 0,
+            block_offset: 0,
+        }
+    }
+
+    /// Select the host-buffer block about to be processed.
+    pub(crate) fn set_block(&mut self, block_start: usize) {
+        self.block_offset = block_start;
+    }
+
+    fn set(&mut self, timing: u32, tempo: f64, pos_seconds: f64, pos_beats: f64) {
+        self.tempo = tempo;
+        self.pos_seconds = pos_seconds;
+        self.pos_beats = pos_beats;
+        self.anchor = timing as isize;
+    }
+}
+
+impl addi_engine::HostTransport for HostTransport {
+    fn tempo(&self) -> f64 {
+        self.tempo
+    }
+
+    fn pos_seconds(&self) -> f64 {
+        self.pos_seconds
+    }
+
+    fn pos_beats(&self) -> f64 {
+        self.pos_beats
+    }
+
+    fn origin(&self) -> isize {
+        self.block_offset as isize - self.anchor
+    }
+}
+
 fn addressed_note(voice_id: VoiceID, channel: Channel, key: Key, velocity: Smp) -> Option<Note> {
     Some(Note {
         channel: channel.number()?,
@@ -18,6 +71,7 @@ pub fn process_event(
     event: NoteEvent<()>,
     block_start: usize,
     params: &[ExtParam; NUM_EXT_PARAMS],
+    transport: &mut HostTransport,
 ) {
     match event {
         NoteEvent::NoteOn {
@@ -177,6 +231,14 @@ pub fn process_event(
                 normalized_value,
                 params,
             );
+        }
+        NoteEvent::Transport {
+            timing,
+            tempo,
+            pos_seconds,
+            pos_beats,
+        } => {
+            transport.set(timing, tempo, pos_seconds, pos_beats);
         }
         _ => (),
     }

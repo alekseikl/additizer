@@ -153,8 +153,8 @@ impl BufferManager {
     /// uninitialized buffer data (aux outputs, and main output channels with no matching input
     /// channel) are filled with zeroes.
     ///
-    /// `sample_offset` and `num_samples` can be used to slice a set of host channel pointers for
-    /// sample accurate automation. If any of the outputs are missing because the host hasn't
+    /// `sample_offset` and `num_samples` select the slice of the host channel pointers passed to
+    /// the plugin. If any of the outputs are missing because the host hasn't
     /// provided enough channels or outputs, then they will be replaced by empty slices.
     ///
     /// # Panics

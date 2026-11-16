@@ -8,10 +8,10 @@ use crate::{
         C4_PITCH, MIN_LEVEL_DB, db_to_gain, db_to_gain_fast, note_to_pitch, pitch_to_freq,
     },
     synth_engine::{
-        ComplexSample, EngineConfig, EngineParams, Input, LinkConfig, ModuleConfig, ModuleId, Note,
-        OUTPUT_MODULE_ID, SPECTRAL_BUFFER_SIZE, Smp, SynthEngine, VoiceEvent, buffer::DC_OFFSET,
-        oscillator::OscillatorConfig, synth_module::SynthModule, voices::LEFT_CHANNEL,
-        voices_handler::BAND_LIMIT_FREQUENCY,
+        ComplexSample, DefaultTransport, EngineConfig, EngineParams, Input, LinkConfig,
+        ModuleConfig, ModuleId, Note, OUTPUT_MODULE_ID, SPECTRAL_BUFFER_SIZE, Smp, SynthEngine,
+        VoiceEvent, buffer::DC_OFFSET, oscillator::OscillatorConfig, synth_module::SynthModule,
+        voices::LEFT_CHANNEL, voices_handler::BAND_LIMIT_FREQUENCY,
     },
 };
 
@@ -416,14 +416,14 @@ fn play(bandwidth: i32) -> Vec<Smp> {
     engine.process(
         64,
         false,
-        0,
+        &DefaultTransport,
         &mut terminated,
         [&mut left[..], &mut right[..]],
     );
     engine.process(
         64,
         false,
-        0,
+        &DefaultTransport,
         &mut terminated,
         [&mut left[..], &mut right[..]],
     );
@@ -496,14 +496,14 @@ fn each_process_draws_a_new_spectrum() {
     engine.process(
         64,
         false,
-        0,
+        &DefaultTransport,
         &mut terminated,
         [&mut first[..], &mut right[..]],
     );
     engine.process(
         64,
         false,
-        0,
+        &DefaultTransport,
         &mut terminated,
         [&mut second[..], &mut right[..]],
     );
