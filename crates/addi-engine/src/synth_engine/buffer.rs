@@ -175,6 +175,15 @@ impl ValueBuffer {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.change_at == 0 && self.buffer[0] == 0.0
+    }
+
+    pub fn clear(&mut self) {
+        self.change_at = 0;
+        self.buffer[0] = 0.0;
+    }
+
     pub fn set(&mut self, value: Smp, at: usize) {
         if at > self.change_at {
             let prev = self.buffer[self.change_at];
@@ -196,6 +205,28 @@ impl ValueBuffer {
         }
 
         self.set(self.buffer[self.change_at], 0);
+    }
+
+    pub fn add_and_reset(&mut self, out: &mut [Smp]) {
+        if self.is_empty() {
+            return;
+        }
+
+        let filled_len = self.change_at + 1;
+        let copy_len = filled_len.min(out.len());
+        let held = self.buffer[self.change_at];
+
+        for (dst, &src) in out[..copy_len].iter_mut().zip(&self.buffer[..copy_len]) {
+            *dst += src;
+        }
+
+        if out.len() > filled_len {
+            out[filled_len..]
+                .iter_mut()
+                .for_each(|sample| *sample += held);
+        }
+
+        self.set(held, 0);
     }
 }
 

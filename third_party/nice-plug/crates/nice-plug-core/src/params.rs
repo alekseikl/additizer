@@ -116,8 +116,9 @@ pub trait Param: Display + Debug + sealed::Sealed {
     /// Get this parameter's polyphonic modulation ID. If this is set for a parameter in a CLAP
     /// plugin, then polyphonic modulation will be enabled for that parameter. Polyphonic modulation
     /// is communicated to the plugin through
-    /// [`NoteEvent::PolyModulation`][crate::midi::NoteEvent::PolyModulation] and
-    /// [`NoteEvent::MonoAutomation`][crate::midi::NoteEvent::MonoAutomation] events. See the
+    /// [`NoteEvent::PolyModulation`][crate::midi::NoteEvent::PolyModulation],
+    /// [`NoteEvent::MonoAutomation`][crate::midi::NoteEvent::MonoAutomation], and
+    /// [`NoteEvent::MonoModulation`][crate::midi::NoteEvent::MonoModulation] events. See the
     /// documentation on those events for more information.
     ///
     /// # Important

@@ -1242,6 +1242,26 @@ impl<P: ClapPlugin> Wrapper<P> {
                     ClapParamUpdate::PlainValueMod(event.amount),
                     self.current_buffer_config.load().map(|c| c.sample_rate),
                 );
+
+                // `note_id == -1` is monophonic modulation: one offset for every voice that is not
+                // polyphonically modulated. The parameter's modulated value was just updated.
+                // Per-note modulation is delivered as `PolyModulation` above.
+                if event.note_id == -1
+                    && let Some(poly_modulation_id) = self.poly_mod_ids_by_hash.get(&event.param_id)
+                {
+                    let param_ptr = self.param_by_hash[&event.param_id];
+                    let normalized_offset =
+                        event.amount as f32 / unsafe { param_ptr.step_count().unwrap_or(1) as f32 };
+
+                    push_event(
+                        input_events,
+                        NoteEvent::MonoModulation {
+                            timing,
+                            poly_modulation_id: *poly_modulation_id,
+                            normalized_offset,
+                        },
+                    );
+                }
             }
             (CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT) => {
                 let event = unsafe { &*(event as *const clap_event_transport) };

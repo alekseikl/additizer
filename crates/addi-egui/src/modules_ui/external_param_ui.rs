@@ -58,15 +58,6 @@ impl ExternalParamUI {
             {
                 param_bridge.set_sample_on_trigger(config.sample_on_trigger);
             }
-
-            ui.add_space(8.0);
-            if ui
-                .add(Checkbox::new(&mut config.polyphonic, "Polyphonic"))
-                .on_hover_text("Apply per-voice poly modulation from the host")
-                .changed()
-            {
-                param_bridge.set_polyphonic(config.polyphonic);
-            }
         });
     }
 }

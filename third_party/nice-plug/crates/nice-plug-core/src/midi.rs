@@ -239,6 +239,10 @@ pub enum NoteEvent<S> {
     ///   parameters, or passed to `set_target()` for smoothed parameters. The global value will
     ///   have already been updated, so this event only serves as a notification to update
     ///   polyphonic modulation.
+    /// - If a `MonoModulation` event is emitted for a parameter, the host changed the monophonic
+    ///   modulation offset. Voices that are not using a polyphonic offset should add this
+    ///   normalized offset to the unmodulated value. Polyphonic modulation overrides it. The
+    ///   parameter's modulated value has already been updated.
     /// - When a voice ends, either because the amplitude envelope has hit zero or because the voice
     ///   was stolen, the plugin must send a `VoiceTerminated` to the host to let it know that it
     ///   can reuse the resources it used to modulate the value.
@@ -267,6 +271,23 @@ pub enum NoteEvent<S> {
         /// offset to get that voice's modulated normalized value. See the `PolyModulation` event's
         /// docstring for more information.
         normalized_value: f32,
+    },
+    /// A notification that the host changed the monophonic modulation offset of a parameter.
+    /// Available on [`MidiConfig::Basic`] and up. This is the global form of [`PolyModulation`]:
+    /// the host did not target a note, so the offset applies to every voice that is not
+    /// polyphonically modulated. Only sent for parameters decorated with
+    /// `.with_poly_modulation_id()`. The parameter's modulated value has already been updated when
+    /// this event is emitted. See the `PolyModulation` event's docstring for how this offset
+    /// interacts with automation and per-voice modulation.
+    MonoModulation {
+        timing: u32,
+        /// The ID that was set for the modulated parameter using the `.with_poly_modulation_id()`
+        /// method.
+        poly_modulation_id: u32,
+        /// The normalized modulation offset. Add this to the parameter's unmodulated normalized
+        /// value. Polyphonic modulation replaces this offset for voices that receive a
+        /// `PolyModulation` event.
+        normalized_offset: f32,
     },
 
     /// A polyphonic note pressure/aftertouch event, available on [`MidiConfig::Basic`] and up. Not
@@ -426,7 +447,6 @@ pub enum NoteEvent<S> {
     /// field, tempo is 120 BPM and the position is `0.0`.
     Transport {
         timing: u32,
-        /// Beats per minute.
         tempo: f64,
         pos_seconds: f64,
         pos_beats: f64,
@@ -455,6 +475,7 @@ impl<S> NoteEvent<S> {
             NoteEvent::VoiceTerminated { timing, .. } => *timing,
             NoteEvent::PolyModulation { timing, .. } => *timing,
             NoteEvent::MonoAutomation { timing, .. } => *timing,
+            NoteEvent::MonoModulation { timing, .. } => *timing,
             NoteEvent::PolyPressure { timing, .. } => *timing,
             NoteEvent::PolyVolume { timing, .. } => *timing,
             NoteEvent::PolyPan { timing, .. } => *timing,
@@ -480,6 +501,7 @@ impl<S> NoteEvent<S> {
             NoteEvent::VoiceTerminated { voice_id, .. } => Some(*voice_id),
             NoteEvent::PolyModulation { voice_id, .. } => Some(VoiceID::ID(*voice_id)),
             NoteEvent::MonoAutomation { .. } => None,
+            NoteEvent::MonoModulation { .. } => None,
             NoteEvent::PolyPressure { voice_id, .. } => Some(*voice_id),
             NoteEvent::PolyVolume { voice_id, .. } => Some(*voice_id),
             NoteEvent::PolyPan { voice_id, .. } => Some(*voice_id),
@@ -505,6 +527,7 @@ impl<S> NoteEvent<S> {
             NoteEvent::VoiceTerminated { channel, .. } => Some(*channel),
             NoteEvent::PolyModulation { .. } => None,
             NoteEvent::MonoAutomation { .. } => None,
+            NoteEvent::MonoModulation { .. } => None,
             NoteEvent::PolyPressure { channel, .. } => Some(*channel),
             NoteEvent::PolyVolume { channel, .. } => Some(*channel),
             NoteEvent::PolyPan { channel, .. } => Some(*channel),
@@ -726,6 +749,7 @@ impl<S: SysExMessage> NoteEvent<S> {
             | NoteEvent::VoiceTerminated { .. }
             | NoteEvent::PolyModulation { .. }
             | NoteEvent::MonoAutomation { .. }
+            | NoteEvent::MonoModulation { .. }
             | NoteEvent::PolyVolume { .. }
             | NoteEvent::PolyPan { .. }
             | NoteEvent::PolyTuning { .. }
@@ -746,6 +770,7 @@ impl<S: SysExMessage> NoteEvent<S> {
             NoteEvent::VoiceTerminated { timing, .. } => *timing -= samples,
             NoteEvent::PolyModulation { timing, .. } => *timing -= samples,
             NoteEvent::MonoAutomation { timing, .. } => *timing -= samples,
+            NoteEvent::MonoModulation { timing, .. } => *timing -= samples,
             NoteEvent::PolyPressure { timing, .. } => *timing -= samples,
             NoteEvent::PolyVolume { timing, .. } => *timing -= samples,
             NoteEvent::PolyPan { timing, .. } => *timing -= samples,

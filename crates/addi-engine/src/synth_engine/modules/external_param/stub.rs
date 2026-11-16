@@ -44,8 +44,4 @@ impl ExternalParamUiEnd for NoUi {
     fn set_sample_on_trigger(&mut self, _value: bool) -> bool {
         self.diverge()
     }
-
-    fn set_polyphonic(&mut self, _value: bool) -> bool {
-        self.diverge()
-    }
 }

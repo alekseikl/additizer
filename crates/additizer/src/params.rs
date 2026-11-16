@@ -12,16 +12,6 @@ pub struct ExtParam {
     pub value: FloatParam,
 }
 
-impl addi_engine::external_param::ExtParamValue for ExtParam {
-    fn unmodulated(&self) -> f32 {
-        self.value.unmodulated_normalized_value()
-    }
-
-    fn modulated(&self) -> f32 {
-        self.value.modulated_normalized_value()
-    }
-}
-
 #[derive(Params)]
 pub struct AdditizerParams {
     #[persist = "plugin-preset"]

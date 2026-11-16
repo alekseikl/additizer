@@ -3,7 +3,7 @@ use core::f32;
 use rustc_hash::FxHashMap;
 
 use crate::synth_engine::{
-    external_param::{ExtParamValue, NUM_EXT_PARAMS},
+    external_param::NUM_EXT_PARAMS,
     modules::Output,
     routing::{
         MIN_MODULE_ID, MixedSource, ModuleLink, OutputsArena, ProcessContext, ProcessParams,
@@ -544,21 +544,7 @@ impl<E: EngineLinks> SynthEngine<E> {
         }
     }
 
-    pub fn set_automation_values<P: ExtParamValue>(&mut self, values: &[P; NUM_EXT_PARAMS]) {
-        self.modules.values_mut().for_each(|m| {
-            if let ModuleHandle::ExternalParam(module) = m {
-                module.set_values(values);
-            }
-        });
-    }
-
-    pub fn handle_mono_automation<P: ExtParamValue>(
-        &mut self,
-        param_idx: usize,
-        offset: usize,
-        value: Smp,
-        params: &[P; NUM_EXT_PARAMS],
-    ) {
+    pub fn handle_mono_automation(&mut self, param_idx: usize, offset: usize, value: Smp) {
         if param_idx >= NUM_EXT_PARAMS {
             return;
         }
@@ -567,7 +553,21 @@ impl<E: EngineLinks> SynthEngine<E> {
 
         self.modules.values_mut().for_each(|m| {
             if let ModuleHandle::ExternalParam(module) = m {
-                module.handle_mono_automation(param_idx, offset, value, params);
+                module.handle_mono_automation(param_idx, offset, value);
+            }
+        });
+    }
+
+    pub fn handle_mono_modulation(&mut self, param_idx: usize, offset: usize, value_offset: Smp) {
+        if param_idx >= NUM_EXT_PARAMS {
+            return;
+        }
+
+        let offset = self.to_internal_offset(offset);
+
+        self.modules.values_mut().for_each(|m| {
+            if let ModuleHandle::ExternalParam(module) = m {
+                module.handle_mono_modulation(param_idx, offset, value_offset);
             }
         });
     }

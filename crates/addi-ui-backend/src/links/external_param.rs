@@ -27,10 +27,6 @@ impl UiEnd {
     pub fn set_sample_on_trigger(&mut self, value: bool) -> bool {
         self.tx.push(UiEvent::SampleOnTrigger(value)).is_ok()
     }
-
-    pub fn set_polyphonic(&mut self, value: bool) -> bool {
-        self.tx.push(UiEvent::Polyphonic(value)).is_ok()
-    }
 }
 
 pub struct AudioEnd {
@@ -80,9 +76,6 @@ impl ExternalParamUiEnd for UiEnd {
     }
     fn set_sample_on_trigger(&mut self, value: bool) -> bool {
         UiEnd::set_sample_on_trigger(self, value)
-    }
-    fn set_polyphonic(&mut self, value: bool) -> bool {
-        UiEnd::set_polyphonic(self, value)
     }
 }
 

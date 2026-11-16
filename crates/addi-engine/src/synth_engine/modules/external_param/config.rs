@@ -7,8 +7,6 @@ pub struct ExternalParamConfig {
     pub id: ModuleId,
     pub selected_param_index: usize,
     pub sample_on_trigger: bool,
-    #[serde(default)]
-    pub polyphonic: bool,
 }
 
 impl Default for ExternalParamConfig {
@@ -17,7 +15,6 @@ impl Default for ExternalParamConfig {
             id: -1,
             selected_param_index: 0,
             sample_on_trigger: false,
-            polyphonic: false,
         }
     }
 }

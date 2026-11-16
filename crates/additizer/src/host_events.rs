@@ -1,7 +1,4 @@
-use crate::params::ExtParam;
-use addi_engine::{
-    EngineLinks, Expression, Note, Smp, SynthEngine, external_param::NUM_EXT_PARAMS,
-};
+use addi_engine::{EngineLinks, Expression, Note, Smp, SynthEngine};
 use nice_plug::midi::{Channel, Key, NoteEvent, VoiceID};
 
 /// Song position for the current host buffer.
@@ -70,7 +67,6 @@ pub fn process_event(
     synth: &mut SynthEngine<impl EngineLinks>,
     event: NoteEvent<()>,
     block_start: usize,
-    params: &[ExtParam; NUM_EXT_PARAMS],
     transport: &mut HostTransport,
 ) {
     match event {
@@ -229,7 +225,17 @@ pub fn process_event(
                 poly_modulation_id as usize,
                 timing as usize - block_start,
                 normalized_value,
-                params,
+            );
+        }
+        NoteEvent::MonoModulation {
+            timing,
+            poly_modulation_id,
+            normalized_offset,
+        } => {
+            synth.handle_mono_modulation(
+                poly_modulation_id as usize,
+                timing as usize - block_start,
+                normalized_offset,
             );
         }
         NoteEvent::Transport {

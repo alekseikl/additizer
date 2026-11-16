@@ -128,10 +128,10 @@ pub(crate) struct WrapperInner<P: Vst3Plugin> {
     /// the most recent VST3 note IDs we've seen, and then map those back to MIDI note IDs and
     /// channels as needed.
     pub note_expression_controller: AtomicRefCell<NoteExpressionController>,
-    /// Note events for this process call, including MIDI CC messages that VST3 delivers as
-    /// parameter changes. Parameter values themselves are applied immediately. The queues arrive
-    /// separately, so they are merged here and sorted by sample offset before the plugin processes
-    /// the whole host buffer in one call.
+    /// Note events for this process call, including MIDI CC messages and `MonoAutomation` events
+    /// that VST3 delivers as parameter changes. Parameter values themselves are applied
+    /// immediately. The queues arrive separately, so they are merged here and sorted by sample
+    /// offset before the plugin processes the whole host buffer in one call.
     pub process_events: AtomicRefCell<Vec<ProcessEvent<P>>>,
     /// The plugin is able to restore state through a method on the `GuiContext`. To avoid changing
     /// parameters mid-processing and running into garbled data if the host also tries to load state
@@ -163,6 +163,11 @@ pub(crate) struct WrapperInner<P: Vst3Plugin> {
     /// having to add a setter function to the parameter (or even worse, have it be completely
     /// untyped).
     pub param_ptr_to_hash: HashMap<ParamPtr, u32>,
+    /// Parameter hashes that opt into polyphonic modulation, mapped to the
+    /// [`NoteEvent::MonoAutomation`][nice_plug_core::midi::NoteEvent::MonoAutomation] /
+    /// [`NoteEvent::PolyModulation`][nice_plug_core::midi::NoteEvent::PolyModulation] id set with
+    /// `.with_poly_modulation_id()`.
+    pub poly_mod_ids_by_hash: HashMap<u32, u32>,
 }
 
 /// Tasks that can be sent from the plugin to be executed on the main thread in a non-blocking
@@ -291,10 +296,26 @@ impl<P: Vst3Plugin> WrapperInner<P> {
             .iter()
             .map(|(id, hash, _, _)| (id.clone(), *hash))
             .collect();
+        let poly_mod_ids_by_hash: HashMap<u32, u32> = param_id_hashes_ptrs_groups
+            .iter()
+            .filter_map(|(_, hash, ptr, _)| unsafe {
+                ptr.poly_modulation_id().map(|id| (*hash, id))
+            })
+            .collect();
         let param_ptr_to_hash = param_id_hashes_ptrs_groups
             .into_iter()
             .map(|(_, hash, ptr, _)| (ptr, hash))
             .collect();
+
+        if cfg!(debug_assertions) {
+            let poly_mod_ids: HashSet<u32> = poly_mod_ids_by_hash.values().copied().collect();
+            crate::nice_debug_assert_eq!(
+                poly_mod_ids_by_hash.len(),
+                poly_mod_ids.len(),
+                "The plugin has duplicate poly modulation IDs. Polyphonic modulation will not be \
+                 routed to the correct parameter."
+            );
+        }
 
         let input_note_events = if P::MIDI_INPUT == MidiConfig::None {
             AtomicRefCell::new(VecDeque::new())
@@ -354,6 +375,7 @@ impl<P: Vst3Plugin> WrapperInner<P> {
             param_units,
             param_id_to_hash,
             param_ptr_to_hash,
+            poly_mod_ids_by_hash,
         });
 
         // FIXME: Right now this is safe, but if we are going to have a singleton main thread queue

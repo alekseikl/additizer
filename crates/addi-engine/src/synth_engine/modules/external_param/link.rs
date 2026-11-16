@@ -3,7 +3,6 @@ use crate::synth_engine::{Smp, engine_io};
 pub enum UiEvent {
     SelectedParamIndex(usize),
     SampleOnTrigger(bool),
-    Polyphonic(bool),
 }
 
 pub trait ExternalParamAudioEnd: Send {
@@ -15,7 +14,6 @@ pub trait ExternalParamUiEnd: Send {
     fn get_value(&mut self) -> Smp;
     fn select_param(&mut self, index: usize) -> bool;
     fn set_sample_on_trigger(&mut self, value: bool) -> bool;
-    fn set_polyphonic(&mut self, value: bool) -> bool;
 }
 
 pub trait ExternalParamLinks: Send {

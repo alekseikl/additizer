@@ -134,8 +134,6 @@ impl Plugin for Additizer {
                 reported.pos_beats().unwrap_or_default(),
             );
 
-            synth.set_automation_values(&self.params.ext_params);
-
             let mut next_event = context.next_event();
 
             for (block_start, block) in buffer.iter_blocks(block_size) {
@@ -143,13 +141,7 @@ impl Plugin for Additizer {
                 let sample_to = block_start + samples;
 
                 while let Some(event) = next_event.take_if(|e| (e.timing() as usize) < sample_to) {
-                    host_events::process_event(
-                        &mut synth,
-                        event,
-                        block_start,
-                        &self.params.ext_params,
-                        &mut host_transport,
-                    );
+                    host_events::process_event(&mut synth, event, block_start, &mut host_transport);
                     next_event = context.next_event();
                 }
 
@@ -198,7 +190,7 @@ impl ClapPlugin for Additizer {
 }
 
 // impl Vst3Plugin for Additizer {
-//     const VST3_CLASS_ID: [u8; 16] = *b"Additizer1111337";
+//     const VST3_CLASS_ID: [u8; 16] = *b"AdditizerModular";
 //     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
 //         Vst3SubCategory::Instrument,
 //         Vst3SubCategory::Synth,

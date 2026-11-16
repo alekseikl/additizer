@@ -1094,9 +1094,10 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
             }
 
             // Parameter values are applied immediately, so the last value in this buffer is what
-            // the plugin processes. MIDI CC, channel pressure, and pitch bend arrive as parameter
-            // changes and are queued with note events, sorted by sample offset. The host buffer is
-            // processed in one call and is never split.
+            // the plugin processes. MIDI CC, channel pressure, pitch bend, and monophonic
+            // automation for polyphonically modulated parameters arrive as parameter changes and
+            // are queued with note events, sorted by sample offset. The host buffer is processed
+            // in one call and is never split.
             let mut process_events = self.inner.process_events.borrow_mut();
             process_events.clear();
 
@@ -1196,11 +1197,28 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                                         }),
                                     );
                                 } else {
-                                    self.inner.set_normalized_value_by_hash(
+                                    // The global value is updated immediately. Parameters that
+                                    // support polyphonic modulation also need a MonoAutomation
+                                    // event so the plugin can recompute per-voice values.
+                                    // Polyphonic modulation is an offset from this monophonic
+                                    // value, which is already normalized in VST3.
+                                    if self.inner.set_normalized_value_by_hash(
                                         param_hash,
                                         value,
                                         Some(sample_rate),
-                                    );
+                                    ) == kResultOk
+                                        && let Some(&poly_modulation_id) =
+                                            self.inner.poly_mod_ids_by_hash.get(&param_hash)
+                                    {
+                                        push_process_event(
+                                            &mut process_events,
+                                            ProcessEvent::NoteEvent(NoteEvent::MonoAutomation {
+                                                timing,
+                                                poly_modulation_id,
+                                                normalized_value: value,
+                                            }),
+                                        );
+                                    }
                                 }
                             }
                         }
