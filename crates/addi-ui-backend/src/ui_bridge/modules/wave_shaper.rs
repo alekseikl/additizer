@@ -10,11 +10,12 @@ pub struct WaveShaperUiBridge<L: WaveShaperLinks = crate::links::wave_shaper::Li
 }
 
 impl<L: WaveShaperLinks> WaveShaperUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: WaveShaperConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(shaper: &mut WaveShaper<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: shaper.take_ui_end()?,
-            config: shaper.get_config(),
-        })
+        Some(Self::new(shaper.take_ui_end()?, shaper.get_config()))
     }
 
     pub fn config(&self) -> &WaveShaperConfig {

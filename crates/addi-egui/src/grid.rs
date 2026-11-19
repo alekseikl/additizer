@@ -151,7 +151,10 @@ impl Grid {
             })
             .collect();
 
-        let added_mod_id = self.added_module_id.take();
+        let added_mod_id = self
+            .added_module_id
+            .take()
+            .or_else(|| bridge.take_placed_module());
 
         self.resolve_overlaps(added_mod_id, bridge);
     }
@@ -286,7 +289,7 @@ impl Grid {
 
             match popup.show(response, ui) {
                 AddResult::Selected(module_type) => {
-                    self.added_module_id = Some(bridge.add_module(module_type, cell));
+                    bridge.add_module(module_type, cell);
                     self.open_add_module = None;
                 }
                 AddResult::Close => self.open_add_module = None,

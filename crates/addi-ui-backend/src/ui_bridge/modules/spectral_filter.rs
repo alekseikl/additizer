@@ -11,11 +11,12 @@ pub struct SpectralFilterUiBridge<L: SpectralFilterLinks = crate::links::spectra
 }
 
 impl<L: SpectralFilterLinks> SpectralFilterUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: SpectralFilterConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(filter: &mut SpectralFilter<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: filter.take_ui_end()?,
-            config: filter.get_config(),
-        })
+        Some(Self::new(filter.take_ui_end()?, filter.get_config()))
     }
 
     pub fn config(&self) -> &SpectralFilterConfig {

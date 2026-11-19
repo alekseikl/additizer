@@ -44,6 +44,7 @@ name = "addi-engine"
 version = "0.1.0"
 dependencies = [
  "addi-dsp",
+ "assert_no_alloc",
  "auto_impl",
  "criterion",
  "enum_dispatch",

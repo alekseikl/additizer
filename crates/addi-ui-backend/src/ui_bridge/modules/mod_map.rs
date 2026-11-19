@@ -9,11 +9,12 @@ pub struct ModMapUiBridge<L: ModMapLinks = crate::links::mod_map::Links> {
 }
 
 impl<L: ModMapLinks> ModMapUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: ModMapConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(module: &mut ModMap<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: module.take_ui_end()?,
-            config: module.get_config(),
-        })
+        Some(Self::new(module.take_ui_end()?, module.get_config()))
     }
 
     pub fn config(&self) -> &ModMapConfig {

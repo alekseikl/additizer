@@ -10,11 +10,12 @@ pub struct OscillatorUiBridge<L: OscillatorLinks = crate::links::oscillator::Lin
 }
 
 impl<L: OscillatorLinks> OscillatorUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: OscillatorConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(osc: &mut Oscillator<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: osc.take_ui_end()?,
-            config: osc.get_config(),
-        })
+        Some(Self::new(osc.take_ui_end()?, osc.get_config()))
     }
 
     pub fn config(&self) -> &OscillatorConfig {

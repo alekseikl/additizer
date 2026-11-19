@@ -121,7 +121,7 @@ impl Plugin for Additizer {
             return ProcessStatus::KeepAlive;
         };
 
-        // Mutex is contended only when routing is changed from the UI.
+        // Topology edits arrive on the lock-free ring inside `process`.
         let mut synth = engine.lock();
 
         assert_no_alloc::assert_no_alloc(|| {

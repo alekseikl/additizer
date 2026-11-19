@@ -11,11 +11,12 @@ pub struct SpectralNoiseUiBridge<L: SpectralNoiseLinks = crate::links::spectral_
 }
 
 impl<L: SpectralNoiseLinks> SpectralNoiseUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: SpectralNoiseConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(noise: &mut SpectralNoise<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: noise.take_ui_end()?,
-            config: noise.get_config(),
-        })
+        Some(Self::new(noise.take_ui_end()?, noise.get_config()))
     }
 
     pub fn config(&self) -> &SpectralNoiseConfig {

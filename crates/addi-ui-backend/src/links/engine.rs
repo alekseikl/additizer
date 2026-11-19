@@ -1,19 +1,24 @@
 use triple_buffer::triple_buffer;
 
 use addi_engine::{
-    Input, InputId, ModuleId, NUM_CHANNELS, Smp, StereoSample, UI_TO_AUDIO_RING_CAPACITY,
+    Input, InputId, ModuleId, ModuleUiLink, NUM_CHANNELS, Smp, StereoSample,
+    UI_TO_AUDIO_RING_CAPACITY,
     engine_io::{
         EngineAudioEnd, EngineUiEnd, OutputMeter, UiEvent, UiUpdate, VoicesStatus, VoicesTelemetry,
     },
+    routing_state::RoutingState,
 };
+
+use crate::links::PluginLinks;
 
 // Larger than module links: this carries per-input modulation telemetry.
 const AUDIO_TO_UI_RING_CAPACITY: usize = 1024;
 
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
-    tx: rtrb::Producer<UiUpdate>,
+    tx: rtrb::Producer<UiUpdate<ModuleUiLink<PluginLinks>>>,
     out_volume: triple_buffer::Input<OutputMeter>,
+    routing: triple_buffer::Input<RoutingState>,
 }
 
 impl AudioEnd {
@@ -55,12 +60,32 @@ impl AudioEnd {
         *self.out_volume.input_buffer_mut() = OutputMeter { volume, clipped };
         self.out_volume.publish();
     }
+
+    pub fn publish_routing(&mut self, routing: RoutingState) {
+        self.routing.write(routing);
+    }
+
+    pub fn publish_topology(
+        &mut self,
+        added: Option<ModuleUiLink<PluginLinks>>,
+        removed: Option<ModuleId>,
+        tag: Option<i32>,
+    ) -> bool {
+        self.tx
+            .push(UiUpdate::Topology {
+                added,
+                removed,
+                tag,
+            })
+            .is_ok()
+    }
 }
 
 pub struct UiEnd {
-    rx: rtrb::Consumer<UiUpdate>,
+    rx: rtrb::Consumer<UiUpdate<ModuleUiLink<PluginLinks>>>,
     tx: rtrb::Producer<UiEvent>,
     out_volume: triple_buffer::Output<OutputMeter>,
+    routing: triple_buffer::Output<RoutingState>,
 }
 
 impl UiEnd {
@@ -96,31 +121,45 @@ impl UiEnd {
         self.tx.push(UiEvent::OutputGain(output_gain)).is_ok()
     }
 
-    pub fn pop_update(&mut self) -> Option<UiUpdate> {
+    pub fn send_event(&mut self, event: UiEvent) -> bool {
+        self.tx.push(event).is_ok()
+    }
+
+    pub fn read_routing(&mut self) -> &RoutingState {
+        self.routing.read()
+    }
+
+    pub fn pop_update(&mut self) -> Option<UiUpdate<ModuleUiLink<PluginLinks>>> {
         self.rx.pop().ok()
     }
 }
 
 pub fn make_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
-    let (to_ui_tx, from_audio_rx) = rtrb::RingBuffer::<UiUpdate>::new(AUDIO_TO_UI_RING_CAPACITY);
+    let (to_ui_tx, from_audio_rx) =
+        rtrb::RingBuffer::<UiUpdate<ModuleUiLink<PluginLinks>>>::new(AUDIO_TO_UI_RING_CAPACITY);
     let (out_volume_input, out_volume_output) = triple_buffer(&OutputMeter::default());
+    let (routing_input, routing_output) = triple_buffer(&RoutingState::default());
 
     (
         AudioEnd {
             rx: from_ui_rx,
             tx: to_ui_tx,
             out_volume: out_volume_input,
+            routing: routing_input,
         },
         UiEnd {
             rx: from_audio_rx,
             tx: to_audio_tx,
             out_volume: out_volume_output,
+            routing: routing_output,
         },
     )
 }
 
 impl EngineAudioEnd for AudioEnd {
+    type ModuleUi = ModuleUiLink<PluginLinks>;
+
     fn update_modulated_input(
         &mut self,
         module_id: ModuleId,
@@ -143,9 +182,24 @@ impl EngineAudioEnd for AudioEnd {
     fn update_out_volume(&mut self, volume: StereoSample, clipped: [bool; NUM_CHANNELS]) {
         AudioEnd::update_out_volume(self, volume, clipped)
     }
+
+    fn publish_routing(&mut self, routing: RoutingState) {
+        AudioEnd::publish_routing(self, routing)
+    }
+
+    fn publish_topology(
+        &mut self,
+        added: Option<Self::ModuleUi>,
+        removed: Option<ModuleId>,
+        tag: Option<i32>,
+    ) -> bool {
+        AudioEnd::publish_topology(self, added, removed, tag)
+    }
 }
 
 impl EngineUiEnd for UiEnd {
+    type ModuleUi = ModuleUiLink<PluginLinks>;
+
     fn get_out_volume(&mut self) -> OutputMeter {
         UiEnd::get_out_volume(self)
     }
@@ -174,7 +228,15 @@ impl EngineUiEnd for UiEnd {
         UiEnd::set_output_gain(self, output_gain)
     }
 
-    fn pop_update(&mut self) -> Option<UiUpdate> {
+    fn send_event(&mut self, event: UiEvent) -> bool {
+        UiEnd::send_event(self, event)
+    }
+
+    fn read_routing(&mut self) -> &RoutingState {
+        UiEnd::read_routing(self)
+    }
+
+    fn pop_update(&mut self) -> Option<UiUpdate<Self::ModuleUi>> {
         UiEnd::pop_update(self)
     }
 }

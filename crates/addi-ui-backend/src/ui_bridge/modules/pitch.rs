@@ -8,11 +8,12 @@ pub struct PitchUiBridge<L: PitchLinks = crate::links::pitch::Links> {
 }
 
 impl<L: PitchLinks> PitchUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: PitchConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(pitch: &mut Pitch<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: pitch.take_ui_end()?,
-            config: pitch.get_config(),
-        })
+        Some(Self::new(pitch.take_ui_end()?, pitch.get_config()))
     }
 
     pub fn config(&self) -> &PitchConfig {

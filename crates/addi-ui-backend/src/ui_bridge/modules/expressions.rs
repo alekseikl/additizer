@@ -10,11 +10,12 @@ pub struct ExpressionsUiBridge<L: ExpressionsLinks = crate::links::expressions::
 }
 
 impl<L: ExpressionsLinks> ExpressionsUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: ExpressionsConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(exp: &mut Expressions<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: exp.take_ui_end()?,
-            config: exp.get_config(),
-        })
+        Some(Self::new(exp.take_ui_end()?, exp.get_config()))
     }
 
     pub fn config(&self) -> &ExpressionsConfig {

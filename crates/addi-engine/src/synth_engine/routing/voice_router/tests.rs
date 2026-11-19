@@ -12,6 +12,7 @@ use crate::synth_engine::{
         InputSlot, MixedSlots, OutputsArena, ProcessContext, ProcessParams, SamplesOutput,
         SpectralOutput, VoiceTarget,
     },
+    routing_state::RoutingState,
     synth_module::SynthModule,
     voices::{VOICE_BLOCK_LEN, VOICE_BLOCKS},
     voices_handler::{Note, PlayingVoice, PlayingVoices, VoicesHandler},
@@ -37,6 +38,8 @@ struct RecordingEnd {
 }
 
 impl EngineAudioEnd for RecordingEnd {
+    type ModuleUi = ();
+
     fn update_modulated_input(
         &mut self,
         module_id: ModuleId,
@@ -64,6 +67,17 @@ impl EngineAudioEnd for RecordingEnd {
     }
 
     fn update_out_volume(&mut self, _volume: StereoSample, _clipped: [bool; NUM_CHANNELS]) {}
+
+    fn publish_routing(&mut self, _routing: RoutingState) {}
+
+    fn publish_topology(
+        &mut self,
+        _added: Option<Self::ModuleUi>,
+        _removed: Option<ModuleId>,
+        _tag: Option<i32>,
+    ) -> bool {
+        false
+    }
 }
 
 struct SlotModule {

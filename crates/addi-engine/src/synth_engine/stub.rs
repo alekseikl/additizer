@@ -4,8 +4,8 @@
 use crate::synth_engine::{
     Input, InputId, ModuleId, NUM_CHANNELS, Smp, StereoSample, amplifier, engine_io, envelope,
     expressions, external_param, harmonic_editor, lfo, mixer, mod_map, multi_envelope, oscillator,
-    pitch, segments_envelope, spectral_band_select, spectral_blend, spectral_eq, spectral_filter,
-    spectral_mixer, spectral_noise, svf, wave_shaper,
+    pitch, routing_state::RoutingState, segments_envelope, spectral_band_select, spectral_blend,
+    spectral_eq, spectral_filter, spectral_mixer, spectral_noise, svf, wave_shaper,
 };
 
 /// Audio-thread end that drops every UI event and telemetry update.
@@ -53,6 +53,8 @@ impl engine_io::EngineLinks for StubLinks {
 }
 
 impl engine_io::EngineAudioEnd for AudioEnd {
+    type ModuleUi = engine_io::ModuleUiLink<StubLinks>;
+
     fn update_modulated_input(
         &mut self,
         _module_id: ModuleId,
@@ -73,9 +75,22 @@ impl engine_io::EngineAudioEnd for AudioEnd {
     }
 
     fn update_out_volume(&mut self, _volume: StereoSample, _clipped: [bool; NUM_CHANNELS]) {}
+
+    fn publish_routing(&mut self, _routing: RoutingState) {}
+
+    fn publish_topology(
+        &mut self,
+        _added: Option<Self::ModuleUi>,
+        _removed: Option<ModuleId>,
+        _tag: Option<i32>,
+    ) -> bool {
+        true
+    }
 }
 
 impl engine_io::EngineUiEnd for NoUi {
+    type ModuleUi = engine_io::ModuleUiLink<StubLinks>;
+
     fn get_out_volume(&mut self) -> engine_io::OutputMeter {
         self.diverge()
     }
@@ -104,7 +119,15 @@ impl engine_io::EngineUiEnd for NoUi {
         self.diverge()
     }
 
-    fn pop_update(&mut self) -> Option<engine_io::UiUpdate> {
+    fn send_event(&mut self, _event: engine_io::UiEvent) -> bool {
+        self.diverge()
+    }
+
+    fn read_routing(&mut self) -> &RoutingState {
+        self.diverge()
+    }
+
+    fn pop_update(&mut self) -> Option<engine_io::UiUpdate<Self::ModuleUi>> {
         self.diverge()
     }
 }

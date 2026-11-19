@@ -10,11 +10,12 @@ pub struct ExternalParamUiBridge<L: ExternalParamLinks = crate::links::external_
 }
 
 impl<L: ExternalParamLinks> ExternalParamUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: ExternalParamConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(param: &mut ExternalParam<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: param.take_ui_end()?,
-            config: param.get_config(),
-        })
+        Some(Self::new(param.take_ui_end()?, param.get_config()))
     }
 
     pub fn config(&self) -> &ExternalParamConfig {

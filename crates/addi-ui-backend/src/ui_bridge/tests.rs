@@ -47,6 +47,11 @@ fn minimal_engine() -> SynthEngine<PluginLinks> {
     SynthEngine::<PluginLinks>::try_new(&config, SAMPLE_RATE, false).expect("valid engine")
 }
 
+fn sync(bridge: &mut UiBridge) {
+    bridge.engine().lock().dispatch_ui_events();
+    bridge.update();
+}
+
 fn make_bridge(engine: SynthEngine<PluginLinks>) -> UiBridge {
     let mut ui_config = UiConfig::default();
     for (id, label) in [
@@ -147,6 +152,7 @@ fn create_link_routes_direct_spectrum() {
     let spectrum = InputId::new(Input::Spectrum, OSCILLATOR_ID);
 
     bridge.create_link(he2, spectrum);
+    sync(&mut bridge);
 
     let connected = bridge.get_connected_input_sources(spectrum);
     assert_eq!(connected.len(), 1);
@@ -161,6 +167,7 @@ fn create_link_routes_mixed_detune() {
     let detune = InputId::new(Input::Detune, OSCILLATOR_ID);
 
     bridge.create_link(lfo_id, detune);
+    sync(&mut bridge);
 
     let connected = bridge.get_connected_input_sources(detune);
     assert_eq!(connected.len(), 1);
@@ -203,8 +210,20 @@ fn duplicate_module_places_copy_at_the_given_position() {
     bridge.set_module_position(OSCILLATOR_ID, GridVec::new(1, 2));
     bridge.set_module_label(OSCILLATOR_ID, "Lead".into());
 
+    let before: Vec<_> = bridge
+        .get_modules()
+        .iter()
+        .map(|module| module.id)
+        .collect();
+
+    bridge.duplicate_module(OSCILLATOR_ID, GridVec::new(1, 4));
+    sync(&mut bridge);
+
     let copy_id = bridge
-        .duplicate_module(OSCILLATOR_ID, GridVec::new(1, 4))
+        .get_modules()
+        .iter()
+        .map(|module| module.id)
+        .find(|id| !before.contains(id))
         .expect("oscillator duplicates");
 
     assert_eq!(bridge.get_module_position(copy_id), GridVec::new(1, 4));

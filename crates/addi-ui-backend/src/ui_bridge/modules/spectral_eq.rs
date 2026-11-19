@@ -10,11 +10,12 @@ pub struct SpectralEqUiBridge<L: SpectralEqLinks = crate::links::spectral_eq::Li
 }
 
 impl<L: SpectralEqLinks> SpectralEqUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: SpectralEqConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(eq: &mut SpectralEq<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: eq.take_ui_end()?,
-            config: eq.get_config(),
-        })
+        Some(Self::new(eq.take_ui_end()?, eq.get_config()))
     }
 
     pub fn config(&self) -> &SpectralEqConfig {

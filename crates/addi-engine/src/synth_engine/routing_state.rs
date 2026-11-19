@@ -7,6 +7,7 @@ use crate::synth_engine::{
     synth_module::SynthModule,
 };
 
+#[derive(Clone)]
 pub struct Module {
     pub id: ModuleId,
     pub module_type: ModuleType,
@@ -31,12 +32,14 @@ pub struct ConnectedInputSource {
     pub label: String,
 }
 
+#[derive(Clone)]
 pub struct ModuleInput {
     pub meta: InputMeta,
     pub sources: InputSource,
 }
 
 // Module inputs/outputs supposed to be owned by widget
+#[derive(Clone)]
 pub struct ModuleIo {
     pub id: ModuleId,
     pub module_type: ModuleType,
@@ -45,10 +48,21 @@ pub struct ModuleIo {
     pub output_connected: bool,
 }
 
+#[derive(Clone)]
 pub struct RoutingState {
     pub modules: FxHashMap<ModuleId, Module>,
     pub routing: RoutingMap,
     pub modules_io: Option<FxHashMap<ModuleId, ModuleIo>>,
+}
+
+impl Default for RoutingState {
+    fn default() -> Self {
+        Self {
+            modules: FxHashMap::default(),
+            routing: RoutingMap::default(),
+            modules_io: None,
+        }
+    }
 }
 
 impl RoutingState {

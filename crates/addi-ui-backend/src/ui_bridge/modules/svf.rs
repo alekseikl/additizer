@@ -9,11 +9,12 @@ pub struct SvfUiBridge<L: SvfLinks = crate::links::svf::Links> {
 }
 
 impl<L: SvfLinks> SvfUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: SvfConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(svf: &mut Svf<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: svf.take_ui_end()?,
-            config: svf.get_config(),
-        })
+        Some(Self::new(svf.take_ui_end()?, svf.get_config()))
     }
 
     pub fn config(&self) -> &SvfConfig {

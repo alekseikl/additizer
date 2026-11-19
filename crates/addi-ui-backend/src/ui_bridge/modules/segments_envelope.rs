@@ -14,11 +14,12 @@ pub struct SegmentsEnvelopeUiBridge<
 }
 
 impl<L: SegmentsEnvelopeLinks> SegmentsEnvelopeUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: SegmentsEnvelopeConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(envelope: &mut SegmentsEnvelope<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: envelope.take_ui_end()?,
-            config: envelope.get_config(),
-        })
+        Some(Self::new(envelope.take_ui_end()?, envelope.get_config()))
     }
 
     pub fn config(&self) -> &SegmentsEnvelopeConfig {

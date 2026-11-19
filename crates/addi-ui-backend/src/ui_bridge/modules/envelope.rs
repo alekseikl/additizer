@@ -9,11 +9,12 @@ pub struct EnvelopeUiBridge<L: EnvelopeLinks = crate::links::envelope::Links> {
 }
 
 impl<L: EnvelopeLinks> EnvelopeUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: EnvelopeConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(env: &mut Envelope<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: env.take_ui_end()?,
-            config: env.get_config(),
-        })
+        Some(Self::new(env.take_ui_end()?, env.get_config()))
     }
 
     pub fn config(&self) -> &EnvelopeConfig {

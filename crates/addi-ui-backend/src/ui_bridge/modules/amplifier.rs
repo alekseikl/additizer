@@ -8,11 +8,12 @@ pub struct AmplifierUiBridge<L: AmplifierLinks = crate::links::amplifier::Links>
 }
 
 impl<L: AmplifierLinks> AmplifierUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: AmplifierConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(amp: &mut Amplifier<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: amp.take_ui_end()?,
-            config: amp.get_config(),
-        })
+        Some(Self::new(amp.take_ui_end()?, amp.get_config()))
     }
 
     pub fn config(&self) -> &AmplifierConfig {

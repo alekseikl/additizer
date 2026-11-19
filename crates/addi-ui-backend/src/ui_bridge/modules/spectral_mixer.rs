@@ -10,11 +10,12 @@ pub struct SpectralMixerUiBridge<L: SpectralMixerLinks = crate::links::spectral_
 }
 
 impl<L: SpectralMixerLinks> SpectralMixerUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: SpectralMixerConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(mixer: &mut SpectralMixer<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: mixer.take_ui_end()?,
-            config: mixer.get_config(),
-        })
+        Some(Self::new(mixer.take_ui_end()?, mixer.get_config()))
     }
 
     pub fn config(&self) -> &SpectralMixerConfig {

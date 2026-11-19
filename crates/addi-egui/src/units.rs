@@ -45,7 +45,9 @@ impl DisplayUnit {
             Self::Ms(value) => {
                 let value = Self::without_signed_zero(*value);
 
-                if value.abs() < 10.0 {
+                if value.abs() < 1.0 {
+                    format!("{:.2} ms", value)
+                } else if value.abs() < 10.0 {
                     format!("{:.1} ms", value)
                 } else {
                     format!("{:.0} ms", value)

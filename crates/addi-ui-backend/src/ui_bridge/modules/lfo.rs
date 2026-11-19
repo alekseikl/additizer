@@ -9,11 +9,12 @@ pub struct LfoUiBridge<L: LfoLinks = crate::links::lfo::Links> {
 }
 
 impl<L: LfoLinks> LfoUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: LfoConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(lfo: &mut Lfo<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: lfo.take_ui_end()?,
-            config: lfo.get_config(),
-        })
+        Some(Self::new(lfo.take_ui_end()?, lfo.get_config()))
     }
 
     pub fn config(&self) -> &LfoConfig {

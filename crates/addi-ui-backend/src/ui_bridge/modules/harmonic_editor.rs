@@ -1,7 +1,7 @@
 use crate::ui_bridge::ModuleUiBridge;
 use addi_engine::harmonic_editor::{
-    EditRequest, HarmonicEditor, HarmonicEditorLinks, HarmonicEditorUiEnd, Harmonics,
-    clamp_bandwidth,
+    EditRequest, HarmonicEditor, HarmonicEditorConfig, HarmonicEditorLinks, HarmonicEditorUiEnd,
+    Harmonics, clamp_bandwidth,
 };
 use addi_engine::{ComplexSample, StereoSample};
 
@@ -13,13 +13,17 @@ pub struct HarmonicEditorUiBridge<L: HarmonicEditorLinks = crate::links::harmoni
 }
 
 impl<L: HarmonicEditorLinks> HarmonicEditorUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: HarmonicEditorConfig) -> Self {
+        Self {
+            bandwidth: config.bandwidth,
+            stereo: config.stereo,
+            capture_input: config.capture_input,
+            ui_end,
+        }
+    }
+
     pub fn try_new(editor: &mut HarmonicEditor<L>) -> Option<Self> {
-        Some(Self {
-            bandwidth: editor.bandwidth(),
-            stereo: editor.stereo(),
-            capture_input: editor.capture_input(),
-            ui_end: editor.take_ui_end()?,
-        })
+        Some(Self::new(editor.take_ui_end()?, editor.get_config()))
     }
 
     pub fn harmonics_mut(&mut self) -> &mut Harmonics {

@@ -8,11 +8,12 @@ pub struct MixerUiBridge<L: MixerLinks = crate::links::mixer::Links> {
 }
 
 impl<L: MixerLinks> MixerUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: MixerConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(mixer: &mut Mixer<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: mixer.take_ui_end()?,
-            config: mixer.get_config(),
-        })
+        Some(Self::new(mixer.take_ui_end()?, mixer.get_config()))
     }
 
     pub fn config(&self) -> &MixerConfig {

@@ -9,6 +9,7 @@ use crate::synth_engine::{
     iir_decimator::IirDecimator,
     oscillator::OscillatorConfig,
     routing::{InputSlots, OutputsArena},
+    routing_state::RoutingState,
     smooth::SmoothedSampleParams,
     voices_handler::{DecayingVoice, PlayingVoice, VoicesTelemetry},
 };
@@ -53,6 +54,8 @@ struct RecordingAudioEnd {
 }
 
 impl EngineAudioEnd for RecordingAudioEnd {
+    type ModuleUi = ();
+
     fn update_modulated_input(
         &mut self,
         _module_id: ModuleId,
@@ -74,6 +77,17 @@ impl EngineAudioEnd for RecordingAudioEnd {
 
     fn update_out_volume(&mut self, volume: StereoSample, clipped: [bool; NUM_CHANNELS]) {
         self.meter = OutputMeter { volume, clipped };
+    }
+
+    fn publish_routing(&mut self, _routing: RoutingState) {}
+
+    fn publish_topology(
+        &mut self,
+        _added: Option<Self::ModuleUi>,
+        _removed: Option<ModuleId>,
+        _tag: Option<i32>,
+    ) -> bool {
+        false
     }
 }
 

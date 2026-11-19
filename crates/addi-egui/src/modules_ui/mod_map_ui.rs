@@ -67,7 +67,7 @@ impl ModMapUi {
                     .add(
                         Slider::mono(&mut smooth, 0.0..=MAX_SMOOTH, None)
                             .default(0.0)
-                            .skew(1.2)
+                            .skew(2.0)
                             .units(Units::Time),
                     )
                     .changed()

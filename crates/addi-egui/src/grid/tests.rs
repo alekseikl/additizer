@@ -37,7 +37,13 @@ fn empty_bridge() -> UiBridge {
     UiBridge::create(engine, ui_config).expect("ui bridge")
 }
 
+fn sync(bridge: &mut UiBridge) {
+    bridge.engine().lock().dispatch_ui_events();
+    bridge.update();
+}
+
 fn take_ios(bridge: &mut UiBridge) -> FxHashMap<ModuleId, ModuleIo> {
+    sync(bridge);
     bridge.take_modules_io().expect("modules io")
 }
 
@@ -59,7 +65,7 @@ fn picked_ios(
 
 /// Five connected inputs make an oscillator tile 3 cells tall.
 fn connect_five_osc_inputs(bridge: &mut UiBridge, osc: ModuleId) {
-    let lfo = bridge.add_module(ModuleType::Lfo, GridVec::new(20, 0));
+    let lfo = place_module(bridge, ModuleType::Lfo, GridVec::new(20, 0));
 
     for input in [
         Input::Detune,
@@ -72,7 +78,9 @@ fn connect_five_osc_inputs(bridge: &mut UiBridge, osc: ModuleId) {
     }
 }
 
-fn module_ids(bridge: &UiBridge) -> Vec<ModuleId> {
+fn module_ids(bridge: &mut UiBridge) -> Vec<ModuleId> {
+    sync(bridge);
+
     let mut ids: Vec<_> = bridge
         .get_modules()
         .iter()
@@ -82,11 +90,27 @@ fn module_ids(bridge: &UiBridge) -> Vec<ModuleId> {
     ids
 }
 
-fn added_ids(before: &[ModuleId], bridge: &UiBridge) -> Vec<ModuleId> {
+fn added_ids(before: &[ModuleId], bridge: &mut UiBridge) -> Vec<ModuleId> {
     module_ids(bridge)
         .into_iter()
         .filter(|id| !before.contains(id))
         .collect()
+}
+
+fn place_module(bridge: &mut UiBridge, module_type: ModuleType, pos: GridVec) -> ModuleId {
+    if matches!(module_type, ModuleType::Output) {
+        bridge.add_module(module_type, pos);
+        return OUTPUT_MODULE_ID;
+    }
+
+    let before = module_ids(bridge);
+
+    bridge.add_module(module_type, pos);
+
+    let added = added_ids(&before, bridge);
+
+    assert_eq!(added.len(), 1);
+    added[0]
 }
 
 #[test]
@@ -218,8 +242,8 @@ fn wire_shape_is_straight_when_horizontal_and_curved_otherwise() {
 #[test]
 fn cell_occupied_uses_the_widget_span() {
     let mut bridge = empty_bridge();
-    let amp = bridge.add_module(ModuleType::Amplifier, GridVec::new(1, 2));
-    let osc = bridge.add_module(ModuleType::Oscillator, GridVec::new(6, 0));
+    let amp = place_module(&mut bridge, ModuleType::Amplifier, GridVec::new(1, 2));
+    let osc = place_module(&mut bridge, ModuleType::Oscillator, GridVec::new(6, 0));
     connect_five_osc_inputs(&mut bridge, osc);
     let mut ios = take_ios(&mut bridge);
     assert_eq!(ios[&osc].inputs.len(), 5);
@@ -239,8 +263,8 @@ fn cell_occupied_uses_the_widget_span() {
 #[test]
 fn content_size_is_the_bottom_right_of_the_widgets() {
     let mut bridge = empty_bridge();
-    let amp = bridge.add_module(ModuleType::Amplifier, GridVec::new(1, 2));
-    let mixer = bridge.add_module(ModuleType::Mixer, GridVec::ZERO);
+    let amp = place_module(&mut bridge, ModuleType::Amplifier, GridVec::new(1, 2));
+    let mixer = place_module(&mut bridge, ModuleType::Mixer, GridVec::ZERO);
     let mut ios = take_ios(&mut bridge);
     let mut grid = Grid::new();
 
@@ -255,9 +279,9 @@ fn content_size_is_the_bottom_right_of_the_widgets() {
 #[test]
 fn resolve_overlaps_pushes_later_tiles_toward_bottom_right() {
     let mut bridge = empty_bridge();
-    let first = bridge.add_module(ModuleType::Amplifier, GridVec::ZERO);
-    let second = bridge.add_module(ModuleType::Amplifier, GridVec::new(1, 0));
-    let third = bridge.add_module(ModuleType::Amplifier, GridVec::new(2, 0));
+    let first = place_module(&mut bridge, ModuleType::Amplifier, GridVec::ZERO);
+    let second = place_module(&mut bridge, ModuleType::Amplifier, GridVec::new(1, 0));
+    let third = place_module(&mut bridge, ModuleType::Amplifier, GridVec::new(2, 0));
     let mut ios = take_ios(&mut bridge);
     let mut grid = Grid::new();
     mount(&mut grid, &mut ios, &[third, first, second]);
@@ -272,8 +296,8 @@ fn resolve_overlaps_pushes_later_tiles_toward_bottom_right() {
 #[test]
 fn resolve_overlaps_pushes_down_when_that_direction_is_shorter() {
     let mut bridge = empty_bridge();
-    let osc = bridge.add_module(ModuleType::Oscillator, GridVec::ZERO);
-    let amp = bridge.add_module(ModuleType::Amplifier, GridVec::new(1, 1));
+    let osc = place_module(&mut bridge, ModuleType::Oscillator, GridVec::ZERO);
+    let amp = place_module(&mut bridge, ModuleType::Amplifier, GridVec::new(1, 1));
     let mut ios = take_ios(&mut bridge);
     let mut grid = Grid::new();
     mount(&mut grid, &mut ios, &[osc, amp]);
@@ -287,8 +311,8 @@ fn resolve_overlaps_pushes_down_when_that_direction_is_shorter() {
 #[test]
 fn resolve_overlaps_keeps_the_anchor_fixed() {
     let mut bridge = empty_bridge();
-    let amp = bridge.add_module(ModuleType::Amplifier, GridVec::ZERO);
-    let mixer = bridge.add_module(ModuleType::Mixer, GridVec::new(1, 0));
+    let amp = place_module(&mut bridge, ModuleType::Amplifier, GridVec::ZERO);
+    let mixer = place_module(&mut bridge, ModuleType::Mixer, GridVec::new(1, 0));
     let mut ios = take_ios(&mut bridge);
     let mut grid = Grid::new();
     mount(&mut grid, &mut ios, &[amp, mixer]);
@@ -302,8 +326,8 @@ fn resolve_overlaps_keeps_the_anchor_fixed() {
 #[test]
 fn resolve_overlaps_leaves_separated_tiles_alone() {
     let mut bridge = empty_bridge();
-    let left = bridge.add_module(ModuleType::Amplifier, GridVec::ZERO);
-    let right = bridge.add_module(ModuleType::Amplifier, GridVec::new(2, 0));
+    let left = place_module(&mut bridge, ModuleType::Amplifier, GridVec::ZERO);
+    let right = place_module(&mut bridge, ModuleType::Amplifier, GridVec::new(2, 0));
     let mut ios = take_ios(&mut bridge);
     let mut grid = Grid::new();
     mount(&mut grid, &mut ios, &[left, right]);
@@ -317,9 +341,9 @@ fn resolve_overlaps_leaves_separated_tiles_alone() {
 #[test]
 fn update_widgets_rebuilds_the_set_and_separates_overlaps() {
     let mut bridge = empty_bridge();
-    let amp = bridge.add_module(ModuleType::Amplifier, GridVec::ZERO);
-    let mixer = bridge.add_module(ModuleType::Mixer, GridVec::new(1, 0));
-    let osc = bridge.add_module(ModuleType::Oscillator, GridVec::new(10, 0));
+    let amp = place_module(&mut bridge, ModuleType::Amplifier, GridVec::ZERO);
+    let mixer = place_module(&mut bridge, ModuleType::Mixer, GridVec::new(1, 0));
+    let osc = place_module(&mut bridge, ModuleType::Oscillator, GridVec::new(10, 0));
     let mut ios = take_ios(&mut bridge);
     let mut grid = Grid::new();
     mount(&mut grid, &mut ios, &[osc]);
@@ -337,8 +361,8 @@ fn update_widgets_rebuilds_the_set_and_separates_overlaps() {
 #[test]
 fn update_widgets_anchors_the_added_module() {
     let mut bridge = empty_bridge();
-    let amp = bridge.add_module(ModuleType::Amplifier, GridVec::ZERO);
-    let mixer = bridge.add_module(ModuleType::Mixer, GridVec::new(1, 0));
+    let amp = place_module(&mut bridge, ModuleType::Amplifier, GridVec::ZERO);
+    let mixer = place_module(&mut bridge, ModuleType::Mixer, GridVec::new(1, 0));
     let mut ios = take_ios(&mut bridge);
     let mut grid = Grid::new();
     grid.added_module_id = Some(mixer);
@@ -353,12 +377,12 @@ fn update_widgets_anchors_the_added_module() {
 #[test]
 fn duplicate_event_places_a_copy_below_and_clears_events() {
     let mut bridge = empty_bridge();
-    let osc = bridge.add_module(ModuleType::Oscillator, GridVec::new(1, 2));
+    let osc = place_module(&mut bridge, ModuleType::Oscillator, GridVec::new(1, 2));
     bridge.set_module_label(osc, "Lead".into());
     let mut ios = take_ios(&mut bridge);
     let mut grid = Grid::new();
     mount(&mut grid, &mut ios, &[osc]);
-    let before = module_ids(&bridge);
+    let before = module_ids(&mut bridge);
 
     grid.events.push(GridEvent::Duplicate(osc));
     grid.events.push(GridEvent::Selected(osc));
@@ -366,7 +390,7 @@ fn duplicate_event_places_a_copy_below_and_clears_events() {
 
     grid.process_events(&mut bridge);
 
-    let added = added_ids(&before, &bridge);
+    let added = added_ids(&before, &mut bridge);
     assert_eq!(added.len(), 1);
     assert_eq!(bridge.get_module_position(added[0]), GridVec::new(1, 4));
     assert_eq!(bridge.get_module_label(added[0]), "Lead");
@@ -377,18 +401,18 @@ fn duplicate_event_places_a_copy_below_and_clears_events() {
 #[test]
 fn duplicate_event_skips_tiles_under_the_source() {
     let mut bridge = empty_bridge();
-    let osc = bridge.add_module(ModuleType::Oscillator, GridVec::ZERO);
-    let amp = bridge.add_module(ModuleType::Amplifier, GridVec::new(0, 2));
-    let mixer = bridge.add_module(ModuleType::Mixer, GridVec::new(0, 4));
+    let osc = place_module(&mut bridge, ModuleType::Oscillator, GridVec::ZERO);
+    let amp = place_module(&mut bridge, ModuleType::Amplifier, GridVec::new(0, 2));
+    let mixer = place_module(&mut bridge, ModuleType::Mixer, GridVec::new(0, 4));
     let mut ios = take_ios(&mut bridge);
     let mut grid = Grid::new();
     mount(&mut grid, &mut ios, &[osc, amp, mixer]);
-    let before = module_ids(&bridge);
+    let before = module_ids(&mut bridge);
 
     grid.events.push(GridEvent::Duplicate(osc));
     grid.process_events(&mut bridge);
 
-    let added = added_ids(&before, &bridge);
+    let added = added_ids(&before, &mut bridge);
     assert_eq!(added.len(), 1);
     assert_eq!(bridge.get_module_position(added[0]), GridVec::new(0, 6));
     assert_eq!(bridge.get_module_position(amp), GridVec::new(0, 2));
@@ -398,19 +422,19 @@ fn duplicate_event_skips_tiles_under_the_source() {
 #[test]
 fn duplicate_event_uses_the_body_size_under_a_tall_source() {
     let mut bridge = empty_bridge();
-    let osc = bridge.add_module(ModuleType::Oscillator, GridVec::ZERO);
-    let amp = bridge.add_module(ModuleType::Amplifier, GridVec::new(0, 3));
+    let osc = place_module(&mut bridge, ModuleType::Oscillator, GridVec::ZERO);
+    let amp = place_module(&mut bridge, ModuleType::Amplifier, GridVec::new(0, 3));
     connect_five_osc_inputs(&mut bridge, osc);
     let mut ios = take_ios(&mut bridge);
     assert_eq!(ios[&osc].inputs.len(), 5);
     let mut grid = Grid::new();
     mount(&mut grid, &mut ios, &[osc, amp]);
-    let before = module_ids(&bridge);
+    let before = module_ids(&mut bridge);
 
     grid.events.push(GridEvent::Duplicate(osc));
     grid.process_events(&mut bridge);
 
-    let added = added_ids(&before, &bridge);
+    let added = added_ids(&before, &mut bridge);
     assert_eq!(added.len(), 1);
     assert_eq!(bridge.get_module_position(added[0]), GridVec::new(0, 5));
     assert_eq!(bridge.get_module_position(osc), GridVec::ZERO);
@@ -420,14 +444,14 @@ fn duplicate_event_uses_the_body_size_under_a_tall_source() {
 #[test]
 fn duplicate_event_ignores_a_missing_widget() {
     let mut bridge = empty_bridge();
-    let osc = bridge.add_module(ModuleType::Oscillator, GridVec::new(1, 2));
+    let osc = place_module(&mut bridge, ModuleType::Oscillator, GridVec::new(1, 2));
     let mut grid = Grid::new();
-    let before = module_ids(&bridge);
+    let before = module_ids(&mut bridge);
 
     grid.events.push(GridEvent::Duplicate(osc));
     grid.process_events(&mut bridge);
 
-    assert_eq!(module_ids(&bridge), before);
+    assert_eq!(module_ids(&mut bridge), before);
     assert_eq!(bridge.get_module_position(osc), GridVec::new(1, 2));
     assert!(grid.events().is_empty());
 }
@@ -435,25 +459,25 @@ fn duplicate_event_ignores_a_missing_widget() {
 #[test]
 fn duplicate_event_does_not_copy_output() {
     let mut bridge = empty_bridge();
-    let out = bridge.add_module(ModuleType::Output, GridVec::new(2, 2));
+    let out = place_module(&mut bridge, ModuleType::Output, GridVec::new(2, 2));
     assert_eq!(out, OUTPUT_MODULE_ID);
     let mut ios = take_ios(&mut bridge);
     let mut grid = Grid::new();
     mount(&mut grid, &mut ios, &[out]);
-    let before = module_ids(&bridge);
+    let before = module_ids(&mut bridge);
 
     grid.events.push(GridEvent::Duplicate(out));
     grid.process_events(&mut bridge);
 
-    assert_eq!(module_ids(&bridge), before);
+    assert_eq!(module_ids(&mut bridge), before);
     assert_eq!(bridge.get_module_position(out), GridVec::new(2, 2));
 }
 
 #[test]
 fn moved_event_resolves_around_the_moved_module() {
     let mut bridge = empty_bridge();
-    let amp = bridge.add_module(ModuleType::Amplifier, GridVec::ZERO);
-    let mixer = bridge.add_module(ModuleType::Mixer, GridVec::new(1, 0));
+    let amp = place_module(&mut bridge, ModuleType::Amplifier, GridVec::ZERO);
+    let mixer = place_module(&mut bridge, ModuleType::Mixer, GridVec::new(1, 0));
     let mut ios = take_ios(&mut bridge);
     let mut grid = Grid::new();
     mount(&mut grid, &mut ios, &[amp, mixer]);
@@ -469,7 +493,7 @@ fn moved_event_resolves_around_the_moved_module() {
 #[test]
 fn selected_event_leaves_positions_unchanged() {
     let mut bridge = empty_bridge();
-    let osc = bridge.add_module(ModuleType::Oscillator, GridVec::new(3, 4));
+    let osc = place_module(&mut bridge, ModuleType::Oscillator, GridVec::new(3, 4));
     let mut grid = Grid::new();
 
     grid.events.push(GridEvent::Selected(osc));

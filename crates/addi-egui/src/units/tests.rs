@@ -42,8 +42,8 @@ fn parse_time_stereo_mixed_units() {
 
 #[test]
 fn format_time_zero_has_no_sign() {
-    assert_eq!(Units::Time.format(0.0), "0.0 ms");
-    assert_eq!(Units::Time.format(-0.0), "0.0 ms");
+    assert_eq!(Units::Time.format(0.0), "0.00 ms");
+    assert_eq!(Units::Time.format(-0.0), "0.00 ms");
     assert_eq!(Units::Time.format_input(0.0), "0 ms");
     assert_eq!(Units::Time.format_input(-0.0), "0 ms");
 }

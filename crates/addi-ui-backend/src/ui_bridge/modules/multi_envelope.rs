@@ -12,11 +12,12 @@ pub struct MultiEnvelopeUiBridge<L: MultiEnvelopeLinks = crate::links::multi_env
 }
 
 impl<L: MultiEnvelopeLinks> MultiEnvelopeUiBridge<L> {
+    pub fn new(ui_end: L::UiEnd, config: MultiEnvelopeConfig) -> Self {
+        Self { ui_end, config }
+    }
+
     pub fn try_new(envelope: &mut MultiEnvelope<L>) -> Option<Self> {
-        Some(Self {
-            ui_end: envelope.take_ui_end()?,
-            config: envelope.get_config(),
-        })
+        Some(Self::new(envelope.take_ui_end()?, envelope.get_config()))
     }
 
     pub fn config(&self) -> &MultiEnvelopeConfig {
