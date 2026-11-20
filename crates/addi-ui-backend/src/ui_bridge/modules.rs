@@ -98,107 +98,87 @@ impl<E: EngineLinks> ModuleBridge<E> {
     pub(super) fn new(link: ModuleUiLink<E>) -> Self {
         match link {
             ModuleUiLink::Oscillator(link) => {
-                let link = *link;
                 Self::Oscillator(Box::new(OscillatorUiBridge::new(link.ui_end, link.config)))
             }
             ModuleUiLink::Envelope(link) => {
-                let link = *link;
                 Self::Envelope(Box::new(EnvelopeUiBridge::new(link.ui_end, link.config)))
             }
             ModuleUiLink::Lfo(link) => {
-                let link = *link;
                 Self::Lfo(Box::new(LfoUiBridge::new(link.ui_end, link.config)))
             }
             ModuleUiLink::ModMap(link) => {
-                let link = *link;
                 Self::ModMap(Box::new(ModMapUiBridge::new(link.ui_end, link.config)))
             }
             ModuleUiLink::MultiEnvelope(link) => {
-                let link = *link;
                 Self::MultiEnvelope(Box::new(MultiEnvelopeUiBridge::new(
                     link.ui_end,
                     link.config,
                 )))
             }
             ModuleUiLink::SegmentsEnvelope(link) => {
-                let link = *link;
                 Self::SegmentsEnvelope(Box::new(SegmentsEnvelopeUiBridge::new(
                     link.ui_end,
                     link.config,
                 )))
             }
             ModuleUiLink::Pitch(link) => {
-                let link = *link;
                 Self::Pitch(Box::new(PitchUiBridge::new(link.ui_end, link.config)))
             }
             ModuleUiLink::Amplifier(link) => {
-                let link = *link;
                 Self::Amplifier(Box::new(AmplifierUiBridge::new(link.ui_end, link.config)))
             }
             ModuleUiLink::Mixer(link) => {
-                let link = *link;
                 Self::Mixer(Box::new(MixerUiBridge::new(link.ui_end, link.config)))
             }
             ModuleUiLink::WaveShaper(link) => {
-                let link = *link;
                 Self::WaveShaper(Box::new(WaveShaperUiBridge::new(link.ui_end, link.config)))
             }
             ModuleUiLink::Svf(link) => {
-                let link = *link;
                 Self::Svf(Box::new(SvfUiBridge::new(link.ui_end, link.config)))
             }
             ModuleUiLink::SpectralFilter(link) => {
-                let link = *link;
                 Self::SpectralFilter(Box::new(SpectralFilterUiBridge::new(
                     link.ui_end,
                     link.config,
                 )))
             }
             ModuleUiLink::SpectralEq(link) => {
-                let link = *link;
                 Self::SpectralEq(Box::new(SpectralEqUiBridge::new(link.ui_end, link.config)))
             }
             ModuleUiLink::SpectralBandSelect(link) => {
-                let link = *link;
                 Self::SpectralBandSelect(Box::new(SpectralBandSelectUiBridge::new(
                     link.ui_end,
                     link.config,
                 )))
             }
             ModuleUiLink::SpectralBlend(link) => {
-                let link = *link;
                 Self::SpectralBlend(Box::new(SpectralBlendUiBridge::new(
                     link.ui_end,
                     link.config,
                 )))
             }
             ModuleUiLink::SpectralMixer(link) => {
-                let link = *link;
                 Self::SpectralMixer(Box::new(SpectralMixerUiBridge::new(
                     link.ui_end,
                     link.config,
                 )))
             }
             ModuleUiLink::HarmonicEditor(link) => {
-                let link = *link;
                 Self::HarmonicEditor(Box::new(HarmonicEditorUiBridge::new(
                     link.ui_end,
                     link.config,
                 )))
             }
             ModuleUiLink::SpectralNoise(link) => {
-                let link = *link;
                 Self::SpectralNoise(Box::new(SpectralNoiseUiBridge::new(
                     link.ui_end,
                     link.config,
                 )))
             }
             ModuleUiLink::Expressions(link) => {
-                let link = *link;
                 Self::Expressions(Box::new(ExpressionsUiBridge::new(link.ui_end, link.config)))
             }
             ModuleUiLink::ExternalParam(link) => {
-                let link = *link;
                 Self::ExternalParam(Box::new(ExternalParamUiBridge::new(
                     link.ui_end,
                     link.config,
