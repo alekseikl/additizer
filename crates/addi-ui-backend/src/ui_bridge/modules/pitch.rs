@@ -1,6 +1,6 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_engine::pitch::{Pitch, PitchConfig, PitchLinks, PitchUiEnd};
-use addi_engine::{Input, Smp, StereoSample};
+use addi_engine::{Input, ModuleId, Smp, StereoSample};
 
 pub struct PitchUiBridge<L: PitchLinks = crate::links::pitch::Links> {
     ui_end: L::UiEnd,
@@ -57,6 +57,10 @@ impl<L: PitchLinks> PitchUiBridge<L> {
 }
 
 impl<L: PitchLinks> ModuleUiBridge for PitchUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

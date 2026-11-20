@@ -1,3 +1,5 @@
+use super::config::LfoConfig;
+
 use addi_dsp::segments::rel_segments::RelSegments;
 
 use super::Timebase;
@@ -32,4 +34,9 @@ pub trait LfoLinks: Send {
     type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
+}
+
+pub struct LfoUiLink<UiEnd> {
+    pub ui_end: UiEnd,
+    pub config: LfoConfig,
 }

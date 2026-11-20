@@ -1,3 +1,5 @@
+use super::config::ExpressionsConfig;
+
 use crate::synth_engine::{Expression, Smp, engine_io};
 
 pub enum UiEvent {
@@ -22,4 +24,9 @@ pub trait ExpressionsLinks: Send {
     type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
+}
+
+pub struct ExpressionsUiLink<UiEnd> {
+    pub ui_end: UiEnd,
+    pub config: ExpressionsConfig,
 }

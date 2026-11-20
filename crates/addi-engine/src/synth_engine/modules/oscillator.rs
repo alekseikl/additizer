@@ -45,7 +45,9 @@ use unison::{ConvexUnison, FlatUnison, ManualUnison, UnisonType, UnisonVoice};
 pub(crate) mod tests;
 
 pub use config::{OscillatorConfig, UnisonStyle};
-pub use link::{OscillatorAudioEnd, OscillatorLinks, OscillatorUiEnd, UiEvent, Unison};
+pub use link::{
+    OscillatorAudioEnd, OscillatorLinks, OscillatorUiEnd, OscillatorUiLink, UiEvent, Unison,
+};
 
 const WAVEFORM_BITS: usize = SPECTRUM_BITS + 1;
 const HALF_WAVEFORM_BITS: usize = WAVEFORM_BITS - 1;

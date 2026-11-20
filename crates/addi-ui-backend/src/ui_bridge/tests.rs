@@ -1,3 +1,4 @@
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use parking_lot::Mutex;
@@ -47,12 +48,31 @@ fn minimal_engine() -> SynthEngine<PluginLinks> {
     SynthEngine::<PluginLinks>::try_new(&config, SAMPLE_RATE, false).expect("valid engine")
 }
 
-fn sync(bridge: &mut UiBridge) {
-    bridge.engine().lock().dispatch_ui_events();
-    bridge.update();
+struct Harness {
+    engine: EngineHandle,
+    bridge: UiBridge,
 }
 
-fn make_bridge(engine: SynthEngine<PluginLinks>) -> UiBridge {
+impl Deref for Harness {
+    type Target = UiBridge;
+
+    fn deref(&self) -> &Self::Target {
+        &self.bridge
+    }
+}
+
+impl DerefMut for Harness {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.bridge
+    }
+}
+
+fn sync(harness: &mut Harness) {
+    harness.engine.lock().handle_ui_events();
+    harness.bridge.update();
+}
+
+fn make_bridge(engine: SynthEngine<PluginLinks>) -> Harness {
     let mut ui_config = UiConfig::default();
     for (id, label) in [
         (HARMONIC_EDITOR_ID, "Harmonics"),
@@ -71,8 +91,13 @@ fn make_bridge(engine: SynthEngine<PluginLinks>) -> UiBridge {
 
     let engine: EngineHandle = Arc::new(Mutex::new(engine));
     let ui_config: UiConfigHandle = Arc::new(Mutex::new(ui_config));
+    let bridge = {
+        let mut engine = engine.lock();
 
-    UiBridge::create(engine, ui_config).expect("ui bridge takes ui_end")
+        UiBridge::create(&mut engine, ui_config).expect("ui bridge takes ui_end")
+    };
+
+    Harness { engine, bridge }
 }
 
 #[test]

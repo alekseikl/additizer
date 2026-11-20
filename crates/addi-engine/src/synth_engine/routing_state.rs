@@ -48,21 +48,11 @@ pub struct ModuleIo {
     pub output_connected: bool,
 }
 
-#[derive(Clone)]
+#[derive(Default, Clone)]
 pub struct RoutingState {
     pub modules: FxHashMap<ModuleId, Module>,
     pub routing: RoutingMap,
     pub modules_io: Option<FxHashMap<ModuleId, ModuleIo>>,
-}
-
-impl Default for RoutingState {
-    fn default() -> Self {
-        Self {
-            modules: FxHashMap::default(),
-            routing: RoutingMap::default(),
-            modules_io: None,
-        }
-    }
 }
 
 impl RoutingState {

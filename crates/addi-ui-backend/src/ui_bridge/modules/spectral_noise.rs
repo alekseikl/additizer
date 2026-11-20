@@ -1,9 +1,9 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_engine::spectral_noise::{
     NoiseColor, SpectralNoise, SpectralNoiseConfig, SpectralNoiseLinks, SpectralNoiseUiEnd,
     clamp_bandwidth, clamp_cutoff, clamp_rolloff,
 };
-use addi_engine::{ComplexSample, Input, StereoSample};
+use addi_engine::{ComplexSample, Input, ModuleId, StereoSample};
 
 pub struct SpectralNoiseUiBridge<L: SpectralNoiseLinks = crate::links::spectral_noise::Links> {
     ui_end: L::UiEnd,
@@ -83,6 +83,10 @@ impl<L: SpectralNoiseLinks> SpectralNoiseUiBridge<L> {
 }
 
 impl<L: SpectralNoiseLinks> ModuleUiBridge for SpectralNoiseUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

@@ -1,12 +1,13 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_engine::harmonic_editor::{
     EditRequest, HarmonicEditor, HarmonicEditorConfig, HarmonicEditorLinks, HarmonicEditorUiEnd,
     Harmonics, clamp_bandwidth,
 };
-use addi_engine::{ComplexSample, StereoSample};
+use addi_engine::{ComplexSample, ModuleId, StereoSample};
 
 pub struct HarmonicEditorUiBridge<L: HarmonicEditorLinks = crate::links::harmonic_editor::Links> {
     ui_end: L::UiEnd,
+    id: ModuleId,
     bandwidth: i32,
     stereo: bool,
     capture_input: bool,
@@ -15,6 +16,7 @@ pub struct HarmonicEditorUiBridge<L: HarmonicEditorLinks = crate::links::harmoni
 impl<L: HarmonicEditorLinks> HarmonicEditorUiBridge<L> {
     pub fn new(ui_end: L::UiEnd, config: HarmonicEditorConfig) -> Self {
         Self {
+            id: config.id,
             bandwidth: config.bandwidth,
             stereo: config.stereo,
             capture_input: config.capture_input,
@@ -112,6 +114,10 @@ impl<L: HarmonicEditorLinks> HarmonicEditorUiBridge<L> {
 }
 
 impl<L: HarmonicEditorLinks> ModuleUiBridge for HarmonicEditorUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

@@ -1,8 +1,8 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_engine::spectral_eq::{
     EqFilter, MAX_EQ_FILTERS, SpectralEq, SpectralEqConfig, SpectralEqLinks, SpectralEqUiEnd,
 };
-use addi_engine::{Input, Smp, StereoSample};
+use addi_engine::{Input, ModuleId, Smp, StereoSample};
 
 pub struct SpectralEqUiBridge<L: SpectralEqLinks = crate::links::spectral_eq::Links> {
     ui_end: L::UiEnd,
@@ -111,6 +111,10 @@ impl<L: SpectralEqLinks> SpectralEqUiBridge<L> {
 }
 
 impl<L: SpectralEqLinks> ModuleUiBridge for SpectralEqUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

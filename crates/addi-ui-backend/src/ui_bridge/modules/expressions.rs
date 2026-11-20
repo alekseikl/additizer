@@ -1,8 +1,8 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_engine::expressions::{
     Expressions, ExpressionsConfig, ExpressionsLinks, ExpressionsUiEnd,
 };
-use addi_engine::{Expression, Smp};
+use addi_engine::{Expression, ModuleId, Smp};
 
 pub struct ExpressionsUiBridge<L: ExpressionsLinks = crate::links::expressions::Links> {
     ui_end: L::UiEnd,
@@ -40,6 +40,10 @@ impl<L: ExpressionsLinks> ExpressionsUiBridge<L> {
 }
 
 impl<L: ExpressionsLinks> ModuleUiBridge for ExpressionsUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

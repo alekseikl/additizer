@@ -1,6 +1,6 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_engine::amplifier::{Amplifier, AmplifierConfig, AmplifierLinks, AmplifierUiEnd};
-use addi_engine::{Input, StereoSample};
+use addi_engine::{Input, ModuleId, StereoSample};
 
 pub struct AmplifierUiBridge<L: AmplifierLinks = crate::links::amplifier::Links> {
     ui_end: L::UiEnd,
@@ -37,6 +37,10 @@ impl<L: AmplifierLinks> AmplifierUiBridge<L> {
 }
 
 impl<L: AmplifierLinks> ModuleUiBridge for AmplifierUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

@@ -1,6 +1,6 @@
 use crate::synth_engine::{Input, Smp, StereoSample, engine_io};
 
-use super::config::EqFilter;
+use super::config::{EqFilter, SpectralEqConfig};
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
@@ -38,4 +38,9 @@ pub trait SpectralEqLinks: Send {
     type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
+}
+
+pub struct SpectralEqUiLink<UiEnd> {
+    pub ui_end: UiEnd,
+    pub config: SpectralEqConfig,
 }

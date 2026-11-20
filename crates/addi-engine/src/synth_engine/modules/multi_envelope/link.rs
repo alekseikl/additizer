@@ -1,3 +1,5 @@
+use super::config::MultiEnvelopeConfig;
+
 use addi_dsp::segments::time_segments::TimeSegments;
 
 use super::MultiEnvelopePhase;
@@ -36,4 +38,9 @@ pub trait MultiEnvelopeLinks: Send {
     type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
+}
+
+pub struct MultiEnvelopeUiLink<UiEnd> {
+    pub ui_end: UiEnd,
+    pub config: MultiEnvelopeConfig,
 }

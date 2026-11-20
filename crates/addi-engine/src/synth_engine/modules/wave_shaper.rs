@@ -22,7 +22,7 @@ mod link;
 pub mod stub;
 
 pub use config::{ShaperType, WaveShaperConfig};
-pub use link::{UiEvent, WaveShaperAudioEnd, WaveShaperLinks, WaveShaperUiEnd};
+pub use link::{UiEvent, WaveShaperAudioEnd, WaveShaperLinks, WaveShaperUiEnd, WaveShaperUiLink};
 
 struct Params {
     shaper_type: ShaperType,

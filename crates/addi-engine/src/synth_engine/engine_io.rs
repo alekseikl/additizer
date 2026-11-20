@@ -1,26 +1,26 @@
 use crate::synth_engine::{
     Input, InputId, ModuleId, ModuleType, NUM_CHANNELS, Smp, StereoSample,
-    amplifier::{AmplifierConfig, AmplifierLinks},
-    envelope::{EnvelopeConfig, EnvelopeLinks},
-    expressions::{ExpressionsConfig, ExpressionsLinks},
-    external_param::{ExternalParamConfig, ExternalParamLinks},
-    harmonic_editor::{HarmonicEditorConfig, HarmonicEditorLinks},
-    lfo::{LfoConfig, LfoLinks},
-    mixer::{MixerConfig, MixerLinks},
-    mod_map::{ModMapConfig, ModMapLinks},
-    multi_envelope::{MultiEnvelopeConfig, MultiEnvelopeLinks},
-    oscillator::{OscillatorConfig, OscillatorLinks},
-    pitch::{PitchConfig, PitchLinks},
+    amplifier::{AmplifierLinks, AmplifierUiLink},
+    envelope::{EnvelopeLinks, EnvelopeUiLink},
+    expressions::{ExpressionsLinks, ExpressionsUiLink},
+    external_param::{ExternalParamLinks, ExternalParamUiLink},
+    harmonic_editor::{HarmonicEditorLinks, HarmonicEditorUiLink},
+    lfo::{LfoLinks, LfoUiLink},
+    mixer::{MixerLinks, MixerUiLink},
+    mod_map::{ModMapLinks, ModMapUiLink},
+    multi_envelope::{MultiEnvelopeLinks, MultiEnvelopeUiLink},
+    oscillator::{OscillatorLinks, OscillatorUiLink},
+    pitch::{PitchLinks, PitchUiLink},
     routing_state::RoutingState,
-    segments_envelope::{SegmentsEnvelopeConfig, SegmentsEnvelopeLinks},
-    spectral_band_select::{SpectralBandSelectConfig, SpectralBandSelectLinks},
-    spectral_blend::{SpectralBlendConfig, SpectralBlendLinks},
-    spectral_eq::{SpectralEqConfig, SpectralEqLinks},
-    spectral_filter::{SpectralFilterConfig, SpectralFilterLinks},
-    spectral_mixer::{SpectralMixerConfig, SpectralMixerLinks},
-    spectral_noise::{SpectralNoiseConfig, SpectralNoiseLinks},
-    svf::{SvfConfig, SvfLinks},
-    wave_shaper::{WaveShaperConfig, WaveShaperLinks},
+    segments_envelope::{SegmentsEnvelopeLinks, SegmentsEnvelopeUiLink},
+    spectral_band_select::{SpectralBandSelectLinks, SpectralBandSelectUiLink},
+    spectral_blend::{SpectralBlendLinks, SpectralBlendUiLink},
+    spectral_eq::{SpectralEqLinks, SpectralEqUiLink},
+    spectral_filter::{SpectralFilterLinks, SpectralFilterUiLink},
+    spectral_mixer::{SpectralMixerLinks, SpectralMixerUiLink},
+    spectral_noise::{SpectralNoiseLinks, SpectralNoiseUiLink},
+    svf::{SvfLinks, SvfUiLink},
+    wave_shaper::{WaveShaperLinks, WaveShaperUiLink},
 };
 
 pub use crate::synth_engine::voices_handler::VoicesTelemetry;
@@ -88,113 +88,30 @@ pub enum UiEvent {
 
 /// `UiEnd` plus the module state the UI needs to build that module's bridge.
 pub enum ModuleUiLink<E: EngineLinks> {
-    Oscillator {
-        ui_end: <E::Oscillator as OscillatorLinks>::UiEnd,
-        config: Box<OscillatorConfig>,
-    },
-    Envelope {
-        ui_end: <E::Envelope as EnvelopeLinks>::UiEnd,
-        config: Box<EnvelopeConfig>,
-    },
-    Lfo {
-        ui_end: <E::Lfo as LfoLinks>::UiEnd,
-        config: Box<LfoConfig>,
-    },
-    ModMap {
-        ui_end: <E::ModMap as ModMapLinks>::UiEnd,
-        config: Box<ModMapConfig>,
-    },
-    MultiEnvelope {
-        ui_end: <E::MultiEnvelope as MultiEnvelopeLinks>::UiEnd,
-        config: Box<MultiEnvelopeConfig>,
-    },
-    SegmentsEnvelope {
-        ui_end: <E::SegmentsEnvelope as SegmentsEnvelopeLinks>::UiEnd,
-        config: Box<SegmentsEnvelopeConfig>,
-    },
-    Pitch {
-        ui_end: <E::Pitch as PitchLinks>::UiEnd,
-        config: Box<PitchConfig>,
-    },
-    Amplifier {
-        ui_end: <E::Amplifier as AmplifierLinks>::UiEnd,
-        config: Box<AmplifierConfig>,
-    },
-    Mixer {
-        ui_end: <E::Mixer as MixerLinks>::UiEnd,
-        config: Box<MixerConfig>,
-    },
-    WaveShaper {
-        ui_end: <E::WaveShaper as WaveShaperLinks>::UiEnd,
-        config: Box<WaveShaperConfig>,
-    },
-    Svf {
-        ui_end: <E::Svf as SvfLinks>::UiEnd,
-        config: Box<SvfConfig>,
-    },
-    SpectralFilter {
-        ui_end: <E::SpectralFilter as SpectralFilterLinks>::UiEnd,
-        config: Box<SpectralFilterConfig>,
-    },
-    SpectralEq {
-        ui_end: <E::SpectralEq as SpectralEqLinks>::UiEnd,
-        config: Box<SpectralEqConfig>,
-    },
-    SpectralBandSelect {
-        ui_end: <E::SpectralBandSelect as SpectralBandSelectLinks>::UiEnd,
-        config: Box<SpectralBandSelectConfig>,
-    },
-    SpectralBlend {
-        ui_end: <E::SpectralBlend as SpectralBlendLinks>::UiEnd,
-        config: Box<SpectralBlendConfig>,
-    },
-    SpectralMixer {
-        ui_end: <E::SpectralMixer as SpectralMixerLinks>::UiEnd,
-        config: Box<SpectralMixerConfig>,
-    },
-    HarmonicEditor {
-        ui_end: <E::HarmonicEditor as HarmonicEditorLinks>::UiEnd,
-        config: Box<HarmonicEditorConfig>,
-    },
-    SpectralNoise {
-        ui_end: <E::SpectralNoise as SpectralNoiseLinks>::UiEnd,
-        config: Box<SpectralNoiseConfig>,
-    },
-    Expressions {
-        ui_end: <E::Expressions as ExpressionsLinks>::UiEnd,
-        config: Box<ExpressionsConfig>,
-    },
-    ExternalParam {
-        ui_end: <E::ExternalParam as ExternalParamLinks>::UiEnd,
-        config: Box<ExternalParamConfig>,
-    },
-}
-
-impl<E: EngineLinks> ModuleUiLink<E> {
-    pub fn id(&self) -> ModuleId {
-        match self {
-            Self::Oscillator { config, .. } => config.id,
-            Self::Envelope { config, .. } => config.id,
-            Self::Lfo { config, .. } => config.id,
-            Self::ModMap { config, .. } => config.id,
-            Self::MultiEnvelope { config, .. } => config.id,
-            Self::SegmentsEnvelope { config, .. } => config.id,
-            Self::Pitch { config, .. } => config.id,
-            Self::Amplifier { config, .. } => config.id,
-            Self::Mixer { config, .. } => config.id,
-            Self::WaveShaper { config, .. } => config.id,
-            Self::Svf { config, .. } => config.id,
-            Self::SpectralFilter { config, .. } => config.id,
-            Self::SpectralEq { config, .. } => config.id,
-            Self::SpectralBandSelect { config, .. } => config.id,
-            Self::SpectralBlend { config, .. } => config.id,
-            Self::SpectralMixer { config, .. } => config.id,
-            Self::HarmonicEditor { config, .. } => config.id,
-            Self::SpectralNoise { config, .. } => config.id,
-            Self::Expressions { config, .. } => config.id,
-            Self::ExternalParam { config, .. } => config.id,
-        }
-    }
+    Oscillator(Box<OscillatorUiLink<<E::Oscillator as OscillatorLinks>::UiEnd>>),
+    Envelope(Box<EnvelopeUiLink<<E::Envelope as EnvelopeLinks>::UiEnd>>),
+    Lfo(Box<LfoUiLink<<E::Lfo as LfoLinks>::UiEnd>>),
+    ModMap(Box<ModMapUiLink<<E::ModMap as ModMapLinks>::UiEnd>>),
+    MultiEnvelope(Box<MultiEnvelopeUiLink<<E::MultiEnvelope as MultiEnvelopeLinks>::UiEnd>>),
+    SegmentsEnvelope(
+        Box<SegmentsEnvelopeUiLink<<E::SegmentsEnvelope as SegmentsEnvelopeLinks>::UiEnd>>,
+    ),
+    Pitch(Box<PitchUiLink<<E::Pitch as PitchLinks>::UiEnd>>),
+    Amplifier(Box<AmplifierUiLink<<E::Amplifier as AmplifierLinks>::UiEnd>>),
+    Mixer(Box<MixerUiLink<<E::Mixer as MixerLinks>::UiEnd>>),
+    WaveShaper(Box<WaveShaperUiLink<<E::WaveShaper as WaveShaperLinks>::UiEnd>>),
+    Svf(Box<SvfUiLink<<E::Svf as SvfLinks>::UiEnd>>),
+    SpectralFilter(Box<SpectralFilterUiLink<<E::SpectralFilter as SpectralFilterLinks>::UiEnd>>),
+    SpectralEq(Box<SpectralEqUiLink<<E::SpectralEq as SpectralEqLinks>::UiEnd>>),
+    SpectralBandSelect(
+        Box<SpectralBandSelectUiLink<<E::SpectralBandSelect as SpectralBandSelectLinks>::UiEnd>>,
+    ),
+    SpectralBlend(Box<SpectralBlendUiLink<<E::SpectralBlend as SpectralBlendLinks>::UiEnd>>),
+    SpectralMixer(Box<SpectralMixerUiLink<<E::SpectralMixer as SpectralMixerLinks>::UiEnd>>),
+    HarmonicEditor(Box<HarmonicEditorUiLink<<E::HarmonicEditor as HarmonicEditorLinks>::UiEnd>>),
+    SpectralNoise(Box<SpectralNoiseUiLink<<E::SpectralNoise as SpectralNoiseLinks>::UiEnd>>),
+    Expressions(Box<ExpressionsUiLink<<E::Expressions as ExpressionsLinks>::UiEnd>>),
+    ExternalParam(Box<ExternalParamUiLink<<E::ExternalParam as ExternalParamLinks>::UiEnd>>),
 }
 
 pub enum UiUpdate<M> {
@@ -207,13 +124,16 @@ pub enum UiUpdate<M> {
     },
     VoicesStatus(VoicesStatus),
     /// `RoutingState` was published on the triple buffer before this event.
-    /// `tag` is the UI request tag for an added module, so the UI can attach
+    Routing,
+    /// `RoutingState` was published on the triple buffer before this event.
+    /// `tag` is the UI request tag for the added module, so the UI can attach
     /// the grid position it stored for that request.
-    Topology {
-        added: Option<M>,
-        removed: Option<ModuleId>,
+    ModuleAdded {
+        module: M,
         tag: Option<i32>,
     },
+    /// `RoutingState` was published on the triple buffer before this event.
+    ModuleRemoved(ModuleId),
 }
 
 pub trait EngineAudioEnd: Send {
@@ -236,12 +156,14 @@ pub trait EngineAudioEnd: Send {
 
     fn publish_routing(&mut self, routing: RoutingState);
 
-    fn publish_topology(
-        &mut self,
-        added: Option<Self::ModuleUi>,
-        removed: Option<ModuleId>,
-        tag: Option<i32>,
-    ) -> bool;
+    fn publish_routing_update(&mut self);
+
+    fn publish_module_added(&mut self, module: Self::ModuleUi, tag: Option<i32>);
+
+    /// Retry events that did not fit in the audio-to-UI ring.
+    fn flush_stuck_events(&mut self) {}
+
+    fn publish_module_removed(&mut self, module_id: ModuleId);
 }
 
 pub trait EngineUiEnd: Send {

@@ -12,7 +12,7 @@ mod tests;
 pub use config::{
     EqFilter, MAX_CUTOFF_HZ, MAX_EQ_FILTERS, MAX_Q, MIN_CUTOFF_HZ, MIN_Q, SpectralEqConfig,
 };
-pub use link::{SpectralEqAudioEnd, SpectralEqLinks, SpectralEqUiEnd, UiEvent};
+pub use link::{SpectralEqAudioEnd, SpectralEqLinks, SpectralEqUiEnd, SpectralEqUiLink, UiEvent};
 
 use addi_dsp::filters::{
     control::{MAX_DRIVE, MAX_PRE_Q, MIN_DRIVE},

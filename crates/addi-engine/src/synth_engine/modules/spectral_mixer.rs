@@ -21,7 +21,10 @@ mod link;
 pub mod stub;
 
 pub use config::{MAX_INPUTS, SpectralMixerConfig};
-pub use link::{SpectralMixerAudioEnd, SpectralMixerLinks, SpectralMixerUiEnd, UiEvent, UiUpdate};
+pub use link::{
+    SpectralMixerAudioEnd, SpectralMixerLinks, SpectralMixerUiEnd, SpectralMixerUiLink, UiEvent,
+    UiUpdate,
+};
 
 struct InputChannelParams {
     level: Smp,

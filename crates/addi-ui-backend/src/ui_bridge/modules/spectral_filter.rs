@@ -1,9 +1,9 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_dsp::filters::spectral_filter::FilterType;
 use addi_engine::spectral_filter::{
     SpectralFilter, SpectralFilterConfig, SpectralFilterLinks, SpectralFilterUiEnd,
 };
-use addi_engine::{Input, Smp, StereoSample};
+use addi_engine::{Input, ModuleId, Smp, StereoSample};
 
 pub struct SpectralFilterUiBridge<L: SpectralFilterLinks = crate::links::spectral_filter::Links> {
     ui_end: L::UiEnd,
@@ -72,6 +72,10 @@ impl<L: SpectralFilterLinks> SpectralFilterUiBridge<L> {
 }
 
 impl<L: SpectralFilterLinks> ModuleUiBridge for SpectralFilterUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

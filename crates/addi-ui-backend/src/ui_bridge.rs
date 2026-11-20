@@ -1,91 +1,24 @@
-use enum_dispatch::enum_dispatch;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use addi_engine::{
-    InputId, MIN_MODULE_ID, ModuleId, ModuleType, ModuleUiLink, OUTPUT_MODULE_ID, PITCH_MODULE_ID,
-    Smp, StereoSample,
+    InputId, MIN_MODULE_ID, ModuleId, ModuleType, OUTPUT_MODULE_ID, PITCH_MODULE_ID,
+    Smp, StereoSample, SynthEngine,
     config::EngineParams,
     engine_io::EngineLinks,
     routing::{DataType, Input, InputMeta, InputSource, data_types_compatible},
     routing_state::{ConnectedInputSource, ModuleIo, RoutingState},
 };
 
-use crate::engine_factory::{EngineHandle, UiConfigHandle};
+use crate::engine_factory::UiConfigHandle;
 
 pub mod modules;
 pub mod ui_config;
 
+pub use modules::{ModuleBridge, ModuleUiBridge, module_default_label};
 pub use ui_config::GridVec;
 
 pub use addi_engine::engine_io::{EngineUiEnd, OutputMeter, UiEvent, UiUpdate, VoicesStatus};
-use modules::{
-    amplifier::AmplifierUiBridge, envelope::EnvelopeUiBridge, expressions::ExpressionsUiBridge,
-    external_param::ExternalParamUiBridge, harmonic_editor::HarmonicEditorUiBridge,
-    lfo::LfoUiBridge, mixer::MixerUiBridge, mod_map::ModMapUiBridge,
-    multi_envelope::MultiEnvelopeUiBridge, oscillator::OscillatorUiBridge, pitch::PitchUiBridge,
-    segments_envelope::SegmentsEnvelopeUiBridge, spectral_band_select::SpectralBandSelectUiBridge,
-    spectral_blend::SpectralBlendUiBridge, spectral_eq::SpectralEqUiBridge,
-    spectral_filter::SpectralFilterUiBridge, spectral_mixer::SpectralMixerUiBridge,
-    spectral_noise::SpectralNoiseUiBridge, svf::SvfUiBridge, wave_shaper::WaveShaperUiBridge,
-};
 use ui_config::{UiConfig, UiModuleConfig};
-
-pub fn module_default_label(module_type: ModuleType) -> &'static str {
-    match module_type {
-        ModuleType::Output => "Output",
-        ModuleType::Amplifier => "Amplifier",
-        ModuleType::Envelope => "Envelope",
-        ModuleType::Mixer => "Mixer",
-        ModuleType::Oscillator => "Oscillator",
-        ModuleType::SpectralFilter => "Spectral Filter",
-        ModuleType::SpectralEq => "Spectral EQ",
-        ModuleType::SpectralBandSelect => "Band Select",
-        ModuleType::SpectralBlend => "Spectral Blend",
-        ModuleType::SpectralMixer => "Spectral Mixer",
-        ModuleType::HarmonicEditor => "Harmonics",
-        ModuleType::SpectralNoise => "Spectral Noise",
-        ModuleType::ExternalParam => "Ext Param",
-        ModuleType::Lfo => "LFO",
-        ModuleType::ModMap => "Mod Map",
-        ModuleType::MultiEnvelope => "Multi Envelope",
-        ModuleType::SegmentsEnvelope => "Seg Envelope",
-        ModuleType::Pitch => "Pitch",
-        ModuleType::WaveShaper => "Waveshaper",
-        ModuleType::Svf => "SVF",
-        ModuleType::Expressions => "Expressions",
-    }
-}
-
-#[enum_dispatch(ModuleUiBridge)]
-pub enum ModuleBridge<E: EngineLinks = crate::links::PluginLinks> {
-    Oscillator(Box<OscillatorUiBridge<E::Oscillator>>),
-    Envelope(Box<EnvelopeUiBridge<E::Envelope>>),
-    Amplifier(Box<AmplifierUiBridge<E::Amplifier>>),
-    Lfo(Box<LfoUiBridge<E::Lfo>>),
-    ModMap(Box<ModMapUiBridge<E::ModMap>>),
-    MultiEnvelope(Box<MultiEnvelopeUiBridge<E::MultiEnvelope>>),
-    SegmentsEnvelope(Box<SegmentsEnvelopeUiBridge<E::SegmentsEnvelope>>),
-    Pitch(Box<PitchUiBridge<E::Pitch>>),
-    Mixer(Box<MixerUiBridge<E::Mixer>>),
-    WaveShaper(Box<WaveShaperUiBridge<E::WaveShaper>>),
-    Svf(Box<SvfUiBridge<E::Svf>>),
-    SpectralFilter(Box<SpectralFilterUiBridge<E::SpectralFilter>>),
-    SpectralEq(Box<SpectralEqUiBridge<E::SpectralEq>>),
-    SpectralBandSelect(Box<SpectralBandSelectUiBridge<E::SpectralBandSelect>>),
-    SpectralBlend(Box<SpectralBlendUiBridge<E::SpectralBlend>>),
-    SpectralMixer(Box<SpectralMixerUiBridge<E::SpectralMixer>>),
-    HarmonicEditor(Box<HarmonicEditorUiBridge<E::HarmonicEditor>>),
-    SpectralNoise(Box<SpectralNoiseUiBridge<E::SpectralNoise>>),
-    Expressions(Box<ExpressionsUiBridge<E::Expressions>>),
-    ExternalParam(Box<ExternalParamUiBridge<E::ExternalParam>>),
-}
-
-#[enum_dispatch]
-#[auto_impl::auto_impl(Box)]
-pub trait ModuleUiBridge: Send {
-    // Return true when routing needs to be update
-    fn update(&mut self) -> bool;
-}
 
 pub struct ModuleItem {
     pub id: ModuleId,
@@ -117,7 +50,6 @@ struct PendingModule {
 }
 
 pub struct UiBridge<E: EngineLinks = crate::links::PluginLinks> {
-    engine: EngineHandle<E>,
     ui_config: UiConfigHandle,
     ui_end: E::UiEnd,
     routing: RoutingState,
@@ -134,29 +66,25 @@ pub struct UiBridge<E: EngineLinks = crate::links::PluginLinks> {
 }
 
 impl<E: EngineLinks> UiBridge<E> {
-    pub fn create(engine: EngineHandle<E>, ui_config: UiConfigHandle) -> Option<Self> {
-        let mut engine_lock = engine.lock();
-
-        let mut ui_end = engine_lock.take_ui_end()?;
-        let engine_params = engine_lock.get_engine_params();
-        let block_size = engine_lock.block_size();
-
-        drop(engine_lock);
+    pub fn create(engine: &mut SynthEngine<E>, ui_config: UiConfigHandle) -> Option<Self> {
+        let ui_end = engine.take_ui_end()?;
+        let engine_params = engine.get_engine_params();
+        let block_size = engine.block_size();
+        let routing = engine.get_routing_state();
+        let module_links = engine.take_module_ui_links();
 
         Self::ensure_fixed_pitch_module(&mut ui_config.lock());
 
-        let mut bridges: FxHashMap<ModuleId, Option<ModuleBridge<E>>> = FxHashMap::default();
-        let mut routing = ui_end.read_routing().clone();
+        let mut module_bridges: FxHashMap<ModuleId, Option<ModuleBridge<E>>> = FxHashMap::default();
 
-        while let Some(update) = ui_end.pop_update() {
-            if let UiUpdate::Topology { added, removed, .. } = update {
-                routing = ui_end.read_routing().clone();
-                Self::apply_topology_modules(&mut bridges, added, removed);
-            }
+        for link in module_links {
+            let bridge = ModuleBridge::new(link);
+            let id = bridge.id();
+
+            module_bridges.insert(id, Some(bridge));
         }
 
         Some(Self {
-            engine,
             ui_config,
             ui_end,
             routing,
@@ -164,7 +92,7 @@ impl<E: EngineLinks> UiBridge<E> {
             block_size,
             voices: VoicesStatus::default(),
             modulated_inputs: FxHashMap::default(),
-            module_bridges: bridges,
+            module_bridges,
             next_tag: 0,
             pending_modules: FxHashMap::default(),
             placed_module: None,
@@ -186,26 +114,6 @@ impl<E: EngineLinks> UiBridge<E> {
                 position: GridVec::new(0, 0),
             },
         );
-    }
-
-    fn apply_topology_modules(
-        bridges: &mut FxHashMap<ModuleId, Option<ModuleBridge<E>>>,
-        added: Option<ModuleUiLink<E>>,
-        removed: Option<ModuleId>,
-    ) {
-        if let Some(id) = removed {
-            bridges.remove(&id);
-        }
-
-        if let Some(link) = added {
-            let id = link.id();
-
-            bridges.insert(id, Some(module_bridge(link)));
-        }
-    }
-
-    pub fn engine(&self) -> &EngineHandle<E> {
-        &self.engine
     }
 
     pub fn engine_params(&self) -> &EngineParams {
@@ -518,26 +426,21 @@ impl<E: EngineLinks> UiBridge<E> {
                     modulated.normalized[channel_idx] = normalized_value;
                 }
                 UiUpdate::VoicesStatus(status) => self.voices = status,
-                UiUpdate::Topology {
-                    added,
-                    removed,
-                    tag,
-                } => {
+                UiUpdate::Routing => self.routing = self.ui_end.read_routing().clone(),
+                UiUpdate::ModuleAdded { module, tag } => {
                     self.routing = self.ui_end.read_routing().clone();
+                    let bridge = ModuleBridge::new(module);
+                    let id = bridge.id();
 
-                    if let Some(id) = removed {
-                        self.module_bridges.remove(&id);
-                        self.ui_config.lock().modules.remove(&id);
-                        self.modulated_inputs
-                            .retain(|input_id, _| input_id.module_id != id);
-                    }
-
-                    if let Some(link) = added {
-                        let id = link.id();
-
-                        self.module_bridges.insert(id, Some(module_bridge(link)));
-                        self.apply_pending_module(tag, id);
-                    }
+                    self.module_bridges.insert(id, Some(bridge));
+                    self.apply_pending_module(tag, id);
+                }
+                UiUpdate::ModuleRemoved(id) => {
+                    self.routing = self.ui_end.read_routing().clone();
+                    self.module_bridges.remove(&id);
+                    self.ui_config.lock().modules.remove(&id);
+                    self.modulated_inputs
+                        .retain(|input_id, _| input_id.module_id != id);
                 }
             }
         }
@@ -711,71 +614,6 @@ impl<E: EngineLinks> UiBridge<E> {
 
     pub fn get_out_volume(&mut self) -> OutputMeter {
         self.ui_end.get_out_volume()
-    }
-}
-
-fn module_bridge<E: EngineLinks>(link: ModuleUiLink<E>) -> ModuleBridge<E> {
-    match link {
-        ModuleUiLink::Oscillator { ui_end, config } => {
-            ModuleBridge::Oscillator(Box::new(OscillatorUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::Envelope { ui_end, config } => {
-            ModuleBridge::Envelope(Box::new(EnvelopeUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::Lfo { ui_end, config } => {
-            ModuleBridge::Lfo(Box::new(LfoUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::ModMap { ui_end, config } => {
-            ModuleBridge::ModMap(Box::new(ModMapUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::MultiEnvelope { ui_end, config } => {
-            ModuleBridge::MultiEnvelope(Box::new(MultiEnvelopeUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::SegmentsEnvelope { ui_end, config } => {
-            ModuleBridge::SegmentsEnvelope(Box::new(SegmentsEnvelopeUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::Pitch { ui_end, config } => {
-            ModuleBridge::Pitch(Box::new(PitchUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::Amplifier { ui_end, config } => {
-            ModuleBridge::Amplifier(Box::new(AmplifierUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::Mixer { ui_end, config } => {
-            ModuleBridge::Mixer(Box::new(MixerUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::WaveShaper { ui_end, config } => {
-            ModuleBridge::WaveShaper(Box::new(WaveShaperUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::Svf { ui_end, config } => {
-            ModuleBridge::Svf(Box::new(SvfUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::SpectralFilter { ui_end, config } => {
-            ModuleBridge::SpectralFilter(Box::new(SpectralFilterUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::SpectralEq { ui_end, config } => {
-            ModuleBridge::SpectralEq(Box::new(SpectralEqUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::SpectralBandSelect { ui_end, config } => ModuleBridge::SpectralBandSelect(
-            Box::new(SpectralBandSelectUiBridge::new(ui_end, *config)),
-        ),
-        ModuleUiLink::SpectralBlend { ui_end, config } => {
-            ModuleBridge::SpectralBlend(Box::new(SpectralBlendUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::SpectralMixer { ui_end, config } => {
-            ModuleBridge::SpectralMixer(Box::new(SpectralMixerUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::HarmonicEditor { ui_end, config } => {
-            ModuleBridge::HarmonicEditor(Box::new(HarmonicEditorUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::SpectralNoise { ui_end, config } => {
-            ModuleBridge::SpectralNoise(Box::new(SpectralNoiseUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::Expressions { ui_end, config } => {
-            ModuleBridge::Expressions(Box::new(ExpressionsUiBridge::new(ui_end, *config)))
-        }
-        ModuleUiLink::ExternalParam { ui_end, config } => {
-            ModuleBridge::ExternalParam(Box::new(ExternalParamUiBridge::new(ui_end, *config)))
-        }
     }
 }
 

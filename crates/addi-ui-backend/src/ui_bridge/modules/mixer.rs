@@ -1,6 +1,6 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_engine::mixer::{Mixer, MixerConfig, MixerLinks, MixerUiEnd, UiUpdate};
-use addi_engine::{Input, LevelType, StereoSample};
+use addi_engine::{Input, LevelType, ModuleId, StereoSample};
 
 pub struct MixerUiBridge<L: MixerLinks = crate::links::mixer::Links> {
     ui_end: L::UiEnd,
@@ -58,6 +58,10 @@ impl<L: MixerLinks> MixerUiBridge<L> {
 }
 
 impl<L: MixerLinks> ModuleUiBridge for MixerUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         let mut routing_refresh = false;
 

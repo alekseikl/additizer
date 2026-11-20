@@ -1,8 +1,8 @@
-use crate::ui_bridge::ModuleUiBridge;
-use addi_engine::Smp;
+use super::ModuleUiBridge;
 use addi_engine::external_param::{
     ExternalParam, ExternalParamConfig, ExternalParamLinks, ExternalParamUiEnd, NUM_EXT_PARAMS,
 };
+use addi_engine::{ModuleId, Smp};
 
 pub struct ExternalParamUiBridge<L: ExternalParamLinks = crate::links::external_param::Links> {
     ui_end: L::UiEnd,
@@ -40,6 +40,10 @@ impl<L: ExternalParamLinks> ExternalParamUiBridge<L> {
 }
 
 impl<L: ExternalParamLinks> ModuleUiBridge for ExternalParamUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

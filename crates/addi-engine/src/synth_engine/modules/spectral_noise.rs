@@ -30,7 +30,9 @@ mod tests;
 
 pub use config::{NoiseColor, SpectralNoiseConfig};
 
-pub use link::{SpectralNoiseAudioEnd, SpectralNoiseLinks, SpectralNoiseUiEnd, UiEvent};
+pub use link::{
+    SpectralNoiseAudioEnd, SpectralNoiseLinks, SpectralNoiseUiEnd, SpectralNoiseUiLink, UiEvent,
+};
 
 pub const MIN_ROLLOFF: Smp = 3.0;
 pub const MAX_ROLLOFF: Smp = 60.0;

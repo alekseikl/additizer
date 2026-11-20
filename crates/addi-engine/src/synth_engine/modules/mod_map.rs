@@ -10,7 +10,7 @@ pub mod stub;
 mod tests;
 
 pub use config::{MAX_SMOOTH, ModMapConfig};
-pub use link::{ModMapAudioEnd, ModMapLinks, ModMapUiEnd, UiEvent};
+pub use link::{ModMapAudioEnd, ModMapLinks, ModMapUiEnd, ModMapUiLink, UiEvent};
 
 use addi_dsp::{
     filters::ctrl_filter::{CtrlFilter, CtrlFilterCoeffs},

@@ -22,7 +22,7 @@ mod link;
 pub mod stub;
 
 pub use config::{MAX_INPUTS, MixerConfig};
-pub use link::{MixerAudioEnd, MixerLinks, MixerUiEnd, UiEvent, UiUpdate};
+pub use link::{MixerAudioEnd, MixerLinks, MixerUiEnd, MixerUiLink, UiEvent, UiUpdate};
 
 struct InputChannelParams {
     level: SmoothedSample,

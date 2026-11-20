@@ -9,7 +9,7 @@ pub mod stub;
 mod tests;
 
 pub use config::EnvelopeConfig;
-pub use link::{EnvelopeAudioEnd, EnvelopeLinks, EnvelopeUiEnd, UiEvent};
+pub use link::{EnvelopeAudioEnd, EnvelopeLinks, EnvelopeUiEnd, EnvelopeUiLink, UiEvent};
 use stage_render::{render_curve, render_level};
 
 use crate::{

@@ -1,7 +1,7 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_dsp::segments::rel_segments::RelSegments;
 use addi_engine::mod_map::{ModMap, ModMapConfig, ModMapLinks, ModMapUiEnd};
-use addi_engine::{Input, Smp, StereoSample};
+use addi_engine::{Input, ModuleId, Smp, StereoSample};
 
 pub struct ModMapUiBridge<L: ModMapLinks = crate::links::mod_map::Links> {
     ui_end: L::UiEnd,
@@ -58,6 +58,10 @@ impl<L: ModMapLinks> ModMapUiBridge<L> {
 }
 
 impl<L: ModMapLinks> ModuleUiBridge for ModMapUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

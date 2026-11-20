@@ -70,14 +70,11 @@ impl EngineAudioEnd for RecordingEnd {
 
     fn publish_routing(&mut self, _routing: RoutingState) {}
 
-    fn publish_topology(
-        &mut self,
-        _added: Option<Self::ModuleUi>,
-        _removed: Option<ModuleId>,
-        _tag: Option<i32>,
-    ) -> bool {
-        false
-    }
+    fn publish_routing_update(&mut self) {}
+
+    fn publish_module_added(&mut self, _module: Self::ModuleUi, _tag: Option<i32>) {}
+
+    fn publish_module_removed(&mut self, _module_id: ModuleId) {}
 }
 
 struct SlotModule {

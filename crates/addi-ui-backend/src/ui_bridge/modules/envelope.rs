@@ -1,7 +1,7 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_engine::envelope::EnvelopePhase;
 use addi_engine::envelope::{Envelope, EnvelopeConfig, EnvelopeLinks, EnvelopeUiEnd};
-use addi_engine::{Input, Smp, StereoSample};
+use addi_engine::{Input, ModuleId, Smp, StereoSample};
 
 pub struct EnvelopeUiBridge<L: EnvelopeLinks = crate::links::envelope::Links> {
     ui_end: L::UiEnd,
@@ -73,6 +73,10 @@ impl<L: EnvelopeLinks> EnvelopeUiBridge<L> {
 }
 
 impl<L: EnvelopeLinks> ModuleUiBridge for EnvelopeUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

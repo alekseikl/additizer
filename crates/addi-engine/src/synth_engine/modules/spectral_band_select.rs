@@ -10,7 +10,8 @@ pub use config::{
     SpectralBandSelectConfig,
 };
 pub use link::{
-    SpectralBandSelectAudioEnd, SpectralBandSelectLinks, SpectralBandSelectUiEnd, UiEvent,
+    SpectralBandSelectAudioEnd, SpectralBandSelectLinks, SpectralBandSelectUiEnd,
+    SpectralBandSelectUiLink, UiEvent,
 };
 
 use crate::{

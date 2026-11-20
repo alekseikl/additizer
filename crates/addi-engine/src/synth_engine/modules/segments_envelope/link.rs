@@ -1,3 +1,5 @@
+use super::config::SegmentsEnvelopeConfig;
+
 use addi_dsp::segments::rel_segments::RelSegments;
 
 use super::{SegmentsEnvelopePhase, Timebase};
@@ -32,4 +34,9 @@ pub trait SegmentsEnvelopeLinks: Send {
     type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
+}
+
+pub struct SegmentsEnvelopeUiLink<UiEnd> {
+    pub ui_end: UiEnd,
+    pub config: SegmentsEnvelopeConfig,
 }

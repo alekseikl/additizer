@@ -1,10 +1,10 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_dsp::segments::time_segments::TimeSegments;
 use addi_engine::multi_envelope::{
     MultiEnvelope, MultiEnvelopeConfig, MultiEnvelopeLinks, MultiEnvelopePhase, MultiEnvelopeUiEnd,
     UiUpdate,
 };
-use addi_engine::{Input, StereoSample};
+use addi_engine::{Input, ModuleId, StereoSample};
 
 pub struct MultiEnvelopeUiBridge<L: MultiEnvelopeLinks = crate::links::multi_envelope::Links> {
     ui_end: L::UiEnd,
@@ -63,6 +63,10 @@ impl<L: MultiEnvelopeLinks> MultiEnvelopeUiBridge<L> {
 }
 
 impl<L: MultiEnvelopeLinks> ModuleUiBridge for MultiEnvelopeUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         let mut routing_refresh = false;
 

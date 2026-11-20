@@ -3,7 +3,9 @@ mod link;
 pub mod stub;
 
 pub use config::ExpressionsConfig;
-pub use link::{ExpressionsAudioEnd, ExpressionsLinks, ExpressionsUiEnd, UiEvent};
+pub use link::{
+    ExpressionsAudioEnd, ExpressionsLinks, ExpressionsUiEnd, ExpressionsUiLink, UiEvent,
+};
 
 use crate::{
     synth_engine::from_st,

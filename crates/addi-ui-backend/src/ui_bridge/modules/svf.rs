@@ -1,7 +1,7 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_dsp::filters::svf::SvfType;
 use addi_engine::svf::{Svf, SvfConfig, SvfLinks, SvfUiEnd};
-use addi_engine::{Input, Smp, StereoSample};
+use addi_engine::{Input, ModuleId, Smp, StereoSample};
 
 pub struct SvfUiBridge<L: SvfLinks = crate::links::svf::Links> {
     ui_end: L::UiEnd,
@@ -53,6 +53,10 @@ impl<L: SvfLinks> SvfUiBridge<L> {
 }
 
 impl<L: SvfLinks> ModuleUiBridge for SvfUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

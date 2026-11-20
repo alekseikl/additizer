@@ -3,11 +3,31 @@ use crate::synth_engine::{
     ModuleConfig, ModuleId, ModuleUiLink, MultiEnvelope, Oscillator, Pitch, SegmentsEnvelope,
     SpectralBandSelect, SpectralBlend, SpectralEq, SpectralFilter, SpectralMixer, SpectralNoise,
     StereoSample, Svf, VoiceEvent, WaveShaper,
+    amplifier::AmplifierUiLink,
     engine_io::EngineLinks,
+    envelope::EnvelopeUiLink,
+    expressions::ExpressionsUiLink,
+    external_param::ExternalParamUiLink,
+    harmonic_editor::HarmonicEditorUiLink,
+    lfo::LfoUiLink,
+    mixer::MixerUiLink,
+    mod_map::ModMapUiLink,
     modules::Output,
+    multi_envelope::MultiEnvelopeUiLink,
+    oscillator::OscillatorUiLink,
+    pitch::PitchUiLink,
     routing::{DataType, InputMeta, InputSlots, ProcessContext},
+    segments_envelope::SegmentsEnvelopeUiLink,
+    spectral_band_select::SpectralBandSelectUiLink,
+    spectral_blend::SpectralBlendUiLink,
+    spectral_eq::SpectralEqUiLink,
+    spectral_filter::SpectralFilterUiLink,
+    spectral_mixer::SpectralMixerUiLink,
+    spectral_noise::SpectralNoiseUiLink,
+    svf::SvfUiLink,
     synth_module::SynthModule,
     voices_handler::DecayingVoice,
+    wave_shaper::WaveShaperUiLink,
 };
 use enum_dispatch::enum_dispatch;
 
@@ -265,86 +285,104 @@ impl<E: EngineLinks> ModuleHandle<E> {
     pub(super) fn take_ui_link(&mut self) -> Option<ModuleUiLink<E>> {
         match self {
             Self::Output(_) => None,
-            Self::Oscillator(m) => Some(ModuleUiLink::Oscillator {
+            Self::Oscillator(m) => Some(ModuleUiLink::Oscillator(Box::new(OscillatorUiLink {
                 ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::Envelope(m) => Some(ModuleUiLink::Envelope {
+                config: m.get_config(),
+            }))),
+            Self::Envelope(m) => Some(ModuleUiLink::Envelope(Box::new(EnvelopeUiLink {
                 ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::Lfo(m) => Some(ModuleUiLink::Lfo {
+                config: m.get_config(),
+            }))),
+            Self::Lfo(m) => Some(ModuleUiLink::Lfo(Box::new(LfoUiLink {
                 ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::ModMap(m) => Some(ModuleUiLink::ModMap {
+                config: m.get_config(),
+            }))),
+            Self::ModMap(m) => Some(ModuleUiLink::ModMap(Box::new(ModMapUiLink {
                 ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::MultiEnvelope(m) => Some(ModuleUiLink::MultiEnvelope {
+                config: m.get_config(),
+            }))),
+            Self::MultiEnvelope(m) => {
+                Some(ModuleUiLink::MultiEnvelope(Box::new(MultiEnvelopeUiLink {
+                    ui_end: m.take_ui_end()?,
+                    config: m.get_config(),
+                })))
+            }
+            Self::SegmentsEnvelope(m) => Some(ModuleUiLink::SegmentsEnvelope(Box::new(
+                SegmentsEnvelopeUiLink {
+                    ui_end: m.take_ui_end()?,
+                    config: m.get_config(),
+                },
+            ))),
+            Self::Pitch(m) => Some(ModuleUiLink::Pitch(Box::new(PitchUiLink {
                 ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::SegmentsEnvelope(m) => Some(ModuleUiLink::SegmentsEnvelope {
+                config: m.get_config(),
+            }))),
+            Self::Amplifier(m) => Some(ModuleUiLink::Amplifier(Box::new(AmplifierUiLink {
                 ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::Pitch(m) => Some(ModuleUiLink::Pitch {
+                config: m.get_config(),
+            }))),
+            Self::Mixer(m) => Some(ModuleUiLink::Mixer(Box::new(MixerUiLink {
                 ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::Amplifier(m) => Some(ModuleUiLink::Amplifier {
+                config: m.get_config(),
+            }))),
+            Self::WaveShaper(m) => Some(ModuleUiLink::WaveShaper(Box::new(WaveShaperUiLink {
                 ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::Mixer(m) => Some(ModuleUiLink::Mixer {
+                config: m.get_config(),
+            }))),
+            Self::Svf(m) => Some(ModuleUiLink::Svf(Box::new(SvfUiLink {
                 ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::WaveShaper(m) => Some(ModuleUiLink::WaveShaper {
+                config: m.get_config(),
+            }))),
+            Self::SpectralFilter(m) => Some(ModuleUiLink::SpectralFilter(Box::new(
+                SpectralFilterUiLink {
+                    ui_end: m.take_ui_end()?,
+                    config: m.get_config(),
+                },
+            ))),
+            Self::SpectralEq(m) => Some(ModuleUiLink::SpectralEq(Box::new(SpectralEqUiLink {
                 ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::Svf(m) => Some(ModuleUiLink::Svf {
+                config: m.get_config(),
+            }))),
+            Self::SpectralBandSelect(m) => Some(ModuleUiLink::SpectralBandSelect(Box::new(
+                SpectralBandSelectUiLink {
+                    ui_end: m.take_ui_end()?,
+                    config: m.get_config(),
+                },
+            ))),
+            Self::SpectralBlend(m) => {
+                Some(ModuleUiLink::SpectralBlend(Box::new(SpectralBlendUiLink {
+                    ui_end: m.take_ui_end()?,
+                    config: m.get_config(),
+                })))
+            }
+            Self::SpectralMixer(m) => {
+                Some(ModuleUiLink::SpectralMixer(Box::new(SpectralMixerUiLink {
+                    ui_end: m.take_ui_end()?,
+                    config: m.get_config(),
+                })))
+            }
+            Self::HarmonicEditor(m) => Some(ModuleUiLink::HarmonicEditor(Box::new(
+                HarmonicEditorUiLink {
+                    ui_end: m.take_ui_end()?,
+                    config: m.get_config(),
+                },
+            ))),
+            Self::SpectralNoise(m) => {
+                Some(ModuleUiLink::SpectralNoise(Box::new(SpectralNoiseUiLink {
+                    ui_end: m.take_ui_end()?,
+                    config: m.get_config(),
+                })))
+            }
+            Self::Expressions(m) => Some(ModuleUiLink::Expressions(Box::new(ExpressionsUiLink {
                 ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::SpectralFilter(m) => Some(ModuleUiLink::SpectralFilter {
-                ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::SpectralEq(m) => Some(ModuleUiLink::SpectralEq {
-                ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::SpectralBandSelect(m) => Some(ModuleUiLink::SpectralBandSelect {
-                ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::SpectralBlend(m) => Some(ModuleUiLink::SpectralBlend {
-                ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::SpectralMixer(m) => Some(ModuleUiLink::SpectralMixer {
-                ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::HarmonicEditor(m) => Some(ModuleUiLink::HarmonicEditor {
-                ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::SpectralNoise(m) => Some(ModuleUiLink::SpectralNoise {
-                ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::Expressions(m) => Some(ModuleUiLink::Expressions {
-                ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
-            Self::ExternalParam(m) => Some(ModuleUiLink::ExternalParam {
-                ui_end: m.take_ui_end()?,
-                config: Box::new(m.get_config()),
-            }),
+                config: m.get_config(),
+            }))),
+            Self::ExternalParam(m) => {
+                Some(ModuleUiLink::ExternalParam(Box::new(ExternalParamUiLink {
+                    ui_end: m.take_ui_end()?,
+                    config: m.get_config(),
+                })))
+            }
         }
     }
 }

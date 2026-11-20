@@ -1,7 +1,7 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_dsp::segments::rel_segments::RelSegments;
 use addi_engine::lfo::{Lfo, LfoConfig, LfoLinks, LfoUiEnd, Timebase};
-use addi_engine::{Input, StereoSample};
+use addi_engine::{Input, ModuleId, StereoSample};
 
 pub struct LfoUiBridge<L: LfoLinks = crate::links::lfo::Links> {
     ui_end: L::UiEnd,
@@ -66,6 +66,10 @@ impl<L: LfoLinks> LfoUiBridge<L> {
 }
 
 impl<L: LfoLinks> ModuleUiBridge for LfoUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

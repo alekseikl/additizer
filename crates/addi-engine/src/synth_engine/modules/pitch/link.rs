@@ -1,3 +1,5 @@
+use super::config::PitchConfig;
+
 use crate::synth_engine::{Input, Smp, StereoSample, engine_io};
 
 pub enum UiEvent {
@@ -26,4 +28,9 @@ pub trait PitchLinks: Send {
     type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
+}
+
+pub struct PitchUiLink<UiEnd> {
+    pub ui_end: UiEnd,
+    pub config: PitchConfig,
 }

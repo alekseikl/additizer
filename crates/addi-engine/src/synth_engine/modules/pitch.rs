@@ -5,7 +5,7 @@ mod link;
 pub mod stub;
 
 pub use config::PitchConfig;
-pub use link::{PitchAudioEnd, PitchLinks, PitchUiEnd, UiEvent};
+pub use link::{PitchAudioEnd, PitchLinks, PitchUiEnd, PitchUiLink, UiEvent};
 
 use crate::{
     synth_engine::{C4_PITCH, from_ms, from_st},

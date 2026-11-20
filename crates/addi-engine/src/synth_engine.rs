@@ -210,13 +210,25 @@ impl<E: EngineLinks> SynthEngine<E> {
             return None;
         }
 
-        engine.publish_initial_ui();
-
         Some(engine)
     }
 
     pub fn take_ui_end(&mut self) -> Option<E::UiEnd> {
         self.ui_end.take()
+    }
+
+    /// Take each module's UI link so a bridge can be built without a topology publish.
+    pub fn take_module_ui_links(&mut self) -> Vec<ModuleUiLink<E>> {
+        let mut ids: Vec<_> = self.modules.keys().copied().collect();
+
+        ids.sort_unstable();
+        ids.into_iter()
+            .filter_map(|id| {
+                self.modules
+                    .get_mut(&id)
+                    .and_then(|module| module.take_ui_link())
+            })
+            .collect()
     }
 
     pub fn get_config(&self) -> EngineConfig {
@@ -344,25 +356,24 @@ impl<E: EngineLinks> SynthEngine<E> {
             return;
         }
 
-        assert_no_alloc::permit_alloc(|| {
-            let module = self
-                .modules
-                .get(&id)
-                .expect("module is present for removal");
+        let module = self
+            .modules
+            .get(&id)
+            .expect("module is present for removal");
 
-            self.outputs_arena.free_slot(module);
-            self.modules.remove(&id);
+        self.outputs_arena.free_slot(module);
+        self.modules.remove(&id);
 
-            let new_links: Vec<_> = self
-                .get_links()
-                .into_iter()
-                .filter(|link| link.src() != id && link.dst().module_id != id)
-                .collect();
+        let new_links: Vec<_> = self
+            .get_links()
+            .into_iter()
+            .filter(|link| link.src() != id && link.dst().module_id != id)
+            .collect();
 
-            self.setup_routing(&new_links)
-                .expect("routing should be consistent after a module is removed");
-            self.commit_topology(None, Some(id), None);
-        });
+        self.setup_routing(&new_links)
+            .expect("routing should be consistent after a module is removed");
+        self.publish_routing_state();
+        self.audio_end.publish_module_removed(id);
     }
 
     fn set_config_links(&mut self, links: &[LinkConfig]) -> bool {
@@ -393,29 +404,27 @@ impl<E: EngineLinks> SynthEngine<E> {
 
     /// Rebuild routing from the current links. `prepare_links` drops invalid edges.
     pub fn refresh_routing(&mut self) -> Result<(), String> {
-        assert_no_alloc::permit_alloc(|| {
-            self.setup_routing(&self.get_links())?;
-            self.commit_topology(None, None, None);
-            Ok(())
-        })
+        self.setup_routing(&self.get_links())?;
+        self.publish_routing_state();
+        self.audio_end.publish_routing_update();
+        Ok(())
     }
 
     pub fn set_direct_link(&mut self, src: ModuleId, dst: InputId) -> Result<(), String> {
-        assert_no_alloc::permit_alloc(|| {
-            self.can_be_linked(src, dst, true)?;
+        self.can_be_linked(src, dst, true)?;
 
-            let mut new_links: Vec<_> = self
-                .get_links()
-                .iter()
-                .filter(|link| link.dst() != dst)
-                .copied()
-                .collect();
+        let mut new_links: Vec<_> = self
+            .get_links()
+            .iter()
+            .filter(|link| link.dst() != dst)
+            .copied()
+            .collect();
 
-            new_links.push(ModuleLink::direct(src, dst));
-            self.setup_routing(&new_links)?;
-            self.commit_topology(None, None, None);
-            Ok(())
-        })
+        new_links.push(ModuleLink::direct(src, dst));
+        self.setup_routing(&new_links)?;
+        self.publish_routing_state();
+        self.audio_end.publish_routing_update();
+        Ok(())
     }
 
     pub fn add_mixed_link(
@@ -424,18 +433,17 @@ impl<E: EngineLinks> SynthEngine<E> {
         dst: InputId,
         amount: StereoSample,
     ) -> Result<(), String> {
-        assert_no_alloc::permit_alloc(|| {
-            self.can_be_linked(src, dst, false)?;
+        self.can_be_linked(src, dst, false)?;
 
-            let mut new_links = self.get_links();
+        let mut new_links = self.get_links();
 
-            new_links.retain(|link| !(link.src() == src && link.dst() == dst));
-            new_links.push(ModuleLink::mixed(src, dst, amount));
+        new_links.retain(|link| !(link.src() == src && link.dst() == dst));
+        new_links.push(ModuleLink::mixed(src, dst, amount));
 
-            self.setup_routing(&new_links)?;
-            self.commit_topology(None, None, None);
-            Ok(())
-        })
+        self.setup_routing(&new_links)?;
+        self.publish_routing_state();
+        self.audio_end.publish_routing_update();
+        Ok(())
     }
 
     pub fn update_link_amount(&mut self, src: &ModuleId, dst: &InputId, amount: StereoSample) {
@@ -449,45 +457,42 @@ impl<E: EngineLinks> SynthEngine<E> {
     }
 
     pub fn remove_link(&mut self, src: &ModuleId, dst: &InputId) {
-        assert_no_alloc::permit_alloc(|| {
-            let new_links: Vec<_> = self
-                .get_links()
-                .into_iter()
-                .filter(|link| !(link.src() == *src && link.dst() == *dst))
-                .collect();
+        let new_links: Vec<_> = self
+            .get_links()
+            .into_iter()
+            .filter(|link| !(link.src() == *src && link.dst() == *dst))
+            .collect();
 
-            self.setup_routing(&new_links)
-                .expect("routing should be consistent after a link is removed");
-            self.commit_topology(None, None, None);
-        });
+        self.setup_routing(&new_links)
+            .expect("routing should be consistent after a link is removed");
+        self.publish_routing_state();
+        self.audio_end.publish_routing_update();
     }
 
     pub fn remove_input_links(&mut self, dst: &InputId) {
-        assert_no_alloc::permit_alloc(|| {
-            let new_links: Vec<_> = self
-                .get_links()
-                .into_iter()
-                .filter(|link| link.dst() != *dst)
-                .collect();
+        let new_links: Vec<_> = self
+            .get_links()
+            .into_iter()
+            .filter(|link| link.dst() != *dst)
+            .collect();
 
-            self.setup_routing(&new_links)
-                .expect("routing should be consistent after links are removed");
-            self.commit_topology(None, None, None);
-        });
+        self.setup_routing(&new_links)
+            .expect("routing should be consistent after links are removed");
+        self.publish_routing_state();
+        self.audio_end.publish_routing_update();
     }
 
     pub fn remove_output_links(&mut self, src: ModuleId) {
-        assert_no_alloc::permit_alloc(|| {
-            let new_links: Vec<_> = self
-                .get_links()
-                .into_iter()
-                .filter(|link| link.src() != src)
-                .collect();
+        let new_links: Vec<_> = self
+            .get_links()
+            .into_iter()
+            .filter(|link| link.src() != src)
+            .collect();
 
-            self.setup_routing(&new_links)
-                .expect("routing should be consistent after links are removed");
-            self.commit_topology(None, None, None);
-        });
+        self.setup_routing(&new_links)
+            .expect("routing should be consistent after links are removed");
+        self.publish_routing_state();
+        self.audio_end.publish_routing_update();
     }
 
     pub fn handle_note_on(&mut self, note: Note, offset: usize) {
@@ -640,12 +645,10 @@ impl<E: EngineLinks> SynthEngine<E> {
         self.voices_handler.handle_choke(note);
     }
 
-    pub fn dispatch_ui_events(&mut self) {
-        self.handle_ui_events();
-    }
-
-    fn handle_ui_events(&mut self) {
+    pub fn handle_ui_events(&mut self) {
         use engine_io::UiEvent;
+
+        self.audio_end.flush_stuck_events();
 
         while let Some(event) = self.audio_end.pop_event() {
             match event {
@@ -668,16 +671,12 @@ impl<E: EngineLinks> SynthEngine<E> {
                 UiEvent::RemoveModule(id) => self.remove_module(id),
                 UiEvent::SetDirectLink { src, dst } => {
                     if let Err(err) = self.set_direct_link(src, dst) {
-                        assert_no_alloc::permit_alloc(|| {
-                            tracing::error!("Failed to set direct link: {err}");
-                        });
+                        tracing::error!("Failed to set direct link: {err}");
                     }
                 }
                 UiEvent::AddMixedLink { src, dst, amount } => {
                     if let Err(err) = self.add_mixed_link(src, dst, amount) {
-                        assert_no_alloc::permit_alloc(|| {
-                            tracing::error!("Failed to add link: {err}");
-                        });
+                        tracing::error!("Failed to add link: {err}");
                     }
                 }
                 UiEvent::RemoveLink { src, dst } => self.remove_link(&src, &dst),
@@ -685,9 +684,7 @@ impl<E: EngineLinks> SynthEngine<E> {
                 UiEvent::RemoveOutputLinks(src) => self.remove_output_links(src),
                 UiEvent::RefreshRouting => {
                     if let Err(err) = self.refresh_routing() {
-                        assert_no_alloc::permit_alloc(|| {
-                            tracing::error!("Failed to refresh routing: {err}");
-                        });
+                        tracing::error!("Failed to refresh routing: {err}");
                     }
                 }
             }
@@ -712,7 +709,9 @@ impl<E: EngineLinks> SynthEngine<E> {
             self.block_size
         );
 
-        self.handle_ui_events();
+        assert_no_alloc::permit_alloc(|| {
+            self.handle_ui_events();
+        });
 
         if !self.voices_handler.get_events().is_empty() {
             self.dispatch_voice_events();
@@ -807,20 +806,18 @@ impl<E: EngineLinks> SynthEngine<E> {
     fn insert_module(&mut self, module_type: ModuleType, tag: Option<i32>) -> ModuleId {
         let id = self.alloc_module_id();
 
-        assert_no_alloc::permit_alloc(|| {
-            let mut module = ModuleHandle::<E>::new(module_type, id, self.buffer_size);
+        let mut module = ModuleHandle::<E>::new(module_type, id, self.buffer_size);
+        let ui_link = module
+            .take_ui_link()
+            .expect("inserted module has a ui link");
 
-            self.outputs_arena.allocate_slot(&mut module);
-            self.modules.insert(id, module);
-            self.setup_routing(&self.get_links())
-                .expect("routing should be consistent after a module is added");
-            let added = self
-                .modules
-                .get_mut(&id)
-                .and_then(|module| module.take_ui_link());
+        self.outputs_arena.allocate_slot(&mut module);
+        self.modules.insert(id, module);
+        self.setup_routing(&self.get_links())
+            .expect("routing should be consistent after a module is added");
 
-            self.commit_topology(added, None, tag);
-        });
+        self.publish_routing_state();
+        self.audio_end.publish_module_added(ui_link, tag);
         id
     }
 
@@ -829,69 +826,31 @@ impl<E: EngineLinks> SynthEngine<E> {
             return None;
         }
 
-        assert_no_alloc::permit_alloc(|| {
-            let Some(mut config) = self.modules.get(&src).and_then(|module| module.config()) else {
-                return None;
-            };
+        let mut config = self.modules.get(&src).and_then(|module| module.config())?;
 
-            let new_id = self.alloc_module_id();
+        let new_id = self.alloc_module_id();
 
-            config.set_id(new_id);
+        config.set_id(new_id);
 
-            let mut module = ModuleHandle::<E>::from_config(&config, self.buffer_size);
+        let mut module = ModuleHandle::<E>::from_config(&config, self.buffer_size);
+        let ui_link = module
+            .take_ui_link()
+            .expect("duplicated module has a ui link");
 
-            self.outputs_arena.allocate_slot(&mut module);
-            self.modules.insert(new_id, module);
-            self.setup_routing(&self.get_links())
-                .expect("routing should be consistent after a module is added");
-            let added = self
-                .modules
-                .get_mut(&new_id)
-                .and_then(|module| module.take_ui_link());
+        self.outputs_arena.allocate_slot(&mut module);
+        self.modules.insert(new_id, module);
+        self.setup_routing(&self.get_links())
+            .expect("routing should be consistent after a module is added");
 
-            self.commit_topology(added, None, tag);
-            Some(new_id)
-        })
+        self.publish_routing_state();
+        self.audio_end.publish_module_added(ui_link, tag);
+        Some(new_id)
     }
 
-    /// Publish routing first, then the topology event that tells the UI to read it.
-    fn commit_topology(
-        &mut self,
-        added: Option<ModuleUiLink<E>>,
-        removed: Option<ModuleId>,
-        tag: Option<i32>,
-    ) {
+    fn publish_routing_state(&mut self) {
         let routing = self.get_routing_state();
 
         self.audio_end.publish_routing(routing);
-        if !self.audio_end.publish_topology(added, removed, tag) {
-            tracing::error!("failed to publish topology update");
-        }
-    }
-
-    fn publish_initial_ui(&mut self) {
-        let mut ids: Vec<_> = self.modules.keys().copied().collect();
-
-        ids.sort_unstable();
-
-        let mut published = false;
-
-        for id in ids {
-            let Some(link) = self
-                .modules
-                .get_mut(&id)
-                .and_then(|module| module.take_ui_link())
-            else {
-                continue;
-            };
-
-            self.commit_topology(Some(link), None, None);
-            published = true;
-        }
-
-        if !published {
-            self.audio_end.publish_routing(self.get_routing_state());
-        }
     }
 
     fn can_be_linked(&self, src: ModuleId, dst: InputId, directly: bool) -> Result<(), String> {

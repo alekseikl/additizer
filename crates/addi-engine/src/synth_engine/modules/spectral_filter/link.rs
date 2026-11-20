@@ -1,3 +1,5 @@
+use super::config::SpectralFilterConfig;
+
 use crate::synth_engine::{Input, Smp, StereoSample, engine_io};
 use addi_dsp::filters::spectral_filter::FilterType;
 
@@ -31,4 +33,9 @@ pub trait SpectralFilterLinks: Send {
     type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
+}
+
+pub struct SpectralFilterUiLink<UiEnd> {
+    pub ui_end: UiEnd,
+    pub config: SpectralFilterConfig,
 }

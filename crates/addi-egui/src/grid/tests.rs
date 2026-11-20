@@ -1,3 +1,4 @@
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use egui::{Color32, Vec2, epaint::PathStroke, pos2, vec2};
@@ -20,7 +21,26 @@ fn rect(x: i32, y: i32, w: i32, h: i32) -> GridRect {
     GridRect { id: 0, x, y, w, h }
 }
 
-fn empty_bridge() -> UiBridge {
+struct Harness {
+    engine: EngineHandle,
+    bridge: UiBridge,
+}
+
+impl Deref for Harness {
+    type Target = UiBridge;
+
+    fn deref(&self) -> &Self::Target {
+        &self.bridge
+    }
+}
+
+impl DerefMut for Harness {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.bridge
+    }
+}
+
+fn empty_bridge() -> Harness {
     let engine = SynthEngine::<PluginLinks>::try_new(
         &EngineConfig {
             engine: EngineParams::default(),
@@ -33,16 +53,21 @@ fn empty_bridge() -> UiBridge {
     .expect("engine");
     let engine: EngineHandle = Arc::new(Mutex::new(engine));
     let ui_config: UiConfigHandle = Arc::new(Mutex::new(UiConfig::default()));
+    let bridge = {
+        let mut engine = engine.lock();
 
-    UiBridge::create(engine, ui_config).expect("ui bridge")
+        UiBridge::create(&mut engine, ui_config).expect("ui bridge")
+    };
+
+    Harness { engine, bridge }
 }
 
-fn sync(bridge: &mut UiBridge) {
-    bridge.engine().lock().dispatch_ui_events();
-    bridge.update();
+fn sync(harness: &mut Harness) {
+    harness.engine.lock().handle_ui_events();
+    harness.bridge.update();
 }
 
-fn take_ios(bridge: &mut UiBridge) -> FxHashMap<ModuleId, ModuleIo> {
+fn take_ios(bridge: &mut Harness) -> FxHashMap<ModuleId, ModuleIo> {
     sync(bridge);
     bridge.take_modules_io().expect("modules io")
 }
@@ -64,7 +89,7 @@ fn picked_ios(
 }
 
 /// Five connected inputs make an oscillator tile 3 cells tall.
-fn connect_five_osc_inputs(bridge: &mut UiBridge, osc: ModuleId) {
+fn connect_five_osc_inputs(bridge: &mut Harness, osc: ModuleId) {
     let lfo = place_module(bridge, ModuleType::Lfo, GridVec::new(20, 0));
 
     for input in [
@@ -78,7 +103,7 @@ fn connect_five_osc_inputs(bridge: &mut UiBridge, osc: ModuleId) {
     }
 }
 
-fn module_ids(bridge: &mut UiBridge) -> Vec<ModuleId> {
+fn module_ids(bridge: &mut Harness) -> Vec<ModuleId> {
     sync(bridge);
 
     let mut ids: Vec<_> = bridge
@@ -90,14 +115,14 @@ fn module_ids(bridge: &mut UiBridge) -> Vec<ModuleId> {
     ids
 }
 
-fn added_ids(before: &[ModuleId], bridge: &mut UiBridge) -> Vec<ModuleId> {
+fn added_ids(before: &[ModuleId], bridge: &mut Harness) -> Vec<ModuleId> {
     module_ids(bridge)
         .into_iter()
         .filter(|id| !before.contains(id))
         .collect()
 }
 
-fn place_module(bridge: &mut UiBridge, module_type: ModuleType, pos: GridVec) -> ModuleId {
+fn place_module(bridge: &mut Harness, module_type: ModuleType, pos: GridVec) -> ModuleId {
     if matches!(module_type, ModuleType::Output) {
         bridge.add_module(module_type, pos);
         return OUTPUT_MODULE_ID;

@@ -1,3 +1,5 @@
+use super::config::OscillatorConfig;
+
 use crate::synth_engine::{
     DisplaySpectrum, Input, Smp, StereoSample, engine_io,
     oscillator::{PhasesDst, UnisonStyle},
@@ -110,4 +112,9 @@ pub trait OscillatorLinks: Send {
     type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
+}
+
+pub struct OscillatorUiLink<UiEnd> {
+    pub ui_end: UiEnd,
+    pub config: OscillatorConfig,
 }

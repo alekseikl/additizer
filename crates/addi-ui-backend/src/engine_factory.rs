@@ -12,7 +12,7 @@ use addi_engine::{EngineConfig, Smp, SynthEngine};
 use crate::{
     links::PluginLinks,
     preset::{Preset, PresetInfo},
-    ui_bridge::ui_config::UiConfig,
+    ui_bridge::{UiBridge, ui_config::UiConfig},
 };
 
 pub type EngineHandle<E = PluginLinks> = Arc<Mutex<SynthEngine<E>>>;
@@ -23,6 +23,8 @@ pub struct EngineFactory {
     oversampling: AtomicBool,
     engine: ArcSwapOption<Mutex<SynthEngine<PluginLinks>>>,
     ui_config: ArcSwap<Mutex<UiConfig>>,
+    /// Built with the latest engine. The UI takes it on the next frame.
+    ui_bridge: Mutex<Option<UiBridge>>,
 }
 
 impl EngineFactory {
@@ -32,7 +34,13 @@ impl EngineFactory {
             oversampling: AtomicBool::new(true),
             engine: ArcSwapOption::empty(),
             ui_config: ArcSwap::from_pointee(Mutex::new(UiConfig::default())),
+            ui_bridge: Mutex::new(None),
         }
+    }
+
+    /// Bridge built by the latest preset or oversampling swap, if the UI has not taken it yet.
+    pub fn take_ui_bridge(&self) -> Option<UiBridge> {
+        self.ui_bridge.lock().take()
     }
 
     pub fn get_engine(&self) -> Option<EngineHandle> {
@@ -74,7 +82,9 @@ impl EngineFactory {
             return;
         };
 
-        self.engine.store(Some(Arc::new(Mutex::new(new_engine))));
+        if !self.publish(new_engine, self.get_ui_config()) {
+            self.oversampling.store(previous, Ordering::Release);
+        }
     }
 
     fn build_engine(&self, config: &EngineConfig) -> Option<SynthEngine<PluginLinks>> {
@@ -108,9 +118,24 @@ impl EngineFactory {
             return false;
         };
 
-        self.ui_config
-            .store(Arc::new(Mutex::new(preset.ui.clone())));
-        self.engine.store(Some(Arc::new(Mutex::new(new_engine))));
+        let ui_config = Arc::new(Mutex::new(preset.ui.clone()));
+
+        if !self.publish(new_engine, ui_config) {
+            self.oversampling.store(previous, Ordering::Release);
+            return false;
+        }
+
+        true
+    }
+
+    fn publish(&self, mut engine: SynthEngine<PluginLinks>, ui_config: UiConfigHandle) -> bool {
+        let Some(bridge) = UiBridge::create(&mut engine, Arc::clone(&ui_config)) else {
+            return false;
+        };
+
+        self.ui_config.store(ui_config);
+        self.engine.store(Some(Arc::new(Mutex::new(engine))));
+        self.ui_bridge.lock().replace(bridge);
         true
     }
 }

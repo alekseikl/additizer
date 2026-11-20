@@ -13,7 +13,7 @@ mod tests;
 
 pub use config::LfoConfig;
 use config::{MAX_PHASE_SHIFT, MAX_RATE, MIN_PHASE_SHIFT, MIN_RATE};
-pub use link::{LfoAudioEnd, LfoLinks, LfoUiEnd, UiEvent};
+pub use link::{LfoAudioEnd, LfoLinks, LfoUiEnd, LfoUiLink, UiEvent};
 pub use timebase::Timebase;
 
 use addi_dsp::{segments::rel_segments::RelSegments, utils::sanitize};

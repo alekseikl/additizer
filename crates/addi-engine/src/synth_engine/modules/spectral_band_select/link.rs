@@ -1,3 +1,5 @@
+use super::config::SpectralBandSelectConfig;
+
 use super::BandSelectMode;
 use crate::synth_engine::{Smp, engine_io, types::ComplexSample};
 
@@ -29,4 +31,9 @@ pub trait SpectralBandSelectLinks: Send {
     type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
+}
+
+pub struct SpectralBandSelectUiLink<UiEnd> {
+    pub ui_end: UiEnd,
+    pub config: SpectralBandSelectConfig,
 }

@@ -1,6 +1,6 @@
 use crate::synth_engine::{Input, StereoSample, engine_io};
 
-use super::config::ShaperType;
+use super::config::{ShaperType, WaveShaperConfig};
 
 pub enum UiEvent {
     InputParam { input: Input, value: StereoSample },
@@ -22,4 +22,9 @@ pub trait WaveShaperLinks: Send {
     type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
+}
+
+pub struct WaveShaperUiLink<UiEnd> {
+    pub ui_end: UiEnd,
+    pub config: WaveShaperConfig,
 }

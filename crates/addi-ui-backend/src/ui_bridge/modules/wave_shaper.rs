@@ -1,8 +1,8 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_engine::wave_shaper::{
     ShaperType, WaveShaper, WaveShaperConfig, WaveShaperLinks, WaveShaperUiEnd,
 };
-use addi_engine::{Input, StereoSample};
+use addi_engine::{Input, ModuleId, StereoSample};
 
 pub struct WaveShaperUiBridge<L: WaveShaperLinks = crate::links::wave_shaper::Links> {
     ui_end: L::UiEnd,
@@ -42,6 +42,10 @@ impl<L: WaveShaperLinks> WaveShaperUiBridge<L> {
 }
 
 impl<L: WaveShaperLinks> ModuleUiBridge for WaveShaperUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

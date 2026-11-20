@@ -10,7 +10,10 @@ mod tests;
 
 pub use config::SegmentsEnvelopeConfig;
 use config::{MAX_PHASE_SHIFT, MAX_RATE, MIN_PHASE_SHIFT, MIN_RATE};
-pub use link::{SegmentsEnvelopeAudioEnd, SegmentsEnvelopeLinks, SegmentsEnvelopeUiEnd, UiEvent};
+pub use link::{
+    SegmentsEnvelopeAudioEnd, SegmentsEnvelopeLinks, SegmentsEnvelopeUiEnd, SegmentsEnvelopeUiLink,
+    UiEvent,
+};
 pub use timebase::Timebase;
 
 use addi_dsp::{

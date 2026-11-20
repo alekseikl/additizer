@@ -1,3 +1,5 @@
+use super::config::SpectralMixerConfig;
+
 use crate::synth_engine::{
     Input, LevelType, MixType, StereoSample, engine_io, types::ComplexSample,
 };
@@ -45,4 +47,9 @@ pub trait SpectralMixerLinks: Send {
     type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
+}
+
+pub struct SpectralMixerUiLink<UiEnd> {
+    pub ui_end: UiEnd,
+    pub config: SpectralMixerConfig,
 }

@@ -30,7 +30,9 @@ pub use config::{HarmonicEditorConfig, sawtooth_phase};
 pub use link::Harmonics;
 
 use itertools::izip;
-pub use link::{HarmonicEditorAudioEnd, HarmonicEditorLinks, HarmonicEditorUiEnd, UiEvent};
+pub use link::{
+    HarmonicEditorAudioEnd, HarmonicEditorLinks, HarmonicEditorUiEnd, HarmonicEditorUiLink, UiEvent,
+};
 
 pub fn clamp_bandwidth(bandwidth: i32) -> i32 {
     bandwidth.clamp(0, MAX_BANDWIDTH as i32)

@@ -36,19 +36,11 @@ impl PluginEditor {
     }
 
     fn refresh_bridge(&mut self) -> bool {
-        let changed = match &self.ui_bridge {
-            Some(bridge) => self.engine_factory.engine_changed(bridge.engine()),
-            None => self.engine_factory.get_engine().is_some(),
+        let Some(bridge) = self.engine_factory.take_ui_bridge() else {
+            return false;
         };
 
-        if !changed {
-            return false;
-        }
-
-        self.ui_bridge = self
-            .engine_factory
-            .get_engine()
-            .and_then(|engine| UiBridge::create(engine, self.engine_factory.get_ui_config()));
+        self.ui_bridge = Some(bridge);
         true
     }
 }

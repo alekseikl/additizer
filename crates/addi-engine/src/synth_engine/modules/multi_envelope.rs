@@ -8,7 +8,10 @@ pub mod stub;
 mod tests;
 
 pub use config::{MAX_DURATION_OFFSET, MAX_LEVEL_OFFSET, MultiEnvelopeConfig};
-pub use link::{MultiEnvelopeAudioEnd, MultiEnvelopeLinks, MultiEnvelopeUiEnd, UiEvent, UiUpdate};
+pub use link::{
+    MultiEnvelopeAudioEnd, MultiEnvelopeLinks, MultiEnvelopeUiEnd, MultiEnvelopeUiLink, UiEvent,
+    UiUpdate,
+};
 
 use addi_dsp::segments::{
     render_segment,

@@ -1,3 +1,5 @@
+use super::config::ExternalParamConfig;
+
 use crate::synth_engine::{Smp, engine_io};
 
 pub enum UiEvent {
@@ -22,4 +24,9 @@ pub trait ExternalParamLinks: Send {
     type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
+}
+
+pub struct ExternalParamUiLink<UiEnd> {
+    pub ui_end: UiEnd,
+    pub config: ExternalParamConfig,
 }

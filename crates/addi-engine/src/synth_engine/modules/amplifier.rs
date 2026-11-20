@@ -10,7 +10,7 @@ pub mod stub;
 pub(crate) mod tests;
 
 pub use config::AmplifierConfig;
-pub use link::{AmplifierAudioEnd, AmplifierLinks, AmplifierUiEnd, UiEvent};
+pub use link::{AmplifierAudioEnd, AmplifierLinks, AmplifierUiEnd, AmplifierUiLink, UiEvent};
 
 use crate::{
     synth_engine::{

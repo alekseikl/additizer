@@ -7,7 +7,9 @@ mod link;
 pub mod stub;
 
 pub use config::SpectralBlendConfig;
-pub use link::{SpectralBlendAudioEnd, SpectralBlendLinks, SpectralBlendUiEnd, UiEvent};
+pub use link::{
+    SpectralBlendAudioEnd, SpectralBlendLinks, SpectralBlendUiEnd, SpectralBlendUiLink, UiEvent,
+};
 
 use crate::synth_engine::{
     StereoSample,

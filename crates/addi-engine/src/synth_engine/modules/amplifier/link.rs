@@ -1,3 +1,5 @@
+use super::config::AmplifierConfig;
+
 use crate::synth_engine::{Input, Smp, StereoSample, engine_io};
 
 pub enum UiEvent {
@@ -20,4 +22,9 @@ pub trait AmplifierLinks: Send {
     type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
+}
+
+pub struct AmplifierUiLink<UiEnd> {
+    pub ui_end: UiEnd,
+    pub config: AmplifierConfig,
 }

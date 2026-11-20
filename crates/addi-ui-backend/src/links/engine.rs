@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use triple_buffer::triple_buffer;
 
 use addi_engine::{
@@ -19,65 +21,19 @@ pub struct AudioEnd {
     tx: rtrb::Producer<UiUpdate<ModuleUiLink<PluginLinks>>>,
     out_volume: triple_buffer::Input<OutputMeter>,
     routing: triple_buffer::Input<RoutingState>,
+    stuck_events: VecDeque<UiUpdate<ModuleUiLink<PluginLinks>>>,
 }
 
 impl AudioEnd {
-    pub fn update_modulated_input(
-        &mut self,
-        module_id: ModuleId,
-        input: Input,
-        channel: u8,
-        value: Smp,
-        normalized_value: Smp,
-    ) -> bool {
-        self.tx
-            .push(UiUpdate::ModulatedInput {
-                module_id,
-                input,
-                channel,
-                value,
-                normalized_value,
-            })
-            .is_ok()
-    }
+    fn push_update(&mut self, update: UiUpdate<ModuleUiLink<PluginLinks>>) {
+        if !self.stuck_events.is_empty() {
+            self.stuck_events.push_back(update);
+            return;
+        }
 
-    pub fn update_voices_status(&mut self, d: &VoicesTelemetry) -> bool {
-        self.tx
-            .push(UiUpdate::VoicesStatus(VoicesStatus {
-                waiting_notes: d.waiting as u8,
-                playing: d.playing as u8,
-                releasing: d.releasing as u8,
-                killing: d.killing as u8,
-            }))
-            .is_ok()
-    }
-
-    pub fn pop_event(&mut self) -> Option<UiEvent> {
-        self.rx.pop().ok()
-    }
-
-    pub fn update_out_volume(&mut self, volume: StereoSample, clipped: [bool; NUM_CHANNELS]) {
-        *self.out_volume.input_buffer_mut() = OutputMeter { volume, clipped };
-        self.out_volume.publish();
-    }
-
-    pub fn publish_routing(&mut self, routing: RoutingState) {
-        self.routing.write(routing);
-    }
-
-    pub fn publish_topology(
-        &mut self,
-        added: Option<ModuleUiLink<PluginLinks>>,
-        removed: Option<ModuleId>,
-        tag: Option<i32>,
-    ) -> bool {
-        self.tx
-            .push(UiUpdate::Topology {
-                added,
-                removed,
-                tag,
-            })
-            .is_ok()
+        if let Err(rtrb::PushError::Full(update)) = self.tx.push(update) {
+            self.stuck_events.push_back(update);
+        }
     }
 }
 
@@ -86,52 +42,6 @@ pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
     out_volume: triple_buffer::Output<OutputMeter>,
     routing: triple_buffer::Output<RoutingState>,
-}
-
-impl UiEnd {
-    pub fn get_out_volume(&mut self) -> OutputMeter {
-        *self.out_volume.read()
-    }
-
-    pub fn set_link_amount(&mut self, src: ModuleId, dst: InputId, amount: StereoSample) -> bool {
-        self.tx
-            .push(UiEvent::LinkAmount { src, dst, amount })
-            .is_ok()
-    }
-
-    pub fn set_voices(&mut self, voices: usize) -> bool {
-        self.tx.push(UiEvent::Voices(voices)).is_ok()
-    }
-
-    pub fn set_legato(&mut self, legato: bool) -> bool {
-        self.tx.push(UiEvent::Legato(legato)).is_ok()
-    }
-
-    pub fn set_kill_same_note(&mut self, kill_same_note: bool) -> bool {
-        self.tx.push(UiEvent::KillSameNote(kill_same_note)).is_ok()
-    }
-
-    pub fn set_voice_kill_time(&mut self, voice_kill_time: Smp) -> bool {
-        self.tx
-            .push(UiEvent::VoiceKillTime(voice_kill_time))
-            .is_ok()
-    }
-
-    pub fn set_output_gain(&mut self, output_gain: StereoSample) -> bool {
-        self.tx.push(UiEvent::OutputGain(output_gain)).is_ok()
-    }
-
-    pub fn send_event(&mut self, event: UiEvent) -> bool {
-        self.tx.push(event).is_ok()
-    }
-
-    pub fn read_routing(&mut self) -> &RoutingState {
-        self.routing.read()
-    }
-
-    pub fn pop_update(&mut self) -> Option<UiUpdate<ModuleUiLink<PluginLinks>>> {
-        self.rx.pop().ok()
-    }
 }
 
 pub fn make_link_pair() -> (AudioEnd, UiEnd) {
@@ -147,6 +57,7 @@ pub fn make_link_pair() -> (AudioEnd, UiEnd) {
             tx: to_ui_tx,
             out_volume: out_volume_input,
             routing: routing_input,
+            stuck_events: VecDeque::with_capacity(32),
         },
         UiEnd {
             rx: from_audio_rx,
@@ -168,32 +79,60 @@ impl EngineAudioEnd for AudioEnd {
         value: Smp,
         normalized_value: Smp,
     ) -> bool {
-        AudioEnd::update_modulated_input(self, module_id, input, channel, value, normalized_value)
+        self.tx
+            .push(UiUpdate::ModulatedInput {
+                module_id,
+                input,
+                channel,
+                value,
+                normalized_value,
+            })
+            .is_ok()
     }
 
     fn update_voices_status(&mut self, telemetry: &VoicesTelemetry) -> bool {
-        AudioEnd::update_voices_status(self, telemetry)
+        self.tx
+            .push(UiUpdate::VoicesStatus(VoicesStatus {
+                waiting_notes: telemetry.waiting as u8,
+                playing: telemetry.playing as u8,
+                releasing: telemetry.releasing as u8,
+                killing: telemetry.killing as u8,
+            }))
+            .is_ok()
     }
 
     fn pop_event(&mut self) -> Option<UiEvent> {
-        AudioEnd::pop_event(self)
+        self.rx.pop().ok()
     }
 
     fn update_out_volume(&mut self, volume: StereoSample, clipped: [bool; NUM_CHANNELS]) {
-        AudioEnd::update_out_volume(self, volume, clipped)
+        *self.out_volume.input_buffer_mut() = OutputMeter { volume, clipped };
+        self.out_volume.publish();
     }
 
     fn publish_routing(&mut self, routing: RoutingState) {
-        AudioEnd::publish_routing(self, routing)
+        self.routing.write(routing);
     }
 
-    fn publish_topology(
-        &mut self,
-        added: Option<Self::ModuleUi>,
-        removed: Option<ModuleId>,
-        tag: Option<i32>,
-    ) -> bool {
-        AudioEnd::publish_topology(self, added, removed, tag)
+    fn publish_routing_update(&mut self) {
+        self.push_update(UiUpdate::Routing);
+    }
+
+    fn publish_module_added(&mut self, module: Self::ModuleUi, tag: Option<i32>) {
+        self.push_update(UiUpdate::ModuleAdded { module, tag });
+    }
+
+    fn flush_stuck_events(&mut self) {
+        while let Some(update) = self.stuck_events.pop_front() {
+            if let Err(rtrb::PushError::Full(update)) = self.tx.push(update) {
+                self.stuck_events.push_front(update);
+                break;
+            }
+        }
+    }
+
+    fn publish_module_removed(&mut self, module_id: ModuleId) {
+        self.push_update(UiUpdate::ModuleRemoved(module_id));
     }
 }
 
@@ -201,42 +140,46 @@ impl EngineUiEnd for UiEnd {
     type ModuleUi = ModuleUiLink<PluginLinks>;
 
     fn get_out_volume(&mut self) -> OutputMeter {
-        UiEnd::get_out_volume(self)
+        *self.out_volume.read()
     }
 
     fn set_link_amount(&mut self, src: ModuleId, dst: InputId, amount: StereoSample) -> bool {
-        UiEnd::set_link_amount(self, src, dst, amount)
+        self.tx
+            .push(UiEvent::LinkAmount { src, dst, amount })
+            .is_ok()
     }
 
     fn set_voices(&mut self, voices: usize) -> bool {
-        UiEnd::set_voices(self, voices)
+        self.tx.push(UiEvent::Voices(voices)).is_ok()
     }
 
     fn set_legato(&mut self, legato: bool) -> bool {
-        UiEnd::set_legato(self, legato)
+        self.tx.push(UiEvent::Legato(legato)).is_ok()
     }
 
     fn set_kill_same_note(&mut self, kill_same_note: bool) -> bool {
-        UiEnd::set_kill_same_note(self, kill_same_note)
+        self.tx.push(UiEvent::KillSameNote(kill_same_note)).is_ok()
     }
 
     fn set_voice_kill_time(&mut self, voice_kill_time: Smp) -> bool {
-        UiEnd::set_voice_kill_time(self, voice_kill_time)
+        self.tx
+            .push(UiEvent::VoiceKillTime(voice_kill_time))
+            .is_ok()
     }
 
     fn set_output_gain(&mut self, output_gain: StereoSample) -> bool {
-        UiEnd::set_output_gain(self, output_gain)
+        self.tx.push(UiEvent::OutputGain(output_gain)).is_ok()
     }
 
     fn send_event(&mut self, event: UiEvent) -> bool {
-        UiEnd::send_event(self, event)
+        self.tx.push(event).is_ok()
     }
 
     fn read_routing(&mut self) -> &RoutingState {
-        UiEnd::read_routing(self)
+        self.routing.read()
     }
 
     fn pop_update(&mut self) -> Option<UiUpdate<Self::ModuleUi>> {
-        UiEnd::pop_update(self)
+        self.rx.pop().ok()
     }
 }

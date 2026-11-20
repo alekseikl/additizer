@@ -8,7 +8,9 @@ pub mod stub;
 mod tests;
 
 pub use config::SpectralFilterConfig;
-pub use link::{SpectralFilterAudioEnd, SpectralFilterLinks, SpectralFilterUiEnd, UiEvent};
+pub use link::{
+    SpectralFilterAudioEnd, SpectralFilterLinks, SpectralFilterUiEnd, SpectralFilterUiLink, UiEvent,
+};
 
 use addi_dsp::filters::{
     control::{MAX_DRIVE, MAX_RESONANCE, MIN_DRIVE, MIN_RESONANCE, q_from_resonance},

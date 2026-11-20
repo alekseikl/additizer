@@ -1,9 +1,9 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_engine::spectral_band_select::{
     BandSelectMode, MAX_BAND_HZ, MAX_HARMONIC, MAX_HARMONIC_END, MIN_BAND_HZ, MIN_HARMONIC,
     SpectralBandSelect, SpectralBandSelectConfig, SpectralBandSelectLinks, SpectralBandSelectUiEnd,
 };
-use addi_engine::{Smp, types::ComplexSample};
+use addi_engine::{ModuleId, Smp, types::ComplexSample};
 
 pub struct SpectralBandSelectUiBridge<
     L: SpectralBandSelectLinks = crate::links::spectral_band_select::Links,
@@ -69,6 +69,10 @@ impl<L: SpectralBandSelectLinks> SpectralBandSelectUiBridge<L> {
 }
 
 impl<L: SpectralBandSelectLinks> ModuleUiBridge for SpectralBandSelectUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

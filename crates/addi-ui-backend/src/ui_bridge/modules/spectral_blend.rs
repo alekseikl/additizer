@@ -1,8 +1,8 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_engine::spectral_blend::{
     SpectralBlend, SpectralBlendConfig, SpectralBlendLinks, SpectralBlendUiEnd,
 };
-use addi_engine::{Input, StereoSample, types::ComplexSample};
+use addi_engine::{Input, ModuleId, StereoSample, types::ComplexSample};
 
 pub struct SpectralBlendUiBridge<L: SpectralBlendLinks = crate::links::spectral_blend::Links> {
     ui_end: L::UiEnd,
@@ -34,6 +34,10 @@ impl<L: SpectralBlendLinks> SpectralBlendUiBridge<L> {
 }
 
 impl<L: SpectralBlendLinks> ModuleUiBridge for SpectralBlendUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

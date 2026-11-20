@@ -1,3 +1,5 @@
+use super::config::MixerConfig;
+
 use crate::synth_engine::{Input, LevelType, Smp, StereoSample, engine_io};
 
 pub enum UiEvent {
@@ -38,4 +40,9 @@ pub trait MixerLinks: Send {
     type EngineEnd: engine_io::EngineAudioEnd;
 
     fn create_link_pair() -> (Self::AudioEnd, Option<Self::UiEnd>);
+}
+
+pub struct MixerUiLink<UiEnd> {
+    pub ui_end: UiEnd,
+    pub config: MixerConfig,
 }

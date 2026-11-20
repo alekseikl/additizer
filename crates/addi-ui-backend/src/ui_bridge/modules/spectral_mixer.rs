@@ -1,8 +1,8 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_engine::spectral_mixer::{
     SpectralMixer, SpectralMixerConfig, SpectralMixerLinks, SpectralMixerUiEnd, UiUpdate,
 };
-use addi_engine::{Input, LevelType, MixType, StereoSample, types::ComplexSample};
+use addi_engine::{Input, LevelType, MixType, ModuleId, StereoSample, types::ComplexSample};
 
 pub struct SpectralMixerUiBridge<L: SpectralMixerLinks = crate::links::spectral_mixer::Links> {
     ui_end: L::UiEnd,
@@ -66,6 +66,10 @@ impl<L: SpectralMixerLinks> SpectralMixerUiBridge<L> {
 }
 
 impl<L: SpectralMixerLinks> ModuleUiBridge for SpectralMixerUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         let mut routing_refresh = false;
 

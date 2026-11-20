@@ -3,7 +3,9 @@ mod link;
 pub mod stub;
 
 pub use config::ExternalParamConfig;
-pub use link::{ExternalParamAudioEnd, ExternalParamLinks, ExternalParamUiEnd, UiEvent};
+pub use link::{
+    ExternalParamAudioEnd, ExternalParamLinks, ExternalParamUiEnd, ExternalParamUiLink, UiEvent,
+};
 
 use crate::synth_engine::{
     Buffer, ModuleId, Smp,

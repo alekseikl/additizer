@@ -1,8 +1,8 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_engine::oscillator::{
     Oscillator, OscillatorConfig, OscillatorLinks, OscillatorUiEnd, PhasesDst, Unison, UnisonStyle,
 };
-use addi_engine::{DisplaySpectrum, Input, Smp, StereoSample};
+use addi_engine::{DisplaySpectrum, Input, ModuleId, Smp, StereoSample};
 
 pub struct OscillatorUiBridge<L: OscillatorLinks = crate::links::oscillator::Links> {
     ui_end: L::UiEnd,
@@ -127,6 +127,10 @@ impl<L: OscillatorLinks> OscillatorUiBridge<L> {
 }
 
 impl<L: OscillatorLinks> ModuleUiBridge for OscillatorUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }

@@ -1,10 +1,10 @@
-use crate::ui_bridge::ModuleUiBridge;
+use super::ModuleUiBridge;
 use addi_dsp::segments::rel_segments::RelSegments;
 use addi_engine::segments_envelope::{
     SegmentsEnvelope, SegmentsEnvelopeConfig, SegmentsEnvelopeLinks, SegmentsEnvelopePhase,
     SegmentsEnvelopeUiEnd, Timebase,
 };
-use addi_engine::{Input, StereoSample};
+use addi_engine::{Input, ModuleId, StereoSample};
 
 pub struct SegmentsEnvelopeUiBridge<
     L: SegmentsEnvelopeLinks = crate::links::segments_envelope::Links,
@@ -71,6 +71,10 @@ impl<L: SegmentsEnvelopeLinks> SegmentsEnvelopeUiBridge<L> {
 }
 
 impl<L: SegmentsEnvelopeLinks> ModuleUiBridge for SegmentsEnvelopeUiBridge<L> {
+    fn id(&self) -> ModuleId {
+        self.config.id
+    }
+
     fn update(&mut self) -> bool {
         false
     }
