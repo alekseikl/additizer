@@ -92,12 +92,11 @@ impl NiceEguiApp for PluginEditor {
 
 pub fn create_editor(
     egui_state: Arc<EguiEditorState>,
-    repaint_notifier: RepaintNotifier,
     factory: Arc<EngineFactory>,
 ) -> Option<nice_plug_egui::EguiEditor<PluginEditor>> {
     create_egui_editor(
         egui_state,
-        repaint_notifier,
+        RepaintNotifier::new(),
         EguiNiceSettings::new().with_resize_hint(RESIZE_HINT),
         PluginEditor::new(factory),
     )

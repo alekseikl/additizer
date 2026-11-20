@@ -17,7 +17,7 @@ use addi_engine::{MAX_VOICES, Note};
 pub use egui;
 use nice_plug::midi::{Channel, Key, VoiceID};
 use nice_plug::prelude::*;
-use nice_plug_egui::{EguiEditor, EguiEditorState, RepaintNotifier};
+use nice_plug_egui::{EguiEditor, EguiEditorState};
 use std::sync::Arc;
 
 /// Beats per minute used when the host does not report a tempo.
@@ -29,7 +29,6 @@ pub struct Additizer {
     engine: Option<EngineHandle>,
     factory: Arc<EngineFactory>,
     editor_state: Arc<EguiEditorState>,
-    repaint_notifier: RepaintNotifier,
     terminated_notes: Vec<Note>,
 }
 
@@ -43,7 +42,6 @@ impl Default for Additizer {
             engine: None,
             factory,
             editor_state: crate::editor::new_editor_state(),
-            repaint_notifier: RepaintNotifier::new(),
             terminated_notes: Vec::with_capacity(128),
         }
     }
@@ -74,11 +72,7 @@ impl Plugin for Additizer {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
-        create_editor(
-            Arc::clone(&self.editor_state),
-            self.repaint_notifier.clone(),
-            self.factory.clone(),
-        )
+        create_editor(Arc::clone(&self.editor_state), self.factory.clone())
     }
 
     fn activate(
