@@ -142,9 +142,6 @@ pub(crate) struct WrapperInner<P: Vst3Plugin> {
     /// editor about parameter changes.
     pub param_id_by_hash: HashMap<u32, String>,
     pub param_units: ParamUnits,
-    /// Mappings from string parameter identifiers to parameter hashes. Useful for debug logging
-    /// and when storing and restoring plugin state.
-    pub param_id_to_hash: HashMap<String, u32>,
     /// The inverse mapping from [`param_by_hash`][Self::param_by_hash]. This is needed to be able
     /// to have an ergonomic parameter setting API that uses references to the parameters instead of
     /// having to add a setter function to the parameter (or even worse, have it be completely
@@ -174,7 +171,10 @@ pub enum Task<P: Plugin> {
     TriggerRestart(i32),
     // Request the editor to be resized according to its current size. Right now there is no way to
     // handle "denied resize" requests yet.
-    RequestResize { size: Size, scale_factor: f64 },
+    RequestResize {
+        size: Size,
+        scale_factor: f64,
+    },
     CallMainThread,
 }
 
@@ -275,10 +275,6 @@ impl<P: Vst3Plugin> WrapperInner<P> {
                 .map(|(_, hash, _, group_name)| (*hash, group_name.as_str())),
         )
         .expect("Inconsistent parameter groups");
-        let param_id_to_hash = param_id_hashes_ptrs_groups
-            .iter()
-            .map(|(id, hash, _, _)| (id.clone(), *hash))
-            .collect();
         let poly_mod_ids_by_hash: HashMap<u32, u32> = param_id_hashes_ptrs_groups
             .iter()
             .filter_map(|(_, hash, ptr, _)| unsafe {
@@ -351,7 +347,6 @@ impl<P: Vst3Plugin> WrapperInner<P> {
             param_by_hash,
             param_id_by_hash,
             param_units,
-            param_id_to_hash,
             param_ptr_to_hash,
             poly_mod_ids_by_hash,
         });
@@ -499,19 +494,14 @@ impl<P: Vst3Plugin> WrapperInner<P> {
             .map(|s| s.as_str())
     }
 
-    /// Convenience function for setting a value for a parameter as triggered by a VST3 parameter
-    /// update. The same rate is for updating parameter smoothing.
+    /// Store a value for a parameter as triggered by a VST3 parameter update, so the host can read
+    /// it back. The plugin receives the same change as a note event.
     ///
     /// After calling this function, you should call
     /// [`notify_param_values_changed()`][Self::notify_param_values_changed()] to allow the editor
     /// to update itself. This needs to be done separately so you can process parameter changes in
     /// batches.
-    pub fn set_normalized_value_by_hash(
-        &self,
-        hash: u32,
-        normalized_value: f32,
-        sample_rate: Option<f32>,
-    ) -> tresult {
+    pub fn set_normalized_value_by_hash(&self, hash: u32, normalized_value: f32) -> tresult {
         if !normalized_value.is_finite() {
             return kInvalidArgument;
         }
@@ -519,18 +509,12 @@ impl<P: Vst3Plugin> WrapperInner<P> {
         match self.param_by_hash.get(&hash) {
             Some(param_ptr) => {
                 if unsafe { param_ptr._internal_set_normalized_value(normalized_value) } {
-                    if let Some(sample_rate) = sample_rate {
-                        unsafe { param_ptr._internal_update_smoother(sample_rate, false) };
-                    }
-
-                    {
-                        let task_posted =
-                            self.schedule_gui(Task::ParameterValueChanged(hash, normalized_value));
-                        crate::nice_debug_assert!(
-                            task_posted,
-                            "The task queue is full, dropping task..."
-                        );
-                    }
+                    let task_posted =
+                        self.schedule_gui(Task::ParameterValueChanged(hash, normalized_value));
+                    crate::nice_debug_assert!(
+                        task_posted,
+                        "The task queue is full, dropping task..."
+                    );
                 }
 
                 kResultOk
@@ -543,12 +527,7 @@ impl<P: Vst3Plugin> WrapperInner<P> {
     /// management. The wrapper doesn't use these functions and serializes and deserializes directly
     /// the JSON in the relevant plugin API methods instead.
     pub fn get_state_object(&self) -> PluginState {
-        unsafe {
-            state::serialize_object::<P>(
-                self.params.clone(),
-                state::make_params_iter(&self.param_by_hash, &self.param_id_to_hash),
-            )
-        }
+        state::serialize_object::<P>(self.params.clone())
     }
 
     /// Update the plugin's internal state, called by the plugin itself from the GUI thread. To
@@ -632,14 +611,7 @@ impl<P: Vst3Plugin> WrapperInner<P> {
         //        could lead to inconsistencies. `state::deserialize_object()` normally never
         //        allocates, but if the plugin has persistent non-parameter data then its
         //        `deserialize_fields()` implementation may still allocate.
-        let success = permit_alloc(|| unsafe {
-            state::deserialize_object::<P>(
-                state,
-                self.params.clone(),
-                state::make_params_getter(&self.param_by_hash, &self.param_id_to_hash),
-                self.current_buffer_config.load().as_ref(),
-            )
-        });
+        let success = permit_alloc(|| state::deserialize_object::<P>(state, self.params.clone()));
         if !success {
             crate::nice_debug_assert_failure!(
                 "Deserializing plugin state from a state object failed"

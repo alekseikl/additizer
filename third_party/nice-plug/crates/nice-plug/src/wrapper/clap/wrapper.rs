@@ -241,9 +241,6 @@ pub struct Wrapper<P: ClapPlugin> {
     /// by slashes, and they're only used to allow the DAW to display parameters in a tree
     /// structure.
     param_group_by_hash: HashMap<u32, String>,
-    /// Mappings from string parameter identifiers to parameter hashes. Useful for debug logging
-    /// and when storing and restoring plugin state.
-    param_id_to_hash: HashMap<String, u32>,
     /// The inverse mapping from `param_by_hash`. This is needed to be able to have an ergonomic
     /// parameter setting API that uses references to the parameters instead of having to add a
     /// setter function to the parameter (or even worse, have it be completely
@@ -312,9 +309,6 @@ pub enum Task<P: Plugin> {
     /// Inform the plugin that one parameter's value has changed. This uses the parameter hashes
     /// since the task will be created from the audio thread.
     ParameterValueChanged(u32, f32),
-    /// Inform the plugin that one parameter's modulation offset has changed. This uses the
-    /// parameter hashes since the task will be created from the audio thread.
-    ParameterModulationChanged(u32, f32),
     StateChanged,
     /// Inform the host that the latency has changed.
     LatencyChanged,
@@ -429,17 +423,6 @@ impl<P: ClapPlugin> MainThreadExecutor<Task<P>> for Wrapper<P> {
                     unsafe_clap_call! { host_params=>rescan(&*self.host_callback, CLAP_PARAM_RESCAN_VALUES) };
                 }
             }
-            Task::ParameterModulationChanged(param_hash, modulation_offset) => {
-                use nice_plug_core::editor::EditorHandle;
-
-                if let Some(window) = self.editor_window.borrow().as_ref() {
-                    let param_id = &self.param_id_by_hash[&param_hash];
-                    window
-                        .get()
-                        .handle
-                        .param_modulation_changed(param_id, modulation_offset);
-                }
-            }
             Task::LatencyChanged => match &*self.host_latency.borrow() {
                 Some(host_latency) => {
                     crate::nice_debug_assert!(is_gui_thread);
@@ -536,10 +519,6 @@ impl<P: ClapPlugin> Wrapper<P> {
         let param_group_by_hash = param_id_hashes_ptrs_groups
             .iter()
             .map(|(_, hash, _, group)| (*hash, group.clone()))
-            .collect();
-        let param_id_to_hash = param_id_hashes_ptrs_groups
-            .iter()
-            .map(|(id, hash, _, _)| (id.clone(), *hash))
             .collect();
         let param_ptr_to_hash = param_id_hashes_ptrs_groups
             .iter()
@@ -703,7 +682,6 @@ impl<P: ClapPlugin> Wrapper<P> {
             param_by_hash,
             param_id_by_hash,
             param_group_by_hash,
-            param_id_to_hash,
             param_ptr_to_hash,
             poly_mod_ids_by_hash,
             output_parameter_events: ArrayQueue::new(OUTPUT_EVENT_QUEUE_CAPACITY),
@@ -884,19 +862,14 @@ impl<P: ClapPlugin> Wrapper<P> {
         result
     }
 
-    /// Convenience function for setting a value for a parameter as triggered by a CLAP parameter
-    /// update. The same rate is for updating parameter smoothing.
+    /// Store a value for a parameter as triggered by a CLAP parameter update, so the host can read
+    /// it back. The plugin receives the same change as a note event.
     ///
     /// # Note
     ///
     /// These values are CLAP plain values, which include a step count multiplier for discrete
-    /// parameter values.
-    pub fn update_plain_value_by_hash(
-        &self,
-        hash: u32,
-        update_type: ClapParamUpdate,
-        sample_rate: Option<f32>,
-    ) -> bool {
+    /// parameter values. Modulation offsets are not stored.
+    pub fn update_plain_value_by_hash(&self, hash: u32, update_type: ClapParamUpdate) -> bool {
         match self.param_by_hash.get(&hash) {
             Some(param_ptr) => {
                 match update_type {
@@ -909,51 +882,20 @@ impl<P: ClapPlugin> Wrapper<P> {
                             / unsafe { param_ptr.step_count() }.unwrap_or(1) as f32;
 
                         if unsafe { param_ptr._internal_set_normalized_value(normalized_value) } {
-                            if let Some(sample_rate) = sample_rate {
-                                unsafe { param_ptr._internal_update_smoother(sample_rate, false) };
-                            }
-
-                            {
-                                // The GUI needs to be informed about the changed parameter value. This
-                                // triggers an `Editor::param_value_changed()` call on the GUI thread.
-                                let task_posted = self.schedule_gui(Task::ParameterValueChanged(
-                                    hash,
-                                    normalized_value,
-                                ));
-                                crate::nice_debug_assert!(
-                                    task_posted,
-                                    "The task queue is full, dropping task..."
-                                );
-                            }
+                            // The GUI needs to be informed about the changed parameter value. This
+                            // triggers an `Editor::param_value_changed()` call on the GUI thread.
+                            let task_posted = self
+                                .schedule_gui(Task::ParameterValueChanged(hash, normalized_value));
+                            crate::nice_debug_assert!(
+                                task_posted,
+                                "The task queue is full, dropping task..."
+                            );
                         }
 
                         true
                     }
                     ClapParamUpdate::PlainValueMod(clap_plain_delta) => {
-                        if !clap_plain_delta.is_finite() {
-                            return false;
-                        }
-
-                        let normalized_delta = clap_plain_delta as f32
-                            / unsafe { param_ptr.step_count() }.unwrap_or(1) as f32;
-
-                        if unsafe { param_ptr._internal_modulate_value(normalized_delta) } {
-                            if let Some(sample_rate) = sample_rate {
-                                unsafe { param_ptr._internal_update_smoother(sample_rate, false) };
-                            }
-
-                            {
-                                let task_posted = self.schedule_gui(
-                                    Task::ParameterModulationChanged(hash, normalized_delta),
-                                );
-                                crate::nice_debug_assert!(
-                                    task_posted,
-                                    "The task queue is full, dropping task..."
-                                );
-                            }
-                        }
-
-                        true
+                        clap_plain_delta.is_finite()
                     }
                 }
             }
@@ -1005,7 +947,6 @@ impl<P: ClapPlugin> Wrapper<P> {
     pub unsafe fn handle_out_events(&self, out: &clap_output_events, current_sample_idx: usize) {
         // We'll always write these events to the first sample, so even when we add note output we
         // shouldn't have to think about interleaving events here
-        let sample_rate = self.current_buffer_config.load().map(|c| c.sample_rate);
         while let Some(change) = self.output_parameter_events.pop() {
             let push_successful = match change {
                 OutputParamEvent::BeginGesture { param_hash } => {
@@ -1031,7 +972,6 @@ impl<P: ClapPlugin> Wrapper<P> {
                     self.update_plain_value_by_hash(
                         param_hash,
                         ClapParamUpdate::PlainValueSet(clap_plain_value),
-                        sample_rate,
                     );
 
                     let event = clap_event_param_value {
@@ -1147,7 +1087,6 @@ impl<P: ClapPlugin> Wrapper<P> {
                 self.update_plain_value_by_hash(
                     event.param_id,
                     ClapParamUpdate::PlainValueSet(event.value),
-                    self.current_buffer_config.load().map(|c| c.sample_rate),
                 );
 
                 // If the parameter supports polyphonic modulation, then the plugin needs to be
@@ -1208,12 +1147,11 @@ impl<P: ClapPlugin> Wrapper<P> {
                 self.update_plain_value_by_hash(
                     event.param_id,
                     ClapParamUpdate::PlainValueMod(event.amount),
-                    self.current_buffer_config.load().map(|c| c.sample_rate),
                 );
 
                 // `note_id == -1` is monophonic modulation: one offset for every voice that is not
-                // polyphonically modulated. The parameter's modulated value was just updated.
-                // Per-note modulation is delivered as `PolyModulation` above.
+                // polyphonically modulated. Per-note modulation is delivered as `PolyModulation`
+                // above. The offset is not stored on the parameter.
                 if event.note_id == -1
                     && let Some(poly_modulation_id) = self.poly_mod_ids_by_hash.get(&event.param_id)
                 {
@@ -1438,12 +1376,7 @@ impl<P: ClapPlugin> Wrapper<P> {
     /// management. The wrapper doesn't use these functions and serializes and deserializes directly
     /// the JSON in the relevant plugin API methods instead.
     pub fn get_state_object(&self) -> PluginState {
-        unsafe {
-            state::serialize_object::<P>(
-                self.params.clone(),
-                state::make_params_iter(&self.param_by_hash, &self.param_id_to_hash),
-            )
-        }
+        state::serialize_object::<P>(self.params.clone())
     }
 
     /// Update the plugin's internal state, called by the plugin itself from the GUI thread. To
@@ -1603,14 +1536,7 @@ impl<P: ClapPlugin> Wrapper<P> {
         //        could lead to inconsistencies. `state::deserialize_object()` normally never
         //        allocates, but if the plugin has persistent non-parameter data then its
         //        `deserialize_fields()` implementation may still allocate.
-        let success = permit_alloc(|| unsafe {
-            state::deserialize_object::<P>(
-                state,
-                self.params.clone(),
-                state::make_params_getter(&self.param_by_hash, &self.param_id_to_hash),
-                self.current_buffer_config.load().as_ref(),
-            )
-        });
+        let success = permit_alloc(|| state::deserialize_object::<P>(state, self.params.clone()));
         if !success {
             crate::nice_debug_assert_failure!(
                 "Deserializing plugin state from a state object failed"
@@ -1691,11 +1617,6 @@ impl<P: ClapPlugin> Wrapper<P> {
             max_buffer_size: max_frames_count,
             process_mode: wrapper.current_process_mode.load(),
         };
-
-        // Before initializing the plugin, make sure all smoothers are set the the default values
-        for param in wrapper.param_by_hash.values() {
-            unsafe { param._internal_update_smoother(buffer_config.sample_rate, true) };
-        }
 
         // If this reactivation happened due to the latency changing, notify the host of that
         // latency change.
@@ -3221,12 +3142,7 @@ impl<P: ClapPlugin> Wrapper<P> {
         check_null_ptr!(false, plugin, unsafe { (*plugin).plugin_data }, stream);
         let wrapper = unsafe { &*((*plugin).plugin_data as *const Self) };
 
-        let serialized = unsafe {
-            state::serialize_json::<P>(
-                wrapper.params.clone(),
-                state::make_params_iter(&wrapper.param_by_hash, &wrapper.param_id_to_hash),
-            )
-        };
+        let serialized = state::serialize_json::<P>(wrapper.params.clone());
         match serialized {
             Ok(serialized) => {
                 // CLAP does not provide a way to tell how much data there is left in a stream, so
@@ -3298,7 +3214,7 @@ impl<P: ClapPlugin> Wrapper<P> {
             read_buffer.set_len(bytes_read);
         }
 
-        match unsafe { state::deserialize_json(&read_buffer) } {
+        match state::deserialize_json(&read_buffer) {
             Some(mut state) => {
                 let success = wrapper.set_state_inner(&mut state);
                 if success {

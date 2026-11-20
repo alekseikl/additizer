@@ -2,7 +2,6 @@
 
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 use super::internals::ParamPtr;
 use super::range::IntRange;
@@ -118,12 +117,7 @@ impl<T: Enum + PartialEq> Debug for EnumParam<T> {
 
 impl Debug for EnumParamInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // This uses the above `Display` instance to show the value
-        if self.inner.modulated_plain_value() != self.inner.unmodulated_plain_value() {
-            write!(f, "{}: {} (modulated)", self.name(), self)
-        } else {
-            write!(f, "{}: {}", self.name(), self)
-        }
+        write!(f, "{}: {}", self.name(), self)
     }
 }
 
@@ -172,14 +166,6 @@ impl<T: Enum + PartialEq> Param for EnumParam<T> {
 
     fn step_count(&self) -> Option<usize> {
         self.inner.step_count()
-    }
-
-    fn previous_step(&self, from: Self::Plain, finer: bool) -> Self::Plain {
-        T::from_index(self.inner.previous_step(T::to_index(from) as i32, finer) as usize)
-    }
-
-    fn next_step(&self, from: Self::Plain, finer: bool) -> Self::Plain {
-        T::from_index(self.inner.next_step(T::to_index(from) as i32, finer) as usize)
     }
 
     fn normalized_value_to_string(&self, normalized: f32, include_unit: bool) -> String {
@@ -257,14 +243,6 @@ impl Param for EnumParamInner {
         Some(self.len() - 1)
     }
 
-    fn previous_step(&self, from: Self::Plain, finer: bool) -> Self::Plain {
-        self.inner.previous_step(from, finer)
-    }
-
-    fn next_step(&self, from: Self::Plain, finer: bool) -> Self::Plain {
-        self.inner.next_step(from, finer)
-    }
-
     fn normalized_value_to_string(&self, normalized: f32, _include_unit: bool) -> String {
         let index = self.preview_plain(normalized);
         self.variants[index as usize].to_string()
@@ -308,14 +286,6 @@ impl<T: Enum + PartialEq> InternalParamMut for EnumParam<T> {
     unsafe fn _internal_set_normalized_value(&self, normalized: f32) -> bool {
         unsafe { self.inner._internal_set_normalized_value(normalized) }
     }
-
-    unsafe fn _internal_modulate_value(&self, modulation_offset: f32) -> bool {
-        unsafe { self.inner._internal_modulate_value(modulation_offset) }
-    }
-
-    unsafe fn _internal_update_smoother(&self, sample_rate: f32, reset: bool) {
-        unsafe { self.inner._internal_update_smoother(sample_rate, reset) }
-    }
 }
 
 impl InternalParamMut for EnumParamInner {
@@ -325,14 +295,6 @@ impl InternalParamMut for EnumParamInner {
 
     unsafe fn _internal_set_normalized_value(&self, normalized: f32) -> bool {
         unsafe { self.inner._internal_set_normalized_value(normalized) }
-    }
-
-    unsafe fn _internal_modulate_value(&self, modulation_offset: f32) -> bool {
-        unsafe { self.inner._internal_modulate_value(modulation_offset) }
-    }
-
-    unsafe fn _internal_update_smoother(&self, sample_rate: f32, reset: bool) {
-        unsafe { self.inner._internal_update_smoother(sample_rate, reset) }
     }
 }
 
@@ -360,12 +322,6 @@ impl<T: Enum + PartialEq + 'static> EnumParam<T> {
         }
     }
 
-    /// Get the active enum variant.
-    #[inline]
-    pub fn value(&self) -> T {
-        self.modulated_plain_value()
-    }
-
     /// Enable polyphonic modulation for this parameter. The ID is used to uniquely identify this
     /// parameter in [`NoteEvent::PolyModulation`][crate::midi::NoteEvent::PolyModulation]
     /// events, and must thus be unique between _all_ polyphonically modulatable parameters. See the
@@ -382,17 +338,6 @@ impl<T: Enum + PartialEq + 'static> EnumParam<T> {
         self
     }
 
-    /// Run a callback whenever this parameter's value changes. The argument passed to this function
-    /// is the parameter's new value. This should not do anything expensive as it may be called
-    /// multiple times in rapid succession, and it can be run from both the GUI and the audio
-    /// thread.
-    pub fn with_callback(mut self, callback: Arc<dyn Fn(T) + Send + Sync>) -> Self {
-        self.inner.inner = self.inner.inner.with_callback(Arc::new(move |value| {
-            callback(T::from_index(value as usize))
-        }));
-        self
-    }
-
     /// Mark the parameter as non-automatable. This means that the parameter cannot be changed from
     /// an automation lane. The parameter can however still be manually changed by the user from
     /// either the plugin's own GUI or from the host's generic UI.
@@ -406,13 +351,6 @@ impl<T: Enum + PartialEq + 'static> EnumParam<T> {
     /// plugin's editor GUI.
     pub fn hide(mut self) -> Self {
         self.inner.inner = self.inner.inner.hide();
-        self
-    }
-
-    /// Don't show this parameter when generating a generic UI for the plugin using one of
-    /// nice-plug's generic UI widgets.
-    pub fn hide_in_generic_ui(mut self) -> Self {
-        self.inner.inner = self.inner.inner.hide_in_generic_ui();
         self
     }
 }

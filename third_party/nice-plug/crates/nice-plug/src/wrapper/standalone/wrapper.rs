@@ -64,9 +64,6 @@ pub struct Wrapper<P: Plugin, B: Backend<P>> {
     /// thread. This is also used to check whether the `ParamPtr` for an incoming parameter change
     /// actually belongs to a registered parameter.
     param_ptr_to_id: HashMap<ParamPtr, String>,
-    /// A mapping from parameter string IDs to parameter pointers. Used for serialization and
-    /// deserialization.
-    param_id_to_ptr: HashMap<String, ParamPtr>,
 
     /// The bus and buffer configurations are static for the standalone target.
     audio_io_layout: AudioIOLayout,
@@ -197,12 +194,8 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
             event_loop: AtomicRefCell::new(None),
 
             param_ptr_to_id: param_map
-                .iter()
-                .map(|(param_id, param_ptr, _)| (*param_ptr, param_id.clone()))
-                .collect(),
-            param_id_to_ptr: param_map
                 .into_iter()
-                .map(|(param_id, param_ptr, _)| (param_id, param_ptr))
+                .map(|(param_id, param_ptr, _)| (param_ptr, param_id))
                 .collect(),
 
             audio_io_layout,
@@ -263,11 +256,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
 
                     Arc::new(Mutex::new(editor))
                 });
-        }
-
-        // Before initializing the plugin, make sure all smoothers are set the the default values
-        for param in wrapper.param_id_to_ptr.values() {
-            unsafe { param._internal_update_smoother(wrapper.buffer_config.sample_rate, true) };
         }
 
         {
@@ -390,14 +378,7 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
     /// management. The wrapper doesn't use these functions and serializes and deserializes directly
     /// the JSON in the relevant plugin API methods instead.
     pub fn get_state_object(&self) -> PluginState {
-        unsafe {
-            state::serialize_object::<P>(
-                self.params.clone(),
-                self.param_id_to_ptr
-                    .iter()
-                    .map(|(param_id, param_ptr)| (param_id, *param_ptr)),
-            )
-        }
+        state::serialize_object::<P>(self.params.clone())
     }
 
     /// Update the plugin's internal state, called by the plugin itself from the GUI thread. To
@@ -470,7 +451,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
                         return false;
                     }
 
-                    let sample_rate = self.buffer_config.sample_rate;
                     {
                         let mut plugin = self.plugin.lock();
                         if let ProcessStatus::Error(err) = plugin.process(
@@ -496,8 +476,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
                         self.unprocessed_param_changes.pop()
                     {
                         if unsafe { param_ptr._internal_set_normalized_value(normalized_value) } {
-                            unsafe { param_ptr._internal_update_smoother(sample_rate, false) };
-
                             {
                                 let task_posted = self.schedule_gui(Task::ParameterValueChanged(
                                     param_ptr,
@@ -582,14 +560,8 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
         //        supports runtime preset loading. `state::deserialize_object()` normally never
         //        allocates, but if the plugin has persistent non-parameter data then its
         //        `deserialize_fields()` implementation may still allocate.
-        let mut success = permit_alloc(|| unsafe {
-            state::deserialize_object::<P>(
-                state,
-                self.params.clone(),
-                |param_id| self.param_id_to_ptr.get(param_id).copied(),
-                Some(&self.buffer_config),
-            )
-        });
+        let mut success =
+            permit_alloc(|| state::deserialize_object::<P>(state, self.params.clone()));
         if !success {
             crate::nice_debug_assert_failure!(
                 "Deserializing plugin state from a state object failed"

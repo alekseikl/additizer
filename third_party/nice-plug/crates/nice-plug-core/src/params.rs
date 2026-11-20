@@ -77,9 +77,6 @@ bitflags::bitflags! {
         /// `NON_AUTOMATABLE`. Setting this does not prevent you from changing the parameter in the
         /// plugin's editor GUI.
         const HIDDEN = 1 << 2;
-        /// Don't show this parameter when generating a generic UI for the plugin using one of
-        /// nice-plug's generic UI widgets.
-        const HIDE_IN_GENERIC_UI = 1 << 3;
     }
 }
 
@@ -91,11 +88,11 @@ mod sealed {
 }
 pub(crate) use sealed::Sealed;
 
-/// Describes a single parameter of any type. Most parameter implementations also have a field
-/// called `value` that and a field called `smoothed`. The former stores the latest unsmoothed
-/// value, and the latter can be used to access the smoother. These two fields should be used in DSP
-/// code to either get the parameter's current (smoothed) value. In UI code the getters from this
-/// trait should be used instead.
+/// Describes a single parameter of any type.
+///
+/// Parameters are a declaration for the host: name, range, and polyphonic modulation id. Value
+/// changes are delivered as note events. The getters below report the last value stored for the
+/// host's parameter queries. They are not a source of values for DSP.
 ///
 /// # Sealed
 ///
@@ -128,25 +125,18 @@ pub trait Param: Display + Debug + sealed::Sealed {
     /// host when a voice has fully ended. This allows the host to reuse its modulation resources.
     fn poly_modulation_id(&self) -> Option<u32>;
 
-    /// Get the unnormalized value for this parameter.
+    /// Last plain value stored for the host. Modulation offsets are not included; those arrive as
+    /// note events.
     fn modulated_plain_value(&self) -> Self::Plain;
 
-    /// Get the normalized `[0, 1]` value for this parameter.
+    /// Last normalized `[0, 1]` value stored for the host.
     fn modulated_normalized_value(&self) -> f32;
 
-    /// Get the unnormalized value for this parameter before any (monophonic) modulation coming from
-    /// the host has been applied. If the host is not currently modulating this parameter than this
-    /// will be the same as [`modulated_plain_value()`][Self::modulated_plain_value()]. This may be
-    /// useful for displaying modulation differently in plugin GUIs. Right now only CLAP plugins in
-    /// Bitwig Studio use modulation.
+    /// Same as [`modulated_plain_value()`][Self::modulated_plain_value()]. Modulation is not stored
+    /// on the parameter.
     fn unmodulated_plain_value(&self) -> Self::Plain;
 
-    /// Get the normalized `[0, 1]` value for this parameter before any (monophonic) modulation
-    /// coming from the host has been applied. If the host is not currently modulating this
-    /// parameter than this will be the same as
-    /// [`modulated_normalized_value()`][Self::modulated_normalized_value()]. This may be useful for
-    /// displaying modulation differently in plugin GUIs. Right now only CLAP plugins in Bitwig
-    /// Studio use modulation.
+    /// Same as [`modulated_normalized_value()`][Self::modulated_normalized_value()].
     fn unmodulated_normalized_value(&self) -> f32;
 
     /// Get the unnormalized default value for this parameter.
@@ -161,34 +151,6 @@ pub trait Param: Display + Debug + sealed::Sealed {
     /// Get the number of steps for this parameter, if it is discrete. Used for the host's generic
     /// UI.
     fn step_count(&self) -> Option<usize>;
-
-    /// Returns the previous step from a specific value for this parameter. This can be the same as
-    /// `from` if the value is at the start of its range. This is mainly used for scroll wheel
-    /// interaction in plugin GUIs. When the parameter is not discrete then a step should cover one
-    /// hundredth of the normalized range instead.
-    ///
-    /// If `finer` is true, then the step size should be decreased if the parameter is continuous.
-    fn previous_step(&self, from: Self::Plain, finer: bool) -> Self::Plain;
-
-    /// Returns the next step from a specific value for this parameter. This can be the same as
-    /// `from` if the value is at the end of its range. This is mainly used for scroll wheel
-    /// interaction in plugin GUIs. When the parameter is not discrete then a step should cover one
-    /// hundredth of the normalized range instead.
-    ///
-    /// If `finer` is true, then the step size should be decreased if the parameter is continuous.
-    fn next_step(&self, from: Self::Plain, finer: bool) -> Self::Plain;
-
-    /// The same as [`previous_step()`][Self::previous_step()], but for normalized values. This is
-    /// mostly useful for GUI widgets.
-    fn previous_normalized_step(&self, from: f32, finer: bool) -> f32 {
-        self.preview_normalized(self.previous_step(self.preview_plain(from), finer))
-    }
-
-    /// The same as [`next_step()`][Self::next_step()], but for normalized values. This is mostly
-    /// useful for GUI widgets.
-    fn next_normalized_step(&self, from: f32, finer: bool) -> f32 {
-        self.preview_normalized(self.next_step(self.preview_plain(from), finer))
-    }
 
     /// Get the string representation for a normalized value. Used as part of the wrappers. Most
     /// plugin formats already have support for units, in which case it shouldn't be part of this
@@ -206,14 +168,6 @@ pub trait Param: Display + Debug + sealed::Sealed {
     /// wrappers. This **does** snap to step sizes for continuous parameters (i.e. [`FloatParam`]).
     fn preview_plain(&self, normalized: f32) -> Self::Plain;
 
-    /// Get the plain, unnormalized value for this parameter after polyphonic modulation has been
-    /// applied. This is a convenience method for calling [`preview_plain()`][Self::preview_plain()]
-    /// with `unmodulated_normalized_value() + normalized_offset`.
-    #[inline]
-    fn preview_modulated(&self, normalized_offset: f32) -> Self::Plain {
-        self.preview_plain(self.unmodulated_normalized_value() + normalized_offset)
-    }
-
     /// Flags to control the parameter's behavior. See [`ParamFlags`].
     fn flags(&self) -> ParamFlags;
 
@@ -225,55 +179,18 @@ pub trait Param: Display + Debug + sealed::Sealed {
 /// Contains the setters for parameters. Only to be used by nice-plug's internal libraries.
 /// These are exposed as unsafe methods to avoid confusion.
 pub trait InternalParamMut: Param {
-    /// Set this parameter based on a plain, unnormalized value. This does not snap to step sizes
-    /// for continuous parameters (i.e. [`FloatParam`]). If
-    /// [`modulate_value()`][Self::_internal_modulate_value()] has previously been called with a non
-    /// zero value then this offset is taken into account to form the effective value.
-    ///
-    /// Returns whether or not the value has changed. Any parameter callbacks are only run the value
-    /// has actually changed.
-    ///
-    /// This does **not** update the smoother.
+    /// Store a plain value for later host queries. Returns whether the stored value changed.
     ///
     /// # Safety
     /// This is only allowed to be used by nice-plug's internal libraries.
     unsafe fn _internal_set_plain_value(&self, plain: Self::Plain) -> bool;
 
-    /// Set this parameter based on a normalized value. The normalized value will be snapped to the
-    /// step size for continuous parameters (i.e. [`FloatParam`]). If
-    /// [`modulate_value()`][Self::_internal_modulate_value()] has previously been called with a non
-    /// zero value then this offset is taken into account to form the effective value.
-    ///
-    /// Returns whether or not the value has changed. Any parameter callbacks are only run the value
-    /// has actually changed.
-    ///
-    /// This does **not** update the smoother.
+    /// Store a normalized value for later host queries. Continuous parameters snap to their step
+    /// size. Returns whether the stored value changed.
     ///
     /// # Safety
     /// This is only allowed to be used by nice-plug's internal libraries.
     unsafe fn _internal_set_normalized_value(&self, normalized: f32) -> bool;
-
-    /// Add a modulation offset to the value's unmodulated value. This value sticks until this
-    /// function is called again with a 0.0 value. Out of bound values will be clamped to the
-    /// parameter's range. The normalized value will be snapped to the step size for continuous
-    /// parameters (i.e. [`FloatParam`]).
-    ///
-    /// Returns whether or not the value has changed. Any parameter callbacks are only run the
-    /// value has actually changed.
-    ///
-    /// This does **not** update the smoother.
-    ///
-    /// # Safety
-    /// This is only allowed to be used by nice-plug's internal libraries.
-    unsafe fn _internal_modulate_value(&self, modulation_offset: f32) -> bool;
-
-    /// Update the smoother state to point to the current value. Also used when initializing and
-    /// restoring a plugin so everything is in sync. In that case the smoother should completely
-    /// reset to the current value.
-    ///
-    /// # Safety
-    /// This is only allowed to be used by nice-plug's internal libraries.
-    unsafe fn _internal_update_smoother(&self, sample_rate: f32, reset: bool);
 }
 
 /// Describes a struct containing parameters and other persistent fields.

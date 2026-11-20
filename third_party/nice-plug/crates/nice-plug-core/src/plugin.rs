@@ -167,17 +167,17 @@ pub trait Plugin: Default + Send + 'static {
         Box::new(|_| ())
     }
 
-    /// The plugin's parameters. The host will update the parameter values before calling
-    /// `process()`. These string parameter IDs parameters should never change as they are used to
-    /// distinguish between parameters.
+    /// The plugin's parameters. These declare parameters to the host. Value changes arrive as note
+    /// events during [`process()`][Self::process()]. Parameter values are not part of the saved
+    /// state. These string parameter IDs should never change as they are used to distinguish
+    /// between parameters.
     ///
     /// Queried only once immediately after the plugin instance is created.
     fn params(&self) -> Arc<dyn Params>;
 
     /// Returns an extension struct for interacting with the plugin's editor, if it has one. Later
-    /// the host may call [`Editor::spawn()`] to create an editor instance. To read the current
-    /// parameter values, you will need to clone and move the `Arc` containing your `Params` object
-    /// into the editor. You can later modify the parameters through the
+    /// the host may call [`Editor::spawn()`] to create an editor instance. You can modify the
+    /// parameters through the
     /// [`GuiContext`][crate::context::gui::GuiContext] and
     /// [`ParamSetter`][crate::context::gui::ParamSetter] after the editor GUI has been created.
     /// nice-plug comes with wrappers for several common GUI frameworks that may have their own ways
@@ -246,12 +246,9 @@ pub trait Plugin: Default + Send + 'static {
     /// mode.
     ///
     /// The framework provides convenient iterators on the [`Buffer`] object to process audio either
-    /// either per-sample per-channel, or per-block per-channel per-sample. The first approach is
+    /// per-sample per-channel, or per-block per-channel per-sample. The first approach is
     /// preferred for plugins that don't require block-based processing because of their use of
-    /// per-sample SIMD or excessive branching. The parameter smoothers can also work in both modes:
-    /// use [`Smoother::next()`][crate::params::smoothing::Smoother::next()] for per-sample processing,
-    /// and [`Smoother::next_block()`][crate::params::smoothing::Smoother::next_block()] for
-    /// block-based processing.
+    /// per-sample SIMD or excessive branching.
     ///
     /// The `context` object contains context information as well as callbacks for working with note
     /// events. The [`AuxiliaryBuffers`] contain the plugin's sidechain input buffers and

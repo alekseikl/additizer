@@ -5,46 +5,17 @@ use std::fmt::{Debug, Display};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use crate::nice_debug_assert;
-
 use super::internals::ParamPtr;
 use super::range::FloatRange;
-use super::smoothing::{Smoother, SmoothingStyle};
 use super::{InternalParamMut, Param, ParamFlags, ParamInfo};
 
-/// A floating point parameter that's stored unnormalized. The range is used for the normalization
-/// process.
+/// A floating point parameter. The range converts between plain and normalized values for the host.
+/// The plugin receives value changes as note events.
 pub struct FloatParam {
-    /// The field's current plain value, after monophonic modulation has been applied.
-    value: AtomicF32,
-    /// The field's current value normalized to the `[0, 1]` range.
+    /// Last normalized value stored for host queries.
     normalized_value: AtomicF32,
-    /// The field's plain, unnormalized value before any monophonic automation coming from the host
-    /// has been applied. This will always be the same as `value` for VST3 plugins.
-    unmodulated_value: AtomicF32,
-    /// The field's value normalized to the `[0, 1]` range before any monophonic automation coming
-    /// from the host has been applied. This will always be the same as `value` for VST3 plugins.
-    unmodulated_normalized_value: AtomicF32,
-    /// A value in `[-1, 1]` indicating the amount of modulation applied to
-    /// `unmodulated_normalized_`. This needs to be stored separately since the normalized values are
-    /// clamped, and this value persists after new automation events.
-    modulation_offset: AtomicF32,
     /// The field's default plain, unnormalized value.
     default: f32,
-    /// An optional smoother that will automatically interpolate between the new automation values
-    /// set by the host.
-    pub smoothed: Smoother<f32>,
-
-    /// Optional callback for listening to value changes. The argument passed to this function is
-    /// the parameter's new **plain** value. This should not do anything expensive as it may be
-    /// called multiple times in rapid succession.
-    ///
-    /// To use this, you'll probably want to store an `Arc<Atomic*>` alongside the parameter in the
-    /// parameters struct, move a clone of that `Arc` into this closure, and then modify that.
-    ///
-    /// TODO: We probably also want to pass the old value to this function.
-    value_changed: Option<Arc<dyn Fn(f32) + Send + Sync>>,
-
     /// The distribution of the parameter's values.
     range: FloatRange,
     /// The distance between discrete steps in this parameter. Mostly useful for quantizing GUI
@@ -63,25 +34,21 @@ pub struct FloatParam {
 
 impl Display for FloatParam {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = self.modulated_plain_value();
         match (&self.info.value_to_string, &self.step_size) {
-            (Some(func), _) => write!(f, "{}{}", func(self.value()), self.info.unit),
+            (Some(func), _) => write!(f, "{}{}", func(value), self.info.unit),
             (None, Some(step_size)) => {
                 let num_digits = decimals_from_step_size(*step_size);
-                write!(f, "{:.num_digits$}{}", self.value(), self.info.unit)
+                write!(f, "{:.num_digits$}{}", value, self.info.unit)
             }
-            _ => write!(f, "{}{}", self.value(), self.info.unit),
+            _ => write!(f, "{}{}", value, self.info.unit),
         }
     }
 }
 
 impl Debug for FloatParam {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // This uses the above `Display` instance to show the value
-        if self.modulated_plain_value() != self.unmodulated_plain_value() {
-            write!(f, "{}: {} (modulated)", self.info.name, self)
-        } else {
-            write!(f, "{}: {}", self.info.name, self)
-        }
+        write!(f, "{}: {}", self.info.name, self)
     }
 }
 
@@ -105,7 +72,7 @@ impl Param for FloatParam {
 
     #[inline]
     fn modulated_plain_value(&self) -> Self::Plain {
-        self.value.load(Ordering::Relaxed)
+        self.preview_plain(self.modulated_normalized_value())
     }
 
     #[inline]
@@ -115,12 +82,12 @@ impl Param for FloatParam {
 
     #[inline]
     fn unmodulated_plain_value(&self) -> Self::Plain {
-        self.unmodulated_value.load(Ordering::Relaxed)
+        self.modulated_plain_value()
     }
 
     #[inline]
     fn unmodulated_normalized_value(&self) -> f32 {
-        self.unmodulated_normalized_value.load(Ordering::Relaxed)
+        self.modulated_normalized_value()
     }
 
     #[inline]
@@ -130,14 +97,6 @@ impl Param for FloatParam {
 
     fn step_count(&self) -> Option<usize> {
         None
-    }
-
-    fn previous_step(&self, from: Self::Plain, finer: bool) -> Self::Plain {
-        self.range.previous_step(from, self.step_size, finer)
-    }
-
-    fn next_step(&self, from: Self::Plain, finer: bool) -> Self::Plain {
-        self.range.next_step(from, self.step_size, finer)
     }
 
     fn normalized_value_to_string(&self, normalized: f32, include_unit: bool) -> String {
@@ -193,63 +152,13 @@ impl Param for FloatParam {
 
 impl InternalParamMut for FloatParam {
     unsafe fn _internal_set_plain_value(&self, plain: Self::Plain) -> bool {
-        let unmodulated_value = plain;
-        let unmodulated_normalized_value = self.preview_normalized(plain);
-
-        let modulation_offset = self.modulation_offset.load(Ordering::Relaxed);
-        let (value, normalized_value) = if modulation_offset == 0.0 {
-            (unmodulated_value, unmodulated_normalized_value)
-        } else {
-            let normalized_value =
-                (unmodulated_normalized_value + modulation_offset).clamp(0.0, 1.0);
-
-            (self.preview_plain(normalized_value), normalized_value)
-        };
-
-        // REAPER spams automation events with the same value. This prevents callbacks from firing
-        // multiple times. This can be problematic when they're used to trigger expensive
-        // computations when a parameter changes.
-        let old_value = self.value.swap(value, Ordering::Relaxed);
-        if value != old_value {
-            self.normalized_value
-                .store(normalized_value, Ordering::Relaxed);
-            self.unmodulated_value
-                .store(unmodulated_value, Ordering::Relaxed);
-            self.unmodulated_normalized_value
-                .store(unmodulated_normalized_value, Ordering::Relaxed);
-            if let Some(f) = &self.value_changed {
-                f(value);
-            }
-
-            true
-        } else {
-            false
-        }
+        unsafe { self._internal_set_normalized_value(self.preview_normalized(plain)) }
     }
 
     unsafe fn _internal_set_normalized_value(&self, normalized: f32) -> bool {
-        // NOTE: The double conversion here is to make sure the state is reproducible. State is
-        //       saved and restored using plain values, and the new normalized value will be
-        //       different from `normalized`. This is not necessary for the modulation as these
-        //       values are never shown to the host.
-        unsafe { self._internal_set_plain_value(self.preview_plain(normalized)) }
-    }
-
-    unsafe fn _internal_modulate_value(&self, modulation_offset: f32) -> bool {
-        self.modulation_offset
-            .store(modulation_offset, Ordering::Relaxed);
-
-        // TODO: This renormalizes this value, which is not necessary
-        unsafe { self._internal_set_plain_value(self.unmodulated_plain_value()) }
-    }
-
-    unsafe fn _internal_update_smoother(&self, sample_rate: f32, reset: bool) {
-        if reset {
-            self.smoothed.reset(self.modulated_plain_value());
-        } else {
-            self.smoothed
-                .set_target(sample_rate, self.modulated_plain_value());
-        }
+        let normalized = self.preview_normalized(self.preview_plain(normalized));
+        let old = self.normalized_value.swap(normalized, Ordering::Relaxed);
+        normalized != old
     }
 }
 
@@ -260,28 +169,13 @@ impl FloatParam {
         range.assert_validity();
 
         Self {
-            value: AtomicF32::new(default),
             normalized_value: AtomicF32::new(range.normalize(default)),
-            unmodulated_value: AtomicF32::new(default),
-            unmodulated_normalized_value: AtomicF32::new(range.normalize(default)),
-            modulation_offset: AtomicF32::new(0.0),
             default,
-            smoothed: Smoother::none(),
-
-            value_changed: None,
-
             range,
             step_size: None,
             info: Box::new(ParamInfo::new(name)),
             poly_modulation_id: None,
         }
-    }
-
-    /// The field's current plain value, after monophonic modulation has been applied. Equivalent to
-    /// calling `param.plain_value()`.
-    #[inline]
-    pub fn value(&self) -> f32 {
-        self.modulated_plain_value()
     }
 
     /// The range of valid plain values for this parameter.
@@ -303,38 +197,6 @@ impl FloatParam {
     /// host when a voice has fully ended. This allows the host to reuse its modulation resources.
     pub fn with_poly_modulation_id(mut self, id: u32) -> Self {
         self.poly_modulation_id = Some(id);
-        self
-    }
-
-    /// Set up a smoother that can gradually interpolate changes made to this parameter, preventing
-    /// clicks and zipper noises.
-    pub fn with_smoother(mut self, style: SmoothingStyle) -> Self {
-        // Logarithmic smoothing will cause problems if the range goes through zero since then you
-        // end up multiplying by zero
-        let goes_through_zero = match (&style, &self.range) {
-            (
-                SmoothingStyle::Logarithmic(_),
-                FloatRange::Linear { min, max }
-                | FloatRange::Skewed { min, max, .. }
-                | FloatRange::SymmetricalSkewed { min, max, .. },
-            ) => *min == 0.0 || *max == 0.0 || min.signum() != max.signum(),
-            _ => false,
-        };
-        nice_debug_assert!(
-            !goes_through_zero,
-            "Logarithmic smoothing does not work with ranges that go through zero"
-        );
-
-        self.smoothed = Smoother::new(style);
-        self
-    }
-
-    /// Run a callback whenever this parameter's value changes. The argument passed to this function
-    /// is the parameter's new value. This should not do anything expensive as it may be called
-    /// multiple times in rapid succession, and it can be run from both the GUI and the audio
-    /// thread.
-    pub fn with_callback(mut self, callback: Arc<dyn Fn(f32) + Send + Sync>) -> Self {
-        self.value_changed = Some(callback);
         self
     }
 
@@ -392,13 +254,6 @@ impl FloatParam {
     /// plugin's editor GUI.
     pub fn hide(mut self) -> Self {
         self.info.flags.insert(ParamFlags::HIDDEN);
-        self
-    }
-
-    /// Don't show this parameter when generating a generic UI for the plugin using one of
-    /// nice-plug's generic UI widgets.
-    pub fn hide_in_generic_ui(mut self) -> Self {
-        self.info.flags.insert(ParamFlags::HIDE_IN_GENERIC_UI);
         self
     }
 }

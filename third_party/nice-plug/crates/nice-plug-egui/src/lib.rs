@@ -27,7 +27,6 @@ pub use crate::editor::{EguiEditor, EguiEditorHandle, EguiNiceSettings};
 
 mod editor;
 pub mod resizable_window;
-pub mod widgets;
 
 /// Create an [`Editor`](nice_plug_core::editor::Editor) instance using an [`egui`] GUI. Using the
 /// user state parameter is optional, but it can be useful for keeping track of some temporary

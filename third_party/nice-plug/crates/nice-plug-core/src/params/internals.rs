@@ -70,15 +70,11 @@ impl ParamPtr {
     param_ptr_forward!(pub unsafe fn unmodulated_normalized_value(&self) -> f32);
     param_ptr_forward!(pub unsafe fn default_normalized_value(&self) -> f32);
     param_ptr_forward!(pub unsafe fn step_count(&self) -> Option<usize>);
-    param_ptr_forward!(pub unsafe fn previous_normalized_step(&self, from: f32, finer: bool) -> f32);
-    param_ptr_forward!(pub unsafe fn next_normalized_step(&self, from: f32, finer: bool) -> f32);
     param_ptr_forward!(pub unsafe fn normalized_value_to_string(&self, normalized: f32, include_unit: bool) -> String);
     param_ptr_forward!(pub unsafe fn string_to_normalized_value(&self, string: &str) -> Option<f32>);
     param_ptr_forward!(pub unsafe fn flags(&self) -> ParamFlags);
 
     param_ptr_forward!(pub unsafe fn _internal_set_normalized_value(&self, normalized: f32) -> bool);
-    param_ptr_forward!(pub unsafe fn _internal_modulate_value(&self, modulation_offset: f32) -> bool);
-    param_ptr_forward!(pub unsafe fn _internal_update_smoother(&self, sample_rate: f32, reset: bool));
 
     // These functions involve casts since the plugin formats only do floating point types, so we
     // can't generate them with the macro:

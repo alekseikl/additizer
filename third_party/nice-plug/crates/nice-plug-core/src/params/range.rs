@@ -139,60 +139,6 @@ impl FloatRange {
         }
     }
 
-    /// The range's previous discrete step from a certain value with a certain step size. If the
-    /// step size is not set, then the normalized range is split into 50 segments instead. If
-    /// `finer` is true, then this is upped to 200 segments.
-    pub fn previous_step(&self, from: f32, step_size: Option<f32>, finer: bool) -> f32 {
-        // This one's slightly more involved than the integer version. We'll split the normalized
-        // range up into 50 segments, but if `self.step_size` would cause the range to be devided
-        // into less than 50 segments then we'll use that.
-        match self {
-            FloatRange::Linear { min, max }
-            | FloatRange::Skewed { min, max, .. }
-            | FloatRange::SymmetricalSkewed { min, max, .. } => {
-                let normalized_naive_step_size = if finer { 0.005 } else { 0.02 };
-                let naive_step =
-                    self.unnormalize(self.normalize(from) - normalized_naive_step_size);
-
-                match step_size {
-                    // Use the naive step size if it is larger than the configured step size
-                    Some(step_size) if (naive_step - from).abs() > step_size => {
-                        self.snap_to_step(naive_step, step_size)
-                    }
-                    Some(step_size) => from - step_size,
-                    None => naive_step,
-                }
-                .clamp(*min, *max)
-            }
-            FloatRange::Reversed(range) => range.next_step(from, step_size, finer),
-        }
-    }
-
-    /// The range's next discrete step from a certain value with a certain step size. If the step
-    /// size is not set, then the normalized range is split into 100 segments instead.
-    pub fn next_step(&self, from: f32, step_size: Option<f32>, finer: bool) -> f32 {
-        // See above
-        match self {
-            FloatRange::Linear { min, max }
-            | FloatRange::Skewed { min, max, .. }
-            | FloatRange::SymmetricalSkewed { min, max, .. } => {
-                let normalized_naive_step_size = if finer { 0.005 } else { 0.02 };
-                let naive_step =
-                    self.unnormalize(self.normalize(from) + normalized_naive_step_size);
-
-                match step_size {
-                    Some(step_size) if (naive_step - from).abs() > step_size => {
-                        self.snap_to_step(naive_step, step_size)
-                    }
-                    Some(step_size) => from + step_size,
-                    None => naive_step,
-                }
-                .clamp(*min, *max)
-            }
-            FloatRange::Reversed(range) => range.previous_step(from, step_size, finer),
-        }
-    }
-
     /// Snap a value to a step size, clamping to the minimum and maximum value of the range.
     pub fn snap_to_step(&self, value: f32, step_size: f32) -> f32 {
         match self {
@@ -243,22 +189,6 @@ impl IntRange {
         match self {
             IntRange::Linear { min, max } => (normalized * (max - min) as f32).round() as i32 + min,
             IntRange::Reversed(range) => range.unnormalize(1.0 - normalized),
-        }
-    }
-
-    /// The range's previous discrete step from a certain value.
-    pub fn previous_step(&self, from: i32) -> i32 {
-        match self {
-            IntRange::Linear { min, max } => (from - 1).clamp(*min, *max),
-            IntRange::Reversed(range) => range.next_step(from),
-        }
-    }
-
-    /// The range's next discrete step from a certain value.
-    pub fn next_step(&self, from: i32) -> i32 {
-        match self {
-            IntRange::Linear { min, max } => (from + 1).clamp(*min, *max),
-            IntRange::Reversed(range) => range.previous_step(from),
         }
     }
 

@@ -3,36 +3,17 @@
 use atomic_float::AtomicF32;
 use std::fmt::{Debug, Display};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 
 use super::internals::ParamPtr;
 use super::{InternalParamMut, Param, ParamFlags, ParamInfo};
 
-/// A simple boolean parameter.
+/// A simple boolean parameter. The plugin receives value changes as note events.
 pub struct BoolParam {
-    /// The field's current value, after monophonic modulation has been applied.
-    value: AtomicBool,
-    /// The field's current value normalized to the `[0, 1]` range.
+    /// Last normalized value stored for host queries. `1.0` is true.
     normalized_value: AtomicF32,
-    /// The field's value before any monophonic automation coming from the host has been applied.
-    /// This will always be the same as `value` for VST3 plugins.
-    unmodulated_value: AtomicBool,
-    /// The field's value normalized to the `[0, 1]` range before any monophonic automation coming
-    /// from the host has been applied. This will always be the same as `value` for VST3 plugins.
-    unmodulated_normalized_value: AtomicF32,
-    /// A value in `[-1, 1]` indicating the amount of modulation applied to
-    /// `unmodulated_normalized_`. This needs to be stored separately since the normalized values are
-    /// clamped, and this value persists after new automation events.
-    modulation_offset: AtomicF32,
     /// The field's default value.
     default: bool,
-
-    /// Optional callback for listening to value changes. The argument passed to this function is
-    /// the parameter's new value. This should not do anything expensive as it may be called
-    /// multiple times in rapid succession, and it can be run from both the GUI and the audio
-    /// thread.
-    value_changed: Option<Arc<dyn Fn(bool) + Send + Sync>>,
-
     /// Metadata and conversion callbacks that are not used by the DSP hot path.
     info: Box<ParamInfo<bool>>,
     /// If this parameter has been marked as polyphonically modulatable, then this will be a unique
@@ -45,7 +26,8 @@ pub struct BoolParam {
 
 impl Display for BoolParam {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match (self.value(), &self.info.value_to_string) {
+        let value = self.modulated_plain_value();
+        match (value, &self.info.value_to_string) {
             (v, Some(func)) => write!(f, "{}", func(v)),
             (true, None) => write!(f, "On"),
             (false, None) => write!(f, "Off"),
@@ -55,12 +37,7 @@ impl Display for BoolParam {
 
 impl Debug for BoolParam {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // This uses the above `Display` instance to show the value
-        if self.value.load(Ordering::Relaxed) != self.unmodulated_value.load(Ordering::Relaxed) {
-            write!(f, "{}: {} (modulated)", self.info.name, self)
-        } else {
-            write!(f, "{}: {}", self.info.name, self)
-        }
+        write!(f, "{}: {}", self.info.name, self)
     }
 }
 
@@ -84,7 +61,7 @@ impl Param for BoolParam {
 
     #[inline]
     fn modulated_plain_value(&self) -> Self::Plain {
-        self.value.load(Ordering::Relaxed)
+        self.preview_plain(self.modulated_normalized_value())
     }
 
     #[inline]
@@ -94,12 +71,12 @@ impl Param for BoolParam {
 
     #[inline]
     fn unmodulated_plain_value(&self) -> Self::Plain {
-        self.unmodulated_value.load(Ordering::Relaxed)
+        self.modulated_plain_value()
     }
 
     #[inline]
     fn unmodulated_normalized_value(&self) -> f32 {
-        self.unmodulated_normalized_value.load(Ordering::Relaxed)
+        self.modulated_normalized_value()
     }
 
     #[inline]
@@ -109,14 +86,6 @@ impl Param for BoolParam {
 
     fn step_count(&self) -> Option<usize> {
         Some(1)
-    }
-
-    fn previous_step(&self, _from: Self::Plain, _finer: bool) -> Self::Plain {
-        false
-    }
-
-    fn next_step(&self, _from: Self::Plain, _finer: bool) -> Self::Plain {
-        true
     }
 
     fn normalized_value_to_string(&self, normalized: f32, _include_unit: bool) -> String {
@@ -159,58 +128,13 @@ impl Param for BoolParam {
 
 impl InternalParamMut for BoolParam {
     unsafe fn _internal_set_plain_value(&self, plain: Self::Plain) -> bool {
-        let unmodulated_value = plain;
-        let unmodulated_normalized_value = self.preview_normalized(plain);
-
-        let modulation_offset = self.modulation_offset.load(Ordering::Relaxed);
-        let (value, normalized_value) = if modulation_offset == 0.0 {
-            (unmodulated_value, unmodulated_normalized_value)
-        } else {
-            let normalized_value =
-                (unmodulated_normalized_value + modulation_offset).clamp(0.0, 1.0);
-
-            (self.preview_plain(normalized_value), normalized_value)
-        };
-
-        // REAPER spams automation events with the same value. This prevents callbacks from firing
-        // multiple times. This can be problematic when they're used to trigger expensive
-        // computations when a parameter changes.
-        let old_value = self.value.swap(value, Ordering::Relaxed);
-        if value != old_value {
-            self.normalized_value
-                .store(normalized_value, Ordering::Relaxed);
-            self.unmodulated_value
-                .store(unmodulated_value, Ordering::Relaxed);
-            self.unmodulated_normalized_value
-                .store(unmodulated_normalized_value, Ordering::Relaxed);
-            if let Some(f) = &self.value_changed {
-                f(value);
-            }
-
-            true
-        } else {
-            false
-        }
+        unsafe { self._internal_set_normalized_value(self.preview_normalized(plain)) }
     }
 
     unsafe fn _internal_set_normalized_value(&self, normalized: f32) -> bool {
-        // NOTE: The double conversion here is to make sure the state is reproducible. State is
-        //       saved and restored using plain values, and the new normalized value will be
-        //       different from `normalized`. This is not necessary for the modulation as these
-        //       values are never shown to the host.
-        unsafe { self._internal_set_plain_value(self.preview_plain(normalized)) }
-    }
-
-    unsafe fn _internal_modulate_value(&self, modulation_offset: f32) -> bool {
-        self.modulation_offset
-            .store(modulation_offset, Ordering::Relaxed);
-
-        // TODO: This renormalizes this value, which is not necessary
-        unsafe { self._internal_set_plain_value(self.unmodulated_plain_value()) }
-    }
-
-    unsafe fn _internal_update_smoother(&self, _sample_rate: f32, _init: bool) {
-        // Can't really smooth a binary parameter now can you
+        let normalized = self.preview_normalized(self.preview_plain(normalized));
+        let old = self.normalized_value.swap(normalized, Ordering::Relaxed);
+        normalized != old
     }
 }
 
@@ -219,25 +143,11 @@ impl BoolParam {
     /// parameter.
     pub fn new(name: impl Into<String>, default: bool) -> Self {
         Self {
-            value: AtomicBool::new(default),
             normalized_value: AtomicF32::new(if default { 1.0 } else { 0.0 }),
-            unmodulated_value: AtomicBool::new(default),
-            unmodulated_normalized_value: AtomicF32::new(if default { 1.0 } else { 0.0 }),
-            modulation_offset: AtomicF32::new(0.0),
             default,
-
-            value_changed: None,
-
             info: Box::new(ParamInfo::new(name)),
             poly_modulation_id: None,
         }
-    }
-
-    /// The field's current plain value, after monophonic modulation has been applied. Equivalent to
-    /// calling `param.plain_value()`.
-    #[inline]
-    pub fn value(&self) -> bool {
-        self.modulated_plain_value()
     }
 
     /// Enable polyphonic modulation for this parameter. The ID is used to uniquely identify this
@@ -253,15 +163,6 @@ impl BoolParam {
     /// host when a voice has fully ended. This allows the host to reuse its modulation resources.
     pub fn with_poly_modulation_id(mut self, id: u32) -> Self {
         self.poly_modulation_id = Some(id);
-        self
-    }
-
-    /// Run a callback whenever this parameter's value changes. The argument passed to this function
-    /// is the parameter's new value. This should not do anything expensive as it may be called
-    /// multiple times in rapid succession, and it can be run from both the GUI and the audio
-    /// thread.
-    pub fn with_callback(mut self, callback: Arc<dyn Fn(bool) + Send + Sync>) -> Self {
-        self.value_changed = Some(callback);
         self
     }
 
@@ -307,13 +208,6 @@ impl BoolParam {
     /// plugin's editor GUI.
     pub fn hide(mut self) -> Self {
         self.info.flags.insert(ParamFlags::HIDDEN);
-        self
-    }
-
-    /// Don't show this parameter when generating a generic UI for the plugin using one of
-    /// nice-plug's generic UI widgets.
-    pub fn hide_in_generic_ui(mut self) -> Self {
-        self.info.flags.insert(ParamFlags::HIDE_IN_GENERIC_UI);
         self
     }
 }

@@ -72,12 +72,9 @@
 //!    will automatically be registered as a parameter if they have an `#[id = "foobar"]` attribute.
 //!    The string `"foobar"` here uniquely identifies the parameter, making it possible to reorder
 //!    and rename parameters as long as this string stays constant. You can also store persistent
-//!    non-parameter data and other parameter objects in a `Params` struct. Check out the trait's
-//!    documentation for details on all supported features, and also be sure to take a look at the
-//!    [example plugins](https://codeberg.org/BillyDM/nice-plug/src/branch/main/examples).
-//!  - After calling `.with_smoother()` during an integer or floating point parameter's creation,
-//!    you can use `param.smoothed` to access smoothed values for that parameter. Be sure to check
-//!    out the [`Smoother`][prelude::Smoother] API for more details.
+//!    non-parameter data and other parameter objects in a `Params` struct. Parameter values are
+//!    delivered as note events and are not read from the parameter objects. Check out the trait's
+//!    documentation for details.
 //!
 //! There's a whole lot more to discuss, but once you understand the above you should be able to
 //! figure out the rest by reading through the examples and the API documentation. Good luck!

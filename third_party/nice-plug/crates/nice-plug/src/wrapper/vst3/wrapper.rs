@@ -407,11 +407,6 @@ impl<P: Vst3Plugin> IComponentTrait for Wrapper<P> {
         // custom channel layout overrides we need to activate here.
         match (state != 0, self.inner.current_buffer_config.load()) {
             (true, Some(buffer_config)) => {
-                // Before initializing the plugin, make sure all smoothers are set the the default values
-                for param in self.inner.param_by_hash.values() {
-                    unsafe { param._internal_update_smoother(buffer_config.sample_rate, true) };
-                }
-
                 let mut activate_context = self.inner.make_activate_context();
                 let audio_io_layout = self.inner.current_audio_io_layout.load();
 
@@ -543,7 +538,7 @@ impl<P: Vst3Plugin> IComponentTrait for Wrapper<P> {
             return kResultFalse;
         }
 
-        match unsafe { state::deserialize_json(&read_buffer) } {
+        match state::deserialize_json(&read_buffer) {
             Some(mut state) => {
                 if self.inner.set_state_inner(&mut state) {
                     crate::nice_trace!("Loaded state ({} bytes)", read_buffer.len());
@@ -561,12 +556,7 @@ impl<P: Vst3Plugin> IComponentTrait for Wrapper<P> {
 
         let state = unsafe { ComRef::from_raw(state).unwrap() };
 
-        let serialized = unsafe {
-            state::serialize_json::<P>(
-                self.inner.params.clone(),
-                state::make_params_iter(&self.inner.param_by_hash, &self.inner.param_id_to_hash),
-            )
-        };
+        let serialized = state::serialize_json::<P>(self.inner.params.clone());
         match serialized {
             Ok(serialized) => {
                 let mut num_bytes_written = 0;
@@ -772,13 +762,7 @@ impl<P: Vst3Plugin> IEditControllerTrait for Wrapper<P> {
             return kResultOk;
         }
 
-        let sample_rate = self
-            .inner
-            .current_buffer_config
-            .load()
-            .map(|c| c.sample_rate);
-        self.inner
-            .set_normalized_value_by_hash(id, value as f32, sample_rate)
+        self.inner.set_normalized_value_by_hash(id, value as f32)
     }
 
     unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
@@ -1197,11 +1181,8 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                                     // event so the plugin can recompute per-voice values.
                                     // Polyphonic modulation is an offset from this monophonic
                                     // value, which is already normalized in VST3.
-                                    if self.inner.set_normalized_value_by_hash(
-                                        param_hash,
-                                        value,
-                                        Some(sample_rate),
-                                    ) == kResultOk
+                                    if self.inner.set_normalized_value_by_hash(param_hash, value)
+                                        == kResultOk
                                         && let Some(&poly_modulation_id) =
                                             self.inner.poly_mod_ids_by_hash.get(&param_hash)
                                     {

@@ -423,11 +423,7 @@ impl<P: Vst3Plugin + Send> GuiContextInner for WrapperGuiContext<P> {
                         .is_processing
                         .load(std::sync::atomic::Ordering::SeqCst)
                     {
-                        inner.set_normalized_value_by_hash(
-                            *hash,
-                            normalized,
-                            inner.current_buffer_config.load().map(|c| c.sample_rate),
-                        );
+                        inner.set_normalized_value_by_hash(*hash, normalized);
                     }
 
                     unsafe { handler.performEdit(*hash, normalized as f64) };

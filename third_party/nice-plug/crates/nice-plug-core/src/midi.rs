@@ -206,46 +206,17 @@ pub enum NoteEvent<S> {
     },
     /// A polyphonic modulation event, available on [`MidiConfig::Basic`] and up. This will only be
     /// sent for parameters that were decorated with the `.with_poly_modulation_id()` modifier, and
-    /// only by supported hosts. This event contains a _normalized offset value_ for the parameter's
-    /// current, **unmodulated** value. That is, an offset for the current value before monophonic
-    /// modulation is applied, as polyphonic modulation overrides monophonic modulation. There are
-    /// multiple ways to incorporate this polyphonic modulation into a synthesizer, but a simple way
-    /// to incorporate this would work as follows:
+    /// only by supported hosts. `normalized_offset` is an offset from the parameter's monophonic
+    /// automation value for one voice. That automation value arrives as [`MonoAutomation`], and a
+    /// monophonic modulation offset arrives as [`MonoModulation`]. Polyphonic modulation replaces
+    /// the monophonic offset for the targeted voice.
     ///
-    /// - By default, a voice uses the parameter's global value, which may or may not include
-    ///   monophonic modulation. This is `parameter.value` for unsmoothed parameters, and smoothed
-    ///   parameters should use block smoothing so the smoothed values can be reused by multiple
-    ///   voices.
-    /// - If a `PolyModulation` event is emitted for the voice, that voice should use the the
-    ///   _normalized offset_ contained within the event to compute the voice's modulated value and
-    ///   use that in place of the global value.
-    ///   - This value can be obtained by calling `param.preview_plain(param.normalized_value() +
-    ///     event.normalized_offset)`. These functions automatically clamp the values as necessary.
-    ///   - If the parameter uses smoothing, then the parameter's smoother can be copied to the
-    ///     voice. [`Smoother::set_target()`][crate::params::smoothing::Smoother::set_target()] can
-    ///     then be used to have the smoother use the modulated value.
-    ///   - One caveat with smoothing is that copying the smoother like this only works correctly if
-    ///     it last produced a value during the sample before the `PolyModulation` event. Otherwise
-    ///     there may still be an audible jump in parameter values. A solution for this would be to
-    ///     first call the [`Smoother::reset()`][crate::params::smoothing::Smoother::reset()] with
-    ///     the current sample's global value before calling `set_target()`.
-    ///   - Finally, if the polyphonic modulation happens on the same sample as the `NoteOn` event,
-    ///     then the smoothing should not start at the current global value. In this case, `reset()`
-    ///     should be called with the voice's modulated value.
-    /// - If a `MonoAutomation` event is emitted for a parameter, then the values or target values
-    ///   (if the parameter uses smoothing) for all voices must be updated. The normalized value
-    ///   from the `MonoAutomation` and the voice's normalized modulation offset must be added and
-    ///   converted back to a plain value. This value can be used directly for unsmoothed
-    ///   parameters, or passed to `set_target()` for smoothed parameters. The global value will
-    ///   have already been updated, so this event only serves as a notification to update
-    ///   polyphonic modulation.
-    /// - If a `MonoModulation` event is emitted for a parameter, the host changed the monophonic
-    ///   modulation offset. Voices that are not using a polyphonic offset should add this
-    ///   normalized offset to the unmodulated value. Polyphonic modulation overrides it. The
-    ///   parameter's modulated value has already been updated.
-    /// - When a voice ends, either because the amplitude envelope has hit zero or because the voice
-    ///   was stolen, the plugin must send a `VoiceTerminated` to the host to let it know that it
-    ///   can reuse the resources it used to modulate the value.
+    /// The plugin applies these events directly. Parameter objects do not store the current value
+    /// for DSP.
+    ///
+    /// When a voice ends, either because the amplitude envelope has hit zero or because the voice
+    /// was stolen, the plugin must send a `VoiceTerminated` to the host to let it know that it
+    /// can reuse the resources it used to modulate the value.
     PolyModulation {
         timing: u32,
         /// The identifier of the voice this polyphonic modulation event should affect. This voice
@@ -260,8 +231,7 @@ pub enum NoteEvent<S> {
     },
     /// A notification to inform the plugin that a polyphonically modulated parameter has received a
     /// new automation value. This is used in conjunction with the `PolyModulation` event. See that
-    /// event's documentation for more details. The parameter's global value has already been
-    /// updated when this event is emitted.
+    /// event's documentation for more details. `normalized_value` is the new monophonic value.
     MonoAutomation {
         timing: u32,
         /// The ID that was set for the modulated parameter using the `.with_poly_modulation_id()`
@@ -276,16 +246,16 @@ pub enum NoteEvent<S> {
     /// Available on [`MidiConfig::Basic`] and up. This is the global form of [`PolyModulation`]:
     /// the host did not target a note, so the offset applies to every voice that is not
     /// polyphonically modulated. Only sent for parameters decorated with
-    /// `.with_poly_modulation_id()`. The parameter's modulated value has already been updated when
-    /// this event is emitted. See the `PolyModulation` event's docstring for how this offset
-    /// interacts with automation and per-voice modulation.
+    /// `.with_poly_modulation_id()`. The offset is not stored on the parameter. See the
+    /// `PolyModulation` event's docstring for how this offset interacts with automation and
+    /// per-voice modulation.
     MonoModulation {
         timing: u32,
         /// The ID that was set for the modulated parameter using the `.with_poly_modulation_id()`
         /// method.
         poly_modulation_id: u32,
-        /// The normalized modulation offset. Add this to the parameter's unmodulated normalized
-        /// value. Polyphonic modulation replaces this offset for voices that receive a
+        /// The normalized modulation offset. Add this to the latest [`MonoAutomation`] value.
+        /// Polyphonic modulation replaces this offset for voices that receive a
         /// `PolyModulation` event.
         normalized_offset: f32,
     },
