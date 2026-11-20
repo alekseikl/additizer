@@ -4,7 +4,6 @@ use nice_plug_core::context::process::{ProcessContext, SendEventError, Transport
 use nice_plug_core::midi::PluginNoteEvent;
 use nice_plug_core::plugin::Plugin;
 
-#[cfg(feature = "editor")]
 use nice_plug_core::{
     context::gui::GuiContextInner, params::internals::ParamPtr, plugin::PluginState,
 };
@@ -109,7 +108,6 @@ impl<P: Plugin, B: Backend<P>> ProcessContext<P> for WrapperProcessContext<'_, P
 /// A [`GuiContext`] implementation for the wrapper. This is passed to the plugin in
 /// [`Editor::spawn()`][crate::prelude::Editor::spawn()] so it can interact with the rest of the plugin and
 /// with the host for things like setting parameters.
-#[cfg(feature = "editor")]
 pub(crate) struct WrapperGuiContext<P: Plugin, B: Backend<P>> {
     pub(super) wrapper: std::sync::Weak<Wrapper<P, B>>,
     #[cfg(debug_assertions)]
@@ -117,7 +115,6 @@ pub(crate) struct WrapperGuiContext<P: Plugin, B: Backend<P>> {
         atomic_refcell::AtomicRefCell<crate::wrapper::util::context_checks::ParamGestureChecker>,
 }
 
-#[cfg(feature = "editor")]
 impl<P: Plugin, B: Backend<P>> GuiContextInner for WrapperGuiContext<P, B> {
     fn plugin_api(&self) -> PluginApi {
         PluginApi::Standalone

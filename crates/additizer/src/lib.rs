@@ -136,7 +136,7 @@ impl Plugin for Additizer {
 
             let mut next_event = context.next_event();
 
-            for (block_start, block) in buffer.iter_blocks(block_size) {
+            for (block_start, mut block) in buffer.iter_blocks(block_size) {
                 let samples = block.samples();
                 let sample_to = block_start + samples;
 
@@ -147,14 +147,12 @@ impl Plugin for Additizer {
 
                 host_transport.set_block(block_start);
 
-                let mut channels = block.into_iter();
-
                 synth.process(
                     samples,
                     update_ui,
                     &host_transport,
                     &mut self.terminated_notes,
-                    [channels.next().unwrap(), channels.next().unwrap()],
+                    block.stereo_buff(),
                 );
 
                 for note in self.terminated_notes.drain(..) {

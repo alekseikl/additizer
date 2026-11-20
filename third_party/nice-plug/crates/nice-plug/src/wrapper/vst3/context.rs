@@ -20,10 +20,8 @@ use vst3::{
     },
 };
 
-#[cfg(feature = "editor")]
 use vst3::Steinberg::Vst::IComponentHandlerTrait;
 
-#[cfg(feature = "editor")]
 use nice_plug_core::{
     context::gui::GuiContextInner, params::internals::ParamPtr, plugin::PluginState,
 };
@@ -73,7 +71,6 @@ pub(crate) struct WrapperProcessContext<'a, P: Vst3Plugin> {
 /// A [`GuiContext`] implementation for the wrapper. This is passed to the plugin in
 /// [`Editor::spawn()`][crate::prelude::Editor::spawn()] so it can interact with the rest of the plugin and
 /// with the host for things like setting parameters.
-#[cfg(feature = "editor")]
 pub(crate) struct WrapperGuiContext<P: Vst3Plugin> {
     pub(super) inner: std::sync::Weak<WrapperInner<P>>,
     #[cfg(debug_assertions)]
@@ -377,7 +374,6 @@ impl<P: Vst3Plugin> ProcessContext<P> for WrapperProcessContext<'_, P> {
     }
 }
 
-#[cfg(feature = "editor")]
 impl<P: Vst3Plugin + Send> GuiContextInner for WrapperGuiContext<P> {
     fn plugin_api(&self) -> PluginApi {
         PluginApi::Vst3

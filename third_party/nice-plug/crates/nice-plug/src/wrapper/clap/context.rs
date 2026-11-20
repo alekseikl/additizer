@@ -59,7 +59,6 @@ pub(crate) struct WrapperProcessContext<'a, P: ClapPlugin> {
 /// A [`GuiContext`] implementation for the wrapper. This is passed to the plugin in
 /// [`Editor::spawn()`][crate::prelude::Editor::spawn()] so it can interact with the rest of the plugin and
 /// with the host for things like setting parameters.
-#[cfg(feature = "editor")]
 pub(crate) struct WrapperGuiContext<P: ClapPlugin> {
     pub(super) wrapper: std::sync::Weak<Wrapper<P>>,
     #[cfg(debug_assertions)]
@@ -520,7 +519,6 @@ impl<P: ClapPlugin> ProcessContext<P> for WrapperProcessContext<'_, P> {
     }
 }
 
-#[cfg(feature = "editor")]
 impl<P: ClapPlugin> nice_plug_core::context::gui::GuiContextInner for WrapperGuiContext<P> {
     fn plugin_api(&self) -> PluginApi {
         PluginApi::Clap

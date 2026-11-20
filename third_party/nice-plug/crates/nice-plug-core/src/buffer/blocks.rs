@@ -137,6 +137,34 @@ impl<'slice, 'sample> Block<'slice, 'sample> {
         unsafe { (&(*self.buffers)).len() }
     }
 
+    /// The first two channels of this block.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the block has fewer than two channels.
+    #[inline]
+    pub fn stereo_buff(&mut self) -> [&mut [f32]; 2] {
+        assert!(
+            self.channels() >= 2,
+            "stereo_buff requires at least two channels"
+        );
+
+        let start = self.current_block_start;
+        let end = self.current_block_end;
+
+        // SAFETY: The assert above guarantees at least two channels, so splitting at 1 is in
+        // range. `BlocksIter` already limited this block to a valid sample range. The two
+        // channels are disjoint.
+        unsafe {
+            let buffers = &mut *self.buffers;
+            let (left, right) = buffers.split_at_mut_unchecked(1);
+            [
+                left.get_unchecked_mut(0).get_unchecked_mut(start..end),
+                right.get_unchecked_mut(0).get_unchecked_mut(start..end),
+            ]
+        }
+    }
+
     /// A resetting iterator. This lets you iterate over the same block multiple times. Otherwise
     /// you don't need to use this function as [`Block`] already implements [`Iterator`]. You can
     /// also use the direct accessor functions on this block instead.

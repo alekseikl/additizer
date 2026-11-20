@@ -88,16 +88,12 @@ impl<'a> Buffer<'a> {
     /// You can use this to obtain block-slices from a buffer so you can pass them to a library:
     ///
     /// ```ignore
-    /// for block in buffer.iter_blocks(128) {
-    ///     let mut block_channels = block.into_iter();
-    ///     let stereo_slice = &[
-    ///         block_channels.next().unwrap(),
-    ///         block_channels.next().unwrap(),
-    ///     ];
+    /// for (_, mut block) in buffer.iter_blocks(128) {
+    ///     let stereo_slice = block.stereo_buff();
     ///
     ///     // Do something cool with `stereo_slice`
     /// }
-    /// ````
+    /// ```
     #[inline]
     pub fn iter_blocks<'slice>(&'slice mut self, max_block_size: usize) -> BlocksIter<'slice, 'a> {
         BlocksIter {
@@ -199,5 +195,30 @@ mod miri {
         for i in 32..48 {
             assert_eq!(real_buffers[0][i], 0.0);
         }
+    }
+
+    #[test]
+    fn stereo_buff_returns_disjoint_channel_slices() {
+        let mut real_buffers = vec![vec![0.0; 64]; 2];
+        let mut buffer = Buffer::default();
+        unsafe {
+            buffer.set_slices(64, |output_slices| {
+                let (first_channel, other_channels) = real_buffers.split_at_mut(1);
+                *output_slices = vec![&mut first_channel[0], &mut other_channels[0]];
+            })
+        };
+
+        let (_offset, mut block) = buffer.iter_blocks(16).next().unwrap();
+        let [left, right] = block.stereo_buff();
+        assert_eq!(left.len(), 16);
+        assert_eq!(right.len(), 16);
+
+        left[0] = 1.0;
+        right[1] = 2.0;
+
+        assert_eq!(real_buffers[0][0], 1.0);
+        assert_eq!(real_buffers[1][1], 2.0);
+        assert_eq!(real_buffers[0][1], 0.0);
+        assert_eq!(real_buffers[1][0], 0.0);
     }
 }

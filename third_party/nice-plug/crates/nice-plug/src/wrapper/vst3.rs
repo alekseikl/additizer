@@ -9,7 +9,6 @@ mod param_units;
 pub mod subcategories;
 mod wrapper;
 
-#[cfg(feature = "editor")]
 mod view;
 
 /// Re-export for the wrapper.

@@ -10,7 +10,6 @@ pub mod params;
 pub mod plugin;
 pub mod util;
 
-#[cfg(feature = "editor")]
 pub mod editor;
 
 // These macros are also in the crate root and in the prelude, but having the module itself be pub

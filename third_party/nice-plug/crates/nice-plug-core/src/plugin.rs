@@ -6,9 +6,7 @@ use std::sync::Arc;
 mod state;
 pub use state::*;
 
-#[cfg(feature = "editor")]
 mod track_info;
-#[cfg(feature = "editor")]
 pub use track_info::*;
 
 use crate::{
@@ -19,7 +17,6 @@ use crate::{
     params::Params,
 };
 
-#[cfg(feature = "editor")]
 use crate::{context::gui::AsyncExecutor, editor::Editor};
 
 /// A function that can execute a plugin's [`BackgroundTask`][Plugin::BackgroundTask]s. A plugin can
@@ -140,15 +137,7 @@ pub trait Plugin: Default + Send + 'static {
     /// The [`Editor`] (GUI) type used in this plugin.
     ///
     /// If this plugin does not have an editor, set this to `()`.
-    #[cfg(feature = "editor")]
     type Editor: Editor;
-
-    /// The [`Editor`] (GUI) type used in this plugin.
-    ///
-    /// If this plugin does not have an editor, set this to `()`.
-    // To avoid rust-analyzer from getting confused.
-    #[cfg(not(feature = "editor"))]
-    type Editor;
 
     /// The plugin's SysEx message type if it supports sending or receiving MIDI SysEx messages, or
     /// `()` if it does not. This type can be a struct or enum wrapping around one or more message
@@ -196,7 +185,6 @@ pub trait Plugin: Default + Send + 'static {
     ///
     /// Queried only once immediately after the plugin instance is created. This function takes
     /// `&mut self` to make it easier to move data into the `Editor` implementation.
-    #[cfg(feature = "editor")]
     fn editor(&mut self, async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
         None
     }

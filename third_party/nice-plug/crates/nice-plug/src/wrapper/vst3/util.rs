@@ -1,5 +1,4 @@
 use std::cmp;
-#[cfg(feature = "editor")]
 use vst3::Steinberg::FIDString;
 use vst3::Steinberg::Vst::TChar;
 use widestring::U16CString;
@@ -58,7 +57,6 @@ pub fn u16strlcpy(dest: &mut [TChar], src: &str) {
 
 /// Compare a host-provided [`FIDString`] to one of the SDK's string constants. These are plain C
 /// string pointers, so pointer equality is not sufficient.
-#[cfg(feature = "editor")]
 pub unsafe fn fid_matches(type_: FIDString, expected: FIDString) -> bool {
     use std::ffi::CStr;
 

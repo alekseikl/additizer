@@ -2,10 +2,8 @@ use atomic_refcell::AtomicRefCell;
 use crossbeam::channel;
 use crossbeam::queue::ArrayQueue;
 use nice_plug_core::audio_setup::{AudioIOLayout, BufferConfig, ProcessMode};
-#[cfg(feature = "editor")]
 use nice_plug_core::context::gui::GuiContext;
 use nice_plug_core::context::process::Transport;
-#[cfg(feature = "editor")]
 use nice_plug_core::editor::{Editor, EditorHandle, SpawnedEditor};
 use nice_plug_core::midi::PluginNoteEvent;
 use nice_plug_core::params::internals::ParamPtr;
@@ -13,7 +11,6 @@ use nice_plug_core::params::{ParamFlags, Params};
 use nice_plug_core::plugin::{Plugin, PluginState, ProcessStatus, TaskExecutor};
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
-#[cfg(feature = "editor")]
 use std::error::Error;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -24,7 +21,6 @@ use super::config::WrapperConfig;
 use super::context::{WrapperActivateContext, WrapperProcessContext};
 use crate::event_loop::{EventLoop, MainThreadExecutor, OsEventLoop};
 use crate::util::permit_alloc;
-#[cfg(feature = "editor")]
 use crate::wrapper::standalone::context::WrapperGuiContext;
 use crate::wrapper::state;
 use crate::wrapper::util::process_wrapper;
@@ -49,10 +45,8 @@ pub struct Wrapper<P: Plugin, B: Backend<P>> {
     /// to instantiate this in advance so we don't need to lock the entire [`Plugin`] object when
     /// creating an editor. Wrapped in an `AtomicRefCell` because it needs to be initialized late.
     #[allow(clippy::type_complexity)]
-    #[cfg(feature = "editor")]
     pub editor: AtomicRefCell<Option<Arc<Mutex<P::Editor>>>>,
     #[allow(clippy::type_complexity)]
-    #[cfg(feature = "editor")]
     pub editor_handle: Mutex<Option<<P::Editor as Editor>::Handle>>,
     close_requested: Arc<AtomicBool>,
 
@@ -107,13 +101,11 @@ pub struct Wrapper<P: Plugin, B: Backend<P>> {
 pub enum Task<P: Plugin> {
     /// Execute one of the plugin's background tasks.
     PluginTask(P::BackgroundTask),
-    #[cfg(feature = "editor")]
     StateChanged,
     /// Inform the plugin that one parameter's value has changed. This uses the parameter hashes
     /// since the task will be created from the audio thread. We don't have parameter hashes here
     /// like in the plugin APIs, so we'll just use the `ParamPtr`s directly. These are used to index
     /// the hashmaps stored on `Wrapper`.
-    #[cfg(feature = "editor")]
     ParameterValueChanged(ParamPtr, f32),
 }
 
@@ -123,7 +115,6 @@ pub enum WrapperError {
     /// The plugin returned `false` during activation.
     #[error("The plugin returned false during activation")]
     ActivationFailed,
-    #[cfg(feature = "editor")]
     #[error("{0}")]
     WindowError(#[from] Box<dyn Error>),
 }
@@ -132,13 +123,11 @@ impl<P: Plugin, B: Backend<P>> MainThreadExecutor<Task<P>> for Wrapper<P, B> {
     fn execute(&self, task: Task<P>, _is_gui_thread: bool) {
         match task {
             Task::PluginTask(task) => (self.task_executor.lock())(task),
-            #[cfg(feature = "editor")]
             Task::StateChanged => {
                 if let Some(editor_handle) = self.editor_handle.lock().as_ref() {
                     editor_handle.state_changed();
                 }
             }
-            #[cfg(feature = "editor")]
             Task::ParameterValueChanged(param_ptr, normalized_value) => {
                 if let Some(editor) = self.editor_handle.lock().as_ref() {
                     let param_id = &self.param_ptr_to_id[&param_ptr];
@@ -200,9 +189,7 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
             task_executor,
             params,
             // Initialized later as it needs a reference to the wrapper for the async executor
-            #[cfg(feature = "editor")]
             editor: AtomicRefCell::new(None),
-            #[cfg(feature = "editor")]
             editor_handle: Mutex::new(None),
             close_requested: Arc::new(AtomicBool::new(false)),
 
@@ -238,7 +225,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
             Some(OsEventLoop::new_and_spawn(Arc::downgrade(&wrapper)));
 
         // The editor needs to be initialized later so the Async executor can work.
-        #[cfg(feature = "editor")]
         {
             *wrapper.editor.borrow_mut() = wrapper
                 .plugin
@@ -327,7 +313,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
         #[allow(unused_mut)]
         let mut gui_spawned = false;
 
-        #[cfg(feature = "editor")]
         let res = match self.editor.borrow().clone() {
             Some(editor) => {
                 let context = self.clone().make_gui_context();
@@ -350,9 +335,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
             }
             None => Ok(()),
         };
-
-        #[cfg(not(feature = "editor"))]
-        let res = Ok(());
 
         if !gui_spawned {
             crate::nice_log!("No GUI available for {}, blocking indefinitely...", P::NAME);
@@ -390,7 +372,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
     ///
     /// This returns false if the parameter was not set because the `ParamPtr` was either unknown or
     /// the queue is full.
-    #[cfg(feature = "editor")]
     pub fn set_parameter(&self, param: ParamPtr, normalized: f32) -> bool {
         if !self.param_ptr_to_id.contains_key(&param) {
             return false;
@@ -408,7 +389,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
     /// Get the plugin's state object, may be called by the plugin's GUI as part of its own preset
     /// management. The wrapper doesn't use these functions and serializes and deserializes directly
     /// the JSON in the relevant plugin API methods instead.
-    #[cfg(feature = "editor")]
     pub fn get_state_object(&self) -> PluginState {
         unsafe {
             state::serialize_object::<P>(
@@ -423,7 +403,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
     /// Update the plugin's internal state, called by the plugin itself from the GUI thread. To
     /// prevent corrupting data and changing parameters during processing the actual state is only
     /// updated at the end of the audio processing cycle.
-    #[cfg(feature = "editor")]
     pub fn set_state_object_from_gui(&self, state: PluginState) {
         match self.updated_state_sender.send(state) {
             Ok(_) => {
@@ -519,7 +498,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
                         if unsafe { param_ptr._internal_set_normalized_value(normalized_value) } {
                             unsafe { param_ptr._internal_update_smoother(sample_rate, false) };
 
-                            #[cfg(feature = "editor")]
                             {
                                 let task_posted = self.schedule_gui(Task::ParameterValueChanged(
                                     param_ptr,
@@ -559,7 +537,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
         );
     }
 
-    #[cfg(feature = "editor")]
     fn make_gui_context(self: Arc<Self>) -> GuiContext {
         GuiContext::new(Arc::new(WrapperGuiContext {
             wrapper: Arc::downgrade(&self),
@@ -644,7 +621,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
             "Plugin returned false when reinitializing after loading state"
         );
 
-        #[cfg(feature = "editor")]
         {
             // Reinitialize the plugin after loading state so it can respond to the new parameter values
             let task_posted = self.schedule_gui(Task::StateChanged);

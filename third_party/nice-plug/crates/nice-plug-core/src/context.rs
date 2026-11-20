@@ -8,7 +8,6 @@ pub mod process;
 // Contexts for more plugin-API specific features
 pub mod remote_controls;
 
-#[cfg(feature = "editor")]
 pub mod gui;
 
 /// The currently active plugin API. This may be useful to display in an about screen in the

@@ -1,7 +1,6 @@
 use atomic_refcell::AtomicRefMut;
 use nice_plug_core::audio_setup::{AuxiliaryBuffers, BufferConfig, ProcessMode};
 use nice_plug_core::context::process::Transport;
-#[cfg(feature = "editor")]
 use nice_plug_core::editor::Editor;
 use nice_plug_core::midi::{Channel, Key, MidiConfig, NoteEvent, VoiceID};
 use nice_plug_core::params::ParamFlags;
@@ -790,12 +789,8 @@ impl<P: Vst3Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn createView(&self, _name: FIDString) -> *mut IPlugView {
-        #[cfg(not(feature = "editor"))]
-        return std::ptr::null_mut();
-
         // Without specialization this is the least redundant way to check if the plugin has an
         // editor. The default implementation returns a None here.
-        #[cfg(feature = "editor")]
         match self.inner.editor.borrow().as_ref() {
             Some(editor) => {
                 use vst3::ComWrapper;
@@ -1805,13 +1800,6 @@ impl<P: Vst3Plugin> IUnitInfoTrait for Wrapper<P> {
 
 impl<P: Vst3Plugin> IInfoListenerTrait for Wrapper<P> {
     unsafe fn setChannelContextInfos(&self, list: *mut IAttributeList) -> tresult {
-        #[cfg(not(feature = "editor"))]
-        {
-            let _ = list;
-            return kResultOk;
-        }
-
-        #[cfg(feature = "editor")]
         {
             use nice_plug_core::plugin::{TrackColor, TrackInfo};
             use vst3::Steinberg::Vst::{ChannelContext, IAttributeListTrait};
