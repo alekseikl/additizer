@@ -11,9 +11,10 @@ pub(crate) use addi_ui_backend::engine_factory;
 pub(crate) use addi_ui_backend::preset;
 
 use crate::editor::{PluginEditor, create_editor};
-use crate::engine_factory::{EngineFactory, EngineHandle};
+use crate::engine_factory::EngineFactory;
 use crate::params::AdditizerParams;
-use addi_engine::{MAX_VOICES, Note};
+use addi_engine::{MAX_VOICES, Note, SynthEngine};
+use addi_ui_backend::links::PluginLinks;
 pub use egui;
 use nice_plug::midi::{Channel, Key, VoiceID};
 use nice_plug::prelude::*;
@@ -26,7 +27,7 @@ const DEFAULT_TEMPO: f64 = 120.0;
 
 pub struct Additizer {
     params: Arc<AdditizerParams>,
-    engine: Option<EngineHandle>,
+    engine: Option<Box<SynthEngine<PluginLinks>>>,
     factory: Arc<EngineFactory>,
     editor_state: Arc<EguiEditorState>,
     terminated_notes: Vec<Note>,
@@ -83,14 +84,15 @@ impl Plugin for Additizer {
     ) -> bool {
         self.factory.set_host_sample_rate(buffer_config.sample_rate);
         self.params.config.set_factory(self.factory.clone());
-        self.engine = self.factory.get_engine();
+        self.pull_engine();
 
         true
     }
 
     fn reset(&mut self) {
-        if let Some(engine) = &self.engine {
-            engine.lock().reset();
+        self.pull_engine();
+        if let Some(engine) = self.engine.as_mut() {
+            engine.reset();
         }
     }
 
@@ -100,15 +102,9 @@ impl Plugin for Additizer {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        if self
-            .engine
-            .as_ref()
-            .is_none_or(|engine| self.factory.engine_changed(engine))
-        {
-            self.engine = self.factory.get_engine();
-        }
+        self.pull_engine();
 
-        let Some(engine) = &self.engine else {
+        let Some(synth) = self.engine.as_mut() else {
             for channel in buffer.as_slice() {
                 channel.fill(0.0);
             }
@@ -116,8 +112,6 @@ impl Plugin for Additizer {
         };
 
         // Topology edits arrive on the lock-free ring inside `process`.
-        let mut synth = engine.lock();
-
         assert_no_alloc::assert_no_alloc(|| {
             let block_size = synth.block_size();
             let update_ui = self.editor_state.is_open();
@@ -135,7 +129,12 @@ impl Plugin for Additizer {
                 let sample_to = block_start + samples;
 
                 while let Some(event) = next_event.take_if(|e| (e.timing() as usize) < sample_to) {
-                    host_events::process_event(&mut synth, event, block_start, &mut host_transport);
+                    host_events::process_event(
+                        &mut *synth,
+                        event,
+                        block_start,
+                        &mut host_transport,
+                    );
                     next_event = context.next_event();
                 }
 
@@ -161,6 +160,15 @@ impl Plugin for Additizer {
         });
 
         ProcessStatus::KeepAlive
+    }
+}
+
+impl Additizer {
+    /// Take a published engine when the slot is free, leaving `None` in the factory.
+    fn pull_engine(&mut self) {
+        if let Some(engine) = self.factory.try_take_engine() {
+            self.engine = Some(engine);
+        }
     }
 }
 

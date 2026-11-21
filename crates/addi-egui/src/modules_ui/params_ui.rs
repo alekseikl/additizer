@@ -42,7 +42,12 @@ impl ParamsUi {
         }
     }
 
-    fn show_save_preset_modal(&mut self, ui: &mut Ui, state: &mut SavePresetState) -> bool {
+    fn show_save_preset_modal(
+        &mut self,
+        ui: &mut Ui,
+        state: &mut SavePresetState,
+        bridge: &mut UiBridge,
+    ) -> bool {
         let modal = Modal::new(Id::unique("save_preset_modal")).show(ui.ctx(), |ui| {
             ui.set_width(220.0);
             ui.heading("Save Preset");
@@ -67,7 +72,7 @@ impl ParamsUi {
                 |_ui| {},
                 |ui| {
                     if ui.add_enabled(valid, Button::new("Save")).clicked() {
-                        let mut preset = self.engine_factory.get_preset();
+                        let mut preset = bridge.preset();
 
                         preset.info.title = trimmed.to_string();
 
@@ -184,7 +189,7 @@ impl ModuleUi for ParamsUi {
                 let mut voices = controls.num_voices;
                 let mut legato = controls.legato;
                 let mut kill_same_note = controls.kill_same_note;
-                let mut oversampling = self.engine_factory.oversampling();
+                let mut oversampling = bridge.oversampling();
 
                 ui.label("Voices");
                 if ui
@@ -236,7 +241,7 @@ impl ModuleUi for ParamsUi {
 
                 ui.label("Oversampling x2");
                 if ui.add(Checkbox::without_text(&mut oversampling)).changed() {
-                    self.engine_factory.set_oversampling(oversampling);
+                    bridge.set_oversampling(oversampling, &self.engine_factory);
                 }
                 ui.end_row();
 
@@ -260,7 +265,7 @@ impl ModuleUi for ParamsUi {
             });
 
         if let Some(mut state) = self.save_preset_state.take()
-            && self.show_save_preset_modal(ui, &mut state)
+            && self.show_save_preset_modal(ui, &mut state, bridge)
         {
             self.save_preset_state.replace(state);
         }

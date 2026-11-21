@@ -3,7 +3,7 @@ use addi_engine::harmonic_editor::{
     EditRequest, HarmonicEditor, HarmonicEditorConfig, HarmonicEditorLinks, HarmonicEditorUiEnd,
     Harmonics, clamp_bandwidth,
 };
-use addi_engine::{ComplexSample, ModuleId, StereoSample};
+use addi_engine::{ComplexSample, ModuleId, SPECTRAL_BUFFER_SIZE, StereoSample};
 
 pub struct HarmonicEditorUiBridge<L: HarmonicEditorLinks = crate::links::harmonic_editor::Links> {
     ui_end: L::UiEnd,
@@ -30,6 +30,31 @@ impl<L: HarmonicEditorLinks> HarmonicEditorUiBridge<L> {
 
     pub fn harmonics_mut(&mut self) -> &mut Harmonics {
         self.ui_end.get_harmonics_mut()
+    }
+
+    pub(super) fn module_config(&mut self) -> HarmonicEditorConfig {
+        let id = self.id;
+        let bandwidth = self.bandwidth;
+        let stereo = self.stereo;
+        let capture_input = self.capture_input;
+        let harmonics = self.ui_end.get_harmonics_mut();
+
+        HarmonicEditorConfig {
+            id,
+            amplitudes: std::array::from_fn(|channel| {
+                (0..SPECTRAL_BUFFER_SIZE)
+                    .map(|index| harmonics.amplitude(index)[channel])
+                    .collect()
+            }),
+            phases: std::array::from_fn(|channel| {
+                (0..SPECTRAL_BUFFER_SIZE)
+                    .map(|index| harmonics.phase(index)[channel])
+                    .collect()
+            }),
+            bandwidth,
+            stereo,
+            capture_input,
+        }
     }
 
     pub fn get_display_spectrum(&mut self) -> &[ComplexSample] {

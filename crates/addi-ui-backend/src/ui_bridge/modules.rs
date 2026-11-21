@@ -21,7 +21,7 @@ pub mod wave_shaper;
 
 use enum_dispatch::enum_dispatch;
 
-use addi_engine::{ModuleId, ModuleType, ModuleUiLink, engine_io::EngineLinks};
+use addi_engine::{ModuleConfig, ModuleId, ModuleType, ModuleUiLink, engine_io::EngineLinks};
 
 use amplifier::AmplifierUiBridge;
 use envelope::EnvelopeUiBridge;
@@ -109,18 +109,12 @@ impl<E: EngineLinks> ModuleBridge<E> {
             ModuleUiLink::ModMap(link) => {
                 Self::ModMap(Box::new(ModMapUiBridge::new(link.ui_end, link.config)))
             }
-            ModuleUiLink::MultiEnvelope(link) => {
-                Self::MultiEnvelope(Box::new(MultiEnvelopeUiBridge::new(
-                    link.ui_end,
-                    link.config,
-                )))
-            }
-            ModuleUiLink::SegmentsEnvelope(link) => {
-                Self::SegmentsEnvelope(Box::new(SegmentsEnvelopeUiBridge::new(
-                    link.ui_end,
-                    link.config,
-                )))
-            }
+            ModuleUiLink::MultiEnvelope(link) => Self::MultiEnvelope(Box::new(
+                MultiEnvelopeUiBridge::new(link.ui_end, link.config),
+            )),
+            ModuleUiLink::SegmentsEnvelope(link) => Self::SegmentsEnvelope(Box::new(
+                SegmentsEnvelopeUiBridge::new(link.ui_end, link.config),
+            )),
             ModuleUiLink::Pitch(link) => {
                 Self::Pitch(Box::new(PitchUiBridge::new(link.ui_end, link.config)))
             }
@@ -136,53 +130,77 @@ impl<E: EngineLinks> ModuleBridge<E> {
             ModuleUiLink::Svf(link) => {
                 Self::Svf(Box::new(SvfUiBridge::new(link.ui_end, link.config)))
             }
-            ModuleUiLink::SpectralFilter(link) => {
-                Self::SpectralFilter(Box::new(SpectralFilterUiBridge::new(
-                    link.ui_end,
-                    link.config,
-                )))
-            }
+            ModuleUiLink::SpectralFilter(link) => Self::SpectralFilter(Box::new(
+                SpectralFilterUiBridge::new(link.ui_end, link.config),
+            )),
             ModuleUiLink::SpectralEq(link) => {
                 Self::SpectralEq(Box::new(SpectralEqUiBridge::new(link.ui_end, link.config)))
             }
-            ModuleUiLink::SpectralBandSelect(link) => {
-                Self::SpectralBandSelect(Box::new(SpectralBandSelectUiBridge::new(
-                    link.ui_end,
-                    link.config,
-                )))
-            }
-            ModuleUiLink::SpectralBlend(link) => {
-                Self::SpectralBlend(Box::new(SpectralBlendUiBridge::new(
-                    link.ui_end,
-                    link.config,
-                )))
-            }
-            ModuleUiLink::SpectralMixer(link) => {
-                Self::SpectralMixer(Box::new(SpectralMixerUiBridge::new(
-                    link.ui_end,
-                    link.config,
-                )))
-            }
-            ModuleUiLink::HarmonicEditor(link) => {
-                Self::HarmonicEditor(Box::new(HarmonicEditorUiBridge::new(
-                    link.ui_end,
-                    link.config,
-                )))
-            }
-            ModuleUiLink::SpectralNoise(link) => {
-                Self::SpectralNoise(Box::new(SpectralNoiseUiBridge::new(
-                    link.ui_end,
-                    link.config,
-                )))
-            }
+            ModuleUiLink::SpectralBandSelect(link) => Self::SpectralBandSelect(Box::new(
+                SpectralBandSelectUiBridge::new(link.ui_end, link.config),
+            )),
+            ModuleUiLink::SpectralBlend(link) => Self::SpectralBlend(Box::new(
+                SpectralBlendUiBridge::new(link.ui_end, link.config),
+            )),
+            ModuleUiLink::SpectralMixer(link) => Self::SpectralMixer(Box::new(
+                SpectralMixerUiBridge::new(link.ui_end, link.config),
+            )),
+            ModuleUiLink::HarmonicEditor(link) => Self::HarmonicEditor(Box::new(
+                HarmonicEditorUiBridge::new(link.ui_end, link.config),
+            )),
+            ModuleUiLink::SpectralNoise(link) => Self::SpectralNoise(Box::new(
+                SpectralNoiseUiBridge::new(link.ui_end, link.config),
+            )),
             ModuleUiLink::Expressions(link) => {
                 Self::Expressions(Box::new(ExpressionsUiBridge::new(link.ui_end, link.config)))
             }
-            ModuleUiLink::ExternalParam(link) => {
-                Self::ExternalParam(Box::new(ExternalParamUiBridge::new(
-                    link.ui_end,
-                    link.config,
-                )))
+            ModuleUiLink::ExternalParam(link) => Self::ExternalParam(Box::new(
+                ExternalParamUiBridge::new(link.ui_end, link.config),
+            )),
+        }
+    }
+
+    pub(super) fn module_config(&mut self) -> ModuleConfig {
+        match self {
+            Self::Oscillator(module) => ModuleConfig::Oscillator(Box::new(module.config().clone())),
+            Self::Envelope(module) => ModuleConfig::Envelope(Box::new(module.config().clone())),
+            Self::Amplifier(module) => ModuleConfig::Amplifier(Box::new(module.config().clone())),
+            Self::Lfo(module) => ModuleConfig::Lfo(Box::new(module.config().clone())),
+            Self::ModMap(module) => ModuleConfig::ModMap(Box::new(module.config().clone())),
+            Self::MultiEnvelope(module) => {
+                ModuleConfig::MultiEnvelope(Box::new(module.config().clone()))
+            }
+            Self::SegmentsEnvelope(module) => {
+                ModuleConfig::SegmentsEnvelope(Box::new(module.config().clone()))
+            }
+            Self::Pitch(module) => ModuleConfig::Pitch(Box::new(module.config().clone())),
+            Self::Mixer(module) => ModuleConfig::Mixer(Box::new(module.config().clone())),
+            Self::WaveShaper(module) => ModuleConfig::WaveShaper(Box::new(module.config().clone())),
+            Self::Svf(module) => ModuleConfig::Svf(Box::new(module.config().clone())),
+            Self::SpectralFilter(module) => {
+                ModuleConfig::SpectralFilter(Box::new(module.config().clone()))
+            }
+            Self::SpectralEq(module) => ModuleConfig::SpectralEq(Box::new(module.config().clone())),
+            Self::SpectralBandSelect(module) => {
+                ModuleConfig::SpectralBandSelect(Box::new(module.config().clone()))
+            }
+            Self::SpectralBlend(module) => {
+                ModuleConfig::SpectralBlend(Box::new(module.config().clone()))
+            }
+            Self::SpectralMixer(module) => {
+                ModuleConfig::SpectralMixer(Box::new(module.config().clone()))
+            }
+            Self::HarmonicEditor(module) => {
+                ModuleConfig::HarmonicEditor(Box::new(module.module_config()))
+            }
+            Self::SpectralNoise(module) => {
+                ModuleConfig::SpectralNoise(Box::new(module.config().clone()))
+            }
+            Self::Expressions(module) => {
+                ModuleConfig::Expressions(Box::new(module.config().clone()))
+            }
+            Self::ExternalParam(module) => {
+                ModuleConfig::ExternalParam(Box::new(module.config().clone()))
             }
         }
     }

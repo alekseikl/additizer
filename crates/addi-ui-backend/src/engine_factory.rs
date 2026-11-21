@@ -1,9 +1,5 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::atomic::Ordering;
 
-use arc_swap::{ArcSwap, ArcSwapOption};
 use atomic_float::AtomicF32;
 use parking_lot::Mutex;
 
@@ -15,14 +11,14 @@ use crate::{
     ui_bridge::{UiBridge, ui_config::UiConfig},
 };
 
-pub type EngineHandle<E = PluginLinks> = Arc<Mutex<SynthEngine<E>>>;
-pub type UiConfigHandle = Arc<Mutex<UiConfig>>;
-
 pub struct EngineFactory {
     host_sample_rate: AtomicF32,
-    oversampling: AtomicBool,
-    engine: ArcSwapOption<Mutex<SynthEngine<PluginLinks>>>,
-    ui_config: ArcSwap<Mutex<UiConfig>>,
+    /// Preset last published, or last reported by the open editor.
+    ///
+    /// The live UI config and module state sit on the `UiBridge` the editor holds.
+    preset: Mutex<Preset>,
+    /// Newly published engine. The audio thread takes it when the mutex is free.
+    engine: Mutex<Option<Box<SynthEngine<PluginLinks>>>>,
     /// Built with the latest engine. The UI takes it on the next frame.
     ui_bridge: Mutex<Option<UiBridge>>,
 }
@@ -31,9 +27,8 @@ impl EngineFactory {
     pub fn new() -> Self {
         Self {
             host_sample_rate: AtomicF32::new(44100.0),
-            oversampling: AtomicBool::new(true),
-            engine: ArcSwapOption::empty(),
-            ui_config: ArcSwap::from_pointee(Mutex::new(UiConfig::default())),
+            preset: Mutex::new(Preset::default()),
+            engine: Mutex::new(None),
             ui_bridge: Mutex::new(None),
         }
     }
@@ -43,99 +38,68 @@ impl EngineFactory {
         self.ui_bridge.lock().take()
     }
 
-    pub fn get_engine(&self) -> Option<EngineHandle> {
-        self.engine.load_full()
+    /// A replacement bridge is waiting for the editor to take it.
+    pub fn has_pending_ui_bridge(&self) -> bool {
+        self.ui_bridge.lock().is_some()
     }
 
-    pub fn get_ui_config(&self) -> UiConfigHandle {
-        self.ui_config.load_full()
-    }
-
-    pub fn engine_changed(&self, cached: &EngineHandle) -> bool {
-        self.engine
-            .load()
-            .as_ref()
-            .is_none_or(|current| !Arc::ptr_eq(current, cached))
+    /// Takes the published engine when the slot is free, leaving `None`.
+    ///
+    /// Returns `None` when the slot is empty or `publish` currently holds it.
+    pub fn try_take_engine(&self) -> Option<Box<SynthEngine<PluginLinks>>> {
+        self.engine.try_lock()?.take()
     }
 
     pub fn set_host_sample_rate(&self, sample_rate: Smp) {
         self.host_sample_rate.store(sample_rate, Ordering::Release);
     }
 
-    pub fn oversampling(&self) -> bool {
-        self.oversampling.load(Ordering::Acquire)
-    }
-
-    pub fn set_oversampling(&self, oversampling: bool) {
-        let previous = self.oversampling.swap(oversampling, Ordering::AcqRel);
-        if previous == oversampling {
-            return;
-        }
-
-        let Some(engine) = self.get_engine() else {
-            return;
-        };
-        let config = engine.lock().get_config();
-
-        let Some(new_engine) = self.build_engine(&config) else {
-            self.oversampling.store(previous, Ordering::Release);
-            return;
-        };
-
-        if !self.publish(new_engine, self.get_ui_config()) {
-            self.oversampling.store(previous, Ordering::Release);
-        }
-    }
-
-    fn build_engine(&self, config: &EngineConfig) -> Option<SynthEngine<PluginLinks>> {
-        SynthEngine::<PluginLinks>::try_new(
-            config,
-            self.host_sample_rate.load(Ordering::Acquire),
-            self.oversampling.load(Ordering::Acquire),
-        )
+    /// Remember the editor's current preset while it holds the bridge.
+    pub fn note_preset(&self, preset: Preset) {
+        *self.preset.lock() = preset;
     }
 
     pub fn get_preset(&self) -> Preset {
-        let Some(engine) = self.engine.load_full() else {
-            return Preset::default();
-        };
-
-        Preset {
-            info: PresetInfo::default(),
-            engine: engine.lock().get_config(),
-            oversampling: self.oversampling(),
-            ui: self.ui_config.load().lock().clone(),
-        }
+        self.preset.lock().clone()
     }
 
     pub fn load_preset(&self, preset: &Preset) -> bool {
-        let previous = self
-            .oversampling
-            .swap(preset.oversampling, Ordering::AcqRel);
+        self.publish(&preset.engine, preset.oversampling, preset.ui.clone())
+    }
 
-        let Some(new_engine) = self.build_engine(&preset.engine) else {
-            self.oversampling.store(previous, Ordering::Release);
+    pub(crate) fn publish(
+        &self,
+        config: &EngineConfig,
+        oversampling: bool,
+        ui_config: UiConfig,
+    ) -> bool {
+        let Some(mut engine) = self.build_engine(config, oversampling) else {
+            return false;
+        };
+        let Some(bridge) = UiBridge::create(&mut engine, ui_config.clone(), oversampling) else {
             return false;
         };
 
-        let ui_config = Arc::new(Mutex::new(preset.ui.clone()));
-
-        if !self.publish(new_engine, ui_config) {
-            self.oversampling.store(previous, Ordering::Release);
-            return false;
-        }
-
+        *self.preset.lock() = Preset {
+            info: PresetInfo::default(),
+            engine: config.clone(),
+            oversampling,
+            ui: ui_config,
+        };
+        *self.engine.lock() = Some(Box::new(engine));
+        self.ui_bridge.lock().replace(bridge);
         true
     }
 
-    fn publish(&self, mut engine: SynthEngine<PluginLinks>, ui_config: UiConfigHandle) -> bool {
-        let Some(bridge) = UiBridge::create(&mut engine, Arc::clone(&ui_config)) else {
-            return false;
-        };
-
-        self.ui_config.store(ui_config);
-        self.engine.store(Some(Arc::new(Mutex::new(engine))));
-        self.ui_bridge.lock().replace(bridge);
-        true
+    fn build_engine(
+        &self,
+        config: &EngineConfig,
+        oversampling: bool,
+    ) -> Option<SynthEngine<PluginLinks>> {
+        SynthEngine::<PluginLinks>::try_new(
+            config,
+            self.host_sample_rate.load(Ordering::Acquire),
+            oversampling,
+        )
     }
 }

@@ -82,6 +82,14 @@ impl NiceEguiApp for PluginEditor {
 
                 state.show(ui, engine_factory, ui_bridge);
             });
+
+        // A pending bridge was just published from this frame. Its preset is already stored.
+        // Otherwise the editor holds the only live copy, so publish that for host saves.
+        if let Some(bridge) = &mut self.ui_bridge
+            && !self.engine_factory.has_pending_ui_bridge()
+        {
+            self.engine_factory.note_preset(bridge.preset());
+        }
         // `request_repaint` wakes the display link without setting
         // `redraw_requested`, so baseview pauses it again when this frame
         // returns. Ask the window directly to keep drawing every vsync.

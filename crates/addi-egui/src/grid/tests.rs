@@ -1,8 +1,6 @@
 use std::ops::{Deref, DerefMut};
-use std::sync::Arc;
 
 use egui::{Color32, Vec2, epaint::PathStroke, pos2, vec2};
-use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 
 use addi_engine::{
@@ -10,7 +8,6 @@ use addi_engine::{
     SynthEngine, routing_state::ModuleIo,
 };
 use addi_ui_backend::{
-    engine_factory::{EngineHandle, UiConfigHandle},
     links::PluginLinks,
     ui_bridge::{GridVec, UiBridge, ui_config::UiConfig},
 };
@@ -22,7 +19,7 @@ fn rect(x: i32, y: i32, w: i32, h: i32) -> GridRect {
 }
 
 struct Harness {
-    engine: EngineHandle,
+    engine: SynthEngine<PluginLinks>,
     bridge: UiBridge,
 }
 
@@ -41,7 +38,7 @@ impl DerefMut for Harness {
 }
 
 fn empty_bridge() -> Harness {
-    let engine = SynthEngine::<PluginLinks>::try_new(
+    let mut engine = SynthEngine::<PluginLinks>::try_new(
         &EngineConfig {
             engine: EngineParams::default(),
             modules: Vec::new(),
@@ -51,19 +48,13 @@ fn empty_bridge() -> Harness {
         false,
     )
     .expect("engine");
-    let engine: EngineHandle = Arc::new(Mutex::new(engine));
-    let ui_config: UiConfigHandle = Arc::new(Mutex::new(UiConfig::default()));
-    let bridge = {
-        let mut engine = engine.lock();
-
-        UiBridge::create(&mut engine, ui_config).expect("ui bridge")
-    };
+    let bridge = UiBridge::create(&mut engine, UiConfig::default(), false).expect("ui bridge");
 
     Harness { engine, bridge }
 }
 
 fn sync(harness: &mut Harness) {
-    harness.engine.lock().handle_ui_events();
+    harness.engine.handle_ui_events();
     harness.bridge.update();
 }
 

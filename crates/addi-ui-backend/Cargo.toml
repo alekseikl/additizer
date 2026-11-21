@@ -7,7 +7,6 @@ license.workspace = true
 [dependencies]
 addi-dsp = { workspace = true }
 addi-engine = { workspace = true }
-arc-swap = "1.9.2"
 atomic_float = "1.1.0"
 auto_impl = { workspace = true }
 directories = "6.0.0"

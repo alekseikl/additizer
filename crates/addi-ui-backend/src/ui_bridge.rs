@@ -1,15 +1,16 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use addi_engine::{
-    InputId, MIN_MODULE_ID, ModuleId, ModuleType, OUTPUT_MODULE_ID, PITCH_MODULE_ID,
-    Smp, StereoSample, SynthEngine,
+    EngineConfig, InputId, LinkConfig, MIN_MODULE_ID, ModuleId, ModuleType, OUTPUT_MODULE_ID,
+    PITCH_MODULE_ID, Smp, StereoSample, SynthEngine,
     config::EngineParams,
     engine_io::EngineLinks,
     routing::{DataType, Input, InputMeta, InputSource, data_types_compatible},
     routing_state::{ConnectedInputSource, ModuleIo, RoutingState},
 };
 
-use crate::engine_factory::UiConfigHandle;
+use crate::engine_factory::EngineFactory;
+use crate::preset::{Preset, PresetInfo};
 
 pub mod modules;
 pub mod ui_config;
@@ -50,10 +51,11 @@ struct PendingModule {
 }
 
 pub struct UiBridge<E: EngineLinks = crate::links::PluginLinks> {
-    ui_config: UiConfigHandle,
+    ui_config: UiConfig,
     ui_end: E::UiEnd,
     routing: RoutingState,
     engine_params: EngineParams,
+    oversampling: bool,
     block_size: usize,
     voices: VoicesStatus,
     modulated_inputs: FxHashMap<InputId, ModulatedInput>,
@@ -66,14 +68,18 @@ pub struct UiBridge<E: EngineLinks = crate::links::PluginLinks> {
 }
 
 impl<E: EngineLinks> UiBridge<E> {
-    pub fn create(engine: &mut SynthEngine<E>, ui_config: UiConfigHandle) -> Option<Self> {
+    pub fn create(
+        engine: &mut SynthEngine<E>,
+        mut ui_config: UiConfig,
+        oversampling: bool,
+    ) -> Option<Self> {
         let ui_end = engine.take_ui_end()?;
         let engine_params = engine.get_engine_params();
         let block_size = engine.block_size();
         let routing = engine.get_routing_state();
         let module_links = engine.take_module_ui_links();
 
-        Self::ensure_fixed_pitch_module(&mut ui_config.lock());
+        Self::ensure_fixed_pitch_module(&mut ui_config);
 
         let mut module_bridges: FxHashMap<ModuleId, Option<ModuleBridge<E>>> = FxHashMap::default();
 
@@ -89,6 +95,7 @@ impl<E: EngineLinks> UiBridge<E> {
             ui_end,
             routing,
             engine_params,
+            oversampling,
             block_size,
             voices: VoicesStatus::default(),
             modulated_inputs: FxHashMap::default(),
@@ -120,6 +127,80 @@ impl<E: EngineLinks> UiBridge<E> {
         &self.engine_params
     }
 
+    pub fn oversampling(&self) -> bool {
+        self.oversampling
+    }
+
+    /// Rebuilds the engine at `oversampling` from this bridge and publishes it with a new bridge.
+    pub fn set_oversampling(&mut self, oversampling: bool, factory: &EngineFactory) {
+        if self.oversampling == oversampling {
+            return;
+        }
+
+        let config = self.engine_config();
+        factory.publish(&config, oversampling, self.ui_config.clone());
+    }
+
+    /// Engine config reconstructed from this bridge's module bridges, links, and engine params.
+    pub fn engine_config(&mut self) -> EngineConfig {
+        let mut module_ids: Vec<ModuleId> = self.module_bridges.keys().copied().collect();
+        module_ids.sort_unstable();
+
+        let mut modules = Vec::with_capacity(module_ids.len());
+        for id in module_ids {
+            if let Some(bridge) = self.module_bridges.get_mut(&id).and_then(Option::as_mut) {
+                modules.push(bridge.module_config());
+            }
+        }
+
+        EngineConfig {
+            engine: self.engine_params.clone(),
+            modules,
+            links: self.link_configs(),
+        }
+    }
+
+    pub fn preset(&mut self) -> Preset {
+        let engine = self.engine_config();
+
+        Preset {
+            info: PresetInfo::default(),
+            engine,
+            oversampling: self.oversampling,
+            ui: self.ui_config.clone(),
+        }
+    }
+
+    fn link_configs(&self) -> Vec<LinkConfig> {
+        let mut links = Vec::new();
+
+        for (dst, sources) in &self.routing.routing {
+            match sources {
+                InputSource::Direct { hidden: true, .. } => {}
+                InputSource::Direct {
+                    module_id,
+                    hidden: false,
+                } => links.push(LinkConfig::direct(
+                    *module_id,
+                    dst.module_id,
+                    dst.input_type,
+                )),
+                InputSource::Mixed(sources) => {
+                    for src in sources {
+                        links.push(LinkConfig::mixed(
+                            src.module_id,
+                            dst.module_id,
+                            dst.input_type,
+                            src.amount,
+                        ));
+                    }
+                }
+            }
+        }
+
+        links
+    }
+
     pub fn block_size(&self) -> usize {
         self.block_size
     }
@@ -133,9 +214,7 @@ impl<E: EngineLinks> UiBridge<E> {
             return String::new();
         };
 
-        let ui_config = self.ui_config.lock();
-
-        ui_config
+        self.ui_config
             .modules
             .get(&module_id)
             .map(|module| {
@@ -187,8 +266,7 @@ impl<E: EngineLinks> UiBridge<E> {
     }
 
     pub fn get_module_position(&self, module_id: ModuleId) -> GridVec {
-        let ui_config = self.ui_config.lock();
-        ui_config
+        self.ui_config
             .modules
             .get(&module_id)
             .map(|m| m.position)
@@ -196,16 +274,13 @@ impl<E: EngineLinks> UiBridge<E> {
     }
 
     pub fn set_module_position(&mut self, module_id: ModuleId, position: GridVec) {
-        let mut ui_config = self.ui_config.lock();
-        if let Some(module) = ui_config.modules.get_mut(&module_id) {
+        if let Some(module) = self.ui_config.modules.get_mut(&module_id) {
             module.position = position;
         }
     }
 
     pub fn get_module_label(&self, module_id: ModuleId) -> String {
-        let ui_config = self.ui_config.lock();
-
-        ui_config
+        self.ui_config
             .modules
             .get(&module_id)
             .map(|module| module.label.clone())
@@ -213,8 +288,7 @@ impl<E: EngineLinks> UiBridge<E> {
     }
 
     pub fn set_module_label(&mut self, module_id: ModuleId, label: String) {
-        let mut ui_config = self.ui_config.lock();
-        let Some(module) = ui_config.modules.get_mut(&module_id) else {
+        let Some(module) = self.ui_config.modules.get_mut(&module_id) else {
             debug_assert!(false, "Module with id {module_id} not found in ui_config");
             return;
         };
@@ -438,7 +512,7 @@ impl<E: EngineLinks> UiBridge<E> {
                 UiUpdate::ModuleRemoved(id) => {
                     self.routing = self.ui_end.read_routing().clone();
                     self.module_bridges.remove(&id);
-                    self.ui_config.lock().modules.remove(&id);
+                    self.ui_config.modules.remove(&id);
                     self.modulated_inputs
                         .retain(|input_id, _| input_id.module_id != id);
                 }
@@ -564,7 +638,7 @@ impl<E: EngineLinks> UiBridge<E> {
     }
 
     fn insert_ui_module(&mut self, id: ModuleId, label: String, position: GridVec) {
-        self.ui_config.lock().modules.insert(
+        self.ui_config.modules.insert(
             id,
             UiModuleConfig {
                 id,
