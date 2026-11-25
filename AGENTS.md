@@ -39,10 +39,9 @@ time-domain SVF, and the spectral filter). `addi-engine` holds `SynthEngine`, mo
 routing, and voices. The plugin imports it directly as `addi_engine`.
 `SynthEngine` re-exports the sample types, smoothing, and stereo helpers. Filter types are
 imported from `addi_dsp::filters`. `addi-ui-backend` holds the concrete UI/audio links,
-`UiBridge`, `EngineFactory`, presets, and the default patch. `addi-egui` holds the egui
+`UiBridge`, `AddiState`, presets, and the default patch. `addi-egui` holds the egui
 editor (module grid, detail panels, widgets) and imports `addi_ui_backend` directly.
-The plugin keeps `pub(crate)` aliases for `engine_factory`, `preset`, and `default_scheme`,
-and wires the editor into nice-plug in `crates/additizer/src/editor.rs` (window size, `NiceEguiApp`, repaint).
+The editor is wired into nice-plug in `crates/additizer/src/editor.rs` (window size, `NiceEguiApp`, repaint).
 The engine is generic over `EngineLinks` and defaults to no-op stubs.
 
 There are two threads that matter, and they must never block each other:
@@ -53,10 +52,12 @@ There are two threads that matter, and they must never block each other:
 2. **UI thread** — owns `UiBridge` (`crates/addi-ui-backend/src/ui_bridge.rs`) and the `egui` editor
    (`crates/addi-egui`). Reads/writes engine state without touching the audio thread directly.
 
-**`EngineFactory`** (`crates/addi-ui-backend/src/engine_factory.rs`) is the shared bridge between them. It holds the
-live `SynthEngine` and `UiConfig` inside `ArcSwap<Mutex<…>>`. Loading a preset swaps in a brand
-new engine; the audio thread detects the swap via `engine_changed()` and picks it up at the next
-`process` call.
+**`AddiState`** (`crates/addi-ui-backend/src/addi_state.rs`) is the shared bridge between them and the host.
+It implements nice-plug's `PluginState`: persistent fields keep the `plugin-preset` key, and
+`params()` returns the external `FloatParam`s (their index is the host hash). It holds the
+live `SynthEngine` in a mutex the audio thread takes on the next `process` call, and the current
+`UiBridge` in `Arc<Mutex<Option<Box<UiBridge>>>>`. The editor clones that `Arc` and rebuilds when
+the boxed bridge's address changes.
 
 **Communication is lock-free.**
 
@@ -170,7 +171,7 @@ stereo/smoothed parameter plumbing.
   Spectral modules use `realfft`.
 - **UI ↔ audio only via the link / ring-buffer / triple-buffer mechanism**, never by mutating
   engine state from the UI thread while audio runs. Preset/structural changes go through
-  `EngineFactory` swaps.
+  `AddiState` publishes a new engine.
 - Voice limits: `AVAILABLE_VOICES == 16` (user polyphony); `KILL_HEADROOM == 4`
   extra slots for voice kill, so `MAX_VOICES == AVAILABLE_VOICES + KILL_HEADROOM`.
   Oscillator unison: up to 16 (`MAX_UNISON_VOICES`).

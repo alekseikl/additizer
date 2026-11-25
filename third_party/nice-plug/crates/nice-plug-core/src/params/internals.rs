@@ -14,9 +14,9 @@ pub enum ParamPtr {
     EnumParam(*const super::enums::EnumParamInner),
 }
 
-// These pointers only point to fields on structs kept in an `Arc<dyn Params>`, and the caller
-// always needs to make sure that dereferencing them is safe. To do that the plugin wrappers will
-// keep references to that `Arc` around for the entire lifetime of the plugin.
+// These pointers point into the `Vec<FloatParam>` the wrapper stores under a `Mutex` after
+// `PluginState::params()`. That vector is not resized. The caller must keep the storage alive for
+// the entire lifetime of the plugin before dereferencing the pointer.
 unsafe impl Send for ParamPtr {}
 unsafe impl Sync for ParamPtr {}
 

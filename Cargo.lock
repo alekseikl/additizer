@@ -71,6 +71,7 @@ dependencies = [
  "auto_impl",
  "directories",
  "enum_dispatch",
+ "nice-plug-core",
  "parking_lot",
  "rtrb",
  "rustc-hash",

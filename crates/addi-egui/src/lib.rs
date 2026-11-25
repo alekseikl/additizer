@@ -10,7 +10,7 @@ use egui::{
 };
 
 use addi_engine::{ModuleId, ModuleType};
-use addi_ui_backend::{engine_factory::EngineFactory, ui_bridge::UiBridge};
+use addi_ui_backend::{preset::Preset, ui_bridge::UiBridge};
 
 mod bin_slider;
 mod control_meter;
@@ -42,6 +42,18 @@ use modules_ui::{
 pub(crate) trait ModuleUi {
     fn module_id(&self) -> Option<ModuleId>;
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui);
+
+    /// Draw the panel. A preset written to `postponed_preset` is applied after the bridge lock
+    /// is released.
+    fn ui_with(
+        &mut self,
+        bridge: &mut UiBridge,
+        ui: &mut Ui,
+        postponed_preset: &mut Option<Box<Preset>>,
+    ) {
+        let _ = postponed_preset;
+        self.ui(bridge, ui);
+    }
 }
 
 type ModuleUIBox = Box<dyn ModuleUi + Send>;
@@ -64,6 +76,8 @@ impl DetailViewKey {
 pub struct EguiEditor {
     grid_module_ui: Option<ModuleUIBox>,
     grid: grid::Grid,
+    /// Preset chosen while the editor holds the UI bridge. Applied after that lock is released.
+    postponed_preset: Option<Box<Preset>>,
 }
 
 impl EguiEditor {
@@ -71,6 +85,7 @@ impl EguiEditor {
         Self {
             grid_module_ui: None,
             grid: grid::Grid::new(),
+            postponed_preset: None,
         }
     }
 
@@ -85,14 +100,14 @@ impl EguiEditor {
         }
 
         self.grid = grid::Grid::new();
+        self.postponed_preset = None;
     }
 
-    pub fn show(
-        &mut self,
-        ui: &mut Ui,
-        engine_factory: &Arc<EngineFactory>,
-        ui_bridge: &mut UiBridge,
-    ) {
+    pub fn take_postponed_preset(&mut self) -> Option<Box<Preset>> {
+        self.postponed_preset.take()
+    }
+
+    pub fn show(&mut self, ui: &mut Ui, ui_bridge: &mut UiBridge) {
         if let Some(modules_io) = ui_bridge.take_modules_io() {
             self.grid.update_widgets(modules_io, ui_bridge);
         }
@@ -112,15 +127,21 @@ impl EguiEditor {
             }
         }
 
-        self.show_top_bar(ui, engine_factory);
+        self.show_top_bar(ui);
 
         let grid_selected_id = self
             .grid_module_ui
             .as_ref()
             .and_then(|panel| panel.module_id());
 
-        if let Some(panel) = self.grid_module_ui.as_ref() {
-            let detail_key = DetailViewKey::from_view(panel);
+        let detail_key = self
+            .grid_module_ui
+            .as_ref()
+            .map(DetailViewKey::from_view);
+
+        if let Some(detail_key) = detail_key {
+            let postponed_preset = &mut self.postponed_preset;
+            let grid_module_ui = &mut self.grid_module_ui;
 
             Panel::bottom(Id::unique(("grid-module-detail", detail_key)))
                 .resizable(true)
@@ -130,7 +151,7 @@ impl EguiEditor {
                     ScrollArea::vertical()
                         .auto_shrink([false, true])
                         .show(ui, |ui| {
-                            if let Some(module_ui) = &mut self.grid_module_ui {
+                            if let Some(module_ui) = grid_module_ui.as_mut() {
                                 Frame::NONE
                                     .inner_margin(Margin {
                                         left: 16,
@@ -139,7 +160,7 @@ impl EguiEditor {
                                         bottom: 16,
                                     })
                                     .show(ui, |ui| {
-                                        module_ui.ui(ui_bridge, ui);
+                                        module_ui.ui_with(ui_bridge, ui, postponed_preset);
                                     });
                             }
                         });
@@ -151,7 +172,7 @@ impl EguiEditor {
         });
     }
 
-    fn show_top_bar(&mut self, ui: &mut Ui, engine_factory: &Arc<EngineFactory>) {
+    fn show_top_bar(&mut self, ui: &mut Ui) {
         Frame::new().inner_margin(vec2(8.0, 4.0)).show(ui, |ui| {
             ui.horizontal(|ui| {
                 let showing_params = self
@@ -166,8 +187,7 @@ impl EguiEditor {
                     if showing_params {
                         self.grid_module_ui = None;
                     } else {
-                        self.grid_module_ui =
-                            Some(Box::new(ParamsUi::new(Arc::clone(engine_factory))));
+                        self.grid_module_ui = Some(Box::new(ParamsUi::new()));
                     }
                 }
             });

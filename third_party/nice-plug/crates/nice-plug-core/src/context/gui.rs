@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     params::{Param, internals::ParamPtr},
-    plugin::{Plugin, PluginState},
+    plugin::{Plugin, SavedState},
 };
 
 use super::PluginApi;
@@ -76,7 +76,7 @@ impl GuiContext {
 
     /// Serialize the plugin's current state to a serde-serializable object. Useful for implementing
     /// preset handling within a plugin's GUI.
-    pub fn get_state(&self) -> PluginState {
+    pub fn get_state(&self) -> SavedState {
         self.inner.get_state()
     }
 
@@ -84,7 +84,7 @@ impl GuiContext {
     /// until the state has been restored and a parameter value rescan has been requested from the
     /// host. If the plugin is currently processing audio, then the parameter values will be
     /// restored at the end of the current processing cycle.
-    pub fn set_state(&self, state: PluginState) {
+    pub fn set_state(&self, state: SavedState) {
         self.inner.set_state(state);
     }
 
@@ -137,13 +137,13 @@ pub trait GuiContextInner: Send + Sync + 'static {
 
     /// Serialize the plugin's current state to a serde-serializable object. Useful for implementing
     /// preset handling within a plugin's GUI.
-    fn get_state(&self) -> PluginState;
+    fn get_state(&self) -> SavedState;
 
     /// Restore the state from a previously serialized state object. This will block the GUI thread
     /// until the state has been restored and a parameter value rescan has been requested from the
     /// host. If the plugin is currently processing audio, then the parameter values will be
     /// restored at the end of the current processing cycle.
-    fn set_state(&self, state: PluginState);
+    fn set_state(&self, state: SavedState);
 
     /// Request the plugin to be restarted.
     fn request_restart(&self);

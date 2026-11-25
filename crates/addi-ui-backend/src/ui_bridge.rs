@@ -9,7 +9,6 @@ use addi_engine::{
     routing_state::{ConnectedInputSource, ModuleIo, RoutingState},
 };
 
-use crate::engine_factory::EngineFactory;
 use crate::preset::{Preset, PresetInfo};
 
 pub mod modules;
@@ -65,6 +64,8 @@ pub struct UiBridge<E: EngineLinks = crate::links::PluginLinks> {
     placed_module: Option<ModuleId>,
     reach_stack: Vec<ModuleId>,
     reach_seen: FxHashSet<ModuleId>,
+    /// The editor has not yet rebuilt its view around this bridge.
+    is_new: bool,
 }
 
 impl<E: EngineLinks> UiBridge<E> {
@@ -105,7 +106,18 @@ impl<E: EngineLinks> UiBridge<E> {
             placed_module: None,
             reach_stack: Vec::new(),
             reach_seen: FxHashSet::default(),
+            is_new: true,
         })
+    }
+
+    /// The editor has not yet rebuilt its view around this bridge.
+    pub fn is_new(&self) -> bool {
+        self.is_new
+    }
+
+    /// Mark this bridge as seen by the editor.
+    pub fn reset_new(&mut self) {
+        self.is_new = false;
     }
 
     fn ensure_fixed_pitch_module(ui_config: &mut UiConfig) {
@@ -131,14 +143,18 @@ impl<E: EngineLinks> UiBridge<E> {
         self.oversampling
     }
 
-    /// Rebuilds the engine at `oversampling` from this bridge and publishes it with a new bridge.
-    pub fn set_oversampling(&mut self, oversampling: bool, factory: &EngineFactory) {
+    /// Preset that rebuilds the engine at `oversampling`.
+    ///
+    /// `None` when oversampling already matches. The editor stores it and applies it after
+    /// unlocking this bridge.
+    pub fn set_oversampling(&mut self, oversampling: bool) -> Option<Box<Preset>> {
         if self.oversampling == oversampling {
-            return;
+            return None;
         }
 
-        let config = self.engine_config();
-        factory.publish(&config, oversampling, self.ui_config.clone());
+        let mut preset = self.preset();
+        preset.oversampling = oversampling;
+        Some(preset)
     }
 
     /// Engine config reconstructed from this bridge's module bridges, links, and engine params.
@@ -160,15 +176,15 @@ impl<E: EngineLinks> UiBridge<E> {
         }
     }
 
-    pub fn preset(&mut self) -> Preset {
+    pub fn preset(&mut self) -> Box<Preset> {
         let engine = self.engine_config();
 
-        Preset {
+        Box::new(Preset {
             info: PresetInfo::default(),
             engine,
             oversampling: self.oversampling,
             ui: self.ui_config.clone(),
-        }
+        })
     }
 
     fn link_configs(&self) -> Vec<LinkConfig> {

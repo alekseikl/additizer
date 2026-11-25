@@ -250,7 +250,7 @@ pub fn derive_params(input: TokenStream) -> TokenStream {
 
     // The next step is build the gathered information into tokens that can be spliced into a
     // `Params` implementation
-    let param_map_tokens = {
+    let _param_map_tokens = {
         let param_mapping_tokens = params.iter().map(|p| p.param_map_tokens());
 
         quote! {
@@ -413,9 +413,9 @@ pub fn derive_params(input: TokenStream) -> TokenStream {
     };
 
     quote! {
-        unsafe impl #impl_generics Params for #struct_name #ty_generics #where_clause {
-            fn param_map(&self) -> Vec<(String, nice_plug::prelude::ParamPtr, String)> {
-                #param_map_tokens
+        impl #impl_generics ::nice_plug::prelude::PluginState for #struct_name #ty_generics #where_clause {
+            fn params(&self) -> Vec<::nice_plug::prelude::FloatParam> {
+                Vec::new()
             }
 
             fn serialize_fields(&self) -> ::std::collections::BTreeMap<String, String> {

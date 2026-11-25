@@ -4,16 +4,10 @@ use const_format::concatcp;
 
 mod editor;
 mod host_events;
-mod params;
-
-pub(crate) use addi_ui_backend::default_scheme;
-pub(crate) use addi_ui_backend::engine_factory;
-pub(crate) use addi_ui_backend::preset;
 
 use crate::editor::{PluginEditor, create_editor};
-use crate::engine_factory::EngineFactory;
-use crate::params::AdditizerParams;
 use addi_engine::{MAX_VOICES, Note, SynthEngine};
+use addi_ui_backend::addi_state::AddiState;
 use addi_ui_backend::links::PluginLinks;
 pub use egui;
 use nice_plug::midi::{Channel, Key, VoiceID};
@@ -26,22 +20,17 @@ use std::sync::Arc;
 const DEFAULT_TEMPO: f64 = 120.0;
 
 pub struct Additizer {
-    params: Arc<AdditizerParams>,
+    addi_state: Arc<AddiState>,
     engine: Option<Box<SynthEngine<PluginLinks>>>,
-    factory: Arc<EngineFactory>,
     editor_state: Arc<EguiEditorState>,
     terminated_notes: Vec<Note>,
 }
 
 impl Default for Additizer {
     fn default() -> Self {
-        let params = Arc::new(AdditizerParams::default());
-        let factory = Arc::new(EngineFactory::new());
-
         Self {
-            params,
+            addi_state: Arc::new(AddiState::new()),
             engine: None,
-            factory,
             editor_state: crate::editor::new_editor_state(),
             terminated_notes: Vec::with_capacity(128),
         }
@@ -68,12 +57,12 @@ impl Plugin for Additizer {
     type SysExMessage = ();
     type BackgroundTask = ();
 
-    fn params(&self) -> Arc<dyn Params> {
-        self.params.clone()
+    fn state(&self) -> Arc<dyn PluginState> {
+        self.addi_state.clone()
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Self::Editor> {
-        create_editor(Arc::clone(&self.editor_state), self.factory.clone())
+        create_editor(Arc::clone(&self.editor_state), self.addi_state.clone())
     }
 
     fn activate(
@@ -82,15 +71,16 @@ impl Plugin for Additizer {
         buffer_config: &BufferConfig,
         _context: &mut impl ActivateContext<Self>,
     ) -> bool {
-        self.factory.set_host_sample_rate(buffer_config.sample_rate);
-        self.params.config.set_factory(self.factory.clone());
-        self.pull_engine();
+        self.engine = self.addi_state.activate(buffer_config.sample_rate);
+        self.engine.is_some()
+    }
 
-        true
+    fn deactivate(&mut self) {
+        self.addi_state.deactivate();
+        self.engine = None;
     }
 
     fn reset(&mut self) {
-        self.pull_engine();
         if let Some(engine) = self.engine.as_mut() {
             engine.reset();
         }
@@ -102,7 +92,9 @@ impl Plugin for Additizer {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        self.pull_engine();
+        if let Some(engine) = self.addi_state.try_take_engine() {
+            self.engine = Some(engine);
+        }
 
         let Some(synth) = self.engine.as_mut() else {
             for channel in buffer.as_slice() {
@@ -160,15 +152,6 @@ impl Plugin for Additizer {
         });
 
         ProcessStatus::KeepAlive
-    }
-}
-
-impl Additizer {
-    /// Take a published engine when the slot is free, leaving `None` in the factory.
-    fn pull_engine(&mut self) {
-        if let Some(engine) = self.factory.try_take_engine() {
-            self.engine = Some(engine);
-        }
     }
 }
 

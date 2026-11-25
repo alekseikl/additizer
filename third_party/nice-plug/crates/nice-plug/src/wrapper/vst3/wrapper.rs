@@ -556,7 +556,7 @@ impl<P: Vst3Plugin> IComponentTrait for Wrapper<P> {
 
         let state = unsafe { ComRef::from_raw(state).unwrap() };
 
-        let serialized = state::serialize_json::<P>(self.inner.params.clone());
+        let serialized = state::serialize_json::<P>(self.inner.plugin_state.clone());
         match serialized {
             Ok(serialized) => {
                 let mut num_bytes_written = 0;

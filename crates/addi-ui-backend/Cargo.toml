@@ -18,3 +18,4 @@ serde = { workspace = true, features = ["rc"] }
 serde_json = { workspace = true }
 tracing = "0.1.41"
 triple_buffer = "9.0.0"
+nice-plug-core = { path = "../../third_party/nice-plug/crates/nice-plug-core" }

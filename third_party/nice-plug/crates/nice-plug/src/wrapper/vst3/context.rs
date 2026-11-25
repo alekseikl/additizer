@@ -23,7 +23,7 @@ use vst3::{
 use vst3::Steinberg::Vst::IComponentHandlerTrait;
 
 use nice_plug_core::{
-    context::gui::GuiContextInner, params::internals::ParamPtr, plugin::PluginState,
+    context::gui::GuiContextInner, params::internals::ParamPtr, plugin::SavedState,
 };
 
 use crate::wrapper::vst3::Vst3Plugin;
@@ -474,11 +474,11 @@ impl<P: Vst3Plugin + Send> GuiContextInner for WrapperGuiContext<P> {
         }
     }
 
-    fn get_state(&self) -> PluginState {
+    fn get_state(&self) -> SavedState {
         self.inner.upgrade().unwrap().get_state_object()
     }
 
-    fn set_state(&self, state: PluginState) {
+    fn set_state(&self, state: SavedState) {
         self.inner
             .upgrade()
             .unwrap()

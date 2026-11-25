@@ -632,11 +632,11 @@ impl<P: ClapPlugin> nice_plug_core::context::gui::GuiContextInner for WrapperGui
         }
     }
 
-    fn get_state(&self) -> nice_plug_core::plugin::PluginState {
+    fn get_state(&self) -> nice_plug_core::plugin::SavedState {
         self.wrapper.upgrade().unwrap().get_state_object()
     }
 
-    fn set_state(&self, state: nice_plug_core::plugin::PluginState) {
+    fn set_state(&self, state: nice_plug_core::plugin::SavedState) {
         self.wrapper
             .upgrade()
             .unwrap()

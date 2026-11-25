@@ -31,20 +31,6 @@ const AARCH64_FTZ_BIT: u64 = 1 << 24;
 #[global_allocator]
 static A: nice_assert_no_alloc::AllocDisabler = nice_assert_no_alloc::AllocDisabler;
 
-/// A Rabin fingerprint based string hash for parameter ID strings.
-pub fn hash_param_id(id: &str) -> u32 {
-    let mut hash: u32 = 0;
-    for char in id.bytes() {
-        hash = hash.wrapping_mul(31).wrapping_add(char as u32);
-    }
-
-    // In VST3 the last bit is reserved for parameters provided by the host
-    // https://developer.steinberg.help/display/VST/Parameters+and+Automation
-    hash &= !(1 << 31);
-
-    hash
-}
-
 /// The equivalent of the `strlcpy()` C function. Copy `src` to `dest` as a null-terminated
 /// C-string. If `dest` does not have enough capacity, add a null terminator at the end to prevent
 /// buffer overflows.

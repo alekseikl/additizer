@@ -70,12 +70,12 @@ use nice_plug_core::context::process::Transport;
 use nice_plug_core::editor::{Editor, SpawnedEditor};
 use nice_plug_core::midi::{Channel, Key, MidiConfig, NoteEvent, PluginNoteEvent, VoiceID};
 use nice_plug_core::params::internals::ParamPtr;
-use nice_plug_core::params::{ParamFlags, Params};
-use nice_plug_core::plugin::{Plugin, PluginState, ProcessStatus, TaskExecutor};
+use nice_plug_core::params::{FloatParam, ParamFlags, PluginState};
+use nice_plug_core::plugin::{Plugin, ProcessStatus, SavedState, TaskExecutor};
 use nice_plug_core::plugin::{TrackColor, TrackInfo};
 use parking_lot::Mutex;
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::ffi::{CStr, c_void};
 use std::mem;
 use std::num::NonZeroU32;
@@ -96,9 +96,10 @@ use crate::wrapper::clap::ClapPlugin;
 use crate::wrapper::clap::context::RemoteControlPages;
 use crate::wrapper::clap::context::WrapperGuiContext;
 use crate::wrapper::clap::util::{read_stream, write_stream};
+use crate::wrapper::params::RegisteredParams;
 use crate::wrapper::state::{self};
 use crate::wrapper::util::buffer_management::{BufferManager, ChannelPointers};
-use crate::wrapper::util::{clamp_input_event_timing, hash_param_id, process_wrapper, strlcpy};
+use crate::wrapper::util::{clamp_input_event_timing, process_wrapper, strlcpy};
 
 /// How many output parameter changes we can store in our output parameter change queue. Storing
 /// more than this many parameters at a time will cause changes to get lost.
@@ -142,10 +143,14 @@ pub struct Wrapper<P: ClapPlugin> {
     plugin: TryLock<P>,
     /// The plugin's background task executor closure.
     pub task_executor: Mutex<TaskExecutor<P>>,
-    /// The plugin's parameters. These are fetched once during initialization. That way the
-    /// `ParamPtr`s are guaranteed to live at least as long as this object and we can interact with
-    /// the `Params` object without having to acquire a lock on `plugin`.
-    params: Arc<dyn Params>,
+    /// Plugin state fetched once during initialization. Persistent fields are saved and restored
+    /// through this object without locking `plugin`.
+    plugin_state: Arc<dyn PluginState>,
+    /// Host parameters returned by [`PluginState::params`]. Index is the parameter hash.
+    /// `ParamPtr`s point into this vector, so it must not be resized. The field is read only
+    /// through those pointers.
+    #[allow(dead_code)]
+    param_storage: Mutex<Vec<FloatParam>>,
     /// The plugin's editor, if it has one. This object does not do anything on its own, but we need
     /// to instantiate this in advance so we don't need to lock the entire [`Plugin`] object when
     /// creating an editor. Wrapped in an `AtomicRefCell` because it needs to be initialized late.
@@ -197,9 +202,9 @@ pub struct Wrapper<P: ClapPlugin> {
     /// In other words, the GUI thread acts as a sender and then as a receiver, while the audio
     /// thread acts as a receiver and then as a sender. That way deallocation can happen on the GUI
     /// thread. All of this happens without any blocking on the audio thread.
-    updated_state_sender: channel::Sender<PluginState>,
+    updated_state_sender: channel::Sender<SavedState>,
     /// The receiver belonging to [`new_state_sender`][Self::new_state_sender].
-    updated_state_receiver: channel::Receiver<PluginState>,
+    updated_state_receiver: channel::Receiver<SavedState>,
 
     // We'll query all of the host's extensions upfront
     host_callback: ClapPtr<clap_host>,
@@ -495,77 +500,16 @@ impl<P: ClapPlugin> Wrapper<P> {
         // `wrapper.plugin` is alive. The plugin API identifiers these parameters by hashes, which
         // we'll calculate from the string ID specified by the plugin. These parameters should also
         // remain in the same order as the one returned by the plugin.
-        let params = plugin.params();
-        let param_id_hashes_ptrs_groups: Vec<_> = params
-            .param_map()
-            .into_iter()
-            .map(|(id, ptr, group)| {
-                let hash = hash_param_id(&id);
-                (id, hash, ptr, group)
-            })
-            .collect();
-        let param_hashes = param_id_hashes_ptrs_groups
-            .iter()
-            .map(|(_, hash, _, _)| *hash)
-            .collect();
-        let param_by_hash = param_id_hashes_ptrs_groups
-            .iter()
-            .map(|(_, hash, ptr, _)| (*hash, *ptr))
-            .collect();
-        let param_id_by_hash = param_id_hashes_ptrs_groups
-            .iter()
-            .map(|(id, hash, _, _)| (*hash, id.clone()))
-            .collect();
-        let param_group_by_hash = param_id_hashes_ptrs_groups
-            .iter()
-            .map(|(_, hash, _, group)| (*hash, group.clone()))
-            .collect();
-        let param_ptr_to_hash = param_id_hashes_ptrs_groups
-            .iter()
-            .map(|(_, hash, ptr, _)| (*ptr, *hash))
-            .collect();
-        let poly_mod_ids_by_hash: HashMap<u32, u32> = param_id_hashes_ptrs_groups
-            .iter()
-            .filter_map(|(_, hash, ptr, _)| unsafe {
-                ptr.poly_modulation_id().map(|id| (*hash, id))
-            })
-            .collect();
-
-        if cfg!(debug_assertions) {
-            let param_map = params.param_map();
-            let param_ids: HashSet<_> = param_id_hashes_ptrs_groups
-                .iter()
-                .map(|(id, _, _, _)| id.clone())
-                .collect();
-            crate::nice_debug_assert_eq!(
-                param_map.len(),
-                param_ids.len(),
-                "The plugin has duplicate parameter IDs, weird things may happen. Consider using \
-                 6 character parameter IDs to avoid collisions."
-            );
-
-            let poly_mod_ids: HashSet<u32> = poly_mod_ids_by_hash.values().copied().collect();
-            crate::nice_debug_assert_eq!(
-                poly_mod_ids_by_hash.len(),
-                poly_mod_ids.len(),
-                "The plugin has duplicate poly modulation IDs. Polyphonic modulation will not be \
-                 routed to the correct parameter."
-            );
-
-            let mut bypass_param_exists = false;
-            for (_, _, ptr, _) in &param_id_hashes_ptrs_groups {
-                let flags = unsafe { ptr.flags() };
-                let is_bypass = flags.contains(ParamFlags::BYPASS);
-
-                if is_bypass && bypass_param_exists {
-                    crate::nice_debug_assert_failure!(
-                        "Duplicate bypass parameters found, the host will only use the first one"
-                    );
-                }
-
-                bypass_param_exists |= is_bypass;
-            }
-        }
+        let plugin_state = plugin.state();
+        let RegisteredParams {
+            storage: param_storage,
+            hashes: param_hashes,
+            by_hash: param_by_hash,
+            id_by_hash: param_id_by_hash,
+            group_by_hash: param_group_by_hash,
+            ptr_to_hash: param_ptr_to_hash,
+            poly_mod_ids_by_hash,
+        } = RegisteredParams::new(&plugin_state);
 
         // Support for the remote controls extension
         let mut remote_control_pages = Vec::new();
@@ -580,7 +524,8 @@ impl<P: ClapPlugin> Wrapper<P> {
 
             plugin: TryLock::new(plugin),
             task_executor,
-            params,
+            plugin_state,
+            param_storage,
             // Initialized later as it needs a reference to the wrapper for the async executor
             editor: AtomicRefCell::new(None),
             editor_window: AtomicRefCell::new(None),
@@ -1375,14 +1320,14 @@ impl<P: ClapPlugin> Wrapper<P> {
     /// Get the plugin's state object, may be called by the plugin's GUI as part of its own preset
     /// management. The wrapper doesn't use these functions and serializes and deserializes directly
     /// the JSON in the relevant plugin API methods instead.
-    pub fn get_state_object(&self) -> PluginState {
-        state::serialize_object::<P>(self.params.clone())
+    pub fn get_state_object(&self) -> SavedState {
+        state::serialize_object::<P>(self.plugin_state.clone())
     }
 
     /// Update the plugin's internal state, called by the plugin itself from the GUI thread. To
     /// prevent corrupting data and changing parameters during processing the actual state is only
     /// updated at the end of the audio processing cycle.
-    pub fn set_state_object_from_gui(&self, mut state: PluginState) {
+    pub fn set_state_object_from_gui(&self, mut state: SavedState) {
         let mut did_set_state_inner = false;
 
         // Use a loop and timeouts to handle the super rare edge case when this function gets called
@@ -1531,12 +1476,13 @@ impl<P: ClapPlugin> Wrapper<P> {
     /// # Notes
     ///
     /// `self.plugin` must _not_ be locked while calling this function or it will deadlock.
-    pub fn set_state_inner(&self, state: &mut PluginState) -> bool {
+    pub fn set_state_inner(&self, state: &mut SavedState) -> bool {
         // FIXME: This is obviously not realtime-safe, but loading presets without doing this
         //        could lead to inconsistencies. `state::deserialize_object()` normally never
         //        allocates, but if the plugin has persistent non-parameter data then its
         //        `deserialize_fields()` implementation may still allocate.
-        let success = permit_alloc(|| state::deserialize_object::<P>(state, self.params.clone()));
+        let success =
+            permit_alloc(|| state::deserialize_object::<P>(state, self.plugin_state.clone()));
         if !success {
             crate::nice_debug_assert_failure!(
                 "Deserializing plugin state from a state object failed"
@@ -3142,7 +3088,7 @@ impl<P: ClapPlugin> Wrapper<P> {
         check_null_ptr!(false, plugin, unsafe { (*plugin).plugin_data }, stream);
         let wrapper = unsafe { &*((*plugin).plugin_data as *const Self) };
 
-        let serialized = state::serialize_json::<P>(wrapper.params.clone());
+        let serialized = state::serialize_json::<P>(wrapper.plugin_state.clone());
         match serialized {
             Ok(serialized) => {
                 // CLAP does not provide a way to tell how much data there is left in a stream, so

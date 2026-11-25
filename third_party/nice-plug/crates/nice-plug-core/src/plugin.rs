@@ -14,7 +14,7 @@ use crate::{
     buffer::Buffer,
     context::{activate::ActivateContext, process::ProcessContext},
     midi::{MidiConfig, sysex::SysExMessage},
-    params::Params,
+    params::PluginState,
 };
 
 use crate::{context::gui::AsyncExecutor, editor::Editor};
@@ -44,22 +44,21 @@ pub type TaskExecutor<P> = Box<dyn Fn(<P as Plugin>::BackgroundTask) + Send>;
 ///     impose a lot of restrictions on code structure and meta programming without any real
 ///     benefits. In those cases the trait defines a method that is queried once and only once,
 ///     immediately after instantiating the `Plugin` through `Plugin::default()`. Examples of these
-///     methods are [`Plugin::params()`], and
+///     methods are [`Plugin::state()`], and
 ///     `ClapPlugin::remote_controls()`.
 ///   - Some of the data is defined through associated types. Rust currently sadly does not support
 ///     default values for associated types, but all of these types can be set to `()` if you wish
 ///     to ignore them. Examples of these types are [`Plugin::SysExMessage`] and
 ///     [`Plugin::BackgroundTask`].
 /// - Finally, there are some functions that return extension structs and handlers, similar to how
-///   the `params()` function returns a data structure describing the plugin's parameters. Examples
+///   the `state()` function returns a data structure describing the plugin's parameters. Examples
 ///   of these are the [`Plugin::editor()`] and [`Plugin::task_executor()`] functions, and they're
 ///   also called once and only once after the plugin object has been created. This allows the audio
 ///   thread to have exclusive access to the `Plugin` object, and it makes it easier to compose
 ///   these extension structs since they're more loosely coupled to a specific `Plugin`
 ///   implementation.
 ///
-/// The main thing you need to do is define a `[Params]` struct containing all of your parameters.
-/// See the trait's documentation for more information on how to do that, or check out the examples.
+/// The main thing you need to do is return a [`PluginState`] from [`params()`][Self::params].
 /// The plugin also needs a `Default` implementation so it can be initialized. Most of the other
 /// functionality is optional and comes with default trait method implementations.
 #[allow(unused_variables)]
@@ -167,13 +166,14 @@ pub trait Plugin: Default + Send + 'static {
         Box::new(|_| ())
     }
 
-    /// The plugin's parameters. These declare parameters to the host. Value changes arrive as note
+    /// Plugin state shared with the host. [`PluginState::params`] declares the parameters
+    /// registered with the host; their index is the parameter hash. Value changes arrive as note
     /// events during [`process()`][Self::process()]. Parameter values are not part of the saved
-    /// state. These string parameter IDs should never change as they are used to distinguish
-    /// between parameters.
+    /// state. Persistent fields go through [`PluginState::serialize_fields`] and
+    /// [`PluginState::deserialize_fields`].
     ///
     /// Queried only once immediately after the plugin instance is created.
-    fn params(&self) -> Arc<dyn Params>;
+    fn state(&self) -> Arc<dyn PluginState>;
 
     /// Returns an extension struct for interacting with the plugin's editor, if it has one. Later
     /// the host may call [`Editor::spawn()`] to create an editor instance. You can modify the
@@ -189,8 +189,8 @@ pub trait Plugin: Default + Send + 'static {
         None
     }
 
-    /// This function is always called just before a [`PluginState`] is loaded. This lets you
-    /// directly modify old plugin state to perform migrations based on the [`PluginState::version`]
+    /// This function is always called just before a [`SavedState`] is loaded. This lets you
+    /// directly modify old plugin state to perform migrations based on the [`SavedState::version`]
     /// field. Some examples of use cases for this are renaming parameter indices, remapping
     /// parameter values, and preserving old preset compatibility when introducing new parameters
     /// with default values that would otherwise change the sound of a preset. Keep in mind that
@@ -199,7 +199,7 @@ pub trait Plugin: Default + Send + 'static {
     /// # Note
     ///
     /// This is an advanced feature that the vast majority of plugins won't need to implement.
-    fn filter_state(state: &mut PluginState) {}
+    fn filter_state(state: &mut SavedState) {}
 
     //
     // The following functions follow the lifetime of the plugin.

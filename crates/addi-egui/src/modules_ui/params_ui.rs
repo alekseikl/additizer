@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use egui::{
     Button, Checkbox, Color32, Frame, Grid, Id, Label, Modal, RichText, Sense, Sides, Slider,
     TextEdit, Ui, vec2,
@@ -10,7 +8,7 @@ use crate::ModuleUi;
 use addi_dsp::from_ms;
 use addi_engine::ModuleId;
 use addi_ui_backend::{
-    engine_factory::EngineFactory,
+    preset::Preset,
     presets::{PresetListItem, Presets},
     ui_bridge::UiBridge,
 };
@@ -28,15 +26,13 @@ pub struct LoadPresetState {
 }
 
 pub struct ParamsUi {
-    engine_factory: Arc<EngineFactory>,
     save_preset_state: Option<Box<SavePresetState>>,
     load_preset_state: Option<Box<LoadPresetState>>,
 }
 
 impl ParamsUi {
-    pub fn new(engine_factory: Arc<EngineFactory>) -> Self {
+    pub fn new() -> Self {
         Self {
-            engine_factory,
             save_preset_state: None,
             load_preset_state: None,
         }
@@ -96,7 +92,12 @@ impl ParamsUi {
         !modal.should_close()
     }
 
-    fn show_load_preset_modal(&mut self, ui: &mut Ui, state: &mut LoadPresetState) -> bool {
+    fn show_load_preset_modal(
+        &mut self,
+        ui: &mut Ui,
+        state: &mut LoadPresetState,
+        postponed_preset: &mut Option<Box<Preset>>,
+    ) -> bool {
         let modal = Modal::new(Id::unique("load_preset_modal")).show(ui.ctx(), |ui| {
             ui.set_width(440.0);
 
@@ -149,8 +150,8 @@ impl ParamsUi {
                     {
                         if let Some(idx) = state.selected_index
                             && let Some(preset) = Presets::read_preset(&state.preset_list[idx].path)
-                            && self.engine_factory.load_preset(&preset)
                         {
+                            *postponed_preset = Some(Box::new(preset));
                             ui.close();
                         } else {
                             state.error = "Failed to load preset.".into();
@@ -174,6 +175,16 @@ impl ModuleUi for ParamsUi {
     }
 
     fn ui(&mut self, bridge: &mut UiBridge, ui: &mut Ui) {
+        let mut postponed_preset = None;
+        self.ui_with(bridge, ui, &mut postponed_preset);
+    }
+
+    fn ui_with(
+        &mut self,
+        bridge: &mut UiBridge,
+        ui: &mut Ui,
+        postponed_preset: &mut Option<Box<Preset>>,
+    ) {
         ui.heading("Engine settings");
         ui.add_space(20.0);
 
@@ -240,8 +251,10 @@ impl ModuleUi for ParamsUi {
                 ui.end_row();
 
                 ui.label("Oversampling x2");
-                if ui.add(Checkbox::without_text(&mut oversampling)).changed() {
-                    bridge.set_oversampling(oversampling, &self.engine_factory);
+                if ui.add(Checkbox::without_text(&mut oversampling)).changed()
+                    && let Some(preset) = bridge.set_oversampling(oversampling)
+                {
+                    *postponed_preset = Some(preset);
                 }
                 ui.end_row();
 
@@ -271,7 +284,7 @@ impl ModuleUi for ParamsUi {
         }
 
         if let Some(mut state) = self.load_preset_state.take()
-            && self.show_load_preset_modal(ui, &mut state)
+            && self.show_load_preset_modal(ui, &mut state, postponed_preset)
         {
             self.load_preset_state.replace(state);
         }

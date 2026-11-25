@@ -23,7 +23,7 @@ pub enum ParamValue {
 ///
 /// The fields are stored as `BTreeMap`s so the order in the serialized file is consistent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PluginState {
+pub struct SavedState {
     /// The plugin version this state was saved with. Right now this is not used, but later versions
     /// of nice-plug may allow you to modify the plugin state object directly before it is loaded to
     /// allow migrating plugin states between breaking parameter changes.
@@ -38,9 +38,10 @@ pub struct PluginState {
     /// the host delivers them as note events.
     #[serde(default)]
     pub params: BTreeMap<String, ParamValue>,
-    /// Arbitrary fields that should be persisted together with the plugin's parameters. Any field
-    /// on the [`Params`][crate::params::Params] struct that's annotated with `#[persist =
-    /// "stable_name"]` will be persisted this way.
+    /// Arbitrary fields persisted with the plugin.
+    /// [`PluginState::serialize_fields`][crate::params::PluginState::serialize_fields] fills this
+    /// map and [`PluginState::deserialize_fields`][crate::params::PluginState::deserialize_fields]
+    /// restores it.
     ///
     /// The individual fields are also serialized as JSON so they can safely be restored
     /// independently of the other fields.

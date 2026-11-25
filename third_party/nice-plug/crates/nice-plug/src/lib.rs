@@ -66,7 +66,7 @@
 //!
 //!  - Plugin parameters are managed automatically by creating a struct deriving the
 //!    [`Params`][prelude::Params] trait and returning a handle to it from the
-//!    [`Plugin::params()`][prelude::Plugin::params()] function. Any
+//!    [`Plugin::state()`][prelude::Plugin::state()] function. Any
 //!    [`FloatParam`][prelude::FloatParam], [`IntParam`][prelude::IntParam],
 //!    [`BoolParam`][prelude::BoolParam] or [`EnumParam`][prelude::EnumParam] fields on that struct
 //!    will automatically be registered as a parameter if they have an `#[id = "foobar"]` attribute.

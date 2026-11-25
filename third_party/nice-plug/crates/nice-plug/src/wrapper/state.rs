@@ -2,15 +2,15 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use nice_plug_core::{
-    params::Params,
-    plugin::{Plugin, PluginState},
+    params::PluginState,
+    plugin::{Plugin, SavedState},
 };
 
 /// Serialize a plugin's state to a state object. This is separate from [`serialize_json()`] to
 /// allow passing the raw object directly to the plugin. Parameter values are not included; the
 /// host delivers those as note events. Fields marked with `#[persist]` are saved.
-pub(crate) fn serialize_object<P: Plugin>(plugin_params: Arc<dyn Params>) -> PluginState {
-    PluginState {
+pub(crate) fn serialize_object<P: Plugin>(plugin_params: Arc<dyn PluginState>) -> SavedState {
+    SavedState {
         version: String::from(P::VERSION),
         params: Default::default(),
         fields: plugin_params.serialize_fields(),
@@ -20,7 +20,7 @@ pub(crate) fn serialize_object<P: Plugin>(plugin_params: Arc<dyn Params>) -> Plu
 /// Serialize a plugin's state to a vector containing JSON data. This can (and should) be shared
 /// across plugin formats. If the `zstd` feature is enabled, then the state will be compressed using
 /// Zstandard.
-pub(crate) fn serialize_json<P: Plugin>(plugin_params: Arc<dyn Params>) -> Result<Vec<u8>> {
+pub(crate) fn serialize_json<P: Plugin>(plugin_params: Arc<dyn PluginState>) -> Result<Vec<u8>> {
     let plugin_state = serialize_object::<P>(plugin_params);
     let json = serde_json::to_vec(&plugin_state).context("Could not format as JSON")?;
 
@@ -45,14 +45,14 @@ pub(crate) fn serialize_json<P: Plugin>(plugin_params: Arc<dyn Params>) -> Resul
     }
 }
 
-/// Deserialize a plugin's state from a [`PluginState`] object. Restores fields marked with
+/// Deserialize a plugin's state from a [`SavedState`] object. Restores fields marked with
 /// `#[persist]`. Parameter values in the state are ignored.
 ///
 /// The [`Plugin`] argument is used to call [`Plugin::filter_state()`] just before loading the
 /// state.
 pub(crate) fn deserialize_object<P: Plugin>(
-    state: &mut PluginState,
-    plugin_params: Arc<dyn Params>,
+    state: &mut SavedState,
+    plugin_params: Arc<dyn PluginState>,
 ) -> bool {
     P::filter_state(state);
     plugin_params.deserialize_fields(&state.fields);
@@ -63,9 +63,9 @@ pub(crate) fn deserialize_object<P: Plugin>(
 /// plugin state since doing so should be accompanied by calls to `Plugin::init()` and
 /// `Plugin::reset()`, and this way all of that behavior can be encapsulated so it can be reused in
 /// multiple places. The returned state object can be passed to [`deserialize_object()`].
-pub(crate) fn deserialize_json(state: &[u8]) -> Option<PluginState> {
+pub(crate) fn deserialize_json(state: &[u8]) -> Option<SavedState> {
     #[cfg(feature = "zstd")]
-    let result: Option<PluginState> = match zstd::decode_all(state) {
+    let result: Option<SavedState> = match zstd::decode_all(state) {
         Ok(decompressed) => match serde_json::from_slice(decompressed.as_slice()) {
             Ok(s) => {
                 let state_bytes = decompressed.len();
@@ -103,7 +103,7 @@ pub(crate) fn deserialize_json(state: &[u8]) -> Option<PluginState> {
     };
 
     #[cfg(not(feature = "zstd"))]
-    let result: Option<PluginState> = match serde_json::from_slice(state) {
+    let result: Option<SavedState> = match serde_json::from_slice(state) {
         Ok(s) => Some(s),
         Err(err) => {
             crate::nice_debug_assert_failure!("Error while deserializing state: {}", err);

@@ -28,12 +28,13 @@ pub use crate::editor::{Editor, Modifiers, ParentWindowHandle, ResizeHint, Virtu
 pub use crate::midi::sysex::SysExMessage;
 pub use crate::midi::{MidiConfig, NoteEvent, PluginNoteEvent, control_change};
 pub use crate::params::Params;
+pub use crate::params::PluginState;
 pub use crate::params::enums::{Enum, EnumParam};
 pub use crate::params::internals::ParamPtr;
 pub use crate::params::range::{FloatRange, IntRange};
 pub use crate::params::smoothing::{AtomicF32, Smoothable, Smoother, SmoothingStyle};
 pub use crate::params::{BoolParam, FloatParam, IntParam, Param, ParamFlags};
-pub use crate::plugin::PluginState;
+pub use crate::plugin::SavedState;
 pub use crate::plugin::{Plugin, ProcessStatus, TaskExecutor};
 pub use crate::plugin::{TrackColor, TrackInfo};
 pub use crate::wrapper::clap::features::ClapFeature;

@@ -2,6 +2,7 @@
 //! name of a type that implements `Plugin` to. The macro will handle the rest.
 
 pub mod clap;
+pub(crate) mod params;
 pub(crate) mod state;
 pub(crate) mod util;
 

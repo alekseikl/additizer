@@ -8,9 +8,8 @@ use nice_plug_egui::{
     EguiEditorState, EguiNiceSettings, NiceEguiApp, RepaintNotifier, create_egui_editor,
     resizable_window::ResizableWindow,
 };
-
 use addi_egui::{EguiEditor, install_fonts};
-use addi_ui_backend::{engine_factory::EngineFactory, ui_bridge::UiBridge};
+use addi_ui_backend::addi_state::AddiState;
 
 const MIN_WINDOW_SIZE: LogicalSize<f32> = LogicalSize::new(640.0, 480.0);
 const INITIAL_WINDOW_SIZE: LogicalSize<f32> = LogicalSize::new(900.0, 600.0);
@@ -19,29 +18,16 @@ const RESIZE_HINT: ResizeHint = ResizeHint::resizable().with_min_logical_size(MI
 
 /// nice-plug window around the egui editor.
 pub struct PluginEditor {
-    engine_factory: Arc<EngineFactory>,
-    ui_bridge: Option<UiBridge>,
+    addi_state: Arc<AddiState>,
     state: EguiEditor,
 }
 
 impl PluginEditor {
-    pub fn new(factory: Arc<EngineFactory>) -> Self {
-        let mut editor = Self {
-            engine_factory: factory,
-            ui_bridge: None,
+    pub fn new(addi_state: Arc<AddiState>) -> Self {
+        Self {
+            addi_state,
             state: EguiEditor::new(),
-        };
-        editor.refresh_bridge();
-        editor
-    }
-
-    fn refresh_bridge(&mut self) -> bool {
-        let Some(bridge) = self.engine_factory.take_ui_bridge() else {
-            return false;
-        };
-
-        self.ui_bridge = Some(bridge);
-        true
+        }
     }
 }
 
@@ -60,36 +46,32 @@ impl NiceEguiApp for PluginEditor {
     }
 
     fn ui(&mut self, ui: &mut Ui, frame: &mut nice_plug_egui::Frame) {
-        if self.refresh_bridge() {
+        let mut slot = self.addi_state.ui_bridge().lock();
+        if let Some(bridge) = slot.as_mut()
+            && bridge.is_new()
+        {
             self.state.reset();
+            bridge.reset_new();
         }
-
-        if let Some(bridge) = &mut self.ui_bridge {
+        if let Some(bridge) = slot.as_mut() {
             bridge.update();
         }
 
         ResizableWindow::new("res-wind")
             .min_size(Vec2::new(MIN_WINDOW_SIZE.width, MIN_WINDOW_SIZE.height))
             .show(ui, |ui| {
-                let Self {
-                    engine_factory,
-                    ui_bridge: Some(ui_bridge),
-                    state,
-                } = self
-                else {
+                let Some(ui_bridge) = slot.as_mut() else {
                     return;
                 };
 
-                state.show(ui, engine_factory, ui_bridge);
+                self.state.show(ui, ui_bridge);
             });
+        drop(slot);
 
-        // A pending bridge was just published from this frame. Its preset is already stored.
-        // Otherwise the editor holds the only live copy, so publish that for host saves.
-        if let Some(bridge) = &mut self.ui_bridge
-            && !self.engine_factory.has_pending_ui_bridge()
-        {
-            self.engine_factory.note_preset(bridge.preset());
+        if let Some(preset) = self.state.take_postponed_preset() {
+            self.addi_state.load_preset(&preset);
         }
+
         // `request_repaint` wakes the display link without setting
         // `redraw_requested`, so baseview pauses it again when this frame
         // returns. Ask the window directly to keep drawing every vsync.
@@ -100,13 +82,13 @@ impl NiceEguiApp for PluginEditor {
 
 pub fn create_editor(
     egui_state: Arc<EguiEditorState>,
-    factory: Arc<EngineFactory>,
+    addi_state: Arc<AddiState>,
 ) -> Option<nice_plug_egui::EguiEditor<PluginEditor>> {
     create_egui_editor(
         egui_state,
         RepaintNotifier::new(),
         EguiNiceSettings::new().with_resize_hint(RESIZE_HINT),
-        PluginEditor::new(factory),
+        PluginEditor::new(addi_state),
     )
 }
 

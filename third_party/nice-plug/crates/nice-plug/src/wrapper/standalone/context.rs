@@ -5,7 +5,7 @@ use nice_plug_core::midi::PluginNoteEvent;
 use nice_plug_core::plugin::Plugin;
 
 use nice_plug_core::{
-    context::gui::GuiContextInner, params::internals::ParamPtr, plugin::PluginState,
+    context::gui::GuiContextInner, params::internals::ParamPtr, plugin::SavedState,
 };
 
 use super::backend::Backend;
@@ -177,11 +177,11 @@ impl<P: Plugin, B: Backend<P>> GuiContextInner for WrapperGuiContext<P, B> {
         }
     }
 
-    fn get_state(&self) -> PluginState {
+    fn get_state(&self) -> SavedState {
         self.wrapper.upgrade().unwrap().get_state_object()
     }
 
-    fn set_state(&self, state: PluginState) {
+    fn set_state(&self, state: SavedState) {
         self.wrapper
             .upgrade()
             .unwrap()

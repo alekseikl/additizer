@@ -7,10 +7,10 @@ use nice_plug_core::context::process::Transport;
 use nice_plug_core::editor::{Editor, EditorHandle, SpawnedEditor};
 use nice_plug_core::midi::PluginNoteEvent;
 use nice_plug_core::params::internals::ParamPtr;
-use nice_plug_core::params::{ParamFlags, Params};
-use nice_plug_core::plugin::{Plugin, PluginState, ProcessStatus, TaskExecutor};
+use nice_plug_core::params::{FloatParam, PluginState};
+use nice_plug_core::plugin::{Plugin, ProcessStatus, SavedState, TaskExecutor};
 use parking_lot::Mutex;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -21,6 +21,7 @@ use super::config::WrapperConfig;
 use super::context::{WrapperActivateContext, WrapperProcessContext};
 use crate::event_loop::{EventLoop, MainThreadExecutor, OsEventLoop};
 use crate::util::permit_alloc;
+use crate::wrapper::params::RegisteredParams;
 use crate::wrapper::standalone::context::WrapperGuiContext;
 use crate::wrapper::state;
 use crate::wrapper::util::process_wrapper;
@@ -37,10 +38,14 @@ pub struct Wrapper<P: Plugin, B: Backend<P>> {
     /// The plugin's background task executor closure. Tasks scheduled by the plugin will be
     /// executed on the GUI or background thread using this function.
     pub task_executor: Mutex<TaskExecutor<P>>,
-    /// The plugin's parameters. These are fetched once during initialization. That way the
-    /// `ParamPtr`s are guaranteed to live at least as long as this object and we can interact with
-    /// the `Params` object without having to acquire a lock on `plugin`.
-    params: Arc<dyn Params>,
+    /// Plugin state fetched once during initialization. Persistent fields are saved and restored
+    /// through this object without locking `plugin`.
+    plugin_state: Arc<dyn PluginState>,
+    /// Host parameters returned by [`PluginState::params`]. Index is the parameter hash.
+    /// `ParamPtr`s point into this vector, so it must not be resized. The field is read only
+    /// through those pointers.
+    #[allow(dead_code)]
+    param_storage: Mutex<Vec<FloatParam>>,
     /// The plugin's editor, if it has one. This object does not do anything on its own, but we need
     /// to instantiate this in advance so we don't need to lock the entire [`Plugin`] object when
     /// creating an editor. Wrapped in an `AtomicRefCell` because it needs to be initialized late.
@@ -81,9 +86,9 @@ pub struct Wrapper<P: Plugin, B: Backend<P>> {
     /// In other words, the GUI thread acts as a sender and then as a receiver, while the audio
     /// thread acts as a receiver and then as a sender. That way deallocation can happen on the GUI
     /// thread. All of this happens without any blocking on the audio thread.
-    updated_state_sender: channel::Sender<PluginState>,
+    updated_state_sender: channel::Sender<SavedState>,
     /// The receiver belonging to [`new_state_sender`][Self::new_state_sender].
-    updated_state_receiver: channel::Receiver<PluginState>,
+    updated_state_receiver: channel::Receiver<SavedState>,
     /// The current latency in samples, as set by the plugin through the [`ActivateContext`] and the
     /// [`ProcessContext`]. This value may not be used depending on the audio backend, but it's
     /// still kept track of to avoid firing debug assertions multiple times for the same latency
@@ -146,45 +151,27 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
 
         let mut plugin = P::default();
         let task_executor = Mutex::new(plugin.task_executor());
-        let params = plugin.params();
+        let plugin_state = plugin.state();
 
         // This is used to allow the plugin to restore preset data from its editor, see the comment
         // on `Self::updated_state_sender`
         let (updated_state_sender, updated_state_receiver) = channel::bounded(0);
 
-        // For consistency's sake we'll include the same assertions as the other backends
-        // TODO: Move these common checks to a function instead of repeating them in every wrapper
-        let param_map = params.param_map();
-        if cfg!(debug_assertions) {
-            let param_ids: HashSet<_> = param_map.iter().map(|(id, _, _)| id.clone()).collect();
-            crate::nice_debug_assert_eq!(
-                param_map.len(),
-                param_ids.len(),
-                "The plugin has duplicate parameter IDs, weird things may happen. Consider using \
-                 6 character parameter IDs to avoid collisions."
-            );
-
-            let mut bypass_param_exists = false;
-            for (_, ptr, _) in &param_map {
-                let flags = unsafe { ptr.flags() };
-                let is_bypass = flags.contains(ParamFlags::BYPASS);
-
-                if is_bypass && bypass_param_exists {
-                    crate::nice_debug_assert_failure!(
-                        "Duplicate bypass parameters found, the host will only use the first one"
-                    );
-                }
-
-                bypass_param_exists |= is_bypass;
-            }
-        }
+        let registered = RegisteredParams::new(&plugin_state);
+        let param_ptr_to_id = registered
+            .ptr_to_hash
+            .iter()
+            .map(|(ptr, hash)| (*ptr, hash.to_string()))
+            .collect();
+        let param_storage = registered.storage;
 
         let wrapper = Arc::new(Wrapper {
             backend: AtomicRefCell::new(backend),
 
             plugin: Mutex::new(plugin),
             task_executor,
-            params,
+            plugin_state,
+            param_storage,
             // Initialized later as it needs a reference to the wrapper for the async executor
             editor: AtomicRefCell::new(None),
             editor_handle: Mutex::new(None),
@@ -193,10 +180,7 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
             // Also initialized later as it also needs a reference to the wrapper
             event_loop: AtomicRefCell::new(None),
 
-            param_ptr_to_id: param_map
-                .into_iter()
-                .map(|(param_id, param_ptr, _)| (param_ptr, param_id))
-                .collect(),
+            param_ptr_to_id,
 
             audio_io_layout,
             buffer_config: BufferConfig {
@@ -377,14 +361,14 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
     /// Get the plugin's state object, may be called by the plugin's GUI as part of its own preset
     /// management. The wrapper doesn't use these functions and serializes and deserializes directly
     /// the JSON in the relevant plugin API methods instead.
-    pub fn get_state_object(&self) -> PluginState {
-        state::serialize_object::<P>(self.params.clone())
+    pub fn get_state_object(&self) -> SavedState {
+        state::serialize_object::<P>(self.plugin_state.clone())
     }
 
     /// Update the plugin's internal state, called by the plugin itself from the GUI thread. To
     /// prevent corrupting data and changing parameters during processing the actual state is only
     /// updated at the end of the audio processing cycle.
-    pub fn set_state_object_from_gui(&self, state: PluginState) {
+    pub fn set_state_object_from_gui(&self, state: SavedState) {
         match self.updated_state_sender.send(state) {
             Ok(_) => {
                 // As mentioned above, the state object will be passed back to this thread
@@ -553,7 +537,7 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
     /// # Notes
     ///
     /// `self.plugin` must _not_ be locked while calling this function or it will deadlock.
-    fn set_state_inner(&self, state: &mut PluginState) -> bool {
+    fn set_state_inner(&self, state: &mut SavedState) -> bool {
         // FIXME: This is obviously not realtime-safe, but loading presets without doing this could
         //        lead to inconsistencies. It's the plugin's responsibility to not perform any
         //        realtime-unsafe work when the initialize function is called a second time if it
@@ -561,7 +545,7 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
         //        allocates, but if the plugin has persistent non-parameter data then its
         //        `deserialize_fields()` implementation may still allocate.
         let mut success =
-            permit_alloc(|| state::deserialize_object::<P>(state, self.params.clone()));
+            permit_alloc(|| state::deserialize_object::<P>(state, self.plugin_state.clone()));
         if !success {
             crate::nice_debug_assert_failure!(
                 "Deserializing plugin state from a state object failed"

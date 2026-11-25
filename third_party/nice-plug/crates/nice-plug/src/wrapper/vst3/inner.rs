@@ -8,12 +8,12 @@ use nice_plug_core::editor::dpi::Size;
 use nice_plug_core::editor::{Editor, SpawnedEditor};
 use nice_plug_core::midi::{MidiConfig, PluginNoteEvent};
 use nice_plug_core::params::internals::ParamPtr;
-use nice_plug_core::params::{ParamFlags, Params};
+use nice_plug_core::params::{FloatParam, PluginState};
 use nice_plug_core::plugin::TrackInfo;
-use nice_plug_core::plugin::{Plugin, PluginState, ProcessStatus, TaskExecutor};
+use nice_plug_core::plugin::{Plugin, ProcessStatus, SavedState, TaskExecutor};
 use parking_lot::Mutex;
 use parking_lot::RwLock;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use try_lock::TryLock;
@@ -28,9 +28,9 @@ use super::param_units::ParamUnits;
 use super::util::{VST3_MIDI_PARAMS_END, VST3_MIDI_PARAMS_START};
 use crate::event_loop::{EventLoop, MainThreadExecutor, OsEventLoop};
 use crate::util::permit_alloc;
+use crate::wrapper::params::RegisteredParams;
 use crate::wrapper::state;
 use crate::wrapper::util::buffer_management::BufferManager;
-use crate::wrapper::util::hash_param_id;
 use crate::wrapper::vst3::Vst3Plugin;
 use crate::wrapper::vst3::context::WrapperGuiContext;
 use crate::wrapper::vst3::view::WrapperView;
@@ -43,10 +43,14 @@ pub(crate) struct WrapperInner<P: Vst3Plugin> {
     pub plugin: TryLock<P>,
     /// The plugin's background task executor closure.
     pub task_executor: Mutex<TaskExecutor<P>>,
-    /// The plugin's parameters. These are fetched once during initialization. That way the
-    /// `ParamPtr`s are guaranteed to live at least as long as this object and we can interact with
-    /// the `Params` object without having to acquire a lock on `plugin`.
-    pub params: Arc<dyn Params>,
+    /// Plugin state fetched once during initialization. Persistent fields are saved and restored
+    /// through this object without locking `plugin`.
+    pub plugin_state: Arc<dyn PluginState>,
+    /// Host parameters returned by [`PluginState::params`]. Index is the parameter hash.
+    /// `ParamPtr`s point into this vector, so it must not be resized. The field is read only
+    /// through those pointers.
+    #[allow(dead_code)]
+    param_storage: Mutex<Vec<FloatParam>>,
     /// The plugin's editor, if it has one. This object does not do anything on its own, but we need
     /// to instantiate this in advance so we don't need to lock the entire [`Plugin`] object when
     /// creating an editor. Wrapped in an `AtomicRefCell` because it needs to be initialized late.
@@ -128,9 +132,9 @@ pub(crate) struct WrapperInner<P: Vst3Plugin> {
     /// In other words, the GUI thread acts as a sender and then as a receiver, while the audio
     /// thread acts as a receiver and then as a sender. That way deallocation can happen on the GUI
     /// thread. All of this happens without any blocking on the audio thread.
-    pub updated_state_sender: channel::Sender<PluginState>,
+    pub updated_state_sender: channel::Sender<SavedState>,
     /// The receiver belonging to [`new_state_sender`][Self::new_state_sender].
-    pub updated_state_receiver: channel::Receiver<PluginState>,
+    pub updated_state_receiver: channel::Receiver<SavedState>,
 
     /// The keys from `param_map` in a stable order.
     pub param_hashes: Vec<u32>,
@@ -210,90 +214,33 @@ impl<P: Vst3Plugin> WrapperInner<P> {
         // `wrapper.plugin` is alive. The plugin API identifiers these parameters by hashes, which
         // we'll calculate from the string ID specified by the plugin. These parameters should also
         // remain in the same order as the one returned by the plugin.
-        let params = plugin.params();
-        let param_id_hashes_ptrs_groups: Vec<_> = params
-            .param_map()
-            .into_iter()
-            .map(|(id, ptr, group)| {
-                let hash = hash_param_id(&id);
-                (id, hash, ptr, group)
-            })
-            .collect();
-        if cfg!(debug_assertions) {
-            let param_map = params.param_map();
-            let param_ids: HashSet<_> = param_id_hashes_ptrs_groups
+        let plugin_state = plugin.state();
+        let RegisteredParams {
+            storage: param_storage,
+            hashes: param_hashes,
+            by_hash: param_by_hash,
+            id_by_hash: param_id_by_hash,
+            group_by_hash,
+            ptr_to_hash: param_ptr_to_hash,
+            poly_mod_ids_by_hash,
+        } = RegisteredParams::new(&plugin_state);
+        let param_units = ParamUnits::from_param_groups(
+            group_by_hash
                 .iter()
-                .map(|(id, _, _, _)| id.clone())
-                .collect();
-            crate::nice_debug_assert_eq!(
-                param_map.len(),
-                param_ids.len(),
-                "The plugin has duplicate parameter IDs, weird things may happen. Consider using \
-                 6 character parameter IDs to avoid collisions."
-            );
+                .map(|(hash, group)| (*hash, group.as_str())),
+        )
+        .expect("Inconsistent parameter groups");
 
-            let mut bypass_param_exists = false;
-            for (id, hash, ptr, _) in &param_id_hashes_ptrs_groups {
-                let flags = unsafe { ptr.flags() };
-                let is_bypass = flags.contains(ParamFlags::BYPASS);
-
-                if is_bypass && bypass_param_exists {
+        if cfg!(debug_assertions) && P::MIDI_INPUT >= MidiConfig::MidiCCs {
+            for hash in &param_hashes {
+                if (VST3_MIDI_PARAMS_START..VST3_MIDI_PARAMS_END).contains(hash) {
                     crate::nice_debug_assert_failure!(
-                        "Duplicate bypass parameters found, the host will only use the first one"
-                    );
-                }
-
-                bypass_param_exists |= is_bypass;
-
-                if P::MIDI_INPUT >= MidiConfig::MidiCCs
-                    && (VST3_MIDI_PARAMS_START..VST3_MIDI_PARAMS_END).contains(hash)
-                {
-                    crate::nice_debug_assert_failure!(
-                        "Parameter '{}' collides with an automatically generated MIDI CC \
-                         parameter, consider giving it a different ID",
-                        id
+                        "Parameter index {} collides with an automatically generated MIDI CC \
+                         parameter",
+                        hash
                     );
                 }
             }
-        }
-
-        let param_hashes = param_id_hashes_ptrs_groups
-            .iter()
-            .map(|(_, hash, _, _)| *hash)
-            .collect();
-        let param_by_hash = param_id_hashes_ptrs_groups
-            .iter()
-            .map(|(_, hash, ptr, _)| (*hash, *ptr))
-            .collect();
-        let param_id_by_hash = param_id_hashes_ptrs_groups
-            .iter()
-            .map(|(id, hash, _, _)| (*hash, id.clone()))
-            .collect();
-        let param_units = ParamUnits::from_param_groups(
-            param_id_hashes_ptrs_groups
-                .iter()
-                .map(|(_, hash, _, group_name)| (*hash, group_name.as_str())),
-        )
-        .expect("Inconsistent parameter groups");
-        let poly_mod_ids_by_hash: HashMap<u32, u32> = param_id_hashes_ptrs_groups
-            .iter()
-            .filter_map(|(_, hash, ptr, _)| unsafe {
-                ptr.poly_modulation_id().map(|id| (*hash, id))
-            })
-            .collect();
-        let param_ptr_to_hash = param_id_hashes_ptrs_groups
-            .into_iter()
-            .map(|(_, hash, ptr, _)| (ptr, hash))
-            .collect();
-
-        if cfg!(debug_assertions) {
-            let poly_mod_ids: HashSet<u32> = poly_mod_ids_by_hash.values().copied().collect();
-            crate::nice_debug_assert_eq!(
-                poly_mod_ids_by_hash.len(),
-                poly_mod_ids.len(),
-                "The plugin has duplicate poly modulation IDs. Polyphonic modulation will not be \
-                 routed to the correct parameter."
-            );
         }
 
         let input_note_events = if P::MIDI_INPUT == MidiConfig::None {
@@ -305,7 +252,8 @@ impl<P: Vst3Plugin> WrapperInner<P> {
         let wrapper = Arc::new(Self {
             plugin: TryLock::new(plugin),
             task_executor,
-            params,
+            plugin_state,
+            param_storage,
             // Initialized later as it needs a reference to the wrapper for the async executor
             editor: AtomicRefCell::new(None),
             editor_window: Arc::new(AtomicRefCell::new(None)),
@@ -526,14 +474,14 @@ impl<P: Vst3Plugin> WrapperInner<P> {
     /// Get the plugin's state object, may be called by the plugin's GUI as part of its own preset
     /// management. The wrapper doesn't use these functions and serializes and deserializes directly
     /// the JSON in the relevant plugin API methods instead.
-    pub fn get_state_object(&self) -> PluginState {
-        state::serialize_object::<P>(self.params.clone())
+    pub fn get_state_object(&self) -> SavedState {
+        state::serialize_object::<P>(self.plugin_state.clone())
     }
 
     /// Update the plugin's internal state, called by the plugin itself from the GUI thread. To
     /// prevent corrupting data and changing parameters during processing the actual state is only
     /// updated at the end of the audio processing cycle.
-    pub fn set_state_object_from_gui(&self, mut state: PluginState) {
+    pub fn set_state_object_from_gui(&self, mut state: SavedState) {
         use crossbeam::channel::SendTimeoutError;
 
         // Use a loop and timeouts to handle the super rare edge case when this function gets called
@@ -606,12 +554,13 @@ impl<P: Vst3Plugin> WrapperInner<P> {
     /// # Notes
     ///
     /// `self.plugin` must _not_ be locked while calling this function or it will deadlock.
-    pub fn set_state_inner(&self, state: &mut PluginState) -> bool {
+    pub fn set_state_inner(&self, state: &mut SavedState) -> bool {
         // FIXME: This is obviously not realtime-safe, but loading presets without doing this
         //        could lead to inconsistencies. `state::deserialize_object()` normally never
         //        allocates, but if the plugin has persistent non-parameter data then its
         //        `deserialize_fields()` implementation may still allocate.
-        let success = permit_alloc(|| state::deserialize_object::<P>(state, self.params.clone()));
+        let success =
+            permit_alloc(|| state::deserialize_object::<P>(state, self.plugin_state.clone()));
         if !success {
             crate::nice_debug_assert_failure!(
                 "Deserializing plugin state from a state object failed"

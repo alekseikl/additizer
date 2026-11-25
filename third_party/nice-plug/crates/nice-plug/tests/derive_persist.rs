@@ -22,8 +22,8 @@ struct InnerParams {
     pub deserialize_called_with: Mutex<Option<BTreeMap<String, String>>>,
 }
 
-unsafe impl Params for InnerParams {
-    fn param_map(&self) -> Vec<(String, ParamPtr, String)> {
+impl PluginState for InnerParams {
+    fn params(&self) -> Vec<FloatParam> {
         Vec::new()
     }
 
