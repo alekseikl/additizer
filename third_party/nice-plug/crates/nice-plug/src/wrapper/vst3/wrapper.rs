@@ -644,11 +644,16 @@ impl<P: Vst3Plugin> IEditControllerTrait for Wrapper<P> {
         } else {
             let param_index = param_index as u32;
             let state = &*self.inner.plugin_state;
-            let name = state.param_name(param_index);
             let flags = state.param_flags(param_index);
-            let automatable = !flags.contains(ParamFlags::NON_AUTOMATABLE);
             let hidden = flags.contains(ParamFlags::HIDDEN);
             let is_bypass = flags.contains(ParamFlags::BYPASS);
+            // Keep unused parameters in the host list. Hiding them makes hosts ignore later
+            // title updates when a parameter is assigned.
+            let name = if hidden {
+                String::from("Unassigned")
+            } else {
+                state.param_name(param_index)
+            };
 
             info.id = param_index;
             u16strlcpy(&mut info.title, &name);
@@ -661,13 +666,7 @@ impl<P: Vst3Plugin> IEditControllerTrait for Wrapper<P> {
                 .param_units
                 .get_vst3_unit_id(param_index)
                 .unwrap_or(0);
-            info.flags = 0;
-            if automatable && !hidden {
-                info.flags |= ParameterFlags_::kCanAutomate;
-            }
-            if hidden {
-                info.flags |= ParameterFlags_::kIsReadOnly | (1 << 4); // kIsHidden
-            }
+            info.flags = ParameterFlags_::kCanAutomate;
             if is_bypass {
                 info.flags |= ParameterFlags_::kIsBypass;
             }
