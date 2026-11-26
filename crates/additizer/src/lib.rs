@@ -172,14 +172,14 @@ impl ClapPlugin for Additizer {
     });
 }
 
-// impl Vst3Plugin for Additizer {
-//     const VST3_CLASS_ID: [u8; 16] = *b"AdditizerModular";
-//     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
-//         Vst3SubCategory::Instrument,
-//         Vst3SubCategory::Synth,
-//         Vst3SubCategory::Stereo,
-//     ];
-// }
+impl Vst3Plugin for Additizer {
+    const VST3_CLASS_ID: [u8; 16] = *b"AdditizerModular";
+    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
+        Vst3SubCategory::Instrument,
+        Vst3SubCategory::Synth,
+        Vst3SubCategory::Stereo,
+    ];
+}
 
 nice_export_clap!(Additizer);
-// nice_export_vst3!(Additizer);
+nice_export_vst3!(Additizer);

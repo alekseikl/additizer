@@ -1,210 +1,106 @@
-//! Host parameters and persistent plugin fields. A plugin returns an [`PluginState`] from
-//! [`Plugin::state()`][crate::plugin::Plugin::state()]. `params()` lists the [`FloatParam`]s
-//! registered with the host; the parameter's index in that list is its hash. Persistent data is
-//! saved and restored through [`PluginState::serialize_fields`] and
+//! Host parameters and persistent plugin fields.
+//!
+//! A plugin returns a [`PluginState`] from [`Plugin::state()`][crate::plugin::Plugin::state()].
+//! The wrapper calls the parameter methods when the host asks. It does not keep a parameter
+//! object. The parameter's index is its id. The count does not change for the life of the instance.
+//!
+//! Persistent data is saved and restored through [`PluginState::serialize_fields`] and
 //! [`PluginState::deserialize_fields`].
 
 use std::collections::BTreeMap;
-use std::fmt::{Debug, Display};
-use std::sync::Arc;
 
-// The proc-macro for deriving `Params`
+// The proc-macro for deriving `PluginState` persistence.
 pub use nice_plug_derive::Params;
 
-// Parameter types
-mod boolean;
 pub mod enums;
-mod float;
-mod integer;
-
-pub mod internals;
 pub mod persist;
 pub mod range;
 pub mod smoothing;
-
-pub use boolean::BoolParam;
-pub use enums::EnumParam;
-pub use float::FloatParam;
-pub use integer::IntParam;
-
-/// Parameter metadata and conversion callbacks that are not accessed by the DSP hot path.
-/// Storing these out of line reduces the cache footprint of parameter value reads during audio
-/// processing.
-struct ParamInfo<T> {
-    /// Flags controlling the parameter's behavior.
-    flags: ParamFlags,
-    /// The parameter's human-readable display name.
-    name: String,
-    /// The parameter value's unit. This is appended after `value_to_string`, when set, without
-    /// automatically inserting a space.
-    unit: &'static str,
-    /// An optional custom conversion function from a plain parameter value to a string.
-    value_to_string: Option<Arc<dyn Fn(T) -> String + Send + Sync>>,
-    /// An optional custom conversion function from a string to a plain parameter value. The input
-    /// may include the unit. Returning `None` cancels the parameter update.
-    string_to_value: Option<Arc<dyn Fn(&str) -> Option<T> + Send + Sync>>,
-}
-
-impl<T> ParamInfo<T> {
-    fn new(name: impl Into<String>) -> Self {
-        Self {
-            flags: ParamFlags::default(),
-            name: name.into(),
-            unit: "",
-            value_to_string: None,
-            string_to_value: None,
-        }
-    }
-}
 
 bitflags::bitflags! {
     /// Flags for controlling a parameter's behavior.
     #[repr(transparent)]
     #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ParamFlags: u32 {
-        /// When applied to a [`BoolParam`], this will cause the parameter to be linked to the
-        /// host's bypass control. Only a single parameter can be marked as a bypass parameter. If
-        /// you don't have a bypass parameter, then nice-plug will add one for you. You will need to
-        /// implement this yourself if your plugin introduces latency.
+        /// When applied to a boolean parameter, this links it to the host's bypass control. Only
+        /// one parameter can be marked as bypass.
         const BYPASS = 1 << 0;
-        /// The parameter cannot be changed from an automation lane. The parameter can however still
-        /// be manually changed by the user from either the plugin's own GUI or from the host's
-        /// generic UI.
+        /// The parameter cannot be changed from an automation lane. The parameter can still be
+        /// changed from the plugin's own GUI or from the host's generic UI.
         const NON_AUTOMATABLE = 1 << 1;
-        /// Hides the parameter in the host's generic UI for this plugin. This also implies
-        /// `NON_AUTOMATABLE`. Setting this does not prevent you from changing the parameter in the
-        /// plugin's editor GUI.
+        /// Hides the parameter in the host's generic UI. This also implies [`NON_AUTOMATABLE`](Self::NON_AUTOMATABLE).
         const HIDDEN = 1 << 2;
     }
 }
 
-// See https://rust-lang.github.io/api-guidelines/future-proofing.html for more information
-mod sealed {
-    /// Dummy trait to prevent [`Param`] from being implemented outside of nice-plug. This is not
-    /// possible because of the way `ParamPtr` works, so it's best to just make it flat out impossible.
-    pub trait Sealed {}
-}
-pub(crate) use sealed::Sealed;
-
-/// Describes a single parameter of any type.
+/// Persistent plugin data and the host parameters the wrapper queries by index.
 ///
-/// Parameters are a declaration for the host: name, range, and polyphonic modulation id. Value
-/// changes are delivered as note events. The getters below report the last value stored for the
-/// host's parameter queries. They are not a source of values for DSP.
-///
-/// # Sealed
-///
-/// This trait cannot be implemented outside of nice-plug itself. If you want to create new
-/// abstractions around parameters, consider wrapping them in a struct instead. Then use the
-/// `#[nested(id_prefix = "foo")]` syntax from the [`Params`] trait to reuse that wrapper in
-/// multiple places.
-pub trait Param: Display + Debug + sealed::Sealed {
-    /// The plain parameter type.
-    type Plain: PartialEq;
-
-    /// Get the human readable name for this parameter.
-    fn name(&self) -> &str;
-
-    /// Get the unit label for this parameter, if any.
-    fn unit(&self) -> &'static str;
-
-    /// Get this parameter's polyphonic modulation ID. If this is set for a parameter in a CLAP
-    /// plugin, then polyphonic modulation will be enabled for that parameter. Polyphonic modulation
-    /// is communicated to the plugin through
-    /// [`NoteEvent::PolyModulation`][crate::midi::NoteEvent::PolyModulation],
-    /// [`NoteEvent::MonoAutomation`][crate::midi::NoteEvent::MonoAutomation], and
-    /// [`NoteEvent::MonoModulation`][crate::midi::NoteEvent::MonoModulation] events. See the
-    /// documentation on those events for more information.
-    ///
-    /// # Important
-    ///
-    /// After enabling polyphonic modulation, the plugin **must** start sending
-    /// [`NoteEvent::VoiceTerminated`][crate::midi::NoteEvent::VoiceTerminated] events to the
-    /// host when a voice has fully ended. This allows the host to reuse its modulation resources.
-    fn poly_modulation_id(&self) -> Option<u32>;
-
-    /// Last plain value stored for the host. Modulation offsets are not included; those arrive as
-    /// note events.
-    fn modulated_plain_value(&self) -> Self::Plain;
-
-    /// Last normalized `[0, 1]` value stored for the host.
-    fn modulated_normalized_value(&self) -> f32;
-
-    /// Same as [`modulated_plain_value()`][Self::modulated_plain_value()]. Modulation is not stored
-    /// on the parameter.
-    fn unmodulated_plain_value(&self) -> Self::Plain;
-
-    /// Same as [`modulated_normalized_value()`][Self::modulated_normalized_value()].
-    fn unmodulated_normalized_value(&self) -> f32;
-
-    /// Get the unnormalized default value for this parameter.
-    fn default_plain_value(&self) -> Self::Plain;
-
-    /// Get the normalized `[0, 1]` default value for this parameter.
-    #[inline]
-    fn default_normalized_value(&self) -> f32 {
-        self.preview_normalized(self.default_plain_value())
+/// Value changes from the host are delivered as note events. These methods answer host queries.
+/// They are not a source of values for DSP, and the audio thread does not call them.
+pub trait PluginState: 'static + Send + Sync {
+    /// Number of host parameters. Constant for the plugin instance.
+    fn param_count(&self) -> u32 {
+        0
     }
 
-    /// Get the number of steps for this parameter, if it is discrete. Used for the host's generic
-    /// UI.
-    fn step_count(&self) -> Option<usize>;
+    /// Human-readable name. `index` is the parameter id.
+    fn param_name(&self, index: u32) -> String {
+        format!("Param {}", index + 1)
+    }
 
-    /// Get the string representation for a normalized value. Used as part of the wrappers. Most
-    /// plugin formats already have support for units, in which case it shouldn't be part of this
-    /// string or some DAWs may show duplicate units.
-    fn normalized_value_to_string(&self, normalized: f32, include_unit: bool) -> String;
+    /// Unit label appended by the host. Empty when the parameter has no unit.
+    fn param_unit(&self, _index: u32) -> &'static str {
+        ""
+    }
 
-    /// Get the string representation for a normalized value. Used as part of the wrappers.
-    fn string_to_normalized_value(&self, string: &str) -> Option<f32>;
+    /// Behavior flags. See [`ParamFlags`].
+    fn param_flags(&self, _index: u32) -> ParamFlags {
+        ParamFlags::HIDDEN | ParamFlags::NON_AUTOMATABLE
+    }
 
-    /// Get the normalized value for a plain, unnormalized value, as a float. Used as part of the
-    /// wrappers.
-    fn preview_normalized(&self, plain: Self::Plain) -> f32;
+    /// Discrete step count. `None` for a continuous parameter.
+    fn param_step_count(&self, _index: u32) -> Option<usize> {
+        None
+    }
 
-    /// Get the plain, unnormalized value for a normalized value, as a float. Used as part of the
-    /// wrappers. This **does** snap to step sizes for continuous parameters (i.e. [`FloatParam`]).
-    fn preview_plain(&self, normalized: f32) -> Self::Plain;
+    /// Normalized `[0, 1]` default.
+    fn param_default_normalized(&self, _index: u32) -> f32 {
+        0.0
+    }
 
-    /// Flags to control the parameter's behavior. See [`ParamFlags`].
-    fn flags(&self) -> ParamFlags;
+    /// Last normalized `[0, 1]` value published for the host. Modulation offsets are not included.
+    fn param_normalized_value(&self, _index: u32) -> f32 {
+        0.0
+    }
 
-    /// Internal implementation detail for implementing [`Params`]. This should
-    /// not be used directly.
-    fn as_ptr(&self) -> internals::ParamPtr;
-}
+    /// String for a normalized value. Most plugin formats already have a unit field. Set
+    /// `include_unit` only when the format has nowhere else to put it.
+    fn param_value_to_text(&self, index: u32, normalized: f32, include_unit: bool) -> String {
+        let plain = self.param_normalized_to_plain(index, normalized);
+        if include_unit {
+            format!("{plain}{}", self.param_unit(index))
+        } else {
+            format!("{plain}")
+        }
+    }
 
-/// Contains the setters for parameters. Only to be used by nice-plug's internal libraries.
-/// These are exposed as unsafe methods to avoid confusion.
-pub trait InternalParamMut: Param {
-    /// Store a plain value for later host queries. Returns whether the stored value changed.
-    ///
-    /// # Safety
-    /// This is only allowed to be used by nice-plug's internal libraries.
-    unsafe fn _internal_set_plain_value(&self, plain: Self::Plain) -> bool;
+    /// Parse a host string into a normalized value. The string may include [`param_unit`](Self::param_unit).
+    /// `None` cancels the update.
+    fn param_text_to_normalized(&self, index: u32, text: &str) -> Option<f32> {
+        let unit = self.param_unit(index);
+        let plain = text.trim().trim_end_matches(unit).trim().parse().ok()?;
+        Some(self.param_plain_to_normalized(index, plain))
+    }
 
-    /// Store a normalized value for later host queries. Continuous parameters snap to their step
-    /// size. Returns whether the stored value changed.
-    ///
-    /// # Safety
-    /// This is only allowed to be used by nice-plug's internal libraries.
-    unsafe fn _internal_set_normalized_value(&self, normalized: f32) -> bool;
-}
+    /// Plain value for a normalized value. Continuous parameters snap to their step size here.
+    fn param_normalized_to_plain(&self, _index: u32, normalized: f32) -> f32 {
+        normalized.clamp(0.0, 1.0)
+    }
 
-/// Persistent plugin data and the floating-point parameters registered with the host.
-///
-/// The wrapper calls [`params()`][Self::params] once, stores the returned vector under a `Mutex`,
-/// and keeps it for the plugin instance lifetime. The index of each parameter in that vector is
-/// the hash the host uses to address it.
-///
-/// [`serialize_fields()`][Self::serialize_fields] and
-/// [`deserialize_fields()`][Self::deserialize_fields] keep the same signatures as the previous
-/// parameter object so existing preset field maps still load.
-pub trait PluginState: 'static + Send + Sync {
-    /// Parameters to register with the host, in display order.
-    ///
-    /// The wrapper stores this vector and uses each parameter's index as its hash.
-    fn params(&self) -> Vec<FloatParam>;
+    /// Normalized value for a plain value.
+    fn param_plain_to_normalized(&self, _index: u32, plain: f32) -> f32 {
+        plain.clamp(0.0, 1.0)
+    }
 
     /// Serialize persistent fields into a map of JSON values so they can be written to the
     /// plugin's state and recalled later.

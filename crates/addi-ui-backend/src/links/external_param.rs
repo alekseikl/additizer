@@ -9,15 +9,28 @@ use addi_engine::external_param::{
 pub struct UiEnd {
     tx: rtrb::Producer<UiEvent>,
     value: triple_buffer::Output<Smp>,
+    automation: triple_buffer::Output<Smp>,
 }
 
 impl UiEnd {
-    pub fn new(tx: rtrb::Producer<UiEvent>, value: triple_buffer::Output<Smp>) -> Self {
-        Self { tx, value }
+    pub fn new(
+        tx: rtrb::Producer<UiEvent>,
+        value: triple_buffer::Output<Smp>,
+        automation: triple_buffer::Output<Smp>,
+    ) -> Self {
+        Self {
+            tx,
+            value,
+            automation,
+        }
     }
 
     pub fn get_value(&mut self) -> Smp {
         *self.value.read()
+    }
+
+    pub fn automation_value(&mut self) -> Smp {
+        *self.automation.read()
     }
 
     pub fn select_param(&mut self, index: usize) -> bool {
@@ -32,11 +45,20 @@ impl UiEnd {
 pub struct AudioEnd {
     rx: rtrb::Consumer<UiEvent>,
     value: triple_buffer::Input<Smp>,
+    automation: triple_buffer::Input<Smp>,
 }
 
 impl AudioEnd {
-    pub fn new(rx: rtrb::Consumer<UiEvent>, value: triple_buffer::Input<Smp>) -> Self {
-        Self { rx, value }
+    pub fn new(
+        rx: rtrb::Consumer<UiEvent>,
+        value: triple_buffer::Input<Smp>,
+        automation: triple_buffer::Input<Smp>,
+    ) -> Self {
+        Self {
+            rx,
+            value,
+            automation,
+        }
     }
 
     pub fn pop_event(&mut self) -> Option<UiEvent> {
@@ -46,15 +68,20 @@ impl AudioEnd {
     pub fn update_value(&mut self, value: Smp) {
         self.value.write(value);
     }
+
+    pub fn update_automation(&mut self, value: Smp) {
+        self.automation.write(value);
+    }
 }
 
 pub fn make_link_pair() -> (AudioEnd, UiEnd) {
     let (to_audio_tx, from_ui_rx) = rtrb::RingBuffer::<UiEvent>::new(UI_TO_AUDIO_RING_CAPACITY);
     let (value_input, value_output) = triple_buffer(&0.0);
+    let (automation_input, automation_output) = triple_buffer(&0.0);
 
     (
-        AudioEnd::new(from_ui_rx, value_input),
-        UiEnd::new(to_audio_tx, value_output),
+        AudioEnd::new(from_ui_rx, value_input, automation_input),
+        UiEnd::new(to_audio_tx, value_output, automation_output),
     )
 }
 
@@ -65,11 +92,17 @@ impl ExternalParamAudioEnd for AudioEnd {
     fn update_value(&mut self, value: Smp) {
         AudioEnd::update_value(self, value)
     }
+    fn update_automation(&mut self, value: Smp) {
+        AudioEnd::update_automation(self, value)
+    }
 }
 
 impl ExternalParamUiEnd for UiEnd {
     fn get_value(&mut self) -> Smp {
         UiEnd::get_value(self)
+    }
+    fn automation_value(&mut self) -> Smp {
+        UiEnd::automation_value(self)
     }
     fn select_param(&mut self, index: usize) -> bool {
         UiEnd::select_param(self, index)

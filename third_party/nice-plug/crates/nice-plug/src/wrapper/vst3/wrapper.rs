@@ -602,18 +602,19 @@ impl<P: Vst3Plugin> IEditControllerTrait for Wrapper<P> {
     }
 
     unsafe fn getParameterCount(&self) -> int32 {
+        let param_count = self.inner.plugin_state.param_count() as i32;
         // We need to add a whole bunch of parameters if the plugin accepts MIDI CCs
         if P::MIDI_INPUT >= MidiConfig::MidiCCs {
-            self.inner.param_hashes.len() as i32 + VST3_MIDI_NUM_PARAMS as i32
+            param_count + VST3_MIDI_NUM_PARAMS as i32
         } else {
-            self.inner.param_hashes.len() as i32
+            param_count
         }
     }
 
     unsafe fn getParameterInfo(&self, param_index: int32, info: *mut ParameterInfo) -> tresult {
         check_null_ptr!(info);
 
-        if param_index < 0 || param_index > unsafe { self.getParameterCount() } {
+        if param_index < 0 || param_index >= unsafe { self.getParameterCount() } {
             return kInvalidArgument;
         }
 
@@ -622,7 +623,7 @@ impl<P: Vst3Plugin> IEditControllerTrait for Wrapper<P> {
 
         // If the parameter is a generated MIDI CC/channel pressure/pitch bend then it needs to be
         // handled separately
-        let num_actual_params = self.inner.param_hashes.len() as i32;
+        let num_actual_params = self.inner.plugin_state.param_count() as i32;
         if P::MIDI_INPUT >= MidiConfig::MidiCCs && param_index >= num_actual_params {
             let midi_param_relative_idx = (param_index - num_actual_params) as u32;
             // This goes up to 130 for the 128 CCs followed by channel pressure and pitch bend
@@ -641,26 +642,25 @@ impl<P: Vst3Plugin> IEditControllerTrait for Wrapper<P> {
             u16strlcpy(&mut info.shortTitle, &name);
             info.flags = ParameterFlags_::kIsReadOnly | (1 << 4); // kIsHidden
         } else {
-            let param_hash = &self.inner.param_hashes[param_index as usize];
-            let param_unit = &self
-                .inner
-                .param_units
-                .get_vst3_unit_id(*param_hash)
-                .expect("Inconsistent parameter data");
-            let param_ptr = &self.inner.param_by_hash[param_hash];
-            let default_value = unsafe { param_ptr.default_normalized_value() };
-            let flags = unsafe { param_ptr.flags() };
+            let param_index = param_index as u32;
+            let state = &*self.inner.plugin_state;
+            let name = state.param_name(param_index);
+            let flags = state.param_flags(param_index);
             let automatable = !flags.contains(ParamFlags::NON_AUTOMATABLE);
             let hidden = flags.contains(ParamFlags::HIDDEN);
             let is_bypass = flags.contains(ParamFlags::BYPASS);
 
-            info.id = *param_hash;
-            u16strlcpy(&mut info.title, unsafe { param_ptr.name() });
-            u16strlcpy(&mut info.shortTitle, unsafe { param_ptr.name() });
-            u16strlcpy(&mut info.units, unsafe { param_ptr.unit() });
-            info.stepCount = unsafe { param_ptr.step_count().unwrap_or(0) } as i32;
-            info.defaultNormalizedValue = default_value as f64;
-            info.unitId = *param_unit;
+            info.id = param_index;
+            u16strlcpy(&mut info.title, &name);
+            u16strlcpy(&mut info.shortTitle, &name);
+            u16strlcpy(&mut info.units, state.param_unit(param_index));
+            info.stepCount = state.param_step_count(param_index).unwrap_or(0) as i32;
+            info.defaultNormalizedValue = state.param_default_normalized(param_index) as f64;
+            info.unitId = self
+                .inner
+                .param_units
+                .get_vst3_unit_id(param_index)
+                .unwrap_or(0);
             info.flags = 0;
             if automatable && !hidden {
                 info.flags |= ParameterFlags_::kCanAutomate;
@@ -688,19 +688,17 @@ impl<P: Vst3Plugin> IEditControllerTrait for Wrapper<P> {
 
         // TODO: We don't implement these methods at all for our generated MIDI CC parameters,
         //       should be fine right? They should be hidden anyways.
-        match self.inner.param_by_hash.get(&id) {
-            Some(param_ptr) => {
-                unsafe {
-                    u16strlcpy(
-                        dest,
-                        &param_ptr.normalized_value_to_string(value_normalized as f32, false),
-                    );
-                }
-
-                kResultOk
-            }
-            _ => kInvalidArgument,
+        if !self.inner.has_param(id) {
+            return kInvalidArgument;
         }
+
+        let text = self.inner.plugin_state.param_value_to_text(
+            id,
+            value_normalized as f32,
+            false,
+        );
+        u16strlcpy(dest, &text);
+        kResultOk
     }
 
     unsafe fn getParamValueByString(
@@ -716,53 +714,58 @@ impl<P: Vst3Plugin> IEditControllerTrait for Wrapper<P> {
             Err(_) => return kInvalidArgument,
         };
 
-        match self.inner.param_by_hash.get(&id) {
-            Some(param_ptr) => {
-                let value = match unsafe { param_ptr.string_to_normalized_value(&string) } {
-                    Some(v) => v as f64,
-                    None => return kResultFalse,
-                };
-                unsafe { *value_normalized = value };
-
-                kResultOk
-            }
-            _ => kInvalidArgument,
+        if !self.inner.has_param(id) {
+            return kInvalidArgument;
         }
+
+        let Some(value) = self
+            .inner
+            .plugin_state
+            .param_text_to_normalized(id, &string)
+        else {
+            return kResultFalse;
+        };
+        unsafe { *value_normalized = value as f64 };
+        kResultOk
     }
 
     unsafe fn normalizedParamToPlain(
         &self,
-        id: ParamID,
+        _id: ParamID,
         value_normalized: ParamValue,
     ) -> ParamValue {
-        match self.inner.param_by_hash.get(&id) {
-            Some(param_ptr) => unsafe { param_ptr.preview_plain(value_normalized as f32) as f64 },
-            _ => value_normalized,
-        }
+        // The value handed to the plugin is the host's value.
+        value_normalized
     }
 
-    unsafe fn plainParamToNormalized(&self, id: ParamID, plain_value: ParamValue) -> ParamValue {
-        match self.inner.param_by_hash.get(&id) {
-            Some(param_ptr) => unsafe { param_ptr.preview_normalized(plain_value as f32) as f64 },
-            _ => plain_value,
-        }
+    unsafe fn plainParamToNormalized(&self, _id: ParamID, plain_value: ParamValue) -> ParamValue {
+        plain_value
     }
 
     unsafe fn getParamNormalized(&self, id: ParamID) -> ParamValue {
-        match self.inner.param_by_hash.get(&id) {
-            Some(param_ptr) => unsafe { param_ptr.modulated_normalized_value() as f64 },
-            _ => 0.5,
+        if self.inner.has_param(id) {
+            self.inner.plugin_state.param_normalized_value(id) as f64
+        } else {
+            0.0
         }
     }
 
     unsafe fn setParamNormalized(&self, id: ParamID, value: ParamValue) -> tresult {
-        // If the plugin is currently processing audio, then this parameter change will also be sent
-        // to the process function
+        if !value.is_finite() || !self.inner.has_param(id) {
+            return kInvalidArgument;
+        }
+
+        // While processing, the host also delivers the change in `inputParameterChanges`.
         if self.inner.is_processing.load(Ordering::SeqCst) {
             return kResultOk;
         }
 
-        self.inner.set_normalized_value_by_hash(id, value as f32)
+        // While idle, keep the value until the next process call so the audio module can publish it.
+        // The parameter index is the modulation id.
+        let queued = self.inner.queue_pending_automation(id, value as f32);
+        crate::nice_debug_assert!(queued, "The pending automation queue was full");
+
+        kResultOk
     }
 
     unsafe fn setComponentHandler(&self, handler: *mut IComponentHandler) -> tresult {
@@ -1079,6 +1082,15 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
             // in one call and is never split.
             let mut process_events = self.inner.process_events.borrow_mut();
             process_events.clear();
+            while let Some((poly_modulation_id, normalized_value)) =
+                self.inner.pending_automation.pop()
+            {
+                process_events.push(ProcessEvent::NoteEvent(NoteEvent::MonoAutomation {
+                    timing: 0,
+                    poly_modulation_id,
+                    normalized_value,
+                }));
+            }
 
             let push_process_event = |process_events: &mut AtomicRefMut<Vec<ProcessEvent<P>>>,
                                       event: ProcessEvent<P>| {
@@ -1175,26 +1187,15 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                                             },
                                         }),
                                     );
-                                } else {
-                                    // The global value is updated immediately. Parameters that
-                                    // support polyphonic modulation also need a MonoAutomation
-                                    // event so the plugin can recompute per-voice values.
-                                    // Polyphonic modulation is an offset from this monophonic
-                                    // value, which is already normalized in VST3.
-                                    if self.inner.set_normalized_value_by_hash(param_hash, value)
-                                        == kResultOk
-                                        && let Some(&poly_modulation_id) =
-                                            self.inner.poly_mod_ids_by_hash.get(&param_hash)
-                                    {
-                                        push_process_event(
-                                            &mut process_events,
-                                            ProcessEvent::NoteEvent(NoteEvent::MonoAutomation {
-                                                timing,
-                                                poly_modulation_id,
-                                                normalized_value: value,
-                                            }),
-                                        );
-                                    }
+                                } else if value.is_finite() && self.inner.has_param(param_hash) {
+                                    push_process_event(
+                                        &mut process_events,
+                                        ProcessEvent::NoteEvent(NoteEvent::MonoAutomation {
+                                            timing,
+                                            poly_modulation_id: param_hash,
+                                            normalized_value: value,
+                                        }),
+                                    );
                                 }
                             }
                         }
@@ -1344,6 +1345,25 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
             }
 
             let result = if is_param_flush {
+                // This call does not run the plugin. The next `process` clears
+                // `input_note_events` before reading the host queues, so automation that
+                // arrived here has to wait on `pending_automation`.
+                let mut input_note_events = self.inner.input_note_events.borrow_mut();
+                for event in input_note_events.iter() {
+                    if let NoteEvent::MonoAutomation {
+                        poly_modulation_id,
+                        normalized_value,
+                        ..
+                    } = event
+                    {
+                        let queued = self
+                            .inner
+                            .queue_pending_automation(*poly_modulation_id, *normalized_value);
+                        crate::nice_debug_assert!(queued, "The pending automation queue was full");
+                    }
+                }
+                input_note_events.clear();
+
                 kResultOk
             } else {
                 let block_start = 0usize;
@@ -1527,26 +1547,6 @@ impl<P: Vst3Plugin> IAudioProcessorTrait for Wrapper<P> {
                     _ => kResultOk,
                 }
             };
-
-            // After processing audio, we'll check if the editor has sent us updated plugin state.
-            // We'll restore that here on the audio thread to prevent changing the values during the
-            // process call and also to prevent inconsistent state when the host also wants to load
-            // plugin state.
-            // FIXME: Zero capacity channels allocate on receiving, find a better alternative that
-            //        doesn't do that
-            let updated_state = permit_alloc(|| self.inner.updated_state_receiver.try_recv());
-            if let Ok(mut state) = updated_state {
-                self.inner.set_state_inner(&mut state);
-
-                // We'll pass the state object back to the GUI thread so deallocation can happen
-                // there without potentially blocking the audio thread
-                if let Err(err) = self.inner.updated_state_sender.send(state) {
-                    crate::nice_debug_assert_failure!(
-                        "Failed to send state object back to GUI thread: {}",
-                        err
-                    );
-                };
-            }
 
             result
         })

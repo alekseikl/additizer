@@ -1,16 +1,13 @@
 use atomic_refcell::AtomicRefCell;
-use crossbeam::channel;
 use crossbeam::queue::ArrayQueue;
 use nice_plug_core::audio_setup::{AudioIOLayout, BufferConfig, ProcessMode};
 use nice_plug_core::context::gui::GuiContext;
 use nice_plug_core::context::process::Transport;
 use nice_plug_core::editor::{Editor, EditorHandle, SpawnedEditor};
 use nice_plug_core::midi::PluginNoteEvent;
-use nice_plug_core::params::internals::ParamPtr;
-use nice_plug_core::params::{FloatParam, PluginState};
+use nice_plug_core::params::PluginState;
 use nice_plug_core::plugin::{Plugin, ProcessStatus, SavedState, TaskExecutor};
 use parking_lot::Mutex;
-use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -20,8 +17,6 @@ use super::backend::Backend;
 use super::config::WrapperConfig;
 use super::context::{WrapperActivateContext, WrapperProcessContext};
 use crate::event_loop::{EventLoop, MainThreadExecutor, OsEventLoop};
-use crate::util::permit_alloc;
-use crate::wrapper::params::RegisteredParams;
 use crate::wrapper::standalone::context::WrapperGuiContext;
 use crate::wrapper::state;
 use crate::wrapper::util::process_wrapper;
@@ -41,11 +36,6 @@ pub struct Wrapper<P: Plugin, B: Backend<P>> {
     /// Plugin state fetched once during initialization. Persistent fields are saved and restored
     /// through this object without locking `plugin`.
     plugin_state: Arc<dyn PluginState>,
-    /// Host parameters returned by [`PluginState::params`]. Index is the parameter hash.
-    /// `ParamPtr`s point into this vector, so it must not be resized. The field is read only
-    /// through those pointers.
-    #[allow(dead_code)]
-    param_storage: Mutex<Vec<FloatParam>>,
     /// The plugin's editor, if it has one. This object does not do anything on its own, but we need
     /// to instantiate this in advance so we don't need to lock the entire [`Plugin`] object when
     /// creating an editor. Wrapped in an `AtomicRefCell` because it needs to be initialized late.
@@ -64,31 +54,13 @@ pub struct Wrapper<P: Plugin, B: Backend<P>> {
     #[allow(unused)]
     config: WrapperConfig,
 
-    /// A mapping from parameter pointers to string parameter IDs. This is used as part of
-    /// `Task::ParamValueChanged` to send a parameter change event to the editor from the GUI
-    /// thread. This is also used to check whether the `ParamPtr` for an incoming parameter change
-    /// actually belongs to a registered parameter.
-    param_ptr_to_id: HashMap<ParamPtr, String>,
-
     /// The bus and buffer configurations are static for the standalone target.
     audio_io_layout: AudioIOLayout,
     buffer_config: BufferConfig,
 
-    /// Parameter changes that have been output by the GUI that have not yet been set in the plugin.
-    /// This queue will be flushed at the end of every processing cycle, just like in the plugin
-    /// versions.
-    unprocessed_param_changes: ArrayQueue<(ParamPtr, f32)>,
-    /// The plugin is able to restore state through a method on the `GuiContext`. To avoid changing
-    /// parameters mid-processing and running into garbled data if the host also tries to load state
-    /// at the same time the restoring happens at the end of each processing call. If this zero
-    /// capacity channel contains state data at that point, then the audio thread will take the
-    /// state out of the channel, restore the state, and then send it back through the same channel.
-    /// In other words, the GUI thread acts as a sender and then as a receiver, while the audio
-    /// thread acts as a receiver and then as a sender. That way deallocation can happen on the GUI
-    /// thread. All of this happens without any blocking on the audio thread.
-    updated_state_sender: channel::Sender<SavedState>,
-    /// The receiver belonging to [`new_state_sender`][Self::new_state_sender].
-    updated_state_receiver: channel::Receiver<SavedState>,
+    /// Parameter changes from the GUI that the audio thread has not yet delivered as note events.
+    /// The id is the parameter index.
+    unprocessed_param_changes: ArrayQueue<(u32, f32)>,
     /// The current latency in samples, as set by the plugin through the [`ActivateContext`] and the
     /// [`ProcessContext`]. This value may not be used depending on the audio backend, but it's
     /// still kept track of to avoid firing debug assertions multiple times for the same latency
@@ -99,16 +71,9 @@ pub struct Wrapper<P: Plugin, B: Backend<P>> {
 /// Tasks that can be sent from the plugin to be executed on the main thread in a non-blocking
 /// realtime-safe way (either a random thread or `IRunLoop` on Linux, the OS' message loop on
 /// Windows and macOS).
-#[allow(clippy::enum_variant_names)]
 pub enum Task<P: Plugin> {
     /// Execute one of the plugin's background tasks.
     PluginTask(P::BackgroundTask),
-    StateChanged,
-    /// Inform the plugin that one parameter's value has changed. This uses the parameter hashes
-    /// since the task will be created from the audio thread. We don't have parameter hashes here
-    /// like in the plugin APIs, so we'll just use the `ParamPtr`s directly. These are used to index
-    /// the hashmaps stored on `Wrapper`.
-    ParameterValueChanged(ParamPtr, f32),
 }
 
 /// Errors that may arise while initializing the wrapped plugins.
@@ -123,20 +88,8 @@ pub enum WrapperError {
 
 impl<P: Plugin, B: Backend<P>> MainThreadExecutor<Task<P>> for Wrapper<P, B> {
     fn execute(&self, task: Task<P>, _is_gui_thread: bool) {
-        match task {
-            Task::PluginTask(task) => (self.task_executor.lock())(task),
-            Task::StateChanged => {
-                if let Some(editor_handle) = self.editor_handle.lock().as_ref() {
-                    editor_handle.state_changed();
-                }
-            }
-            Task::ParameterValueChanged(param_ptr, normalized_value) => {
-                if let Some(editor) = self.editor_handle.lock().as_ref() {
-                    let param_id = &self.param_ptr_to_id[&param_ptr];
-                    editor.param_value_changed(param_id, normalized_value);
-                }
-            }
-        }
+        let Task::PluginTask(task) = task;
+        (self.task_executor.lock())(task);
     }
 }
 
@@ -153,25 +106,12 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
         let task_executor = Mutex::new(plugin.task_executor());
         let plugin_state = plugin.state();
 
-        // This is used to allow the plugin to restore preset data from its editor, see the comment
-        // on `Self::updated_state_sender`
-        let (updated_state_sender, updated_state_receiver) = channel::bounded(0);
-
-        let registered = RegisteredParams::new(&plugin_state);
-        let param_ptr_to_id = registered
-            .ptr_to_hash
-            .iter()
-            .map(|(ptr, hash)| (*ptr, hash.to_string()))
-            .collect();
-        let param_storage = registered.storage;
-
         let wrapper = Arc::new(Wrapper {
             backend: AtomicRefCell::new(backend),
 
             plugin: Mutex::new(plugin),
             task_executor,
             plugin_state,
-            param_storage,
             // Initialized later as it needs a reference to the wrapper for the async executor
             editor: AtomicRefCell::new(None),
             editor_handle: Mutex::new(None),
@@ -179,8 +119,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
 
             // Also initialized later as it also needs a reference to the wrapper
             event_loop: AtomicRefCell::new(None),
-
-            param_ptr_to_id,
 
             audio_io_layout,
             buffer_config: BufferConfig {
@@ -193,8 +131,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
             config,
 
             unprocessed_param_changes: ArrayQueue::new(EVENT_QUEUE_CAPACITY),
-            updated_state_sender,
-            updated_state_receiver,
             current_latency: AtomicU32::new(0),
         });
 
@@ -331,31 +267,27 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
         res
     }
 
-    /// Get a parameter's ID based on a `ParamPtr`. Used in the `GuiContext` implementation for the
-    /// gesture checks.
-    #[allow(unused)]
-    pub fn param_id_from_ptr(&self, param: ParamPtr) -> Option<&str> {
-        self.param_ptr_to_id.get(&param).map(|s| s.as_str())
+    pub(crate) fn has_param(&self, index: u32) -> bool {
+        index < self.plugin_state.param_count()
     }
 
-    /// Set a parameter based on a `ParamPtr`. The value will be updated at the end of the next
-    /// processing cycle, and this won't do anything if the parameter has not been registered by the
-    /// plugin.
-    ///
-    /// This returns false if the parameter was not set because the `ParamPtr` was either unknown or
-    /// the queue is full.
-    pub fn set_parameter(&self, param: ParamPtr, normalized: f32) -> bool {
-        if !self.param_ptr_to_id.contains_key(&param) {
+    /// Queue a parameter change. The audio thread delivers it as a note event.
+    pub fn set_parameter(&self, index: u32, normalized: f32) -> bool {
+        if !self.has_param(index) {
             return false;
         }
 
         let push_successful = self
             .unprocessed_param_changes
-            .push((param, normalized))
+            .push((index, normalized))
             .is_ok();
         crate::nice_debug_assert!(push_successful, "The parameter change queue was full");
 
         push_successful
+    }
+
+    pub(crate) fn pop_param_change(&self) -> Option<(u32, f32)> {
+        self.unprocessed_param_changes.pop()
     }
 
     /// Get the plugin's state object, may be called by the plugin's GUI as part of its own preset
@@ -363,26 +295,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
     /// the JSON in the relevant plugin API methods instead.
     pub fn get_state_object(&self) -> SavedState {
         state::serialize_object::<P>(self.plugin_state.clone())
-    }
-
-    /// Update the plugin's internal state, called by the plugin itself from the GUI thread. To
-    /// prevent corrupting data and changing parameters during processing the actual state is only
-    /// updated at the end of the audio processing cycle.
-    pub fn set_state_object_from_gui(&self, state: SavedState) {
-        match self.updated_state_sender.send(state) {
-            Ok(_) => {
-                // As mentioned above, the state object will be passed back to this thread
-                // so we can deallocate it without blocking.
-                let state = self.updated_state_receiver.recv();
-                drop(state);
-            }
-            Err(err) => {
-                crate::nice_debug_assert_failure!(
-                    "Could not send new state to the audio thread: {:?}",
-                    err
-                );
-            }
-        }
     }
 
     /// Posts the task to the background task queue using [`EventLoop::schedule_background()`] so it
@@ -451,48 +363,6 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
                         }
                     }
 
-                    // Any output note events are now in a vector that can be processed by the
-                    // audio/MIDI backend
-
-                    // We'll always write these events to the first sample, so even when we add note
-                    // output we shouldn't have to think about interleaving events here
-                    while let Some((param_ptr, normalized_value)) =
-                        self.unprocessed_param_changes.pop()
-                    {
-                        if unsafe { param_ptr._internal_set_normalized_value(normalized_value) } {
-                            {
-                                let task_posted = self.schedule_gui(Task::ParameterValueChanged(
-                                    param_ptr,
-                                    normalized_value,
-                                ));
-                                crate::nice_debug_assert!(
-                                    task_posted,
-                                    "The task queue is full, dropping task..."
-                                );
-                            }
-                        }
-                    }
-
-                    // After processing audio, we'll check if the editor has sent us updated plugin
-                    // state.  We'll restore that here on the audio thread to prevent changing the
-                    // values during the process call and also to prevent inconsistent state when
-                    // the host also wants to load plugin state.
-                    // FIXME: Zero capacity channels allocate on receiving, find a better
-                    //        alternative that doesn't do that
-                    let updated_state = permit_alloc(|| self.updated_state_receiver.try_recv());
-                    if let Ok(mut state) = updated_state {
-                        self.set_state_inner(&mut state);
-
-                        // We'll pass the state object back to the GUI thread so deallocation can
-                        // happen there without potentially blocking the audio thread
-                        if let Err(err) = self.updated_state_sender.send(state) {
-                            crate::nice_debug_assert_failure!(
-                                "Failed to send state object back to GUI thread: {}",
-                                err
-                            );
-                        };
-                    }
-
                     true
                 })
             },
@@ -526,63 +396,4 @@ impl<P: Plugin, B: Backend<P>> Wrapper<P, B> {
         }
     }
 
-    /// Immediately set the plugin state. Returns `false` if the deserialization failed. In other
-    /// wrappers state is set from a couple places, so this function is here to be consistent and to
-    /// centralize all of this behavior. Includes `permit_alloc()`s around the deserialization and
-    /// initialization for the use case where `set_state_object_from_gui()` was called while the
-    /// plugin is process audio.
-    ///
-    /// Implicitly emits `Task::ParameterValuesChanged`.
-    ///
-    /// # Notes
-    ///
-    /// `self.plugin` must _not_ be locked while calling this function or it will deadlock.
-    fn set_state_inner(&self, state: &mut SavedState) -> bool {
-        // FIXME: This is obviously not realtime-safe, but loading presets without doing this could
-        //        lead to inconsistencies. It's the plugin's responsibility to not perform any
-        //        realtime-unsafe work when the initialize function is called a second time if it
-        //        supports runtime preset loading. `state::deserialize_object()` normally never
-        //        allocates, but if the plugin has persistent non-parameter data then its
-        //        `deserialize_fields()` implementation may still allocate.
-        let mut success =
-            permit_alloc(|| state::deserialize_object::<P>(state, self.plugin_state.clone()));
-        if !success {
-            crate::nice_debug_assert_failure!(
-                "Deserializing plugin state from a state object failed"
-            );
-            return false;
-        }
-
-        // If the plugin was already initialized then it needs to be reinitialized
-        {
-            // NOTE: This needs to be dropped after the `plugin` lock to avoid deadlocks
-            let mut activate_context = self.make_activate_context();
-            let mut plugin = self.plugin.lock();
-
-            // See above
-            success = permit_alloc(|| {
-                plugin.activate(
-                    &self.audio_io_layout,
-                    &self.buffer_config,
-                    &mut activate_context,
-                )
-            });
-            if success {
-                process_wrapper(|| plugin.reset());
-            }
-        }
-
-        crate::nice_debug_assert!(
-            success,
-            "Plugin returned false when reinitializing after loading state"
-        );
-
-        {
-            // Reinitialize the plugin after loading state so it can respond to the new parameter values
-            let task_posted = self.schedule_gui(Task::StateChanged);
-            crate::nice_debug_assert!(task_posted, "The task queue is full, dropping task...");
-        }
-
-        success
-    }
 }

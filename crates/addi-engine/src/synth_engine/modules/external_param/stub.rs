@@ -30,10 +30,16 @@ impl ExternalParamAudioEnd for AudioEnd {
     }
 
     fn update_value(&mut self, _value: Smp) {}
+
+    fn update_automation(&mut self, _value: Smp) {}
 }
 
 impl ExternalParamUiEnd for NoUi {
     fn get_value(&mut self) -> Smp {
+        self.diverge()
+    }
+
+    fn automation_value(&mut self) -> Smp {
         self.diverge()
     }
 

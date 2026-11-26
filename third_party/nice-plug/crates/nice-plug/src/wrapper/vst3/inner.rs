@@ -1,25 +1,28 @@
 use atomic_refcell::AtomicRefCell;
 use crossbeam::atomic::AtomicCell;
-use crossbeam::channel;
 use nice_plug_core::audio_setup::{AudioIOLayout, BufferConfig, ProcessMode};
 use nice_plug_core::context::gui::GuiContext;
 use nice_plug_core::context::process::Transport;
 use nice_plug_core::editor::dpi::Size;
 use nice_plug_core::editor::{Editor, SpawnedEditor};
 use nice_plug_core::midi::{MidiConfig, PluginNoteEvent};
-use nice_plug_core::params::internals::ParamPtr;
-use nice_plug_core::params::{FloatParam, PluginState};
+use crossbeam::queue::ArrayQueue;
+use nice_plug_core::params::PluginState;
 use nice_plug_core::plugin::TrackInfo;
 use nice_plug_core::plugin::{Plugin, ProcessStatus, SavedState, TaskExecutor};
 use parking_lot::Mutex;
 use parking_lot::RwLock;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use try_lock::TryLock;
 use vst3::ComWrapper;
 use vst3::Steinberg::Vst::{IComponentHandler, IComponentHandlerTrait, IEventList, RestartFlags_};
-use vst3::Steinberg::{kInvalidArgument, kResultOk, tresult};
+
+/// Re-read titles, flags, and values. The parameter count and ids stay the same.
+const PARAM_RESCAN_FLAGS: i32 =
+    RestartFlags_::kParamValuesChanged | RestartFlags_::kParamTitlesChanged;
+use vst3::Steinberg::kResultOk;
 use vst3::{ComPtr, ComRef};
 
 use super::context::{WrapperActivateContext, WrapperProcessContext};
@@ -28,7 +31,6 @@ use super::param_units::ParamUnits;
 use super::util::{VST3_MIDI_PARAMS_END, VST3_MIDI_PARAMS_START};
 use crate::event_loop::{EventLoop, MainThreadExecutor, OsEventLoop};
 use crate::util::permit_alloc;
-use crate::wrapper::params::RegisteredParams;
 use crate::wrapper::state;
 use crate::wrapper::util::buffer_management::BufferManager;
 use crate::wrapper::vst3::Vst3Plugin;
@@ -44,13 +46,12 @@ pub(crate) struct WrapperInner<P: Vst3Plugin> {
     /// The plugin's background task executor closure.
     pub task_executor: Mutex<TaskExecutor<P>>,
     /// Plugin state fetched once during initialization. Persistent fields are saved and restored
-    /// through this object without locking `plugin`.
+    /// through this object without locking `plugin`. Host parameter queries go through this object.
+    /// The parameter id is its index.
     pub plugin_state: Arc<dyn PluginState>,
-    /// Host parameters returned by [`PluginState::params`]. Index is the parameter hash.
-    /// `ParamPtr`s point into this vector, so it must not be resized. The field is read only
-    /// through those pointers.
-    #[allow(dead_code)]
-    param_storage: Mutex<Vec<FloatParam>>,
+    /// Parameter value changes that arrived while the plugin was not processing. The next process
+    /// call delivers them as note events. The id is the parameter index.
+    pub pending_automation: ArrayQueue<(u32, f32)>,
     /// The plugin's editor, if it has one. This object does not do anything on its own, but we need
     /// to instantiate this in advance so we don't need to lock the entire [`Plugin`] object when
     /// creating an editor. Wrapped in an `AtomicRefCell` because it needs to be initialized late.
@@ -124,38 +125,8 @@ pub(crate) struct WrapperInner<P: Vst3Plugin> {
     /// immediately. The queues arrive separately, so they are merged here and sorted by sample
     /// offset before the plugin processes the whole host buffer in one call.
     pub process_events: AtomicRefCell<Vec<ProcessEvent<P>>>,
-    /// The plugin is able to restore state through a method on the `GuiContext`. To avoid changing
-    /// parameters mid-processing and running into garbled data if the host also tries to load state
-    /// at the same time the restoring happens at the end of each processing call. If this zero
-    /// capacity channel contains state data at that point, then the audio thread will take the
-    /// state out of the channel, restore the state, and then send it back through the same channel.
-    /// In other words, the GUI thread acts as a sender and then as a receiver, while the audio
-    /// thread acts as a receiver and then as a sender. That way deallocation can happen on the GUI
-    /// thread. All of this happens without any blocking on the audio thread.
-    pub updated_state_sender: channel::Sender<SavedState>,
-    /// The receiver belonging to [`new_state_sender`][Self::new_state_sender].
-    pub updated_state_receiver: channel::Receiver<SavedState>,
 
-    /// The keys from `param_map` in a stable order.
-    pub param_hashes: Vec<u32>,
-    /// A mapping from parameter ID hashes (obtained from the string parameter IDs) to pointers to
-    /// parameters belonging to the plugin. These addresses will remain stable as long as the
-    /// `params` object does not get deallocated.
-    pub param_by_hash: HashMap<u32, ParamPtr>,
-    /// Mappings from parameter hashes to string parameter IDs. Used for notifying the plugin's
-    /// editor about parameter changes.
-    pub param_id_by_hash: HashMap<u32, String>,
     pub param_units: ParamUnits,
-    /// The inverse mapping from [`param_by_hash`][Self::param_by_hash]. This is needed to be able
-    /// to have an ergonomic parameter setting API that uses references to the parameters instead of
-    /// having to add a setter function to the parameter (or even worse, have it be completely
-    /// untyped).
-    pub param_ptr_to_hash: HashMap<ParamPtr, u32>,
-    /// Parameter hashes that opt into polyphonic modulation, mapped to the
-    /// [`NoteEvent::MonoAutomation`][nice_plug_core::midi::NoteEvent::MonoAutomation] /
-    /// [`NoteEvent::PolyModulation`][nice_plug_core::midi::NoteEvent::PolyModulation] id set with
-    /// `.with_poly_modulation_id()`.
-    pub poly_mod_ids_by_hash: HashMap<u32, u32>,
 }
 
 /// Tasks that can be sent from the plugin to be executed on the main thread in a non-blocking
@@ -167,9 +138,6 @@ pub enum Task<P: Plugin> {
     PluginTask(P::BackgroundTask),
     /// Inform the plugin that one or more parameter values have changed.
     StateChanged,
-    /// Inform the plugin that one parameter's value has changed. This uses the parameter hashes
-    /// since the task will be created from the audio thread.
-    ParameterValueChanged(u32, f32),
     /// Trigger a restart with the given restart flags. This is a bit set of the flags from
     /// [`vst3::Steinberg::Vst::RestartFlags`].
     TriggerRestart(i32),
@@ -205,39 +173,18 @@ impl<P: Vst3Plugin> WrapperInner<P> {
         let mut plugin = P::default();
         let task_executor = Mutex::new(plugin.task_executor());
 
-        // This is used to allow the plugin to restore preset data from its editor, see the comment
-        // on `Self::updated_state_sender`
-        let (updated_state_sender, updated_state_receiver) = channel::bounded(0);
-
-        // This is a mapping from the parameter IDs specified by the plugin to pointers to those
-        // parameters. These pointers are assumed to be safe to dereference as long as
-        // `wrapper.plugin` is alive. The plugin API identifiers these parameters by hashes, which
-        // we'll calculate from the string ID specified by the plugin. These parameters should also
-        // remain in the same order as the one returned by the plugin.
         let plugin_state = plugin.state();
-        let RegisteredParams {
-            storage: param_storage,
-            hashes: param_hashes,
-            by_hash: param_by_hash,
-            id_by_hash: param_id_by_hash,
-            group_by_hash,
-            ptr_to_hash: param_ptr_to_hash,
-            poly_mod_ids_by_hash,
-        } = RegisteredParams::new(&plugin_state);
-        let param_units = ParamUnits::from_param_groups(
-            group_by_hash
-                .iter()
-                .map(|(hash, group)| (*hash, group.as_str())),
-        )
-        .expect("Inconsistent parameter groups");
+        let param_count = plugin_state.param_count();
+        let param_units = ParamUnits::from_param_groups((0..param_count).map(|index| (index, "")))
+            .expect("Inconsistent parameter groups");
 
         if cfg!(debug_assertions) && P::MIDI_INPUT >= MidiConfig::MidiCCs {
-            for hash in &param_hashes {
-                if (VST3_MIDI_PARAMS_START..VST3_MIDI_PARAMS_END).contains(hash) {
+            for index in 0..param_count {
+                if (VST3_MIDI_PARAMS_START..VST3_MIDI_PARAMS_END).contains(&index) {
                     crate::nice_debug_assert_failure!(
                         "Parameter index {} collides with an automatically generated MIDI CC \
                          parameter",
-                        hash
+                        index
                     );
                 }
             }
@@ -253,7 +200,7 @@ impl<P: Vst3Plugin> WrapperInner<P> {
             plugin: TryLock::new(plugin),
             task_executor,
             plugin_state,
-            param_storage,
+            pending_automation: ArrayQueue::new(2048),
             // Initialized later as it needs a reference to the wrapper for the async executor
             editor: AtomicRefCell::new(None),
             editor_window: Arc::new(AtomicRefCell::new(None)),
@@ -288,15 +235,8 @@ impl<P: Vst3Plugin> WrapperInner<P> {
             input_note_events,
             note_expression_controller: AtomicRefCell::new(NoteExpressionController::default()),
             process_events: AtomicRefCell::new(Vec::with_capacity(P::INPUT_EVENT_CAPACITY)),
-            updated_state_sender,
-            updated_state_receiver,
 
-            param_hashes,
-            param_by_hash,
-            param_id_by_hash,
             param_units,
-            param_ptr_to_hash,
-            poly_mod_ids_by_hash,
         });
 
         // FIXME: Right now this is safe, but if we are going to have a singleton main thread queue
@@ -432,43 +372,14 @@ impl<P: Vst3Plugin> WrapperInner<P> {
         }
     }
 
-    /// Get a parameter's ID based on a `ParamPtr`. Used in the `GuiContext` implementation for the
-    /// gesture checks.
-    #[allow(unused)]
-    pub fn param_id_from_ptr(&self, param: ParamPtr) -> Option<&str> {
-        self.param_ptr_to_hash
-            .get(&param)
-            .and_then(|hash| self.param_id_by_hash.get(hash))
-            .map(|s| s.as_str())
+    pub fn has_param(&self, index: u32) -> bool {
+        index < self.plugin_state.param_count()
     }
 
-    /// Store a value for a parameter as triggered by a VST3 parameter update, so the host can read
-    /// it back. The plugin receives the same change as a note event.
-    ///
-    /// After calling this function, you should call
-    /// [`notify_param_values_changed()`][Self::notify_param_values_changed()] to allow the editor
-    /// to update itself. This needs to be done separately so you can process parameter changes in
-    /// batches.
-    pub fn set_normalized_value_by_hash(&self, hash: u32, normalized_value: f32) -> tresult {
-        if !normalized_value.is_finite() {
-            return kInvalidArgument;
-        }
-
-        match self.param_by_hash.get(&hash) {
-            Some(param_ptr) => {
-                if unsafe { param_ptr._internal_set_normalized_value(normalized_value) } {
-                    let task_posted =
-                        self.schedule_gui(Task::ParameterValueChanged(hash, normalized_value));
-                    crate::nice_debug_assert!(
-                        task_posted,
-                        "The task queue is full, dropping task..."
-                    );
-                }
-
-                kResultOk
-            }
-            _ => kInvalidArgument,
-        }
+    pub fn queue_pending_automation(&self, index: u32, normalized_value: f32) -> bool {
+        self.pending_automation
+            .push((index, normalized_value))
+            .is_ok()
     }
 
     /// Get the plugin's state object, may be called by the plugin's GUI as part of its own preset
@@ -476,59 +387,6 @@ impl<P: Vst3Plugin> WrapperInner<P> {
     /// the JSON in the relevant plugin API methods instead.
     pub fn get_state_object(&self) -> SavedState {
         state::serialize_object::<P>(self.plugin_state.clone())
-    }
-
-    /// Update the plugin's internal state, called by the plugin itself from the GUI thread. To
-    /// prevent corrupting data and changing parameters during processing the actual state is only
-    /// updated at the end of the audio processing cycle.
-    pub fn set_state_object_from_gui(&self, mut state: SavedState) {
-        use crossbeam::channel::SendTimeoutError;
-
-        // Use a loop and timeouts to handle the super rare edge case when this function gets called
-        // between a process call and the host disabling the plugin
-        loop {
-            if self.is_processing.load(Ordering::SeqCst) {
-                // If the plugin is currently processing audio, then we'll perform the restore
-                // operation at the end of the audio call. This involves sending the state to the
-                // audio thread, having the audio thread handle the state restore at the very end of
-                // the process function, and then sending the state back to this thread so it can be
-                // deallocated without blocking the audio thread.
-                match self
-                    .updated_state_sender
-                    .send_timeout(state, std::time::Duration::from_secs(1))
-                {
-                    Ok(_) => {
-                        // As mentioned above, the state object will be passed back to this thread
-                        // so we can deallocate it without blocking.
-                        let state = self.updated_state_receiver.recv();
-                        drop(state);
-                        break;
-                    }
-                    Err(SendTimeoutError::Timeout(value)) => {
-                        state = value;
-                        continue;
-                    }
-                    Err(SendTimeoutError::Disconnected(_)) => {
-                        crate::nice_debug_assert_failure!("State update channel got disconnected");
-                        return;
-                    }
-                }
-            } else {
-                // Otherwise we'll set the state right here and now, since this function should be
-                // called from a GUI thread
-                self.set_state_inner(&mut state);
-                break;
-            }
-        }
-
-        // After the state has been updated, notify the host about the new parameter values
-        let task_posted = self
-            .event_loop
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .schedule_gui(Task::TriggerRestart(RestartFlags_::kParamValuesChanged));
-        crate::nice_debug_assert!(task_posted, "The task queue is full, dropping task...");
     }
 
     pub fn set_latency_samples(&self, samples: u32) {
@@ -539,6 +397,11 @@ impl<P: Vst3Plugin> WrapperInner<P> {
         }
     }
 
+    pub fn request_param_rescan(&self) {
+        let task_posted = self.schedule_gui(Task::TriggerRestart(PARAM_RESCAN_FLAGS));
+        crate::nice_debug_assert!(task_posted, "The task queue is full, dropping task...");
+    }
+
     pub fn request_restart(&self) {
         let task_posted = self.schedule_gui(Task::TriggerRestart(RestartFlags_::kLatencyChanged));
         crate::nice_debug_assert!(task_posted, "The task queue is full, dropping task...");
@@ -546,8 +409,7 @@ impl<P: Vst3Plugin> WrapperInner<P> {
 
     /// Immediately set the plugin state. Returns `false` if the deserialization failed. The plugin
     /// state is set from a couple places, so this function aims to deduplicate that. Includes
-    /// `permit_alloc()`s around the deserialization and initialization for the use case where
-    /// `set_state_object_from_gui()` was called while the plugin is process audio.
+    /// `permit_alloc()`s around the deserialization.
     ///
     /// Implicitly emits `Task::ParameterValuesChanged`.
     ///
@@ -572,6 +434,8 @@ impl<P: Vst3Plugin> WrapperInner<P> {
             // Reinitialize the plugin after loading state so it can respond to the new parameter values
             let task_posted = self.schedule_gui(Task::StateChanged);
             crate::nice_debug_assert!(task_posted, "The task queue is full, dropping task...");
+            let task_posted = self.schedule_gui(Task::TriggerRestart(PARAM_RESCAN_FLAGS));
+            crate::nice_debug_assert!(task_posted, "The task queue is full, dropping task...");
         }
 
         success
@@ -588,17 +452,6 @@ impl<P: Vst3Plugin> MainThreadExecutor<Task<P>> for WrapperInner<P> {
 
                 if let Some(editor_window) = self.editor_window.borrow().as_ref() {
                     editor_window.get().handle.state_changed();
-                }
-            }
-            Task::ParameterValueChanged(param_hash, normalized_value) => {
-                use nice_plug_core::editor::EditorHandle;
-
-                if let Some(editor_window) = self.editor_window.borrow().as_ref() {
-                    let param_id = &self.param_id_by_hash[&param_hash];
-                    editor_window
-                        .get()
-                        .handle
-                        .param_value_changed(param_id, normalized_value);
                 }
             }
             Task::TriggerRestart(flags) => match &*self.component_handler.borrow() {

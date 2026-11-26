@@ -23,7 +23,7 @@ use vst3::{
 use vst3::Steinberg::Vst::IComponentHandlerTrait;
 
 use nice_plug_core::{
-    context::gui::GuiContextInner, params::internals::ParamPtr, plugin::SavedState,
+    context::gui::GuiContextInner, plugin::SavedState,
 };
 
 use crate::wrapper::vst3::Vst3Plugin;
@@ -381,111 +381,86 @@ impl<P: Vst3Plugin + Send> GuiContextInner for WrapperGuiContext<P> {
 
     // All of these functions are supposed to be called from the main thread, so we'll put some
     // trust in the caller and assume that this is indeed the case
-    unsafe fn raw_begin_set_parameter(&self, param: ParamPtr) {
+    unsafe fn raw_begin_set_parameter(&self, index: u32) {
         let inner = self.inner.upgrade().unwrap();
+        if !inner.has_param(index) {
+            crate::nice_debug_assert_failure!("Unknown parameter index {}", index);
+            return;
+        }
 
         match &*inner.component_handler.borrow() {
-            Some(handler) => match inner.param_ptr_to_hash.get(&param) {
-                Some(hash) => unsafe {
-                    handler.beginEdit(*hash);
-                },
-                None => crate::nice_debug_assert_failure!("Unknown parameter: {:?}", param),
+            Some(handler) => unsafe {
+                handler.beginEdit(index);
             },
             None => crate::nice_debug_assert_failure!("Component handler not yet set"),
         }
 
         #[cfg(debug_assertions)]
-        match inner.param_id_from_ptr(param) {
-            Some(param_id) => self
-                .param_gesture_checker
-                .borrow_mut()
-                .begin_set_parameter(param_id),
-            None => crate::nice_debug_assert_failure!(
-                "raw_begin_set_parameter() called with an unknown ParamPtr"
-            ),
-        }
+        self.param_gesture_checker
+            .borrow_mut()
+            .begin_set_parameter(&index.to_string());
     }
 
-    unsafe fn raw_set_parameter_normalized(&self, param: ParamPtr, normalized: f32) {
+    unsafe fn raw_set_parameter_normalized(&self, index: u32, normalized: f32) {
         let inner = self.inner.upgrade().unwrap();
+        if !inner.has_param(index) {
+            crate::nice_debug_assert_failure!("Unknown parameter index {}", index);
+            return;
+        }
 
         match &*inner.component_handler.borrow() {
-            Some(handler) => match inner.param_ptr_to_hash.get(&param) {
-                Some(hash) => {
-                    // Only update the parameters manually if the host is not processing audio. If
-                    // the plugin is currently processing audio, the host will pass this change back
-                    // to the plugin in the audio callback. This also prevents the values from
-                    // changing in the middle of the process callback, which would be unsound.
-                    // FIXME: So this doesn't work for REAPER, because they just silently stop
-                    //        processing audio when you bypass the plugin. Great. We can add a time
-                    //        based heuristic to work around this in the meantime.
-                    if !inner
-                        .is_processing
-                        .load(std::sync::atomic::Ordering::SeqCst)
-                    {
-                        inner.set_normalized_value_by_hash(*hash, normalized);
-                    }
-
-                    unsafe { handler.performEdit(*hash, normalized as f64) };
+            Some(handler) => {
+                // While the host is processing it passes this change back in the audio callback.
+                // While idle, queue it for the next process call. The parameter index is the
+                // modulation id.
+                if !inner
+                    .is_processing
+                    .load(std::sync::atomic::Ordering::SeqCst)
+                {
+                    let queued = inner.queue_pending_automation(index, normalized);
+                    crate::nice_debug_assert!(queued, "The pending automation queue was full");
                 }
-                None => crate::nice_debug_assert_failure!("Unknown parameter: {:?}", param),
-            },
+
+                unsafe { handler.performEdit(index, normalized as f64) };
+            }
             None => crate::nice_debug_assert_failure!("Component handler not yet set"),
         }
 
         #[cfg(debug_assertions)]
-        match inner.param_id_from_ptr(param) {
-            Some(param_id) => self
-                .param_gesture_checker
-                .borrow_mut()
-                .set_parameter(param_id),
-            None => {
-                crate::nice_debug_assert_failure!(
-                    "raw_set_parameter() called with an unknown ParamPtr"
-                )
-            }
-        }
+        self.param_gesture_checker
+            .borrow_mut()
+            .set_parameter(&index.to_string());
     }
 
-    unsafe fn raw_end_set_parameter(&self, param: ParamPtr) {
+    unsafe fn raw_end_set_parameter(&self, index: u32) {
         let inner = self.inner.upgrade().unwrap();
+        if !inner.has_param(index) {
+            crate::nice_debug_assert_failure!("Unknown parameter index {}", index);
+            return;
+        }
 
         match &*inner.component_handler.borrow() {
-            Some(handler) => match inner.param_ptr_to_hash.get(&param) {
-                Some(hash) => unsafe {
-                    handler.endEdit(*hash);
-                },
-                None => crate::nice_debug_assert_failure!("Unknown parameter: {:?}", param),
+            Some(handler) => unsafe {
+                handler.endEdit(index);
             },
             None => crate::nice_debug_assert_failure!("Component handler not yet set"),
         }
 
         #[cfg(debug_assertions)]
-        match inner.param_id_from_ptr(param) {
-            Some(param_id) => self
-                .param_gesture_checker
-                .borrow_mut()
-                .end_set_parameter(param_id),
-            None => {
-                crate::nice_debug_assert_failure!(
-                    "raw_end_set_parameter() called with an unknown ParamPtr"
-                )
-            }
-        }
+        self.param_gesture_checker
+            .borrow_mut()
+            .end_set_parameter(&index.to_string());
     }
 
     fn get_state(&self) -> SavedState {
         self.inner.upgrade().unwrap().get_state_object()
     }
 
-    fn set_state(&self, state: SavedState) {
-        self.inner
-            .upgrade()
-            .unwrap()
-            .set_state_object_from_gui(state)
-    }
-
     fn request_restart(&self) {
         self.inner.upgrade().unwrap().request_restart();
+    }
+
+    fn request_param_rescan(&self) {
+        self.inner.upgrade().unwrap().request_param_rescan();
     }
 }

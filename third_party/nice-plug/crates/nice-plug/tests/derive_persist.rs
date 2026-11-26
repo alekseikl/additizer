@@ -23,10 +23,6 @@ struct InnerParams {
 }
 
 impl PluginState for InnerParams {
-    fn params(&self) -> Vec<FloatParam> {
-        Vec::new()
-    }
-
     fn serialize_fields(&self) -> BTreeMap<String, String> {
         // When nested in another struct, the ID prefix will be added to `bar`
         let mut data = BTreeMap::new();

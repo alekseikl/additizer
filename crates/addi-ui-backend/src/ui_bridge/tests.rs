@@ -300,6 +300,21 @@ fn move_filter_reorders_bands() {
     assert_eq!(cutoffs(&eq.get_config().filters), [100.0, 8_000.0, 1_000.0]);
 }
 
+#[test]
+fn external_param_binds_a_host_parameter_by_index() {
+    let mut harness = make_bridge(minimal_engine());
+    harness.add_module(ModuleType::ExternalParam, GridVec::new(0, 0));
+    sync(&mut harness);
+
+    let id = harness.take_placed_module().expect("module placed");
+    harness.set_module_label(id, "Cutoff".into());
+
+    let binding = harness.host_param_binding(0).expect("param 0 is bound");
+    assert_eq!(binding.name, "Cutoff");
+    assert_eq!(binding.value, 0.0);
+    assert!(harness.host_param_binding(1).is_none());
+}
+
 fn cutoffs(filters: &[EqFilter]) -> [f32; 3] {
     [
         filters[0].cutoff_hz,

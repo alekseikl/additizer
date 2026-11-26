@@ -204,12 +204,12 @@ pub enum NoteEvent<S> {
         /// The note's MIDI key number.
         key: Key,
     },
-    /// A polyphonic modulation event, available on [`MidiConfig::Basic`] and up. This will only be
-    /// sent for parameters that were decorated with the `.with_poly_modulation_id()` modifier, and
-    /// only by supported hosts. `normalized_offset` is an offset from the parameter's monophonic
-    /// automation value for one voice. That automation value arrives as [`MonoAutomation`], and a
-    /// monophonic modulation offset arrives as [`MonoModulation`]. Polyphonic modulation replaces
-    /// the monophonic offset for the targeted voice.
+    /// A polyphonic modulation event, available on [`MidiConfig::Basic`] and up. Sent for
+    /// automatable parameters by hosts that support per-note modulation. `normalized_offset` is an
+    /// offset from the parameter's monophonic automation value for one voice. That automation
+    /// value arrives as [`MonoAutomation`], and a monophonic modulation offset arrives as
+    /// [`MonoModulation`]. Polyphonic modulation replaces the monophonic offset for the targeted
+    /// voice.
     ///
     /// The plugin applies these events directly. Parameter objects do not store the current value
     /// for DSP.
@@ -223,8 +223,7 @@ pub enum NoteEvent<S> {
         /// should use the values from this and subsequent polyphonic modulation events instead of
         /// the global value.
         voice_id: i32,
-        /// The ID that was set for the modulated parameter using the `.with_poly_modulation_id()`
-        /// method.
+        /// The modulated parameter's index.
         poly_modulation_id: u32,
         /// The normalized offset value. See the event's docstring for more information.
         normalized_offset: f32,
@@ -234,8 +233,7 @@ pub enum NoteEvent<S> {
     /// event's documentation for more details. `normalized_value` is the new monophonic value.
     MonoAutomation {
         timing: u32,
-        /// The ID that was set for the modulated parameter using the `.with_poly_modulation_id()`
-        /// method.
+        /// The automated parameter's index.
         poly_modulation_id: u32,
         /// The parameter's new normalized value. This needs to be added to a voice's normalized
         /// offset to get that voice's modulated normalized value. See the `PolyModulation` event's
@@ -245,14 +243,12 @@ pub enum NoteEvent<S> {
     /// A notification that the host changed the monophonic modulation offset of a parameter.
     /// Available on [`MidiConfig::Basic`] and up. This is the global form of [`PolyModulation`]:
     /// the host did not target a note, so the offset applies to every voice that is not
-    /// polyphonically modulated. Only sent for parameters decorated with
-    /// `.with_poly_modulation_id()`. The offset is not stored on the parameter. See the
+    /// polyphonically modulated. The offset is not stored on the parameter. See the
     /// `PolyModulation` event's docstring for how this offset interacts with automation and
     /// per-voice modulation.
     MonoModulation {
         timing: u32,
-        /// The ID that was set for the modulated parameter using the `.with_poly_modulation_id()`
-        /// method.
+        /// The modulated parameter's index.
         poly_modulation_id: u32,
         /// The normalized modulation offset. Add this to the latest [`MonoAutomation`] value.
         /// Polyphonic modulation replaces this offset for voices that receive a

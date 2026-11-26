@@ -26,6 +26,15 @@ impl<L: ExternalParamLinks> ExternalParamUiBridge<L> {
         self.ui_end.get_value()
     }
 
+    pub fn selected_index(&self) -> usize {
+        self.config.selected_param_index
+    }
+
+    /// Last mono automation value published by the audio module.
+    pub fn automation_value(&mut self) -> Smp {
+        self.ui_end.automation_value()
+    }
+
     pub fn select_param(&mut self, index: usize) {
         if self.ui_end.select_param(index) {
             self.config.selected_param_index = index.min(NUM_EXT_PARAMS - 1);

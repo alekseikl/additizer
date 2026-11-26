@@ -114,6 +114,7 @@ impl<L: ExternalParamLinks> ExternalParam<L> {
     pub fn handle_mono_automation(&mut self, param_idx: usize, offset: usize, value: Smp) {
         if param_idx == self.params.selected_param_index {
             self.values.set(value, offset);
+            self.audio_end.update_automation(value.clamp(0.0, 1.0));
         }
     }
 

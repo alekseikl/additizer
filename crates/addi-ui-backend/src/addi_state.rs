@@ -2,18 +2,17 @@ use std::collections::BTreeMap;
 use std::sync::atomic::Ordering;
 
 use atomic_float::AtomicF32;
-use nice_plug_core::params::range::FloatRange;
-use nice_plug_core::params::{FloatParam, PluginState};
+use nice_plug_core::params::{ParamFlags, PluginState};
 use parking_lot::Mutex;
 
 use addi_engine::external_param::NUM_EXT_PARAMS;
-use addi_engine::{EngineConfig, Smp, SynthEngine};
+use addi_engine::{EngineConfig, ModuleConfig, ModuleType, Smp, SynthEngine};
 
 use crate::{
     default_scheme::build_default_preset,
     links::PluginLinks,
     preset::{Preset, PresetInfo},
-    ui_bridge::UiBridge,
+    ui_bridge::{HostParamBinding, UiBridge, module_default_label},
 };
 
 /// The preset field key written by the previous parameter object. Kept so old presets still load.
@@ -122,23 +121,85 @@ impl AddiState {
         )
     }
 
-    fn host_params() -> Vec<FloatParam> {
+    /// Hidden flag and name of every host parameter. The editor uses this to notice when the host
+    /// should re-read parameter info.
+    pub fn host_param_signature(&self) -> Vec<(bool, String)> {
         (0..NUM_EXT_PARAMS)
-            .map(|index| {
-                FloatParam::new(
-                    format!("Param {}", index + 1),
-                    0.0,
-                    FloatRange::Linear { min: 0.0, max: 1.0 },
-                )
-                .with_poly_modulation_id(index as u32)
+            .map(|index| match self.binding(index as u32) {
+                Some(binding) => (false, binding.name),
+                None => (true, format!("Param {}", index + 1)),
             })
             .collect()
     }
+
+    /// Binding for `index`. The live bridge is current while the plugin is activated. Before
+    /// activation and after deactivation the stored preset supplies the name and which index is
+    /// bound. The preset does not store the automation value, so that stays `0.0`.
+    fn binding(&self, index: u32) -> Option<HostParamBinding> {
+        let index = index as usize;
+        if index >= NUM_EXT_PARAMS {
+            return None;
+        }
+
+        let mut bridge = self.ui_bridge.lock();
+        if let Some(bridge) = bridge.as_mut() {
+            return bridge.host_param_binding(index);
+        }
+        drop(bridge);
+
+        let preset = self.preset.lock();
+        binding_from_preset(&preset, index)
+    }
+}
+
+/// Lowest-id external-parameter module in `preset` that is bound to `index`.
+fn binding_from_preset(preset: &Preset, index: usize) -> Option<HostParamBinding> {
+    let module = preset
+        .engine
+        .modules
+        .iter()
+        .filter_map(|module| match module {
+            ModuleConfig::ExternalParam(config)
+                if config.selected_param_index.min(NUM_EXT_PARAMS - 1) == index =>
+            {
+                Some(config.as_ref())
+            }
+            _ => None,
+        })
+        .min_by_key(|config| config.id)?;
+
+    let name = preset
+        .ui
+        .modules
+        .get(&module.id)
+        .filter(|module| !module.label.is_empty())
+        .map(|module| module.label.clone())
+        .unwrap_or_else(|| module_default_label(ModuleType::ExternalParam).to_string());
+
+    Some(HostParamBinding { name, value: 0.0 })
 }
 
 impl PluginState for AddiState {
-    fn params(&self) -> Vec<FloatParam> {
-        Self::host_params()
+    fn param_count(&self) -> u32 {
+        NUM_EXT_PARAMS as u32
+    }
+
+    fn param_name(&self, index: u32) -> String {
+        self.binding(index)
+            .map(|binding| binding.name)
+            .unwrap_or_else(|| format!("Param {}", index + 1))
+    }
+
+    fn param_flags(&self, index: u32) -> ParamFlags {
+        if self.binding(index).is_some() {
+            ParamFlags::empty()
+        } else {
+            ParamFlags::HIDDEN | ParamFlags::NON_AUTOMATABLE
+        }
+    }
+
+    fn param_normalized_value(&self, index: u32) -> f32 {
+        self.binding(index).map(|binding| binding.value).unwrap_or(0.0)
     }
 
     fn serialize_fields(&self) -> BTreeMap<String, String> {
@@ -178,5 +239,100 @@ impl PluginState for AddiState {
         } else {
             **self.preset.lock() = preset;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use addi_engine::external_param::ExternalParamConfig;
+    use nice_plug_core::params::ParamFlags;
+    use rustc_hash::FxHashMap;
+
+    use crate::ui_bridge::ui_config::{UiConfig, UiModuleConfig};
+
+    use super::*;
+
+    fn store_preset(state: &AddiState, preset: &Preset) {
+        let mut fields = BTreeMap::new();
+        fields.insert(
+            PRESET_FIELD.to_string(),
+            serde_json::to_string(preset).expect("preset serializes"),
+        );
+        state.deserialize_fields(&fields);
+    }
+
+    fn preset_with_params(modules: Vec<(i32, usize, &str)>) -> Preset {
+        let mut ui_modules = FxHashMap::default();
+        let engine_modules = modules
+            .into_iter()
+            .map(|(id, index, label)| {
+                ui_modules.insert(
+                    id,
+                    UiModuleConfig {
+                        id,
+                        label: label.to_string(),
+                        position: Default::default(),
+                    },
+                );
+                ModuleConfig::ExternalParam(Box::new(ExternalParamConfig {
+                    id,
+                    selected_param_index: index,
+                    sample_on_trigger: false,
+                }))
+            })
+            .collect();
+
+        Preset {
+            info: PresetInfo::default(),
+            engine: EngineConfig {
+                modules: engine_modules,
+                ..EngineConfig::default()
+            },
+            oversampling: true,
+            ui: UiConfig {
+                modules: ui_modules,
+            },
+        }
+    }
+
+    #[test]
+    fn inactive_state_reads_host_params_from_the_preset() {
+        let state = AddiState::new();
+        store_preset(
+            &state,
+            &preset_with_params(vec![(3, 0, "Later"), (1, 0, "Cutoff"), (2, 2, "")]),
+        );
+
+        assert_eq!(state.param_name(0), "Cutoff");
+        assert_eq!(state.param_flags(0), ParamFlags::empty());
+        assert_eq!(state.param_normalized_value(0), 0.0);
+        assert_eq!(state.param_name(2), "Ext Param");
+        assert_eq!(
+            state.param_flags(1),
+            ParamFlags::HIDDEN | ParamFlags::NON_AUTOMATABLE
+        );
+        assert_eq!(state.param_name(1), "Param 2");
+
+        let signature = state.host_param_signature();
+        assert_eq!(signature[0], (false, "Cutoff".to_string()));
+        assert_eq!(signature[1], (true, "Param 2".to_string()));
+        assert_eq!(signature[2], (false, "Ext Param".to_string()));
+    }
+
+    #[test]
+    fn host_params_follow_the_preset_across_activation() {
+        let state = AddiState::new();
+        store_preset(&state, &preset_with_params(vec![(1, 2, "Cutoff")]));
+
+        assert_eq!(state.param_name(2), "Cutoff");
+        assert!(state.activate(48_000.0).is_some());
+        assert_eq!(state.param_name(2), "Cutoff");
+        assert_eq!(state.param_flags(2), ParamFlags::empty());
+
+        state.deactivate();
+        assert_eq!(state.param_name(2), "Cutoff");
+        assert_eq!(state.host_param_signature()[2].0, false);
     }
 }

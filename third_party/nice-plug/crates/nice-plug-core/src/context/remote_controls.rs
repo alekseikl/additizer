@@ -2,8 +2,6 @@
 //! pages](https://github.com/free-audio/clap/blob/main/include/clap/ext/draft/remote-controls.h)
 //! for CLAP plugins.
 
-use crate::params::Param;
-
 /// A context for defining plugin-specific [remote
 /// pages](https://github.com/free-audio/clap/blob/main/include/clap/ext/draft/remote-controls.h)
 /// for CLAP plugins.
@@ -34,8 +32,8 @@ pub trait RemoteControlsSection {
 /// appended to it. For example, the `Lengty Params Page` defining 16 parameters will become `Lengty
 /// Params Page 1` and `Lengthy Params Page 2`.
 pub trait RemoteControlsPage {
-    // Add a reference to one of the plugin's parameters to the page.
-    fn add_param(&mut self, param: &impl Param);
+    /// Add a reference to the parameter with this index.
+    fn add_param(&mut self, index: u32);
 
     // Add an empty space on the page. Can be useful for grouping and aligning parameters within a
     // page.

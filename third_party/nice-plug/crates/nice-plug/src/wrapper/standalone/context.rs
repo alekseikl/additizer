@@ -1,12 +1,10 @@
 use nice_plug_core::context::PluginApi;
 use nice_plug_core::context::activate::ActivateContext;
 use nice_plug_core::context::process::{ProcessContext, SendEventError, Transport};
-use nice_plug_core::midi::PluginNoteEvent;
+use nice_plug_core::midi::{NoteEvent, PluginNoteEvent};
 use nice_plug_core::plugin::Plugin;
 
-use nice_plug_core::{
-    context::gui::GuiContextInner, params::internals::ParamPtr, plugin::SavedState,
-};
+use nice_plug_core::{context::gui::GuiContextInner, plugin::SavedState};
 
 use super::backend::Backend;
 use super::wrapper::{Task, Wrapper};
@@ -69,6 +67,14 @@ impl<P: Plugin, B: Backend<P>> ProcessContext<P> for WrapperProcessContext<'_, P
     }
 
     fn next_event(&mut self) -> Option<PluginNoteEvent<P>> {
+        if let Some((index, normalized_value)) = self.wrapper.pop_param_change() {
+            return Some(NoteEvent::MonoAutomation {
+                timing: 0,
+                poly_modulation_id: index,
+                normalized_value,
+            });
+        }
+
         // We'll pretend we're a queue, choo choo
         if self.input_events_idx < self.input_events.len() {
             let event = self.input_events[self.input_events_idx].clone();
@@ -120,59 +126,53 @@ impl<P: Plugin, B: Backend<P>> GuiContextInner for WrapperGuiContext<P, B> {
         PluginApi::Standalone
     }
 
-    unsafe fn raw_begin_set_parameter(&self, _param: ParamPtr) {
-        // Since there's no automation being recorded here, gestures don't mean anything
-
+    unsafe fn raw_begin_set_parameter(&self, index: u32) {
         #[cfg(debug_assertions)]
         {
             let wrapper = self.wrapper.upgrade().unwrap();
-
-            match wrapper.param_id_from_ptr(_param) {
-                Some(param_id) => self
-                    .param_gesture_checker
+            if wrapper.has_param(index) {
+                self.param_gesture_checker
                     .borrow_mut()
-                    .begin_set_parameter(param_id),
-                None => crate::nice_debug_assert_failure!(
-                    "raw_begin_set_parameter() called with an unknown ParamPtr"
-                ),
-            }
-        }
-    }
-
-    unsafe fn raw_set_parameter_normalized(&self, param: ParamPtr, normalized: f32) {
-        let wrapper = self.wrapper.upgrade().unwrap();
-
-        wrapper.set_parameter(param, normalized);
-
-        #[cfg(debug_assertions)]
-        match wrapper.param_id_from_ptr(param) {
-            Some(param_id) => self
-                .param_gesture_checker
-                .borrow_mut()
-                .set_parameter(param_id),
-            None => {
+                    .begin_set_parameter(&index.to_string());
+            } else {
                 crate::nice_debug_assert_failure!(
-                    "raw_set_parameter() called with an unknown ParamPtr"
-                )
+                    "raw_begin_set_parameter() called with an unknown parameter index {}",
+                    index
+                );
             }
         }
     }
 
-    unsafe fn raw_end_set_parameter(&self, _param: ParamPtr) {
+    unsafe fn raw_set_parameter_normalized(&self, index: u32, normalized: f32) {
+        let wrapper = self.wrapper.upgrade().unwrap();
+        wrapper.set_parameter(index, normalized);
+
+        #[cfg(debug_assertions)]
+        if wrapper.has_param(index) {
+            self.param_gesture_checker
+                .borrow_mut()
+                .set_parameter(&index.to_string());
+        } else {
+            crate::nice_debug_assert_failure!(
+                "raw_set_parameter() called with an unknown parameter index {}",
+                index
+            );
+        }
+    }
+
+    unsafe fn raw_end_set_parameter(&self, index: u32) {
         #[cfg(debug_assertions)]
         {
             let wrapper = self.wrapper.upgrade().unwrap();
-
-            match wrapper.param_id_from_ptr(_param) {
-                Some(param_id) => self
-                    .param_gesture_checker
+            if wrapper.has_param(index) {
+                self.param_gesture_checker
                     .borrow_mut()
-                    .end_set_parameter(param_id),
-                None => {
-                    crate::nice_debug_assert_failure!(
-                        "raw_end_set_parameter() called with an unknown ParamPtr"
-                    )
-                }
+                    .end_set_parameter(&index.to_string());
+            } else {
+                crate::nice_debug_assert_failure!(
+                    "raw_end_set_parameter() called with an unknown parameter index {}",
+                    index
+                );
             }
         }
     }
@@ -181,14 +181,9 @@ impl<P: Plugin, B: Backend<P>> GuiContextInner for WrapperGuiContext<P, B> {
         self.wrapper.upgrade().unwrap().get_state_object()
     }
 
-    fn set_state(&self, state: SavedState) {
-        self.wrapper
-            .upgrade()
-            .unwrap()
-            .set_state_object_from_gui(state)
-    }
-
     fn request_restart(&self) {
         // Not relevant for standalone backend
     }
+
+    fn request_param_rescan(&self) {}
 }

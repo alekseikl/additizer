@@ -64,17 +64,11 @@
 //!      gets deactivated. You probably don't need to do anything here, but you could deallocate or
 //!      clean up resources here.
 //!
-//!  - Plugin parameters are managed automatically by creating a struct deriving the
-//!    [`Params`][prelude::Params] trait and returning a handle to it from the
-//!    [`Plugin::state()`][prelude::Plugin::state()] function. Any
-//!    [`FloatParam`][prelude::FloatParam], [`IntParam`][prelude::IntParam],
-//!    [`BoolParam`][prelude::BoolParam] or [`EnumParam`][prelude::EnumParam] fields on that struct
-//!    will automatically be registered as a parameter if they have an `#[id = "foobar"]` attribute.
-//!    The string `"foobar"` here uniquely identifies the parameter, making it possible to reorder
-//!    and rename parameters as long as this string stays constant. You can also store persistent
-//!    non-parameter data and other parameter objects in a `Params` struct. Parameter values are
-//!    delivered as note events and are not read from the parameter objects. Check out the trait's
-//!    documentation for details.
+//!  - Plugin state is a [`PluginState`][prelude::PluginState] returned from
+//!    [`Plugin::state()`][prelude::Plugin::state()]. Host parameters are addressed by index. The
+//!    wrapper calls [`PluginState`][prelude::PluginState] when the host asks for a name, value, or
+//!    text conversion. Parameter value changes are delivered as note events. Persistent fields can
+//!    be stored by deriving [`Params`][prelude::Params].
 //!
 //! There's a whole lot more to discuss, but once you understand the above you should be able to
 //! figure out the rest by reading through the examples and the API documentation. Good luck!

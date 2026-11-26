@@ -414,10 +414,6 @@ pub fn derive_params(input: TokenStream) -> TokenStream {
 
     quote! {
         impl #impl_generics ::nice_plug::prelude::PluginState for #struct_name #ty_generics #where_clause {
-            fn params(&self) -> Vec<::nice_plug::prelude::FloatParam> {
-                Vec::new()
-            }
-
             fn serialize_fields(&self) -> ::std::collections::BTreeMap<String, String> {
                 #serialize_fields_tokens
             }

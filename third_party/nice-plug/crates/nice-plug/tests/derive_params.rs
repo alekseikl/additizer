@@ -1,51 +1,30 @@
 use nice_plug::prelude::*;
 
-#[derive(Params)]
+#[derive(Params, Default)]
 struct FlatParams {
     #[id = "one"]
-    pub one: BoolParam,
+    pub one: i32,
 
     #[id = "two"]
-    pub two: FloatParam,
+    pub two: i32,
 
     #[id = "three"]
-    pub three: IntParam,
+    pub three: i32,
 }
 
-impl Default for FlatParams {
-    fn default() -> Self {
-        FlatParams {
-            one: BoolParam::new("one", true),
-            two: FloatParam::new("two", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            three: IntParam::new("three", 0, IntRange::Linear { min: 0, max: 100 }),
-        }
-    }
-}
-
-#[derive(Params)]
+#[derive(Params, Default)]
 struct GroupedParams {
     #[id = "one"]
-    pub one: BoolParam,
+    pub one: i32,
 
     #[nested(group = "Some Group", id_prefix = "group1")]
     pub group1: FlatParams,
 
     #[id = "three"]
-    pub three: IntParam,
+    pub three: i32,
 
     #[nested(group = "Another Group", id_prefix = "group2")]
     pub group2: FlatParams,
-}
-
-impl Default for GroupedParams {
-    fn default() -> Self {
-        GroupedParams {
-            one: BoolParam::new("one", true),
-            group1: FlatParams::default(),
-            three: IntParam::new("three", 0, IntRange::Linear { min: 0, max: 100 }),
-            group2: FlatParams::default(),
-        }
-    }
 }
 
 // This should result in the same `.param_map()` as `GroupedParams`
@@ -61,52 +40,28 @@ struct GroupedGroupedParams {
     pub one: GroupedParams,
 }
 
-#[derive(Params)]
+#[derive(Params, Default)]
 struct NestedParams {
     #[id = "one"]
-    pub one: BoolParam,
+    pub one: i32,
 
     #[nested(id_prefix = "two")]
     pub two: FlatParams,
 
     #[id = "three"]
-    pub three: IntParam,
+    pub three: i32,
 }
 
-impl Default for NestedParams {
-    fn default() -> Self {
-        NestedParams {
-            one: BoolParam::new("one", true),
-            two: FlatParams::default(),
-            three: IntParam::new("three", 0, IntRange::Linear { min: 0, max: 100 }),
-        }
-    }
-}
-
-#[derive(Params)]
+#[derive(Params, Default)]
 struct NestedArrayParams {
     #[id = "one"]
-    pub one: BoolParam,
+    pub one: i32,
 
     #[nested(array, group = "Nested Params")]
     pub lots_of_twos: [FlatParams; 3],
 
     #[id = "three"]
-    pub three: IntParam,
-}
-
-impl Default for NestedArrayParams {
-    fn default() -> Self {
-        NestedArrayParams {
-            one: BoolParam::new("one", true),
-            lots_of_twos: [
-                FlatParams::default(),
-                FlatParams::default(),
-                FlatParams::default(),
-            ],
-            three: IntParam::new("three", 0, IntRange::Linear { min: 0, max: 100 }),
-        }
-    }
+    pub three: i32,
 }
 
 mod plugin_state {
@@ -114,12 +69,11 @@ mod plugin_state {
 
     #[test]
     fn derive_builds_plugin_state() {
-        assert!(FlatParams::default().params().is_empty());
-        assert!(GroupedParams::default().params().is_empty());
-        assert!(PlainNestedParams::default().params().is_empty());
-        assert!(GroupedGroupedParams::default().params().is_empty());
-        assert!(NestedParams::default().params().is_empty());
-        assert!(NestedArrayParams::default().params().is_empty());
         assert!(FlatParams::default().serialize_fields().is_empty());
+        assert!(GroupedParams::default().serialize_fields().is_empty());
+        assert!(PlainNestedParams::default().serialize_fields().is_empty());
+        assert!(GroupedGroupedParams::default().serialize_fields().is_empty());
+        assert!(NestedParams::default().serialize_fields().is_empty());
+        assert!(NestedArrayParams::default().serialize_fields().is_empty());
     }
 }

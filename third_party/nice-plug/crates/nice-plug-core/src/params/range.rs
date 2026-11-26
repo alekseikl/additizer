@@ -153,6 +153,7 @@ impl FloatRange {
 
     /// Emits debug assertions to make sure that range minima are always less than the maxima and
     /// that they are not equal.
+    #[allow(dead_code)]
     pub(super) fn assert_validity(&self) {
         match self {
             FloatRange::Linear { min, max }
@@ -210,6 +211,7 @@ impl IntRange {
 
     /// Emits debug assertions to make sure that range minima are always less than the maxima and
     /// that they are not equal.
+    #[allow(dead_code)]
     pub(super) fn assert_validity(&self) {
         match self {
             IntRange::Linear { min, max } => {

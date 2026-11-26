@@ -20,6 +20,8 @@ const RESIZE_HINT: ResizeHint = ResizeHint::resizable().with_min_logical_size(MI
 pub struct PluginEditor {
     addi_state: Arc<AddiState>,
     state: EguiEditor,
+    gui_context: Option<GuiContext>,
+    host_param_signature: Option<Vec<(bool, String)>>,
 }
 
 impl PluginEditor {
@@ -27,6 +29,8 @@ impl PluginEditor {
         Self {
             addi_state,
             state: EguiEditor::new(),
+            gui_context: None,
+            host_param_signature: None,
         }
     }
 }
@@ -35,13 +39,14 @@ impl NiceEguiApp for PluginEditor {
     fn build(
         &mut self,
         egui_ctx: egui::Context,
-        _nice_gui_ctx: GuiContext,
+        nice_gui_ctx: GuiContext,
         _frame: &mut nice_plug_egui::Frame,
     ) -> Result<(), nice_plug_egui::baseview::HandlerError> {
         #[cfg(debug_assertions)]
         egui_ctx.global_style_mut(|style| style.debug.warn_if_rect_changes_id = false);
 
         install_fonts(&egui_ctx);
+        self.gui_context = Some(nice_gui_ctx);
         Ok(())
     }
 
@@ -71,12 +76,27 @@ impl NiceEguiApp for PluginEditor {
         if let Some(preset) = self.state.take_postponed_preset() {
             self.addi_state.load_preset(&preset);
         }
+        self.rescan_host_params_if_needed();
 
         // `request_repaint` wakes the display link without setting
         // `redraw_requested`, so baseview pauses it again when this frame
         // returns. Ask the window directly to keep drawing every vsync.
         ui.ctx().request_repaint();
         frame.baseview_window().request_redraw();
+    }
+}
+
+impl PluginEditor {
+    fn rescan_host_params_if_needed(&mut self) {
+        let signature = self.addi_state.host_param_signature();
+        if self.host_param_signature.as_ref() == Some(&signature) {
+            return;
+        }
+
+        self.host_param_signature = Some(signature);
+        if let Some(context) = &self.gui_context {
+            context.request_param_rescan();
+        }
     }
 }
 

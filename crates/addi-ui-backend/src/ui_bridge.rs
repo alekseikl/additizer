@@ -25,6 +25,12 @@ pub struct ModuleItem {
     pub module_type: ModuleType,
 }
 
+/// Host-facing description of an external parameter that is bound to a module.
+pub struct HostParamBinding {
+    pub name: String,
+    pub value: Smp,
+}
+
 #[derive(Clone, Copy)]
 pub struct ModulatedValue {
     pub value: StereoSample,
@@ -223,6 +229,27 @@ impl<E: EngineLinks> UiBridge<E> {
 
     pub fn voices_status(&self) -> &VoicesStatus {
         &self.voices
+    }
+
+    /// External parameter module bound to `index`, preferring the lowest module id.
+    pub fn host_param_binding(&mut self, index: usize) -> Option<HostParamBinding> {
+        let mut ids: Vec<ModuleId> = self.module_bridges.keys().copied().collect();
+        ids.sort_unstable();
+
+        let module_id = ids.into_iter().find(|&id| {
+            matches!(
+                self.module_bridges.get(&id).and_then(Option::as_ref),
+                Some(ModuleBridge::ExternalParam(module)) if module.selected_index() == index
+            )
+        })?;
+
+        let name = self.display_module_label(module_id);
+        let value = match self.module_bridges.get_mut(&module_id).and_then(Option::as_mut) {
+            Some(ModuleBridge::ExternalParam(module)) => module.automation_value(),
+            _ => return None,
+        };
+
+        Some(HostParamBinding { name, value })
     }
 
     pub fn display_module_label(&self, module_id: ModuleId) -> String {

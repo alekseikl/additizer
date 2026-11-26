@@ -12,10 +12,8 @@ use nice_plug_core::context::remote_controls::{
 use nice_plug_core::midi::{
     Channel, Key, MidiConfig, MidiResult, NoteEvent, PluginNoteEvent, VoiceID,
 };
-use nice_plug_core::params::Param;
-use nice_plug_core::params::internals::ParamPtr;
 use std::cell::Cell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::mem;
 
 use super::wrapper::{Task, Wrapper};
@@ -70,7 +68,6 @@ pub(crate) struct WrapperGuiContext<P: ClapPlugin> {
 /// to allow the plugin to declare remote control pages. This struct defines the pages in the
 /// correct format.
 pub(crate) struct RemoteControlPages<'a> {
-    param_ptr_to_hash: &'a HashMap<ParamPtr, u32>,
     /// The remote control pages, as defined by the plugin. These don't reference any heap data so
     /// we can store them directly.
     pages: &'a mut Vec<clap_remote_controls_page>,
@@ -526,125 +523,89 @@ impl<P: ClapPlugin> nice_plug_core::context::gui::GuiContextInner for WrapperGui
 
     // All of these functions are supposed to be called from the main thread, so we'll put some
     // trust in the caller and assume that this is indeed the case
-    unsafe fn raw_begin_set_parameter(&self, param: ParamPtr) {
+    unsafe fn raw_begin_set_parameter(&self, index: u32) {
         let wrapper = self.wrapper.upgrade().unwrap();
-
-        match wrapper.param_ptr_to_hash.get(&param) {
-            Some(hash) => {
-                use crate::wrapper::clap::wrapper::OutputParamEvent;
-
-                let success = wrapper
-                    .queue_parameter_event(OutputParamEvent::BeginGesture { param_hash: *hash });
-
-                crate::nice_debug_assert!(
-                    success,
-                    "Parameter output event queue was full, parameter change will not be sent to \
-                     the host"
-                );
-            }
-            None => crate::nice_debug_assert_failure!("Unknown parameter: {:?}", param),
+        if !wrapper.has_param(index) {
+            crate::nice_debug_assert_failure!("Unknown parameter index {}", index);
+            return;
         }
+
+        use crate::wrapper::clap::wrapper::OutputParamEvent;
+
+        let success =
+            wrapper.queue_parameter_event(OutputParamEvent::BeginGesture { param_hash: index });
+        crate::nice_debug_assert!(
+            success,
+            "Parameter output event queue was full, parameter change will not be sent to the host"
+        );
 
         #[cfg(debug_assertions)]
-        match wrapper.param_id_from_ptr(param) {
-            Some(param_id) => self
-                .param_gesture_checker
-                .borrow_mut()
-                .begin_set_parameter(param_id),
-            None => crate::nice_debug_assert_failure!(
-                "raw_begin_set_parameter() called with an unknown ParamPtr"
-            ),
-        }
+        self.param_gesture_checker
+            .borrow_mut()
+            .begin_set_parameter(&index.to_string());
     }
 
-    unsafe fn raw_set_parameter_normalized(&self, param: ParamPtr, normalized: f32) {
+    unsafe fn raw_set_parameter_normalized(&self, index: u32, normalized: f32) {
         let wrapper = self.wrapper.upgrade().unwrap();
-
-        match wrapper.param_ptr_to_hash.get(&param) {
-            Some(hash) => {
-                use crate::wrapper::clap::wrapper::OutputParamEvent;
-
-                // We queue the parameter change event here, and it will be sent to the host either
-                // at the end of the current processing cycle or after requesting an explicit flush
-                // (when the plugin isn't processing audio). The parameter's actual value will only
-                // be changed when the output event is written to prevent changing parameter values
-                // in the middle of processing audio.
-                let clap_plain_value =
-                    normalized as f64 * unsafe { param.step_count().unwrap_or(1) as f64 };
-                let success = wrapper.queue_parameter_event(OutputParamEvent::SetValue {
-                    param_hash: *hash,
-                    clap_plain_value,
-                });
-
-                crate::nice_debug_assert!(
-                    success,
-                    "Parameter output event queue was full, parameter change will not be sent to \
-                     the host"
-                );
-            }
-            None => crate::nice_debug_assert_failure!("Unknown parameter: {:?}", param),
+        if !wrapper.has_param(index) {
+            crate::nice_debug_assert_failure!("Unknown parameter index {}", index);
+            return;
         }
+
+        use crate::wrapper::clap::wrapper::OutputParamEvent;
+
+        // Queue the change for the host. It is delivered back as a note event. The audio module
+        // publishes the value for later host queries.
+        let success = wrapper.queue_parameter_event(OutputParamEvent::SetValue {
+            param_hash: index,
+            clap_plain_value: normalized as f64,
+        });
+        crate::nice_debug_assert!(
+            success,
+            "Parameter output event queue was full, parameter change will not be sent to the host"
+        );
 
         #[cfg(debug_assertions)]
-        match wrapper.param_id_from_ptr(param) {
-            Some(param_id) => self
-                .param_gesture_checker
-                .borrow_mut()
-                .set_parameter(param_id),
-            None => {
-                crate::nice_debug_assert_failure!(
-                    "raw_set_parameter() called with an unknown ParamPtr"
-                )
-            }
-        }
+        self.param_gesture_checker
+            .borrow_mut()
+            .set_parameter(&index.to_string());
     }
 
-    unsafe fn raw_end_set_parameter(&self, param: ParamPtr) {
+    unsafe fn raw_end_set_parameter(&self, index: u32) {
         let wrapper = self.wrapper.upgrade().unwrap();
-
-        match wrapper.param_ptr_to_hash.get(&param) {
-            Some(hash) => {
-                use crate::wrapper::clap::wrapper::OutputParamEvent;
-
-                let success = wrapper
-                    .queue_parameter_event(OutputParamEvent::EndGesture { param_hash: *hash });
-
-                crate::nice_debug_assert!(
-                    success,
-                    "Parameter output event queue was full, parameter change will not be sent to \
-                     the host"
-                );
-            }
-            None => crate::nice_debug_assert_failure!("Unknown parameter: {:?}", param),
+        if !wrapper.has_param(index) {
+            crate::nice_debug_assert_failure!("Unknown parameter index {}", index);
+            return;
         }
+
+        use crate::wrapper::clap::wrapper::OutputParamEvent;
+
+        let success =
+            wrapper.queue_parameter_event(OutputParamEvent::EndGesture { param_hash: index });
+        crate::nice_debug_assert!(
+            success,
+            "Parameter output event queue was full, parameter change will not be sent to the host"
+        );
 
         #[cfg(debug_assertions)]
-        match wrapper.param_id_from_ptr(param) {
-            Some(param_id) => self
-                .param_gesture_checker
-                .borrow_mut()
-                .end_set_parameter(param_id),
-            None => {
-                crate::nice_debug_assert_failure!(
-                    "raw_end_set_parameter() called with an unknown ParamPtr"
-                )
-            }
-        }
+        self.param_gesture_checker
+            .borrow_mut()
+            .end_set_parameter(&index.to_string());
     }
 
     fn get_state(&self) -> nice_plug_core::plugin::SavedState {
         self.wrapper.upgrade().unwrap().get_state_object()
     }
 
-    fn set_state(&self, state: nice_plug_core::plugin::SavedState) {
-        self.wrapper
-            .upgrade()
-            .unwrap()
-            .set_state_object_from_gui(state)
-    }
-
     fn request_restart(&self) {
         self.wrapper.upgrade().unwrap().request_restart();
+    }
+
+    fn request_param_rescan(&self) {
+        let wrapper = self.wrapper.upgrade().unwrap();
+        let task_posted =
+            wrapper.schedule_gui(crate::wrapper::clap::wrapper::Task::RescanParamValues);
+        crate::nice_debug_assert!(task_posted, "The task queue is full, dropping task...");
     }
 }
 
@@ -657,7 +618,7 @@ pub(crate) struct Section {
 /// controls exceeds 8.
 pub(crate) struct Page {
     name: String,
-    params: Vec<Option<ParamPtr>>,
+    params: Vec<Option<u32>>,
 }
 
 impl<'a> RemoteControlPages<'a> {
@@ -666,13 +627,8 @@ impl<'a> RemoteControlPages<'a> {
     pub fn define_remote_control_pages<P: ClapPlugin>(
         plugin: &P,
         pages: &'a mut Vec<clap_remote_controls_page>,
-        param_ptr_to_hash: &'a HashMap<ParamPtr, u32>,
     ) {
-        // The magic happens in the `add_section()` function defined below
-        plugin.remote_controls(&mut Self {
-            pages,
-            param_ptr_to_hash,
-        });
+        plugin.remote_controls(&mut Self { pages });
     }
 
     /// Perform the boilerplate needed for creating and adding a new [`clap_remote_controls_page`].
@@ -681,7 +637,7 @@ impl<'a> RemoteControlPages<'a> {
         &mut self,
         section: &str,
         page_name: &str,
-        params: impl IntoIterator<Item = Option<ParamPtr>>,
+        params: impl IntoIterator<Item = Option<u32>>,
     ) {
         let mut page = clap_remote_controls_page {
             section_name: [0; CLAP_NAME_SIZE],
@@ -697,8 +653,8 @@ impl<'a> RemoteControlPages<'a> {
         let mut params = params.into_iter();
         for (param_id, param_ptr) in page.param_ids.iter_mut().zip(&mut params) {
             // `param_id` already has the correct value if `param_ptr` is empty/a spacer
-            if let Some(param_ptr) = param_ptr {
-                *param_id = self.param_ptr_to_id(param_ptr);
+            if let Some(index) = param_ptr {
+                *param_id = index;
             }
         }
 
@@ -709,21 +665,6 @@ impl<'a> RemoteControlPages<'a> {
         );
 
         self.pages.push(page);
-    }
-
-    /// Transform a `ParamPtr` to the associated CLAP parameter ID/hash. Returns -1/invalid
-    /// parameter and triggers a debug assertion when the parameter is not known.
-    fn param_ptr_to_id(&self, ptr: ParamPtr) -> clap_id {
-        match self.param_ptr_to_hash.get(&ptr) {
-            Some(id) => *id,
-            None => {
-                crate::nice_debug_assert_failure!(
-                    "An unknown parameter was added to a remote control page, ignoring..."
-                );
-
-                CLAP_INVALID_ID
-            }
-        }
     }
 }
 
@@ -774,8 +715,8 @@ impl RemoteControlsSection for Section {
 }
 
 impl RemoteControlsPage for Page {
-    fn add_param(&mut self, param: &impl Param) {
-        self.params.push(Some(param.as_ptr()));
+    fn add_param(&mut self, index: u32) {
+        self.params.push(Some(index));
     }
 
     fn add_spacer(&mut self) {
