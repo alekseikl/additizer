@@ -44,11 +44,11 @@ name = "addi-engine"
 version = "0.1.0"
 dependencies = [
  "addi-dsp",
- "assert_no_alloc",
  "auto_impl",
  "criterion",
  "enum_dispatch",
  "itertools 0.15.0",
+ "nice-assert-no-alloc",
  "rand",
  "rand_pcg",
  "realfft",
@@ -89,7 +89,6 @@ dependencies = [
  "addi-egui",
  "addi-engine",
  "addi-ui-backend",
- "assert_no_alloc",
  "const_format",
  "crossbeam-utils",
  "egui",
@@ -281,12 +280,6 @@ name = "as-raw-xcb-connection"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "175571dd1d178ced59193a6fc02dde1b972eb0bc56c892cde9beeceac5bf0f6b"
-
-[[package]]
-name = "assert_no_alloc"
-version = "1.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55ca83137a482d61d916ceb1eba52a684f98004f18e0cafea230fe5579c178a3"
 
 [[package]]
 name = "atomic-waker"
@@ -1854,6 +1847,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nice-assert-no-alloc"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3a565fc41dece610aa5f63d5e03c34fc9997a69006c9bcfcb575fdca5c2c5e56"
+dependencies = [
+ "backtrace",
+ "log",
+]
+
+[[package]]
 name = "nice-log"
 version = "0.3.1"
 dependencies = [
@@ -1882,6 +1885,7 @@ dependencies = [
  "jack",
  "libc",
  "midir",
+ "nice-assert-no-alloc",
  "nice-log",
  "nice-plug-core",
  "nice-plug-derive",
@@ -1909,6 +1913,7 @@ dependencies = [
  "crossbeam-utils",
  "dpi",
  "midi-consts",
+ "nice-assert-no-alloc",
  "nice-plug-derive",
  "parking_lot",
  "raw-window-handle",

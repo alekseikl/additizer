@@ -14,6 +14,7 @@ addi-engine = { workspace = true }
 addi-ui-backend = { workspace = true }
 egui = { workspace = true }
 nice-plug = { path = "../../third_party/nice-plug/crates/nice-plug", features = [
+    "assert_process_allocs",
     "standalone",
     "tracing-subscriber",
 ] }
@@ -21,7 +22,6 @@ nice-plug-egui = { path = "../../third_party/nice-plug/crates/nice-plug-egui", d
     "opengl",
 ] }
 parking_lot = { workspace = true, features = ["serde"] }
-assert_no_alloc = "1.1.2"
 const_format = "0.2.36"
 crossbeam-utils = "0.8.23"
 midir = "0.11"

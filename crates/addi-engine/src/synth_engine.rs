@@ -709,7 +709,7 @@ impl<E: EngineLinks> SynthEngine<E> {
             self.block_size
         );
 
-        assert_no_alloc::permit_alloc(|| {
+        nice_assert_no_alloc::permit_alloc(|| {
             self.handle_ui_events();
         });
 

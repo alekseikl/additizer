@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 addi-dsp = { workspace = true }
-assert_no_alloc = "1.1.2"
+nice-assert-no-alloc = "1.0"
 auto_impl = { workspace = true }
 enum_dispatch = { workspace = true }
 itertools = { workspace = true }

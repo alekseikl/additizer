@@ -15,8 +15,6 @@ use nice_plug::prelude::*;
 use nice_plug_egui::{EguiEditor, EguiEditorState};
 use std::sync::Arc;
 
-/// Beats per minute used when the host does not report a tempo.
-/// A beat is a quarter note.
 const DEFAULT_TEMPO: f64 = 120.0;
 
 pub struct Additizer {
@@ -103,53 +101,45 @@ impl Plugin for Additizer {
             return ProcessStatus::KeepAlive;
         };
 
-        // Topology edits arrive on the lock-free ring inside `process`.
-        assert_no_alloc::assert_no_alloc(|| {
-            let block_size = synth.block_size();
-            let update_ui = self.editor_state.is_open();
-            let reported = context.transport();
-            let mut host_transport = host_events::HostTransport::new(
-                reported.tempo.unwrap_or(DEFAULT_TEMPO),
-                reported.pos_seconds().unwrap_or_default(),
-                reported.pos_beats().unwrap_or_default(),
+        let block_size = synth.block_size();
+        let update_ui = self.editor_state.is_open();
+        let reported = context.transport();
+        let mut host_transport = host_events::HostTransport::new(
+            reported.tempo.unwrap_or(DEFAULT_TEMPO),
+            reported.pos_seconds().unwrap_or_default(),
+            reported.pos_beats().unwrap_or_default(),
+        );
+
+        let mut next_event = context.next_event();
+
+        for (block_start, mut block) in buffer.iter_blocks(block_size) {
+            let samples = block.samples();
+            let sample_to = block_start + samples;
+
+            while let Some(event) = next_event.take_if(|e| (e.timing() as usize) < sample_to) {
+                host_events::process_event(&mut *synth, event, block_start, &mut host_transport);
+                next_event = context.next_event();
+            }
+
+            host_transport.set_block(block_start);
+
+            synth.process(
+                samples,
+                update_ui,
+                &host_transport,
+                &mut self.terminated_notes,
+                block.stereo_buff(),
             );
 
-            let mut next_event = context.next_event();
-
-            for (block_start, mut block) in buffer.iter_blocks(block_size) {
-                let samples = block.samples();
-                let sample_to = block_start + samples;
-
-                while let Some(event) = next_event.take_if(|e| (e.timing() as usize) < sample_to) {
-                    host_events::process_event(
-                        &mut *synth,
-                        event,
-                        block_start,
-                        &mut host_transport,
-                    );
-                    next_event = context.next_event();
-                }
-
-                host_transport.set_block(block_start);
-
-                synth.process(
-                    samples,
-                    update_ui,
-                    &host_transport,
-                    &mut self.terminated_notes,
-                    block.stereo_buff(),
-                );
-
-                for note in self.terminated_notes.drain(..) {
-                    let _ = context.try_send_event(NoteEvent::VoiceTerminated {
-                        timing: sample_to as u32,
-                        voice_id: note.host_id.map(VoiceID::ID).unwrap_or(VoiceID::Wildcard),
-                        channel: Channel::Number(note.channel),
-                        key: Key::Number(note.note),
-                    });
-                }
+            for note in self.terminated_notes.drain(..) {
+                let _ = context.try_send_event(NoteEvent::VoiceTerminated {
+                    timing: sample_to as u32,
+                    voice_id: note.host_id.map(VoiceID::ID).unwrap_or(VoiceID::Wildcard),
+                    channel: Channel::Number(note.channel),
+                    key: Key::Number(note.note),
+                });
             }
-        });
+        }
 
         ProcessStatus::KeepAlive
     }

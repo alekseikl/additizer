@@ -162,10 +162,11 @@ stereo/smoothed parameter plumbing.
 
 - **Everything is stereo.** Use `StereoSample` (`synth_engine/stereo_sample.rs`); each channel
   is independent and `NUM_CHANNELS == 2`. Audio is `f32` (`Sample`).
-- **No allocation on the audio thread.** `process` is wrapped in
-  `assert_no_alloc::assert_no_alloc(...)` in `crates/additizer/src/lib.rs`. Do not allocate, lock contended
-  mutexes, or block inside `SynthModule::process` or anything it calls. Pre-allocate scratch
-  buffers in the module struct (see `Amplifier::buffers`).
+- **No allocation on the audio thread.** Debug builds enable nice-plug's
+  `assert_process_allocs` feature (`crates/additizer/Cargo.toml`), which aborts if the audio
+  callback allocates. Do not allocate, lock contended mutexes, or block inside
+  `SynthModule::process` or anything it calls. Pre-allocate scratch buffers in the module
+  struct (see `Amplifier::buffers`).
 - **Buffers are fixed-size.** Time-domain `Buffer` is `[Sample; 257]` (`BUFFER_SIZE`);
   `SpectralBuffer` is `[ComplexSample; 1024]` (`SPECTRAL_BUFFER_SIZE`, `SPECTRUM_BITS == 10`).
   Spectral modules use `realfft`.
